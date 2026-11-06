@@ -34,9 +34,12 @@ vi.mock('react-konva', async () => {
   type MockProps = {
     children?: React.ReactNode;
     draggable?: boolean;
+    hitStrokeWidth?: number;
     listening?: boolean;
     name?: string;
     opacity?: number;
+    radius?: number;
+    strokeWidth?: number;
   };
   const globals = globalThis as typeof globalThis & {
     __pandaStageKonvaCacheCalls?: unknown[];
@@ -57,7 +60,10 @@ vi.mock('react-konva', async () => {
           'data-name': props.name,
           'data-opacity': props.opacity,
           'data-draggable': props.draggable,
+          'data-hit-stroke-width': props.hitStrokeWidth,
           'data-listening': props.listening,
+          'data-radius': props.radius,
+          'data-stroke-width': props.strokeWidth,
         },
         props.children,
       );
@@ -887,10 +893,25 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       const moveHandle = container.querySelector(
         '[data-name="part-pose-move-handle"]',
       );
+      const poseHandles = [
+        'part-pose-move-handle',
+        'part-pose-rotate-handle',
+        'part-pose-scale-handle',
+      ].map((name) => container.querySelector(`[data-name="${name}"]`));
       expect(cacheCalls).toHaveLength(1);
       expect(visual?.getAttribute('data-opacity')).toBeNull();
       expect(layerRoot?.getAttribute('data-opacity')).toBe('0.5');
       expect(moveHandle?.getAttribute('data-draggable')).toBe('true');
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')),
+      )).toEqual([9, 9, 9]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-stroke-width')),
+      )).toEqual([2, 2, 2]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')) +
+          Number(handle?.getAttribute('data-hit-stroke-width')) / 2,
+      )).toEqual([12.5, 11.5, 11.5]);
     } finally {
       await act(async () => root.unmount());
       container.remove();

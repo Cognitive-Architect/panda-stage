@@ -819,6 +819,7 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('move', event)}
+                  hitStrokeWidth={7}
                   radius={9}
                   stroke="#173d26"
                   strokeWidth={2}
@@ -834,6 +835,7 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('rotate', event)}
+                  hitStrokeWidth={5}
                   radius={9}
                   stroke="#2564a5"
                   strokeWidth={2}
@@ -849,6 +851,7 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('scale', event)}
+                  hitStrokeWidth={5}
                   radius={9}
                   stroke="#a36300"
                   strokeWidth={2}
