@@ -8,8 +8,16 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
-import { ArrowLeft, Check, ChevronDown, LockKeyhole, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  LockKeyhole,
+  MoreHorizontal,
+  Plus,
+} from 'lucide-react';
 import { layerStore } from '../../stores/layerStore';
+import { Button } from '../../ui';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import {
   resolvePartPoseEditorParts,
@@ -165,7 +173,7 @@ export function PartPoseEditorPanel({
       >
         <div className="part-pose-editor-heading">
           <strong>动作</strong>
-          <button
+          <Button
             disabled={layer.locked || parts.length === 0}
             data-testid="part-pose-edit-action"
             onClick={() => {
@@ -175,9 +183,10 @@ export function PartPoseEditorPanel({
               if (firstPartId) editor.onStart(layer.id, firstPartId);
             }}
             type="button"
+            variant="primary"
           >
             编辑动作
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -230,15 +239,16 @@ export function PartPoseEditorPanel({
     >
       <div className="part-pose-editor-heading">
         <strong>动作编辑</strong>
-        <button
+        <Button
           className="part-pose-editor-back"
           data-testid="part-pose-editor-back"
           onClick={editor.onExit}
           type="button"
+          variant="secondary"
         >
           <ArrowLeft aria-hidden="true" className="ui-icon" focusable="false" size={16} />
           <span>返回</span>
-        </button>
+        </Button>
       </div>
 
       <label className="part-pose-editor-part-row">
@@ -286,13 +296,14 @@ export function PartPoseEditorPanel({
             <span className="part-pose-editor-pivot-status">
               点击画布设置旋转点
             </span>
-            <button
+            <Button
               data-testid="part-pose-cancel-pivot"
               onClick={editor.onCancelPivot}
               type="button"
+              variant="secondary"
             >
               取消
-            </button>
+            </Button>
           </>
         ) : (
           <>
@@ -303,16 +314,17 @@ export function PartPoseEditorPanel({
                   ? '当前旋转点已保存'
                   : '当前使用部件中心'}
             </span>
-            <button
+            <Button
               disabled={!canCalibratePivot}
               data-testid="part-pose-set-pivot"
               onClick={() => {
                 if (selectedPartId) editor.onStartPivot(layer.id, selectedPartId);
               }}
               type="button"
+              variant="secondary"
             >
               设置旋转点
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -332,15 +344,17 @@ export function PartPoseEditorPanel({
             已有关键帧
           </span>
         ) : (
-          <button
+          <Button
+            className="part-pose-editor-add-key"
             data-testid="part-pose-add-key"
             disabled={!canAddKey}
             onClick={addKey}
             type="button"
+            variant="secondary"
           >
             <Plus aria-hidden="true" className="ui-icon" focusable="false" size={16} />
             关键帧
-          </button>
+          </Button>
         )}
       </div>
       {keyReason ? (
@@ -358,36 +372,40 @@ export function PartPoseEditorPanel({
           <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
         </summary>
         <div aria-label="部件姿势精调" className="part-pose-editor-adjustments">
-          <button
+          <Button
             aria-label="逆时针旋转 15 度"
             disabled={!canEditKey}
             onClick={() => rotateBy(-15)}
             type="button"
+            variant="secondary"
           >
             逆时针 15°
-          </button>
-          <button
+          </Button>
+          <Button
             aria-label="顺时针旋转 15 度"
             disabled={!canEditKey}
             onClick={() => rotateBy(15)}
             type="button"
+            variant="secondary"
           >
             顺时针 15°
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!canEditKey || (keyframe?.scale ?? 0) <= CHARACTER_PART_MIN_SCALE}
             onClick={() => scaleBy(0.9)}
             type="button"
+            variant="secondary"
           >
             缩小
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!canEditKey || (keyframe?.scale ?? 0) >= CHARACTER_PART_MAX_SCALE}
             onClick={() => scaleBy(1.1)}
             type="button"
+            variant="secondary"
           >
             放大
-          </button>
+          </Button>
         </div>
       </details>
 
@@ -413,31 +431,34 @@ export function PartPoseEditorPanel({
               <>
                 <p>清除后可通过撤销恢复。</p>
                 <div className="part-pose-editor-confirm-actions">
-                  <button
+                  <Button
                     data-testid="part-pose-confirm-clear"
                     onClick={clearAnimation}
                     type="button"
+                    variant="danger"
                   >
                     确认清除
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     data-testid="part-pose-cancel-clear"
                     onClick={() => setConfirmClear(false)}
                     type="button"
+                    variant="secondary"
                   >
                     取消
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
-              <button
+              <Button
                 className="part-pose-editor-clear"
                 data-testid="part-pose-clear"
                 onClick={() => setConfirmClear(true)}
                 type="button"
+                variant="danger"
               >
                 清除本镜头动作
-              </button>
+              </Button>
             )}
           </div>
         </details>

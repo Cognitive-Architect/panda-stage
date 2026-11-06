@@ -315,6 +315,20 @@ describe('Part pose editor UI', () => {
     expect(container.querySelector('[data-testid="part-pose-set-pivot"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-more"]')).not.toBeNull();
 
+    const fine = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="part-pose-fine"]',
+    )!;
+    await act(async () => fine.querySelector('summary')?.click());
+    expect(fine.open).toBe(true);
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[aria-label="逆时针旋转 15 度"]',
+    )?.click());
+    await renderActivePanel();
+    expect(currentLayer(fixture.layerId).poseAnimation!.tracks.find(
+      (track) => track.partId === partId,
+    )!.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(-15);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
+
     const more = container.querySelector<HTMLDetailsElement>(
       '[data-testid="part-pose-more"]',
     )!;
@@ -322,13 +336,13 @@ describe('Part pose editor UI', () => {
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(1);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-cancel-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(1);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>(
@@ -337,10 +351,10 @@ describe('Part pose editor UI', () => {
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-confirm-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
     expect(currentLayer(fixture.layerId).poseAnimation).toBeUndefined();
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({
-      undoCount: 2,
+      undoCount: 3,
       redoCount: 0,
     });
 
@@ -348,8 +362,11 @@ describe('Part pose editor UI', () => {
       expect(editorProjectStore.undo()).toBe(true);
     });
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
+    expect(currentLayer(fixture.layerId).poseAnimation!.tracks.find(
+      (track) => track.partId === partId,
+    )!.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(-15);
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({
-      undoCount: 1,
+      undoCount: 2,
       redoCount: 1,
     });
   });
