@@ -108,6 +108,31 @@ describe('FLA source preflight', () => {
     }
   });
 
+  it.each([
+    ['ordinary XML baseline', '<DOMDocument/>'],
+    ['a greater-than sign in a quoted attribute', '<DOMDocument note="1 > 0"/>'],
+    ['a URL in element text', '<DOMDocument>https://example.invalid/resource</DOMDocument>'],
+    ['a URL in a comment', '<DOMDocument><!-- https://example.invalid/resource --></DOMDocument>'],
+    ['a URL in CDATA', '<DOMDocument><![CDATA[https://example.invalid/resource]]></DOMDocument>'],
+  ])('accepts valid XML with %s through the formal preflight', (_scenario, xml) => {
+    const result = preflightFlaBytes(
+      makeZip([{ name: 'DOMDocument.xml', data: xml }]),
+      'valid.fla',
+    );
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]?.name).toBe('DOMDocument.xml');
+  });
+
+  it('retains ActionScript detection during XML preflight', () => {
+    const result = preflightFlaBytes(makeZip([
+      { name: 'DOMDocument.xml', data: '<DOMDocument/>' },
+      { name: 'LIBRARY/script.xml', data: '<DOMSymbolItem><script type="text/actionscript"></script></DOMSymbolItem>' },
+    ]), 'actions.fla');
+
+    expect(result.containsActionScript).toBe(true);
+  });
+
   it('rejects a non-ZIP container and a missing XFL document', () => {
     expectPreflightCode(() => preflightFlaBytes(Uint8Array.from([1, 2, 3]), 'bad.fla'), 'UNSUPPORTED_FLA_CONTAINER');
     expectPreflightCode(() => preflightFlaBytes(makeZip([{ name: 'readme.txt', data: 'x' }]), 'bad.fla'), 'MALFORMED_XFL');
@@ -122,6 +147,26 @@ describe('FLA source preflight', () => {
     expectPreflightCode(() => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: '<DOMDocument></DOMDocument>' }, { name: 'C:/outside.dat', data: 'x' }]), 'bad.fla'), 'MALFORMED_ARCHIVE');
     expectPreflightCode(() => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: '<DOMDocument></DOMDocument>' }, { name: 'media.dat', localName: 'other.dat', data: 'x' }]), 'bad.fla'), 'MALFORMED_ARCHIVE');
     expectPreflightCode(() => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: '<DOMDocument></DOMDocument>' }, { name: 'media.dat', compressionMethod: 99, data: 'x' }]), 'bad.fla'), 'MALFORMED_ARCHIVE');
+  });
+
+  it('rejects an XInclude element with a relative external resource reference', () => {
+    const xml = '<DOMDocument xmlns:xi="http://www.w3.org/2001/XInclude">' +
+      '<xi:include href="external.xml" parse="xml"/></DOMDocument>';
+
+    expectPreflightCode(
+      () => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: xml }]), 'bad.fla'),
+      'MALFORMED_XFL',
+    );
+  });
+
+  it('rejects an XInclude namespace encoded with XML character references', () => {
+    const xml = '<DOMDocument xmlns:xi="http:&#47;&#47;www.w3.org/2001/XInclude">' +
+      '<xi:include href="external.xml" parse="xml"/></DOMDocument>';
+
+    expectPreflightCode(
+      () => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: xml }]), 'bad.fla'),
+      'MALFORMED_XFL',
+    );
   });
 
   it('enforces source, entry, expanded, and XML budgets before parsing', () => {
