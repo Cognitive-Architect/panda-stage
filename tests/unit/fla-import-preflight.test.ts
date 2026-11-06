@@ -159,6 +159,16 @@ describe('FLA source preflight', () => {
     );
   });
 
+  it('rejects an XInclude namespace encoded with XML character references', () => {
+    const xml = '<DOMDocument xmlns:xi="http:&#47;&#47;www.w3.org/2001/XInclude">' +
+      '<xi:include href="external.xml" parse="xml"/></DOMDocument>';
+
+    expectPreflightCode(
+      () => preflightFlaBytes(makeZip([{ name: 'DOMDocument.xml', data: xml }]), 'bad.fla'),
+      'MALFORMED_XFL',
+    );
+  });
+
   it('enforces source, entry, expanded, and XML budgets before parsing', () => {
     expectPreflightCode(
       () => preflightFlaBytes({ byteLength: FLA_IMPORT_LIMITS.maxSourceBytes + 1 } as Uint8Array, 'large.fla'),

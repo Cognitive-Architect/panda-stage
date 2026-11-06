@@ -182,6 +182,20 @@ function rejectExternalXmlMarkup(markup: string, entryName: string): void {
   }
 }
 
+function decodeXmlCharacterReferences(value: string): string {
+  return value.replace(/&#(?:x([0-9a-f]+)|(\d+));/giu, (reference, hexadecimal: string | undefined, decimal: string | undefined) => {
+    const codePoint = Number.parseInt(hexadecimal ?? decimal ?? '', hexadecimal ? 16 : 10);
+    const isXmlCharacter =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+    return isXmlCharacter ? String.fromCodePoint(codePoint) : reference;
+  });
+}
+
 function enforceXmlDepth(text: string, entryName: string): void {
   let depth = 0;
   let rootCount = 0;
@@ -223,7 +237,7 @@ function enforceXmlDepth(text: string, entryName: string): void {
     for (const namespaceMatch of token.matchAll(namespacePattern)) {
       const prefix = namespaceMatch[1] ?? '';
       namespaceChanges.push({ prefix, previousValue: namespaces.get(prefix) });
-      namespaces.set(prefix, namespaceMatch[3] ?? '');
+      namespaces.set(prefix, decodeXmlCharacterReferences(namespaceMatch[3] ?? ''));
     }
 
     const separator = tagName.indexOf(':');
