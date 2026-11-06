@@ -303,10 +303,3 @@
   .part-pose-editor select {
   min-height: 44px;
 }
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .part-pose-editor button[data-ui-button],
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .part-pose-editor select {
-  min-height: 44px;
-}
