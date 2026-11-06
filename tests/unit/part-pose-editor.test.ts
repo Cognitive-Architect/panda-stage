@@ -8,6 +8,7 @@ import {
   PartPoseAnimationService,
   type Project,
 } from '../../src/domain';
+import { PortraitPropertiesSections } from '../../src/renderer/shell/PortraitPropertiesSections';
 import { PartPoseEditorPanel } from '../../src/renderer/features/properties/PartPoseEditorPanel';
 import {
   createPartPoseGestureContextKey,
@@ -16,6 +17,7 @@ import {
 } from '../../src/renderer/features/part-pose/partPoseEditorTypes';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { layerStore } from '../../src/renderer/stores/layerStore';
+import { positionAuthoringSessionStore } from '../../src/renderer/stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
@@ -122,7 +124,7 @@ describe('Part pose editor UI', () => {
     editorProjectStore.clear();
   });
 
-  it('shows the action entry only for Adaptive Parts and keeps opening/seeking read-only', async () => {
+  it('shows inline controls only for Adaptive Parts and keeps inspection read-only', async () => {
     const { project, shot } = currentShot();
     const layer = currentLayer(fixture.layerId);
     await act(async () => root.render(createElement(PartPoseEditorPanel, {
@@ -131,10 +133,10 @@ describe('Part pose editor UI', () => {
       layer,
       editor: editorUi(null, null),
     })));
-    expect(container.querySelector('[data-testid="part-pose-editor-entry"]'))
+    expect(container.querySelector('[data-testid="part-pose-part-select"]'))
       .not.toBeNull();
     expect(container.querySelector('[data-testid="part-pose-edit-action"]'))
-      .not.toBeNull();
+      .toBeNull();
 
     const ordinaryLayer = {
       ...layer,
@@ -146,7 +148,7 @@ describe('Part pose editor UI', () => {
       layer: ordinaryLayer,
       editor: editorUi(null, null),
     })));
-    expect(container.querySelector('[data-testid="part-pose-editor-entry"]'))
+    expect(container.querySelector('[data-testid="part-pose-part-select"]'))
       .toBeNull();
 
     timelineUiStore.seek(1_000, shot.durationMs);
@@ -156,6 +158,175 @@ describe('Part pose editor UI', () => {
     });
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({
       undoCount: 0,
+      redoCount: 0,
+    });
+  });
+
+  it('places Position and part actions in the sibling Action section and starts pose editing on expand', async () => {
+    const { project, shot } = currentShot();
+    const layer = currentLayer(fixture.layerId);
+    const selectedPartId = fixture.partIds[0]!;
+    const onStart = vi.fn();
+
+    await act(async () => root.render(createElement(PortraitPropertiesSections, {
+      backgroundLayerSelected: false,
+      layer,
+      partPoseEditor: {
+        ...editorUi(null, selectedPartId),
+        onStart,
+      },
+      presentation: 'landscape',
+      project,
+      shot,
+    })));
+
+    const sections = container.querySelector<HTMLDivElement>(
+      '[data-testid="right-inspector-compact-sections"]',
+    )!;
+    const action = sections.querySelector<HTMLDetailsElement>(
+      '[data-testid="right-inspector-action-section"]',
+    )!;
+    expect(action.parentElement).toBe(sections);
+    expect(sections.querySelector('[data-testid="right-inspector-transform-section"]')?.parentElement)
+      .toBe(sections);
+    expect(action.querySelector('[data-testid="right-inspector-action-position"]'))
+      .not.toBeNull();
+    expect(action.querySelector('[data-testid="part-pose-part-select"]'))
+      .not.toBeNull();
+    expect(container.textContent).not.toContain('编辑动作');
+    expect(container.textContent).not.toContain('返回');
+    expect(action.open).toBe(false);
+
+    await act(async () => action.querySelector('summary')?.click());
+
+    expect(onStart).toHaveBeenCalledOnce();
+    expect(onStart).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      revision: 0,
+      dirty: false,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+  });
+
+  it('keeps Position actions for ordinary image Layers without showing part controls', async () => {
+    const baseProject = buildProject();
+    const placed = new LayerService().createFromAsset(
+      baseProject,
+      IDS.shot,
+      {
+        version: 2,
+        type: 'asset-image',
+        assetId: IDS.assetBg,
+        position: { x: 700, y: 500 },
+      },
+    );
+    editorProjectStore.clear();
+    editorProjectStore.open(PROJECT_ROOT, placed.project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(placed.layer.id);
+    const shot = currentShot().shot;
+    timelineUiStore.seek(1_000, shot.durationMs);
+
+    await act(async () => root.render(createElement(PortraitPropertiesSections, {
+      backgroundLayerSelected: false,
+      layer: placed.layer,
+      partPoseEditor: editorUi(null, null),
+      presentation: 'landscape',
+      project: placed.project,
+      shot,
+    })));
+
+    const action = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="right-inspector-action-section"]',
+    )!;
+    expect(action).not.toBeNull();
+    expect(action.querySelector('[data-testid="right-inspector-action-position"]'))
+      .not.toBeNull();
+    expect(action.querySelector('[data-testid="part-pose-part-select"]'))
+      .toBeNull();
+  });
+
+  it('hands off Position and part editing safely and cancels an uncommitted Position draft on collapse', async () => {
+    const { shot } = currentShot();
+    const selectedPartId = fixture.partIds[0]!;
+    const layer = currentLayer(fixture.layerId);
+    const onStart = vi.fn();
+    const onExit = vi.fn();
+    const partPoseEditor: PartPoseEditorUi = {
+      ...editorUi(fixture.layerId, selectedPartId),
+      onStart,
+      onExit,
+    };
+    timelineUiStore.seek(1_000, shot.durationMs);
+    expect(positionAuthoringSessionStore.createHold().status).toBe('committed');
+
+    const positionSnapshot = editorProjectStore.getSnapshot()!;
+    const positionRevision = positionSnapshot.revision;
+    const positionEvents = positionSnapshot.project.shots.find(
+      (candidate) => candidate.id === IDS.shot,
+    )!.timelineEvents;
+
+    await act(async () => root.render(createElement(PortraitPropertiesSections, {
+      backgroundLayerSelected: false,
+      layer: currentLayer(fixture.layerId),
+      partPoseEditor,
+      presentation: 'landscape',
+      project: positionSnapshot.project,
+      shot: currentShot().shot,
+    })));
+    const action = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="right-inspector-action-section"]',
+    )!;
+    await act(async () => action.querySelector('summary')?.click());
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-start"]',
+    )?.click());
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(positionAuthoringSessionStore.getSnapshot()?.layerId)
+      .toBe(fixture.layerId);
+    await act(async () => {
+      positionAuthoringSessionStore.updateActiveDraft({
+        x: layer.x + 25,
+        y: layer.y + 15,
+      });
+    });
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(positionRevision);
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-finish"]',
+    )?.click());
+    expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
+    expect(onStart).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-start"]',
+    )?.click());
+    expect(positionAuthoringSessionStore.getSnapshot()?.layerId)
+      .toBe(fixture.layerId);
+    await act(async () => {
+      positionAuthoringSessionStore.updateActiveDraft({
+        x: layer.x + 40,
+        y: layer.y + 20,
+      });
+    });
+    await act(async () => action.querySelector('summary')?.click());
+
+    expect(action.open).toBe(false);
+    expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
+    expect(onExit).toHaveBeenCalledTimes(3);
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      revision: positionRevision,
+      dirty: true,
+    });
+    expect(editorProjectStore.getSnapshot()?.project.shots.find(
+      (candidate) => candidate.id === IDS.shot,
+    )?.timelineEvents).toEqual(positionEvents);
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
       redoCount: 0,
     });
   });
@@ -244,10 +415,9 @@ describe('Part pose editor UI', () => {
     )?.click());
     expect(onCancelPivot).toHaveBeenCalledOnce();
 
-    await act(async () => container.querySelector<HTMLButtonElement>(
-      '[data-testid="part-pose-editor-back"]',
-    )?.click());
-    expect(onExit).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="part-pose-editor-back"]'))
+      .toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
   });
 
   it('shows disabled key actions with nearby locked or out-of-range reasons', async () => {
@@ -283,6 +453,8 @@ describe('Part pose editor UI', () => {
   it('keeps fine controls collapsed and confirms the undoable clear action', async () => {
     const { shot } = currentShot();
     timelineUiStore.seek(1_000, shot.durationMs);
+    expect(positionAuthoringSessionStore.createHold().status).toBe('committed');
+    const positionEventsBeforeClear = currentShot().shot.timelineEvents;
     const partId = fixture.partIds[0]!;
     const renderActivePanel = async (): Promise<void> => {
       const { project: currentProject, shot: currentShotValue } = currentShot();
@@ -307,13 +479,12 @@ describe('Part pose editor UI', () => {
     )?.click());
     await renderActivePanel();
 
-    expect(container.querySelector('[data-testid="part-pose-key-present"]')?.textContent)
-      .toContain('已有关键帧');
+    expect(container.querySelector('[data-testid="part-pose-key-present"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="part-pose-add-key"]')).toBeNull();
-    expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]')?.textContent)
-      .toContain('已固定');
+    expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="part-pose-set-pivot"]')).toBeNull();
-    expect(container.querySelector('[data-testid="part-pose-more"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-more"]')).toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-clear"]')).not.toBeNull();
 
     const fine = container.querySelector<HTMLDetailsElement>(
       '[data-testid="part-pose-fine"]',
@@ -321,28 +492,24 @@ describe('Part pose editor UI', () => {
     await act(async () => fine.querySelector('summary')?.click());
     expect(fine.open).toBe(true);
     await act(async () => container.querySelector<HTMLButtonElement>(
-      '[aria-label="逆时针旋转 15 度"]',
+      '[data-testid="part-pose-rotation-controls"] button',
     )?.click());
     await renderActivePanel();
     expect(currentLayer(fixture.layerId).poseAnimation!.tracks.find(
       (track) => track.partId === partId,
     )!.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(-15);
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
 
-    const more = container.querySelector<HTMLDetailsElement>(
-      '[data-testid="part-pose-more"]',
-    )!;
-    await act(async () => more.querySelector('summary')?.click());
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-cancel-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(2);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
 
     await act(async () => container.querySelector<HTMLButtonElement>(
@@ -351,10 +518,11 @@ describe('Part pose editor UI', () => {
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-confirm-clear"]',
     )?.click());
-    expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(4);
     expect(currentLayer(fixture.layerId).poseAnimation).toBeUndefined();
+    expect(currentShot().shot.timelineEvents).toEqual(positionEventsBeforeClear);
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({
-      undoCount: 3,
+      undoCount: 4,
       redoCount: 0,
     });
 
@@ -366,7 +534,7 @@ describe('Part pose editor UI', () => {
       (track) => track.partId === partId,
     )!.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(-15);
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({
-      undoCount: 2,
+      undoCount: 3,
       redoCount: 1,
     });
   });
@@ -465,17 +633,12 @@ describe('Part pose editor UI', () => {
     shotStore.select(IDS.shot);
     selectionStore.select(fixture.layerId);
     const { project, shot } = currentShot();
-    const onStart = vi.fn();
     await act(async () => root.render(createElement(PartPoseEditorPanel, {
       project,
       shot,
       layer: currentLayer(fixture.layerId),
-      editor: { ...editorUi(null, null), onStart },
+      editor: editorUi(fixture.layerId, originalPartId),
     })));
-    await act(async () => container.querySelector<HTMLButtonElement>(
-      '[data-testid="part-pose-edit-action"]',
-    )?.click());
-    expect(onStart).toHaveBeenCalledWith(fixture.layerId, originalPartId);
 
     timelineUiStore.seek(1_000, shot.durationMs);
     await act(async () => root.render(createElement(PartPoseEditorPanel, {

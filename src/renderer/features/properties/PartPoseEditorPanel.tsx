@@ -9,11 +9,9 @@ import {
   type Shot,
 } from '../../../domain';
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   LockKeyhole,
-  MoreHorizontal,
   Plus,
 } from 'lucide-react';
 import { layerStore } from '../../stores/layerStore';
@@ -97,9 +95,7 @@ export function PartPoseEditorPanel({
   const parts = [...resolvePartPoseEditorParts(character, layer)].sort(
     (left, right) => left.drawOrder - right.drawOrder,
   );
-  const selectedPartId = active
-    ? editor.selectedPartId ?? parts[0]?.partId ?? null
-    : null;
+  const selectedPartId = editor.selectedPartId ?? parts[0]?.partId ?? null;
   const selectedPart = parts.find((part) => part.partId === selectedPartId);
   const track = layer.poseAnimation?.tracks.find(
     (candidate) => candidate.partId === selectedPartId,
@@ -164,34 +160,6 @@ export function PartPoseEditorPanel({
     }
   };
 
-  if (!active) {
-    return (
-      <section
-        aria-label="动作"
-        className="part-pose-editor"
-        data-testid="part-pose-editor-entry"
-      >
-        <div className="part-pose-editor-heading">
-          <strong>动作</strong>
-          <Button
-            disabled={layer.locked || parts.length === 0}
-            data-testid="part-pose-edit-action"
-            onClick={() => {
-              const firstPartId =
-                parts.find((part) => part.visible !== false)?.partId ??
-                parts[0]?.partId;
-              if (firstPartId) editor.onStart(layer.id, firstPartId);
-            }}
-            type="button"
-            variant="primary"
-          >
-            编辑动作
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
   const addKey = (): void => {
     if (!selectedPartId || !canAddKey) return;
     try {
@@ -232,53 +200,43 @@ export function PartPoseEditorPanel({
 
   return (
     <section
-      aria-label="动作编辑"
+      aria-label="零件动作"
       className="part-pose-editor"
       data-layer-id={layer.id}
       data-testid="part-pose-editor"
     >
       <div className="part-pose-editor-heading">
-        <strong>动作编辑</strong>
-        <Button
-          className="part-pose-editor-back"
-          data-testid="part-pose-editor-back"
-          onClick={editor.onExit}
-          type="button"
-          variant="secondary"
-        >
-          <ArrowLeft aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-          <span>返回</span>
-        </Button>
+        <strong>零件动作</strong>
+        <label className="part-pose-editor-part-row">
+          <span className="part-pose-editor-visually-hidden">当前零件</span>
+          <span className="part-pose-editor-select-wrap">
+            <select
+              aria-label="当前零件"
+              className="part-pose-editor-select"
+              data-testid="part-pose-part-select"
+              disabled={parts.length === 0 || (layer.locked && !active)}
+              onChange={(event) => {
+                const partId = event.currentTarget.value;
+                if (!partId) return;
+                if (active) editor.onSelectPart(partId);
+                else editor.onStart(layer.id, partId);
+              }}
+              value={selectedPartId ?? ''}
+            >
+              {parts.length === 0 ? (
+                <option value="">没有可用零件</option>
+              ) : null}
+              {parts.map((part, index) => (
+                <option key={part.partId} value={part.partId}>
+                  {getPartLabel(part.displayName, index)}
+                  {part.visible === false ? '（隐藏）' : ''}
+                </option>
+              ))}
+            </select>
+            <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+          </span>
+        </label>
       </div>
-
-      <label className="part-pose-editor-part-row">
-        <span className="part-pose-editor-label">零件</span>
-        <span className="part-pose-editor-select-wrap">
-          <select
-            aria-label="当前零件"
-            className="part-pose-editor-select"
-            data-testid="part-pose-part-select"
-            disabled={parts.length === 0}
-            onChange={(event) => {
-              if (event.currentTarget.value) {
-                editor.onSelectPart(event.currentTarget.value);
-              }
-            }}
-            value={selectedPartId ?? ''}
-          >
-            {parts.length === 0 ? (
-              <option value="">没有可用零件</option>
-            ) : null}
-            {parts.map((part, index) => (
-              <option key={part.partId} value={part.partId}>
-                {getPartLabel(part.displayName, index)}
-                {part.visible === false ? '（隐藏）' : ''}
-              </option>
-            ))}
-          </select>
-          <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-        </span>
-      </label>
 
       <div className="part-pose-editor-pivot" data-testid="part-pose-pivot-row">
         <span className="part-pose-editor-label">旋转点</span>
@@ -293,9 +251,7 @@ export function PartPoseEditorPanel({
           </span>
         ) : editor.calibratingPivot ? (
           <>
-            <span className="part-pose-editor-pivot-status">
-              点击画布设置旋转点
-            </span>
+            <span className="part-pose-editor-pivot-status">在画布点选</span>
             <Button
               data-testid="part-pose-cancel-pivot"
               onClick={editor.onCancelPivot}
@@ -309,10 +265,10 @@ export function PartPoseEditorPanel({
           <>
             <span className="part-pose-editor-pivot-status">
               {pivotDraft
-                ? '新旋转点待关键帧保存'
+                ? '新旋转点待保存'
                 : track
-                  ? '当前旋转点已保存'
-                  : '当前使用部件中心'}
+                  ? '已设置'
+                  : '默认中心'}
             </span>
             <Button
               disabled={!canCalibratePivot}
@@ -323,7 +279,7 @@ export function PartPoseEditorPanel({
               type="button"
               variant="secondary"
             >
-              设置旋转点
+              设置
             </Button>
           </>
         )}
@@ -333,7 +289,6 @@ export function PartPoseEditorPanel({
       ) : null}
 
       <div className="part-pose-editor-key" data-testid="part-pose-key-row">
-        <span className="part-pose-editor-label">时间</span>
         <span className="part-pose-editor-time">{formatTime(timeMs)}</span>
         {keyframe ? (
           <span
@@ -353,7 +308,7 @@ export function PartPoseEditorPanel({
             variant="secondary"
           >
             <Plus aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-            关键帧
+            添加关键帧
           </Button>
         )}
       </div>
@@ -371,41 +326,52 @@ export function PartPoseEditorPanel({
           <span>精调</span>
           <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
         </summary>
-        <div aria-label="部件姿势精调" className="part-pose-editor-adjustments">
-          <Button
-            aria-label="逆时针旋转 15 度"
-            disabled={!canEditKey}
-            onClick={() => rotateBy(-15)}
-            type="button"
-            variant="secondary"
-          >
-            逆时针 15°
-          </Button>
-          <Button
-            aria-label="顺时针旋转 15 度"
-            disabled={!canEditKey}
-            onClick={() => rotateBy(15)}
-            type="button"
-            variant="secondary"
-          >
-            顺时针 15°
-          </Button>
-          <Button
-            disabled={!canEditKey || (keyframe?.scale ?? 0) <= CHARACTER_PART_MIN_SCALE}
-            onClick={() => scaleBy(0.9)}
-            type="button"
-            variant="secondary"
-          >
-            缩小
-          </Button>
-          <Button
-            disabled={!canEditKey || (keyframe?.scale ?? 0) >= CHARACTER_PART_MAX_SCALE}
-            onClick={() => scaleBy(1.1)}
-            type="button"
-            variant="secondary"
-          >
-            放大
-          </Button>
+        <div aria-label="零件姿势精调" className="part-pose-editor-adjustments">
+          <div className="part-pose-editor-adjustment-row part-pose-editor-rotation-controls" data-testid="part-pose-rotation-controls">
+            <span>旋转</span>
+            <Button
+              aria-label="逆时针旋转 15 度"
+              disabled={!canEditKey}
+              onClick={() => rotateBy(-15)}
+              type="button"
+              variant="secondary"
+            >
+              ↶15°
+            </Button>
+            <Button
+              aria-label="顺时针旋转 15 度"
+              disabled={!canEditKey}
+              onClick={() => rotateBy(15)}
+              type="button"
+              variant="secondary"
+            >
+              ↷15°
+            </Button>
+          </div>
+          <div className="part-pose-editor-adjustment-row part-pose-editor-scale-controls" data-testid="part-pose-scale-controls">
+            <span>缩放</span>
+            <Button
+              aria-label="缩小零件"
+              disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MIN_SCALE) <= CHARACTER_PART_MIN_SCALE}
+              onClick={() => scaleBy(0.9)}
+              type="button"
+              variant="secondary"
+            >
+              −
+            </Button>
+            <output aria-label="零件缩放" data-testid="part-pose-scale-value">
+              {String(Number(((keyframe?.scale ?? 1) * 100).toFixed(1)))}%
+            </output>
+            <Button
+              aria-label="放大零件"
+              disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MAX_SCALE) >= CHARACTER_PART_MAX_SCALE}
+              onClick={() => scaleBy(1.1)}
+              type="button"
+              variant="secondary"
+            >
+              +
+            </Button>
+          </div>
         </div>
       </details>
 
@@ -421,47 +387,39 @@ export function PartPoseEditorPanel({
       ) : null}
 
       {layer.poseAnimation ? (
-        <details className="part-pose-editor-more" data-testid="part-pose-more">
-          <summary>
-            <MoreHorizontal aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-            更多
-          </summary>
-          <div className="part-pose-editor-more-menu">
-            {confirmClear ? (
-              <>
-                <p>清除后可通过撤销恢复。</p>
-                <div className="part-pose-editor-confirm-actions">
-                  <Button
-                    data-testid="part-pose-confirm-clear"
-                    onClick={clearAnimation}
-                    type="button"
-                    variant="danger"
-                  >
-                    确认清除
-                  </Button>
-                  <Button
-                    data-testid="part-pose-cancel-clear"
-                    onClick={() => setConfirmClear(false)}
-                    type="button"
-                    variant="secondary"
-                  >
-                    取消
-                  </Button>
-                </div>
-              </>
-            ) : (
+        confirmClear ? (
+          <div className="part-pose-editor-clear-confirm" data-testid="part-pose-clear-confirm">
+            <span>清除当前图层的全部零件动作？</span>
+            <div className="part-pose-editor-confirm-actions">
               <Button
-                className="part-pose-editor-clear"
-                data-testid="part-pose-clear"
-                onClick={() => setConfirmClear(true)}
+                data-testid="part-pose-cancel-clear"
+                onClick={() => setConfirmClear(false)}
+                type="button"
+                variant="secondary"
+              >
+                取消
+              </Button>
+              <Button
+                data-testid="part-pose-confirm-clear"
+                onClick={clearAnimation}
                 type="button"
                 variant="danger"
               >
-                清除本镜头动作
+                清除
               </Button>
-            )}
+            </div>
           </div>
-        </details>
+        ) : (
+          <Button
+            className="part-pose-editor-clear"
+            data-testid="part-pose-clear"
+            onClick={() => setConfirmClear(true)}
+            type="button"
+            variant="secondary"
+          >
+            清除零件动作
+          </Button>
+        )
       ) : null}
     </section>
   );

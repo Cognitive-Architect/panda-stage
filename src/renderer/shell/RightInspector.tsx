@@ -23,7 +23,6 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
-import { PartPoseEditorPanel } from '../features/properties/PartPoseEditorPanel';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import {
   EMPTY_PART_POSE_EDITOR_UI,
@@ -604,20 +603,20 @@ export function RightInspector({
           layer={selection.layer}
         />
       ) : null}
-      {landscapePresentation && snapshot && currentShot && selection.layer ? (
-        <PartPoseEditorPanel
-          editor={partPoseEditor}
-          layer={selection.layer}
-          project={snapshot.project}
-          shot={currentShot}
-        />
-      ) : null}
       {landscapeEmptyState ? null : (
         <>
-          {!portraitEmptyState && compactPresentation ? (
+          {!portraitEmptyState &&
+          compactPresentation &&
+          snapshot &&
+          currentShot &&
+          selection.layer ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
+              layer={selection.layer}
+              partPoseEditor={partPoseEditor}
               presentation={landscapePresentation ? 'landscape' : 'portrait'}
+              project={snapshot.project}
+              shot={currentShot}
             />
           ) : (
             <>
