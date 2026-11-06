@@ -344,7 +344,7 @@ describe('Part pose editor UI', () => {
       'Head',
       'Upper arm',
       'Forearm',
-      'com3',
+      '很长的零件名称用于检查下拉省略和完整名称提示',
       'Body + arm composite',
     ] as const;
     const project: Project = {
@@ -388,13 +388,23 @@ describe('Part pose editor UI', () => {
     expect(selector!.options[1]?.textContent).toBe('头部');
     expect(selector!.options[2]?.textContent).toBe('上臂（隐藏）');
     expect(selector!.options[3]?.textContent).toBe('前臂');
-    expect(selector!.options[4]?.textContent).toBe('com3');
-
+    expect(selector!.options[4]?.textContent)
+      .toBe('很长的零件名称用于检查下拉省略和完整名称提示');
     selector!.value = fixture.partIds[2]!;
     await act(async () => {
       selector!.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(onSelectPart).toHaveBeenCalledWith(fixture.partIds[2]);
+
+    await act(async () => root.render(createElement(PartPoseEditorPanel, {
+      project,
+      shot,
+      layer: currentLayer(fixture.layerId),
+      editor: editorUi(fixture.layerId, fixture.partIds[4]!),
+    })));
+    expect(container.querySelector<HTMLSelectElement>(
+      '[data-testid="part-pose-part-select"]',
+    )?.title).toBe('很长的零件名称用于检查下拉省略和完整名称提示');
 
     const onCancelPivot = vi.fn();
     await act(async () => root.render(createElement(PartPoseEditorPanel, {
@@ -480,6 +490,10 @@ describe('Part pose editor UI', () => {
     await renderActivePanel();
 
     expect(container.querySelector('[data-testid="part-pose-key-present"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-key-present"]')?.textContent)
+      .toContain('已有关键帧');
+    expect(container.querySelector('[data-testid="part-pose-key-present"]')?.getAttribute('data-ui-button'))
+      .toBeNull();
     expect(container.querySelector('[data-testid="part-pose-add-key"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="part-pose-set-pivot"]')).toBeNull();
@@ -503,6 +517,11 @@ describe('Part pose editor UI', () => {
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-clear"]',
     )?.click());
+    expect(container.querySelector('[data-testid="part-pose-clear-confirm"]')?.textContent)
+      .toContain('清除本镜头全部零件动作？');
+    expect(container.querySelector('[data-testid="part-pose-confirm-clear"]')?.textContent)
+      .toContain('确认清除');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(editorProjectStore.getSnapshot()?.revision).toBe(3);
     expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
 

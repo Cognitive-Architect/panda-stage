@@ -67,3 +67,35 @@ button.position-authoring-hold:hover:not(:disabled) {
   > button {
   min-height: 44px;
 }
+
+.right-inspector-action-position .position-authoring-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-primary,
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-hold {
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: var(--ui-radius-small);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-primary {
+  font-weight: 600;
+}
+
+.right-inspector-action-position .position-authoring-entry > .position-authoring-status {
+  flex: 1 0 100%;
+}
+
+.right-inspector-action-position .position-authoring-guidance {
+  flex: 1 0 100%;
+  padding: 4px 8px;
+}

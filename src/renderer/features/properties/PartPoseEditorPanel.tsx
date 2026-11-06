@@ -13,6 +13,7 @@ import {
   ChevronDown,
   LockKeyhole,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { layerStore } from '../../stores/layerStore';
 import { Button } from '../../ui';
@@ -97,6 +98,14 @@ export function PartPoseEditorPanel({
   );
   const selectedPartId = editor.selectedPartId ?? parts[0]?.partId ?? null;
   const selectedPart = parts.find((part) => part.partId === selectedPartId);
+  const selectedPartIndex = parts.findIndex(
+    (part) => part.partId === selectedPartId,
+  );
+  const selectedPartLabel = selectedPart
+    ? `${getPartLabel(selectedPart.displayName, selectedPartIndex)}${
+        selectedPart.visible === false ? '（隐藏）' : ''
+      }`
+    : '当前零件';
   const track = layer.poseAnimation?.tracks.find(
     (candidate) => candidate.partId === selectedPartId,
   );
@@ -221,6 +230,7 @@ export function PartPoseEditorPanel({
                 if (active) editor.onSelectPart(partId);
                 else editor.onStart(layer.id, partId);
               }}
+              title={selectedPartLabel}
               value={selectedPartId ?? ''}
             >
               {parts.length === 0 ? (
@@ -308,7 +318,7 @@ export function PartPoseEditorPanel({
             variant="secondary"
           >
             <Plus aria-hidden="true" className="ui-icon" focusable="false" size={16} />
-            添加关键帧
+            关键帧
           </Button>
         )}
       </div>
@@ -389,7 +399,7 @@ export function PartPoseEditorPanel({
       {layer.poseAnimation ? (
         confirmClear ? (
           <div className="part-pose-editor-clear-confirm" data-testid="part-pose-clear-confirm">
-            <span>清除当前图层的全部零件动作？</span>
+            <span>清除本镜头全部零件动作？</span>
             <div className="part-pose-editor-confirm-actions">
               <Button
                 data-testid="part-pose-cancel-clear"
@@ -405,7 +415,7 @@ export function PartPoseEditorPanel({
                 type="button"
                 variant="danger"
               >
-                清除
+                确认清除
               </Button>
             </div>
           </div>
@@ -417,6 +427,12 @@ export function PartPoseEditorPanel({
             type="button"
             variant="secondary"
           >
+            <Trash2
+              aria-hidden="true"
+              className="ui-icon"
+              focusable="false"
+              size={14}
+            />
             清除零件动作
           </Button>
         )

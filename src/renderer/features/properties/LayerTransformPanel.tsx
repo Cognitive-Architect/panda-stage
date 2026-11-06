@@ -1029,9 +1029,9 @@ export function PositionAuthoringControls({
           className="position-authoring-primary"
           data-testid="position-authoring-start"
           onClick={onStart ?? startPositionAuthoring}
-          variant="primary"
+          variant="secondary"
         >
-          我要调整位置
+          调整位置
         </Button>
       ) : null}
       {presentation.holdVisible ? (
@@ -1041,7 +1041,7 @@ export function PositionAuthoringControls({
           onClick={onHold ?? createPositionHold}
           variant="secondary"
         >
-          保持不动到这里
+          保持到此处
         </Button>
       ) : null}
       {presentation.status ? (

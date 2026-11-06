@@ -143,14 +143,16 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     const ready = renderToStaticMarkup(
       PositionAuthoringControls({ controller: readyController }),
     );
-    expect(ready).toContain('我要调整位置');
-    expect(ready).toContain('保持不动到这里');
+    expect(ready).toContain('调整位置');
+    expect(ready).toContain('保持到此处');
+    expect(ready).not.toContain('我要调整位置');
+    expect(ready).not.toContain('保持不动到这里');
     expect(ready).not.toContain('把人物拖到想要的位置');
     expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
-    expect(ready).toContain('data-ui-variant="primary"');
+    expect(ready).not.toContain('data-ui-variant="primary"');
     expect(ready).toContain('data-ui-variant="secondary"');
-    expect(transformReady).not.toContain('我要调整位置');
-    expect(transformReady).not.toContain('保持不动到这里');
+    expect(transformReady).not.toContain('调整位置');
+    expect(transformReady).not.toContain('保持到此处');
     expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*value="500"/u,
     );
@@ -175,8 +177,8 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     );
     expect(active).toContain('把人物拖到想要的位置');
     expect(active.match(/把人物拖到想要的位置/gu) ?? []).toHaveLength(1);
-    expect(active).not.toContain('我要调整位置');
-    expect(active).not.toContain('保持不动到这里');
+    expect(active).not.toContain('调整位置');
+    expect(active).not.toContain('保持到此处');
     expect(active).not.toContain(TEMPORAL_TRANSFORM_STATUS);
     expect(transformActive).not.toContain('把人物拖到想要的位置');
     expect(transformActive).not.toContain('应用变换');
