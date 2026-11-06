@@ -18,6 +18,13 @@ export interface EditorProjectSnapshot {
   revision: number;
 }
 
+export interface EditorProjectEditContext {
+  readonly projectRoot: string;
+  readonly projectId: string;
+  readonly revision: number;
+  readonly projectInstanceId: number;
+}
+
 export interface SavedEditorProjectSnapshot {
   projectRoot: string;
   project: Project;
@@ -80,6 +87,19 @@ export class EditorProjectStore {
   readonly getProjectInstanceId = (): number | null =>
     this.activeProjectInstanceId;
 
+  /** Captures the session identity required for a later synchronous edit. */
+  readonly captureEditContext = (): EditorProjectEditContext | null => {
+    const snapshot = this.snapshot;
+    const projectInstanceId = this.activeProjectInstanceId;
+    if (!snapshot || projectInstanceId === null) return null;
+    return {
+      projectRoot: snapshot.projectRoot,
+      projectId: snapshot.project.id,
+      revision: snapshot.revision,
+      projectInstanceId,
+    };
+  };
+
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -121,6 +141,29 @@ export class EditorProjectStore {
       ),
       options,
     );
+  }
+
+  /** Commits a command only if its captured project session and revision remain current. */
+  updateProjectAtContext(
+    context: EditorProjectEditContext,
+    rawProject: Project,
+    label = 'Edit project',
+    options: ExecuteHistoryOptions = {},
+    replayEffects: HistoryReplayEffects = {},
+  ): void {
+    this.assertNoProjectOperation();
+    const current = this.requireSnapshot();
+    if (
+      current.projectRoot !== context.projectRoot ||
+      current.project.id !== context.projectId ||
+      current.revision !== context.revision ||
+      this.activeProjectInstanceId !== context.projectInstanceId
+    ) {
+      throw new Error(
+        'The captured project session or revision is stale; the edit was cancelled.',
+      );
+    }
+    this.updateProject(rawProject, label, options, replayEffects);
   }
 
   restore(rawProject: Project): void {
@@ -246,8 +289,8 @@ export class EditorProjectStore {
         `Asset import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -306,8 +349,8 @@ export class EditorProjectStore {
         `Asset metadata base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -362,8 +405,8 @@ export class EditorProjectStore {
         `Asset delete base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -382,6 +425,7 @@ export class EditorProjectStore {
         'Newer editor changes reference the deleted asset and cannot be merged safely.',
       );
     }
+    this.history.clear();
     const project = ProjectSchema.parse({
       ...current.project,
       assets: current.project.assets.filter(

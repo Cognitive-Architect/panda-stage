@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
-import { LayerTransformPanel } from '../../src/renderer/features/properties/LayerTransformPanel';
+import {
+  LayerTransformPanel,
+  PositionAuthoringControls,
+} from '../../src/renderer/features/properties/LayerTransformPanel';
 import {
   evaluateShotAtTime,
   LayerService,
@@ -121,53 +124,68 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(zero).not.toContain('disabled=""');
   });
 
-  it('renders PK-05 ready and active states with Position-only controls', () => {
-    const ready = renderToStaticMarkup(
+  it('renders PK-05 Position controls separately from Transform', () => {
+    const readyController: LayerTransformController = {
+      ...temporalController(),
+      positionAuthoringSupported: true,
+      positionAuthoringAvailable: true,
+      positionHoldAvailable: true,
+      startPositionAuthoring: () => undefined,
+      createPositionHold: () => undefined,
+    };
+    const transformReady = renderToStaticMarkup(
       LayerTransformPanel({
         compact: true,
-        controller: {
-          ...temporalController(),
-          positionAuthoringAvailable: true,
-          positionHoldAvailable: true,
-          startPositionAuthoring: () => undefined,
-          createPositionHold: () => undefined,
-        },
+        controller: readyController,
         showResetTransform: true,
       }),
     );
-    expect(ready).toContain('我要调整位置');
-    expect(ready).toContain('保持不动到这里');
+    const ready = renderToStaticMarkup(
+      PositionAuthoringControls({ controller: readyController }),
+    );
+    expect(ready).toContain('调整位置');
+    expect(ready).toContain('保持到此处');
+    expect(ready).not.toContain('我要调整位置');
+    expect(ready).not.toContain('保持不动到这里');
     expect(ready).not.toContain('把人物拖到想要的位置');
     expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
-    expect(ready).toContain('data-ui-variant="primary"');
+    expect(ready).not.toContain('data-ui-variant="primary"');
     expect(ready).toContain('data-ui-variant="secondary"');
-    expect(ready).toMatch(
+    expect(transformReady).not.toContain('调整位置');
+    expect(transformReady).not.toContain('保持到此处');
+    expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*value="500"/u,
     );
-    expect(ready).toMatch(
+    expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*disabled=""/u,
     );
 
-    const active = renderToStaticMarkup(
+    const activeController: LayerTransformController = {
+      ...temporalController(),
+      positionAuthoringSupported: true,
+      positionAuthoringActive: true,
+    };
+    const transformActive = renderToStaticMarkup(
       LayerTransformPanel({
         compact: true,
-        controller: {
-          ...temporalController(),
-          positionAuthoringActive: true,
-        },
+        controller: activeController,
         showResetTransform: true,
       }),
     );
+    const active = renderToStaticMarkup(
+      PositionAuthoringControls({ controller: activeController }),
+    );
     expect(active).toContain('把人物拖到想要的位置');
     expect(active.match(/把人物拖到想要的位置/gu) ?? []).toHaveLength(1);
-    expect(active).not.toContain('我要调整位置');
-    expect(active).not.toContain('保持不动到这里');
+    expect(active).not.toContain('调整位置');
+    expect(active).not.toContain('保持到此处');
     expect(active).not.toContain(TEMPORAL_TRANSFORM_STATUS);
-    expect(active).not.toContain('应用变换');
-    expect(active).not.toMatch(
+    expect(transformActive).not.toContain('把人物拖到想要的位置');
+    expect(transformActive).not.toContain('应用变换');
+    expect(transformActive).not.toMatch(
       /data-testid="layer-transform-x"[^>]*disabled=""/u,
     );
-    expect(active).toMatch(
+    expect(transformActive).toMatch(
       /data-testid="layer-transform-scale"[\s\S]*disabled=""/u,
     );
   });

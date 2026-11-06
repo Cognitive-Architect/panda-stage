@@ -172,6 +172,7 @@ async function main() {
         project: snapshot.project,
         baseRevision: snapshot.revision,
         assetId,
+        historyReferencesPoseSnapshotAsset: false,
         requestId: randomUUID(),
       });
     };

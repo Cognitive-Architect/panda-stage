@@ -38,8 +38,8 @@ describe('Issue #373 Cloud Touch landscape selected-object inspector', () => {
     expect(inspector).toContain(
       'const compactPresentation = compact === true || landscapePresentation;',
     );
-    expect(inspector).toContain(
-      '{!portraitEmptyState && compactPresentation ? (',
+    expect(inspector).toMatch(
+      /\{!portraitEmptyState &&\s*compactPresentation &&\s*snapshot &&\s*currentShot &&\s*selection\.layer \? \(/u,
     );
     expect(inspector).toContain('<PortraitPropertiesSections');
     expect(sections).toContain('data-testid="right-inspector-transform-section"');

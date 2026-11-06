@@ -39,6 +39,8 @@ const multiReferenceAssetId =
 const blockedDeleteStatusMarker = 'Main Process 已阻止删除';
 const fixtureAssetId = (index) =>
   `18000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+const historyDeleteStatusMarker =
+  'Undo/Redo history still contains a Project state that uses this asset.';
 const removableAssetId = fixtureAssetId(1);
 const decodeErrorAssetId = fixtureAssetId(2);
 const missingThumbnailAssetId = fixtureAssetId(99);
@@ -1685,8 +1687,8 @@ async function verifyDay18() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelector('.asset-library-status')" +
-          `?.textContent?.includes(${JSON.stringify(blockedDeleteStatusMarker)})`,
+        `(document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(blockedDeleteStatusMarker)}) || ` +
+          `document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(historyDeleteStatusMarker)}))`,
         'Referenced deletion was not visibly blocked.',
       ),
     );
@@ -1714,6 +1716,9 @@ async function verifyDay18() {
       return {
         selectedAssetId: details ? details.dataset.selectedAssetId ?? null : null,
         status: status ? status.textContent.trim() : '',
+        historyDeleteBlocked: status?.textContent?.includes(
+          ${JSON.stringify(historyDeleteStatusMarker)},
+        ) ?? false,
         warning: referenceList ? referenceList.textContent.trim() : '',
         referenceListVisible: Boolean(
           referenceList && referenceList.getClientRects().length,
@@ -1741,7 +1746,7 @@ async function verifyDay18() {
     setVerificationStage('verify blocked delete status persists');
     await waitForRenderer(
       window,
-      `!document.querySelector('[data-testid="asset-details-overlay"]') && document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(blockedDeleteStatusMarker)})`,
+      `!document.querySelector('[data-testid="asset-details-overlay"]') && (document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(blockedDeleteStatusMarker)}) || document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(historyDeleteStatusMarker)}))`,
       'The referenced-delete block did not remain visible after closing details.',
     );
     const referenceScreenshot = await capturePaintedPage(window);
@@ -2810,6 +2815,13 @@ async function verifyDay18() {
       ],
     };
 
+    const deleteRequestsMatchGuardPath =
+      deleteRequests.length === (referenceUi.historyDeleteBlocked ? 1 : 2) &&
+      deleteRequests.filter((request) => request.assetId === referencedAssetId)
+        .length === (referenceUi.historyDeleteBlocked ? 0 : 1) &&
+      deleteRequests.filter((request) => request.assetId === removableAssetId)
+        .length === 1;
+
     if (
       performanceObservation.itemCount !== 100 ||
       performanceObservation.pageCount !== 13 ||
@@ -2899,7 +2911,8 @@ async function verifyDay18() {
       sourceAudit.nonDataImageSources.length > 0 ||
       !sourceAudit.missingHasRebuild ||
       !referenceUi.warning?.includes('Opening') ||
-      !referenceUi.status?.includes(blockedDeleteStatusMarker) ||
+      (!referenceUi.status?.includes(blockedDeleteStatusMarker) &&
+        !referenceUi.status?.includes(historyDeleteStatusMarker)) ||
       !importFeedback.audit.success.oneFeedback ||
       !importFeedback.audit.success.fourFileSummary ||
       !importFeedback.audit.success.noPerFileResultList ||
@@ -2936,7 +2949,7 @@ async function verifyDay18() {
         decodeFallback.imageCountBefore - 1 ||
       !pngValidation.validCacheAccepted ||
       !pngValidation.truncatedSignatureBodyRejected ||
-      deleteRequests.length !== 2
+      !deleteRequestsMatchGuardPath
     ) {
       throw new Error(
         `Day 18 UI verification failed: ${JSON.stringify(evidence)}`,

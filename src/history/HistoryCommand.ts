@@ -3,6 +3,8 @@ export interface HistoryCommand {
   readonly projectId: string;
   undo(): void;
   redo(): void;
+  referencesAsset?(assetId: string): boolean;
+  referencesPoseSnapshotAsset?(assetId: string): boolean;
   mergeWith?(next: HistoryCommand): HistoryCommand | null;
 }
 

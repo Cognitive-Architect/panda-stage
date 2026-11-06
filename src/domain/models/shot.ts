@@ -6,6 +6,7 @@ import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
+  LayerV16Schema,
   LayerV15AdaptiveSchema,
   LayerV15AnimationSchema,
   LayerV3Schema,
@@ -63,7 +64,17 @@ export const ShotV15AdaptiveSchema = z
 /** Backward-compatible name for the PR branch's historical v15 contract. */
 export const ShotV15Schema = ShotV15AnimationSchema;
 
-/** Exact persisted v14 shot shape, retained for the v14 -> v16 migration. */
+/** Exact persisted v16 Shot shape, before Part pose animation was introduced. */
+export const ShotV16Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV16Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Exact persisted v14 shot shape, retained for the v14 -> v17 migration. */
 export const ShotV14Schema = z
   .object({
     ...ShotBaseShape,

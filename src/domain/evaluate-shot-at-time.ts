@@ -1,5 +1,9 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
+import {
+  evaluatePartPoseAnimationAtTime,
+  type EvaluatedPartPose,
+} from './evaluate-part-pose-animation';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -22,6 +26,8 @@ export interface EvaluatedLayer {
     viewport: { width: number; height: number };
     canvas: { width: number; height: number };
   };
+  /** Absolute-time Part poses from the owning Layer's persisted snapshot. */
+  partPoses?: EvaluatedPartPose[];
   /** Runtime-only Head Group transform projected from the active Dialogue. */
   headGroupTransform?: EvaluatedHeadGroupTransform;
   anchor: 'center';
@@ -247,6 +253,9 @@ export function evaluateShotAtTime(
       );
 
       const motion = evaluateLayerMotionAtTime(layer, events, timeMs);
+      const partPoses = layer.poseAnimation
+        ? evaluatePartPoseAnimationAtTime(layer.poseAnimation, timeMs)
+        : undefined;
 
       for (const event of events) {
         if (event.type === 'move' || event.type === 'shake') {
@@ -316,6 +325,7 @@ export function evaluateShotAtTime(
         ...(initialVisual.animationFrame
           ? { animationFrame: initialVisual.animationFrame }
           : {}),
+        ...(partPoses ? { partPoses } : {}),
         anchor: layer.anchor,
         x: motion.displayPosition.x,
         y: motion.displayPosition.y,

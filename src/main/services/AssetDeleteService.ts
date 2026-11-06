@@ -146,6 +146,14 @@ export class AssetDeleteService {
             current.project,
             asset.id,
           );
+          if (request.historyReferencesAsset) {
+            throw new AssetDeleteServiceError(
+              'ASSET_DELETE_REFERENCED',
+              transaction.projectRoot,
+              asset.id,
+              `Asset "${asset.name}" remains referenced by an undo or redo Project state. Close and reopen the project to discard session history, then retry.`,
+            );
+          }
           if (references.length > 0) {
             throw new AssetDeleteServiceError(
               'ASSET_DELETE_REFERENCED',
