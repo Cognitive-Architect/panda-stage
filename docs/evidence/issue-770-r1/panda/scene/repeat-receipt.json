@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "issue734-character-static-repeat/1",
+  "source": {
+    "basename": "qingling-source-copy.fla",
+    "sha256Before": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+    "sha256After": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+    "unchanged": true
+  },
+  "candidate": {
+    "renderTargetId": "fla-render-target-429e45fa685097106ad1b033fa4c3325a3df195196e79e0ddf6a4bf56971b6b3",
+    "selectedFrameIndex": 0,
+    "userLabel": "主场景 · 第 1 帧"
+  },
+  "expected": {
+    "pngSha256": "7cdcdd02d2abdbb8f5c341a4ad1a0f5e2db76b0da58c195b40c37e5f9e5676a6",
+    "svgSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "repeat": {
+    "pngSha256": "7cdcdd02d2abdbb8f5c341a4ad1a0f5e2db76b0da58c195b40c37e5f9e5676a6",
+    "svgSha256": "362a9bb71fedcd99e6453ca4b6278dd862d8f3a9c72ca44a221781dc1b127dec",
+    "pngMatches": true,
+    "svgMatches": false,
+    "width": 1920,
+    "height": 1080,
+    "wallClockMs": 1450,
+    "composition": {
+      "resolvedNodeCount": 1189,
+      "bitmapInstanceCount": 0,
+      "shapeCount": 510,
+      "fillStyleCount": 1633,
+      "strokeStyleCount": 574,
+      "styleRunCount": 48035,
+      "midEdgeStyleChangeCount": 0,
+      "pathCommandCount": 132260,
+      "edgeFillStyle0ReferenceCount": 6490,
+      "edgeFillStyle1ReferenceCount": 6092,
+      "edgeStrokeStyleReferenceCount": 4692,
+      "noFillStyle1RunCount": 41943,
+      "fillRegionCount": 1633,
+      "fillContourCount": 4142,
+      "fillBoundarySegmentCount": 66337,
+      "linearGradientCount": 25,
+      "linearGradientStopCount": 50,
+      "radialGradientCount": 2,
+      "radialGradientStopCount": 4,
+      "strokePathCount": 3705,
+      "strokeSegmentCount": 14390,
+      "groupCount": 679,
+      "expandedSymbolCount": 20,
+      "framing": {
+        "mode": "stage",
+        "contentBounds": null,
+        "viewBox": {
+          "x": 0,
+          "y": 0,
+          "width": 1920,
+          "height": 1080
+        },
+        "padding": 0,
+        "outputWidth": 1920,
+        "outputHeight": 1080
+      }
+    }
+  },
+  "artifacts": {
+    "png": {
+      "path": "repeat.png",
+      "sha256": "7cdcdd02d2abdbb8f5c341a4ad1a0f5e2db76b0da58c195b40c37e5f9e5676a6",
+      "byteLength": 1032258
+    },
+    "svg": {
+      "path": "repeat.svg",
+      "sha256": "362a9bb71fedcd99e6453ca4b6278dd862d8f3a9c72ca44a221781dc1b127dec",
+      "byteLength": 4342727
+    }
+  },
+  "projectMutation": "NONE: inspect/catalog/staticSnapshotPreview/cancel only; no commit API called",
+  "evidenceDirectory": "D:\\PandaStage-Acceptance\\REA-R1-770-20261013\\panda\\scene"
+}

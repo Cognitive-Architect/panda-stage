@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "issue734-character-static-repeat/1",
+  "source": {
+    "basename": "qingling-source-copy.fla",
+    "sha256Before": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+    "sha256After": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+    "unchanged": true
+  },
+  "candidate": {
+    "renderTargetId": "fla-render-target-b13a0be5089c89a01785e324f5e25a6919cc6e9f4404f46624adb53ab207fd41",
+    "selectedFrameIndex": 0,
+    "userLabel": "重复项目文件夹/元件 1"
+  },
+  "expected": {
+    "pngSha256": "2c24a46f1067e7a7ebf612004eb917f88252256ebf4d69c65331f48a721c1088",
+    "svgSha256": "85030284e94ed17ec0d67df3569626a0573e7d2df7e8dd56ecb24807ee904100"
+  },
+  "repeat": {
+    "pngSha256": "2c24a46f1067e7a7ebf612004eb917f88252256ebf4d69c65331f48a721c1088",
+    "svgSha256": "85030284e94ed17ec0d67df3569626a0573e7d2df7e8dd56ecb24807ee904100",
+    "pngMatches": true,
+    "svgMatches": true,
+    "width": 396,
+    "height": 654,
+    "wallClockMs": 444,
+    "composition": {
+      "resolvedNodeCount": 307,
+      "bitmapInstanceCount": 0,
+      "shapeCount": 132,
+      "fillStyleCount": 425,
+      "strokeStyleCount": 151,
+      "styleRunCount": 13076,
+      "midEdgeStyleChangeCount": 0,
+      "pathCommandCount": 35956,
+      "edgeFillStyle0ReferenceCount": 1743,
+      "edgeFillStyle1ReferenceCount": 1621,
+      "edgeStrokeStyleReferenceCount": 1267,
+      "noFillStyle1RunCount": 11455,
+      "fillRegionCount": 425,
+      "fillContourCount": 1110,
+      "fillBoundarySegmentCount": 17882,
+      "linearGradientCount": 8,
+      "linearGradientStopCount": 16,
+      "radialGradientCount": 1,
+      "radialGradientStopCount": 2,
+      "strokePathCount": 1001,
+      "strokeSegmentCount": 3878,
+      "groupCount": 175,
+      "expandedSymbolCount": 5,
+      "framing": {
+        "mode": "content",
+        "contentBounds": {
+          "x": -0.4150390625,
+          "y": -0.4982758620689214,
+          "width": 387.96503906249984,
+          "height": 645.9176928696946
+        },
+        "viewBox": {
+          "x": -4.4150390625,
+          "y": -4.498275862068922,
+          "width": 395.96503906249984,
+          "height": 653.9176928696946
+        },
+        "padding": 4,
+        "outputWidth": 396,
+        "outputHeight": 654
+      }
+    }
+  },
+  "artifacts": {
+    "png": {
+      "path": "repeat.png",
+      "sha256": "2c24a46f1067e7a7ebf612004eb917f88252256ebf4d69c65331f48a721c1088",
+      "byteLength": 209540
+    },
+    "svg": {
+      "path": "repeat.svg",
+      "sha256": "85030284e94ed17ec0d67df3569626a0573e7d2df7e8dd56ecb24807ee904100",
+      "byteLength": 1144375
+    }
+  },
+  "projectMutation": "NONE: inspect/catalog/staticSnapshotPreview/cancel only; no commit API called",
+  "evidenceDirectory": "D:\\PandaStage-Acceptance\\REA-R1-770-20261013\\panda\\symbol"
+}
