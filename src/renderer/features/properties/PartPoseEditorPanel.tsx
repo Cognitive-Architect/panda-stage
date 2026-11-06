@@ -8,6 +8,7 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import { ArrowLeft, Check, ChevronDown, LockKeyhole, MoreHorizontal, Plus } from 'lucide-react';
 import { layerStore } from '../../stores/layerStore';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import {
@@ -22,6 +23,13 @@ export interface PartPoseEditorPanelProps {
   editor: PartPoseEditorUi;
 }
 
+const KNOWN_PART_LABELS: Readonly<Record<string, string>> = {
+  Torso: '身体',
+  Head: '头部',
+  'Upper arm': '上臂',
+  Forearm: '前臂',
+};
+
 function readableError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message.includes('locked')) return '该角色图层已锁定，无法编辑动作。';
@@ -32,7 +40,7 @@ function readableError(error: unknown): string {
     return '当前时间已有关键帧，可直接在画布上编辑。';
   }
   if (message.includes('frame grid')) return '请把时间指针移到有效帧。';
-  if (message.includes('Shot duration')) return '关键帧必须位于当前镜头内。';
+  if (message.includes('Shot duration')) return '关键帧必须位于当前镜头范围内。';
   if (message.includes('pivot')) {
     return '该零件已有动作姿势；清除本镜头动作后才能重新设置旋转点。';
   }
@@ -40,7 +48,18 @@ function readableError(error: unknown): string {
 }
 
 function formatTime(timeMs: number): string {
-  return `${(timeMs / 1000).toFixed(2)} 秒`;
+  const seconds = Math.floor(timeMs / 1_000);
+  const milliseconds = Math.abs(timeMs % 1_000);
+  return `${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')} 秒`;
+}
+
+function getPartLabel(
+  displayName: string | undefined,
+  index: number,
+): string {
+  const name = displayName?.trim();
+  if (!name) return `部件 ${index + 1}`;
+  return KNOWN_PART_LABELS[name] ?? name;
 }
 
 export function PartPoseEditorPanel({
@@ -51,10 +70,12 @@ export function PartPoseEditorPanel({
 }: PartPoseEditorPanelProps): React.JSX.Element | null {
   const timeline = useTimelineUi();
   const [feedback, setFeedback] = useState('');
-  useEffect(
-    () => setFeedback(''),
-    [editor.selectedPartId, layer.id, timeline.currentTimeMs],
-  );
+  const [confirmClear, setConfirmClear] = useState(false);
+  useEffect(() => {
+    setFeedback('');
+    setConfirmClear(false);
+  }, [editor.selectedPartId, layer.id, timeline.currentTimeMs]);
+
   const active = editor.activeLayerId === layer.id;
   const source = layer.source;
   const character =
@@ -106,6 +127,20 @@ export function PartPoseEditorPanel({
       timeIsValid &&
       !keyframe,
   );
+  const keyReason = !timeIsValid
+    ? '当前时间超出镜头范围，无法添加关键帧。'
+    : layer.locked
+      ? '图层已锁定，无法编辑关键帧。'
+      : !selectedPart
+        ? '当前没有可编辑零件。'
+        : selectedPart.visible === false
+          ? '当前零件已隐藏，无法编辑关键帧。'
+          : '';
+  const pivotReason = layer.locked
+    ? '图层已锁定，无法设置旋转点。'
+    : selectedPart?.visible === false
+      ? '当前零件已隐藏，无法设置旋转点。'
+      : '';
 
   const commitKey = (
     update: Partial<NonNullable<typeof keyframe>>,
@@ -116,7 +151,6 @@ export function PartPoseEditorPanel({
         ...keyframe,
         ...update,
       });
-      setFeedback('姿势已更新。');
     } catch (error) {
       setFeedback(readableError(error));
     }
@@ -159,7 +193,6 @@ export function PartPoseEditorPanel({
         pivotDraft ?? undefined,
       );
       editor.onPivotUsed();
-      setFeedback(`${formatTime(timeMs)}关键帧已添加。`);
     } catch (error) {
       setFeedback(readableError(error));
     }
@@ -169,7 +202,7 @@ export function PartPoseEditorPanel({
     try {
       layerStore.clearPartPoseAnimation(layer.id);
       editor.onPivotUsed();
-      setFeedback('本镜头动作已清除。');
+      setConfirmClear(false);
     } catch (error) {
       setFeedback(readableError(error));
     }
@@ -196,43 +229,79 @@ export function PartPoseEditorPanel({
       data-testid="part-pose-editor"
     >
       <div className="part-pose-editor-heading">
-        <strong>动作</strong>
-        <button onClick={editor.onExit} type="button">退出</button>
+        <strong>动作编辑</strong>
+        <button
+          className="part-pose-editor-back"
+          data-testid="part-pose-editor-back"
+          onClick={editor.onExit}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+          <span>返回</span>
+        </button>
       </div>
-      <div aria-label="选择部件" className="part-pose-editor-parts">
-        {parts.map((part, index) => {
-          const label = part.displayName?.trim() || `部件 ${index + 1}`;
-          const selected = part.partId === selectedPartId;
-          return (
+
+      <label className="part-pose-editor-part-row">
+        <span className="part-pose-editor-label">零件</span>
+        <span className="part-pose-editor-select-wrap">
+          <select
+            aria-label="当前零件"
+            className="part-pose-editor-select"
+            data-testid="part-pose-part-select"
+            disabled={parts.length === 0}
+            onChange={(event) => {
+              if (event.currentTarget.value) {
+                editor.onSelectPart(event.currentTarget.value);
+              }
+            }}
+            value={selectedPartId ?? ''}
+          >
+            {parts.length === 0 ? (
+              <option value="">没有可用零件</option>
+            ) : null}
+            {parts.map((part, index) => (
+              <option key={part.partId} value={part.partId}>
+                {getPartLabel(part.displayName, index)}
+                {part.visible === false ? '（隐藏）' : ''}
+              </option>
+            ))}
+          </select>
+          <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+        </span>
+      </label>
+
+      <div className="part-pose-editor-pivot" data-testid="part-pose-pivot-row">
+        <span className="part-pose-editor-label">旋转点</span>
+        {pivotLocked ? (
+          <span
+            aria-label="旋转点已固定"
+            className="part-pose-editor-pivot-status is-fixed"
+            data-testid="part-pose-pivot-fixed"
+          >
+            <LockKeyhole aria-hidden="true" className="ui-icon" focusable="false" size={14} />
+            已固定
+          </span>
+        ) : editor.calibratingPivot ? (
+          <>
+            <span className="part-pose-editor-pivot-status">
+              点击画布设置旋转点
+            </span>
             <button
-              aria-pressed={selected}
-              className="part-pose-editor-part"
-              data-testid={`part-pose-part-${index}`}
-              key={part.partId}
-              onClick={() => editor.onSelectPart(part.partId)}
+              data-testid="part-pose-cancel-pivot"
+              onClick={editor.onCancelPivot}
               type="button"
             >
-              {label}{part.visible === false ? '（隐藏）' : ''}
+              取消
             </button>
-          );
-        })}
-      </div>
-      <div className="part-pose-editor-pivot">
-        {editor.calibratingPivot ? (
-          <>
-            <span>点击画布设置旋转点</span>
-            <button onClick={editor.onCancelPivot} type="button">取消</button>
           </>
         ) : (
           <>
-            <span>
-              {pivotLocked
-                ? '已有动作，清除后可重设旋转点'
-                : pivotDraft
-                  ? '旋转点待随首帧保存'
-                  : track
-                    ? '旋转点已保存'
-                    : '默认使用部件中心'}
+            <span className="part-pose-editor-pivot-status">
+              {pivotDraft
+                ? '新旋转点待关键帧保存'
+                : track
+                  ? '当前旋转点已保存'
+                  : '当前使用部件中心'}
             </span>
             <button
               disabled={!canCalibratePivot}
@@ -242,71 +311,136 @@ export function PartPoseEditorPanel({
               }}
               type="button"
             >
-              {track || pivotDraft ? '重设旋转点' : '设置旋转点'}
+              设置旋转点
             </button>
           </>
         )}
       </div>
-      <div className="part-pose-editor-key">
-        <button
-          data-testid="part-pose-add-key"
-          disabled={!canAddKey}
-          onClick={addKey}
-          type="button"
-        >
-          添加关键帧 · {formatTime(timeMs)}
-        </button>
+      {!pivotLocked && !editor.calibratingPivot && pivotReason ? (
+        <p className="part-pose-editor-inline-reason">{pivotReason}</p>
+      ) : null}
+
+      <div className="part-pose-editor-key" data-testid="part-pose-key-row">
+        <span className="part-pose-editor-label">时间</span>
+        <span className="part-pose-editor-time">{formatTime(timeMs)}</span>
         {keyframe ? (
-          <span>{timeMs === 0 ? '0 秒基准帧' : '当前时间已有关键帧'}</span>
-        ) : !timeIsValid ? (
-          <span>时间不在镜头范围内，请移动时间指针。</span>
-        ) : !selectedPart?.visible && selectedPart ? (
-          <span>该部件已隐藏。</span>
-        ) : null}
+          <span
+            className="part-pose-editor-key-present"
+            data-testid="part-pose-key-present"
+          >
+            <Check aria-hidden="true" className="ui-icon" focusable="false" size={15} />
+            已有关键帧
+          </span>
+        ) : (
+          <button
+            data-testid="part-pose-add-key"
+            disabled={!canAddKey}
+            onClick={addKey}
+            type="button"
+          >
+            <Plus aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+            关键帧
+          </button>
+        )}
       </div>
-      <div aria-label="部件姿势调整" className="part-pose-editor-adjustments">
-        <button
-          aria-label="逆时针旋转 15 度"
-          disabled={!canEditKey}
-          onClick={() => rotateBy(-15)}
-          type="button"
+      {keyReason ? (
+        <p className="part-pose-editor-inline-reason" data-testid="part-pose-key-reason">
+          {keyReason}
+        </p>
+      ) : null}
+
+      <details
+        className="part-pose-editor-fine"
+        data-testid="part-pose-fine"
+      >
+        <summary>
+          <span>精调</span>
+          <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+        </summary>
+        <div aria-label="部件姿势精调" className="part-pose-editor-adjustments">
+          <button
+            aria-label="逆时针旋转 15 度"
+            disabled={!canEditKey}
+            onClick={() => rotateBy(-15)}
+            type="button"
+          >
+            逆时针 15°
+          </button>
+          <button
+            aria-label="顺时针旋转 15 度"
+            disabled={!canEditKey}
+            onClick={() => rotateBy(15)}
+            type="button"
+          >
+            顺时针 15°
+          </button>
+          <button
+            disabled={!canEditKey || (keyframe?.scale ?? 0) <= CHARACTER_PART_MIN_SCALE}
+            onClick={() => scaleBy(0.9)}
+            type="button"
+          >
+            缩小
+          </button>
+          <button
+            disabled={!canEditKey || (keyframe?.scale ?? 0) >= CHARACTER_PART_MAX_SCALE}
+            onClick={() => scaleBy(1.1)}
+            type="button"
+          >
+            放大
+          </button>
+        </div>
+      </details>
+
+      {feedback ? (
+        <p
+          aria-live="assertive"
+          className="part-pose-editor-feedback"
+          data-testid="part-pose-editor-feedback"
+          role="alert"
         >
-          逆时针 15°
-        </button>
-        <button
-          aria-label="顺时针旋转 15 度"
-          disabled={!canEditKey}
-          onClick={() => rotateBy(15)}
-          type="button"
-        >
-          顺时针 15°
-        </button>
-        <button
-          disabled={!canEditKey || keyframe!.scale <= CHARACTER_PART_MIN_SCALE}
-          onClick={() => scaleBy(0.9)}
-          type="button"
-        >
-          缩小
-        </button>
-        <button
-          disabled={!canEditKey || keyframe!.scale >= CHARACTER_PART_MAX_SCALE}
-          onClick={() => scaleBy(1.1)}
-          type="button"
-        >
-          放大
-        </button>
-      </div>
-      <p aria-live="polite" className="part-pose-editor-feedback" role="status">
-        {feedback || (keyframe ? '' : '先添加关键帧，再拖动、旋转或缩放部件。')}
-      </p>
+          {feedback}
+        </p>
+      ) : null}
+
       {layer.poseAnimation ? (
-        <button
-          className="part-pose-editor-clear"
-          onClick={clearAnimation}
-          type="button"
-        >
-          清除本镜头动作
-        </button>
+        <details className="part-pose-editor-more" data-testid="part-pose-more">
+          <summary>
+            <MoreHorizontal aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+            更多
+          </summary>
+          <div className="part-pose-editor-more-menu">
+            {confirmClear ? (
+              <>
+                <p>清除后可通过撤销恢复。</p>
+                <div className="part-pose-editor-confirm-actions">
+                  <button
+                    data-testid="part-pose-confirm-clear"
+                    onClick={clearAnimation}
+                    type="button"
+                  >
+                    确认清除
+                  </button>
+                  <button
+                    data-testid="part-pose-cancel-clear"
+                    onClick={() => setConfirmClear(false)}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                className="part-pose-editor-clear"
+                data-testid="part-pose-clear"
+                onClick={() => setConfirmClear(true)}
+                type="button"
+              >
+                清除本镜头动作
+              </button>
+            )}
+          </div>
+        </details>
       ) : null}
     </section>
   );

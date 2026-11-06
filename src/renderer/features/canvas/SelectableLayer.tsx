@@ -766,12 +766,12 @@ function renderSelectableLayer({
               {...partPosePreview}
             >
               <Rect
-                dash={[8, 5]}
-                fill="rgba(131, 211, 154, 0.06)"
+                dash={[6, 4]}
+                fill="rgba(131, 211, 154, 0.025)"
                 height={selectedPosePart.localRect.height}
                 listening={false}
                 stroke="#83d39a"
-                strokeWidth={4}
+                strokeWidth={2}
                 {...visualPartRenderTransform(selectedPosePart)}
                 width={selectedPosePart.localRect.width}
               />
@@ -797,7 +797,7 @@ function renderSelectableLayer({
                     posePivotLayerPoint.y - handleDistance,
                   ]}
                   stroke="#7bb9ff"
-                  strokeWidth={3}
+                  strokeWidth={2}
                 />
                 <Line
                   listening={false}
@@ -819,9 +819,9 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('move', event)}
-                  radius={11}
+                  radius={9}
                   stroke="#173d26"
-                  strokeWidth={3}
+                  strokeWidth={2}
                   x={partCenter.x}
                   y={partCenter.y}
                 />
@@ -834,9 +834,9 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('rotate', event)}
-                  radius={10}
+                  radius={9}
                   stroke="#2564a5"
-                  strokeWidth={3}
+                  strokeWidth={2}
                   x={posePivotLayerPoint.x}
                   y={posePivotLayerPoint.y - handleDistance}
                 />
@@ -849,9 +849,9 @@ function renderSelectableLayer({
                   }
                   onDragMove={updatePoseGesture}
                   onDragStart={(event) => beginPoseGesture('scale', event)}
-                  radius={10}
+                  radius={9}
                   stroke="#a36300"
-                  strokeWidth={3}
+                  strokeWidth={2}
                   x={posePivotLayerPoint.x + handleDistance}
                   y={posePivotLayerPoint.y}
                 />
