@@ -77,6 +77,12 @@ import {
   readEditorTemporalContinuityBucket,
   type EditorTemporalContinuityMode,
 } from './editorTemporalCanvasContinuity';
+import {
+  isSceneCreationPreviewIdentityCurrent,
+  type SceneCreationCanvasPreview,
+  type SceneCreationCanvasPreviewStatus,
+  type SceneCreationPreviewIdentity,
+} from '../shots/createSceneFromStructuredInput';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -188,11 +194,18 @@ function isCurrentCanvasAssetReady(
 export interface CanvasStageProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  sceneCreationPreview?: SceneCreationCanvasPreview | null;
+  onSceneCreationPreviewStatusChange?: (
+    identity: SceneCreationPreviewIdentity,
+    status: SceneCreationCanvasPreviewStatus,
+  ) => void;
 }
 
 export function CanvasStage({
   showHeading = true,
   showToolbar = true,
+  sceneCreationPreview = null,
+  onSceneCreationPreviewStatusChange,
 }: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -207,11 +220,22 @@ export function CanvasStage({
     shotStore.subscribe,
     shotStore.getCurrentShotId,
   );
+  const activeSceneCreationPreview =
+    sceneCreationPreview &&
+    snapshot &&
+    isSceneCreationPreviewIdentityCurrent(
+      sceneCreationPreview.identity,
+      editorProjectStore,
+    )
+      ? sceneCreationPreview
+      : null;
+  const scenePreviewMode = Boolean(activeSceneCreationPreview);
   const viewport = useSyncExternalStore(
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   );
   const timelineUi = useTimelineUi();
+  const canvasTimeMs = scenePreviewMode ? 0 : timelineUi.currentTimeMs;
   const positionAuthoringSnapshot = usePositionAuthoringSession();
   const positionAuthoringSession =
     positionAuthoringSessionStore.getActiveSessionHandle();
@@ -242,6 +266,7 @@ export function CanvasStage({
     return created;
   };
   const shot =
+    activeSceneCreationPreview?.shot ??
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
@@ -264,15 +289,15 @@ export function CanvasStage({
     [shot],
   );
   const activeCue = useMemo(
-    () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
-    [subtitleCues, timelineUi.currentTimeMs],
+    () => evaluateSubtitleAtTime(subtitleCues, canvasTimeMs),
+    [canvasTimeMs, subtitleCues],
   );
   const temporalContextKey =
     snapshot && shot && editorProjectStore.getProjectInstanceId() !== null
       ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
   const continuityMode: EditorTemporalContinuityMode =
-    editorTemporalContinuityMode(timelineUi.currentTimeMs);
+    editorTemporalContinuityMode(canvasTimeMs);
   const temporalContinuityRef = useRef(
     createEditorTemporalContinuityState(),
   );
@@ -296,7 +321,7 @@ export function CanvasStage({
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
-            currentTimeMs: timelineUi.currentTimeMs,
+            currentTimeMs: canvasTimeMs,
             previousVisuals: previousTemporalVisuals,
             project: snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
@@ -314,6 +339,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      canvasTimeMs,
       imageState.images,
       imageState.readyResourceKeys,
       previousTemporalVisuals,
@@ -321,7 +347,6 @@ export function CanvasStage({
       shot,
       snapshot,
       temporalContextKey,
-      timelineUi.currentTimeMs,
     ],
   );
   useEffect(() => {
@@ -380,14 +405,16 @@ export function CanvasStage({
     [imageState, snapshot, temporalCanvasModel],
   );
   const directEditingEnabled =
-    temporalCanvasModel?.directEditingEnabled ??
-    timelineUi.currentTimeMs === 0;
+    !scenePreviewMode &&
+    (temporalCanvasModel?.directEditingEnabled ?? canvasTimeMs === 0);
   const temporalInspection =
-    temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
+    scenePreviewMode ||
+    (temporalCanvasModel?.temporalInspection ?? !directEditingEnabled);
   const rejectTemporalCanvasEdit = (): void => {
     setInteractionStatus('时间轴预览中 · 回到 0:00 可调整图层');
   };
   const canCommitCanvasEdit = (): boolean =>
+    !scenePreviewMode &&
     timelineUiStore.getSnapshot().currentTimeMs === 0;
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
@@ -471,12 +498,54 @@ export function CanvasStage({
     hasRequiredVisualFailure ||
     hasMouthVisualDegradation ||
     hasPendingVisual;
+  const missingScenePreviewAsset = Boolean(
+    scenePreviewMode &&
+      snapshot &&
+      shot &&
+      listShotRuntimeImageAssets(snapshot.project, shot).some((asset) =>
+        imageState.missing.has(asset.id),
+      ),
+  );
+  const scenePreviewStatus: SceneCreationCanvasPreviewStatus | null =
+    !scenePreviewMode
+      ? null
+      : !stageModel
+        ? 'loading'
+        : !backgroundLayer || !backgroundAsset || stageModel.layers.length < 2
+          ? 'unavailable'
+          : hasRequiredVisualFailure ||
+              hasMouthVisualDegradation ||
+              missingScenePreviewAsset
+            ? 'unavailable'
+            : incompleteVisualLayers.length > 0
+              ? 'loading'
+              : 'ready';
+  useEffect(() => {
+    if (
+      !activeSceneCreationPreview ||
+      !scenePreviewStatus ||
+      !onSceneCreationPreviewStatusChange
+    ) {
+      return;
+    }
+    onSceneCreationPreviewStatusChange(
+      activeSceneCreationPreview.identity,
+      scenePreviewStatus,
+    );
+  }, [
+    activeSceneCreationPreview,
+    onSceneCreationPreviewStatusChange,
+    scenePreviewStatus,
+  ]);
+  useEffect(() => {
+    if (scenePreviewMode) setDropPreview(null);
+  }, [scenePreviewMode]);
   const routineVisualPending =
     !missingBackground &&
     hasNonBackgroundVisualIssue &&
     !hasRequiredVisualFailure &&
     !hasMouthVisualDegradation;
-  const pendingFeedbackKey = `${temporalContextKey}:${snapshot?.revision}:${timelineUi.currentTimeMs}`;
+  const pendingFeedbackKey = `${temporalContextKey}:${snapshot?.revision}:${canvasTimeMs}`;
   const [visiblePendingKey, setVisiblePendingKey] = useState<string | null>(null);
   useLayoutEffect(() => {
     setVisiblePendingKey(null);
@@ -509,6 +578,11 @@ export function CanvasStage({
       aria-label={showHeading ? undefined : '画布'}
       aria-labelledby={showHeading ? 'canvas-heading' : undefined}
       className="project-canvas"
+      data-scene-preview={String(scenePreviewMode)}
+      data-scene-preview-status={scenePreviewStatus ?? 'none'}
+      data-scene-preview-shot-id={
+        activeSceneCreationPreview?.shot.id ?? ''
+      }
       data-with-heading={showHeading ? 'true' : 'false'}
     >
       {showHeading ? (
@@ -521,7 +595,7 @@ export function CanvasStage({
         </div>
       ) : null}
       <CanvasViewport
-        dropDisabled={!snapshot || !shot}
+        dropDisabled={!snapshot || !shot || scenePreviewMode}
         dropInteractionDisabled={temporalInspection}
         mode={viewport.mode}
         onAssetDrop={(payload, point) => {
@@ -552,7 +626,9 @@ export function CanvasStage({
           canvasViewportStore.recordStagePoint(point)
         }
         onTransform={setToolbarTransform}
-        onViewportChromePointerDown={() => selectionStore.clear()}
+        onViewportChromePointerDown={() => {
+          if (!scenePreviewMode) selectionStore.clear();
+        }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={showToolbar ? (
           <CanvasToolbar
@@ -589,6 +665,8 @@ export function CanvasStage({
               }
               data-interaction-status={interactionStatus}
               data-current-time-ms={timelineUi.currentTimeMs}
+              data-rendered-time-ms={canvasTimeMs}
+              data-scene-preview-read-only={String(scenePreviewMode)}
               data-active-subtitle-id={activeCue?.id ?? ''}
               data-temporal-inspection={String(temporalInspection)}
               data-direct-canvas-editing={String(directEditingEnabled)}
@@ -637,14 +715,14 @@ export function CanvasStage({
             >
               <Stage
                 height={PROJECT_HEIGHT}
-                listening
+                listening={!scenePreviewMode}
                 width={PROJECT_WIDTH}
               >
-                <KonvaLayer listening ref={configureEditorLayer}>
+                <KonvaLayer listening={!scenePreviewMode} ref={configureEditorLayer}>
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
-                    listening
+                    listening={!scenePreviewMode}
                     onClick={() => selectionStore.clear()}
                     onTap={() => selectionStore.clear()}
                     width={PROJECT_WIDTH}

@@ -7,6 +7,7 @@ import {
   ShotSchema,
   ShotService,
   ShotServiceError,
+  hasShotNameConflict,
 } from '../../src/domain';
 
 function ids() {
@@ -46,6 +47,28 @@ function expectShotError(
 }
 
 describe('ShotService', () => {
+  it('shares trimmed, case-insensitive Shot name conflicts without mutating existing Shots', () => {
+    const base = migrateProject(exampleProject);
+    const existing = base.shots[0]!;
+    const project = {
+      ...base,
+      shots: [{ ...existing, name: 'Garden' }, ...base.shots.slice(1)],
+    };
+    const before = structuredClone(project);
+
+    expect(hasShotNameConflict(project.shots, 'garden')).toBe(true);
+    expect(hasShotNameConflict(project.shots, '  GARDEN  ')).toBe(true);
+    expect(hasShotNameConflict(project.shots, 'Garden at dusk')).toBe(false);
+    expect(hasShotNameConflict(project.shots, 'garden', existing.id)).toBe(false);
+    expectShotError(
+      () => service().create(project, { name: ' garden ', durationMs: 500 }),
+      'DUPLICATE_SHOT_NAME',
+    );
+
+    expect(project).toEqual(before);
+    expect(project.shots[0]).toEqual({ ...existing, name: 'Garden' });
+  });
+
   it('creates, renames, reorders, removes, and sums five valid shots', () => {
     const shotService = service();
     let project = migrateProject({
