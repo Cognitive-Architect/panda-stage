@@ -1,5 +1,5 @@
 import { AlertCircle, Check } from 'lucide-react';
-import { useSyncExternalStore, useState } from 'react';
+import { Fragment, useSyncExternalStore, useState } from 'react';
 import {
   MultiSceneInputError,
   parseMultiSceneInput,
@@ -10,11 +10,20 @@ import {
   assetFileName,
   formatDurationMs,
   MULTI_SCENE_SHOT_DURATION_MS,
+  PERFORMANCE_ACTION_LABELS,
+  PERFORMANCE_PRESET_IDS,
   type AudioMatchRow,
   type MultiSceneBlock,
+  type MultiSceneDialoguePlan,
+  type MultiScenePerformancePlan,
   type MultiSceneSlotSelection,
+  type PerformanceDirective,
+  type PerformancePlanRow,
 } from '../../../domain';
-import { MultiSceneDialogueService } from '../../../domain';
+import {
+  MultiSceneDialogueService,
+  MultiScenePerformanceService,
+} from '../../../domain';
 import {
   editorProjectStore,
   type EditorProjectSnapshot,
@@ -28,6 +37,12 @@ import {
   commitMultiSceneDialoguePreview,
   prepareMultiSceneDialoguePreview,
 } from './multiSceneDialoguePlan';
+import { PERFORMANCE_INPUT_PLACEHOLDER } from './multiScenePerformanceExample';
+import {
+  commitMultiScenePerformancePreview,
+  prepareMultiScenePerformancePreview,
+  type MultiScenePerformancePreview,
+} from './multiScenePerformancePlan';
 import { MultiSceneActionError } from './multiScenePlan';
 import {
   EMPTY_MULTI_SCENE_DIALOGUE_BATCH,
@@ -38,11 +53,15 @@ import {
   choiceLabel,
   initialPanelState,
   inputChanged,
+  performanceDirectivesByOrdinal,
   speakerPicked,
   submissionBatch,
   type MultiSceneDialogueBatch,
   type MultiSceneDialoguePanelState,
 } from './multiSceneDialoguePanelModel';
+
+/** AUTO-06 reuses this panel with its own in-memory planner and copy. */
+export type MultiScenePanelMode = 'dialogue' | 'performance';
 
 export interface MultiSceneDialoguePanelProps {
   /** Injected in tests; the panel defaults to the open editor Project. */
@@ -52,6 +71,7 @@ export interface MultiSceneDialoguePanelProps {
     'getSnapshot' | 'subscribe' | 'getProjectInstanceId' | 'updateProject'
   >;
   shotStore?: Pick<ShotStore, 'getCurrentShotId' | 'select'>;
+  mode?: MultiScenePanelMode;
 }
 
 const INPUT_PLACEHOLDER = [
@@ -81,6 +101,33 @@ function rowsForBlock(
   return rows.filter((row) => row.ordinal >= first && row.ordinal <= last);
 }
 
+function directiveLabel(directive: PerformanceDirective): string {
+  switch (directive.action) {
+    case 'move':
+      return `移动到 ${directive.targetX},${directive.targetY}`;
+    case 'scale':
+      return `放大 ${directive.scaleFactor}`;
+    case 'expression':
+      return `表情：${directive.expressionName}`;
+    default:
+      return PERFORMANCE_ACTION_LABELS[directive.action];
+  }
+}
+
+/** Read-only detail attached by the AUTO-06 planner; absent in AUTO-05 mode. */
+function plannedPerformance(
+  plan: MultiSceneDialoguePlan | undefined,
+  directive: PerformanceDirective,
+): PerformancePlanRow | undefined {
+  if (!plan) return undefined;
+  const detail = (plan as MultiScenePerformancePlan).performance;
+  return detail?.rows.find(
+    (row) =>
+      row.dialogueOrdinal === directive.dialogueOrdinal &&
+      row.presetId === PERFORMANCE_PRESET_IDS[directive.action],
+  );
+}
+
 /**
  * AUTO-05 keeps the AUTO-04 flat batch surface: one group per Shot, one row per
  * dialogue, a picker only where a name or an audio file is unproven, and the
@@ -90,7 +137,10 @@ export function MultiSceneDialoguePanel({
   snapshot: snapshotProp,
   editorStore = editorProjectStore,
   shotStore = defaultShotStore,
+  mode = 'dialogue',
 }: MultiSceneDialoguePanelProps): React.JSX.Element {
+  const isPerformance = mode === 'performance';
+  const subject = isPerformance ? '表演' : '对白';
   const subscribed = useSyncExternalStore(
     editorStore.subscribe,
     editorStore.getSnapshot,
@@ -101,10 +151,13 @@ export function MultiSceneDialoguePanel({
     initialPanelState,
   );
   const { rawInput, batch } = state;
+  // Directives may target another Shot's dialogue, so key them by the real
+  // ordinal across the whole batch instead of per block.
+  const performanceByOrdinal = performanceDirectivesByOrdinal(batch.blocks);
   const submittable = submissionBatch(state) !== null;
   const count = batch.preview?.plan.createdShotIds.length ?? batch.blocks.length;
   const generateLabel =
-    count > 0 ? `生成 ${count} 个镜头与对白` : '生成镜头与对白';
+    count > 0 ? `生成 ${count} 个镜头与${subject}` : `生成镜头与${subject}`;
 
   /** Resolve one batch in memory; nothing here writes the Project. */
   const buildBatch = (current: MultiSceneDialogueBatch): MultiSceneDialogueBatch => {
@@ -153,6 +206,22 @@ export function MultiSceneDialoguePanel({
       };
     }
     try {
+      if (isPerformance) {
+        const outcome = prepareMultiScenePerformancePreview(
+          current.blocks,
+          current.selections,
+          {
+            editorStore: editorStore as EditorProjectStore,
+            shotStore,
+            service: new MultiScenePerformanceService({
+              speakerBindings: current.speakerBindings,
+              audioSelections: current.audioSelections,
+            }),
+          },
+        );
+        if (!outcome.ok) return { ...refused, status: outcome.message };
+        return { ...refused, preview: outcome.preview };
+      }
       const outcome = prepareMultiSceneDialoguePreview(
         current.blocks,
         current.selections,
@@ -211,19 +280,31 @@ export function MultiSceneDialoguePanel({
     const pending = submissionBatch(state);
     if (!pending?.preview) return;
     try {
-      const committed = commitMultiSceneDialoguePreview(pending.preview, {
+      const options = {
         editorStore: editorStore as EditorProjectStore,
         shotStore,
         service: new MultiSceneDialogueService({
           speakerBindings: pending.speakerBindings,
           audioSelections: pending.audioSelections,
         }),
-      });
+      };
+      const committed = isPerformance
+        ? commitMultiScenePerformancePreview(
+            pending.preview as MultiScenePerformancePreview,
+            {
+              ...options,
+              service: new MultiScenePerformanceService({
+                speakerBindings: pending.speakerBindings,
+                audioSelections: pending.audioSelections,
+              }),
+            },
+          )
+        : commitMultiSceneDialoguePreview(pending.preview, options);
       setState(
         batchUpdated(state, {
           ...batch,
           preview: null,
-          status: `已生成 ${committed.createdShotIds.length} 个镜头与对白。`,
+          status: `已生成 ${committed.createdShotIds.length} 个镜头与${subject}。`,
         }),
       );
     } catch (error) {
@@ -246,9 +327,14 @@ export function MultiSceneDialoguePanel({
 
   return (
     <section
-      aria-label="多镜头对白"
-      className="multi-scene-dialogue-panel"
+      aria-label={isPerformance ? '表演编排' : '多镜头对白'}
+      className={
+        isPerformance
+          ? 'multi-scene-dialogue-panel multi-scene-performance-panel'
+          : 'multi-scene-dialogue-panel'
+      }
       data-testid="multi-scene-dialogue-panel"
+      data-multi-scene-performance={isPerformance ? 'true' : 'false'}
       data-multi-scene-dialogue-ready={batch.preview ? 'true' : 'false'}
     >
       {!snapshot ? (
@@ -261,12 +347,14 @@ export function MultiSceneDialoguePanel({
       ) : (
         <div className="multi-scene-dialogue-body">
           <label className="multi-scene-dialogue-input-field">
-            <span>分镜与对白</span>
+            <span>{isPerformance ? '分镜 + 对白 + 表演 输入' : '分镜与对白'}</span>
             <textarea
               className="multi-scene-dialogue-input"
               data-testid="multi-scene-dialogue-input"
               onChange={(event) => handleInput(event.target.value)}
-              placeholder={INPUT_PLACEHOLDER}
+              placeholder={
+                isPerformance ? PERFORMANCE_INPUT_PLACEHOLDER : INPUT_PLACEHOLDER
+              }
               rows={12}
               spellCheck={false}
               value={rawInput}
@@ -280,7 +368,7 @@ export function MultiSceneDialoguePanel({
             onClick={handleCheck}
             type="button"
           >
-            检查素材与配音
+            {isPerformance ? '检查素材、配音与表演' : '检查素材与配音'}
           </button>
 
           {batch.unresolvedSpeakers.length > 0 ? (
@@ -321,6 +409,15 @@ export function MultiSceneDialoguePanel({
               className="multi-scene-dialogue-report"
               data-testid="multi-scene-dialogue-report"
             >
+              {isPerformance && batch.status ? (
+                <p
+                  className="multi-scene-performance-status"
+                  data-testid="multi-scene-performance-status"
+                  role="status"
+                >
+                  {batch.status}
+                </p>
+              ) : null}
               {batch.blocks.map((block, blockOffset) => {
                 const timing = batch.preview?.plan.dialogue.timings[blockOffset];
                 const background = resolveBackgroundSlot(
@@ -381,15 +478,22 @@ export function MultiSceneDialoguePanel({
                     {block.dialogues.map((line, lineOffset) => {
                       const row = rowsForBlock(batch.rows, block)[lineOffset];
                       const ready = Boolean(row && row.issue === null);
+                      const directives = isPerformance
+                        ? (performanceByOrdinal.get(line.ordinal) ?? [])
+                        : [];
+                      const anchorMs =
+                        batch.preview?.plan.dialogue.rows.find(
+                          (candidate) => candidate.ordinal === line.ordinal,
+                        )?.startMs ?? 0;
                       return (
-                        <div
-                          className="multi-scene-dialogue-line"
-                          data-multi-scene-dialogue-ordinal={line.ordinal}
-                          data-multi-scene-dialogue-line-ready={
-                            ready ? 'true' : 'false'
-                          }
-                          key={line.ordinal}
-                        >
+                        <Fragment key={line.ordinal}>
+                          <div
+                            className="multi-scene-dialogue-line"
+                            data-multi-scene-dialogue-ordinal={line.ordinal}
+                            data-multi-scene-dialogue-line-ready={
+                              ready ? 'true' : 'false'
+                            }
+                          >
                           <span className="multi-scene-dialogue-speaker">
                             {line.speaker}
                           </span>
@@ -441,12 +545,60 @@ export function MultiSceneDialoguePanel({
                               ))}
                             </select>
                           ) : null}
-                          {row?.message ? (
-                            <p className="multi-scene-dialogue-line-message">
-                              {row.message}
-                            </p>
+                            {row?.message ? (
+                              <p className="multi-scene-dialogue-line-message">
+                                {row.message}
+                              </p>
+                            ) : null}
+                          </div>
+                          {directives.length > 0 ? (
+                            <div className="multi-scene-performance-lines">
+                              {directives.map((directive, index) => {
+                                const planned = plannedPerformance(
+                                  batch.preview?.plan,
+                                  directive,
+                                );
+                                return (
+                                  <div
+                                    className="multi-scene-performance-line"
+                                    data-multi-scene-performance-ordinal={
+                                      line.ordinal
+                                    }
+                                    data-multi-scene-performance-ready={
+                                      planned ? 'true' : 'false'
+                                    }
+                                    key={`${line.ordinal}-${index}`}
+                                  >
+                                    <span className="multi-scene-performance-anchor">
+                                      {`#${line.ordinal} ${line.speaker} ${formatDurationMs(anchorMs)}`}
+                                    </span>
+                                    <span className="multi-scene-performance-action">
+                                      {directiveLabel(directive)}
+                                    </span>
+                                    <span
+                                      aria-hidden="true"
+                                      className="multi-scene-performance-mark"
+                                    >
+                                      {planned ? (
+                                        <Check className="ui-icon" size={16} />
+                                      ) : (
+                                        <AlertCircle
+                                          className="ui-icon"
+                                          size={16}
+                                        />
+                                      )}
+                                    </span>
+                                    {!planned ? (
+                                      <p className="multi-scene-performance-line-message">
+                                        整批未生成
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           ) : null}
-                        </div>
+                        </Fragment>
                       );
                     })}
 
@@ -469,7 +621,7 @@ export function MultiSceneDialoguePanel({
             {generateLabel}
           </button>
 
-          {batch.status ? (
+          {batch.status && !isPerformance ? (
             <p
               className="multi-scene-dialogue-status"
               data-testid="multi-scene-dialogue-status"

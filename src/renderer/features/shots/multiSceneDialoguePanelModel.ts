@@ -2,6 +2,7 @@ import type {
   AudioMatchRow,
   MultiSceneBlock,
   MultiSceneSelections,
+  PerformanceDirective,
   SceneSlotChoice,
   SpeakerBindings,
 } from '../../../domain';
@@ -96,6 +97,27 @@ export function submissionBatch(
     state.batch.preview !== null
     ? state.batch
     : null;
+}
+
+/**
+ * A performance directive is anchored to a real Dialogue ordinal, not to the
+ * Shot block that wrote it: a later Shot's `表演：` may direct an earlier Shot's
+ * line (AUTO-06 allows any real ordinal of the batch). The preview therefore
+ * has to read the whole batch and show every directive on the dialogue it
+ * actually targets, or the author sees "no action" while generation writes one.
+ */
+export function performanceDirectivesByOrdinal(
+  blocks: readonly MultiSceneBlock[],
+): ReadonlyMap<number, readonly PerformanceDirective[]> {
+  const byOrdinal = new Map<number, PerformanceDirective[]>();
+  for (const block of blocks) {
+    for (const directive of block.performances) {
+      const bucket = byOrdinal.get(directive.dialogueOrdinal);
+      if (bucket) bucket.push(directive);
+      else byOrdinal.set(directive.dialogueOrdinal, [directive]);
+    }
+  }
+  return byOrdinal;
 }
 
 /**

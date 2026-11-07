@@ -10,3 +10,4 @@ export * from './AssetService';
 export * from './AutoSubtitleGenerationService';
 export * from './MultiSceneService';
 export * from './MultiSceneDialogueService';
+export * from './MultiScenePerformanceService';

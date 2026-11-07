@@ -1,8 +1,16 @@
+import {
+  PERFORMANCE_FIELD,
+  parsePerformanceLines,
+  type PerformanceDirective,
+  type PerformanceInputErrorCode,
+} from './multiScenePerformance';
+
 /**
  * AUTO-05 extends the AUTO-04 strict storyboard contract with a `对白：` section.
- * It still accepts an already-written storyboard, not prose: 2-3 blocks, each a
- * fixed four-field record followed by explicit dialogue lines. Anything the
- * parser cannot prove is rejected instead of guessed.
+ * AUTO-06 adds an optional `表演：` section after it. It still accepts an
+ * already-written storyboard, not prose: 2-3 blocks, each a fixed four-field
+ * record followed by explicit dialogue lines. Anything the parser cannot prove
+ * is rejected instead of guessed.
  *
  * Dialogue line rules are the #926 / #934 paste contract: split on the first
  * `：` or `:`, skip blank lines, and never merge adjacent same-speaker lines.
@@ -37,6 +45,8 @@ export interface MultiSceneBlock {
   readonly cast: readonly [string, string];
   readonly stance: typeof MULTI_SCENE_STANCE;
   readonly dialogues: readonly MultiSceneDialogueLine[];
+  /** AUTO-06: empty when the optional `表演：` section is omitted. */
+  readonly performances: readonly PerformanceDirective[];
 }
 
 export type MultiSceneInputErrorCode =
@@ -58,7 +68,8 @@ export type MultiSceneInputErrorCode =
   | 'EMPTY_SPEAKER'
   | 'EMPTY_TEXT'
   | 'TEXT_TOO_LONG'
-  | 'SPEAKER_NOT_IN_CAST';
+  | 'SPEAKER_NOT_IN_CAST'
+  | PerformanceInputErrorCode;
 
 export class MultiSceneInputError extends Error {
   constructor(
@@ -261,6 +272,24 @@ function parseDialogueLines(
   return lines;
 }
 
+function parsePerformanceSection(
+  entries: readonly SourceLine[],
+  start: number | null,
+  blockIndex: number,
+): readonly PerformanceDirective[] {
+  if (start === null) return [];
+  const result = parsePerformanceLines(entries.slice(start), blockIndex);
+  if (!result.ok) {
+    throw new MultiSceneInputError(
+      result.error.code,
+      `镜头 ${blockIndex} ${result.error.message}`,
+      blockIndex,
+      result.error.lineNumber,
+    );
+  }
+  return result.directives;
+}
+
 /** Ordered, de-duplicated speaker labels from cast and dialogue lines. */
 export function collectSpeakerLabels(
   blocks: readonly MultiSceneBlock[],
@@ -310,10 +339,50 @@ export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
     const index = blockOffset + 1;
     const fields = new Map<MultiSceneField, RawField>();
     let dialogueStart: number | null = null;
+    /** Index of the `表演：` header; dialogue lines end right before it. */
+    let performanceHeader: number | null = null;
+    let performanceStart: number | null = null;
 
     for (const [entryIndex, { lineNumber, text }] of entries.entries()) {
       const parsed = parseLine(text);
-      if (parsed?.label === DIALOGUE_FIELD) {
+      if (parsed !== null && parsed.label === PERFORMANCE_FIELD) {
+        if (performanceStart !== null) {
+          throw new MultiSceneInputError(
+            'DUPLICATE_PERFORMANCE_SECTION',
+            `镜头 ${index} 的「${PERFORMANCE_FIELD}」段只能出现一次。`,
+            index,
+            lineNumber,
+          );
+        }
+        if (dialogueStart === null) {
+          throw new MultiSceneInputError(
+            'PERFORMANCE_SECTION_INVALID',
+            `镜头 ${index} 的「${PERFORMANCE_FIELD}」段必须写在「${DIALOGUE_FIELD}：」之后。`,
+            index,
+            lineNumber,
+          );
+        }
+        if (parsed.value.length > 0) {
+          throw new MultiSceneInputError(
+            'PERFORMANCE_SECTION_INVALID',
+            `镜头 ${index} 的「${PERFORMANCE_FIELD}：」后面请换行写表演指令。`,
+            index,
+            lineNumber,
+          );
+        }
+        performanceHeader = entryIndex;
+        performanceStart = entryIndex + 1;
+        continue;
+      }
+      if (parsed !== null && parsed.label === DIALOGUE_FIELD) {
+        if (performanceStart !== null) {
+          throw new MultiSceneInputError(
+            'PERFORMANCE_SECTION_INVALID',
+            `镜头 ${index} 的「${DIALOGUE_FIELD}」段必须写在「${PERFORMANCE_FIELD}：」之前。`,
+            index,
+            lineNumber,
+          );
+        }
         if (dialogueStart !== null) {
           throw new MultiSceneInputError(
             'DUPLICATE_DIALOGUE_SECTION',
@@ -385,10 +454,15 @@ export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
     seenShotNames.add(shotName);
     const cast = parseCast(fields, index);
     const dialogues = parseDialogueLines(
-      entries.slice(dialogueStart),
+      entries.slice(dialogueStart, performanceHeader ?? entries.length),
       index,
       cast,
       nextOrdinal,
+    );
+    const performances = parsePerformanceSection(
+      entries,
+      performanceStart,
+      index,
     );
     nextOrdinal += dialogues.length;
     blocks.push({
@@ -398,7 +472,29 @@ export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
       cast,
       stance: parseStance(fields, index),
       dialogues,
+      performances,
     });
+  }
+
+  // A performance directive is anchored to a real Dialogue of this batch, not
+  // to a line number or a guessed speaker. Check after every block is parsed so
+  // an ordinal in a later block may still point at an earlier Shot's line.
+  const ordinals = new Set(
+    blocks.flatMap((block) =>
+      block.dialogues.map((line) => line.ordinal),
+    ),
+  );
+  for (const block of blocks) {
+    for (const directive of block.performances) {
+      if (!ordinals.has(directive.dialogueOrdinal)) {
+        throw new MultiSceneInputError(
+          'PERFORMANCE_ORDINAL_UNKNOWN',
+          `第 ${directive.dialogueOrdinal} 句对白不存在，表演指令无法锚定。`,
+          directive.blockIndex,
+          directive.sourceLine,
+        );
+      }
+    }
   }
   return blocks;
 }
