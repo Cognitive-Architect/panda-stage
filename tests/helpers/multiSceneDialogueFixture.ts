@@ -216,3 +216,90 @@ export const THREE_BLOCKS = [
   '李四：这就走？',
   '大长老：走吧。',
 ].join('\n');
+
+/** AUTO-06: extra formal Expressions owned by each Character. */
+export const AUTO06_IDS = {
+  exprZhangAngry: '20000000-0000-4000-8000-000000000013',
+  exprLiAngry: '20000000-0000-4000-8000-000000000023',
+  exprElderAngry: '20000000-0000-4000-8000-000000000033',
+} as const;
+
+const ANGRY_BY_CHARACTER: Readonly<Record<string, string>> = {
+  [AUTO05_IDS.charZhang]: AUTO06_IDS.exprZhangAngry,
+  [AUTO05_IDS.charLi]: AUTO06_IDS.exprLiAngry,
+  [AUTO05_IDS.charElder]: AUTO06_IDS.exprElderAngry,
+};
+
+/** AUTO-06: same valid Project, plus one extra exact-name expression each. */
+export function buildPerformanceProject(
+  audio: readonly AudioAsset[] = defaultAudioAssets(),
+): Project {
+  const base = buildDialogueProject(audio);
+  return ProjectSchema.parse({
+    ...base,
+    characters: base.characters.map((character) => {
+      const expressionId = ANGRY_BY_CHARACTER[character.id];
+      if (!expressionId || character.mode === 'adaptive-parts') return character;
+      return {
+        ...character,
+        expressions: [
+          ...character.expressions,
+          {
+            id: expressionId,
+            name: '生气',
+            assetId: character.baseAssetId,
+          },
+        ],
+      };
+    }),
+  });
+}
+
+/** Deterministic UUIDs for TimelineEvents created by the batch planner. */
+export function sequentialEventIds(): () => string {
+  let counter = 0;
+  return () =>
+    `a0000000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+}
+
+/** AUTO-05 text with an explicit `表演：` section in every Shot. */
+export const PERFORMANCE_TWO_BLOCKS = [
+  '镜头：花园相遇',
+  '背景：花园',
+  '出场：张三、李四',
+  '站位：双人对话',
+  '对白：',
+  '张三：你怎么来了？',
+  '李四：我来找你。',
+  '表演：',
+  '1｜表情｜生气',
+  '1｜抖动',
+  '2｜右入场',
+  '2｜放大｜1.20',
+  '---',
+  '镜头：宗门大厅',
+  '背景：宗门大厅',
+  '出场：张三、大长老',
+  '站位：双人对话',
+  '对白：',
+  '大长老：你可知错？',
+  '张三：弟子知错。',
+  '表演：',
+  '3｜淡入',
+  '4｜移动｜x=1260｜y=760',
+].join('\n');
+
+export const PERFORMANCE_THREE_BLOCKS = [
+  PERFORMANCE_TWO_BLOCKS,
+  '---',
+  '镜头：山门',
+  '背景：花园',
+  '出场：李四、大长老',
+  '站位：双人对话',
+  '对白：',
+  '李四：这就走？',
+  '大长老：走吧。',
+  '表演：',
+  '5｜淡出',
+  '6｜左入场',
+].join('\n');
