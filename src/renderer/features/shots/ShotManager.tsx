@@ -72,6 +72,35 @@ export function ShotManager({
     return next !== null;
   };
 
+  const createShotFromTemplate = (
+    templateId: string,
+    name: string,
+  ): boolean => {
+    const next = mutate(() => shotStore.createFromTemplate(templateId, name));
+    return next !== null;
+  };
+
+  const saveSelectedShotAsTemplate = (name: string): void => {
+    if (!selectedShot) return;
+    const next = mutate(() => shotStore.saveAsTemplate(selectedShot.id, name));
+    if (next) setStatus(`已保存模板「${name.trim()}」`);
+  };
+
+  const removeShotTemplate = (templateId: string): void => {
+    const template = project?.shotTemplates.find(
+      (candidate) => candidate.id === templateId,
+    );
+    if (
+      !template ||
+      !window.confirm(
+        `确认删除模板“${template.name}”？已由它创建的镜头不受影响。`,
+      )
+    ) {
+      return;
+    }
+    mutate(() => shotStore.removeTemplate(templateId));
+  };
+
   const duplicateSelectedShot = (): void => {
     if (!selectedShot) return;
     mutate(() => shotStore.duplicate(selectedShot.id));
@@ -133,8 +162,11 @@ export function ShotManager({
           disabled={!snapshot}
           onBack={() => onViewChange('list')}
           onCreate={createShot}
+          onCreateFromTemplate={createShotFromTemplate}
+          onRemoveTemplate={removeShotTemplate}
           presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
+          templates={project?.shotTemplates ?? []}
         />
       ) : (
         <div className="shot-workspace">
@@ -157,6 +189,7 @@ export function ShotManager({
                   onDuplicate={duplicateSelectedShot}
                   onRemove={removeSelectedShot}
                   onRename={renameSelectedShot}
+                  onSaveAsTemplate={saveSelectedShotAsTemplate}
                   onSetDuration={setSelectedShotDuration}
                   shot={selectedShot}
                 />
