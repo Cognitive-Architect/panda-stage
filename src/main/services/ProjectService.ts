@@ -158,6 +158,7 @@ export class ProjectService {
           },
         ],
         shots: [],
+        shotTemplates: [],
         createdAt: timestamp,
         updatedAt: timestamp,
       });

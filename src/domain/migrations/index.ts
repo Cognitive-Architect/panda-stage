@@ -16,6 +16,7 @@ import {
   ProjectV14Schema,
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
+  ProjectV16Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -49,6 +50,7 @@ export type DetectedSchemaVersion =
   | 13
   | 14
   | 15
+  | 16
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -56,7 +58,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -88,6 +90,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 13 ||
     version === 14 ||
     version === 15 ||
+    version === 16 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -116,6 +119,7 @@ function migrateVersion15(input: unknown): Project {
     return ProjectSchema.parse({
       ...version15,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      shotTemplates: [],
       shots: version15.shots.map((shot) => ({
         ...shot,
         layers: shot.layers.map((layer) =>
@@ -138,6 +142,7 @@ function migrateVersion15(input: unknown): Project {
     return ProjectSchema.parse({
       ...version15,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      shotTemplates: [],
     });
   };
 
@@ -170,6 +175,7 @@ function migrateImageAuthorMetadata(input: unknown): Project {
     ...envelope,
     schemaVersion: PROJECT_SCHEMA_VERSION,
     animations: [],
+    shotTemplates: [],
     assets: envelope.assets.map((asset) => {
       if (
         !asset ||
@@ -285,12 +291,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v15) is routed here by version and resolved to
- * the current v16 project. The formal v1-v7
+ * Every persisted envelope (v0-v16) is routed here by version and resolved to
+ * the current v17 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v16 shape. A narrow compatibility normalization then
+ * validate the resolved v17 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -339,7 +345,7 @@ export function migrateProject(input: unknown): Project {
     }
     case 12:
       // v12 image assets had no author-defined usage or search keywords.
-      // Their facts remain explicitly uncategorized during the v16 upgrade.
+      // Their facts remain explicitly uncategorized during the current upgrade.
       project = migrateImageAuthorMetadata(ProjectV12Schema.parse(input));
       break;
     case 13: {
@@ -348,6 +354,7 @@ export function migrateProject(input: unknown): Project {
         ...version13,
         schemaVersion: PROJECT_SCHEMA_VERSION,
         animations: [],
+        shotTemplates: [],
       });
       break;
     }
@@ -356,14 +363,24 @@ export function migrateProject(input: unknown): Project {
       project = ProjectSchema.parse({
         ...version14,
         schemaVersion: PROJECT_SCHEMA_VERSION,
+        shotTemplates: [],
       });
       break;
     }
     case 15:
       project = migrateVersion15(input);
       break;
+    case 16:
+      // v16 is the first template-less envelope: add only the empty
+      // project-local template list and keep every other value untouched.
+      project = ProjectSchema.parse({
+        ...ProjectV16Schema.parse(input),
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        shotTemplates: [],
+      });
+      break;
     case PROJECT_SCHEMA_VERSION:
-      // Current v16 envelope: validate it, then apply only the narrow
+      // Current v17 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

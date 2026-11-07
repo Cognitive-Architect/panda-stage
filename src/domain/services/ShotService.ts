@@ -1,7 +1,10 @@
 import {
   ProjectSchema,
+  type Layer,
   type Project,
   type Shot,
+  type ShotTemplate,
+  type TimelineEvent,
 } from '../models';
 import { SHOT_MIN_DURATION_MS } from '../constants';
 
@@ -11,6 +14,9 @@ export type ShotServiceErrorCode =
   | 'INVALID_SHOT_DURATION'
   | 'SHOT_CONTENT_OUT_OF_RANGE'
   | 'INVALID_SHOT_ORDER'
+  | 'SHOT_TEMPLATE_NOT_FOUND'
+  | 'INVALID_SHOT_TEMPLATE_NAME'
+  | 'SHOT_STRUCTURE_INVALID'
   | 'ID_GENERATION_FAILED';
 
 export class ShotServiceError extends Error {
@@ -26,6 +32,23 @@ export class ShotServiceError extends Error {
 export interface CreateShotInput {
   name: string;
   durationMs: number;
+}
+
+export interface SaveShotAsTemplateInput {
+  shotId: string;
+  name: string;
+}
+
+export interface CreateShotFromTemplateInput {
+  templateId: string;
+  shotName: string;
+}
+
+/** The structural part of a Shot a template snapshot can own. */
+interface ShotStructure {
+  readonly layers: readonly Layer[];
+  readonly backgroundLayerId: string | null;
+  readonly timelineEvents: readonly TimelineEvent[];
 }
 
 export interface ShotServiceOptions {
@@ -84,12 +107,7 @@ export class ShotService {
     const sourceIndex = this.shotIndex(project, shotId);
     const source = project.shots[sourceIndex]!;
     const usedIds = this.projectIds(project);
-    const layerIds = new Map(
-      source.layers.map((layer) => [
-        layer.id,
-        this.nextUniqueId(usedIds),
-      ]),
-    );
+    const structure = this.remapShotStructure(source, usedIds);
     const audioClipIds = new Map(
       source.audioClips.map((clip) => [
         clip.id,
@@ -98,16 +116,9 @@ export class ShotService {
     );
     const duplicate: Shot = {
       ...source,
+      ...structure,
       id: this.nextUniqueId(usedIds),
       name: this.copyName(project, source.name),
-      layers: source.layers.map((layer) => ({
-        ...layer,
-        id: layerIds.get(layer.id)!,
-      })),
-      backgroundLayerId:
-        source.backgroundLayerId === null
-          ? null
-          : layerIds.get(source.backgroundLayerId)!,
       audioClips: source.audioClips.map((clip) => ({
         ...clip,
         id: audioClipIds.get(clip.id)!,
@@ -119,11 +130,6 @@ export class ShotService {
           dialogue.audioClipId === undefined
             ? undefined
             : audioClipIds.get(dialogue.audioClipId),
-      })),
-      timelineEvents: source.timelineEvents.map((event) => ({
-        ...event,
-        id: this.nextUniqueId(usedIds),
-        layerId: layerIds.get(event.layerId)!,
       })),
     };
     const shots = [...project.shots];
@@ -184,6 +190,140 @@ export class ShotService {
     const [shot] = shots.splice(sourceIndex, 1);
     shots.splice(targetIndex, 0, shot!);
     return this.replaceShots(project, shots);
+  }
+
+  /**
+   * Saves one Shot as a project-local template snapshot. The template owns its
+   * own Layer / TimelineEvent IDs and never keeps a link back to the source
+   * Shot, so editing or deleting that Shot cannot change the template.
+   */
+  saveAsTemplate(project: Project, input: SaveShotAsTemplateInput): Project {
+    const source = project.shots[this.shotIndex(project, input.shotId)]!;
+    const name = this.validTemplateName(input.name);
+    const usedIds = this.projectIds(project);
+    const template: ShotTemplate = {
+      id: this.nextUniqueId(usedIds),
+      name,
+      createdAt: this.now().toISOString(),
+      durationMs: source.durationMs,
+      defaultSubtitleStyleId: source.defaultSubtitleStyleId,
+      ...this.remapShotStructure(source, usedIds),
+    };
+    return this.commit(project, {
+      shotTemplates: [...project.shotTemplates, template],
+    });
+  }
+
+  /**
+   * Instantiates a template as a brand new Shot at the end of the list. Every
+   * instance-level ID is freshly allocated and the episode-specific dialogues
+   * and audio clips intentionally start empty.
+   */
+  createFromTemplate(
+    project: Project,
+    input: CreateShotFromTemplateInput,
+  ): Project {
+    const template = this.template(project, input.templateId);
+    const name = this.validName(project, input.shotName);
+    const usedIds = this.projectIds(project);
+    const shot: Shot = {
+      id: this.nextUniqueId(usedIds),
+      name,
+      durationMs: template.durationMs,
+      defaultSubtitleStyleId: template.defaultSubtitleStyleId,
+      ...this.remapShotStructure(template, usedIds),
+      dialogues: [],
+      audioClips: [],
+    };
+    return this.commit(project, { shots: [...project.shots, shot] });
+  }
+
+  removeTemplate(project: Project, templateId: string): Project {
+    this.template(project, templateId);
+    return this.commit(project, {
+      shotTemplates: project.shotTemplates.filter(
+        (template) => template.id !== templateId,
+      ),
+    });
+  }
+
+  private template(project: Project, templateId: string): ShotTemplate {
+    const template = project.shotTemplates.find(
+      (candidate) => candidate.id === templateId,
+    );
+    if (!template) {
+      throw new ShotServiceError(
+        'SHOT_TEMPLATE_NOT_FOUND',
+        `找不到镜头模板：${templateId}`,
+      );
+    }
+    return template;
+  }
+
+  private validTemplateName(rawName: string): string {
+    const name = rawName.trim();
+    if (!name) {
+      throw new ShotServiceError(
+        'INVALID_SHOT_TEMPLATE_NAME',
+        '请输入模板名称。',
+      );
+    }
+    if (name.length > 200) {
+      throw new ShotServiceError(
+        'INVALID_SHOT_TEMPLATE_NAME',
+        '模板名称最多 200 个字符。',
+      );
+    }
+    return name;
+  }
+
+  /**
+   * The single Layer / background / TimelineEvent remap core shared by Shot
+   * duplication, template saving and template instantiation. Rotation, scale,
+   * flip, opacity, zIndex and project-level resource references are copied
+   * as-is; only IDs are replaced.
+   */
+  private remapShotStructure(
+    structure: ShotStructure,
+    usedIds: Set<string>,
+  ): {
+    layers: Layer[];
+    backgroundLayerId: string | null;
+    timelineEvents: TimelineEvent[];
+  } {
+    const layerIds = new Map<string, string>();
+    for (const layer of structure.layers) {
+      layerIds.set(layer.id, this.nextUniqueId(usedIds));
+    }
+    if (
+      structure.backgroundLayerId !== null &&
+      !layerIds.has(structure.backgroundLayerId)
+    ) {
+      throw new ShotServiceError(
+        'SHOT_STRUCTURE_INVALID',
+        `镜头结构引用了不存在的背景图层：${structure.backgroundLayerId}`,
+      );
+    }
+    return {
+      layers: structure.layers.map((layer) => ({
+        ...layer,
+        id: layerIds.get(layer.id)!,
+      })),
+      backgroundLayerId:
+        structure.backgroundLayerId === null
+          ? null
+          : layerIds.get(structure.backgroundLayerId)!,
+      timelineEvents: structure.timelineEvents.map((event) => {
+        const layerId = layerIds.get(event.layerId);
+        if (!layerId) {
+          throw new ShotServiceError(
+            'SHOT_STRUCTURE_INVALID',
+            `时间轴事件引用了不存在的图层：${event.layerId}`,
+          );
+        }
+        return { ...event, id: this.nextUniqueId(usedIds), layerId };
+      }),
+    };
   }
 
   private validName(
@@ -266,6 +406,13 @@ export class ShotService {
       shot.dialogues.forEach((dialogue) => ids.add(dialogue.id));
       shot.timelineEvents.forEach((event) => ids.add(event.id));
     }
+    // Template-internal IDs share the same project-wide namespace: a new Shot
+    // must never reuse a Layer/Event ID that a persisted template already owns.
+    for (const template of project.shotTemplates) {
+      ids.add(template.id);
+      template.layers.forEach((layer) => ids.add(layer.id));
+      template.timelineEvents.forEach((event) => ids.add(event.id));
+    }
     return ids;
   }
 
@@ -284,9 +431,16 @@ export class ShotService {
   }
 
   private replaceShots(project: Project, shots: Shot[]): Project {
+    return this.commit(project, { shots });
+  }
+
+  private commit(
+    project: Project,
+    changes: Partial<Pick<Project, 'shots' | 'shotTemplates'>>,
+  ): Project {
     return ProjectSchema.parse({
       ...project,
-      shots,
+      ...changes,
       updatedAt: this.now().toISOString(),
     });
   }
