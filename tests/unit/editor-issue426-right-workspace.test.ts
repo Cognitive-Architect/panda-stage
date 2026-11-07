@@ -70,7 +70,7 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(inspector).toContain('embedded?: boolean');
     expect(inspector).toContain('data-presentation="embedded"');
     expect(inspector).toContain('right-inspector-drawer-open right-inspector-embedded');
-    expect(tools).toContain("{view === 'action-presets' ? '动作预设' : '工具'}");
+    expect(tools).toContain('VIEW_TITLES');
     expect(tools).toContain('aria-label="关闭工具"');
   });
 
