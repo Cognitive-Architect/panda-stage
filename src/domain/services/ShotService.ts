@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHOT_CAMERA,
   ProjectSchema,
   type Project,
   type Shot,
@@ -76,6 +77,7 @@ export class ShotService {
       dialogues: [],
       audioClips: [],
       timelineEvents: [],
+      camera: DEFAULT_SHOT_CAMERA,
     };
     return this.replaceShots(project, [...project.shots, shot]);
   }

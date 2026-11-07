@@ -14,7 +14,13 @@ import {
   resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
-import { buildProject, buildProjectWithAnimation, IDS } from '../testProject';
+import {
+  buildProject,
+  buildProjectWithAnimation,
+  IDS,
+  legacyShot,
+  legacyShots,
+} from '../testProject';
 import {
   adaptivePartsFixture,
   adaptivePartsSourceRootTransform,
@@ -226,6 +232,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     const legacyV11 = {
       ...version11Fields,
       schemaVersion: 11,
+      shots: legacyShots(current.shots),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version11Asset } = asset;
@@ -308,6 +315,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     const legacyV12 = {
       ...withoutAnimations,
       schemaVersion: 12,
+      shots: legacyShots(current.shots),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version12Asset } = asset;
@@ -340,7 +348,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       })),
     );
     expect(migrated.characters).toEqual(legacyV12.characters);
-    expect(migrated.shots).toEqual(legacyV12.shots);
+    expect(migrated.shots.map(legacyShot)).toEqual(legacyV12.shots);
     expect(legacyV12).toEqual(before);
   });
 
@@ -348,7 +356,11 @@ describe('T01 迁移回填 timelineEvents', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
-    const legacyV13 = { ...version13Fields, schemaVersion: 13 };
+    const legacyV13 = {
+      ...version13Fields,
+      schemaVersion: 13,
+      shots: legacyShots(current.shots),
+    };
     const before = structuredClone(legacyV13);
 
     expect(ProjectV13Schema.parse(legacyV13)).toEqual(legacyV13);
@@ -364,7 +376,11 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('strictly migrates v14 projects to v16 while retaining animation definitions', () => {
     const current = buildProjectWithAnimation();
-    const legacyV14 = { ...current, schemaVersion: 14 };
+    const legacyV14 = {
+      ...current,
+      schemaVersion: 14,
+      shots: legacyShots(current.shots),
+    };
     const before = structuredClone(legacyV14);
 
     expect(ProjectV14Schema.parse(legacyV14)).toEqual(legacyV14);
@@ -408,7 +424,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('strictly migrates v15 animation instances to v16 with once+hold defaults', () => {
     const current = buildProjectWithAnimation();
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const v15Layer = {
       id: IDS.animationLayer,
       name: 'walk instance',
@@ -477,7 +493,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
     };
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const legacyV15 = {
       ...current,
       schemaVersion: 15,
@@ -554,7 +570,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
     };
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const mixedV15 = {
       ...current,
       schemaVersion: 15,
@@ -603,7 +619,12 @@ describe('T01 迁移回填 timelineEvents', () => {
   });
 
   it('accepts the shared static v15 shape when both strict historical schemas agree', () => {
-    const staticV15 = { ...buildProject(), schemaVersion: 15 };
+    const currentStatic = buildProject();
+    const staticV15 = {
+      ...currentStatic,
+      schemaVersion: 15,
+      shots: legacyShots(currentStatic.shots),
+    };
 
     expect(ProjectV15Schema.safeParse(staticV15).success).toBe(true);
     expect(ProjectV15AdaptiveSchema.safeParse(staticV15).success).toBe(true);

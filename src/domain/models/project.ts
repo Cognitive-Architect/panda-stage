@@ -29,6 +29,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV16Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
   ShotV2Schema,
@@ -119,6 +120,17 @@ const ProjectDataSchema = z
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+/**
+ * Strict v16 envelope: the last shape before the persisted per-Shot camera
+ * track (AUTO-07B). AUTO-03's Draft PR #1004 claims v17 but has not landed, so
+ * this branch advances to a clearly-labelled successor version (v18) instead
+ * of re-declaring an incompatible "final v17".
+ */
+export const ProjectV16Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(16),
+  shots: z.array(ShotV16Schema),
+});
 
 const ProjectV12DataSchema = z
   .object({
@@ -380,7 +392,7 @@ export function inferLegacyBackgroundLayerId(
 function addBackgroundIdentity<T extends {
   assets: AssetV12[];
   shots: z.infer<typeof ShotV2Schema>[];
-}>(project: T): Array<z.infer<typeof ShotSchema>> {
+}>(project: T): Array<z.input<typeof ShotSchema>> {
   return project.shots.map((shot) => ({
     ...addAudioRoles(shot),
     layers: shot.layers.map((layer) => ({
