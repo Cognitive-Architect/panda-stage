@@ -45,8 +45,10 @@ describe('A01 actual ProjectService audio persistence', () => {
       Reflect.deleteProperty(asset, 'usage');
       Reflect.deleteProperty(asset, 'keywords');
     }
-    const { animations: _animations, ...legacyProject } = project;
+    const { animations: _animations, shotTemplates: _templates, ...legacyProject } = project;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
     })) };

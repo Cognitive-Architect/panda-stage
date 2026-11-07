@@ -193,6 +193,26 @@ function v2WithoutTimelineEvents(): unknown {
   };
 }
 
+/**
+ * Legacy envelopes predate Shot templates, so every downgraded fixture drops
+ * the current-only collection before it is parsed as V11–V15.
+ */
+function withVersion<
+  T extends { shotTemplates?: unknown; schemaVersion?: number },
+>(
+  project: T,
+  schemaVersion: number,
+): Omit<T, 'shotTemplates' | 'schemaVersion'> & { schemaVersion: number } {
+  const {
+    shotTemplates: _shotTemplates,
+    schemaVersion: _schemaVersion,
+    ...rest
+  } = project;
+  void _shotTemplates;
+  void _schemaVersion;
+  return { ...rest, schemaVersion };
+}
+
 describe('T01 迁移回填 timelineEvents', () => {
   it('v1 旧项目（缺 timelineEvents）可被打开且结果含空数组', () => {
     const result = migrateProject(v1WithoutTimelineEvents()) as Project;
@@ -224,8 +244,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     const { animations: _animations, ...version11Fields } = current;
     void _animations;
     const legacyV11 = {
-      ...version11Fields,
-      schemaVersion: 11,
+      ...withVersion(version11Fields, 11),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version11Asset } = asset;
@@ -306,8 +325,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     const { animations: _animations, ...withoutAnimations } = current;
     void _animations;
     const legacyV12 = {
-      ...withoutAnimations,
-      schemaVersion: 12,
+      ...withVersion(withoutAnimations, 12),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version12Asset } = asset;
@@ -348,7 +366,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
-    const legacyV13 = { ...version13Fields, schemaVersion: 13 };
+    const legacyV13 = withVersion(version13Fields, 13);
     const before = structuredClone(legacyV13);
 
     expect(ProjectV13Schema.parse(legacyV13)).toEqual(legacyV13);
@@ -364,7 +382,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('strictly migrates v14 projects to v16 while retaining animation definitions', () => {
     const current = buildProjectWithAnimation();
-    const legacyV14 = { ...current, schemaVersion: 14 };
+    const legacyV14 = withVersion(current, 14);
     const before = structuredClone(legacyV14);
 
     expect(ProjectV14Schema.parse(legacyV14)).toEqual(legacyV14);
@@ -427,8 +445,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       zIndex: 3,
     };
     const legacyV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       shots: [{ ...shot, layers: [...shot.layers, v15Layer] }],
     };
     const before = structuredClone(legacyV15);
@@ -479,8 +496,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     const shot = current.shots[0]!;
     const legacyV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       characters: [...current.characters, adaptiveCharacter],
       voiceProfiles: [
         ...current.voiceProfiles,
@@ -556,8 +572,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     const shot = current.shots[0]!;
     const mixedV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       characters: [...current.characters, adaptiveCharacter],
       voiceProfiles: [
         ...current.voiceProfiles,
@@ -603,7 +618,7 @@ describe('T01 迁移回填 timelineEvents', () => {
   });
 
   it('accepts the shared static v15 shape when both strict historical schemas agree', () => {
-    const staticV15 = { ...buildProject(), schemaVersion: 15 };
+    const staticV15 = withVersion(buildProject(), 15);
 
     expect(ProjectV15Schema.safeParse(staticV15).success).toBe(true);
     expect(ProjectV15AdaptiveSchema.safeParse(staticV15).success).toBe(true);

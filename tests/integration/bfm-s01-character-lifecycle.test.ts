@@ -77,8 +77,10 @@ describe('BFM-S01 composite Character persistence', () => {
       name: 'BFM S01 legacy character',
     });
     const base = buildProject();
-    const { animations: _animations, ...legacyBase } = base;
+    const { animations: _animations, shotTemplates: _templates, ...legacyBase } = base;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const legacyAssets = structuredClone(base.assets);
     for (const asset of legacyAssets) {
       if (asset.kind !== 'image') continue;

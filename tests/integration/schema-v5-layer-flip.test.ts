@@ -35,8 +35,10 @@ describe('schema v5 explicit flip lifecycle', () => {
     const projectRoot = path.join(parent, 'schema-v4.pandastage');
     const projectFile = path.join(projectRoot, 'project.json');
     const current = migrateProject(exampleProject);
-    const { animations: _animations, ...legacyCurrent } = current;
+    const { animations: _animations, shotTemplates: _templates, ...legacyCurrent } =
+      current;
     void _animations;
+    void _templates;
     const legacyAssets = structuredClone(current.assets);
     for (const asset of legacyAssets) {
       if (asset.kind !== 'image') continue;
