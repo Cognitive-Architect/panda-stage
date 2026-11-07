@@ -303,3 +303,28 @@ export const PERFORMANCE_THREE_BLOCKS = [
   '5｜淡出',
   '6｜左入场',
 ].join('\n');
+
+/**
+ * AUTO-06-FIX-01: the second Shot's `表演：` directs the first Shot's line 1
+ * (legal: any real ordinal of the batch) plus one line of its own.
+ */
+export const PERFORMANCE_CROSS_SHOT_BLOCKS = [
+  '镜头：花园相遇',
+  '背景：花园',
+  '出场：张三、李四',
+  '站位：双人对话',
+  '对白：',
+  '张三：你怎么来了？',
+  '李四：我来找你。',
+  '---',
+  '镜头：宗门大厅',
+  '背景：宗门大厅',
+  '出场：张三、大长老',
+  '站位：双人对话',
+  '对白：',
+  '大长老：你可知错？',
+  '张三：弟子知错。',
+  '表演：',
+  '1｜抖动',
+  '3｜淡入',
+].join('\n');

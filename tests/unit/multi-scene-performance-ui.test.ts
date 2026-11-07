@@ -108,7 +108,11 @@ describe('AUTO-06 performance orchestration surface', () => {
     expect(html).toContain('检查素材、配音与表演');
     expect(html).toContain('生成镜头与表演');
     expect(html).toContain('1｜表情｜生气');
-    expect(html).toContain('2｜移动｜x=1260｜y=760');
+    // AUTO-06-FIX-01 A: the sample keeps one logical property per line, so the
+    // second line enters and scales while the fourth line moves.
+    expect(html).toContain('2｜右入场');
+    expect(html).toContain('2｜放大｜1.20');
+    expect(html).toContain('4｜移动｜x=1260｜y=760');
     expect(html).toContain('disabled=""');
     expect(html.match(/data-testid="multi-scene-dialogue-generate"/gu)).toHaveLength(1);
     expect(html).not.toContain('<h1');
