@@ -1,6 +1,7 @@
-import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import { ArrowLeft, ListFilter, Maximize2, ScanLine, Sparkles } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
+import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
@@ -9,7 +10,13 @@ export interface ProjectToolsDrawerProps {
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets';
+type ProjectToolsView = 'home' | 'action-presets' | 'batch-adjust';
+
+const VIEW_TITLES: Record<ProjectToolsView, string> = {
+  home: '工具',
+  'action-presets': '动作预设',
+  'batch-adjust': '批量调整',
+};
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -46,7 +53,7 @@ export function ProjectToolsDrawer({
     >
       <header className="project-tools-drawer-header">
         <div className="project-tools-drawer-heading">
-          {view === 'action-presets' ? (
+          {view === 'home' ? null : (
             <button
               aria-label="返回工具"
               className="project-tools-back"
@@ -57,10 +64,8 @@ export function ProjectToolsDrawer({
               <DecorativeIcon icon={ArrowLeft} size={18} />
               <span>工具</span>
             </button>
-          ) : null}
-          <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '工具'}
-          </h2>
+          )}
+          <h2 id="project-tools-heading">{VIEW_TITLES[view]}</h2>
         </div>
         <button
           aria-label="关闭工具"
@@ -133,7 +138,34 @@ export function ProjectToolsDrawer({
               <span>打开动作预设</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-batch-adjust-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-batch-adjust-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-batch-adjust-heading">批量调整</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="batch-adjust"
+              data-testid="project-tools-batch-adjust"
+              onClick={() => setView('batch-adjust')}
+              type="button"
+            >
+              <DecorativeIcon icon={ListFilter} size={18} />
+              <span>打开批量调整</span>
+            </button>
+          </section>
         </div>
+      ) : view === 'batch-adjust' ? (
+        <section
+          aria-label="批量调整"
+          className="project-tools-batch-adjust-view"
+          data-testid="project-tools-batch-adjust-view"
+        >
+          <BatchDialogueMovePanel />
+        </section>
       ) : (
         <section
           aria-label="动作预设"

@@ -1,0 +1,160 @@
+/**
+ * AUTO-02 V0 Batch Adjust (Issue #1001). One flat column: shot name, dialogue
+ * rows, one seconds field, one primary action. No nested cards, no second
+ * selection framework.
+ */
+.project-tools-batch-adjust-view {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  align-content: start;
+}
+
+.batch-adjust {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: var(--ui-space-3);
+}
+
+.batch-adjust-shot {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.batch-adjust-empty {
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font: var(--ui-font-secondary);
+}
+
+.batch-adjust-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  list-style: none;
+}
+
+.batch-adjust-row {
+  display: grid;
+  min-height: 44px;
+  padding: 4px 6px;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  grid-template-columns: 20px minmax(0, 1fr) auto 14px;
+  gap: 8px;
+  border-radius: var(--ui-radius-small);
+}
+
+.batch-adjust-row:hover {
+  background: rgb(45 104 62 / 22%);
+}
+
+.batch-adjust-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ui-color-selected-border);
+}
+
+.batch-adjust-name {
+  min-width: 0;
+  overflow: hidden;
+  font: var(--ui-font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-adjust-time {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.batch-adjust-next {
+  color: var(--ui-color-selected-border);
+  font: var(--ui-font-secondary);
+  font-variant-numeric: tabular-nums;
+  grid-column: 2 / -1;
+  white-space: nowrap;
+}
+
+.batch-adjust-audio {
+  color: var(--ui-color-text-muted);
+}
+
+.batch-adjust-select-all {
+  width: fit-content;
+  min-height: 32px;
+  padding: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  background: transparent;
+  text-decoration: underline;
+  text-decoration-color: rgb(255 255 255 / 24%);
+  text-underline-offset: 3px;
+}
+
+.batch-adjust-select-all:hover,
+.batch-adjust-select-all:focus-visible {
+  color: var(--ui-color-text-primary);
+}
+
+.batch-adjust-delta {
+  display: grid;
+  align-items: center;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  grid-template-columns: auto minmax(0, 96px) auto;
+  gap: 8px;
+}
+
+.batch-adjust-delta-input {
+  min-height: 36px;
+  padding: 4px 8px;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  background: var(--ui-color-surface-overlay);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+}
+
+.batch-adjust-delta-input:focus-visible {
+  border-color: var(--ui-color-selected-border);
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.batch-adjust-summary {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-adjust-blocked {
+  margin: 0;
+  color: #ffd166;
+  font: var(--ui-font-secondary);
+}
+
+.batch-adjust-apply {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.batch-adjust-status {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}

@@ -10,6 +10,14 @@ import {
 
 const MIN_TIMED_DIALOGUE_DURATION_MS = 1;
 
+/** Creator-facing seconds copy for a millisecond shift: 500 → "0.5". */
+function formatDeltaSeconds(deltaMs: number): string {
+  const seconds = Math.abs(deltaMs) / 1000;
+  return Number.isInteger(seconds)
+    ? String(seconds)
+    : seconds.toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '');
+}
+
 export type DialogueServiceErrorCode =
   | 'SHOT_NOT_FOUND'
   | 'DIALOGUE_NOT_FOUND'
@@ -19,11 +27,15 @@ export type DialogueServiceErrorCode =
   | 'INVALID_DIALOGUE_TEXT'
   | 'DIALOGUE_OVERLAP'
   | 'DIALOGUE_NO_AVAILABLE_SLOT'
+  | 'DIALOGUE_BATCH_TOO_SMALL'
+  | 'DIALOGUE_NOT_TIMED'
+  | 'DIALOGUE_BATCH_OUT_OF_RANGE'
   | 'AUDIO_ASSET_NOT_FOUND'
   | 'AUDIO_ASSET_NOT_AUDIO'
   | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
   | 'AUDIO_CLIP_NOT_FOUND'
   | 'AUDIO_CLIP_TOO_SHORT'
+  | 'AUDIO_CLIP_OUT_OF_RANGE'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -80,6 +92,38 @@ export interface MoveDialogueInput {
   shotId: string;
   dialogueId: string;
   deltaMs: number;
+}
+
+export interface MoveManyDialoguesInput {
+  shotId: string;
+  /** Selected Timed Dialogues; duplicates are collapsed. */
+  dialogueIds: readonly string[];
+  deltaMs: number;
+}
+
+/** One candidate row of a batch move, expressed in absolute milliseconds. */
+export interface DialogueBatchMoveEntry {
+  readonly dialogueId: string;
+  readonly characterId: string;
+  readonly startMs: number;
+  readonly endMs: number;
+  /** The clip that follows the Dialogue; null when it has no voice. */
+  readonly audioClipId: string | null;
+  readonly audioStartMs: number | null;
+  readonly audioEndMs: number | null;
+}
+
+/**
+ * A fully validated batch move. Rendering it is read-only; only `moveMany`
+ * commits it to the Project.
+ */
+export interface DialogueBatchMovePlan {
+  readonly shotId: string;
+  readonly deltaMs: number;
+  readonly entries: readonly DialogueBatchMoveEntry[];
+  readonly earliestStartMs: number;
+  readonly latestEndMs: number;
+  readonly audioClipCount: number;
 }
 
 export interface ResizeDialogueInput {
@@ -371,6 +415,208 @@ export class DialogueService {
       timing,
       startMs - dialogue.startMs,
     );
+  }
+
+  /**
+   * Validates a batch shift without writing anything. Every candidate is built
+   * from the same snapshot, so one illegal row rejects the whole batch instead
+   * of leaving half the group moved. Unlike `move`, this deliberately does not
+   * clamp: clamping would silently break the spacing inside the group.
+   */
+  planMoveMany(
+    project: Project,
+    input: MoveManyDialoguesInput,
+  ): DialogueBatchMovePlan {
+    const shot = this.shot(project, input.shotId);
+    this.validInteger(input.deltaMs, '移动量');
+    const dialogueIds = [...new Set(input.dialogueIds)];
+    if (dialogueIds.length < 2) {
+      throw new DialogueServiceError(
+        'DIALOGUE_BATCH_TOO_SMALL',
+        '至少勾选两条对白才能整体移动。',
+      );
+    }
+
+    const selected = dialogueIds.map((dialogueId) =>
+      this.dialogue(shot, dialogueId),
+    );
+    for (const dialogue of selected) {
+      if (dialogue.endMs <= dialogue.startMs) {
+        throw new DialogueServiceError(
+          'DIALOGUE_NOT_TIMED',
+          `「${this.dialogueLabel(project, dialogue)}」还没有确定时长，不能整体移动。`,
+        );
+      }
+    }
+
+    const selectedIds = new Set(dialogueIds);
+    // Only unselected Dialogues can block the batch; the selected pair keeps its
+    // own relative spacing, so it must never block itself.
+    const obstacles = shot.dialogues.filter(
+      (candidate) => !selectedIds.has(candidate.id),
+    );
+    const direction = input.deltaMs < 0 ? '向前' : '向后';
+    const deltaLabel = formatDeltaSeconds(input.deltaMs);
+
+    const entries = selected.map((dialogue): DialogueBatchMoveEntry => {
+      const startMs = dialogue.startMs + input.deltaMs;
+      const endMs = dialogue.endMs + input.deltaMs;
+      if (startMs < 0) {
+        throw new DialogueServiceError(
+          'DIALOGUE_BATCH_OUT_OF_RANGE',
+          `再${direction}移动 ${deltaLabel} 秒会超出镜头开头。`,
+        );
+      }
+      if (endMs > shot.durationMs) {
+        throw new DialogueServiceError(
+          'DIALOGUE_BATCH_OUT_OF_RANGE',
+          `再${direction}移动 ${deltaLabel} 秒会超出镜头结尾。`,
+        );
+      }
+
+      const conflict = obstacles.find(
+        (candidate) =>
+          candidate.endMs > candidate.startMs &&
+          startMs < candidate.endMs &&
+          endMs > candidate.startMs,
+      );
+      if (conflict) {
+        throw new DialogueServiceError(
+          'DIALOGUE_OVERLAP',
+          `「${this.dialogueLabel(project, dialogue)}」移动后会与「${this.dialogueLabel(
+            project,
+            conflict,
+          )}」的对白重叠；首尾相接可以。`,
+        );
+      }
+
+      if (!dialogue.audioClipId) {
+        return {
+          dialogueId: dialogue.id,
+          characterId: dialogue.characterId,
+          startMs,
+          endMs,
+          audioClipId: null,
+          audioStartMs: null,
+          audioEndMs: null,
+        };
+      }
+
+      const clip = this.audioClip(shot, dialogue.audioClipId);
+      const asset = this.audioAsset(project, clip.assetId);
+      const clipDurationMs = clip.endMs - clip.startMs;
+      this.assertAudioRange(asset, clip.offsetMs, clipDurationMs);
+      const audioStartMs = clip.startMs + input.deltaMs;
+      const audioEndMs = clip.endMs + input.deltaMs;
+      if (audioStartMs < 0 || audioEndMs > shot.durationMs) {
+        throw new DialogueServiceError(
+          'AUDIO_CLIP_OUT_OF_RANGE',
+          `「${this.dialogueLabel(project, dialogue)}」的配音会超出镜头范围。`,
+        );
+      }
+      return {
+        dialogueId: dialogue.id,
+        characterId: dialogue.characterId,
+        startMs,
+        endMs,
+        audioClipId: clip.id,
+        audioStartMs,
+        audioEndMs,
+      };
+    });
+
+    return {
+      shotId: shot.id,
+      deltaMs: input.deltaMs,
+      entries,
+      earliestStartMs: Math.min(...entries.map((entry) => entry.startMs)),
+      latestEndMs: Math.max(...entries.map((entry) => entry.endMs)),
+      audioClipCount: entries.filter((entry) => entry.audioClipId !== null)
+        .length,
+    };
+  }
+
+  /**
+   * Shifts several Timed Dialogues and their own bound voice clips together.
+   * The whole batch is validated first and committed as one Shot replacement,
+   * so a caller records exactly one History command and an illegal row leaves
+   * the Project untouched.
+   */
+  moveMany(project: Project, input: MoveManyDialoguesInput): Project {
+    const plan = this.planMoveMany(project, input);
+    if (plan.deltaMs === 0) return project;
+
+    const shot = this.shot(project, input.shotId);
+    const entryByDialogueId = new Map(
+      plan.entries.map((entry) => [entry.dialogueId, entry]),
+    );
+    const selectedIds = new Set(entryByDialogueId.keys());
+
+    const usedIds = this.collectIds(project);
+    const replacedClips = new Map<string, AudioClip>();
+    const clipIdForSelected = new Map<string, string>();
+    const appendedClips: AudioClip[] = [];
+    const selectedIdsByClipId = new Map<string, Set<string>>();
+    for (const dialogue of shot.dialogues) {
+      if (!selectedIds.has(dialogue.id) || !dialogue.audioClipId) continue;
+      const ids = selectedIdsByClipId.get(dialogue.audioClipId) ?? new Set();
+      ids.add(dialogue.id);
+      selectedIdsByClipId.set(dialogue.audioClipId, ids);
+    }
+
+    for (const [clipId, selectedForClip] of selectedIdsByClipId) {
+      const clip = this.audioClip(shot, clipId);
+      const references = shot.dialogues.filter(
+        (candidate) => candidate.audioClipId === clipId,
+      );
+      const timing = {
+        startMs: clip.startMs + plan.deltaMs,
+        endMs: clip.endMs + plan.deltaMs,
+      };
+      // A legacy clip shared with an unselected Dialogue keeps its own timing:
+      // the selected side gets a copy, exactly like the single-Dialogue move.
+      const isolated = references.some(
+        (candidate) => !selectedForClip.has(candidate.id),
+      );
+      if (!isolated) {
+        replacedClips.set(clipId, { ...clip, ...timing });
+        clipIdForSelected.set(clipId, clipId);
+        continue;
+      }
+      const copy: AudioClip = {
+        ...clip,
+        id: this.nextId(usedIds),
+        ...timing,
+      };
+      appendedClips.push(copy);
+      clipIdForSelected.set(clipId, copy.id);
+    }
+
+    const nextDialogues: Dialogue[] = shot.dialogues.map((dialogue) => {
+      const entry = entryByDialogueId.get(dialogue.id);
+      if (!entry) return dialogue;
+      const audioClipId = dialogue.audioClipId
+        ? (clipIdForSelected.get(dialogue.audioClipId) ?? dialogue.audioClipId)
+        : null;
+      const moved: Dialogue = {
+        ...dialogue,
+        startMs: entry.startMs,
+        endMs: entry.endMs,
+      };
+      if (audioClipId) moved.audioClipId = audioClipId;
+      return moved;
+    });
+
+    return this.replaceShot(project, shot.id, {
+      ...shot,
+      audioClips: [
+        ...shot.audioClips.map(
+          (clip) => replacedClips.get(clip.id) ?? clip,
+        ),
+        ...appendedClips,
+      ],
+      dialogues: nextDialogues,
+    });
   }
 
   resize(project: Project, input: ResizeDialogueInput): Project {
@@ -701,6 +947,15 @@ export class DialogueService {
       );
     }
     return dialogue;
+  }
+
+  /** Creator-facing name for one Dialogue; never used as identity. */
+  private dialogueLabel(project: Project, dialogue: Dialogue): string {
+    return (
+      project.characters.find(
+        (candidate) => candidate.id === dialogue.characterId,
+      )?.name ?? '对白'
+    );
   }
 
   private character(project: Project, characterId: string): Character {
