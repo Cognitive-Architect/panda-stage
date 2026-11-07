@@ -70,4 +70,21 @@ describe('AUTO-04 multi-scene surface', () => {
     expect(source.match(/updateProject\(/gu)).toHaveLength(1);
     expect(source).toContain('MULTI_SCENE_HISTORY_LABEL');
   });
+
+  it('delegates the batch lifecycle to the panel model', () => {
+    const source = readFileSync(
+      'src/renderer/features/shots/MultiScenePanel.tsx',
+      'utf8',
+    );
+    // FIX-01: editing the storyboard must invalidate the batch it produced, and
+    // the store's identity gate cannot see that, so the panel owns no local
+    // checked state of its own.
+    expect(source).toContain('initialPanelState');
+    expect(source).toContain('inputChanged(');
+    expect(source).toContain('checkApplied(');
+    expect(source).toContain('submissionBatch(');
+    expect(source).not.toContain('setRawInput');
+    // FIX-01: a stale batch must also disable the button, not just the handler.
+    expect(source).toContain('disabled={!submittable}');
+  });
 });
