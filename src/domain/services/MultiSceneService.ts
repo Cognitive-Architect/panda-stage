@@ -76,7 +76,15 @@ export type MultiScenePlanFailureCode =
   | 'SPEAKER_BINDING_UNRESOLVED'
   | 'SPEAKER_BINDING_CONFLICT'
   | 'AUDIO_MATCH_FAILED'
-  | 'DIALOGUE_GENERATION_FAILED';
+  | 'DIALOGUE_GENERATION_FAILED'
+  // AUTO-06: performance directives refuse the whole batch on any of these.
+  | 'PERFORMANCE_ORDINAL_UNKNOWN'
+  | 'PERFORMANCE_TARGET_UNRESOLVED'
+  | 'PERFORMANCE_LAYER_LOCKED'
+  | 'PERFORMANCE_EXPRESSION_UNRESOLVED'
+  | 'PERFORMANCE_OUT_OF_SHOT'
+  | 'PERFORMANCE_EVENT_INVALID'
+  | 'PERFORMANCE_CONFLICT';
 
 /**
  * AUTO-05 attaches a richer read-only plan through the same outcome contract.

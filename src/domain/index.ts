@@ -9,6 +9,7 @@ export * from './position-chain';
 export * from './layout/quickCharacterLayout';
 export * from './scene/multiSceneInput';
 export * from './scene/multiSceneSpeakers';
+export * from './scene/multiScenePerformance';
 export * from './scene/multiSceneAudio';
 export * from './scene/sceneResources';
 export * from './selectors';
