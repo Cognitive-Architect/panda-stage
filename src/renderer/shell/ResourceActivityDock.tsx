@@ -23,6 +23,10 @@ import type {
   PendingFlaCharacterCreateRecord,
 } from '../features/fla-import/fla-character-create-recovery';
 import type { FlaCharacterCreateStatusResponse } from '../../shared/fla-character-create-api';
+import {
+  shouldHandleSceneToolMessage,
+  type SceneToolRequest,
+} from './sceneToolHandoff';
 import type {
   AdaptivePartsAssemblyActionsRef,
   CharacterWorkspaceView,
@@ -70,12 +74,16 @@ export interface ResourceActivityDockProps {
   projectSessionIdentity?: string;
   /**
    * Cross-surface request from Project Tools → Auto Scene: open the asset
-   * library and start an import so the missing background can be added.
+   * library and start an import so the missing background can be added. The
+   * request is bound to the session that issued it.
    */
-  sceneBackgroundImportRequest?: number;
-  onSceneBackgroundImported?(importedAssetIds: readonly string[]): void;
+  sceneBackgroundImportRequest?: SceneToolRequest | null;
+  onSceneBackgroundImported?(
+    sessionIdentity: string,
+    importedAssetIds: readonly string[],
+  ): void;
   /** Cross-surface request from Project Tools → Auto Scene: open characters. */
-  sceneCharacterLibraryRequest?: number;
+  sceneCharacterLibraryRequest?: SceneToolRequest | null;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
@@ -205,10 +213,12 @@ export function ResourceActivityDock({
   const projectSessionIdentity =
     requestedProjectSessionIdentity ?? projectIdentity;
   // Auto Scene lives in Project Tools; the left dock only remains the asset and
-  // character surface that flow hands off to.
-  const sceneImportPending = useRef(false);
+  // character surface that flow hands off to. A pending import remembers the
+  // session that asked for it, so a late completion can never report back into
+  // another project.
+  const sceneImportPending = useRef<string | null>(null);
   useLayoutEffect(() => {
-    sceneImportPending.current = false;
+    sceneImportPending.current = null;
   }, [projectIdentity, projectSessionIdentity]);
   const narrow = useNarrowViewport(
     compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
@@ -241,7 +251,7 @@ export function ResourceActivityDock({
       return false;
     }
     if (!open && activeActivity === 'assets') {
-      sceneImportPending.current = false;
+      sceneImportPending.current = null;
     }
     if (requestedDrawerOpen === undefined) {
       setInternalDrawerOpen(open);
@@ -481,7 +491,7 @@ export function ResourceActivityDock({
       return;
     }
     if (sceneImportPending.current && activity !== 'assets') {
-      sceneImportPending.current = false;
+      sceneImportPending.current = null;
     }
     if (narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
@@ -495,7 +505,7 @@ export function ResourceActivityDock({
 
   const openSceneBackgroundImport = (): void => {
     if (!confirmLeavingCharacterActivity()) return;
-    sceneImportPending.current = true;
+    sceneImportPending.current = projectSessionIdentity;
     setAssetView('browser');
     setInternalActivity('assets');
     onActiveActivityChange?.('assets');
@@ -509,10 +519,14 @@ export function ResourceActivityDock({
     assets: readonly Asset[],
     importedAssetIds: readonly string[],
   ): void => {
-    if (!sceneImportPending.current) return;
-    sceneImportPending.current = false;
+    const pendingSessionIdentity = sceneImportPending.current;
+    if (!pendingSessionIdentity) return;
+    sceneImportPending.current = null;
+    // An import that finished after the project changed is not a receipt for
+    // the project now on screen.
+    if (pendingSessionIdentity !== projectSessionIdentity) return;
     if (assets.length === 0) return;
-    onSceneBackgroundImported?.(importedAssetIds);
+    onSceneBackgroundImported?.(pendingSessionIdentity, importedAssetIds);
   };
 
   const openSceneCharacterLibrary = (): void => {
@@ -525,29 +539,39 @@ export function ResourceActivityDock({
 
   const handledSceneImportRequestRef = useRef(0);
   useEffect(() => {
+    const request = sceneBackgroundImportRequest;
     if (
-      !sceneBackgroundImportRequest ||
-      sceneBackgroundImportRequest === handledSceneImportRequestRef.current
+      !request ||
+      !shouldHandleSceneToolMessage(
+        request,
+        projectSessionIdentity,
+        handledSceneImportRequestRef.current,
+      )
     ) {
       return;
     }
-    handledSceneImportRequestRef.current = sceneBackgroundImportRequest;
+    handledSceneImportRequestRef.current = request.token;
     // The request token is the only trigger; the handler reads current state.
     openSceneBackgroundImport();
-  }, [sceneBackgroundImportRequest]);
+  }, [projectSessionIdentity, sceneBackgroundImportRequest]);
 
   const handledSceneCharacterRequestRef = useRef(0);
   useEffect(() => {
+    const request = sceneCharacterLibraryRequest;
     if (
-      !sceneCharacterLibraryRequest ||
-      sceneCharacterLibraryRequest === handledSceneCharacterRequestRef.current
+      !request ||
+      !shouldHandleSceneToolMessage(
+        request,
+        projectSessionIdentity,
+        handledSceneCharacterRequestRef.current,
+      )
     ) {
       return;
     }
-    handledSceneCharacterRequestRef.current = sceneCharacterLibraryRequest;
+    handledSceneCharacterRequestRef.current = request.token;
     // The request token is the only trigger; the handler reads current state.
     openSceneCharacterLibrary();
-  }, [sceneCharacterLibraryRequest]);
+  }, [projectSessionIdentity, sceneCharacterLibraryRequest]);
 
   return (
     <section

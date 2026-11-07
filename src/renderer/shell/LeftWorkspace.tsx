@@ -14,6 +14,7 @@ import type {
 import type { FlaCharacterCreateStatusResponse } from '../../shared/fla-character-create-api';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
+import type { SceneToolRequest } from './sceneToolHandoff';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 export interface LeftWorkspaceProps {
@@ -26,10 +27,13 @@ export interface LeftWorkspaceProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   projectSessionIdentity?: string;
   /** Project Tools → Auto Scene hand-off into the asset library. */
-  sceneBackgroundImportRequest?: number;
-  onSceneBackgroundImported?(importedAssetIds: readonly string[]): void;
+  sceneBackgroundImportRequest?: SceneToolRequest | null;
+  onSceneBackgroundImported?(
+    sessionIdentity: string,
+    importedAssetIds: readonly string[],
+  ): void;
   /** Project Tools → Auto Scene hand-off into the character library. */
-  sceneCharacterLibraryRequest?: number;
+  sceneCharacterLibraryRequest?: SceneToolRequest | null;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;

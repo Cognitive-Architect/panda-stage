@@ -26,11 +26,10 @@ import {
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer, type ProjectToolsView } from './ProjectToolsDrawer';
 import { RightInspector } from './RightInspector';
-
-export interface SceneBackgroundImportResult {
-  token: number;
-  backgroundAssetId: string | null;
-}
+import {
+  belongsToSceneToolSession,
+  type SceneToolImportResult,
+} from './sceneToolHandoff';
 
 export type RightActivity = 'subtitles' | 'properties' | 'tools';
 
@@ -54,11 +53,13 @@ export function getNextRightActivity(
 export interface RightWorkspaceProps {
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
+  /** The project session this workspace belongs to; stale receipts are dropped. */
+  projectSessionIdentity: string;
   sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
   onSceneCanvasPreviewChange?(
     preview: SceneCreationCanvasPreview | null,
   ): void;
-  sceneBackgroundImportResult?: SceneBackgroundImportResult | null;
+  sceneBackgroundImportResult?: SceneToolImportResult | null;
   onRequestSceneBackgroundImport?(): void;
   onRequestSceneCharacterLibrary?(): void;
 }
@@ -66,6 +67,7 @@ export interface RightWorkspaceProps {
 export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
+  projectSessionIdentity,
   sceneCanvasPreviewStatus = null,
   onSceneCanvasPreviewChange,
   sceneBackgroundImportResult = null,
@@ -144,15 +146,18 @@ export function RightWorkspace({
   const previousActivityRef = useRef<RightActivity | null>(null);
 
   useLayoutEffect(() => {
-    if (
-      !sceneBackgroundImportResult ||
-      sceneBackgroundImportResult.token === handledSceneImportTokenRef.current
-    ) {
+    const result = sceneBackgroundImportResult;
+    if (!result) return;
+    if (!belongsToSceneToolSession(result, projectSessionIdentity)) {
+      // A receipt from another project session must never reopen this surface
+      // or fill this project's slide with the previous project's asset.
+      handledSceneImportTokenRef.current = result.token;
       return;
     }
-    handledSceneImportTokenRef.current = sceneBackgroundImportResult.token;
-    if (sceneBackgroundImportResult.backgroundAssetId) {
-      const backgroundAssetId = sceneBackgroundImportResult.backgroundAssetId;
+    if (result.token === handledSceneImportTokenRef.current) return;
+    handledSceneImportTokenRef.current = result.token;
+    if (result.backgroundAssetId) {
+      const backgroundAssetId = result.backgroundAssetId;
       setSceneCreationDraft((current) => ({
         ...current,
         backgroundAssetId,
@@ -161,7 +166,7 @@ export function RightWorkspace({
     // Return the user to Auto Scene inside the same tools surface they left.
     setToolsView('auto-scene');
     setActiveActivity('tools');
-  }, [sceneBackgroundImportResult]);
+  }, [projectSessionIdentity, sceneBackgroundImportResult]);
 
   // Closing the surface returns the drawer to its home page, matching the
   // existing Auto Subtitles contract. Tool drafts stay with the workspace.

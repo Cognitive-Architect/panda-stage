@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Check, RefreshCw } from 'lucide-react';
 import {
   SceneCreationError,
@@ -59,7 +67,7 @@ export interface SceneCreationPanelProps {
   onNavigateToAssets?: () => void;
   onNavigateToCharacters?: () => void;
   editorStore?: EditorProjectStore;
-  shotStore?: Pick<ShotStore, 'getCurrentShotId' | 'select'>;
+  shotStore?: Pick<ShotStore, 'getCurrentShotId' | 'select' | 'subscribe'>;
   service?: SceneCreationService;
 }
 
@@ -352,6 +360,7 @@ export function SceneCreationPanel({
   );
   const clearPreview = useCallback((): void => {
     setPreviewPlan(null);
+    setPreviewPlanShotId(null);
     onCanvasPreviewChange?.(null);
   }, [onCanvasPreviewChange]);
   const activeService = useMemo(
@@ -361,6 +370,14 @@ export function SceneCreationPanel({
   const [inspection, setInspection] = useState<SceneInspection | null>(null);
   const [previewPlan, setPreviewPlan] =
     useState<SceneCreationPreviewPlan | null>(null);
+  // A preview plan only holds for the shot selection it was prepared under: a
+  // different selected shot must never inherit the previous plan or preview.
+  const [previewPlanShotId, setPreviewPlanShotId] = useState<string | null>(null);
+  const currentShotId = useSyncExternalStore(
+    activeShotStore.subscribe,
+    activeShotStore.getCurrentShotId,
+    activeShotStore.getCurrentShotId,
+  );
   const [thumbnailStates, setThumbnailStates] = useState<
     Record<string, ThumbnailState>
   >({});
@@ -459,7 +476,10 @@ export function SceneCreationPanel({
   const previewStale = Boolean(
     previewPlan && !isSceneCreationPreviewCurrent(previewPlan, editorStore),
   );
-  const stale = inspectionStale || previewStale;
+  const previewShotStale = Boolean(
+    previewPlan && previewPlanShotId !== (currentShotId ?? null),
+  );
+  const stale = inspectionStale || previewStale || previewShotStale;
   const shotNameConflict = Boolean(
     inspectionMatchesInput &&
       inspection &&
@@ -844,6 +864,17 @@ export function SceneCreationPanel({
       characterCanPreview,
   );
 
+  const previousShotIdRef = useRef<string | null>(currentShotId ?? null);
+  useLayoutEffect(() => {
+    const previous = previousShotIdRef.current;
+    const next = currentShotId ?? null;
+    previousShotIdRef.current = next;
+    if (previous === next || previewPlan === null) return;
+    // Selecting another shot retires the plan and its read-only canvas preview
+    // before the next paint; the text draft stays for a fresh match.
+    clearPreview();
+  }, [clearPreview, currentShotId, previewPlan]);
+
   useEffect(() => {
     if (
       !previewCanBePrepared ||
@@ -866,6 +897,7 @@ export function SceneCreationPanel({
       );
       if (!isSceneCreationPreviewCurrent(plan, editorStore)) return;
       setPreviewPlan(plan);
+      setPreviewPlanShotId(currentShotId ?? null);
       setErrorMessage('');
       onCanvasPreviewChange?.(toSceneCreationCanvasPreview(plan));
     } catch (error) {
@@ -878,6 +910,7 @@ export function SceneCreationPanel({
     backgroundCanPreview,
     characterCanPreview,
     clearPreview,
+    currentShotId,
     editorStore,
     inspection,
     onCanvasPreviewChange,
@@ -894,9 +927,11 @@ export function SceneCreationPanel({
 
   const canvasPreviewMessage = !previewActive
     ? ''
-    : stale
-      ? '项目变更，正在刷新匹配'
-      : !rawInput.trim()
+    : previewShotStale
+      ? '已切换镜头，正在刷新预览'
+      : stale
+        ? '项目变更，正在刷新匹配'
+        : !rawInput.trim()
         ? '填写镜头、背景和出场后，主画布会显示预览'
         : parseError
           ? '修正格式后，主画布会显示预览'

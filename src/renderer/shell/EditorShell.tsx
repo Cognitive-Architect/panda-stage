@@ -96,6 +96,10 @@ import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
 import { RightWorkspace } from './RightWorkspace';
 import type { ResourceActivity } from './ResourceActivityDock';
+import type {
+  SceneToolImportResult,
+  SceneToolRequest,
+} from './sceneToolHandoff';
 import {
   reconcileEditorWorkspace,
   useEditorShellLayoutMode,
@@ -600,20 +604,39 @@ export function EditorShell({
     }>({ preview: null, status: null });
   // Auto Scene lives in Project Tools. The shell only carries the cross-surface
   // hand-offs between that tool page and the left asset/character surfaces.
+  // Every hand-off is stamped with the issuing project session so a switch can
+  // never replay a request or a late receipt of the previous project.
+  const sceneToolSessionIdentityRef = useRef(sceneCreationProjectSessionIdentity);
+  sceneToolSessionIdentityRef.current = sceneCreationProjectSessionIdentity;
+  const sceneToolRequestTokenRef = useRef(0);
+  const sceneToolResultTokenRef = useRef(0);
   const [sceneBackgroundImportRequest, setSceneBackgroundImportRequest] =
-    useState(0);
+    useState<SceneToolRequest | null>(null);
   const [sceneCharacterLibraryRequest, setSceneCharacterLibraryRequest] =
-    useState(0);
-  const [sceneBackgroundImportResult, setSceneBackgroundImportResult] = useState<{
-    token: number;
-    backgroundAssetId: string | null;
-  } | null>(null);
+    useState<SceneToolRequest | null>(null);
+  const [sceneBackgroundImportResult, setSceneBackgroundImportResult] =
+    useState<SceneToolImportResult | null>(null);
   const requestSceneBackgroundImport = useCallback((): void => {
-    setSceneBackgroundImportRequest((value) => value + 1);
+    sceneToolRequestTokenRef.current += 1;
+    setSceneBackgroundImportRequest({
+      sessionIdentity: sceneToolSessionIdentityRef.current,
+      token: sceneToolRequestTokenRef.current,
+    });
   }, []);
   const requestSceneCharacterLibrary = useCallback((): void => {
-    setSceneCharacterLibraryRequest((value) => value + 1);
+    sceneToolRequestTokenRef.current += 1;
+    setSceneCharacterLibraryRequest({
+      sessionIdentity: sceneToolSessionIdentityRef.current,
+      token: sceneToolRequestTokenRef.current,
+    });
   }, []);
+  useEffect(() => {
+    // Pending hand-offs belong to the session that issued them; the next one
+    // starts from a clean slate.
+    setSceneBackgroundImportRequest(null);
+    setSceneCharacterLibraryRequest(null);
+    setSceneBackgroundImportResult(null);
+  }, [sceneCreationProjectSessionIdentity]);
   const handleSceneCanvasPreviewChange = useCallback(
     (preview: SceneCreationCanvasPreview | null): void => {
       setSceneCreationCanvasPreviewState((current) => {
@@ -714,13 +737,15 @@ export function EditorShell({
     [projectSnapshot, sceneCreationProjectSessionIdentity],
   );
   const handleSceneBackgroundImported = useCallback(
-    (importedAssetIds: readonly string[]): void => {
+    (sessionIdentity: string, importedAssetIds: readonly string[]): void => {
       const backgroundAssetId =
         handleSceneBackgroundImportComplete(importedAssetIds);
-      setSceneBackgroundImportResult((current) => ({
-        token: (current?.token ?? 0) + 1,
+      sceneToolResultTokenRef.current += 1;
+      setSceneBackgroundImportResult({
+        sessionIdentity,
+        token: sceneToolResultTokenRef.current,
         backgroundAssetId,
-      }));
+      });
     },
     [handleSceneBackgroundImportComplete],
   );
@@ -2804,6 +2829,7 @@ export function EditorShell({
                   onRequestSceneBackgroundImport={requestSceneBackgroundImport}
                   onRequestSceneCharacterLibrary={requestSceneCharacterLibrary}
                   onSceneCanvasPreviewChange={handleSceneCanvasPreviewChange}
+                  projectSessionIdentity={sceneCreationProjectSessionIdentity}
                   sceneBackgroundImportResult={sceneBackgroundImportResult}
                   sceneCanvasPreviewStatus={activeSceneCreationCanvasPreviewStatus}
                 />
