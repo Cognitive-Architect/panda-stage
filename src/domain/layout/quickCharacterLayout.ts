@@ -58,9 +58,23 @@ export type QuickLayoutPlanResult =
     };
 
 interface QuickLayoutMetrics {
-  /** Visual bottom expressed in the Layer's own local coordinates. */
-  readonly bottomOffset: number;
+  /** Complete visual bounds in the Layer's own local coordinates. */
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly scaleX: number;
   readonly scaleY: number;
+}
+
+/** The on-stage rectangle one complete visual occupies at a candidate position. */
+export interface QuickLayoutVisualRect {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
 }
 
 /** Copy for refusals that are about the two-slot choice, not one person. */
@@ -115,8 +129,13 @@ function quickLayoutMetrics(
       model.layers.map(({ layer, visual }) => [
         layer.id,
         {
-          bottomOffset:
-            visual.combinedLocalBounds.y + visual.combinedLocalBounds.height,
+          bounds: {
+            x: visual.combinedLocalBounds.x,
+            y: visual.combinedLocalBounds.y,
+            width: visual.combinedLocalBounds.width,
+            height: visual.combinedLocalBounds.height,
+          },
+          scaleX: layer.flipX ? -layer.scaleX : layer.scaleX,
           scaleY: layer.scaleY,
         },
       ]),
@@ -195,8 +214,58 @@ function alignedBottomY(
   groundY: number = QUICK_LAYOUT_GROUND_Y,
 ): number | null {
   if (!metrics) return null;
-  const y = groundY - metrics.bottomOffset * metrics.scaleY;
+  const bottomOffset = metrics.bounds.y + metrics.bounds.height;
+  const y = groundY - bottomOffset * metrics.scaleY;
   return Number.isFinite(y) ? y : null;
+}
+
+/**
+ * The complete visual rectangle at a candidate position. V0 refuses rotation,
+ * so the local bounds only need the Layer scale; flipX is already folded into
+ * `scaleX`, and min/max keeps the rectangle ordered after the mirror.
+ */
+export function quickLayoutVisualRect(
+  project: Project,
+  shot: Shot,
+  layerId: string,
+  position: QuickLayoutPoint,
+): QuickLayoutVisualRect | null {
+  const metrics = quickLayoutMetrics(project, shot).get(layerId);
+  if (!metrics) return null;
+  return visualRectAt(metrics, position);
+}
+
+function visualRectAt(
+  metrics: QuickLayoutMetrics,
+  position: QuickLayoutPoint,
+): QuickLayoutVisualRect {
+  const { bounds, scaleX, scaleY } = metrics;
+  const firstX = position.x + bounds.x * scaleX;
+  const secondX = position.x + (bounds.x + bounds.width) * scaleX;
+  const firstY = position.y + bounds.y * scaleY;
+  const secondY = position.y + (bounds.y + bounds.height) * scaleY;
+  return {
+    left: Math.min(firstX, secondX),
+    right: Math.max(firstX, secondX),
+    top: Math.min(firstY, secondY),
+    bottom: Math.max(firstY, secondY),
+  };
+}
+
+/** True only when the whole visual stays inside the Project canvas. */
+export function quickLayoutRectFitsCanvas(
+  rect: QuickLayoutVisualRect,
+): boolean {
+  return (
+    Number.isFinite(rect.left) &&
+    Number.isFinite(rect.right) &&
+    Number.isFinite(rect.top) &&
+    Number.isFinite(rect.bottom) &&
+    rect.left >= 0 &&
+    rect.right <= PROJECT_WIDTH &&
+    rect.top >= 0 &&
+    rect.bottom <= PROJECT_HEIGHT
+  );
 }
 
 export function planQuickCharacterLayout(
@@ -250,11 +319,20 @@ export function planQuickCharacterLayout(
 
   const leftY = alignedBottomY(metrics.get(left.id));
   const rightY = alignedBottomY(metrics.get(right.id));
-  for (const [layer, y] of [
-    [left, leftY],
-    [right, rightY],
+  for (const [layer, position, y] of [
+    [left, QUICK_LAYOUT_LEFT_X, leftY],
+    [right, QUICK_LAYOUT_RIGHT_X, rightY],
   ] as const) {
-    if (y === null || y < 0 || y > PROJECT_HEIGHT) {
+    const layerMetrics = metrics.get(layer.id);
+    // The center point staying on canvas is not enough: the whole visual has
+    // to fit, otherwise a large Character renders its head outside the frame.
+    if (
+      y === null ||
+      !layerMetrics ||
+      !quickLayoutRectFitsCanvas(
+        visualRectAt(layerMetrics, { x: position, y }),
+      )
+    ) {
       return {
         ok: false,
         reason: 'out-of-canvas',

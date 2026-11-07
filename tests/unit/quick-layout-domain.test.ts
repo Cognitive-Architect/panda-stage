@@ -7,6 +7,8 @@ import {
   QUICK_LAYOUT_RIGHT_X,
   listQuickLayoutCharacters,
   planQuickCharacterLayout,
+  quickLayoutRectFitsCanvas,
+  quickLayoutVisualRect,
   type Layer,
   type Project,
 } from '../../src/domain';
@@ -228,6 +230,88 @@ describe('AUTO-01 quick character layout domain', () => {
     );
 
     expect(result).toMatchObject({ ok: false, reason: 'not-character' });
+  });
+
+  it('measures the complete visual rectangle from the shared visual bounds', () => {
+    const project = fixture({ leftScale: 0.5 });
+    const rect = quickLayoutVisualRect(project, shotOf(project), LEFT_LAYER, {
+      x: QUICK_LAYOUT_LEFT_X,
+      y: 993.6 - CHARACTER_HALF_HEIGHT * 0.5,
+    });
+
+    // Pure geometry from `combinedLocalBounds` and the Layer scale: no Alpha
+    // scan, no asset preprocessing, no second size interpretation.
+    expect(rect).toEqual({
+      left: QUICK_LAYOUT_LEFT_X - CHARACTER_HALF_HEIGHT * 0.5,
+      right: QUICK_LAYOUT_LEFT_X + CHARACTER_HALF_HEIGHT * 0.5,
+      top: 993.6 - CHARACTER_HALF_HEIGHT,
+      bottom: 993.6,
+    });
+    expect(quickLayoutRectFitsCanvas(rect!)).toBe(true);
+  });
+
+  it('keeps the rectangle ordered for a flipped Character', () => {
+    const project = fixture({ left: { flipX: true } });
+    const rect = quickLayoutVisualRect(project, shotOf(project), LEFT_LAYER, {
+      x: QUICK_LAYOUT_LEFT_X,
+      y: 500,
+    })!;
+
+    expect(rect.left).toBeLessThan(rect.right);
+    expect(rect.top).toBeLessThan(rect.bottom);
+  });
+
+  it('rejects a Character whose visual top leaves the frame while its center stays inside', () => {
+    // scale 1.6 => 1024px tall visual; bottom-aligned center sits at y=481.6,
+    // so only the full bounds check can see the head crossing y=0.
+    const project = fixture({ leftScale: 1.6, rightScale: 0.25 });
+    const result = planQuickCharacterLayout(
+      project,
+      shotOf(project),
+      LEFT_LAYER,
+      RIGHT_LAYER,
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: 'out-of-canvas' });
+    if (result.ok) return;
+    expect(result.message).toContain('张三');
+    expect(result.message).toContain('超出画布');
+    expect(993.6 - CHARACTER_HALF_HEIGHT * 1.6).toBeGreaterThan(0);
+  });
+
+  it('rejects a Character whose visual left edge leaves the frame', () => {
+    // Wide, low visual: height fits the ground line, width does not.
+    const project = fixture({ left: { scaleX: 3, scaleY: 0.5 } });
+    const result = planQuickCharacterLayout(
+      project,
+      shotOf(project),
+      LEFT_LAYER,
+      RIGHT_LAYER,
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: 'out-of-canvas' });
+    expect(quickLayoutRectFitsCanvas({
+      left: QUICK_LAYOUT_LEFT_X - CHARACTER_HALF_HEIGHT * 3,
+      right: QUICK_LAYOUT_LEFT_X + CHARACTER_HALF_HEIGHT * 3,
+      top: 0,
+      bottom: QUICK_LAYOUT_GROUND_Y,
+    })).toBe(false);
+  });
+
+  it('rejects a Character whose visual right edge leaves the frame', () => {
+    // Right slot with a half-width of 800px: left edge stays inside, right
+    // edge crosses the 1920px canvas boundary.
+    const project = fixture({ right: { scaleX: 2.5, scaleY: 0.5 } });
+    const result = planQuickCharacterLayout(
+      project,
+      shotOf(project),
+      LEFT_LAYER,
+      RIGHT_LAYER,
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: 'out-of-canvas' });
+    if (result.ok) return;
+    expect(result.message).toContain('李四');
   });
 });
 
