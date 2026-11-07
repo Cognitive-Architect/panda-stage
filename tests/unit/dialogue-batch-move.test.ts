@@ -4,6 +4,7 @@ import {
   DialogueServiceError,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  type AudioClip,
   type Dialogue,
   type Project,
 } from '../../src/domain';
@@ -73,10 +74,10 @@ function fixture(options: {
   const sharedDialogue = options.sharedClip
     ? dialogue(D_OTHER, 6_000, 7_000, CLIP_A)
     : null;
-  const audioClips = [
+  const audioClips: AudioClip[] = [
     {
       id: CLIP_A,
-      role: 'dialogue' as const,
+      role: 'dialogue',
       name: '张三配音',
       assetId: AUDIO_A,
       startMs: 1_000,
@@ -86,7 +87,7 @@ function fixture(options: {
     },
     {
       id: CLIP_B,
-      role: 'dialogue' as const,
+      role: 'dialogue',
       name: '李四配音',
       assetId: AUDIO_B,
       startMs: 2_500,
@@ -98,7 +99,7 @@ function fixture(options: {
   if (options.sharedClip) {
     audioClips.push({
       id: CLIP_SHARED,
-      role: 'bgm' as const,
+      role: 'bgm',
       name: '背景音乐',
       assetId: AUDIO_A,
       startMs: 0,
