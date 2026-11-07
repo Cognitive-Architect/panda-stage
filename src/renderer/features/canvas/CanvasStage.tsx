@@ -21,6 +21,7 @@ import {
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type Point,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -31,6 +32,10 @@ import {
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
+import {
+  matchesQuickLayoutPreview,
+  useQuickLayoutPreview,
+} from '../../stores/quickLayoutPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -66,6 +71,8 @@ import {
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
+  canvasDirectEditingEnabled,
+  NO_PREVIEW_LAYER_IDS,
 } from './editorTemporalCanvasModel';
 import { isAnimationBaseTransformEditableAtTime } from '../properties/layerTransformTemporalGuard';
 import {
@@ -232,6 +239,7 @@ export function CanvasStage({
     selectionStore.getSelectedLayerId,
   );
   const opacityPreview = useOpacityPreview();
+  const quickLayoutPreview = useQuickLayoutPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -262,6 +270,39 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0
       ? opacityPreview
       : null;
+  // Quick Layout candidates are rendered through the same evaluated-layer path
+  // as a dragged Layer; the formal Project keeps its stored positions.
+  const quickLayoutPositionOverrides = useMemo(() => {
+    if (
+      !quickLayoutPreview ||
+      !snapshot ||
+      !shot ||
+      projectInstanceId === null ||
+      timelineUi.currentTimeMs !== 0
+    ) {
+      return undefined;
+    }
+    const current = {
+      projectInstanceId,
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      revision: snapshot.revision,
+      shotId: shot.id,
+    };
+    if (!matchesQuickLayoutPreview(quickLayoutPreview, current)) {
+      return undefined;
+    }
+    return new Map<string, Point>([
+      [quickLayoutPreview.leftLayerId, quickLayoutPreview.left],
+      [quickLayoutPreview.rightLayerId, quickLayoutPreview.right],
+    ]);
+  }, [
+    projectInstanceId,
+    quickLayoutPreview,
+    shot,
+    snapshot,
+    timelineUi.currentTimeMs,
+  ]);
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -313,6 +354,7 @@ export function CanvasStage({
                   position: positionAuthoringSnapshot.draft,
                 }
               : undefined,
+            positionOverrides: quickLayoutPositionOverrides,
           })
         : null,
     [
@@ -321,6 +363,7 @@ export function CanvasStage({
       imageState.readyResourceKeys,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
+      quickLayoutPositionOverrides,
       shot,
       snapshot,
       temporalContextKey,
@@ -387,6 +430,8 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
+  const previewReadOnlyLayerIds =
+    temporalCanvasModel?.previewReadOnlyLayerIds ?? NO_PREVIEW_LAYER_IDS;
   const rejectTemporalCanvasEdit = (animationLayer = false): string => {
     const message =
       animationLayer
@@ -442,8 +487,14 @@ export function CanvasStage({
   const directEditingEnabledForStageLayer = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
+    // A Quick Layout candidate is a read-only preview: its position only lands
+    // in the Project through the panel's explicit Apply action.
     if (stageLayer.layer.source.kind !== 'animation') {
-      return directEditingEnabled;
+      return canvasDirectEditingEnabled({
+        layerId: stageLayer.layer.id,
+        previewReadOnlyLayerIds,
+        stageEnabled: directEditingEnabled,
+      });
     }
     const evaluated = shot && snapshot
       ? evaluateShotAtTime(
@@ -452,17 +503,21 @@ export function CanvasStage({
           snapshot.project,
         ).layers.find((candidate) => candidate.id === stageLayer.layer.id)
       : undefined;
-    return Boolean(
-      evaluated?.visible &&
-        evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
-        isAnimationBaseTransformEditableAtTime(
-          snapshot!.project,
-          shot!.id,
-          stageLayer.layer.id,
-          timelineUi.currentTimeMs,
-        ) &&
-        isStageLayerVisualReady(stageLayer),
-    );
+    return canvasDirectEditingEnabled({
+      layerId: stageLayer.layer.id,
+      previewReadOnlyLayerIds,
+      stageEnabled: Boolean(
+        evaluated?.visible &&
+          evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
+          isAnimationBaseTransformEditableAtTime(
+            snapshot!.project,
+            shot!.id,
+            stageLayer.layer.id,
+            timelineUi.currentTimeMs,
+          ) &&
+          isStageLayerVisualReady(stageLayer),
+      ),
+    });
   };
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
@@ -716,6 +771,9 @@ export function CanvasStage({
               )}
               data-target-ready-layer-ids={JSON.stringify([
                 ...(temporalCanvasModel?.targetReadyLayerIds ?? []),
+              ])}
+              data-preview-read-only-layer-ids={JSON.stringify([
+                ...previewReadOnlyLayerIds,
               ])}
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}

@@ -70,7 +70,10 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(inspector).toContain('embedded?: boolean');
     expect(inspector).toContain('data-presentation="embedded"');
     expect(inspector).toContain('right-inspector-drawer-open right-inspector-embedded');
-    expect(tools).toContain("{view === 'action-presets' ? '动作预设' : '工具'}");
+    // AUTO-01 (#996) moved the per-view title into one VIEW_TITLES owner.
+    expect(tools).toContain("home: '工具'");
+    expect(tools).toContain("'action-presets': '动作预设'");
+    expect(tools).toContain('{VIEW_TITLES[view]}');
     expect(tools).toContain('aria-label="关闭工具"');
   });
 

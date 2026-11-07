@@ -708,7 +708,10 @@
           "src/domain/models/project.ts",
           "src/domain/models/shot.ts",
           "src/domain/services/LayerService.ts",
-          "src/renderer/stores/layerStore.ts"
+          "src/renderer/stores/layerStore.ts",
+          "src/renderer/features/layout/**",
+          "src/domain/layout/**",
+          "src/renderer/stores/quickLayoutPreviewStore.ts"
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
@@ -727,7 +730,8 @@
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
       "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+      "tests/integration/ap03-animation-image-prewarm.test.ts",
+      "tests/unit/quick-layout-*.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
@@ -751,7 +755,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
-    "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
+    "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns. AUTO-01 Quick Layout (Issue #996) adds src/renderer/features/layout and src/domain/layout to canvas ownership because the V0 stance reuses the Stage visual-bounds and Layer position semantics; its tests are exact-match quick-layout-*.test.ts patterns."
       },
       {
         "id": "history-controls",
