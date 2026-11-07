@@ -7,3 +7,4 @@ export * from './PositionProjectService';
 export * from './ShotService';
 export * from './SubtitleStyleService';
 export * from './AssetService';
+export * from './MultiSceneService';

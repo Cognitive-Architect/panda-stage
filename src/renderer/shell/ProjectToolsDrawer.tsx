@@ -1,7 +1,14 @@
-import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  LayoutTemplate,
+  Maximize2,
+  ScanLine,
+  Sparkles,
+} from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
+import { MultiScenePanel } from '../features/shots/MultiScenePanel';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
@@ -9,7 +16,14 @@ export interface ProjectToolsDrawerProps {
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets';
+type ProjectToolsView = 'home' | 'action-presets' | 'multi-scene';
+
+/** Single title owner: the header never re-derives a view's name. */
+const VIEW_TITLES: Record<ProjectToolsView, string> = {
+  home: '工具',
+  'action-presets': '动作预设',
+  'multi-scene': '多镜头布景',
+};
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -46,7 +60,7 @@ export function ProjectToolsDrawer({
     >
       <header className="project-tools-drawer-header">
         <div className="project-tools-drawer-heading">
-          {view === 'action-presets' ? (
+          {view === 'home' ? null : (
             <button
               aria-label="返回工具"
               className="project-tools-back"
@@ -57,10 +71,8 @@ export function ProjectToolsDrawer({
               <DecorativeIcon icon={ArrowLeft} size={18} />
               <span>工具</span>
             </button>
-          ) : null}
-          <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '工具'}
-          </h2>
+          )}
+          <h2 id="project-tools-heading">{VIEW_TITLES[view]}</h2>
         </div>
         <button
           aria-label="关闭工具"
@@ -133,14 +145,41 @@ export function ProjectToolsDrawer({
               <span>打开动作预设</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-multi-scene-heading"
+            className="project-tools-multi-scene-card"
+            data-testid="project-tools-multi-scene-card"
+          >
+            <div className="project-tools-multi-scene-heading">
+              <h3 id="project-tools-multi-scene-heading">多镜头布景</h3>
+            </div>
+            <button
+              className="project-tools-multi-scene-launcher"
+              data-project-tools-action="multi-scene"
+              data-testid="project-tools-multi-scene"
+              onClick={() => setView('multi-scene')}
+              type="button"
+            >
+              <DecorativeIcon icon={LayoutTemplate} size={18} />
+              <span>打开多镜头布景</span>
+            </button>
+          </section>
         </div>
-      ) : (
+      ) : view === 'action-presets' ? (
         <section
           aria-label="动作预设"
           className="project-tools-action-presets-view"
           data-testid="project-tools-action-presets-view"
         >
           <LegacyWorkspace />
+        </section>
+      ) : (
+        <section
+          aria-label="多镜头布景"
+          className="project-tools-multi-scene-view"
+          data-testid="project-tools-multi-scene-view"
+        >
+          <MultiScenePanel />
         </section>
       )}
     </section>
