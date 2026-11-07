@@ -1,0 +1,224 @@
+/* Issue #1005 (AUTO-04): the multi-scene batch surface. Flat rows, one picker
+   only where a name is ambiguous, and the whole batch committed once. */
+.multi-scene-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px 14px 16px;
+  overflow-y: auto;
+}
+
+.multi-scene-empty {
+  margin: 0;
+  padding: 12px 14px;
+  color: rgb(255 255 255 / 62%);
+  font-size: 13px;
+}
+
+.multi-scene-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+}
+
+.multi-scene-input-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+}
+
+.multi-scene-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 148px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 28%);
+  color: #eef5ef;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.multi-scene-input::placeholder {
+  color: rgb(255 255 255 / 34%);
+}
+
+.multi-scene-input:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  outline: none;
+}
+
+.multi-scene-check,
+.multi-scene-generate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 5%);
+  color: #eef5ef;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.multi-scene-generate {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 22%);
+}
+
+.multi-scene-check:disabled,
+.multi-scene-generate:disabled {
+  color: rgb(255 255 255 / 34%);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 2%);
+  cursor: not-allowed;
+}
+
+.multi-scene-report {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 10px;
+}
+
+.multi-scene-shot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.multi-scene-shot-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: #eef5ef;
+  font-size: 13px;
+}
+
+.multi-scene-shot-index {
+  flex: none;
+  color: rgb(255 255 255 / 48%);
+  font-size: 12px;
+}
+
+.multi-scene-shot-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-scene-slot {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 20px;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: rgb(255 255 255 / 76%);
+  font-size: 12px;
+}
+
+.multi-scene-slot-label {
+  color: rgb(255 255 255 / 48%);
+}
+
+.multi-scene-slot-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-scene-slot-picker {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  background: #0c1510;
+  color: #eef5ef;
+  font-size: 12px;
+}
+
+.multi-scene-slot-message {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: #f2b8a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.multi-scene-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-selected-border, #83d39a);
+}
+
+.multi-scene-mark[data-multi-scene-mark='blocked'] {
+  color: #f2b8a8;
+}
+
+.multi-scene-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+
+.multi-scene-preview-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.multi-scene-preview-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 32px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 4%);
+  color: rgb(255 255 255 / 68%);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.multi-scene-preview-tab[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 16%);
+  color: #e6f7ea;
+}
+
+.multi-scene-preview .shot-thumbnail,
+.multi-scene-preview .shot-thumbnail-placeholder {
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgb(78 132 91 / 16%), transparent),
+    #09100c;
+}
+
+.multi-scene-status {
+  margin: 0;
+  color: rgb(255 255 255 / 68%);
+  font-size: 12px;
+  line-height: 1.5;
+}
