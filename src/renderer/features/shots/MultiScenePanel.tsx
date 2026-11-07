@@ -24,8 +24,18 @@ import {
   commitMultiScenePreview,
   prepareMultiScenePreview,
   MultiSceneActionError,
-  type MultiScenePreview,
 } from './multiScenePlan';
+import {
+  EMPTY_MULTI_SCENE_BATCH,
+  batchUpdated,
+  checkApplied,
+  choiceLabel,
+  initialPanelState,
+  inputChanged,
+  submissionBatch,
+  type MultiSceneBatch,
+  type MultiScenePanelState,
+} from './multiScenePanelModel';
 
 export interface MultiScenePanelProps {
   /** Injected in tests; the panel defaults to the open editor Project. */
@@ -93,13 +103,11 @@ export function MultiScenePanel({
   const snapshot =
     snapshotProp !== undefined ? snapshotProp : subscribedSnapshot;
 
-  const [rawInput, setRawInput] = useState('');
-  const [blocks, setBlocks] = useState<readonly MultiSceneBlock[]>([]);
-  const [selections, setSelections] = useState<MultiSceneSelections>([]);
-  const [report, setReport] = useState<MultiSceneReport | null>(null);
-  const [preview, setPreview] = useState<MultiScenePreview | null>(null);
+  const [state, setState] = useState<MultiScenePanelState>(initialPanelState);
+  const { rawInput, batch } = state;
+  const { blocks, selections, report, preview, status } = batch;
+  const submittable = submissionBatch(state) !== null;
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [status, setStatus] = useState('');
 
   const previewShots = useMemo(() => preview?.plan.shots ?? [], [preview]);
   const plannedCount = preview?.plan.createdShotIds.length ?? blocks.length;
@@ -112,60 +120,62 @@ export function MultiScenePanel({
       ) ?? null
     : null;
 
-  const applyBatch = (
+  /** Resolve one batch in memory; nothing here writes the Project. */
+  const buildBatch = (
     nextBlocks: readonly MultiSceneBlock[],
     nextSelections: MultiSceneSelections,
-  ): void => {
-    if (!snapshot) return;
+  ): MultiSceneBatch => {
+    if (!snapshot) return EMPTY_MULTI_SCENE_BATCH;
     const nextReport = inspectMultiScene(
       snapshot.project,
       nextBlocks,
       nextSelections,
     );
-    setReport(nextReport);
-    if (!nextReport.ready) {
-      setPreview(null);
-      setStatus('');
-      return;
-    }
+    const refused: MultiSceneBatch = {
+      blocks: nextBlocks,
+      selections: nextSelections,
+      report: nextReport,
+      preview: null,
+      status: '',
+    };
+    if (!nextReport.ready) return refused;
     try {
       const outcome = prepareMultiScenePreview(nextBlocks, nextSelections, {
         editorStore: editorStore as EditorProjectStore,
         shotStore,
       });
-      if (!outcome.ok) {
-        setPreview(null);
-        setStatus(outcome.message);
-        return;
-      }
-      setPreview(outcome.preview);
-      setPreviewIndex(0);
-      setStatus('');
+      if (!outcome.ok) return { ...refused, status: outcome.message };
+      return { ...refused, preview: outcome.preview };
     } catch (error) {
-      setPreview(null);
-      setStatus(
-        error instanceof MultiSceneActionError
-          ? error.message
-          : '检查这批镜头时出错了，请重试。',
-      );
+      return {
+        ...refused,
+        status:
+          error instanceof MultiSceneActionError
+            ? error.message
+            : '检查这批镜头时出错了，请重试。',
+      };
     }
   };
 
+  /** FIX-A: the storyboard moving invalidates the batch it produced. */
+  const handleInput = (value: string): void => {
+    setState(inputChanged(value));
+  };
+
   const handleCheck = (): void => {
+    setPreviewIndex(0);
     try {
       const nextBlocks = parseMultiSceneInput(rawInput);
-      setBlocks(nextBlocks);
-      setSelections([]);
-      applyBatch(nextBlocks, []);
+      setState(checkApplied(rawInput, buildBatch(nextBlocks, [])));
     } catch (error) {
-      setBlocks([]);
-      setSelections([]);
-      setReport(null);
-      setPreview(null);
-      setStatus(
-        error instanceof MultiSceneInputError
-          ? error.message
-          : '这批分镜无法解析，请检查格式。',
+      setState(
+        checkApplied(rawInput, {
+          ...EMPTY_MULTI_SCENE_BATCH,
+          status:
+            error instanceof MultiSceneInputError
+              ? error.message
+              : '这批分镜无法解析，请检查格式。',
+        }),
       );
     }
   };
@@ -184,25 +194,34 @@ export function MultiScenePanel({
       ...target,
       [selectionField(slot)]: value || null,
     };
-    setSelections(nextSelections);
-    applyBatch(blocks, nextSelections);
+    setState(batchUpdated(state, buildBatch(blocks, nextSelections)));
   };
 
   const handleGenerate = (): void => {
-    if (!preview) return;
+    const pending = submissionBatch(state);
+    if (!pending?.preview) return;
     try {
-      const committed = commitMultiScenePreview(preview, {
+      const committed = commitMultiScenePreview(pending.preview, {
         editorStore: editorStore as EditorProjectStore,
         shotStore,
       });
-      setPreview(null);
-      setStatus(`已生成 ${committed.createdShotIds.length} 个镜头。`);
+      setState(
+        batchUpdated(state, {
+          ...batch,
+          preview: null,
+          status: `已生成 ${committed.createdShotIds.length} 个镜头。`,
+        }),
+      );
     } catch (error) {
-      setPreview(null);
-      setStatus(
-        error instanceof MultiSceneActionError
-          ? error.message
-          : '生成这批镜头失败了，工程没有变化。',
+      setState(
+        batchUpdated(state, {
+          ...batch,
+          preview: null,
+          status:
+            error instanceof MultiSceneActionError
+              ? error.message
+              : '生成这批镜头失败了，工程没有变化。',
+        }),
       );
     }
   };
@@ -225,7 +244,7 @@ export function MultiScenePanel({
             <textarea
               className="multi-scene-input"
               data-testid="multi-scene-input"
-              onChange={(event) => setRawInput(event.target.value)}
+              onChange={(event) => handleInput(event.target.value)}
               placeholder={INPUT_PLACEHOLDER}
               rows={10}
               spellCheck={false}
@@ -300,13 +319,17 @@ export function MultiScenePanel({
                             value={resolution.selectedId ?? ''}
                           >
                             <option value="">请选择</option>
-                            {resolution.choices.map((choice) => (
+                            {resolution.choices.map((choice, choiceIndex) => (
                               <option
                                 disabled={!choice.selectable}
                                 key={choice.id}
                                 value={choice.id}
                               >
-                                {choice.name}
+                                {choiceLabel(
+                                  choice,
+                                  choiceIndex,
+                                  resolution.choices.length,
+                                )}
                               </option>
                             ))}
                           </select>
@@ -374,7 +397,7 @@ export function MultiScenePanel({
           <button
             className="multi-scene-generate"
             data-testid="multi-scene-generate"
-            disabled={!preview}
+            disabled={!submittable}
             onClick={handleGenerate}
             type="button"
           >
