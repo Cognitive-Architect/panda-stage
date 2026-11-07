@@ -74,6 +74,7 @@ export type MultiScenePlanFailureCode =
   | 'GENERATED_SCENE_INVALID'
   // AUTO-05: the dialogue/audio layer refuses the whole batch on any of these.
   | 'SPEAKER_BINDING_UNRESOLVED'
+  | 'SPEAKER_BINDING_CONFLICT'
   | 'AUDIO_MATCH_FAILED'
   | 'DIALOGUE_GENERATION_FAILED';
 

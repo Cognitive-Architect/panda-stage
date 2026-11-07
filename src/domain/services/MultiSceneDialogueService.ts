@@ -124,6 +124,21 @@ export class MultiSceneDialogueService {
       );
     }
 
+    // The parser rejects two identical cast *texts*, but manual bindings may
+    // still resolve two distinct labels to one Character. Refuse before the
+    // scene planner sees two identical slot ids; cross-Shot reuse stays legal.
+    for (const block of blocks) {
+      const leftId = bindings.bindings[block.cast[0]];
+      const rightId = bindings.bindings[block.cast[1]];
+      if (leftId && rightId && leftId === rightId) {
+        return failure(
+          'SPEAKER_BINDING_CONFLICT',
+          `「${block.cast[0]}」和「${block.cast[1]}」当前绑定到了同一个角色，请重新选择。`,
+          block.index,
+        );
+      }
+    }
+
     const requests: AudioMatchRequest[] = [];
     const ownerByOrdinal = new Map<number, MultiSceneBlock>();
     for (const block of blocks) {

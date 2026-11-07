@@ -99,6 +99,27 @@ export function submissionBatch(
 }
 
 /**
+ * A manual audio pick was made under the speaker's previous Character. If that
+ * binding changes, drop every ordinal spoken by this label so recompute can
+ * re-run exact matching (or ask again). Other speakers keep their picks.
+ */
+function clearSpeakerAudioSelections(
+  batch: MultiSceneDialogueBatch,
+  label: string,
+): Readonly<Record<number, string>> {
+  const staleOrdinals = new Set<number>();
+  for (const block of batch.blocks) {
+    for (const line of block.dialogues) {
+      if (line.speaker === label) staleOrdinals.add(line.ordinal);
+    }
+  }
+  if (staleOrdinals.size === 0) return batch.audioSelections;
+  const next: Record<number, string> = { ...batch.audioSelections };
+  for (const ordinal of staleOrdinals) delete next[ordinal];
+  return next;
+}
+
+/**
  * A pick changes the batch but not the text. The old preview is dropped so a
  * stale plan can never be submitted; the caller immediately recomputes it.
  */
@@ -107,9 +128,13 @@ export function speakerPicked(
   label: string,
   characterId: string,
 ): MultiSceneDialoguePanelState {
+  const changed = state.batch.speakerBindings[label] !== characterId;
   return batchUpdated(state, {
     ...state.batch,
     speakerBindings: { ...state.batch.speakerBindings, [label]: characterId },
+    audioSelections: changed
+      ? clearSpeakerAudioSelections(state.batch, label)
+      : state.batch.audioSelections,
     preview: null,
     status: '',
   });
