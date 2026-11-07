@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -33,7 +34,7 @@ function multiShotProject() {
 }
 
 describe('Issue #860 automatic scene entry', () => {
-  it('shows both list-level routes for empty and multi-shot projects', () => {
+  it('keeps a single manual shot route on the left dock', () => {
     const projects = [
       migrateProject({ ...exampleProject, shots: [] }),
       multiShotProject(),
@@ -50,19 +51,40 @@ describe('Issue #860 automatic scene entry', () => {
         }),
       );
 
-      const manualEntry = markup.indexOf(
-        'data-testid="resource-primary-action"',
-      );
-      const automaticEntry = markup.indexOf(
-        'data-testid="resource-auto-scene-action"',
-      );
-
-      expect(manualEntry).toBeGreaterThanOrEqual(0);
-      expect(automaticEntry).toBeGreaterThan(manualEntry);
+      expect(markup).toContain('data-testid="resource-primary-action"');
       expect(markup).toContain('data-resource-action="shots-新建镜头"');
-      expect(markup).toContain('data-resource-action="shots-auto-scene"');
-      expect(markup).toContain('>自动布景</button>');
+      // Auto Scene now lives in the right Project Tools drawer only.
+      expect(markup).not.toContain('resource-auto-scene-action');
+      expect(markup).not.toContain('shots-auto-scene');
+      expect(markup).not.toContain('>自动布景</button>');
     }
+  });
+
+  it('exposes Auto Scene beside Auto Subtitles in one tools page', () => {
+    const drawer = readFileSync(
+      'src/renderer/shell/ProjectToolsDrawer.tsx',
+      'utf8',
+    ).replace(/\r\n/gu, '\n');
+    const right = readFileSync(
+      'src/renderer/shell/RightWorkspace.tsx',
+      'utf8',
+    ).replace(/\r\n/gu, '\n');
+    const shotManager = readFileSync(
+      'src/renderer/features/shots/ShotManager.tsx',
+      'utf8',
+    ).replace(/\r\n/gu, '\n');
+
+    expect(drawer).toContain('data-testid="project-tools-auto-subtitles"');
+    expect(drawer).toContain('data-testid="project-tools-auto-scene"');
+    expect(drawer).toContain('data-testid={`project-tools-${subView}-back`}');
+    expect(drawer).toContain('<SceneCreationPanel');
+    expect(drawer.match(/<SceneCreationPanel/gu)).toHaveLength(1);
+    expect(drawer).not.toContain('<textarea');
+    expect(right).toContain('<ProjectToolsDrawer');
+    expect(right).toContain("useState<ProjectToolsView>('home')");
+    // The shot owner no longer hosts a second Auto Scene route.
+    expect(shotManager).not.toContain('SceneCreationPanel');
+    expect(shotManager).not.toContain("'scene'");
   });
 
   it('keeps manual name, duration, submit, and back controls without the old route', () => {

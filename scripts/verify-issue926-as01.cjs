@@ -332,6 +332,31 @@ async function run() {
     await wait(`document.querySelector('[data-testid="project-tools-auto-subtitles"]')`);
     await pause(500);
     assert(await js(`Boolean(document.querySelector('[data-testid="project-tools-action-presets"]'))`), 'Auto Subtitles displaced Action Presets');
+
+    activeStep = 'tools-auto-scene-entry';
+    assert(
+      await js(`Boolean(document.querySelector('[data-testid="project-tools-auto-scene"]'))`),
+      'Auto Scene is missing from the Project Tools home',
+    );
+    assert(
+      await js(`!document.querySelector('[data-testid="resource-auto-scene-action"]')`),
+      'The retired left Auto Scene entry is still rendered',
+    );
+    await activate('[data-testid="project-tools-auto-scene"]');
+    await wait(`document.querySelector('[data-testid="scene-creation-panel"]')`);
+    assert(
+      await js(`document.querySelectorAll('[data-testid="scene-creation-panel"]').length === 1`),
+      'Auto Scene rendered more than one panel',
+    );
+    assert(
+      await js(`Boolean(document.querySelector('[data-testid="project-tools-auto-scene-back"]'))`),
+      'Auto Scene back control is missing',
+    );
+    const sceneEntryImage = path.join(root, 'tools-auto-scene-entry.png');
+    writeFileSync(sceneEntryImage, (await win.webContents.capturePage()).toPNG());
+    result.evidence.push(sceneEntryImage);
+    await activate('[data-testid="project-tools-auto-scene-back"]');
+    await wait(`document.querySelector('[data-testid="project-tools-auto-scene"]')`);
     const entryImage = path.join(root, 'tools-home-auto-subtitles-entry.png');
     writeFileSync(entryImage, (await win.webContents.capturePage()).toPNG());
     result.evidence.push(entryImage);

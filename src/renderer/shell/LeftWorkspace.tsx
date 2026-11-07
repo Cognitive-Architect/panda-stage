@@ -3,10 +3,6 @@ import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel'
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import type {
-  SceneCreationCanvasPreview,
-  SceneCreationCanvasPreviewStatus,
-} from '../features/shots/createSceneFromStructuredInput';
-import type {
   CreateFlaCharacter,
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
@@ -29,11 +25,11 @@ export interface LeftWorkspaceProps {
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   projectSessionIdentity?: string;
-  onSceneBackgroundImportComplete?(importedAssetIds: readonly string[]): string | null;
-  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
-  onSceneCanvasPreviewChange?: (
-    preview: SceneCreationCanvasPreview | null,
-  ) => void;
+  /** Project Tools → Auto Scene hand-off into the asset library. */
+  sceneBackgroundImportRequest?: number;
+  onSceneBackgroundImported?(importedAssetIds: readonly string[]): void;
+  /** Project Tools → Auto Scene hand-off into the character library. */
+  sceneCharacterLibraryRequest?: number;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
@@ -71,9 +67,9 @@ export function LeftWorkspace({
   activeActivity,
   onActiveActivityChange,
   projectSessionIdentity,
-  onSceneBackgroundImportComplete,
-  sceneCanvasPreviewStatus,
-  onSceneCanvasPreviewChange,
+  sceneBackgroundImportRequest,
+  onSceneBackgroundImported,
+  sceneCharacterLibraryRequest,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
@@ -122,9 +118,9 @@ export function LeftWorkspace({
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
         projectSessionIdentity={projectSessionIdentity}
-        onSceneBackgroundImportComplete={onSceneBackgroundImportComplete}
-        sceneCanvasPreviewStatus={sceneCanvasPreviewStatus}
-        onSceneCanvasPreviewChange={onSceneCanvasPreviewChange}
+        sceneBackgroundImportRequest={sceneBackgroundImportRequest}
+        onSceneBackgroundImported={onSceneBackgroundImported}
+        sceneCharacterLibraryRequest={sceneCharacterLibraryRequest}
         onCreateFlaCharacter={onCreateFlaCharacter}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
         flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}

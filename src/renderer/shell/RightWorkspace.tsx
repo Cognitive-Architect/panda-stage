@@ -17,9 +17,20 @@ import { editorProjectStore } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
 import { DialogueAuthoringDraft } from '../features/dialogue/dialogueAuthoringDraft';
 import { DialogueSheet } from '../features/dialogue/DialogueSheet';
+import {
+  EMPTY_SCENE_CREATION_DRAFT,
+  type SceneCreationCanvasPreview,
+  type SceneCreationCanvasPreviewStatus,
+  type SceneCreationDraft,
+} from '../features/shots/createSceneFromStructuredInput';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
-import { ProjectToolsDrawer } from './ProjectToolsDrawer';
+import { ProjectToolsDrawer, type ProjectToolsView } from './ProjectToolsDrawer';
 import { RightInspector } from './RightInspector';
+
+export interface SceneBackgroundImportResult {
+  token: number;
+  backgroundAssetId: string | null;
+}
 
 export type RightActivity = 'subtitles' | 'properties' | 'tools';
 
@@ -43,11 +54,23 @@ export function getNextRightActivity(
 export interface RightWorkspaceProps {
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
+  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
+  onSceneCanvasPreviewChange?(
+    preview: SceneCreationCanvasPreview | null,
+  ): void;
+  sceneBackgroundImportResult?: SceneBackgroundImportResult | null;
+  onRequestSceneBackgroundImport?(): void;
+  onRequestSceneCharacterLibrary?(): void;
 }
 
 export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
+  sceneCanvasPreviewStatus = null,
+  onSceneCanvasPreviewChange,
+  sceneBackgroundImportResult = null,
+  onRequestSceneBackgroundImport,
+  onRequestSceneCharacterLibrary,
 }: RightWorkspaceProps): React.JSX.Element {
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -108,11 +131,44 @@ export function RightWorkspace({
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
+  // Scene creation is a tool draft, not Project or History state. It survives
+  // closing and reopening Project Tools for the same project session only; the
+  // shell remounts this workspace when the project changes.
+  const [toolsView, setToolsView] = useState<ProjectToolsView>('home');
+  const [sceneCreationDraft, setSceneCreationDraft] = useState<SceneCreationDraft>(
+    EMPTY_SCENE_CREATION_DRAFT,
+  );
+  const handledSceneImportTokenRef = useRef(0);
   const triggerRefs = useRef<Partial<Record<RightActivity, HTMLButtonElement>>>({});
   const surfaceRef = useRef<HTMLDivElement>(null);
   const previousActivityRef = useRef<RightActivity | null>(null);
 
-  const closeSurface = (): void => setActiveActivity(null);
+  useLayoutEffect(() => {
+    if (
+      !sceneBackgroundImportResult ||
+      sceneBackgroundImportResult.token === handledSceneImportTokenRef.current
+    ) {
+      return;
+    }
+    handledSceneImportTokenRef.current = sceneBackgroundImportResult.token;
+    if (sceneBackgroundImportResult.backgroundAssetId) {
+      const backgroundAssetId = sceneBackgroundImportResult.backgroundAssetId;
+      setSceneCreationDraft((current) => ({
+        ...current,
+        backgroundAssetId,
+      }));
+    }
+    // Return the user to Auto Scene inside the same tools surface they left.
+    setToolsView('auto-scene');
+    setActiveActivity('tools');
+  }, [sceneBackgroundImportResult]);
+
+  // Closing the surface returns the drawer to its home page, matching the
+  // existing Auto Subtitles contract. Tool drafts stay with the workspace.
+  const closeSurface = (): void => {
+    setActiveActivity(null);
+    setToolsView('home');
+  };
 
   const handleAutoSubtitleGenerated = (generatedCount: number): void => {
     autoSubtitleDraft.clear();
@@ -151,6 +207,9 @@ export function RightWorkspace({
   }, [activeActivity]);
 
   const selectActivity = (activity: RightActivity): void => {
+    // Leaving the tools surface returns it to the home page, so a later visit
+    // never resumes a half-finished tool page by surprise.
+    if (activity !== 'tools' || activeActivity === 'tools') setToolsView('home');
     setActiveActivity((current) => getNextRightActivity(current, activity));
   };
 
@@ -209,6 +268,19 @@ export function RightWorkspace({
               }
               onAutoSubtitleGenerated={handleAutoSubtitleGenerated}
               onClose={closeSurface}
+              onAutoSceneCommitted={closeSurface}
+              onRequestSceneBackgroundImport={onRequestSceneBackgroundImport}
+              onRequestSceneCharacterLibrary={onRequestSceneCharacterLibrary}
+              onSceneCanvasPreviewChange={onSceneCanvasPreviewChange}
+              onSceneCreationDraftChange={setSceneCreationDraft}
+              onViewChange={setToolsView}
+              sceneCanvasPreviewStatus={sceneCanvasPreviewStatus}
+              sceneCreationDraft={sceneCreationDraft}
+              scenePreviewActive={
+                activeActivity === 'tools' && toolsView === 'auto-scene'
+              }
+              sceneSnapshot={projectSnapshot}
+              view={toolsView}
             />
           )}
         </div>

@@ -16,11 +16,12 @@ describe('Issue #949 AS-02 Phase A', () => {
   it('adds Auto Subtitles as an in-drawer Tools view and preserves existing tools', () => {
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
 
-    expect(tools).toContain("type ProjectToolsView = 'home' | 'action-presets' | 'auto-subtitles'");
+    expect(tools).toContain('export type ProjectToolsView =');
+    expect(tools).toContain("'auto-subtitles'");
     expect(tools).toContain('data-testid="project-tools-auto-subtitles"');
-    expect(tools).toContain("onClick={() => setView('auto-subtitles')}");
-    expect(tools).toContain('data-testid="project-tools-auto-subtitles-back"');
-    expect(tools).toContain('<h2 id="project-tools-heading">自动字幕</h2>');
+    expect(tools).toContain("onClick={() => onViewChange('auto-subtitles')}");
+    expect(tools).toContain('data-testid={`project-tools-${subView}-back`}');
+    expect(tools).toContain("'auto-subtitles': '自动字幕',");
     expect(tools).toContain('data-testid="project-tools-close"');
     expect(tools).toContain("view === 'action-presets'");
     expect(tools).toContain('<LegacyWorkspace />');

@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -39,13 +38,6 @@ import type {
   ShotWorkspaceView,
 } from '../features/shots/ShotManager';
 import {
-  EMPTY_SCENE_CREATION_DRAFT,
-  type SceneCreationCanvasPreview,
-  type SceneCreationCanvasPreviewStatus,
-  type SceneCreationDraft,
-} from '../features/shots/createSceneFromStructuredInput';
-import {
-  ArrowLeft,
   Clapperboard,
   CirclePlus,
   FileArchive,
@@ -76,11 +68,14 @@ export interface ResourceActivityDockProps {
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   projectSessionIdentity?: string;
-  onSceneBackgroundImportComplete?(importedAssetIds: readonly string[]): string | null;
-  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
-  onSceneCanvasPreviewChange?: (
-    preview: SceneCreationCanvasPreview | null,
-  ) => void;
+  /**
+   * Cross-surface request from Project Tools → Auto Scene: open the asset
+   * library and start an import so the missing background can be added.
+   */
+  sceneBackgroundImportRequest?: number;
+  onSceneBackgroundImported?(importedAssetIds: readonly string[]): void;
+  /** Cross-surface request from Project Tools → Auto Scene: open characters. */
+  sceneCharacterLibraryRequest?: number;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
@@ -165,9 +160,9 @@ export function ResourceActivityDock({
   activeActivity: requestedActivity,
   onActiveActivityChange,
   projectSessionIdentity: requestedProjectSessionIdentity,
-  onSceneBackgroundImportComplete,
-  sceneCanvasPreviewStatus,
-  onSceneCanvasPreviewChange,
+  sceneBackgroundImportRequest,
+  onSceneBackgroundImported,
+  sceneCharacterLibraryRequest,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
@@ -209,35 +204,12 @@ export function ResourceActivityDock({
   const projectIdentity = `${snapshot.projectRoot}\u0000${snapshot.project.id}`;
   const projectSessionIdentity =
     requestedProjectSessionIdentity ?? projectIdentity;
-  const [sceneDraftRecord, setSceneDraftRecord] = useState<{
-    projectSessionIdentity: string;
-    draft: SceneCreationDraft;
-  }>(() => ({
-    projectSessionIdentity,
-    draft: EMPTY_SCENE_CREATION_DRAFT,
-  }));
-  const sceneImportPending = useRef<string | null>(null);
+  // Auto Scene lives in Project Tools; the left dock only remains the asset and
+  // character surface that flow hands off to.
+  const sceneImportPending = useRef(false);
   useLayoutEffect(() => {
-    sceneImportPending.current = null;
-    setSceneDraftRecord((current) =>
-      current.projectSessionIdentity === projectSessionIdentity
-        ? current
-        : {
-            projectSessionIdentity,
-            draft: EMPTY_SCENE_CREATION_DRAFT,
-          },
-    );
+    sceneImportPending.current = false;
   }, [projectIdentity, projectSessionIdentity]);
-  const sceneCreationDraft =
-    sceneDraftRecord.projectSessionIdentity === projectSessionIdentity
-      ? sceneDraftRecord.draft
-      : EMPTY_SCENE_CREATION_DRAFT;
-  const updateSceneCreationDraft = useCallback(
-    (draft: SceneCreationDraft): void => {
-      setSceneDraftRecord({ projectSessionIdentity, draft });
-    },
-    [projectSessionIdentity],
-  );
   const narrow = useNarrowViewport(
     compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
   );
@@ -268,11 +240,8 @@ export function ResourceActivityDock({
     if (!open && (flaCharacterImportCommittingRef.current || !confirmLeavingCharacterActivity())) {
       return false;
     }
-    if (!open && activeActivity === 'shots' && shotView === 'scene') {
-      onSceneCanvasPreviewChange?.(null);
-    }
     if (!open && activeActivity === 'assets') {
-      sceneImportPending.current = null;
+      sceneImportPending.current = false;
     }
     if (requestedDrawerOpen === undefined) {
       setInternalDrawerOpen(open);
@@ -291,11 +260,6 @@ export function ResourceActivityDock({
     if (flaCharacterImportCommittingRef.current) return;
     setFlaCharacterImportAttempt(null);
     setFlaCharacterCommitState(false);
-  };
-
-  const returnToShotListFromScene = (): void => {
-    onSceneCanvasPreviewChange?.(null);
-    setShotView('list');
   };
 
   useEffect(() => {
@@ -425,11 +389,8 @@ export function ResourceActivityDock({
         '资源';
   const hideAssetBrowserHeading =
     activeActivity === 'assets' && assetView === 'browser';
-  const sceneCreationView =
-    activeActivity === 'shots' && shotView === 'scene';
   const hideLocalActivityTabs =
     landscapePresentation ||
-    sceneCreationView ||
     (hideSectionLabels &&
       (activeActivity === 'shots' || activeActivity === 'assets'));
   const hidePortraitAssetsChrome =
@@ -444,8 +405,6 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'detail' || characterView === 'expression');
-  const hideScenePrimaryAction =
-    activeActivity === 'shots' && shotView === 'scene';
   const collapseLandscapeCharacterDetailHeader =
     landscapePresentation &&
     activeActivity === 'characters' &&
@@ -522,10 +481,7 @@ export function ResourceActivityDock({
       return;
     }
     if (sceneImportPending.current && activity !== 'assets') {
-      sceneImportPending.current = null;
-    }
-    if (activeActivity === 'shots' && shotView === 'scene' && activity !== 'shots') {
-      onSceneCanvasPreviewChange?.(null);
+      sceneImportPending.current = false;
     }
     if (narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
@@ -539,8 +495,7 @@ export function ResourceActivityDock({
 
   const openSceneBackgroundImport = (): void => {
     if (!confirmLeavingCharacterActivity()) return;
-    onSceneCanvasPreviewChange?.(null);
-    sceneImportPending.current = projectSessionIdentity;
+    sceneImportPending.current = true;
     setAssetView('browser');
     setInternalActivity('assets');
     onActiveActivityChange?.('assets');
@@ -554,38 +509,50 @@ export function ResourceActivityDock({
     assets: readonly Asset[],
     importedAssetIds: readonly string[],
   ): void => {
-    if (sceneImportPending.current !== projectSessionIdentity) return;
-    sceneImportPending.current = null;
+    if (!sceneImportPending.current) return;
+    sceneImportPending.current = false;
     if (assets.length === 0) return;
-    const selectedBackgroundId =
-      onSceneBackgroundImportComplete?.(importedAssetIds) ?? null;
-    if (selectedBackgroundId) {
-      updateSceneCreationDraft({
-        ...sceneCreationDraft,
-        backgroundAssetId: selectedBackgroundId,
-      });
-    }
-    setShotView('scene');
-    setInternalActivity('shots');
-    onActiveActivityChange?.('shots');
-    setDrawerOpen(true);
+    onSceneBackgroundImported?.(importedAssetIds);
   };
 
   const openSceneCharacterLibrary = (): void => {
     if (!confirmLeavingCharacterActivity()) return;
-    onSceneCanvasPreviewChange?.(null);
     setCharacterView('list');
     setInternalActivity('characters');
     onActiveActivityChange?.('characters');
     setDrawerOpen(true);
   };
 
+  const handledSceneImportRequestRef = useRef(0);
+  useEffect(() => {
+    if (
+      !sceneBackgroundImportRequest ||
+      sceneBackgroundImportRequest === handledSceneImportRequestRef.current
+    ) {
+      return;
+    }
+    handledSceneImportRequestRef.current = sceneBackgroundImportRequest;
+    // The request token is the only trigger; the handler reads current state.
+    openSceneBackgroundImport();
+  }, [sceneBackgroundImportRequest]);
+
+  const handledSceneCharacterRequestRef = useRef(0);
+  useEffect(() => {
+    if (
+      !sceneCharacterLibraryRequest ||
+      sceneCharacterLibraryRequest === handledSceneCharacterRequestRef.current
+    ) {
+      return;
+    }
+    handledSceneCharacterRequestRef.current = sceneCharacterLibraryRequest;
+    // The request token is the only trigger; the handler reads current state.
+    openSceneCharacterLibrary();
+  }, [sceneCharacterLibraryRequest]);
+
   return (
     <section
       aria-label={
-        sceneCreationView
-          ? '自动布景'
-          : hidePortraitShotChrome ||
+        hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
         useDirectLandscapeShotWorkspaceLabel ||
         useDirectCharacterWorkspaceLabel ||
@@ -594,7 +561,6 @@ export function ResourceActivityDock({
           : undefined
       }
       aria-labelledby={
-        sceneCreationView ||
         hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
         useDirectLandscapeShotWorkspaceLabel ||
@@ -659,37 +625,7 @@ export function ResourceActivityDock({
         id="resource-activity-drawer"
       >
         {!collapseLandscapeCharacterDetailHeader ? (
-          <div
-            className={`resource-activity-header${sceneCreationView ? ' resource-activity-header-scene' : ''}`}
-          >
-          {sceneCreationView ? (
-            <div
-              className="scene-creation-navigation"
-              data-testid="scene-creation-navigation"
-            >
-              <button
-                aria-label="返回镜头列表"
-                className="character-back-button scene-creation-back-button"
-                data-testid="scene-creation-back"
-                onClick={returnToShotListFromScene}
-                title="返回镜头列表"
-                type="button"
-              >
-                <DecorativeIcon icon={ArrowLeft} size={20} />
-              </button>
-              <button
-                aria-label="关闭资源工作区"
-                className="resource-activity-close resource-scene-creation-close-button"
-                data-testid="resource-activity-close"
-                onClick={() => setDrawerOpen(false)}
-                title="关闭资源工作区"
-                type="button"
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
-          {sceneCreationView ? null : (
+          <div className="resource-activity-header">
           <div
             className="resource-activity-heading"
             data-resource-header-layout={
@@ -739,7 +675,7 @@ export function ResourceActivityDock({
                   data-testid="character-create-mode-switch-slot"
                   ref={setCharacterCreateModeSwitchTarget}
                 />
-              ) : hideLandscapeCharacterPrimaryAction || hideScenePrimaryAction ? null : (
+              ) : hideLandscapeCharacterPrimaryAction ? null : (
                   <button
                     className={showLandscapeCharacterEntryActions
                       ? 'resource-activity-character-entry'
@@ -772,17 +708,6 @@ export function ResourceActivityDock({
                     <span>{primaryAction.label}</span>
                   </button>
                 )}
-              {activeActivity === 'shots' && shotView === 'list' ? (
-                <button
-                  className="resource-activity-secondary-action"
-                  data-resource-action="shots-auto-scene"
-                  data-testid="resource-auto-scene-action"
-                  onClick={() => setShotView('scene')}
-                  type="button"
-                >
-                  自动布景
-                </button>
-              ) : null}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -852,7 +777,6 @@ export function ResourceActivityDock({
               )}
             </div>
           </div>
-          )}
           {hideLocalActivityTabs ? null : (
             <nav
               aria-label="编辑资源活动"
@@ -900,22 +824,11 @@ export function ResourceActivityDock({
               <ShotManager
                 key={projectIdentity}
                 hideHeading={hideLocalActivityTabs}
-                onSceneCreationDraftChange={updateSceneCreationDraft}
-                onSceneNavigateToAssets={openSceneBackgroundImport}
-                onSceneNavigateToCharacters={openSceneCharacterLibrary}
                 onViewChange={setShotView}
                 presentation={
                   landscapePresentation ? 'landscape' : 'default'
                 }
                 shotEditorPresentation={shotEditorPresentation}
-                sceneCreationDraft={sceneCreationDraft}
-                sceneCanvasPreviewStatus={sceneCanvasPreviewStatus}
-                onSceneCanvasPreviewChange={onSceneCanvasPreviewChange}
-                scenePreviewActive={
-                  activeActivity === 'shots' &&
-                  shotView === 'scene' &&
-                  drawerOpen
-                }
                 snapshot={snapshot}
                 view={shotView}
               />

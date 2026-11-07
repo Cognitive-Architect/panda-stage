@@ -88,6 +88,23 @@ async function click(window, selector) {
   })()`);
 }
 
+// Issue #997 moved Auto Scene into the right Project Tools drawer. The left
+// Shot list keeps only the manual New Shot route.
+async function openAutoScene(window) {
+  await click(window, '[data-testid="right-activity-rail-tools"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-tools-home"]')`,
+    'Project Tools did not open from the right rail.',
+  );
+  await click(window, '[data-testid="project-tools-auto-scene"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-panel"]')`,
+    'Automatic scene creation did not open from Project Tools.',
+  );
+}
+
 async function capture(window, fileName) {
   await delay(220);
   const image = await window.webContents.capturePage();
@@ -296,12 +313,7 @@ async function run() {
   windowRef.focus();
   await openProject(windowRef);
 
-  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'The automatic scene panel did not open from the Shot list.',
-  );
+  await openAutoScene(windowRef);
   const structuredInput = [
     `镜头：${sample.shotName}`,
     `背景：${sample.backgroundName}`,

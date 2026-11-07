@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog } = require('electron');
 const { execFileSync } = require('node:child_process');
-const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { mkdirSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
 const { ShotService } = require('../dist-electron/domain/services/ShotService.js');
@@ -19,10 +19,6 @@ const evidenceRoot = path.join(runRoot, 'evidence');
 const projectRoot = path.join(runRoot, `${scenarioName}.pandastage`);
 const userDataRoot = path.join(runRoot, 'electron-user-data');
 const receiptPath = path.join(runRoot, 'issue860-ui01-receipt.json');
-const importedBackgroundSource = path.resolve(
-  __dirname,
-  '../demo-project/assets/bamboo-background.png',
-);
 let windowRef = null;
 
 function configureElectronPaths() {
@@ -43,11 +39,9 @@ function configureElectronPaths() {
 }
 
 mkdirSync(runRoot, { recursive: true });
+mkdirSync(evidenceRoot, { recursive: true });
 configureElectronPaths();
-dialog.showOpenDialog = async () => ({
-  canceled: false,
-  filePaths: [importedBackgroundSource],
-});
+dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
 require('../dist-electron/main/index.js');
 
 function assert(condition, message) {
@@ -68,9 +62,7 @@ function browserWait(expression, message, timeout = 25_000) {
 }
 
 async function waitForDom(window, expression, message, timeout) {
-  await window.webContents.executeJavaScript(
-    browserWait(expression, message, timeout),
-  );
+  await window.webContents.executeJavaScript(browserWait(expression, message, timeout));
 }
 
 function delay(milliseconds) {
@@ -90,79 +82,16 @@ async function click(window, selector) {
   })()`);
 }
 
-async function readSceneNavigation(window) {
-  return window.webContents.executeJavaScript(`(() => {
-    const rect = (element) => {
-      if (!element) return null;
-      const bounds = element.getBoundingClientRect();
-      return {
-        left: bounds.left,
-        right: bounds.right,
-        top: bounds.top,
-        bottom: bounds.bottom,
-        width: bounds.width,
-        height: bounds.height,
-      };
-    };
-    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const navigation = dock?.querySelector('[data-testid="scene-creation-navigation"]');
-    const back = navigation?.querySelector('[data-testid="scene-creation-back"]');
-    const close = navigation?.querySelector('[data-testid="resource-activity-close"]');
-    const arrow = back?.querySelector('svg');
-    const label = panel?.querySelector('label[for="scene-creation-input"]');
-    return {
-      backLabel: back?.getAttribute('aria-label') ?? null,
-      backTitle: back?.getAttribute('title') ?? null,
-      backText: back?.textContent?.trim() ?? null,
-      arrowClasses: arrow ? [...arrow.classList] : [],
-      arrowBounds: rect(arrow),
-      arrowHidden: arrow?.getAttribute('aria-hidden') === 'true',
-      closeLabel: close?.getAttribute('aria-label') ?? null,
-      navigationBounds: rect(navigation),
-      backBounds: rect(back),
-      closeBounds: rect(close),
-      labelBounds: rect(label),
-      backCount: dock?.querySelectorAll('[data-testid="scene-creation-back"]').length ?? 0,
-      panelBackCount: panel?.querySelectorAll('[data-testid="scene-creation-back"]').length ?? 0,
-      closeCount: navigation?.querySelectorAll('[data-testid="resource-activity-close"]').length ?? 0,
-      drawerOpen: dock?.dataset.resourceDrawerOpen ?? null,
-      shotView: dock?.dataset.resourceShotView ?? null,
-    };
+async function setSceneDraftText(window, value) {
+  await window.webContents.executeJavaScript(`(() => {
+    const textarea = document.querySelector('[data-testid="scene-creation-input"]');
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      throw new Error('The Auto Scene input is missing.');
+    }
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(textarea, ${JSON.stringify(value)});
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-}
-
-function assertSceneNavigation(state, context) {
-  assert(
-    state.backLabel === '返回镜头列表' &&
-      state.backTitle === '返回镜头列表' &&
-      state.backText === '' &&
-      state.arrowClasses.includes('lucide-arrow-left') &&
-      state.arrowHidden &&
-      state.closeLabel === '关闭资源工作区' &&
-      state.backCount === 1 &&
-      state.panelBackCount === 0 &&
-      state.closeCount === 1,
-    `${context} does not use one accessible Lucide return control in the outer resource header: ${JSON.stringify(state)}.`,
-  );
-  const back = state.backBounds;
-  const close = state.closeBounds;
-  const navigation = state.navigationBounds;
-  const label = state.labelBounds;
-  const arrow = state.arrowBounds;
-  assert(
-    back && close && navigation && label &&
-      arrow &&
-      back.width >= 44 && back.height >= 44 &&
-      close.width >= 44 && close.height >= 44 &&
-      back.left < close.left &&
-      Math.abs((back.top + back.height / 2) - (close.top + close.height / 2)) <= 8 &&
-      Math.abs((arrow.left + arrow.width / 2) - (back.left + back.width / 2)) <= 2 &&
-      Math.abs((arrow.top + arrow.height / 2) - (back.top + back.height / 2)) <= 2 &&
-      label.top >= navigation.bottom - 1 &&
-      label.top - navigation.bottom <= 36,
-    `${context} does not place the 44px return and close controls on one row with the input label immediately below: ${JSON.stringify(state)}.`,
-  );
 }
 
 async function capture(window, fileName) {
@@ -248,7 +177,7 @@ async function openProjectCenter(window) {
 }
 
 async function openProject(window, targetProjectRoot = projectRoot) {
-  const projectRoot = targetProjectRoot;
+  const nextProjectRoot = targetProjectRoot;
   if (await window.webContents.executeJavaScript(
     "Boolean(document.querySelector('[data-editor-page=\"editor\"]'))",
   )) {
@@ -262,7 +191,7 @@ async function openProject(window, targetProjectRoot = projectRoot) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector('[data-testid="project-center-screen"] .recovery-open-row input');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    setter.call(input, ${JSON.stringify(projectRoot)});
+    setter.call(input, ${JSON.stringify(nextProjectRoot)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click();
   })()`);
@@ -290,381 +219,162 @@ async function openShotsWorkspace(window) {
   );
 }
 
-async function readEntryState(window) {
+async function readShotState(window) {
   return window.webContents.executeJavaScript(`(() => {
     const shell = document.querySelector('.editor-shell');
     const dock = document.querySelector('[data-testid="resource-activity-dock"]');
     const manager = document.querySelector('[data-testid="shot-manager"]');
-    const managerSummary = manager?.querySelector('[data-project-duration-ms]')?.textContent ?? '';
-    const managerShotCount = Number(managerSummary.split('个镜头')[0]?.trim() ?? NaN);
+    const summary = manager?.querySelector('[data-project-duration-ms]')?.textContent ?? '';
     const primary = document.querySelector('[data-testid="resource-primary-action"]');
-    const automatic = document.querySelector('[data-testid="resource-auto-scene-action"]');
-    const heading = primary?.closest('.resource-activity-heading') ?? automatic?.closest('.resource-activity-heading');
-    const rect = (element) => {
-      if (!element) return null;
-      const bounds = element.getBoundingClientRect();
-      return { left: bounds.left, right: bounds.right, width: bounds.width, height: bounds.height };
-    };
-    const headingBounds = rect(heading);
-    const primaryBounds = rect(primary);
-    const automaticBounds = rect(automatic);
     return {
       deviceMode: shell?.dataset.editorDeviceMode ?? null,
       layout: shell?.dataset.editorShellLayout ?? null,
-      drawerOpen: dock?.dataset.resourceDrawerOpen ?? null,
       activity: dock?.dataset.activeActivity ?? null,
+      drawerOpen: dock?.dataset.resourceDrawerOpen ?? null,
       shotView: dock?.dataset.resourceShotView ?? null,
-      actionGroup: document.querySelector('.resource-activity-header-actions')?.dataset.resourceActionGroup ?? null,
-      shotCount: Number.isFinite(managerShotCount) ? managerShotCount : null,
+      shotCount: Number(summary.split('个镜头')[0]?.trim() ?? NaN),
       revision: Number(manager?.querySelector('[data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
       primaryLabel: primary?.textContent?.trim() ?? null,
-      automaticLabel: automatic?.textContent?.trim() ?? null,
-      headingBounds,
-      primaryBounds,
-      automaticBounds,
-      actionsFitHeading: Boolean(
-        headingBounds && primaryBounds && automaticBounds &&
-        primaryBounds.left >= headingBounds.left - 1 &&
-        automaticBounds.right <= headingBounds.right + 1,
-      ),
-      headingHasNoOverflow: Boolean(heading && heading.scrollWidth <= heading.clientWidth + 1),
+      leftAutoSceneEntry: Boolean(document.querySelector('[data-testid="resource-auto-scene-action"]')),
+      leftAutoSceneAction: Boolean(document.querySelector('[data-resource-action="shots-auto-scene"]')),
+      manualCreate: Boolean(document.querySelector('[data-resource-action="shots-新建镜头"]')),
     };
   })()`);
 }
 
-function assertListState(
-  state,
-  expectedLayout,
-  expectedShotCount,
-  expectedRevision = 0,
-) {
-  assert(state.deviceMode === 'cloud-touch', `Unexpected device mode: ${state.deviceMode}`);
-  assert(state.layout === expectedLayout, `Expected ${expectedLayout} layout, got ${state.layout}.`);
-  assert(state.activity === 'shots' && state.drawerOpen === 'true', 'The Shots drawer is not open.');
-  assert(state.shotView === 'list', `Expected the list view, got ${state.shotView}.`);
-  assert(state.shotCount === expectedShotCount, `Expected ${expectedShotCount} Shots, got ${state.shotCount}.`);
-  assert(state.revision === expectedRevision, `Expected project revision ${expectedRevision}, got ${state.revision}.`);
-  assert(state.primaryLabel === '新建镜头', `Unexpected manual entry label: ${state.primaryLabel}.`);
-  assert(state.automaticLabel === '自动布景', `Unexpected automatic entry label: ${state.automaticLabel}.`);
-  assert(state.actionsFitHeading, `The Shot actions exceed their header bounds: ${JSON.stringify(state)}.`);
-  assert(state.headingHasNoOverflow, `The Shot action header has horizontal overflow: ${JSON.stringify(state)}.`);
-  const minimumActionHeight = expectedLayout === 'portrait' ? 48 : 44;
-  assert(
-    state.primaryBounds?.height >= minimumActionHeight &&
-      state.automaticBounds?.height >= minimumActionHeight,
-    `The Shot actions are below the ${minimumActionHeight}px target: ${JSON.stringify(state)}.`,
+async function readToolsState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="project-tools-drawer"]');
+    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+    return {
+      surfaceOpen: document.querySelector('[data-testid="right-workspace"]')?.dataset.surfaceOpen ?? null,
+      activeActivity: document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity ?? null,
+      view: drawer?.dataset.projectToolsView ?? null,
+      homeEntries: {
+        autoScene: Boolean(document.querySelector('[data-testid="project-tools-auto-scene"]')),
+        autoSubtitles: Boolean(document.querySelector('[data-testid="project-tools-auto-subtitles"]')),
+        actionPresets: Boolean(document.querySelector('[data-testid="project-tools-action-presets"]')),
+        viewMode: Boolean(document.querySelector('[data-testid="project-tools-view-mode-card"]')),
+      },
+      panelPresent: Boolean(panel),
+      panelCount: document.querySelectorAll('[data-testid="scene-creation-panel"]').length,
+      textareaCount: document.querySelectorAll('[data-testid="scene-creation-input"]').length,
+      canvasCount: document.querySelectorAll('.project-canvas').length,
+      draft: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
+      confirmDisabled: document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled ?? null,
+      backPresent: Boolean(document.querySelector('[data-testid="project-tools-auto-scene-back"]')),
+      closePresent: Boolean(document.querySelector('[data-testid="project-tools-close"]')),
+      headerText: document.querySelector('.project-tools-auto-scene-header')?.textContent?.trim() ?? null,
+    };
+  })()`);
+}
+
+async function openAutoScene(window) {
+  await click(window, '[data-testid="right-activity-rail-tools"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-tools-home"]')`,
+    'Project Tools did not open from the right rail.',
+  );
+  await click(window, '[data-testid="project-tools-auto-scene"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-panel"]')`,
+    'Auto Scene did not open inside Project Tools.',
   );
 }
 
 async function run() {
-  mkdirSync(evidenceRoot, { recursive: true });
+  await app.whenReady();
   const project = await createSampleProject();
   windowRef = await waitForMainWindow();
-  windowRef.setSize(1_600, 1_000);
+  windowRef.setSize(1600, 1050);
   windowRef.show();
   windowRef.focus();
   await openProject(windowRef);
+
+  const shotState = await readShotState(windowRef);
+  assert(shotState.layout === 'landscape', `Expected the landscape layout, got ${shotState.layout}.`);
+  assert(shotState.activity === 'shots' && shotState.drawerOpen === 'true', 'The Shots drawer is not open.');
+  assert(shotState.shotCount === project.shots.length, `Expected ${project.shots.length} Shots, got ${shotState.shotCount}.`);
+  assert(shotState.primaryLabel === '新建镜头', `Unexpected manual entry: ${shotState.primaryLabel}.`);
+  assert(shotState.manualCreate, 'The manual New Shot action is missing from the Shot list.');
+  assert(!shotState.leftAutoSceneEntry, 'The retired left Auto Scene entry is still rendered.');
+  assert(!shotState.leftAutoSceneAction, 'The retired shots-auto-scene action is still wired.');
+  const shotListScreenshot = await capture(windowRef, 'landscape-shot-list-single-manual-entry.png');
+
+  await click(windowRef, '[data-testid="right-activity-rail-tools"]');
   await waitForDom(
     windowRef,
-    `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'landscape'`,
-    'The wide Windows window did not select the Cloud Touch landscape layout.',
+    `document.querySelector('[data-testid="project-tools-home"]')`,
+    'Project Tools home did not open.',
   );
+  const homeState = await readToolsState(windowRef);
+  assert(homeState.homeEntries.autoScene, 'Auto Scene is missing from the tools home.');
+  assert(homeState.homeEntries.autoSubtitles, 'Auto Subtitles is missing from the tools home.');
+  assert(homeState.homeEntries.actionPresets, 'Action Presets is missing from the tools home.');
+  assert(homeState.homeEntries.viewMode, 'The canvas view modes are missing from the tools home.');
+  const toolsHomeScreenshot = await capture(windowRef, 'tools-home-auto-scene-entry.png');
 
-  const wideEntry = await readEntryState(windowRef);
-  assertListState(wideEntry, 'landscape', initialShotCount);
-  const wideScreenshot = await capture(
-    windowRef,
-    initialShotCount === 0 ? 'empty-project-entry-landscape.png' : 'multi-shot-entry-landscape.png',
-  );
-
-  await click(windowRef, '[data-testid="resource-primary-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="shot-create-view"]')`,
-    'The manual Shot creation flow did not open.',
-  );
-  const manualState = await windowRef.webContents.executeJavaScript(`(() => ({
-    shotCount: Number((document.querySelector('[data-testid="shot-manager"] [data-project-duration-ms]')?.textContent ?? '').split('个镜头')[0]?.trim() ?? NaN),
-    revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-    hasName: Boolean(document.querySelector('[data-testid="shot-create-name"]')),
-    hasSubmit: Boolean(document.querySelector('[data-testid="shot-create-submit"]')),
-    hasOldAutomaticRoute: Boolean(document.querySelector('[data-testid="shot-create-structured-input"]')),
-  }))()`);
-  assert(
-    manualState.shotCount === initialShotCount && manualState.revision === 0 &&
-      manualState.hasName && manualState.hasSubmit && !manualState.hasOldAutomaticRoute,
-    `Opening manual creation changed project state or lost its controls: ${JSON.stringify(manualState)}.`,
-  );
-
-  await click(windowRef, '[data-testid="resource-primary-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
-    'The manual flow did not return to the Shot list.',
-  );
-  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
+  await click(windowRef, '[data-testid="project-tools-auto-scene"]');
   await waitForDom(
     windowRef,
     `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'The list-level automatic entry did not open the scene flow.',
+    'Auto Scene did not open inside Project Tools.',
   );
-  const sceneState = await windowRef.webContents.executeJavaScript(`(() => {
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const managerSummary = document.querySelector('[data-testid="shot-manager"] [data-project-duration-ms]')?.textContent ?? '';
-    const label = panel?.querySelector('label[for="scene-creation-input"]');
-    const input = panel?.querySelector('[data-testid="scene-creation-input"]');
-    const match = panel?.querySelector('[data-testid="scene-creation-inspect"]');
-    return {
-      accessibleName: panel?.getAttribute('aria-label') ?? null,
-      visibleHeading: panel?.querySelector('h2, h3')?.textContent?.trim() ?? null,
-      label: label?.childNodes?.[0]?.textContent?.trim() ?? null,
-      placeholder: input?.getAttribute('placeholder') ?? null,
-      inputValue: input?.value ?? null,
-      inputRows: input?.rows ?? null,
-      matchLabel: match?.textContent?.trim() ?? null,
-      sharedPrimaryActionPresent: Boolean(document.querySelector('[data-testid="resource-primary-action"]')),
-      removedHelperMarkupPresent: Boolean(panel?.querySelector('details, output, pre, [data-testid="scene-creation-copy-prompt"]')),
-      shotCount: Number(managerSummary.split('个镜头')[0]?.trim() ?? NaN),
-      revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-    };
-  })()`);
-  sceneState.navigation = await readSceneNavigation(windowRef);
-  assertSceneNavigation(sceneState.navigation, 'Wide scene header');
-  assert(sceneState.accessibleName === '自动布景', 'The scene panel lost its accessible name.');
-  assert(sceneState.visibleHeading === null, 'The scene panel still renders a duplicate visible heading.');
-  assert(sceneState.label === '粘贴布景信息', 'The scene input label is unclear.');
-  assert(
-    sceneState.placeholder === '格式示例\n镜头：花园相遇\n背景：花园\n出场：张三' &&
-      sceneState.inputValue === '' && sceneState.inputRows === 5,
-    `The empty input does not show the four-line placeholder at the expected height: ${JSON.stringify(sceneState)}.`,
+  const sceneState = await readToolsState(windowRef);
+  assert(sceneState.activeActivity === 'tools', `Auto Scene left the tools drawer: ${sceneState.activeActivity}.`);
+  assert(sceneState.view === 'auto-scene', `Unexpected tools view: ${sceneState.view}.`);
+  assert(sceneState.panelCount === 1, 'Auto Scene rendered more than one panel.');
+  assert(sceneState.textareaCount === 1, 'Auto Scene rendered a duplicate input.');
+  assert(sceneState.backPresent && sceneState.closePresent, 'The single-row tool navigation is incomplete.');
+  assert(sceneState.headerText?.includes('自动布景'), 'The Auto Scene header lost its title.');
+  assert(sceneState.confirmDisabled === true, 'Create Shot must stay disabled without a draft.');
+  assert(sceneState.canvasCount <= 1, 'Auto Scene must not build a second canvas.');
+  const sceneScreenshot = await capture(windowRef, 'tools-auto-scene-panel.png');
+
+  const draft = `镜头：布景入口示例\n背景：花园\n出场：张三`;
+  await setSceneDraftText(windowRef, draft);
+  await waitForDom(
+    windowRef,
+    `document.querySelector('[data-testid="scene-creation-input"]')?.value.length > 0`,
+    'The Auto Scene draft did not accept input.',
   );
+  await delay(400);
+  const afterDraftShotState = await readShotState(windowRef);
   assert(
-    sceneState.matchLabel === '重新匹配',
-    `Unexpected recovery match action: ${sceneState.matchLabel}.`,
-  );
-  assert(
-    !sceneState.sharedPrimaryActionPresent,
-    `The scene view unexpectedly renders the shared primary action: ${JSON.stringify(sceneState)}.`,
-  );
-  assert(
-    !sceneState.removedHelperMarkupPresent,
-    'The deleted format or external-AI helper markup is still present.',
-  );
-  assert(
-    sceneState.shotCount === initialShotCount && sceneState.revision === 0,
-    `Opening automatic scene creation changed project state: ${JSON.stringify(sceneState)}.`,
+    afterDraftShotState.shotCount === project.shots.length &&
+      afterDraftShotState.revision === shotState.revision,
+    `Typing a draft must not change Project state: ${JSON.stringify(afterDraftShotState)}.`,
   );
 
-  const sceneScreenshot = await capture(
+  await click(windowRef, '[data-testid="project-tools-auto-scene-back"]');
+  await waitForDom(
     windowRef,
-    initialShotCount === 0 ? 'empty-project-automatic-scene.png' : 'multi-shot-automatic-scene.png',
+    `document.querySelector('[data-testid="project-tools-home"]')`,
+    'The Auto Scene back control did not return to the tools home.',
+  );
+  const afterBackShotState = await readShotState(windowRef);
+  assert(
+    afterBackShotState.shotCount === project.shots.length &&
+      afterBackShotState.revision === shotState.revision,
+    'Leaving Auto Scene without confirming must not create a Shot.',
   );
 
-  const missingResourceInput = [
-    `镜头：${initialShotCount === 2 ? '已有镜头 1' : '花园相遇'}`,
-    '背景：花园',
-    '出场：张三',
-  ].join('\n');
-  await windowRef.webContents.executeJavaScript(`(() => {
-    const input = document.querySelector('[data-testid="scene-creation-input"]');
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-    setter.call(input, ${JSON.stringify(missingResourceInput)});
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
+  await click(windowRef, '[data-testid="project-tools-close"]');
   await waitForDom(
     windowRef,
-    `document.querySelector('[data-testid="scene-creation-candidates"]') && document.querySelector('[aria-label="背景素材"] .scene-creation-resource-error')?.textContent?.includes('没找到『花园』背景') && document.querySelector('[aria-label="出场角色"] .scene-creation-resource-error')?.textContent?.includes('没找到『张三』这个角色')`,
-    'Missing background and Character errors were not shown beside their resource rows.',
+    `!document.querySelector('[data-testid="project-tools-drawer"]') && !document.querySelector('[data-testid="scene-creation-panel"]')`,
+    'Closing the tools drawer left the Auto Scene surface mounted.',
   );
-  let expectedDraft;
-  let nameConflictScreenshot = null;
-  let repairedNameScreenshot = null;
-  if (initialShotCount === 2) {
-    await waitForDom(
-      windowRef,
-      `document.querySelector('[data-testid="scene-creation-name-conflict"]')?.textContent?.includes('『已有镜头 1』已经存在') && document.querySelector('[data-testid="scene-creation-use-suggested-name"]')?.textContent?.includes('使用『已有镜头 1 2』')`,
-      'The duplicate Shot did not offer the next formal unique name.',
-    );
-    nameConflictScreenshot = await capture(
-      windowRef,
-      'shot-name-conflict-recovery.png',
-    );
-    await click(windowRef, '[data-testid="scene-creation-use-suggested-name"]');
-    await waitForDom(
-      windowRef,
-      `document.querySelector('[data-testid="scene-creation-input"]')?.value?.includes('镜头：已有镜头 1 2') && !document.querySelector('[data-testid="scene-creation-name-conflict"]')`,
-      'Selecting the suggested Shot name did not update only the pasted Shot field.',
-    );
-  }
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[aria-label="背景素材"] .scene-creation-resource-error')?.textContent?.includes('没找到『花园』背景') && document.querySelector('[aria-label="出场角色"] .scene-creation-resource-error')?.textContent?.includes('没找到『张三』这个角色')`,
-    'The delayed automatic resource match did not refresh after the Shot name correction.',
-  );
-  if (initialShotCount === 2) {
-    repairedNameScreenshot = await capture(
-      windowRef,
-      'shot-name-conflict-repaired.png',
-    );
-  }
-
-  expectedDraft = await windowRef.webContents.executeJavaScript(
-    "document.querySelector('[data-testid=\"scene-creation-input\"]')?.value ?? null",
-  );
-  assert(expectedDraft, 'The recovery scenario requires a non-empty scene draft.');
-  await click(windowRef, '[aria-label="背景素材"] .scene-creation-resource-error button');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-background-picker"]')?.textContent?.includes('没有可用的背景图片素材')`,
-    'The existing-background action did not open a truthful empty picker.',
-  );
-  await windowRef.webContents.executeJavaScript(`document.querySelector('[data-testid="scene-creation-background-picker"] .scene-creation-picker-heading button')?.click()`);
-  await click(
-    windowRef,
-    '[aria-label="背景素材"] .scene-creation-resource-error button:nth-of-type(2)',
-  );
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'shots' && document.querySelector('[data-testid="scene-creation-panel"]') && document.querySelector('[data-testid="scene-creation-background-match"]')`,
-    'Importing a background did not return to the scene draft with a usable background selected.',
-  );
-  try {
-    await waitForDom(
-      windowRef,
-      `(() => { const image = document.querySelector('[data-testid="scene-creation-background-match"] .scene-creation-match-thumbnail img'); return Boolean(image?.complete && image.naturalWidth > 0); })()`,
-      'The imported background thumbnail did not finish loading as the selected match.',
-    );
-  } catch (error) {
-    const candidateId = await windowRef.webContents.executeJavaScript(
-      "document.querySelector('[data-testid=\"scene-creation-background-match\"]')?.dataset.candidateId ?? null",
-    );
-    const projectOnDisk = JSON.parse(
-      readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
-    );
-    const candidateAsset = projectOnDisk.assets.find(
-      (asset) => asset.id === candidateId,
-    );
-    const thumbnailResponse = candidateAsset
-      ? await windowRef.webContents.executeJavaScript(
-          `window.pandaStage.assets.readThumbnail({ projectRoot: ${JSON.stringify(projectRoot)}, assetId: ${JSON.stringify(candidateId)}, sha256: ${JSON.stringify(candidateAsset.sha256)} })`,
-        )
-      : null;
-    const diagnostic = await windowRef.webContents.executeJavaScript(`(() => {
-      const row = document.querySelector('[data-testid="scene-creation-background-match"]');
-      const image = row?.querySelector('.scene-creation-match-thumbnail img');
-      return {
-        rowText: row?.textContent?.trim() ?? null,
-        candidateId: row?.dataset.candidateId ?? null,
-        selectable: row?.dataset.candidateSelectable === 'true',
-        imageComplete: image?.complete ?? null,
-        imageWidth: image?.naturalWidth ?? null,
-        imageSourcePrefix: image?.currentSrc?.slice(0, 48) ?? null,
-      };
-    })()`);
-    diagnostic.thumbnailResponse = thumbnailResponse;
-    const screenshot = await capture(windowRef, 'background-thumbnail-not-ready.png');
-    throw new Error(
-      `${error instanceof Error ? error.message : String(error)} Diagnostic: ${JSON.stringify(diagnostic)} Screenshot: ${screenshot}`,
-      { cause: error },
-    );
-  }
-  const backgroundImportRecovery = await windowRef.webContents.executeJavaScript(`(() => {
-    const row = document.querySelector('[data-testid="scene-creation-background-match"]');
-    return {
-      input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
-      assetId: row?.dataset.candidateId ?? null,
-      selectable: row?.dataset.candidateSelectable === 'true',
-      matched: row?.dataset.candidateMatched === 'true',
-      revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-      shotCount: Number((document.querySelector('[data-testid="shot-manager"] [data-project-duration-ms]')?.textContent ?? '').split('个镜头')[0]?.trim() ?? NaN),
-    };
-  })()`);
+  await openAutoScene(windowRef);
+  const reenteredState = await readToolsState(windowRef);
   assert(
-    backgroundImportRecovery.input === expectedDraft &&
-      backgroundImportRecovery.assetId &&
-      backgroundImportRecovery.selectable &&
-      backgroundImportRecovery.matched &&
-      backgroundImportRecovery.revision > 0 &&
-      backgroundImportRecovery.shotCount === initialShotCount,
-    `The imported image was not classified and retained as a selected background: ${JSON.stringify(backgroundImportRecovery)}.`,
+    reenteredState.draft === draft,
+    `The unconfirmed draft was not preserved for the same project: ${JSON.stringify(reenteredState.draft)}.`,
   );
-  await click(windowRef, '[aria-label="出场角色"] .scene-creation-resource-error button:nth-of-type(2)');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'characters' && document.querySelector('[data-testid="character-manager"]')`,
-    'The Character library action did not navigate to the existing Character owner.',
-  );
-  await click(windowRef, '[data-testid="resource-activity-rail-shots"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'shots' && document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Returning from the Character library did not restore the scene workflow.',
-  );
-  expectedDraft = initialShotCount === 2
-    ? missingResourceInput.replace('镜头：已有镜头 1', '镜头：已有镜头 1 2')
-    : missingResourceInput;
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-input"]')?.value === ${JSON.stringify(expectedDraft)} && document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateSelectable === 'true'`,
-    'Returning from the Character library did not preserve the input and imported background selection.',
-  );
-  const recoveryState = await windowRef.webContents.executeJavaScript(`(() => ({
-    shotCount: Number((document.querySelector('[data-testid="shot-manager"] [data-project-duration-ms]')?.textContent ?? '').split('个镜头')[0]?.trim() ?? NaN),
-    revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-    input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
-    backgroundError: document.querySelector('[aria-label="背景素材"] .scene-creation-resource-error')?.textContent?.trim() ?? null,
-    backgroundMatchId: document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId ?? null,
-    backgroundMatchSelectable: document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateSelectable === 'true',
-    characterError: document.querySelector('[aria-label="出场角色"] .scene-creation-resource-error')?.textContent?.trim() ?? null,
-  }))()`);
-  assert(
-    recoveryState.shotCount === initialShotCount && recoveryState.revision > 0 &&
-      recoveryState.backgroundMatchId === backgroundImportRecovery.assetId &&
-      recoveryState.backgroundMatchSelectable &&
-      recoveryState.characterError?.includes('没找到『张三』这个角色'),
-    `Scene recovery lost the imported background selection or inline Character error: ${JSON.stringify(recoveryState)}.`,
-  );
-  const recoveryScreenshot = await capture(windowRef, 'missing-resource-recovery-after-character-library.png');
-  await click(windowRef, '[data-testid="resource-activity-close"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false' && document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'scene'`,
-    'The scene header X did not close the resource drawer while preserving the scene view.',
-  );
-  await click(windowRef, '[data-testid="resource-activity-rail-shots"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true' && document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Reopening the resource drawer did not restore the current scene view.',
-  );
-  const headerAfterCloseReopen = await readSceneNavigation(windowRef);
-  assertSceneNavigation(headerAfterCloseReopen, 'Reopened scene header');
-  await click(windowRef, '[data-testid="scene-creation-back"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
-    'The square back control did not return to the Shot list.',
-  );
-  const arrowReturnState = await readEntryState(windowRef);
-  assertListState(arrowReturnState, 'landscape', initialShotCount, recoveryState.revision);
-  const arrowReturnScreenshot = await capture(
-    windowRef,
-    'automatic-scene-arrowleft-returned-to-shot-list.png',
-  );
-  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Re-entering automatic scene creation from the Shot list failed.',
-  );
-  const headerAfterReentry = await readSceneNavigation(windowRef);
-  assertSceneNavigation(headerAfterReentry, 'Re-entered scene header');
-  await click(windowRef, '[data-testid="scene-creation-back"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
-    'The scene header return control did not remain functional after re-entry.',
-  );
+  assert(reenteredState.confirmDisabled === true, 'Create Shot must stay disabled while no match is confirmed.');
+  const reenteredScreenshot = await capture(windowRef, 'tools-auto-scene-draft-preserved.png');
 
   windowRef.setSize(800, 1_100);
   await waitForDom(
@@ -672,208 +382,25 @@ async function run() {
     `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'portrait'`,
     'The narrow Cloud Touch window did not select the portrait layout.',
   );
-  await openShotsWorkspace(windowRef);
-  const portraitEntry = await readEntryState(windowRef);
-  assertListState(portraitEntry, 'portrait', initialShotCount, recoveryState.revision);
-  const portraitScreenshot = await capture(
-    windowRef,
-    'cloud-touch-portrait-shot-entries.png',
-  );
-  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'The portrait automatic scene flow did not open from the Shot list.',
-  );
-  await waitForDom(
-    windowRef,
-    `(() => {
-      const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-      const candidates = panel?.querySelector('[data-testid="scene-creation-candidates"]');
-      const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
-      return Boolean(
-        candidates &&
-          panel.querySelector('[data-testid="scene-creation-background-match"]') &&
-          characterError?.textContent.includes('张三') &&
-          !panel.querySelector('[data-testid="scene-creation-character-match"]')
-      );
-    })()`,
-    'The portrait scene flow did not settle into the expected missing-character recovery state.',
-  );
-  const portraitSceneState = await windowRef.webContents.executeJavaScript(`(() => {
-    const manager = document.querySelector('[data-testid="shot-manager"]');
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const activitySurface = document.querySelector('.resource-activity-surface');
-    const activityBody = document.querySelector('.resource-activity-body');
-    const activityPanel = document.querySelector('.resource-activity-panel');
-    const shotManager = panel?.closest('.shot-manager');
-    const content = panel?.querySelector('.scene-creation-content');
-    const input = panel?.querySelector('[data-testid="scene-creation-input"]');
-    const confirm = document.querySelector('[data-testid="scene-creation-confirm"]');
-    const bounds = confirm?.getBoundingClientRect();
-    const style = confirm ? getComputedStyle(confirm) : null;
-    const summary = manager?.querySelector('[data-project-duration-ms]')?.textContent ?? '';
-    const candidates = panel?.querySelector('[data-testid="scene-creation-candidates"]');
-    const backgroundMatch = panel?.querySelector('[data-testid="scene-creation-background-match"]');
-    const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
-    const previewStatus = panel?.querySelector('[data-testid="scene-creation-preview-status"]')?.textContent?.trim() ?? '';
-    const footerBounds = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
-    const box = (element) => {
-      const rect = element?.getBoundingClientRect();
-      return rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height } : null;
-    };
-    const contentBounds = box(content);
-    const inputBounds = box(input);
-    const recoveryActionBounds = Array.from(characterError?.querySelectorAll('button') ?? []).map((button) => {
-      const rect = button.getBoundingClientRect();
-      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
-    });
-    const recoveryActionsUnobscured = recoveryActionBounds.every((rect) =>
-      !footerBounds ||
-        rect.right <= footerBounds.left ||
-        rect.left >= footerBounds.right ||
-        rect.bottom <= footerBounds.top ||
-        rect.top >= footerBounds.bottom
-    );
-    return {
-      input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
-      activitySurfaceBounds: box(activitySurface),
-      activityBodyBounds: box(activityBody),
-      activityPanelBounds: box(activityPanel),
-      shotManagerBounds: box(shotManager),
-      scenePanelBounds: box(panel),
-      contentBounds,
-      inputBounds,
-      contentScroll: content ? { top: content.scrollTop, height: content.scrollHeight, clientHeight: content.clientHeight } : null,
-      inputVisibleInContent: Boolean(contentBounds && inputBounds && inputBounds.height > 0 && inputBounds.top >= contentBounds.top && inputBounds.bottom <= contentBounds.bottom),
-      matchingSettled: Boolean(candidates && !previewStatus.includes('正在匹配素材')),
-      backgroundMatched: Boolean(backgroundMatch),
-      characterMissing: characterError?.textContent.includes('张三') ?? false,
-      characterSuccessVisible: Boolean(panel?.querySelector('[data-testid="scene-creation-character-match"]')),
-      previewStatus,
-      footerBounds: footerBounds ? { top: footerBounds.top, bottom: footerBounds.bottom } : null,
-      recoveryActionBounds,
-      recoveryActionsUnobscured,
-      confirmVisible: Boolean(confirm && bounds && bounds.width > 0 && bounds.height > 0 && style?.visibility !== 'hidden' && style?.display !== 'none'),
-      confirmHeight: bounds?.height ?? 0,
-      confirmWithinWindow: Boolean(bounds && bounds.top >= 0 && bounds.bottom <= window.innerHeight + 1),
-      createDisabled: confirm?.disabled ?? null,
-      shotCount: Number(summary.match(/^[0-9]+/u)?.[0] ?? NaN),
-      revision: Number(manager?.querySelector('[data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-    };
-  })()`);
-  portraitSceneState.navigation = await readSceneNavigation(windowRef);
-  assertSceneNavigation(portraitSceneState.navigation, 'Portrait scene header');
-  assert(
-    portraitSceneState.input === recoveryState.input &&
-      portraitSceneState.inputVisibleInContent &&
-      portraitSceneState.matchingSettled &&
-      portraitSceneState.backgroundMatched &&
-      portraitSceneState.characterMissing &&
-      !portraitSceneState.characterSuccessVisible &&
-      portraitSceneState.confirmVisible &&
-      portraitSceneState.confirmHeight >= 48 &&
-      portraitSceneState.createDisabled === true &&
-      portraitSceneState.shotCount === initialShotCount &&
-      portraitSceneState.revision === recoveryState.revision,
-    `The portrait scene panel lost its draft, hid the stable Create Shot action or changed Project state: ${JSON.stringify(portraitSceneState)}.`,
-  );
-  const portraitSceneScreenshot = await capture(
-    windowRef,
-    'cloud-touch-portrait-automatic-scene.png',
-  );
-  await windowRef.webContents.executeJavaScript(`(() => {
-    const footer = document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-footer');
-    if (!footer) throw new Error('The portrait scene footer is missing.');
-    footer.scrollIntoView({ block: 'end' });
-  })()`);
-  await waitForDom(
-    windowRef,
-    `(() => {
-      const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-      const content = panel?.querySelector('.scene-creation-content');
-      const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
-      const footer = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
-      const contentBounds = content?.getBoundingClientRect();
-      const buttons = Array.from(characterError?.querySelectorAll('button') ?? []);
-      return Boolean(
-        footer && contentBounds && buttons.length > 0 &&
-          buttons.every((button) => {
-            const bounds = button.getBoundingClientRect();
-            return bounds.top >= contentBounds.top && bounds.bottom <= contentBounds.bottom && bounds.bottom <= footer.top;
-          })
-      );
-    })()`,
-    'The portrait recovery actions could not scroll fully above the stable Create Shot footer.',
-  );
-  const portraitRecoveryState = await windowRef.webContents.executeJavaScript(`(() => {
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const content = panel?.querySelector('.scene-creation-content');
-    const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
-    const footer = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
-    const contentBounds = content?.getBoundingClientRect();
-    const actionBounds = Array.from(characterError?.querySelectorAll('button') ?? []).map((button) => {
-      const rect = button.getBoundingClientRect();
-      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
-    });
-    return {
-      contentScroll: content ? { top: content.scrollTop, height: content.scrollHeight, clientHeight: content.clientHeight } : null,
-      footerBounds: footer ? { top: footer.top, bottom: footer.bottom } : null,
-      actionBounds,
-      actionsVisibleAboveFooter: Boolean(
-        footer && contentBounds && actionBounds.length > 0 &&
-          actionBounds.every((rect) => rect.top >= contentBounds.top && rect.bottom <= contentBounds.bottom && rect.bottom <= footer.top)
-      ),
-      confirmVisible: (() => {
-        const confirm = panel?.querySelector('[data-testid="scene-creation-confirm"]');
-        const rect = confirm?.getBoundingClientRect();
-        return Boolean(rect && rect.width > 0 && rect.height >= 48 && rect.top >= 0 && rect.bottom <= window.innerHeight + 1);
-      })(),
-    };
-  })()`);
-  assert(
-    portraitRecoveryState.actionsVisibleAboveFooter && portraitRecoveryState.confirmVisible,
-    `The portrait recovery actions were covered by the Create Shot footer: ${JSON.stringify(portraitRecoveryState)}.`,
-  );
-  const portraitRecoveryScreenshot = await capture(
-    windowRef,
-    'cloud-touch-portrait-automatic-scene-recovery.png',
-  );
+  const portraitState = await readShotState(windowRef);
+  assert(portraitState.layout === 'portrait', `Expected portrait, got ${portraitState.layout}.`);
+  assert(!portraitState.leftAutoSceneEntry, 'Portrait still renders the retired left Auto Scene entry.');
+  assert(portraitState.manualCreate, 'Portrait lost the manual New Shot action.');
+  const portraitScreenshot = await capture(windowRef, 'portrait-shot-list-single-manual-entry.png');
 
-  const isolatedProjectRoot = path.join(runRoot, 'isolated-project.pandastage');
-  await new ProjectService().create(isolatedProjectRoot, {
-    name: 'Issue 860 UI01 isolated project',
-  });
-  await saveCurrentProject(windowRef);
-  await openProject(windowRef, isolatedProjectRoot);
-  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
+  windowRef.setSize(1600, 1050);
   await waitForDom(
     windowRef,
-    `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Automatic scene creation did not open in the second project.',
+    `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'landscape'`,
+    'The window did not return to the landscape layout.',
   );
-  const crossProjectState = await windowRef.webContents.executeJavaScript(`(() => {
-    const manager = document.querySelector('[data-testid="shot-manager"]');
-    const canvas = document.querySelector('.project-canvas');
-    const summary = manager?.querySelector('[data-project-duration-ms]')?.textContent ?? '';
-    return {
-      input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
-      candidateCount: document.querySelectorAll('.scene-creation-match-row').length,
-      previewMode: canvas?.dataset.scenePreview ?? null,
-      previewShotId: canvas?.dataset.scenePreviewShotId ?? null,
-      shotCount: Number(summary.match(/^[0-9]+/u)?.[0] ?? NaN),
-      revision: Number(manager?.querySelector('[data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-    };
-  })()`);
+  await openShotsWorkspace(windowRef);
+  await saveCurrentProject(windowRef);
+  const finalShotState = await readShotState(windowRef);
   assert(
-    crossProjectState.input === '' && crossProjectState.candidateCount === 0 &&
-      crossProjectState.previewMode === 'false' && crossProjectState.previewShotId === '' &&
-      crossProjectState.shotCount === 0 && crossProjectState.revision === 0,
-    `The first project's draft, candidate or preview leaked into the second project: ${JSON.stringify(crossProjectState)}.`,
-  );
-  const crossProjectScreenshot = await capture(
-    windowRef,
-    'automatic-scene-isolated-after-project-switch.png',
+    finalShotState.shotCount === project.shots.length &&
+      finalShotState.revision === shotState.revision,
+    `The entry smoke changed Project state: ${JSON.stringify(finalShotState)}.`,
   );
 
   return {
@@ -882,39 +409,27 @@ async function run() {
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
+    scope: 'Project Tools owns the single Auto Scene entry; the left Shot list keeps only the manual route.',
     syntheticProject: true,
     initialShotCount: project.shots.length,
-    finalShotCount: portraitEntry.shotCount,
-    finalRevision: portraitEntry.revision,
-    manualRouteReturnedWithoutMutation: true,
-    automaticRouteReturnedWithoutMutation: true,
-    wideLayout: wideEntry,
-    automaticScene: sceneState,
-    automaticSceneScreenshot: sceneScreenshot,
-    recoveryState,
-    backgroundImportRecovery,
-    nameConflictScreenshot,
-    repairedNameScreenshot,
-    arrowReturnState,
-    arrowReturnScreenshot,
-    headerAfterCloseReopen,
-    headerAfterReentry,
-    recoveryScreenshot,
-    portraitLayout: portraitEntry,
-    portraitSceneState,
-    portraitRecoveryState,
-    crossProjectState,
+    finalShotCount: finalShotState.shotCount,
+    finalRevision: finalShotState.revision,
+    shotState,
+    homeState,
+    sceneState,
+    reenteredState,
+    portraitState,
     screenshots: {
-      wideEntry: wideScreenshot,
-      automaticScene: sceneScreenshot,
-      recovery: recoveryScreenshot,
-      nameConflict: nameConflictScreenshot,
-      nameConflictRepaired: repairedNameScreenshot,
-      arrowReturn: arrowReturnScreenshot,
-      portraitEntries: portraitScreenshot,
-      portraitAutomaticScene: portraitSceneScreenshot,
-      portraitAutomaticSceneRecovery: portraitRecoveryScreenshot,
-      crossProjectIsolation: crossProjectScreenshot,
+      shotList: shotListScreenshot,
+      toolsHome: toolsHomeScreenshot,
+      autoScene: sceneScreenshot,
+      draftPreserved: reenteredScreenshot,
+      portrait: portraitScreenshot,
+    },
+    notCovered: {
+      liveMatchAndCanvasPreview: 'Covered by verify:issue853-scene-creation and verify:issue854-v0-acceptance.',
+      crossProjectDraftIsolation: 'Not covered by this entry smoke.',
+      portraitToolsDrawer: 'Project Tools is landscape-only, same as Auto Subtitles.',
     },
     sourceProjectPathsOmitted: true,
     humanAcceptance: false,

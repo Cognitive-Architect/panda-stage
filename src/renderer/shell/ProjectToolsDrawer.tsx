@@ -1,28 +1,55 @@
 import {
   ArrowLeft,
+  Frame,
   Maximize2,
   MessageCircleMore,
   ScanLine,
   Sparkles,
   X,
 } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
 import { DialogueBatchPaste } from '../features/dialogue/DialogueBatchPaste';
 import type { DialogueAuthoringDraft } from '../features/dialogue/dialogueAuthoringDraft';
+import {
+  EMPTY_SCENE_CREATION_DRAFT,
+  type SceneCreationCanvasPreview,
+  type SceneCreationCanvasPreviewStatus,
+  type SceneCreationDraft,
+} from '../features/shots/createSceneFromStructuredInput';
+import { SceneCreationPanel } from '../features/shots/SceneCreationPanel';
+import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { LegacyWorkspace } from './LegacyWorkspace';
+
+export type ProjectToolsView =
+  | 'home'
+  | 'action-presets'
+  | 'auto-subtitles'
+  | 'auto-scene';
 
 export interface ProjectToolsDrawerProps {
   autoSubtitleDraft: DialogueAuthoringDraft;
   autoSubtitleDraftResetNotice: string | null;
   onDismissAutoSubtitleDraftResetNotice(): void;
   onAutoSubtitleGenerated(generatedCount: number): void;
+  view: ProjectToolsView;
+  onViewChange(view: ProjectToolsView): void;
+  sceneCreationDraft?: SceneCreationDraft;
+  onSceneCreationDraftChange?(draft: SceneCreationDraft): void;
+  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
+  onSceneCanvasPreviewChange?(
+    preview: SceneCreationCanvasPreview | null,
+  ): void;
+  scenePreviewActive?: boolean;
+  sceneSnapshot?: EditorProjectSnapshot | null;
+  onRequestSceneBackgroundImport?(): void;
+  onRequestSceneCharacterLibrary?(): void;
+  /** Fired only after Auto Scene commits one Shot and clears its draft. */
+  onAutoSceneCommitted?(): void;
   onClose(): void;
 }
-
-type ProjectToolsView = 'home' | 'action-presets' | 'auto-subtitles';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -36,6 +63,12 @@ const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
   { mode: 'actual', label: '实际尺寸', testId: 'canvas-mode-actual', icon: ScanLine },
 ] as const;
 
+const SUB_VIEW_LABELS: Readonly<Record<'auto-subtitles' | 'auto-scene', string>> =
+  {
+    'auto-subtitles': '自动字幕',
+    'auto-scene': '自动布景',
+  };
+
 /**
  * Project Tools is a presentation-level launcher. The ActionPreset business
  * owner remains unchanged; this component only composes its focused
@@ -46,34 +79,47 @@ export function ProjectToolsDrawer({
   autoSubtitleDraftResetNotice,
   onDismissAutoSubtitleDraftResetNotice,
   onAutoSubtitleGenerated,
+  view,
+  onViewChange,
+  sceneCreationDraft = EMPTY_SCENE_CREATION_DRAFT,
+  onSceneCreationDraftChange,
+  sceneCanvasPreviewStatus = null,
+  onSceneCanvasPreviewChange,
+  scenePreviewActive = false,
+  sceneSnapshot = null,
+  onRequestSceneBackgroundImport,
+  onRequestSceneCharacterLibrary,
+  onAutoSceneCommitted,
   onClose,
 }: ProjectToolsDrawerProps): React.JSX.Element {
-  const [view, setView] = useState<ProjectToolsView>('home');
   const viewportMode = useSyncExternalStore(
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   ).mode;
+  const subView = view === 'auto-subtitles' || view === 'auto-scene' ? view : null;
 
   return (
     <section
-      aria-labelledby={view === 'auto-subtitles' ? undefined : 'project-tools-heading'}
+      aria-labelledby={subView ? undefined : 'project-tools-heading'}
       className="project-tools-drawer"
       data-project-tools-view={view}
       data-testid="project-tools-drawer"
     >
-      {view === 'auto-subtitles' ? (
-        <header className="project-tools-drawer-header project-tools-auto-subtitles-header">
+      {subView ? (
+        <header
+          className={`project-tools-drawer-header project-tools-${subView}-header`}
+        >
           <button
             aria-label="返回工具"
-            className="project-tools-auto-subtitles-back"
-            data-testid="project-tools-auto-subtitles-back"
-            onClick={() => setView('home')}
+            className={`project-tools-${subView}-back`}
+            data-testid={`project-tools-${subView}-back`}
+            onClick={() => onViewChange('home')}
             type="button"
           >
             <DecorativeIcon icon={ArrowLeft} size={18} />
             <span>返回</span>
           </button>
-          <h2 id="project-tools-heading">自动字幕</h2>
+          <h2 id="project-tools-heading">{SUB_VIEW_LABELS[subView]}</h2>
           <button
             aria-label="关闭工具"
             className="project-tools-close"
@@ -92,7 +138,7 @@ export function ProjectToolsDrawer({
                 aria-label="返回工具"
                 className="project-tools-back"
                 data-testid="project-tools-back"
-                onClick={() => setView('home')}
+                onClick={() => onViewChange('home')}
                 type="button"
               >
                 <DecorativeIcon icon={ArrowLeft} size={18} />
@@ -156,15 +202,26 @@ export function ProjectToolsDrawer({
               })}
             </div>
           </section>
-          <button
-            className="project-tools-auto-subtitle-launcher"
-            data-testid="project-tools-auto-subtitles"
-            onClick={() => setView('auto-subtitles')}
-            type="button"
-          >
-            <DecorativeIcon icon={MessageCircleMore} size={18} />
-            <span>自动字幕</span>
-          </button>
+          <div className="project-tools-entry-list">
+            <button
+              className="project-tools-auto-subtitle-launcher"
+              data-testid="project-tools-auto-subtitles"
+              onClick={() => onViewChange('auto-subtitles')}
+              type="button"
+            >
+              <DecorativeIcon icon={MessageCircleMore} size={18} />
+              <span>自动字幕</span>
+            </button>
+            <button
+              className="project-tools-auto-scene-launcher"
+              data-testid="project-tools-auto-scene"
+              onClick={() => onViewChange('auto-scene')}
+              type="button"
+            >
+              <DecorativeIcon icon={Frame} size={18} />
+              <span>自动布景</span>
+            </button>
+          </div>
           <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
@@ -177,7 +234,7 @@ export function ProjectToolsDrawer({
               className="project-tools-action-preset-launcher"
               data-project-tools-action="action-presets"
               data-testid="project-tools-action-presets"
-              onClick={() => setView('action-presets')}
+              onClick={() => onViewChange('action-presets')}
               type="button"
             >
               <DecorativeIcon icon={Sparkles} size={18} />
@@ -193,7 +250,7 @@ export function ProjectToolsDrawer({
         >
           <LegacyWorkspace />
         </section>
-      ) : (
+      ) : view === 'auto-subtitles' ? (
         <section
           className="project-tools-auto-subtitles-view"
           data-testid="project-tools-auto-subtitles-view"
@@ -220,6 +277,26 @@ export function ProjectToolsDrawer({
             draft={autoSubtitleDraft}
             onAutoSubtitleGenerated={onAutoSubtitleGenerated}
             presentation="auto-subtitle"
+          />
+        </section>
+      ) : (
+        <section
+          className="project-tools-auto-scene-view"
+          data-testid="project-tools-auto-scene-view"
+        >
+          <SceneCreationPanel
+            canvasPreviewStatus={sceneCanvasPreviewStatus}
+            draft={sceneCreationDraft}
+            onBack={() => {
+              onViewChange('home');
+              onAutoSceneCommitted?.();
+            }}
+            onCanvasPreviewChange={onSceneCanvasPreviewChange}
+            onDraftChange={onSceneCreationDraftChange}
+            onNavigateToAssets={onRequestSceneBackgroundImport}
+            onNavigateToCharacters={onRequestSceneCharacterLibrary}
+            previewActive={scenePreviewActive}
+            snapshot={sceneSnapshot}
           />
         </section>
       )}

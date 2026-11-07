@@ -7,77 +7,94 @@
   gap: 0;
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .resource-activity-surface {
-  display: grid;
+/* Auto Scene is a Project Tools page: the drawer header stays fixed and the
+   panel owns the remaining height with its confirm footer pinned. */
+.project-tools-drawer[data-project-tools-view='auto-scene'] {
+  height: 100%;
+  min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
+  align-content: stretch;
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .resource-activity-body {
+.project-tools-auto-scene-view {
   display: grid;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .resource-activity-panel {
-  display: grid;
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .resource-activity-panel
-  > .shot-manager {
   height: 100%;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
-.resource-activity-dock[data-resource-shot-view='scene']
-  .resource-activity-panel
-  > .shot-manager {
-  padding: 0;
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .scene-creation-panel {
+.project-tools-auto-scene-view .scene-creation-panel {
   height: 100%;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr) auto;
   align-content: stretch;
 }
 
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .scene-creation-content {
+.project-tools-auto-scene-view .scene-creation-content {
   min-height: 0;
   overflow-y: auto;
 }
 
-.editor-layout[data-shell-mode='portrait']
-  .resource-activity-panel
-  .scene-creation-confirm {
+.project-tools-auto-scene-launcher {
+  display: inline-flex;
+  width: 100%;
   min-height: 48px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 10px;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(255 255 255 / 3%);
+  gap: 9px;
+  text-align: left;
 }
 
-.editor-layout[data-shell-mode='portrait']
-  .resource-activity-dock[data-resource-shot-view='scene']
-  .scene-creation-footer {
-  position: static;
-  margin: 8px -10px -10px;
+.project-tools-auto-scene-launcher:hover,
+.project-tools-auto-scene-launcher:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-tools-auto-scene-header {
+  grid-template-columns: auto minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.project-tools-auto-scene-header h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tools-auto-scene-back {
+  display: inline-flex;
+  min-width: 60px;
+  min-height: 44px;
+  padding: 4px 8px;
+  align-items: center;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  gap: 5px;
+}
+
+.project-tools-auto-scene-back:hover,
+.project-tools-auto-scene-back:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-tools-entry-list {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.scene-creation-content {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .scene-creation-content {
@@ -98,55 +115,6 @@
   min-width: 0;
   color: var(--ui-color-text-secondary);
   font-size: 12px;
-}
-
-.scene-creation-navigation {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-space-2);
-}
-
-.resource-activity-header-scene {
-  gap: 0;
-}
-
-.resource-activity-close.resource-scene-creation-close-button {
-  display: inline-grid;
-  box-sizing: border-box;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  place-items: center;
-}
-
-.scene-creation-back-button {
-  display: inline-grid;
-  box-sizing: border-box;
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-  padding: 0;
-  place-items: center;
-  border: 1px solid rgb(127 199 148 / 34%);
-  border-radius: var(--ui-radius-medium, 8px);
-  color: var(--ui-color-text-secondary, #b9d3bf);
-  background: rgb(83 145 101 / 10%);
-  font-size: 18px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.scene-creation-back-button:hover,
-.scene-creation-back-button:focus-visible {
-  border-color: var(--ui-color-selected-border, #83d39a);
-  color: var(--ui-color-text-primary, #e6f7ea);
-  background: rgb(83 145 101 / 22%);
 }
 
 .scene-creation-input-label {

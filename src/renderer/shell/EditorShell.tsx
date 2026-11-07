@@ -598,6 +598,22 @@ export function EditorShell({
       preview: SceneCreationCanvasPreview | null;
       status: SceneCreationCanvasPreviewStatus | null;
     }>({ preview: null, status: null });
+  // Auto Scene lives in Project Tools. The shell only carries the cross-surface
+  // hand-offs between that tool page and the left asset/character surfaces.
+  const [sceneBackgroundImportRequest, setSceneBackgroundImportRequest] =
+    useState(0);
+  const [sceneCharacterLibraryRequest, setSceneCharacterLibraryRequest] =
+    useState(0);
+  const [sceneBackgroundImportResult, setSceneBackgroundImportResult] = useState<{
+    token: number;
+    backgroundAssetId: string | null;
+  } | null>(null);
+  const requestSceneBackgroundImport = useCallback((): void => {
+    setSceneBackgroundImportRequest((value) => value + 1);
+  }, []);
+  const requestSceneCharacterLibrary = useCallback((): void => {
+    setSceneCharacterLibraryRequest((value) => value + 1);
+  }, []);
   const handleSceneCanvasPreviewChange = useCallback(
     (preview: SceneCreationCanvasPreview | null): void => {
       setSceneCreationCanvasPreviewState((current) => {
@@ -696,6 +712,17 @@ export function EditorShell({
         : null;
     },
     [projectSnapshot, sceneCreationProjectSessionIdentity],
+  );
+  const handleSceneBackgroundImported = useCallback(
+    (importedAssetIds: readonly string[]): void => {
+      const backgroundAssetId =
+        handleSceneBackgroundImportComplete(importedAssetIds);
+      setSceneBackgroundImportResult((current) => ({
+        token: (current?.token ?? 0) + 1,
+        backgroundAssetId,
+      }));
+    },
+    [handleSceneBackgroundImportComplete],
   );
   const activeSceneCreationCanvasPreview =
     sceneCreationCanvasPreviewState.preview &&
@@ -2699,14 +2726,12 @@ export function EditorShell({
                 }}
                 onActiveActivityChange={handlePortraitResourceActivityChange}
                 onOpenRecentProject={switchToRecentProject}
-                onSceneBackgroundImportComplete={
-                  handleSceneBackgroundImportComplete
-                }
-                onSceneCanvasPreviewChange={handleSceneCanvasPreviewChange}
+                onSceneBackgroundImported={handleSceneBackgroundImported}
+                sceneBackgroundImportRequest={sceneBackgroundImportRequest}
+                sceneCharacterLibraryRequest={sceneCharacterLibraryRequest}
                 projectSessionIdentity={sceneCreationProjectSessionIdentity}
                 projectSnapshot={projectSnapshot}
                 recentRefreshToken={recentRefreshToken}
-                sceneCanvasPreviewStatus={activeSceneCreationCanvasPreviewStatus}
                 shellMode={layoutMode}
               />
             </div>
@@ -2776,6 +2801,11 @@ export function EditorShell({
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
+                  onRequestSceneBackgroundImport={requestSceneBackgroundImport}
+                  onRequestSceneCharacterLibrary={requestSceneCharacterLibrary}
+                  onSceneCanvasPreviewChange={handleSceneCanvasPreviewChange}
+                  sceneBackgroundImportResult={sceneBackgroundImportResult}
+                  sceneCanvasPreviewStatus={activeSceneCreationCanvasPreviewStatus}
                 />
               )}
             </div>
