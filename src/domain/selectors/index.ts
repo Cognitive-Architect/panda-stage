@@ -1,3 +1,4 @@
+export * from './audioEnvelope';
 export * from './projectDuration';
 export * from './projectTime';
 export * from './canvasLayers';

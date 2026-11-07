@@ -5,6 +5,8 @@ import {
   evaluateSpeakerFocusCamera,
   mapProjectTime,
   prepareSpeakerFocusCamera,
+  type AudioEnvelope,
+  type MouthEnvelopeSource,
   type Project,
 } from '../domain';
 import type {
@@ -32,7 +34,10 @@ import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
-import { evaluateExportShotAtTime } from './evaluateExportShotAtTime';
+import {
+  buildExportAudioEnvelopes,
+  evaluateExportShotAtTime,
+} from './evaluateExportShotAtTime';
 import { resolveProductPreviewSubtitleStyle } from '../renderer/shell/productPreviewModel';
 import {
   isExactExportFrameDrawn,
@@ -120,6 +125,10 @@ export function ExportRendererApp(): React.JSX.Element {
   const [formalAssetUrls, setFormalAssetUrls] = useState<
     Readonly<Record<string, string>>
   >({});
+  /** Frozen-media volume envelopes; built once per Job before frames start. */
+  const [formalEnvelopes, setFormalEnvelopes] = useState<
+    ReadonlyMap<string, AudioEnvelope>
+  >(new Map());
   const project: Project = formalRequest?.project ?? probeProject;
   const [probeDurationMs, setProbeDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
@@ -187,6 +196,15 @@ export function ExportRendererApp(): React.JSX.Element {
     [formalRequest, shot.dialogues],
   );
   const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
+  const mouthSource = useMemo<MouthEnvelopeSource | undefined>(() => {
+    if (!formalRequest) return undefined;
+    return (assetId: string) => {
+      const envelope = formalEnvelopes.get(assetId);
+      return envelope
+        ? ({ status: 'ready', envelope } as const)
+        : ({ status: 'unavailable', reason: 'decode-pending' } as const);
+    };
+  }, [formalEnvelopes, formalRequest]);
   const evaluatedShot = useMemo(
     () => formalRequest
       ? evaluateExportShotAtTime(
@@ -194,11 +212,13 @@ export function ExportRendererApp(): React.JSX.Element {
           shot,
           shotLocalTimeMs,
           subtitle?.id ?? null,
+          mouthSource,
         )
       : evaluatedBaseShot,
     [
       evaluatedBaseShot,
       formalRequest,
+      mouthSource,
       project,
       shot,
       shotLocalTimeMs,
@@ -263,6 +283,7 @@ export function ExportRendererApp(): React.JSX.Element {
       loadedFormalProjectRef.current = null;
       pendingFormalLoadRef.current = null;
       setFormalRequest(null);
+      setFormalEnvelopes(new Map());
       setProbeDurationMs(request.durationMs);
       if (stageReadyRef.current) {
         acknowledgeLoad(request);
@@ -292,7 +313,13 @@ export function ExportRendererApp(): React.JSX.Element {
         pendingFormalLoadRef.current = request;
         stageReadyRef.current = false;
         setFrameRequest(null);
-        setFormalRequest(request);
+        // Decode the frozen audio before the first frame is accepted, so no
+        // exported frame can fall back to a silent Mouth by accident.
+        void buildExportAudioEnvelopes(request.media).then((envelopes) => {
+          if (cancelledJobIdsRef.current.has(request.jobId)) return;
+          setFormalEnvelopes(envelopes);
+          setFormalRequest(request);
+        });
       },
     );
     const removeFrameListener = window.pandaStageHidden.onRenderFrame(

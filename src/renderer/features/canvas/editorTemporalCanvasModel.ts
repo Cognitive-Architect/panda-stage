@@ -8,6 +8,7 @@ import {
   type EvaluatedLayer,
   type EvaluatedShot,
   type LayerVisualParts,
+  type MouthEnvelopeSource,
   type Point,
   type Project,
   type Shot,
@@ -31,6 +32,8 @@ export interface EditorTemporalCanvasModelInput {
   /** Assets whose read/decode has definitively failed; pending assets are absent. */
   missingAssetIds?: ReadonlySet<string>;
   previousVisuals: ReadonlyMap<string, EditorTemporalVisual>;
+  /** Decoded volume envelopes for bound AudioClips; read-only, rebuildable. */
+  mouthSource?: MouthEnvelopeSource;
   /** Ephemeral main Position draft; never part of the formal Project. */
   positionDraft?: {
     readonly layerId: string;
@@ -119,6 +122,7 @@ export function buildEditorTemporalCanvasModel({
   readyResourceKeys,
   missingAssetIds,
   previousVisuals,
+  mouthSource,
   positionDraft,
 }: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
   const temporalInspection = currentTimeMs !== 0;
@@ -153,6 +157,7 @@ export function buildEditorTemporalCanvasModel({
         shot,
         evaluateShotAtTime(shot, currentTimeMs, project),
         activeDialogueId,
+        mouthSource,
       )
     : zeroTimeExpressionShot;
   // Base Edit View owns 0:00 transforms and the continuity resolver owns image

@@ -21,6 +21,7 @@ import {
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type AudioAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -52,6 +53,7 @@ import {
 } from '../timeline/timelineUiStore';
 import { buildDialogueSubtitleCues } from '../../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../../shared/preview/subtitle-engine';
+import { audioEnvelopeStore } from '../../preview/audioEnvelopeStore';
 import type { CanvasDropPreview } from './useCanvasDrop';
 import {
   configureKonvaScenePixelRatio,
@@ -294,6 +296,30 @@ export function CanvasStage({
     return [...assets.values()];
   }, [previousTemporalVisuals]);
   const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  // Decoded volume envelopes are renderer-owned and rebuildable; the Project
+  // only keeps the AudioClip reference that owns the mapping.
+  const audioEnvelopeVersion = useSyncExternalStore(
+    audioEnvelopeStore.subscribe,
+    audioEnvelopeStore.getVersion,
+  );
+  const shotAudioAssets = useMemo(() => {
+    if (!snapshot || !shot) return [];
+    const assets = new Map<string, AudioAsset>();
+    for (const clip of shot.audioClips) {
+      const asset = snapshot.project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      if (asset?.kind === 'audio') assets.set(asset.id, asset);
+    }
+    return [...assets.values()];
+  }, [shot, snapshot]);
+  const projectRoot = snapshot?.projectRoot ?? null;
+  useEffect(() => {
+    if (!projectRoot) return;
+    for (const asset of shotAudioAssets) {
+      audioEnvelopeStore.ensure(projectRoot, asset);
+    }
+  }, [projectRoot, shotAudioAssets]);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -307,6 +333,7 @@ export function CanvasStage({
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot,
+            mouthSource: audioEnvelopeStore.resolveSource,
             positionDraft: positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -317,6 +344,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      audioEnvelopeVersion,
       imageState.images,
       imageState.readyResourceKeys,
       previousTemporalVisuals,

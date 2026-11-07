@@ -6,6 +6,11 @@ import type {
 import type { ImageAsset, Project, Shot } from '../models';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 import {
+  envelopeSourceTimeMs,
+  evaluateAudioEnvelopeSpeaking,
+  type MouthEnvelopeSource,
+} from './audioEnvelope';
+import {
   resolveLayerVisualParts,
   type VisualResourceReference,
 } from './visualParts';
@@ -103,62 +108,31 @@ export function listShotRuntimeImageAssets(
 }
 
 /**
- * Applies the transient Mouth projection used by Editor Live Scrub and Product
- * Preview. The bound AudioClip starts an open-first 320ms cycle: 160ms Mouth,
- * then 160ms of the current formal Expression. All other temporal values stay
- * owned by the formal evaluator.
+ * Applies the transient Mouth projection used by Editor Live Scrub, Product
+ * Preview and the hidden Export renderer. The bound AudioClip's decoded volume
+ * envelope decides open/closed when a source is supplied; otherwise the
+ * documented 320ms preview rhythm is retained for callers that predate
+ * AUTO-07A. All other temporal values stay owned by the formal evaluator.
  */
 export function projectShotMouth(
   project: Project,
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId: string | null,
+  mouthSource?: MouthEnvelopeSource,
 ): EvaluatedShot {
-  if (!activeDialogueId) return evaluatedShot;
-
-  const dialogue = shot.dialogues.find(
-    (candidate) => candidate.id === activeDialogueId,
+  const decision = resolveShotMouthDecision(
+    project,
+    shot,
+    evaluatedShot.timeMs,
+    activeDialogueId,
+    mouthSource,
   );
-  if (!dialogue?.audioClipId) return evaluatedShot;
-
-  const audioClip = shot.audioClips.find(
-    (candidate) => candidate.id === dialogue.audioClipId,
-  );
-  if (
-    !audioClip ||
-    evaluatedShot.timeMs < audioClip.startMs ||
-    evaluatedShot.timeMs >= audioClip.endMs
-  ) {
+  if (!decision.open || !decision.characterId || !decision.mouthAssetId) {
     return evaluatedShot;
   }
-
-  // Closed phases use the exact formal Expression already in evaluatedShot.
-  // Keeping the phase audio-relative makes seeks and dropped frames inert.
-  if (
-    (evaluatedShot.timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS >=
-    MOUTH_OPEN_MS
-  ) {
-    return evaluatedShot;
-  }
-
-  const audioAsset = project.assets.find(
-    (candidate) => candidate.id === audioClip.assetId,
-  );
-  if (audioAsset?.kind !== 'audio') return evaluatedShot;
-
-  const speakingCharacter = project.characters.find(
-    (candidate) => candidate.id === dialogue.characterId,
-  );
-  if (
-    !speakingCharacter ||
-    speakingCharacter.mode === 'adaptive-parts' ||
-    !speakingCharacter.mouthOpenAssetId
-  ) return evaluatedShot;
-
-  const mouthAsset = project.assets.find(
-    (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
-  );
-  if (mouthAsset?.kind !== 'image') return evaluatedShot;
+  const characterId = decision.characterId;
+  const mouthAssetId = decision.mouthAssetId;
 
   let changed = false;
   const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
@@ -167,25 +141,124 @@ export function projectShotMouth(
     )?.source;
     if (
       source?.kind !== 'character' ||
-      source.characterId !== dialogue.characterId
+      source.characterId !== characterId
     ) {
       return layer;
     }
     if (
-      layer.assetId === mouthAsset.id &&
-      layer.mouthOverrideAssetId === mouthAsset.id
+      layer.assetId === mouthAssetId &&
+      layer.mouthOverrideAssetId === mouthAssetId
     ) {
       return layer;
     }
     changed = true;
     return {
       ...layer,
-      assetId: mouthAsset.id,
-      mouthOverrideAssetId: mouthAsset.id,
+      assetId: mouthAssetId,
+      mouthOverrideAssetId: mouthAssetId,
     };
   });
 
   return changed ? { ...evaluatedShot, layers } : evaluatedShot;
+}
+
+export type ShotMouthMode = 'envelope' | 'legacy-rhythm' | 'none';
+
+export interface ShotMouthDecision {
+  readonly open: boolean;
+  readonly mode: ShotMouthMode;
+  readonly reason: string;
+  readonly characterId: string | null;
+  readonly mouthAssetId: string | null;
+}
+
+/**
+ * Single Mouth judgment shared by Editor, Product Preview and Export.
+ * `mode: 'envelope'` with `open: false` is the explicit degradation path: the
+ * Mouth stays closed and `reason` explains why, instead of faking a flap.
+ */
+export function resolveShotMouthDecision(
+  project: Project,
+  shot: Shot,
+  timeMs: number,
+  activeDialogueId: string | null,
+  mouthSource?: MouthEnvelopeSource,
+): ShotMouthDecision {
+  const closed = (reason: string, mode: ShotMouthMode = 'none'): ShotMouthDecision => ({
+    open: false,
+    mode,
+    reason,
+    characterId: null,
+    mouthAssetId: null,
+  });
+
+  if (!activeDialogueId) return closed('no-active-dialogue');
+  const dialogue = shot.dialogues.find(
+    (candidate) => candidate.id === activeDialogueId,
+  );
+  if (!dialogue?.audioClipId) return closed('no-bound-audio-clip');
+  const audioClip = shot.audioClips.find(
+    (candidate) => candidate.id === dialogue.audioClipId,
+  );
+  if (!audioClip || timeMs < audioClip.startMs || timeMs >= audioClip.endMs) {
+    return closed('outside-audio-clip');
+  }
+  const audioAsset = project.assets.find(
+    (candidate) => candidate.id === audioClip.assetId,
+  );
+  if (audioAsset?.kind !== 'audio') return closed('audio-asset-missing');
+
+  const speakingCharacter = project.characters.find(
+    (candidate) => candidate.id === dialogue.characterId,
+  );
+  if (
+    !speakingCharacter ||
+    speakingCharacter.mode === 'adaptive-parts' ||
+    !speakingCharacter.mouthOpenAssetId
+  ) {
+    return closed('no-mouth-asset');
+  }
+  const mouthAsset = project.assets.find(
+    (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
+  );
+  if (mouthAsset?.kind !== 'image') return closed('no-mouth-asset');
+
+  const identity = {
+    characterId: dialogue.characterId,
+    mouthAssetId: mouthAsset.id,
+  };
+
+  if (mouthSource) {
+    const resolution = mouthSource(audioClip.assetId);
+    if (!resolution) {
+      return { ...closed('envelope-pending', 'envelope'), ...identity };
+    }
+    if (resolution.status !== 'ready') {
+      return {
+        ...closed(resolution.reason, 'envelope'),
+        ...identity,
+      };
+    }
+    return {
+      open: evaluateAudioEnvelopeSpeaking(
+        resolution.envelope,
+        // Trim, re-order and clip end all stay honored: Shot time is never
+        // treated as source-file time.
+        envelopeSourceTimeMs(audioClip, timeMs),
+      ),
+      mode: 'envelope',
+      reason: 'volume-envelope',
+      ...identity,
+    };
+  }
+
+  return {
+    open:
+      (timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS < MOUTH_OPEN_MS,
+    mode: 'legacy-rhythm',
+    reason: 'legacy-rhythm',
+    ...identity,
+  };
 }
 
 function clearHeadGroupMotion(evaluatedShot: EvaluatedShot): EvaluatedShot {
@@ -278,6 +351,7 @@ export function projectShotDialogueVisual(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   explicitActiveDialogueId?: string | null,
+  mouthSource?: MouthEnvelopeSource,
 ): EvaluatedShot {
   const activeDialogueId =
     explicitActiveDialogueId === undefined
@@ -291,6 +365,7 @@ export function projectShotDialogueVisual(
     shot,
     evaluatedShot,
     activeDialogueId,
+    mouthSource,
   );
   return projectShotHeadMotion(
     project,
