@@ -67,6 +67,34 @@ export class ShotStore {
     return project;
   }
 
+  /**
+   * Project-local Shot templates. Each action is exactly one Project update,
+   * so History records one command per save / instantiate / delete.
+   */
+  saveAsTemplate(shotId: string, name: string): Project {
+    return this.apply(
+      (project) => this.service.saveAsTemplate(project, { shotId, name }),
+      'Save shot template',
+    );
+  }
+
+  createFromTemplate(templateId: string, shotName: string): Project {
+    const project = this.apply(
+      (current) =>
+        this.service.createFromTemplate(current, { templateId, shotName }),
+      'Create shot from template',
+    );
+    this.setCurrentShotId(project.shots.at(-1)!.id);
+    return project;
+  }
+
+  removeTemplate(templateId: string): Project {
+    return this.apply(
+      (project) => this.service.removeTemplate(project, templateId),
+      'Delete shot template',
+    );
+  }
+
   rename(shotId: string, name: string): Project {
     return this.apply(
       (project) => this.service.rename(project, shotId, name),

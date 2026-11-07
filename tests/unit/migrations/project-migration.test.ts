@@ -90,6 +90,8 @@ function withoutImageAuthorMetadata(
 ) {
   const legacy = structuredClone(project);
   Reflect.deleteProperty(legacy, 'animations');
+  // Shot templates arrived in v17, so legacy envelopes must not carry the key.
+  Reflect.deleteProperty(legacy, 'shotTemplates');
   for (const asset of legacy.assets) {
     if (asset.kind !== 'image') continue;
     Reflect.deleteProperty(asset, 'usage');

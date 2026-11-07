@@ -127,8 +127,9 @@ describe('A01 standalone audio foundation', () => {
       Reflect.deleteProperty(asset, 'usage');
       Reflect.deleteProperty(asset, 'keywords');
     }
-    const { animations: _animations, ...legacyProject } = project;
+    const { animations: _animations, shotTemplates: _templates, ...legacyProject } = project;
     void _animations;
+    void _templates;
     const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return { ...clip, volume: 1.7 }; }),
     })) };

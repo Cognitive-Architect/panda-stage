@@ -35,6 +35,8 @@ describe('schema v5 dialogue persisted migration', () => {
       JSON.stringify(buildProject()),
     ) as Record<string, unknown>;
     delete base.animations;
+    // Shot templates arrived in v17, so the v5 envelope must not carry the key.
+    delete base.shotTemplates;
     for (const asset of base.assets as Record<string, unknown>[]) {
       delete asset.usage;
       delete asset.keywords;

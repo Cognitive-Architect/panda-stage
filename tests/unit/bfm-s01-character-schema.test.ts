@@ -262,8 +262,13 @@ describe('BFM-S01 Character schema', () => {
 
   it('keeps the historical v6 Character shape independent from current validation', () => {
     const project = buildProject();
-    const { animations: _animations, ...legacyProject } = project;
+    const {
+      animations: _animations,
+      shotTemplates: _shotTemplates,
+      ...legacyProject
+    } = project;
     void _animations;
+    void _shotTemplates;
     const { mode, ...historicalCharacter } = asExpressionCharacter(project.characters[0]!);
     void mode;
     const v6 = {
