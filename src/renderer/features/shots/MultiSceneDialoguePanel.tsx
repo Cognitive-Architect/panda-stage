@@ -37,6 +37,7 @@ import {
   commitMultiSceneDialoguePreview,
   prepareMultiSceneDialoguePreview,
 } from './multiSceneDialoguePlan';
+import { PERFORMANCE_INPUT_PLACEHOLDER } from './multiScenePerformanceExample';
 import {
   commitMultiScenePerformancePreview,
   prepareMultiScenePerformancePreview,
@@ -52,6 +53,7 @@ import {
   choiceLabel,
   initialPanelState,
   inputChanged,
+  performanceDirectivesByOrdinal,
   speakerPicked,
   submissionBatch,
   type MultiSceneDialogueBatch,
@@ -88,32 +90,6 @@ const INPUT_PLACEHOLDER = [
   '对白：',
   '大长老：你可知错？',
   '张三：弟子知错。',
-].join('\n');
-
-const PERFORMANCE_INPUT_PLACEHOLDER = [
-  '镜头：花园相遇',
-  '背景：花园',
-  '出场：张三、李四',
-  '站位：双人对话',
-  '对白：',
-  '张三：你终于来了。',
-  '李四：等你很久了。',
-  '表演：',
-  '1｜表情｜生气',
-  '1｜抖动',
-  '2｜右入场',
-  '2｜移动｜x=1260｜y=760',
-  '---',
-  '镜头：宗门大厅',
-  '背景：宗门大厅',
-  '出场：张三、大长老',
-  '站位：双人对话',
-  '对白：',
-  '大长老：你可知错？',
-  '张三：弟子知错。',
-  '表演：',
-  '3｜淡入',
-  '4｜放大｜1.20',
 ].join('\n');
 
 function rowsForBlock(
@@ -175,6 +151,9 @@ export function MultiSceneDialoguePanel({
     initialPanelState,
   );
   const { rawInput, batch } = state;
+  // Directives may target another Shot's dialogue, so key them by the real
+  // ordinal across the whole batch instead of per block.
+  const performanceByOrdinal = performanceDirectivesByOrdinal(batch.blocks);
   const submittable = submissionBatch(state) !== null;
   const count = batch.preview?.plan.createdShotIds.length ?? batch.blocks.length;
   const generateLabel =
@@ -500,10 +479,7 @@ export function MultiSceneDialoguePanel({
                       const row = rowsForBlock(batch.rows, block)[lineOffset];
                       const ready = Boolean(row && row.issue === null);
                       const directives = isPerformance
-                        ? block.performances.filter(
-                            (directive) =>
-                              directive.dialogueOrdinal === line.ordinal,
-                          )
+                        ? (performanceByOrdinal.get(line.ordinal) ?? [])
                         : [];
                       const anchorMs =
                         batch.preview?.plan.dialogue.rows.find(
