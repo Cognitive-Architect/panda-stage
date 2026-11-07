@@ -26,9 +26,9 @@ import {
 } from 'react';
 import {
   evaluateShotAtTime,
-  evaluateSpeakerFocusCamera,
+  evaluateShotCamera,
   mapProjectTime,
-  prepareSpeakerFocusCamera,
+  prepareShotCamera,
   projectDurationMs,
   type CameraView,
   type Project,
@@ -532,12 +532,14 @@ export function ProductPreviewOverlay({
       if (asset.kind === 'audio') audioEnvelopeStore.ensure(projectRoot, asset);
     }
   }, [project, projectRoot, shot]);
+  // AUTO-07B: Preview reads the persisted per-Shot camera, so "Preview shows
+  // auto-follow but Export renders static" can no longer happen.
   const cameraPlan = useMemo(
-    () => (autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null),
-    [project, shot, autoCameraEnabled],
+    () => (shot ? prepareShotCamera(project, shot) : null),
+    [project, shot],
   );
   const camera = cameraPlan
-    ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
+    ? evaluateShotCamera(cameraPlan, activeShotTimeMs)
     : undefined;
   const renderedShot = useMemo(
     () => {

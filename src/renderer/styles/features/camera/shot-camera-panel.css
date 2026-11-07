@@ -1,0 +1,97 @@
+.shot-camera-panel {
+  display: grid;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.shot-camera-modes--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shot-camera-framing,
+.shot-camera-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.shot-camera-presets {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shot-camera-framing button,
+.shot-camera-presets button,
+.shot-camera-record {
+  min-height: 36px;
+  padding: 6px 8px;
+  color: #cfe6d6;
+  background: rgb(255 255 255 / 5%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.shot-camera-framing button[aria-pressed='true'] {
+  color: #e6f7ea;
+  background: #235739;
+}
+
+.shot-camera-framing button:disabled {
+  opacity: 0.45;
+}
+
+.shot-camera-record {
+  min-height: 40px;
+  color: #08240f;
+  background: #8fe2a9;
+  font-weight: 600;
+}
+
+.shot-camera-draft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #99aaa0;
+  font-size: 12px;
+}
+
+.shot-camera-draft[data-draft-full-stage='true'] {
+  color: #7f8f86;
+}
+
+.shot-camera-hint {
+  margin: 0;
+  color: #8b9b92;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.shot-camera-keyframes {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  list-style: none;
+}
+
+.shot-camera-keyframes li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 4px 8px;
+  align-items: center;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 4%);
+  gap: 8px;
+  color: #cfe6d6;
+  font-size: 12px;
+}
+
+.shot-camera-keyframe-delete {
+  min-height: 26px;
+  padding: 2px 8px;
+  color: #d6a4a4;
+  background: transparent;
+  font-size: 11px;
+}

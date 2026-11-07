@@ -82,8 +82,12 @@ const OpenInstanceIdSchema = z.number().int().positive();
 const RevisionSchema = z.number().int().nonnegative();
 
 export const ExportPreparationCameraModeSchema = z.enum([
+  // AUTO-07B adds the persisted per-Shot manual camera track. The rendered
+  // camera is always read from `Shot.camera`; this field only describes the
+  // preparation capability the Job was checked against.
   'static',
   'speaker-focus',
+  'manual',
 ]);
 
 export const ExportPreparationSelectOutputRequestSchema = z
@@ -247,7 +251,7 @@ const ExportPreparationSupportProfileSchema = z
       .strict(),
     backgroundRequired: z.literal(true),
     audio: z.enum(['supported', 'unsupported']),
-    cameraModes: z.array(ExportPreparationCameraModeSchema).length(2),
+    cameraModes: z.array(ExportPreparationCameraModeSchema).length(3),
     characterCompositions: z.array(z.enum(['whole-image', 'composite'])).length(
       2,
     ),

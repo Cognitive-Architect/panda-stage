@@ -167,6 +167,17 @@ export function resolveShotCamera(
   return evaluateShotCamera(prepareShotCamera(project, shot), requestedTimeMs);
 }
 
+/**
+ * One capability hint for the whole Project. The rendered camera always comes
+ * from each Shot, so a mixed Project reports its most demanding mode.
+ */
+export function resolveProjectCameraMode(project: Project): ShotCameraMode {
+  const modes = new Set(project.shots.map((shot) => shot.camera.mode));
+  if (modes.size === 1) return [...modes][0] ?? 'static';
+  if (modes.has('manual')) return 'manual';
+  return modes.has('speaker-focus') ? 'speaker-focus' : 'static';
+}
+
 /** Full stage means "no visible crop", so callers can skip identity cameras. */
 export function isFullStageCamera(
   camera: CameraView,

@@ -53,8 +53,14 @@ describe('Issue #653 persistent automatic Camera mode', () => {
     expect(workspace).toContain('<span>运镜</span>');
   });
 
-  it('shares one OFF-by-default session owner across the rail and Preview', () => {
-    expect(shell).toContain('const [autoCameraEnabled, setAutoCameraEnabled] = useState(false)');
+  it('shares one OFF-by-default persisted Shot mode across the rail and Preview', () => {
+    // AUTO-07B: the flag is no longer session-only state; it is derived from
+    // Shot.camera.mode (default 'static') and toggled through one History step.
+    expect(shell).not.toContain('const [autoCameraEnabled, setAutoCameraEnabled] = useState(false)');
+    expect(shell).toContain("?.camera.mode ?? 'static'");
+    expect(shell).toContain("const autoCameraEnabled = activeShotCameraMode === 'speaker-focus'");
+    expect(shell).toContain('withShotCamera(');
+    expect(shell).toContain("enabled ? 'speaker-focus' : 'static'");
     expect(shell).toContain('autoCameraEnabled={autoCameraEnabled}');
     expect(shell.match(/onAutoCameraChange=\{setAutoCameraEnabled\}/gu)).toHaveLength(2);
     expect(preview).not.toMatch(/useState\([^)]*speakerFocus|setSpeakerFocus/u);
@@ -76,13 +82,18 @@ describe('Issue #653 persistent automatic Camera mode', () => {
       .toContain('setAutoCameraEnabled(false)');
     expect(functionBody(shell, 'const openProjectCenter =', 'const returnToEditor ='))
       .not.toContain('setAutoCameraEnabled');
-    expect(shell).not.toMatch(/updateProject\([^)]*autoCameraEnabled/u);
+    // AUTO-07B: the toggle itself is the single History-writing owner; the
+    // Preview still never writes Project/History state.
+    expect(shell).toContain("editorProjectStore.updateProject(");
+    expect(shell).toContain("enabled ? '切换为自动跟随' : '切换为固定全景'");
     expect(preview).not.toMatch(/updateProject|HistoryStore|setDirty|setRevision/u);
   });
 
   it('has Camera ready before auto-play can begin with the first active Dialogue', () => {
-    expect(preview).toContain('autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null');
-    expect(preview).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
+    // AUTO-07B: Preview reads the persisted Shot camera through the one shared
+    // evaluator, so Preview and Export can no longer disagree.
+    expect(preview).toContain('shot ? prepareShotCamera(project, shot) : null');
+    expect(preview).toContain('evaluateShotCamera(cameraPlan, activeShotTimeMs)');
     expect(preview).toContain('camera={camera}');
     expect(preview).toContain('shouldStartProductPreviewAutoplay({');
     expect(preview).toContain("{ type: 'play' },");

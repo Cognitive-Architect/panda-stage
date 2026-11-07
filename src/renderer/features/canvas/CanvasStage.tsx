@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import {
+  Group,
   Layer as KonvaLayer,
   Rect,
   Stage,
@@ -18,7 +19,10 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  evaluateShotCamera,
   evaluateShotAtTime,
+  isFullStageCamera,
+  prepareShotCamera,
   listShotRuntimeImageAssets,
   resolveImageAsset,
   type AudioAsset,
@@ -38,6 +42,8 @@ import {
 } from '../../stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { CameraFramingOverlay } from './CameraFramingOverlay';
+import { cameraToolStore, useCameraTool } from '../camera/cameraToolStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
@@ -355,6 +361,33 @@ export function CanvasStage({
       timelineUi.currentTimeMs,
     ],
   );
+  // AUTO-07B: the editor reads the same persisted per-Shot camera as Preview
+  // and Export. The authoring box is drawn in full-stage space; "取景预览"
+  // applies the camera to the Canvas without moving any Character layer.
+  const cameraTool = useCameraTool();
+  const shotCameraPlan = useMemo(
+    () => (snapshot && shot ? prepareShotCamera(snapshot.project, shot) : null),
+    [shot, snapshot],
+  );
+  const presentedCamera = shotCameraPlan
+    ? evaluateShotCamera(shotCameraPlan, timelineUi.currentTimeMs)
+    : null;
+  const cameraPreviewActive = Boolean(
+    cameraTool.previewing &&
+      presentedCamera &&
+      snapshot &&
+      !isFullStageCamera(
+        presentedCamera,
+        snapshot.project.width,
+        snapshot.project.height,
+      ),
+  );
+  const appliedCamera = cameraPreviewActive ? presentedCamera : null;
+  const framingView =
+    cameraTool.active && !cameraTool.previewing && presentedCamera
+      ? cameraTool.draft ?? presentedCamera
+      : null;
+
   useEffect(() => {
     if (!temporalCanvasModel) {
       temporalContinuityRef.current = createEditorTemporalContinuityState(
@@ -411,8 +444,8 @@ export function CanvasStage({
     [imageState, snapshot, temporalCanvasModel],
   );
   const directEditingEnabled =
-    temporalCanvasModel?.directEditingEnabled ??
-    timelineUi.currentTimeMs === 0;
+    (temporalCanvasModel?.directEditingEnabled ??
+      timelineUi.currentTimeMs === 0) && !cameraPreviewActive;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
   const rejectTemporalCanvasEdit = (animationLayer = false): string => {
@@ -764,6 +797,23 @@ export function CanvasStage({
                 width={PROJECT_WIDTH}
               >
                 <KonvaLayer listening ref={configureEditorLayer}>
+                  {/* AUTO-07B camera applies to the content group only, so the
+                      camera moves the frame instead of the Character layers. */}
+                  <Group
+                    name={appliedCamera ? 'camera-world' : 'camera-world-static'}
+                    scaleX={appliedCamera?.zoom ?? 1}
+                    scaleY={appliedCamera?.zoom ?? 1}
+                    x={
+                      appliedCamera
+                        ? PROJECT_WIDTH / 2 - appliedCamera.centerX * appliedCamera.zoom
+                        : 0
+                    }
+                    y={
+                      appliedCamera
+                        ? PROJECT_HEIGHT / 2 - appliedCamera.centerY * appliedCamera.zoom
+                        : 0
+                    }
+                  >
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
@@ -864,12 +914,21 @@ export function CanvasStage({
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
                   />
+                  </Group>
                 </KonvaLayer>
                 <KonvaLayer
                   listening
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
+                  {framingView ? (
+                    <CameraFramingOverlay
+                      onChange={(view) => cameraToolStore.setDraft(view)}
+                      stageHeight={PROJECT_HEIGHT}
+                      stageWidth={PROJECT_WIDTH}
+                      view={framingView}
+                    />
+                  ) : null}
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={selectedStageLayer.layer.locked}

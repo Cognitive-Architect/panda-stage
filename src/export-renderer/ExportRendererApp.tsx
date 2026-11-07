@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Konva from 'konva';
 import {
   evaluateShotAtTime,
-  evaluateSpeakerFocusCamera,
+  evaluateShotCamera,
   mapProjectTime,
-  prepareSpeakerFocusCamera,
+  prepareShotCamera,
   type AudioEnvelope,
+  type CameraView,
   type MouthEnvelopeSource,
   type Project,
 } from '../domain';
@@ -225,16 +226,17 @@ export function ExportRendererApp(): React.JSX.Element {
       subtitle?.id,
     ],
   );
+  // The rendered camera is the persisted per-Shot camera (AUTO-07B); the
+  // request's cameraMode only records which preparation capability was
+  // checked. Static shots pass no camera at all, exactly as before.
   const cameraPlan = useMemo(
-    () =>
-      formalRequest?.cameraMode === 'speaker-focus'
-        ? prepareSpeakerFocusCamera(project, shot)
-        : null,
-    [formalRequest?.cameraMode, project, shot],
+    () => prepareShotCamera(project, shot),
+    [project, shot],
   );
-  const camera = cameraPlan
-    ? evaluateSpeakerFocusCamera(cameraPlan, evaluatedShot.timeMs)
-    : undefined;
+  const camera: CameraView | undefined = useMemo(
+    () => evaluateShotCamera(cameraPlan, evaluatedShot.timeMs),
+    [cameraPlan, evaluatedShot.timeMs],
+  );
   const captionStyle = formalRequest
     ? resolveProductPreviewSubtitleStyle(project, subtitle)
     : undefined;
