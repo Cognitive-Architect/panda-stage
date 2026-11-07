@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Clapperboard,
   Maximize2,
   MessageSquare,
   ScanLine,
@@ -9,6 +10,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePanel';
+import { MultiScenePerformancePanel } from '../features/shots/MultiScenePerformancePanel';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
@@ -16,13 +18,18 @@ export interface ProjectToolsDrawerProps {
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets' | 'multi-scene-dialogue';
+type ProjectToolsView =
+  | 'home'
+  | 'action-presets'
+  | 'multi-scene-dialogue'
+  | 'multi-scene-performance';
 
 /** Single title owner: the header never re-derives a view's name. */
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
   'multi-scene-dialogue': '多镜头对白',
+  'multi-scene-performance': '表演编排',
 };
 
 interface ViewModeOption {
@@ -164,6 +171,25 @@ export function ProjectToolsDrawer({
               <span>打开多镜头对白</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-multi-scene-performance-heading"
+            className="project-tools-multi-scene-performance-card"
+            data-testid="project-tools-multi-scene-performance-card"
+          >
+            <div className="project-tools-multi-scene-performance-heading">
+              <h3 id="project-tools-multi-scene-performance-heading">表演编排</h3>
+            </div>
+            <button
+              className="project-tools-multi-scene-performance-launcher"
+              data-project-tools-action="multi-scene-performance"
+              data-testid="project-tools-multi-scene-performance"
+              onClick={() => setView('multi-scene-performance')}
+              type="button"
+            >
+              <DecorativeIcon icon={Clapperboard} size={18} />
+              <span>打开表演编排</span>
+            </button>
+          </section>
         </div>
       ) : view === 'action-presets' ? (
         <section
@@ -173,13 +199,21 @@ export function ProjectToolsDrawer({
         >
           <LegacyWorkspace />
         </section>
-      ) : (
+      ) : view === 'multi-scene-dialogue' ? (
         <section
           aria-label="多镜头对白"
           className="project-tools-multi-scene-dialogue-view"
           data-testid="project-tools-multi-scene-dialogue-view"
         >
           <MultiSceneDialoguePanel />
+        </section>
+      ) : (
+        <section
+          aria-label="表演编排"
+          className="project-tools-multi-scene-performance-view"
+          data-testid="project-tools-multi-scene-performance-view"
+        >
+          <MultiScenePerformancePanel />
         </section>
       )}
     </section>
