@@ -7,3 +7,6 @@ export * from './PositionProjectService';
 export * from './ShotService';
 export * from './SubtitleStyleService';
 export * from './AssetService';
+export * from './AutoSubtitleGenerationService';
+export * from './MultiSceneService';
+export * from './MultiSceneDialogueService';

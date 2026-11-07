@@ -1,0 +1,199 @@
+/* Issue #1008 (AUTO-05): flat multi-scene dialogue batch. One group per Shot,
+   one row per line, pickers only where a role/background/audio is unproven. */
+.multi-scene-dialogue-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px 14px 16px;
+  overflow-y: auto;
+}
+
+.multi-scene-dialogue-empty {
+  margin: 0;
+  padding: 12px 14px;
+  color: rgb(255 255 255 / 62%);
+  font-size: 13px;
+}
+
+.multi-scene-dialogue-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+}
+
+.multi-scene-dialogue-input-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 184px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 28%);
+  color: #eef5ef;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.multi-scene-dialogue-input::placeholder {
+  color: rgb(255 255 255 / 34%);
+}
+
+.multi-scene-dialogue-input:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  outline: none;
+}
+
+.multi-scene-dialogue-check,
+.multi-scene-dialogue-generate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 5%);
+  color: #eef5ef;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.multi-scene-dialogue-generate {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 22%);
+}
+
+.multi-scene-dialogue-check:disabled,
+.multi-scene-dialogue-generate:disabled {
+  color: rgb(255 255 255 / 34%);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 2%);
+  cursor: not-allowed;
+}
+
+.multi-scene-dialogue-bindings,
+.multi-scene-dialogue-report {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+
+.multi-scene-dialogue-binding,
+.multi-scene-dialogue-background-picker {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: rgb(255 255 255 / 76%);
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-binding select,
+.multi-scene-dialogue-background-picker select,
+.multi-scene-dialogue-audio-picker {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  background: #0c1510;
+  color: #eef5ef;
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-shot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+  padding: 8px 0;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.multi-scene-dialogue-shot-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: #eef5ef;
+  font-size: 13px;
+}
+
+.multi-scene-dialogue-shot-heading span:first-child {
+  flex: none;
+  color: rgb(255 255 255 / 48%);
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-line {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) 20px;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: rgb(255 255 255 / 76%);
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-speaker {
+  color: rgb(255 255 255 / 48%);
+}
+
+.multi-scene-dialogue-text,
+.multi-scene-dialogue-audio {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-scene-dialogue-audio-picker,
+.multi-scene-dialogue-line-message {
+  grid-column: 2 / -1;
+}
+
+.multi-scene-dialogue-line-message {
+  margin: 0;
+  color: #f2b8a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.multi-scene-dialogue-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-selected-border, #83d39a);
+}
+
+.multi-scene-dialogue-mark[data-multi-scene-dialogue-mark='blocked'] {
+  color: #f2b8a8;
+}
+
+.multi-scene-dialogue-duration {
+  color: rgb(255 255 255 / 58%);
+  font-size: 12px;
+}
+
+.multi-scene-dialogue-status {
+  margin: 0;
+  color: rgb(255 255 255 / 68%);
+  font-size: 12px;
+  line-height: 1.5;
+}
