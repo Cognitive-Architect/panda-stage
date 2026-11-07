@@ -48,6 +48,12 @@ export interface EditorTemporalCanvasModel {
   stageModel: EditorStageRenderModel;
   directEditingEnabled: boolean;
   temporalInspection: boolean;
+  /**
+   * Layers whose rendered position comes from a runtime-only preview. Direct
+   * canvas editing stays off for them: the candidate stance is read-only, and
+   * only the explicit Apply action may write the formal Project.
+   */
+  previewReadOnlyLayerIds: ReadonlySet<string>;
   /** Visual-only Shake offset applied around a Position authoring draft. */
   positionAuthoringShakeOffset: Point | null;
   lastValidVisuals: ReadonlyMap<string, EditorTemporalVisual>;
@@ -58,6 +64,25 @@ export interface EditorTemporalCanvasModel {
   >;
   visualStatusByLayer: ReadonlyMap<string, EditorTemporalVisualStatus>;
   targetReadyLayerIds: ReadonlySet<string>;
+}
+
+const NO_LAYER_IDS: ReadonlySet<string> = new Set<string>();
+
+/** Shared empty set so a model without a preview never allocates one. */
+export const NO_PREVIEW_LAYER_IDS: ReadonlySet<string> = NO_LAYER_IDS;
+
+/**
+ * Direct canvas editing for one Layer needs a writable stage and a Layer that
+ * no runtime-only preview owns. A preview candidate is read-only until the
+ * panel's explicit Apply writes the Project.
+ */
+export function canvasDirectEditingEnabled(input: {
+  readonly stageEnabled: boolean;
+  readonly previewReadOnlyLayerIds: ReadonlySet<string>;
+  readonly layerId: string;
+}): boolean {
+  if (input.previewReadOnlyLayerIds.has(input.layerId)) return false;
+  return input.stageEnabled;
 }
 
 /**
@@ -247,6 +272,9 @@ export function buildEditorTemporalCanvasModel({
     ),
     directEditingEnabled: !temporalInspection,
     temporalInspection,
+    previewReadOnlyLayerIds: positionOverrides
+      ? new Set(positionOverrides.keys())
+      : NO_LAYER_IDS,
     positionAuthoringShakeOffset,
     lastValidVisuals: resolved.lastValidVisuals,
     visualsByLayer: resolved.visualsByLayer,

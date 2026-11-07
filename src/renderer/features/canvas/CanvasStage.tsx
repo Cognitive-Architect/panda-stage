@@ -71,6 +71,8 @@ import {
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
+  canvasDirectEditingEnabled,
+  NO_PREVIEW_LAYER_IDS,
 } from './editorTemporalCanvasModel';
 import { isAnimationBaseTransformEditableAtTime } from '../properties/layerTransformTemporalGuard';
 import {
@@ -428,6 +430,8 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
+  const previewReadOnlyLayerIds =
+    temporalCanvasModel?.previewReadOnlyLayerIds ?? NO_PREVIEW_LAYER_IDS;
   const rejectTemporalCanvasEdit = (animationLayer = false): string => {
     const message =
       animationLayer
@@ -483,8 +487,14 @@ export function CanvasStage({
   const directEditingEnabledForStageLayer = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
+    // A Quick Layout candidate is a read-only preview: its position only lands
+    // in the Project through the panel's explicit Apply action.
     if (stageLayer.layer.source.kind !== 'animation') {
-      return directEditingEnabled;
+      return canvasDirectEditingEnabled({
+        layerId: stageLayer.layer.id,
+        previewReadOnlyLayerIds,
+        stageEnabled: directEditingEnabled,
+      });
     }
     const evaluated = shot && snapshot
       ? evaluateShotAtTime(
@@ -493,17 +503,21 @@ export function CanvasStage({
           snapshot.project,
         ).layers.find((candidate) => candidate.id === stageLayer.layer.id)
       : undefined;
-    return Boolean(
-      evaluated?.visible &&
-        evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
-        isAnimationBaseTransformEditableAtTime(
-          snapshot!.project,
-          shot!.id,
-          stageLayer.layer.id,
-          timelineUi.currentTimeMs,
-        ) &&
-        isStageLayerVisualReady(stageLayer),
-    );
+    return canvasDirectEditingEnabled({
+      layerId: stageLayer.layer.id,
+      previewReadOnlyLayerIds,
+      stageEnabled: Boolean(
+        evaluated?.visible &&
+          evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
+          isAnimationBaseTransformEditableAtTime(
+            snapshot!.project,
+            shot!.id,
+            stageLayer.layer.id,
+            timelineUi.currentTimeMs,
+          ) &&
+          isStageLayerVisualReady(stageLayer),
+      ),
+    });
   };
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
@@ -757,6 +771,9 @@ export function CanvasStage({
               )}
               data-target-ready-layer-ids={JSON.stringify([
                 ...(temporalCanvasModel?.targetReadyLayerIds ?? []),
+              ])}
+              data-preview-read-only-layer-ids={JSON.stringify([
+                ...previewReadOnlyLayerIds,
               ])}
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
