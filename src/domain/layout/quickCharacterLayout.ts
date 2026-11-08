@@ -1,7 +1,14 @@
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../constants';
 import type { Layer, Project, Shot } from '../models';
 import { recognizePositionChain } from '../position-chain';
-import { buildEditorStageRenderModel } from '../selectors/stageRenderModel';
+import {
+  layoutRectFitsCanvas,
+  layoutVisualRectAt,
+  resolveLayoutVisualMetrics,
+  uniqueLayoutNameLabels,
+  type LayoutVisualMetrics,
+  type LayoutVisualRect,
+} from './visualBounds';
 
 /**
  * AUTO-01 V0 freezes exactly one two-person dialogue stance. There is no
@@ -57,25 +64,10 @@ export type QuickLayoutPlanResult =
       readonly message: string;
     };
 
-interface QuickLayoutMetrics {
-  /** Complete visual bounds in the Layer's own local coordinates. */
-  readonly bounds: {
-    readonly x: number;
-    readonly y: number;
-    readonly width: number;
-    readonly height: number;
-  };
-  readonly scaleX: number;
-  readonly scaleY: number;
-}
+type QuickLayoutMetrics = LayoutVisualMetrics;
 
 /** The on-stage rectangle one complete visual occupies at a candidate position. */
-export interface QuickLayoutVisualRect {
-  readonly left: number;
-  readonly right: number;
-  readonly top: number;
-  readonly bottom: number;
-}
+export type QuickLayoutVisualRect = LayoutVisualRect;
 
 /** Copy for refusals that are about the two-slot choice, not one person. */
 export function describeQuickLayoutChoice(
@@ -123,26 +115,7 @@ function quickLayoutMetrics(
   project: Project,
   shot: Shot,
 ): ReadonlyMap<string, QuickLayoutMetrics> {
-  try {
-    const model = buildEditorStageRenderModel(project, shot);
-    return new Map(
-      model.layers.map(({ layer, visual }) => [
-        layer.id,
-        {
-          bounds: {
-            x: visual.combinedLocalBounds.x,
-            y: visual.combinedLocalBounds.y,
-            width: visual.combinedLocalBounds.width,
-            height: visual.combinedLocalBounds.height,
-          },
-          scaleX: layer.flipX ? -layer.scaleX : layer.scaleX,
-          scaleY: layer.scaleY,
-        },
-      ]),
-    );
-  } catch {
-    return new Map();
-  }
+  return resolveLayoutVisualMetrics(project, shot);
 }
 
 function characterLayer(shot: Shot, layerId: string | null): Layer | null {
@@ -166,26 +139,6 @@ function blockReason(
   return null;
 }
 
-function uniqueNameLabels(layers: readonly Layer[]): Map<string, string> {
-  const totals = new Map<string, number>();
-  for (const layer of layers) {
-    totals.set(layer.name, (totals.get(layer.name) ?? 0) + 1);
-  }
-  const seen = new Map<string, number>();
-  const labels = new Map<string, string>();
-  for (const layer of layers) {
-    const total = totals.get(layer.name) ?? 0;
-    if (total < 2) {
-      labels.set(layer.id, layer.name);
-      continue;
-    }
-    const ordinal = (seen.get(layer.name) ?? 0) + 1;
-    seen.set(layer.name, ordinal);
-    labels.set(layer.id, `${layer.name}（${ordinal}）`);
-  }
-  return labels;
-}
-
 /** Character Layers of the current Shot, in canvas stacking order. */
 export function listQuickLayoutCharacters(
   project: Project,
@@ -199,7 +152,7 @@ export function listQuickLayoutCharacters(
         layer.id !== shot.backgroundLayerId,
     )
     .sort((left, right) => left.zIndex - right.zIndex);
-  const labels = uniqueNameLabels(candidates);
+  const labels = uniqueLayoutNameLabels(candidates);
   return candidates.map((layer) => ({
     layerId: layer.id,
     name: layer.name,
@@ -221,8 +174,7 @@ function alignedBottomY(
 
 /**
  * The complete visual rectangle at a candidate position. V0 refuses rotation,
- * so the local bounds only need the Layer scale; flipX is already folded into
- * `scaleX`, and min/max keeps the rectangle ordered after the mirror.
+ * so the local bounds only need the Layer scale.
  */
 export function quickLayoutVisualRect(
   project: Project,
@@ -232,40 +184,14 @@ export function quickLayoutVisualRect(
 ): QuickLayoutVisualRect | null {
   const metrics = quickLayoutMetrics(project, shot).get(layerId);
   if (!metrics) return null;
-  return visualRectAt(metrics, position);
-}
-
-function visualRectAt(
-  metrics: QuickLayoutMetrics,
-  position: QuickLayoutPoint,
-): QuickLayoutVisualRect {
-  const { bounds, scaleX, scaleY } = metrics;
-  const firstX = position.x + bounds.x * scaleX;
-  const secondX = position.x + (bounds.x + bounds.width) * scaleX;
-  const firstY = position.y + bounds.y * scaleY;
-  const secondY = position.y + (bounds.y + bounds.height) * scaleY;
-  return {
-    left: Math.min(firstX, secondX),
-    right: Math.max(firstX, secondX),
-    top: Math.min(firstY, secondY),
-    bottom: Math.max(firstY, secondY),
-  };
+  return layoutVisualRectAt(metrics, position);
 }
 
 /** True only when the whole visual stays inside the Project canvas. */
 export function quickLayoutRectFitsCanvas(
   rect: QuickLayoutVisualRect,
 ): boolean {
-  return (
-    Number.isFinite(rect.left) &&
-    Number.isFinite(rect.right) &&
-    Number.isFinite(rect.top) &&
-    Number.isFinite(rect.bottom) &&
-    rect.left >= 0 &&
-    rect.right <= PROJECT_WIDTH &&
-    rect.top >= 0 &&
-    rect.bottom <= PROJECT_HEIGHT
-  );
+  return layoutRectFitsCanvas(rect);
 }
 
 export function planQuickCharacterLayout(
@@ -330,7 +256,7 @@ export function planQuickCharacterLayout(
       y === null ||
       !layerMetrics ||
       !quickLayoutRectFitsCanvas(
-        visualRectAt(layerMetrics, { x: position, y }),
+        layoutVisualRectAt(layerMetrics, { x: position, y }),
       )
     ) {
       return {

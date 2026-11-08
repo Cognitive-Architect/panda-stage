@@ -5,6 +5,7 @@ import {
   type Layer,
   type LayerOrderAction,
   type LayerTransformInput,
+  type LayoutLayerTransform,
   type Point,
   type Project,
 } from '../../domain';
@@ -147,6 +148,31 @@ export class LayerStore {
         entry.layerId,
         entry.position,
       );
+    }
+    if (next !== project) {
+      this.editorStore.updateProject(next, label);
+    }
+    return next;
+  }
+
+  /**
+   * Commit one align/distribute result as a single formal edit. Every Layer
+   * transform is applied in memory first, so a rejected entry leaves the
+   * Project untouched and History records exactly one command.
+   */
+  applyLayoutTransforms(
+    entries: readonly LayoutLayerTransform[],
+    label = 'Arrange layers',
+  ): Project {
+    const { project, shotId } = this.context();
+    let next = project;
+    for (const entry of entries) {
+      next = this.service.updateLayoutTransform(next, shotId, entry.layerId, {
+        x: entry.x,
+        y: entry.y,
+        scaleX: entry.scaleX,
+        scaleY: entry.scaleY,
+      });
     }
     if (next !== project) {
       this.editorStore.updateProject(next, label);
