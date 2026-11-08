@@ -1,20 +1,18 @@
 .right-inspector-action-content {
   display: grid;
   min-width: 0;
-  padding: 6px 0;
-  gap: 6px;
+  padding: 12px;
+  gap: 16px;
 }
 
 .right-inspector-action-position {
   display: grid;
   min-width: 0;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--ui-color-separator);
-  gap: 4px;
+  gap: 8px;
 }
 
 .right-inspector-action-position > strong {
-  color: var(--ui-color-text-secondary);
+  color: var(--ui-color-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
@@ -22,9 +20,9 @@
 .part-pose-editor {
   display: grid;
   min-width: 0;
-  padding: 2px 0 0;
+  padding: 0;
   color: var(--ui-color-text-primary);
-  gap: 4px;
+  gap: 8px;
 }
 
 .part-pose-editor-heading,
@@ -44,8 +42,8 @@
 
 .part-pose-editor-part-row {
   min-width: 0;
-  max-width: 160px;
-  flex: 0 1 148px;
+  max-width: 140px;
+  flex: 0 1 136px;
   margin: 0;
 }
 
@@ -119,7 +117,7 @@
 }
 
 .part-pose-editor-pivot {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   min-height: 34px;
 }
 
@@ -237,7 +235,7 @@
 .part-pose-editor-adjustments {
   display: grid;
   min-width: 0;
-  gap: 6px;
+  gap: 8px;
 }
 
 .part-pose-editor-adjustment-row {
@@ -254,25 +252,28 @@
 }
 
 .part-pose-editor-rotation-controls {
-  grid-template-columns: minmax(42px, auto) repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .part-pose-editor-scale-controls {
-  grid-template-columns: minmax(42px, auto) 36px minmax(54px, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 34px auto 34px;
 }
 
 .part-pose-editor-adjustment-row > button[data-ui-button] {
-  width: 100%;
-  min-width: 0;
-  padding: 4px;
+  width: auto;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
   font-variant-numeric: tabular-nums;
 }
 
 .part-pose-editor-adjustment-row > output {
   color: var(--ui-color-text-primary);
   font-size: 12px;
+  padding: 0 2px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .part-pose-editor-feedback {
@@ -336,4 +337,10 @@
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
   .part-pose-editor select {
   min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-adjustment-row
+  > button[data-ui-button] {
+  min-width: 44px;
 }

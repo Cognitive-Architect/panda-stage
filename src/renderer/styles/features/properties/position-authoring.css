@@ -72,7 +72,7 @@ button.position-authoring-hold:hover:not(:disabled) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
+  gap: 8px;
 }
 
 .right-inspector-action-position .position-authoring-entry > button.position-authoring-primary,
