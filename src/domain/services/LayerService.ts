@@ -34,6 +34,8 @@ export type LayerServiceErrorCode =
   | 'INVALID_TRANSFORM'
   | 'BACKGROUND_COVER_INVALID'
   | 'BACKGROUND_LAYER_PROTECTED'
+  | 'CHARACTER_LAYER_REQUIRED'
+  | 'LAYER_HIDDEN'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
 
@@ -141,6 +143,33 @@ function validateLayerPosition(point: Point): Point {
     );
   }
   return position;
+}
+
+/** EF-01: a duplicated stage instance must be visibly separated from its source. */
+const DUPLICATE_LAYER_OFFSET = 24;
+
+const DUPLICATE_LAYER_NAME_SUFFIX = ' 副本';
+
+const LAYER_NAME_MAX_LENGTH = 200;
+
+function offsetDuplicatePosition(layer: Layer): Point {
+  const offset = clampLayerPosition({
+    x: layer.x + DUPLICATE_LAYER_OFFSET,
+    y: layer.y + DUPLICATE_LAYER_OFFSET,
+  });
+  return offset.x === layer.x && offset.y === layer.y
+    ? clampLayerPosition({
+        x: layer.x - DUPLICATE_LAYER_OFFSET,
+        y: layer.y - DUPLICATE_LAYER_OFFSET,
+      })
+    : offset;
+}
+
+function duplicateLayerName(name: string): string {
+  return `${name.slice(
+    0,
+    LAYER_NAME_MAX_LENGTH - DUPLICATE_LAYER_NAME_SUFFIX.length,
+  )}${DUPLICATE_LAYER_NAME_SUFFIX}`;
 }
 
 export class LayerService {
@@ -725,6 +754,51 @@ export class LayerService {
     };
     return {
       project: this.replaceShot(project, nextShot),
+      layer: duplicate,
+    };
+  }
+
+  /**
+   * EF-01: duplicates a Character Layer instance inside the current Shot.
+   * The new Layer keeps the same Character/Expression identity while taking a
+   * new Layer id. Static base state only: no timeline events are copied.
+   */
+  duplicateCharacterLayer(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'character') {
+      throw new LayerServiceError(
+        'CHARACTER_LAYER_REQUIRED',
+        '只能复制角色图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (!layer.visible) {
+      throw new LayerServiceError(
+        'LAYER_HIDDEN',
+        `图层“${layer.name}”已隐藏，请先显示该图层再复制。`,
+      );
+    }
+
+    const position = offsetDuplicatePosition(layer);
+    const duplicate: Layer = {
+      ...layer,
+      id: this.nextUniqueId(this.projectIds(project)),
+      name: duplicateLayerName(layer.name),
+      x: position.x,
+      y: position.y,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    return {
+      project: this.replaceShot(project, {
+        ...shot,
+        layers: [...shot.layers, duplicate],
+      }),
       layer: duplicate,
     };
   }

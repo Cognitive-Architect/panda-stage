@@ -170,6 +170,30 @@ export class LayerStore {
     return result.layer;
   }
 
+  duplicateCharacterLayer(layerId: string): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.duplicateCharacterLayer(
+      project,
+      shotId,
+      layerId,
+    );
+    this.editorStore.updateProject(
+      result.project,
+      'Duplicate character layer',
+      {},
+      {
+        afterRedo: () =>
+          this.restoreCreatedLayerSelection(
+            project.id,
+            projectRoot,
+            shotId,
+            result.layer.id,
+          ),
+      },
+    );
+    return result.layer;
+  }
+
   setLocked(layerId: string, locked: boolean): Project {
     const { project, shotId } = this.context();
     const next = this.service.setLocked(
