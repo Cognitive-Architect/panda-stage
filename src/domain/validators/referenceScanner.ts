@@ -22,7 +22,8 @@ export interface AssetReference {
 
 export type CharacterReferenceKind =
   | 'shot-layer-character'
-  | 'dialogue-character';
+  | 'dialogue-character'
+  | 'part-pose-preset';
 
 export interface CharacterReference {
   kind: CharacterReferenceKind;
@@ -201,6 +202,14 @@ export function scanCharacterReferences(
           `镜头“${shot.name}”的对白` +
           `“${dialoguePreview(dialogue.text)}”`,
       });
+    });
+  });
+  (project.partPosePresets ?? []).forEach((preset, presetIndex) => {
+    if (preset.characterId !== characterId) return;
+    references.push({
+      kind: 'part-pose-preset',
+      path: `partPosePresets[${presetIndex}].characterId`,
+      label: `动作预设“${preset.name}”`,
     });
   });
   return references;

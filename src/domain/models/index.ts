@@ -5,6 +5,7 @@ export * from './character';
 export * from './dialogue';
 export * from './layer';
 export * from './project';
+export * from './part-pose-preset';
 export * from './pose-animation';
 export * from './shot';
 export * from './subtitle';

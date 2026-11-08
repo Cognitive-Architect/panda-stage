@@ -7,6 +7,7 @@ import {
 } from '../constants';
 import {
   ProjectSchema,
+  ProjectV17Schema,
   ProjectV8Schema,
   ProjectV9Schema,
   ProjectV10Schema,
@@ -49,16 +50,17 @@ export type DetectedSchemaVersion =
   | 12
   | 13
   | 14
-  | 15
-  | 16
-  | typeof PROJECT_SCHEMA_VERSION;
+    | 15
+    | 16
+    | 17
+    | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
   constructor(readonly receivedVersion: unknown) {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -91,6 +93,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 14 ||
     version === 15 ||
     version === 16 ||
+    version === 17 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -288,8 +291,8 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v16) is routed here by version and resolved to
- * the current v17 project. The formal v1-v7
+ * Every persisted envelope (v0-v17) is routed here by version and resolved to
+ * the current v18 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
@@ -373,8 +376,19 @@ export function migrateProject(input: unknown): Project {
       });
       break;
     }
+    case 17: {
+      // v17 (C5-KF pose foundation) already carries the Layer shape the
+      // current schema expects; only the Project envelope advances to make
+      // room for user Part pose action presets, which default to absent.
+      const version17 = ProjectV17Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version17,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v17 envelope: validate it, then apply only the narrow
+      // Current v18 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

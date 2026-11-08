@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  PROJECT_SCHEMA_VERSION,
   CharacterService,
   LayerService,
   PartPoseAnimationService,
@@ -251,7 +252,7 @@ describe('Part pose animation persistence', () => {
     const committedTrack = committed.shots[0]!.layers.find(
       (layer) => layer.id === placed.layer.id,
     )!.poseAnimation!.tracks[0]!;
-    expect(committed.schemaVersion).toBe(17);
+    expect(committed.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(committed.characters).toEqual(project.characters);
     expect(committedTrack.sourceRestTransform).toEqual(track.sourceRestTransform);
     expect(committedTrack.restTransform).toEqual(track.restTransform);

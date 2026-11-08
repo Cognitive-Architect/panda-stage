@@ -1,5 +1,6 @@
 import {
   LayerService,
+  PartPoseActionPresetService,
   PartPoseAnimationService,
   evaluatePartPoseAnimationAtTime,
   type PartPoseKeyframe,
@@ -49,6 +50,7 @@ export class LayerStore {
     private readonly service: LayerService,
     private readonly layerSelection: LayerSelection = noopLayerSelection,
     private readonly poseService = new PartPoseAnimationService(),
+    private readonly posePresetService = new PartPoseActionPresetService(),
   ) {}
 
   createFromAsset(input: CreateLayerInput): Layer {
@@ -342,6 +344,48 @@ export class LayerStore {
     });
     this.commitPoseProject(context, result.project, 'Clear Part pose animation');
     return result;
+  }
+
+  savePartPoseActionPreset(layerId: string, name: string): Project {
+    const context = this.poseContext(layerId);
+    const next = this.posePresetService.save(context.project, {
+      shotId: context.shotId,
+      layerId,
+      name,
+    });
+    this.commitPoseProject(
+      context,
+      next,
+      `Save Part pose action preset: ${name.trim()}`,
+    );
+    return next;
+  }
+
+  applyPartPoseActionPreset(layerId: string, presetId: string): Project {
+    const context = this.poseContext(layerId);
+    const next = this.posePresetService.apply(context.project, {
+      shotId: context.shotId,
+      layerId,
+      presetId,
+    });
+    this.commitPoseProject(
+      context,
+      next,
+      'Apply Part pose action preset',
+    );
+    return next;
+  }
+
+  deletePartPoseActionPreset(presetId: string): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) {
+      throw new Error('Open a project before editing Part pose presets.');
+    }
+    const next = this.posePresetService.delete(snapshot.project, {
+      presetId,
+    });
+    this.editorStore.updateProject(next, 'Delete Part pose action preset');
+    return next;
   }
 
   setLocked(layerId: string, locked: boolean): Project {
