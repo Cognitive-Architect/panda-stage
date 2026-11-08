@@ -1,13 +1,80 @@
 /**
- * AUTO-02 V0 Batch Adjust (Issue #1001). One flat column: shot name, dialogue
- * rows, one seconds field, one primary action. No nested cards, no second
- * selection framework.
+ * AUTO-02 V0 Batch Adjust (Issue #1001) + EF-03 action scope (Issue #1023).
+ * One flat column: shot name, event rows, one action switch, one seconds
+ * field, one primary action. No nested cards, no second selection framework.
  */
 .project-tools-batch-adjust-view {
   display: grid;
   min-width: 0;
   padding: 12px;
   align-content: start;
+  gap: var(--ui-space-3);
+}
+
+.batch-adjust-scope {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ui-color-surface-overlay);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+}
+
+.batch-adjust-scope-option {
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-small);
+}
+
+.batch-adjust-scope-option[aria-pressed='true'] {
+  color: var(--ui-color-text-primary);
+  background: rgb(45 104 62 / 42%);
+  border-color: var(--ui-color-selected-border);
+}
+
+.batch-adjust-scope-option:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.batch-timeline-scope {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
+.batch-timeline-scope-option {
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  background: transparent;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+}
+
+.batch-timeline-scope-option[aria-pressed='true'] {
+  color: var(--ui-color-text-primary);
+  background: rgb(45 104 62 / 42%);
+  border-color: var(--ui-color-selected-border);
+}
+
+.batch-timeline-scope-option:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.batch-timeline-kind {
+  margin-left: 6px;
+  color: var(--ui-color-text-muted);
+  font: var(--ui-font-secondary);
 }
 
 .batch-adjust {
