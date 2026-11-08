@@ -337,3 +337,20 @@
   .part-pose-editor select {
   min-height: 44px;
 }
+
+.part-pose-editor-preset-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.part-pose-editor-preset-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.part-pose-editor-preset-row .part-pose-editor-select-wrap {
+  flex: 1;
+  min-width: 0;
+}

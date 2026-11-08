@@ -51,6 +51,30 @@ function readableError(error: unknown): string {
   if (message.includes('pivot')) {
     return '该零件已有动作姿势；清除本镜头动作后才能重新设置旋转点。';
   }
+  if (message.includes('no Part pose animation to save')) {
+    return '本实例还没有零件动作，先摆出动作再保存预设。';
+  }
+  if (message.includes('Author at least one Part keyframe')) {
+    return '至少为一个零件添加关键帧后才能保存预设。';
+  }
+  if (message.includes('already exists')) return '已有同名动作预设，请换一个名字。';
+  if (message.includes('must not be empty')) return '请先填写预设名称。';
+  if (message.includes('different Character')) {
+    return '该预设属于其他角色，无法应用到当前实例。';
+  }
+  if (message.includes('already has Part pose animation')) {
+    return '本实例已有零件动作；请先清除，再应用预设。';
+  }
+  if (message.includes('missing Part')) {
+    return '当前人物缺少预设所需的零件，已整次拒绝应用。';
+  }
+  if (message.includes('rest pose changed')) {
+    return '人物静止姿势已变化，预设可能不兼容，已拒绝应用。';
+  }
+  if (message.includes('shorter than the preset motion')) {
+    return '当前镜头时长不够放下这条预设动作。';
+  }
+  if (message.includes('no longer exists')) return '该预设已被删除或不存在。';
   return '动作没有保存，请调整后重试。';
 }
 
@@ -78,6 +102,8 @@ export function PartPoseEditorPanel({
   const timeline = useTimelineUi();
   const [feedback, setFeedback] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [applyPresetId, setApplyPresetId] = useState('');
   useEffect(() => {
     setFeedback('');
     setConfirmClear(false);
@@ -205,6 +231,44 @@ export function PartPoseEditorPanel({
       Math.min(CHARACTER_PART_MAX_SCALE, keyframe.scale * factor),
     );
     commitKey({ scale });
+  };
+
+  const characterPresets = (project.partPosePresets ?? []).filter(
+    (preset) => preset.characterId === character.id,
+  );
+  const canSavePreset = Boolean(
+    active &&
+      !layer.locked &&
+      layer.poseAnimation?.tracks.some((track) => hasAuthoredPartPose(track)),
+  );
+  const canApplyPreset = Boolean(
+    active &&
+      !layer.locked &&
+      !layer.poseAnimation &&
+      characterPresets.length > 0,
+  );
+  const effectiveApplyPresetId =
+    applyPresetId && characterPresets.some((preset) => preset.id === applyPresetId)
+      ? applyPresetId
+      : characterPresets[0]?.id ?? '';
+
+  const savePreset = (): void => {
+    try {
+      layerStore.savePartPoseActionPreset(layer.id, presetName);
+      setPresetName('');
+      setFeedback(`已保存动作预设：${presetName.trim()}`);
+    } catch (error) {
+      setFeedback(readableError(error));
+    }
+  };
+  const applyPreset = (): void => {
+    if (!effectiveApplyPresetId) return;
+    try {
+      layerStore.applyPartPoseActionPreset(layer.id, effectiveApplyPresetId);
+      setFeedback('已应用动作预设。');
+    } catch (error) {
+      setFeedback(readableError(error));
+    }
   };
 
   return (
@@ -437,6 +501,64 @@ export function PartPoseEditorPanel({
           </Button>
         )
       ) : null}
+
+      <details className="part-pose-editor-presets" data-testid="part-pose-presets">
+        <summary>
+          <span>动作预设</span>
+          <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+        </summary>
+        <div className="part-pose-editor-preset-row">
+          <input
+            aria-label="预设名称"
+            className="part-pose-editor-preset-name"
+            data-testid="part-pose-preset-name"
+            onChange={(event) => setPresetName(event.currentTarget.value)}
+            placeholder="预设名称"
+            type="text"
+            value={presetName}
+          />
+          <Button
+            data-testid="part-pose-preset-save"
+            disabled={!canSavePreset}
+            onClick={savePreset}
+            type="button"
+            variant="secondary"
+          >
+            保存预设
+          </Button>
+        </div>
+        <div className="part-pose-editor-preset-row">
+          <span className="part-pose-editor-select-wrap">
+            <select
+              aria-label="选择动作预设"
+              className="part-pose-editor-select"
+              data-testid="part-pose-preset-select"
+              disabled={characterPresets.length === 0}
+              onChange={(event) => setApplyPresetId(event.currentTarget.value)}
+              value={effectiveApplyPresetId}
+            >
+              {characterPresets.length === 0 ? (
+                <option value="">暂无本角色的预设</option>
+              ) : null}
+              {characterPresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+          </span>
+          <Button
+            data-testid="part-pose-preset-apply"
+            disabled={!canApplyPreset}
+            onClick={applyPreset}
+            type="button"
+            variant="secondary"
+          >
+            应用预设
+          </Button>
+        </div>
+      </details>
     </section>
   );
 }
