@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { CharacterPartTransformSchema } from './character';
+import {
+  CharacterPartImageMappingSchema,
+  CharacterPartTransformSchema,
+} from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import {
   PartPoseKeyframeSchema,
@@ -25,6 +28,13 @@ export const PartPosePresetTrackSchema = z
      * preset when the target Character's current rest pose differs.
      */
     sourceRestTransform: CharacterPartTransformSchema,
+    /**
+     * Source-image mapping (crop, scale, source size) the pivot and keys were
+     * authored against. Parameters only, never image bytes. Optional so a
+     * preset stored before this guard existed still parses; newly saved
+     * presets always carry it and applying then compares it.
+     */
+    imageMapping: CharacterPartImageMappingSchema.optional(),
   })
   .strict()
   .superRefine((track, context) => {

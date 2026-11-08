@@ -209,6 +209,23 @@ export function validateProjectReferences(
     }
   });
 
+  (project.partPosePresets ?? []).forEach((preset, presetIndex) => {
+    const character = characters.get(preset.characterId);
+    if (!character) {
+      addIssue(
+        context,
+        ['partPosePresets', presetIndex, 'characterId'],
+        `Action preset references unknown character: ${preset.characterId}`,
+      );
+    } else if (character.mode !== 'adaptive-parts') {
+      addIssue(
+        context,
+        ['partPosePresets', presetIndex, 'characterId'],
+        'Action presets require an Adaptive Parts Character.',
+      );
+    }
+  });
+
   project.voiceProfiles.forEach((profile, profileIndex) => {
     if (!characters.has(profile.characterId)) {
       addIssue(

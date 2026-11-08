@@ -1,5 +1,12 @@
 import { ProjectSchema, type Project } from '../models/project';
-import { PartPoseActionPresetSchema } from '../models/part-pose-preset';
+import {
+  PartPoseActionPresetSchema,
+  type PartPoseActionPreset,
+} from '../models/part-pose-preset';
+import type {
+  CharacterPartImageMapping,
+  CharacterPartTransform,
+} from '../models/character';
 import {
   PartPoseAnimationSchema,
   type PartPoseAnimation,
@@ -9,6 +16,7 @@ import {
   hasAuthoredPartPose,
   PartPoseAnimationService,
 } from './PartPoseAnimationService';
+import { adaptiveCharacterSourceAnchor } from '../selectors/visualParts';
 
 export interface SavePartPoseActionPresetInput {
   shotId: string;
@@ -27,6 +35,46 @@ export interface DeletePartPoseActionPresetInput {
 }
 
 type ProjectLayer = Project['shots'][number]['layers'][number];
+type AdaptivePartsCharacter = Extract<
+  Project['characters'][number],
+  { mode: 'adaptive-parts' }
+>;
+
+/** Float tolerance for source-coordinate comparisons that must round-trip. */
+const SOURCE_COORDINATE_TOLERANCE = 1e-6;
+
+function sameNumber(left: number, right: number): boolean {
+  return Math.abs(left - right) <= SOURCE_COORDINATE_TOLERANCE;
+}
+
+function sameTransform(
+  left: CharacterPartTransform,
+  right: CharacterPartTransform,
+): boolean {
+  return (
+    sameNumber(left.a, right.a) &&
+    sameNumber(left.b, right.b) &&
+    sameNumber(left.c, right.c) &&
+    sameNumber(left.d, right.d) &&
+    sameNumber(left.tx, right.tx) &&
+    sameNumber(left.ty, right.ty)
+  );
+}
+
+function sameImageMapping(
+  left: CharacterPartImageMapping,
+  right: CharacterPartImageMapping,
+): boolean {
+  return (
+    left.sourceWidth === right.sourceWidth &&
+    left.sourceHeight === right.sourceHeight &&
+    left.crop.x === right.crop.x &&
+    left.crop.y === right.crop.y &&
+    left.crop.width === right.crop.width &&
+    left.crop.height === right.crop.height &&
+    sameNumber(left.exportScale, right.exportScale)
+  );
+}
 
 /**
  * Saves user-authored Part pose animations as reusable per-Character presets
@@ -87,6 +135,10 @@ export class PartPoseActionPresetService {
         keys: track.keys.map((key) => ({ ...key })),
         pivotSource: { ...track.pivotSource },
         sourceRestTransform: { ...track.sourceRestTransform },
+        imageMapping: {
+          ...track.imageMapping,
+          crop: { ...track.imageMapping.crop },
+        },
       })),
       createdAt: new Date().toISOString(),
     });
@@ -127,24 +179,7 @@ export class PartPoseActionPresetService {
         'Action presets require an Adaptive Parts Character that still exists.',
       );
     }
-    const partsById = new Map(character.parts.map((part) => [part.partId, part]));
-    for (const track of preset.tracks) {
-      const part = partsById.get(track.partId);
-      if (!part) {
-        throw new Error(
-          `The target Character is missing Part ${track.partId}; the preset cannot be applied.`,
-        );
-      }
-      const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
-      if (
-        JSON.stringify(sourceRestTransform) !==
-        JSON.stringify(track.sourceRestTransform)
-      ) {
-        throw new Error(
-          `Part ${track.partId} rest pose changed since this preset was saved; refusing an incompatible apply.`,
-        );
-      }
-    }
+    this.assertAssemblyCompatible(current, character, preset);
     if (preset.durationMs > shot.durationMs) {
       throw new Error(
         `This Shot is shorter than the preset motion (${preset.durationMs} ms).`,
@@ -207,6 +242,71 @@ export class PartPoseActionPresetService {
   private assertEditable(layer: ProjectLayer): void {
     if (layer.locked) {
       throw new Error(`Layer ${layer.id} is locked and cannot edit Part poses.`);
+    }
+  }
+
+  /**
+   * Applying copies the preset's pivots and keys onto the target snapshot, so
+   * the motion stays meaningful only while the Character resolves its Parts in
+   * the same source coordinates it was authored in. Root transform, source-pose
+   * anchor (derived from the Parts' source pose and image mappings) and each
+   * Part's rest pose / image mapping must therefore still match; any
+   * difference rejects the whole apply instead of silently skewing the motion.
+   */
+  private assertAssemblyCompatible(
+    project: Project,
+    character: AdaptivePartsCharacter,
+    preset: PartPoseActionPreset,
+  ): void {
+    const partsById = new Map(character.parts.map((part) => [part.partId, part]));
+    for (const track of preset.tracks) {
+      if (!partsById.has(track.partId)) {
+        throw new Error(
+          `The target Character is missing Part ${track.partId}; the preset cannot be applied.`,
+        );
+      }
+    }
+    if (
+      !sameTransform(preset.sourceRootTransform, character.sourceRootTransform)
+    ) {
+      throw new Error(
+        'The Character source root transform changed since this preset was saved; refusing an incompatible apply.',
+      );
+    }
+    const sourceCenter = adaptiveCharacterSourceAnchor(project, {
+      ...character,
+      parts: character.parts.map((part) => ({
+        ...part,
+        restTransform: { ...(part.sourceRestTransform ?? part.restTransform) },
+      })),
+    });
+    if (
+      !sameNumber(preset.fixedCharacterCenter.x, sourceCenter.x) ||
+      !sameNumber(preset.fixedCharacterCenter.y, sourceCenter.y)
+    ) {
+      throw new Error(
+        'The Character source pose bounds changed since this preset was saved; refusing an incompatible apply.',
+      );
+    }
+    for (const track of preset.tracks) {
+      const part = partsById.get(track.partId)!;
+      const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
+      if (
+        JSON.stringify(sourceRestTransform) !==
+        JSON.stringify(track.sourceRestTransform)
+      ) {
+        throw new Error(
+          `Part ${track.partId} rest pose changed since this preset was saved; refusing an incompatible apply.`,
+        );
+      }
+      if (
+        track.imageMapping &&
+        !sameImageMapping(track.imageMapping, part.imageMapping)
+      ) {
+        throw new Error(
+          `Part ${track.partId} source image mapping changed since this preset was saved; refusing an incompatible apply.`,
+        );
+      }
     }
   }
 

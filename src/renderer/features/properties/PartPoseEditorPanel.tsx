@@ -37,9 +37,22 @@ const KNOWN_PART_LABELS: Readonly<Record<string, string>> = {
   Forearm: '前臂',
 };
 
-function readableError(error: unknown): string {
+export function readableError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message.includes('locked')) return '该角色图层已锁定，无法编辑动作。';
+  // Preset compatibility reasons win over the generic "changed" copy below.
+  if (message.includes('source root transform changed')) {
+    return '人物整体结构已变化，预设与当前人物不兼容，已拒绝应用。';
+  }
+  if (message.includes('source pose bounds changed')) {
+    return '人物零件布局已变化，预设动作不再对齐，已拒绝应用。';
+  }
+  if (message.includes('source image mapping changed')) {
+    return '零件裁剪映射已变化，预设与当前人物不兼容，已拒绝应用。';
+  }
+  if (message.includes('rest pose changed')) {
+    return '人物静止姿势已变化，预设可能不兼容，已拒绝应用。';
+  }
   if (message.includes('stale') || message.includes('changed')) {
     return '工程或镜头已变化，操作已取消。';
   }
@@ -67,9 +80,6 @@ function readableError(error: unknown): string {
   }
   if (message.includes('missing Part')) {
     return '当前人物缺少预设所需的零件，已整次拒绝应用。';
-  }
-  if (message.includes('rest pose changed')) {
-    return '人物静止姿势已变化，预设可能不兼容，已拒绝应用。';
   }
   if (message.includes('shorter than the preset motion')) {
     return '当前镜头时长不够放下这条预设动作。';

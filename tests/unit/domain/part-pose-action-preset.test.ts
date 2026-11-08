@@ -7,6 +7,7 @@ import {
   ProjectSchema,
   ShotService,
   evaluatePartPoseAnimationAtTime,
+  scanCharacterReferences,
   type Project,
 } from '../../../src/domain';
 import {
@@ -181,7 +182,13 @@ describe('PartPoseActionPresetService', () => {
     expect(armPreset.keys.map((key) => key.timeMs)).toEqual([0, 1_000, 2_000]);
     // Only references and parameters are stored; no image or FLA frame data.
     expect(armPreset).not.toHaveProperty('source');
-    expect(armPreset).not.toHaveProperty('imageMapping');
+    // The source-image mapping is kept as parameters so apply can detect a
+    // changed crop or scale; no image bytes or asset identity are duplicated.
+    const sourceTrack = saved.shots
+      .find((candidate) => candidate.id === IDS.shot)!
+      .layers.find((candidate) => candidate.id === sourceLayerId)!
+      .poseAnimation!.tracks.find((track) => track.partId === armPreset.partId)!;
+    expect(armPreset.imageMapping).toEqual(sourceTrack.imageMapping);
 
     const target = secondInstanceOfSameCharacter(saved, characterId);
     const applied = service.apply(target.project, {
@@ -357,8 +364,151 @@ describe('PartPoseActionPresetService', () => {
     expect(otherPlaced.project.partPosePresets).toEqual(saved.partPosePresets);
   });
 
-  it('deletes presets and refuses unknown ids', () => {
+  it('refuses the whole apply when the Character assembly no longer resolves the authored source coordinates', () => {
     const service = new PartPoseActionPresetService();
+    const { project, layerId: sourceLayerId, characterId } = adaptiveProject();
+    const animated = authoredMotion(project, IDS.shot, sourceLayerId);
+    const saved = service.save(animated, {
+      shotId: IDS.shot,
+      layerId: sourceLayerId,
+      name: '抬手',
+    });
+    const preset = saved.partPosePresets![0]!;
+    const characters = new CharacterService();
+
+    // The Character's source root transform changed after the preset was saved.
+    const definition = characters.getAdaptivePartsDefinition(saved, characterId);
+    const rootDrifted = characters.applyAdaptivePartsDefinition(
+      saved,
+      characterId,
+      {
+        ...definition,
+        sourceRootTransform: {
+          ...definition.sourceRootTransform,
+          tx: definition.sourceRootTransform.tx + 40,
+        },
+      },
+    );
+    const rootTarget = secondInstanceOfSameCharacter(rootDrifted, characterId);
+    const targetBefore = JSON.stringify(rootTarget.project);
+    expect(() =>
+      service.apply(rootTarget.project, {
+        shotId: rootTarget.shotId,
+        layerId: rootTarget.layerId,
+        presetId: preset.id,
+      }),
+    ).toThrow(/source root transform changed/);
+
+    // The assembled source pose moved as a whole, so the stored keys no longer
+    // align with the Character's fixed source center.
+    const poseDrifted = ProjectSchema.parse({
+      ...saved,
+      characters: saved.characters.map((character) =>
+        character.id !== characterId || character.mode !== 'adaptive-parts'
+          ? character
+          : {
+              ...character,
+              parts: character.parts.map((part) => ({
+                ...part,
+                sourceRestTransform: {
+                  ...(part.sourceRestTransform ?? part.restTransform),
+                  tx: (part.sourceRestTransform ?? part.restTransform).tx + 60,
+                },
+              })),
+            },
+      ),
+    });
+    const poseTarget = secondInstanceOfSameCharacter(poseDrifted, characterId);
+    expect(() =>
+      service.apply(poseTarget.project, {
+        shotId: poseTarget.shotId,
+        layerId: poseTarget.layerId,
+        presetId: preset.id,
+      }),
+    ).toThrow(/source pose bounds changed/);
+
+    // A changed Part crop/scale mapping is rejected as well.
+    const mappingDrifted = ProjectSchema.parse({
+      ...saved,
+      partPosePresets: [
+        {
+          ...preset,
+          tracks: preset.tracks.map((track) => ({
+            ...track,
+            imageMapping: track.imageMapping
+              ? {
+                  ...track.imageMapping,
+                  exportScale: track.imageMapping.exportScale * 2,
+                }
+              : undefined,
+          })),
+        },
+      ],
+    });
+    const mappingTarget = secondInstanceOfSameCharacter(
+      mappingDrifted,
+      characterId,
+    );
+    expect(() =>
+      service.apply(mappingTarget.project, {
+        shotId: mappingTarget.shotId,
+        layerId: mappingTarget.layerId,
+        presetId: preset.id,
+      }),
+    ).toThrow(/source image mapping changed/);
+
+    // Rejections are side-effect free: presets, target layers and the source
+    // instance keep their previous state.
+    expect(rootTarget.project.partPosePresets).toEqual(saved.partPosePresets);
+    expect(JSON.stringify(rootTarget.project)).toBe(targetBefore);
+    expect(
+      poseTarget.project.shots
+        .find((shot) => shot.id === poseTarget.shotId)!
+        .layers.find((layer) => layer.id === poseTarget.layerId)!.poseAnimation,
+    ).toBeUndefined();
+  });
+
+  it('protects a Character that still backs an action preset and rejects orphan presets', () => {
+    const presets = new PartPoseActionPresetService();
+    const { project, layerId, characterId } = adaptiveProject();
+    const animated = authoredMotion(project, IDS.shot, layerId);
+    const saved = presets.save(animated, {
+      shotId: IDS.shot,
+      layerId,
+      name: '抬手',
+    });
+    const preset = saved.partPosePresets![0]!;
+    const characters = new CharacterService();
+
+    // Removing every Shot Layer and dialogue leaves the preset as the only
+    // remaining Character reference, which still blocks deletion.
+    const withoutLayer = new LayerService().deleteLayer(saved, IDS.shot, layerId);
+    expect(scanCharacterReferences(withoutLayer, characterId)).toEqual([
+      expect.objectContaining({
+        kind: 'part-pose-preset',
+        path: 'partPosePresets[0].characterId',
+      }),
+    ]);
+    expect(() => characters.deleteCharacter(withoutLayer, characterId)).toThrow(
+      /不能删除/,
+    );
+
+    // Deleting the preset restores the ordinary deletion flow.
+    const withoutPreset = presets.delete(withoutLayer, { presetId: preset.id });
+    const deleted = characters.deleteCharacter(withoutPreset, characterId);
+    expect(deleted.characters.some((entry) => entry.id === characterId)).toBe(
+      false,
+    );
+
+    // A preset pointing at a Character that no longer exists is invalid data.
+    const orphan = ProjectSchema.safeParse({
+      ...withoutLayer,
+      partPosePresets: [{ ...preset, characterId: crypto.randomUUID() }],
+    });
+    expect(orphan.success).toBe(false);
+  });
+
+  it('deletes presets and refuses unknown ids', () => {    const service = new PartPoseActionPresetService();
     const { project, layerId } = adaptiveProject();
     const animated = authoredMotion(project, IDS.shot, layerId);
     const saved = service.save(animated, {

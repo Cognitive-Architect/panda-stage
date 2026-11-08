@@ -7,7 +7,10 @@ import {
   LayerService,
   ShotService,
 } from '../../src/domain';
-import { PartPoseEditorPanel } from '../../src/renderer/features/properties/PartPoseEditorPanel';
+import {
+  PartPoseEditorPanel,
+  readableError,
+} from '../../src/renderer/features/properties/PartPoseEditorPanel';
 import type { PartPoseEditorUi } from '../../src/renderer/features/part-pose/partPoseEditorTypes';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { layerStore } from '../../src/renderer/stores/layerStore';
@@ -95,6 +98,32 @@ function button(testId: string): HTMLButtonElement {
 }
 
 describe('Part pose action preset panel', () => {
+  it('keeps preset incompatibility reasons ahead of the generic changed copy', () => {
+    expect(
+      readableError(
+        new Error(
+          'Part arm rest pose changed since this preset was saved; refusing an incompatible apply.',
+        ),
+      ),
+    ).toBe('人物静止姿势已变化，预设可能不兼容，已拒绝应用。');
+    expect(
+      readableError(
+        new Error(
+          'The Character source pose bounds changed since this preset was saved; refusing an incompatible apply.',
+        ),
+      ),
+    ).toBe('人物零件布局已变化，预设动作不再对齐，已拒绝应用。');
+    expect(
+      readableError(
+        new Error(
+          'The Character source root transform changed since this preset was saved; refusing an incompatible apply.',
+        ),
+      ),
+    ).toBe('人物整体结构已变化，预设与当前人物不兼容，已拒绝应用。');
+    expect(readableError(new Error('The project snapshot is stale.'))).toBe(
+      '工程或镜头已变化，操作已取消。',
+    );
+  });
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
