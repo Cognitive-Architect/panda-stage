@@ -5,6 +5,11 @@ import type {
   AssetImportResponse,
 } from '../shared/asset-import-api';
 import type {
+  ProjectResourceImportApplyRequest,
+  ProjectResourceImportChooseRequest,
+  ProjectResourceImportResponse,
+} from '../shared/project-resource-import-api';
+import type {
   AssetMetadataCancelResponse,
   AssetMetadataRequest,
   AssetMetadataResponse,
@@ -180,6 +185,12 @@ declare global {
           request: AssetImportProjectRequest,
           files: readonly File[],
         ) => Promise<AssetImportResponse>;
+        chooseProjectResources: (
+          request: ProjectResourceImportChooseRequest,
+        ) => Promise<ProjectResourceImportResponse>;
+        importProjectResources: (
+          request: ProjectResourceImportApplyRequest,
+        ) => Promise<ProjectResourceImportResponse>;
         refreshMetadata: (
           request: AssetMetadataRequest,
         ) => Promise<AssetMetadataResponse>;
