@@ -5,6 +5,7 @@ import {
   DialogueServiceError,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  integerFrameSpanMs,
   isNarratorDialogue,
   type Dialogue,
   type Project,
@@ -384,6 +385,212 @@ describe('VOICE-01 speaker re-selection keeps a legal non-default voice profile'
     expect(next.shots[0]!.dialogues[0]).toMatchObject({
       characterId: IDS.character,
       voiceProfileId: IDS.voiceProfile,
+    });
+  });
+});
+
+const RECORDED_AUDIO_MS = 3_420;
+const LONG_SHOT_MS = 4_000;
+
+function firstBindProject(
+  options: { shotDurationMs?: number; sourceDurationMs?: number } = {},
+): Project {
+  const base = buildProject();
+  const shotDurationMs = options.shotDurationMs ?? LONG_SHOT_MS;
+  const sourceDurationMs = options.sourceDurationMs ?? RECORDED_AUDIO_MS;
+  return ProjectSchema.parse({
+    ...base,
+    shots: base.shots.map((shot) => ({ ...shot, durationMs: shotDurationMs })),
+    assets: [
+      ...base.assets,
+      { ...narrationAudioAsset(), durationMs: sourceDurationMs },
+    ],
+  });
+}
+
+/** Reproduces "新建字幕 → 快速安排": one Timeline frame and no audio yet. */
+function oneFrameNarration(
+  project: Project,
+  dialogueService: DialogueService,
+  startMs?: number,
+): { project: Project; dialogueId: string } {
+  let next = dialogueService.create(project, {
+    shotId: IDS.shot,
+    speakerType: 'narrator',
+    text: '注意看，这个男人叫小帅',
+    pointTimeMs: startMs ?? 0,
+  });
+  const dialogueId = next.shots[0]!.dialogues[0]!.id;
+  next = dialogueService.arrange(next, {
+    shotId: IDS.shot,
+    dialogueId,
+    frameSpanMs: integerFrameSpanMs(),
+    ...(startMs === undefined ? {} : { startMs }),
+  });
+  return { project: next, dialogueId };
+}
+
+describe('VOICE-01 first audio bind aligns an untouched one-frame placeholder', () => {
+  it('grows the placeholder and its clip to the recorded duration in one snapshot', () => {
+    const mutationService = service();
+    const seeded = oneFrameNarration(firstBindProject(), mutationService);
+    expect(seeded.project.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: integerFrameSpanMs(),
+    });
+
+    const bound = mutationService.bindAudio(seeded.project, {
+      shotId: IDS.shot,
+      dialogueId: seeded.dialogueId,
+      assetId: NARRATION_AUDIO,
+    });
+
+    const shot = bound.shots[0]!;
+    const dialogue = shot.dialogues[0]!;
+    const clip = shot.audioClips.find(
+      (candidate) => candidate.id === dialogue.audioClipId,
+    );
+    expect(dialogue).toMatchObject({
+      speakerType: 'narrator',
+      startMs: 0,
+      endMs: RECORDED_AUDIO_MS,
+    });
+    expect(clip).toMatchObject({
+      role: 'dialogue',
+      assetId: NARRATION_AUDIO,
+      startMs: 0,
+      endMs: RECORDED_AUDIO_MS,
+      offsetMs: 0,
+    });
+    // The aligned shape is still the ordinary persisted Project shape.
+    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(bound)))).toEqual(
+      bound,
+    );
+  });
+
+  it('rejects the first bind when the shot cannot hold the whole recording', () => {
+    const mutationService = service();
+    const seeded = oneFrameNarration(
+      firstBindProject({ shotDurationMs: 2_500 }),
+      mutationService,
+    );
+    const before = seeded.project;
+
+    expectDialogueError(
+      () =>
+        mutationService.bindAudio(before, {
+          shotId: IDS.shot,
+          dialogueId: seeded.dialogueId,
+          assetId: NARRATION_AUDIO,
+        }),
+      'AUDIO_DIALOGUE_NO_ROOM',
+    );
+
+    const shot = before.shots[0]!;
+    expect(shot.durationMs).toBe(2_500);
+    expect(shot.audioClips).toHaveLength(0);
+    expect(shot.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: integerFrameSpanMs(),
+    });
+    expect(shot.dialogues[0]!.audioClipId).toBeUndefined();
+  });
+
+  it('rejects the first bind instead of overwriting a following subtitle', () => {
+    const mutationService = service();
+    const seeded = oneFrameNarration(firstBindProject(), mutationService);
+    let project = mutationService.create(seeded.project, {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: '我是后面那句',
+      pointTimeMs: 0,
+    });
+    const followingId = project.shots[0]!.dialogues[1]!.id;
+    project = mutationService.setTiming(project, {
+      shotId: IDS.shot,
+      dialogueId: followingId,
+      startMs: 1_000,
+      endMs: 1_500,
+    });
+    const before = project;
+
+    expectDialogueError(
+      () =>
+        mutationService.bindAudio(before, {
+          shotId: IDS.shot,
+          dialogueId: seeded.dialogueId,
+          assetId: NARRATION_AUDIO,
+        }),
+      'AUDIO_DIALOGUE_NO_ROOM',
+    );
+
+    const shot = before.shots[0]!;
+    expect(shot.audioClips).toHaveLength(0);
+    expect(shot.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: integerFrameSpanMs(),
+    });
+    expect(shot.dialogues[1]).toMatchObject({
+      startMs: 1_000,
+      endMs: 1_500,
+    });
+  });
+
+  it('keeps an author-set duration instead of re-growing it', () => {
+    const mutationService = service();
+    const seeded = oneFrameNarration(firstBindProject(), mutationService);
+    const authored = mutationService.setTiming(seeded.project, {
+      shotId: IDS.shot,
+      dialogueId: seeded.dialogueId,
+      startMs: 0,
+      endMs: 1_800,
+    });
+
+    const bound = mutationService.bindAudio(authored, {
+      shotId: IDS.shot,
+      dialogueId: seeded.dialogueId,
+      assetId: NARRATION_AUDIO,
+    });
+
+    expect(bound.shots[0]!.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_800,
+    });
+    expect(bound.shots[0]!.audioClips[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_800,
+    });
+  });
+
+  it('applies the same first-bind alignment to a character dialogue', () => {
+    const mutationService = service();
+    let project = mutationService.create(firstBindProject(), {
+      shotId: IDS.shot,
+      characterId: IDS.character,
+      text: '我也是一帧占位',
+      pointTimeMs: 0,
+    });
+    const dialogueId = project.shots[0]!.dialogues[0]!.id;
+    project = mutationService.arrange(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      frameSpanMs: integerFrameSpanMs(),
+    });
+
+    const bound = mutationService.bindAudio(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      assetId: NARRATION_AUDIO,
+    });
+
+    expect(bound.shots[0]!.dialogues[0]).toMatchObject({
+      characterId: IDS.character,
+      startMs: 0,
+      endMs: RECORDED_AUDIO_MS,
+    });
+    expect(bound.shots[0]!.audioClips[0]).toMatchObject({
+      role: 'dialogue',
+      endMs: RECORDED_AUDIO_MS,
     });
   });
 });

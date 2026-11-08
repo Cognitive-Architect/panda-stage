@@ -10,6 +10,7 @@ import {
   type Project,
   type Shot,
 } from '../models';
+import { integerFrameSpanMs } from '../timeline/frame-grid';
 
 const MIN_TIMED_DIALOGUE_DURATION_MS = 1;
 
@@ -28,6 +29,7 @@ export type DialogueServiceErrorCode =
   | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
   | 'AUDIO_CLIP_NOT_FOUND'
   | 'AUDIO_CLIP_TOO_SHORT'
+  | 'AUDIO_DIALOGUE_NO_ROOM'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -263,6 +265,11 @@ export class DialogueService {
    * Atomically binds one Ready AudioAsset to one timed Dialogue. The Dialogue
    * reference and Shot AudioClip change in one Project snapshot so the
    * renderer records exactly one History command.
+   *
+   * A first bind onto a still-untouched one-frame placeholder also grows that
+   * placeholder — Dialogue window and clip together, in the same snapshot — to
+   * the detected source duration, so a real recording is never reported as a
+   * single frame.
    */
   bindAudio(project: Project, input: BindDialogueAudioInput): Project {
     const shot = this.shot(project, input.shotId);
@@ -285,7 +292,15 @@ export class DialogueService {
     const offsetMs = sameAsset ? existingClip.offsetMs : 0;
     const volume = sameAsset ? existingClip.volume : 1;
     const name = sameAsset ? existingClip.name : asset.name;
-    const timing = this.initialAudioTiming(dialogue, asset, offsetMs);
+    const firstBindTiming = this.firstBindDialogueTiming(
+      shot,
+      dialogue,
+      asset,
+      existingClip,
+    );
+    const timing = firstBindTiming
+      ? firstBindTiming
+      : this.initialAudioTiming(dialogue, asset, offsetMs);
     this.assertAudioRange(asset, offsetMs, timing.endMs - timing.startMs);
 
     const clipId =
@@ -315,7 +330,7 @@ export class DialogueService {
       audioClips: nextAudioClips,
       dialogues: shot.dialogues.map((candidate) =>
         candidate.id === dialogue.id
-          ? { ...candidate, audioClipId: clipId }
+          ? { ...candidate, ...(firstBindTiming ?? {}), audioClipId: clipId }
           : candidate,
       ),
     });
@@ -667,6 +682,50 @@ export class DialogueService {
     };
   }
 
+  /**
+   * "快速安排" commits exactly one Timeline frame for a subtitle that has no
+   * audio yet. That single frame is a placeholder, not an authored length, so
+   * the first real recording replaces it with the detected source duration.
+   *
+   * The condition is deliberately narrow: only an unbound Dialogue whose
+   * committed span is exactly one frame — and shorter than the source — is
+   * realigned. A Dialogue the author already stretched, already bound, or
+   * already trimmed keeps its committed duration. A one-frame span set on
+   * purpose is indistinguishable in the current model and is treated the same
+   * way; that is the accepted boundary of this fix rather than new metadata.
+   *
+   * When the whole source cannot be placed, the bind is rejected. The
+   * placeholder is never silently left at one frame, and no Shot duration or
+   * other Dialogue is altered to make room.
+   */
+  private firstBindDialogueTiming(
+    shot: Shot,
+    dialogue: Dialogue,
+    asset: AudioAsset,
+    existingClip: AudioClip | null,
+  ): { startMs: number; endMs: number } | null {
+    if (existingClip) return null;
+    const committedDurationMs = dialogue.endMs - dialogue.startMs;
+    if (committedDurationMs !== integerFrameSpanMs()) return null;
+    const sourceDurationMs = Math.max(0, asset.durationMs ?? 0);
+    if (sourceDurationMs <= committedDurationMs) return null;
+
+    const endMs = dialogue.startMs + sourceDurationMs;
+    const conflict = this.findOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      { startMs: dialogue.startMs, endMs },
+    );
+    if (endMs > shot.durationMs || conflict) {
+      const limitEndMs = conflict ? conflict.startMs : shot.durationMs;
+      const roomMs = Math.max(0, limitEndMs - dialogue.startMs);
+      throw new DialogueServiceError(
+        'AUDIO_DIALOGUE_NO_ROOM',
+        `配音完整时长为 ${sourceDurationMs}ms，但从 ${dialogue.startMs}ms 起只有 ${roomMs}ms 可用；请延长镜头或调整后续字幕后再绑定。`,
+      );
+    }
+    return { startMs: dialogue.startMs, endMs };
+  }
+
   private shiftAudioTiming(
     clip: AudioClip,
     deltaMs: number,
@@ -904,16 +963,23 @@ export class DialogueService {
     return duration;
   }
 
-  private assertNoOverlap(
+  private findOverlap(
     dialogues: readonly Dialogue[],
     timing: { startMs: number; endMs: number },
-  ): void {
-    const conflict = dialogues.find(
+  ): Dialogue | undefined {
+    return dialogues.find(
       (dialogue) =>
         dialogue.endMs > dialogue.startMs &&
         timing.startMs < dialogue.endMs &&
         timing.endMs > dialogue.startMs,
     );
+  }
+
+  private assertNoOverlap(
+    dialogues: readonly Dialogue[],
+    timing: { startMs: number; endMs: number },
+  ): void {
+    const conflict = this.findOverlap(dialogues, timing);
     if (conflict) {
       throw new DialogueServiceError(
         'DIALOGUE_OVERLAP',
