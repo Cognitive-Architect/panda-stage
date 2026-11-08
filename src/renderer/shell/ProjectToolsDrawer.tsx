@@ -1,4 +1,5 @@
 import {
+  AlignStartVertical,
   ArrowLeft,
   Maximize2,
   ScanLine,
@@ -9,6 +10,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
+import { LayerAlignPanel } from '../features/layout/LayerAlignPanel';
 import { QuickCharacterLayoutPanel } from '../features/layout/QuickCharacterLayoutPanel';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
@@ -16,12 +18,13 @@ export interface ProjectToolsDrawerProps {
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets' | 'quick-layout';
+type ProjectToolsView = 'home' | 'action-presets' | 'quick-layout' | 'align';
 
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
   'quick-layout': '快速布阵',
+  align: '对齐与均分',
 };
 
 interface ViewModeOption {
@@ -145,6 +148,25 @@ export function ProjectToolsDrawer({
             </button>
           </section>
           <section
+            aria-labelledby="project-tools-align-heading"
+            className="project-tools-align-card"
+            data-testid="project-tools-align-card"
+          >
+            <div className="project-tools-align-heading">
+              <h3 id="project-tools-align-heading">对齐与均分</h3>
+            </div>
+            <button
+              className="project-tools-align-launcher"
+              data-project-tools-action="align"
+              data-testid="project-tools-align"
+              onClick={() => setView('align')}
+              type="button"
+            >
+              <DecorativeIcon icon={AlignStartVertical} size={18} />
+              <span>打开对齐与均分</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
             data-testid="project-tools-action-preset-card"
@@ -171,6 +193,14 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-quick-layout-view"
         >
           <QuickCharacterLayoutPanel />
+        </section>
+      ) : view === 'align' ? (
+        <section
+          aria-label="对齐与均分"
+          className="project-tools-align-view"
+          data-testid="project-tools-align-view"
+        >
+          <LayerAlignPanel />
         </section>
       ) : (
         <section
