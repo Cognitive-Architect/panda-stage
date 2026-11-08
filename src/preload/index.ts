@@ -9,6 +9,13 @@ import {
   type AssetImportProjectRequest,
 } from '../shared/asset-import-api';
 import {
+  ProjectResourceImportApplyRequestSchema,
+  ProjectResourceImportChooseRequestSchema,
+  ProjectResourceImportResponseSchema,
+  type ProjectResourceImportApplyRequest,
+  type ProjectResourceImportChooseRequest,
+} from '../shared/project-resource-import-api';
+import {
   AssetMetadataCancelRequestSchema,
   AssetMetadataCancelResponseSchema,
   AssetMetadataRequestSchema,
@@ -280,6 +287,26 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetImportResponseSchema.parse(response);
+    },
+    chooseProjectResources: async (
+      rawRequest: ProjectResourceImportChooseRequest,
+    ) => {
+      const request = ProjectResourceImportChooseRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_RESOURCE_IMPORT_CHOOSE,
+        request,
+      );
+      return ProjectResourceImportResponseSchema.parse(response);
+    },
+    importProjectResources: async (
+      rawRequest: ProjectResourceImportApplyRequest,
+    ) => {
+      const request = ProjectResourceImportApplyRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_RESOURCE_IMPORT_APPLY,
+        request,
+      );
+      return ProjectResourceImportResponseSchema.parse(response);
     },
     refreshMetadata: async (rawRequest: AssetMetadataRequest) => {
       const request = AssetMetadataRequestSchema.parse(rawRequest);

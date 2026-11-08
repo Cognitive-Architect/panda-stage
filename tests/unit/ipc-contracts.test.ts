@@ -62,6 +62,8 @@ describe('IPC channel registry', () => {
       'project:save',
       'asset-import:choose',
       'asset-import:dropped',
+      'project-resource-import:choose',
+      'project-resource-import:apply',
       'asset-metadata:refresh',
       'asset-metadata:cancel',
       'asset:delete',
