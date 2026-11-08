@@ -425,6 +425,9 @@
           "tests/unit/models/project-v1.test.ts",
           "tests/unit/production-resources.test.ts",
           "tests/integration/dialogue-audio-*.test.ts",
+          "tests/unit/voice01-narration-domain.test.ts",
+          "tests/unit/voice01-narration-behavior.test.ts",
+          "tests/integration/voice01-narration-persistence.test.ts",
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
@@ -455,7 +458,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain here without broad test globs; other unregistered test paths stay fail-closed. Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, Issue #910 F1-04 prepared-character submission coverage, and the VOICE-01 narration domain/camera-subtitle-cue/persistence tests remain here without broad test globs; other unregistered test paths stay fail-closed. Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -808,6 +811,9 @@
         ],
         "testPatterns": [
           "tests/unit/dialogue-*.test.ts",
+          "tests/unit/voice01-narration-authoring.test.ts",
+          "tests/unit/voice01-narration-paste.test.ts",
+          "tests/unit/voice01-narration-speaker-control.test.ts",
           "tests/contract/issue220-*.test.ts",
           "tests/contract/issue221-*.test.ts"
         ],
@@ -821,7 +827,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "dialogue",
-        "notes": "Dialogue authoring is renderer-owned and jointly covered by editor and timeline suites; formal DialogueService changes remain Full."
+        "notes": "Dialogue authoring is renderer-owned and jointly covered by editor and timeline suites; formal DialogueService changes remain Full. VOICE-01 narration authoring (speaker control, paste parsing) is registered here by exact path; its domain, subtitle-cue, and persistence tests stay under cross-process-core Full ownership."
       },
       {
         "id": "subtitles",

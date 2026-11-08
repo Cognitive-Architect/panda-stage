@@ -776,10 +776,29 @@ export class DialogueService {
     const next: Dialogue = {
       ...dialogue,
       characterId: character.id,
-      voiceProfileId: character.defaultVoiceProfileId,
+      voiceProfileId: this.characterVoiceProfileId(dialogue, character),
     };
     delete next.speakerType;
     return next;
+  }
+
+  /**
+   * Re-selecting the same character keeps the dialogue's existing legal voice
+   * profile instead of silently resetting it to the character default. A real
+   * character switch, or a narration → character switch, still binds the target
+   * character's default profile.
+   */
+  private characterVoiceProfileId(
+    dialogue: Dialogue,
+    character: Character,
+  ): string {
+    const isSameCharacter =
+      dialogue.speakerType !== DIALOGUE_SPEAKER_NARRATOR &&
+      dialogue.characterId === character.id;
+    if (isSameCharacter && dialogue.voiceProfileId !== undefined) {
+      return dialogue.voiceProfileId;
+    }
+    return character.defaultVoiceProfileId;
   }
 
   private character(project: Project, characterId: string): Character {

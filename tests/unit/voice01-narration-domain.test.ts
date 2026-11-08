@@ -269,3 +269,121 @@ describe('VOICE-01 narration domain contract', () => {
     expect(project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 });
+
+const SECOND_CHARACTER = '10000000-0000-4000-8000-000000000031';
+const SECOND_VOICE_PROFILE = '10000000-0000-4000-8000-000000000032';
+const ALT_VOICE_PROFILE = '10000000-0000-4000-8000-000000000033';
+
+/** Two characters plus an alternate legal voice profile for the first one. */
+function multiVoiceProject(): Project {
+  const base = buildProject();
+  const character = base.characters[0]!;
+  const voiceProfile = base.voiceProfiles[0]!;
+  return ProjectSchema.parse({
+    ...base,
+    characters: [
+      character,
+      {
+        ...character,
+        id: SECOND_CHARACTER,
+        name: '李四',
+        defaultVoiceProfileId: SECOND_VOICE_PROFILE,
+      },
+    ],
+    voiceProfiles: [
+      voiceProfile,
+      { ...voiceProfile, id: ALT_VOICE_PROFILE, name: '低沉声线' },
+      {
+        ...voiceProfile,
+        id: SECOND_VOICE_PROFILE,
+        name: '李四配音',
+        characterId: SECOND_CHARACTER,
+      },
+    ],
+  });
+}
+
+function characterDialogueProject(
+  dialogueService: DialogueService,
+  voiceProfileId?: string,
+): { project: Project; dialogueId: string } {
+  const created = dialogueService.create(multiVoiceProject(), {
+    shotId: IDS.shot,
+    characterId: IDS.character,
+    text: '第一句',
+    pointTimeMs: 0,
+  });
+  const dialogueId = created.shots[0]!.dialogues[0]!.id;
+  if (voiceProfileId === undefined) return { project: created, dialogueId };
+  const project = ProjectSchema.parse({
+    ...created,
+    shots: created.shots.map((shot) =>
+      shot.id === IDS.shot
+        ? {
+            ...shot,
+            dialogues: shot.dialogues.map((dialogue) =>
+              dialogue.id === dialogueId ? { ...dialogue, voiceProfileId } : dialogue,
+            ),
+          }
+        : shot,
+    ),
+  });
+  return { project, dialogueId };
+}
+
+describe('VOICE-01 speaker re-selection keeps a legal non-default voice profile', () => {
+  it('preserves the existing voice profile when the same character is re-selected', () => {
+    const mutationService = service();
+    const { project, dialogueId } = characterDialogueProject(
+      mutationService,
+      ALT_VOICE_PROFILE,
+    );
+
+    const next = mutationService.update(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      characterId: IDS.character,
+    });
+
+    expect(next.shots[0]!.dialogues[0]).toMatchObject({
+      characterId: IDS.character,
+      voiceProfileId: ALT_VOICE_PROFILE,
+    });
+  });
+
+  it('binds the target character default profile when the character really changes', () => {
+    const mutationService = service();
+    const { project, dialogueId } = characterDialogueProject(
+      mutationService,
+      ALT_VOICE_PROFILE,
+    );
+
+    const next = mutationService.update(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      characterId: SECOND_CHARACTER,
+    });
+
+    expect(next.shots[0]!.dialogues[0]).toMatchObject({
+      characterId: SECOND_CHARACTER,
+      voiceProfileId: SECOND_VOICE_PROFILE,
+    });
+  });
+
+  it('binds the default profile when narration becomes a character dialogue', () => {
+    const mutationService = service();
+    const { project, dialogueId } = narratorProject(mutationService);
+
+    const next = mutationService.update(project, {
+      shotId: IDS.shot,
+      dialogueId,
+      speakerType: 'character',
+      characterId: IDS.character,
+    });
+
+    expect(next.shots[0]!.dialogues[0]).toMatchObject({
+      characterId: IDS.character,
+      voiceProfileId: IDS.voiceProfile,
+    });
+  });
+});

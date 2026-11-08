@@ -151,7 +151,13 @@ export function DialogueSpeakerControl({
         thumbnails={thumbnails}
       />
       <NarratorSpeakerOption
-        onSelect={onSelectNarrator}
+        onSelect={() => {
+          // Re-picking 旁白 must also leave the "改选角色" reveal, otherwise the
+          // control stays on the Character picker while the speaker is already
+          // narration.
+          setSwitchingToCharacter(false);
+          onSelectNarrator();
+        }}
         selected={narrator}
         testId={testId ? `${testId}-narrator-option` : undefined}
       />
