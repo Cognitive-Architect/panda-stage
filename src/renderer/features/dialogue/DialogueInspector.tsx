@@ -15,10 +15,13 @@ import { DecorativeIcon } from '../../ui';
 import { SubtitleStyleControls } from '../subtitles/SubtitleStyleControls';
 import {
   CharacterAvatar,
-  CharacterIdentityPicker,
   getCharacterDefaultExpression,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
+import {
+  DialogueSpeakerControl,
+} from './DialogueSpeakerControl';
+import { dialogueSpeakerName, isNarratorSpeaker } from './dialogueSpeaker';
 import {
   clampTime,
   formatTimecode,
@@ -190,6 +193,10 @@ export function DialogueInspector({
   const character = characters.find(
     (candidate) => candidate.id === dialogue?.characterId,
   );
+  const narratorSpeaker = dialogue ? isNarratorSpeaker(dialogue) : false;
+  const speakerName = dialogue
+    ? dialogueSpeakerName(dialogue, characters)
+    : '未知角色';
   const subtitleStyle = snapshot?.project.subtitleStyles.find(
     (style) => style.id === dialogue?.subtitleStyleId,
   );
@@ -761,7 +768,7 @@ export function DialogueInspector({
             ) : null}
             <p className="eyebrow">当前字幕</p>
             <strong data-testid="dialogue-inspector-speaker-name">
-              {character?.name ?? '未知角色'}
+              {speakerName}
             </strong>
           </div>
           <span
@@ -952,13 +959,13 @@ export function DialogueInspector({
           <h3>角色</h3>
           <label className="dialogue-field">
             <span>角色</span>
-            <CharacterIdentityPicker
+            <DialogueSpeakerControl
               ariaLabel="字幕角色"
-              className="dialogue-timed-speaker-select"
               characters={characters}
+              className="dialogue-timed-speaker-select"
               defaultOpen
-              testId="dialogue-inspector-speaker"
-              onSelect={(characterId) => {
+              narrator={narratorSpeaker}
+              onSelectCharacter={(characterId) => {
                 report(
                   'speaker',
                   () =>
@@ -968,9 +975,20 @@ export function DialogueInspector({
                   '角色无效。',
                 );
               }}
+              onSelectNarrator={() => {
+                report(
+                  'speaker',
+                  () =>
+                    dialogueStore.update(dialogue.id, {
+                      speakerType: 'narrator',
+                    }),
+                  '旁白设置失败。',
+                );
+              }}
               onThumbnailError={onCharacterThumbnailError}
-              selectedCharacterId={dialogue.characterId}
+              selectedCharacterId={dialogue.characterId ?? null}
               selectedLabel="当前说话人"
+              testId="dialogue-inspector-speaker"
               thumbnails={characterThumbnails}
             />
           </label>
@@ -1000,7 +1018,7 @@ export function DialogueInspector({
 
         <div className="dialogue-inspector-actions dialogue-timed-actions">
           <button
-            aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
+            aria-label={`删除字幕：${speakerName}：${dialogue.text}`}
             type="button"
             className="dialogue-delete dialogue-timed-delete"
             data-testid="dialogue-inspector-delete"
@@ -1233,11 +1251,12 @@ export function DialogueInspector({
             <DecorativeIcon icon={UserRound} size={18} />
             <h3>角色</h3>
           </div>
-          <CharacterIdentityPicker
+          <DialogueSpeakerControl
             ariaLabel="字幕角色"
             characters={characters}
             defaultOpen
-            onSelect={(characterId) => {
+            narrator={narratorSpeaker}
+            onSelectCharacter={(characterId) => {
               report(
                 'speaker',
                 () =>
@@ -1247,8 +1266,18 @@ export function DialogueInspector({
                 '角色无效。',
               );
             }}
+            onSelectNarrator={() => {
+              report(
+                'speaker',
+                () =>
+                  dialogueStore.update(dialogue.id, {
+                    speakerType: 'narrator',
+                  }),
+                '旁白设置失败。',
+              );
+            }}
             onThumbnailError={onCharacterThumbnailError}
-            selectedCharacterId={dialogue.characterId}
+            selectedCharacterId={dialogue.characterId ?? null}
             selectedLabel="当前绑定"
             showDefaultExpression={false}
             testId="dialogue-inspector-speaker"
@@ -1274,7 +1303,7 @@ export function DialogueInspector({
 
         <div className="dialogue-properties-actions">
           <button
-            aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
+            aria-label={`删除字幕：${speakerName}：${dialogue.text}`}
             className="dialogue-delete"
             data-testid="dialogue-inspector-delete"
             onClick={() => dialogueStore.remove(dialogue.id)}
@@ -1514,12 +1543,13 @@ export function DialogueInspector({
             <h3>角色</h3>
           </div>
           <label className="dialogue-field">
-            <CharacterIdentityPicker
+            <DialogueSpeakerControl
               ariaLabel="字幕角色"
-              className="dialogue-landscape-properties-speaker-select"
               characters={characters}
+              className="dialogue-landscape-properties-speaker-select"
               defaultOpen
-              onSelect={(characterId) => {
+              narrator={narratorSpeaker}
+              onSelectCharacter={(characterId) => {
                 report(
                   'speaker',
                   () =>
@@ -1529,8 +1559,18 @@ export function DialogueInspector({
                   '角色无效。',
                 );
               }}
+              onSelectNarrator={() => {
+                report(
+                  'speaker',
+                  () =>
+                    dialogueStore.update(dialogue.id, {
+                      speakerType: 'narrator',
+                    }),
+                  '旁白设置失败。',
+                );
+              }}
               onThumbnailError={onCharacterThumbnailError}
-              selectedCharacterId={dialogue.characterId}
+              selectedCharacterId={dialogue.characterId ?? null}
               selectedLabel="当前绑定"
               showDefaultExpression={false}
               testId="dialogue-inspector-speaker"
@@ -1562,7 +1602,7 @@ export function DialogueInspector({
 
         <div className="dialogue-properties-actions dialogue-landscape-properties-actions">
           <button
-            aria-label={`删除字幕：${character?.name ?? '未知角色'}：${dialogue.text}`}
+            aria-label={`删除字幕：${speakerName}：${dialogue.text}`}
             className="dialogue-delete"
             data-testid="dialogue-inspector-delete"
             onClick={() => dialogueStore.remove(dialogue.id)}
@@ -1606,9 +1646,9 @@ export function DialogueInspector({
             }
           />
         ) : null}
-        <strong>{character?.name ?? '未知角色'}</strong>
+        <strong>{speakerName}</strong>
         <span data-testid="right-inspector-selection-message">
-          已选择对白：{character?.name ?? dialogue.characterId}
+          已选择对白：{speakerName}
         </span>
       </section>
       <div
@@ -1617,11 +1657,12 @@ export function DialogueInspector({
       >
         <label className="dialogue-field">
           <span>角色（说话人）</span>
-          <CharacterIdentityPicker
+          <DialogueSpeakerControl
             ariaLabel="字幕角色"
             characters={characters}
             defaultOpen
-            onSelect={(characterId) => {
+            narrator={narratorSpeaker}
+            onSelectCharacter={(characterId) => {
               report(
                 'speaker',
                 () =>
@@ -1631,8 +1672,18 @@ export function DialogueInspector({
                 '角色无效。',
               );
             }}
+            onSelectNarrator={() => {
+              report(
+                'speaker',
+                () =>
+                  dialogueStore.update(dialogue.id, {
+                    speakerType: 'narrator',
+                  }),
+                '旁白设置失败。',
+              );
+            }}
             onThumbnailError={onCharacterThumbnailError}
-            selectedCharacterId={dialogue.characterId}
+            selectedCharacterId={dialogue.characterId ?? null}
             selectedLabel="当前说话人"
             testId="dialogue-inspector-speaker"
             thumbnails={characterThumbnails}

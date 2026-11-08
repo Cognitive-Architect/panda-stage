@@ -31,6 +31,16 @@
   accent-color: var(--ui-color-selected-border);
 }
 
+/* Issue #1031 / CHAR-UNI-01 F01: the single Create entry exposes three ways. */
+.character-create-mode-switch[data-creation-mode-count='3'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.character-create-hint {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
 /* Issues #612/#613: compact the landscape Create surface without changing
    either creation flow or the shared Character Assembly workbench. */
 .character-list-create[data-character-list-presentation='landscape'] {

@@ -11,6 +11,7 @@ import {
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import { shotStore } from '../../stores/shotStore';
+import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
 import { formatTimecode, integerFrameSpanMs } from './timeGeometry';
 import {
   isHorizontalPendingTrayGesture,
@@ -179,10 +180,10 @@ export function PendingDialoguePlacementProvider({
         dialogueId,
         projectRoot: currentSnapshot.projectRoot,
         shotId: shot.id,
-        characterName:
-          currentSnapshot.project.characters.find(
-            (character) => character.id === dialogue.characterId,
-          )?.name ?? dialogue.characterId,
+        characterName: dialogueSpeakerName(
+          dialogue,
+          currentSnapshot.project.characters,
+        ),
         text: dialogue.text,
         sourceElement,
       };

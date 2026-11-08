@@ -148,6 +148,9 @@ describe('Issue #495 Character visual identity parity', () => {
     const identity = source(
       'src/renderer/features/characters/CharacterIdentity.tsx',
     );
+    const speakerControl = source(
+      'src/renderer/features/dialogue/DialogueSpeakerControl.tsx',
+    );
 
     expect(sheet).toContain('CharacterIdentityPicker');
     expect(sheet).toContain('useCharacterAvatarThumbnails');
@@ -165,7 +168,12 @@ describe('Issue #495 Character visual identity parity', () => {
     );
     expect(batch).not.toContain('<select');
 
-    expect(inspector.match(/<CharacterIdentityPicker/gu)).toHaveLength(4);
+    // VOICE-01: every Inspector speaker field now routes through the single
+    // DialogueSpeakerControl owner, which itself renders the existing
+    // CharacterIdentityPicker. The Character identity owner did not change.
+    expect(inspector.match(/<DialogueSpeakerControl/gu)).toHaveLength(4);
+    expect(inspector).not.toContain('<select');
+    expect(speakerControl.match(/<CharacterIdentityPicker/gu)).toHaveLength(1);
     expect(inspector).toContain('useCharacterAvatarThumbnails');
     expect(inspector).toContain('characterId,');
     expect(inspector).toContain('CharacterAvatar');

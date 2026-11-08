@@ -31,6 +31,12 @@ export interface CharacterListProps {
     draft: CreateCompositeCharacterInput,
   ) => void;
   onCancelCompositeCreate?: () => void;
+  /**
+   * Issue #1031 / CHAR-UNI-01 F01: the single Create entry offers FLA import as
+   * a third creation way and hands off to the existing import flow. Absent when
+   * the host has no FLA import capability.
+   */
+  onStartFlaCharacterImport?: () => void;
   onSelect: (characterId: string) => void;
   mode?: CharacterListMode;
   onBack?: () => void;
@@ -43,6 +49,50 @@ export interface CharacterListProps {
 
 export type CharacterListMode = 'legacy' | 'list' | 'create';
 export type CharacterListPresentation = 'default' | 'landscape';
+export type CharacterCreationMode = 'single-image' | 'composite' | 'fla-import';
+
+function isUsableImageAsset(
+  imageAssets: readonly ImageAsset[],
+  assetId: string | undefined,
+): boolean {
+  return Boolean(assetId) &&
+    imageAssets.some((asset) => asset.id === assetId && asset.kind === 'image');
+}
+
+/** Issue #1031 F03: a composite draft is only creatable once the user has
+ *  explicitly chosen a body and a default face. */
+function isCompositeDraftReady(
+  draft: CreateCompositeCharacterInput | null,
+  imageAssets: readonly ImageAsset[],
+): boolean {
+  if (!draft) return false;
+  const faceAssetId =
+    draft.expressions[draft.defaultExpressionIndex ?? 0]?.assetId;
+  return (
+    isUsableImageAsset(imageAssets, draft.bodyAssetId) &&
+    isUsableImageAsset(imageAssets, faceAssetId)
+  );
+}
+
+function createEmptyCompositeDraft(
+  name: string,
+): CreateCompositeCharacterInput {
+  return {
+    name,
+    bodyAssetId: '',
+    facePlacement: {
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotationDeg: 0,
+      flipX: false,
+    },
+    expressions: [],
+    defaultExpressionIndex: 0,
+    defaultScale: 1,
+    defaultFlipX: false,
+  };
+}
 
 export function CharacterList({
   characters,
@@ -55,6 +105,7 @@ export function CharacterList({
   onCommitCompositeCreate = () => undefined,
   onCompositeDraftChange = () => undefined,
   onCancelCompositeCreate = () => undefined,
+  onStartFlaCharacterImport,
   onSelect,
   mode = 'legacy',
   onBack = () => undefined,
@@ -74,40 +125,32 @@ export function CharacterList({
     imageAssets[1]?.id ?? imageAssets[0]?.id ?? '',
   );
   const [mouthAssetId, setMouthAssetId] = useState('');
-  const [creationMode, setCreationMode] = useState<
-    'single-image' | 'composite'
-  >('single-image');
-  const defaultFaceAssetId =
-    compositeDraft?.expressions[
-      compositeDraft.defaultExpressionIndex ?? 0
-    ]?.assetId;
+  const [creationMode, setCreationMode] = useState<CharacterCreationMode>(
+    'single-image',
+  );
+  /**
+   * Issue #1031 F03: composite creation starts from an empty, explicit choice.
+   * Until a body and a default face are both chosen the draft stays in local UI
+   * state only; the official assembly session (and the centre preview) starts
+   * once the draft is complete, so no asset is silently borrowed from the list.
+   */
+  const [pendingCompositeDraft, setPendingCompositeDraft] =
+    useState<CreateCompositeCharacterInput | null>(null);
+  const activeCompositeDraft = compositeDraft ?? pendingCompositeDraft;
   const canCreate = useMemo(
     () =>
       !disabled &&
       (creationMode === 'composite'
-        ? Boolean(compositeDraft?.name.trim()) &&
-          Boolean(compositeDraft?.bodyAssetId) &&
-          Boolean(
-            defaultFaceAssetId &&
-              imageAssets.some(
-                (asset) =>
-                  asset.id === compositeDraft?.bodyAssetId &&
-                  asset.kind === 'image',
-              ) &&
-              imageAssets.some(
-                (asset) =>
-                  asset.id === defaultFaceAssetId && asset.kind === 'image',
-              ),
-          )
+        ? Boolean(activeCompositeDraft?.name.trim()) &&
+          isCompositeDraftReady(activeCompositeDraft, imageAssets)
         : name.trim().length > 0 &&
           Boolean(normalAssetId) &&
           Boolean(angryAssetId) &&
           normalAssetId !== angryAssetId),
     [
+      activeCompositeDraft,
       angryAssetId,
-      compositeDraft,
       creationMode,
-      defaultFaceAssetId,
       disabled,
       imageAssets,
       name,
@@ -117,46 +160,49 @@ export function CharacterList({
   useEffect(() => {
     if (mode === 'list' && creationMode === 'composite') {
       setCreationMode('single-image');
+      setPendingCompositeDraft(null);
     }
   }, [creationMode, mode]);
 
-  const changeCreationMode = (
-    nextMode: 'single-image' | 'composite',
-  ): void => {
+  const applyCompositeDraft = (next: CreateCompositeCharacterInput): void => {
+    setPendingCompositeDraft(next);
+    if (compositeDraft) {
+      onCompositeDraftChange(next);
+      return;
+    }
+    if (isCompositeDraftReady(next, imageAssets)) {
+      onBeginCompositeCreate(next);
+    }
+  };
+
+  const changeCreationMode = (nextMode: CharacterCreationMode): void => {
+    if (nextMode === 'fla-import') {
+      // Issue #1031 F01/F04: hand off to the existing FLA import flow and drop
+      // any uncommitted composite draft first.
+      onCancelCompositeCreate();
+      setPendingCompositeDraft(null);
+      onStartFlaCharacterImport?.();
+      return;
+    }
     if (nextMode === creationMode) return;
     if (nextMode === 'single-image') {
       onCancelCompositeCreate();
+      setPendingCompositeDraft(null);
       setCreationMode('single-image');
       return;
     }
 
-    const initialFaceAssetId =
-      imageAssets[1]?.id ?? imageAssets[0]?.id ?? '';
-    const began = onBeginCompositeCreate({
-      name,
-      bodyAssetId: imageAssets[0]?.id ?? '',
-      facePlacement: {
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1,
-        rotationDeg: 0,
-        flipX: false,
-      },
-      expressions: initialFaceAssetId
-        ? [{ name: '表情1', assetId: initialFaceAssetId }]
-        : [],
-      defaultExpressionIndex: 0,
-      ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
-      defaultScale: 1,
-      defaultFlipX: false,
-    });
-    if (began) setCreationMode('composite');
+    onCancelCompositeCreate();
+    setPendingCompositeDraft(createEmptyCompositeDraft(name));
+    setCreationMode('composite');
   };
 
+  const creationModeCount = onStartFlaCharacterImport ? 3 : 2;
   const modeSwitch = (
     <fieldset
       aria-label="角色类型"
       className="character-create-mode-switch"
+      data-creation-mode-count={creationModeCount}
       disabled={disabled}
       data-testid="character-create-mode-switch"
     >
@@ -180,6 +226,19 @@ export function CharacterList({
         />
         <span>{compactLandscapeCreate ? '身体+脸' : '身体 + 脸'}</span>
       </label>
+      {onStartFlaCharacterImport ? (
+        <label>
+          <input
+            checked={false}
+            data-testid="character-create-fla-import"
+            name="character-create-mode"
+            onChange={() => changeCreationMode('fla-import')}
+            type="radio"
+            value="fla-import"
+          />
+          <span>{compactLandscapeCreate ? '导入FLA' : '导入 FLA'}</span>
+        </label>
+      ) : null}
     </fieldset>
   );
   const modeSwitchContent =
@@ -341,9 +400,7 @@ export function CharacterList({
                 { name: 'normal', assetId: normalAssetId },
                 { name: 'angry', assetId: angryAssetId },
               ],
-              ...(mouthAssetId
-                ? { mouthOpenAssetId: mouthAssetId }
-                : {}),
+              ...(mouthAssetId ? { mouthOpenAssetId: mouthAssetId } : {}),
               defaultScale: 1,
               defaultFlipX: false,
             });
@@ -366,16 +423,16 @@ export function CharacterList({
               onChange={(event) => {
                 const nextName = event.target.value;
                 setName(nextName);
-                if (creationMode === 'composite' && compositeDraft) {
-                  onCompositeDraftChange({
-                    ...compositeDraft,
+                if (creationMode === 'composite' && activeCompositeDraft) {
+                  applyCompositeDraft({
+                    ...activeCompositeDraft,
                     name: nextName,
                   });
                 }
               }}
               value={
                 creationMode === 'composite'
-                  ? compositeDraft?.name ?? name
+                  ? activeCompositeDraft?.name ?? name
                   : name
               }
             />
@@ -383,6 +440,14 @@ export function CharacterList({
           {!compactLandscapeCreate ? modeSwitchContent : null}
           {creationMode === 'composite' ? (
             <>
+              {isCompositeDraftReady(activeCompositeDraft, imageAssets) ? null : (
+                <small
+                  className="character-create-hint"
+                  data-testid="character-create-composite-hint"
+                >
+                  先选择身体和默认脸，选齐后开始组装预览。
+                </small>
+              )}
               <ImageAssetPicker
                 assets={imageAssets}
                 emptyState={{
@@ -391,14 +456,14 @@ export function CharacterList({
                 }}
                 label={compactLandscapeCreate ? '身体' : '身体图片'}
                 onChange={(assetId) => {
-                  if (!compositeDraft) return;
-                  onCompositeDraftChange({
-                    ...compositeDraft,
+                  if (!activeCompositeDraft) return;
+                  applyCompositeDraft({
+                    ...activeCompositeDraft,
                     bodyAssetId: assetId ?? '',
                   });
                 }}
                 onThumbnailError={onThumbnailError}
-                selectedAssetId={compositeDraft?.bodyAssetId || null}
+                selectedAssetId={activeCompositeDraft?.bodyAssetId || null}
                 testId="character-create-body-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
@@ -409,11 +474,11 @@ export function CharacterList({
                 emptyActionLabel="选择"
                 label="头部"
                 onChange={(assetId) => {
-                  if (!compositeDraft) return;
-                  const next = { ...compositeDraft };
+                  if (!activeCompositeDraft) return;
+                  const next = { ...activeCompositeDraft };
                   if (assetId) {
-                    next.head = compositeDraft.head
-                      ? { ...compositeDraft.head, assetId }
+                    next.head = activeCompositeDraft.head
+                      ? { ...activeCompositeDraft.head, assetId }
                       : {
                           assetId,
                           placement: {
@@ -428,11 +493,11 @@ export function CharacterList({
                   } else {
                     delete next.head;
                   }
-                  onCompositeDraftChange(next);
+                  applyCompositeDraft(next);
                 }}
                 onThumbnailError={onThumbnailError}
                 searchAndPaginate
-                selectedAssetId={compositeDraft?.head?.assetId ?? null}
+                selectedAssetId={activeCompositeDraft?.head?.assetId ?? null}
                 testId="character-create-head-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
@@ -445,10 +510,10 @@ export function CharacterList({
                 }}
                 label={compactLandscapeCreate ? '默认脸' : '默认表情图片'}
                 onChange={(assetId) => {
-                  if (!compositeDraft) return;
+                  if (!activeCompositeDraft) return;
                   const expressionIndex =
-                    compositeDraft.defaultExpressionIndex ?? 0;
-                  const expressions = [...compositeDraft.expressions];
+                    activeCompositeDraft.defaultExpressionIndex ?? 0;
+                  const expressions = [...activeCompositeDraft.expressions];
                   const expression = expressions[expressionIndex];
                   if (expression) {
                     expressions[expressionIndex] = {
@@ -461,16 +526,16 @@ export function CharacterList({
                       assetId,
                     });
                   }
-                  onCompositeDraftChange({
-                    ...compositeDraft,
+                  applyCompositeDraft({
+                    ...activeCompositeDraft,
                     expressions,
                     defaultExpressionIndex: 0,
                   });
                 }}
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={
-                  compositeDraft?.expressions[
-                    compositeDraft.defaultExpressionIndex ?? 0
+                  activeCompositeDraft?.expressions[
+                    activeCompositeDraft.defaultExpressionIndex ?? 0
                   ]?.assetId ?? null
                 }
                 testId="character-create-face-picker"
@@ -490,14 +555,14 @@ export function CharacterList({
                 }}
                 label={compactLandscapeCreate ? '张嘴图' : '张嘴图（可选）'}
                 onChange={(assetId) => {
-                  if (!compositeDraft) return;
-                  const next = { ...compositeDraft };
+                  if (!activeCompositeDraft) return;
+                  const next = { ...activeCompositeDraft };
                   if (assetId) next.mouthOpenAssetId = assetId;
                   else delete next.mouthOpenAssetId;
-                  onCompositeDraftChange(next);
+                  applyCompositeDraft(next);
                 }}
                 onThumbnailError={onThumbnailError}
-                selectedAssetId={compositeDraft?.mouthOpenAssetId ?? null}
+                selectedAssetId={activeCompositeDraft?.mouthOpenAssetId ?? null}
                 testId="character-create-mouth-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}

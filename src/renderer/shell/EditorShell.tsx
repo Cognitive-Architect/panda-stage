@@ -717,8 +717,9 @@ export function EditorShell({
   const assemblyKind = activeAssemblySession
     ? activeAssemblySession.kind ?? 'composite'
     : 'none';
-  const assemblyHidesResourceDrawer =
-    assemblyKind === 'adaptive-parts' || assemblyKind === 'create';
+  // Issue #1031 F02: composite creation is authored from the left Create form,
+  // so only the adaptive-parts workbench may take the resource slot away.
+  const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';
   const legacyCompositeAssemblyActive =
     assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(

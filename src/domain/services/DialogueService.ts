@@ -1,12 +1,16 @@
 import {
+  DIALOGUE_SPEAKER_CHARACTER,
+  DIALOGUE_SPEAKER_NARRATOR,
   ProjectSchema,
   type AudioAsset,
   type AudioClip,
   type Character,
   type Dialogue,
+  type DialogueSpeakerType,
   type Project,
   type Shot,
 } from '../models';
+import { integerFrameSpanMs } from '../timeline/frame-grid';
 
 const MIN_TIMED_DIALOGUE_DURATION_MS = 1;
 
@@ -14,6 +18,7 @@ export type DialogueServiceErrorCode =
   | 'SHOT_NOT_FOUND'
   | 'DIALOGUE_NOT_FOUND'
   | 'CHARACTER_NOT_FOUND'
+  | 'DIALOGUE_SPEAKER_INVALID'
   | 'INVALID_DIALOGUE_TIME'
   | 'INVALID_DIALOGUE_DURATION'
   | 'INVALID_DIALOGUE_TEXT'
@@ -24,6 +29,7 @@ export type DialogueServiceErrorCode =
   | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
   | 'AUDIO_CLIP_NOT_FOUND'
   | 'AUDIO_CLIP_TOO_SHORT'
+  | 'AUDIO_DIALOGUE_NO_ROOM'
   | 'ID_GENERATION_FAILED';
 
 export class DialogueServiceError extends Error {
@@ -38,7 +44,13 @@ export class DialogueServiceError extends Error {
 
 export interface CreateDialogueInput {
   shotId: string;
-  characterId: string;
+  /** Character speaker: the project Character that owns the voice. */
+  characterId?: string;
+  /**
+   * `narrator` creates a formless narration line: no Character, no VoiceProfile,
+   * and therefore no mouth/focus target. Absent means a Character dialogue.
+   */
+  speakerType?: DialogueSpeakerType;
   text: string;
   pointTimeMs: number;
 }
@@ -46,12 +58,22 @@ export interface CreateDialogueInput {
 export interface CreateManyDialogueInput {
   shotId: string;
   pointTimeMs: number;
-  lines: ReadonlyArray<{ characterId: string; text: string }>;
+  lines: ReadonlyArray<{
+    characterId?: string;
+    speakerType?: DialogueSpeakerType;
+    text: string;
+  }>;
 }
 
 export interface UpdateDialogueInput {
   shotId: string;
   dialogueId: string;
+  /**
+   * Switching to `narrator` clears the Character binding. Switching to
+   * `character` (or supplying `characterId`) restores the full Character
+   * contract, including the Character default VoiceProfile.
+   */
+  speakerType?: DialogueSpeakerType;
   characterId?: string;
   text?: string;
 }
@@ -157,12 +179,11 @@ export class DialogueService {
   /** Day27 contract: newly authored Dialogue is Untimed at one captured point. */
   create(project: Project, input: CreateDialogueInput): Project {
     const shot = this.shot(project, input.shotId);
-    const character = this.character(project, input.characterId);
     const timeMs = this.clampTime(shot, input.pointTimeMs);
+    const speaker = this.resolveNewSpeaker(project, input);
     const dialogue: Dialogue = {
       id: this.nextId(this.collectIds(project)),
-      characterId: character.id,
-      voiceProfileId: character.defaultVoiceProfileId,
+      ...speaker,
       subtitleStyleId: shot.defaultSubtitleStyleId,
       startMs: timeMs,
       endMs: timeMs,
@@ -177,6 +198,7 @@ export class DialogueService {
   /**
    * Day27 batch contract: every line shares one captured point-time and the
    * returned Project is committed by the renderer as one History command.
+   * Narration and Character lines may be mixed in one batch.
    */
   createMany(project: Project, input: CreateManyDialogueInput): Project {
     if (input.lines.length === 0) return project;
@@ -184,11 +206,10 @@ export class DialogueService {
     const timeMs = this.clampTime(shot, input.pointTimeMs);
     const usedIds = this.collectIds(project);
     const added: Dialogue[] = input.lines.map((line) => {
-      const character = this.character(project, line.characterId);
+      const speaker = this.resolveNewSpeaker(project, line);
       return {
         id: this.nextId(usedIds),
-        characterId: character.id,
-        voiceProfileId: character.defaultVoiceProfileId,
+        ...speaker,
         subtitleStyleId: shot.defaultSubtitleStyleId,
         startMs: timeMs,
         endMs: timeMs,
@@ -208,16 +229,17 @@ export class DialogueService {
     if (input.text !== undefined) {
       next = { ...next, text: this.validText(input.text) };
     }
-    if (
-      input.characterId !== undefined &&
-      input.characterId !== dialogue.characterId
-    ) {
-      const character = this.character(project, input.characterId);
-      next = {
-        ...next,
-        characterId: character.id,
-        voiceProfileId: character.defaultVoiceProfileId,
-      };
+    const requestedSpeakerType =
+      input.speakerType ??
+      (input.characterId === undefined ? undefined : DIALOGUE_SPEAKER_CHARACTER);
+    if (requestedSpeakerType === DIALOGUE_SPEAKER_NARRATOR) {
+      next = this.asNarrator(next);
+    } else if (requestedSpeakerType === DIALOGUE_SPEAKER_CHARACTER) {
+      next = this.asCharacter(
+        project,
+        next,
+        input.characterId ?? dialogue.characterId,
+      );
     }
     return this.replaceShot(project, shot.id, {
       ...shot,
@@ -243,6 +265,11 @@ export class DialogueService {
    * Atomically binds one Ready AudioAsset to one timed Dialogue. The Dialogue
    * reference and Shot AudioClip change in one Project snapshot so the
    * renderer records exactly one History command.
+   *
+   * A first bind onto a still-untouched one-frame placeholder also grows that
+   * placeholder — Dialogue window and clip together, in the same snapshot — to
+   * the detected source duration, so a real recording is never reported as a
+   * single frame.
    */
   bindAudio(project: Project, input: BindDialogueAudioInput): Project {
     const shot = this.shot(project, input.shotId);
@@ -265,7 +292,15 @@ export class DialogueService {
     const offsetMs = sameAsset ? existingClip.offsetMs : 0;
     const volume = sameAsset ? existingClip.volume : 1;
     const name = sameAsset ? existingClip.name : asset.name;
-    const timing = this.initialAudioTiming(dialogue, asset, offsetMs);
+    const firstBindTiming = this.firstBindDialogueTiming(
+      shot,
+      dialogue,
+      asset,
+      existingClip,
+    );
+    const timing = firstBindTiming
+      ? firstBindTiming
+      : this.initialAudioTiming(dialogue, asset, offsetMs);
     this.assertAudioRange(asset, offsetMs, timing.endMs - timing.startMs);
 
     const clipId =
@@ -295,7 +330,7 @@ export class DialogueService {
       audioClips: nextAudioClips,
       dialogues: shot.dialogues.map((candidate) =>
         candidate.id === dialogue.id
-          ? { ...candidate, audioClipId: clipId }
+          ? { ...candidate, ...(firstBindTiming ?? {}), audioClipId: clipId }
           : candidate,
       ),
     });
@@ -647,6 +682,50 @@ export class DialogueService {
     };
   }
 
+  /**
+   * "快速安排" commits exactly one Timeline frame for a subtitle that has no
+   * audio yet. That single frame is a placeholder, not an authored length, so
+   * the first real recording replaces it with the detected source duration.
+   *
+   * The condition is deliberately narrow: only an unbound Dialogue whose
+   * committed span is exactly one frame — and shorter than the source — is
+   * realigned. A Dialogue the author already stretched, already bound, or
+   * already trimmed keeps its committed duration. A one-frame span set on
+   * purpose is indistinguishable in the current model and is treated the same
+   * way; that is the accepted boundary of this fix rather than new metadata.
+   *
+   * When the whole source cannot be placed, the bind is rejected. The
+   * placeholder is never silently left at one frame, and no Shot duration or
+   * other Dialogue is altered to make room.
+   */
+  private firstBindDialogueTiming(
+    shot: Shot,
+    dialogue: Dialogue,
+    asset: AudioAsset,
+    existingClip: AudioClip | null,
+  ): { startMs: number; endMs: number } | null {
+    if (existingClip) return null;
+    const committedDurationMs = dialogue.endMs - dialogue.startMs;
+    if (committedDurationMs !== integerFrameSpanMs()) return null;
+    const sourceDurationMs = Math.max(0, asset.durationMs ?? 0);
+    if (sourceDurationMs <= committedDurationMs) return null;
+
+    const endMs = dialogue.startMs + sourceDurationMs;
+    const conflict = this.findOverlap(
+      shot.dialogues.filter((candidate) => candidate.id !== dialogue.id),
+      { startMs: dialogue.startMs, endMs },
+    );
+    if (endMs > shot.durationMs || conflict) {
+      const limitEndMs = conflict ? conflict.startMs : shot.durationMs;
+      const roomMs = Math.max(0, limitEndMs - dialogue.startMs);
+      throw new DialogueServiceError(
+        'AUDIO_DIALOGUE_NO_ROOM',
+        `配音完整时长为 ${sourceDurationMs}ms，但从 ${dialogue.startMs}ms 起只有 ${roomMs}ms 可用；请延长镜头或调整后续字幕后再绑定。`,
+      );
+    }
+    return { startMs: dialogue.startMs, endMs };
+  }
+
   private shiftAudioTiming(
     clip: AudioClip,
     deltaMs: number,
@@ -701,6 +780,84 @@ export class DialogueService {
       );
     }
     return dialogue;
+  }
+
+  /**
+   * Resolve the persisted speaker fields for a new Dialogue. Narration keeps
+   * only the explicit discriminator; a Character speaker keeps the original
+   * strict Character + default VoiceProfile binding.
+   */
+  private resolveNewSpeaker(
+    project: Project,
+    input: { characterId?: string; speakerType?: DialogueSpeakerType },
+  ): Pick<Dialogue, 'speakerType' | 'characterId' | 'voiceProfileId'> {
+    if (input.speakerType === DIALOGUE_SPEAKER_NARRATOR) {
+      return { speakerType: DIALOGUE_SPEAKER_NARRATOR };
+    }
+    if (input.characterId === undefined) {
+      throw new DialogueServiceError(
+        'DIALOGUE_SPEAKER_INVALID',
+        '请选择字幕的说话人或旁白。',
+      );
+    }
+    const character = this.character(project, input.characterId);
+    return {
+      characterId: character.id,
+      voiceProfileId: character.defaultVoiceProfileId,
+    };
+  }
+
+  /** Narration carries no Character and no VoiceProfile. */
+  private asNarrator(dialogue: Dialogue): Dialogue {
+    if (dialogue.speakerType === DIALOGUE_SPEAKER_NARRATOR) return dialogue;
+    const narration: Dialogue = {
+      ...dialogue,
+      speakerType: DIALOGUE_SPEAKER_NARRATOR,
+    };
+    delete narration.characterId;
+    delete narration.voiceProfileId;
+    return narration;
+  }
+
+  /** Character dialogue restores the original strict speaker contract. */
+  private asCharacter(
+    project: Project,
+    dialogue: Dialogue,
+    characterId: string | undefined,
+  ): Dialogue {
+    if (characterId === undefined) {
+      throw new DialogueServiceError(
+        'DIALOGUE_SPEAKER_INVALID',
+        '请选择角色。',
+      );
+    }
+    const character = this.character(project, characterId);
+    const next: Dialogue = {
+      ...dialogue,
+      characterId: character.id,
+      voiceProfileId: this.characterVoiceProfileId(dialogue, character),
+    };
+    delete next.speakerType;
+    return next;
+  }
+
+  /**
+   * Re-selecting the same character keeps the dialogue's existing legal voice
+   * profile instead of silently resetting it to the character default. A real
+   * character switch, or a narration → character switch, still binds the target
+   * character's default profile.
+   */
+  private characterVoiceProfileId(
+    dialogue: Dialogue,
+    character: Character,
+  ): string {
+    const isSameCharacter =
+      dialogue.speakerType !== DIALOGUE_SPEAKER_NARRATOR &&
+      dialogue.characterId === character.id;
+    if (isSameCharacter && dialogue.voiceProfileId !== undefined) {
+      return dialogue.voiceProfileId;
+    }
+    return character.defaultVoiceProfileId;
   }
 
   private character(project: Project, characterId: string): Character {
@@ -806,16 +963,23 @@ export class DialogueService {
     return duration;
   }
 
-  private assertNoOverlap(
+  private findOverlap(
     dialogues: readonly Dialogue[],
     timing: { startMs: number; endMs: number },
-  ): void {
-    const conflict = dialogues.find(
+  ): Dialogue | undefined {
+    return dialogues.find(
       (dialogue) =>
         dialogue.endMs > dialogue.startMs &&
         timing.startMs < dialogue.endMs &&
         timing.endMs > dialogue.startMs,
     );
+  }
+
+  private assertNoOverlap(
+    dialogues: readonly Dialogue[],
+    timing: { startMs: number; endMs: number },
+  ): void {
+    const conflict = this.findOverlap(dialogues, timing);
     if (conflict) {
       throw new DialogueServiceError(
         'DIALOGUE_OVERLAP',

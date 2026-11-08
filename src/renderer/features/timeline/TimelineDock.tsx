@@ -30,6 +30,7 @@ import { DialogueClip } from './DialogueClip';
 import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
+import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
 import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
@@ -433,12 +434,10 @@ export function TimelineDock({
                       >
                         {shot?.dialogues.map((dialogue) => (
                           <DialogueClip
-                            characterName={
-                              characters.find(
-                                (character) =>
-                                  character.id === dialogue.characterId,
-                              )?.name ?? dialogue.characterId
-                            }
+                            characterName={dialogueSpeakerName(
+                              dialogue,
+                              characters,
+                            )}
                             dialogue={dialogue}
                             durationMs={durationMs}
                             key={dialogue.id}

@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { ProjectData } from '../models/project';
+import { isNarratorDialogue } from '../models/dialogue';
 
 function addIssue(
   context: z.RefinementCtx,
@@ -361,24 +362,38 @@ export function validateProjectReferences(
     });
 
     shot.dialogues.forEach((dialogue, dialogueIndex) => {
-      const character = characters.get(dialogue.characterId);
-      if (!character) {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'dialogues', dialogueIndex, 'characterId'],
-          `Dialogue references unknown character: ${dialogue.characterId}`,
-        );
-      }
-      const voiceProfile = voiceProfiles.get(dialogue.voiceProfileId);
-      if (
-        !voiceProfile ||
-        voiceProfile.characterId !== dialogue.characterId
-      ) {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'dialogues', dialogueIndex, 'voiceProfileId'],
-          `Dialogue references an unknown or foreign voice profile: ${dialogue.voiceProfileId}`,
-        );
+      // Narration has no Character and no VoiceProfile by contract; it must not
+      // be forced through the Character reference checks. Character dialogues
+      // (including every legacy dialogue without an explicit speakerType) keep
+      // the original strict reference requirements.
+      if (isNarratorDialogue(dialogue)) {
+        if (dialogue.characterId !== undefined || dialogue.voiceProfileId !== undefined) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'dialogues', dialogueIndex, 'speakerType'],
+            'Narration dialogue must not reference a character or voice profile.',
+          );
+        }
+      } else {
+        const character = characters.get(dialogue.characterId ?? '');
+        if (!character) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'dialogues', dialogueIndex, 'characterId'],
+            `Dialogue references unknown character: ${dialogue.characterId}`,
+          );
+        }
+        const voiceProfile = voiceProfiles.get(dialogue.voiceProfileId ?? '');
+        if (
+          !voiceProfile ||
+          voiceProfile.characterId !== dialogue.characterId
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'dialogues', dialogueIndex, 'voiceProfileId'],
+            `Dialogue references an unknown or foreign voice profile: ${dialogue.voiceProfileId}`,
+          );
+        }
       }
       if (
         dialogue.audioClipId !== undefined &&

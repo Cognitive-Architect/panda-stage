@@ -158,6 +158,11 @@ export interface CharacterManagerProps {
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
+  /**
+   * Issue #1031 / CHAR-UNI-01 F01: the unified Create entry routes the third
+   * creation way into the existing FLA import flow owned by the dock.
+   */
+  onStartFlaCharacterImport?: () => void;
 }
 
 export interface AdaptivePartsAssemblyActionResult {
@@ -310,6 +315,7 @@ export function CharacterManager({
   onFlaCharacterCommitStateChange,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy = false,
+  onStartFlaCharacterImport,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
@@ -922,6 +928,7 @@ export function CharacterManager({
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
             onSelect={selectCharacter}
+            onStartFlaCharacterImport={onStartFlaCharacterImport}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}
@@ -968,6 +975,7 @@ export function CharacterManager({
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
             onSelect={selectCharacter}
+            onStartFlaCharacterImport={onStartFlaCharacterImport}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}

@@ -1,0 +1,96 @@
+/* VOICE-01: the fixed "旁白" speaker option and its selected state. Narration
+   is a speaker type, so it lives inside the normal subtitle speaker field and
+   adds no new panel, page or card. */
+.dialogue-speaker-control {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.dialogue-speaker-control > .character-identity-picker {
+  width: 100%;
+}
+
+.dialogue-speaker-narrator-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-color-border-subtle, #2c3f34);
+  border-radius: 8px;
+  background: var(--ui-color-surface-raised, #16211b);
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialogue-speaker-narrator-option:hover {
+  color: var(--ui-color-text-primary, #d6efd9);
+  border-color: var(--ui-color-border-strong, #3d5a48);
+}
+
+.dialogue-speaker-narrator-option[data-selected='true'] {
+  border-color: var(--ui-color-action-primary, #8ed9a2);
+  color: var(--ui-color-text-primary, #d6efd9);
+}
+
+.dialogue-speaker-narrator {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-color-action-primary, #8ed9a2);
+  border-radius: 8px;
+  background: var(--ui-color-surface-raised, #16211b);
+}
+
+.dialogue-speaker-narrator-icon {
+  color: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.dialogue-speaker-narrator-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.dialogue-speaker-narrator-copy strong {
+  color: var(--ui-color-text-primary, #d6efd9);
+  font-size: 13px;
+}
+
+.dialogue-speaker-narrator-copy small {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 11px;
+}
+
+.dialogue-speaker-narrator-switch {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dialogue-speaker-narrator-switch:hover {
+  color: var(--ui-color-text-primary, #d6efd9);
+}
+
+.dialogue-batch-row-avatar-narrator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--ui-color-surface-raised, #16211b);
+  color: var(--ui-color-action-primary, #8ed9a2);
+}
