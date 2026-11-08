@@ -204,7 +204,10 @@ function createFixture() {
   });
   const { animations: _animations, ...legacyBase } = base;
   void _animations;
-  const baseShot = base.shots[0];
+  // v18 added Shot.camera. A strict v7 fixture must not carry current-version
+  // fields, or migrateProject falls back and loses the historical audio role.
+  const { camera: _baseShotCamera, ...baseShot } = base.shots[0];
+  void _baseShotCamera;
   const baseSubtitle = base.subtitleStyles[0];
   const character = {
     ...base.characters[0],

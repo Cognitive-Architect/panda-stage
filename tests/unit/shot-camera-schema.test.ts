@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SHOT_CAMERA,
@@ -6,7 +8,9 @@ import {
   ProjectSchema,
   type Project,
 } from '../../src/domain';
+import { ProjectV7Schema } from '../../src/domain/models/project';
 import { buildProject, IDS, legacyShot, legacyShots } from './domain/testProject';
+import exampleProject from '../../demo-project/project-v1.example.json';
 
 function currentProject(): Project {
   return buildProject();
@@ -121,5 +125,79 @@ describe('AUTO-07B Shot camera persistence contract', () => {
     });
     expect(twoShots.shots[0]!.camera).toEqual(DEFAULT_SHOT_CAMERA);
     expect(twoShots.shots[1]!.camera.keyframes).toHaveLength(1);
+  });
+});
+
+/**
+ * Issue #1017 / CI #602: v7 verifier fixtures reused the *current* project as
+ * their starting shape. The v18 `Shot.camera` made strict v7 parsing fail, so
+ * migrateProject fell back to the current schema and reported a missing
+ * `audioClips[].role` instead. Stripping current-only fields restores the real
+ * v7 path, which adds the historical dialogue role itself.
+ */
+function v7VerifierFixture(withCamera: boolean): unknown {
+  const base = migrateProject(exampleProject);
+  const { animations: _animations, ...legacyBase } = base;
+  void _animations;
+  const shots = base.shots.map((shot) => {
+    const audioClips = shot.audioClips.map(({ role, ...clip }) => {
+      void role;
+      return clip;
+    });
+    if (withCamera) return { ...shot, audioClips };
+    const { camera: _camera, ...legacyShotShape } = shot;
+    void _camera;
+    return { ...legacyShotShape, audioClips };
+  });
+  return {
+    ...legacyBase,
+    schemaVersion: 7,
+    assets: base.assets.map((asset) => {
+      if (asset.kind !== 'image') return asset;
+      const { usage, keywords, ...legacyAsset } = asset;
+      void usage;
+      void keywords;
+      return legacyAsset;
+    }),
+    shots,
+  };
+}
+
+describe('Issue #1017 strict v7 verifier fixture contract', () => {
+  it('rejects a v18 camera on a v7 Shot and restores dialogue roles once stripped', () => {
+    const withCamera = v7VerifierFixture(true);
+    const refusal = ProjectV7Schema.safeParse(withCamera);
+    expect(refusal.success).toBe(false);
+    if (!refusal.success) {
+      expect(
+        refusal.error.issues.some(
+          (issue) =>
+            issue.code === 'unrecognized_keys' &&
+            Array.isArray(issue.keys) &&
+            issue.keys.includes('camera'),
+        ),
+      ).toBe(true);
+    }
+
+    const stripped = v7VerifierFixture(false);
+    expect(ProjectV7Schema.safeParse(stripped).success).toBe(true);
+    const migrated = migrateProject(stripped);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.shots[0]!.audioClips[0]!.role).toBe('dialogue');
+    expect(migrated.shots[0]!.camera).toEqual(DEFAULT_SHOT_CAMERA);
+  });
+
+  it('keeps current-version camera out of the #602/#606 v7 fixtures', () => {
+    for (const name of [
+      'verify-issue602-composite.cjs',
+      'verify-issue606-product-preview.cjs',
+    ]) {
+      const source = readFileSync(
+        path.join(process.cwd(), 'scripts', name),
+        'utf8',
+      );
+      expect(source).toContain('camera: _baseShotCamera');
+      expect(source).toMatch(/\.\.\.baseShot \} = base\.shots\[0\]/);
+    }
   });
 });
