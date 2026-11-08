@@ -11,6 +11,7 @@ import {
   ProjectV15Schema,
   ProjectV15AdaptiveSchema,
   ProjectV16Schema,
+  ProjectV17Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -632,5 +633,49 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     expect(ProjectV16Schema.safeParse(layerWithFutureField).success).toBe(false);
     expect(() => migrateProject(layerWithFutureField)).toThrow();
+  });
+
+  it('strictly upgrades v17 and rejects preset data in the v17 contract', () => {
+    const v17 = { ...buildProject(), schemaVersion: 17 };
+    expect(ProjectV17Schema.parse(v17)).toEqual(v17);
+    expect(ProjectSchema.safeParse(v17).success).toBe(false);
+
+    const migrated = migrateProject(v17);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.partPosePresets).toBeUndefined();
+
+    const withFutureField = {
+      ...v17,
+      partPosePresets: [
+        {
+          id: randomUUID(),
+          name: '过早',
+          characterId: randomUUID(),
+          durationMs: 1_000,
+          sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+          fixedCharacterCenter: { x: 0, y: 0 },
+          tracks: [
+            {
+              partId: 'part',
+              pivotSource: { x: 0, y: 0 },
+              sourceRestTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+              keys: [
+                {
+                  timeMs: 0,
+                  offsetX: 0,
+                  offsetY: 0,
+                  rotationDeg: 0,
+                  scale: 1,
+                  easingToNext: 'linear',
+                },
+              ],
+            },
+          ],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    expect(ProjectV17Schema.safeParse(withFutureField).success).toBe(false);
+    expect(() => migrateProject(withFutureField)).toThrow();
   });
 });

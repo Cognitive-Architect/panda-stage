@@ -26,6 +26,7 @@ import {
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
+import { PartPoseActionPresetSchema } from './part-pose-preset';
 import {
   ShotSchema,
   ShotV14Schema,
@@ -116,16 +117,36 @@ const ProjectDataSchema = z
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotSchema),
+    // AUTO-08 D1: user-authored Part pose action presets, shared across
+    // Shot instances of the same Character inside this Project. Optional so
+    // parsing never injects the key into projects that have no presets.
+    partPosePresets: z.array(PartPoseActionPresetSchema).max(64).optional(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
 
 /** Exact persisted v16 envelope before per-Layer Part pose animation. */
-export const ProjectV16Schema = ProjectDataSchema.extend({
-  schemaVersion: z.literal(16),
-  shots: z.array(ShotV16Schema),
-}).strict();
+export const ProjectV16Schema = ProjectDataSchema.omit({
+  partPosePresets: true,
+})
+  .extend({
+    schemaVersion: z.literal(16),
+    shots: z.array(ShotV16Schema),
+  })
+  .strict();
+
+/**
+ * Exact persisted v17 envelope, before user Part pose action presets.
+ * Kept bounded so the AUTO-07 v18 envelope stays a separate integration.
+ */
+export const ProjectV17Schema = ProjectDataSchema.omit({
+  partPosePresets: true,
+})
+  .extend({
+    schemaVersion: z.literal(17),
+  })
+  .strict();
 
 const ProjectV12DataSchema = z
   .object({
@@ -522,7 +543,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v16 -> v17) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v17 -> v18) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

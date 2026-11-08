@@ -4,6 +4,7 @@ export * from './DialogueService';
 export * from './ExpressionEventService';
 export * from './LayerService';
 export * from './PositionProjectService';
+export * from './PartPoseActionPresetService';
 export * from './PartPoseAnimationService';
 export * from './ShotService';
 export * from './SubtitleStyleService';
