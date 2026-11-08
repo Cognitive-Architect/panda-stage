@@ -173,7 +173,9 @@ describe('F1-04 import transaction UI safeguards', () => {
     const styles = source('src/renderer/styles/features/fla-import/f1-04--character-import.css');
 
     expect(dock).toContain('resource-activity-character-entry');
-    expect(dock).toContain('<DecorativeIcon icon={FileInput} size={16} />');
+    // Issue #1031 F01: the parallel 导入角色 primary action is gone; FLA import
+    // is now the third way inside the single Create entry.
+    expect(dock).not.toContain('resource-character-import-fla');
     expect(dock).toContain('<DecorativeIcon icon={Plus} size={16} />');
     expect(styles).toContain(".editor-layout[data-shell-mode='landscape']");
     expect(styles).toContain('.resource-activity-character-entry:hover:not(:disabled)');

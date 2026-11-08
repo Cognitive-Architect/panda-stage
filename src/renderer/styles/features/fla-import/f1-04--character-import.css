@@ -1,23 +1,3 @@
-.resource-activity-import-action {
-  min-height: var(--ui-touch-icon);
-  padding: 8px 10px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-medium);
-  background: var(--ui-color-surface-overlay);
-  color: var(--ui-color-text-primary);
-  white-space: nowrap;
-}
-
-.resource-activity-import-action:hover:not(:disabled),
-.resource-activity-import-action:focus-visible {
-  border-color: var(--ui-color-selected-border);
-  background: var(--ui-color-selected-surface);
-}
-
-.resource-activity-import-action:disabled {
-  color: var(--ui-color-disabled-text);
-}
-
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .resource-activity-header-actions[data-resource-action-group='character-list-landscape']
@@ -597,8 +577,7 @@
 }
 
 .fla-character-import-dialog button:focus-visible,
-.fla-character-import-dialog input:focus-visible,
-.resource-activity-import-action:focus-visible {
+.fla-character-import-dialog input:focus-visible {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: 2px;
 }

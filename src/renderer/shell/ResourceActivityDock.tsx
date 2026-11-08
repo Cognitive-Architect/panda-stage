@@ -40,7 +40,6 @@ import {
   Clapperboard,
   CirclePlus,
   FileArchive,
-  FileInput,
   Images,
   Plus,
   Smile,
@@ -234,6 +233,16 @@ export function ResourceActivityDock({
     if (flaCharacterImportCommittingRef.current) return;
     setFlaCharacterImportAttempt(null);
     setFlaCharacterCommitState(false);
+  };
+  /**
+   * Issue #1031 / CHAR-UNI-01 F01: the unified Create entry is the single FLA
+   * character entry. It forwards straight into the existing import flow and
+   * returns the workspace to the list view that owns that flow.
+   */
+  const startCharacterImportFromCreate = (): void => {
+    onFlaCharacterImportStart?.();
+    setFlaCharacterImportAttempt(startFlaCharacterImport());
+    setCharacterView('list');
   };
 
   useEffect(() => {
@@ -636,23 +645,6 @@ export function ResourceActivityDock({
                   <span>导入 FLA</span>
                 </button>
               ) : null}
-              {activeActivity === 'characters' && characterView === 'list' && onCreateFlaCharacter ? (
-                <button
-                  className={`resource-activity-import-action${showLandscapeCharacterEntryActions ? ' resource-activity-character-entry' : ''}`}
-                  data-testid="resource-character-import-fla"
-                  disabled={Boolean(flaCharacterImportAttempt)}
-                  onClick={() => {
-                    onFlaCharacterImportStart?.();
-                    setFlaCharacterImportAttempt(startFlaCharacterImport());
-                  }}
-                  type="button"
-                >
-                  {showLandscapeCharacterEntryActions ? (
-                    <DecorativeIcon icon={FileInput} size={16} />
-                  ) : null}
-                  导入角色
-                </button>
-              ) : null}
               {showPortraitAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
@@ -791,6 +783,11 @@ export function ResourceActivityDock({
                   showCharacterCreateModeSelector
                     ? characterCreateModeSwitchTarget
                     : null
+                }
+                onStartFlaCharacterImport={
+                  onCreateFlaCharacter
+                    ? startCharacterImportFromCreate
+                    : undefined
                 }
                 onCloseDrawer={() => setDrawerOpen(false)}
               />
