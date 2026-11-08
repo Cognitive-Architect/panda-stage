@@ -2,6 +2,7 @@ import { ArrowLeft, ListFilter, Maximize2, ScanLine, Sparkles } from 'lucide-rea
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
+import { BatchTimelineEventPanel } from '../features/timeline/BatchTimelineEventPanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
@@ -11,6 +12,9 @@ export interface ProjectToolsDrawerProps {
 }
 
 type ProjectToolsView = 'home' | 'action-presets' | 'batch-adjust';
+
+/** Batch Adjust keeps its two scopes side by side; 对白 stays the default. */
+type BatchAdjustScope = 'dialogue' | 'action';
 
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
@@ -39,6 +43,7 @@ export function ProjectToolsDrawer({
   onClose,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
+  const [batchScope, setBatchScope] = useState<BatchAdjustScope>('dialogue');
   const viewportMode = useSyncExternalStore(
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
@@ -150,7 +155,11 @@ export function ProjectToolsDrawer({
               className="project-tools-action-preset-launcher"
               data-project-tools-action="batch-adjust"
               data-testid="project-tools-batch-adjust"
-              onClick={() => setView('batch-adjust')}
+              onClick={() => {
+                // Re-entering always lands on the AUTO-02 default scope.
+                setBatchScope('dialogue');
+                setView('batch-adjust');
+              }}
               type="button"
             >
               <DecorativeIcon icon={ListFilter} size={18} />
@@ -164,7 +173,35 @@ export function ProjectToolsDrawer({
           className="project-tools-batch-adjust-view"
           data-testid="project-tools-batch-adjust-view"
         >
-          <BatchDialogueMovePanel />
+          <div
+            aria-label="批量调整对象"
+            className="batch-adjust-scope"
+            role="group"
+          >
+            <button
+              aria-pressed={batchScope === 'dialogue'}
+              className="batch-adjust-scope-option"
+              data-testid="batch-adjust-scope-dialogue"
+              onClick={() => setBatchScope('dialogue')}
+              type="button"
+            >
+              对白
+            </button>
+            <button
+              aria-pressed={batchScope === 'action'}
+              className="batch-adjust-scope-option"
+              data-testid="batch-adjust-scope-action"
+              onClick={() => setBatchScope('action')}
+              type="button"
+            >
+              动作
+            </button>
+          </div>
+          {batchScope === 'dialogue' ? (
+            <BatchDialogueMovePanel />
+          ) : (
+            <BatchTimelineEventPanel />
+          )}
         </section>
       ) : (
         <section
