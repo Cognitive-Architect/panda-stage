@@ -11,7 +11,12 @@ import {
 } from '../../src/domain';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
-import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
+import {
+  buildExportAudioEnvelopes,
+  createExportMouthSource,
+  evaluateExportShotAtTime,
+} from '../../src/export-renderer/evaluateExportShotAtTime';
+import { ExportLoadFormalRequestSchema } from '../../src/shared/export-types';
 import { buildProject, IDS } from './domain/testProject';
 
 const BODY_ID = '10000000-0000-4000-8000-0000000000a4';
@@ -273,5 +278,240 @@ describe('AUTO-07A volume-driven Mouth projection', () => {
       })),
     });
     expect(mouthAssetIdAt(withoutMouth, 1_000, readySource(ENVELOPE))).toBeNull();
+  });
+});
+
+/**
+ * AUTO-07-FIX-01: the P1 regression was that formal `loadFormal` only ever
+ * carried images. These bytes are a real 16-bit mono PCM WAV (tone / pause /
+ * tone), decoded below by a real RIFF reader rather than a faked envelope.
+ */
+const FORMAL_JOB_ID = '30000000-0000-4000-8000-0000000000a7';
+const IMAGE_BYTES = new Uint8Array([137, 80, 78, 71]);
+
+function toneSilenceToneWav(): Uint8Array {
+  const frames = 9_600;
+  const pcm = new Int16Array(frames);
+  for (let index = 0; index < 3_200; index += 1) {
+    const sample = Math.round(
+      16_000 * Math.sin((2 * Math.PI * 220 * index) / SAMPLE_RATE),
+    );
+    pcm[index] = sample;
+    pcm[index + 6_400] = sample;
+  }
+  const buffer = new ArrayBuffer(44 + pcm.byteLength);
+  const view = new DataView(buffer);
+  const ascii = (offset: number, text: string): void => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+  ascii(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, SAMPLE_RATE, true);
+  view.setUint32(28, SAMPLE_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, 'data');
+  view.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+  return new Uint8Array(buffer);
+}
+
+const decodeWavPcm = async (
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<{ channels: Float32Array[]; sampleRate: number }> => {
+  if (mimeType !== 'audio/wav') throw new Error(`Unsupported ${mimeType}`);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const ascii = (offset: number, length: number): string =>
+    Array.from({ length }, (_, index) =>
+      String.fromCharCode(view.getUint8(offset + index)),
+    ).join('');
+  if (
+    ascii(0, 4) !== 'RIFF' ||
+    ascii(8, 4) !== 'WAVE' ||
+    ascii(36, 4) !== 'data' ||
+    view.getUint16(34, true) !== 16
+  ) {
+    throw new Error('Not a 16-bit PCM WAV.');
+  }
+  const sampleRate = view.getUint32(24, true);
+  const frameCount = view.getUint32(40, true) / 2;
+  const samples = new Float32Array(frameCount);
+  for (let index = 0; index < frameCount; index += 1) {
+    samples[index] = view.getInt16(44 + index * 2, true) / 32_768;
+  }
+  return { channels: [samples], sampleRate };
+};
+
+function formalLoadRequest(voiceBytes: Uint8Array) {
+  return {
+    jobId: FORMAL_JOB_ID,
+    project: speakingProject(),
+    cameraMode: 'static' as const,
+    media: [
+      {
+        assetId: BODY_ID,
+        kind: 'image' as const,
+        mimeType: 'image/png' as const,
+        bytes: IMAGE_BYTES,
+      },
+      {
+        assetId: AUDIO_ID,
+        kind: 'audio' as const,
+        mimeType: 'audio/wav' as const,
+        bytes: voiceBytes,
+      },
+    ],
+  };
+}
+
+function formalMouthAt(
+  project: Project,
+  timeMs: number,
+  source: MouthEnvelopeSource,
+): string | null {
+  const evaluated = evaluateExportShotAtTime(
+    project,
+    project.shots[0]!,
+    timeMs,
+    DIALOGUE_ID,
+    source,
+  );
+  return (
+    evaluated.layers.find((layer) => layer.id === IDS.layerChar)
+      ?.mouthOverrideAssetId ?? null
+  );
+}
+
+describe('AUTO-07-FIX-01 formal loadFormal Mouth wiring', () => {
+  const voiceBytes = toneSilenceToneWav();
+
+  it('keeps frozen voice bytes in the parsed formal-load IPC request', () => {
+    const parsed = ExportLoadFormalRequestSchema.parse(
+      formalLoadRequest(voiceBytes),
+    );
+    expect(parsed.media.find((entry) => entry.assetId === AUDIO_ID)).toMatchObject({
+      kind: 'audio',
+      mimeType: 'audio/wav',
+    });
+    expect(
+      parsed.media.find((entry) => entry.assetId === AUDIO_ID)?.bytes.byteLength,
+    ).toBe(voiceBytes.byteLength);
+
+    // Pre-AUTO-07 image-only requests had no `kind` and must still be valid.
+    const legacy = ExportLoadFormalRequestSchema.parse({
+      ...formalLoadRequest(voiceBytes),
+      media: [
+        {
+          assetId: BODY_ID,
+          mimeType: 'image/png',
+          bytes: IMAGE_BYTES,
+        },
+      ],
+    });
+    expect(legacy.media).toEqual([
+      {
+        assetId: BODY_ID,
+        kind: 'image',
+        mimeType: 'image/png',
+        bytes: IMAGE_BYTES,
+      },
+    ]);
+  });
+
+  it('renders a loud formal frame open and a pause frame closed from real decoded bytes', async () => {
+    const request = ExportLoadFormalRequestSchema.parse(
+      formalLoadRequest(voiceBytes),
+    );
+    const envelopes = await buildExportAudioEnvelopes(
+      request.media,
+      decodeWavPcm,
+    );
+    expect(envelopes.has(AUDIO_ID)).toBe(true);
+    const source = createExportMouthSource(envelopes);
+    const project = request.project as Project;
+
+    // Shot 1.0s -> source 0ms tone, 1.52s -> 520ms pause, 2.0s -> 1.0s tone.
+    expect(formalMouthAt(project, 1_000, source)).toBe(MOUTH_ID);
+    expect(formalMouthAt(project, 1_520, source)).toBeNull();
+    expect(formalMouthAt(project, 2_000, source)).toBe(MOUTH_ID);
+
+    // The Editor and Preview reach the same judgment at the same time.
+    const shot = project.shots[0]!;
+    const editor = buildEditorTemporalCanvasModel({
+      project,
+      shot,
+      currentTimeMs: 1_520,
+      activeDialogueId: DIALOGUE_ID,
+      readyAssetIds: new Set(),
+      previousVisuals: new Map(),
+      mouthSource: source,
+    });
+    const preview = projectProductPreviewDialogue(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 1_520, project),
+      DIALOGUE_ID,
+      source,
+    );
+    const mouthOf = (
+      layers: readonly { id: string; mouthOverrideAssetId?: string | null }[],
+    ) =>
+      layers.find((layer) => layer.id === IDS.layerChar)
+        ?.mouthOverrideAssetId ?? null;
+    expect(mouthOf(editor.evaluatedShot.layers)).toBeNull();
+    expect(mouthOf(preview.layers)).toBeNull();
+  });
+
+  it('honours a trimmed clip on the formal path instead of file time', async () => {
+    const request = ExportLoadFormalRequestSchema.parse(
+      formalLoadRequest(voiceBytes),
+    );
+    const envelopes = await buildExportAudioEnvelopes(
+      request.media,
+      decodeWavPcm,
+    );
+    const source = createExportMouthSource(envelopes);
+    const trimmed = speakingProject({ offsetMs: 400 });
+    // Shot 1.12s reads source 520ms (the pause); 1.4s reads source 800ms.
+    expect(formalMouthAt(trimmed, 1_120, source)).toBeNull();
+    expect(formalMouthAt(trimmed, 1_400, source)).toBe(MOUTH_ID);
+  });
+
+  it('degrades explicitly when the formal request carries no voice bytes', async () => {
+    const request = ExportLoadFormalRequestSchema.parse({
+      ...formalLoadRequest(voiceBytes),
+      media: [
+        {
+          assetId: BODY_ID,
+          mimeType: 'image/png',
+          bytes: IMAGE_BYTES,
+        },
+      ],
+    });
+    const envelopes = await buildExportAudioEnvelopes(
+      request.media,
+      decodeWavPcm,
+    );
+    expect(envelopes.size).toBe(0);
+    const project = request.project as Project;
+    const source = createExportMouthSource(envelopes);
+    expect(formalMouthAt(project, 1_000, source)).toBeNull();
+    expect(
+      resolveShotMouthDecision(
+        project,
+        project.shots[0]!,
+        1_000,
+        DIALOGUE_ID,
+        source,
+      ),
+    ).toMatchObject({ open: false, mode: 'envelope', reason: 'decode-pending' });
   });
 });

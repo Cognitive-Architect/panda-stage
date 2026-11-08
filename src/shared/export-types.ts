@@ -38,16 +38,46 @@ export const ExportStartFormalRequestSchema = z
   })
   .strict();
 
-export const ExportLoadFormalMediaSchema = z
+/** AUTO-07-FIX-01: the formal renderer needs frozen voice bytes too. */
+export const MAX_FORMAL_EXPORT_AUDIO_MEDIA = 64 as const;
+export const MAX_FORMAL_EXPORT_AUDIO_MEDIA_BYTES = 32 * 1024 * 1024;
+export const MAX_FORMAL_EXPORT_AUDIO_BYTES = 128 * 1024 * 1024;
+
+const FormalImageBytesSchema = z.instanceof(Uint8Array).refine(
+  (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
+  'Formal export image exceeds its media budget.',
+);
+
+const FormalAudioBytesSchema = z.instanceof(Uint8Array).refine(
+  (bytes) =>
+    bytes.byteLength > 0 &&
+    bytes.byteLength <= MAX_FORMAL_EXPORT_AUDIO_MEDIA_BYTES,
+  'Formal export audio exceeds its media budget.',
+);
+
+/** `kind` defaults to image so pre-AUTO-07 image-only requests stay valid. */
+export const ExportLoadFormalImageMediaSchema = z
   .object({
+    kind: z.literal('image').default('image'),
     assetId: z.uuid(),
     mimeType: z.enum(['image/png', 'image/jpeg']),
-    bytes: z.instanceof(Uint8Array).refine(
-      (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
-      'Formal export image exceeds its media budget.',
-    ),
+    bytes: FormalImageBytesSchema,
   })
   .strict();
+
+export const ExportLoadFormalAudioMediaSchema = z
+  .object({
+    kind: z.literal('audio'),
+    assetId: z.uuid(),
+    mimeType: z.enum(['audio/mpeg', 'audio/wav']),
+    bytes: FormalAudioBytesSchema,
+  })
+  .strict();
+
+export const ExportLoadFormalMediaSchema = z.union([
+  ExportLoadFormalImageMediaSchema,
+  ExportLoadFormalAudioMediaSchema,
+]);
 
 export const ExportLoadFormalRequestSchema = z
   .object({
@@ -66,6 +96,25 @@ export const ExportLoadFormalRequestSchema = z
       context.addIssue({
         code: 'custom',
         message: 'Formal export media exceeds its total byte budget.',
+        path: ['media'],
+      });
+    }
+    const audio = request.media.filter((entry) => entry.kind === 'audio');
+    if (audio.length > MAX_FORMAL_EXPORT_AUDIO_MEDIA) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Formal export exceeds its audio media count budget.',
+        path: ['media'],
+      });
+    }
+    const audioBytes = audio.reduce(
+      (total, entry) => total + entry.bytes.byteLength,
+      0,
+    );
+    if (audioBytes > MAX_FORMAL_EXPORT_AUDIO_BYTES) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Formal export audio exceeds its total byte budget.',
         path: ['media'],
       });
     }

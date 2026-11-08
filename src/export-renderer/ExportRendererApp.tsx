@@ -37,6 +37,7 @@ import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
 import {
   buildExportAudioEnvelopes,
+  createExportMouthSource,
   evaluateExportShotAtTime,
 } from './evaluateExportShotAtTime';
 import { resolveProductPreviewSubtitleStyle } from '../renderer/shell/productPreviewModel';
@@ -170,6 +171,8 @@ export function ExportRendererApp(): React.JSX.Element {
     }
     const urls: Record<string, string> = {};
     for (const entry of formalRequest.media) {
+      // Audio bytes are decoded into an envelope, never drawn as an image URL.
+      if (entry.kind !== 'image') continue;
       urls[entry.assetId] = URL.createObjectURL(
         new Blob([entry.bytes], { type: entry.mimeType }),
       );
@@ -197,15 +200,11 @@ export function ExportRendererApp(): React.JSX.Element {
     [formalRequest, shot.dialogues],
   );
   const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
-  const mouthSource = useMemo<MouthEnvelopeSource | undefined>(() => {
-    if (!formalRequest) return undefined;
-    return (assetId: string) => {
-      const envelope = formalEnvelopes.get(assetId);
-      return envelope
-        ? ({ status: 'ready', envelope } as const)
-        : ({ status: 'unavailable', reason: 'decode-pending' } as const);
-    };
-  }, [formalEnvelopes, formalRequest]);
+  const mouthSource = useMemo<MouthEnvelopeSource | undefined>(
+    () =>
+      formalRequest ? createExportMouthSource(formalEnvelopes) : undefined,
+    [formalEnvelopes, formalRequest],
+  );
   const evaluatedShot = useMemo(
     () => formalRequest
       ? evaluateExportShotAtTime(

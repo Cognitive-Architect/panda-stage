@@ -9,6 +9,7 @@ import {
   type Shot,
 } from '../domain';
 import { decodeAudioBytesWithWebAudio } from '../renderer/preview/audioEnvelopeStore';
+import type { ExportLoadFormalMedia } from '../shared/export-types';
 
 /** The hidden Export renderer's requested-time Dialogue projection. */
 export function evaluateExportShotAtTime(
@@ -27,11 +28,22 @@ export function evaluateExportShotAtTime(
   );
 }
 
-export interface ExportEnvelopeMedia {
-  readonly assetId: string;
-  readonly kind: 'image' | 'audio';
-  readonly mimeType: string;
-  readonly bytes: Uint8Array;
+/** The one media contract is shared with the formal `loadFormal` IPC. */
+export type ExportEnvelopeMedia = ExportLoadFormalMedia;
+
+/**
+ * The hidden renderer's lookup for a decoded volume envelope. Exported so a
+ * formal-load wiring test can build the exact same source from parsed media.
+ */
+export function createExportMouthSource(
+  envelopes: ReadonlyMap<string, AudioEnvelope>,
+): MouthEnvelopeSource {
+  return (assetId: string) => {
+    const envelope = envelopes.get(assetId);
+    return envelope
+      ? ({ status: 'ready', envelope } as const)
+      : ({ status: 'unavailable', reason: 'decode-pending' } as const);
+  };
 }
 
 /**
