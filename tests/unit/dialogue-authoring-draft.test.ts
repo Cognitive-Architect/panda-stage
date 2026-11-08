@@ -13,6 +13,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
   it('starts empty and does not reset when the identity is unchanged', () => {
     const draft = new DialogueAuthoringDraft();
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: '',
       singleText: '',
       batchRaw: '',
@@ -34,6 +35,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
 
     expect(draft.bindIdentity(SHOT_B)).toBe(true);
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: '',
       singleText: '',
       batchRaw: '',
@@ -66,6 +68,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     // Switch back to the original shot: the old draft must stay gone.
     expect(draft.bindIdentity(SHOT_A)).toBe(true);
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: '',
       singleText: '',
       batchRaw: '',
@@ -94,6 +97,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     draft.setBatchMapping(1, 'char-1');
 
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: 'char-1',
       singleText: '保留单条草稿',
       batchRaw: '熊猫：批量台词',
@@ -103,6 +107,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
     draft.clear();
 
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: '',
       singleText: '',
       batchRaw: '',

@@ -1,9 +1,12 @@
 import {
+  DIALOGUE_SPEAKER_CHARACTER,
+  DIALOGUE_SPEAKER_NARRATOR,
   ProjectSchema,
   type AudioAsset,
   type AudioClip,
   type Character,
   type Dialogue,
+  type DialogueSpeakerType,
   type Project,
   type Shot,
 } from '../models';
@@ -14,6 +17,7 @@ export type DialogueServiceErrorCode =
   | 'SHOT_NOT_FOUND'
   | 'DIALOGUE_NOT_FOUND'
   | 'CHARACTER_NOT_FOUND'
+  | 'DIALOGUE_SPEAKER_INVALID'
   | 'INVALID_DIALOGUE_TIME'
   | 'INVALID_DIALOGUE_DURATION'
   | 'INVALID_DIALOGUE_TEXT'
@@ -38,7 +42,13 @@ export class DialogueServiceError extends Error {
 
 export interface CreateDialogueInput {
   shotId: string;
-  characterId: string;
+  /** Character speaker: the project Character that owns the voice. */
+  characterId?: string;
+  /**
+   * `narrator` creates a formless narration line: no Character, no VoiceProfile,
+   * and therefore no mouth/focus target. Absent means a Character dialogue.
+   */
+  speakerType?: DialogueSpeakerType;
   text: string;
   pointTimeMs: number;
 }
@@ -46,12 +56,22 @@ export interface CreateDialogueInput {
 export interface CreateManyDialogueInput {
   shotId: string;
   pointTimeMs: number;
-  lines: ReadonlyArray<{ characterId: string; text: string }>;
+  lines: ReadonlyArray<{
+    characterId?: string;
+    speakerType?: DialogueSpeakerType;
+    text: string;
+  }>;
 }
 
 export interface UpdateDialogueInput {
   shotId: string;
   dialogueId: string;
+  /**
+   * Switching to `narrator` clears the Character binding. Switching to
+   * `character` (or supplying `characterId`) restores the full Character
+   * contract, including the Character default VoiceProfile.
+   */
+  speakerType?: DialogueSpeakerType;
   characterId?: string;
   text?: string;
 }
@@ -157,12 +177,11 @@ export class DialogueService {
   /** Day27 contract: newly authored Dialogue is Untimed at one captured point. */
   create(project: Project, input: CreateDialogueInput): Project {
     const shot = this.shot(project, input.shotId);
-    const character = this.character(project, input.characterId);
     const timeMs = this.clampTime(shot, input.pointTimeMs);
+    const speaker = this.resolveNewSpeaker(project, input);
     const dialogue: Dialogue = {
       id: this.nextId(this.collectIds(project)),
-      characterId: character.id,
-      voiceProfileId: character.defaultVoiceProfileId,
+      ...speaker,
       subtitleStyleId: shot.defaultSubtitleStyleId,
       startMs: timeMs,
       endMs: timeMs,
@@ -177,6 +196,7 @@ export class DialogueService {
   /**
    * Day27 batch contract: every line shares one captured point-time and the
    * returned Project is committed by the renderer as one History command.
+   * Narration and Character lines may be mixed in one batch.
    */
   createMany(project: Project, input: CreateManyDialogueInput): Project {
     if (input.lines.length === 0) return project;
@@ -184,11 +204,10 @@ export class DialogueService {
     const timeMs = this.clampTime(shot, input.pointTimeMs);
     const usedIds = this.collectIds(project);
     const added: Dialogue[] = input.lines.map((line) => {
-      const character = this.character(project, line.characterId);
+      const speaker = this.resolveNewSpeaker(project, line);
       return {
         id: this.nextId(usedIds),
-        characterId: character.id,
-        voiceProfileId: character.defaultVoiceProfileId,
+        ...speaker,
         subtitleStyleId: shot.defaultSubtitleStyleId,
         startMs: timeMs,
         endMs: timeMs,
@@ -208,16 +227,17 @@ export class DialogueService {
     if (input.text !== undefined) {
       next = { ...next, text: this.validText(input.text) };
     }
-    if (
-      input.characterId !== undefined &&
-      input.characterId !== dialogue.characterId
-    ) {
-      const character = this.character(project, input.characterId);
-      next = {
-        ...next,
-        characterId: character.id,
-        voiceProfileId: character.defaultVoiceProfileId,
-      };
+    const requestedSpeakerType =
+      input.speakerType ??
+      (input.characterId === undefined ? undefined : DIALOGUE_SPEAKER_CHARACTER);
+    if (requestedSpeakerType === DIALOGUE_SPEAKER_NARRATOR) {
+      next = this.asNarrator(next);
+    } else if (requestedSpeakerType === DIALOGUE_SPEAKER_CHARACTER) {
+      next = this.asCharacter(
+        project,
+        next,
+        input.characterId ?? dialogue.characterId,
+      );
     }
     return this.replaceShot(project, shot.id, {
       ...shot,
@@ -701,6 +721,65 @@ export class DialogueService {
       );
     }
     return dialogue;
+  }
+
+  /**
+   * Resolve the persisted speaker fields for a new Dialogue. Narration keeps
+   * only the explicit discriminator; a Character speaker keeps the original
+   * strict Character + default VoiceProfile binding.
+   */
+  private resolveNewSpeaker(
+    project: Project,
+    input: { characterId?: string; speakerType?: DialogueSpeakerType },
+  ): Pick<Dialogue, 'speakerType' | 'characterId' | 'voiceProfileId'> {
+    if (input.speakerType === DIALOGUE_SPEAKER_NARRATOR) {
+      return { speakerType: DIALOGUE_SPEAKER_NARRATOR };
+    }
+    if (input.characterId === undefined) {
+      throw new DialogueServiceError(
+        'DIALOGUE_SPEAKER_INVALID',
+        '请选择字幕的说话人或旁白。',
+      );
+    }
+    const character = this.character(project, input.characterId);
+    return {
+      characterId: character.id,
+      voiceProfileId: character.defaultVoiceProfileId,
+    };
+  }
+
+  /** Narration carries no Character and no VoiceProfile. */
+  private asNarrator(dialogue: Dialogue): Dialogue {
+    if (dialogue.speakerType === DIALOGUE_SPEAKER_NARRATOR) return dialogue;
+    const narration: Dialogue = {
+      ...dialogue,
+      speakerType: DIALOGUE_SPEAKER_NARRATOR,
+    };
+    delete narration.characterId;
+    delete narration.voiceProfileId;
+    return narration;
+  }
+
+  /** Character dialogue restores the original strict speaker contract. */
+  private asCharacter(
+    project: Project,
+    dialogue: Dialogue,
+    characterId: string | undefined,
+  ): Dialogue {
+    if (characterId === undefined) {
+      throw new DialogueServiceError(
+        'DIALOGUE_SPEAKER_INVALID',
+        '请选择角色。',
+      );
+    }
+    const character = this.character(project, characterId);
+    const next: Dialogue = {
+      ...dialogue,
+      characterId: character.id,
+      voiceProfileId: character.defaultVoiceProfileId,
+    };
+    delete next.speakerType;
+    return next;
   }
 
   private character(project: Project, characterId: string): Character {

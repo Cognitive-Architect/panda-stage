@@ -64,12 +64,33 @@ export class DialogueStore {
     return created.id;
   }
 
+  /** Creates one narration line: a formless speaker with real audio support. */
+  createNarrator(text: string): string {
+    const { project, shotId } = this.context();
+    const pointTimeMs = this.timelineUi.getSnapshot().currentTimeMs;
+    const next = this.service.create(project, {
+      shotId,
+      speakerType: 'narrator',
+      text,
+      pointTimeMs,
+    });
+    this.editorStore.updateProject(next, 'Add narration');
+    const shot = next.shots.find((candidate) => candidate.id === shotId)!;
+    const created = shot.dialogues[shot.dialogues.length - 1]!;
+    this.dialogueSelection.select(created.id);
+    return created.id;
+  }
+
   /**
    * Commits a batch of resolved lines as a single History command. The point-time
    * is captured once at commit, so one Undo reverts the entire batch.
    */
   createMany(
-    lines: ReadonlyArray<{ characterId: string; text: string }>,
+    lines: ReadonlyArray<{
+      characterId?: string;
+      speakerType?: 'character' | 'narrator';
+      text: string;
+    }>,
   ): void {
     if (lines.length === 0) return;
     const { project, shotId } = this.context();
@@ -87,6 +108,7 @@ export class DialogueStore {
   update(
     dialogueId: string,
     input: {
+      speakerType?: 'character' | 'narrator';
       characterId?: string;
       text?: string;
     },
