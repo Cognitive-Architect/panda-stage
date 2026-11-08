@@ -201,3 +201,26 @@ describe('Issue #1017 strict v7 verifier fixture contract', () => {
     }
   });
 });
+
+describe('Issue #1020 Stage 0 verifier audio envelope contract', () => {
+  it('keeps a decodable voice envelope reachable for the #602/#606 mouth assertions', () => {
+    for (const name of [
+      'verify-issue602-composite.cjs',
+      'verify-issue606-product-preview.cjs',
+    ]) {
+      const source = readFileSync(
+        path.join(process.cwd(), 'scripts', name),
+        'utf8',
+      );
+      expect(source).toContain('IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ');
+      expect(source).toContain('function proofVoiceWav');
+      expect(source).toContain("mimeType: 'audio/wav'");
+      expect(source).toContain("status: 'ready'");
+      expect(source).toContain('byteLength: proofVoiceBytes.byteLength');
+      // A failing audio read degrades the shared mouth judgment to "closed"
+      // and makes the pending / fallback visual assertions unreachable.
+      expect(source).not.toContain('intentionally not decoded');
+      expect(source).not.toContain('ASSET_PREVIEW_AUDIO_READ_FAILED');
+    }
+  });
+});
