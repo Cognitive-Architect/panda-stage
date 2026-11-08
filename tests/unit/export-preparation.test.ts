@@ -871,7 +871,10 @@ describe('DL-01 export preparation domain rules', () => {
       ),
     ).toContain(mouthAssetId);
 
-    const closedOnlyProject = ProjectSchema.parse({
+    // AUTO-07A: the Mouth follows the decoded volume envelope, so its open
+    // moments are no longer predictable from Shot time. A short visible window
+    // therefore keeps the Mouth asset in the export superset...
+    const narrowVisibleProject = ProjectSchema.parse({
       ...project,
       shots: project.shots.map((shot) => ({
         ...shot,
@@ -898,6 +901,29 @@ describe('DL-01 export preparation domain rules', () => {
             layerId: IDS.layerChar,
             startMs: 520,
             endMs: 520,
+            visible: false,
+          },
+        ],
+      })),
+    });
+    expect(
+      collectExportPreparationMedia(narrowVisibleProject).map(
+        (entry) => entry.asset.id,
+      ),
+    ).toContain(mouthAssetId);
+
+    // ...while a character that never appears during the clip is still excluded.
+    const closedOnlyProject = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          {
+            id: '70000000-0000-4000-8000-000000000094',
+            type: 'visibility',
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 0,
             visible: false,
           },
         ],

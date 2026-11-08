@@ -52,14 +52,18 @@ describe('schema v5 explicit flip lifecycle', () => {
         void mode;
         return historicalCharacter;
       }),
-      shots: current.shots.map((shot) => ({
-        ...shot,
-        audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
-        layers: shot.layers.map(({ flipX, ...layer }) => {
-          void flipX;
-          return layer;
-        }),
-      })),
+      shots: current.shots.map(({ camera: _camera, ...shot }) => {
+        // AUTO-07B: a v4 envelope predates the persisted Shot camera.
+        void _camera;
+        return {
+          ...shot,
+          audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
+          layers: shot.layers.map(({ flipX, ...layer }) => {
+            void flipX;
+            return layer;
+          }),
+        };
+      }),
     };
     const service = new ProjectService();
 

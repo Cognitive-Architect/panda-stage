@@ -47,9 +47,10 @@ describe('A01 actual ProjectService audio persistence', () => {
     }
     const { animations: _animations, ...legacyProject } = project;
     void _animations;
-    const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
+    // AUTO-07B: a v7 envelope predates the persisted Shot camera.
+    const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map(({ camera: _camera, ...shot }) => { void _camera; return ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
-    })) };
+    }); }) };
     await writeFile(path.join(root, 'project.json'), JSON.stringify(legacy), 'utf8');
     const migrated = await files.open(root);
     expect(migrated.sourceVersion).toBe(7);

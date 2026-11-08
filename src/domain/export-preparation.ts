@@ -1,7 +1,6 @@
 import type { Project } from './models/project';
 import type { Asset } from './models/asset';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
-import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { audioClipGain } from './audio-contract';
 import {
@@ -132,7 +131,13 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
   return [...times].sort((left, right) => left - right);
 }
 
-function characterVisibleDuringMouthOpen(
+/**
+ * AUTO-07A: the Mouth now follows the decoded volume envelope, so its open
+ * moments are not predictable from Shot time alone. Export preparation only
+ * needs the deterministic superset: is the speaking character visible at any
+ * point inside the AudioClip window?
+ */
+function characterVisibleDuringClip(
   project: Project,
   shot: Project['shots'][number],
   audioClip: Project['shots'][number]['audioClips'][number],
@@ -154,23 +159,11 @@ function characterVisibleDuringMouthOpen(
     ]),
   ].sort((left, right) => left - right);
 
-  for (let index = 0; index < stateChangeTimes.length; index += 1) {
-    const segmentStartMs = stateChangeTimes[index]!;
-    const segmentEndMs = stateChangeTimes[index + 1] ?? activeEndMs;
-    if (segmentStartMs >= segmentEndMs) continue;
-    const visible = evaluateShotAtTime(shot, segmentStartMs, project).layers.some(
+  return stateChangeTimes.some((segmentStartMs) =>
+    evaluateShotAtTime(shot, segmentStartMs, project).layers.some(
       (layer) => characterLayerIds.has(layer.id) && layer.visible,
-    );
-    if (!visible) continue;
-
-    const phase =
-      (segmentStartMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS;
-    if (phase < MOUTH_OPEN_MS) return true;
-    const nextOpenStartMs =
-      segmentStartMs + (MOUTH_FLAP_PERIOD_MS - phase);
-    if (nextOpenStartMs < segmentEndMs) return true;
-  }
-  return false;
+    ),
+  );
 }
 
 function addShotVisualAssets(
@@ -231,7 +224,7 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
-    const visibleDuringMouthOpen = characterVisibleDuringMouthOpen(
+    const visibleDuringMouthOpen = characterVisibleDuringClip(
       project,
       shot,
       audioClip,

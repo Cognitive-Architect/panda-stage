@@ -20,7 +20,8 @@ import {
   type FlaPartPreviewRequest,
   type FlaPartPreviewResponse,
 } from '../../shared/fla-part-preview-api';
-import type { Project } from '../../domain';
+import type { Project, ShotCameraMode } from '../../domain';
+import { resolveProjectCameraMode } from '../../domain/selectors/cameraTrack';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
   ProjectSessionController,
@@ -38,6 +39,7 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { withShotCamera } from '../../domain/selectors/cameraTrack';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
@@ -509,6 +511,36 @@ export function EditorShell({
     shotStore.subscribe,
     shotStore.getCurrentShotId,
   );
+  // AUTO-07B: the camera mode is persisted per Shot, so the Editor no longer
+  // keeps a session-only auto-camera flag. The existing toggle keeps its UI but
+  // now writes `Shot.camera.mode` through one History command.
+  const activeShotCameraMode =
+    projectSnapshot?.project.shots.find(
+      (candidate) => candidate.id === currentShotId,
+    )?.camera.mode ?? 'static';
+  const autoCameraEnabled = activeShotCameraMode === 'speaker-focus';
+  const setAutoCameraEnabled = useCallback(
+    (enabled: boolean): void => {
+      const snapshot = editorProjectStore.getSnapshot();
+      const shotId = shotStore.getCurrentShotId();
+      if (!snapshot || !shotId) return;
+      const shot = snapshot.project.shots.find(
+        (candidate) => candidate.id === shotId,
+      );
+      if (!shot) return;
+      const nextMode = enabled ? 'speaker-focus' : 'static';
+      if (shot.camera.mode === nextMode) return;
+      editorProjectStore.updateProject(
+        withShotCamera(
+          snapshot.project,
+          shotId,
+          { mode: nextMode, keyframes: shot.camera.keyframes },
+        ),
+        enabled ? '切换为自动跟随' : '切换为固定全景',
+      );
+    },
+    [],
+  );
   const [session] = useState(createBrowserSession);
   const createFlaCharacter = useCallback<CreateFlaCharacter>(
     async (preview, name, operationId) => {
@@ -581,8 +613,6 @@ export function EditorShell({
       }
     : null;
   const productPreviewSessionId = productPreviewSessionRef.current;
-  // Preview Camera is an editor-session mode, not Project or Preview state.
-  const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
   const adaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActionsRef['current']>(null);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
@@ -1288,7 +1318,7 @@ export function EditorShell({
             openInstanceId: capturedInstanceId,
             revision: captured.revision,
             dirty: captured.dirty,
-            cameraMode: autoCameraEnabled ? 'speaker-focus' : 'static',
+            cameraMode: resolveProjectCameraMode(captured.project),
             project: structuredClone(captured.project),
           } as const;
           acceptanceApi.lastAttemptId = attemptId;
@@ -1795,7 +1825,7 @@ export function EditorShell({
     openInstanceId: number;
     fileName: string;
     durationMs: number;
-    cameraMode: 'static' | 'speaker-focus';
+    cameraMode: ShotCameraMode;
   }, reuseSnapshot = false): Promise<void> => {
     if (['starting', 'running', 'cancelling'].includes(exportTaskRef.current.status)) {
       return;
@@ -1941,7 +1971,7 @@ export function EditorShell({
         totalFrames: 0,
         issues: [],
       });
-      const cameraMode = autoCameraEnabled ? 'speaker-focus' : 'static';
+      const cameraMode = resolveProjectCameraMode(captured.project);
       const result = await window.pandaStage.exportPreparation.prepare({
         selectionId: selection.selectionId,
         attemptId,

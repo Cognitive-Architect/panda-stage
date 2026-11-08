@@ -90,6 +90,11 @@ function withoutImageAuthorMetadata(
 ) {
   const legacy = structuredClone(project);
   Reflect.deleteProperty(legacy, 'animations');
+  legacy.shots = legacy.shots.map((shot) => {
+    const { camera: _camera, ...rest } = shot;
+    void _camera;
+    return rest as typeof shot;
+  });
   for (const asset of legacy.assets) {
     if (asset.kind !== 'image') continue;
     Reflect.deleteProperty(asset, 'usage');
@@ -98,9 +103,20 @@ function withoutImageAuthorMetadata(
   return legacy;
 }
 
+function legacyClips(
+  clips: ReturnType<typeof migrateProject>['shots'][number]['audioClips'],
+) {
+  return clips.map(({ role, ...clip }) => {
+    void role;
+    return clip;
+  });
+}
+
 function legacyShot(shot: ReturnType<typeof migrateProject>['shots'][number]) {
+  const { camera: _camera, ...rest } = shot;
+  void _camera;
   return {
-    ...shot,
+    ...rest,
     audioClips: shot.audioClips.map(({ role, ...clip }) => {
       void role;
       return clip;
@@ -646,11 +662,12 @@ describe('project migration framework', () => {
       ...withoutImageAuthorMetadata(current),
       schemaVersion: 2 as const,
       characters: removeCurrentCharacterMode(current),
-      shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
+      shots: current.shots.map(({ backgroundLayerId, camera: _camera, ...shot }) => {
         void backgroundLayerId;
+        void _camera;
         return {
           ...shot,
-          audioClips: legacyShot({ ...shot, backgroundLayerId }).audioClips,
+          audioClips: legacyClips(shot.audioClips),
           layers: shot.layers.map(({ locked, flipX, ...layer }) => {
             void locked;
             void flipX;
@@ -679,11 +696,12 @@ describe('project migration framework', () => {
       schemaVersion: 2 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map(
-        ({ backgroundLayerId, ...shot }) => {
+        ({ backgroundLayerId, camera: _camera, ...shot }) => {
           void backgroundLayerId;
+          void _camera;
           return {
           ...shot,
-          audioClips: legacyShot({ ...shot, backgroundLayerId }).audioClips,
+          audioClips: legacyClips(shot.audioClips),
           layers: [
             {
               ...shot.layers[1]!,

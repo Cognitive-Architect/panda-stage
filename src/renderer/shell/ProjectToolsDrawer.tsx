@@ -1,15 +1,29 @@
-import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import {
+  ArrowLeft,
+  Maximize2,
+  ScanLine,
+  Sparkles,
+  Video,
+} from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
+import { ShotCameraPanel } from '../features/camera/ShotCameraPanel';
+import { cameraToolStore } from '../features/camera/cameraToolStore';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets';
+type ProjectToolsView = 'home' | 'action-presets' | 'camera';
+
+const VIEW_TITLES: Record<ProjectToolsView, string> = {
+  home: '工具',
+  'action-presets': '动作预设',
+  camera: '运镜',
+};
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -36,6 +50,9 @@ export function ProjectToolsDrawer({
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   ).mode;
+  // Closing the drawer (button, Escape or activity switch) unmounts it. Only
+  // the camera tool session state is cleared; Shot.camera stays persisted.
+  useEffect(() => () => cameraToolStore.reset(), []);
 
   return (
     <section
@@ -46,21 +63,22 @@ export function ProjectToolsDrawer({
     >
       <header className="project-tools-drawer-header">
         <div className="project-tools-drawer-heading">
-          {view === 'action-presets' ? (
+          {view !== 'home' ? (
             <button
               aria-label="返回工具"
               className="project-tools-back"
               data-testid="project-tools-back"
-              onClick={() => setView('home')}
+              onClick={() => {
+                cameraToolStore.reset();
+                setView('home');
+              }}
               type="button"
             >
               <DecorativeIcon icon={ArrowLeft} size={18} />
               <span>工具</span>
             </button>
           ) : null}
-          <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '工具'}
-          </h2>
+          <h2 id="project-tools-heading">{VIEW_TITLES[view]}</h2>
         </div>
         <button
           aria-label="关闭工具"
@@ -115,6 +133,25 @@ export function ProjectToolsDrawer({
             </div>
           </section>
           <section
+            aria-labelledby="project-tools-camera-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-camera-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-camera-heading">运镜</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="camera"
+              data-testid="project-tools-camera"
+              onClick={() => setView('camera')}
+              type="button"
+            >
+              <DecorativeIcon icon={Video} size={18} />
+              <span>打开运镜</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
             data-testid="project-tools-action-preset-card"
@@ -134,6 +171,14 @@ export function ProjectToolsDrawer({
             </button>
           </section>
         </div>
+      ) : view === 'camera' ? (
+        <section
+          aria-label="运镜"
+          className="project-tools-action-presets-view"
+          data-testid="project-tools-camera-view"
+        >
+          <ShotCameraPanel />
+        </section>
       ) : (
         <section
           aria-label="动作预设"

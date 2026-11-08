@@ -23,21 +23,18 @@ function descendants<T extends ts.Node>(root: ts.Node, predicate: (node: ts.Node
   return found;
 }
 
-function autoCameraDefaultsOff(source: string): boolean {
-  return descendants(parseTsx(source), ts.isVariableDeclaration).some((declaration) => {
+function persistedCameraDefaultsOff(source: string): boolean {
+  // AUTO-07B: no session-only useState flag. The single owner is the Shot's
+  // persisted camera mode, defaulting to 'static' (auto-follow OFF).
+  const hasSessionFlag = descendants(parseTsx(source), ts.isVariableDeclaration).some((declaration) => {
     if (!ts.isArrayBindingPattern(declaration.name)) return false;
     const [value, setter] = declaration.name.elements;
     if (!value || ts.isOmittedExpression(value) || !setter || ts.isOmittedExpression(setter)) return false;
-    if (value.name.getText() !== 'autoCameraEnabled' || setter.name.getText() !== 'setAutoCameraEnabled') return false;
-    const initializer = declaration.initializer;
-    return Boolean(
-      initializer &&
-      ts.isCallExpression(initializer) &&
-      initializer.expression.getText() === 'useState' &&
-      initializer.arguments.length === 1 &&
-      initializer.arguments[0]?.kind === ts.SyntaxKind.FalseKeyword,
-    );
+    return value.name.getText() === 'autoCameraEnabled';
   });
+  return !hasSessionFlag &&
+    source.includes("?.camera.mode ?? 'static'") &&
+    source.includes("const autoCameraEnabled = activeShotCameraMode === 'speaker-focus'");
 }
 
 function jsxTag(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
@@ -118,15 +115,16 @@ describe('Speaker Focus Preview integration contract', () => {
     expect(previewFrameLayout).toMatch(/\.product-preview-close\s*\{[^}]*position:\s*absolute;[^}]*right:\s*10px;/u);
   });
 
-  it('defaults the editor-session mode OFF and uses one resolver in both ranges', () => {
-    expect(autoCameraDefaultsOff(shell)).toBe(true);
-    expect(autoCameraDefaultsOff(shell.replace('const [autoCameraEnabled, setAutoCameraEnabled] = useState(false)', 'const [autoCameraEnabled, setAutoCameraEnabled] = useState(true)'))).toBe(false);
+  it('defaults the persisted Shot mode OFF and uses one shared resolver in both ranges', () => {
+    expect(persistedCameraDefaultsOff(shell)).toBe(true);
+    // A session-only flag or a non-static default would break the contract.
+    expect(persistedCameraDefaultsOff(shell.replace("?.camera.mode ?? 'static'", "?.camera.mode ?? 'speaker-focus'"))).toBe(false);
     expect(overlay).not.toContain('const [speakerFocus, setSpeakerFocus]');
     expect(overlay).toContain('data-testid="product-preview-speaker-focus"');
     expect(overlay).toContain('aria-pressed={autoCameraEnabled}');
     expect(overlay).toContain('自动运镜');
-    expect(overlay).toContain('prepareSpeakerFocusCamera(project, shot)');
-    expect(overlay).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
+    expect(overlay).toContain('shot ? prepareShotCamera(project, shot) : null');
+    expect(overlay).toContain('evaluateShotCamera(cameraPlan, activeShotTimeMs)');
     expect(overlay).toContain('camera={camera}');
     expect(shell).toContain('setProductPreviewOpen(false)');
     expect(overlay).not.toMatch(/updateProject|HistoryStore|setDirty|setRevision/);

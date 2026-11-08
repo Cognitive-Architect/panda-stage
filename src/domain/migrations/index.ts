@@ -16,11 +16,13 @@ import {
   ProjectV14Schema,
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
+  ProjectV16Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
   type Project,
 } from '../models/project';
+import { DEFAULT_SHOT_CAMERA } from '../models/shot';
 import type { Layer } from '../models/layer';
 import {
   LegacyProbeProjectV1Schema,
@@ -49,6 +51,7 @@ export type DetectedSchemaVersion =
   | 13
   | 14
   | 15
+  | 16
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -56,7 +59,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -88,6 +91,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 13 ||
     version === 14 ||
     version === 15 ||
+    version === 16 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -285,8 +289,8 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v15) is routed here by version and resolved to
- * the current v16 project. The formal v1-v7
+ * Every persisted envelope (v0-v16) is routed here by version and resolved to
+ * the current v18 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
@@ -362,8 +366,22 @@ export function migrateProject(input: unknown): Project {
     case 15:
       project = migrateVersion15(input);
       break;
+    case 16: {
+      // AUTO-07B: v16 had no persisted Shot camera. Every Shot starts at the
+      // historical full-stage framing so old Projects keep their picture.
+      const version16 = ProjectV16Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version16,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        shots: version16.shots.map((shot) => ({
+          ...shot,
+          camera: DEFAULT_SHOT_CAMERA,
+        })),
+      });
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v16 envelope: validate it, then apply only the narrow
+      // Current envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

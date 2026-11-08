@@ -527,8 +527,11 @@ describe('product preview overlay contract', () => {
     );
     expect(overlay).toContain('durationMs: projectDurationMs(project)');
     expect(overlay).toContain('mapProjectTime(');
-    // Project data arrives as a read-only prop; the overlay does not subscribe.
-    expect(overlay).not.toContain('useSyncExternalStore');
+    // Project data arrives as a read-only prop. The only external subscription
+    // is the read-only decoded-envelope cache (AUTO-07A), never the Project
+    // store, so the overlay still owns no second project tree.
+    expect(overlay).not.toContain('editorProjectStore.subscribe');
+    expect(overlay).toContain('audioEnvelopeStore.subscribe');
     expect(overlay).toContain('project: Project;');
     expect(overlay).toContain('shotId: string | null;');
   });

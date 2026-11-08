@@ -30,6 +30,52 @@ export const ShotV2Schema = z
   })
   .strict();
 
+/** AUTO-07B camera modes. Static keeps the historical full-stage framing. */
+export const SHOT_CAMERA_MODES = ['static', 'speaker-focus', 'manual'] as const;
+export const ShotCameraModeSchema = z.enum(SHOT_CAMERA_MODES);
+export type ShotCameraMode = z.infer<typeof ShotCameraModeSchema>;
+export const SHOT_CAMERA_MAX_KEYFRAMES = 32;
+export const SHOT_CAMERA_MIN_ZOOM = 1;
+export const SHOT_CAMERA_MAX_ZOOM = 8;
+
+export const ShotCameraKeyframeSchema = z
+  .object({
+    timeMs: z.number().int().nonnegative(),
+    centerX: z.number().finite(),
+    centerY: z.number().finite(),
+    zoom: z.number().finite().min(SHOT_CAMERA_MIN_ZOOM).max(SHOT_CAMERA_MAX_ZOOM),
+  })
+  .strict();
+
+/**
+ * The one persisted camera contract per Shot. `manual` keyframes stay stored
+ * while other modes are active, so switching modes never destroys authoring.
+ */
+export const ShotCameraSchema = z
+  .object({
+    mode: ShotCameraModeSchema,
+    keyframes: z
+      .array(ShotCameraKeyframeSchema)
+      .max(SHOT_CAMERA_MAX_KEYFRAMES),
+  })
+  .strict()
+  .default({ mode: 'static', keyframes: [] });
+
+export const DEFAULT_SHOT_CAMERA: z.infer<typeof ShotCameraSchema> = {
+  mode: 'static',
+  keyframes: [],
+};
+
+/** Strict v16 Shot shape before the persisted camera track. */
+export const ShotV16Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerSchema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
 export const ShotSchema = z
   .object({
     ...ShotBaseShape,
@@ -37,8 +83,30 @@ export const ShotSchema = z
     layers: z.array(LayerSchema),
     /** The only layer rendered with the background cover contract. */
     backgroundLayerId: IdSchema.nullable(),
+    camera: ShotCameraSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((shot, context) => {
+    const keyframes = shot.camera.keyframes;
+    for (let index = 0; index < keyframes.length; index += 1) {
+      const keyframe = keyframes[index]!;
+      if (keyframe.timeMs > shot.durationMs) {
+        context.addIssue({
+          code: 'custom',
+          path: ['camera', 'keyframes', index, 'timeMs'],
+          message: 'Camera keyframe must sit inside the Shot duration.',
+        });
+      }
+      const previous = keyframes[index - 1];
+      if (previous && previous.timeMs >= keyframe.timeMs) {
+        context.addIssue({
+          code: 'custom',
+          path: ['camera', 'keyframes', index, 'timeMs'],
+          message: 'Camera keyframes must be strictly ordered by time.',
+        });
+      }
+    }
+  });
 
 /** Strict animation-era v15 shot shape before persisted playback settings. */
 export const ShotV15AnimationSchema = z

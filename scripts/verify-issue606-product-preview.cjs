@@ -175,6 +175,46 @@ function solidPng(width, height, color) {
   ]);
 }
 
+// AUTO-07A drives the Mouth from a decoded volume envelope. Returning an
+// audio read failure here used to be harmless for an image-only gate, but it
+// now makes the shared mouth judgment degrade to "closed": the Mouth asset is
+// never requested and the pending/fallback pixel assertions become
+// unreachable. Supply a small, real 16-bit mono PCM WAV with a steady tone
+// throughout the dialogue window instead of weakening any business assertion.
+const PROOF_VOICE_SAMPLE_RATE = 16_000;
+const PROOF_VOICE_FRAMES = Math.round(PROOF_VOICE_SAMPLE_RATE * 1.5);
+
+function proofVoiceWav() {
+  const pcm = new Int16Array(PROOF_VOICE_FRAMES);
+  for (let index = 0; index < pcm.length; index += 1) {
+    pcm[index] = Math.round(
+      16_000 * Math.sin((2 * Math.PI * 220 * index) / PROOF_VOICE_SAMPLE_RATE),
+    );
+  }
+  const buffer = new ArrayBuffer(44 + pcm.byteLength);
+  const view = new DataView(buffer);
+  const ascii = (offset, text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+  ascii(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, PROOF_VOICE_SAMPLE_RATE, true);
+  view.setUint32(28, PROOF_VOICE_SAMPLE_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, 'data');
+  view.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+  return new Uint8Array(buffer);
+}
+
 function imageAsset(id, name, width, height) {
   return {
     id,
@@ -204,7 +244,10 @@ function createFixture() {
   });
   const { animations: _animations, ...legacyBase } = base;
   void _animations;
-  const baseShot = base.shots[0];
+  // v18 added Shot.camera. A strict v7 fixture must not carry current-version
+  // fields, or migrateProject falls back and loses the historical audio role.
+  const { camera: _baseShotCamera, ...baseShot } = base.shots[0];
+  void _baseShotCamera;
   const baseSubtitle = base.subtitleStyles[0];
   const character = {
     ...base.characters[0],
@@ -387,6 +430,7 @@ function register(channel, handler) {
 
 function registerAcceptanceHandlers(project) {
   const assetBytes = new Map();
+  const proofVoiceBytes = proofVoiceWav();
   register(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY, () => ({
     ok: true,
     status: 'cancelled',
@@ -432,14 +476,29 @@ function registerAcceptanceHandlers(project) {
     assetId: request.assetId,
     dataUrl: 'data:image/png;base64,',
   }));
-  register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, (_event, request) => ({
-    ok: false,
-    error: {
-      code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
-      message: 'Synthetic audio is intentionally not decoded by this image gate.',
-      assetId: request.assetId,
-    },
-  }));
+  register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, (_event, request) => {
+    if (
+      request.assetId !== IDS.audioAsset ||
+      request.sha256 !== hashFor(IDS.audioAsset)
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: 'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND',
+          message: 'Issue #606 fixture audio asset was not found.',
+          assetId: request.assetId,
+        },
+      };
+    }
+    return {
+      ok: true,
+      status: 'ready',
+      assetId: IDS.audioAsset,
+      mimeType: 'audio/wav',
+      byteLength: proofVoiceBytes.byteLength,
+      bytes: new Uint8Array(proofVoiceBytes),
+    };
+  });
   register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, async (_event, request) => {
     const asset = project.assets.find((candidate) => candidate.id === request.assetId);
     if (!asset || asset.kind !== 'image') {
