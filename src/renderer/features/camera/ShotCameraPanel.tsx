@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import {
   isFullStageCamera,
   prepareShotCamera,
@@ -53,6 +53,12 @@ export function ShotCameraPanel(): React.JSX.Element {
   );
   const timelineUi = useTimelineUi();
   const tool = useCameraTool();
+  const projectId = snapshot?.project.id ?? null;
+  // A framing draft belongs to one Shot in one Project. Switching identity
+  // must not leave it behind for "记录取景" to commit to the wrong Shot.
+  useEffect(() => {
+    cameraToolStore.reset();
+  }, [projectId, currentShotId]);
   const target = snapshot
     ? resolveShotCameraTarget(snapshot.project, currentShotId)
     : null;

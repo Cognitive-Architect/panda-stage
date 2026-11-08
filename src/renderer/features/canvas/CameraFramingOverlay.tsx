@@ -1,8 +1,8 @@
-import { Group, Line, Rect } from 'react-konva';
+import { Group, Line, Rect, Text } from 'react-konva';
 import type Konva from 'konva';
 import {
   cameraViewFromCenter,
-  SHOT_CAMERA_MAX_ZOOM,
+  stepShotCameraZoom,
   type CameraView,
 } from '../../../domain';
 
@@ -17,6 +17,8 @@ export interface CameraFramingOverlayProps {
 
 const FRAMING_STROKE = '#8fe2a9';
 const FRAMING_OPACITY = 0.9;
+const ZOOM_CONTROL_SIZE = 32;
+const ZOOM_CONTROL_GAP = 4;
 
 /**
  * The authoring framing box. It is drawn in logical stage coordinates, above
@@ -46,14 +48,18 @@ export function CameraFramingOverlay({
     commitFrom(node.x() + width / 2, node.y() + height / 2, view.zoom);
   };
 
-  const handleWheel = (event: Konva.KonvaEventObject<WheelEvent>): void => {
-    event.evt.preventDefault();
-    const direction = event.evt.deltaY > 0 ? 1 / zoomStep : zoomStep;
+  /** One zoom path for wheel and the visible touch controls. */
+  const zoomBy = (factor: number): void => {
     commitFrom(
       view.centerX,
       view.centerY,
-      Math.min(SHOT_CAMERA_MAX_ZOOM, view.zoom * direction),
+      stepShotCameraZoom(view.zoom, factor),
     );
+  };
+
+  const handleWheel = (event: Konva.KonvaEventObject<WheelEvent>): void => {
+    event.evt.preventDefault();
+    zoomBy(event.evt.deltaY > 0 ? 1 / zoomStep : zoomStep);
   };
 
   return (
@@ -87,6 +93,43 @@ export function CameraFramingOverlay({
         strokeOpacity={FRAMING_OPACITY * 0.4}
         strokeWidth={1 / view.zoom}
       />
+      {/* Minimal visible zoom controls: tap/click works on touch as well as
+          mouse; no gesture recognizer, same clamp as the wheel. */}
+      {[
+        { name: 'camera-framing-zoom-in', label: '+', factor: zoomStep },
+        { name: 'camera-framing-zoom-out', label: '−', factor: 1 / zoomStep },
+      ].map((control, index) => (
+        <Group
+          key={control.name}
+          listening
+          name={control.name}
+          onClick={() => zoomBy(control.factor)}
+          onTap={() => zoomBy(control.factor)}
+          x={
+            x + width - (ZOOM_CONTROL_SIZE + ZOOM_CONTROL_GAP) * 2 +
+            index * (ZOOM_CONTROL_SIZE + ZOOM_CONTROL_GAP)
+          }
+          y={y + 8}
+        >
+          <Rect
+            fill="#12291b"
+            height={ZOOM_CONTROL_SIZE}
+            stroke={FRAMING_STROKE}
+            strokeWidth={1}
+            width={ZOOM_CONTROL_SIZE}
+          />
+          <Text
+            align="center"
+            fill={FRAMING_STROKE}
+            fontSize={20}
+            height={ZOOM_CONTROL_SIZE}
+            listening={false}
+            text={control.label}
+            verticalAlign="middle"
+            width={ZOOM_CONTROL_SIZE}
+          />
+        </Group>
+      ))}
     </Group>
   );
 }

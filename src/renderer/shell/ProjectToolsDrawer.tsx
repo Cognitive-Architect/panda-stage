@@ -5,11 +5,12 @@ import {
   Sparkles,
   Video,
 } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
 import { ShotCameraPanel } from '../features/camera/ShotCameraPanel';
+import { cameraToolStore } from '../features/camera/cameraToolStore';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
@@ -49,6 +50,9 @@ export function ProjectToolsDrawer({
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   ).mode;
+  // Closing the drawer (button, Escape or activity switch) unmounts it. Only
+  // the camera tool session state is cleared; Shot.camera stays persisted.
+  useEffect(() => () => cameraToolStore.reset(), []);
 
   return (
     <section
@@ -64,7 +68,10 @@ export function ProjectToolsDrawer({
               aria-label="返回工具"
               className="project-tools-back"
               data-testid="project-tools-back"
-              onClick={() => setView('home')}
+              onClick={() => {
+                cameraToolStore.reset();
+                setView('home');
+              }}
               type="button"
             >
               <DecorativeIcon icon={ArrowLeft} size={18} />

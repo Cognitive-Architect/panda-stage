@@ -21,7 +21,7 @@ import {
   calculateViewportTransform,
   evaluateShotCamera,
   evaluateShotAtTime,
-  isFullStageCamera,
+  resolveCameraToolPreview,
   prepareShotCamera,
   listShotRuntimeImageAssets,
   resolveImageAsset,
@@ -372,17 +372,21 @@ export function CanvasStage({
   const presentedCamera = shotCameraPlan
     ? evaluateShotCamera(shotCameraPlan, timelineUi.currentTimeMs)
     : null;
-  const cameraPreviewActive = Boolean(
-    cameraTool.previewing &&
-      presentedCamera &&
-      snapshot &&
-      !isFullStageCamera(
-        presentedCamera,
-        snapshot.project.width,
-        snapshot.project.height,
-      ),
+  // AUTO-07-FIX-01: preview the clamped, still-uncommitted draft first; only
+  // fall back to the persisted Shot camera when no draft exists.
+  const appliedCamera = useMemo(
+    () =>
+      snapshot
+        ? resolveCameraToolPreview(
+            cameraTool,
+            presentedCamera,
+            snapshot.project.width,
+            snapshot.project.height,
+          )
+        : null,
+    [cameraTool, presentedCamera, snapshot],
   );
-  const appliedCamera = cameraPreviewActive ? presentedCamera : null;
+  const cameraPreviewActive = appliedCamera !== null;
   const framingView =
     cameraTool.active && !cameraTool.previewing && presentedCamera
       ? cameraTool.draft ?? presentedCamera
@@ -910,11 +914,13 @@ export function CanvasStage({
                         );
                       })
                     : null}
+                  </Group>
+                  {/* Subtitles are screen-space, exactly like StageRenderer:
+                      camera push/pan must never scale or move them. */}
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
                   />
-                  </Group>
                 </KonvaLayer>
                 <KonvaLayer
                   listening

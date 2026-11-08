@@ -8,6 +8,8 @@
  * and never "move every Character layer" to fake a camera move.
  */
 import {
+  SHOT_CAMERA_MAX_ZOOM,
+  SHOT_CAMERA_MIN_ZOOM,
   SHOT_CAMERA_MODES,
   type Project,
   type Shot,
@@ -188,6 +190,45 @@ export function isFullStageCamera(
     Math.abs(camera.zoom - 1) < 1e-6 &&
     Math.abs(camera.centerX - width / 2) < 1e-6 &&
     Math.abs(camera.centerY - height / 2) < 1e-6
+  );
+}
+
+/**
+ * AUTO-07-FIX-01: "取景预览" must show the uncommitted framing draft, not the
+ * persisted Shot camera. The view is clamped exactly like a recorded keyframe;
+ * a full-stage view needs no camera transform at all.
+ */
+export function resolveCameraToolPreview(
+  tool: { readonly previewing: boolean; readonly draft: CameraView | null },
+  presented: CameraView | null,
+  width: number,
+  height: number,
+): CameraView | null {
+  if (!tool.previewing) return null;
+  const source = tool.draft ?? presented;
+  if (!source) return null;
+  const clamped = clampCamera(
+    {
+      ...source,
+      zoom: Math.max(
+        SHOT_CAMERA_MIN_ZOOM,
+        Math.min(SHOT_CAMERA_MAX_ZOOM, source.zoom),
+      ),
+    },
+    width,
+    height,
+  );
+  return isFullStageCamera(clamped, width, height) ? null : clamped;
+}
+
+/** One bounded zoom step shared by wheel and the visible zoom controls. */
+export function stepShotCameraZoom(zoom: number, factor: number): number {
+  if (!Number.isFinite(zoom) || !Number.isFinite(factor) || factor <= 0) {
+    return SHOT_CAMERA_MIN_ZOOM;
+  }
+  return Math.max(
+    SHOT_CAMERA_MIN_ZOOM,
+    Math.min(SHOT_CAMERA_MAX_ZOOM, zoom * factor),
   );
 }
 
