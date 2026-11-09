@@ -12,6 +12,14 @@ function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
+function expectTimelineDockContract(bottom: string): void {
+  const invocations = bottom.match(/<TimelineDock\b[^>]*\/>/gu) ?? [];
+  expect(invocations).toHaveLength(1);
+  expect(invocations[0]).toContain('presentation={presentation}');
+  expect(invocations[0]).toContain('productPreviewOpen={productPreviewOpen}');
+  expect(invocations[0]).toContain('partPoseEditor={partPoseEditor}');
+}
+
 describe('Issue #431 R2 Subtitle Workspace polish P-04 / P-05 / P-06', () => {
   it('P-04: removes the obsolete bottom Task Tray presentation reservation only', () => {
     const timeline = source('src/renderer/features/timeline/TimelineDock.tsx');
@@ -43,7 +51,7 @@ describe('Issue #431 R2 Subtitle Workspace polish P-04 / P-05 / P-06', () => {
     expect(timeline).toContain('data-track-kind="subtitle"');
     expect(timeline).toContain('data-track-kind="audio"');
     expect(timeline).toContain('data-testid="timeline-collapse"');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
+    expectTimelineDockContract(bottom);
   });
 
   it('P-05: gives AUTHORING one stable scroll body and one shared content gutter', () => {

@@ -321,11 +321,22 @@ describe('formal Part pose animation', () => {
       shotId: IDS.shot, layerId, partId, fromTimeMs: 0, toTimeMs: 250,
     })).toThrow(/protected 0 ms/u);
     expect(() => service.retimeKeyframe(project, {
-      shotId: IDS.shot, layerId, partId, fromTimeMs: 1_000, toTimeMs: 3_000,
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 1_000, toTimeMs: 3_042,
     })).toThrow(/within the Shot duration/u);
     expect(() => service.retimeKeyframe(project, {
       shotId: IDS.shot, layerId, partId, fromTimeMs: 2_500, toTimeMs: 2_750,
     })).toThrow(/has no key/u);
+    const durationBoundary = service.retimeKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      fromTimeMs: 2_000,
+      toTimeMs: 3_000,
+    });
+    expect(durationBoundary.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .at(-1)?.timeMs).toBe(3_000);
     const finalFrame = service.retimeKeyframe(project, {
       shotId: IDS.shot,
       layerId,
@@ -356,6 +367,20 @@ describe('formal Part pose animation', () => {
       ...source500,
       timeMs: 750,
     });
+    const copiedAtDurationBoundary = service.copyKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      sourceTimeMs: 500,
+      targetTimeMs: 3_000,
+    });
+    expect(copiedAtDurationBoundary.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .find((key) => key.timeMs === 3_000)).toEqual({
+      ...source500,
+      timeMs: 3_000,
+    });
     expect(() => service.copyKeyframe(project, {
       shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 0,
     })).toThrow(/protected 0 ms/u);
@@ -363,7 +388,7 @@ describe('formal Part pose animation', () => {
       shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 1_000,
     })).toThrow(/already exists/u);
     expect(() => service.copyKeyframe(project, {
-      shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 3_000,
+      shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 3_042,
     })).toThrow(/within the Shot duration/u);
 
     const eased = service.setKeyEasing(copied, {
@@ -862,7 +887,78 @@ describe('formal Part pose animation', () => {
       next.shots[0]!.layers.find((layer) => layer.id === layerId)!
         .poseAnimation!.tracks[0]!.keys[0],
     ).toMatchObject({ timeMs: 0, rotationDeg: 30 });
+    next = set(3_000, 90);
+    expect(
+      next.shots[0]!.layers.find((layer) => layer.id === layerId)!
+        .poseAnimation!.tracks[0]!.keys.at(-1)?.timeMs,
+    ).toBe(3_000);
     expect(() => set(3_042, 90)).toThrow(/Shot duration/u);
+  });
+
+  it('keeps a non-frame Shot end bounded by the last legal pose frame', () => {
+    const { project: base, layerId } = adaptiveProject();
+    const service = new PartPoseAnimationService();
+    const captured = service.create(base, { shotId: IDS.shot, layerId });
+    const partId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!.partId;
+    const keyed = service.setKeyframe(captured, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs: 2_000,
+        offsetX: 20,
+        offsetY: 10,
+        rotationDeg: 60,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const nonFrameEnd = ProjectSchema.parse({
+      ...keyed,
+      shots: keyed.shots.map((shot) =>
+        shot.id === IDS.shot ? { ...shot, durationMs: 3_050 } : shot,
+      ),
+    });
+
+    const retimed = service.retimeKeyframe(nonFrameEnd, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      fromTimeMs: 2_000,
+      toTimeMs: 3_042,
+    });
+    expect(retimed.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .at(-1)?.timeMs).toBe(3_042);
+    expect(() => service.retimeKeyframe(nonFrameEnd, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      fromTimeMs: 2_000,
+      toTimeMs: 3_050,
+    })).toThrow(/Project frame grid/u);
+
+    const copied = service.copyKeyframe(nonFrameEnd, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      sourceTimeMs: 0,
+      targetTimeMs: 3_042,
+    });
+    expect(copied.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .some((key) => key.timeMs === 3_042)).toBe(true);
+    expect(() => service.copyKeyframe(nonFrameEnd, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      sourceTimeMs: 0,
+      targetTimeMs: 3_050,
+    })).toThrow(/Project frame grid/u);
   });
 
   it('tracks snapshot assets so they remain in project reference scans', () => {

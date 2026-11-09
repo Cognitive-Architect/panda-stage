@@ -327,6 +327,35 @@ describe('Part Pose Timeline lanes', () => {
     )?.disabled).toBe(true);
   });
 
+  it('allows paste at the frame-aligned Shot duration boundary', async () => {
+    await renderTimeline();
+    const source = container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="500"]`,
+    )!;
+    await act(async () => source.click());
+    const copy = container.querySelector<HTMLButtonElement>(
+      '[aria-label="复制当前 Part 姿势关键帧"]',
+    )!;
+    await act(async () => copy.click());
+
+    timelineUiStore.seek(3_000, 3_000);
+    await renderTimeline(fixture.partIds[0]!, 3_000);
+    const paste = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-paste"]',
+    )!;
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(3_000);
+    expect(paste.disabled).toBe(false);
+
+    const revision = editorProjectStore.getSnapshot()!.revision;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    await act(async () => paste.click());
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount + 1);
+    expect(currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.some((key) => key.timeMs === 3_000)).toBe(true);
+  });
+
   it('cancels a pointer-cancelled preview without changing Project or History', async () => {
     await renderTimeline();
     const marker = container.querySelector<HTMLButtonElement>(

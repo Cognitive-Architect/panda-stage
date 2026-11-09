@@ -282,7 +282,7 @@ export class PartPoseAnimationService {
     if (!isValidFrameTime(input.toTimeMs)) {
       throw new Error('Part pose target key must be on the Project frame grid.');
     }
-    if (input.toTimeMs > lastValidFrameTime(Math.max(0, shot.durationMs - 1))) {
+    if (input.toTimeMs > lastValidFrameTime(shot.durationMs)) {
       throw new Error('Part pose target key must be within the Shot duration.');
     }
 
@@ -347,7 +347,7 @@ export class PartPoseAnimationService {
     if (!isValidFrameTime(input.targetTimeMs)) {
       throw new Error('Part pose target key must be on the Project frame grid.');
     }
-    if (input.targetTimeMs > lastValidFrameTime(Math.max(0, shot.durationMs - 1))) {
+    if (input.targetTimeMs > lastValidFrameTime(shot.durationMs)) {
       throw new Error('Part pose target key must be within the Shot duration.');
     }
 

@@ -89,6 +89,25 @@ function normalize(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
 
+function expectTimelineDockContract(bottom: string): string {
+  const invocations = bottom.match(/<TimelineDock\b[^>]*\/>/gu) ?? [];
+  expect(invocations).toHaveLength(1);
+  const invocation = invocations[0]!;
+  expect(invocation).toContain('presentation={presentation}');
+  expect(invocation).toContain('productPreviewOpen={productPreviewOpen}');
+  expect(invocation).toContain('partPoseEditor={partPoseEditor}');
+  return invocation;
+}
+
+function replaceExactlyOnce(
+  sourceText: string,
+  target: string,
+  replacement: string,
+): string {
+  expect(sourceText.split(target)).toHaveLength(2);
+  return sourceText.replace(target, replacement);
+}
+
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -214,10 +233,29 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     expect(editorShell).toContain('data-testid="editor-body"');
     // #655 adds only the Preview-open input and modal isolation at this owner.
     // Keep the original whole-file protection for every other byte.
-    expect(bottom.match(/<TimelineDock\b/gu)).toHaveLength(1);
-    expect(bottom).toContain('inert={assemblyInactive || productPreviewOpen || undefined}');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
-    const beforePreviewIsolation = bottom.replace(/\r\n/gu, '\n')
+    const normalizedBottom = normalize(bottom);
+    const timelineDockInvocation = expectTimelineDockContract(normalizedBottom);
+    expect(normalizedBottom).toContain('inert={assemblyInactive || productPreviewOpen || undefined}');
+    const partPoseEditorImport = [
+      'import {',
+      '  EMPTY_PART_POSE_EDITOR_UI,',
+      '  type PartPoseEditorUi,',
+      "} from '../features/part-pose/partPoseEditorTypes';",
+    ].join('\n') + '\n';
+    const withoutPartPoseProps = replaceExactlyOnce(
+      replaceExactlyOnce(
+        replaceExactlyOnce(
+          replaceExactlyOnce(normalizedBottom, partPoseEditorImport, ''),
+          '  partPoseEditor?: PartPoseEditorUi;\n',
+          '',
+        ),
+        '  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,\n',
+        '',
+      ),
+      timelineDockInvocation,
+      '<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />',
+    );
+    const beforePreviewIsolation = withoutPartPoseProps.replace(/\r\n/gu, '\n')
       .replace('  productPreviewOpen?: boolean;\n', '')
       .replace('  productPreviewOpen = false,\n', '')
       .replace('inert={assemblyInactive || productPreviewOpen || undefined}', 'inert={assemblyInactive || undefined}')

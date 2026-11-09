@@ -229,9 +229,9 @@ function PartPoseTimelineContent({
   const nextKey = selectedKeyIndex >= 0 ? keys[selectedKeyIndex + 1] : undefined;
   const clipboardMatches = clipboard?.scope === scopeKey;
   const validPasteTime =
+    shot.durationMs > 0 &&
     isValidFrameTime(currentTimeMs) &&
-    currentTimeMs < shot.durationMs &&
-    currentTimeMs <= lastValidFrameTime(Math.max(0, shot.durationMs - 1));
+    currentTimeMs <= lastValidFrameTime(shot.durationMs);
 
   const reportStale = (): void => {
     setError('Part 姿势或项目状态已变化，请重新选择关键帧后再试。');

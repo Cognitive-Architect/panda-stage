@@ -15,6 +15,14 @@ function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
+function expectTimelineDockContract(bottom: string): void {
+  const invocations = bottom.match(/<TimelineDock\b[^>]*\/>/gu) ?? [];
+  expect(invocations).toHaveLength(1);
+  expect(invocations[0]).toContain('presentation={presentation}');
+  expect(invocations[0]).toContain('productPreviewOpen={productPreviewOpen}');
+  expect(invocations[0]).toContain('partPoseEditor={partPoseEditor}');
+}
+
 describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
   it('derives a finite Canvas-preserving bound and clamps both directions', () => {
     expect(
@@ -96,8 +104,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     expect(bottom).toContain('timelineUiStore.setResizing(true)');
     expect(bottom).toContain('timelineUiStore.setResizing(false)');
     expect(bottom).toContain('getTimelineHeightFromPointer');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
-    expect(bottom.match(/<TimelineDock/gu)).toHaveLength(1);
+    expectTimelineDockContract(bottom);
     expect(bottom).not.toContain('useState');
 
     for (const sourceText of [bottom, timelineUi]) {
