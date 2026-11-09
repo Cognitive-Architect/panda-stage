@@ -539,6 +539,7 @@ interface ElementParseContext {
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
   readonly sourceParentSpanTweenType?: string;
+  readonly sourceParentMotionTweenSync?: boolean;
   readonly unsupportedDisplayReasons: string[];
   readonly state: SourceBuildState;
 }
@@ -588,6 +589,9 @@ function parseDisplayElements(
             sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
             ...(context.sourceParentSpanTweenType !== undefined
               ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+              : {}),
+            ...(context.sourceParentMotionTweenSync
+              ? { sourceParentMotionTweenSync: true }
               : {}),
             unsupportedDisplayReasons: context.unsupportedDisplayReasons,
             state: context.state,
@@ -659,6 +663,30 @@ function parseDisplayElements(
         ? 'button'
         : 'movieclip';
     const resolvedName = resolveSymbolAlias(context.state.symbolAliases, libraryItemName) ?? libraryItemName;
+    let alphaMultiplier: number | undefined;
+    if (context.sourceParentMotionTweenSync) {
+      const colors = getFlaXflDirectChildren(child.xml, child.name)
+        .filter((nested) => nested.name === 'color');
+      if (colors.length > 1) {
+        return fail('RENDER_FAILED', 'Synchronized motion experiment found multiple color transforms');
+      }
+      if (colors.length === 1) {
+        if (Object.keys(colors[0]!.attributes).length > 0) {
+          return fail('RENDER_FAILED', 'Synchronized motion experiment supports only an attribute-free color wrapper');
+        }
+        const values = getFlaXflDirectChildren(colors[0]!.xml, 'color');
+        const color = values[0];
+        const rawAlpha = color?.attributes.alphaMultiplier;
+        const parsedAlpha = rawAlpha === undefined ? Number.NaN : Number(rawAlpha);
+        if (values.length !== 1 || color?.name !== 'Color' ||
+            getFlaXflDirectChildren(color.xml, color.name).length !== 0 ||
+            Object.keys(color.attributes).some((name) => name !== 'alphaMultiplier') ||
+            !Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) {
+          return fail('RENDER_FAILED', 'Synchronized motion experiment supports only a finite Color alphaMultiplier in 0..1');
+        }
+        alphaMultiplier = parsedAlpha;
+      }
+    }
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
@@ -666,10 +694,14 @@ function parseDisplayElements(
       ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
+      ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
       ...(context.sourceParentSpanTweenType !== undefined
         ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+        : {}),
+      ...(context.sourceParentMotionTweenSync
+        ? { sourceParentMotionTweenSync: true }
         : {}),
       sourceAddress: `${context.scope}/${path}`,
       ...(localTransform ? { localTransform } : {}),
@@ -790,12 +822,26 @@ function boundedMotionFramePairRejectionReason(
   startIndex: number,
   duration: number,
 ): string | null {
+  const isSynchronizedMotionKey = (frame: FlaXflElementBlock): boolean =>
+    frame.attributes.tweenType === 'motion' &&
+    frame.attributes.motionTweenSnap === 'true' &&
+    frame.attributes.motionTweenSync === 'true' &&
+    frame.attributes.keyMode === '24065';
+  const synchronizedMotionPair = startIndex === 0 && duration === 7 &&
+    Number(startFrame.attributes.index) === 0 && Number(endFrame.attributes.index) === 7 &&
+    isSynchronizedMotionKey(startFrame) && isSynchronizedMotionKey(endFrame);
   const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
-    Object.keys(frame.attributes).filter((name) => !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
+    Object.keys(frame.attributes).filter((name) =>
+      !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name) &&
+      !(synchronizedMotionPair && name === 'motionTweenSync'));
   const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
     const tweenType = frame.attributes.tweenType;
     if (tweenType === 'motion') {
-      return frame.attributes.motionTweenSnap === 'true' && frame.attributes.keyMode === '22017';
+      return frame.attributes.motionTweenSnap === 'true' && (
+        synchronizedMotionPair
+          ? isSynchronizedMotionKey(frame)
+          : frame.attributes.motionTweenSync === undefined && frame.attributes.keyMode === '22017'
+      );
     }
     return (tweenType === undefined || tweenType === 'none') &&
       frame.attributes.motionTweenSnap === undefined &&
@@ -814,7 +860,10 @@ function boundedMotionFramePairRejectionReason(
   if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
   if (startFrame.attributes.tweenType !== 'motion') return 'start frame is not a motion tween keyframe';
   if (startFrame.attributes.motionTweenSnap !== 'true') return 'start frame motionTweenSnap is not true';
-  if (startFrame.attributes.keyMode !== '22017') return 'start frame keyMode is not 22017';
+  if (!synchronizedMotionPair && startFrame.attributes.motionTweenSync !== undefined) {
+    return 'start frame motionTweenSync is outside the synchronized motion family';
+  }
+  if (!synchronizedMotionPair && startFrame.attributes.keyMode !== '22017') return 'start frame keyMode is not 22017';
   if (!endpointDefinesSupportedOutgoingState(endFrame)) return 'end frame has an unsupported outgoing keyframe state';
   if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
     return 'frame XML contains unsupported motion metadata';
@@ -841,6 +890,12 @@ function boundedMotionFramePairRejectionReason(
   if (startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
     return 'both endpoint instances must be Graphic symbols';
   }
+  if (synchronizedMotionPair &&
+      (startTarget.attributes.loop !== 'loop' || endTarget.attributes.loop !== 'loop')) {
+    return 'synchronized motion experiment requires the source Loop playback mode';
+  }
+  const sampleFirstFrameTransition = synchronizedMotionPair &&
+    startTarget.attributes.firstFrame === undefined && endTarget.attributes.firstFrame === '7';
   for (const target of [startTarget, endTarget]) {
     for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
       const raw = target.attributes[name];
@@ -857,16 +912,22 @@ function boundedMotionFramePairRejectionReason(
     // the authored matrices and never serializes those attributes.
     if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
     if (startTarget.attributes[name] !== endTarget.attributes[name]) {
+      if (name === 'firstFrame' && sampleFirstFrameTransition) continue;
       return `symbol instance attribute ${name} changes between endpoints`;
     }
   }
 
-  const hasSupportedTransformChildren = (target: FlaXflElementBlock): boolean => {
+  const hasSupportedTransformChildren = (
+    target: FlaXflElementBlock,
+    allowAlphaMultiplier: boolean,
+  ): boolean => {
     const children = getFlaXflDirectChildren(target.xml, target.name);
     const matrices = children.filter((child) => child.name === 'matrix');
     const points = children.filter((child) => child.name === 'transformationPoint');
-    if (matrices.length !== 1 || points.length > 1 ||
-        children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint')) {
+    const colors = children.filter((child) => child.name === 'color');
+    if (matrices.length !== 1 || points.length > 1 || colors.length > 1 ||
+        children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
+          !(allowAlphaMultiplier && child.name === 'color'))) {
       return false;
     }
     const matrixValues = getFlaXflDirectChildren(matrices[0]!.xml, 'matrix');
@@ -881,12 +942,42 @@ function boundedMotionFramePairRejectionReason(
         return false;
       }
     }
+    if (colors.length === 1) {
+      if (Object.keys(colors[0]!.attributes).length > 0) return false;
+      const values = getFlaXflDirectChildren(colors[0]!.xml, 'color');
+      const color = values[0];
+      const rawAlpha = color?.attributes.alphaMultiplier;
+      const parsedAlpha = rawAlpha === undefined ? Number.NaN : Number(rawAlpha);
+      if (!allowAlphaMultiplier || values.length !== 1 || color?.name !== 'Color' ||
+          getFlaXflDirectChildren(color.xml, color.name).length !== 0 ||
+          Object.keys(color.attributes).some((name) => name !== 'alphaMultiplier') ||
+          !Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) {
+        return false;
+      }
+    }
     return true;
   };
-  if (!hasSupportedTransformChildren(startTarget) || !hasSupportedTransformChildren(endTarget)) {
+  if (!hasSupportedTransformChildren(startTarget, false) ||
+      !hasSupportedTransformChildren(endTarget, sampleFirstFrameTransition)) {
     return 'symbol instance matrix or transformation point is outside the supported structure';
   }
   return null;
+}
+
+function isIssue1044SynchronizedMotionSpan(
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  startIndex: number,
+  duration: number,
+): boolean {
+  const isSynchronizedKey = (frame: FlaXflElementBlock): boolean =>
+    frame.attributes.tweenType === 'motion' &&
+    frame.attributes.motionTweenSnap === 'true' &&
+    frame.attributes.motionTweenSync === 'true' &&
+    frame.attributes.keyMode === '24065';
+  return startIndex === 0 && duration === 7 &&
+    isSynchronizedKey(startFrame) && isSynchronizedKey(endFrame) &&
+    boundedMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration) === null;
 }
 
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
@@ -924,6 +1015,17 @@ function buildGraphicFrameContext(
     if (selection.kind === 'authored-frame') {
       const frame = selection.sourceFrame;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+      const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
+      let synchronizedMotionKey = false;
+      if (selection.span.index === 0 && selection.span.duration === 7) {
+        const endSpan = indexedLayer?.spans.find((span) => span.index === 7);
+        synchronizedMotionKey = Boolean(endSpan &&
+          isIssue1044SynchronizedMotionSpan(frame, endSpan.sourceFrame, 0, 7));
+      } else if (frameIndex === 7 && selection.span.index === 7) {
+        const startSpan = indexedLayer?.spans.find((span) => span.index === 0 && span.duration === 7);
+        synchronizedMotionKey = Boolean(startSpan &&
+          isIssue1044SynchronizedMotionSpan(startSpan.sourceFrame, frame, 0, 7));
+      }
       const parsed = parseDisplayElements(elementContainer, {
         scope,
         parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
@@ -932,6 +1034,7 @@ function buildGraphicFrameContext(
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
+        ...(synchronizedMotionKey ? { sourceParentMotionTweenSync: true } : {}),
         unsupportedDisplayReasons,
         state,
       });
@@ -959,6 +1062,14 @@ function buildGraphicFrameContext(
       if (pairRejectionReason) {
         return rejectTween(`source metadata falls outside the bounded transform-only subset: ${pairRejectionReason}`);
       }
+      const synchronizedMotionPair = startFrame.attributes.tweenType === 'motion' &&
+        startFrame.attributes.motionTweenSnap === 'true' &&
+        startFrame.attributes.motionTweenSync === 'true' &&
+        startFrame.attributes.keyMode === '24065' &&
+        endFrame.attributes.tweenType === 'motion' &&
+        endFrame.attributes.motionTweenSnap === 'true' &&
+        endFrame.attributes.motionTweenSync === 'true' &&
+        endFrame.attributes.keyMode === '24065';
 
       const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {
         const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
@@ -970,6 +1081,7 @@ function buildGraphicFrameContext(
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart: startSpan.index,
           sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
+          ...(synchronizedMotionPair ? { sourceParentMotionTweenSync: true } : {}),
           unsupportedDisplayReasons,
           state,
         });
@@ -994,7 +1106,15 @@ function buildGraphicFrameContext(
         progress,
       );
       if (!interpolated.ok) return rejectTween(interpolated.message);
-      elements = [{ ...startTarget, localTransform: interpolated.matrix }];
+      const interpolatedAlphaMultiplier = synchronizedMotionPair
+        ? (startTarget.alphaMultiplier ?? 1) +
+          ((endTarget.alphaMultiplier ?? 1) - (startTarget.alphaMultiplier ?? 1)) * progress
+        : undefined;
+      elements = [{
+        ...startTarget,
+        ...(interpolatedAlphaMultiplier !== undefined ? { alphaMultiplier: interpolatedAlphaMultiplier } : {}),
+        localTransform: interpolated.matrix,
+      }];
     }
 
     let maskedBy: string | undefined;
