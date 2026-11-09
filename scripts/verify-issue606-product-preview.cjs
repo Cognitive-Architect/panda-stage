@@ -242,10 +242,21 @@ function createFixture() {
     id: IDS.project,
     name: 'Issue 607 Product Preview review proof',
   });
-  const { animations: _animations, ...legacyBase } = base;
+  // A strict v7 fixture must not carry any post-v7 envelope field, or
+  // migrateProject falls through every formal branch and returns the input
+  // unchanged; the historical audio role is then never added and the fixture
+  // fails on `audioClips[0].role`. v13+ adds `animations`, v17 adds the
+  // project-local `shotTemplates` list, v18 adds `Shot.camera` and the
+  // optional `partPosePresets`.
+  const {
+    animations: _animations,
+    shotTemplates: _shotTemplates,
+    partPosePresets: _partPosePresets,
+    ...legacyBase
+  } = base;
   void _animations;
-  // v18 added Shot.camera. A strict v7 fixture must not carry current-version
-  // fields, or migrateProject falls back and loses the historical audio role.
+  void _shotTemplates;
+  void _partPosePresets;
   const { camera: _baseShotCamera, ...baseShot } = base.shots[0];
   void _baseShotCamera;
   const baseSubtitle = base.subtitleStyles[0];

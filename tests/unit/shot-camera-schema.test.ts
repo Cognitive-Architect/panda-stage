@@ -195,7 +195,28 @@ describe('Issue #1017 strict v7 verifier fixture contract', () => {
     expect(migrated.shots[0]!.camera).toEqual(DEFAULT_SHOT_CAMERA);
   });
 
-  it('keeps current-version camera out of the #602/#606 v7 fixtures', () => {
+  it('rejects a v17 shotTemplates list on a v7 envelope for the same reason', () => {
+    // Issue #1041: AUTO-03's v17 `shotTemplates` is the second current-version
+    // field that makes a strict v7 fixture fall through every formal branch.
+    // The symptom is identical to the camera case — migrateProject returns the
+    // input unchanged and the missing `audioClips[].role` surfaces instead.
+    const stripped = v7VerifierFixture(false) as Record<string, unknown>;
+    const withTemplates = { ...stripped, shotTemplates: [] };
+    const refusal = ProjectV7Schema.safeParse(withTemplates);
+    expect(refusal.success).toBe(false);
+    if (!refusal.success) {
+      expect(
+        refusal.error.issues.some(
+          (issue) =>
+            issue.code === 'unrecognized_keys' &&
+            Array.isArray(issue.keys) &&
+            issue.keys.includes('shotTemplates'),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('keeps every current-version field out of the #602/#606 v7 fixtures', () => {
     for (const name of [
       'verify-issue602-composite.cjs',
       'verify-issue606-product-preview.cjs',
@@ -206,6 +227,10 @@ describe('Issue #1017 strict v7 verifier fixture contract', () => {
       );
       expect(source).toContain('camera: _baseShotCamera');
       expect(source).toMatch(/\.\.\.baseShot \} = base\.shots\[0\]/);
+      // v17 and v18 envelope fields share the same failure mode, so the
+      // fixtures have to drop all of them, not just the camera.
+      expect(source).toContain('shotTemplates: _shotTemplates');
+      expect(source).toContain('partPosePresets: _partPosePresets');
     }
   });
 });
