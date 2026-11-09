@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Layer, Project, Shot } from '../../domain';
 import {
   LayerBackgroundControl,
@@ -39,6 +39,7 @@ export function PortraitPropertiesSections({
   partPoseEditor,
 }: PortraitPropertiesSectionsProps): React.JSX.Element {
   const sectionsRef = useRef<HTMLDivElement | null>(null);
+  const actionSectionRef = useRef<HTMLDetailsElement | null>(null);
   const transformController = useLayerTransformController({
     backgroundLayerSelected,
     compact: true,
@@ -77,26 +78,36 @@ export function PortraitPropertiesSections({
   const actionAvailable =
     Boolean(transformController.positionAuthoringSupported) ||
     partPoseAvailable;
+  useEffect(() => {
+    partPoseEditor.onActionSectionOpenChange(
+      actionAvailable &&
+        presentation === 'landscape' &&
+        Boolean(actionSectionRef.current?.open),
+    );
+  }, [actionAvailable, partPoseEditor.onActionSectionOpenChange, presentation]);
+  useEffect(
+    () => () => partPoseEditor.onActionSectionOpenChange(false),
+    [partPoseEditor.onActionSectionOpenChange],
+  );
   const actionEditor: PartPoseEditorUi = {
     ...partPoseEditor,
     onStart: (layerId, partId) => {
       transformController.exitPositionAuthoring?.();
       partPoseEditor.onStart(layerId, partId);
     },
+    onStartPivot: (layerId, partId) => {
+      transformController.exitPositionAuthoring?.();
+      partPoseEditor.onStartPivot(layerId, partId);
+    },
   };
   const handleActionToggle = (
     event: React.SyntheticEvent<HTMLDetailsElement>,
   ): void => {
     if (event.target !== event.currentTarget) return;
-    if (event.currentTarget.open) {
-      if (partPoseAvailable && selectedPartId) {
-        transformController.exitPositionAuthoring?.();
-        if (partPoseEditor.activeLayerId !== layer.id) {
-          partPoseEditor.onStart(layer.id, selectedPartId);
-        }
-      }
-      return;
-    }
+    partPoseEditor.onActionSectionOpenChange(
+      event.currentTarget.open && presentation === 'landscape',
+    );
+    if (event.currentTarget.open) return;
     transformController.exitPositionAuthoring?.();
     if (partPoseEditor.activeLayerId === layer.id) {
       partPoseEditor.onExit();
@@ -116,9 +127,6 @@ export function PortraitPropertiesSections({
   };
   const finishPositionAuthoring = (): void => {
     transformController.exitPositionAuthoring?.();
-    if (partPoseAvailable && selectedPartId) {
-      partPoseEditor.onStart(layer.id, selectedPartId);
-    }
   };
 
   return (
@@ -169,6 +177,7 @@ export function PortraitPropertiesSections({
           className="right-inspector-section right-inspector-action-section"
           data-testid="right-inspector-action-section"
           onToggle={handleActionToggle}
+          ref={actionSectionRef}
         >
           <summary>动作</summary>
           <div className="right-inspector-action-content">
@@ -178,13 +187,15 @@ export function PortraitPropertiesSections({
                 className="right-inspector-action-position"
                 data-testid="right-inspector-action-position"
               >
-                <strong>位置</strong>
-                <PositionAuthoringControls
-                  controller={transformController}
-                  onFinish={finishPositionAuthoring}
-                  onHold={createPositionHold}
-                  onStart={startPositionAuthoring}
-                />
+                <div className="right-inspector-action-position-heading">
+                  <strong>位置</strong>
+                  <PositionAuthoringControls
+                    controller={transformController}
+                    onFinish={finishPositionAuthoring}
+                    onHold={createPositionHold}
+                    onStart={startPositionAuthoring}
+                  />
+                </div>
               </section>
             ) : null}
             {partPoseAvailable ? (

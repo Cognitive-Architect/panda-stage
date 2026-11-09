@@ -15,6 +15,8 @@ export function resolvePartPoseEditorParts(
 
 /** Ephemeral canvas/inspector mode owned by EditorShell, never project data. */
 export interface PartPoseEditorUi {
+  actionSectionOpen: boolean;
+  onActionSectionOpenChange(open: boolean): void;
   activeLayerId: string | null;
   selectedPartId: string | null;
   calibratingPivot: boolean;
@@ -51,6 +53,8 @@ export function createPartPoseGestureContextKey(
 }
 
 export const EMPTY_PART_POSE_EDITOR_UI: PartPoseEditorUi = {
+  actionSectionOpen: false,
+  onActionSectionOpenChange: () => undefined,
   activeLayerId: null,
   selectedPartId: null,
   calibratingPivot: false,

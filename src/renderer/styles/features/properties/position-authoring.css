@@ -44,6 +44,31 @@ button.position-authoring-hold:hover:not(:disabled) {
   font-size: 12px;
 }
 
+.position-authoring-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.position-authoring-icon-action:focus-visible:not(:hover)::after {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  content: attr(title);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .position-authoring-status {
   color: var(--ui-color-text-secondary);
   font-size: 12px;
@@ -70,8 +95,11 @@ button.position-authoring-hold:hover:not(:disabled) {
 
 .right-inspector-action-position .position-authoring-entry {
   display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -91,6 +119,17 @@ button.position-authoring-hold:hover:not(:disabled) {
   font-weight: 600;
 }
 
+.right-inspector-action-position .position-authoring-entry
+  > button.position-authoring-icon-action[data-ui-size='icon'] {
+  position: relative;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: var(--ui-radius-small);
+}
+
 .right-inspector-action-position .position-authoring-entry > .position-authoring-status {
   flex: 1 0 100%;
 }
@@ -98,4 +137,16 @@ button.position-authoring-hold:hover:not(:disabled) {
 .right-inspector-action-position .position-authoring-guidance {
   flex: 1 0 100%;
   padding: 4px 8px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+  .position-authoring-entry
+  > button.position-authoring-icon-action[data-ui-size='icon'],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .position-authoring-entry
+  > button.position-authoring-icon-action[data-ui-size='icon'] {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
 }

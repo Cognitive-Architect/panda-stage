@@ -662,6 +662,7 @@ export function CanvasStage({
     ) ?? null;
   const poseEditorCanTransform = Boolean(
     partPoseEditor.activeLayerId &&
+      !partPoseEditor.calibratingPivot &&
       poseEditorStageLayer &&
       poseEditorStageLayer.layer.id === selectedLayerId &&
       !poseEditorStageLayer.layer.locked &&
@@ -951,6 +952,9 @@ export function CanvasStage({
                             poseEditing={
                               partPoseEditor.activeLayerId === layer.id
                             }
+                            poseSelectionEnabled={
+                              partPoseEditor.actionSectionOpen
+                            }
                             poseSelectedPartId={
                               partPoseEditor.activeLayerId === layer.id
                                 ? partPoseEditor.selectedPartId
@@ -974,6 +978,9 @@ export function CanvasStage({
                             onSelectPart={(partId) => {
                               selectionStore.select(layer.id);
                               partPoseEditor.onSelectPart(partId);
+                            }}
+                            onStartPartPose={(layerId, partId) => {
+                              partPoseEditor.onStart(layerId, partId);
                             }}
                             onCommitPartPose={(partId, keyframe, gestureContextKey) => {
                               try {

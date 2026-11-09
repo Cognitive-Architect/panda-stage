@@ -38,6 +38,8 @@ vi.mock('react-konva', async () => {
     listening?: boolean;
     name?: string;
     opacity?: number;
+    onClick?: (event: { cancelBubble: boolean }) => void;
+    onTap?: (event: { cancelBubble: boolean }) => void;
     radius?: number;
     strokeWidth?: number;
   };
@@ -64,6 +66,16 @@ vi.mock('react-konva', async () => {
           'data-listening': props.listening,
           'data-radius': props.radius,
           'data-stroke-width': props.strokeWidth,
+          onClick: props.onClick
+            ? (event: React.MouseEvent<HTMLDivElement>) => {
+                const konvaEvent = { cancelBubble: false };
+                props.onClick?.(konvaEvent);
+                if (konvaEvent.cancelBubble) event.stopPropagation();
+              }
+            : undefined,
+          onTouchEnd: props.onTap
+            ? () => props.onTap?.({ cancelBubble: false })
+            : undefined,
         },
         props.children,
       );
@@ -446,6 +458,103 @@ function adaptivePoseLayer(opacity: number) {
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  it('starts Part pose from canvas selection only while the Action section is open', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const { model } = adaptivePoseLayer(1);
+    const selectedPart = model.visual.parts
+      .filter((part) => part.visible !== false)
+      .sort((left, right) => left.drawOrder - right.drawOrder)[0];
+    if (!selectedPart || selectedPart.source.kind !== 'adaptive-part') {
+      throw new Error('Adaptive Parts fixture has no visible canvas part.');
+    }
+    const selectedPartId = selectedPart.source.characterPartId;
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onSelect = vi.fn();
+    const onStartPartPose = vi.fn();
+    const renderLayer = async (poseSelectionEnabled: boolean): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: false,
+        visual: model.visual,
+        onSelect,
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseSelectionEnabled,
+        onStartPartPose,
+      })));
+    };
+
+    try {
+      await renderLayer(false);
+      const image = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(image).not.toBeNull();
+      await act(async () => image!.click());
+      expect(onSelect).toHaveBeenCalledWith(model.layer.id);
+      expect(onStartPartPose).not.toHaveBeenCalled();
+
+      await renderLayer(true);
+      const enabledImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      await act(async () => enabledImage!.click());
+      expect(onStartPartPose).toHaveBeenCalledWith(
+        model.layer.id,
+        selectedPartId,
+      );
+
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect,
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: selectedPartId,
+        poseCurrentKeyframe: {
+          timeMs: 1_000,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        posePivotLayerPoint: { x: 0, y: 0 },
+        poseGestureContextKey: 'pivot-calibration-test',
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+      })));
+      expect(container.querySelector('[data-name="part-pose-move-handle"]'))
+        .toBeNull();
+      expect(container.querySelector('[data-name="part-pose-rotate-handle"]'))
+        .toBeNull();
+      expect(container.querySelector('[data-name="part-pose-scale-handle"]'))
+        .toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
   it('previews opacity on the one Character root without fading Body and Face separately', () => {
     const project = compositeProject({ mouth: false });
     const { model } = selectableComposite(project, 0, [BODY_ID, FACE_NORMAL_ID]);

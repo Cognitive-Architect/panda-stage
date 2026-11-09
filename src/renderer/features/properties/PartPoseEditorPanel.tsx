@@ -111,11 +111,11 @@ export function PartPoseEditorPanel({
   );
   const pivotLocked = Boolean(track && hasAuthoredPartPose(track));
   const canCalibratePivot = Boolean(
-    active &&
-      selectedPart &&
+    selectedPart &&
       selectedPart.visible !== false &&
       !layer.locked &&
-      !pivotLocked,
+      !pivotLocked &&
+      !editor.calibratingPivot,
   );
   const timeMs = timeline.currentTimeMs;
   const keyframe = track?.keys.find((key) => key.timeMs === timeMs);
@@ -126,21 +126,23 @@ export function PartPoseEditorPanel({
       : null;
   const timeIsValid = isValidFrameTime(timeMs) && timeMs <= shot.durationMs;
   const canEditKey = Boolean(
-    active &&
-      selectedPart &&
+    selectedPart &&
       !layer.locked &&
       selectedPart.visible !== false &&
-      keyframe,
+      keyframe &&
+      !editor.calibratingPivot,
   );
   const canAddKey = Boolean(
-    active &&
-      selectedPart &&
+    selectedPart &&
       selectedPart.visible !== false &&
       !layer.locked &&
       timeIsValid &&
-      !keyframe,
+      !keyframe &&
+      !editor.calibratingPivot,
   );
-  const keyReason = !timeIsValid
+  const keyReason = editor.calibratingPivot
+    ? '正在校准旋转点，请先完成或取消。'
+    : !timeIsValid
     ? '当前时间超出镜头范围，无法添加关键帧。'
     : layer.locked
       ? '图层已锁定，无法编辑关键帧。'
@@ -160,6 +162,7 @@ export function PartPoseEditorPanel({
   ): void => {
     if (!keyframe || !selectedPartId || !canEditKey) return;
     try {
+      if (!active) editor.onStart(layer.id, selectedPartId);
       layerStore.setPartPoseKeyframe(layer.id, selectedPartId, {
         ...keyframe,
         ...update,
@@ -172,6 +175,7 @@ export function PartPoseEditorPanel({
   const addKey = (): void => {
     if (!selectedPartId || !canAddKey) return;
     try {
+      if (!active) editor.onStart(layer.id, selectedPartId);
       layerStore.addPartPoseKeyframe(
         layer.id,
         selectedPartId,
@@ -403,7 +407,10 @@ export function PartPoseEditorPanel({
       {layer.poseAnimation ? (
         confirmClear ? (
           <div className="part-pose-editor-clear-confirm" data-testid="part-pose-clear-confirm">
-            <span>清除本镜头全部零件动作？</span>
+            <span>
+              清除当前镜头当前人物实例的所有零件姿势，并恢复角色库当前默认姿势？
+              角色库若已更新，恢复结果可能与冻结的旧镜头不同。
+            </span>
             <div className="part-pose-editor-confirm-actions">
               <Button
                 data-testid="part-pose-cancel-clear"
@@ -437,7 +444,7 @@ export function PartPoseEditorPanel({
               focusable="false"
               size={14}
             />
-            清除零件动作
+            清除全部零件动作
           </Button>
         )
       ) : null}

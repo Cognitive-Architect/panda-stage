@@ -71,6 +71,8 @@ function editorUi(
   partId: string | null,
 ): PartPoseEditorUi {
   return {
+    actionSectionOpen: false,
+    onActionSectionOpenChange: () => undefined,
     activeLayerId: layerId,
     selectedPartId: partId,
     calibratingPivot: false,
@@ -162,11 +164,13 @@ describe('Part pose editor UI', () => {
     });
   });
 
-  it('places Position and part actions in the sibling Action section and starts pose editing on expand', async () => {
+  it('keeps Action expansion passive and starts pose editing through explicit part controls', async () => {
     const { project, shot } = currentShot();
     const layer = currentLayer(fixture.layerId);
     const selectedPartId = fixture.partIds[0]!;
     const onStart = vi.fn();
+    const onStartPivot = vi.fn();
+    const onActionSectionOpenChange = vi.fn();
 
     await act(async () => root.render(createElement(PortraitPropertiesSections, {
       backgroundLayerSelected: false,
@@ -174,6 +178,8 @@ describe('Part pose editor UI', () => {
       partPoseEditor: {
         ...editorUi(null, selectedPartId),
         onStart,
+        onStartPivot,
+        onActionSectionOpenChange,
       },
       presentation: 'landscape',
       project,
@@ -199,8 +205,32 @@ describe('Part pose editor UI', () => {
 
     await act(async () => action.querySelector('summary')?.click());
 
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onActionSectionOpenChange).toHaveBeenLastCalledWith(true);
+    expect(container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.disabled).toBe(false);
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      revision: 0,
+      dirty: false,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.click());
+    expect(onStartPivot).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+
+    const selector = container.querySelector<HTMLSelectElement>(
+      '[data-testid="part-pose-part-select"]',
+    )!;
+    selector.value = fixture.partIds[1]!;
+    await act(async () => selector.dispatchEvent(new Event('change', { bubbles: true })));
     expect(onStart).toHaveBeenCalledOnce();
-    expect(onStart).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+    expect(onStart).toHaveBeenCalledWith(fixture.layerId, fixture.partIds[1]);
     expect(editorProjectStore.getSnapshot()).toMatchObject({
       revision: 0,
       dirty: false,
@@ -247,18 +277,30 @@ describe('Part pose editor UI', () => {
       .not.toBeNull();
     expect(action.querySelector('[data-testid="part-pose-part-select"]'))
       .toBeNull();
+    const hold = action.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-hold"]',
+    );
+    expect(hold?.getAttribute('aria-label')).toBe('保持当前位置');
+    expect(hold?.title).toBe('保持当前位置');
+    expect(hold?.disabled).toBe(false);
+    await act(async () => hold?.click());
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(1);
   });
 
-  it('hands off Position and part editing safely and cancels an uncommitted Position draft on collapse', async () => {
+  it('keeps Position finish neutral and cancels drafts when handing off or collapsing Action', async () => {
     const { shot } = currentShot();
     const selectedPartId = fixture.partIds[0]!;
     const layer = currentLayer(fixture.layerId);
     const onStart = vi.fn();
+    const onStartPivot = vi.fn();
     const onExit = vi.fn();
+    const onActionSectionOpenChange = vi.fn();
     const partPoseEditor: PartPoseEditorUi = {
-      ...editorUi(fixture.layerId, selectedPartId),
+      ...editorUi(null, selectedPartId),
       onStart,
+      onStartPivot,
       onExit,
+      onActionSectionOpenChange,
     };
     timelineUiStore.seek(1_000, shot.durationMs);
     expect(positionAuthoringSessionStore.createHold().status).toBe('committed');
@@ -282,10 +324,16 @@ describe('Part pose editor UI', () => {
     )!;
     await act(async () => action.querySelector('summary')?.click());
 
+    const startButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-start"]',
+    );
+    expect(startButton?.getAttribute('aria-label')).toBe('调整位置');
+    expect(startButton?.title).toBe('调整位置');
+
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="position-authoring-start"]',
     )?.click());
-    expect(onExit).toHaveBeenCalledOnce();
+    expect(onExit).not.toHaveBeenCalled();
     expect(positionAuthoringSessionStore.getSnapshot()?.layerId)
       .toBe(fixture.layerId);
     await act(async () => {
@@ -300,7 +348,7 @@ describe('Part pose editor UI', () => {
       '[data-testid="position-authoring-finish"]',
     )?.click());
     expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
-    expect(onStart).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+    expect(onStart).not.toHaveBeenCalled();
 
     await act(async () => container.querySelector<HTMLButtonElement>(
       '[data-testid="position-authoring-start"]',
@@ -313,11 +361,54 @@ describe('Part pose editor UI', () => {
         y: layer.y + 20,
       });
     });
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.click());
+    expect(onStartPivot).toHaveBeenCalledWith(fixture.layerId, selectedPartId);
+    expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      revision: positionRevision,
+      dirty: true,
+    });
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-start"]',
+    )?.click());
+    await act(async () => {
+      positionAuthoringSessionStore.updateActiveDraft({
+        x: layer.x + 35,
+        y: layer.y + 22,
+      });
+    });
+
+    const selector = container.querySelector<HTMLSelectElement>(
+      '[data-testid="part-pose-part-select"]',
+    )!;
+    selector.value = fixture.partIds[1]!;
+    await act(async () => selector.dispatchEvent(new Event('change', { bubbles: true })));
+    expect(onStart).toHaveBeenCalledWith(fixture.layerId, fixture.partIds[1]);
+    expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      revision: positionRevision,
+      dirty: true,
+    });
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="position-authoring-start"]',
+    )?.click());
+    await act(async () => {
+      positionAuthoringSessionStore.updateActiveDraft({
+        x: layer.x + 30,
+        y: layer.y + 18,
+      });
+    });
     await act(async () => action.querySelector('summary')?.click());
 
     expect(action.open).toBe(false);
+    expect(onActionSectionOpenChange).toHaveBeenLastCalledWith(false);
     expect(positionAuthoringSessionStore.getSnapshot()).toBeNull();
-    expect(onExit).toHaveBeenCalledTimes(3);
+    expect(onExit).not.toHaveBeenCalled();
     expect(editorProjectStore.getSnapshot()).toMatchObject({
       revision: positionRevision,
       dirty: true,
@@ -395,6 +486,23 @@ describe('Part pose editor UI', () => {
       selector!.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(onSelectPart).toHaveBeenCalledWith(fixture.partIds[2]);
+
+    const onStartInactive = vi.fn();
+    await act(async () => root.render(createElement(PartPoseEditorPanel, {
+      project,
+      shot,
+      layer: currentLayer(fixture.layerId),
+      editor: {
+        ...editorUi(null, fixture.partIds[0]!),
+        onStart: onStartInactive,
+      },
+    })));
+    const inactiveSelector = container.querySelector<HTMLSelectElement>(
+      '[data-testid="part-pose-part-select"]',
+    )!;
+    inactiveSelector.value = fixture.partIds[1]!;
+    await act(async () => inactiveSelector.dispatchEvent(new Event('change', { bubbles: true })));
+    expect(onStartInactive).toHaveBeenCalledWith(fixture.layerId, fixture.partIds[1]);
 
     await act(async () => root.render(createElement(PartPoseEditorPanel, {
       project,
@@ -499,6 +607,8 @@ describe('Part pose editor UI', () => {
     expect(container.querySelector('[data-testid="part-pose-set-pivot"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-more"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-clear"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-clear"]')?.textContent)
+      .toContain('清除全部零件动作');
 
     const fine = container.querySelector<HTMLDetailsElement>(
       '[data-testid="part-pose-fine"]',
@@ -518,7 +628,11 @@ describe('Part pose editor UI', () => {
       '[data-testid="part-pose-clear"]',
     )?.click());
     expect(container.querySelector('[data-testid="part-pose-clear-confirm"]')?.textContent)
-      .toContain('清除本镜头全部零件动作？');
+      .toContain('清除当前镜头当前人物实例的所有零件姿势');
+    expect(container.querySelector('[data-testid="part-pose-clear-confirm"]')?.textContent)
+      .toContain('恢复角色库当前默认姿势');
+    expect(container.querySelector('[data-testid="part-pose-clear-confirm"]')?.textContent)
+      .toContain('恢复结果可能与冻结的旧镜头不同');
     expect(container.querySelector('[data-testid="part-pose-confirm-clear"]')?.textContent)
       .toContain('确认清除');
     expect(container.querySelector('[role="dialog"]')).toBeNull();
@@ -558,23 +672,87 @@ describe('Part pose editor UI', () => {
     });
   });
 
-  it('atomically adds the first key from the panel and leaves other base pivots calibratable', async () => {
+  it('clears only the selected Character instance and preserves Position keys', async () => {
+    const initialProject = currentShot().project;
+    const firstLayer = currentLayer(fixture.layerId);
+    if (firstLayer.source.kind !== 'character') {
+      throw new Error('Adaptive Parts fixture Layer has no Character source.');
+    }
+    const secondPlacement = new LayerService().createFromAdaptiveCharacter(
+      initialProject,
+      IDS.shot,
+      firstLayer.source.characterId,
+      { x: firstLayer.x + 120, y: firstLayer.y },
+    );
+    editorProjectStore.clear();
+    editorProjectStore.open(PROJECT_ROOT, secondPlacement.project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(fixture.layerId);
+    timelineUiStore.seek(1_000, currentShot().shot.durationMs);
+    const partId = fixture.partIds[0]!;
+
+    expect(positionAuthoringSessionStore.createHold().status).toBe('committed');
+    const positionEventsBeforeClear = currentShot().shot.timelineEvents;
+    selectionStore.select(secondPlacement.layer.id);
+    layerStore.addPartPoseKeyframe(secondPlacement.layer.id, partId, 1_000);
+    const otherInstancePose = currentLayer(secondPlacement.layer.id).poseAnimation;
+    selectionStore.select(fixture.layerId);
+    layerStore.addPartPoseKeyframe(fixture.layerId, partId, 1_000);
+
+    const { project, shot } = currentShot();
+    await act(async () => root.render(createElement(PartPoseEditorPanel, {
+      project,
+      shot,
+      layer: currentLayer(fixture.layerId),
+      editor: editorUi(fixture.layerId, partId),
+    })));
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-clear"]',
+    )?.click());
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-confirm-clear"]',
+    )?.click());
+
+    expect(currentLayer(fixture.layerId).poseAnimation).toBeUndefined();
+    expect(currentLayer(secondPlacement.layer.id).poseAnimation).toEqual(otherInstancePose);
+    expect(currentShot().shot.timelineEvents).toEqual(positionEventsBeforeClear);
+    await act(async () => expect(editorProjectStore.undo()).toBe(true));
+    expect(currentLayer(fixture.layerId).poseAnimation).not.toBeNull();
+    expect(currentLayer(secondPlacement.layer.id).poseAnimation).toEqual(otherInstancePose);
+    expect(currentShot().shot.timelineEvents).toEqual(positionEventsBeforeClear);
+  });
+
+  it('starts pose editing on demand for pivot and first-key actions', async () => {
     const { shot } = currentShot();
     timelineUiStore.seek(1_000, shot.durationMs);
     const firstPartId = fixture.partIds[0]!;
+    const onStart = vi.fn();
+    const onStartPivot = vi.fn();
     const props = {
       project: fixture.project,
       shot,
       layer: currentLayer(fixture.layerId),
-      editor: editorUi(fixture.layerId, firstPartId),
+      editor: {
+        ...editorUi(null, firstPartId),
+        onStart,
+        onStartPivot,
+      },
     };
     await act(async () => root.render(createElement(PartPoseEditorPanel, props)));
+
+    const setPivot = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    );
+    expect(setPivot?.disabled).toBe(false);
+    await act(async () => setPivot?.click());
+    expect(onStartPivot).toHaveBeenCalledWith(fixture.layerId, firstPartId);
 
     const addKey = container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-add-key"]',
     );
     expect(addKey?.disabled).toBe(false);
     await act(async () => addKey?.click());
+    expect(onStart).toHaveBeenCalledWith(fixture.layerId, firstPartId);
 
     const snapshot = editorProjectStore.getSnapshot()!;
     expect(snapshot).toMatchObject({ revision: 1, dirty: true });
@@ -609,6 +787,113 @@ describe('Part pose editor UI', () => {
       .toBeNull();
     expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]'))
       .not.toBeNull();
+  });
+
+  it('blocks pose writes during pivot calibration and restores legal actions after cancel or selection', async () => {
+    const { shot } = currentShot();
+    timelineUiStore.seek(1_000, shot.durationMs);
+    const partId = fixture.partIds[0]!;
+    const onCancelPivot = vi.fn();
+    const onSetPivot = vi.fn();
+    const pivot = { x: 31, y: 47 };
+    const renderPart = async (
+      editor: PartPoseEditorUi,
+    ): Promise<void> => {
+      const { project } = currentShot();
+      await act(async () => root.render(createElement(PartPoseEditorPanel, {
+        project,
+        shot,
+        layer: currentLayer(fixture.layerId),
+        editor,
+      })));
+    };
+
+    await renderPart({
+      ...editorUi(fixture.layerId, partId),
+      calibratingPivot: true,
+      onCancelPivot,
+      onSetPivot,
+    });
+    const addKeyWhileCalibrating = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-add-key"]',
+    );
+    expect(addKeyWhileCalibrating?.disabled).toBe(true);
+    expect(container.querySelector('[data-testid="part-pose-key-reason"]')?.textContent)
+      .toContain('正在校准旋转点，请先完成或取消');
+    expect([...container.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="part-pose-rotation-controls"] button, .part-pose-editor-scale-stepper button',
+    )].every((button) => button.disabled)).toBe(true);
+    await act(async () => addKeyWhileCalibrating?.click());
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ revision: 0, dirty: false });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-cancel-pivot"]',
+    )?.click());
+    expect(onCancelPivot).toHaveBeenCalledOnce();
+    await renderPart(editorUi(fixture.layerId, partId));
+    const addKeyAfterCancel = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-add-key"]',
+    );
+    expect(addKeyAfterCancel?.disabled).toBe(false);
+    await act(async () => addKeyAfterCancel?.click());
+    expect(currentLayer(fixture.layerId).poseAnimation?.tracks.find(
+      (track) => track.partId === partId,
+    )?.keys.map((key) => key.timeMs)).toEqual([0, 1_000]);
+
+    await renderPart({
+      ...editorUi(fixture.layerId, partId),
+      calibratingPivot: true,
+      onCancelPivot,
+    });
+    const rotateWhileCalibrating = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-rotation-controls"] button',
+    );
+    expect(rotateWhileCalibrating?.disabled).toBe(true);
+    const revisionDuringCalibration = editorProjectStore.getSnapshot()?.revision;
+    await act(async () => rotateWhileCalibrating?.click());
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(revisionDuringCalibration);
+    expect(currentLayer(fixture.layerId).poseAnimation?.tracks.find(
+      (track) => track.partId === partId,
+    )?.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(0);
+
+    await act(async () => container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-cancel-pivot"]',
+    )?.click());
+    await renderPart(editorUi(fixture.layerId, partId));
+    const rotateAfterCancel = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-rotation-controls"] button',
+    );
+    expect(rotateAfterCancel?.disabled).toBe(false);
+    await act(async () => rotateAfterCancel?.click());
+    expect(currentLayer(fixture.layerId).poseAnimation?.tracks.find(
+      (track) => track.partId === partId,
+    )?.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(-15);
+
+    const secondPartId = fixture.partIds[1]!;
+    await renderPart({
+      ...editorUi(fixture.layerId, secondPartId),
+      calibratingPivot: true,
+      onCancelPivot,
+      onSetPivot,
+    });
+    expect(container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-add-key"]',
+    )?.disabled).toBe(true);
+    await act(async () => onSetPivot(fixture.layerId, secondPartId, pivot));
+    await renderPart({
+      ...editorUi(fixture.layerId, secondPartId),
+      pivotDraft: { layerId: fixture.layerId, partId: secondPartId, point: pivot },
+    });
+    const addKeyAfterPivot = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-add-key"]',
+    );
+    expect(addKeyAfterPivot?.disabled).toBe(false);
+    await act(async () => addKeyAfterPivot?.click());
+    expect(currentLayer(fixture.layerId).poseAnimation?.tracks.find(
+      (track) => track.partId === secondPartId,
+    )?.keys.map((key) => key.timeMs)).toEqual([0, 1_000]);
+    expect(onSetPivot).toHaveBeenCalledWith(fixture.layerId, secondPartId, pivot);
   });
 
   it('keeps editing an instance snapshot after its Character Part is removed', async () => {

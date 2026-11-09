@@ -62,12 +62,14 @@ export interface SelectableLayerProps {
   onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
   poseEditing?: boolean;
+  poseSelectionEnabled?: boolean;
   poseSelectedPartId?: string | null;
   poseCurrentKeyframe?: PartPoseKeyframe | null;
   poseCanTransform?: boolean;
   posePivotLayerPoint?: Point | null;
   poseGestureContextKey?: string;
   onSelectPart?: (partId: string) => void;
+  onStartPartPose?: (layerId: string, partId: string) => void;
   onCommitPartPose?: (
     partId: string,
     keyframe: PartPoseKeyframe,
@@ -336,11 +338,13 @@ function renderSelectableLayer({
   onPositionAuthoringCommit = () => undefined,
   onError,
   poseEditing = false,
+  poseSelectionEnabled = false,
   poseSelectedPartId = null,
   poseCurrentKeyframe = null,
   poseCanTransform = false,
   posePivotLayerPoint = null,
   onSelectPart = () => undefined,
+  onStartPartPose = () => undefined,
 }: SelectableLayerProps,
   gestureController: PoseGestureController,
 ): React.JSX.Element {
@@ -437,8 +441,12 @@ function renderSelectableLayer({
   ): void => {
     event.cancelBubble = true;
     onSelect(layer.id);
-    if (poseEditing && part.source.kind === 'adaptive-part') {
-      onSelectPart(part.source.characterPartId);
+    if (part.source.kind === 'adaptive-part') {
+      if (poseEditing) {
+        onSelectPart(part.source.characterPartId);
+      } else if (poseSelectionEnabled) {
+        onStartPartPose(layer.id, part.source.characterPartId);
+      }
     }
   };
   const selectedPosePart = resolvedPartImages.find(

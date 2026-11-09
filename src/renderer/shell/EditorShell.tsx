@@ -40,6 +40,7 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { selectionStore } from '../stores/selectionStore';
 import { layerStore } from '../stores/layerStore';
+import { positionAuthoringSessionStore } from '../stores/positionAuthoringSessionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
@@ -530,6 +531,8 @@ export function EditorShell({
   );
   const [partPoseEditSession, setPartPoseEditSession] =
     useState<PartPoseEditSessionIdentity | null>(null);
+  const [partPoseActionSectionOpen, setPartPoseActionSectionOpen] =
+    useState(false);
   const [partPoseSelectedPartId, setPartPoseSelectedPartId] =
     useState<string | null>(null);
   const [partPosePivotMode, setPartPosePivotMode] = useState(false);
@@ -813,7 +816,7 @@ export function EditorShell({
       setPartPosePivotDraft(null);
     }
   }, [partPoseEditSession, partPoseSessionValid]);
-  const startPartPoseEdit = (layerId: string, partId: string): void => {
+  const startPartPoseEdit = (layerId: string, partId: string): boolean => {
     const snapshot = editorProjectStore.getSnapshot();
     const shot = snapshot?.project.shots.find(
       (candidate) => candidate.id === shotStore.getCurrentShotId(),
@@ -841,8 +844,9 @@ export function EditorShell({
         (part) => part.partId === partId,
       )
     ) {
-      return;
+      return false;
     }
+    positionAuthoringSessionStore.getActiveSessionHandle()?.cancel();
     setPartPoseEditSession({
       projectId: snapshot.project.id,
       projectRoot: snapshot.projectRoot,
@@ -854,6 +858,7 @@ export function EditorShell({
     setPartPoseSelectedPartId(partId);
     setPartPosePivotMode(false);
     setPartPosePivotDraft(null);
+    return true;
   };
   const exitPartPoseEdit = (): void => {
     setPartPoseEditSession(null);
@@ -862,6 +867,8 @@ export function EditorShell({
     setPartPosePivotDraft(null);
   };
   const partPoseEditorUi: PartPoseEditorUi = {
+    actionSectionOpen: partPoseActionSectionOpen,
+    onActionSectionOpenChange: setPartPoseActionSectionOpen,
     activeLayerId: activePartPoseLayerId,
     selectedPartId: activePartPoseLayerId ? partPoseSelectedPartId : null,
     calibratingPivot: activePartPoseLayerId ? partPosePivotMode : false,
@@ -880,7 +887,12 @@ export function EditorShell({
       setPartPosePivotDraft(null);
     },
     onStartPivot: (layerId, partId) => {
-      if (activePartPoseLayerId !== layerId || partPoseSelectedPartId !== partId) return;
+      if (
+        activePartPoseLayerId !== layerId ||
+        partPoseSelectedPartId !== partId
+      ) {
+        if (!startPartPoseEdit(layerId, partId)) return;
+      }
       setPartPosePivotDraft(null);
       setPartPosePivotMode(true);
     },

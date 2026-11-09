@@ -143,21 +143,41 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     const ready = renderToStaticMarkup(
       PositionAuthoringControls({ controller: readyController }),
     );
-    expect(ready).toContain('调整位置');
-    expect(ready).toContain('保持到此处');
+    expect(ready).toContain('aria-label="调整位置"');
+    expect(ready).toContain('title="调整位置"');
+    expect(ready).toContain('aria-label="保持当前位置"');
+    expect(ready).toContain('title="保持当前位置"');
+    expect(ready.match(/class="position-authoring-icon"/gu) ?? []).toHaveLength(2);
+    expect(ready).toContain('M3 12.5h6');
+    expect(ready).toContain('M2 21.5h7');
+    expect(ready).not.toMatch(/>调整位置<|>保持当前位置</u);
     expect(ready).not.toContain('我要调整位置');
     expect(ready).not.toContain('保持不动到这里');
     expect(ready).not.toContain('把人物拖到想要的位置');
     expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
     expect(ready).not.toContain('data-ui-variant="primary"');
     expect(ready).toContain('data-ui-variant="secondary"');
-    expect(transformReady).not.toContain('调整位置');
-    expect(transformReady).not.toContain('保持到此处');
+    expect(transformReady).not.toContain('aria-label="调整位置"');
+    expect(transformReady).not.toContain('aria-label="保持当前位置"');
     expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*value="500"/u,
     );
     expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*disabled=""/u,
+    );
+
+    const unavailable = renderToStaticMarkup(PositionAuthoringControls({
+      controller: {
+        ...readyController,
+        positionAuthoringAvailable: false,
+        positionHoldAvailable: false,
+      },
+    }));
+    expect(unavailable).toMatch(
+      /data-testid="position-authoring-start"[^>]*disabled=""/u,
+    );
+    expect(unavailable).toMatch(
+      /data-testid="position-authoring-hold"[^>]*disabled=""/u,
     );
 
     const activeController: LayerTransformController = {
@@ -177,8 +197,8 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     );
     expect(active).toContain('把人物拖到想要的位置');
     expect(active.match(/把人物拖到想要的位置/gu) ?? []).toHaveLength(1);
-    expect(active).not.toContain('调整位置');
-    expect(active).not.toContain('保持到此处');
+    expect(active).not.toContain('aria-label="调整位置"');
+    expect(active).not.toContain('aria-label="保持当前位置"');
     expect(active).not.toContain(TEMPORAL_TRANSFORM_STATUS);
     expect(transformActive).not.toContain('把人物拖到想要的位置');
     expect(transformActive).not.toContain('应用变换');
@@ -227,6 +247,19 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
         status: '位置已更新。',
       }).status,
     ).toBe('位置已更新。');
+
+    expect(getPositionAuthoringPresentation({
+      temporalInspection: true,
+      active: false,
+      available: false,
+      holdAvailable: false,
+      status: TEMPORAL_TRANSFORM_STATUS,
+    })).toMatchObject({
+      primaryVisible: true,
+      holdVisible: true,
+      guidanceVisible: false,
+      status: TEMPORAL_TRANSFORM_STATUS,
+    });
   });
 
   it('keeps formal Position precision behind concise display text', () => {

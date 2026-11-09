@@ -28,7 +28,7 @@ import {
   positionAuthoringSessionStore,
   usePositionAuthoringSession,
 } from '../../stores/positionAuthoringSessionStore';
-import { Button, DecorativeIcon } from '../../ui';
+import { Button, DecorativeIcon, IconButton } from '../../ui';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import {
   isLayerTransformEditableAtTime,
@@ -974,6 +974,40 @@ export interface PositionAuthoringControlsProps {
   onFinish?: () => void;
 }
 
+function PositionAuthoringGlyph({ moving }: { moving: boolean }): React.JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className="position-authoring-icon"
+      focusable="false"
+      viewBox="0 0 32 32"
+    >
+      {moving ? (
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.9"
+        >
+          <path d="M3 12.5h6" />
+          <path d="M5 17h5" />
+          <path d="M2 21.5h7" />
+        </g>
+      ) : null}
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        strokeWidth="1.9"
+      >
+        <circle cx="21" cy="7.5" r="3.5" />
+        <path d="m17 14 4 11 4-11z" />
+      </g>
+    </svg>
+  );
+}
+
 export function PositionAuthoringControls({
   controller,
   onStart,
@@ -1025,24 +1059,28 @@ export function PositionAuthoringControls({
           </Button>
         </>
       ) : presentation.primaryVisible ? (
-        <Button
-          className="position-authoring-primary"
+        <IconButton
+          aria-label="调整位置"
+          className="position-authoring-icon-action position-authoring-primary"
           data-testid="position-authoring-start"
+          disabled={!positionAuthoringAvailable}
           onClick={onStart ?? startPositionAuthoring}
+          title="调整位置"
           variant="secondary"
-        >
-          调整位置
-        </Button>
+          icon={<PositionAuthoringGlyph moving />}
+        />
       ) : null}
       {presentation.holdVisible ? (
-        <Button
-          className="position-authoring-hold"
+        <IconButton
+          aria-label="保持当前位置"
+          className="position-authoring-icon-action position-authoring-hold"
           data-testid="position-authoring-hold"
+          disabled={!positionHoldAvailable}
           onClick={onHold ?? createPositionHold}
+          title="保持当前位置"
           variant="secondary"
-        >
-          保持到此处
-        </Button>
+          icon={<PositionAuthoringGlyph moving={false} />}
+        />
       ) : null}
       {presentation.status ? (
         <output
