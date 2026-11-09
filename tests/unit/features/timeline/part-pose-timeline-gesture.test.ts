@@ -31,14 +31,17 @@ describe('Part Pose key drag preview', () => {
     })).toBe(1_000);
   });
 
-  it('keeps the 3-second end at 2958ms and ignores unusable geometry', () => {
+  it('allows the last key at the 3-second shot boundary', () => {
     expect(previewPartPoseKeyTime({
       ...base,
       fromTimeMs: 2_000,
       previousTimeMs: 1_000,
       nextTimeMs: null,
       deltaPx: 100_000,
-    })).toBe(2_958);
+    })).toBe(3_000);
+  });
+
+  it('ignores unusable geometry', () => {
     expect(previewPartPoseKeyTime({
       ...base,
       pixelsPerMs: 0,

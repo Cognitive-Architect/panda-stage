@@ -33,7 +33,7 @@ export function previewPartPoseKeyTime(input: {
     Math.round((timeMs * TIMELINE_FPS) / 1_000);
   const minimum = frameIndex(previousTimeMs) + 1;
   const maximum =
-    frameIndex(nextTimeMs ?? lastValidFrameTime(Math.max(0, durationMs - 1))) -
+    frameIndex(nextTimeMs ?? lastValidFrameTime(durationMs)) -
     (nextTimeMs === null ? 0 : 1);
   if (maximum < minimum) return fromTimeMs;
 
