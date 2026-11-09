@@ -338,7 +338,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
   });
 
-  it('reads frame elements with sibling frameFilters and fails closed on authored filter interpolation', () => {
+  it('interpolates one source-supported directional frame BlurFilter within its motion span', () => {
     const emptyFrameFilters = buildMotionAdapterFixture(
       '',
       '<frameFilters/>',
@@ -365,17 +365,79 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       { keyMode: '9728' },
     );
     const blurFiltersTarget = descriptor(blurFrameFilters, 'motion-root');
-    const selectedWithBlur = blurFrameFilters.buildGraphicFrameContext(
+    const start = blurFrameFilters.buildGraphicFrameContext(
       blurFiltersTarget.timelineXml,
       blurFiltersTarget.frameSpanIndex,
-      1,
-      'motion-frame-with-blur-frameFilters',
+      0,
+      'motion-frame-with-blur-frameFilters-start',
     );
-    expect(selectedWithBlur.ok).toBe(false);
-    if (!selectedWithBlur.ok) {
-      expect(selectedWithBlur.message).toContain('end frame contains unsupported frame filter interpolation');
-      expect(selectedWithBlur.message).toContain('BlurFilter (blurX=0, blurY=33)');
-      expect(selectedWithBlur.message).not.toContain('each endpoint must contain one visible symbol instance');
+    expect(start.ok).toBe(true);
+    if (start.ok) expect(start.value.layers[0]?.frameFilter).toBeUndefined();
+
+    for (const [frameIndex, expectedProgress] of [[1, 1 / 13], [3, 3 / 13], [6, 6 / 13]] as const) {
+      const selected = blurFrameFilters.buildGraphicFrameContext(
+        blurFiltersTarget.timelineXml,
+        blurFiltersTarget.frameSpanIndex,
+        frameIndex,
+        `motion-frame-with-blur-frameFilters-${frameIndex}`,
+      );
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      expect(selected.value.layers[0]?.frameFilter).toMatchObject({
+        kind: 'blur', blurX: 0, quality: 'low', enabled: true,
+      });
+      expect(selected.value.layers[0]?.frameFilter?.blurY).toBeCloseTo(33 * expectedProgress, 3);
+    }
+
+    const end = blurFrameFilters.buildGraphicFrameContext(
+      blurFiltersTarget.timelineXml,
+      blurFiltersTarget.frameSpanIndex,
+      13,
+      'motion-frame-with-blur-frameFilters-end',
+    );
+    expect(end.ok).toBe(true);
+    if (end.ok) expect(end.value.layers[0]?.frameFilter?.blurY).toBe(33);
+  });
+
+  it('rejects unsupported BlurFilter combinations, attributes, children, values, and start filters', () => {
+    const unsupportedEndFilters = [
+      '<frameFilters><GlowFilter/></frameFilters>',
+      '<frameFilters><BlurFilter blurX="0" blurY="33" quality="low"/></frameFilters>',
+      '<frameFilters><BlurFilter blurX="0" blurY="256"/></frameFilters>',
+      '<frameFilters><BlurFilter blurX="0" blurY="33"><Unsupported/></BlurFilter></frameFilters>',
+      '<frameFilters><BlurFilter blurX="0" blurY="33"/><BlurFilter blurX="0" blurY="33"/></frameFilters>',
+    ];
+    for (const [index, metadata] of unsupportedEndFilters.entries()) {
+      const source = buildMotionAdapterFixture('', metadata, 'moving-target', 13, true, { keyMode: '9728' });
+      const target = descriptor(source, 'motion-root');
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        1,
+        `motion-frame-with-unsupported-filter-${index}`,
+      );
+      expect(selected.ok).toBe(false);
+      if (!selected.ok) expect(selected.message).toContain('unsupported frame filter interpolation');
+    }
+
+    const startSource = buildMotionAdapterFixture(
+      '<frameFilters><BlurFilter blurX="0" blurY="1"/></frameFilters>',
+      '',
+      'moving-target',
+      13,
+      true,
+      { keyMode: '9728' },
+    );
+    const startTarget = descriptor(startSource, 'motion-root');
+    const selectedWithStartFilter = startSource.buildGraphicFrameContext(
+      startTarget.timelineXml,
+      startTarget.frameSpanIndex,
+      1,
+      'motion-frame-with-unsupported-start-filter',
+    );
+    expect(selectedWithStartFilter.ok).toBe(false);
+    if (!selectedWithStartFilter.ok) {
+      expect(selectedWithStartFilter.message).toContain('unfiltered start frame');
     }
   });
 

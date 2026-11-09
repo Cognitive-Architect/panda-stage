@@ -45,7 +45,9 @@ import {
 import type {
   FlaResolvedClipPath,
   FlaResolvedDisplayList,
+  FlaResolvedDisplayLayer,
   FlaResolvedDisplayNode,
+  FlaDisplayListBlurFilter,
   FlaDisplayListElement,
   FlaDisplayListResolverInput,
 } from './fla-display-list-resolver';
@@ -2986,6 +2988,7 @@ export interface BuildComposedSvgInput {
 }
 
 interface ComposedLeaf {
+  readonly layer: FlaResolvedDisplayLayer;
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
   readonly opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
 }
@@ -3257,17 +3260,26 @@ function includeTransformedBitmapBounds(
   ].every((point) => includePoint(bounds, point));
 }
 
-function createGraphicViewport(bounds: MutableBounds): GraphicViewport | null {
+function createGraphicViewport(
+  bounds: MutableBounds,
+  filterExpansion: { readonly x: number; readonly y: number } = { x: 0, y: 0 },
+): GraphicViewport | null {
   if (![bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].every(Number.isFinite)) return null;
+  if (![filterExpansion.x, filterExpansion.y].every((value) => Number.isFinite(value) && value >= 0)) return null;
   const rawWidth = bounds.maxX - bounds.minX;
   const rawHeight = bounds.maxY - bounds.minY;
   if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth < 0 || rawHeight < 0) return null;
-  const contentWidth = Math.max(1, rawWidth);
-  const contentHeight = Math.max(1, rawHeight);
-  const contentBounds: Rect2D = { x: bounds.minX, y: bounds.minY, width: rawWidth, height: rawHeight };
+  const contentBounds: Rect2D = {
+    x: bounds.minX - filterExpansion.x,
+    y: bounds.minY - filterExpansion.y,
+    width: rawWidth + filterExpansion.x * 2,
+    height: rawHeight + filterExpansion.y * 2,
+  };
+  const contentWidth = Math.max(1, contentBounds.width);
+  const contentHeight = Math.max(1, contentBounds.height);
   const viewBox: Rect2D = {
-    x: bounds.minX - GRAPHIC_CONTENT_PADDING,
-    y: bounds.minY - GRAPHIC_CONTENT_PADDING,
+    x: contentBounds.x - GRAPHIC_CONTENT_PADDING,
+    y: contentBounds.y - GRAPHIC_CONTENT_PADDING,
     width: contentWidth + GRAPHIC_CONTENT_PADDING * 2,
     height: contentHeight + GRAPHIC_CONTENT_PADDING * 2,
   };
@@ -3304,6 +3316,16 @@ function matrixIsFinite(matrix: FlaResolvedDisplayNode['worldTransform']): boole
   return [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(Number.isFinite);
 }
 
+function isSupportedFrameBlurFilter(value: unknown): value is FlaDisplayListBlurFilter {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const filter = value as Record<string, unknown>;
+  return Object.keys(filter).every((key) => ['kind', 'blurX', 'blurY', 'quality', 'enabled'].includes(key)) &&
+    filter.kind === 'blur' &&
+    typeof filter.blurX === 'number' && Number.isFinite(filter.blurX) && filter.blurX >= 0 && filter.blurX <= 255 &&
+    typeof filter.blurY === 'number' && Number.isFinite(filter.blurY) && filter.blurY >= 0 && filter.blurY <= 255 &&
+    filter.quality === 'low' && filter.enabled === true;
+}
+
 function isPngWithExpectedDimensions(
   bytes: Uint8Array,
   width: number,
@@ -3334,6 +3356,7 @@ function flattenResolvedDisplayList(
   const visit = (
     node: FlaResolvedDisplayNode,
     depth: number,
+    layer: FlaResolvedDisplayLayer,
     opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
   ): BuildSvgFailure | null => {
     visited += 1;
@@ -3357,18 +3380,18 @@ function flattenResolvedDisplayList(
         ? [...opacityGroups, node]
         : opacityGroups;
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1, childOpacityGroups);
+        const nestedFailure = visit(child, depth + 1, layer, childOpacityGroups);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ node, opacityGroups });
+    leaves.push({ layer, node, opacityGroups });
     return null;
   };
 
   for (const layer of displayList.layers) {
     for (const node of layer.children) {
-      const nestedFailure = visit(node, 0);
+      const nestedFailure = visit(node, 0, layer);
       if (nestedFailure) return nestedFailure;
     }
   }
@@ -3410,6 +3433,25 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
 
   const flattened = flattenResolvedDisplayList(displayList);
   if (!flattened.ok) return flattened;
+
+  const frameBlurIdByLayer = new Map<FlaResolvedDisplayLayer, string>();
+  const frameBlurById = new Map<string, FlaDisplayListBlurFilter>();
+  let maxFrameBlurExpansionX = 0;
+  let maxFrameBlurExpansionY = 0;
+  for (const [layerIndex, layer] of displayList.layers.entries()) {
+    if (!layer.frameFilter) continue;
+    if (!isSupportedFrameBlurFilter(layer.frameFilter)) {
+      return { ok: false, code: 'TARGET_UNSUPPORTED', message: `Layer ${layer.name} contains an unsupported frame filter` };
+    }
+    if (!flattened.leaves.some((leaf) => leaf.layer === layer)) continue;
+    const filterId = `fla-frame-blur-${crypto.createHash('sha256')
+      .update(`${renderTargetId}\u0000${layerIndex}`)
+      .digest('hex').slice(0, 24)}`;
+    frameBlurIdByLayer.set(layer, filterId);
+    frameBlurById.set(filterId, layer.frameFilter);
+    maxFrameBlurExpansionX = Math.max(maxFrameBlurExpansionX, Math.ceil(layer.frameFilter.blurX * 3));
+    maxFrameBlurExpansionY = Math.max(maxFrameBlurExpansionY, Math.ceil(layer.frameFilter.blurY * 3));
+  }
 
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
   const definitions = new Map<string, string>();
@@ -3578,7 +3620,28 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   };
 
   const openOpacityGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
-  for (const { node, opacityGroups } of flattened.leaves) {
+  let openLayer: FlaResolvedDisplayLayer | null = null;
+  let openLayerFilter = false;
+  for (const { layer, node, opacityGroups } of flattened.leaves) {
+    if (openLayer !== layer) {
+      while (openOpacityGroups.length > 0) {
+        const closeFailure = appendOpacityGroupTag('</g>');
+        if (closeFailure) return closeFailure;
+        openOpacityGroups.pop();
+      }
+      if (openLayerFilter) {
+        const closeFailure = appendOpacityGroupTag('</g>');
+        if (closeFailure) return closeFailure;
+        openLayerFilter = false;
+      }
+      openLayer = layer;
+      const filterId = frameBlurIdByLayer.get(layer);
+      if (filterId) {
+        const openFailure = appendOpacityGroupTag(`<g filter="url(#${filterId})">`);
+        if (openFailure) return openFailure;
+        openLayerFilter = true;
+      }
+    }
     let sharedGroupCount = 0;
     while (sharedGroupCount < openOpacityGroups.length &&
         sharedGroupCount < opacityGroups.length &&
@@ -3782,7 +3845,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     openOpacityGroups.pop();
   }
 
-  const graphicViewport = graphicBounds ? createGraphicViewport(graphicBounds) : null;
+  if (openLayerFilter) {
+    const closeFailure = appendOpacityGroupTag('</g>');
+    if (closeFailure) return closeFailure;
+  }
+
+  const graphicViewport = graphicBounds
+    ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
+    : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
   if (framingMode === 'content' && !graphicViewport && !blankGraphic) {
     return { ok: false, code: 'RENDER_FAILED', message: 'Graphic has no finite drawable content bounds' };
@@ -3798,7 +3868,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const formatRect = (rect: Rect2D): string =>
     `${formatSvgNumber(rect.x)} ${formatSvgNumber(rect.y)} ${formatSvgNumber(rect.width)} ${formatSvgNumber(rect.height)}`;
   const title = escapeXmlText(displayList.sourceName);
-  const defs = definitions.size > 0 ? `<defs>${[...definitions.values()].join('')}</defs>` : '';
+  const frameBlurDefinitions = [...frameBlurById.entries()].map(([id, filter]) =>
+    `<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" ` +
+    `x="${formatSvgNumber(viewBox.x)}" y="${formatSvgNumber(viewBox.y)}" ` +
+    `width="${formatSvgNumber(viewBox.width)}" height="${formatSvgNumber(viewBox.height)}" ` +
+    `color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" ` +
+    `stdDeviation="${formatSvgNumber(filter.blurX)} ${formatSvgNumber(filter.blurY)}"/></filter>`);
+  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions];
+  const defs = allDefinitions.length > 0 ? `<defs>${allDefinitions.join('')}</defs>` : '';
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
     `<title>FLA composed snapshot — ${title}</title>` +

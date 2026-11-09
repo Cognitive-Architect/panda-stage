@@ -4,9 +4,10 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds one fail-closed, source-bounded transform-only motion subset; unrelated XFL
- * semantics (shape tweens, non-vector/animated masks, text, filters, or ActionScript)
- * remain unsupported. Static filled-vector mask layers have a bounded resolver path.
+ * adds a fail-closed, source-bounded motion subset for transforms and one
+ * directional frame BlurFilter; unrelated XFL semantics (shape tweens,
+ * non-vector/animated masks, other filters, or ActionScript) remain unsupported.
+ * Static filled-vector mask layers have a bounded resolver path.
  */
 
 import crypto from 'node:crypto';
@@ -22,6 +23,7 @@ import {
 import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
+  type FlaDisplayListBlurFilter,
   type FlaDisplayListFrameContext,
   type FlaDisplayListMatrix,
   type FlaGraphicSymbolDefinition,
@@ -862,6 +864,63 @@ function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElement
   return getFlaXflDirectChildren(container.xml, container.name);
 }
 
+type BoundedFrameBlurResult =
+  | { readonly ok: true; readonly filter?: FlaDisplayListBlurFilter }
+  | { readonly ok: false; readonly message: string };
+
+function parseBoundedBlurValue(raw: string | undefined): number | null {
+  const value = raw?.trim();
+  if (!value || !/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 255 ? parsed : null;
+}
+
+function boundedMotionFrameBlurFilter(
+  frame: FlaXflElementBlock,
+  endpoint: 'start' | 'end',
+): BoundedFrameBlurResult {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
+  const frameFilterContainers = frameChildren.filter((child) => child.name === 'frameFilters');
+  if (frameFilterContainers.length > 1) {
+    return { ok: false, message: `${endpoint} frame contains multiple frameFilters containers` };
+  }
+  const filters = frameFilterContainers.flatMap((container) =>
+    getFlaXflDirectChildren(container.xml, container.name));
+  if (filters.length === 0) return { ok: true };
+
+  const describeFilter = (filter: FlaXflElementBlock): string => {
+    if (filter.name !== 'BlurFilter') return filter.name;
+    const blurX = filter.attributes.blurX?.slice(0, 32) ?? 'default';
+    const blurY = filter.attributes.blurY?.slice(0, 32) ?? 'default';
+    return `BlurFilter (blurX=${blurX}, blurY=${blurY})`;
+  };
+  const unsupported = (detail?: string): BoundedFrameBlurResult => ({
+    ok: false,
+    message: `${endpoint} frame contains unsupported frame filter interpolation: ${filters
+      .map(describeFilter).join(', ')}${detail ? `; ${detail}` : ''}`,
+  });
+  if (endpoint === 'start') return unsupported('the bounded subset requires an unfiltered start frame');
+  if (filters.length !== 1 || filters[0]?.name !== 'BlurFilter') return unsupported();
+
+  const filter = filters[0]!;
+  const attributes = Object.keys(filter.attributes).sort();
+  if (attributes.length !== 2 || attributes[0] !== 'blurX' || attributes[1] !== 'blurY') {
+    return unsupported('BlurFilter must author only blurX and blurY');
+  }
+  if (getFlaXflDirectChildren(filter.xml, filter.name).length !== 0) {
+    return unsupported('BlurFilter child nodes are unsupported');
+  }
+  const blurX = parseBoundedBlurValue(filter.attributes.blurX);
+  const blurY = parseBoundedBlurValue(filter.attributes.blurY);
+  if (blurX === null || blurY === null) {
+    return unsupported('blurX and blurY must be finite decimal values in 0..255');
+  }
+  return {
+    ok: true,
+    filter: { kind: 'blur', blurX, blurY, quality: 'low', enabled: true },
+  };
+}
+
 function boundedMotionFrameStructureRejectionReason(
   frame: FlaXflElementBlock,
   endpoint: 'start' | 'end',
@@ -878,22 +937,31 @@ function boundedMotionFrameStructureRejectionReason(
       .map((child) => child.name).join(', ')}`;
   }
 
-  const frameFilterContainers = frameChildren.filter((child) => child.name === 'frameFilters');
-  if (frameFilterContainers.length > 1) {
-    return `${endpoint} frame contains multiple frameFilters containers`;
-  }
-  const frameFilters = frameFilterContainers.flatMap((container) =>
-    getFlaXflDirectChildren(container.xml, container.name));
-  if (frameFilters.length === 0) return null;
+  const filterResult = boundedMotionFrameBlurFilter(frame, endpoint);
+  return filterResult.ok ? null : filterResult.message;
+}
 
-  const describeFilter = (filter: FlaXflElementBlock): string => {
-    if (filter.name !== 'BlurFilter') return filter.name;
-    const blurX = filter.attributes.blurX?.slice(0, 32) ?? 'default';
-    const blurY = filter.attributes.blurY?.slice(0, 32) ?? 'default';
-    return `BlurFilter (blurX=${blurX}, blurY=${blurY})`;
+function interpolateBoundedMotionFrameBlurFilter(
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  progress: number,
+): BoundedFrameBlurResult {
+  const startFilter = boundedMotionFrameBlurFilter(startFrame, 'start');
+  if (!startFilter.ok) return startFilter;
+  const endFilter = boundedMotionFrameBlurFilter(endFrame, 'end');
+  if (!endFilter.ok) return endFilter;
+  if (!endFilter.filter) return { ok: true };
+  if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
+    return { ok: false, message: 'motion filter progress must be finite and within 0..1' };
+  }
+  return {
+    ok: true,
+    filter: {
+      ...endFilter.filter,
+      blurX: endFilter.filter.blurX * progress,
+      blurY: endFilter.filter.blurY * progress,
+    },
   };
-  return `${endpoint} frame contains unsupported frame filter interpolation: ${frameFilters
-    .map(describeFilter).join(', ')}`;
 }
 
 function boundedMotionFramePairRejectionReason(
@@ -1104,10 +1172,32 @@ function buildGraphicFrameContext(
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
     let elements: readonly FlaDisplayListElement[] = [];
+    let frameFilter: FlaDisplayListBlurFilter | undefined;
     if (selection.kind === 'authored-frame') {
       const frame = selection.sourceFrame;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
+      const incomingMotionSpan = indexedLayer?.spans.find((span) =>
+        span.tweenType === 'motion' && span.endExclusive === selection.span.index);
+      if (incomingMotionSpan) {
+        const authoredFilterResult = boundedMotionFrameBlurFilter(frame, 'end');
+        if (!authoredFilterResult.ok) return fail('RENDER_FAILED', authoredFilterResult.message);
+        if (authoredFilterResult.filter) {
+          const incomingPairRejectionReason = boundedMotionFramePairRejectionReason(
+            incomingMotionSpan.sourceFrame,
+            frame,
+            incomingMotionSpan.index,
+            incomingMotionSpan.duration,
+          );
+          if (incomingPairRejectionReason) {
+            return fail(
+              'RENDER_FAILED',
+              `Graphic frame ${frameIndex} has an unsupported incoming frame-filter tween: ${incomingPairRejectionReason}`,
+            );
+          }
+          frameFilter = authoredFilterResult.filter;
+        }
+      }
       let synchronizedMotionKey = false;
       if (selection.span.index === 0 && selection.span.duration === 7) {
         const endSpan = indexedLayer?.spans.find((span) => span.index === 7);
@@ -1197,6 +1287,13 @@ function buildGraphicFrameContext(
         return rejectTween('matching Graphic instances with authored matrices are required');
       }
       const progress = (frameIndex - startSpan.index) / startSpan.duration;
+      const interpolatedFrameFilter = interpolateBoundedMotionFrameBlurFilter(
+        startFrame,
+        endFrame,
+        progress,
+      );
+      if (!interpolatedFrameFilter.ok) return rejectTween(interpolatedFrameFilter.message);
+      frameFilter = interpolatedFrameFilter.filter;
       const interpolated = interpolateFlaLinearMotionTransform(
         startTarget.localTransform,
         endTarget.localTransform,
@@ -1232,6 +1329,7 @@ function buildGraphicFrameContext(
       ...(maskLayerIds.has(selection.layerIndex)
         ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
         : {}),
+      ...(frameFilter ? { frameFilter } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
   }

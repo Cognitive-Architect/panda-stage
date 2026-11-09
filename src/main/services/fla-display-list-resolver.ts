@@ -33,10 +33,20 @@ export interface FlaDisplayListFrameContext {
   readonly unsupportedDisplayReason?: string;
 }
 
+export interface FlaDisplayListBlurFilter {
+  readonly kind: 'blur';
+  readonly blurX: number;
+  readonly blurY: number;
+  readonly quality: 'low';
+  readonly enabled: true;
+}
+
 export interface FlaDisplayListLayer {
   readonly name: string;
   readonly visible: boolean;
   readonly elements: readonly FlaDisplayListElement[];
+  /** One source-supported DOMFrame BlurFilter scoped to this layer's contents. */
+  readonly frameFilter?: FlaDisplayListBlurFilter;
   /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
   readonly maskLayerId?: string;
   /** Source XFL mask identity linked to this layer through parentLayerIndex. */
@@ -192,6 +202,7 @@ export type FlaResolvedDisplayNode =
 export interface FlaResolvedDisplayLayer {
   readonly name: string;
   readonly children: readonly FlaResolvedDisplayNode[];
+  readonly frameFilter?: FlaDisplayListBlurFilter;
 }
 
 export interface FlaResolvedDisplayList {
@@ -436,7 +447,11 @@ function resolveLayers(
       activeClipPaths,
     );
     if (!resolved.ok) return resolved;
-    layers.push({ name: layer.name, children: resolved.nodes });
+    layers.push({
+      name: layer.name,
+      children: resolved.nodes,
+      ...(layer.frameFilter ? { frameFilter: layer.frameFilter } : {}),
+    });
   }
   return { ok: true, layers };
 }
