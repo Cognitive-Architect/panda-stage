@@ -39,6 +39,9 @@ vi.mock('react-konva', async () => {
     listening?: boolean;
     name?: string;
     opacity?: number;
+    onDragEnd?: (event: { cancelBubble: boolean; target: unknown }) => void;
+    onDragMove?: (event: { cancelBubble: boolean; target: unknown }) => void;
+    onDragStart?: (event: { cancelBubble: boolean; target: unknown }) => void;
     onClick?: (event: { cancelBubble: boolean }) => void;
     onTap?: (event: { cancelBubble: boolean }) => void;
     radius?: number;
@@ -46,8 +49,10 @@ vi.mock('react-konva', async () => {
   };
   const globals = globalThis as typeof globalThis & {
     __pandaStageKonvaCacheCalls?: unknown[];
+    __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
   };
   const cacheCalls = (globals.__pandaStageKonvaCacheCalls ??= []);
+  const capturedProps = (globals.__pandaStageKonvaPropsByName ??= new Map());
   const node = {
     clearCache: () => undefined,
     cache: (options: unknown) => cacheCalls.push(options),
@@ -56,6 +61,9 @@ vi.mock('react-konva', async () => {
   const mockNode = (kind: string) =>
     React.forwardRef<unknown, MockProps>((props, ref) => {
       React.useImperativeHandle(ref, () => node, []);
+      if (props.name) {
+        capturedProps.set(props.name, props as unknown as Record<string, unknown>);
+      }
       return React.createElement(
         'div',
         {
@@ -582,6 +590,234 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
         .toBeNull();
       expect(container.querySelector('[data-name="part-pose-scale-handle"]'))
         .toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('previews a direct pivot drag and commits once on release only while available', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const capturedProps = globals.__pandaStageKonvaPropsByName!;
+    capturedProps.clear();
+    const { model, partId } = adaptivePoseLayer(1);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onCommitPivotDrag = vi.fn();
+    const onCommitPartPose = vi.fn();
+    const contextKey = 'pivot-drag-commit-test';
+    const renderLayer = async (poseCanSetPivot: boolean): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        poseCanSetPivot,
+        posePivotLayerPoint: { x: 100, y: 120 },
+        poseGestureContextKey: contextKey,
+        onSelectPart: vi.fn(),
+        onCommitPartPose,
+        onCommitPivotDrag,
+      })));
+    };
+    const targetAt = (x: number, y: number) => {
+      let current = { x, y };
+      const cursor = { style: { cursor: '' } };
+      const stopDrag = vi.fn();
+      const batchDraw = vi.fn();
+      return {
+        target: {
+          x: () => current.x,
+          y: () => current.y,
+          position: (next?: { x: number; y: number }) => {
+            if (next) current = { ...next };
+            return { ...current };
+          },
+          stopDrag,
+          getLayer: () => ({ batchDraw }),
+          getStage: () => ({ container: () => cursor }),
+        },
+        position: () => ({ ...current }),
+        stopDrag,
+      };
+    };
+    const eventFor = (target: ReturnType<typeof targetAt>['target']) => ({
+      cancelBubble: false,
+      target,
+    });
+
+    try {
+      await renderLayer(true);
+      const pivot = container.querySelector<HTMLElement>(
+        '[data-name="part-pose-fixed-pivot"]',
+      );
+      expect(pivot?.getAttribute('data-draggable')).toBe('true');
+      expect(pivot?.getAttribute('data-radius')).toBe('8');
+      expect(pivot?.getAttribute('data-hit-stroke-width')).toBe('28');
+      const props = capturedProps.get('part-pose-fixed-pivot')!;
+      const onDragStart = props.onDragStart as (event: ReturnType<typeof eventFor>) => void;
+      const onDragMove = props.onDragMove as (event: ReturnType<typeof eventFor>) => void;
+      const onDragEnd = props.onDragEnd as (event: ReturnType<typeof eventFor>) => void;
+      const mockNode = targetAt(100, 120);
+      const dragStart = eventFor(mockNode.target);
+      await act(async () => onDragStart(dragStart));
+      expect(dragStart.cancelBubble).toBe(true);
+      mockNode.target.position({ x: 140, y: 160 });
+      await act(async () => onDragMove(eventFor(mockNode.target)));
+      expect(mockNode.position()).toEqual({ x: 140, y: 160 });
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
+      expect(onCommitPartPose).not.toHaveBeenCalled();
+
+      await act(async () => onDragEnd(eventFor(mockNode.target)));
+      expect(mockNode.position()).toEqual({ x: 100, y: 120 });
+      expect(onCommitPivotDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).toHaveBeenCalledWith(
+        model.layer.id,
+        partId,
+        { x: 140, y: 160 },
+        contextKey,
+      );
+      expect(onCommitPartPose).not.toHaveBeenCalled();
+
+      await renderLayer(false);
+      expect(container.querySelector('[data-name="part-pose-fixed-pivot"]')
+        ?.getAttribute('data-draggable')).toBe('false');
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('rolls a direct pivot drag back on Escape or gesture-context changes', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const capturedProps = globals.__pandaStageKonvaPropsByName!;
+    capturedProps.clear();
+    const { model, partId } = adaptivePoseLayer(1);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onCommitPivotDrag = vi.fn();
+    const contextKey = 'pivot-drag-cancel-test';
+    let renderedContextKey = contextKey;
+    const renderLayer = async (): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        poseCanSetPivot: true,
+        posePivotLayerPoint: { x: 100, y: 120 },
+        poseGestureContextKey: renderedContextKey,
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+        onCommitPivotDrag,
+      })));
+    };
+    const targetAt = (x: number, y: number) => {
+      let current = { x, y };
+      const cursor = { style: { cursor: '' } };
+      const stopDrag = vi.fn();
+      return {
+        target: {
+          x: () => current.x,
+          y: () => current.y,
+          position: (next?: { x: number; y: number }) => {
+            if (next) current = { ...next };
+            return { ...current };
+          },
+          stopDrag,
+          getLayer: () => ({ batchDraw: vi.fn() }),
+          getStage: () => ({ container: () => cursor }),
+        },
+        position: () => ({ ...current }),
+        stopDrag,
+      };
+    };
+    const eventFor = (target: ReturnType<typeof targetAt>['target']) => ({
+      cancelBubble: false,
+      target,
+    });
+    const callbacks = () => capturedProps.get('part-pose-fixed-pivot')!;
+
+    try {
+      await renderLayer();
+      const dragCallbacks = callbacks() as {
+        onDragStart: (event: ReturnType<typeof eventFor>) => void;
+        onDragMove: (event: ReturnType<typeof eventFor>) => void;
+      };
+      const first = targetAt(100, 120);
+      await act(async () => dragCallbacks.onDragStart(eventFor(first.target)));
+      first.target.position({ x: 130, y: 150 });
+      await act(async () => dragCallbacks.onDragMove(eventFor(first.target)));
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => window.dispatchEvent(escape));
+      expect(escape.defaultPrevented).toBe(true);
+      expect(first.position()).toEqual({ x: 100, y: 120 });
+      expect(first.stopDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
+
+      const second = targetAt(100, 120);
+      await act(async () => dragCallbacks.onDragStart(eventFor(second.target)));
+      second.target.position({ x: 170, y: 180 });
+      await act(async () => dragCallbacks.onDragMove(eventFor(second.target)));
+      renderedContextKey = `${contextKey}:time-changed`;
+      await renderLayer();
+      expect(second.position()).toEqual({ x: 100, y: 120 });
+      expect(second.stopDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
     } finally {
       await act(async () => root.unmount());
       container.remove();

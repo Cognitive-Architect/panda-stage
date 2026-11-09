@@ -31,6 +31,11 @@ export interface PartPoseEditorUi {
   onStartPivot(layerId: string, partId: string): void;
   onCancelPivot(): void;
   onSetPivot(layerId: string, partId: string, point: PartPosePoint): void;
+  onCommitPivotDrag(
+    layerId: string,
+    partId: string,
+    point: PartPosePoint,
+  ): void;
   onPivotUsed(): void;
 }
 
@@ -65,5 +70,6 @@ export const EMPTY_PART_POSE_EDITOR_UI: PartPoseEditorUi = {
   onStartPivot: () => undefined,
   onCancelPivot: () => undefined,
   onSetPivot: () => undefined,
+  onCommitPivotDrag: () => undefined,
   onPivotUsed: () => undefined,
 };

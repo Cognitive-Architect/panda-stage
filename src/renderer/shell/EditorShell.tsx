@@ -866,6 +866,34 @@ export function EditorShell({
     setPartPosePivotMode(false);
     setPartPosePivotDraft(null);
   };
+  const commitPartPosePivotPoint = (
+    layerId: string,
+    partId: string,
+    point: { x: number; y: number },
+  ): void => {
+    if (
+      activePartPoseLayerId !== layerId ||
+      partPoseSelectedPartId !== partId
+    ) {
+      throw new Error('Part pose selection changed before the pivot was set.');
+    }
+    const currentSnapshot = editorProjectStore.getSnapshot();
+    const currentShot = currentSnapshot?.project.shots.find(
+      (candidate) => candidate.id === partPoseEditSession?.shotId,
+    );
+    const currentLayer = currentShot?.layers.find(
+      (candidate) => candidate.id === layerId,
+    );
+    if (!currentLayer || currentLayer.locked) {
+      throw new Error('Part pose layer is missing or locked.');
+    }
+    if (currentLayer.poseAnimation) {
+      layerStore.setPartPosePivot(layerId, partId, point);
+      setPartPosePivotDraft(null);
+      return;
+    }
+    setPartPosePivotDraft({ layerId, partId, point });
+  };
   const partPoseEditorUi: PartPoseEditorUi = {
     actionSectionOpen: partPoseActionSectionOpen,
     onActionSectionOpenChange: setPartPoseActionSectionOpen,
@@ -905,21 +933,12 @@ export function EditorShell({
       ) {
         return;
       }
-      const currentSnapshot = editorProjectStore.getSnapshot();
-      const currentShot = currentSnapshot?.project.shots.find(
-        (candidate) => candidate.id === partPoseEditSession?.shotId,
-      );
-      const currentLayer = currentShot?.layers.find(
-        (candidate) => candidate.id === layerId,
-      );
-      if (currentLayer?.poseAnimation) {
-        layerStore.setPartPosePivot(layerId, partId, point);
-        setPartPosePivotDraft(null);
-        setPartPosePivotMode(false);
-        return;
-      }
-      setPartPosePivotDraft({ layerId, partId, point });
+      commitPartPosePivotPoint(layerId, partId, point);
       setPartPosePivotMode(false);
+    },
+    onCommitPivotDrag: (layerId, partId, point) => {
+      if (partPosePivotMode) return;
+      commitPartPosePivotPoint(layerId, partId, point);
     },
     onPivotUsed: () => {
       setPartPosePivotDraft(null);

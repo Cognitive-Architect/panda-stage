@@ -1,4 +1,11 @@
 .right-inspector-action-content {
+  --action-icon-button-size: 36px;
+  --action-icon-button-gap: 8px;
+  --action-icon-button-group-width: calc(
+    var(--action-icon-button-size) +
+      var(--action-icon-button-size) +
+      var(--action-icon-button-gap)
+  );
   display: grid;
   min-width: 0;
   padding: 12px;
@@ -51,8 +58,9 @@
 
 .part-pose-editor-part-row {
   min-width: 0;
-  max-width: 120px;
-  flex: 0 1 116px;
+  width: var(--action-icon-button-group-width);
+  max-width: var(--action-icon-button-group-width);
+  flex: 0 0 var(--action-icon-button-group-width);
   margin: 0;
 }
 
@@ -128,15 +136,30 @@
 }
 
 .part-pose-editor-pivot {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  min-height: 34px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 36px;
 }
 
 .part-pose-editor-label {
   flex: 0 0 auto;
-  color: var(--ui-color-text-secondary);
-  font-size: 12px;
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
+}
+
+.part-pose-editor button.part-pose-editor-pivot-action[data-ui-size='icon'] {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+.part-pose-editor-pivot-calibrated {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, #83d39a 62%, var(--ui-color-text-secondary));
 }
 
 .part-pose-editor-pivot-status {
@@ -229,7 +252,7 @@
   padding: 0;
   color: var(--ui-color-text-primary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   list-style: none;
 }
@@ -441,10 +464,23 @@
   justify-content: flex-end;
 }
 
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+.editor-shell[data-editor-device-mode='cloud-touch']
   .part-pose-editor button[data-ui-button],
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+.editor-shell[data-editor-device-mode='cloud-touch']
   .part-pose-editor select {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .right-inspector-action-content {
+  --action-icon-button-size: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .part-pose-editor button.part-pose-editor-pivot-action[data-ui-size='icon'] {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   min-height: 44px;
 }
 

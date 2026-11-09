@@ -15,6 +15,7 @@ import {
   Stage,
 } from 'react-konva';
 import {
+  hasAuthoredPartPose,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
@@ -94,6 +95,14 @@ const editorDevicePixelRatio =
 const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
   editorDevicePixelRatio,
 );
+
+interface PivotCalibrationPreview {
+  contextKey: string;
+  layerId: string;
+  partId: string;
+  point: { x: number; y: number };
+  valid: boolean;
+}
 
 function partPoseCanvasError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
@@ -248,6 +257,8 @@ export function CanvasStage({
     );
   const [dropPreview, setDropPreview] =
     useState<CanvasDropPreview | null>(null);
+  const [pivotCalibrationPreview, setPivotCalibrationPreview] =
+    useState<PivotCalibrationPreview | null>(null);
   const [interactionStatus, setInteractionStatus] = useState(
     '从素材库拖入图片或动画，或点击普通图层进行选择。',
   );
@@ -633,6 +644,9 @@ export function CanvasStage({
     poseEditorStageLayer?.layer.poseAnimation?.tracks.find(
       (track) => track.partId === partPoseEditor.selectedPartId,
     ) ?? null;
+  const poseEditorPivotLocked = Boolean(
+    poseEditorTrack && hasAuthoredPartPose(poseEditorTrack),
+  );
   const poseEditorPivotSource =
     poseEditorTrack?.pivotSource ??
     (partPoseEditor.pivotDraft?.layerId === partPoseEditor.activeLayerId &&
@@ -671,6 +685,20 @@ export function CanvasStage({
       temporalCanvasModel &&
       isStageLayerVisualReady(poseEditorStageLayer),
   );
+  const poseEditorCanSetPivot = Boolean(
+    partPoseEditor.activeLayerId &&
+      partPoseEditor.activeLayerId === selectedLayerId &&
+      !positionAuthoringSession &&
+      poseEditorStageLayer?.layer.id === partPoseEditor.activeLayerId &&
+      !poseEditorStageLayer.layer.locked &&
+      poseEditorCharacterPart &&
+      poseEditorCharacterPart.visible !== false &&
+      poseEditorVisualPart &&
+      !poseEditorPivotLocked &&
+      !partPoseEditor.calibratingPivot &&
+      temporalCanvasModel &&
+      isStageLayerVisualReady(poseEditorStageLayer),
+  );
   const poseGestureContextKey = createPartPoseGestureContextKey({
     projectInstanceId,
     projectId: snapshot?.project.id ?? null,
@@ -682,6 +710,33 @@ export function CanvasStage({
     selectedPartId: partPoseEditor.selectedPartId,
     timeMs: timelineUi.currentTimeMs,
   });
+  useEffect(() => {
+    setPivotCalibrationPreview((current) => {
+      if (
+        !partPoseEditor.calibratingPivot ||
+        current?.contextKey !== poseGestureContextKey ||
+        current.layerId !== partPoseEditor.activeLayerId ||
+        current.partId !== partPoseEditor.selectedPartId
+      ) {
+        return null;
+      }
+      return current;
+    });
+  }, [
+    partPoseEditor.activeLayerId,
+    partPoseEditor.calibratingPivot,
+    partPoseEditor.selectedPartId,
+    poseGestureContextKey,
+  ]);
+  const activePivotCalibrationPreview =
+    pivotCalibrationPreview?.contextKey === poseGestureContextKey &&
+    pivotCalibrationPreview.layerId === partPoseEditor.activeLayerId &&
+    pivotCalibrationPreview.partId === partPoseEditor.selectedPartId
+      ? {
+          point: pivotCalibrationPreview.point,
+          valid: pivotCalibrationPreview.valid,
+        }
+      : null;
   const transformerVisible = isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
@@ -727,6 +782,80 @@ export function CanvasStage({
       setInteractionStatus('旋转点已设置。');
     } catch (error) {
       partPoseEditor.onCancelPivot();
+      setInteractionStatus(partPoseCanvasError(error));
+    }
+  };
+  const previewPivotFromCanvas = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    const layerId = partPoseEditor.activeLayerId;
+    const partId = partPoseEditor.selectedPartId;
+    const layerNode = layerId ? getLayerNodeRef(layerId).current : null;
+    const localPoint = layerNode?.getRelativePointerPosition();
+    if (
+      !partPoseEditor.calibratingPivot ||
+      !layerId ||
+      !partId ||
+      !localPoint ||
+      !poseEditorCharacterPart
+    ) {
+      setPivotCalibrationPreview(null);
+      return;
+    }
+    const sourcePoint = layerPointToSource(
+      localPoint,
+      poseEditorVisualPart,
+      poseEditorCharacterPart,
+    );
+    setPivotCalibrationPreview({
+      contextKey: poseGestureContextKey,
+      layerId,
+      partId,
+      point: localPoint,
+      valid: sourcePoint !== null,
+    });
+  };
+  const commitPivotDragFromCanvas = (
+    layerId: string,
+    partId: string,
+    layerPoint: { x: number; y: number },
+    gestureContextKey: string,
+  ): void => {
+    const currentSnapshot = editorProjectStore.getSnapshot();
+    const currentContextKey = createPartPoseGestureContextKey({
+      projectInstanceId: editorProjectStore.getProjectInstanceId(),
+      projectId: currentSnapshot?.project.id ?? null,
+      projectRoot: currentSnapshot?.projectRoot ?? null,
+      revision: currentSnapshot?.revision ?? null,
+      shotId: shotStore.getCurrentShotId(),
+      selectedLayerId: selectionStore.getSelectedLayerId(),
+      activeLayerId: partPoseEditor.activeLayerId,
+      selectedPartId: partPoseEditor.selectedPartId,
+      timeMs: timelineUiStore.getSnapshot().currentTimeMs,
+    });
+    if (
+      gestureContextKey !== currentContextKey ||
+      !poseEditorCanSetPivot ||
+      partPoseEditor.calibratingPivot ||
+      layerId !== partPoseEditor.activeLayerId ||
+      partId !== partPoseEditor.selectedPartId ||
+      !poseEditorCharacterPart
+    ) {
+      return;
+    }
+    const sourcePoint = layerPointToSource(
+      layerPoint,
+      poseEditorVisualPart,
+      poseEditorCharacterPart,
+    );
+    if (!sourcePoint) {
+      setInteractionStatus('请在原图范围内拖动旋转点。');
+      return;
+    }
+    try {
+      partPoseEditor.onCommitPivotDrag(layerId, partId, sourcePoint);
+    } catch (error) {
       setInteractionStatus(partPoseCanvasError(error));
     }
   };
@@ -969,9 +1098,18 @@ export function CanvasStage({
                               partPoseEditor.activeLayerId === layer.id &&
                               poseEditorCanTransform
                             }
+                            poseCanSetPivot={
+                              partPoseEditor.activeLayerId === layer.id &&
+                              poseEditorCanSetPivot
+                            }
                             posePivotLayerPoint={
                               partPoseEditor.activeLayerId === layer.id
                                 ? poseEditorPivotLayerPoint
+                                : null
+                            }
+                            posePivotCalibrationPreview={
+                              partPoseEditor.activeLayerId === layer.id
+                                ? activePivotCalibrationPreview
                                 : null
                             }
                             poseGestureContextKey={poseGestureContextKey}
@@ -1022,6 +1160,7 @@ export function CanvasStage({
                                 setInteractionStatus(partPoseCanvasError(error));
                               }
                             }}
+                            onCommitPivotDrag={commitPivotDragFromCanvas}
                              onSelect={(layerId) => {
                               if (render.isBackground) {
                                 selectionStore.selectExplicit(layerId);
@@ -1077,7 +1216,10 @@ export function CanvasStage({
                       height={PROJECT_HEIGHT}
                       name="part-pose-pivot-calibration-overlay"
                       onClick={calibratePivotFromCanvas}
+                      onMouseLeave={() => setPivotCalibrationPreview(null)}
+                      onMouseMove={previewPivotFromCanvas}
                       onTap={calibratePivotFromCanvas}
+                      onTouchMove={previewPivotFromCanvas}
                       opacity={0}
                       width={PROJECT_WIDTH}
                     />

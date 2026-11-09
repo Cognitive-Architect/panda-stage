@@ -100,7 +100,7 @@ button.position-authoring-hold:hover:not(:disabled) {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--action-icon-button-gap);
 }
 
 .right-inspector-action-position .position-authoring-entry > button.position-authoring-primary,
@@ -122,10 +122,10 @@ button.position-authoring-hold:hover:not(:disabled) {
 .right-inspector-action-position .position-authoring-entry
   > button.position-authoring-icon-action[data-ui-size='icon'] {
   position: relative;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: var(--action-icon-button-size);
+  min-width: var(--action-icon-button-size);
+  height: var(--action-icon-button-size);
+  min-height: var(--action-icon-button-size);
   padding: 0;
   border-radius: var(--ui-radius-small);
 }
@@ -139,14 +139,12 @@ button.position-authoring-hold:hover:not(:disabled) {
   padding: 4px 8px;
 }
 
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .position-authoring-entry
-  > button.position-authoring-icon-action[data-ui-size='icon'],
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .right-inspector-action-position
   .position-authoring-entry
   > button.position-authoring-icon-action[data-ui-size='icon'] {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
+  width: var(--action-icon-button-size);
+  min-width: var(--action-icon-button-size);
+  height: var(--action-icon-button-size);
+  min-height: var(--action-icon-button-size);
 }

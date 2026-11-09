@@ -158,6 +158,29 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
     expect(ready).not.toContain('data-ui-variant="primary"');
     expect(ready).toContain('data-ui-variant="secondary"');
+
+    const zeroPosition = renderToStaticMarkup(PositionAuthoringControls({
+      controller: {
+        ...readyController,
+        temporalInspection: false,
+        positionAuthoringAvailable: false,
+        positionHoldAvailable: false,
+      },
+    }));
+    const zeroStartButton = zeroPosition.match(
+      /<button\b(?=[^>]*data-testid="position-authoring-start")[^>]*>/u,
+    )?.[0] ?? '';
+    const zeroHoldButton = zeroPosition.match(
+      /<button\b(?=[^>]*data-testid="position-authoring-hold")[^>]*>/u,
+    )?.[0] ?? '';
+    expect(zeroStartButton).toContain('aria-label="调整位置，移动播放头后设置位置关键帧"');
+    expect(zeroStartButton).toContain('disabled=""');
+    expect(zeroStartButton).toContain('title="移动播放头后设置位置关键帧"');
+    expect(zeroHoldButton).toContain('aria-label="保持当前位置，移动播放头后设置位置保持关键帧"');
+    expect(zeroHoldButton).toContain('disabled=""');
+    expect(zeroHoldButton).toContain('title="移动播放头后设置位置保持关键帧"');
+    expect(zeroPosition.match(/class="position-authoring-icon"/gu) ?? [])
+      .toHaveLength(2);
     expect(transformReady).not.toContain('aria-label="调整位置"');
     expect(transformReady).not.toContain('aria-label="保持当前位置"');
     expect(transformReady).toMatch(
@@ -260,6 +283,18 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
       holdVisible: true,
       guidanceVisible: false,
       status: TEMPORAL_TRANSFORM_STATUS,
+    });
+
+    expect(getPositionAuthoringPresentation({
+      temporalInspection: false,
+      active: false,
+      available: false,
+      holdAvailable: false,
+      status: '',
+    })).toMatchObject({
+      primaryVisible: true,
+      holdVisible: true,
+      guidanceVisible: false,
     });
   });
 

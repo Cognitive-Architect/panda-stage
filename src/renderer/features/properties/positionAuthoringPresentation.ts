@@ -30,9 +30,9 @@ export function getPositionAuthoringPresentation({
   holdAvailable,
   status,
 }: PositionAuthoringPresentationInput): PositionAuthoringPresentation {
-  const guidanceVisible = temporalInspection && active;
-  const primaryVisible = temporalInspection && !active;
-  const holdVisible = temporalInspection && !active;
+  const guidanceVisible = active;
+  const primaryVisible = !active;
+  const holdVisible = !active;
   const positionOwnsTemporalExplanation =
     temporalInspection && (active || available || holdAvailable);
   const statusIsDuplicateGuidance =

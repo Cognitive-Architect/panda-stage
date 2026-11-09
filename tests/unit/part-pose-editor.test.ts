@@ -83,6 +83,7 @@ function editorUi(
     onStartPivot: () => undefined,
     onCancelPivot: () => undefined,
     onSetPivot: () => undefined,
+    onCommitPivotDrag: () => undefined,
     onPivotUsed: () => undefined,
   };
 }
@@ -197,8 +198,14 @@ describe('Part pose editor UI', () => {
       .toBe(sections);
     expect(action.querySelector('[data-testid="right-inspector-action-position"]'))
       .not.toBeNull();
+    expect(action.querySelector('[data-testid="right-inspector-action-position"]')?.getAttribute('aria-label'))
+      .toBe('移动');
     expect(action.querySelector('[data-testid="part-pose-part-select"]'))
       .not.toBeNull();
+    expect(action.querySelector('[data-testid="part-pose-editor"]')?.getAttribute('aria-label'))
+      .toBe('部位');
+    expect(action.querySelector('[data-testid="part-pose-pivot-status"]')?.textContent)
+      .toContain('未设置');
     expect(container.textContent).not.toContain('编辑动作');
     expect(container.textContent).not.toContain('返回');
     expect(action.open).toBe(false);
@@ -604,7 +611,13 @@ describe('Part pose editor UI', () => {
       .toBeNull();
     expect(container.querySelector('[data-testid="part-pose-add-key"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="part-pose-set-pivot"]')).toBeNull();
+    const fixedPivotAction = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    );
+    expect(fixedPivotAction?.disabled).toBe(true);
+    expect(fixedPivotAction?.title).toContain('已有动作姿势，旋转点已固定');
+    expect(fixedPivotAction?.getAttribute('aria-label'))
+      .toContain('已有动作姿势，旋转点已固定');
     expect(container.querySelector('[data-testid="part-pose-more"]')).toBeNull();
     expect(container.querySelector('[data-testid="part-pose-clear"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="part-pose-clear"]')?.textContent)
@@ -784,9 +797,78 @@ describe('Part pose editor UI', () => {
       editor: editorUi(fixture.layerId, firstPartId),
     })));
     expect(container.querySelector('[data-testid="part-pose-set-pivot"]'))
-      .toBeNull();
+      .not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.disabled).toBe(true);
     expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]'))
       .not.toBeNull();
+  });
+
+  it('marks only a non-default pivot as calibrated and keeps reset visibly locked after a pose', async () => {
+    const partId = fixture.partIds[0]!;
+    const initial = currentShot();
+    const characterLayer = currentLayer(fixture.layerId);
+    const character = initial.project.characters.find(
+      (candidate) =>
+        characterLayer.source.kind === 'character' &&
+        candidate.id === characterLayer.source.characterId,
+    );
+    if (character?.mode !== 'adaptive-parts') {
+      throw new Error('Expected the pivot test fixture to use Adaptive Parts.');
+    }
+    const part = character.parts.find((candidate) => candidate.partId === partId)!;
+    const crop = part.imageMapping.crop;
+    const customPivot = {
+      x: crop.x + crop.width / 2 + 1,
+      y: crop.y + crop.height / 2 + 1,
+    };
+
+    await act(async () => {
+      layerStore.createPartPoseAnimation(fixture.layerId);
+    });
+    const renderCurrent = async (): Promise<void> => {
+      const { project, shot } = currentShot();
+      await act(async () => root.render(createElement(PartPoseEditorPanel, {
+        project,
+        shot,
+        layer: currentLayer(fixture.layerId),
+        editor: editorUi(fixture.layerId, partId),
+      })));
+    };
+    await renderCurrent();
+
+    expect(container.querySelector('[data-testid="part-pose-pivot-status"]')?.textContent)
+      .toContain('未设置');
+    expect(container.querySelector('[data-testid="part-pose-pivot-calibrated"]'))
+      .toBeNull();
+    expect(container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.getAttribute('aria-label')).toBe('设置旋转点');
+
+    await act(async () => {
+      layerStore.setPartPosePivot(fixture.layerId, partId, customPivot);
+    });
+    await renderCurrent();
+    expect(container.querySelector('[data-testid="part-pose-pivot-calibrated"]'))
+      .not.toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-set-pivot"]')?.getAttribute('aria-label'))
+      .toBe('重新设置旋转点');
+    expect(container.textContent).not.toContain('已设置');
+
+    const { shot } = currentShot();
+    timelineUiStore.seek(1_000, shot.durationMs);
+    await act(async () => {
+      layerStore.addPartPoseKeyframe(fixture.layerId, partId, 1_000);
+    });
+    await renderCurrent();
+    expect(container.querySelector('[data-testid="part-pose-pivot-fixed"]'))
+      .not.toBeNull();
+    expect(container.querySelector('[data-testid="part-pose-pivot-calibrated"]'))
+      .not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-set-pivot"]',
+    )?.disabled).toBe(true);
   });
 
   it('blocks pose writes during pivot calibration and restores legal actions after cancel or selection', async () => {

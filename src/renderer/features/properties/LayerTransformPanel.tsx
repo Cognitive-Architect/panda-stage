@@ -1034,6 +1034,12 @@ export function PositionAuthoringControls({
     holdAvailable: positionHoldAvailable,
     status: positionStatus,
   });
+  const startUnavailableReason = !temporalInspection
+    ? '移动播放头后设置位置关键帧'
+    : '当前无法调整位置';
+  const holdUnavailableReason = !temporalInspection
+    ? '移动播放头后设置位置保持关键帧'
+    : '当前无法保持位置';
 
   return (
     <div
@@ -1060,24 +1066,40 @@ export function PositionAuthoringControls({
         </>
       ) : presentation.primaryVisible ? (
         <IconButton
-          aria-label="调整位置"
+          aria-label={
+            positionAuthoringAvailable
+              ? '调整位置'
+              : `调整位置，${startUnavailableReason}`
+          }
           className="position-authoring-icon-action position-authoring-primary"
           data-testid="position-authoring-start"
           disabled={!positionAuthoringAvailable}
           onClick={onStart ?? startPositionAuthoring}
-          title="调整位置"
+          title={
+            positionAuthoringAvailable
+              ? '调整位置'
+              : startUnavailableReason
+          }
           variant="secondary"
           icon={<PositionAuthoringGlyph moving />}
         />
       ) : null}
       {presentation.holdVisible ? (
         <IconButton
-          aria-label="保持当前位置"
+          aria-label={
+            positionHoldAvailable
+              ? '保持当前位置'
+              : `保持当前位置，${holdUnavailableReason}`
+          }
           className="position-authoring-icon-action position-authoring-hold"
           data-testid="position-authoring-hold"
           disabled={!positionHoldAvailable}
           onClick={onHold ?? createPositionHold}
-          title="保持当前位置"
+          title={
+            positionHoldAvailable
+              ? '保持当前位置'
+              : holdUnavailableReason
+          }
           variant="secondary"
           icon={<PositionAuthoringGlyph moving={false} />}
         />

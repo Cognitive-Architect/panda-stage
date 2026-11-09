@@ -66,13 +66,21 @@ export interface SelectableLayerProps {
   poseSelectedPartId?: string | null;
   poseCurrentKeyframe?: PartPoseKeyframe | null;
   poseCanTransform?: boolean;
+  poseCanSetPivot?: boolean;
   posePivotLayerPoint?: Point | null;
+  posePivotCalibrationPreview?: { point: Point; valid: boolean } | null;
   poseGestureContextKey?: string;
   onSelectPart?: (partId: string) => void;
   onStartPartPose?: (layerId: string, partId: string) => void;
   onCommitPartPose?: (
     partId: string,
     keyframe: PartPoseKeyframe,
+    gestureContextKey: string,
+  ) => void;
+  onCommitPivotDrag?: (
+    layerId: string,
+    partId: string,
+    layerPoint: Point,
     gestureContextKey: string,
   ) => void;
 }
@@ -90,6 +98,18 @@ interface PoseGesture {
   lastPointerAngle: number;
   accumulatedAngle: number;
   startRadius: number;
+}
+
+interface PivotDragGesture {
+  contextKey: string;
+  partId: string;
+  node: Konva.Node;
+  startPosition: Point;
+}
+
+function setPivotCursor(node: Konva.Node, cursor: string): void {
+  const container = node.getStage()?.container();
+  if (container) container.style.cursor = cursor;
 }
 
 function stopAndSelect(
@@ -114,6 +134,17 @@ interface PoseGestureController {
     partId: string,
     event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
   ) => void;
+  beginPivotDrag: (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  updatePivotDrag: (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  finishPivotDrag: (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  cancelPivotDrag: () => void;
 }
 
 const NO_POSE_GESTURE_CONTROLLER: PoseGestureController = {
@@ -121,6 +152,10 @@ const NO_POSE_GESTURE_CONTROLLER: PoseGestureController = {
   beginPoseGesture: () => undefined,
   updatePoseGesture: () => undefined,
   finishPoseGesture: () => undefined,
+  beginPivotDrag: () => undefined,
+  updatePivotDrag: () => undefined,
+  finishPivotDrag: () => undefined,
+  cancelPivotDrag: () => undefined,
 };
 
 export function SelectableLayer(props: SelectableLayerProps): React.JSX.Element {
@@ -138,8 +173,11 @@ function PoseEditableSelectableLayer(
 }
 
 function usePoseGestureController({
+  layer,
   nodeRef,
+  onCommitPivotDrag = () => undefined,
   poseCanTransform = false,
+  poseCanSetPivot = false,
   poseCurrentKeyframe = null,
   poseEditing = false,
   poseGestureContextKey = '',
@@ -150,6 +188,7 @@ function usePoseGestureController({
 }: SelectableLayerProps): PoseGestureController {
   const poseGestureRef = useRef<PoseGesture | null>(null);
   const poseDraftRef = useRef<PartPoseKeyframe | null>(null);
+  const pivotDragRef = useRef<PivotDragGesture | null>(null);
   const [poseDraft, setPoseDraft] = useState<PartPoseKeyframe | null>(null);
   const cancelPoseGesture = useCallback((): void => {
     const gesture = poseGestureRef.current;
@@ -161,15 +200,30 @@ function usePoseGestureController({
     poseDraftRef.current = null;
     setPoseDraft(null);
   }, []);
+  const cancelPivotDrag = useCallback((): void => {
+    const gesture = pivotDragRef.current;
+    if (!gesture) return;
+    pivotDragRef.current = null;
+    gesture.node.stopDrag();
+    gesture.node.position(gesture.startPosition);
+    gesture.node.getLayer()?.batchDraw();
+    setPivotCursor(gesture.node, '');
+  }, []);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || !poseGestureRef.current) return;
+      if (event.key !== 'Escape') return;
+      if (pivotDragRef.current) {
+        event.preventDefault();
+        cancelPivotDrag();
+        return;
+      }
+      if (!poseGestureRef.current) return;
       event.preventDefault();
       cancelPoseGesture();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [cancelPoseGesture]);
+  }, [cancelPivotDrag, cancelPoseGesture]);
   useEffect(() => {
     const gesture = poseGestureRef.current;
     if (
@@ -180,12 +234,26 @@ function usePoseGestureController({
     ) {
       cancelPoseGesture();
     }
+    const pivotGesture = pivotDragRef.current;
+    if (
+      pivotGesture &&
+      (pivotGesture.contextKey !== poseGestureContextKey ||
+        pivotGesture.partId !== poseSelectedPartId ||
+        !poseEditing ||
+        !poseCanSetPivot)
+    ) {
+      cancelPivotDrag();
+    }
   }, [
+    cancelPivotDrag,
     cancelPoseGesture,
     poseCanTransform,
+    poseCanSetPivot,
     poseEditing,
     poseGestureContextKey,
+    poseSelectedPartId,
   ]);
+  useEffect(() => () => cancelPivotDrag(), [cancelPivotDrag]);
 
   const beginPoseGesture = (
     kind: PoseGestureKind,
@@ -311,11 +379,71 @@ function usePoseGestureController({
     if (next) onCommitPartPose(partId, next, gesture.contextKey);
   };
 
+  const beginPivotDrag = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    if (
+      !poseEditing ||
+      !poseCanSetPivot ||
+      !posePivotLayerPoint ||
+      !poseSelectedPartId
+    ) {
+      event.target.stopDrag();
+      return;
+    }
+    pivotDragRef.current = {
+      contextKey: poseGestureContextKey,
+      partId: poseSelectedPartId,
+      node: event.target,
+      startPosition: { x: event.target.x(), y: event.target.y() },
+    };
+    setPivotCursor(event.target, 'grabbing');
+  };
+
+  const updatePivotDrag = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    if (pivotDragRef.current) setPivotCursor(event.target, 'grabbing');
+  };
+
+  const finishPivotDrag = (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    const gesture = pivotDragRef.current;
+    if (!gesture) return;
+    pivotDragRef.current = null;
+    const nextPoint = { x: gesture.node.x(), y: gesture.node.y() };
+    gesture.node.position(gesture.startPosition);
+    gesture.node.getLayer()?.batchDraw();
+    setPivotCursor(gesture.node, poseCanSetPivot ? 'grab' : '');
+
+    if (
+      gesture.contextKey !== poseGestureContextKey ||
+      gesture.partId !== partId ||
+      partId !== poseSelectedPartId ||
+      !poseEditing ||
+      !poseCanSetPivot ||
+      (nextPoint.x === gesture.startPosition.x &&
+        nextPoint.y === gesture.startPosition.y)
+    ) {
+      return;
+    }
+    onCommitPivotDrag(layer.id, partId, nextPoint, gesture.contextKey);
+  };
+
   return {
     poseDraft,
     beginPoseGesture,
     updatePoseGesture,
     finishPoseGesture,
+    beginPivotDrag,
+    updatePivotDrag,
+    finishPivotDrag,
+    cancelPivotDrag,
   };
 }
 
@@ -341,7 +469,9 @@ function renderSelectableLayer({
   poseSelectionEnabled = false,
   poseSelectedPartId = null,
   poseCurrentKeyframe = null,
+  poseCanSetPivot = false,
   poseCanTransform = false,
+  posePivotCalibrationPreview = null,
   posePivotLayerPoint = null,
   onSelectPart = () => undefined,
   onStartPartPose = () => undefined,
@@ -353,6 +483,9 @@ function renderSelectableLayer({
     beginPoseGesture,
     updatePoseGesture,
     finishPoseGesture,
+    beginPivotDrag,
+    updatePivotDrag,
+    finishPivotDrag,
   } = gestureController;
   const canSelect = true;
   const positionAuthoringEnabled = positionAuthoringSession !== null;
@@ -785,14 +918,30 @@ function renderSelectableLayer({
               />
             </Group>
             <Circle
-              fill="#f4d35e"
-              listening={false}
+              draggable={poseCanSetPivot}
+              fill={
+                posePivotCalibrationPreview?.valid === false
+                  ? '#ed8a82'
+                  : '#f4d35e'
+              }
+              hitStrokeWidth={28}
               name="part-pose-fixed-pivot"
-              radius={6}
+              onDragEnd={(event) =>
+                poseSelectedPartId
+                  ? finishPivotDrag(poseSelectedPartId, event)
+                  : undefined
+              }
+              onDragMove={updatePivotDrag}
+              onDragStart={beginPivotDrag}
+              onMouseEnter={(event) =>
+                setPivotCursor(event.target, poseCanSetPivot ? 'grab' : '')
+              }
+              onMouseLeave={(event) => setPivotCursor(event.target, '')}
+              radius={8}
               stroke="#3b2e12"
               strokeWidth={2}
-              x={posePivotLayerPoint.x}
-              y={posePivotLayerPoint.y}
+              x={posePivotCalibrationPreview?.point.x ?? posePivotLayerPoint.x}
+              y={posePivotCalibrationPreview?.point.y ?? posePivotLayerPoint.y}
             />
             {poseCanTransform && partCenter && poseSelectedPartId ? (
               <>

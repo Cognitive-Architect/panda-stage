@@ -183,12 +183,12 @@ export function PortraitPropertiesSections({
           <div className="right-inspector-action-content">
             {transformController.positionAuthoringSupported ? (
               <section
-                aria-label="位置"
+                aria-label="移动"
                 className="right-inspector-action-position"
                 data-testid="right-inspector-action-position"
               >
                 <div className="right-inspector-action-position-heading">
-                  <strong>位置</strong>
+                  <strong>移动</strong>
                   <PositionAuthoringControls
                     controller={transformController}
                     onFinish={finishPositionAuthoring}

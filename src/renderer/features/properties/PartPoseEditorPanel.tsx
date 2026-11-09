@@ -9,14 +9,16 @@ import {
   type Shot,
 } from '../../../domain';
 import {
+  CircleCheck,
   Check,
   ChevronDown,
   LockKeyhole,
   Plus,
+  RotateCcw,
   Trash2,
 } from 'lucide-react';
 import { layerStore } from '../../stores/layerStore';
-import { Button } from '../../ui';
+import { Button, IconButton } from '../../ui';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import {
   resolvePartPoseEditorParts,
@@ -124,6 +126,19 @@ export function PartPoseEditorPanel({
     editor.pivotDraft.partId === selectedPartId
       ? editor.pivotDraft.point
       : null;
+  const pivotCrop = selectedPart?.imageMapping.crop ?? null;
+  const defaultPivot = pivotCrop
+    ? {
+        x: pivotCrop.x + pivotCrop.width / 2,
+        y: pivotCrop.y + pivotCrop.height / 2,
+      }
+    : null;
+  const pivotCalibrated = Boolean(
+    track &&
+      defaultPivot &&
+      (Math.abs(track.pivotSource.x - defaultPivot.x) > 1e-4 ||
+        Math.abs(track.pivotSource.y - defaultPivot.y) > 1e-4),
+  );
   const timeIsValid = isValidFrameTime(timeMs) && timeMs <= shot.durationMs;
   const canEditKey = Boolean(
     selectedPart &&
@@ -156,6 +171,20 @@ export function PartPoseEditorPanel({
     : selectedPart?.visible === false
       ? '当前零件已隐藏，无法设置旋转点。'
       : '';
+  const pivotActionLabel =
+    pivotCalibrated || pivotDraft ? '重新设置旋转点' : '设置旋转点';
+  const pivotActionReason = pivotLocked
+    ? '已有动作姿势，旋转点已固定'
+    : pivotReason;
+  const pivotStatusAccessibleLabel = pivotLocked
+    ? pivotCalibrated
+      ? '旋转点已校准，已有动作姿势，旋转点已固定'
+      : '旋转点未设置，已有动作姿势，旋转点已固定'
+    : pivotDraft
+      ? '新旋转点待保存'
+      : pivotCalibrated
+        ? '旋转点已校准'
+        : '旋转点未设置';
 
   const commitKey = (
     update: Partial<NonNullable<typeof keyframe>>,
@@ -213,18 +242,18 @@ export function PartPoseEditorPanel({
 
   return (
     <section
-      aria-label="零件动作"
+      aria-label="部位"
       className="part-pose-editor"
       data-layer-id={layer.id}
       data-testid="part-pose-editor"
     >
       <div className="part-pose-editor-heading">
-        <strong>零件动作</strong>
+        <strong>部位</strong>
         <label className="part-pose-editor-part-row">
-          <span className="part-pose-editor-visually-hidden">当前零件</span>
+          <span className="part-pose-editor-visually-hidden">当前部位</span>
           <span className="part-pose-editor-select-wrap">
             <select
-              aria-label="当前零件"
+              aria-label="当前部位"
               className="part-pose-editor-select"
               data-testid="part-pose-part-select"
               disabled={parts.length === 0 || (layer.locked && !active)}
@@ -254,48 +283,57 @@ export function PartPoseEditorPanel({
 
       <div className="part-pose-editor-pivot" data-testid="part-pose-pivot-row">
         <span className="part-pose-editor-label">旋转点</span>
-        {pivotLocked ? (
-          <span
-            aria-label="旋转点已固定"
-            className="part-pose-editor-pivot-status is-fixed"
-            data-testid="part-pose-pivot-fixed"
-          >
-            <LockKeyhole aria-hidden="true" className="ui-icon" focusable="false" size={14} />
-            已固定
-          </span>
-        ) : editor.calibratingPivot ? (
-          <>
-            <span className="part-pose-editor-pivot-status">在画布点选</span>
-            <Button
-              data-testid="part-pose-cancel-pivot"
-              onClick={editor.onCancelPivot}
-              type="button"
-              variant="secondary"
+        <span
+          aria-label={pivotStatusAccessibleLabel}
+          className={`part-pose-editor-pivot-status${pivotLocked ? ' is-fixed' : ''}`}
+          data-testid={pivotLocked ? 'part-pose-pivot-fixed' : 'part-pose-pivot-status'}
+          title={pivotLocked ? '已有动作姿势，旋转点已固定' : undefined}
+        >
+          {pivotDraft && !pivotLocked ? (
+            '新旋转点待保存'
+          ) : pivotCalibrated ? (
+            <span
+              aria-label="旋转点已校准"
+              className="part-pose-editor-pivot-calibrated"
+              data-testid="part-pose-pivot-calibrated"
+              title="旋转点已校准"
             >
-              取消
-            </Button>
-          </>
-        ) : (
-          <>
-            <span className="part-pose-editor-pivot-status">
-              {pivotDraft
-                ? '新旋转点待保存'
-                : track
-                  ? '已设置'
-                  : '默认中心'}
+              <CircleCheck aria-hidden="true" className="ui-icon" focusable="false" size={14} />
             </span>
-            <Button
-              disabled={!canCalibratePivot}
-              data-testid="part-pose-set-pivot"
-              onClick={() => {
-                if (selectedPartId) editor.onStartPivot(layer.id, selectedPartId);
-              }}
-              type="button"
-              variant="secondary"
-            >
-              设置
-            </Button>
-          </>
+          ) : (
+            '未设置'
+          )}
+          {pivotLocked ? (
+            <LockKeyhole aria-hidden="true" className="ui-icon" focusable="false" size={14} />
+          ) : null}
+        </span>
+        {editor.calibratingPivot ? (
+          <Button
+            data-testid="part-pose-cancel-pivot"
+            onClick={editor.onCancelPivot}
+            type="button"
+            variant="secondary"
+          >
+            取消
+          </Button>
+        ) : (
+          <IconButton
+            aria-label={
+              pivotActionReason
+                ? `${pivotActionLabel}，${pivotActionReason}`
+                : pivotActionLabel
+            }
+            className="part-pose-editor-pivot-action"
+            disabled={!canCalibratePivot}
+            data-testid="part-pose-set-pivot"
+            onClick={() => {
+              if (selectedPartId) editor.onStartPivot(layer.id, selectedPartId);
+            }}
+            title={pivotActionReason || pivotActionLabel}
+            type="button"
+            variant="secondary"
+            icon={<RotateCcw aria-hidden="true" className="ui-icon" focusable="false" size={16} />}
+          />
         )}
       </div>
       {!pivotLocked && !editor.calibratingPivot && pivotReason ? (
