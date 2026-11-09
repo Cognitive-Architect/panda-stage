@@ -17,6 +17,7 @@ import {
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import type { PositionAuthoringSessionHandle } from '../../src/renderer/stores/positionAuthoringSessionStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { projectProductPreviewMouth } from '../../src/renderer/shell/productPreviewModel';
 import {
@@ -458,7 +459,7 @@ function adaptivePoseLayer(opacity: number) {
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
-  it('starts Part pose from canvas selection only while the Action section is open', async () => {
+  it('starts Part pose from canvas selection only while Action is open and Position is inactive', async () => {
     const globals = globalThis as typeof globalThis & {
       IS_REACT_ACT_ENVIRONMENT?: boolean;
     };
@@ -478,8 +479,15 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     document.body.append(container);
     const root = createRoot(container);
     const onSelect = vi.fn();
+    const cancelPositionSession = vi.fn();
+    const positionSession = {
+      cancel: cancelPositionSession,
+    } as unknown as PositionAuthoringSessionHandle;
     const onStartPartPose = vi.fn();
-    const renderLayer = async (poseSelectionEnabled: boolean): Promise<void> => {
+    const renderLayer = async (
+      poseSelectionEnabled: boolean,
+      positionAuthoringSession: typeof positionSession | null = null,
+    ): Promise<void> => {
       await act(async () => root.render(createElement(SelectableLayer, {
         images,
         layer: model.layer,
@@ -491,6 +499,7 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
         onCommitPosition: vi.fn(),
         onCommitTransform: vi.fn(),
         onError: vi.fn(),
+        positionAuthoringSession,
         poseSelectionEnabled,
         onStartPartPose,
       })));
@@ -511,6 +520,30 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
         '[data-konva-kind="Image"]',
       );
       await act(async () => enabledImage!.click());
+      expect(onStartPartPose).toHaveBeenCalledWith(
+        model.layer.id,
+        selectedPartId,
+      );
+
+      onStartPartPose.mockClear();
+      onStartPartPose.mockImplementation(() => positionSession.cancel());
+      await renderLayer(true, positionSession);
+      const positionActiveImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(positionActiveImage).not.toBeNull();
+      await act(async () => positionActiveImage!.click());
+      expect(onStartPartPose).not.toHaveBeenCalled();
+      expect(cancelPositionSession).not.toHaveBeenCalled();
+
+      onStartPartPose.mockClear();
+      onStartPartPose.mockImplementation(() => undefined);
+      await renderLayer(true);
+      const positionExitedImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(positionExitedImage).not.toBeNull();
+      await act(async () => positionExitedImage!.click());
       expect(onStartPartPose).toHaveBeenCalledWith(
         model.layer.id,
         selectedPartId,

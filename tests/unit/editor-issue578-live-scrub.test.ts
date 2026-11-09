@@ -150,6 +150,7 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(ready.match(/class="position-authoring-icon"/gu) ?? []).toHaveLength(2);
     expect(ready).toContain('M3 12.5h6');
     expect(ready).toContain('M2 21.5h7');
+    expect(ready).toContain('M21 14 17 25h8z');
     expect(ready).not.toMatch(/>调整位置<|>保持当前位置</u);
     expect(ready).not.toContain('我要调整位置');
     expect(ready).not.toContain('保持不动到这里');

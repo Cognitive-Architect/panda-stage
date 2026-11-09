@@ -444,7 +444,7 @@ function renderSelectableLayer({
     if (part.source.kind === 'adaptive-part') {
       if (poseEditing) {
         onSelectPart(part.source.characterPartId);
-      } else if (poseSelectionEnabled) {
+      } else if (poseSelectionEnabled && !positionAuthoringEnabled) {
         onStartPartPose(layer.id, part.source.characterPartId);
       }
     }

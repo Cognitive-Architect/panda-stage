@@ -1002,7 +1002,7 @@ function PositionAuthoringGlyph({ moving }: { moving: boolean }): React.JSX.Elem
         strokeWidth="1.9"
       >
         <circle cx="21" cy="7.5" r="3.5" />
-        <path d="m17 14 4 11 4-11z" />
+        <path d="M21 14 17 25h8z" />
       </g>
     </svg>
   );
