@@ -694,7 +694,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "shot",
-        "notes": "Shot renderer ownership and verifier route. Issue #1008 (AUTO-05) adds the multi-scene dialogue batch surface under the same owner, so its unit/integration contracts (tests/unit/multi-scene-*.test.ts, tests/integration/multi-scene-*.test.ts) are registered here rather than introducing a second subsystem route."
+        "notes": "Shot renderer ownership and verifier route. Issue #1005 (AUTO-04) and #1008 (AUTO-05) add the multi-scene batch and dialogue surfaces under the same owner, so their unit/integration contracts (tests/unit/multi-scene-*.test.ts, tests/integration/multi-scene-*.test.ts) are registered here rather than introducing a second subsystem route."
       },
       {
         "id": "canvas",

@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Clapperboard,
+  LayoutTemplate,
   ListFilter,
   Maximize2,
   MessageSquare,
@@ -12,6 +13,7 @@ import { DecorativeIcon } from '../ui';
 import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePanel';
+import { MultiScenePanel } from '../features/shots/MultiScenePanel';
 import { MultiScenePerformancePanel } from '../features/shots/MultiScenePerformancePanel';
 import type { CanvasViewportMode } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
@@ -24,6 +26,7 @@ type ProjectToolsView =
   | 'home'
   | 'action-presets'
   | 'batch-adjust'
+  | 'multi-scene'
   | 'multi-scene-dialogue'
   | 'multi-scene-performance';
 
@@ -32,6 +35,7 @@ const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
   'batch-adjust': '批量调整',
+  'multi-scene': '多镜头布景',
   'multi-scene-dialogue': '多镜头对白',
   'multi-scene-performance': '表演编排',
 };
@@ -176,6 +180,25 @@ export function ProjectToolsDrawer({
             </button>
           </section>
           <section
+            aria-labelledby="project-tools-multi-scene-heading"
+            className="project-tools-multi-scene-card"
+            data-testid="project-tools-multi-scene-card"
+          >
+            <div className="project-tools-multi-scene-heading">
+              <h3 id="project-tools-multi-scene-heading">多镜头布景</h3>
+            </div>
+            <button
+              className="project-tools-multi-scene-launcher"
+              data-project-tools-action="multi-scene"
+              data-testid="project-tools-multi-scene"
+              onClick={() => setView('multi-scene')}
+              type="button"
+            >
+              <DecorativeIcon icon={LayoutTemplate} size={18} />
+              <span>打开多镜头布景</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-multi-scene-dialogue-heading"
             className="project-tools-multi-scene-dialogue-card"
             data-testid="project-tools-multi-scene-dialogue-card"
@@ -229,6 +252,14 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-batch-adjust-view"
         >
           <BatchDialogueMovePanel />
+        </section>
+      ) : view === 'multi-scene' ? (
+        <section
+          aria-label="多镜头布景"
+          className="project-tools-multi-scene-view"
+          data-testid="project-tools-multi-scene-view"
+        >
+          <MultiScenePanel />
         </section>
       ) : view === 'multi-scene-dialogue' ? (
         <section
