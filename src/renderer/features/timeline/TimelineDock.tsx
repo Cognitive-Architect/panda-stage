@@ -34,6 +34,11 @@ import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
 import { StandaloneAudioControls } from './StandaloneAudioControls';
+import { PartPoseTimeline } from './PartPoseTimeline';
+import {
+  EMPTY_PART_POSE_EDITOR_UI,
+  type PartPoseEditorUi,
+} from '../part-pose/partPoseEditorTypes';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -41,6 +46,7 @@ const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 export interface TimelineDockProps {
   productPreviewOpen?: boolean;
   presentation?: 'desktop' | 'landscape' | 'portrait';
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 /** Mirror Timeline UI scroll state into its one real horizontal viewport. */
@@ -75,6 +81,7 @@ export function bindTimelineRulerScroll(
 export function TimelineDock({
   productPreviewOpen = false,
   presentation = 'landscape',
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: TimelineDockProps = {}): React.JSX.Element {
   const currentShotId = useSyncExternalStore(
     shotStore.subscribe,
@@ -399,6 +406,20 @@ export function TimelineDock({
                     onPointerUp={mediaPointerEnd}
                     onPointerCancel={mediaPointerEnd}
                   >
+                  {!productPreviewOpen && presentation !== 'portrait' &&
+                  positionLane && shot && snapshot ? (
+                    <PartPoseTimeline
+                      key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}:${positionLane.layer.id}`}
+                      currentTimeMs={ui.currentTimeMs}
+                      laneLabelWidth={laneLabelWidth}
+                      layer={positionLane.layer}
+                      partPoseEditor={partPoseEditor}
+                      pixelsPerMs={pixelsPerMs}
+                      shot={shot}
+                      snapshot={snapshot}
+                      trackWidth={trackWidth}
+                    />
+                  ) : null}
                   <div
                     className="timeline-lane timeline-subtitle-lane"
                     data-testid="timeline-subtitle-track"

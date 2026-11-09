@@ -6,12 +6,14 @@ import {
   PartPoseAnimationSchema,
   PartPoseKeyframeSchema,
   type PartPoseAnimation,
+  type PartPoseEasing,
   type PartPoseKeyframe,
   type PartPosePoint,
   type PartPoseTrack,
 } from '../models/pose-animation';
 import { ProjectSchema, type Project } from '../models/project';
 import { adaptiveCharacterSourceAnchor } from '../selectors/visualParts';
+import { isValidFrameTime, lastValidFrameTime } from '../timeline/frame-grid';
 
 type AdaptivePartsCharacter = Extract<
   Project['characters'][number],
@@ -30,6 +32,39 @@ export interface SetPartPoseKeyframeInput {
   layerId: string;
   partId: string;
   keyframe: PartPoseKeyframe;
+}
+
+export interface RetimePartPoseKeyframeInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+  fromTimeMs: number;
+  toTimeMs: number;
+}
+
+export interface CopyPartPoseKeyframeInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+  sourceTimeMs: number;
+  targetTimeMs: number;
+  /** UI-only copy buffer snapshot; the source key must still exist. */
+  sourceKeyframe?: PartPoseKeyframe;
+}
+
+export interface DeletePartPoseKeyframeInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+  timeMs: number;
+}
+
+export interface SetPartPoseKeyEasingInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+  timeMs: number;
+  easingToNext: PartPoseEasing;
 }
 
 export interface ClearPartPoseTrackInput {
@@ -226,6 +261,218 @@ export class PartPoseAnimationService {
     if (JSON.stringify(nextPoseAnimation) === JSON.stringify(poseAnimation)) {
       return current;
     }
+    return this.replaceLayer(current, shot.id, layer.id, {
+      ...layer,
+      poseAnimation: nextPoseAnimation,
+    });
+  }
+
+  /** Move an existing non-base key without replacing another key. */
+  retimeKeyframe(project: Project, input: RetimePartPoseKeyframeInput): Project {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    if (!isValidFrameTime(input.fromTimeMs)) {
+      throw new Error('Part pose source key must be on the Project frame grid.');
+    }
+    if (!isValidFrameTime(input.toTimeMs)) {
+      throw new Error('Part pose target key must be on the Project frame grid.');
+    }
+    if (input.toTimeMs > lastValidFrameTime(Math.max(0, shot.durationMs - 1))) {
+      throw new Error('Part pose target key must be within the Shot duration.');
+    }
+
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+    const tracks = [...poseAnimation.tracks];
+    const track = tracks[trackIndex]!;
+    const keyIndex = track.keys.findIndex(
+      (key) => key.timeMs === input.fromTimeMs,
+    );
+    if (keyIndex < 0) {
+      throw new Error(`Part ${input.partId} has no key at ${input.fromTimeMs} ms.`);
+    }
+    if (input.toTimeMs === input.fromTimeMs) return current;
+    if (input.fromTimeMs === 0) {
+      throw new Error('The protected 0 ms Part pose key cannot be moved.');
+    }
+    if (input.toTimeMs === 0) {
+      throw new Error('A Part pose key cannot be moved onto the protected 0 ms key.');
+    }
+    if (track.keys.some((key) => key.timeMs === input.toTimeMs)) {
+      throw new Error('A Part pose key already exists at the target time.');
+    }
+    const previous = track.keys[keyIndex - 1];
+    const next = track.keys[keyIndex + 1];
+    if (
+      (previous && input.toTimeMs <= previous.timeMs) ||
+      (next && input.toTimeMs >= next.timeMs)
+    ) {
+      throw new Error('Part pose keys cannot cross an adjacent key.');
+    }
+
+    const keys = [...track.keys];
+    keys[keyIndex] = { ...keys[keyIndex]!, timeMs: input.toTimeMs };
+    tracks[trackIndex] = { ...track, keys };
+    const nextPoseAnimation = PartPoseAnimationSchema.parse({
+      ...poseAnimation,
+      tracks,
+    });
+    return this.replaceLayer(current, shot.id, layer.id, {
+      ...layer,
+      poseAnimation: nextPoseAnimation,
+    });
+  }
+
+  /** Copy one existing key's complete pose and outgoing easing to a free time. */
+  copyKeyframe(project: Project, input: CopyPartPoseKeyframeInput): Project {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    if (!isValidFrameTime(input.sourceTimeMs)) {
+      throw new Error('Part pose source key must be on the Project frame grid.');
+    }
+    if (!isValidFrameTime(input.targetTimeMs)) {
+      throw new Error('Part pose target key must be on the Project frame grid.');
+    }
+    if (input.targetTimeMs > lastValidFrameTime(Math.max(0, shot.durationMs - 1))) {
+      throw new Error('Part pose target key must be within the Shot duration.');
+    }
+
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+    const tracks = [...poseAnimation.tracks];
+    const track = tracks[trackIndex]!;
+    const source = track.keys.find((key) => key.timeMs === input.sourceTimeMs);
+    if (!source) {
+      throw new Error(`Part ${input.partId} has no key at ${input.sourceTimeMs} ms.`);
+    }
+    const copiedKeyframe = input.sourceKeyframe
+      ? PartPoseKeyframeSchema.parse(input.sourceKeyframe)
+      : source;
+    if (copiedKeyframe.timeMs !== input.sourceTimeMs) {
+      throw new Error('Copied Part pose data no longer matches its source key.');
+    }
+    if (input.targetTimeMs === 0) {
+      throw new Error('A Part pose key cannot be copied onto the protected 0 ms key.');
+    }
+    if (track.keys.some((key) => key.timeMs === input.targetTimeMs)) {
+      throw new Error('A Part pose key already exists at the target time.');
+    }
+
+    const keys = [...track.keys, { ...copiedKeyframe, timeMs: input.targetTimeMs }].sort(
+      (left, right) => left.timeMs - right.timeMs,
+    );
+    tracks[trackIndex] = { ...track, keys };
+    const nextPoseAnimation = PartPoseAnimationSchema.parse({
+      ...poseAnimation,
+      tracks,
+    });
+    return this.replaceLayer(current, shot.id, layer.id, {
+      ...layer,
+      poseAnimation: nextPoseAnimation,
+    });
+  }
+
+  /** Delete one non-base key from the current Part track. */
+  deleteKeyframe(project: Project, input: DeletePartPoseKeyframeInput): Project {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    if (!isValidFrameTime(input.timeMs)) {
+      throw new Error('Part pose key must be on the Project frame grid.');
+    }
+
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+    const tracks = [...poseAnimation.tracks];
+    const track = tracks[trackIndex]!;
+    const keyIndex = track.keys.findIndex((key) => key.timeMs === input.timeMs);
+    if (keyIndex < 0) {
+      throw new Error(`Part ${input.partId} has no key at ${input.timeMs} ms.`);
+    }
+    if (input.timeMs === 0) {
+      throw new Error('The protected 0 ms Part pose key cannot be deleted.');
+    }
+
+    const keys = track.keys.filter((_, index) => index !== keyIndex);
+    tracks[trackIndex] = { ...track, keys };
+    const nextPoseAnimation = PartPoseAnimationSchema.parse({
+      ...poseAnimation,
+      tracks,
+    });
+    return this.replaceLayer(current, shot.id, layer.id, {
+      ...layer,
+      poseAnimation: nextPoseAnimation,
+    });
+  }
+
+  /** Set the easing for exactly one existing key-to-next-key interval. */
+  setKeyEasing(project: Project, input: SetPartPoseKeyEasingInput): Project {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    if (!isValidFrameTime(input.timeMs)) {
+      throw new Error('Part pose key must be on the Project frame grid.');
+    }
+
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+    const tracks = [...poseAnimation.tracks];
+    const track = tracks[trackIndex]!;
+    const keyIndex = track.keys.findIndex((key) => key.timeMs === input.timeMs);
+    if (keyIndex < 0) {
+      throw new Error(`Part ${input.partId} has no key at ${input.timeMs} ms.`);
+    }
+    if (keyIndex === track.keys.length - 1) {
+      throw new Error('The last Part pose key has no outgoing interval.');
+    }
+    if (track.keys[keyIndex]!.easingToNext === input.easingToNext) {
+      return current;
+    }
+
+    const keys = [...track.keys];
+    keys[keyIndex] = PartPoseKeyframeSchema.parse({
+      ...keys[keyIndex]!,
+      easingToNext: input.easingToNext,
+    });
+    tracks[trackIndex] = { ...track, keys };
+    const nextPoseAnimation = PartPoseAnimationSchema.parse({
+      ...poseAnimation,
+      tracks,
+    });
     return this.replaceLayer(current, shot.id, layer.id, {
       ...layer,
       poseAnimation: nextPoseAnimation,

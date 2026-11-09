@@ -260,6 +260,143 @@ describe('formal Part pose animation', () => {
     ).toBe(false);
   });
 
+  it('retimes, copies, deletes, and changes easing without replacing adjacent keys', () => {
+    const { project: base, layerId } = adaptiveProject();
+    const service = new PartPoseAnimationService();
+    const captured = service.create(base, { shotId: IDS.shot, layerId });
+    const track = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!;
+    const partId = track.partId;
+    const putKey = (
+      project: Project,
+      timeMs: number,
+      offsetX: number,
+      easingToNext: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'step',
+    ) => service.setKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs,
+        offsetX,
+        offsetY: offsetX / 2,
+        rotationDeg: offsetX * 3,
+        scale: 1 + offsetX / 100,
+        easingToNext,
+      },
+    });
+    const original = [
+      [500, 10, 'ease-out'],
+      [1_000, 20, 'ease-in'],
+      [2_000, 30, 'linear'],
+    ] as const;
+    let project = captured;
+    for (const [timeMs, offsetX, easing] of original) {
+      project = putKey(project, timeMs, offsetX, easing);
+    }
+
+    const before = project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys[2]!;
+    const retimed = service.retimeKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      fromTimeMs: 1_000,
+      toTimeMs: 1_250,
+    });
+    const afterRetime = retimed.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys[2]!;
+    expect(afterRetime).toEqual({ ...before, timeMs: 1_250 });
+
+    expect(() => service.retimeKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 1_000, toTimeMs: 500,
+    })).toThrow(/already exists/u);
+    expect(() => service.retimeKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 1_000, toTimeMs: 250,
+    })).toThrow(/cross an adjacent key/u);
+    expect(() => service.retimeKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 0, toTimeMs: 250,
+    })).toThrow(/protected 0 ms/u);
+    expect(() => service.retimeKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 1_000, toTimeMs: 3_000,
+    })).toThrow(/within the Shot duration/u);
+    expect(() => service.retimeKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, fromTimeMs: 2_500, toTimeMs: 2_750,
+    })).toThrow(/has no key/u);
+    const finalFrame = service.retimeKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      fromTimeMs: 2_000,
+      toTimeMs: 2_958,
+    });
+    expect(finalFrame.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .at(-1)?.timeMs).toBe(2_958);
+
+    const copied = service.copyKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      sourceTimeMs: 500,
+      targetTimeMs: 750,
+    });
+    const copiedTrack = copied.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!;
+    const source500 = project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!
+      .keys.find((key) => key.timeMs === 500)!;
+    expect(copiedTrack.keys.find((key) => key.timeMs === 750)).toEqual({
+      ...source500,
+      timeMs: 750,
+    });
+    expect(() => service.copyKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 0,
+    })).toThrow(/protected 0 ms/u);
+    expect(() => service.copyKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 1_000,
+    })).toThrow(/already exists/u);
+    expect(() => service.copyKeyframe(project, {
+      shotId: IDS.shot, layerId, partId, sourceTimeMs: 500, targetTimeMs: 3_000,
+    })).toThrow(/within the Shot duration/u);
+
+    const eased = service.setKeyEasing(copied, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      timeMs: 500,
+      easingToNext: 'step',
+    });
+    const easedTrack = eased.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!;
+    expect(easedTrack.keys.find((key) => key.timeMs === 500)?.easingToNext).toBe('step');
+    expect(easedTrack.keys.find((key) => key.timeMs === 1_000)?.easingToNext).toBe('ease-in');
+    expect(() => service.setKeyEasing(copied, {
+      shotId: IDS.shot, layerId, partId, timeMs: 2_000, easingToNext: 'linear',
+    })).toThrow(/last Part pose key/u);
+
+    const deleted = service.deleteKeyframe(copied, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      timeMs: 750,
+    });
+    expect(deleted.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!.keys
+      .map((key) => key.timeMs)).toEqual([0, 500, 1_000, 2_000]);
+    expect(() => service.deleteKeyframe(copied, {
+      shotId: IDS.shot, layerId, partId, timeMs: 0,
+    })).toThrow(/protected 0 ms/u);
+  });
+
   it('captures a static Adaptive Parts snapshot and resolves continuous 0-to-270 degree rotation', () => {
     const { project: base, layerId } = adaptiveProject();
     const initial = poseAt(base, layerId, 0).visual;

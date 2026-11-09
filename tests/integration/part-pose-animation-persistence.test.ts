@@ -329,6 +329,199 @@ describe('Part pose animation persistence', () => {
     editor.clear();
   });
 
+  it('round trips a 3-second raise/pause/lower action on two independent Parts', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-pose-timeline-'),
+    );
+    temporaryParents.push(parent);
+    const projectRoot = path.join(parent, 'Pose Timeline.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(projectRoot, {
+      name: 'Pose Timeline',
+    });
+    let project = ProjectSchema.parse({
+      ...buildProject(),
+      id: created.project.id,
+      name: created.project.name,
+      createdAt: created.project.createdAt,
+      updatedAt: created.project.updatedAt,
+    });
+    project = new CharacterService().createAdaptiveParts(project, {
+      name: 'Two Part Pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const partA = character.parts[0]!.partId;
+    const partB = character.parts[1]!.partId;
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    project = placed.project;
+    await projectService.save(projectRoot, project, 1);
+
+    const editor = new EditorProjectStore();
+    editor.open(projectRoot, project);
+    const poses = new PartPoseAnimationService();
+    const apply = (next: Project, label: string): void => {
+      const previous = editor.getSnapshot()!;
+      const previousUndoCount = editor.history.getSnapshot().undoCount;
+      editor.updateProject(next, label);
+      expect(editor.getSnapshot()?.revision).toBe(previous.revision + 1);
+      expect(editor.history.getSnapshot().undoCount).toBe(previousUndoCount + 1);
+    };
+    const setKey = (
+      partId: string,
+      timeMs: number,
+      rotationDeg: number,
+      easingToNext: 'linear' | 'ease-out' | 'ease-in-out' | 'step',
+      label: string,
+    ): void => {
+      apply(
+        poses.setKeyframe(editor.getSnapshot()!.project, {
+          shotId: IDS.shot,
+          layerId: placed.layer.id,
+          partId,
+          keyframe: {
+            timeMs,
+            offsetX: 0,
+            offsetY: 0,
+            rotationDeg,
+            scale: 1,
+            easingToNext,
+          },
+        }),
+        label,
+      );
+    };
+
+    apply(
+      poses.create(editor.getSnapshot()!.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        pivotSourceByPartId: {
+          [partA]: { x: 120, y: 96 },
+          [partB]: { x: 210, y: 160 },
+        },
+      }),
+      'Capture two Part pose tracks',
+    );
+    setKey(partA, 1_000, 25, 'step', 'Raise Part A');
+    setKey(partA, 2_000, 25, 'ease-in-out', 'Pause Part A');
+    setKey(partA, 2_958, 0, 'linear', 'Lower Part A');
+    setKey(partB, 750, -35, 'ease-out', 'Move Part B');
+    setKey(partB, 2_250, 10, 'linear', 'Return Part B');
+    setKey(partB, 2_500, 30, 'linear', 'Temporary Part B key');
+
+    apply(
+      poses.retimeKeyframe(editor.getSnapshot()!.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        partId: partB,
+        fromTimeMs: 2_500,
+        toTimeMs: 2_542,
+      }),
+      'Retime Part B key',
+    );
+    apply(
+      poses.copyKeyframe(editor.getSnapshot()!.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        partId: partB,
+        sourceTimeMs: 750,
+        targetTimeMs: 1_000,
+      }),
+      'Copy Part B key',
+    );
+    apply(
+      poses.setKeyEasing(editor.getSnapshot()!.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        partId: partB,
+        timeMs: 750,
+        easingToNext: 'step',
+      }),
+      'Set Part B easing',
+    );
+    apply(
+      poses.deleteKeyframe(editor.getSnapshot()!.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        partId: partB,
+        timeMs: 2_542,
+      }),
+      'Delete temporary Part B key',
+    );
+
+    const committed = editor.getSnapshot()!.project;
+    const committedLayer = committed.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const committedA = committedLayer.poseAnimation!.tracks.find(
+      (track) => track.partId === partA,
+    )!;
+    const committedB = committedLayer.poseAnimation!.tracks.find(
+      (track) => track.partId === partB,
+    )!;
+    expect(committedA.keys.map((key) => key.timeMs)).toEqual([
+      0, 1_000, 2_000, 2_958,
+    ]);
+    expect(committedB.keys.map((key) => key.timeMs)).toEqual([
+      0, 750, 1_000, 2_250,
+    ]);
+    expect(committedB.keys.find((key) => key.timeMs === 1_000)).toMatchObject({
+      rotationDeg: -35,
+      easingToNext: 'ease-out',
+    });
+    expect(committedB.keys.find((key) => key.timeMs === 750)?.easingToNext).toBe('step');
+    expect(poseAtTime(committed, IDS.shot, placed.layer.id, partA, 1_500).rotationDeg)
+      .toBe(25);
+    expect(poseAtTime(committed, IDS.shot, placed.layer.id, partA, 2_500).rotationDeg)
+      .toBeGreaterThan(0);
+    expect(poseAtTime(committed, IDS.shot, placed.layer.id, partA, 2_958).rotationDeg)
+      .toBe(0);
+    expect(poseAtTime(committed, IDS.shot, placed.layer.id, partB, 1_000).rotationDeg)
+      .toBe(-35);
+    const committedSnapshot = editor.getSnapshot()!;
+    const historyBeforeSeek = editor.history.getSnapshot();
+    for (const timeMs of [0, 1_000, 1_500, 2_000, 2_500, 2_958]) {
+      poseAtTime(editor.getSnapshot()!.project, IDS.shot, placed.layer.id, partA, timeMs);
+    }
+    expect(editor.getSnapshot()).toBe(committedSnapshot);
+    expect(editor.history.getSnapshot()).toEqual(historyBeforeSeek);
+
+    await projectService.save(
+      projectRoot,
+      committed,
+      editor.getSnapshot()!.revision,
+    );
+    const reopened = await projectService.open(projectRoot);
+    const reopenedLayer = reopened.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    expect(reopenedLayer.poseAnimation!.tracks).toEqual(
+      committedLayer.poseAnimation!.tracks,
+    );
+    expect(reopenedLayer.poseAnimation!.tracks.find(
+      (track) => track.partId === partA,
+    )!.pivotSource).toEqual({ x: 120, y: 96 });
+    expect(reopenedLayer.poseAnimation!.tracks.find(
+      (track) => track.partId === partB,
+    )!.pivotSource).toEqual({ x: 210, y: 160 });
+    expect(poseAtTime(reopened.project, IDS.shot, placed.layer.id, partA, 1_500).rotationDeg)
+      .toBe(25);
+    expect(poseAtTime(reopened.project, IDS.shot, placed.layer.id, partA, 2_958).rotationDeg)
+      .toBe(0);
+    expect(poseAtTime(reopened.project, IDS.shot, placed.layer.id, partB, 1_000).rotationDeg)
+      .toBe(-35);
+    editor.clear();
+  });
+
   it('isolates same-Character pose instances, deep-copies layers and Shots, and preserves snapshot resources through reopen', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-pose-instances-'),

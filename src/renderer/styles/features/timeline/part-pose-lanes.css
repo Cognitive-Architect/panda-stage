@@ -1,0 +1,195 @@
+.timeline-dock .timeline-media-lanes > .timeline-pose-toolbar {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 50px;
+  min-width: 100%;
+  min-height: 50px;
+  height: 50px;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  overflow: visible;
+  border-top: 1px solid rgb(127 199 148 / 18%);
+  border-bottom: 1px solid rgb(127 199 148 / 18%);
+  background: rgb(10 18 12 / 94%);
+}
+
+.timeline-pose-toolbar-label {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 var(--timeline-lane-label-width, 82px);
+  height: 100%;
+  align-items: center;
+  padding-inline: 7px;
+  transform: translateX(var(--timeline-scroll-px, 0px));
+  border-right: 1px solid rgb(127 199 148 / 18%);
+  background: rgb(10 18 12 / 96%);
+  color: #d7ebdc;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-dock .timeline-pose-control {
+  flex: 0 0 48px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+}
+
+.timeline-dock .timeline-pose-text-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 6px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 6px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.timeline-pose-text-control:disabled,
+.timeline-pose-control:disabled,
+.timeline-pose-easing:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.timeline-pose-easing {
+  flex: 0 0 auto;
+  max-width: 96px;
+  height: 48px;
+  min-height: 48px;
+  padding-inline: 4px;
+  border: 1px solid rgb(127 199 148 / 30%);
+  border-radius: 6px;
+  background: rgb(18 31 23 / 90%);
+  color: #d7ebdc;
+  font-size: 11px;
+}
+
+.timeline-dock .timeline-media-lanes > .timeline-pose-overview-lane,
+.timeline-dock .timeline-media-lanes > .timeline-pose-part-lane {
+  box-sizing: border-box;
+  flex: 0 0 38px;
+  min-height: 38px;
+  height: 38px;
+  grid-template-columns: var(--timeline-lane-label-width, 82px) max-content;
+}
+
+.timeline-dock .timeline-media-lanes .timeline-pose-overview-lane .timeline-lane-label,
+.timeline-dock .timeline-media-lanes .timeline-pose-part-lane .timeline-lane-label {
+  position: relative;
+  left: auto;
+  transform: translateX(var(--timeline-scroll-px, 0px));
+  padding-inline: 7px;
+}
+
+.timeline-pose-lane-content {
+  overflow: visible;
+}
+
+.part-pose-overview-marker,
+.part-pose-key-marker {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.part-pose-overview-marker {
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.part-pose-overview-marker > span {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #8ecfa4;
+  border-radius: 50%;
+  background: #355c42;
+}
+
+.part-pose-overview-marker[aria-current='time'] > span {
+  border-color: #ffdf8a;
+  background: #ffdf8a;
+}
+
+.part-pose-key-marker {
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  color: #91d6a6;
+}
+
+.part-pose-key-diamond {
+  width: 9px;
+  height: 9px;
+  transform: rotate(45deg);
+  border: 1px solid #b9efc6;
+  background: #356b46;
+}
+
+.part-pose-key-marker[data-time-ms='0'] .part-pose-key-diamond {
+  border-color: #9ab5a2;
+  background: #53675a;
+}
+
+.part-pose-key-marker[data-current='true'] .part-pose-key-diamond,
+.part-pose-key-marker[data-selected='true'] .part-pose-key-diamond {
+  border-color: #ffdf8a;
+  background: #ffdf8a;
+}
+
+.part-pose-key-marker[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.part-pose-key-marker:focus-visible,
+.part-pose-overview-marker:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #ffdf8a);
+  outline-offset: 1px;
+}
+
+.part-pose-key-time-bubble {
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  padding: 2px 4px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 223 138 / 55%);
+  border-radius: 4px;
+  background: rgb(20 25 20 / 96%);
+  color: #ffdf8a;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.timeline-dock[data-has-position-lane='true'] .timeline-media-lanes > .timeline-pose-overview-lane,
+.timeline-dock[data-has-position-lane='true'] .timeline-media-lanes > .timeline-pose-part-lane {
+  flex: 0 0 38px;
+  height: 38px;
+}

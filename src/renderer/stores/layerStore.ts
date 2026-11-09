@@ -2,6 +2,7 @@ import {
   LayerService,
   PartPoseAnimationService,
   evaluatePartPoseAnimationAtTime,
+  type PartPoseEasing,
   type PartPoseKeyframe,
   type PartPosePoint,
   type CreateLayerInput,
@@ -256,6 +257,86 @@ export class LayerStore {
     });
     if (next !== context.project) {
       this.commitPoseProject(context, next, 'Set Part pose keyframe');
+    }
+    return next;
+  }
+
+  retimePartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.retimeKeyframe(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      fromTimeMs,
+      toTimeMs,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Retime Part pose keyframe');
+    }
+    return next;
+  }
+
+  copyPartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    sourceTimeMs: number,
+    targetTimeMs: number,
+    sourceKeyframe?: PartPoseKeyframe,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.copyKeyframe(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      sourceTimeMs,
+      targetTimeMs,
+      ...(sourceKeyframe ? { sourceKeyframe } : {}),
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Copy Part pose keyframe');
+    }
+    return next;
+  }
+
+  deletePartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    timeMs: number,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.deleteKeyframe(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      timeMs,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Delete Part pose keyframe');
+    }
+    return next;
+  }
+
+  setPartPoseKeyEasing(
+    layerId: string,
+    partId: string,
+    timeMs: number,
+    easingToNext: PartPoseEasing,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.setKeyEasing(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      timeMs,
+      easingToNext,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Set Part pose key easing');
     }
     return next;
   }

@@ -2950,6 +2950,7 @@ export function EditorShell({
             </div>
             <BottomWorkspace
               productPreviewOpen={productPreviewOpen}
+              partPoseEditor={partPoseEditorUi}
               hidden={
                 isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
               }
