@@ -608,6 +608,9 @@ describe('cross-project resource import', () => {
       ['熊猫 图片.png'],
     );
     const targetImage = targetAssets.project.assets[0]!;
+    if (targetImage.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
     const withTargetImage = ProjectSchema.parse({
       ...targetAssets.project,
       assets: [{ ...targetImage, usage: 'character' as const }],
