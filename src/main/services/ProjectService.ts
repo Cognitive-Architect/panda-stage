@@ -207,6 +207,22 @@ export class ProjectService {
   }
 
   async open(rawProjectRoot: string): Promise<ProjectDocument> {
+    return this.readProject(rawProjectRoot, true);
+  }
+
+  /**
+   * Reads a project without opening it into the active session or running
+   * project-open recovery hooks. Cross-project inspection uses this path so
+   * the source project remains read-only.
+   */
+  async openReadOnly(rawProjectRoot: string): Promise<ProjectDocument> {
+    return this.readProject(rawProjectRoot, false);
+  }
+
+  private async readProject(
+    rawProjectRoot: string,
+    notifyOpened: boolean,
+  ): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
     let serialized: string;
     try {
@@ -239,7 +255,9 @@ export class ProjectService {
         sourceVersion !== PROJECT_SCHEMA_VERSION,
         sourceVersion,
       );
-      await this.onProjectOpened?.(projectRoot, project);
+      if (notifyOpened) {
+        await this.onProjectOpened?.(projectRoot, project);
+      }
       return document;
     } catch (error) {
       throw this.mapError('open', projectRoot, error);

@@ -960,6 +960,14 @@ export function AssetLibrary({
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
             onImportedAudioAssets={refreshAudioMetadataBatch}
+            onProjectResourceImportCompleted={() => {
+              if (!clearSelectedAsset()) return;
+              setCategory('all');
+              setSearchQuery('');
+              setUsageFilter('all');
+              setPage(1);
+            }}
+            onProjectResourceImportStatus={setStatus}
             snapshot={snapshot}
           />
           <div

@@ -28,6 +28,8 @@ export const IPC_CHANNELS = Object.freeze({
   PROJECT_SAVE: 'project:save',
   ASSET_IMPORT_CHOOSE: 'asset-import:choose',
   ASSET_IMPORT_DROPPED: 'asset-import:dropped',
+  PROJECT_RESOURCE_IMPORT_CHOOSE: 'project-resource-import:choose',
+  PROJECT_RESOURCE_IMPORT_APPLY: 'project-resource-import:apply',
   ASSET_METADATA_REFRESH: 'asset-metadata:refresh',
   ASSET_METADATA_CANCEL: 'asset-metadata:cancel',
   ASSET_DELETE: 'asset:delete',

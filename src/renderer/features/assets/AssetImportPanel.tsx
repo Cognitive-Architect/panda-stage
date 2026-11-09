@@ -18,6 +18,7 @@ import {
   type AssetImportFeedback,
 } from './assetImportFeedback';
 import { useAssetDrop } from './useAssetDrop';
+import { ProjectResourceImportPanel } from './ProjectResourceImportPanel';
 
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
@@ -28,6 +29,8 @@ export interface AssetImportPanelProps {
   onImportedAudioAssets?: (
     assetIds: readonly string[],
   ) => Promise<AssetMetadataBatchOutcome>;
+  onProjectResourceImportCompleted?: () => void;
+  onProjectResourceImportStatus?: (message: string) => void;
 }
 
 export function selectImportedAudioAssetIds(
@@ -62,6 +65,8 @@ export function AssetImportPanel({
   compact = false,
   showFlaAction = true,
   onImportedAudioAssets,
+  onProjectResourceImportCompleted = () => undefined,
+  onProjectResourceImportStatus = () => undefined,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] =
@@ -468,6 +473,16 @@ export function AssetImportPanel({
               <span>导入 FLA</span>
             </button>
             <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
+          </div>
+        ) : null}
+        {snapshot ? (
+          <div className="asset-import-actions">
+            <ProjectResourceImportPanel
+              disabled={busy}
+              onImported={onProjectResourceImportCompleted}
+              onStatus={onProjectResourceImportStatus}
+              snapshot={snapshot}
+            />
           </div>
         ) : null}
         {!snapshot ? (

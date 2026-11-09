@@ -2,7 +2,9 @@ import {
   ProjectSchema,
   scanAssetReferences,
   type Asset,
+  type Character,
   type Project,
+  type VoiceProfile,
 } from '../../domain';
 import type {
   ExecuteHistoryOptions,
@@ -322,6 +324,84 @@ export class EditorProjectStore {
     return 'stale';
   }
 
+  applyProjectResourceImport(
+    rawSavedProject: Project,
+    importedAssets: readonly Asset[],
+    importedCharacters: readonly Character[],
+    importedVoiceProfiles: readonly VoiceProfile[],
+    baseRevision: number,
+    savedRevision: number,
+  ): SaveAcknowledgement {
+    const current = this.requireSnapshot();
+    const savedProject = ProjectSchema.parse(rawSavedProject);
+    this.assertSameProject(current.project, savedProject);
+    if (
+      !Number.isInteger(baseRevision) ||
+      baseRevision < 0 ||
+      savedRevision !== baseRevision + 1
+    ) {
+      throw new Error(
+        `Invalid project resource import revisions: base=${baseRevision}, saved=${savedRevision}.`,
+      );
+    }
+    if (current.revision < baseRevision) {
+      throw new Error(
+        `Project resource import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    this.history.clear();
+    if (current.revision === baseRevision) {
+      this.savedProjectJson = JSON.stringify(savedProject);
+      this.snapshot = {
+        ...current,
+        project: savedProject,
+        dirty: false,
+        revision: savedRevision,
+      };
+      this.emit();
+      return 'current';
+    }
+
+    const assetIds = new Set(current.project.assets.map((asset) => asset.id));
+    const characterIds = new Set(
+      current.project.characters.map((character) => character.id),
+    );
+    const voiceProfileIds = new Set(
+      current.project.voiceProfiles.map((profile) => profile.id),
+    );
+    const characterNames = new Set(
+      current.project.characters.map((character) => normalizeName(character.name)),
+    );
+    const characters = importedCharacters
+      .filter((character) => !characterIds.has(character.id))
+      .map((character) => ({
+        ...character,
+        name: uniqueCharacterName(character.name, characterNames),
+      }));
+    const project = ProjectSchema.parse({
+      ...current.project,
+      assets: [
+        ...current.project.assets,
+        ...importedAssets.filter((asset) => !assetIds.has(asset.id)),
+      ],
+      characters: [...current.project.characters, ...characters],
+      voiceProfiles: [
+        ...current.project.voiceProfiles,
+        ...importedVoiceProfiles.filter(
+          (profile) => !voiceProfileIds.has(profile.id),
+        ),
+      ],
+    });
+    this.snapshot = {
+      ...current,
+      project,
+      dirty: true,
+      revision: current.revision + 1,
+    };
+    this.emit();
+    return 'stale';
+  }
+
   applyAssetMetadata(
     rawSavedProject: Project,
     rawRefreshedAsset: Asset,
@@ -524,6 +604,31 @@ export class EditorProjectStore {
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLocaleLowerCase('en-US');
+}
+
+function uniqueCharacterName(name: string, occupied: Set<string>): string {
+  const normalized = normalizeName(name);
+  if (!occupied.has(normalized)) {
+    occupied.add(normalized);
+    return name;
+  }
+  for (let suffix = 2; suffix <= 10_000; suffix += 1) {
+    const marker = ` (${suffix})`;
+    const characters = Array.from(name);
+    while (characters.join('').length > 200 - marker.length) {
+      characters.pop();
+    }
+    const candidate = `${characters.join('').trimEnd()}${marker}`;
+    const key = normalizeName(candidate);
+    if (occupied.has(key)) continue;
+    occupied.add(key);
+    return candidate;
+  }
+  throw new Error(`Could not allocate a unique name for ${name}.`);
 }
 
 export const editorProjectStore = new EditorProjectStore();
