@@ -761,4 +761,92 @@ describe('Day 22 layer stores', () => {
     ).toBe(false);
     input.selection.dispose();
   });
+
+  it('commits one Character duplicate as a single History step and keeps both instances independent', () => {
+    const input = harness(buildProject());
+    const shot = input.project.shots[0]!;
+    const source = shot.layers.find((layer) => layer.id === IDS.layerChar)!;
+    let notifications = 0;
+    input.editor.subscribe(() => {
+      notifications += 1;
+    });
+    input.selection.select(source.id);
+
+    const duplicate = input.layers.duplicateCharacterLayer(source.id);
+    expect(notifications).toBe(1);
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    expect(duplicate.id).not.toBe(source.id);
+    expect(duplicate.source).toEqual(source.source);
+    expect(input.selection.getSelectedLayerId()).toBe(duplicate.id);
+
+    input.layers.updatePosition(duplicate.id, { x: 900, y: 300 });
+    input.layers.deleteLayer(source.id);
+    const afterDelete = input.editor.getSnapshot()!.project.shots[0]!;
+    expect(afterDelete.layers.find((layer) => layer.id === source.id)).toBeUndefined();
+    expect(afterDelete.layers.find((layer) => layer.id === duplicate.id)).toMatchObject({
+      x: 900,
+      y: 300,
+      source: source.source,
+    });
+    expect(afterDelete.timelineEvents).toEqual(shot.timelineEvents);
+    expect(input.editor.getSnapshot()!.project.characters).toEqual(
+      input.project.characters,
+    );
+    expect(input.editor.getSnapshot()!.project.assets).toEqual(
+      input.project.assets,
+    );
+
+    expect(input.editor.undo()).toBe(true);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+        (layer) => layer.id === source.id,
+      ),
+    ).toEqual(source);
+    expect(input.editor.undo()).toBe(true);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+        (layer) => layer.id === duplicate.id,
+      ),
+    ).toMatchObject({ x: source.x + 24, y: source.y + 24 });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers).toHaveLength(
+      shot.layers.length,
+    );
+    expect(input.editor.getSnapshot()!.project).toEqual(input.project);
+
+    expect(input.editor.redo()).toBe(true);
+    expect(
+      input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+        (layer) => layer.id === duplicate.id,
+      ),
+    ).toBe(true);
+    expect(input.selection.getSelectedLayerId()).toBe(duplicate.id);
+    input.selection.dispose();
+  });
+
+  it('does not create a Character duplicate for locked, hidden, or non-Character layers', () => {
+    const input = harness(buildProject());
+    const shot = input.project.shots[0]!;
+    const source = shot.layers.find((layer) => layer.id === IDS.layerChar)!;
+    const assetLayer = shot.layers.find((layer) => layer.id === IDS.layerAsset)!;
+
+    expect(() => input.layers.duplicateCharacterLayer(assetLayer.id)).toThrow(
+      expect.objectContaining({ code: 'CHARACTER_LAYER_REQUIRED' }),
+    );
+    input.layers.setLocked(source.id, true);
+    expect(() => input.layers.duplicateCharacterLayer(source.id)).toThrow(
+      expect.objectContaining({ code: 'LAYER_LOCKED' }),
+    );
+    const lockedRevision = input.editor.getSnapshot()!.revision;
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers).toHaveLength(
+      shot.layers.length,
+    );
+    expect(input.editor.getSnapshot()).toMatchObject({
+      revision: lockedRevision,
+    });
+    input.selection.dispose();
+  });
 });

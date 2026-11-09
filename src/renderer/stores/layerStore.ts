@@ -222,7 +222,7 @@ export class LayerStore {
     );
     this.editorStore.updateProject(
       result.project,
-      'Duplicate Character layer',
+      'Duplicate character layer',
       {},
       {
         afterRedo: () =>

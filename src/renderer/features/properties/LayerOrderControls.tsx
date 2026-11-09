@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   BringToFront,
+  Copy,
   Lock,
   SendToBack,
   ShieldCheck,
@@ -166,6 +167,18 @@ export function LayerOrderControls({
     }
   };
 
+  const duplicateCharacterLayer = (): void => {
+    if (!layer) return;
+    try {
+      layerStore.duplicateCharacterLayer(layer.id);
+      setStatus('');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '角色副本创建失败。',
+      );
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (
@@ -224,6 +237,8 @@ export function LayerOrderControls({
   };
 
   const disabled = !layer || layer.locked || isBackgroundLayer;
+  const canDuplicateCharacter = layer?.source.kind === 'character';
+  const duplicateDisabled = disabled || !layer?.visible;
   const orderPosition = formatLayerOrderPosition(
     orderIndex,
     orderedContent.length,
@@ -337,6 +352,20 @@ export function LayerOrderControls({
                   <span>置底</span>
                 </span>
               </button>
+              {canDuplicateCharacter ? (
+                <button
+                  aria-label="复制角色"
+                  data-testid="duplicate-character-layer"
+                  disabled={duplicateDisabled}
+                  onClick={duplicateCharacterLayer}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={Copy} size={16} />
+                    <span>复制角色</span>
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             <div className="layer-order-state">
@@ -460,6 +489,15 @@ export function LayerOrderControls({
         >
           置底
         </button>
+        {canDuplicateCharacter ? (
+          <button
+            disabled={duplicateDisabled}
+            onClick={duplicateCharacterLayer}
+            type="button"
+          >
+            复制角色
+          </button>
+        ) : null}
         <button
           className="layer-delete-button"
           disabled={disabled}
