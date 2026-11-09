@@ -8,6 +8,7 @@ export * from './PartPoseActionPresetService';
 export * from './PartPoseAnimationService';
 export * from './ShotService';
 export * from './SubtitleStyleService';
+export * from './TimelineEventBatchService';
 export * from './AssetService';
 export * from './AutoSubtitleGenerationService';
 export * from './MultiSceneService';
