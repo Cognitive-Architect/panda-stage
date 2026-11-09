@@ -11,6 +11,8 @@ export const AssetReferenceSchema = z
       'character-expression',
       'shot-background',
       'shot-layer',
+      'shot-template-background',
+      'shot-template-layer',
       'audio-clip',
       'dialogue-audio',
     ]),

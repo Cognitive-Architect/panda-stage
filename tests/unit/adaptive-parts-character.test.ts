@@ -279,8 +279,10 @@ describe('Adaptive Parts Character C1 model', () => {
 
   it('keeps v14 strict and migrates its legacy Character shape to v15 unchanged', () => {
     const base = buildProject();
+    const { shotTemplates: _shotTemplates, ...version15Shape } = base;
+    void _shotTemplates;
     const version14 = ProjectV14Schema.parse({
-      ...base,
+      ...version15Shape,
       schemaVersion: 14,
     });
 

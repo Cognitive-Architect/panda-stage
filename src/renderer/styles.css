@@ -96,6 +96,7 @@
 @import './styles/compat/retained-task-surfaces/s09-04--portrait-pending-polish.css';
 @import './styles/features/shots/s09-05--landscape-shot-quick-actions.css';
 @import './styles/features/shots/s09-06--multi-scene-panel.css';
+@import './styles/features/shots/s09-06--shot-templates.css';
 @import './styles/shell/resources/s09-07--landscape-asset-header.css';
 @import './styles/features/assets/s09-08--landscape-asset-visual.css';
 @import './styles/features/assets/animation-library.css';

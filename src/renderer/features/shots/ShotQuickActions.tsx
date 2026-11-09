@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SHOT_MIN_DURATION_MS, type Shot } from '../../../domain';
 import {
+  Bookmark,
   Check,
   Clock3,
   Copy,
@@ -10,7 +11,12 @@ import {
   X,
 } from 'lucide-react';
 
-type QuickEditor = 'rename' | 'duration' | null;
+type QuickEditor = 'rename' | 'duration' | 'save-template' | null;
+
+/** Templates are named after the Shot they came from; the author can edit it. */
+export function defaultTemplateName(shotName: string): string {
+  return `${shotName} 模板`;
+}
 
 function parseDurationInput(value: string): number {
   const seconds = Number(value);
@@ -25,6 +31,8 @@ export interface ShotQuickActionsProps {
   onRemove: () => void;
   onRename: (name: string) => void;
   onSetDuration: (durationMs: number) => void;
+  /** Missing owner means the template action stays unavailable, not hidden. */
+  onSaveAsTemplate?: (name: string) => void;
 }
 
 /**
@@ -39,17 +47,23 @@ export function ShotQuickActions({
   onRemove,
   onRename,
   onSetDuration,
+  onSaveAsTemplate,
 }: ShotQuickActionsProps): React.JSX.Element {
   const [activeEditor, setActiveEditor] = useState<QuickEditor>(null);
   const [nameInput, setNameInput] = useState(shot.name);
+  const [templateNameInput, setTemplateNameInput] = useState(
+    defaultTemplateName(shot.name),
+  );
   const [durationInput, setDurationInput] = useState(
     (shot.durationMs / 1_000).toFixed(1),
   );
   const [durationTouched, setDurationTouched] = useState(false);
+  const moreMenuRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
     setActiveEditor(null);
     setNameInput(shot.name);
+    setTemplateNameInput(defaultTemplateName(shot.name));
     setDurationInput((shot.durationMs / 1_000).toFixed(1));
     setDurationTouched(false);
   }, [shot.id, shot.name, shot.durationMs]);
@@ -66,6 +80,7 @@ export function ShotQuickActions({
     : null;
   const nameValid =
     Boolean(nameInput.trim()) && nameInput.trim() !== shot.name;
+  const templateNameValid = Boolean(templateNameInput.trim());
 
   return (
     <section
@@ -98,7 +113,7 @@ export function ShotQuickActions({
             <Clock3 aria-hidden="true" className="ui-icon" focusable="false" size={16} />
             <span>时长</span>
           </button>
-          <details className="shot-quick-more">
+          <details className="shot-quick-more" ref={moreMenuRef}>
             <summary
               aria-label="更多镜头操作"
               className="shot-quick-action"
@@ -117,6 +132,20 @@ export function ShotQuickActions({
               >
                 <Copy aria-hidden="true" className="ui-icon" focusable="false" size={16} />
                 <span>复制镜头</span>
+              </button>
+              <button
+                className="shot-quick-action"
+                data-testid="shot-quick-save-template"
+                disabled={disabled || !onSaveAsTemplate}
+                onClick={() => {
+                  setTemplateNameInput(defaultTemplateName(shot.name));
+                  setActiveEditor('save-template');
+                  if (moreMenuRef.current) moreMenuRef.current.open = false;
+                }}
+                type="button"
+              >
+                <Bookmark aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+                <span>保存为模板</span>
               </button>
               <button
                 className="shot-quick-action shot-quick-delete"
@@ -169,6 +198,52 @@ export function ShotQuickActions({
               aria-label="取消镜头名称修改"
               className="shot-quick-cancel"
               data-testid="shot-quick-rename-cancel"
+              onClick={() => setActiveEditor(null)}
+              title="取消"
+              type="button"
+            >
+              <X aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+            </button>
+          </div>
+        </form>
+      ) : null}
+      {activeEditor === 'save-template' ? (
+        <form
+          className="shot-quick-edit-form"
+          data-testid="shot-quick-save-template-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!templateNameValid || !onSaveAsTemplate) return;
+            onSaveAsTemplate(templateNameInput);
+            setActiveEditor(null);
+          }}
+        >
+          <label className="shot-quick-edit-field">
+            <span>模板名称</span>
+            <input
+              aria-label="模板名称"
+              autoFocus
+              disabled={disabled}
+              maxLength={200}
+              onChange={(event) => setTemplateNameInput(event.target.value)}
+              value={templateNameInput}
+            />
+          </label>
+          <div className="shot-quick-edit-buttons">
+            <button
+              aria-label="保存为模板"
+              className="shot-quick-apply"
+              data-testid="shot-quick-save-template-submit"
+              disabled={disabled || !templateNameValid}
+              title="保存"
+              type="submit"
+            >
+              <Check aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+            </button>
+            <button
+              aria-label="取消保存模板"
+              className="shot-quick-cancel"
+              data-testid="shot-quick-save-template-cancel"
               onClick={() => setActiveEditor(null)}
               title="取消"
               type="button"

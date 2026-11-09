@@ -35,8 +35,10 @@ describe('explicit background identity lifecycle', () => {
     const root = path.join(parent, 'background.pandastage');
     await mkdir(root, { recursive: true });
     const current = migrateProject(exampleProject);
-    const { animations: _animations, ...legacyCurrent } = current;
+    const { animations: _animations, shotTemplates: _templates, ...legacyCurrent } = current;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const legacyAssets = structuredClone(current.assets);
     for (const asset of legacyAssets) {
       if (asset.kind !== 'image') continue;

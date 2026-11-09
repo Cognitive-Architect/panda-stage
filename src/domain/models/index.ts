@@ -6,5 +6,6 @@ export * from './dialogue';
 export * from './layer';
 export * from './project';
 export * from './shot';
+export * from './shot-template';
 export * from './subtitle';
 export * from './timeline-event';

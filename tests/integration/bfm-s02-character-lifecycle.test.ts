@@ -315,8 +315,10 @@ describe('BFM-S02 composite Character lifecycle', () => {
         },
       ],
     });
-    const { animations: _animations, ...legacyCurrent } = current;
+    const { animations: _animations, shotTemplates: _templates, ...legacyCurrent } = current;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const currentCharacter = asExpressionCharacter(current.characters[0]!);
     if (currentCharacter.mode !== 'composite') {
       throw new Error('Expected the v8 fixture to be composite.');
