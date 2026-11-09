@@ -463,6 +463,7 @@
           "tests/unit/models/audio-clip-source-range.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
           "tests/integration/animation-persistence.test.ts",
+          "tests/integration/legacy-project-reopen.test.ts",
           "tests/helpers/adaptivePartsFixtures.ts",
           "tests/helpers/characterAssertions.ts",
           "tests/integration/adaptive-parts-lifecycle.test.ts",
