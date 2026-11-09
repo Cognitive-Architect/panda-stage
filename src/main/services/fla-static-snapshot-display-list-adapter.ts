@@ -975,9 +975,20 @@ function boundedMotionFramePairRejectionReason(
     frame.attributes.motionTweenSnap === 'true' &&
     frame.attributes.motionTweenSync === 'true' &&
     frame.attributes.keyMode === '24065';
-  const synchronizedMotionPair = startIndex === 0 && duration === 7 &&
-    Number(startFrame.attributes.index) === 0 && Number(endFrame.attributes.index) === 7 &&
-    isSynchronizedMotionKey(startFrame) && isSynchronizedMotionKey(endFrame);
+  const synchronizedMotionStartTarget = frameDisplayElements(startFrame)[0];
+  const synchronizedMotionEndTarget = frameDisplayElements(endFrame)[0];
+  const synchronizedMotionFirstFramePair = startIndex === 0
+    ? synchronizedMotionStartTarget?.attributes.firstFrame === undefined &&
+      (synchronizedMotionEndTarget?.attributes.firstFrame === undefined ||
+        synchronizedMotionEndTarget.attributes.firstFrame === String(startIndex + duration))
+    : startIndex > 0 &&
+      synchronizedMotionStartTarget?.attributes.firstFrame === String(startIndex) &&
+      synchronizedMotionEndTarget?.attributes.firstFrame === String(startIndex + duration);
+  const synchronizedMotionPair = Boolean(duration === 7 && Number.isSafeInteger(startIndex) && startIndex >= 0 &&
+    Number(startFrame.attributes.index) === startIndex &&
+    Number(endFrame.attributes.index) === startIndex + duration &&
+    synchronizedMotionFirstFramePair &&
+    isSynchronizedMotionKey(startFrame) && isSynchronizedMotionKey(endFrame));
   const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
     Object.keys(frame.attributes).filter((name) =>
       !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name) &&
@@ -1054,8 +1065,14 @@ function boundedMotionFramePairRejectionReason(
       (startTarget.attributes.loop !== 'loop' || endTarget.attributes.loop !== 'loop')) {
     return 'synchronized motion experiment requires the source Loop playback mode';
   }
-  const sampleFirstFrameTransition = synchronizedMotionPair &&
-    startTarget.attributes.firstFrame === undefined && endTarget.attributes.firstFrame === '7';
+  const sampleFirstFrameTransition = synchronizedMotionPair && startIndex === 0 &&
+    startTarget.attributes.firstFrame === undefined &&
+    endTarget.attributes.firstFrame === String(startIndex + duration);
+  const nonzeroSynchronizedFirstFrameTransition = synchronizedMotionPair && startIndex > 0 &&
+    startTarget.attributes.firstFrame === String(startIndex) &&
+    endTarget.attributes.firstFrame === String(startIndex + duration);
+  const synchronizedFirstFrameTransition =
+    sampleFirstFrameTransition || nonzeroSynchronizedFirstFrameTransition;
   for (const target of [startTarget, endTarget]) {
     for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
       const raw = target.attributes[name];
@@ -1072,7 +1089,7 @@ function boundedMotionFramePairRejectionReason(
     // the authored matrices and never serializes those attributes.
     if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
     if (startTarget.attributes[name] !== endTarget.attributes[name]) {
-      if (name === 'firstFrame' && sampleFirstFrameTransition) continue;
+      if (name === 'firstFrame' && synchronizedFirstFrameTransition) continue;
       return `symbol instance attribute ${name} changes between endpoints`;
     }
   }
@@ -1117,8 +1134,8 @@ function boundedMotionFramePairRejectionReason(
     }
     return true;
   };
-  if (!hasSupportedTransformChildren(startTarget, false) ||
-      !hasSupportedTransformChildren(endTarget, sampleFirstFrameTransition)) {
+  if (!hasSupportedTransformChildren(startTarget, nonzeroSynchronizedFirstFrameTransition) ||
+      !hasSupportedTransformChildren(endTarget, synchronizedFirstFrameTransition)) {
     return 'symbol instance matrix or transformation point is outside the supported structure';
   }
   return null;
@@ -1135,9 +1152,10 @@ function isIssue1044SynchronizedMotionSpan(
     frame.attributes.motionTweenSnap === 'true' &&
     frame.attributes.motionTweenSync === 'true' &&
     frame.attributes.keyMode === '24065';
-  return startIndex === 0 && duration === 7 &&
+  const rejectionReason = boundedMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration);
+  return startIndex >= 0 && duration === 7 &&
     isSynchronizedKey(startFrame) && isSynchronizedKey(endFrame) &&
-    boundedMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration) === null;
+    rejectionReason === null;
 }
 
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
@@ -1199,14 +1217,30 @@ function buildGraphicFrameContext(
         }
       }
       let synchronizedMotionKey = false;
-      if (selection.span.index === 0 && selection.span.duration === 7) {
-        const endSpan = indexedLayer?.spans.find((span) => span.index === 7);
-        synchronizedMotionKey = Boolean(endSpan &&
-          isIssue1044SynchronizedMotionSpan(frame, endSpan.sourceFrame, 0, 7));
-      } else if (frameIndex === 7 && selection.span.index === 7) {
-        const startSpan = indexedLayer?.spans.find((span) => span.index === 0 && span.duration === 7);
-        synchronizedMotionKey = Boolean(startSpan &&
-          isIssue1044SynchronizedMotionSpan(startSpan.sourceFrame, frame, 0, 7));
+      const outgoingMotionSpan = indexedLayer?.spans.find((span) =>
+        span.index === selection.span.index && span.tweenType === 'motion');
+      const outgoingMotionEndSpan = outgoingMotionSpan
+        ? indexedLayer?.spans.find((span) => span.index === outgoingMotionSpan.endExclusive)
+        : undefined;
+      if (outgoingMotionSpan && outgoingMotionEndSpan) {
+        synchronizedMotionKey = isIssue1044SynchronizedMotionSpan(
+          outgoingMotionSpan.sourceFrame,
+          outgoingMotionEndSpan.sourceFrame,
+          outgoingMotionSpan.index,
+          outgoingMotionSpan.duration,
+        );
+      }
+      if (!synchronizedMotionKey) {
+        const incomingSynchronizedMotionSpan = indexedLayer?.spans.find((span) =>
+          span.tweenType === 'motion' && span.endExclusive === selection.span.index);
+        if (incomingSynchronizedMotionSpan) {
+          synchronizedMotionKey = isIssue1044SynchronizedMotionSpan(
+            incomingSynchronizedMotionSpan.sourceFrame,
+            frame,
+            incomingSynchronizedMotionSpan.index,
+            incomingSynchronizedMotionSpan.duration,
+          );
+        }
       }
       const parsed = parseDisplayElements(elementContainer, {
         scope,

@@ -115,7 +115,11 @@ function buildMotionAdapterFixture(
   playbackMode = 'single frame',
   sampleEndAlphaMultiplier?: string,
   sourceRotationAttributes: Readonly<Record<string, string | undefined>> = {},
+  spanStartIndex = 0,
+  sampleStartAlphaMultiplier?: string,
+  endFirstFrameOverride?: string,
 ) {
+  const spanEndIndex = spanStartIndex + duration;
   const motionFrameAttributeXml = Object.entries(motionFrameAttributes)
     .map(([name, value]) => ` ${name}="${value}"`)
     .join('');
@@ -129,13 +133,24 @@ function buildMotionAdapterFixture(
     transform: string,
     metadata: string,
     keyMode = startKeyMode,
-  ) =>
-    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}${index === 0 ? sourceRotationAttributeXml : ''}>${metadata}` +
-    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${index === 0 ? '' : ' selected="true"'}${firstFrameTransition && index > 0 ? ' firstFrame="7"' : ''}>` +
-    `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${index > 0 && sampleEndAlphaMultiplier !== undefined ? `<color><Color alphaMultiplier="${sampleEndAlphaMultiplier}"/></color>` : ''}</DOMSymbolInstance></elements></DOMFrame>`;
+  ) => {
+    const isStartFrame = index === spanStartIndex;
+    const authoredFirstFrame = !firstFrameTransition
+      ? undefined
+      : isStartFrame
+        ? spanStartIndex > 0 ? String(spanStartIndex) : undefined
+        : endFirstFrameOverride ?? String(spanEndIndex);
+    const firstFrame = authoredFirstFrame === undefined ? '' : ` firstFrame="${authoredFirstFrame}"`;
+    const alphaMultiplier = isStartFrame
+      ? sampleStartAlphaMultiplier
+      : sampleEndAlphaMultiplier;
+    return `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}${isStartFrame ? sourceRotationAttributeXml : ''}>${metadata}` +
+      `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${isStartFrame ? '' : ' selected="true"'}${firstFrame}>` +
+      `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${alphaMultiplier !== undefined ? `<color><Color alphaMultiplier="${alphaMultiplier}"/></color>` : ''}</DOMSymbolInstance></elements></DOMFrame>`;
+  };
   const terminalFrame = () => {
     const attributes = {
-      index: String(duration),
+      index: String(spanStartIndex + duration),
       duration: '1',
       keyMode: '15872',
       ...terminalFrameAttributes,
@@ -151,14 +166,14 @@ function buildMotionAdapterFixture(
   };
   const endpointFrame = holdEndpoint
     ? terminalFrame()
-    : motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata);
+    : motionFrame(spanStartIndex + duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata);
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
     layer('scene', [frame(0, symbol('motion-root'))].join('')),
   ])}</timelines></DOMDocument>`;
   const libraryXmlEntries = [{
     name: 'LIBRARY/motion-root.xml',
     xml: graphic('motion-root', [layer('moving', [
-      motionFrame(0, duration, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
+      motionFrame(spanStartIndex, duration, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
       endpointFrame,
     ].join(''))]),
   }];
@@ -589,6 +604,87 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         expect(instance.localTransform?.tx).toBeCloseTo(20 * (frameIndex / 7), 12);
       }
     }
+  });
+
+  it('admits the same synchronized seven-frame span from a non-zero authored origin', () => {
+    const startIndex = 7;
+    const duration = 7;
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      duration,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      true,
+      'loop',
+      '1',
+      {},
+      startIndex,
+      '0.44921875',
+    );
+    const target = descriptor(source, 'motion-root');
+
+    for (const [frameIndex, progress] of [[7, 0], [8, 1 / 7], [10, 3 / 7], [13, 6 / 7], [14, 1]] as const) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `issue1053-sync-motion-frame-${frameIndex}`,
+      );
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const instance = selected.value.layers[0]?.elements[0];
+      expect(instance).toMatchObject({
+        kind: 'symbol',
+        playbackMode: 'loop',
+        sourceParentMotionTweenSync: true,
+        sourceParentFrameIndex: frameIndex,
+      });
+      if (instance?.kind !== 'symbol' || !instance.localTransform) continue;
+      expect(instance.firstFrame).toBe(frameIndex === 14 ? '14' : '7');
+      expect(instance.alphaMultiplier).toBeCloseTo(0.44921875 + (1 - 0.44921875) * progress, 12);
+      expect(instance.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(instance.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(instance.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(instance.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
+      expect(instance.sourceParentFrameSpanStart).toBe(frameIndex === 14 ? 14 : startIndex);
+    }
+  });
+
+  it.each([
+    { name: 'a six-frame span', duration: 6, endFirstFrame: undefined },
+    { name: 'a non-matching child-frame endpoint', duration: 7, endFirstFrame: '13' },
+  ])('keeps non-zero synchronized motion fail-closed for $name', ({ duration, endFirstFrame }) => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      duration,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      true,
+      'loop',
+      undefined,
+      {},
+      7,
+      undefined,
+      endFirstFrame,
+    );
+    const target = descriptor(source, 'motion-root');
+    const selected = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      8,
+      `issue1053-invalid-sync-pair-${duration}-${endFirstFrame ?? 'aligned'}`,
+    );
+
+    expect(selected.ok).toBe(false);
+    if (!selected.ok) expect(selected.message).toContain('start frame contains unsupported attributes: motionTweenSync');
   });
 
   it.each([

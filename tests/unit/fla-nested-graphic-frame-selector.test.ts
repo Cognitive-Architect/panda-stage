@@ -67,14 +67,17 @@ function motionOwnedMissingFirstFrame(options: {
   return start + end;
 }
 
-function synchronizedMotionSpan(): string {
+function synchronizedMotionSpan(origin = 0): string {
+  const endpoint = origin + 7;
   const instance = (firstFrame: string, tx: number, selected: string) =>
     `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${firstFrame}${selected}>` +
     `${matrix(tx, 0)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
-  const key = (index: number, firstFrame: string, tx: number, selected: string) =>
-    `<DOMFrame index="${index}" duration="${index === 0 ? 7 : 1}" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065">` +
+  const key = (index: number, duration: number, firstFrame: string, tx: number, selected: string) =>
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065">` +
     `<elements>${instance(firstFrame, tx, selected)}</elements></DOMFrame>`;
-  return key(0, '', 0, '') + key(7, ' firstFrame="7"', 4, ' selected="true"');
+  const startFirstFrame = origin === 0 ? '' : ` firstFrame="${origin}"`;
+  return key(origin, 7, startFirstFrame, 0, '') +
+    key(endpoint, 1, ` firstFrame="${endpoint}"`, 4, ' selected="true"');
 }
 
 function adapt(parentFrames: string, childFrames: string) {
@@ -657,6 +660,32 @@ describe('nested Graphic authored-frame selection', () => {
         sourceParentFrameIndex: parentFrame,
         sourceParentFrameSpanStart: parentFrame === 7 ? 7 : 0,
         childFrameCount: 1,
+        selectedChildFrameIndex: childFrame,
+        selectionRule: 'loop-sync-motion-modulo-experiment',
+      }]);
+      expect(prepared.selections[0]?.firstFrame).toBe(rawFirstFrame);
+    }
+  });
+
+  it('uses span-local Sync Loop progress for a non-zero authored origin', () => {
+    const source = adapt(synchronizedMotionSpan(7), emptyFrames(21));
+    const expected: Array<[number, number, string, number]> = [
+      [7, 7, '7', 7],
+      [8, 8, '7', 7],
+      [13, 13, '7', 7],
+      [14, 14, '14', 14],
+    ];
+    for (const [parentFrame, childFrame, rawFirstFrame, spanStart] of expected) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', parentFrame));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        playbackMode: 'loop',
+        firstFrameWasExplicit: true,
+        effectiveFirstFrame: Number(rawFirstFrame),
+        sourceParentFrameIndex: parentFrame,
+        sourceParentFrameSpanStart: spanStart,
+        childFrameCount: 21,
         selectedChildFrameIndex: childFrame,
         selectionRule: 'loop-sync-motion-modulo-experiment',
       }]);
