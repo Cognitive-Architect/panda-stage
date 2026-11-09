@@ -73,6 +73,9 @@ describe('Issue #426 unified Right Workspace R1', () => {
     // Single title owner: the header reads one map instead of nesting ternaries.
     expect(tools).toContain('const VIEW_TITLES: Record<ProjectToolsView, string>');
     expect(tools).toContain('{VIEW_TITLES[view]}');
+    // AUTO-01 (#996) 快速布阵 and AUTO-02 (#1001) 批量调整 are separate cards.
+    expect(tools).toContain("'quick-layout': '快速布阵'");
+    expect(tools).toContain("'batch-adjust': '批量调整'");
     expect(tools).toContain("'multi-scene': '多镜头布景'");
     expect(tools).toContain('aria-label="关闭工具"');
   });

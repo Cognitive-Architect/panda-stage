@@ -7,10 +7,12 @@ import {
   MessageSquare,
   ScanLine,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
+import { QuickCharacterLayoutPanel } from '../features/layout/QuickCharacterLayoutPanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePanel';
 import { MultiScenePanel } from '../features/shots/MultiScenePanel';
@@ -25,6 +27,7 @@ export interface ProjectToolsDrawerProps {
 type ProjectToolsView =
   | 'home'
   | 'action-presets'
+  | 'quick-layout'
   | 'batch-adjust'
   | 'multi-scene'
   | 'multi-scene-dialogue'
@@ -34,6 +37,7 @@ type ProjectToolsView =
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
+  'quick-layout': '快速布阵',
   'batch-adjust': '批量调整',
   'multi-scene': '多镜头布景',
   'multi-scene-dialogue': '多镜头对白',
@@ -142,6 +146,25 @@ export function ProjectToolsDrawer({
             </div>
           </section>
           <section
+            aria-labelledby="project-tools-quick-layout-heading"
+            className="project-tools-quick-layout-card"
+            data-testid="project-tools-quick-layout-card"
+          >
+            <div className="project-tools-quick-layout-heading">
+              <h3 id="project-tools-quick-layout-heading">快速布阵</h3>
+            </div>
+            <button
+              className="project-tools-quick-layout-launcher"
+              data-project-tools-action="quick-layout"
+              data-testid="project-tools-quick-layout"
+              onClick={() => setView('quick-layout')}
+              type="button"
+            >
+              <DecorativeIcon icon={Users} size={18} />
+              <span>打开快速布阵</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
             data-testid="project-tools-action-preset-card"
@@ -244,6 +267,14 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-action-presets-view"
         >
           <LegacyWorkspace />
+        </section>
+      ) : view === 'quick-layout' ? (
+        <section
+          aria-label="快速布阵"
+          className="project-tools-quick-layout-view"
+          data-testid="project-tools-quick-layout-view"
+        >
+          <QuickCharacterLayoutPanel />
         </section>
       ) : view === 'batch-adjust' ? (
         <section

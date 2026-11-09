@@ -129,6 +129,31 @@ export class LayerStore {
     return next;
   }
 
+  /**
+   * Commit several Layer positions as one formal edit. Every position is
+   * applied in memory first, so a rejected position leaves the Project
+   * untouched and the store records exactly one History command.
+   */
+  updatePositions(
+    entries: readonly { layerId: string; position: Point }[],
+    label = 'Move layers',
+  ): Project {
+    const { project, shotId } = this.context();
+    let next = project;
+    for (const entry of entries) {
+      next = this.service.updatePosition(
+        next,
+        shotId,
+        entry.layerId,
+        entry.position,
+      );
+    }
+    if (next !== project) {
+      this.editorStore.updateProject(next, label);
+    }
+    return next;
+  }
+
   updateAnimationPlayback(
     layerId: string,
     input: AnimationPlaybackInput,

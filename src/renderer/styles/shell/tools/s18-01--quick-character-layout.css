@@ -1,0 +1,137 @@
+/*
+ * AUTO-01 V0 — Quick Layout (two-person dialogue stance).
+ * One flat single column: people, the two frozen rules, one primary action.
+ */
+
+.project-tools-quick-layout-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-quick-layout-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.project-tools-quick-layout-launcher {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.project-tools-quick-layout-view {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  align-content: start;
+}
+
+.quick-layout {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+}
+
+.quick-layout-people {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.quick-layout-people-head {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quick-layout-people-title,
+.quick-layout-rules-title {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.quick-layout-person {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.quick-layout-person label {
+  color: var(--ui-color-text-muted);
+  font: var(--ui-font-secondary);
+}
+
+.quick-layout-select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: 0 var(--ui-space-2);
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+  background: var(--ui-color-surface-overlay);
+  touch-action: manipulation;
+}
+
+.quick-layout-select:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.quick-layout-reason {
+  margin: 0;
+  color: var(--ui-color-action-warning);
+  font: var(--ui-font-secondary);
+}
+
+.quick-layout-rules {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.quick-layout-rules ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  list-style: none;
+}
+
+.quick-layout-rules li {
+  display: flex;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  gap: 6px;
+}
+
+.quick-layout-rules li .ui-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--ui-color-selected-border);
+}
+
+.quick-layout-notice {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.quick-layout-apply {
+  width: 100%;
+}

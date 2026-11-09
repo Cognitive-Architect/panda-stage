@@ -711,7 +711,10 @@
           "src/domain/models/project.ts",
           "src/domain/models/shot.ts",
           "src/domain/services/LayerService.ts",
-          "src/renderer/stores/layerStore.ts"
+          "src/renderer/stores/layerStore.ts",
+          "src/renderer/features/layout/**",
+          "src/domain/layout/**",
+          "src/renderer/stores/quickLayoutPreviewStore.ts"
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
@@ -730,7 +733,8 @@
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
       "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+      "tests/integration/ap03-animation-image-prewarm.test.ts",
+      "tests/unit/quick-layout-*.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",

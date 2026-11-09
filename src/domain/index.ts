@@ -6,7 +6,7 @@ export * from './geometry';
 export * from './migrations';
 export * from './models';
 export * from './position-chain';
-export * from './layout/quickCharacterLayout';
+export * from './layout';
 export * from './scene/multiSceneInput';
 export * from './scene/multiSceneSpeakers';
 export * from './scene/multiScenePerformance';
