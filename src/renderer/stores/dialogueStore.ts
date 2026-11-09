@@ -1,9 +1,11 @@
 import {
   DialogueService,
   type DialogueArrangementTiming,
+  type DialogueBatchMovePlan,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
   type MoveDialogueInput,
+  type MoveManyDialoguesInput,
   type Project,
   type ResizeBoundAudioEndInput,
   type ResizeDialogueInput,
@@ -185,6 +187,32 @@ export class DialogueStore {
     const input: MoveDialogueInput = { shotId, dialogueId, deltaMs };
     const next = this.service.move(project, input);
     if (next !== project) this.editorStore.updateProject(next, 'Move dialogue');
+  }
+
+  /**
+   * Batch shift for the Batch Adjust tool. Domain validates the whole group
+   * first; a successful result becomes exactly one History command.
+   */
+  moveMany(dialogueIds: readonly string[], deltaMs: number): void {
+    const { project, shotId } = this.context();
+    const input: MoveManyDialoguesInput = { shotId, dialogueIds, deltaMs };
+    const next = this.service.moveMany(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Move dialogues together');
+    }
+  }
+
+  /** Read-only validation used by the Batch Adjust preview. */
+  planMoveMany(
+    dialogueIds: readonly string[],
+    deltaMs: number,
+  ): DialogueBatchMovePlan {
+    const { project, shotId } = this.context();
+    return this.service.planMoveMany(project, {
+      shotId,
+      dialogueIds,
+      deltaMs,
+    });
   }
 
   resize(

@@ -17,7 +17,13 @@ import {
   evaluateExportPreparationBudget,
   evaluateExportPreparationSupport,
 } from '../../src/domain/export-preparation';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  CharacterService,
+  LayerService,
+  PartPoseAnimationService,
+  ProjectSchema,
+  type Project,
+} from '../../src/domain';
 import {
   ExportPreparationService,
   type ExportPreparationMediaReader,
@@ -42,6 +48,10 @@ import {
   buildProjectWithAnimation,
   IDS,
 } from './domain/testProject';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
 
 const roots: string[] = [];
 const OPEN_INSTANCE_ID = 4;
@@ -272,6 +282,39 @@ describe('DL-01 export preparation domain rules', () => {
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
+  });
+
+  it('fails closed for Part pose animation while preserving legacy export support', () => {
+    const base = buildProject();
+    const withCharacter = new CharacterService().createAdaptiveParts(base, {
+      name: 'Export Guard Character',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = withCharacter.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      withCharacter,
+      IDS.shot,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const poseProject = new PartPoseAnimationService().create(
+      placed.project,
+      { shotId: IDS.shot, layerId: placed.layer.id },
+    );
+
+    expect(evaluateExportPreparationSupport(base, 'static')).toEqual([]);
+    expect(evaluateExportPreparationSupport(poseProject, 'static')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          problem: expect.stringContaining('Part pose animation'),
+        }),
+      ]),
+    );
   });
 
   it.each([
@@ -871,7 +914,10 @@ describe('DL-01 export preparation domain rules', () => {
       ),
     ).toContain(mouthAssetId);
 
-    const closedOnlyProject = ProjectSchema.parse({
+    // AUTO-07A: the Mouth follows the decoded volume envelope, so its open
+    // moments are no longer predictable from Shot time. A short visible window
+    // therefore keeps the Mouth asset in the export superset...
+    const narrowVisibleProject = ProjectSchema.parse({
       ...project,
       shots: project.shots.map((shot) => ({
         ...shot,
@@ -898,6 +944,29 @@ describe('DL-01 export preparation domain rules', () => {
             layerId: IDS.layerChar,
             startMs: 520,
             endMs: 520,
+            visible: false,
+          },
+        ],
+      })),
+    });
+    expect(
+      collectExportPreparationMedia(narrowVisibleProject).map(
+        (entry) => entry.asset.id,
+      ),
+    ).toContain(mouthAssetId);
+
+    // ...while a character that never appears during the clip is still excluded.
+    const closedOnlyProject = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          {
+            id: '70000000-0000-4000-8000-000000000094',
+            type: 'visibility',
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 0,
             visible: false,
           },
         ],

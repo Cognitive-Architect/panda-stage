@@ -32,6 +32,7 @@ const request = {
   project,
   baseRevision: 3,
   assetId: project.assets[0]!.id,
+  historyReferencesPoseSnapshotAsset: false,
   requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
 };
 

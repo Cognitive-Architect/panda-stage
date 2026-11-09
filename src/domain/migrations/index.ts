@@ -16,11 +16,14 @@ import {
   ProjectV14Schema,
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
+  ProjectV16Schema,
+  ProjectV17Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
   type Project,
 } from '../models/project';
+import { DEFAULT_SHOT_CAMERA } from '../models/shot';
 import type { Layer } from '../models/layer';
 import {
   LegacyProbeProjectV1Schema,
@@ -49,6 +52,8 @@ export type DetectedSchemaVersion =
   | 13
   | 14
   | 15
+  | 16
+  | 17
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -56,7 +61,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -88,6 +93,8 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 13 ||
     version === 14 ||
     version === 15 ||
+    version === 16 ||
+    version === 17 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -113,32 +120,38 @@ function migrateVersion15(input: unknown): Project {
   const migrateAnimationProject = (
     version15: z.infer<typeof ProjectV15AnimationSchema>,
   ): Project => {
-    return ProjectSchema.parse({
-      ...version15,
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      shots: version15.shots.map((shot) => ({
-        ...shot,
-        layers: shot.layers.map((layer) =>
-          layer.source.kind === 'animation'
-            ? {
-                ...layer,
-                animationPlayback: {
-                  mode: 'once' as const,
-                  endBehavior: 'hold' as const,
-                },
-              }
-            : layer,
-        ),
-      })),
-    });
+    return ProjectSchema.parse(
+      withHistoricalShotCamera({
+        ...version15,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        shotTemplates: [],
+        shots: version15.shots.map((shot) => ({
+          ...shot,
+          layers: shot.layers.map((layer) =>
+            layer.source.kind === 'animation'
+              ? {
+                  ...layer,
+                  animationPlayback: {
+                    mode: 'once' as const,
+                    endBehavior: 'hold' as const,
+                  },
+                }
+              : layer,
+          ),
+        })),
+      }),
+    );
   };
   const migrateAdaptiveProject = (
     version15: z.infer<typeof ProjectV15AdaptiveSchema>,
   ): Project => {
-    return ProjectSchema.parse({
-      ...version15,
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-    });
+    return ProjectSchema.parse(
+      withHistoricalShotCamera({
+        ...version15,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        shotTemplates: [],
+      }),
+    );
   };
 
   if (animationShape.success && adaptiveShape.success) {
@@ -166,26 +179,29 @@ function migrateImageAuthorMetadata(input: unknown): Project {
     .object({ assets: z.array(z.unknown()) })
     .passthrough()
     .parse(input);
-  return ProjectSchema.parse({
-    ...envelope,
-    schemaVersion: PROJECT_SCHEMA_VERSION,
-    animations: [],
-    assets: envelope.assets.map((asset) => {
-      if (
-        !asset ||
-        typeof asset !== 'object' ||
-        !('kind' in asset) ||
-        asset.kind !== 'image'
-      ) {
-        return asset;
-      }
-      return {
-        ...asset,
-        usage: 'uncategorized',
-        keywords: [],
-      };
+  return ProjectSchema.parse(
+    withHistoricalShotCamera({
+      ...envelope,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      animations: [],
+      shotTemplates: [],
+      assets: envelope.assets.map((asset) => {
+        if (
+          !asset ||
+          typeof asset !== 'object' ||
+          !('kind' in asset) ||
+          asset.kind !== 'image'
+        ) {
+          return asset;
+        }
+        return {
+          ...asset,
+          usage: 'uncategorized',
+          keywords: [],
+        };
+      }),
     }),
-  });
+  );
 }
 
 function migrateLegacyProject(
@@ -283,14 +299,75 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 }
 
 /**
+ * v18 made the per-Shot camera track mandatory. Every envelope written before
+ * v18 predates the field, and the historical full-stage framing is the only
+ * faithful default for it. A Shot that already carries a camera is returned
+ * untouched, so re-running a compatibility normalization never overwrites an
+ * authored track.
+ *
+ * This is the single narrow completion point shared by every pre-v18 upgrade
+ * destination; it deliberately does not add any other new field.
+ */
+function withHistoricalShotCamera<T extends object>(envelope: T): T {
+  const shots = (envelope as { shots?: unknown }).shots;
+  if (!Array.isArray(shots)) return envelope;
+  return {
+    ...envelope,
+    shots: shots.map((shot) =>
+      shot !== null && typeof shot === 'object' && 'camera' in shot
+        ? shot
+        : { ...(shot as Record<string, unknown>), camera: DEFAULT_SHOT_CAMERA },
+    ),
+  };
+}
+
+/**
+ * Two branches independently shipped a v17 envelope: AUTO-03 carried the
+ * project-local Shot template list, while the C5-KF pose work predates it and
+ * may store `Layer.poseAnimation` with no template list at all. Only a
+ * genuinely absent `shotTemplates` key is completed with an empty list before
+ * the strict v17 contract runs; every other key still has to pass it.
+ */
+function withVersion17ShotTemplates(input: unknown): unknown {
+  const envelope = z
+    .object({ schemaVersion: z.unknown() })
+    .passthrough()
+    .safeParse(input);
+  if (!envelope.success) return input;
+  if (envelope.data.schemaVersion !== 17) return input;
+  if ('shotTemplates' in envelope.data) return input;
+  return { ...envelope.data, shotTemplates: [] };
+}
+
+/**
+ * v17 -> v18: every Shot gains the persisted camera track. v17 has no camera
+ * field at all, so the historical full-stage framing is the only faithful
+ * default; authorized Projects keep their picture.
+ */
+function migrateVersion17Envelope(
+  version17:
+    | z.infer<typeof ProjectV17Schema>
+    | (Omit<z.infer<typeof ProjectV16Schema>, 'schemaVersion'> & {
+        shotTemplates: z.infer<typeof ProjectV17Schema>['shotTemplates'];
+      }),
+): Project {
+  return ProjectSchema.parse(
+    withHistoricalShotCamera({
+      ...version17,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    }),
+  );
+}
+
+/**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v15) is routed here by version and resolved to
- * the current v16 project. The formal v1-v7
+ * Every persisted envelope (v0-v17) is routed here by version and resolved to
+ * the current v18 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v16 shape. A narrow compatibility normalization then
+ * validate the resolved v17 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -339,31 +416,57 @@ export function migrateProject(input: unknown): Project {
     }
     case 12:
       // v12 image assets had no author-defined usage or search keywords.
-      // Their facts remain explicitly uncategorized during the v16 upgrade.
+      // Their facts remain explicitly uncategorized during the current upgrade.
       project = migrateImageAuthorMetadata(ProjectV12Schema.parse(input));
       break;
     case 13: {
       const version13 = ProjectV13Schema.parse(input);
-      project = ProjectSchema.parse({
-        ...version13,
-        schemaVersion: PROJECT_SCHEMA_VERSION,
-        animations: [],
-      });
+      project = ProjectSchema.parse(
+        withHistoricalShotCamera({
+          ...version13,
+          schemaVersion: PROJECT_SCHEMA_VERSION,
+          animations: [],
+          shotTemplates: [],
+        }),
+      );
       break;
     }
     case 14: {
       const version14 = ProjectV14Schema.parse(input);
-      project = ProjectSchema.parse({
-        ...version14,
-        schemaVersion: PROJECT_SCHEMA_VERSION,
-      });
+      project = ProjectSchema.parse(
+        withHistoricalShotCamera({
+          ...version14,
+          schemaVersion: PROJECT_SCHEMA_VERSION,
+          shotTemplates: [],
+        }),
+      );
       break;
     }
     case 15:
       project = migrateVersion15(input);
       break;
+    case 16: {
+      // v16 is the last template-less, camera-less envelope: add the empty
+      // project-local template list, then the historical static camera.
+      const version16 = ProjectV16Schema.parse(input);
+      project = migrateVersion17Envelope({
+        ...version16,
+        shotTemplates: [],
+      });
+      break;
+    }
+    case 17: {
+      // v17 already carries both the Shot template list (AUTO-03) and the
+      // optional Layer pose track (C5-KF); v18 adds the persisted per-Shot
+      // camera track here and the optional user Part pose presets, which stay
+      // absent rather than being materialised as an empty list.
+      project = migrateVersion17Envelope(
+        ProjectV17Schema.parse(withVersion17ShotTemplates(input)),
+      );
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v16 envelope: validate it, then apply only the narrow
+      // Current v18 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

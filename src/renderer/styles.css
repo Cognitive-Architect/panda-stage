@@ -95,6 +95,8 @@
 @import './styles/features/timeline/s09-03--portrait-track-icons.css';
 @import './styles/compat/retained-task-surfaces/s09-04--portrait-pending-polish.css';
 @import './styles/features/shots/s09-05--landscape-shot-quick-actions.css';
+@import './styles/features/shots/s09-06--multi-scene-panel.css';
+@import './styles/features/shots/s09-06--shot-templates.css';
 @import './styles/shell/resources/s09-07--landscape-asset-header.css';
 @import './styles/features/assets/s09-08--landscape-asset-visual.css';
 @import './styles/features/assets/animation-library.css';
@@ -168,6 +170,7 @@
 @import './styles/features/timeline/s17-04--return-to-start.css';
 @import './styles/features/characters/workspace/s17-05--character-placement-bridge.css';
 @import './styles/features/properties/expression-at-time.css';
+@import './styles/features/properties/part-pose-editor.css';
 @import './styles/features/timeline/pk06-position-lane.css';
 @import './styles/shell/right-workspace/issue653-auto-camera-mode.css';
 @import './styles/features/timeline/standalone-audio.css';
@@ -176,3 +179,9 @@
 @import './styles/features/fla-import/raster/issue767-u1-workbench-tabs.css';
 @import './styles/shell/quick-actions/issue819-export-task.css';
 @import './styles/features/fla-import/review/fla-stage-a-compact-preparation.css';
+@import './styles/features/shots/s09-07--multi-scene-dialogue-panel.css';
+@import './styles/features/shots/s09-08--multi-scene-performance-panel.css';
+@import './styles/features/camera/shot-camera-panel.css';
+@import './styles/shell/tools/s18-01--batch-adjust-tool.css';
+@import './styles/shell/tools/s18-01--quick-character-layout.css';
+@import './styles/shell/tools/s18-02--layer-align-distribute.css';

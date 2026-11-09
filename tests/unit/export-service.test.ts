@@ -20,6 +20,7 @@ import type {
   ExportRenderFrameRequest,
 } from '../../src/shared/export-types';
 import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
+import { ExportLoadFormalRequestSchema } from '../../src/shared/export-types';
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -688,6 +689,7 @@ describe('ExportService', () => {
     const audioAssetId = '10000000-0000-4000-8000-000000000021';
     const audioClipId = '70000000-0000-4000-8000-000000000021';
     const audioBytes = new Uint8Array([4, 5, 6]);
+    const unusedAudioAssetId = '10000000-0000-4000-8000-000000000029';
     const input = {
       candidate: {
         project: {
@@ -695,6 +697,12 @@ describe('ExportService', () => {
             {
               id: '50000000-0000-4000-8000-000000000021',
               durationMs: 3_000,
+              dialogues: [
+                {
+                  id: '80000000-0000-4000-8000-000000000021',
+                  audioClipId,
+                },
+              ],
               audioClips: [
                 {
                   id: audioClipId,
@@ -752,6 +760,12 @@ describe('ExportService', () => {
           mimeType: 'audio/wav',
           bytes: audioBytes,
         },
+        {
+          assetId: unusedAudioAssetId,
+          kind: 'audio',
+          mimeType: 'audio/wav',
+          bytes: new Uint8Array([9, 9]),
+        },
       ],
     } as unknown as FrozenExportInput;
     const service = new ExportService(renderer, fileSystem, media);
@@ -789,6 +803,21 @@ describe('ExportService', () => {
       },
     });
     expect(result.totalFrames).toBe(216);
+    // AUTO-07-FIX-01: the real loadFormal request must carry frozen voice
+    // bytes, or the hidden renderer has no envelope to drive the Mouth with.
+    const formalLoad = renderer.formalLoads[0]!;
+    expect(() =>
+      ExportLoadFormalRequestSchema.parse(formalLoad),
+    ).not.toThrow();
+    expect(formalLoad.media).toContainEqual({
+      kind: 'audio',
+      assetId: audioAssetId,
+      mimeType: 'audio/wav',
+      bytes: audioBytes,
+    });
+    expect(formalLoad.media.map((entry) => entry.assetId)).not.toContain(
+      unusedAudioAssetId,
+    );
     expect(renderer.requests.find((request) => request.frameIndex === 72)).toMatchObject({
       timeMs: 3_000,
       shotId: '50000000-0000-4000-8000-000000000022',

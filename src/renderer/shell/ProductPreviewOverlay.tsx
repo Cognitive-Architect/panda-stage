@@ -22,12 +22,13 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   evaluateShotAtTime,
-  evaluateSpeakerFocusCamera,
+  evaluateShotCamera,
   mapProjectTime,
-  prepareSpeakerFocusCamera,
+  prepareShotCamera,
   projectDurationMs,
   type CameraView,
   type Project,
@@ -65,6 +66,7 @@ import {
   useProductPreviewAudio,
 } from './productPreviewAudio';
 import { useProductPreviewImages } from './productPreviewImages';
+import { audioEnvelopeStore } from '../preview/audioEnvelopeStore';
 import {
   advanceProductPreviewHandoffPhase,
   canStartProductPreviewPlayback,
@@ -512,12 +514,32 @@ export function ProductPreviewOverlay({
   const activeCue = evaluatedShot
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
+  // Same renderer-owned envelope cache as the Editor Canvas: one decode per
+  // AudioAsset, shared by seek, play, Preview and Export judgment.
+  const audioEnvelopeVersion = useSyncExternalStore(
+    audioEnvelopeStore.subscribe,
+    audioEnvelopeStore.getVersion,
+  );
+  useEffect(() => {
+    const assets = new Map<string, (typeof project.assets)[number]>();
+    for (const clip of shot?.audioClips ?? []) {
+      const asset = project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      if (asset?.kind === 'audio') assets.set(asset.id, asset);
+    }
+    for (const asset of assets.values()) {
+      if (asset.kind === 'audio') audioEnvelopeStore.ensure(projectRoot, asset);
+    }
+  }, [project, projectRoot, shot]);
+  // AUTO-07B: Preview reads the persisted per-Shot camera, so "Preview shows
+  // auto-follow but Export renders static" can no longer happen.
   const cameraPlan = useMemo(
-    () => (autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null),
-    [project, shot, autoCameraEnabled],
+    () => (shot ? prepareShotCamera(project, shot) : null),
+    [project, shot],
   );
   const camera = cameraPlan
-    ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
+    ? evaluateShotCamera(cameraPlan, activeShotTimeMs)
     : undefined;
   const renderedShot = useMemo(
     () => {
@@ -528,13 +550,14 @@ export function ProductPreviewOverlay({
         shot,
         evaluatedShot,
         activeCue?.id ?? null,
+        audioEnvelopeStore.resolveSource,
       );
       recordPreviewDuration('mouth-projection', startedAt, {
         timeMs: evaluatedShot.timeMs,
       });
       return projected;
     },
-    [activeCue?.id, evaluatedShot, project, shot],
+    [activeCue?.id, audioEnvelopeVersion, evaluatedShot, project, shot],
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);

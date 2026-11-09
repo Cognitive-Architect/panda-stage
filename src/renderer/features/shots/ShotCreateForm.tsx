@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { SHOT_MIN_DURATION_MS } from '../../../domain';
-import { CirclePlus } from 'lucide-react';
+import { SHOT_MIN_DURATION_MS, type ShotTemplate } from '../../../domain';
+import { CirclePlus, Trash2 } from 'lucide-react';
 
 export type ShotCreatePresentation = 'default' | 'landscape';
 
@@ -58,19 +58,29 @@ export interface ShotCreateFormProps {
   disabled?: boolean;
   presentation?: ShotCreatePresentation;
   suggestedName: string;
+  /** Project-local templates; empty keeps the blank-Shot-only flow. */
+  templates?: readonly ShotTemplate[];
   onBack: () => void;
   onCreate: (name: string, durationMs: number) => boolean;
+  onCreateFromTemplate?: (templateId: string, name: string) => boolean;
+  onRemoveTemplate?: (templateId: string) => void;
 }
 
 export function ShotCreateForm({
   disabled = false,
   presentation = 'default',
   suggestedName,
+  templates = [],
   onBack,
   onCreate,
+  onCreateFromTemplate,
+  onRemoveTemplate,
 }: ShotCreateFormProps): React.JSX.Element {
   const [name, setName] = useState(suggestedName);
   const [nameEdited, setNameEdited] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    null,
+  );
   const [durationMs, setDurationMs] = useState(
     SHOT_CREATE_DEFAULT_DURATION_MS,
   );
@@ -82,6 +92,20 @@ export function ShotCreateForm({
   useEffect(() => {
     if (!nameEdited) setName(suggestedName);
   }, [nameEdited, suggestedName]);
+
+  // A deleted template must not leave a stale selection behind.
+  useEffect(() => {
+    if (
+      selectedTemplateId &&
+      !templates.some((template) => template.id === selectedTemplateId)
+    ) {
+      setSelectedTemplateId(null);
+    }
+  }, [selectedTemplateId, templates]);
+
+  const selectedTemplate =
+    templates.find((template) => template.id === selectedTemplateId) ?? null;
+  const canSubmitFromTemplate = !disabled && Boolean(name.trim());
 
   const landscapeDurationMs = parseShotCreateDuration(durationInput);
   const landscapeDurationValid = isShotCreateDurationValid(landscapeDurationMs);
@@ -135,6 +159,65 @@ export function ShotCreateForm({
           </button>
         </div>
       )}
+      {templates.length > 0 ? (
+        <fieldset
+          className="shot-create-templates"
+          data-testid="shot-create-templates"
+        >
+          <legend className="shot-create-field-label">模板</legend>
+          <label className="shot-create-template-option">
+            <input
+              checked={selectedTemplate === null}
+              disabled={disabled}
+              name="shot-create-template"
+              onChange={() => setSelectedTemplateId(null)}
+              type="radio"
+            />
+            <span>空白镜头</span>
+          </label>
+          {templates.map((template) => (
+            <div
+              className="shot-create-template-row"
+              data-template-id={template.id}
+              key={template.id}
+            >
+              <label className="shot-create-template-option">
+                <input
+                  checked={selectedTemplateId === template.id}
+                  data-testid={`shot-create-template-${template.id}`}
+                  disabled={disabled}
+                  name="shot-create-template"
+                  onChange={() => setSelectedTemplateId(template.id)}
+                  type="radio"
+                />
+                <span className="shot-create-template-name">
+                  {template.name}
+                </span>
+                <span className="shot-create-template-meta">
+                  {template.layers.length} 个图层 ·{' '}
+                  {formatShotCreateDuration(template.durationMs)} 秒
+                </span>
+              </label>
+              <button
+                aria-label={`删除模板 ${template.name}`}
+                className="shot-create-template-remove"
+                data-testid={`shot-create-template-remove-${template.id}`}
+                disabled={disabled || !onRemoveTemplate}
+                onClick={() => onRemoveTemplate?.(template.id)}
+                title="删除模板"
+                type="button"
+              >
+                <Trash2
+                  aria-hidden="true"
+                  className="ui-icon"
+                  focusable="false"
+                  size={14}
+                />
+              </button>
+            </div>
+          ))}
+        </fieldset>
+      ) : null}
       {landscape ? (
         <form
           className="shot-create-form shot-create-form-landscape"
@@ -142,6 +225,15 @@ export function ShotCreateForm({
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
+            if (selectedTemplate) {
+              if (
+                canSubmitFromTemplate &&
+                onCreateFromTemplate?.(selectedTemplate.id, name)
+              ) {
+                onBack();
+              }
+              return;
+            }
             if (!canSubmitShotCreate(name, landscapeDurationMs, disabled)) {
               setDurationTouched(true);
               return;
@@ -162,6 +254,15 @@ export function ShotCreateForm({
               value={name}
             />
           </label>
+          {selectedTemplate ? (
+            <p
+              className="shot-create-template-duration"
+              data-testid="shot-create-template-duration"
+            >
+              时长 {formatShotCreateDuration(selectedTemplate.durationMs)} 秒 ·
+              来自模板
+            </p>
+          ) : (
           <div
             className={
               durationError
@@ -262,10 +363,15 @@ export function ShotCreateForm({
               </p>
             ) : null}
           </div>
+          )}
           <button
             className="shot-create-primary-action ui-icon-label"
             data-testid="shot-create-submit"
-            disabled={!canSubmitShotCreate(name, landscapeDurationMs, disabled)}
+            disabled={
+              selectedTemplate
+                ? !canSubmitFromTemplate || !onCreateFromTemplate
+                : !canSubmitShotCreate(name, landscapeDurationMs, disabled)
+            }
             type="submit"
           >
             <CirclePlus
@@ -283,6 +389,15 @@ export function ShotCreateForm({
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
+            if (selectedTemplate) {
+              if (
+                canSubmitFromTemplate &&
+                onCreateFromTemplate?.(selectedTemplate.id, name)
+              ) {
+                onBack();
+              }
+              return;
+            }
             if (onCreate(name, durationMs)) onBack();
           }}
         >
@@ -298,23 +413,39 @@ export function ShotCreateForm({
               value={name}
             />
           </label>
-          <label>
-            时长（毫秒）
-            <input
-              disabled={disabled}
-              min={SHOT_MIN_DURATION_MS}
-              onChange={(event) => setDurationMs(event.target.valueAsNumber)}
-              step="1"
-              type="number"
-              value={Number.isNaN(durationMs) ? '' : durationMs}
-            />
-          </label>
-          <p className="shot-create-hint">
-            时长必须是整数，且不少于 {SHOT_MIN_DURATION_MS}ms。
-          </p>
+          {selectedTemplate ? (
+            <p
+              className="shot-create-template-duration"
+              data-testid="shot-create-template-duration"
+            >
+              时长 {formatShotCreateDuration(selectedTemplate.durationMs)} 秒 ·
+              来自模板
+            </p>
+          ) : (
+            <>
+              <label>
+                时长（毫秒）
+                <input
+                  disabled={disabled}
+                  min={SHOT_MIN_DURATION_MS}
+                  onChange={(event) => setDurationMs(event.target.valueAsNumber)}
+                  step="1"
+                  type="number"
+                  value={Number.isNaN(durationMs) ? '' : durationMs}
+                />
+              </label>
+              <p className="shot-create-hint">
+                时长必须是整数，且不少于 {SHOT_MIN_DURATION_MS}ms。
+              </p>
+            </>
+          )}
           <button
             className="ui-icon-label"
-            disabled={disabled || !name.trim() || !Number.isInteger(durationMs)}
+            disabled={
+              selectedTemplate
+                ? !canSubmitFromTemplate || !onCreateFromTemplate
+                : disabled || !name.trim() || !Number.isInteger(durationMs)
+            }
             type="submit"
           >
             <CirclePlus

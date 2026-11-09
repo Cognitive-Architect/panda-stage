@@ -180,6 +180,7 @@ export function buildProject(): Project {
         timelineEvents: [],
       },
     ],
+    shotTemplates: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   });
@@ -230,4 +231,23 @@ export function buildProjectWithAnimation(): Project {
     ),
     animations: [animation],
   });
+}
+
+/**
+ * AUTO-07B added the persisted per-Shot camera track in v18. Legacy envelopes
+ * derived from a current fixture must drop it to stay strict, and migration
+ * assertions compare against the same camera-free shape.
+ */
+export function legacyShot<T extends { camera: unknown }>(
+  shot: T,
+): Omit<T, 'camera'> {
+  const { camera: _camera, ...rest } = shot;
+  void _camera;
+  return rest;
+}
+
+export function legacyShots<T extends { camera: unknown }>(
+  shots: readonly T[],
+): Array<Omit<T, 'camera'>> {
+  return shots.map(legacyShot);
 }

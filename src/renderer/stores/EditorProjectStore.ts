@@ -2,7 +2,9 @@ import {
   ProjectSchema,
   scanAssetReferences,
   type Asset,
+  type Character,
   type Project,
+  type VoiceProfile,
 } from '../../domain';
 import type {
   ExecuteHistoryOptions,
@@ -16,6 +18,13 @@ export interface EditorProjectSnapshot {
   project: Project;
   dirty: boolean;
   revision: number;
+}
+
+export interface EditorProjectEditContext {
+  readonly projectRoot: string;
+  readonly projectId: string;
+  readonly revision: number;
+  readonly projectInstanceId: number;
 }
 
 export interface SavedEditorProjectSnapshot {
@@ -80,6 +89,19 @@ export class EditorProjectStore {
   readonly getProjectInstanceId = (): number | null =>
     this.activeProjectInstanceId;
 
+  /** Captures the session identity required for a later synchronous edit. */
+  readonly captureEditContext = (): EditorProjectEditContext | null => {
+    const snapshot = this.snapshot;
+    const projectInstanceId = this.activeProjectInstanceId;
+    if (!snapshot || projectInstanceId === null) return null;
+    return {
+      projectRoot: snapshot.projectRoot,
+      projectId: snapshot.project.id,
+      revision: snapshot.revision,
+      projectInstanceId,
+    };
+  };
+
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -121,6 +143,29 @@ export class EditorProjectStore {
       ),
       options,
     );
+  }
+
+  /** Commits a command only if its captured project session and revision remain current. */
+  updateProjectAtContext(
+    context: EditorProjectEditContext,
+    rawProject: Project,
+    label = 'Edit project',
+    options: ExecuteHistoryOptions = {},
+    replayEffects: HistoryReplayEffects = {},
+  ): void {
+    this.assertNoProjectOperation();
+    const current = this.requireSnapshot();
+    if (
+      current.projectRoot !== context.projectRoot ||
+      current.project.id !== context.projectId ||
+      current.revision !== context.revision ||
+      this.activeProjectInstanceId !== context.projectInstanceId
+    ) {
+      throw new Error(
+        'The captured project session or revision is stale; the edit was cancelled.',
+      );
+    }
+    this.updateProject(rawProject, label, options, replayEffects);
   }
 
   restore(rawProject: Project): void {
@@ -246,8 +291,8 @@ export class EditorProjectStore {
         `Asset import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -267,6 +312,84 @@ export class EditorProjectStore {
       assets: [
         ...current.project.assets,
         ...importedAssets.filter((asset) => !existingIds.has(asset.id)),
+      ],
+    });
+    this.snapshot = {
+      ...current,
+      project,
+      dirty: true,
+      revision: current.revision + 1,
+    };
+    this.emit();
+    return 'stale';
+  }
+
+  applyProjectResourceImport(
+    rawSavedProject: Project,
+    importedAssets: readonly Asset[],
+    importedCharacters: readonly Character[],
+    importedVoiceProfiles: readonly VoiceProfile[],
+    baseRevision: number,
+    savedRevision: number,
+  ): SaveAcknowledgement {
+    const current = this.requireSnapshot();
+    const savedProject = ProjectSchema.parse(rawSavedProject);
+    this.assertSameProject(current.project, savedProject);
+    if (
+      !Number.isInteger(baseRevision) ||
+      baseRevision < 0 ||
+      savedRevision !== baseRevision + 1
+    ) {
+      throw new Error(
+        `Invalid project resource import revisions: base=${baseRevision}, saved=${savedRevision}.`,
+      );
+    }
+    if (current.revision < baseRevision) {
+      throw new Error(
+        `Project resource import base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
+      );
+    }
+    this.history.clear();
+    if (current.revision === baseRevision) {
+      this.savedProjectJson = JSON.stringify(savedProject);
+      this.snapshot = {
+        ...current,
+        project: savedProject,
+        dirty: false,
+        revision: savedRevision,
+      };
+      this.emit();
+      return 'current';
+    }
+
+    const assetIds = new Set(current.project.assets.map((asset) => asset.id));
+    const characterIds = new Set(
+      current.project.characters.map((character) => character.id),
+    );
+    const voiceProfileIds = new Set(
+      current.project.voiceProfiles.map((profile) => profile.id),
+    );
+    const characterNames = new Set(
+      current.project.characters.map((character) => normalizeName(character.name)),
+    );
+    const characters = importedCharacters
+      .filter((character) => !characterIds.has(character.id))
+      .map((character) => ({
+        ...character,
+        name: uniqueCharacterName(character.name, characterNames),
+      }));
+    const project = ProjectSchema.parse({
+      ...current.project,
+      assets: [
+        ...current.project.assets,
+        ...importedAssets.filter((asset) => !assetIds.has(asset.id)),
+      ],
+      characters: [...current.project.characters, ...characters],
+      voiceProfiles: [
+        ...current.project.voiceProfiles,
+        ...importedVoiceProfiles.filter(
+          (profile) => !voiceProfileIds.has(profile.id),
+        ),
       ],
     });
     this.snapshot = {
@@ -306,8 +429,8 @@ export class EditorProjectStore {
         `Asset metadata base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -362,8 +485,8 @@ export class EditorProjectStore {
         `Asset delete base revision ${baseRevision} is ahead of current editor revision ${current.revision}.`,
       );
     }
-    this.history.clear();
     if (current.revision === baseRevision) {
+      this.history.clear();
       this.savedProjectJson = JSON.stringify(savedProject);
       this.snapshot = {
         ...current,
@@ -382,6 +505,7 @@ export class EditorProjectStore {
         'Newer editor changes reference the deleted asset and cannot be merged safely.',
       );
     }
+    this.history.clear();
     const project = ProjectSchema.parse({
       ...current.project,
       assets: current.project.assets.filter(
@@ -480,6 +604,31 @@ export class EditorProjectStore {
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLocaleLowerCase('en-US');
+}
+
+function uniqueCharacterName(name: string, occupied: Set<string>): string {
+  const normalized = normalizeName(name);
+  if (!occupied.has(normalized)) {
+    occupied.add(normalized);
+    return name;
+  }
+  for (let suffix = 2; suffix <= 10_000; suffix += 1) {
+    const marker = ` (${suffix})`;
+    const characters = Array.from(name);
+    while (characters.join('').length > 200 - marker.length) {
+      characters.pop();
+    }
+    const candidate = `${characters.join('').trimEnd()}${marker}`;
+    const key = normalizeName(candidate);
+    if (occupied.has(key)) continue;
+    occupied.add(key);
+    return candidate;
+  }
+  throw new Error(`Could not allocate a unique name for ${name}.`);
 }
 
 export const editorProjectStore = new EditorProjectStore();

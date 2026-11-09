@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import {
+  Group,
   Layer as KonvaLayer,
   Rect,
   Stage,
@@ -18,9 +19,14 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  evaluateShotCamera,
   evaluateShotAtTime,
+  resolveCameraToolPreview,
+  prepareShotCamera,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type AudioAsset,
+  type Point,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -32,11 +38,21 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
 import {
+  matchesQuickLayoutPreview,
+  useQuickLayoutPreview,
+} from '../../stores/quickLayoutPreviewStore';
+import {
+  matchesLayerLayoutPreview,
+  useLayerLayoutPreview,
+} from '../../stores/layerLayoutPreviewStore';
+import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
 } from '../../stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { CameraFramingOverlay } from './CameraFramingOverlay';
+import { cameraToolStore, useCameraTool } from '../camera/cameraToolStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
@@ -45,6 +61,7 @@ import {
   LayerTransformer,
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
+import { layerPointToSource, sourcePointToLayer } from './partPoseCanvasGeometry';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import {
   timelineUiStore,
@@ -52,7 +69,14 @@ import {
 } from '../timeline/timelineUiStore';
 import { buildDialogueSubtitleCues } from '../../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../../shared/preview/subtitle-engine';
+import { audioEnvelopeStore } from '../../preview/audioEnvelopeStore';
 import type { CanvasDropPreview } from './useCanvasDrop';
+import {
+  createPartPoseGestureContextKey,
+  EMPTY_PART_POSE_EDITOR_UI,
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../part-pose/partPoseEditorTypes';
 import {
   configureKonvaScenePixelRatio,
   resolveEditorCanvasPixelRatio,
@@ -66,6 +90,8 @@ import {
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
+  canvasDirectEditingEnabled,
+  NO_PREVIEW_LAYER_IDS,
 } from './editorTemporalCanvasModel';
 import { isAnimationBaseTransformEditableAtTime } from '../properties/layerTransformTemporalGuard';
 import {
@@ -87,6 +113,21 @@ const editorDevicePixelRatio =
 const editorCanvasPixelRatio = resolveEditorCanvasPixelRatio(
   editorDevicePixelRatio,
 );
+
+function partPoseCanvasError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('locked')) return '角色图层已锁定，动作没有更改。';
+  if (message.includes('stale') || message.includes('changed')) {
+    return '工程、镜头或时间已变化，动作没有更改。';
+  }
+  if (message.includes('degenerate') || message.includes('transform')) {
+    return '部件变换无效，动作没有更改。';
+  }
+  if (message.includes('pivot')) {
+    return '该零件已有动作姿势；清除本镜头动作后才能重新设置旋转点。';
+  }
+  return '部件姿势没有保存，请调整后重试。';
+}
 
 function CanvasEmptyState(): React.JSX.Element {
   return (
@@ -190,11 +231,13 @@ function isCurrentCanvasAssetReady(
 export interface CanvasStageProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 export function CanvasStage({
   showHeading = true,
   showToolbar = true,
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -227,11 +270,24 @@ export function CanvasStage({
   const [interactionStatus, setInteractionStatus] = useState(
     '从素材库拖入图片或动画，或点击普通图层进行选择。',
   );
+  useEffect(() => {
+    if (!partPoseEditor.calibratingPivot) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      partPoseEditor.onCancelPivot();
+      setInteractionStatus('旋转点设置已取消。');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [partPoseEditor.calibratingPivot, partPoseEditor.onCancelPivot]);
   const selectedLayerId = useSyncExternalStore(
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
   const opacityPreview = useOpacityPreview();
+  const quickLayoutPreview = useQuickLayoutPreview();
+  const layerLayoutPreview = useLayerLayoutPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -262,6 +318,69 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0
       ? opacityPreview
       : null;
+  // Quick Layout candidates are rendered through the same evaluated-layer path
+  // as a dragged Layer; the formal Project keeps its stored positions.
+  const quickLayoutPositionOverrides = useMemo(() => {
+    if (
+      !quickLayoutPreview ||
+      !snapshot ||
+      !shot ||
+      projectInstanceId === null ||
+      timelineUi.currentTimeMs !== 0
+    ) {
+      return undefined;
+    }
+    const current = {
+      projectInstanceId,
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      revision: snapshot.revision,
+      shotId: shot.id,
+    };
+    if (!matchesQuickLayoutPreview(quickLayoutPreview, current)) {
+      return undefined;
+    }
+    return new Map<string, Point>([
+      [quickLayoutPreview.leftLayerId, quickLayoutPreview.left],
+      [quickLayoutPreview.rightLayerId, quickLayoutPreview.right],
+    ]);
+  }, [
+    projectInstanceId,
+    quickLayoutPreview,
+    shot,
+    snapshot,
+    timelineUi.currentTimeMs,
+  ]);
+  // Align/distribute candidates use the same runtime-only seam as Quick Layout,
+  // extended to any number of Layers and to a scale change for Equal Height.
+  const layerLayoutTransformOverrides = useMemo(() => {
+    if (
+      !layerLayoutPreview ||
+      !snapshot ||
+      !shot ||
+      projectInstanceId === null ||
+      timelineUi.currentTimeMs !== 0
+    ) {
+      return undefined;
+    }
+    const current = {
+      projectInstanceId,
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      revision: snapshot.revision,
+      shotId: shot.id,
+    };
+    if (!matchesLayerLayoutPreview(layerLayoutPreview, current)) {
+      return undefined;
+    }
+    return new Map(layerLayoutPreview.transforms);
+  }, [
+    layerLayoutPreview,
+    projectInstanceId,
+    shot,
+    snapshot,
+    timelineUi.currentTimeMs,
+  ]);
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -294,6 +413,30 @@ export function CanvasStage({
     return [...assets.values()];
   }, [previousTemporalVisuals]);
   const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  // Decoded volume envelopes are renderer-owned and rebuildable; the Project
+  // only keeps the AudioClip reference that owns the mapping.
+  const audioEnvelopeVersion = useSyncExternalStore(
+    audioEnvelopeStore.subscribe,
+    audioEnvelopeStore.getVersion,
+  );
+  const shotAudioAssets = useMemo(() => {
+    if (!snapshot || !shot) return [];
+    const assets = new Map<string, AudioAsset>();
+    for (const clip of shot.audioClips) {
+      const asset = snapshot.project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      if (asset?.kind === 'audio') assets.set(asset.id, asset);
+    }
+    return [...assets.values()];
+  }, [shot, snapshot]);
+  const projectRoot = snapshot?.projectRoot ?? null;
+  useEffect(() => {
+    if (!projectRoot) return;
+    for (const asset of shotAudioAssets) {
+      audioEnvelopeStore.ensure(projectRoot, asset);
+    }
+  }, [projectRoot, shotAudioAssets]);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -307,26 +450,62 @@ export function CanvasStage({
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot,
+            mouthSource: audioEnvelopeStore.resolveSource,
             positionDraft: positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
                   position: positionAuthoringSnapshot.draft,
                 }
               : undefined,
+            positionOverrides: quickLayoutPositionOverrides ?? layerLayoutTransformOverrides,
           })
         : null,
     [
       activeCue?.id,
+      audioEnvelopeVersion,
       imageState.images,
       imageState.readyResourceKeys,
+      layerLayoutTransformOverrides,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
+      quickLayoutPositionOverrides,
       shot,
       snapshot,
       temporalContextKey,
       timelineUi.currentTimeMs,
     ],
   );
+  // AUTO-07B: the editor reads the same persisted per-Shot camera as Preview
+  // and Export. The authoring box is drawn in full-stage space; "取景预览"
+  // applies the camera to the Canvas without moving any Character layer.
+  const cameraTool = useCameraTool();
+  const shotCameraPlan = useMemo(
+    () => (snapshot && shot ? prepareShotCamera(snapshot.project, shot) : null),
+    [shot, snapshot],
+  );
+  const presentedCamera = shotCameraPlan
+    ? evaluateShotCamera(shotCameraPlan, timelineUi.currentTimeMs)
+    : null;
+  // AUTO-07-FIX-01: preview the clamped, still-uncommitted draft first; only
+  // fall back to the persisted Shot camera when no draft exists.
+  const appliedCamera = useMemo(
+    () =>
+      snapshot
+        ? resolveCameraToolPreview(
+            cameraTool,
+            presentedCamera,
+            snapshot.project.width,
+            snapshot.project.height,
+          )
+        : null,
+    [cameraTool, presentedCamera, snapshot],
+  );
+  const cameraPreviewActive = appliedCamera !== null;
+  const framingView =
+    cameraTool.active && !cameraTool.previewing && presentedCamera
+      ? cameraTool.draft ?? presentedCamera
+      : null;
+
   useEffect(() => {
     if (!temporalCanvasModel) {
       temporalContinuityRef.current = createEditorTemporalContinuityState(
@@ -383,10 +562,12 @@ export function CanvasStage({
     [imageState, snapshot, temporalCanvasModel],
   );
   const directEditingEnabled =
-    temporalCanvasModel?.directEditingEnabled ??
-    timelineUi.currentTimeMs === 0;
+    (temporalCanvasModel?.directEditingEnabled ??
+      timelineUi.currentTimeMs === 0) && !cameraPreviewActive;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
+  const previewReadOnlyLayerIds =
+    temporalCanvasModel?.previewReadOnlyLayerIds ?? NO_PREVIEW_LAYER_IDS;
   const rejectTemporalCanvasEdit = (animationLayer = false): string => {
     const message =
       animationLayer
@@ -442,8 +623,14 @@ export function CanvasStage({
   const directEditingEnabledForStageLayer = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
+    // A Quick Layout candidate is a read-only preview: its position only lands
+    // in the Project through the panel's explicit Apply action.
     if (stageLayer.layer.source.kind !== 'animation') {
-      return directEditingEnabled;
+      return canvasDirectEditingEnabled({
+        layerId: stageLayer.layer.id,
+        previewReadOnlyLayerIds,
+        stageEnabled: directEditingEnabled,
+      });
     }
     const evaluated = shot && snapshot
       ? evaluateShotAtTime(
@@ -452,17 +639,21 @@ export function CanvasStage({
           snapshot.project,
         ).layers.find((candidate) => candidate.id === stageLayer.layer.id)
       : undefined;
-    return Boolean(
-      evaluated?.visible &&
-        evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
-        isAnimationBaseTransformEditableAtTime(
-          snapshot!.project,
-          shot!.id,
-          stageLayer.layer.id,
-          timelineUi.currentTimeMs,
-        ) &&
-        isStageLayerVisualReady(stageLayer),
-    );
+    return canvasDirectEditingEnabled({
+      layerId: stageLayer.layer.id,
+      previewReadOnlyLayerIds,
+      stageEnabled: Boolean(
+        evaluated?.visible &&
+          evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
+          isAnimationBaseTransformEditableAtTime(
+            snapshot!.project,
+            shot!.id,
+            stageLayer.layer.id,
+            timelineUi.currentTimeMs,
+          ) &&
+          isStageLayerVisualReady(stageLayer),
+      ),
+    });
   };
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
@@ -566,11 +757,92 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const poseEditorStageLayer = partPoseEditor.activeLayerId
+    ? stageModel?.layers.find(
+        ({ layer }) => layer.id === partPoseEditor.activeLayerId,
+      ) ?? null
+    : null;
+  const poseEditorLayerSource = poseEditorStageLayer?.layer.source;
+  const poseEditorCharacter =
+    poseEditorLayerSource?.kind === 'character'
+      ? snapshot?.project.characters.find(
+          (candidate) =>
+            candidate.id === poseEditorLayerSource.characterId,
+        )
+      : undefined;
+  const poseEditorCharacterPart =
+    poseEditorCharacter?.mode === 'adaptive-parts' && poseEditorStageLayer
+      ? resolvePartPoseEditorParts(
+          poseEditorCharacter,
+          poseEditorStageLayer.layer,
+        ).find(
+          (part) => part.partId === partPoseEditor.selectedPartId,
+        ) ?? null
+      : null;
+  const poseEditorVisualPart =
+    poseEditorStageLayer?.visual.parts.find(
+      (part) =>
+        part.source.kind === 'adaptive-part' &&
+        part.source.characterPartId === partPoseEditor.selectedPartId,
+    ) ?? null;
+  const poseEditorTrack =
+    poseEditorStageLayer?.layer.poseAnimation?.tracks.find(
+      (track) => track.partId === partPoseEditor.selectedPartId,
+    ) ?? null;
+  const poseEditorPivotSource =
+    poseEditorTrack?.pivotSource ??
+    (partPoseEditor.pivotDraft?.layerId === partPoseEditor.activeLayerId &&
+    partPoseEditor.pivotDraft.partId === partPoseEditor.selectedPartId
+      ? partPoseEditor.pivotDraft.point
+      : poseEditorCharacterPart
+        ? {
+            x:
+              poseEditorCharacterPart.imageMapping.crop.x +
+              poseEditorCharacterPart.imageMapping.crop.width / 2,
+            y:
+              poseEditorCharacterPart.imageMapping.crop.y +
+              poseEditorCharacterPart.imageMapping.crop.height / 2,
+          }
+        : null);
+  const poseEditorPivotLayerPoint =
+    poseEditorPivotSource && poseEditorCharacterPart
+      ? sourcePointToLayer(
+          poseEditorVisualPart,
+          poseEditorCharacterPart,
+          poseEditorPivotSource,
+        )
+      : null;
+  const poseEditorKeyframe =
+    poseEditorTrack?.keys.find(
+      (keyframe) => keyframe.timeMs === timelineUi.currentTimeMs,
+    ) ?? null;
+  const poseEditorCanTransform = Boolean(
+    partPoseEditor.activeLayerId &&
+      poseEditorStageLayer &&
+      poseEditorStageLayer.layer.id === selectedLayerId &&
+      !poseEditorStageLayer.layer.locked &&
+      poseEditorCharacterPart?.visible !== false &&
+      poseEditorKeyframe &&
+      temporalCanvasModel &&
+      isStageLayerVisualReady(poseEditorStageLayer),
+  );
+  const poseGestureContextKey = createPartPoseGestureContextKey({
+    projectInstanceId,
+    projectId: snapshot?.project.id ?? null,
+    projectRoot: snapshot?.projectRoot ?? null,
+    revision: snapshot?.revision ?? null,
+    shotId: currentShotId,
+    selectedLayerId,
+    activeLayerId: partPoseEditor.activeLayerId,
+    selectedPartId: partPoseEditor.selectedPartId,
+    timeMs: timelineUi.currentTimeMs,
+  });
   const transformerVisible = isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
         selectedStageLayer.render.visible &&
-        directEditingEnabledForStageLayer(selectedStageLayer),
+        directEditingEnabledForStageLayer(selectedStageLayer) &&
+        partPoseEditor.activeLayerId !== selectedStageLayer.layer.id,
     ),
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
@@ -578,6 +850,41 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
+  const calibratePivotFromCanvas = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    const layerId = partPoseEditor.activeLayerId;
+    const partId = partPoseEditor.selectedPartId;
+    const layerNode = layerId ? getLayerNodeRef(layerId).current : null;
+    const localPoint = layerNode?.getRelativePointerPosition();
+    if (
+      !partPoseEditor.calibratingPivot ||
+      !layerId ||
+      !partId ||
+      !localPoint ||
+      !poseEditorCharacterPart
+    ) {
+      setInteractionStatus('无法读取旋转点，请重新选择部件后再试。');
+      return;
+    }
+    const sourcePoint = layerPointToSource(
+      localPoint,
+      poseEditorVisualPart,
+      poseEditorCharacterPart,
+    );
+    if (!sourcePoint) {
+      setInteractionStatus('请在原图范围内点击旋转位置。');
+      return;
+    }
+    try {
+      partPoseEditor.onSetPivot(layerId, partId, sourcePoint);
+      setInteractionStatus('旋转点已设置。');
+    } catch (error) {
+      partPoseEditor.onCancelPivot();
+      setInteractionStatus(partPoseCanvasError(error));
+    }
+  };
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -717,8 +1024,15 @@ export function CanvasStage({
               data-target-ready-layer-ids={JSON.stringify([
                 ...(temporalCanvasModel?.targetReadyLayerIds ?? []),
               ])}
+              data-preview-read-only-layer-ids={JSON.stringify([
+                ...previewReadOnlyLayerIds,
+              ])}
               data-render-contract="shared-stage-layer-v1"
               data-selected-layer-id={selectedLayerId ?? ''}
+              data-part-pose-edit-layer-id={partPoseEditor.activeLayerId ?? ''}
+              data-part-pose-pivot-calibrating={String(
+                partPoseEditor.calibratingPivot,
+              )}
               data-stage-center="960,540"
               data-transformer-overlay="separate-konva-layer-after-content"
               data-transformer-visible={String(
@@ -736,6 +1050,23 @@ export function CanvasStage({
                 width={PROJECT_WIDTH}
               >
                 <KonvaLayer listening ref={configureEditorLayer}>
+                  {/* AUTO-07B camera applies to the content group only, so the
+                      camera moves the frame instead of the Character layers. */}
+                  <Group
+                    name={appliedCamera ? 'camera-world' : 'camera-world-static'}
+                    scaleX={appliedCamera?.zoom ?? 1}
+                    scaleY={appliedCamera?.zoom ?? 1}
+                    x={
+                      appliedCamera
+                        ? PROJECT_WIDTH / 2 - appliedCamera.centerX * appliedCamera.zoom
+                        : 0
+                    }
+                    y={
+                      appliedCamera
+                        ? PROJECT_HEIGHT / 2 - appliedCamera.centerY * appliedCamera.zoom
+                        : 0
+                    }
+                  >
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
@@ -793,6 +1124,73 @@ export function CanvasStage({
                               );
                             }}
                              onError={setInteractionStatus}
+                            poseEditing={
+                              partPoseEditor.activeLayerId === layer.id
+                            }
+                            poseSelectedPartId={
+                              partPoseEditor.activeLayerId === layer.id
+                                ? partPoseEditor.selectedPartId
+                                : null
+                            }
+                            poseCurrentKeyframe={
+                              partPoseEditor.activeLayerId === layer.id
+                                ? poseEditorKeyframe
+                                : null
+                            }
+                            poseCanTransform={
+                              partPoseEditor.activeLayerId === layer.id &&
+                              poseEditorCanTransform
+                            }
+                            posePivotLayerPoint={
+                              partPoseEditor.activeLayerId === layer.id
+                                ? poseEditorPivotLayerPoint
+                                : null
+                            }
+                            poseGestureContextKey={poseGestureContextKey}
+                            onSelectPart={(partId) => {
+                              selectionStore.select(layer.id);
+                              partPoseEditor.onSelectPart(partId);
+                            }}
+                            onCommitPartPose={(partId, keyframe, gestureContextKey) => {
+                              try {
+                                const currentSnapshot =
+                                  editorProjectStore.getSnapshot();
+                                const currentContextKey =
+                                  createPartPoseGestureContextKey({
+                                    projectInstanceId:
+                                      editorProjectStore.getProjectInstanceId(),
+                                    projectId:
+                                      currentSnapshot?.project.id ?? null,
+                                    projectRoot:
+                                      currentSnapshot?.projectRoot ?? null,
+                                    revision:
+                                      currentSnapshot?.revision ?? null,
+                                    shotId: shotStore.getCurrentShotId(),
+                                    selectedLayerId:
+                                      selectionStore.getSelectedLayerId(),
+                                    activeLayerId:
+                                      partPoseEditor.activeLayerId,
+                                    selectedPartId:
+                                      partPoseEditor.selectedPartId,
+                                    timeMs:
+                                      timelineUiStore.getSnapshot().currentTimeMs,
+                                  });
+                                if (gestureContextKey !== currentContextKey) {
+                                  setInteractionStatus(
+                                    '工程、镜头、图层或时间已变化，拖动已取消。',
+                                  );
+                                  return;
+                                }
+                                layerStore.setPartPoseKeyframe(
+                                  layer.id,
+                                  partId,
+                                  keyframe,
+                                );
+                                setInteractionStatus('部件姿势已更新。');
+                              } catch (error) {
+                                setInteractionStatus(partPoseCanvasError(error));
+                              }
+                            }}
                              onSelect={(layerId) => {
                               if (render.isBackground) {
                                 selectionStore.selectExplicit(layerId);
@@ -832,6 +1230,9 @@ export function CanvasStage({
                         );
                       })
                     : null}
+                  </Group>
+                  {/* Subtitles are screen-space, exactly like StageRenderer:
+                      camera push/pan must never scale or move them. */}
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
@@ -842,6 +1243,25 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
+                  {framingView ? (
+                    <CameraFramingOverlay
+                      onChange={(view) => cameraToolStore.setDraft(view)}
+                      stageHeight={PROJECT_HEIGHT}
+                      stageWidth={PROJECT_WIDTH}
+                      view={framingView}
+                    />
+                  ) : null}
+                  {partPoseEditor.calibratingPivot ? (
+                    <Rect
+                      fill="#000000"
+                      height={PROJECT_HEIGHT}
+                      name="part-pose-pivot-calibration-overlay"
+                      onClick={calibratePivotFromCanvas}
+                      onTap={calibratePivotFromCanvas}
+                      opacity={0}
+                      width={PROJECT_WIDTH}
+                    />
+                  ) : null}
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={selectedStageLayer.layer.locked}

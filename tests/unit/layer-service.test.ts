@@ -2,14 +2,22 @@ import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  CharacterService,
   LayerService,
   LayerServiceError,
+  PartPoseAnimationService,
   ProjectSchema,
   migrateProject,
+  type Project,
 } from '../../src/domain';
-import { buildProjectWithAnimation, IDS } from './domain/testProject';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
+import { buildProject, buildProjectWithAnimation, IDS } from './domain/testProject';
 
 const CREATED_LAYER_ID = 'd2200000-0000-4000-8000-000000000001';
+const CHARACTER_MOVE_EVENT_ID = 'd3400000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-07-26T01:00:00.000Z');
 
 function fixture() {
@@ -20,6 +28,32 @@ function service() {
   return new LayerService({
     createId: () => CREATED_LAYER_ID,
     now: () => NOW,
+  });
+}
+
+/** EF-01: the source Character layer owns one move event; a duplicate must not. */
+function withCharacterMoveEvent(project: Project): Project {
+  return ProjectSchema.parse({
+    ...project,
+    shots: project.shots.map((shot) =>
+      shot.id === IDS.shot
+        ? {
+            ...shot,
+            timelineEvents: [
+              {
+                id: CHARACTER_MOVE_EVENT_ID,
+                layerId: IDS.layerChar,
+                type: 'move',
+                startMs: 0,
+                endMs: 500,
+                from: { x: 500, y: 600 },
+                to: { x: 700, y: 600 },
+                easing: 'linear',
+              },
+            ],
+          }
+        : shot,
+    ),
   });
 }
 
@@ -214,6 +248,252 @@ describe('LayerService', () => {
     )).toBe(false);
     expect(deleted.animations).toEqual(project.animations);
     expect(deleted.assets).toEqual(project.assets);
+  });
+
+  it('duplicates a Character layer instance with a new Layer id and static base state only', () => {
+    const project = withCharacterMoveEvent(buildProject());
+    const shot = project.shots[0]!;
+    const source = shot.layers.find((layer) => layer.id === IDS.layerChar)!;
+    const result = service().duplicateCharacterLayer(
+      project,
+      shot.id,
+      IDS.layerChar,
+    );
+
+    expect(result.layer).toMatchObject({
+      id: CREATED_LAYER_ID,
+      name: '角色 副本',
+      source: {
+        kind: 'character',
+        characterId: IDS.character,
+        expressionId: IDS.expressionNormal,
+      },
+      anchor: 'center',
+      x: source.x + 24,
+      y: source.y + 24,
+      scaleX: source.scaleX,
+      scaleY: source.scaleY,
+      rotationDeg: source.rotationDeg,
+      opacity: source.opacity,
+      visible: true,
+      locked: false,
+      flipX: source.flipX,
+      zIndex: 3,
+    });
+    expect(result.project.shots[0]!.layers).toHaveLength(
+      shot.layers.length + 1,
+    );
+    expect(result.project.shots[0]!.layers.at(-1)).toEqual(result.layer);
+    expect(
+      result.project.shots[0]!.layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      ),
+    ).toEqual(source);
+    expect(result.project.shots[0]!.timelineEvents).toEqual(
+      shot.timelineEvents,
+    );
+    expect(result.project.characters).toEqual(project.characters);
+    expect(result.project.assets).toEqual(project.assets);
+    expect(result.project.animations).toEqual(project.animations);
+  });
+
+  it('duplicates an Adaptive Parts Character instance without inventing an Expression', () => {
+    const characterService = new CharacterService();
+    const project = characterService.createAdaptiveParts(buildProject(), {
+      name: '部件角色',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const adaptiveCharacter = project.characters.find(
+      (candidate) => candidate.name === '部件角色',
+    )!;
+    let generatedId = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d3300000-0000-4000-8000-${String(++generatedId).padStart(12, '0')}`,
+      now: () => NOW,
+    });
+    const placed = layerService.createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      adaptiveCharacter.id,
+      { x: 960, y: 540 },
+    );
+    const duplicated = layerService.duplicateCharacterLayer(
+      placed.project,
+      IDS.shot,
+      placed.layer.id,
+    );
+
+    expect(duplicated.layer.source).toEqual({
+      kind: 'character',
+      characterId: adaptiveCharacter.id,
+    });
+    expect(duplicated.layer.id).not.toBe(placed.layer.id);
+    expect(duplicated.layer).toMatchObject({
+      x: 984,
+      y: 564,
+      visible: true,
+      locked: false,
+    });
+    expect(duplicated.project.characters).toEqual(placed.project.characters);
+  });
+
+  it('refuses to duplicate non-Character, locked, and hidden layers', () => {
+    const project = buildProject();
+    expect(() =>
+      service().duplicateCharacterLayer(project, IDS.shot, IDS.layerAsset),
+    ).toThrow(expect.objectContaining({ code: 'CHARACTER_LAYER_REQUIRED' }));
+
+    const locked = service().setLocked(project, IDS.shot, IDS.layerChar, true);
+    expect(() =>
+      service().duplicateCharacterLayer(locked, IDS.shot, IDS.layerChar),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+
+    const hidden = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((candidate) =>
+        candidate.id === IDS.shot
+          ? {
+              ...candidate,
+              layers: candidate.layers.map((layer) =>
+                layer.id === IDS.layerChar ? { ...layer, visible: false } : layer,
+              ),
+            }
+          : candidate,
+      ),
+    });
+    expect(() =>
+      service().duplicateCharacterLayer(hidden, IDS.shot, IDS.layerChar),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_HIDDEN' }));
+    expect(hidden.shots[0]!.layers).toHaveLength(project.shots[0]!.layers.length);
+  });
+
+  it('keeps the duplicate inside the canvas when the source sits on the edge', () => {
+    const project = ProjectSchema.parse({
+      ...buildProject(),
+      shots: buildProject().shots.map((candidate) =>
+        candidate.id === IDS.shot
+          ? {
+              ...candidate,
+              layers: candidate.layers.map((layer) =>
+                layer.id === IDS.layerChar
+                  ? { ...layer, x: 1920, y: 1080 }
+                  : layer,
+              ),
+            }
+          : candidate,
+      ),
+    });
+    const result = service().duplicateCharacterLayer(
+      project,
+      IDS.shot,
+      IDS.layerChar,
+    );
+    expect(result.layer).toMatchObject({ x: 1896, y: 1056 });
+  });
+
+
+  it('deep duplicates one Character pose instance and deletes only the copy', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Duplicated pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    let id = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d2200000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
+      now: () => NOW,
+    });
+    const placed = layerService.createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 700, y: 500 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+    });
+    const partId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.partId;
+    const animated = poses.setKeyframe(captured, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+      partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 45,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const copied = layerService.duplicateCharacterLayer(
+      animated,
+      IDS.shot,
+      placed.layer.id,
+    );
+    const original = copied.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const duplicate = copied.layer;
+
+    expect(duplicate.id).not.toBe(original.id);
+    expect(duplicate).toMatchObject({
+      name: `${original.name} 副本`,
+      source: original.source,
+      x: 724,
+      y: 524,
+      poseAnimation: original.poseAnimation,
+    });
+    expect(duplicate.poseAnimation).not.toBe(original.poseAnimation);
+    expect(duplicate.poseAnimation!.tracks).not.toBe(
+      original.poseAnimation!.tracks,
+    );
+    expect(duplicate.poseAnimation!.tracks[0]!.keys).not.toBe(
+      original.poseAnimation!.tracks[0]!.keys,
+    );
+
+    const copyTrack = duplicate.poseAnimation!.tracks[0]!;
+    const changedCopy = poses.setKeyframe(copied.project, {
+      shotId: IDS.shot,
+      layerId: duplicate.id,
+      partId: copyTrack.partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: -90,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const unchangedOriginal = changedCopy.shots[0]!.layers.find(
+      (layer) => layer.id === original.id,
+    )!;
+    const changedDuplicate = changedCopy.shots[0]!.layers.find(
+      (layer) => layer.id === duplicate.id,
+    )!;
+    expect(unchangedOriginal.poseAnimation!.tracks[0]!.keys[1]!.rotationDeg).toBe(45);
+    expect(changedDuplicate.poseAnimation!.tracks[0]!.keys[1]!.rotationDeg).toBe(-90);
+
+    const deleted = layerService.deleteLayer(
+      changedCopy,
+      IDS.shot,
+      duplicate.id,
+    );
+    expect(deleted.shots[0]!.layers.some((layer) => layer.id === duplicate.id)).toBe(false);
+    expect(deleted.shots[0]!.layers.find((layer) => layer.id === original.id))
+      .toEqual(unchangedOriginal);
   });
 
   it('creates a centered direct-asset layer with the next zIndex', () => {

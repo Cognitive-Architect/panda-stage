@@ -315,8 +315,10 @@ describe('BFM-S02 composite Character lifecycle', () => {
         },
       ],
     });
-    const { animations: _animations, ...legacyCurrent } = current;
+    const { animations: _animations, shotTemplates: _templates, ...legacyCurrent } = current;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const currentCharacter = asExpressionCharacter(current.characters[0]!);
     if (currentCharacter.mode !== 'composite') {
       throw new Error('Expected the v8 fixture to be composite.');
@@ -346,6 +348,8 @@ describe('BFM-S02 composite Character lifecycle', () => {
       schemaVersion: 8 as const,
       assets: legacyAssets,
       characters: [v8Character],
+      // AUTO-07B: strip the v18 per-Shot camera from this v8 envelope.
+      shots: current.shots.map(({ camera: _camera, ...shot }) => { void _camera; return shot; }),
     };
     const shot = current.shots[0]!;
     const evaluated = evaluateShotAtTime(shot, 0, current).layers.find(

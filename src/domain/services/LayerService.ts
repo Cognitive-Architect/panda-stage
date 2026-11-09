@@ -25,6 +25,7 @@ export type LayerServiceErrorCode =
   | 'ASSET_TYPE_MISMATCH'
   | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
+  | 'CHARACTER_LAYER_REQUIRED'
   | 'ANIMATION_NOT_FOUND'
   | 'ANIMATION_LAYER_REQUIRED'
   | 'INVALID_ANIMATION_START_TIME'
@@ -34,6 +35,7 @@ export type LayerServiceErrorCode =
   | 'INVALID_TRANSFORM'
   | 'BACKGROUND_COVER_INVALID'
   | 'BACKGROUND_LAYER_PROTECTED'
+  | 'LAYER_HIDDEN'
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED';
 
@@ -70,6 +72,17 @@ export interface LayerTransformInput {
   rotationDeg: number;
   opacity: number;
   flipX: boolean;
+}
+
+/**
+ * One Layer's complete layout result. Scale is per axis so an equal-height
+ * action can keep the object's own aspect ratio and flip.
+ */
+export interface LayerLayoutTransformInput {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
 }
 
 export interface AnimationPlaybackInput {
@@ -141,6 +154,33 @@ function validateLayerPosition(point: Point): Point {
     );
   }
   return position;
+}
+
+/** EF-01: a duplicated stage instance must be visibly separated from its source. */
+const DUPLICATE_LAYER_OFFSET = 24;
+
+const DUPLICATE_LAYER_NAME_SUFFIX = ' 副本';
+
+const LAYER_NAME_MAX_LENGTH = 200;
+
+function offsetDuplicatePosition(layer: Layer): Point {
+  const offset = clampLayerPosition({
+    x: layer.x + DUPLICATE_LAYER_OFFSET,
+    y: layer.y + DUPLICATE_LAYER_OFFSET,
+  });
+  return offset.x === layer.x && offset.y === layer.y
+    ? clampLayerPosition({
+        x: layer.x - DUPLICATE_LAYER_OFFSET,
+        y: layer.y - DUPLICATE_LAYER_OFFSET,
+      })
+    : offset;
+}
+
+function duplicateLayerName(name: string): string {
+  return `${name.slice(
+    0,
+    LAYER_NAME_MAX_LENGTH - DUPLICATE_LAYER_NAME_SUFFIX.length,
+  )}${DUPLICATE_LAYER_NAME_SUFFIX}`;
 }
 
 export class LayerService {
@@ -499,6 +539,40 @@ export class LayerService {
     );
   }
 
+  /**
+   * Apply one layout action's complete result to a single Layer: position and
+   * both scale axes. It never changes rotation, flip, opacity, visibility,
+   * stacking or the source, so a Character keeps its part definitions.
+   */
+  updateLayoutTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: LayerLayoutTransformInput,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const position = validateLayerPosition({ x: input.x, y: input.y });
+    const scaleX = validateLayerScale(input.scaleX);
+    const scaleY = validateLayerScale(input.scaleY);
+    if (
+      layer.x === position.x &&
+      layer.y === position.y &&
+      layer.scaleX === scaleX &&
+      layer.scaleY === scaleY
+    ) {
+      return project;
+    }
+    return this.positionProjectService.applyBaseBoundLayerChange(
+      project,
+      shotId,
+      layerId,
+      { ...layer, ...position, scaleX, scaleY },
+    );
+  }
+
   updateTransform(
     project: Project,
     shotId: string,
@@ -725,6 +799,53 @@ export class LayerService {
     };
     return {
       project: this.replaceShot(project, nextShot),
+      layer: duplicate,
+    };
+  }
+
+  /**
+   * EF-01 / C5-KF: duplicates a Character Layer instance inside the current
+   * Shot. The copy keeps the same Character/Expression identity while taking a
+   * new Layer id, and its Part pose track is deep-cloned so the two instances
+   * keep animating independently. Static base state only: no timeline events
+   * are copied (#1041).
+   */
+  duplicateCharacterLayer(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'character') {
+      throw new LayerServiceError(
+        'CHARACTER_LAYER_REQUIRED',
+        '只能复制角色图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (!layer.visible) {
+      throw new LayerServiceError(
+        'LAYER_HIDDEN',
+        `图层“${layer.name}”已隐藏，请先显示该图层再复制。`,
+      );
+    }
+
+    const position = offsetDuplicatePosition(layer);
+    const duplicate: Layer = {
+      ...structuredClone(layer),
+      id: this.nextUniqueId(this.projectIds(project)),
+      name: duplicateLayerName(layer.name),
+      x: position.x,
+      y: position.y,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    return {
+      project: this.replaceShot(project, {
+        ...shot,
+        layers: [...shot.layers, duplicate],
+      }),
       layer: duplicate,
     };
   }

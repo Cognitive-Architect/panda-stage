@@ -42,6 +42,167 @@ function validateUniqueNames(
   });
 }
 
+type ReferenceTables = {
+  readonly assets: ReadonlyMap<string, ProjectData['assets'][number]>;
+  readonly animations: ReadonlyMap<string, ProjectData['animations'][number]>;
+  readonly characters: ReadonlyMap<string, ProjectData['characters'][number]>;
+  readonly subtitleStyles: ReadonlySet<string>;
+};
+
+/**
+ * Scene structure shared by a Shot and a project-local ShotTemplate: stage
+ * Layers, the background identity and the timeline. Keeping one validator for
+ * both means a template can never persist a structure a Shot could not.
+ */
+type ShotStructureLike = {
+  readonly durationMs: number;
+  readonly defaultSubtitleStyleId: string;
+  readonly layers: ProjectData['shots'][number]['layers'];
+  readonly backgroundLayerId: string | null;
+  readonly timelineEvents: ProjectData['shots'][number]['timelineEvents'];
+};
+
+function validateShotStructure(
+  structure: ShotStructureLike,
+  path: PropertyKey[],
+  context: z.RefinementCtx,
+  references: ReferenceTables,
+): void {
+  const { assets, animations, characters, subtitleStyles } = references;
+  validateUniqueIds(structure.layers, [...path, 'layers'], context);
+  validateUniqueIds(structure.timelineEvents, [...path, 'timelineEvents'], context);
+  if (!subtitleStyles.has(structure.defaultSubtitleStyleId)) {
+    addIssue(
+      context,
+      [...path, 'defaultSubtitleStyleId'],
+      `Shot references unknown subtitle style: ${structure.defaultSubtitleStyleId}`,
+    );
+  }
+
+  const layers = new Map(structure.layers.map((layer) => [layer.id, layer]));
+  if (structure.backgroundLayerId !== null) {
+    const background = layers.get(structure.backgroundLayerId);
+    if (!background) {
+      addIssue(
+        context,
+        [...path, 'backgroundLayerId'],
+        `Shot references unknown background layer: ${structure.backgroundLayerId}`,
+      );
+    } else if (background.source.kind !== 'asset') {
+      addIssue(
+        context,
+        [...path, 'backgroundLayerId'],
+        'Shot background layer must directly reference an image asset.',
+      );
+    }
+  }
+
+  structure.layers.forEach((layer, layerIndex) => {
+    if (layer.source.kind === 'asset') {
+      const asset = assets.get(layer.source.assetId);
+      if (!asset || asset.kind !== 'image') {
+        addIssue(
+          context,
+          [...path, 'layers', layerIndex, 'source', 'assetId'],
+          `Layer references unknown or non-image asset: ${layer.source.assetId}`,
+        );
+      }
+      return;
+    }
+    if (layer.source.kind === 'animation') {
+      if (!animations.has(layer.source.animationId)) {
+        addIssue(
+          context,
+          [...path, 'layers', layerIndex, 'source', 'animationId'],
+          `Layer references unknown animation: ${layer.source.animationId}`,
+        );
+      }
+      if (
+        layer.startTimeMs === undefined ||
+        layer.startTimeMs > structure.durationMs
+      ) {
+        addIssue(
+          context,
+          [...path, 'layers', layerIndex, 'startTimeMs'],
+          'Animation start time must be within the shot duration.',
+        );
+      }
+      return;
+    }
+    const characterSource = layer.source;
+    const character = characters.get(characterSource.characterId);
+    if (!character) {
+      addIssue(
+        context,
+        [...path, 'layers', layerIndex, 'source', 'characterId'],
+        `Layer references unknown character: ${characterSource.characterId}`,
+      );
+    } else if (character.mode === 'adaptive-parts') {
+      if (characterSource.expressionId !== undefined) {
+        addIssue(
+          context,
+          [...path, 'layers', layerIndex, 'source', 'expressionId'],
+          `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
+        );
+      }
+    } else if (
+      !characterSource.expressionId ||
+      !character.expressions.some(
+        (expression) => expression.id === characterSource.expressionId,
+      )
+    ) {
+      addIssue(
+        context,
+        [...path, 'layers', layerIndex, 'source', 'expressionId'],
+        `Layer references unknown character expression: ${characterSource.expressionId ?? '(missing)'}`,
+      );
+    }
+  });
+
+  structure.timelineEvents.forEach((event, eventIndex) => {
+    const layer = layers.get(event.layerId);
+    if (!layer) {
+      addIssue(
+        context,
+        [...path, 'timelineEvents', eventIndex, 'layerId'],
+        `Timeline event references unknown layer: ${event.layerId}`,
+      );
+    }
+    if (event.endMs > structure.durationMs) {
+      addIssue(
+        context,
+        [...path, 'timelineEvents', eventIndex, 'endMs'],
+        'Timeline event must end within the shot duration.',
+      );
+    }
+    if (event.type === 'expression' && layer) {
+      if (layer.source.kind !== 'character') {
+        addIssue(
+          context,
+          [...path, 'timelineEvents', eventIndex, 'expressionId'],
+          'Expression events require a character layer.',
+        );
+      } else {
+        const character = characters.get(layer.source.characterId);
+        if (
+          !character ||
+          character.mode === 'adaptive-parts' ||
+          !character.expressions.some(
+            (expression) => expression.id === event.expressionId,
+          )
+        ) {
+          addIssue(
+            context,
+            [...path, 'timelineEvents', eventIndex, 'expressionId'],
+            `Expression event references unknown expression: ${event.expressionId}`,
+          );
+        }
+      }
+    }
+  });
+}
+
+
 export function validateProjectReferences(
   project: ProjectData,
   context: z.RefinementCtx,
@@ -54,6 +215,7 @@ export function validateProjectReferences(
   validateUniqueIds(project.voiceProfiles, ['voiceProfiles'], context);
   validateUniqueIds(project.subtitleStyles, ['subtitleStyles'], context);
   validateUniqueIds(project.shots, ['shots'], context);
+  validateUniqueIds(project.shotTemplates, ['shotTemplates'], context);
 
   const assets = new Map(project.assets.map((asset) => [asset.id, asset]));
   const animations = new Map(
@@ -68,6 +230,12 @@ export function validateProjectReferences(
   const subtitleStyles = new Set(
     project.subtitleStyles.map((style) => style.id),
   );
+  const references: ReferenceTables = {
+    assets,
+    animations,
+    characters,
+    subtitleStyles,
+  };
 
   project.animations.forEach((animation, animationIndex) => {
     animation.frames.forEach((frame, frameIndex) => {
@@ -209,6 +377,23 @@ export function validateProjectReferences(
     }
   });
 
+  (project.partPosePresets ?? []).forEach((preset, presetIndex) => {
+    const character = characters.get(preset.characterId);
+    if (!character) {
+      addIssue(
+        context,
+        ['partPosePresets', presetIndex, 'characterId'],
+        `Action preset references unknown character: ${preset.characterId}`,
+      );
+    } else if (character.mode !== 'adaptive-parts') {
+      addIssue(
+        context,
+        ['partPosePresets', presetIndex, 'characterId'],
+        'Action presets require an Adaptive Parts Character.',
+      );
+    }
+  });
+
   project.voiceProfiles.forEach((profile, profileIndex) => {
     if (!characters.has(profile.characterId)) {
       addIssue(
@@ -220,51 +405,129 @@ export function validateProjectReferences(
   });
 
   project.shots.forEach((shot, shotIndex) => {
-    validateUniqueIds(shot.layers, ['shots', shotIndex, 'layers'], context);
-    validateUniqueIds(
-      shot.dialogues,
-      ['shots', shotIndex, 'dialogues'],
-      context,
-    );
-    validateUniqueIds(
-      shot.audioClips,
-      ['shots', shotIndex, 'audioClips'],
-      context,
-    );
-    validateUniqueIds(
-      shot.timelineEvents,
-      ['shots', shotIndex, 'timelineEvents'],
-      context,
-    );
-    if (!subtitleStyles.has(shot.defaultSubtitleStyleId)) {
-      addIssue(
-        context,
-        ['shots', shotIndex, 'defaultSubtitleStyleId'],
-        `Shot references unknown subtitle style: ${shot.defaultSubtitleStyleId}`,
-      );
-    }
+    const path = ['shots', shotIndex];
+    validateShotStructure(shot, path, context, references);
+    validateUniqueIds(shot.dialogues, [...path, 'dialogues'], context);
+    validateUniqueIds(shot.audioClips, [...path, 'audioClips'], context);
 
-    const layers = new Map(shot.layers.map((layer) => [layer.id, layer]));
-    if (shot.backgroundLayerId !== null) {
-      const background = layers.get(shot.backgroundLayerId);
-      if (!background) {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'backgroundLayerId'],
-          `Shot references unknown background layer: ${shot.backgroundLayerId}`,
-        );
-      } else if (background.source.kind !== 'asset') {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'backgroundLayerId'],
-          'Shot background layer must directly reference an image asset.',
-        );
-      }
-    }
     const audioClips = new Map(
       shot.audioClips.map((clip) => [clip.id, clip]),
     );
     shot.layers.forEach((layer, layerIndex) => {
+      if (layer.poseAnimation) {
+        const poseAnimation = layer.poseAnimation;
+        const sourceCharacterId =
+          layer.source.kind === 'character' ? layer.source.characterId : null;
+        const poseCharacter = sourceCharacterId
+          ? characters.get(sourceCharacterId)
+          : null;
+        if (
+          !poseCharacter ||
+          poseCharacter.mode !== 'adaptive-parts' ||
+          poseAnimation.characterId !== sourceCharacterId
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'poseAnimation'],
+            'Part pose animation requires a matching Adaptive Parts Character Layer.',
+          );
+        }
+        poseAnimation.tracks.forEach((track, trackIndex) => {
+          const partAsset = assets.get(track.assetId);
+          if (!partAsset || partAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [
+                'shots',
+                shotIndex,
+                'layers',
+                layerIndex,
+                'poseAnimation',
+                'tracks',
+                trackIndex,
+                'assetId',
+              ],
+              `Part pose snapshot references unknown or non-image asset: ${track.assetId}`,
+            );
+          } else {
+            const expectedWidth = Math.round(
+              track.imageMapping.crop.width * track.imageMapping.exportScale,
+            );
+            const expectedHeight = Math.round(
+              track.imageMapping.crop.height * track.imageMapping.exportScale,
+            );
+            if (
+              partAsset.width !== expectedWidth ||
+              partAsset.height !== expectedHeight
+            ) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'imageMapping',
+                ],
+                `Part pose snapshot crop resolves to ${expectedWidth}x${expectedHeight}, but asset ${partAsset.id} is ${partAsset.width}x${partAsset.height}.`,
+              );
+            }
+          }
+          const root = poseAnimation.sourceRootTransform;
+          const rest = track.restTransform;
+          const rootDeterminant = root.a * root.d - root.b * root.c;
+          const restDeterminant = rest.a * rest.d - rest.b * rest.c;
+          const exportScale = track.imageMapping.exportScale;
+          const sourceDeterminant =
+            (rootDeterminant * restDeterminant) /
+            (exportScale * exportScale);
+          track.keys.forEach((key, keyIndex) => {
+            if (key.timeMs > shot.durationMs) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'keys',
+                  keyIndex,
+                  'timeMs',
+                ],
+                'Part pose keyframe must be within the Shot duration.',
+              );
+            }
+            const posedDeterminant = sourceDeterminant * key.scale * key.scale;
+            if (
+              !Number.isFinite(posedDeterminant) ||
+              Math.abs(posedDeterminant) < 1e-12
+            ) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'keys',
+                  keyIndex,
+                  'scale',
+                ],
+                'Part pose keyframe produces a degenerate affine transform.',
+              );
+            }
+          });
+        });
+      }
       if (layer.source.kind === 'asset') {
         const asset = assets.get(layer.source.assetId);
         if (!asset || asset.kind !== 'image') {
@@ -414,59 +677,14 @@ export function validateProjectReferences(
         );
       }
     });
+  });
 
-    shot.timelineEvents.forEach((event, eventIndex) => {
-      const layer = layers.get(event.layerId);
-      if (!layer) {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-          `Timeline event references unknown layer: ${event.layerId}`,
-        );
-      }
-      if (event.endMs > shot.durationMs) {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'timelineEvents', eventIndex, 'endMs'],
-          'Timeline event must end within the shot duration.',
-        );
-      }
-      if (event.type === 'expression' && layer) {
-        if (layer.source.kind !== 'character') {
-          addIssue(
-            context,
-            [
-              'shots',
-              shotIndex,
-              'timelineEvents',
-              eventIndex,
-              'expressionId',
-            ],
-            'Expression events require a character layer.',
-          );
-        } else {
-          const character = characters.get(layer.source.characterId);
-          if (
-            !character ||
-            character.mode === 'adaptive-parts' ||
-            !character.expressions.some(
-              (expression) => expression.id === event.expressionId,
-            )
-          ) {
-            addIssue(
-              context,
-              [
-                'shots',
-                shotIndex,
-                'timelineEvents',
-                eventIndex,
-                'expressionId',
-              ],
-              `Expression event references unknown expression: ${event.expressionId}`,
-            );
-          }
-        }
-      }
-    });
+  project.shotTemplates.forEach((template, templateIndex) => {
+    validateShotStructure(
+      template,
+      ['shotTemplates', templateIndex],
+      context,
+      references,
+    );
   });
 }

@@ -77,8 +77,10 @@ describe('BFM-S01 composite Character persistence', () => {
       name: 'BFM S01 legacy character',
     });
     const base = buildProject();
-    const { animations: _animations, ...legacyBase } = base;
+    const { animations: _animations, shotTemplates: _templates, ...legacyBase } = base;
     void _animations;
+    // Shot templates arrived in v17, so this legacy envelope drops the key.
+    void _templates;
     const legacyAssets = structuredClone(base.assets);
     for (const asset of legacyAssets) {
       if (asset.kind !== 'image') continue;
@@ -94,6 +96,8 @@ describe('BFM-S01 composite Character persistence', () => {
       schemaVersion: 6 as const,
       assets: legacyAssets,
       characters: [historicalCharacter],
+      // AUTO-07B: strip the v18 per-Shot camera from this v6 envelope.
+      shots: base.shots.map(({ camera: _camera, ...shot }) => { void _camera; return shot; }),
     };
     const source = `${JSON.stringify(v6, null, 2)}\n`;
     await writeFile(projectFile, source, 'utf8');

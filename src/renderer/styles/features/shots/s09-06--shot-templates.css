@@ -1,0 +1,115 @@
+/* AUTO-03 V0 (Issue #1003): project-local Shot templates. The template picker
+   is one compact list above the existing create form, never a second Shot
+   management surface. */
+.shot-create-templates {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  gap: 6px;
+}
+
+.shot-create-templates > legend {
+  padding: 0;
+  margin-bottom: 2px;
+  color: var(--ui-color-text-secondary, #a9b8ae);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.shot-create-template-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.shot-create-template-option {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 9px;
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  background: transparent;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.shot-create-templates > .shot-create-template-option {
+  flex: 0 1 auto;
+}
+
+.shot-create-template-option:hover {
+  border-color: var(--ui-color-selected-border, #83d39a);
+}
+
+.shot-create-template-option:has(input:checked) {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  color: var(--ui-color-text-primary, #e6f7ea);
+  background: rgb(45 104 62 / 30%);
+}
+
+.shot-create-template-option input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--ui-color-action-primary, #8ed9a2);
+}
+
+.shot-create-template-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shot-create-template-meta {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-secondary, #8b9b92);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.shot-create-template-remove {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgb(232 126 112 / 28%);
+  border-radius: 9px;
+  color: var(--ui-color-text-secondary, #ffd7d2);
+  background: transparent;
+  place-items: center;
+}
+
+.shot-create-template-remove:hover:not(:disabled),
+.shot-create-template-remove:focus-visible {
+  border-color: rgb(232 126 112 / 65%);
+  background: rgb(124 46 37 / 28%);
+}
+
+.shot-create-template-duration {
+  padding: 8px 10px;
+  border: 1px dashed rgb(127 199 148 / 30%);
+  border-radius: 9px;
+  margin: 0;
+  color: var(--ui-color-text-secondary, #b9d3bf);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quick-action template form reuses the existing inline edit form grid. */
+.shot-quick-edit-form[data-testid='shot-quick-save-template-form'] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}

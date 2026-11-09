@@ -35,6 +35,8 @@ describe('schema v5 dialogue persisted migration', () => {
       JSON.stringify(buildProject()),
     ) as Record<string, unknown>;
     delete base.animations;
+    // Shot templates arrived in v17, so the v5 envelope must not carry the key.
+    delete base.shotTemplates;
     for (const asset of base.assets as Record<string, unknown>[]) {
       delete asset.usage;
       delete asset.keywords;
@@ -61,8 +63,11 @@ describe('schema v5 dialogue persisted migration', () => {
     });
 
     const shots = base.shots as Record<string, unknown>[];
+    const { camera: _camera, ...baseShot } = shots[0]!;
+    // AUTO-07B: a v5 envelope predates the persisted Shot camera.
+    void _camera;
     shots[0] = {
-      ...shots[0],
+      ...baseShot,
       audioClips: [
         {
           id: audioClipId,

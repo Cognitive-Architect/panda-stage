@@ -525,6 +525,42 @@ export class ExportService {
       );
       this.throwIfCancelled(active);
 
+      // AUTO-07-FIX-01: the hidden renderer can only drive the Mouth from the
+      // voice bytes it actually receives. Send the frozen audio referenced by
+      // Dialogue-bound clips alongside the images, without a second scan.
+      const voiceAssetIds = new Set<string>();
+      for (const shot of project.shots) {
+        const clipAssets = new Map(
+          (shot.audioClips ?? []).map((clip) => [clip.id, clip.assetId]),
+        );
+        for (const dialogue of shot.dialogues ?? []) {
+          const assetId = dialogue.audioClipId
+            ? clipAssets.get(dialogue.audioClipId)
+            : undefined;
+          if (assetId) voiceAssetIds.add(assetId);
+        }
+      }
+      const formalMedia = input.media
+        .filter(
+          (entry) =>
+            entry.kind === 'image' || voiceAssetIds.has(entry.assetId),
+        )
+        .map((entry) =>
+          entry.kind === 'image'
+            ? {
+                kind: 'image' as const,
+                assetId: entry.assetId,
+                mimeType: entry.mimeType,
+                bytes: entry.bytes,
+              }
+            : {
+                kind: 'audio' as const,
+                assetId: entry.assetId,
+                mimeType: entry.mimeType,
+                bytes: entry.bytes,
+              },
+        );
+
       const render = await this.renderFrames(
         active,
         record,
@@ -538,13 +574,7 @@ export class ExportService {
             jobId: active.jobId,
             project: input.candidate.project,
             cameraMode: input.candidate.cameraMode,
-            media: input.media
-              .filter((entry) => entry.kind === 'image')
-              .map(({ assetId, mimeType, bytes }) => ({
-                assetId,
-                mimeType,
-                bytes,
-              })),
+            media: formalMedia,
           }),
         project,
       );

@@ -1,16 +1,18 @@
-/* PK-05: Position authoring lives under Transform → Position. Button roles
-   provide the shared Panda Stage semantic surface; this file owns only the
-   local stack geometry and Position-specific guidance. */
+/* Position keyframe actions live beside the layer's other Action controls. */
 .position-authoring-entry {
   display: grid;
   min-width: 0;
   gap: var(--ui-space-2);
 }
 
-.position-authoring-entry > button {
+.position-authoring-entry > button.position-authoring-primary,
+.position-authoring-entry > button.position-authoring-hold {
   width: 100%;
   padding: var(--ui-space-2) var(--ui-space-3);
   border-radius: var(--ui-radius-small);
+}
+
+.position-authoring-entry > button.position-authoring-primary {
   font-weight: 700;
 }
 
@@ -36,6 +38,18 @@ button.position-authoring-hold:hover:not(:disabled) {
   line-height: 1.4;
 }
 
+.position-authoring-finish[data-ui-button] {
+  justify-self: start;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.position-authoring-status {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .position-authoring-entry
   > button {
@@ -52,4 +66,36 @@ button.position-authoring-hold:hover:not(:disabled) {
   .position-authoring-entry
   > button {
   min-height: 44px;
+}
+
+.right-inspector-action-position .position-authoring-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-primary,
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-hold {
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: var(--ui-radius-small);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.right-inspector-action-position .position-authoring-entry > button.position-authoring-primary {
+  font-weight: 600;
+}
+
+.right-inspector-action-position .position-authoring-entry > .position-authoring-status {
+  flex: 1 0 100%;
+}
+
+.right-inspector-action-position .position-authoring-guidance {
+  flex: 1 0 100%;
+  padding: 4px 8px;
 }

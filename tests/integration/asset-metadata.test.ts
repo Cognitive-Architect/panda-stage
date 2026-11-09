@@ -127,6 +127,7 @@ function refresh(
       project: current.project,
       baseRevision: current.revision,
       assetId,
+      historyReferencesPoseSnapshotAsset: false,
       requestId: randomUUID(),
     },
     { signal },

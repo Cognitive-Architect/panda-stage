@@ -80,6 +80,34 @@
         "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
       },
       {
+        "id": "issue962-c5-kf-00-research-evidence",
+        "sourcePatterns": [
+          "docs/evidence/issue-962-c5-kf-00/**"
+        ],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Only the isolated Issue #962 C5-KF synthetic contact sheet and its README receipt are registered here. They are research evidence for the Part pose animation baseline, not production behaviour; keep neighbouring Issue evidence paths fail-closed. Draft changes use the existing CI policy self-tests."
+      },
+      {
+        "id": "c5-kf-00-research-harness",
+        "sourcePatterns": [],
+        "testPatterns": [
+          "tests/research/c5-kf-00.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "The C5-KF research harness runs under vitest.research.config.ts against synthetic pose envelopes; it is not part of the shipped regression suites. Its generator scripts stay under the ci-build-infrastructure route."
+      },
+      {
         "id": "issue742-research-evidence",
         "sourcePatterns": [
           "docs/evidence/issue-742/**"
@@ -435,6 +463,7 @@
           "tests/unit/models/audio-clip-source-range.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
           "tests/integration/animation-persistence.test.ts",
+          "tests/integration/legacy-project-reopen.test.ts",
           "tests/helpers/adaptivePartsFixtures.ts",
           "tests/helpers/characterAssertions.ts",
           "tests/integration/adaptive-parts-lifecycle.test.ts",
@@ -444,7 +473,9 @@
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
           "tests/unit/reference-scanner.test.ts",
-          "tests/unit/create-character-from-prepared-parts.test.ts"
+          "tests/unit/create-character-from-prepared-parts.test.ts",
+          "tests/unit/timeline-batch-edit.test.ts",
+          "tests/unit/timeline-batch-store.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue257-slice3*",
@@ -531,11 +562,14 @@
       {
         "id": "assets",
         "sourcePatterns": [
-          "src/renderer/features/assets/**"
+          "src/renderer/features/assets/**",
+          "docs/evidence/day-17/results.json"
         ],
         "testPatterns": [
           "tests/unit/asset-*.test.ts",
           "tests/integration/asset-*.test.ts",
+          "tests/unit/project-resource-import.test.ts",
+          "tests/integration/project-resource-import.test.ts",
           "tests/unit/product-copy.test.ts",
           "tests/unit/apply-asset-import-response.test.ts",
           "tests/unit/animation-library-components.test.ts",
@@ -679,7 +713,10 @@
         ],
         "testPatterns": [
           "tests/unit/shot-*.test.ts",
-          "tests/integration/shot-*.test.ts"
+          "tests/unit/multi-scene-*.test.ts",
+          "tests/helpers/multiSceneDialogueFixture.ts",
+          "tests/integration/shot-*.test.ts",
+          "tests/integration/multi-scene-*.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day20*",
@@ -691,12 +728,13 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "shot",
-        "notes": "Shot renderer ownership and verifier route."
+        "notes": "Shot renderer ownership and verifier route. Issue #1005 (AUTO-04) and #1008 (AUTO-05) add the multi-scene batch and dialogue surfaces under the same owner, so their unit/integration contracts (tests/unit/multi-scene-*.test.ts, tests/integration/multi-scene-*.test.ts) are registered here rather than introducing a second subsystem route."
       },
       {
         "id": "canvas",
         "sourcePatterns": [
           "src/renderer/features/canvas/**",
+          "src/renderer/features/part-pose/**",
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
           "src/export-renderer/**",
@@ -708,10 +746,16 @@
           "src/domain/models/project.ts",
           "src/domain/models/shot.ts",
           "src/domain/services/LayerService.ts",
-          "src/renderer/stores/layerStore.ts"
+          "src/renderer/stores/layerStore.ts",
+          "src/renderer/features/layout/**",
+          "src/domain/layout/**",
+          "src/renderer/stores/quickLayoutPreviewStore.ts",
+          "src/renderer/stores/layerLayoutPreviewStore.ts",
+          "src/renderer/styles/shell/tools/s18-02--layer-align-distribute.css"
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
+          "tests/unit/part-pose-*.test.ts",
           "tests/unit/issue669-talking-head-motion.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/konva-pixel-ratio.test.ts",
@@ -721,13 +765,17 @@
           "tests/unit/feedback-hygiene.test.ts",
           "tests/unit/domain/evaluate-shot-at-time.test.ts",
           "tests/unit/domain/migrations/project-migration.test.ts",
-      "tests/unit/animation-playback-controls.test.ts",
-      "tests/unit/issue915-animation-properties.test.ts",
+          "tests/unit/animation-playback-controls.test.ts",
+          "tests/unit/issue915-animation-properties.test.ts",
           "tests/unit/export-preparation.test.ts",
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
-      "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+          "tests/integration/animation-persistence.test.ts",
+          "tests/integration/ap03-animation-image-prewarm.test.ts",
+          "tests/unit/quick-layout-*.test.ts",
+          "tests/integration/part-pose-animation-persistence.test.ts",
+          "tests/integration/part-pose-preset-persistence.test.ts",
+          "tests/unit/layout-align-*.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
@@ -751,7 +799,7 @@
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
-    "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
+        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns. AUTO-01 Quick Layout (Issue #996) adds src/renderer/features/layout and src/domain/layout to canvas ownership because the V0 stance reuses the Stage visual-bounds and Layer position semantics; its tests are exact-match quick-layout-*.test.ts patterns. EF-02 Align & Distribute (Issue #1019) stays in the same canvas ownership: it reuses the Stage visual bounds, the runtime-only transform preview and the Layer position/scale commit seam, and adds exact-match layout-align-*.test.ts patterns."
       },
       {
         "id": "history-controls",
@@ -784,7 +832,8 @@
           "tests/unit/features/timeline/**",
           "tests/integration/timeline-selection.test.ts",
           "tests/contract/*timeline*.test.ts",
-          "tests/contract/day26-*.test.ts"
+          "tests/contract/day26-*.test.ts",
+          "tests/unit/timeline-batch-panel-contract.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-issue197*",
@@ -962,6 +1011,30 @@
         "incrementalEligible": true,
         "owner": "editor",
         "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted. Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+      },
+      {
+        "id": "auto-07-foundation",
+        "sourcePatterns": [
+          "src/renderer/features/camera/**",
+          "src/renderer/preview/**",
+          "src/domain/selectors/audioEnvelope.ts",
+          "src/domain/selectors/cameraTrack.ts"
+        ],
+        "testPatterns": [
+          "tests/unit/audio-envelope.test.ts",
+          "tests/unit/shot-mouth-envelope.test.ts",
+          "tests/unit/shot-camera-*.test.ts",
+          "tests/integration/shot-camera-*.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [
+          "shot",
+          "canvas"
+        ],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "auto-07",
+        "notes": "AUTO-07 volume-driven Mouth envelope and persisted per-Shot camera Foundation. The camera tool store/panel and the renderer-owned decoded-envelope cache are owned here; shared domain evaluators and the export renderer keep their existing cross-process/canvas routes."
       }
     ]
   },

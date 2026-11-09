@@ -2,6 +2,7 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import {
   ProjectSchema,
+  scanAssetReferences,
   type Asset,
   type Project,
 } from '../../domain';
@@ -187,6 +188,11 @@ export class AssetMetadataService {
           return {
             projectRoot: transaction.projectRoot,
             asset: structuredClone(asset),
+            poseSnapshotReferenced:
+              request.historyReferencesPoseSnapshotAsset ||
+              scanAssetReferences(current.project, asset.id).some(
+                (reference) => reference.kind === 'pose-animation-part',
+              ),
             assetPath: await this.resolveAssetPath(
               transaction.projectRoot,
               asset,
@@ -200,6 +206,7 @@ export class AssetMetadataService {
         initial.projectRoot,
         initial.assetPath,
         initial.asset,
+        initial.poseSnapshotReferenced,
         options.signal,
       );
 
@@ -307,6 +314,7 @@ export class AssetMetadataService {
     projectRoot: string,
     assetPath: string,
     asset: Asset,
+    poseSnapshotReferenced: boolean,
     externalSignal?: AbortSignal,
   ): Promise<ProcessedAsset | AssetMetadataItemError> {
     const controller = new AbortController();
@@ -330,9 +338,11 @@ export class AssetMetadataService {
       projectRoot,
       assetPath,
       asset,
+      poseSnapshotReferenced,
       controller.signal,
     ).catch((error: unknown) => {
       if (terminal) throw error;
+      if (error instanceof AssetMetadataServiceError) throw error;
       return this.normalizeItemError(asset, error);
     });
     void media.catch(() => undefined);
@@ -359,6 +369,7 @@ export class AssetMetadataService {
           { cause: error },
         );
       }
+      if (error instanceof AssetMetadataServiceError) throw error;
       return this.normalizeItemError(asset, error);
     } finally {
       clearTimeout(timer);
@@ -446,6 +457,7 @@ export class AssetMetadataService {
     projectRoot: string,
     assetPath: string,
     asset: Asset,
+    poseSnapshotReferenced: boolean,
     signal: AbortSignal,
   ): Promise<ProcessedAsset> {
     let sha256: string;
@@ -457,6 +469,16 @@ export class AssetMetadataService {
         'ASSET_METADATA_FILE_UNREADABLE',
         `Cannot read asset "${asset.name}" (${asset.relativePath}).`,
         { cause: error },
+      );
+    }
+
+    if (poseSnapshotReferenced && sha256 !== asset.sha256) {
+      throw new AssetMetadataServiceError(
+        'ASSET_METADATA_POSE_SNAPSHOT_ASSET_CHANGED',
+        projectRoot,
+        asset.id,
+        'The image bytes changed for an asset retained by a Part pose snapshot. Restore the original bytes or import the replacement as a new asset; the saved pose and asset identity were left unchanged.',
+        { relativePath: asset.relativePath },
       );
     }
 

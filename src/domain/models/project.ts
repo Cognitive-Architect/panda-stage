@@ -26,16 +26,20 @@ import {
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
+import { PartPoseActionPresetSchema } from './part-pose-preset';
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV16Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
+  ShotV17Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
   ShotV7Schema,
 } from './shot';
+import { ShotTemplateSchema } from './shot-template';
 import { SubtitleStyleSchema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventSchema } from './timeline-event';
@@ -115,8 +119,45 @@ const ProjectDataSchema = z
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotSchema),
+    shotTemplates: z.array(ShotTemplateSchema),
+    // AUTO-08 D1: user-authored Part pose action presets, shared across
+    // Shot instances of the same Character inside this Project. Optional so
+    // parsing never injects the key into projects that have no presets.
+    partPosePresets: z.array(PartPoseActionPresetSchema).max(64).optional(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+/**
+ * Strict v16 envelope: the last shape before the project-local Shot template
+ * list and the per-Layer Part pose track (both v17) and before the v18
+ * additions (persisted per-Shot camera track and user Part pose presets).
+ */
+export const ProjectV16Schema = ProjectDataSchema.omit({
+  shotTemplates: true,
+  partPosePresets: true,
+})
+  .extend({
+    schemaVersion: z.literal(16),
+    shots: z.array(ShotV16Schema),
+  })
+  .strict();
+
+/**
+ * Strict v17 envelope: v16 plus the project-local Shot template list (AUTO-03
+ * #1004) and the optional per-Layer Part pose track (C5-KF #979). Two branches
+ * independently claimed v17, so the integration keeps exactly one v17 shape
+ * that carries both increments; the pose fields stay optional, which makes
+ * template-only and pose-only v17 envelopes parse identically. User Part pose
+ * action presets only arrive in v18, so they are omitted here.
+ */
+export const ProjectV17Schema = ProjectDataSchema.omit({
+  partPosePresets: true,
+})
+  .extend({
+    schemaVersion: z.literal(17),
+    shots: z.array(ShotV17Schema),
   })
   .strict();
 
@@ -145,7 +186,7 @@ export const ProjectV13Schema = ProjectV12DataSchema.extend({
 });
 
 /** Strict persisted v14 envelope, before Adaptive Parts Characters. */
-export const ProjectV14Schema = ProjectDataSchema.extend({
+export const ProjectV14Schema = ProjectV16Schema.extend({
   schemaVersion: z.literal(14),
   characters: z.array(CharacterV14Schema),
   shots: z.array(ShotV14Schema),
@@ -380,7 +421,7 @@ export function inferLegacyBackgroundLayerId(
 function addBackgroundIdentity<T extends {
   assets: AssetV12[];
   shots: z.infer<typeof ShotV2Schema>[];
-}>(project: T): Array<z.infer<typeof ShotSchema>> {
+}>(project: T): Array<z.input<typeof ShotSchema>> {
   return project.shots.map((shot) => ({
     ...addAudioRoles(shot),
     layers: shot.layers.map((layer) => ({
@@ -515,7 +556,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v15 -> v16) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v17 -> v18) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

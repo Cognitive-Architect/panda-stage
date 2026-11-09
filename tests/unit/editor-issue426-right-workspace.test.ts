@@ -70,7 +70,14 @@ describe('Issue #426 unified Right Workspace R1', () => {
     expect(inspector).toContain('embedded?: boolean');
     expect(inspector).toContain('data-presentation="embedded"');
     expect(inspector).toContain('right-inspector-drawer-open right-inspector-embedded');
-    expect(tools).toContain("{view === 'action-presets' ? '动作预设' : '工具'}");
+    // Single title owner: the header reads one map instead of nesting ternaries.
+    expect(tools).toContain('const VIEW_TITLES: Record<ProjectToolsView, string>');
+    expect(tools).toContain('{VIEW_TITLES[view]}');
+    // Every AUTO tool keeps its own card: 运镜, 快速布阵, 批量调整, 多镜头布景.
+    expect(tools).toContain("camera: '运镜'");
+    expect(tools).toContain("'quick-layout': '快速布阵'");
+    expect(tools).toContain("'batch-adjust': '批量调整'");
+    expect(tools).toContain("'multi-scene': '多镜头布景'");
     expect(tools).toContain('aria-label="关闭工具"');
   });
 

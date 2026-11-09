@@ -10,11 +10,19 @@ import {
   ProjectV14Schema,
   ProjectV15Schema,
   ProjectV15AdaptiveSchema,
+  ProjectV16Schema,
+  ProjectV17Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
-import { buildProject, buildProjectWithAnimation, IDS } from '../testProject';
+import {
+  buildProject,
+  buildProjectWithAnimation,
+  IDS,
+  legacyShot,
+  legacyShots,
+} from '../testProject';
 import {
   adaptivePartsFixture,
   adaptivePartsSourceRootTransform,
@@ -193,6 +201,26 @@ function v2WithoutTimelineEvents(): unknown {
   };
 }
 
+/**
+ * Legacy envelopes predate Shot templates, so every downgraded fixture drops
+ * the current-only collection before it is parsed as V11–V15.
+ */
+function withVersion<
+  T extends { shotTemplates?: unknown; schemaVersion?: number },
+>(
+  project: T,
+  schemaVersion: number,
+): Omit<T, 'shotTemplates' | 'schemaVersion'> & { schemaVersion: number } {
+  const {
+    shotTemplates: _shotTemplates,
+    schemaVersion: _schemaVersion,
+    ...rest
+  } = project;
+  void _shotTemplates;
+  void _schemaVersion;
+  return { ...rest, schemaVersion };
+}
+
 describe('T01 迁移回填 timelineEvents', () => {
   it('v1 旧项目（缺 timelineEvents）可被打开且结果含空数组', () => {
     const result = migrateProject(v1WithoutTimelineEvents()) as Project;
@@ -224,8 +252,8 @@ describe('T01 迁移回填 timelineEvents', () => {
     const { animations: _animations, ...version11Fields } = current;
     void _animations;
     const legacyV11 = {
-      ...version11Fields,
-      schemaVersion: 11,
+      ...withVersion(version11Fields, 11),
+      shots: legacyShots(current.shots),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version11Asset } = asset;
@@ -306,8 +334,8 @@ describe('T01 迁移回填 timelineEvents', () => {
     const { animations: _animations, ...withoutAnimations } = current;
     void _animations;
     const legacyV12 = {
-      ...withoutAnimations,
-      schemaVersion: 12,
+      ...withVersion(withoutAnimations, 12),
+      shots: legacyShots(current.shots),
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...version12Asset } = asset;
@@ -340,7 +368,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       })),
     );
     expect(migrated.characters).toEqual(legacyV12.characters);
-    expect(migrated.shots).toEqual(legacyV12.shots);
+    expect(migrated.shots.map(legacyShot)).toEqual(legacyV12.shots);
     expect(legacyV12).toEqual(before);
   });
 
@@ -348,7 +376,10 @@ describe('T01 迁移回填 timelineEvents', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
-    const legacyV13 = { ...version13Fields, schemaVersion: 13 };
+    const legacyV13 = {
+      ...withVersion(version13Fields, 13),
+      shots: legacyShots(current.shots),
+    };
     const before = structuredClone(legacyV13);
 
     expect(ProjectV13Schema.parse(legacyV13)).toEqual(legacyV13);
@@ -364,7 +395,10 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('strictly migrates v14 projects to v16 while retaining animation definitions', () => {
     const current = buildProjectWithAnimation();
-    const legacyV14 = { ...current, schemaVersion: 14 };
+    const legacyV14 = {
+      ...withVersion(current, 14),
+      shots: legacyShots(current.shots),
+    };
     const before = structuredClone(legacyV14);
 
     expect(ProjectV14Schema.parse(legacyV14)).toEqual(legacyV14);
@@ -408,7 +442,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('strictly migrates v15 animation instances to v16 with once+hold defaults', () => {
     const current = buildProjectWithAnimation();
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const v15Layer = {
       id: IDS.animationLayer,
       name: 'walk instance',
@@ -427,8 +461,7 @@ describe('T01 迁移回填 timelineEvents', () => {
       zIndex: 3,
     };
     const legacyV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       shots: [{ ...shot, layers: [...shot.layers, v15Layer] }],
     };
     const before = structuredClone(legacyV15);
@@ -477,10 +510,9 @@ describe('T01 迁移回填 timelineEvents', () => {
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
     };
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const legacyV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       characters: [...current.characters, adaptiveCharacter],
       voiceProfiles: [
         ...current.voiceProfiles,
@@ -554,10 +586,9 @@ describe('T01 迁移回填 timelineEvents', () => {
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
     };
-    const shot = current.shots[0]!;
+    const shot = legacyShot(current.shots[0]!);
     const mixedV15 = {
-      ...current,
-      schemaVersion: 15,
+      ...withVersion(current, 15),
       characters: [...current.characters, adaptiveCharacter],
       voiceProfiles: [
         ...current.voiceProfiles,
@@ -603,10 +634,96 @@ describe('T01 迁移回填 timelineEvents', () => {
   });
 
   it('accepts the shared static v15 shape when both strict historical schemas agree', () => {
-    const staticV15 = { ...buildProject(), schemaVersion: 15 };
+    const currentStatic = buildProject();
+    const staticV15 = {
+      ...withVersion(currentStatic, 15),
+      shots: legacyShots(currentStatic.shots),
+    };
 
     expect(ProjectV15Schema.safeParse(staticV15).success).toBe(true);
     expect(ProjectV15AdaptiveSchema.safeParse(staticV15).success).toBe(true);
     expect(migrateProject(staticV15).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+  });
+
+  it('strictly upgrades v16 and rejects Part pose data in the v16 contract', () => {
+    const current = buildProject();
+    // v16 predates both the project-local Shot template list and the persisted
+    // per-Shot camera track, so the fixture drops them before parsing.
+    const v16 = {
+      ...withVersion(current, 16),
+      shots: legacyShots(current.shots),
+    };
+    expect(ProjectV16Schema.parse(v16)).toEqual(v16);
+    expect(ProjectSchema.safeParse(v16).success).toBe(false);
+    expect(migrateProject(v16).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+
+    const shot = v16.shots[0]!;
+    const layerWithFutureField = {
+      ...v16,
+      shots: [
+        {
+          ...shot,
+          layers: [
+            { ...shot.layers[0]!, poseAnimation: { version: 1 } },
+            ...shot.layers.slice(1),
+          ],
+        },
+      ],
+    };
+    expect(ProjectV16Schema.safeParse(layerWithFutureField).success).toBe(false);
+    expect(() => migrateProject(layerWithFutureField)).toThrow();
+  });
+
+  it('strictly upgrades v17 and rejects preset data in the v17 contract', () => {
+    const current = buildProject();
+    // v17 already carries the project-local Shot template list; it predates
+    // only the v18 per-Shot camera track and the v18 user Part pose presets.
+    const { schemaVersion: _schemaVersion, ...v17Rest } = current;
+    void _schemaVersion;
+    const v17 = {
+      ...v17Rest,
+      schemaVersion: 17,
+      shots: legacyShots(current.shots),
+    };
+    expect(ProjectV17Schema.parse(v17)).toEqual(v17);
+    expect(ProjectSchema.safeParse(v17).success).toBe(false);
+
+    const migrated = migrateProject(v17);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.partPosePresets).toBeUndefined();
+
+    const withFutureField = {
+      ...v17,
+      partPosePresets: [
+        {
+          id: randomUUID(),
+          name: '过早',
+          characterId: randomUUID(),
+          durationMs: 1_000,
+          sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+          fixedCharacterCenter: { x: 0, y: 0 },
+          tracks: [
+            {
+              partId: 'part',
+              pivotSource: { x: 0, y: 0 },
+              sourceRestTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+              keys: [
+                {
+                  timeMs: 0,
+                  offsetX: 0,
+                  offsetY: 0,
+                  rotationDeg: 0,
+                  scale: 1,
+                  easingToNext: 'linear',
+                },
+              ],
+            },
+          ],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    expect(ProjectV17Schema.safeParse(withFutureField).success).toBe(false);
+    expect(() => migrateProject(withFutureField)).toThrow();
   });
 });

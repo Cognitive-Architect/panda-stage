@@ -1,0 +1,66 @@
+/* Issue #1011 (AUTO-06): flat performance plan rows under each dialogue.
+   Inherits the AUTO-05 panel surface; no nested cards and no second player. */
+.multi-scene-performance-panel .multi-scene-dialogue-input {
+  min-height: 236px;
+}
+
+.multi-scene-performance-status {
+  margin: 0;
+  color: #f2b8a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.multi-scene-performance-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  padding: 0 0 2px 72px;
+}
+
+.multi-scene-performance-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 20px;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+}
+
+.multi-scene-performance-anchor {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(255 255 255 / 48%);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-scene-performance-action {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-selected-border, #83d39a);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-scene-performance-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-selected-border, #83d39a);
+}
+
+.multi-scene-performance-line[data-multi-scene-performance-ready='false']
+  .multi-scene-performance-mark {
+  color: #f2b8a8;
+}
+
+.multi-scene-performance-line-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #f2b8a8;
+  font-size: 12px;
+  line-height: 1.5;
+}

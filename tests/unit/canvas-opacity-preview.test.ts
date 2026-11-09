@@ -296,7 +296,9 @@ describe('Issue #643 runtime opacity preview', () => {
     expect(canvas).toContain('activeOpacityPreview?.layerId === layer.id');
     expect(canvas).toContain('opacity: activeOpacityPreview.opacity');
     expect(controller).toContain("commitPendingDraft('opacity', nextDraft)");
-    expect(controller).toContain('useEffect(() => () => opacitySessionRef.current?.cancel(), []);');
+    expect(controller).toMatch(
+      /useEffect\(\s*\(\) => \(\) => \{\s*opacitySessionRef\.current\?\.cancel\(\);\s*positionSessionRef\.current\?\.cancel\(\);\s*\},\s*\[\],\s*\);/u,
+    );
     expect(controller).toContain('layerStore.updateTransform(layer.id, transform)');
     expect(controller).toContain('lastCommittedRef.current.draftVersion === commitIdentity.draftVersion');
     expect(controller).toContain("opacityGestureKindRef.current === 'keyboard'");

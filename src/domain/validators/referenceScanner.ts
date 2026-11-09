@@ -9,6 +9,9 @@ export type AssetReferenceKind =
   | 'character-mouth'
   | 'shot-background'
   | 'shot-layer'
+  | 'shot-template-background'
+  | 'shot-template-layer'
+  | 'pose-animation-part'
   | 'audio-clip'
   | 'dialogue-audio'
   | 'animation-frame';
@@ -21,7 +24,9 @@ export interface AssetReference {
 
 export type CharacterReferenceKind =
   | 'shot-layer-character'
-  | 'dialogue-character';
+  | 'shot-template-layer-character'
+  | 'dialogue-character'
+  | 'part-pose-preset';
 
 export interface CharacterReference {
   kind: CharacterReferenceKind;
@@ -31,7 +36,9 @@ export interface CharacterReference {
 
 export type ExpressionReferenceKind =
   | 'shot-layer-expression'
-  | 'timeline-expression-event';
+  | 'shot-template-layer-expression'
+  | 'timeline-expression-event'
+  | 'shot-template-expression-event';
 
 export interface ExpressionReference {
   kind: ExpressionReferenceKind;
@@ -119,6 +126,16 @@ export function scanAssetReferences(
 
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
+      layer.poseAnimation?.tracks.forEach((track, trackIndex) => {
+        if (track.assetId !== assetId) return;
+        references.push({
+          kind: 'pose-animation-part',
+          path:
+            `shots[${shotIndex}].layers[${layerIndex}].poseAnimation` +
+            `.tracks[${trackIndex}].assetId`,
+          label: `Part pose snapshot for Layer "${layer.name}"`,
+        });
+      });
       if (
         layer.source.kind !== 'asset' ||
         layer.source.assetId !== assetId
@@ -157,6 +174,29 @@ export function scanAssetReferences(
     });
   });
 
+  project.shotTemplates.forEach((template, templateIndex) => {
+    template.layers.forEach((layer, layerIndex) => {
+      if (
+        layer.source.kind !== 'asset' ||
+        layer.source.assetId !== assetId
+      ) {
+        return;
+      }
+      const background = template.backgroundLayerId === layer.id;
+      references.push({
+        kind: background
+          ? 'shot-template-background'
+          : 'shot-template-layer',
+        path:
+          `shotTemplates[${templateIndex}].layers[${layerIndex}]` +
+          '.source.assetId',
+        label:
+          `模板“${template.name}”的` +
+          `${background ? '背景' : '图层'}“${layer.name}”`,
+      });
+    });
+  });
+
   return references;
 }
 
@@ -190,6 +230,31 @@ export function scanCharacterReferences(
           `镜头“${shot.name}”的对白` +
           `“${dialoguePreview(dialogue.text)}”`,
       });
+    });
+  });
+  project.shotTemplates.forEach((template, templateIndex) => {
+    template.layers.forEach((layer, layerIndex) => {
+      if (
+        layer.source.kind !== 'character' ||
+        layer.source.characterId !== characterId
+      ) {
+        return;
+      }
+      references.push({
+        kind: 'shot-template-layer-character',
+        path:
+          `shotTemplates[${templateIndex}].layers[${layerIndex}]` +
+          '.source.characterId',
+        label: `模板“${template.name}”的角色图层“${layer.name}”`,
+      });
+    });
+  });
+  (project.partPosePresets ?? []).forEach((preset, presetIndex) => {
+    if (preset.characterId !== characterId) return;
+    references.push({
+      kind: 'part-pose-preset',
+      path: `partPosePresets[${presetIndex}].characterId`,
+      label: `动作预设“${preset.name}”`,
     });
   });
   return references;
@@ -234,6 +299,42 @@ export function scanExpressionReferences(
           `shots[${shotIndex}].timelineEvents[${eventIndex}]` +
           '.expressionId',
         label: `镜头“${shot.name}”的表情切换事件`,
+      });
+    });
+  });
+  project.shotTemplates.forEach((template, templateIndex) => {
+    const characterLayerIds = new Set<string>();
+    template.layers.forEach((layer, layerIndex) => {
+      if (
+        layer.source.kind !== 'character' ||
+        layer.source.characterId !== characterId
+      ) {
+        return;
+      }
+      characterLayerIds.add(layer.id);
+      if (layer.source.expressionId !== expressionId) return;
+      references.push({
+        kind: 'shot-template-layer-expression',
+        path:
+          `shotTemplates[${templateIndex}].layers[${layerIndex}]` +
+          '.source.expressionId',
+        label: `模板“${template.name}”的角色图层“${layer.name}”`,
+      });
+    });
+    template.timelineEvents.forEach((event, eventIndex) => {
+      if (
+        event.type !== 'expression' ||
+        event.expressionId !== expressionId ||
+        !characterLayerIds.has(event.layerId)
+      ) {
+        return;
+      }
+      references.push({
+        kind: 'shot-template-expression-event',
+        path:
+          `shotTemplates[${templateIndex}].timelineEvents[${eventIndex}]` +
+          '.expressionId',
+        label: `模板“${template.name}”的表情切换事件`,
       });
     });
   });

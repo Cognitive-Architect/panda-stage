@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import type { Layer, Project, Shot } from '../../domain';
 import {
   LayerBackgroundControl,
   type LayerBackgroundControlProps,
@@ -7,12 +8,22 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import {
   LayerTransformPanel,
+  PositionAuthoringControls,
   useLayerTransformController,
 } from '../features/properties/LayerTransformPanel';
+import { PartPoseEditorPanel } from '../features/properties/PartPoseEditorPanel';
+import {
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 
 export interface PortraitPropertiesSectionsProps {
   backgroundLayerSelected: boolean;
   presentation?: LayerBackgroundControlProps['presentation'];
+  project: Project;
+  shot: Shot;
+  layer: Layer;
+  partPoseEditor: PartPoseEditorUi;
 }
 
 /**
@@ -22,6 +33,10 @@ export interface PortraitPropertiesSectionsProps {
 export function PortraitPropertiesSections({
   backgroundLayerSelected,
   presentation = 'portrait',
+  project,
+  shot,
+  layer,
+  partPoseEditor,
 }: PortraitPropertiesSectionsProps): React.JSX.Element {
   const sectionsRef = useRef<HTMLDivElement | null>(null);
   const transformController = useLayerTransformController({
@@ -29,6 +44,82 @@ export function PortraitPropertiesSections({
     compact: true,
     commitBoundaryRef: sectionsRef,
   });
+  const characterId =
+    layer.source.kind === 'character' ? layer.source.characterId : null;
+  const character = characterId
+    ? project.characters.find((candidate) => candidate.id === characterId)
+    : undefined;
+  const partPoseParts =
+    presentation === 'landscape' && character?.mode === 'adaptive-parts'
+      ? resolvePartPoseEditorParts(character, layer)
+      : [];
+  const partPoseAvailable = partPoseParts.length > 0;
+  const selectedPartRef = useRef<{
+    scope: string;
+    partId: string | null;
+  }>({ scope: '', partId: null });
+  const partPoseScope = `${project.id}:${shot.id}:${layer.id}`;
+  if (selectedPartRef.current.scope !== partPoseScope) {
+    selectedPartRef.current = { scope: partPoseScope, partId: null };
+  }
+  const selectedPartIdFromEditor = partPoseParts.find(
+    (part) => part.partId === partPoseEditor.selectedPartId,
+  )?.partId;
+  const selectedPartId =
+    selectedPartIdFromEditor ??
+    partPoseParts.find(
+      (part) => part.partId === selectedPartRef.current.partId,
+    )?.partId ??
+    partPoseParts.find((part) => part.visible !== false)?.partId ??
+    partPoseParts[0]?.partId ??
+    null;
+  selectedPartRef.current.partId = selectedPartId;
+  const actionAvailable =
+    Boolean(transformController.positionAuthoringSupported) ||
+    partPoseAvailable;
+  const actionEditor: PartPoseEditorUi = {
+    ...partPoseEditor,
+    onStart: (layerId, partId) => {
+      transformController.exitPositionAuthoring?.();
+      partPoseEditor.onStart(layerId, partId);
+    },
+  };
+  const handleActionToggle = (
+    event: React.SyntheticEvent<HTMLDetailsElement>,
+  ): void => {
+    if (event.target !== event.currentTarget) return;
+    if (event.currentTarget.open) {
+      if (partPoseAvailable && selectedPartId) {
+        transformController.exitPositionAuthoring?.();
+        if (partPoseEditor.activeLayerId !== layer.id) {
+          partPoseEditor.onStart(layer.id, selectedPartId);
+        }
+      }
+      return;
+    }
+    transformController.exitPositionAuthoring?.();
+    if (partPoseEditor.activeLayerId === layer.id) {
+      partPoseEditor.onExit();
+    }
+  };
+  const startPositionAuthoring = (): void => {
+    if (partPoseEditor.activeLayerId === layer.id) {
+      partPoseEditor.onExit();
+    }
+    transformController.startPositionAuthoring?.();
+  };
+  const createPositionHold = (): void => {
+    if (partPoseEditor.activeLayerId === layer.id) {
+      partPoseEditor.onExit();
+    }
+    transformController.createPositionHold?.();
+  };
+  const finishPositionAuthoring = (): void => {
+    transformController.exitPositionAuthoring?.();
+    if (partPoseAvailable && selectedPartId) {
+      partPoseEditor.onStart(layer.id, selectedPartId);
+    }
+  };
 
   return (
     <div
@@ -73,6 +164,40 @@ export function PortraitPropertiesSections({
           presentation={presentation}
         />
       </details>
+      {actionAvailable ? (
+        <details
+          className="right-inspector-section right-inspector-action-section"
+          data-testid="right-inspector-action-section"
+          onToggle={handleActionToggle}
+        >
+          <summary>动作</summary>
+          <div className="right-inspector-action-content">
+            {transformController.positionAuthoringSupported ? (
+              <section
+                aria-label="位置"
+                className="right-inspector-action-position"
+                data-testid="right-inspector-action-position"
+              >
+                <strong>位置</strong>
+                <PositionAuthoringControls
+                  controller={transformController}
+                  onFinish={finishPositionAuthoring}
+                  onHold={createPositionHold}
+                  onStart={startPositionAuthoring}
+                />
+              </section>
+            ) : null}
+            {partPoseAvailable ? (
+              <PartPoseEditorPanel
+                editor={actionEditor}
+                layer={layer}
+                project={project}
+                shot={shot}
+              />
+            ) : null}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

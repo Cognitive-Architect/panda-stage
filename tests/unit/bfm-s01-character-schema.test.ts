@@ -262,13 +262,23 @@ describe('BFM-S01 Character schema', () => {
 
   it('keeps the historical v6 Character shape independent from current validation', () => {
     const project = buildProject();
-    const { animations: _animations, ...legacyProject } = project;
+    const {
+      animations: _animations,
+      shotTemplates: _shotTemplates,
+      ...legacyProject
+    } = project;
     void _animations;
+    void _shotTemplates;
     const { mode, ...historicalCharacter } = asExpressionCharacter(project.characters[0]!);
     void mode;
     const v6 = {
       ...legacyProject,
       schemaVersion: 6 as const,
+      shots: legacyProject.shots.map((shot) => {
+        const { camera: _camera, ...legacyShot } = shot;
+        void _camera;
+        return legacyShot;
+      }),
       assets: project.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...legacyAsset } = asset;

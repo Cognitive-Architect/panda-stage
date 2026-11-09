@@ -1,0 +1,142 @@
+/*
+ * EF-02 V0 — Align & Distribute (multi-object alignment, equal height,
+ * horizontal distribution). One flat single column: object checklist, one row
+ * of compact actions, an optional reference picker, one primary action.
+ */
+
+.project-tools-align-card {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 3%);
+  gap: 10px;
+}
+
+.project-tools-align-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.project-tools-align-launcher {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.project-tools-align-view {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  align-content: start;
+}
+
+.layer-align {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+}
+
+.layer-align-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  list-style: none;
+}
+
+.layer-align-item {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.layer-align-item label {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+  gap: 8px;
+  touch-action: manipulation;
+}
+
+.layer-align-item input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--ui-color-selected-border);
+}
+
+.layer-align-item label span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-align-item-reason {
+  margin: 0 0 2px 26px;
+  color: var(--ui-color-action-warning);
+  font: var(--ui-font-secondary);
+}
+
+.layer-align-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.layer-align-action {
+  width: 100%;
+  min-height: var(--ui-touch-regular);
+}
+
+.layer-align-reference {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.layer-align-reference label {
+  color: var(--ui-color-text-muted);
+  font: var(--ui-font-secondary);
+}
+
+.layer-align-select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: 0 var(--ui-space-2);
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+  background: var(--ui-color-surface-overlay);
+  touch-action: manipulation;
+}
+
+.layer-align-select:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.layer-align-notice {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.layer-align-apply {
+  width: 100%;
+}

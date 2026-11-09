@@ -578,25 +578,41 @@ export function AssetLibrary({
       (candidate) => candidate.id === assetId,
     );
     if (!asset) return { status: 'stopped', applied: false };
-    setBusy(true);
-    setMetadataErrors((existing) => {
-      if (!(assetId in existing)) return existing;
-      const next = { ...existing };
-      delete next[assetId];
-      return next;
-    });
-    setStatus(
-      asset.kind === 'audio'
-        ? '正在准备配音…'
-        : '正在重新读取素材并生成缩略图…',
-    );
+    const editContext = editorProjectStore.captureEditContext();
+    if (!editContext) return { status: 'stopped', applied: false };
+    let lease: ReturnType<
+      typeof editorProjectStore.acquireProjectOperationLease
+    > | null = null;
+    let ownsBusyState = false;
     try {
+      lease = editorProjectStore.acquireProjectOperationLease({
+        projectRoot: editContext.projectRoot,
+        projectId: editContext.projectId,
+        revision: editContext.revision,
+        openInstanceId: editContext.projectInstanceId,
+      });
+      const historyReferencesPoseSnapshotAsset =
+        editorProjectStore.history.referencesPoseSnapshotAsset(assetId);
+      setBusy(true);
+      ownsBusyState = true;
+      setMetadataErrors((existing) => {
+        if (!(assetId in existing)) return existing;
+        const next = { ...existing };
+        delete next[assetId];
+        return next;
+      });
+      setStatus(
+        asset.kind === 'audio'
+          ? '正在准备配音…'
+          : '正在重新读取素材并生成缩略图…',
+      );
       const response =
         await window.pandaStage.assets.refreshMetadata({
           projectRoot: current.projectRoot,
           project: current.project,
           baseRevision: current.revision,
           assetId,
+          historyReferencesPoseSnapshotAsset,
           requestId: crypto.randomUUID(),
         });
       const latest = editorProjectStore.getSnapshot();
@@ -671,7 +687,8 @@ export function AssetLibrary({
       setStatus(message);
       return { status: 'error', applied: false, message };
     } finally {
-      setBusy(false);
+      if (lease) editorProjectStore.releaseProjectOperationLease(lease);
+      if (ownsBusyState) setBusy(false);
     }
   }, []);
 
@@ -690,22 +707,49 @@ export function AssetLibrary({
       (candidate) => candidate.id === selectedAssetId,
     );
     if (!current || !asset) return;
+    const historyMessage =
+      `Cannot delete "${asset.name}": Undo/Redo history still contains a ` +
+      'Project state that uses this asset. Close and reopen the project to ' +
+      'discard session history, then retry.';
+    if (editorProjectStore.history.referencesAsset(asset.id)) {
+      setStatus(historyMessage);
+      return;
+    }
     if (
       !window.confirm(
-        `确认删除素材“${asset.name}”？${hasUnsavedMetadata ? '未保存的编辑也会丢弃。' : ''}Main Process 会再次检查全部项目引用。`,
+        `确认删除素材“${asset.name}”？${hasUnsavedMetadata ? '未保存的编辑也会丢弃。' : ''}Main Process 会再次检查项目引用；Undo/Redo 历史引用也会阻止删除。`,
       )
     ) {
       setStatus('已取消删除，项目没有发生变化。');
       return;
     }
-    setBusy(true);
-    setStatus('正在检查引用并执行一致性删除…');
+    const editContext = editorProjectStore.captureEditContext();
+    if (!editContext) return;
+    let lease: ReturnType<
+      typeof editorProjectStore.acquireProjectOperationLease
+    > | null = null;
+    let ownsBusyState = false;
     try {
+      lease = editorProjectStore.acquireProjectOperationLease({
+        projectRoot: editContext.projectRoot,
+        projectId: editContext.projectId,
+        revision: editContext.revision,
+        openInstanceId: editContext.projectInstanceId,
+      });
+      if (editorProjectStore.history.referencesAsset(asset.id)) {
+        setStatus(historyMessage);
+        return;
+      }
+      setBusy(true);
+      ownsBusyState = true;
+      setStatus('正在检查引用并执行一致性删除…');
       const response = await window.pandaStage.assets.delete({
         projectRoot: current.projectRoot,
         project: current.project,
         baseRevision: current.revision,
         assetId: asset.id,
+        historyReferencesAsset:
+          editorProjectStore.history.referencesAsset(asset.id),
       });
       const outcome = applyAssetDeleteResponse(
         response,
@@ -722,7 +766,8 @@ export function AssetLibrary({
         error instanceof Error ? error.message : '素材删除失败。',
       );
     } finally {
-      setBusy(false);
+      if (lease) editorProjectStore.releaseProjectOperationLease(lease);
+      if (ownsBusyState) setBusy(false);
     }
   };
 
@@ -915,6 +960,14 @@ export function AssetLibrary({
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
             onImportedAudioAssets={refreshAudioMetadataBatch}
+            onProjectResourceImportCompleted={() => {
+              if (!clearSelectedAsset()) return;
+              setCategory('all');
+              setSearchQuery('');
+              setUsageFilter('all');
+              setPage(1);
+            }}
+            onProjectResourceImportStatus={setStatus}
             snapshot={snapshot}
           />
           <div

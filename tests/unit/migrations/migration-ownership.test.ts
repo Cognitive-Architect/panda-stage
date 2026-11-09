@@ -18,6 +18,10 @@ import exampleProject from '../../../demo-project/project-v1.example.json';
 function withoutImageAuthorMetadata(project: Project): Project {
   const legacy = structuredClone(project);
   Reflect.deleteProperty(legacy, 'animations');
+  // Shot templates arrived in v17 and the per-Shot camera in v18, so legacy
+  // envelopes must not carry either key.
+  Reflect.deleteProperty(legacy, 'shotTemplates');
+  for (const shot of legacy.shots) Reflect.deleteProperty(shot, 'camera');
   for (const asset of legacy.assets) {
     if (asset.kind !== 'image') continue;
     Reflect.deleteProperty(asset, 'usage');

@@ -48,7 +48,7 @@ function clamp(value: number, min: number, max: number): number {
  * has to compare against a preset's `eventType` string rather than a full event
  * object. The mapping must stay in lock-step with `propertyOf`.
  */
-function propertyOfType(type: TimelineEvent['type']): string {
+export function propertyOfType(type: TimelineEvent['type']): string {
   switch (type) {
     case 'move':
     case 'shake':

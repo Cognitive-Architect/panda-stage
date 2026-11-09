@@ -1,0 +1,363 @@
+.right-inspector-action-content {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  gap: 16px;
+}
+
+.right-inspector-action-position {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.right-inspector-action-position > strong {
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.part-pose-editor {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  color: var(--ui-color-text-primary);
+  gap: 8px;
+}
+
+.part-pose-editor-heading,
+.part-pose-editor-part-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.part-pose-editor-heading > strong {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.part-pose-editor-part-row {
+  min-width: 0;
+  max-width: 140px;
+  flex: 0 1 136px;
+  margin: 0;
+}
+
+.part-pose-editor-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.part-pose-editor-select-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.part-pose-editor-select-wrap > .ui-icon {
+  position: absolute;
+  right: 9px;
+  color: var(--ui-color-text-secondary);
+  pointer-events: none;
+}
+
+.part-pose-editor select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 32px 6px 9px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-pose-editor button[data-ui-button] {
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.part-pose-editor button:focus-visible,
+.part-pose-editor select:focus-visible,
+.part-pose-editor summary:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.part-pose-editor button:disabled,
+.part-pose-editor select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.part-pose-editor-pivot,
+.part-pose-editor-key {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.part-pose-editor-pivot {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 34px;
+}
+
+.part-pose-editor-label {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.part-pose-editor-pivot-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.part-pose-editor-pivot-status.is-fixed {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ui-color-text-primary);
+  gap: 5px;
+}
+
+.part-pose-editor-pivot-status.is-fixed .ui-icon {
+  color: var(--ui-color-text-secondary);
+}
+
+.part-pose-editor-inline-reason {
+  margin: -2px 0 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.part-pose-editor-key {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 34px;
+  padding-top: 0;
+}
+
+.part-pose-editor-time {
+  color: var(--ui-color-text-primary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.part-pose-editor-key > button.part-pose-editor-add-key[data-ui-button] {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  font-size: 12px;
+  white-space: nowrap;
+  gap: 4px;
+}
+
+.part-pose-editor-key > button.part-pose-editor-add-key[data-ui-button]:not(:disabled) {
+  border-color: var(--ui-color-action-primary);
+  background: color-mix(in srgb, var(--ui-color-action-primary) 14%, var(--ui-color-surface-overlay));
+}
+
+.part-pose-editor-key-present {
+  display: inline-flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font-size: 12px;
+  white-space: nowrap;
+  gap: 4px;
+}
+
+.part-pose-editor-fine {
+  min-width: 0;
+}
+
+.part-pose-editor-fine > summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+  color: var(--ui-color-text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.part-pose-editor-fine > summary::-webkit-details-marker {
+  display: none;
+}
+
+.part-pose-editor-fine > summary .ui-icon {
+  color: var(--ui-color-text-secondary);
+  transition: transform 120ms ease;
+}
+
+.part-pose-editor-fine[open] > summary .ui-icon {
+  transform: rotate(180deg);
+}
+
+.part-pose-editor-adjustments {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.part-pose-editor-adjustment-row {
+  display: grid;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+}
+
+.part-pose-editor-adjustment-row > span:first-child {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.part-pose-editor-rotation-controls {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.part-pose-editor-scale-controls {
+  grid-template-columns: minmax(0, 1fr) 34px auto 34px;
+}
+
+.part-pose-editor-adjustment-row > button[data-ui-button] {
+  width: auto;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.part-pose-editor-adjustment-row > output {
+  color: var(--ui-color-text-primary);
+  font-size: 12px;
+  padding: 0 2px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.part-pose-editor-feedback {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.part-pose-editor-clear[data-ui-button] {
+  justify-self: end;
+}
+
+.part-pose-editor button.part-pose-editor-clear[data-ui-button][data-ui-variant='secondary'] {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 2px 4px;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-danger, #e28a7a);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
+}
+
+.part-pose-editor button.part-pose-editor-clear[data-ui-button][data-ui-variant='secondary']:hover:not(:disabled) {
+  color: var(--ui-color-danger, #e28a7a);
+  background: rgb(226 138 122 / 10%);
+}
+
+.part-pose-editor-clear .ui-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.part-pose-editor-clear-confirm,
+.part-pose-editor-confirm-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.part-pose-editor-clear-confirm > span {
+  flex: 1 1 auto;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.part-pose-editor-confirm-actions {
+  justify-content: flex-end;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor button[data-ui-button],
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor select {
+  min-height: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-adjustment-row
+  > button[data-ui-button] {
+  min-width: 44px;
+}
+
+.part-pose-editor-preset-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.part-pose-editor-preset-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.part-pose-editor-preset-row .part-pose-editor-select-wrap {
+  flex: 1;
+  min-width: 0;
+}

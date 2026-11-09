@@ -10,6 +10,8 @@ import type {
   Layer,
   Project,
 } from '../models';
+import type { EvaluatedPartPose } from '../evaluate-part-pose-animation';
+import type { PartPoseTrack } from '../models/pose-animation';
 import { resolveImageAsset } from './canvasLayers';
 
 export type LayerVisualKind =
@@ -610,6 +612,65 @@ function adaptivePartVisuals(
   });
 }
 
+function poseAdjustedPartTransform(
+  imageTransform: CharacterPartTransform,
+  pose: EvaluatedPartPose,
+  pivot: VisualPoint,
+): CharacterPartTransform {
+  if (
+    pose.offsetX === 0 &&
+    pose.offsetY === 0 &&
+    pose.rotationDeg === 0 &&
+    pose.scale === 1
+  ) {
+    return imageTransform;
+  }
+  const radians = (pose.rotationDeg * Math.PI) / 180;
+  const a = pose.scale * Math.cos(radians);
+  const b = pose.scale * Math.sin(radians);
+  const c = -pose.scale * Math.sin(radians);
+  const d = pose.scale * Math.cos(radians);
+  const composed = composeAffine(
+    {
+      a,
+      b,
+      c,
+      d,
+      tx: pivot.x + pose.offsetX - a * pivot.x - c * pivot.y,
+      ty: pivot.y + pose.offsetY - b * pivot.x - d * pivot.y,
+    },
+    imageTransform,
+  );
+  const determinant = composed.a * composed.d - composed.b * composed.c;
+  if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) {
+    throw new Error('Part pose animation produced a degenerate affine transform.');
+  }
+  return composed;
+}
+
+function partPosePivotInLayer(
+  sourceRootTransform: CharacterPartTransform,
+  track: PartPoseTrack,
+  fixedCharacterCenter: VisualPoint,
+): VisualPoint {
+  const rootAndRest = composeAffine(
+    sourceRootTransform,
+    track.restTransform,
+  );
+  return {
+    x:
+      rootAndRest.a * track.pivotSource.x +
+      rootAndRest.c * track.pivotSource.y +
+      rootAndRest.tx -
+      fixedCharacterCenter.x,
+    y:
+      rootAndRest.b * track.pivotSource.x +
+      rootAndRest.d * track.pivotSource.y +
+      rootAndRest.ty -
+      fixedCharacterCenter.y,
+  };
+}
+
 /** Returns the source-stage visual center used by a center-anchored Shot Layer. */
 export function adaptiveCharacterSourceAnchor(
   project: Project,
@@ -793,6 +854,103 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
   }
   if (character.mode === 'adaptive-parts') {
+    if (layer.poseAnimation) {
+      const poseAnimation = layer.poseAnimation;
+      const snapshotParts: AdaptivePartsCharacter['parts'] =
+        poseAnimation.tracks.map((track) => ({
+          partId: track.partId,
+          assetId: track.assetId,
+          source: { ...track.source },
+          restTransform: { ...track.restTransform },
+          sourceRestTransform: { ...track.sourceRestTransform },
+          staticAdjustment: { ...track.staticAdjustment },
+          imageMapping: {
+            ...track.imageMapping,
+            crop: { ...track.imageMapping.crop },
+          },
+          drawOrder: track.drawOrder,
+          visible: track.visible,
+          ...(track.displayName ? { displayName: track.displayName } : {}),
+        }));
+      const snapshotCharacter: AdaptivePartsCharacter = {
+        ...character,
+        sourceRootTransform: { ...poseAnimation.sourceRootTransform },
+        parts: snapshotParts,
+      };
+      const sourceParts = adaptivePartVisuals(
+        project,
+        snapshotCharacter,
+        layer.id,
+        evaluated.zIndex,
+      );
+      const runtimePoses = evaluated.partPoses;
+      if (
+        !runtimePoses ||
+        runtimePoses.length !== poseAnimation.tracks.length
+      ) {
+        throw new Error(
+          `Part pose evaluation for Layer ${layer.id} is incomplete.`,
+        );
+      }
+      const poseByPartId = new Map(
+        runtimePoses.map((pose) => [pose.partId, pose]),
+      );
+      if (
+        poseByPartId.size !== poseAnimation.tracks.length ||
+        poseAnimation.tracks.some((track) => !poseByPartId.has(track.partId))
+      ) {
+        throw new Error(
+          `Part pose evaluation for Layer ${layer.id} does not match its captured Parts.`,
+        );
+      }
+      const trackByPartId = new Map(
+        poseAnimation.tracks.map((track) => [track.partId, track]),
+      );
+      const parts = sourceParts.map((part) => {
+        const partId =
+          part.source.kind === 'adaptive-part'
+            ? part.source.characterPartId
+            : '';
+        const track = trackByPartId.get(partId);
+        const pose = poseByPartId.get(partId);
+        if (!track || !pose) {
+          throw new Error(
+            `Part pose evaluation for Layer ${layer.id} is missing Part ${partId}.`,
+          );
+        }
+        const pivot = partPosePivotInLayer(
+          snapshotCharacter.sourceRootTransform,
+          track,
+          poseAnimation.fixedCharacterCenter,
+        );
+        return {
+          ...part,
+          imageTransform: poseAdjustedPartTransform(
+            {
+              ...part.imageTransform!,
+              tx: part.imageTransform!.tx - poseAnimation.fixedCharacterCenter.x,
+              ty: part.imageTransform!.ty - poseAnimation.fixedCharacterCenter.y,
+            },
+            pose,
+            pivot,
+          ),
+        };
+      });
+      return baseResult(
+        evaluated,
+        'adaptive-parts-character',
+        null,
+        parts,
+        null,
+        {
+          required: [...new Set(parts.map((part) => part.assetId))].map(
+            (assetId) => ({ assetId, reason: 'current-layer' as const }),
+          ),
+          candidates: [],
+          fallback: [],
+        },
+      );
+    }
     const sourceParts = adaptivePartVisuals(
       project,
       character,
