@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   interpolateFlaLinearMotionTransform,
+  type FlaMotionTweenRotation,
 } from '../../src/main/services/fla-motion-tween-transform-interpolator';
 import type { FlaDisplayListMatrix } from '../../src/main/services/fla-display-list-resolver';
 
@@ -52,6 +53,23 @@ describe('bounded FLA linear motion transform interpolation', () => {
     expect(interpolateFlaLinearMotionTransform(start, end, 1)).toEqual({ ok: true, matrix: end });
   });
 
+  it('keeps the legacy shortest arc when source rotation metadata is absent', () => {
+    const negativeQuarterTurn: FlaDisplayListMatrix = {
+      a: 0,
+      b: -1,
+      c: 1,
+      d: 0,
+      tx: 0,
+      ty: 0,
+    };
+    const result = interpolateFlaLinearMotionTransform(IDENTITY, negativeQuarterTurn, 0.5);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.matrix.a).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(result.matrix.b).toBeCloseTo(-Math.SQRT1_2, 12);
+  });
+
   it('interpolates positive independent scales while keeping the axes orthogonal', () => {
     const end: FlaDisplayListMatrix = {
       a: 0,
@@ -70,6 +88,60 @@ describe('bounded FLA linear motion transform interpolation', () => {
     expect(startColumnLength).toBeCloseTo(1.5, 12);
     expect(endColumnLength).toBeCloseTo(2, 12);
     expect(result.matrix.a * result.matrix.c + result.matrix.b * result.matrix.d).toBeCloseTo(0, 12);
+  });
+
+  it('adds complete clockwise and counter-clockwise turns even when the endpoint matrix is unchanged', () => {
+    const clockwise = interpolateFlaLinearMotionTransform(IDENTITY, IDENTITY, 0.25, {
+      direction: 'clockwise',
+      turns: 1,
+    });
+    const counterClockwise = interpolateFlaLinearMotionTransform(IDENTITY, IDENTITY, 0.25, {
+      direction: 'counter-clockwise',
+      turns: 1,
+    });
+
+    expect(clockwise.ok).toBe(true);
+    if (clockwise.ok) {
+      expect(clockwise.matrix.a).toBeCloseTo(0, 12);
+      expect(clockwise.matrix.b).toBeCloseTo(1, 12);
+    }
+    expect(counterClockwise.ok).toBe(true);
+    if (counterClockwise.ok) {
+      expect(counterClockwise.matrix.a).toBeCloseTo(0, 12);
+      expect(counterClockwise.matrix.b).toBeCloseTo(-1, 12);
+    }
+  });
+
+  it('uses the authored direction to resolve a half-turn boundary', () => {
+    const halfTurn: FlaDisplayListMatrix = { a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0 };
+    const clockwise = interpolateFlaLinearMotionTransform(IDENTITY, halfTurn, 0.5, {
+      direction: 'clockwise',
+      turns: 0,
+    });
+    const counterClockwise = interpolateFlaLinearMotionTransform(IDENTITY, halfTurn, 0.5, {
+      direction: 'counter-clockwise',
+      turns: 0,
+    });
+
+    expect(clockwise.ok).toBe(true);
+    if (clockwise.ok) expect(clockwise.matrix.b).toBeCloseTo(1, 12);
+    expect(counterClockwise.ok).toBe(true);
+    if (counterClockwise.ok) expect(counterClockwise.matrix.b).toBeCloseTo(-1, 12);
+  });
+
+  it('rejects an invalid rotation direction or non-integral/out-of-bound turn count', () => {
+    const invalidDirection = { direction: 'cw', turns: 1 } as unknown as FlaMotionTweenRotation;
+    expect(interpolateFlaLinearMotionTransform(IDENTITY, IDENTITY, 0.5, invalidDirection)).toMatchObject({
+      ok: false,
+      code: 'INVALID_ROTATION',
+    });
+
+    for (const turns of [-1, 1.5, 1_000_001]) {
+      expect(interpolateFlaLinearMotionTransform(IDENTITY, IDENTITY, 0.5, {
+        direction: 'clockwise',
+        turns,
+      })).toMatchObject({ ok: false, code: 'INVALID_ROTATION' });
+    }
   });
 
   it('rejects progress outside the authored span', () => {

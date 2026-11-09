@@ -7,9 +7,16 @@ const TWO_PI = Math.PI * 2;
 export type FlaMotionTweenTransformInterpolationFailureCode =
   | 'INVALID_PROGRESS'
   | 'INVALID_MATRIX'
+  | 'INVALID_ROTATION'
   | 'UNSUPPORTED_REFLECTION'
   | 'UNSUPPORTED_SKEW'
   | 'AMBIGUOUS_ROTATION';
+
+export interface FlaMotionTweenRotation {
+  readonly direction: 'clockwise' | 'counter-clockwise';
+  /** Additional complete turns, excluding the directed endpoint-angle change. */
+  readonly turns: number;
+}
 
 export type FlaMotionTweenTransformInterpolationResult =
   | { readonly ok: true; readonly matrix: FlaDisplayListMatrix }
@@ -74,16 +81,30 @@ function decomposePositiveOrthogonalMatrix(
  * Interpolate a default, un-eased 2D transform using source-keyed properties.
  * The caller must first prove that the span has no custom ease/path metadata.
  * Matrix coefficients are not interpolated directly, which would distort
- * rotations. Reflection, skew, invalid progress, and a half-turn with no
- * source rotation direction fail closed.
+ * rotations. In the display matrix convention used here, `atan2(b, a)` is
+ * measured in y-down screen coordinates, so positive angles turn clockwise.
+ * When source rotation metadata is present, its direction selects the
+ * directed endpoint arc (including the ±180° boundary), and `turns` adds that
+ * many complete revolutions beyond the directed endpoint-angle change.
+ * Without metadata, the existing shortest-arc rule remains in effect and an
+ * ambiguous half-turn fails closed. Reflection and skew also fail closed.
  */
 export function interpolateFlaLinearMotionTransform(
   start: FlaDisplayListMatrix,
   end: FlaDisplayListMatrix,
   progress: number,
+  rotation?: FlaMotionTweenRotation,
 ): FlaMotionTweenTransformInterpolationResult {
   if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
     return failure('INVALID_PROGRESS', 'Motion tween progress must be between 0 and 1');
+  }
+  if (rotation !== undefined &&
+      ((rotation.direction !== 'clockwise' && rotation.direction !== 'counter-clockwise') ||
+        !Number.isSafeInteger(rotation.turns) || rotation.turns < 0 || rotation.turns > 1_000_000)) {
+    return failure(
+      'INVALID_ROTATION',
+      'Motion tween rotation requires a clockwise/counter-clockwise direction and 0..1000000 whole extra turns',
+    );
   }
   const from = decomposePositiveOrthogonalMatrix(start, 'start');
   if ('ok' in from) return from;
@@ -95,18 +116,26 @@ export function interpolateFlaLinearMotionTransform(
   let rotationDelta = (to.rotation - from.rotation) % TWO_PI;
   if (rotationDelta > Math.PI) rotationDelta -= TWO_PI;
   if (rotationDelta < -Math.PI) rotationDelta += TWO_PI;
-  if (Math.abs(Math.abs(rotationDelta) - Math.PI) <= ROTATION_AMBIGUITY_TOLERANCE) {
+  if (rotation !== undefined) {
+    if (rotation.direction === 'clockwise') {
+      if (rotationDelta < 0) rotationDelta += TWO_PI;
+      rotationDelta += TWO_PI * rotation.turns;
+    } else {
+      if (rotationDelta > 0) rotationDelta -= TWO_PI;
+      rotationDelta -= TWO_PI * rotation.turns;
+    }
+  } else if (Math.abs(Math.abs(rotationDelta) - Math.PI) <= ROTATION_AMBIGUITY_TOLERANCE) {
     return failure(
       'AMBIGUOUS_ROTATION',
       'Motion tween endpoints are half a turn apart without source rotation-direction metadata',
     );
   }
 
-  const rotation = from.rotation + rotationDelta * progress;
+  const rotationRadians = from.rotation + rotationDelta * progress;
   const scaleX = from.scaleX + (to.scaleX - from.scaleX) * progress;
   const scaleY = from.scaleY + (to.scaleY - from.scaleY) * progress;
-  const cosine = Math.cos(rotation);
-  const sine = Math.sin(rotation);
+  const cosine = Math.cos(rotationRadians);
+  const sine = Math.sin(rotationRadians);
 
   return {
     ok: true,

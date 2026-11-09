@@ -15,7 +15,10 @@ import {
   resolveFlaTimelineFrameSpan,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
-import { interpolateFlaLinearMotionTransform } from './fla-motion-tween-transform-interpolator';
+import {
+  interpolateFlaLinearMotionTransform,
+  type FlaMotionTweenRotation,
+} from './fla-motion-tween-transform-interpolator';
 import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
@@ -26,6 +29,7 @@ import {
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
+const MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS = 1_000_000;
 const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
   'index',
   'duration',
@@ -68,6 +72,7 @@ const UNSUPPORTED_MOTION_METADATA_ATTRIBUTES = new Set([
   'rotationtimes',
   'tweeneasing',
   'motiontweenrotate',
+  'motiontweenrotatetimes',
 ]);
 
 interface XmlToken {
@@ -794,19 +799,62 @@ function buildFrameContext(
   };
 }
 
-function containsUnsupportedMotionMetadata(xml: string): boolean {
+function containsUnsupportedMotionMetadata(
+  xml: string,
+  allowRootSynchronizedRotation: boolean = false,
+): boolean {
   let cursor = 0;
+  let rootElementSeen = false;
   while (cursor < xml.length) {
     const token = nextTagToken(xml, cursor);
     if (!token) return xml.slice(cursor).trim().length > 0;
-    if (UNSUPPORTED_MOTION_METADATA_TAGS.has(token.name.toLocaleLowerCase('en-US')) ||
-        Object.keys(token.attributes).some((name) =>
-          UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(name.toLocaleLowerCase('en-US')))) {
+    const lowerTagName = token.name.toLocaleLowerCase('en-US');
+    const isRootFrame = !rootElementSeen && !token.closing && lowerTagName === 'domframe';
+    if (!token.closing) rootElementSeen = true;
+    if (UNSUPPORTED_MOTION_METADATA_TAGS.has(lowerTagName) ||
+        Object.keys(token.attributes).some((name) => {
+          const lowerName = name.toLocaleLowerCase('en-US');
+          const synchronizedRotation = lowerName === 'motiontweenrotate' ||
+            lowerName === 'motiontweenrotatetimes';
+          return UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(lowerName) &&
+            !(allowRootSynchronizedRotation && isRootFrame && synchronizedRotation);
+        })) {
       return true;
     }
     cursor = token.end;
   }
   return false;
+}
+
+type SynchronizedMotionRotationResult =
+  | { readonly ok: true; readonly rotation?: FlaMotionTweenRotation }
+  | { readonly ok: false; readonly message: string };
+
+function synchronizedMotionRotationForFrame(
+  frame: FlaXflElementBlock,
+  allowed: boolean,
+): SynchronizedMotionRotationResult {
+  const direction = frame.attributes.motionTweenRotate;
+  const rawTurns = frame.attributes.motionTweenRotateTimes;
+  if (direction === undefined && rawTurns === undefined) return { ok: true };
+  if (!allowed) {
+    return { ok: false, message: 'motion rotation metadata is only supported on the synchronized 24065 start key' };
+  }
+  if (direction === undefined || rawTurns === undefined) {
+    return { ok: false, message: 'motionTweenRotate and motionTweenRotateTimes must both be authored' };
+  }
+  if (direction !== 'clockwise' && direction !== 'counter-clockwise') {
+    return { ok: false, message: 'motionTweenRotate must be clockwise or counter-clockwise' };
+  }
+  const turns = Number(rawTurns);
+  if (rawTurns.trim().length === 0 || !Number.isSafeInteger(turns) || turns < 0 ||
+      turns > MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS) {
+    return {
+      ok: false,
+      message: `motionTweenRotateTimes must be a whole number from 0 to ${MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS}`,
+    };
+  }
+  return { ok: true, rotation: { direction, turns } };
 }
 
 function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
@@ -833,7 +881,9 @@ function boundedMotionFramePairRejectionReason(
   const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
     Object.keys(frame.attributes).filter((name) =>
       !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name) &&
-      !(synchronizedMotionPair && name === 'motionTweenSync'));
+      !(synchronizedMotionPair && name === 'motionTweenSync') &&
+      !(synchronizedMotionPair && frame === startFrame &&
+        (name === 'motionTweenRotate' || name === 'motionTweenRotateTimes')));
   const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
     const tweenType = frame.attributes.tweenType;
     if (tweenType === 'motion') {
@@ -855,6 +905,10 @@ function boundedMotionFramePairRejectionReason(
   if (unsupportedEndAttributes.length > 0) {
     return `end frame contains unsupported attributes: ${unsupportedEndAttributes.join(', ')}`;
   }
+  const startRotation = synchronizedMotionRotationForFrame(startFrame, synchronizedMotionPair);
+  if (!startRotation.ok) return startRotation.message;
+  const endRotation = synchronizedMotionRotationForFrame(endFrame, false);
+  if (!endRotation.ok) return endRotation.message;
   if (!Number.isSafeInteger(duration) || duration <= 0) return 'span duration must be a positive safe integer';
   if (Number(startFrame.attributes.index) !== startIndex) return 'start frame index does not match the selected span';
   if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
@@ -865,7 +919,8 @@ function boundedMotionFramePairRejectionReason(
   }
   if (!synchronizedMotionPair && startFrame.attributes.keyMode !== '22017') return 'start frame keyMode is not 22017';
   if (!endpointDefinesSupportedOutgoingState(endFrame)) return 'end frame has an unsupported outgoing keyframe state';
-  if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
+  if (containsUnsupportedMotionMetadata(startFrame.xml, synchronizedMotionPair) ||
+      containsUnsupportedMotionMetadata(endFrame.xml)) {
     return 'frame XML contains unsupported motion metadata';
   }
 
@@ -1070,6 +1125,11 @@ function buildGraphicFrameContext(
         endFrame.attributes.motionTweenSnap === 'true' &&
         endFrame.attributes.motionTweenSync === 'true' &&
         endFrame.attributes.keyMode === '24065';
+      const sourceRotationResult = synchronizedMotionRotationForFrame(
+        startFrame,
+        synchronizedMotionPair,
+      );
+      if (!sourceRotationResult.ok) return rejectTween(sourceRotationResult.message);
 
       const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {
         const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
@@ -1104,6 +1164,7 @@ function buildGraphicFrameContext(
         startTarget.localTransform,
         endTarget.localTransform,
         progress,
+        sourceRotationResult.rotation,
       );
       if (!interpolated.ok) return rejectTween(interpolated.message);
       const interpolatedAlphaMultiplier = synchronizedMotionPair

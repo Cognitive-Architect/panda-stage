@@ -114,9 +114,13 @@ function buildMotionAdapterFixture(
   firstFrameTransition = false,
   playbackMode = 'single frame',
   sampleEndAlphaMultiplier?: string,
+  sourceRotationAttributes: Readonly<Record<string, string | undefined>> = {},
 ) {
   const motionFrameAttributeXml = Object.entries(motionFrameAttributes)
     .map(([name, value]) => ` ${name}="${value}"`)
+    .join('');
+  const sourceRotationAttributeXml = Object.entries(sourceRotationAttributes)
+    .flatMap(([name, value]) => value === undefined ? [] : [` ${name}="${value}"`])
     .join('');
   const motionFrame = (
     index: number,
@@ -126,7 +130,7 @@ function buildMotionAdapterFixture(
     metadata: string,
     keyMode = startKeyMode,
   ) =>
-    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}>${metadata}` +
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}${index === 0 ? sourceRotationAttributeXml : ''}>${metadata}` +
     `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${index === 0 ? '' : ' selected="true"'}${firstFrameTransition && index > 0 ? ' firstFrame="7"' : ''}>` +
     `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${index > 0 && sampleEndAlphaMultiplier !== undefined ? `<color><Color alphaMultiplier="${sampleEndAlphaMultiplier}"/></color>` : ''}</DOMSymbolInstance></elements></DOMFrame>`;
   const terminalFrame = () => {
@@ -482,6 +486,93 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         expect(instance.localTransform?.tx).toBeCloseTo(20 * (frameIndex / 7), 12);
       }
     }
+  });
+
+  it.each([
+    { direction: 'clockwise', expectedDelta: 5 * Math.PI / 2 },
+    { direction: 'counter-clockwise', expectedDelta: -7 * Math.PI / 2 },
+  ])('passes source $direction plus one extra turn to the existing matrix evaluator', ({ direction, expectedDelta }) => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      false,
+      'loop',
+      undefined,
+      { motionTweenRotate: direction, motionTweenRotateTimes: '1' },
+    );
+    const target = descriptor(source, 'motion-root');
+
+    for (const [frameIndex, progress] of [[1, 1 / 7], [3, 3 / 7], [6, 6 / 7]] as const) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `issue1047-${direction}-frame-${frameIndex}`,
+      );
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const instance = selected.value.layers[0]?.elements[0];
+      expect(instance?.kind).toBe('symbol');
+      if (instance?.kind !== 'symbol' || !instance.localTransform) continue;
+      const expectedAngle = expectedDelta * progress;
+      expect(instance.localTransform.a).toBeCloseTo(Math.cos(expectedAngle), 12);
+      expect(instance.localTransform.b).toBeCloseTo(Math.sin(expectedAngle), 12);
+      expect(instance.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(instance.localTransform.ty).toBeCloseTo(30 * progress, 12);
+    }
+  });
+
+  it.each([
+    {
+      name: 'unsupported direction',
+      attrs: { motionTweenRotate: 'cw', motionTweenRotateTimes: '1' },
+      reason: 'motionTweenRotate must be clockwise or counter-clockwise',
+    },
+    {
+      name: 'fractional turn count',
+      attrs: { motionTweenRotate: 'clockwise', motionTweenRotateTimes: '1.5' },
+      reason: 'motionTweenRotateTimes must be a whole number',
+    },
+    {
+      name: 'empty turn count',
+      attrs: { motionTweenRotate: 'clockwise', motionTweenRotateTimes: '' },
+      reason: 'motionTweenRotateTimes must be a whole number',
+    },
+    {
+      name: 'missing turn count',
+      attrs: { motionTweenRotate: 'clockwise' },
+      reason: 'motionTweenRotate and motionTweenRotateTimes must both be authored',
+    },
+  ])('rejects synchronized rotation source metadata with $name', ({ attrs, reason }) => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      false,
+      'loop',
+      undefined,
+      attrs,
+    );
+    const target = descriptor(source, 'motion-root');
+    const selected = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      3,
+      `issue1047-invalid-${reason}`,
+    );
+    expect(selected.ok).toBe(false);
+    if (!selected.ok) expect(selected.message).toContain(reason);
   });
 
   it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
