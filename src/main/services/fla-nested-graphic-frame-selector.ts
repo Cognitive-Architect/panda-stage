@@ -282,12 +282,23 @@ function selectAuthoredChildFrame(
       };
     }
 
-    // #723 — missing firstFrame inside a static/span-local owning span: F = 0.
-    if (owningSpanIsStatic) {
-      // A constant one-frame Loop has no range to advance; keep its dedicated rule.
-      if (element.lastFrame === undefined && childFrameCount === 1) {
-        return { ok: true, frameIndex: 0, selectionRule: 'loop-single-frame-constant', effectiveFirstFrame: 0 };
+    // #1051: a missing firstFrame defaults to 0. With no lastFrame and a one-frame child,
+    // the only legal child index is 0 regardless of non-negative elapsed time.
+    if (!firstFrameWasExplicit && element.lastFrame === undefined && childFrameCount === 1) {
+      const elapsed = parentFrameIndex - parentSpanStart;
+      if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
+        return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
       }
+      return {
+        ok: true,
+        frameIndex: 0,
+        selectionRule: 'loop-single-frame-constant',
+        effectiveFirstFrame: 0,
+      };
+    }
+
+    // #723: the broader missing-firstFrame modulo rule remains static-span only.
+    if (owningSpanIsStatic) {
       const lastFrame = element.lastFrame === undefined
         ? childFrameCount - 1
         : parseFrameIndex(element.lastFrame);
