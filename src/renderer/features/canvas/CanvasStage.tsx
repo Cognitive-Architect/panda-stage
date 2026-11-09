@@ -10,6 +10,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import {
+  Group,
   Layer as KonvaLayer,
   Rect,
   Stage,
@@ -18,9 +19,13 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  evaluateShotCamera,
   evaluateShotAtTime,
+  resolveCameraToolPreview,
+  prepareShotCamera,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type AudioAsset,
   type Point,
   type Shot,
   type ViewportTransform,
@@ -42,6 +47,8 @@ import {
 } from '../../stores/positionAuthoringSessionStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { CameraFramingOverlay } from './CameraFramingOverlay';
+import { cameraToolStore, useCameraTool } from '../camera/cameraToolStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
@@ -57,6 +64,7 @@ import {
 } from '../timeline/timelineUiStore';
 import { buildDialogueSubtitleCues } from '../../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../../shared/preview/subtitle-engine';
+import { audioEnvelopeStore } from '../../preview/audioEnvelopeStore';
 import type { CanvasDropPreview } from './useCanvasDrop';
 import {
   configureKonvaScenePixelRatio,
@@ -335,6 +343,30 @@ export function CanvasStage({
     return [...assets.values()];
   }, [previousTemporalVisuals]);
   const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  // Decoded volume envelopes are renderer-owned and rebuildable; the Project
+  // only keeps the AudioClip reference that owns the mapping.
+  const audioEnvelopeVersion = useSyncExternalStore(
+    audioEnvelopeStore.subscribe,
+    audioEnvelopeStore.getVersion,
+  );
+  const shotAudioAssets = useMemo(() => {
+    if (!snapshot || !shot) return [];
+    const assets = new Map<string, AudioAsset>();
+    for (const clip of shot.audioClips) {
+      const asset = snapshot.project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      if (asset?.kind === 'audio') assets.set(asset.id, asset);
+    }
+    return [...assets.values()];
+  }, [shot, snapshot]);
+  const projectRoot = snapshot?.projectRoot ?? null;
+  useEffect(() => {
+    if (!projectRoot) return;
+    for (const asset of shotAudioAssets) {
+      audioEnvelopeStore.ensure(projectRoot, asset);
+    }
+  }, [projectRoot, shotAudioAssets]);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -348,6 +380,7 @@ export function CanvasStage({
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot,
+            mouthSource: audioEnvelopeStore.resolveSource,
             positionDraft: positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -359,6 +392,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      audioEnvelopeVersion,
       imageState.images,
       imageState.readyResourceKeys,
       previousTemporalVisuals,
@@ -370,6 +404,37 @@ export function CanvasStage({
       timelineUi.currentTimeMs,
     ],
   );
+  // AUTO-07B: the editor reads the same persisted per-Shot camera as Preview
+  // and Export. The authoring box is drawn in full-stage space; "取景预览"
+  // applies the camera to the Canvas without moving any Character layer.
+  const cameraTool = useCameraTool();
+  const shotCameraPlan = useMemo(
+    () => (snapshot && shot ? prepareShotCamera(snapshot.project, shot) : null),
+    [shot, snapshot],
+  );
+  const presentedCamera = shotCameraPlan
+    ? evaluateShotCamera(shotCameraPlan, timelineUi.currentTimeMs)
+    : null;
+  // AUTO-07-FIX-01: preview the clamped, still-uncommitted draft first; only
+  // fall back to the persisted Shot camera when no draft exists.
+  const appliedCamera = useMemo(
+    () =>
+      snapshot
+        ? resolveCameraToolPreview(
+            cameraTool,
+            presentedCamera,
+            snapshot.project.width,
+            snapshot.project.height,
+          )
+        : null,
+    [cameraTool, presentedCamera, snapshot],
+  );
+  const cameraPreviewActive = appliedCamera !== null;
+  const framingView =
+    cameraTool.active && !cameraTool.previewing && presentedCamera
+      ? cameraTool.draft ?? presentedCamera
+      : null;
+
   useEffect(() => {
     if (!temporalCanvasModel) {
       temporalContinuityRef.current = createEditorTemporalContinuityState(
@@ -426,8 +491,8 @@ export function CanvasStage({
     [imageState, snapshot, temporalCanvasModel],
   );
   const directEditingEnabled =
-    temporalCanvasModel?.directEditingEnabled ??
-    timelineUi.currentTimeMs === 0;
+    (temporalCanvasModel?.directEditingEnabled ??
+      timelineUi.currentTimeMs === 0) && !cameraPreviewActive;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
   const previewReadOnlyLayerIds =
@@ -794,6 +859,23 @@ export function CanvasStage({
                 width={PROJECT_WIDTH}
               >
                 <KonvaLayer listening ref={configureEditorLayer}>
+                  {/* AUTO-07B camera applies to the content group only, so the
+                      camera moves the frame instead of the Character layers. */}
+                  <Group
+                    name={appliedCamera ? 'camera-world' : 'camera-world-static'}
+                    scaleX={appliedCamera?.zoom ?? 1}
+                    scaleY={appliedCamera?.zoom ?? 1}
+                    x={
+                      appliedCamera
+                        ? PROJECT_WIDTH / 2 - appliedCamera.centerX * appliedCamera.zoom
+                        : 0
+                    }
+                    y={
+                      appliedCamera
+                        ? PROJECT_HEIGHT / 2 - appliedCamera.centerY * appliedCamera.zoom
+                        : 0
+                    }
+                  >
                   <Rect
                     fill="#111914"
                     height={PROJECT_HEIGHT}
@@ -890,6 +972,9 @@ export function CanvasStage({
                         );
                       })
                     : null}
+                  </Group>
+                  {/* Subtitles are screen-space, exactly like StageRenderer:
+                      camera push/pan must never scale or move them. */}
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
@@ -900,6 +985,14 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
+                  {framingView ? (
+                    <CameraFramingOverlay
+                      onChange={(view) => cameraToolStore.setDraft(view)}
+                      stageHeight={PROJECT_HEIGHT}
+                      stageWidth={PROJECT_WIDTH}
+                      view={framingView}
+                    />
+                  ) : null}
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={selectedStageLayer.layer.locked}

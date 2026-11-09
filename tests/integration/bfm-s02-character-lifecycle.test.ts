@@ -348,6 +348,8 @@ describe('BFM-S02 composite Character lifecycle', () => {
       schemaVersion: 8 as const,
       assets: legacyAssets,
       characters: [v8Character],
+      // AUTO-07B: strip the v18 per-Shot camera from this v8 envelope.
+      shots: current.shots.map(({ camera: _camera, ...shot }) => { void _camera; return shot; }),
     };
     const shot = current.shots[0]!;
     const evaluated = evaluateShotAtTime(shot, 0, current).layers.find(

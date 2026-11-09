@@ -29,6 +29,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV16Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
   ShotV2Schema,
@@ -102,30 +103,6 @@ const CharacterV1Schema = z
   })
   .strict();
 
-/**
- * Strict persisted v16 envelope, before project-local Shot templates.
- * Kept as its own schema so the one-field v16 -> v17 migration can recognise
- * exactly what the v16 product wrote.
- */
-export const ProjectV16Schema = z
-  .object({
-    schemaVersion: z.literal(16),
-    id: IdSchema,
-    name: NameSchema,
-    width: z.literal(PROJECT_WIDTH),
-    height: z.literal(PROJECT_HEIGHT),
-    fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
-    animations: z.array(AnimationDefinitionSchema),
-    characters: z.array(CharacterSchema),
-    voiceProfiles: z.array(VoiceProfileSchema),
-    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
-    createdAt: IsoDateTimeSchema,
-    updatedAt: IsoDateTimeSchema,
-  })
-  .strict();
-
 const ProjectDataSchema = z
   .object({
     schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
@@ -145,6 +122,30 @@ const ProjectDataSchema = z
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+/**
+ * Strict v16 envelope: the last shape before the project-local Shot template
+ * list (v17) and the persisted per-Shot camera track (v18).
+ */
+export const ProjectV16Schema = ProjectDataSchema.omit({
+  shotTemplates: true,
+})
+  .extend({
+    schemaVersion: z.literal(16),
+    shots: z.array(ShotV16Schema),
+  })
+  .strict();
+
+/**
+ * Strict v17 envelope: v16 plus the project-local Shot template list, still
+ * before the persisted per-Shot camera track (v18). AUTO-03 #1004 and the
+ * C5-KF pose work both stopped at v17; the integration keeps one v17 shape
+ * that carries the template list, with the pose fields optional.
+ */
+export const ProjectV17Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(17),
+  shots: z.array(ShotV16Schema),
+}).strict();
 
 const ProjectV12DataSchema = z
   .object({
@@ -406,7 +407,7 @@ export function inferLegacyBackgroundLayerId(
 function addBackgroundIdentity<T extends {
   assets: AssetV12[];
   shots: z.infer<typeof ShotV2Schema>[];
-}>(project: T): Array<z.infer<typeof ShotSchema>> {
+}>(project: T): Array<z.input<typeof ShotSchema>> {
   return project.shots.map((shot) => ({
     ...addAudioRoles(shot),
     layers: shot.layers.map((layer) => ({

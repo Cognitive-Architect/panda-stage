@@ -969,6 +969,30 @@
         "incrementalEligible": true,
         "owner": "editor",
         "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted. Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+      },
+      {
+        "id": "auto-07-foundation",
+        "sourcePatterns": [
+          "src/renderer/features/camera/**",
+          "src/renderer/preview/**",
+          "src/domain/selectors/audioEnvelope.ts",
+          "src/domain/selectors/cameraTrack.ts"
+        ],
+        "testPatterns": [
+          "tests/unit/audio-envelope.test.ts",
+          "tests/unit/shot-mouth-envelope.test.ts",
+          "tests/unit/shot-camera-*.test.ts",
+          "tests/integration/shot-camera-*.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [
+          "shot",
+          "canvas"
+        ],
+        "riskPolicy": "targeted",
+        "incrementalEligible": true,
+        "owner": "auto-07",
+        "notes": "AUTO-07 volume-driven Mouth envelope and persisted per-Shot camera Foundation. The camera tool store/panel and the renderer-owned decoded-envelope cache are owned here; shared domain evaluators and the export renderer keep their existing cross-process/canvas routes."
       }
     ]
   },

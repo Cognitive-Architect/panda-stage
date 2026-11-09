@@ -279,11 +279,18 @@ describe('Adaptive Parts Character C1 model', () => {
 
   it('keeps v14 strict and migrates its legacy Character shape to v15 unchanged', () => {
     const base = buildProject();
+    // A current Project carries v17 Shot templates and the v18 Shot camera;
+    // the v14 fixture drops both.
     const { shotTemplates: _shotTemplates, ...version15Shape } = base;
     void _shotTemplates;
     const version14 = ProjectV14Schema.parse({
       ...version15Shape,
       schemaVersion: 14,
+      shots: base.shots.map((shot) => {
+        const { camera: _camera, ...legacyShot } = shot;
+        void _camera;
+        return legacyShot;
+      }),
     });
 
     const migrated = migrateProject(version14);

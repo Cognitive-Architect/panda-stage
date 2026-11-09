@@ -150,11 +150,17 @@ const TWO_BLOCKS = [
   '背景：花园',
   '出场：张三、李四',
   '站位：双人对话',
+  '对白：',
+  '张三：先走一遍。',
+  '李四：好。',
   '---',
   '镜头：宗门大厅',
   '背景：花园',
   '出场：李四、张三',
   '站位：双人对话',
+  '对白：',
+  '张三：先走一遍。',
+  '李四：好。',
 ].join('\n');
 
 const THREE_BLOCKS = [
@@ -164,19 +170,24 @@ const THREE_BLOCKS = [
   '背景：花园',
   '出场：张三、李四',
   '站位：双人对话',
+  '对白：',
+  '张三：先走一遍。',
+  '李四：好。',
 ].join('\n');
 
 describe('AUTO-04 strict storyboard parser', () => {
   it('parses two and three explicit blocks', () => {
     const two = parseMultiSceneInput(TWO_BLOCKS);
     expect(two).toHaveLength(2);
-    expect(two[0]).toEqual({
+    expect(two[0]).toMatchObject({
       index: 1,
       shotName: '花园相遇',
       backgroundName: '花园',
       cast: ['张三', '李四'],
       stance: '双人对话',
     });
+    // AUTO-05 extended the same contract with the dialogue section.
+    expect(two[0]!.dialogues.map((line) => line.ordinal)).toEqual([1, 2]);
 
     const three = parseMultiSceneInput(THREE_BLOCKS);
     expect(three.map((block) => block.shotName)).toEqual([
@@ -193,71 +204,137 @@ describe('AUTO-04 strict storyboard parser', () => {
         '背景: 花园',
         '出场: 张三 , 李四',
         '站位: 双人对话',
+        '对白：',
+        '张三：先走一遍。',
+        '李四：好。',
         '---',
         '镜头：宗门大厅',
         '背景：花园',
         '出场：李四、张三',
         '站位：双人对话',
+        '对白：',
+        '张三：先走一遍。',
+        '李四：好。',
       ].join('\n'),
     );
     expect(parsed[0]!.cast).toEqual(['张三', '李四']);
   });
 
+  // Every block must now carry the AUTO-05 「对白：」 section: the parser
+  // refuses a storyboard before it can report any other field problem.
+  const block = (
+    fields: readonly string[],
+    extraBeforeDialogue: readonly string[] = [],
+  ): string =>
+    [
+      ...fields,
+      ...extraBeforeDialogue,
+      '对白：',
+      '张三：先走一遍。',
+      '李四：好。',
+    ].join('\n');
+
   const rejections: readonly [string, string, string][] = [
     [
       'a single block',
       'BLOCK_COUNT_OUT_OF_RANGE',
-      ['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话'].join('\n'),
+      block(['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话']),
     ],
     [
       'four blocks',
       'BLOCK_COUNT_OUT_OF_RANGE',
-      [THREE_BLOCKS, '---', '镜头：四', '背景：花园', '出场：张三、李四', '站位：双人对话'].join('\n'),
+      [
+        THREE_BLOCKS,
+        '---',
+        block(['镜头：四', '背景：花园', '出场：张三、李四', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'a missing field',
       'MISSING_FIELD',
-      [TWO_BLOCKS.split('---')[0]!.replace('背景：花园', ''), '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '出场：张三、李四', '站位：双人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'a duplicate field',
       'DUPLICATE_FIELD',
-      [TWO_BLOCKS.split('---')[0]!, '背景：花园', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(
+          ['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话'],
+          ['背景：花园'],
+        ),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'an unknown field',
       'UNKNOWN_FIELD',
-      [TWO_BLOCKS.split('---')[0]!, '时长：3', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(
+          ['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话'],
+          ['时长：3'],
+        ),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'an empty field',
       'EMPTY_FIELD',
-      ['镜头：花园相遇', '背景：', '出场：张三、李四', '站位：双人对话', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：', '出场：张三、李四', '站位：双人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'a cast of one',
       'INVALID_CAST_COUNT',
-      ['镜头：花园相遇', '背景：花园', '出场：张三', '站位：双人对话', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：花园', '出场：张三', '站位：双人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'a cast of three',
       'INVALID_CAST_COUNT',
-      ['镜头：花园相遇', '背景：花园', '出场：张三、李四、王五', '站位：双人对话', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：花园', '出场：张三、李四、王五', '站位：双人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'the same Character twice in one shot',
       'SAME_CHARACTER',
-      ['镜头：花园相遇', '背景：花园', '出场：张三、张三', '站位：双人对话', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：花园', '出场：张三、张三', '站位：双人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'a duplicate shot name inside the batch',
       'DUPLICATE_SHOT_NAME',
-      ['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话', '---', '镜头：花园相遇', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：双人对话']),
+        '---',
+        block(['镜头：花园相遇', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
     [
       'an unsupported stance',
       'INVALID_STANCE',
-      ['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：三人对话', '---', '镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话'].join('\n'),
+      [
+        block(['镜头：花园相遇', '背景：花园', '出场：张三、李四', '站位：三人对话']),
+        '---',
+        block(['镜头：宗门大厅', '背景：花园', '出场：李四、张三', '站位：双人对话']),
+      ].join('\n'),
     ],
   ];
 

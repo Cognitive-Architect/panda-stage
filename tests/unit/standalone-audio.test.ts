@@ -130,9 +130,9 @@ describe('A01 standalone audio foundation', () => {
     const { animations: _animations, shotTemplates: _templates, ...legacyProject } = project;
     void _animations;
     void _templates;
-    const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
+    const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map(({ camera: _camera, ...shot }) => { void _camera; return ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return { ...clip, volume: 1.7 }; }),
-    })) };
+    }); }) };
     const before = structuredClone(legacy);
     const migrated = migrateProject(legacy);
     expect(legacy).toEqual(before);

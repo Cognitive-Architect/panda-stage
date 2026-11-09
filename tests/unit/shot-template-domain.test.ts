@@ -11,6 +11,7 @@ import {
   scanExpressionReferences,
   type Project,
 } from '../../src/domain';
+import { legacyShots } from './domain/testProject';
 
 function makeService(): ShotService {
   let counter = 0;
@@ -347,12 +348,17 @@ describe('project-local Shot templates (AUTO-03 V0)', () => {
     );
   });
 
-  it('migrates v16 to v17 by adding only an empty template list', () => {
+  it('migrates v16 through v17 to v18 by adding templates and the static camera', () => {
     const current = migrateProject(exampleProject);
     const { shotTemplates, ...rest } = current;
     expect(shotTemplates).toEqual([]);
 
-    const migrated = migrateProject({ ...rest, schemaVersion: 16 });
+    // A v16 envelope predates both the template list and the Shot camera.
+    const migrated = migrateProject({
+      ...rest,
+      schemaVersion: 16,
+      shots: legacyShots(rest.shots),
+    });
 
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(migrated.shotTemplates).toEqual([]);

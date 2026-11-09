@@ -8,8 +8,9 @@ import {
   ScanLine,
   Sparkles,
   Users,
+  Video,
 } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
 import { QuickCharacterLayoutPanel } from '../features/layout/QuickCharacterLayoutPanel';
@@ -18,6 +19,8 @@ import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePan
 import { MultiScenePanel } from '../features/shots/MultiScenePanel';
 import { MultiScenePerformancePanel } from '../features/shots/MultiScenePerformancePanel';
 import type { CanvasViewportMode } from '../../domain';
+import { ShotCameraPanel } from '../features/camera/ShotCameraPanel';
+import { cameraToolStore } from '../features/camera/cameraToolStore';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
@@ -27,6 +30,7 @@ export interface ProjectToolsDrawerProps {
 type ProjectToolsView =
   | 'home'
   | 'action-presets'
+  | 'camera'
   | 'quick-layout'
   | 'batch-adjust'
   | 'multi-scene'
@@ -37,6 +41,7 @@ type ProjectToolsView =
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
+  camera: '运镜',
   'quick-layout': '快速布阵',
   'batch-adjust': '批量调整',
   'multi-scene': '多镜头布景',
@@ -69,6 +74,9 @@ export function ProjectToolsDrawer({
     canvasViewportStore.subscribe,
     canvasViewportStore.getSnapshot,
   ).mode;
+  // Closing the drawer (button, Escape or activity switch) unmounts it. Only
+  // the camera tool session state is cleared; Shot.camera stays persisted.
+  useEffect(() => () => cameraToolStore.reset(), []);
 
   return (
     <section
@@ -79,18 +87,21 @@ export function ProjectToolsDrawer({
     >
       <header className="project-tools-drawer-header">
         <div className="project-tools-drawer-heading">
-          {view === 'home' ? null : (
+          {view !== 'home' ? (
             <button
               aria-label="返回工具"
               className="project-tools-back"
               data-testid="project-tools-back"
-              onClick={() => setView('home')}
+              onClick={() => {
+                cameraToolStore.reset();
+                setView('home');
+              }}
               type="button"
             >
               <DecorativeIcon icon={ArrowLeft} size={18} />
               <span>工具</span>
             </button>
-          )}
+          ) : null}
           <h2 id="project-tools-heading">{VIEW_TITLES[view]}</h2>
         </div>
         <button
@@ -144,6 +155,25 @@ export function ProjectToolsDrawer({
                 );
               })}
             </div>
+          </section>
+          <section
+            aria-labelledby="project-tools-camera-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-camera-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-camera-heading">运镜</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="camera"
+              data-testid="project-tools-camera"
+              onClick={() => setView('camera')}
+              type="button"
+            >
+              <DecorativeIcon icon={Video} size={18} />
+              <span>打开运镜</span>
+            </button>
           </section>
           <section
             aria-labelledby="project-tools-quick-layout-heading"
@@ -260,6 +290,14 @@ export function ProjectToolsDrawer({
             </button>
           </section>
         </div>
+      ) : view === 'camera' ? (
+        <section
+          aria-label="运镜"
+          className="project-tools-action-presets-view"
+          data-testid="project-tools-camera-view"
+        >
+          <ShotCameraPanel />
+        </section>
       ) : view === 'action-presets' ? (
         <section
           aria-label="动作预设"

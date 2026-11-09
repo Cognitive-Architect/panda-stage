@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHOT_CAMERA,
   ProjectSchema,
   type Layer,
   type Project,
@@ -99,6 +100,7 @@ export class ShotService {
       dialogues: [],
       audioClips: [],
       timelineEvents: [],
+      camera: DEFAULT_SHOT_CAMERA,
     };
     return this.replaceShots(project, [...project.shots, shot]);
   }
@@ -234,6 +236,9 @@ export class ShotService {
       ...this.remapShotStructure(template, usedIds),
       dialogues: [],
       audioClips: [],
+      // A template stores structure only; a new Shot starts at the historical
+      // full-stage framing, exactly like a hand-authored Shot.
+      camera: DEFAULT_SHOT_CAMERA,
     };
     return this.commit(project, { shots: [...project.shots, shot] });
   }

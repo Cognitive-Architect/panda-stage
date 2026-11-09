@@ -19,6 +19,7 @@ import {
   resolveLayerVisualParts,
   resolveShotVisualParts,
   type EvaluatedShot,
+  type MouthEnvelopeSource,
   type Project,
   type Shot,
   type SubtitleStyle,
@@ -487,12 +488,14 @@ export function projectProductPreviewMouth(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId: string | null,
+  mouthSource?: MouthEnvelopeSource,
 ): EvaluatedShot {
   return projectShotMouth(
     project,
     shot,
     evaluatedShot,
     activeDialogueId,
+    mouthSource,
   );
 }
 
@@ -502,12 +505,14 @@ export function projectProductPreviewDialogue(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId?: string | null,
+  mouthSource?: MouthEnvelopeSource,
 ): EvaluatedShot {
   return projectShotDialogueVisual(
     project,
     shot,
     evaluatedShot,
     activeDialogueId,
+    mouthSource,
   );
 }
 

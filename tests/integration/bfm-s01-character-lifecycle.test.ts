@@ -96,6 +96,8 @@ describe('BFM-S01 composite Character persistence', () => {
       schemaVersion: 6 as const,
       assets: legacyAssets,
       characters: [historicalCharacter],
+      // AUTO-07B: strip the v18 per-Shot camera from this v6 envelope.
+      shots: base.shots.map(({ camera: _camera, ...shot }) => { void _camera; return shot; }),
     };
     const source = `${JSON.stringify(v6, null, 2)}\n`;
     await writeFile(projectFile, source, 'utf8');

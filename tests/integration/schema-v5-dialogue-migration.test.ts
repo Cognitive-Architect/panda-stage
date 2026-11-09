@@ -63,8 +63,11 @@ describe('schema v5 dialogue persisted migration', () => {
     });
 
     const shots = base.shots as Record<string, unknown>[];
+    const { camera: _camera, ...baseShot } = shots[0]!;
+    // AUTO-07B: a v5 envelope predates the persisted Shot camera.
+    void _camera;
     shots[0] = {
-      ...shots[0],
+      ...baseShot,
       audioClips: [
         {
           id: audioClipId,

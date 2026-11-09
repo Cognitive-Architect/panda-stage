@@ -54,8 +54,10 @@ describe('explicit background identity lifecycle', () => {
         void mode;
         return historicalCharacter;
       }),
-      shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
+      shots: current.shots.map(({ backgroundLayerId, camera: _camera, ...shot }) => {
         void backgroundLayerId;
+        // AUTO-07B: camera is a v18 Shot field; a v2 envelope must not carry it.
+        void _camera;
         return {
           ...shot,
           audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),

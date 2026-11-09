@@ -274,6 +274,11 @@ describe('BFM-S01 Character schema', () => {
     const v6 = {
       ...legacyProject,
       schemaVersion: 6 as const,
+      shots: legacyProject.shots.map((shot) => {
+        const { camera: _camera, ...legacyShot } = shot;
+        void _camera;
+        return legacyShot;
+      }),
       assets: project.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
         const { usage: _usage, keywords: _keywords, ...legacyAsset } = asset;
