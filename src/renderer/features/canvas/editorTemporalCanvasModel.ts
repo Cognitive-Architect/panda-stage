@@ -19,6 +19,17 @@ import {
   type EditorTemporalVisualStatus,
 } from './temporalVisualContinuity';
 
+/**
+ * Runtime-only transform candidate for one Layer. Position is always present;
+ * scale only applies to a preview that resizes, such as Equal Height.
+ */
+export interface CanvasTransformOverride {
+  readonly x: number;
+  readonly y: number;
+  readonly scaleX?: number;
+  readonly scaleY?: number;
+}
+
 export interface EditorTemporalCanvasModelInput {
   project: Project;
   shot: Shot;
@@ -40,10 +51,12 @@ export interface EditorTemporalCanvasModelInput {
     readonly position: Point;
   };
   /**
-   * Ephemeral main positions for a runtime-only preview such as Quick Layout.
-   * Overrides apply to the rendered transform only; nothing is persisted.
+   * Ephemeral transforms for a runtime-only preview such as Quick Layout or an
+   * align/distribute candidate. Overrides apply to the rendered transform only;
+   * nothing is persisted. A map keyed by Layer id keeps the seam open to any
+   * number of objects while a preset may still supply only a position.
    */
-  positionOverrides?: ReadonlyMap<string, Point>;
+  positionOverrides?: ReadonlyMap<string, CanvasTransformOverride>;
 }
 
 export interface EditorTemporalCanvasModel {
@@ -257,15 +270,33 @@ export function buildEditorTemporalCanvasModel({
       ? {
           ...renderedEvaluatedShot,
           layers: renderedEvaluatedShot.layers.map((evaluatedLayer) => {
-            const position = positionOverrides.get(evaluatedLayer.id);
+            const override = positionOverrides.get(evaluatedLayer.id);
             if (
-              !position ||
-              !Number.isFinite(position.x) ||
-              !Number.isFinite(position.y)
+              !override ||
+              !Number.isFinite(override.x) ||
+              !Number.isFinite(override.y)
             ) {
               return evaluatedLayer;
             }
-            return { ...evaluatedLayer, x: position.x, y: position.y };
+            const next: EvaluatedLayer = {
+              ...evaluatedLayer,
+              x: override.x,
+              y: override.y,
+            };
+            if (override.scaleX === undefined && override.scaleY === undefined) {
+              return next;
+            }
+            return {
+              ...next,
+              scaleX:
+                override.scaleX !== undefined && Number.isFinite(override.scaleX)
+                  ? override.scaleX
+                  : evaluatedLayer.scaleX,
+              scaleY:
+                override.scaleY !== undefined && Number.isFinite(override.scaleY)
+                  ? override.scaleY
+                  : evaluatedLayer.scaleY,
+            };
           }),
         }
       : renderedEvaluatedShot;

@@ -1,4 +1,5 @@
 import {
+  AlignStartVertical,
   ArrowLeft,
   Clapperboard,
   LayoutTemplate,
@@ -13,6 +14,7 @@ import {
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
+import { LayerAlignPanel } from '../features/layout/LayerAlignPanel';
 import { QuickCharacterLayoutPanel } from '../features/layout/QuickCharacterLayoutPanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePanel';
@@ -32,6 +34,7 @@ type ProjectToolsView =
   | 'action-presets'
   | 'camera'
   | 'quick-layout'
+  | 'align'
   | 'batch-adjust'
   | 'multi-scene'
   | 'multi-scene-dialogue'
@@ -43,6 +46,7 @@ const VIEW_TITLES: Record<ProjectToolsView, string> = {
   'action-presets': '动作预设',
   camera: '运镜',
   'quick-layout': '快速布阵',
+  align: '对齐与均分',
   'batch-adjust': '批量调整',
   'multi-scene': '多镜头布景',
   'multi-scene-dialogue': '多镜头对白',
@@ -195,6 +199,25 @@ export function ProjectToolsDrawer({
             </button>
           </section>
           <section
+            aria-labelledby="project-tools-align-heading"
+            className="project-tools-align-card"
+            data-testid="project-tools-align-card"
+          >
+            <div className="project-tools-align-heading">
+              <h3 id="project-tools-align-heading">对齐与均分</h3>
+            </div>
+            <button
+              className="project-tools-align-launcher"
+              data-project-tools-action="align"
+              data-testid="project-tools-align"
+              onClick={() => setView('align')}
+              type="button"
+            >
+              <DecorativeIcon icon={AlignStartVertical} size={18} />
+              <span>打开对齐与均分</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
             data-testid="project-tools-action-preset-card"
@@ -313,6 +336,14 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-quick-layout-view"
         >
           <QuickCharacterLayoutPanel />
+        </section>
+      ) : view === 'align' ? (
+        <section
+          aria-label="对齐与均分"
+          className="project-tools-align-view"
+          data-testid="project-tools-align-view"
+        >
+          <LayerAlignPanel />
         </section>
       ) : view === 'batch-adjust' ? (
         <section

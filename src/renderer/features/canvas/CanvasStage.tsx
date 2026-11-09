@@ -42,6 +42,10 @@ import {
   useQuickLayoutPreview,
 } from '../../stores/quickLayoutPreviewStore';
 import {
+  matchesLayerLayoutPreview,
+  useLayerLayoutPreview,
+} from '../../stores/layerLayoutPreviewStore';
+import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
 } from '../../stores/positionAuthoringSessionStore';
@@ -283,6 +287,7 @@ export function CanvasStage({
   );
   const opacityPreview = useOpacityPreview();
   const quickLayoutPreview = useQuickLayoutPreview();
+  const layerLayoutPreview = useLayerLayoutPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -342,6 +347,36 @@ export function CanvasStage({
   }, [
     projectInstanceId,
     quickLayoutPreview,
+    shot,
+    snapshot,
+    timelineUi.currentTimeMs,
+  ]);
+  // Align/distribute candidates use the same runtime-only seam as Quick Layout,
+  // extended to any number of Layers and to a scale change for Equal Height.
+  const layerLayoutTransformOverrides = useMemo(() => {
+    if (
+      !layerLayoutPreview ||
+      !snapshot ||
+      !shot ||
+      projectInstanceId === null ||
+      timelineUi.currentTimeMs !== 0
+    ) {
+      return undefined;
+    }
+    const current = {
+      projectInstanceId,
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      revision: snapshot.revision,
+      shotId: shot.id,
+    };
+    if (!matchesLayerLayoutPreview(layerLayoutPreview, current)) {
+      return undefined;
+    }
+    return new Map(layerLayoutPreview.transforms);
+  }, [
+    layerLayoutPreview,
+    projectInstanceId,
     shot,
     snapshot,
     timelineUi.currentTimeMs,
@@ -422,7 +457,7 @@ export function CanvasStage({
                   position: positionAuthoringSnapshot.draft,
                 }
               : undefined,
-            positionOverrides: quickLayoutPositionOverrides,
+            positionOverrides: quickLayoutPositionOverrides ?? layerLayoutTransformOverrides,
           })
         : null,
     [
@@ -430,6 +465,7 @@ export function CanvasStage({
       audioEnvelopeVersion,
       imageState.images,
       imageState.readyResourceKeys,
+      layerLayoutTransformOverrides,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
       quickLayoutPositionOverrides,

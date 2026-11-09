@@ -74,6 +74,17 @@ export interface LayerTransformInput {
   flipX: boolean;
 }
 
+/**
+ * One Layer's complete layout result. Scale is per axis so an equal-height
+ * action can keep the object's own aspect ratio and flip.
+ */
+export interface LayerLayoutTransformInput {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+}
+
 export interface AnimationPlaybackInput {
   startTimeMs?: number;
   mode?: AnimationPlayback['mode'];
@@ -525,6 +536,40 @@ export class LayerService {
       shotId,
       layerId,
       position,
+    );
+  }
+
+  /**
+   * Apply one layout action's complete result to a single Layer: position and
+   * both scale axes. It never changes rotation, flip, opacity, visibility,
+   * stacking or the source, so a Character keeps its part definitions.
+   */
+  updateLayoutTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: LayerLayoutTransformInput,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const position = validateLayerPosition({ x: input.x, y: input.y });
+    const scaleX = validateLayerScale(input.scaleX);
+    const scaleY = validateLayerScale(input.scaleY);
+    if (
+      layer.x === position.x &&
+      layer.y === position.y &&
+      layer.scaleX === scaleX &&
+      layer.scaleY === scaleY
+    ) {
+      return project;
+    }
+    return this.positionProjectService.applyBaseBoundLayerChange(
+      project,
+      shotId,
+      layerId,
+      { ...layer, ...position, scaleX, scaleY },
     );
   }
 
