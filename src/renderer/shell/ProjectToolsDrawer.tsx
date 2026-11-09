@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Clapperboard,
+  ListFilter,
   Maximize2,
   MessageSquare,
   ScanLine,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
+import { BatchDialogueMovePanel } from '../features/dialogue/BatchDialogueMovePanel';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { MultiSceneDialoguePanel } from '../features/shots/MultiSceneDialoguePanel';
 import { MultiScenePerformancePanel } from '../features/shots/MultiScenePerformancePanel';
@@ -21,6 +23,7 @@ export interface ProjectToolsDrawerProps {
 type ProjectToolsView =
   | 'home'
   | 'action-presets'
+  | 'batch-adjust'
   | 'multi-scene-dialogue'
   | 'multi-scene-performance';
 
@@ -28,6 +31,7 @@ type ProjectToolsView =
 const VIEW_TITLES: Record<ProjectToolsView, string> = {
   home: '工具',
   'action-presets': '动作预设',
+  'batch-adjust': '批量调整',
   'multi-scene-dialogue': '多镜头对白',
   'multi-scene-performance': '表演编排',
 };
@@ -153,6 +157,25 @@ export function ProjectToolsDrawer({
             </button>
           </section>
           <section
+            aria-labelledby="project-tools-batch-adjust-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-batch-adjust-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-batch-adjust-heading">批量调整</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="batch-adjust"
+              data-testid="project-tools-batch-adjust"
+              onClick={() => setView('batch-adjust')}
+              type="button"
+            >
+              <DecorativeIcon icon={ListFilter} size={18} />
+              <span>打开批量调整</span>
+            </button>
+          </section>
+          <section
             aria-labelledby="project-tools-multi-scene-dialogue-heading"
             className="project-tools-multi-scene-dialogue-card"
             data-testid="project-tools-multi-scene-dialogue-card"
@@ -198,6 +221,14 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-action-presets-view"
         >
           <LegacyWorkspace />
+        </section>
+      ) : view === 'batch-adjust' ? (
+        <section
+          aria-label="批量调整"
+          className="project-tools-batch-adjust-view"
+          data-testid="project-tools-batch-adjust-view"
+        >
+          <BatchDialogueMovePanel />
         </section>
       ) : view === 'multi-scene-dialogue' ? (
         <section
