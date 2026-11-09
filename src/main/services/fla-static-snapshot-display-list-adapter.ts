@@ -33,9 +33,6 @@ const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenSnap',
   'keyMode',
 ]);
-// #713 graduated the existing short transform-only duration family. #728 adds
-// only duration 29 under the same strict guards; keep every supported length explicit.
-const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3, 5, 6, 14, 29]);
 // #720 authorizes 9728 only as a non-motion terminal marker for this family.
 const BOUNDED_MOTION_TERMINAL_KEY_MODES = new Set(['15872', '9728']);
 const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
@@ -787,14 +784,14 @@ function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElement
   return getFlaXflDirectChildren(container.xml, container.name);
 }
 
-function isBoundedMotionFramePair(
+function boundedMotionFramePairRejectionReason(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
   startIndex: number,
   duration: number,
-): boolean {
-  const allowedFrameAttributes = (frame: FlaXflElementBlock): boolean =>
-    Object.keys(frame.attributes).every((name) => BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
+): string | null {
+  const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
+    Object.keys(frame.attributes).filter((name) => !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
   const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
     const tweenType = frame.attributes.tweenType;
     if (tweenType === 'motion') {
@@ -804,14 +801,23 @@ function isBoundedMotionFramePair(
       frame.attributes.motionTweenSnap === undefined &&
       BOUNDED_MOTION_TERMINAL_KEY_MODES.has(frame.attributes.keyMode ?? '');
   };
-  if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
-      !BOUNDED_MOTION_SPAN_DURATIONS.has(duration) || Number(startFrame.attributes.index) !== startIndex ||
-      Number(endFrame.attributes.index) !== startIndex + duration ||
-      startFrame.attributes.tweenType !== 'motion' ||
-      startFrame.attributes.motionTweenSnap !== 'true' || startFrame.attributes.keyMode !== '22017' ||
-      !endpointDefinesSupportedOutgoingState(endFrame) ||
-      containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
-    return false;
+  const unsupportedStartAttributes = unsupportedFrameAttributes(startFrame);
+  if (unsupportedStartAttributes.length > 0) {
+    return `start frame contains unsupported attributes: ${unsupportedStartAttributes.join(', ')}`;
+  }
+  const unsupportedEndAttributes = unsupportedFrameAttributes(endFrame);
+  if (unsupportedEndAttributes.length > 0) {
+    return `end frame contains unsupported attributes: ${unsupportedEndAttributes.join(', ')}`;
+  }
+  if (!Number.isSafeInteger(duration) || duration <= 0) return 'span duration must be a positive safe integer';
+  if (Number(startFrame.attributes.index) !== startIndex) return 'start frame index does not match the selected span';
+  if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
+  if (startFrame.attributes.tweenType !== 'motion') return 'start frame is not a motion tween keyframe';
+  if (startFrame.attributes.motionTweenSnap !== 'true') return 'start frame motionTweenSnap is not true';
+  if (startFrame.attributes.keyMode !== '22017') return 'start frame keyMode is not 22017';
+  if (!endpointDefinesSupportedOutgoingState(endFrame)) return 'end frame has an unsupported outgoing keyframe state';
+  if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
+    return 'frame XML contains unsupported motion metadata';
   }
 
   const startElements = frameDisplayElements(startFrame);
@@ -819,22 +825,28 @@ function isBoundedMotionFramePair(
   if (startElements.length !== 1 || endElements.length !== 1 ||
       startElements[0]?.name !== 'DOMSymbolInstance' || endElements[0]?.name !== 'DOMSymbolInstance' ||
       !elementIsVisible(startElements[0].attributes) || !elementIsVisible(endElements[0].attributes)) {
-    return false;
+    return 'each endpoint must contain one visible symbol instance';
   }
 
   const startTarget = startElements[0];
   const endTarget = endElements[0];
   const allowedInstanceAttributes = (target: FlaXflElementBlock): boolean =>
     Object.keys(target.attributes).every((name) => BOUNDED_MOTION_INSTANCE_ATTRIBUTES.has(name));
-  if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget) ||
-      startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
-      startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
-    return false;
+  if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
+    return 'symbol instance contains unsupported attributes';
+  }
+  if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName) {
+    return 'symbol instance identity changes between endpoints';
+  }
+  if (startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
+    return 'both endpoint instances must be Graphic symbols';
   }
   for (const target of [startTarget, endTarget]) {
     for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
       const raw = target.attributes[name];
-      if (raw !== undefined && !Number.isFinite(Number(raw))) return false;
+      if (raw !== undefined && !Number.isFinite(Number(raw))) {
+        return `symbol instance ${name} must be finite`;
+      }
     }
   }
   for (const name of new Set([
@@ -844,7 +856,9 @@ function isBoundedMotionFramePair(
     // selected and centerPoint3D* are authoring metadata; the renderer consumes
     // the authored matrices and never serializes those attributes.
     if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
-    if (startTarget.attributes[name] !== endTarget.attributes[name]) return false;
+    if (startTarget.attributes[name] !== endTarget.attributes[name]) {
+      return `symbol instance attribute ${name} changes between endpoints`;
+    }
   }
 
   const hasSupportedTransformChildren = (target: FlaXflElementBlock): boolean => {
@@ -869,7 +883,10 @@ function isBoundedMotionFramePair(
     }
     return true;
   };
-  return hasSupportedTransformChildren(startTarget) && hasSupportedTransformChildren(endTarget);
+  if (!hasSupportedTransformChildren(startTarget) || !hasSupportedTransformChildren(endTarget)) {
+    return 'symbol instance matrix or transformation point is outside the supported structure';
+  }
+  return null;
 }
 
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
@@ -933,8 +950,14 @@ function buildGraphicFrameContext(
       if (!startSpan || !endSpan) return rejectTween('an adjacent authored end keyframe is required');
       const startFrame = startSpan.sourceFrame;
       const endFrame = endSpan.sourceFrame;
-      if (!isBoundedMotionFramePair(startFrame, endFrame, startSpan.index, startSpan.duration)) {
-        return rejectTween('source metadata falls outside the bounded transform-only subset');
+      const pairRejectionReason = boundedMotionFramePairRejectionReason(
+        startFrame,
+        endFrame,
+        startSpan.index,
+        startSpan.duration,
+      );
+      if (pairRejectionReason) {
+        return rejectTween(`source metadata falls outside the bounded transform-only subset: ${pairRejectionReason}`);
       }
 
       const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {

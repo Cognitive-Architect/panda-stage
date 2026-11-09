@@ -110,7 +110,11 @@ function buildMotionAdapterFixture(
   holdEndpoint = false,
   terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {},
   startKeyMode = '22017',
+  motionFrameAttributes: Readonly<Record<string, string>> = {},
 ) {
+  const motionFrameAttributeXml = Object.entries(motionFrameAttributes)
+    .map(([name, value]) => ` ${name}="${value}"`)
+    .join('');
   const motionFrame = (
     index: number,
     duration: number,
@@ -119,7 +123,7 @@ function buildMotionAdapterFixture(
     metadata: string,
     keyMode = startKeyMode,
   ) =>
-    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}">${metadata}` +
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}>${metadata}` +
     `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame"${index === 0 ? '' : ' selected="true"'}>` +
     `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
   const terminalFrame = () => {
@@ -327,7 +331,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
   });
 
-  it('resolves bounded three-frame and Issue #713 span lengths while rejecting other durations', () => {
+  it('resolves linear transform motion spans at positive integer durations', () => {
     const source = buildMotionAdapterFixture('', '', 'moving-target', 3);
     const target = descriptor(source, 'motion-root');
 
@@ -350,7 +354,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
     }
 
-    for (const duration of [5, 6, 14]) {
+    for (const duration of [4, 5, 6, 13, 14, 30, 72]) {
       const longerSpan = buildMotionAdapterFixture('', '', 'moving-target', duration);
       const longerTarget = descriptor(longerSpan, 'motion-root');
       const selectedLonger = longerSpan.buildGraphicFrameContext(
@@ -360,6 +364,26 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         `bounded-source-motion-${duration}`,
       );
       expect(selectedLonger.ok).toBe(true);
+    }
+
+    const duration13 = buildMotionAdapterFixture('', '', 'moving-target', 13);
+    const duration13Target = descriptor(duration13, 'motion-root');
+    for (const [frameIndex, progress] of [[1, 1 / 13], [6, 6 / 13], [12, 12 / 13]] as const) {
+      const selectedDuration13 = duration13.buildGraphicFrameContext(
+        duration13Target.timelineXml,
+        duration13Target.frameSpanIndex,
+        frameIndex,
+        `duration13-motion-frame-${frameIndex}`,
+      );
+      expect(selectedDuration13.ok).toBe(true);
+      if (!selectedDuration13.ok) continue;
+      const interpolated = selectedDuration13.value.layers[0]?.elements[0];
+      expect(interpolated?.kind).toBe('symbol');
+      if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+      expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
     }
 
     const holdEndpoint = buildMotionAdapterFixture('', '', 'moving-target', 5, true);
@@ -372,16 +396,45 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     );
     expect(lastInterior.ok).toBe(true);
 
-    const unsupportedLongerSpan = buildMotionAdapterFixture('', '', 'moving-target', 4);
-    const unsupportedTarget = descriptor(unsupportedLongerSpan, 'motion-root');
-    const unsupported = unsupportedLongerSpan.buildGraphicFrameContext(
-      unsupportedTarget.timelineXml,
-      unsupportedTarget.frameSpanIndex,
-      2,
-      'unsupported-four-frame-motion',
+  });
+
+  it('reports the first source guard rejection for the sample motion metadata', () => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
     );
-    expect(unsupported.ok).toBe(false);
-    if (!unsupported.ok) expect(unsupported.message).toContain('bounded transform-only subset');
+    const target = descriptor(source, 'motion-root');
+    for (const frameIndex of [1, 3, 6]) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `sample-motion-metadata-frame-${frameIndex + 1}`,
+      );
+
+      expect(selected.ok).toBe(false);
+      if (!selected.ok) {
+        expect(selected.message).toContain('source metadata falls outside the bounded transform-only subset');
+        expect(selected.message).toContain('start frame contains unsupported attributes: motionTweenSync');
+      }
+    }
+
+    const withoutSyncFlag = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '24065');
+    const withoutSyncTarget = descriptor(withoutSyncFlag, 'motion-root');
+    const afterSyncFlag = withoutSyncFlag.buildGraphicFrameContext(
+      withoutSyncTarget.timelineXml,
+      withoutSyncTarget.frameSpanIndex,
+      3,
+      'sample-motion-key-mode-after-sync-flag',
+    );
+    expect(afterSyncFlag.ok).toBe(false);
+    if (!afterSyncFlag.ok) expect(afterSyncFlag.message).toContain('start frame keyMode is not 22017');
   });
 
   it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
@@ -460,8 +513,6 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       if (!result.ok) expect(result.message).toContain('bounded transform-only subset');
     };
 
-    expectBlocked('duration30', 30);
-    expectBlocked('duration72', 72);
     expectBlocked('terminal9728-with-snap', 29, { keyMode: '9728', motionTweenSnap: 'true' });
     expectBlocked('terminal9728-with-motion-role', 29, { keyMode: '9728', tweenType: 'motion' });
     expectBlocked('unknown-terminal-keyMode', 29, { keyMode: '12345' });
