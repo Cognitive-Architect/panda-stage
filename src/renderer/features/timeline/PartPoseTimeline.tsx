@@ -510,13 +510,13 @@ function PartPoseTimelineContent({
       </div>
 
       <div
-        aria-label="Part 姿势总览"
+        aria-label="人物动作总览"
         className="timeline-lane timeline-pose-overview-lane"
         data-testid="part-pose-overview-lane"
         role="group"
       >
         <span className="timeline-lane-label" data-track-label="part-pose-overview">
-          <span className="timeline-lane-label-text">总览</span>
+          <span className="timeline-lane-label-text">人物动作</span>
         </span>
         <div
           className="timeline-lane-content timeline-pose-lane-content"

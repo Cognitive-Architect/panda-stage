@@ -149,6 +149,9 @@ describe('Part Pose Timeline lanes', () => {
 
     expect(container.querySelectorAll('[data-testid="part-pose-overview-marker"]'))
       .toHaveLength(4);
+    expect(
+      container.querySelector('[data-testid="part-pose-overview-lane"]')?.textContent,
+    ).toContain('人物动作');
     const overviewMarker = container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-overview-marker"][data-time-ms="1000"]',
     )!;
