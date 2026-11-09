@@ -568,6 +568,8 @@
         "testPatterns": [
           "tests/unit/asset-*.test.ts",
           "tests/integration/asset-*.test.ts",
+          "tests/unit/project-resource-import.test.ts",
+          "tests/integration/project-resource-import.test.ts",
           "tests/unit/product-copy.test.ts",
           "tests/unit/apply-asset-import-response.test.ts",
           "tests/unit/animation-library-components.test.ts",
