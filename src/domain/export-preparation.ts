@@ -340,6 +340,15 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
+    if (shot.layers.some((layer) => layer.poseAnimation)) {
+      issues.push(
+        issue(
+          location,
+          'Part pose animation is not supported by the current formal export renderer.',
+          'Remove Part pose animation from this Shot or wait for the supported export slice.',
+        ),
+      );
+    }
     if (shot.layers.some((layer) => layer.source.kind === 'animation')) {
       issues.push(
         issue(

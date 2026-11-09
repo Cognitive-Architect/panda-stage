@@ -6,11 +6,20 @@ import {
   readFile,
   readdir,
   rm,
+  writeFile,
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  CharacterService,
+  LayerService,
+  PartPoseAnimationService,
+  ProjectSchema,
+  ShotService,
+  type Project,
+} from '../../src/domain';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
 import { applyAssetMetadataResponse } from '../../src/renderer/features/assets/applyAssetMetadataResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { AssetMetadataResponseSchema } from '../../src/shared/asset-metadata-api';
@@ -71,7 +80,10 @@ async function stateHashes(projectRoot: string): Promise<{
   };
 }
 
-async function createHarness(kind: 'audio' | 'image' = 'audio') {
+async function createHarness(
+  kind: 'audio' | 'image' = 'audio',
+  options: { poseSnapshot?: boolean } = {},
+) {
   const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-revision-'));
   temporaryDirectories.push(parent);
   const projectRoot = path.join(parent, 'revision-safe.pandastage');
@@ -104,7 +116,20 @@ async function createHarness(kind: 'audio' | 'image' = 'audio') {
     ),
     path.join(projectRoot, 'assets', fileName),
   );
-  const formal = ProjectSchema.parse({
+  const assetPath = path.join(projectRoot, 'assets', fileName);
+  const imageAsset = {
+    id: randomUUID(),
+    kind: 'image' as const,
+    name: fileName,
+    relativePath: `assets/${fileName}`,
+    mimeType: 'image/png',
+    width: options.poseSnapshot ? 640 : 16,
+    height: options.poseSnapshot ? 640 : 12,
+    ...(kind === 'image' ? { sha256: await hash(assetPath) } : {}),
+    usage: 'uncategorized' as const,
+    keywords: [],
+  };
+  let formal = ProjectSchema.parse({
     ...created.project,
     assets: [
       kind === 'audio'
@@ -116,19 +141,100 @@ async function createHarness(kind: 'audio' | 'image' = 'audio') {
             mimeType: 'audio/wav',
             durationMs: 250,
           }
-        : {
-            id: randomUUID(),
-            kind: 'image',
-            name: fileName,
-            relativePath: `assets/${fileName}`,
-            mimeType: 'image/png',
-            width: 16,
-            height: 12,
-            usage: 'uncategorized',
-            keywords: [],
-          },
+        : imageAsset,
     ],
   });
+  if (options.poseSnapshot) {
+    const supportAsset = {
+      ...imageAsset,
+      id: randomUUID(),
+      name: 'Current Character defaults image',
+      relativePath: 'assets/current-default.png',
+    };
+    formal = ProjectSchema.parse({
+      ...formal,
+      assets: [...formal.assets, supportAsset],
+    });
+    const shotProject = new ShotService().create(formal, {
+      name: 'Pose snapshot reference',
+      durationMs: 3_000,
+    });
+    const characters = new CharacterService();
+    const withCharacter = characters.createAdaptiveParts(shotProject, {
+      name: 'Changed Character defaults',
+      parts: adaptivePartsFixture(imageAsset.id),
+    });
+    const character = withCharacter.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const shotId = withCharacter.shots.at(-1)!.id;
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      withCharacter,
+      shotId,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId,
+      layerId: placed.layer.id,
+    });
+    const definition = characters.getAdaptivePartsDefinition(
+      captured,
+      character.id,
+    );
+    const changedDefaults = characters.applyAdaptivePartsDefinition(
+      captured,
+      character.id,
+      {
+        ...definition,
+        parts: definition.parts.map((part) => ({
+          ...part,
+          assetId: supportAsset.id,
+        })),
+      },
+    );
+    formal = ProjectSchema.parse({
+      ...changedDefaults,
+      shots: changedDefaults.shots.map((shot) =>
+        shot.id !== shotId
+          ? shot
+          : {
+              ...shot,
+              layers: shot.layers.map((layer) =>
+                layer.id !== placed.layer.id || !layer.poseAnimation
+                  ? layer
+                  : {
+                      ...layer,
+                      poseAnimation: {
+                        ...layer.poseAnimation,
+                        tracks: layer.poseAnimation.tracks.map((track, index) => ({
+                          ...track,
+                          visible: false,
+                          ...(index === 0
+                            ? {
+                                keys: [
+                                  track.keys[0]!,
+                                  {
+                                    timeMs: 1_000,
+                                    offsetX: 0,
+                                    offsetY: 0,
+                                    rotationDeg: 35,
+                                    scale: 1,
+                                    easingToNext: 'linear' as const,
+                                  },
+                                ],
+                              }
+                            : {}),
+                        })),
+                      },
+                    },
+              ),
+            },
+      ),
+    });
+  }
   await projectService.save(projectRoot, formal, 1);
   const autosaveService = new AutosaveService({
     recoveryService,
@@ -153,6 +259,7 @@ async function createHarness(kind: 'audio' | 'image' = 'audio') {
     autosaveService,
     revision3,
     asset: revision3.assets[0]!,
+    assetPath,
   };
 }
 
@@ -160,12 +267,14 @@ function request(
   input: Awaited<ReturnType<typeof createHarness>>,
   project: Project,
   baseRevision: number,
+  historyReferencesPoseSnapshotAsset = false,
 ) {
   return {
     projectRoot: input.projectRoot,
     project,
     baseRevision,
     assetId: input.asset.id,
+    historyReferencesPoseSnapshotAsset,
     requestId: randomUUID(),
   };
 }
@@ -307,6 +416,123 @@ describe('asset metadata revision and operation safety', () => {
       applied: false,
     });
     expect(editor.getSnapshot()).toEqual(editorBefore);
+  });
+
+  it('blocks same-id byte replacement while a hidden pose snapshot still uses the asset', async () => {
+    const input = await createHarness('image', { poseSnapshot: true });
+    const before = await stateHashes(input.projectRoot);
+    const originalAssetHash = input.asset.sha256;
+    const replacementBytes = await readFile(
+      path.join(fixtures, '另一张 图片.png'),
+    );
+    expect(replacementBytes).not.toEqual(await readFile(input.assetPath));
+    await writeFile(input.assetPath, replacementBytes);
+
+    let inspectionCalls = 0;
+    let thumbnailCalls = 0;
+    const metadata = service(input, {
+      inspectionService: {
+        inspect: async () => {
+          inspectionCalls += 1;
+          return {
+            kind: 'image',
+            extension: '.png',
+            mimeType: 'image/png',
+            width: 640,
+            height: 640,
+          };
+        },
+      },
+      thumbnailService: new ThumbnailService(new CacheService(), {
+        generate: async () => {
+          thumbnailCalls += 1;
+        },
+      }),
+    });
+
+    await expect(
+      metadata.refresh(request(input, input.revision3, 3)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_METADATA_POSE_SNAPSHOT_ASSET_CHANGED',
+      relativePath: input.asset.relativePath,
+    });
+
+    expect(inspectionCalls).toBe(0);
+    expect(thumbnailCalls).toBe(0);
+    expect(await readFile(input.assetPath)).toEqual(replacementBytes);
+    expect(await stateHashes(input.projectRoot)).toEqual(before);
+    expect(input.revision3.assets[0]!.sha256).toBe(originalAssetHash);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({
+      project: {
+        assets: expect.arrayContaining([
+          expect.objectContaining({ sha256: originalAssetHash }),
+        ]),
+      },
+      revision: 3,
+      dirty: true,
+    });
+  });
+
+  it('blocks same-id byte replacement when only undo or redo history still retains the pose snapshot', async () => {
+    const input = await createHarness('image');
+    expect(input.revision3.shots.some((shot) =>
+      shot.layers.some((layer) => layer.poseAnimation),
+    )).toBe(false);
+    const before = await stateHashes(input.projectRoot);
+    const originalAssetHash = input.asset.sha256;
+    const replacementBytes = await readFile(
+      path.join(fixtures, '另一张 图片.png'),
+    );
+    expect(replacementBytes).not.toEqual(await readFile(input.assetPath));
+    await writeFile(input.assetPath, replacementBytes);
+
+    let inspectionCalls = 0;
+    let thumbnailCalls = 0;
+    const metadata = service(input, {
+      inspectionService: {
+        inspect: async () => {
+          inspectionCalls += 1;
+          return {
+            kind: 'image',
+            extension: '.png',
+            mimeType: 'image/png',
+            width: 640,
+            height: 640,
+          };
+        },
+      },
+      thumbnailService: new ThumbnailService(new CacheService(), {
+        generate: async () => {
+          thumbnailCalls += 1;
+        },
+      }),
+    });
+
+    await expect(
+      metadata.refresh(request(input, input.revision3, 3, true)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_METADATA_POSE_SNAPSHOT_ASSET_CHANGED',
+      relativePath: input.asset.relativePath,
+    });
+
+    expect(inspectionCalls).toBe(0);
+    expect(thumbnailCalls).toBe(0);
+    expect(await readFile(input.assetPath)).toEqual(replacementBytes);
+    expect(await stateHashes(input.projectRoot)).toEqual(before);
+    expect(input.revision3.assets[0]!.sha256).toBe(originalAssetHash);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({
+      project: {
+        assets: expect.arrayContaining([
+          expect.objectContaining({ sha256: originalAssetHash }),
+        ]),
+      },
+      revision: 3,
+      dirty: true,
+    });
   });
 
   it('revalidates after unlocked media work and cannot overwrite revision 4', async () => {

@@ -108,6 +108,9 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
       return {
         id: layer.id,
         assetId: animationAtZero?.assetId ?? asset?.id ?? '',
+        ...(evaluatedAtZero.get(layer.id)?.partPoses
+          ? { partPoses: evaluatedAtZero.get(layer.id)!.partPoses }
+          : {}),
         ...(animationAtZero?.animationFrame
           ? { animationFrame: animationAtZero.animationFrame }
           : {}),

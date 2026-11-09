@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  CharacterService,
+  LayerService,
+  PartPoseAnimationService,
   ProjectSchema,
   migrateProject,
   SHOT_MIN_DURATION_MS,
@@ -8,6 +11,8 @@ import {
   ShotService,
   ShotServiceError,
 } from '../../src/domain';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+import { buildProject, IDS } from './domain/testProject';
 
 function ids() {
   let counter = 0;
@@ -131,6 +136,59 @@ describe('ShotService', () => {
       () => service().setDuration(project, project.shots[0]!.id, 2_999),
       'SHOT_CONTENT_OUT_OF_RANGE',
     );
+  });
+
+  it('reports the Part keyframe end and impact when a Shot is shortened past it', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Pose duration Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+    });
+    const partId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.partId;
+    const keyed = poses.setKeyframe(captured, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+      partId,
+      keyframe: {
+        timeMs: 3_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 60,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+
+    try {
+      service().setDuration(keyed, IDS.shot, 2_500);
+      throw new Error('Expected the Part keyframe to block shortening.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ShotServiceError);
+      expect(error).toMatchObject({
+        code: 'SHOT_CONTENT_OUT_OF_RANGE',
+        contentEndMs: 3_000,
+      });
+      expect((error as Error).message).toMatch(/Part.*keyframe|Part.*动作关键帧/u);
+      expect((error as Error).message).toContain('2500ms');
+      expect((error as Error).message).toContain('3000ms');
+    }
   });
 
   it('allows the final shot to be removed and rejects duplicate names or invalid target order', () => {

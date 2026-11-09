@@ -1,7 +1,12 @@
+// @vitest-environment happy-dom
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import {
+  CharacterService,
+  LayerService,
   evaluateShotAtTime,
   buildEditorStageRenderModel,
   projectShotMouth,
@@ -22,6 +27,55 @@ import {
 } from '../../src/renderer/features/canvas/editorTemporalCanvasContinuity';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { buildProject, IDS } from './domain/testProject';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+
+vi.mock('react-konva', async () => {
+  const React = await import('react');
+  type MockProps = {
+    children?: React.ReactNode;
+    draggable?: boolean;
+    hitStrokeWidth?: number;
+    listening?: boolean;
+    name?: string;
+    opacity?: number;
+    radius?: number;
+    strokeWidth?: number;
+  };
+  const globals = globalThis as typeof globalThis & {
+    __pandaStageKonvaCacheCalls?: unknown[];
+  };
+  const cacheCalls = (globals.__pandaStageKonvaCacheCalls ??= []);
+  const node = {
+    clearCache: () => undefined,
+    cache: (options: unknown) => cacheCalls.push(options),
+    getLayer: () => ({ batchDraw: () => undefined }),
+  };
+  const mockNode = (kind: string) =>
+    React.forwardRef<unknown, MockProps>((props, ref) => {
+      React.useImperativeHandle(ref, () => node, []);
+      return React.createElement(
+        'div',
+        {
+          'data-konva-kind': kind,
+          'data-name': props.name,
+          'data-opacity': props.opacity,
+          'data-draggable': props.draggable,
+          'data-hit-stroke-width': props.hitStrokeWidth,
+          'data-listening': props.listening,
+          'data-radius': props.radius,
+          'data-stroke-width': props.strokeWidth,
+        },
+        props.children,
+      );
+    });
+  return {
+    Circle: mockNode('Circle'),
+    Group: mockNode('Group'),
+    Image: mockNode('Image'),
+    Line: mockNode('Line'),
+    Rect: mockNode('Rect'),
+  };
+});
 
 const BODY_ID = '10000000-0000-4000-8000-000000000004';
 const FACE_NORMAL_ID = '10000000-0000-4000-8000-000000000005';
@@ -356,6 +410,39 @@ function selectableComposite(
     onError: vi.fn(),
   });
   return { element, model };
+}
+
+function adaptivePoseLayer(opacity: number) {
+  const project = new CharacterService().createAdaptiveParts(buildProject(), {
+    name: 'Pose opacity Character',
+    parts: adaptivePartsFixture(IDS.assetChar),
+  });
+  const character = project.characters.at(-1)!;
+  if (character.mode !== 'adaptive-parts') {
+    throw new Error('Expected an Adaptive Parts Character.');
+  }
+  const placed = new LayerService().createFromAdaptiveCharacter(
+    project,
+    IDS.shot,
+    character.id,
+    { x: 500, y: 600 },
+  );
+  const withOpacity = ProjectSchema.parse({
+    ...placed.project,
+    shots: placed.project.shots.map((shot) => ({
+      ...shot,
+      layers: shot.layers.map((layer) =>
+        layer.id === placed.layer.id ? { ...layer, opacity } : layer,
+      ),
+    })),
+  });
+  const shot = withOpacity.shots.find((candidate) => candidate.id === IDS.shot)!;
+  const evaluated = evaluateShotAtTime(shot, 0, withOpacity);
+  const stage = buildEditorStageRenderModel(withOpacity, shot, evaluated);
+  return {
+    model: stage.layers.find((candidate) => candidate.layer.id === placed.layer.id)!,
+    partId: character.parts[0]!.partId,
+  };
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
@@ -750,6 +837,85 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
 
     expect(root.opacity).toBe(0.5);
     expect(expectedOutputAlpha).toBeCloseTo(0.5, 10);
+  });
+
+  it('keeps the flattened half-opacity composite while Part pose handles stay interactive', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaCacheCalls?: unknown[];
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const cacheCalls = globals.__pandaStageKonvaCacheCalls!;
+    cacheCalls.length = 0;
+    const { model, partId } = adaptivePoseLayer(0.5);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+
+    try {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: true,
+        posePivotLayerPoint: { x: 0, y: 0 },
+        poseGestureContextKey: 'pose-opacity-test',
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+      })));
+
+      const visual = container.querySelector(
+        '[data-name="selectable-canvas-visual"]',
+      );
+      const layerRoot = container.querySelector(
+        '[data-name="selectable-canvas-layer"]',
+      );
+      const moveHandle = container.querySelector(
+        '[data-name="part-pose-move-handle"]',
+      );
+      const poseHandles = [
+        'part-pose-move-handle',
+        'part-pose-rotate-handle',
+        'part-pose-scale-handle',
+      ].map((name) => container.querySelector(`[data-name="${name}"]`));
+      expect(cacheCalls).toHaveLength(1);
+      expect(visual?.getAttribute('data-opacity')).toBeNull();
+      expect(layerRoot?.getAttribute('data-opacity')).toBe('0.5');
+      expect(moveHandle?.getAttribute('data-draggable')).toBe('true');
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')),
+      )).toEqual([9, 9, 9]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-stroke-width')),
+      )).toEqual([2, 2, 2]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')) +
+          Number(handle?.getAttribute('data-hit-stroke-width')) / 2,
+      )).toEqual([12.5, 11.5, 11.5]);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 
   it('retains a complete visual for Body-first and Face-first loading, never a half Character', () => {

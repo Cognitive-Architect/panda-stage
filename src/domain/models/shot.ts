@@ -6,6 +6,7 @@ import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
+  LayerV16Schema,
   LayerV15AdaptiveSchema,
   LayerV15AnimationSchema,
   LayerV3Schema,
@@ -66,8 +67,22 @@ export const DEFAULT_SHOT_CAMERA: z.infer<typeof ShotCameraSchema> = {
   keyframes: [],
 };
 
-/** Strict v16 Shot shape before the persisted camera track. */
+/**
+ * Strict v16 Shot shape: the last envelope before the project-local Shot
+ * template list (v17), the Layer Part pose animation track (v17) and the
+ * persisted per-Shot camera track (v18).
+ */
 export const ShotV16Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV16Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Strict v17 Shot shape: v16 plus the optional Layer Part pose track. */
+export const ShotV17Schema = z
   .object({
     ...ShotBaseShape,
     audioClips: z.array(AudioClipSchema),

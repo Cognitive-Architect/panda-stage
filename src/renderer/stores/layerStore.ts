@@ -1,5 +1,9 @@
 import {
   LayerService,
+  PartPoseAnimationService,
+  evaluatePartPoseAnimationAtTime,
+  type PartPoseKeyframe,
+  type PartPosePoint,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type Layer,
@@ -21,11 +25,22 @@ export interface CurrentShotSelection {
 
 export interface LayerSelection {
   select: (layerId: string) => void;
+  getSelectedLayerId: () => string | null;
 }
 
 const noopLayerSelection: LayerSelection = {
   select: () => undefined,
+  getSelectedLayerId: () => null,
 };
+
+interface CapturedPoseEditContext {
+  editContext: NonNullable<
+    ReturnType<EditorProjectStore['captureEditContext']>
+  >;
+  project: Project;
+  shotId: string;
+  layerId: string;
+}
 
 export class LayerStore {
   constructor(
@@ -33,6 +48,7 @@ export class LayerStore {
     private readonly shotSelection: CurrentShotSelection,
     private readonly service: LayerService,
     private readonly layerSelection: LayerSelection = noopLayerSelection,
+    private readonly poseService = new PartPoseAnimationService(),
   ) {}
 
   createFromAsset(input: CreateLayerInput): Layer {
@@ -195,6 +211,164 @@ export class LayerStore {
     return result.layer;
   }
 
+  duplicateCharacterLayer(layerId: string): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.duplicateCharacterLayer(
+      project,
+      shotId,
+      layerId,
+    );
+    this.editorStore.updateProject(
+      result.project,
+      'Duplicate Character layer',
+      {},
+      {
+        afterRedo: () =>
+          this.restoreCreatedLayerSelection(
+            project.id,
+            projectRoot,
+            shotId,
+            result.layer.id,
+          ),
+      },
+    );
+    return result.layer;
+  }
+
+  createPartPoseAnimation(
+    layerId: string,
+    pivotSourceByPartId?: Readonly<Record<string, PartPosePoint>>,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.create(context.project, {
+      shotId: context.shotId,
+      layerId,
+      ...(pivotSourceByPartId ? { pivotSourceByPartId } : {}),
+    });
+    this.commitPoseProject(context, next, 'Capture Part pose snapshot');
+    return next;
+  }
+
+  setPartPosePivot(
+    layerId: string,
+    partId: string,
+    pivotSource: PartPosePoint,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.setPivot(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      pivotSource,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Set Part pose pivot');
+    }
+    return next;
+  }
+
+  setPartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    keyframe: PartPoseKeyframe,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.setKeyframe(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      keyframe,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Set Part pose keyframe');
+    }
+    return next;
+  }
+
+  addPartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    timeMs: number,
+    pivotSource?: PartPosePoint,
+  ): Project {
+    const context = this.poseContext(layerId);
+    let next = context.project;
+    const shot = next.shots.find((candidate) => candidate.id === context.shotId);
+    const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+    if (!shot || !layer) {
+      throw new Error('镜头或角色图层已改变，请重新选择后再添加关键帧。');
+    }
+    const creatingAnimation = !layer.poseAnimation;
+    if (creatingAnimation) {
+      next = this.poseService.create(next, {
+        shotId: context.shotId,
+        layerId,
+        ...(pivotSource ? { pivotSourceByPartId: { [partId]: pivotSource } } : {}),
+      });
+      if (timeMs === 0) {
+        this.commitPoseProject(context, next, 'Add Part pose keyframe');
+        return next;
+      }
+    }
+    const capturedLayer = next.shots
+      .find((candidate) => candidate.id === context.shotId)
+      ?.layers.find((candidate) => candidate.id === layerId);
+    const animation = capturedLayer?.poseAnimation;
+    const track = animation?.tracks.find((candidate) => candidate.partId === partId);
+    if (!animation || !track) {
+      throw new Error('无法找到所选部件的动作轨道，请重新选择后再试。');
+    }
+    if (!creatingAnimation && track.keys.some((key) => key.timeMs === timeMs)) {
+      throw new Error('此时间已有关键帧，可直接在画布上编辑。');
+    }
+    const evaluated = evaluatePartPoseAnimationAtTime(animation, timeMs).find(
+      (pose) => pose.partId === partId,
+    );
+    if (!evaluated) {
+      throw new Error('无法读取所选部件当前姿势，请重新选择后再试。');
+    }
+    next = this.poseService.setKeyframe(next, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs,
+        offsetX: evaluated.offsetX,
+        offsetY: evaluated.offsetY,
+        rotationDeg: evaluated.rotationDeg,
+        scale: evaluated.scale,
+        easingToNext: 'linear',
+      },
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Add Part pose keyframe');
+    }
+    return next;
+  }
+
+  clearPartPoseTrack(layerId: string, partId: string) {
+    const context = this.poseContext(layerId);
+    const result = this.poseService.clearTrack(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+    });
+    if (result.changed) {
+      this.commitPoseProject(context, result.project, 'Clear Part pose track');
+    }
+    return result;
+  }
+
+  clearPartPoseAnimation(layerId: string) {
+    const context = this.poseContext(layerId);
+    const result = this.poseService.clearAnimation(context.project, {
+      shotId: context.shotId,
+      layerId,
+    });
+    this.commitPoseProject(context, result.project, 'Clear Part pose animation');
+    return result;
+  }
+
   setLocked(layerId: string, locked: boolean): Project {
     const { project, shotId } = this.context();
     const next = this.service.setLocked(
@@ -276,6 +450,40 @@ export class LayerStore {
       projectRoot: snapshot.projectRoot,
       shotId,
     };
+  }
+
+  private poseContext(layerId: string): CapturedPoseEditContext {
+    const editContext = this.editorStore.captureEditContext();
+    if (!editContext) {
+      throw new Error('Open a project before editing Part poses.');
+    }
+    const { project, shotId } = this.context();
+    if (this.layerSelection.getSelectedLayerId() !== layerId) {
+      throw new Error(
+        'The Part pose command target is no longer the selected Character Layer.',
+      );
+    }
+    return { editContext, project, shotId, layerId };
+  }
+
+  private commitPoseProject(
+    context: CapturedPoseEditContext,
+    project: Project,
+    label: string,
+  ): void {
+    if (
+      this.shotSelection.getCurrentShotId() !== context.shotId ||
+      this.layerSelection.getSelectedLayerId() !== context.layerId
+    ) {
+      throw new Error(
+        'The selected Shot or Character Layer changed before the Part pose command could commit.',
+      );
+    }
+    this.editorStore.updateProjectAtContext(
+      context.editContext,
+      project,
+      label,
+    );
   }
 
   private restoreCreatedLayerSelection(

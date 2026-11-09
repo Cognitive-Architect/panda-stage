@@ -15,6 +15,10 @@ import { DialogueSheet } from '../features/dialogue/DialogueSheet';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer } from './ProjectToolsDrawer';
 import { RightInspector } from './RightInspector';
+import {
+  EMPTY_PART_POSE_EDITOR_UI,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 
 export type RightActivity = 'subtitles' | 'properties' | 'tools';
 
@@ -38,11 +42,13 @@ export function getNextRightActivity(
 export interface RightWorkspaceProps {
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: RightWorkspaceProps): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
@@ -109,6 +115,7 @@ export function RightWorkspace({
             <RightInspector
               drawerOpen
               embedded
+              partPoseEditor={partPoseEditor}
               onDrawerOpenChange={(open) => {
                 if (!open) closeSurface();
               }}

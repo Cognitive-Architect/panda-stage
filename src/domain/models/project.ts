@@ -32,6 +32,7 @@ import {
   ShotV16Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
+  ShotV17Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -125,7 +126,8 @@ const ProjectDataSchema = z
 
 /**
  * Strict v16 envelope: the last shape before the project-local Shot template
- * list (v17) and the persisted per-Shot camera track (v18).
+ * list, the per-Layer Part pose track (both v17) and the persisted per-Shot
+ * camera track (v18).
  */
 export const ProjectV16Schema = ProjectDataSchema.omit({
   shotTemplates: true,
@@ -137,14 +139,15 @@ export const ProjectV16Schema = ProjectDataSchema.omit({
   .strict();
 
 /**
- * Strict v17 envelope: v16 plus the project-local Shot template list, still
- * before the persisted per-Shot camera track (v18). AUTO-03 #1004 and the
- * C5-KF pose work both stopped at v17; the integration keeps one v17 shape
- * that carries the template list, with the pose fields optional.
+ * Strict v17 envelope: v16 plus the project-local Shot template list (AUTO-03
+ * #1004) and the optional per-Layer Part pose track (C5-KF #979). Two branches
+ * independently claimed v17, so the integration keeps exactly one v17 shape
+ * that carries both increments; the pose fields stay optional, which makes
+ * template-only and pose-only v17 envelopes parse identically.
  */
 export const ProjectV17Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(17),
-  shots: z.array(ShotV16Schema),
+  shots: z.array(ShotV17Schema),
 }).strict();
 
 const ProjectV12DataSchema = z

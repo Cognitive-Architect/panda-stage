@@ -10,6 +10,7 @@ import {
   ProjectV14Schema,
   ProjectV15Schema,
   ProjectV15AdaptiveSchema,
+  ProjectV16Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -641,5 +642,34 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(ProjectV15Schema.safeParse(staticV15).success).toBe(true);
     expect(ProjectV15AdaptiveSchema.safeParse(staticV15).success).toBe(true);
     expect(migrateProject(staticV15).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+  });
+
+  it('strictly upgrades v16 and rejects Part pose data in the v16 contract', () => {
+    const current = buildProject();
+    // v16 predates both the project-local Shot template list and the persisted
+    // per-Shot camera track, so the fixture drops them before parsing.
+    const v16 = {
+      ...withVersion(current, 16),
+      shots: legacyShots(current.shots),
+    };
+    expect(ProjectV16Schema.parse(v16)).toEqual(v16);
+    expect(ProjectSchema.safeParse(v16).success).toBe(false);
+    expect(migrateProject(v16).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+
+    const shot = v16.shots[0]!;
+    const layerWithFutureField = {
+      ...v16,
+      shots: [
+        {
+          ...shot,
+          layers: [
+            { ...shot.layers[0]!, poseAnimation: { version: 1 } },
+            ...shot.layers.slice(1),
+          ],
+        },
+      ],
+    };
+    expect(ProjectV16Schema.safeParse(layerWithFutureField).success).toBe(false);
+    expect(() => migrateProject(layerWithFutureField)).toThrow();
   });
 });

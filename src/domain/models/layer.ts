@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { PartPoseAnimationSchema } from './pose-animation';
 
 export const AssetLayerSourceSchema = z
   .object({
@@ -52,12 +53,15 @@ export const LayerSourceV15AnimationSchema = z.discriminatedUnion('kind', [
   AnimationLayerSourceSchema,
 ]);
 
-/** Current v16 source contract combines Adaptive Parts and animation layers. */
-export const LayerSourceSchema = z.discriminatedUnion('kind', [
+/** Persisted v16 source contract combines Adaptive Parts and animation layers. */
+export const LayerSourceV16Schema = z.discriminatedUnion('kind', [
   AssetLayerSourceSchema,
   CharacterLayerSourceV15Schema,
   AnimationLayerSourceSchema,
 ]);
+
+/** Current Layer sources remain compatible with the frozen v16 contract. */
+export const LayerSourceSchema = LayerSourceV16Schema;
 
 export const AnimationPlaybackSchema = z
   .object({
@@ -166,15 +170,43 @@ export const LayerV15AdaptiveSchema = z
 /** Backward-compatible name for the PR branch's historical v15 contract. */
 export const LayerV15Schema = LayerV15AnimationSchema;
 
+/** Exact persisted v16 Layer shape before Part pose animation. */
+export const LayerV16Schema = z
+  .object({
+    ...LayerV15AnimationShape,
+    source: LayerSourceV16Schema,
+    animationPlayback: AnimationPlaybackSchema.optional(),
+  })
+  .strict()
+  .superRefine((layer, context) =>
+    validateAnimationLayerFields(layer, context, true),
+  );
+
 export const LayerSchema = z
   .object({
     ...LayerV15AnimationShape,
     source: LayerSourceSchema,
     animationPlayback: AnimationPlaybackSchema.optional(),
+    poseAnimation: PartPoseAnimationSchema.optional(),
   })
   .strict()
   .superRefine((layer, context) => {
     validateAnimationLayerFields(layer, context, true);
+    if (layer.poseAnimation) {
+      if (layer.source.kind !== 'character') {
+        context.addIssue({
+          code: 'custom',
+          path: ['poseAnimation'],
+          message: 'Part pose animation requires a Character Layer.',
+        });
+      } else if (layer.source.characterId !== layer.poseAnimation.characterId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['poseAnimation', 'characterId'],
+          message: 'Part pose animation must snapshot its owning Character.',
+        });
+      }
+    }
   });
 
 /** Exact v14 Layer shape; do not widen this when current sources evolve. */
@@ -191,9 +223,11 @@ export type AnimationPlayback = z.infer<typeof AnimationPlaybackSchema>;
 export type LayerSourceV14 = z.infer<typeof LayerSourceV14Schema>;
 export type LayerSourceV15Adaptive = z.infer<typeof LayerSourceV15AdaptiveSchema>;
 export type LayerSourceV15Animation = z.infer<typeof LayerSourceV15AnimationSchema>;
+export type LayerSourceV16 = z.infer<typeof LayerSourceV16Schema>;
 export type LayerV3 = z.infer<typeof LayerV3Schema>;
 export type LayerV4 = z.infer<typeof LayerV4Schema>;
 export type LayerV14 = z.infer<typeof LayerV14Schema>;
 export type LayerV15 = z.infer<typeof LayerV15AnimationSchema>;
 export type LayerV15Adaptive = z.infer<typeof LayerV15AdaptiveSchema>;
+export type LayerV16 = z.infer<typeof LayerV16Schema>;
 export type Layer = z.infer<typeof LayerSchema>;

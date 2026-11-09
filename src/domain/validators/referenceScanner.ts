@@ -11,6 +11,7 @@ export type AssetReferenceKind =
   | 'shot-layer'
   | 'shot-template-background'
   | 'shot-template-layer'
+  | 'pose-animation-part'
   | 'audio-clip'
   | 'dialogue-audio'
   | 'animation-frame';
@@ -124,6 +125,16 @@ export function scanAssetReferences(
 
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
+      layer.poseAnimation?.tracks.forEach((track, trackIndex) => {
+        if (track.assetId !== assetId) return;
+        references.push({
+          kind: 'pose-animation-part',
+          path:
+            `shots[${shotIndex}].layers[${layerIndex}].poseAnimation` +
+            `.tracks[${trackIndex}].assetId`,
+          label: `Part pose snapshot for Layer "${layer.name}"`,
+        });
+      });
       if (
         layer.source.kind !== 'asset' ||
         layer.source.assetId !== assetId

@@ -56,6 +56,7 @@ describe('asset metadata contracts', () => {
         project: exampleProject,
         baseRevision: 3,
         assetId: 'not-a-uuid',
+        historyReferencesPoseSnapshotAsset: false,
         requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
       }),
     ).toThrow();
@@ -76,6 +77,30 @@ describe('asset metadata contracts', () => {
           },
           warnings: [],
         },
+      }),
+    ).toThrow();
+  });
+
+  it('requires the current renderer History reference signal at the Main boundary', () => {
+    const project = migrateProject(exampleProject);
+    const asset = project.assets[0]!;
+    expect(
+      AssetMetadataRequestSchema.parse({
+        projectRoot: 'D:\\project.pandastage',
+        project,
+        baseRevision: 3,
+        assetId: asset.id,
+        historyReferencesPoseSnapshotAsset: true,
+        requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
+      }).historyReferencesPoseSnapshotAsset,
+    ).toBe(true);
+    expect(() =>
+      AssetMetadataRequestSchema.parse({
+        projectRoot: 'D:\\project.pandastage',
+        project,
+        baseRevision: 3,
+        assetId: asset.id,
+        requestId: 'f2f4dc13-312e-4620-9bd6-4d345b45ecf8',
       }),
     ).toThrow();
   });

@@ -396,6 +396,181 @@ export function validateProjectReferences(
     const audioClips = new Map(
       shot.audioClips.map((clip) => [clip.id, clip]),
     );
+    shot.layers.forEach((layer, layerIndex) => {
+      if (layer.poseAnimation) {
+        const poseAnimation = layer.poseAnimation;
+        const sourceCharacterId =
+          layer.source.kind === 'character' ? layer.source.characterId : null;
+        const poseCharacter = sourceCharacterId
+          ? characters.get(sourceCharacterId)
+          : null;
+        if (
+          !poseCharacter ||
+          poseCharacter.mode !== 'adaptive-parts' ||
+          poseAnimation.characterId !== sourceCharacterId
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'poseAnimation'],
+            'Part pose animation requires a matching Adaptive Parts Character Layer.',
+          );
+        }
+        poseAnimation.tracks.forEach((track, trackIndex) => {
+          const partAsset = assets.get(track.assetId);
+          if (!partAsset || partAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [
+                'shots',
+                shotIndex,
+                'layers',
+                layerIndex,
+                'poseAnimation',
+                'tracks',
+                trackIndex,
+                'assetId',
+              ],
+              `Part pose snapshot references unknown or non-image asset: ${track.assetId}`,
+            );
+          } else {
+            const expectedWidth = Math.round(
+              track.imageMapping.crop.width * track.imageMapping.exportScale,
+            );
+            const expectedHeight = Math.round(
+              track.imageMapping.crop.height * track.imageMapping.exportScale,
+            );
+            if (
+              partAsset.width !== expectedWidth ||
+              partAsset.height !== expectedHeight
+            ) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'imageMapping',
+                ],
+                `Part pose snapshot crop resolves to ${expectedWidth}x${expectedHeight}, but asset ${partAsset.id} is ${partAsset.width}x${partAsset.height}.`,
+              );
+            }
+          }
+          const root = poseAnimation.sourceRootTransform;
+          const rest = track.restTransform;
+          const rootDeterminant = root.a * root.d - root.b * root.c;
+          const restDeterminant = rest.a * rest.d - rest.b * rest.c;
+          const exportScale = track.imageMapping.exportScale;
+          const sourceDeterminant =
+            (rootDeterminant * restDeterminant) /
+            (exportScale * exportScale);
+          track.keys.forEach((key, keyIndex) => {
+            if (key.timeMs > shot.durationMs) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'keys',
+                  keyIndex,
+                  'timeMs',
+                ],
+                'Part pose keyframe must be within the Shot duration.',
+              );
+            }
+            const posedDeterminant = sourceDeterminant * key.scale * key.scale;
+            if (
+              !Number.isFinite(posedDeterminant) ||
+              Math.abs(posedDeterminant) < 1e-12
+            ) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'layers',
+                  layerIndex,
+                  'poseAnimation',
+                  'tracks',
+                  trackIndex,
+                  'keys',
+                  keyIndex,
+                  'scale',
+                ],
+                'Part pose keyframe produces a degenerate affine transform.',
+              );
+            }
+          });
+        });
+      }
+      if (layer.source.kind === 'asset') {
+        const asset = assets.get(layer.source.assetId);
+        if (!asset || asset.kind !== 'image') {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'assetId'],
+            `Layer references unknown or non-image asset: ${layer.source.assetId}`,
+          );
+        }
+        return;
+      }
+      if (layer.source.kind === 'animation') {
+        if (!animations.has(layer.source.animationId)) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'animationId'],
+            `Layer references unknown animation: ${layer.source.animationId}`,
+          );
+        }
+        if (
+          layer.startTimeMs === undefined ||
+          layer.startTimeMs > shot.durationMs
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'startTimeMs'],
+            'Animation start time must be within the shot duration.',
+          );
+        }
+        return;
+      }
+      const characterSource = layer.source;
+      const character = characters.get(characterSource.characterId);
+      if (!character) {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'layers', layerIndex, 'source', 'characterId'],
+          `Layer references unknown character: ${characterSource.characterId}`,
+        );
+      } else if (character.mode === 'adaptive-parts') {
+        if (characterSource.expressionId !== undefined) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+            `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
+          );
+        }
+      } else if (
+        !characterSource.expressionId ||
+        !character.expressions.some(
+          (expression) => expression.id === characterSource.expressionId,
+        )
+      ) {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+          `Layer references unknown character expression: ${characterSource.expressionId ?? '(missing)'}`,
+        );
+      }
+    });
 
     shot.audioClips.forEach((clip, clipIndex) => {
       const asset = assets.get(clip.assetId);

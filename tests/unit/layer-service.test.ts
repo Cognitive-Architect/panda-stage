@@ -2,12 +2,15 @@ import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  CharacterService,
   LayerService,
   LayerServiceError,
+  PartPoseAnimationService,
   ProjectSchema,
   migrateProject,
 } from '../../src/domain';
-import { buildProjectWithAnimation, IDS } from './domain/testProject';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+import { buildProject, buildProjectWithAnimation, IDS } from './domain/testProject';
 
 const CREATED_LAYER_ID = 'd2200000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-07-26T01:00:00.000Z');
@@ -214,6 +217,108 @@ describe('LayerService', () => {
     )).toBe(false);
     expect(deleted.animations).toEqual(project.animations);
     expect(deleted.assets).toEqual(project.assets);
+  });
+
+  it('deep duplicates one Character pose instance and deletes only the copy', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Duplicated pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    let id = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d2200000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
+      now: () => NOW,
+    });
+    const placed = layerService.createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 700, y: 500 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+    });
+    const partId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.partId;
+    const animated = poses.setKeyframe(captured, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+      partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 45,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const copied = layerService.duplicateCharacterLayer(
+      animated,
+      IDS.shot,
+      placed.layer.id,
+    );
+    const original = copied.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const duplicate = copied.layer;
+
+    expect(duplicate.id).not.toBe(original.id);
+    expect(duplicate).toMatchObject({
+      name: `${original.name} 副本`,
+      source: original.source,
+      x: 724,
+      y: 524,
+      poseAnimation: original.poseAnimation,
+    });
+    expect(duplicate.poseAnimation).not.toBe(original.poseAnimation);
+    expect(duplicate.poseAnimation!.tracks).not.toBe(
+      original.poseAnimation!.tracks,
+    );
+    expect(duplicate.poseAnimation!.tracks[0]!.keys).not.toBe(
+      original.poseAnimation!.tracks[0]!.keys,
+    );
+
+    const copyTrack = duplicate.poseAnimation!.tracks[0]!;
+    const changedCopy = poses.setKeyframe(copied.project, {
+      shotId: IDS.shot,
+      layerId: duplicate.id,
+      partId: copyTrack.partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: -90,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const unchangedOriginal = changedCopy.shots[0]!.layers.find(
+      (layer) => layer.id === original.id,
+    )!;
+    const changedDuplicate = changedCopy.shots[0]!.layers.find(
+      (layer) => layer.id === duplicate.id,
+    )!;
+    expect(unchangedOriginal.poseAnimation!.tracks[0]!.keys[1]!.rotationDeg).toBe(45);
+    expect(changedDuplicate.poseAnimation!.tracks[0]!.keys[1]!.rotationDeg).toBe(-90);
+
+    const deleted = layerService.deleteLayer(
+      changedCopy,
+      IDS.shot,
+      duplicate.id,
+    );
+    expect(deleted.shots[0]!.layers.some((layer) => layer.id === duplicate.id)).toBe(false);
+    expect(deleted.shots[0]!.layers.find((layer) => layer.id === original.id))
+      .toEqual(unchangedOriginal);
   });
 
   it('creates a centered direct-asset layer with the next zIndex', () => {
