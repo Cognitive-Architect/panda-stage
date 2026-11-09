@@ -88,6 +88,8 @@ export type FlaDisplayListElement =
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
       readonly firstFrame?: string;
       readonly lastFrame?: string;
+      /** Bounded source alpha multiplier for the #1044 synchronized motion span. */
+      readonly alphaMultiplier?: number;
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
@@ -97,6 +99,8 @@ export type FlaDisplayListElement =
        * owning span; an animated (tweened) firstFrame stays fail-closed (#721/#720).
        */
       readonly sourceParentSpanTweenType?: string;
+      /** Raw Sync marker for the bounded #1044 synchronized-motion experiment. */
+      readonly sourceParentMotionTweenSync?: boolean;
       /** Stable source address of this DOMSymbolInstance within the XFL. */
       readonly sourceAddress?: string;
       /** Per-instance definition lookup; libraryItemName remains source identity. */
@@ -176,6 +180,7 @@ export interface FlaResolvedGroupNode {
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly opacity?: number;
   readonly children: readonly FlaResolvedDisplayNode[];
 }
 
@@ -514,6 +519,10 @@ function resolveElements(
         elementPath,
       );
     }
+    if (element.alphaMultiplier !== undefined &&
+        (!Number.isFinite(element.alphaMultiplier) || element.alphaMultiplier < 0 || element.alphaMultiplier > 1)) {
+      return failure('INVALID_INPUT', 'Graphic alpha multiplier must be within 0..1', elementPath);
+    }
     if (!element.libraryItemName) {
       return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
     }
@@ -560,6 +569,7 @@ function resolveElements(
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
       worldTransform,
+      ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });
   }

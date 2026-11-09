@@ -65,6 +65,16 @@ function motionOwnedMissingFirstFrame(options: {
   return start + end;
 }
 
+function synchronizedMotionSpan(): string {
+  const instance = (firstFrame: string, tx: number, selected: string) =>
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${firstFrame}${selected}>` +
+    `${matrix(tx, 0)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
+  const key = (index: number, firstFrame: string, tx: number, selected: string) =>
+    `<DOMFrame index="${index}" duration="${index === 0 ? 7 : 1}" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065">` +
+    `<elements>${instance(firstFrame, tx, selected)}</elements></DOMFrame>`;
+  return key(0, '', 0, '') + key(7, ' firstFrame="7"', 4, ' selected="true"');
+}
+
 function adapt(parentFrames: string, childFrames: string) {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', '')}</timelines></DOMDocument>`;
   const result = adaptFlaXflDisplaySource(documentXml, [
@@ -577,6 +587,33 @@ describe('nested Graphic authored-frame selection', () => {
     const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 4));
     expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
     if (!result.ok) expect(result.message).toContain('wrap is outside the proven boundary');
+  });
+
+  it('applies Stage A modulo to only the synchronized motion span while retaining authored firstFrame state', () => {
+    const source = adapt(synchronizedMotionSpan(), emptyFrames(1));
+    const expected: Array<[number, number, string | undefined, boolean]> = [
+      [0, 0, undefined, false],
+      [1, 0, undefined, false],
+      [3, 0, undefined, false],
+      [6, 0, undefined, false],
+      [7, 0, '7', true],
+    ];
+    for (const [parentFrame, childFrame, rawFirstFrame, firstFrameWasExplicit] of expected) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', parentFrame));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        playbackMode: 'loop',
+        firstFrameWasExplicit,
+        effectiveFirstFrame: firstFrameWasExplicit ? 7 : 0,
+        sourceParentFrameIndex: parentFrame,
+        sourceParentFrameSpanStart: parentFrame === 7 ? 7 : 0,
+        childFrameCount: 1,
+        selectedChildFrameIndex: childFrame,
+        selectionRule: 'loop-sync-motion-modulo-experiment',
+      }]);
+      expect(prepared.selections[0]?.firstFrame).toBe(rawFirstFrame);
+    }
   });
 
   it('fails closed for a tween-owned missing-firstFrame Loop with a non-zero origin (#724 negative B)', () => {

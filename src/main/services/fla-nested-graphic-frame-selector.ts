@@ -90,6 +90,7 @@ export interface FlaNestedGraphicFrameSelection {
     | 'loop-zero-origin-no-wrap'
     | 'loop-static-first-frame-modulo'
     | 'loop-missing-first-frame-modulo'
+    | 'loop-sync-motion-modulo-experiment'
     | 'play-once-relative-containing-span'
     | 'play-once-hold-last-frame';
   readonly selectionBasis?: 'mode-invariant-single-frame';
@@ -213,6 +214,26 @@ function selectAuthoredChildFrame(
   if (mode === 'loop') {
     const firstFrameWasExplicit = element.firstFrame !== undefined;
     const owningSpanIsStatic = element.sourceParentSpanTweenType === 'none';
+    if (element.sourceParentMotionTweenSync === true) {
+      const firstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
+      if (firstFrame === null) {
+        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop has an invalid firstFrame', sourceAddress);
+      }
+      if (element.lastFrame !== undefined) {
+        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop experiment does not support lastFrame', sourceAddress);
+      }
+      const elapsed = parentFrameIndex - parentSpanStart;
+      const requestedFrame = firstFrame + elapsed;
+      if (!Number.isSafeInteger(elapsed) || elapsed < 0 || !Number.isSafeInteger(requestedFrame)) {
+        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop frame request is invalid', sourceAddress);
+      }
+      return {
+        ok: true,
+        frameIndex: requestedFrame % childFrameCount,
+        selectionRule: 'loop-sync-motion-modulo-experiment',
+        effectiveFirstFrame: firstFrame,
+      };
+    }
 
     // #721 — explicit firstFrame inside a static/span-local owning span.
     if (firstFrameWasExplicit) {

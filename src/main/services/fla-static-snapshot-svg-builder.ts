@@ -2987,6 +2987,7 @@ export interface BuildComposedSvgInput {
 
 interface ComposedLeaf {
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+  readonly opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
 }
 
 interface Point2D {
@@ -3333,6 +3334,7 @@ function flattenResolvedDisplayList(
   const visit = (
     node: FlaResolvedDisplayNode,
     depth: number,
+    opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
   ): BuildSvgFailure | null => {
     visited += 1;
     if (visited > 100_000) {
@@ -3347,13 +3349,20 @@ function flattenResolvedDisplayList(
     if (node.kind === 'group') {
       groupCount += 1;
       if (node.symbolLibraryItemName) expandedSymbolCount += 1;
+      if (node.opacity !== undefined &&
+          (!Number.isFinite(node.opacity) || node.opacity < 0 || node.opacity > 1)) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group opacity' };
+      }
+      const childOpacityGroups = node.opacity !== undefined && node.opacity < 1
+        ? [...opacityGroups, node]
+        : opacityGroups;
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1);
+        const nestedFailure = visit(child, depth + 1, childOpacityGroups);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ node });
+    leaves.push({ node, opacityGroups });
     return null;
   };
 
@@ -3558,7 +3567,36 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  for (const { node } of flattened.leaves) {
+  const appendOpacityGroupTag = (markup: string): BuildSvgFailure | null => {
+    const markupBytes = Buffer.byteLength(markup, 'utf8');
+    if (gradientDefinitionBytes + clipDefinitionBytes + embeddedPngBytes + emittedContentBytes + markupBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    emittedNodes.push(markup);
+    emittedContentBytes += markupBytes;
+    return null;
+  };
+
+  const openOpacityGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
+  for (const { node, opacityGroups } of flattened.leaves) {
+    let sharedGroupCount = 0;
+    while (sharedGroupCount < openOpacityGroups.length &&
+        sharedGroupCount < opacityGroups.length &&
+        openOpacityGroups[sharedGroupCount] === opacityGroups[sharedGroupCount]) {
+      sharedGroupCount += 1;
+    }
+    for (let index = openOpacityGroups.length - 1; index >= sharedGroupCount; index -= 1) {
+      const closeFailure = appendOpacityGroupTag('</g>');
+      if (closeFailure) return closeFailure;
+      openOpacityGroups.pop();
+    }
+    for (let index = sharedGroupCount; index < opacityGroups.length; index += 1) {
+      const group = opacityGroups[index]!;
+      const openFailure = appendOpacityGroupTag(`<g opacity="${formatSvgNumber(group.opacity!)}">`);
+      if (openFailure) return openFailure;
+      openOpacityGroups.push(group);
+    }
+
     if (node.kind === 'shape') {
       const shapeBlock = shapeBlocks.get(node.shapeId);
       if (!shapeBlock) {
@@ -3736,6 +3774,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     const useNode = `<use href="#${imageId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
     const appendFailure = appendEmittedNode(useNode, node.clipPaths);
     if (appendFailure) return appendFailure;
+  }
+
+  while (openOpacityGroups.length > 0) {
+    const closeFailure = appendOpacityGroupTag('</g>');
+    if (closeFailure) return closeFailure;
+    openOpacityGroups.pop();
   }
 
   const graphicViewport = graphicBounds ? createGraphicViewport(graphicBounds) : null;
