@@ -311,10 +311,35 @@ export function collectSpeakerLabels(
 }
 
 /**
- * Parse 2-3 strict blocks. A single block, four blocks, a missing dialogue
- * section, or an unprovable line is a refusal rather than a guessed partial.
+ * The batch surface is shared by three tools with different contracts.
+ *
+ * - `static-staging` (AUTO-04) stages Shots by background and cast only. It
+ *   legitimately has no dialogue, so a missing `对白：` section yields an empty
+ *   dialogue list instead of a refusal.
+ * - `dialogue` (AUTO-05, and AUTO-06 through the same panel) anchors real
+ *   dialogue lines and performance directives, so the section stays mandatory.
+ *
+ * The mode names the caller's contract instead of weakening the shared
+ * parser, which keeps a dialogue tool from silently accepting a dialogue-free
+ * batch.
  */
-export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
+export type MultiSceneInputMode = 'dialogue' | 'static-staging';
+
+export interface ParseMultiSceneInputOptions {
+  /** Defaults to `dialogue`, the auto-dialogue tools' strict contract. */
+  mode?: MultiSceneInputMode;
+}
+
+/**
+ * Parse 2-3 strict blocks. A single block, four blocks, a missing dialogue
+ * section (in `dialogue` mode), or an unprovable line is a refusal rather than
+ * a guessed partial.
+ */
+export function parseMultiSceneInput(
+  rawInput: string,
+  options: ParseMultiSceneInputOptions = {},
+): MultiSceneBlock[] {
+  const mode = options.mode ?? 'dialogue';
   if (typeof rawInput !== 'string') {
     throw new MultiSceneInputError('INVALID_INPUT', '输入必须是文本。');
   }
@@ -434,7 +459,7 @@ export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
       fields.set(field, { value: parsed.value, lineNumber });
     }
 
-    if (dialogueStart === null) {
+    if (dialogueStart === null && mode !== 'static-staging') {
       throw new MultiSceneInputError(
         'MISSING_DIALOGUE_SECTION',
         `镜头 ${index} 缺少「${DIALOGUE_FIELD}：」段。`,
@@ -453,12 +478,15 @@ export function parseMultiSceneInput(rawInput: string): MultiSceneBlock[] {
     }
     seenShotNames.add(shotName);
     const cast = parseCast(fields, index);
-    const dialogues = parseDialogueLines(
-      entries.slice(dialogueStart, performanceHeader ?? entries.length),
-      index,
-      cast,
-      nextOrdinal,
-    );
+    const dialogues =
+      dialogueStart === null
+        ? []
+        : parseDialogueLines(
+            entries.slice(dialogueStart, performanceHeader ?? entries.length),
+            index,
+            cast,
+            nextOrdinal,
+          );
     const performances = parsePerformanceSection(
       entries,
       performanceStart,

@@ -165,7 +165,9 @@ export function MultiScenePanel({
   const handleCheck = (): void => {
     setPreviewIndex(0);
     try {
-      const nextBlocks = parseMultiSceneInput(rawInput);
+      const nextBlocks = parseMultiSceneInput(rawInput, {
+        mode: 'static-staging',
+      });
       setState(checkApplied(rawInput, buildBatch(nextBlocks, [])));
     } catch (error) {
       setState(

@@ -314,3 +314,118 @@ describe('AUTO-04 batch commit', () => {
     }
   });
 });
+
+/**
+ * AUTO-04 stages Shots by background and cast only; its own built-in example
+ * carries no `对白：` section. AUTO-05/06 anchor real Dialogue and performance
+ * directives. The shared parser therefore takes an explicit mode instead of a
+ * single loosened contract.
+ */
+const STATIC_STAGING_BLOCKS = [
+  '镜头：花园相遇',
+  '背景：花园',
+  '出场：张三、李四',
+  '站位：双人对话',
+  '---',
+  '镜头：宗门大厅',
+  '背景：花园',
+  '出场：张三、李四',
+  '站位：双人对话',
+].join('\n');
+
+describe('AUTO-04 static staging contract', () => {
+  it('parses the built-in static staging example without inventing dialogue', () => {
+    const blocks = parseMultiSceneInput(STATIC_STAGING_BLOCKS, {
+      mode: 'static-staging',
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((block) => block.shotName)).toEqual([
+      '花园相遇',
+      '宗门大厅',
+    ]);
+    // No fabricated lines: a static staging batch genuinely has none.
+    expect(blocks.every((block) => block.dialogues.length === 0)).toBe(true);
+    expect(blocks.every((block) => block.performances.length === 0)).toBe(true);
+  });
+
+  it('still refuses the same input in the AUTO-05/06 dialogue mode', () => {
+    expect(() => parseMultiSceneInput(STATIC_STAGING_BLOCKS)).toThrow(
+      /缺少「对白：」段/,
+    );
+  });
+
+  it('previews and commits static staging Shots as one revision', () => {
+    const { editorStore, shotStore, project } = harness();
+    const blocks = parseMultiSceneInput(STATIC_STAGING_BLOCKS, {
+      mode: 'static-staging',
+    });
+
+    const prepared = prepareMultiScenePreview(blocks, [], {
+      editorStore,
+      shotStore,
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+
+    // Preparing stays runtime-only, exactly like the dialogue batch.
+    expect(editorStore.getSnapshot()).toMatchObject({
+      revision: 0,
+      dirty: false,
+    });
+    expect(editorStore.history.getSnapshot().undoCount).toBe(0);
+
+    const committed = commitMultiScenePreview(prepared.preview, {
+      editorStore,
+      shotStore,
+    });
+
+    expect(editorStore.getSnapshot()).toMatchObject({
+      revision: 1,
+      dirty: true,
+    });
+    expect(editorStore.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      nextUndoLabel: MULTI_SCENE_HISTORY_LABEL,
+    });
+    expect(committed.createdShotIds).toHaveLength(2);
+    expect(editorStore.getSnapshot()!.project.shots).toHaveLength(
+      project.shots.length + 2,
+    );
+
+    const created = editorStore
+      .getSnapshot()!
+      .project.shots.filter((shot) => committed.createdShotIds.includes(shot.id));
+    // A static staging Shot is a plain Shot with no dialogue and no audio.
+    expect(created.every((shot) => shot.dialogues.length === 0)).toBe(true);
+    expect(created.every((shot) => shot.audioClips.length === 0)).toBe(true);
+    expect(created.every((shot) => shot.camera.mode === 'static')).toBe(true);
+
+    editorStore.undo();
+    expect(editorStore.getSnapshot()!.project.shots).toHaveLength(
+      project.shots.length,
+    );
+  });
+
+  it('keeps the dialogue tools strict: a real dialogue batch is still required there', () => {
+    // The dialogue-mode contract is unchanged: a batch without the section is
+    // refused rather than downgraded to a staging batch.
+    const missingDialogue = [
+      '镜头：花园相遇',
+      '背景：花园',
+      '出场：张三、李四',
+      '站位：双人对话',
+      '---',
+      '镜头：宗门大厅',
+      '背景：花园',
+      '出场：张三、李四',
+      '站位：双人对话',
+    ].join('\n');
+
+    expect(() => parseMultiSceneInput(missingDialogue, { mode: 'dialogue' })).toThrow(
+      /缺少「对白：」段/,
+    );
+    // And the real three-block batch still parses in dialogue mode.
+    expect(parseMultiSceneInput(THREE_BLOCKS)).toHaveLength(3);
+  });
+});
