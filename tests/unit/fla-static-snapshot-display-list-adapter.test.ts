@@ -144,7 +144,7 @@ function buildMotionAdapterFixture(
       .filter(([, value]) => value !== undefined)
       .map(([name, value]) => `${name}="${value}"`)
       .join(' ');
-    return `<DOMFrame ${attributeXml}><elements>` +
+    return `<DOMFrame ${attributeXml}>${endMetadata}<elements>` +
       `<DOMSymbolInstance libraryItemName="${endLibraryItemName}" symbolType="graphic" loop="single frame">` +
       `${transformedMatrix(0, 1, -1, 0, 20, 30)}<transformationPoint><Point x="5" y="7"/></transformationPoint>` +
       `</DOMSymbolInstance></elements></DOMFrame>`;
@@ -336,6 +336,47 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.b).toBeCloseTo(Math.SQRT1_2, 12);
     expect(interpolated.localTransform.c).toBeCloseTo(-Math.SQRT1_2, 12);
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('reads frame elements with sibling frameFilters and fails closed on authored filter interpolation', () => {
+    const emptyFrameFilters = buildMotionAdapterFixture(
+      '',
+      '<frameFilters/>',
+      'moving-target',
+      13,
+      true,
+      { keyMode: '9728' },
+    );
+    const emptyFiltersTarget = descriptor(emptyFrameFilters, 'motion-root');
+    const selectedWithEmptyFilters = emptyFrameFilters.buildGraphicFrameContext(
+      emptyFiltersTarget.timelineXml,
+      emptyFiltersTarget.frameSpanIndex,
+      1,
+      'motion-frame-with-empty-frameFilters',
+    );
+    expect(selectedWithEmptyFilters.ok).toBe(true);
+
+    const blurFrameFilters = buildMotionAdapterFixture(
+      '',
+      '<frameFilters><BlurFilter blurX="0" blurY="33"/></frameFilters>',
+      'moving-target',
+      13,
+      true,
+      { keyMode: '9728' },
+    );
+    const blurFiltersTarget = descriptor(blurFrameFilters, 'motion-root');
+    const selectedWithBlur = blurFrameFilters.buildGraphicFrameContext(
+      blurFiltersTarget.timelineXml,
+      blurFiltersTarget.frameSpanIndex,
+      1,
+      'motion-frame-with-blur-frameFilters',
+    );
+    expect(selectedWithBlur.ok).toBe(false);
+    if (!selectedWithBlur.ok) {
+      expect(selectedWithBlur.message).toContain('end frame contains unsupported frame filter interpolation');
+      expect(selectedWithBlur.message).toContain('BlurFilter (blurX=0, blurY=33)');
+      expect(selectedWithBlur.message).not.toContain('each endpoint must contain one visible symbol instance');
+    }
   });
 
   it('resolves linear transform motion spans at positive integer durations', () => {

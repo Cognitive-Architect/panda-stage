@@ -858,10 +858,42 @@ function synchronizedMotionRotationForFrame(
 }
 
 function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
-  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
-  if (frameChildren.length !== 1 || frameChildren[0]?.name !== 'elements') return [];
   const container = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
   return getFlaXflDirectChildren(container.xml, container.name);
+}
+
+function boundedMotionFrameStructureRejectionReason(
+  frame: FlaXflElementBlock,
+  endpoint: 'start' | 'end',
+): string | null {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
+  const elementContainers = frameChildren.filter((child) => child.name === 'elements');
+  if (elementContainers.length !== 1) {
+    return `${endpoint} frame must contain exactly one elements container`;
+  }
+  const unsupportedFrameChildren = frameChildren.filter((child) =>
+    child.name !== 'elements' && child.name !== 'frameFilters');
+  if (unsupportedFrameChildren.length > 0) {
+    return `${endpoint} frame contains unsupported direct child: ${unsupportedFrameChildren
+      .map((child) => child.name).join(', ')}`;
+  }
+
+  const frameFilterContainers = frameChildren.filter((child) => child.name === 'frameFilters');
+  if (frameFilterContainers.length > 1) {
+    return `${endpoint} frame contains multiple frameFilters containers`;
+  }
+  const frameFilters = frameFilterContainers.flatMap((container) =>
+    getFlaXflDirectChildren(container.xml, container.name));
+  if (frameFilters.length === 0) return null;
+
+  const describeFilter = (filter: FlaXflElementBlock): string => {
+    if (filter.name !== 'BlurFilter') return filter.name;
+    const blurX = filter.attributes.blurX?.slice(0, 32) ?? 'default';
+    const blurY = filter.attributes.blurY?.slice(0, 32) ?? 'default';
+    return `BlurFilter (blurX=${blurX}, blurY=${blurY})`;
+  };
+  return `${endpoint} frame contains unsupported frame filter interpolation: ${frameFilters
+    .map(describeFilter).join(', ')}`;
 }
 
 function boundedMotionFramePairRejectionReason(
@@ -923,6 +955,11 @@ function boundedMotionFramePairRejectionReason(
       containsUnsupportedMotionMetadata(endFrame.xml)) {
     return 'frame XML contains unsupported motion metadata';
   }
+
+  const startStructureRejectionReason = boundedMotionFrameStructureRejectionReason(startFrame, 'start');
+  if (startStructureRejectionReason) return startStructureRejectionReason;
+  const endStructureRejectionReason = boundedMotionFrameStructureRejectionReason(endFrame, 'end');
+  if (endStructureRejectionReason) return endStructureRejectionReason;
 
   const startElements = frameDisplayElements(startFrame);
   const endElements = frameDisplayElements(endFrame);
