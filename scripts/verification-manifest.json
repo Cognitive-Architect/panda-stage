@@ -80,6 +80,34 @@
         "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
       },
       {
+        "id": "issue962-c5-kf-00-research-evidence",
+        "sourcePatterns": [
+          "docs/evidence/issue-962-c5-kf-00/**"
+        ],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Only the isolated Issue #962 C5-KF synthetic contact sheet and its README receipt are registered here. They are research evidence for the Part pose animation baseline, not production behaviour; keep neighbouring Issue evidence paths fail-closed. Draft changes use the existing CI policy self-tests."
+      },
+      {
+        "id": "c5-kf-00-research-harness",
+        "sourcePatterns": [],
+        "testPatterns": [
+          "tests/research/c5-kf-00.test.ts"
+        ],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "The C5-KF research harness runs under vitest.research.config.ts against synthetic pose envelopes; it is not part of the shipped regression suites. Its generator scripts stay under the ci-build-infrastructure route."
+      },
+      {
         "id": "issue742-research-evidence",
         "sourcePatterns": [
           "docs/evidence/issue-742/**"
