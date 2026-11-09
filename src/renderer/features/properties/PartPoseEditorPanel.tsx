@@ -346,7 +346,8 @@ export function PartPoseEditorPanel({
               type="button"
               variant="secondary"
             >
-              ↶15°
+              <span aria-hidden="true" className="part-pose-editor-rotation-icon">↶</span>
+              <span>15°</span>
             </Button>
             <Button
               aria-label="顺时针旋转 15 度"
@@ -355,32 +356,35 @@ export function PartPoseEditorPanel({
               type="button"
               variant="secondary"
             >
-              ↷15°
+              <span aria-hidden="true" className="part-pose-editor-rotation-icon">↷</span>
+              <span>15°</span>
             </Button>
           </div>
           <div className="part-pose-editor-adjustment-row part-pose-editor-scale-controls" data-testid="part-pose-scale-controls">
             <span>缩放</span>
-            <Button
-              aria-label="缩小零件"
-              disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MIN_SCALE) <= CHARACTER_PART_MIN_SCALE}
-              onClick={() => scaleBy(0.9)}
-              type="button"
-              variant="secondary"
-            >
-              −
-            </Button>
-            <output aria-label="零件缩放" data-testid="part-pose-scale-value">
-              {String(Number(((keyframe?.scale ?? 1) * 100).toFixed(1)))}%
-            </output>
-            <Button
-              aria-label="放大零件"
-              disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MAX_SCALE) >= CHARACTER_PART_MAX_SCALE}
-              onClick={() => scaleBy(1.1)}
-              type="button"
-              variant="secondary"
-            >
-              +
-            </Button>
+            <div aria-label="零件缩放" className="part-pose-editor-scale-stepper" role="group">
+              <Button
+                aria-label="缩小零件"
+                disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MIN_SCALE) <= CHARACTER_PART_MIN_SCALE}
+                onClick={() => scaleBy(0.9)}
+                type="button"
+                variant="secondary"
+              >
+                −
+              </Button>
+              <output aria-label="零件缩放" data-testid="part-pose-scale-value">
+                {String(Number(((keyframe?.scale ?? 1) * 100).toFixed(1)))}%
+              </output>
+              <Button
+                aria-label="放大零件"
+                disabled={!canEditKey || (keyframe?.scale ?? CHARACTER_PART_MAX_SCALE) >= CHARACTER_PART_MAX_SCALE}
+                onClick={() => scaleBy(1.1)}
+                type="button"
+                variant="secondary"
+              >
+                +
+              </Button>
+            </div>
           </div>
         </div>
       </details>

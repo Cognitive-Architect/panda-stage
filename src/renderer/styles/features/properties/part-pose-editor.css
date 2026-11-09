@@ -140,7 +140,7 @@
 .part-pose-editor-pivot-status.is-fixed {
   display: inline-flex;
   align-items: center;
-  color: var(--ui-color-text-primary);
+  color: var(--ui-color-text-secondary);
   gap: 5px;
 }
 
@@ -202,6 +202,10 @@
   gap: 4px;
 }
 
+.part-pose-editor-key-present .ui-icon {
+  color: color-mix(in srgb, var(--ui-color-action-primary) 42%, var(--ui-color-text-secondary));
+}
+
 .part-pose-editor-fine {
   min-width: 0;
 }
@@ -211,7 +215,7 @@
   min-height: 34px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2px;
+  padding: 0;
   color: var(--ui-color-text-primary);
   cursor: pointer;
   font-size: 12px;
@@ -243,7 +247,7 @@
   min-width: 0;
   min-height: 36px;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .part-pose-editor-adjustment-row > span:first-child {
@@ -252,11 +256,104 @@
 }
 
 .part-pose-editor-rotation-controls {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) 52px 52px;
 }
 
 .part-pose-editor-scale-controls {
-  grid-template-columns: minmax(0, 1fr) 34px auto 34px;
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+
+.part-pose-editor-rotation-controls > button[data-ui-button] {
+  display: inline-flex;
+  width: 52px;
+  min-width: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--ui-radius-small);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  gap: 4px;
+}
+
+.part-pose-editor-rotation-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.part-pose-editor-scale-stepper {
+  display: grid;
+  width: 112px;
+  min-width: 0;
+  min-height: 34px;
+  box-sizing: border-box;
+  grid-template-columns: 34px minmax(42px, 1fr) 34px;
+  align-items: stretch;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button] {
+  display: inline-flex;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:first-child {
+  border-top-left-radius: calc(var(--ui-radius-small) - 1px);
+  border-right: 1px solid var(--ui-color-separator);
+  border-bottom-left-radius: calc(var(--ui-radius-small) - 1px);
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:last-child {
+  border-top-right-radius: calc(var(--ui-radius-small) - 1px);
+  border-bottom-right-radius: calc(var(--ui-radius-small) - 1px);
+  border-left: 1px solid var(--ui-color-separator);
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:active:not(:disabled) {
+  background: var(--ui-color-action-pressed);
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:disabled {
+  color: var(--ui-color-disabled-text);
+  background: transparent;
+}
+
+.part-pose-editor-scale-stepper > button[data-ui-button]:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.part-pose-editor-scale-stepper > output {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  color: var(--ui-color-text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .part-pose-editor-adjustment-row > button[data-ui-button] {
@@ -295,14 +392,15 @@
   padding: 2px 4px;
   border-color: transparent;
   border-radius: var(--ui-radius-small);
-  color: var(--ui-color-danger, #e28a7a);
+  color: color-mix(in srgb, var(--ui-color-danger, #e28a7a) 66%, var(--ui-color-text-secondary));
   background: transparent;
   font-size: 12px;
   font-weight: 500;
   gap: 4px;
 }
 
-.part-pose-editor button.part-pose-editor-clear[data-ui-button][data-ui-variant='secondary']:hover:not(:disabled) {
+.part-pose-editor button.part-pose-editor-clear[data-ui-button][data-ui-variant='secondary']:hover:not(:disabled),
+.part-pose-editor button.part-pose-editor-clear[data-ui-button][data-ui-variant='secondary']:focus-visible:not(:disabled) {
   color: var(--ui-color-danger, #e28a7a);
   background: rgb(226 138 122 / 10%);
 }
@@ -343,4 +441,41 @@
   .part-pose-editor-adjustment-row
   > button[data-ui-button] {
   min-width: 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-rotation-controls {
+  grid-template-columns: minmax(0, 1fr) 62px 62px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-rotation-controls
+  > button[data-ui-button] {
+  width: 62px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-scale-controls {
+  grid-template-columns: minmax(0, 1fr) 132px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-scale-stepper {
+  width: 132px;
+  grid-template-columns: 44px minmax(42px, 1fr) 44px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-scale-stepper
+  > button[data-ui-button] {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .part-pose-editor-scale-stepper
+  > output {
+  min-height: 44px;
 }
