@@ -111,6 +111,9 @@ function buildMotionAdapterFixture(
   terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {},
   startKeyMode = '22017',
   motionFrameAttributes: Readonly<Record<string, string>> = {},
+  firstFrameTransition = false,
+  playbackMode = 'single frame',
+  sampleEndAlphaMultiplier?: string,
 ) {
   const motionFrameAttributeXml = Object.entries(motionFrameAttributes)
     .map(([name, value]) => ` ${name}="${value}"`)
@@ -124,8 +127,8 @@ function buildMotionAdapterFixture(
     keyMode = startKeyMode,
   ) =>
     `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}>${metadata}` +
-    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame"${index === 0 ? '' : ' selected="true"'}>` +
-    `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
+    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${index === 0 ? '' : ' selected="true"'}${firstFrameTransition && index > 0 ? ' firstFrame="7"' : ''}>` +
+    `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${index > 0 && sampleEndAlphaMultiplier !== undefined ? `<color><Color alphaMultiplier="${sampleEndAlphaMultiplier}"/></color>` : ''}</DOMSymbolInstance></elements></DOMFrame>`;
   const terminalFrame = () => {
     const attributes = {
       index: String(duration),
@@ -421,7 +424,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(selected.ok).toBe(false);
       if (!selected.ok) {
         expect(selected.message).toContain('source metadata falls outside the bounded transform-only subset');
-        expect(selected.message).toContain('start frame contains unsupported attributes: motionTweenSync');
+        expect(selected.message).toContain('synchronized motion experiment requires the source Loop playback mode');
       }
     }
 
@@ -435,6 +438,50 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     );
     expect(afterSyncFlag.ok).toBe(false);
     if (!afterSyncFlag.ok) expect(afterSyncFlag.message).toContain('start frame keyMode is not 22017');
+  });
+
+  it('admits the bounded synchronized 24065 span and preserves its authored firstFrame boundary', () => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      true,
+      'loop',
+      '0.44921875',
+    );
+    const target = descriptor(source, 'motion-root');
+    for (const frameIndex of [0, 1, 3, 6, 7]) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `issue1044-sync-motion-frame-${frameIndex}`,
+      );
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const instance = selected.value.layers[0]?.elements[0];
+      expect(instance).toMatchObject({
+        kind: 'symbol',
+        playbackMode: 'loop',
+        sourceParentMotionTweenSync: true,
+      });
+      if (instance?.kind !== 'symbol') continue;
+      expect(instance.firstFrame).toBe(frameIndex === 7 ? '7' : undefined);
+      if (frameIndex === 0) {
+        expect(instance.alphaMultiplier).toBeUndefined();
+      } else {
+        const progress = Math.min(frameIndex / 7, 1);
+        expect(instance.alphaMultiplier).toBeCloseTo(1 + (0.44921875 - 1) * progress, 12);
+      }
+      if (frameIndex > 0 && frameIndex < 7) {
+        expect(instance.localTransform?.tx).toBeCloseTo(20 * (frameIndex / 7), 12);
+      }
+    }
   });
 
   it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
