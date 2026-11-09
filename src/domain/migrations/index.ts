@@ -317,7 +317,7 @@ function migrateVersion17Envelope(
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v16) is routed here by version and resolved to
+ * Every persisted envelope (v0-v17) is routed here by version and resolved to
  * the current v18 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
@@ -407,8 +407,10 @@ export function migrateProject(input: unknown): Project {
       break;
     }
     case 17: {
-      // v17 already carries Shot templates; it only gained the persisted
-      // per-Shot camera track.
+      // v17 already carries both the Shot template list (AUTO-03) and the
+      // optional Layer pose track (C5-KF); v18 adds the persisted per-Shot
+      // camera track here and the optional user Part pose presets, which stay
+      // absent rather than being materialised as an empty list.
       project = migrateVersion17Envelope(ProjectV17Schema.parse(input));
       break;
     }

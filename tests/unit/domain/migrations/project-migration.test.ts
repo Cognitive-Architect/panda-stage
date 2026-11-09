@@ -11,6 +11,7 @@ import {
   ProjectV15Schema,
   ProjectV15AdaptiveSchema,
   ProjectV16Schema,
+  ProjectV17Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -671,5 +672,58 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     expect(ProjectV16Schema.safeParse(layerWithFutureField).success).toBe(false);
     expect(() => migrateProject(layerWithFutureField)).toThrow();
+  });
+
+  it('strictly upgrades v17 and rejects preset data in the v17 contract', () => {
+    const current = buildProject();
+    // v17 already carries the project-local Shot template list; it predates
+    // only the v18 per-Shot camera track and the v18 user Part pose presets.
+    const { schemaVersion: _schemaVersion, ...v17Rest } = current;
+    void _schemaVersion;
+    const v17 = {
+      ...v17Rest,
+      schemaVersion: 17,
+      shots: legacyShots(current.shots),
+    };
+    expect(ProjectV17Schema.parse(v17)).toEqual(v17);
+    expect(ProjectSchema.safeParse(v17).success).toBe(false);
+
+    const migrated = migrateProject(v17);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.partPosePresets).toBeUndefined();
+
+    const withFutureField = {
+      ...v17,
+      partPosePresets: [
+        {
+          id: randomUUID(),
+          name: '过早',
+          characterId: randomUUID(),
+          durationMs: 1_000,
+          sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+          fixedCharacterCenter: { x: 0, y: 0 },
+          tracks: [
+            {
+              partId: 'part',
+              pivotSource: { x: 0, y: 0 },
+              sourceRestTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+              keys: [
+                {
+                  timeMs: 0,
+                  offsetX: 0,
+                  offsetY: 0,
+                  rotationDeg: 0,
+                  scale: 1,
+                  easingToNext: 'linear',
+                },
+              ],
+            },
+          ],
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    expect(ProjectV17Schema.safeParse(withFutureField).success).toBe(false);
+    expect(() => migrateProject(withFutureField)).toThrow();
   });
 });
