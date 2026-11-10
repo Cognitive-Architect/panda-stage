@@ -287,6 +287,63 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(result.svg.slice(alphaOpen, alphaClose).match(/<path/g)).toHaveLength(2);
   });
 
+  it('applies RGB brightness through a filter scoped to the selected Graphic instance', () => {
+    const transform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const shape = (shapeId: string) => ({ kind: 'shape' as const, shapeId, worldTransform: transform });
+    const displayList: FlaResolvedDisplayList = {
+      kind: 'graphic',
+      sourceName: 'brightness-symbol',
+      frameIndex: 10,
+      resolvedNodeCount: 4,
+      layers: [{
+        name: 'layer',
+        children: [
+          {
+            kind: 'group',
+            groupId: 'symbol:brightness-symbol',
+            symbolLibraryItemName: 'brightness-symbol',
+            worldTransform: transform,
+            opacity: 0.68,
+            rgbTransform: { multiplier: 4 / 7, offset: 255 * 3 / 7 },
+            children: [shape('shape-a'), shape('shape-b')],
+          },
+          shape('shape-c'),
+        ],
+      }],
+    };
+    const shapeXml = `<DOMShape><fills><FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle></fills><edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges></DOMShape>`;
+    const result = buildSvgForResolvedDisplayList({
+      displayList,
+      renderTargetId: 'brightness-symbol-frame-10',
+      stageWidth: 100,
+      stageHeight: 100,
+      shapeBlocks: new Map([
+        ['shape-a', shapeXml],
+        ['shape-b', shapeXml],
+        ['shape-c', shapeXml],
+      ]),
+      resolveBitmapMedia: () => ({ ok: false, reason: 'missing' }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const groupOpen = result.svg.match(/<g opacity="0\.68" filter="url\(#(fla-rgb-transform-[a-f0-9]{24})\)">/);
+    expect(groupOpen).not.toBeNull();
+    const colorMatrix = result.svg.match(/<feColorMatrix in="SourceGraphic" type="matrix" values="([^"]+)"\/>/);
+    expect(colorMatrix).not.toBeNull();
+    const matrixValues = colorMatrix?.[1]?.split(' ').map(Number);
+    expect(matrixValues).toHaveLength(20);
+    expect(matrixValues?.[0]).toBeCloseTo(4 / 7, 12);
+    expect(matrixValues?.[4]).toBeCloseTo(3 / 7, 12);
+    expect(matrixValues?.[19]).toBe(0);
+    if (!groupOpen || groupOpen.index === undefined || !groupOpen[1]) return;
+    const groupClose = result.svg.indexOf('</g>', groupOpen.index);
+    const laterShape = result.svg.indexOf('<path', groupClose + '</g>'.length);
+    expect(result.svg.slice(groupOpen.index, groupClose).match(/<path/g)).toHaveLength(2);
+    expect(laterShape).toBeGreaterThan(groupClose);
+    expect(result.svg.slice(groupClose + '</g>'.length)).toContain('fill="#336699"');
+  });
+
   it('discovers a graphic symbol target with previewSupported=true', async () => {
     const bytes = await buildSyntheticFla({ includeLibrary: true, symbolName: 'sword' });
     const result: BuildCatalogResult = await buildRenderableTargetCatalog(bytes);

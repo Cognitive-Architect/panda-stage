@@ -118,6 +118,7 @@ function buildMotionAdapterFixture(
   spanStartIndex = 0,
   sampleStartAlphaMultiplier?: string,
   endFirstFrameOverride?: string,
+  sampleEndColorTransformXml?: string,
 ) {
   const spanEndIndex = spanStartIndex + duration;
   const motionFrameAttributeXml = Object.entries(motionFrameAttributes)
@@ -144,9 +145,15 @@ function buildMotionAdapterFixture(
     const alphaMultiplier = isStartFrame
       ? sampleStartAlphaMultiplier
       : sampleEndAlphaMultiplier;
+    const alphaColorTransformXml = alphaMultiplier !== undefined
+      ? `<color><Color alphaMultiplier="${alphaMultiplier}"/></color>`
+      : '';
+    const colorTransformXml = isStartFrame
+      ? alphaColorTransformXml
+      : sampleEndColorTransformXml ?? alphaColorTransformXml;
     return `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}${isStartFrame ? sourceRotationAttributeXml : ''}>${metadata}` +
       `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${isStartFrame ? '' : ' selected="true"'}${firstFrame}>` +
-      `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${alphaMultiplier !== undefined ? `<color><Color alphaMultiplier="${alphaMultiplier}"/></color>` : ''}</DOMSymbolInstance></elements></DOMFrame>`;
+      `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${colorTransformXml}</DOMSymbolInstance></elements></DOMFrame>`;
   };
   const terminalFrame = () => {
     const attributes = {
@@ -651,6 +658,99 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(instance.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
       expect(instance.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
       expect(instance.sourceParentFrameSpanStart).toBe(frameIndex === 14 ? 14 : startIndex);
+    }
+  });
+
+  it('interpolates the verified F7-to-F14 alpha and RGB brightness channels independently', () => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      true,
+      'loop',
+      undefined,
+      {},
+      7,
+      '0.44921875',
+      undefined,
+      '<color><Color brightness="1"/></color>',
+    );
+    const target = descriptor(source, 'motion-root');
+
+    for (const [frameIndex, progress] of [[7, 0], [8, 1 / 7], [10, 3 / 7], [13, 6 / 7], [14, 1]] as const) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `issue1055-sync-color-frame-${frameIndex}`,
+      );
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const instance = selected.value.layers[0]?.elements[0];
+      expect(instance?.kind).toBe('symbol');
+      if (instance?.kind !== 'symbol') continue;
+      expect(instance.alphaMultiplier ?? 1).toBeCloseTo(0.44921875 + (1 - 0.44921875) * progress, 12);
+      if (progress === 0) {
+        expect(instance.rgbTransform).toBeUndefined();
+      } else {
+        expect(instance.rgbTransform?.multiplier).toBeCloseTo(1 - progress, 12);
+        expect(instance.rgbTransform?.offset).toBeCloseTo(255 * progress, 12);
+      }
+    }
+  });
+
+  it.each([
+    {
+      name: 'a non-endpoint brightness value',
+      color: '<color><Color brightness="0.5"/></color>',
+      reason: 'only brightness="1" is supported',
+    },
+    {
+      name: 'an unknown Color channel',
+      color: '<color><Color redMultiplier="1"/></color>',
+      reason: 'unsupported Color mode or attributes',
+    },
+    {
+      name: 'multiple Color wrappers',
+      color: '<color><Color brightness="1"/></color><color><Color brightness="1"/></color>',
+      reason: 'multiple color wrappers',
+    },
+  ])('keeps synchronized motion fail-closed for $name with a Color-specific reason', ({ color, reason }) => {
+    const source = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      7,
+      false,
+      {},
+      '24065',
+      { motionTweenSync: 'true' },
+      true,
+      'loop',
+      undefined,
+      {},
+      7,
+      '0.44921875',
+      undefined,
+      color,
+    );
+    const target = descriptor(source, 'motion-root');
+    const selected = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      8,
+      `issue1055-invalid-sync-color-${reason}`,
+    );
+
+    expect(selected.ok).toBe(false);
+    if (!selected.ok) {
+      expect(selected.message).toContain('unsupported Color');
+      expect(selected.message).toContain(reason);
     }
   });
 

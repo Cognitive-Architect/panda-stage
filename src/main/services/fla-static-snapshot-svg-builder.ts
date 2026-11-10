@@ -2990,7 +2990,7 @@ export interface BuildComposedSvgInput {
 interface ComposedLeaf {
   readonly layer: FlaResolvedDisplayLayer;
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
-  readonly opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
+  readonly compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
 }
 
 interface Point2D {
@@ -3357,7 +3357,7 @@ function flattenResolvedDisplayList(
     node: FlaResolvedDisplayNode,
     depth: number,
     layer: FlaResolvedDisplayLayer,
-    opacityGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
+    compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
   ): BuildSvgFailure | null => {
     visited += 1;
     if (visited > 100_000) {
@@ -3376,16 +3376,22 @@ function flattenResolvedDisplayList(
           (!Number.isFinite(node.opacity) || node.opacity < 0 || node.opacity > 1)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group opacity' };
       }
-      const childOpacityGroups = node.opacity !== undefined && node.opacity < 1
-        ? [...opacityGroups, node]
-        : opacityGroups;
+      if (node.rgbTransform !== undefined &&
+          (!Number.isFinite(node.rgbTransform.multiplier) || node.rgbTransform.multiplier < 0 ||
+            node.rgbTransform.multiplier > 1 || !Number.isFinite(node.rgbTransform.offset) ||
+            node.rgbTransform.offset < 0 || node.rgbTransform.offset > 255)) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
+      }
+      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined
+        ? [...compositeGroups, node]
+        : compositeGroups;
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1, layer, childOpacityGroups);
+        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ layer, node, opacityGroups });
+    leaves.push({ layer, node, compositeGroups });
     return null;
   };
 
@@ -3455,6 +3461,36 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
 
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
   const definitions = new Map<string, string>();
+  const colorTransformFilterIdByGroup = new Map<
+    Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+    string
+  >();
+  const colorTransformGroups = new Set<Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>>();
+  for (const leaf of flattened.leaves) {
+    for (const group of leaf.compositeGroups) {
+      if (group.rgbTransform) colorTransformGroups.add(group);
+    }
+  }
+  for (const group of colorTransformGroups) {
+    const transform = group.rgbTransform!;
+    const identity = `${formatSvgNumber(transform.multiplier)}\u0000${formatSvgNumber(transform.offset)}`;
+    const id = `fla-rgb-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+    const existingDefinition = definitions.get(id);
+    const multiplier = formatSvgNumber(transform.multiplier);
+    const offset = formatSvgNumber(transform.offset / 255);
+    const values = [
+      multiplier, '0', '0', '0', offset,
+      '0', multiplier, '0', '0', offset,
+      '0', '0', multiplier, '0', offset,
+      '0', '0', '0', '1', '0',
+    ].join(' ');
+    const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
+    if (existingDefinition && existingDefinition !== definition) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'RGB color-transform filter id collision detected' };
+    }
+    definitions.set(id, definition);
+    colorTransformFilterIdByGroup.set(group, id);
+  }
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
   const emittedNodes: string[] = [];
   let embeddedPngBytes = 0;
@@ -3609,7 +3645,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  const appendOpacityGroupTag = (markup: string): BuildSvgFailure | null => {
+  const appendCompositeGroupTag = (markup: string): BuildSvgFailure | null => {
     const markupBytes = Buffer.byteLength(markup, 'utf8');
     if (gradientDefinitionBytes + clipDefinitionBytes + embeddedPngBytes + emittedContentBytes + markupBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
@@ -3619,45 +3655,49 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  const openOpacityGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
+  const openCompositeGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
-  for (const { layer, node, opacityGroups } of flattened.leaves) {
+  for (const { layer, node, compositeGroups } of flattened.leaves) {
     if (openLayer !== layer) {
-      while (openOpacityGroups.length > 0) {
-        const closeFailure = appendOpacityGroupTag('</g>');
+      while (openCompositeGroups.length > 0) {
+        const closeFailure = appendCompositeGroupTag('</g>');
         if (closeFailure) return closeFailure;
-        openOpacityGroups.pop();
+        openCompositeGroups.pop();
       }
       if (openLayerFilter) {
-        const closeFailure = appendOpacityGroupTag('</g>');
+        const closeFailure = appendCompositeGroupTag('</g>');
         if (closeFailure) return closeFailure;
         openLayerFilter = false;
       }
       openLayer = layer;
       const filterId = frameBlurIdByLayer.get(layer);
       if (filterId) {
-        const openFailure = appendOpacityGroupTag(`<g filter="url(#${filterId})">`);
+        const openFailure = appendCompositeGroupTag(`<g filter="url(#${filterId})">`);
         if (openFailure) return openFailure;
         openLayerFilter = true;
       }
     }
     let sharedGroupCount = 0;
-    while (sharedGroupCount < openOpacityGroups.length &&
-        sharedGroupCount < opacityGroups.length &&
-        openOpacityGroups[sharedGroupCount] === opacityGroups[sharedGroupCount]) {
+    while (sharedGroupCount < openCompositeGroups.length &&
+        sharedGroupCount < compositeGroups.length &&
+        openCompositeGroups[sharedGroupCount] === compositeGroups[sharedGroupCount]) {
       sharedGroupCount += 1;
     }
-    for (let index = openOpacityGroups.length - 1; index >= sharedGroupCount; index -= 1) {
-      const closeFailure = appendOpacityGroupTag('</g>');
+    for (let index = openCompositeGroups.length - 1; index >= sharedGroupCount; index -= 1) {
+      const closeFailure = appendCompositeGroupTag('</g>');
       if (closeFailure) return closeFailure;
-      openOpacityGroups.pop();
+      openCompositeGroups.pop();
     }
-    for (let index = sharedGroupCount; index < opacityGroups.length; index += 1) {
-      const group = opacityGroups[index]!;
-      const openFailure = appendOpacityGroupTag(`<g opacity="${formatSvgNumber(group.opacity!)}">`);
+    for (let index = sharedGroupCount; index < compositeGroups.length; index += 1) {
+      const group = compositeGroups[index]!;
+      const attributes: string[] = [];
+      if (group.opacity !== undefined) attributes.push(`opacity="${formatSvgNumber(group.opacity)}"`);
+      const colorFilterId = colorTransformFilterIdByGroup.get(group);
+      if (colorFilterId) attributes.push(`filter="url(#${colorFilterId})"`);
+      const openFailure = appendCompositeGroupTag(`<g ${attributes.join(' ')}>`);
       if (openFailure) return openFailure;
-      openOpacityGroups.push(group);
+      openCompositeGroups.push(group);
     }
 
     if (node.kind === 'shape') {
@@ -3839,14 +3879,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     if (appendFailure) return appendFailure;
   }
 
-  while (openOpacityGroups.length > 0) {
-    const closeFailure = appendOpacityGroupTag('</g>');
+  while (openCompositeGroups.length > 0) {
+    const closeFailure = appendCompositeGroupTag('</g>');
     if (closeFailure) return closeFailure;
-    openOpacityGroups.pop();
+    openCompositeGroups.pop();
   }
 
   if (openLayerFilter) {
-    const closeFailure = appendOpacityGroupTag('</g>');
+    const closeFailure = appendCompositeGroupTag('</g>');
     if (closeFailure) return closeFailure;
   }
 

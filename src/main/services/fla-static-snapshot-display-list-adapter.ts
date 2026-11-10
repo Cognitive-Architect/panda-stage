@@ -26,6 +26,7 @@ import {
   type FlaDisplayListBlurFilter,
   type FlaDisplayListFrameContext,
   type FlaDisplayListMatrix,
+  type FlaDisplayListRgbTransform,
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 
@@ -551,6 +552,68 @@ interface ElementParseContext {
   readonly state: SourceBuildState;
 }
 
+type BoundedMotionColorMode = 'alphaMultiplier' | 'brightness';
+
+interface BoundedMotionColorTransform {
+  readonly mode: BoundedMotionColorMode;
+  readonly alphaMultiplier?: number;
+  readonly rgbTransform?: FlaDisplayListRgbTransform;
+}
+
+type BoundedMotionColorParseResult =
+  | { readonly ok: true; readonly transform: BoundedMotionColorTransform | null }
+  | { readonly ok: false; readonly message: string };
+
+function boundedMotionColorTransform(target: FlaXflElementBlock): BoundedMotionColorParseResult {
+  const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
+    .filter((child) => child.name === 'color');
+  if (colorWrappers.length === 0) return { ok: true, transform: null };
+  const unsupported = (reason: string): BoundedMotionColorParseResult => ({
+    ok: false,
+    message: `Synchronized motion experiment encountered unsupported Color: ${reason}`,
+  });
+  if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
+  const wrapper = colorWrappers[0]!;
+  if (Object.keys(wrapper.attributes).length > 0) return unsupported('color wrapper has attributes');
+  const values = getFlaXflDirectChildren(wrapper.xml, wrapper.name);
+  const color = values[0];
+  if (values.length !== 1 || color?.name !== 'Color' ||
+      getFlaXflDirectChildren(color.xml, color.name).length !== 0) {
+    return unsupported('malformed Color element structure');
+  }
+
+  const attributes = color.attributes;
+  const names = Object.keys(attributes);
+  if (names.length !== 1) {
+    return unsupported(names.length === 0
+      ? 'Color is missing a supported alphaMultiplier or brightness attribute'
+      : `unsupported Color attribute combination: ${names.join(', ')}`);
+  }
+  if (names[0] === 'alphaMultiplier') {
+    const rawAlpha = attributes.alphaMultiplier;
+    const alphaMultiplier = rawAlpha === undefined || rawAlpha.trim() === '' ? Number.NaN : Number(rawAlpha);
+    if (!Number.isFinite(alphaMultiplier) || alphaMultiplier < 0 || alphaMultiplier > 1) {
+      return unsupported('alphaMultiplier must be finite and within 0..1');
+    }
+    return { ok: true, transform: { mode: 'alphaMultiplier', alphaMultiplier } };
+  }
+  if (names[0] === 'brightness') {
+    const rawBrightness = attributes.brightness;
+    const brightness = rawBrightness === undefined || rawBrightness.trim() === ''
+      ? Number.NaN
+      : Number(rawBrightness);
+    if (brightness !== 1) return unsupported('only brightness="1" is supported');
+    return {
+      ok: true,
+      transform: {
+        mode: 'brightness',
+        rgbTransform: { multiplier: 0, offset: 255 },
+      },
+    };
+  }
+  return unsupported(`unsupported Color mode or attributes: ${names.join(', ') || '(none)'}`);
+}
+
 function parseDisplayElements(
   container: FlaXflElementBlock,
   context: ElementParseContext,
@@ -671,28 +734,12 @@ function parseDisplayElements(
         : 'movieclip';
     const resolvedName = resolveSymbolAlias(context.state.symbolAliases, libraryItemName) ?? libraryItemName;
     let alphaMultiplier: number | undefined;
+    let rgbTransform: FlaDisplayListRgbTransform | undefined;
     if (context.sourceParentMotionTweenSync) {
-      const colors = getFlaXflDirectChildren(child.xml, child.name)
-        .filter((nested) => nested.name === 'color');
-      if (colors.length > 1) {
-        return fail('RENDER_FAILED', 'Synchronized motion experiment found multiple color transforms');
-      }
-      if (colors.length === 1) {
-        if (Object.keys(colors[0]!.attributes).length > 0) {
-          return fail('RENDER_FAILED', 'Synchronized motion experiment supports only an attribute-free color wrapper');
-        }
-        const values = getFlaXflDirectChildren(colors[0]!.xml, 'color');
-        const color = values[0];
-        const rawAlpha = color?.attributes.alphaMultiplier;
-        const parsedAlpha = rawAlpha === undefined ? Number.NaN : Number(rawAlpha);
-        if (values.length !== 1 || color?.name !== 'Color' ||
-            getFlaXflDirectChildren(color.xml, color.name).length !== 0 ||
-            Object.keys(color.attributes).some((name) => name !== 'alphaMultiplier') ||
-            !Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) {
-          return fail('RENDER_FAILED', 'Synchronized motion experiment supports only a finite Color alphaMultiplier in 0..1');
-        }
-        alphaMultiplier = parsedAlpha;
-      }
+      const colorResult = boundedMotionColorTransform(child);
+      if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
+      alphaMultiplier = colorResult.transform?.alphaMultiplier;
+      rgbTransform = colorResult.transform?.rgbTransform;
     }
     children.push({
       kind: 'symbol',
@@ -702,6 +749,7 @@ function parseDisplayElements(
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
+      ...(rgbTransform ? { rgbTransform } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
       ...(context.sourceParentSpanTweenType !== undefined
@@ -1094,9 +1142,24 @@ function boundedMotionFramePairRejectionReason(
     }
   }
 
+  if (synchronizedMotionPair) {
+    const startColor = boundedMotionColorTransform(startTarget);
+    if (!startColor.ok) return startColor.message;
+    const endColor = boundedMotionColorTransform(endTarget);
+    if (!endColor.ok) return endColor.message;
+    const isAlphaOnly = [startColor.transform, endColor.transform]
+      .every((transform) => transform === null || transform.mode === 'alphaMultiplier');
+    const isVerifiedAlphaToBrightness = startIndex === 7 && duration === 7 &&
+      startColor.transform?.mode === 'alphaMultiplier' &&
+      endColor.transform?.mode === 'brightness';
+    if (!isAlphaOnly && !isVerifiedAlphaToBrightness) {
+      return 'Synchronized motion experiment supports only alphaMultiplier-to-brightness Color interpolation for F7-to-F14';
+    }
+  }
+
   const hasSupportedTransformChildren = (
     target: FlaXflElementBlock,
-    allowAlphaMultiplier: boolean,
+    allowColorTransform: boolean,
   ): boolean => {
     const children = getFlaXflDirectChildren(target.xml, target.name);
     const matrices = children.filter((child) => child.name === 'matrix');
@@ -1104,7 +1167,7 @@ function boundedMotionFramePairRejectionReason(
     const colors = children.filter((child) => child.name === 'color');
     if (matrices.length !== 1 || points.length > 1 || colors.length > 1 ||
         children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
-          !(allowAlphaMultiplier && child.name === 'color'))) {
+          !(allowColorTransform && child.name === 'color'))) {
       return false;
     }
     const matrixValues = getFlaXflDirectChildren(matrices[0]!.xml, 'matrix');
@@ -1119,19 +1182,7 @@ function boundedMotionFramePairRejectionReason(
         return false;
       }
     }
-    if (colors.length === 1) {
-      if (Object.keys(colors[0]!.attributes).length > 0) return false;
-      const values = getFlaXflDirectChildren(colors[0]!.xml, 'color');
-      const color = values[0];
-      const rawAlpha = color?.attributes.alphaMultiplier;
-      const parsedAlpha = rawAlpha === undefined ? Number.NaN : Number(rawAlpha);
-      if (!allowAlphaMultiplier || values.length !== 1 || color?.name !== 'Color' ||
-          getFlaXflDirectChildren(color.xml, color.name).length !== 0 ||
-          Object.keys(color.attributes).some((name) => name !== 'alphaMultiplier') ||
-          !Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) {
-        return false;
-      }
-    }
+    if (colors.length > 0 && !allowColorTransform) return false;
     return true;
   };
   if (!hasSupportedTransformChildren(startTarget, nonzeroSynchronizedFirstFrameTransition) ||
@@ -1339,9 +1390,22 @@ function buildGraphicFrameContext(
         ? (startTarget.alphaMultiplier ?? 1) +
           ((endTarget.alphaMultiplier ?? 1) - (startTarget.alphaMultiplier ?? 1)) * progress
         : undefined;
+      const interpolatedRgbTransform = synchronizedMotionPair
+        ? {
+            multiplier: (startTarget.rgbTransform?.multiplier ?? 1) +
+              ((endTarget.rgbTransform?.multiplier ?? 1) - (startTarget.rgbTransform?.multiplier ?? 1)) * progress,
+            offset: (startTarget.rgbTransform?.offset ?? 0) +
+              ((endTarget.rgbTransform?.offset ?? 0) - (startTarget.rgbTransform?.offset ?? 0)) * progress,
+          }
+        : undefined;
+      const effectiveRgbTransform = interpolatedRgbTransform &&
+          interpolatedRgbTransform.multiplier === 1 && interpolatedRgbTransform.offset === 0
+        ? undefined
+        : interpolatedRgbTransform;
       elements = [{
         ...startTarget,
         ...(interpolatedAlphaMultiplier !== undefined ? { alphaMultiplier: interpolatedAlphaMultiplier } : {}),
+        ...(effectiveRgbTransform ? { rgbTransform: effectiveRgbTransform } : {}),
         localTransform: interpolated.matrix,
       }];
     }

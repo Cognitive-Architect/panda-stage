@@ -41,6 +41,13 @@ export interface FlaDisplayListBlurFilter {
   readonly enabled: true;
 }
 
+/** Per-channel shared RGB transform used by the verified Sync brightness tween. */
+export interface FlaDisplayListRgbTransform {
+  readonly multiplier: number;
+  /** Additive channel offset in 0..255 units. */
+  readonly offset: number;
+}
+
 export interface FlaDisplayListLayer {
   readonly name: string;
   readonly visible: boolean;
@@ -100,6 +107,8 @@ export type FlaDisplayListElement =
       readonly lastFrame?: string;
       /** Bounded source alpha multiplier for the #1044 synchronized motion span. */
       readonly alphaMultiplier?: number;
+      /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
+      readonly rgbTransform?: FlaDisplayListRgbTransform;
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
@@ -191,6 +200,7 @@ export interface FlaResolvedGroupNode {
   readonly symbolLibraryItemName?: string;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly opacity?: number;
+  readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly children: readonly FlaResolvedDisplayNode[];
 }
 
@@ -538,6 +548,12 @@ function resolveElements(
         (!Number.isFinite(element.alphaMultiplier) || element.alphaMultiplier < 0 || element.alphaMultiplier > 1)) {
       return failure('INVALID_INPUT', 'Graphic alpha multiplier must be within 0..1', elementPath);
     }
+    if (element.rgbTransform !== undefined &&
+        (!Number.isFinite(element.rgbTransform.multiplier) || element.rgbTransform.multiplier < 0 ||
+          element.rgbTransform.multiplier > 1 || !Number.isFinite(element.rgbTransform.offset) ||
+          element.rgbTransform.offset < 0 || element.rgbTransform.offset > 255)) {
+      return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
+    }
     if (!element.libraryItemName) {
       return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
     }
@@ -585,6 +601,7 @@ function resolveElements(
       symbolLibraryItemName: element.libraryItemName,
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
+      ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });
   }
