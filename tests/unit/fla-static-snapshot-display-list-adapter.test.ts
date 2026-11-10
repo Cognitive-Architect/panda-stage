@@ -190,6 +190,101 @@ function buildMotionAdapterFixture(
   return adapted.source;
 }
 
+function buildSnapAdapterFixture(
+  snapValue: string | null,
+  keyMode = '17921',
+  withMotionGuide = false,
+) {
+  const snapAttribute = snapValue === null ? '' : ` motionTweenSnap="${snapValue}"`;
+  const guideLayer = withMotionGuide
+    ? '<DOMLayer name="guide" layerType="guide"><frames>' + frame(0, shape()) + '</frames></DOMLayer>'
+    : '';
+  const movingLayerParent = withMotionGuide ? ' parentLayerIndex="0"' : '';
+  const movingLayer = `<DOMLayer name="moving"${movingLayerParent}><frames>` +
+    `<DOMFrame index="0" duration="2" tweenType="motion" keyMode="${keyMode}"${snapAttribute}>` +
+    `<elements><DOMSymbolInstance libraryItemName="moving-target" symbolType="graphic">${matrix(0, 0)}</DOMSymbolInstance></elements>` +
+    `</DOMFrame><DOMFrame index="2" keyMode="9728"><frameFilters><BlurFilter blurX="20" blurY="4"/></frameFilters>` +
+    `<elements><DOMSymbolInstance libraryItemName="moving-target" symbolType="graphic">${transformedMatrix(0, 1, -1, 0, 20, 30)}</DOMSymbolInstance></elements>` +
+    `</DOMFrame></frames></DOMLayer>`;
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene', [frame(0, symbol('motion-root'))].join('')),
+  ])}</timelines></DOMDocument>`;
+  const adapted = adaptFlaXflDisplaySource(documentXml, [{
+    name: 'LIBRARY/motion-root.xml',
+    xml: graphic('motion-root', [guideLayer, movingLayer].filter(Boolean)),
+  }, {
+    name: 'LIBRARY/moving-target.xml',
+    xml: graphic('moving-target', [layer('art', frame(0, shape()))]),
+  }]);
+  if (!adapted.ok) throw new Error(`Snap adapter fixture failed: ${adapted.message}`);
+  return adapted.source;
+}
+
+function buildRiggingAdapterFixtureResult(options: {
+  readonly childTween?: boolean;
+  readonly childRigParent?: string;
+  readonly parentRigId?: string;
+  readonly childRigId?: string;
+  readonly parentFrameParent?: string;
+  readonly parentObjectCount?: number;
+  readonly parentMatrix?: string;
+  readonly rigPropagationMatrix?: string;
+} = {}) {
+  const childTween = options.childTween ?? true;
+  const childRigParent = options.childRigParent ?? '7';
+  const parentRigId = options.parentRigId ?? '7';
+  const childRigId = options.childRigId;
+  const parentFrameParent = options.parentFrameParent;
+  const parentObjectCount = options.parentObjectCount ?? 1;
+  const parentMatrix = options.parentMatrix ?? transformedMatrix(0, 1, -1, 0, 0, 0);
+  const rigPropagationMatrix = options.rigPropagationMatrix ??
+    '{&quot;a&quot;:64859,&quot;b&quot;:-9181,&quot;c&quot;:9181,&quot;d&quot;:64859,&quot;tx&quot;:0,&quot;ty&quot;:0}';
+  const childStart = `<DOMFrame index="0" duration="4"${childTween ? ' tweenType="motion" keyMode="22017"' : ''} parentLayerIndex="${childRigParent}">` +
+    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${matrix(10, 0)}</DOMSymbolInstance></elements></DOMFrame>`;
+  const childEnd = childTween
+    ? `<DOMFrame index="4" keyMode="9728" parentLayerIndex="${childRigParent}"><elements>` +
+      `<DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${transformedMatrix(0, 1, -1, 0, 0, 10)}</DOMSymbolInstance>` +
+      `</elements></DOMFrame>`
+    : '';
+  const parentEndAttributes = [
+    'index="4"',
+    'keyMode="9728"',
+    ...(parentFrameParent !== undefined ? [`parentLayerIndex="${parentFrameParent}"`] : []),
+    `rigPropagationMatrix="${rigPropagationMatrix}"`,
+  ].join(' ');
+  const parentElements = (matrixXml: string) => Array.from({ length: parentObjectCount }, (_, index) =>
+    `<DOMSymbolInstance libraryItemName="parent-art-${index}" symbolType="graphic">${matrixXml}</DOMSymbolInstance>`,
+  ).join('');
+  const parentStart = `<DOMFrame index="0" duration="4" tweenType="motion" keyMode="22017" motionTweenSnap="true"${parentFrameParent !== undefined ? ` parentLayerIndex="${parentFrameParent}"` : ''}>` +
+    `<elements>${parentElements(matrix(0, 0))}</elements></DOMFrame>`;
+  const parentEnd = `<DOMFrame ${parentEndAttributes}><elements>${parentElements(parentMatrix)}</elements></DOMFrame>`;
+  const childLayerRigId = childRigId !== undefined ? ` layerRiggingIndex="${childRigId}"` : '';
+  const rootLayers = [
+    `<DOMLayer name="child"${childLayerRigId}><frames>${childStart}${childEnd}</frames></DOMLayer>`,
+    `<DOMLayer name="parent" layerRiggingIndex="${parentRigId}"><frames>${parentStart}${parentEnd}</frames></DOMLayer>`,
+  ];
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene', [frame(0, symbol('rig-root'))].join('')),
+  ])}</timelines></DOMDocument>`;
+  const adapted = adaptFlaXflDisplaySource(documentXml, [{
+    name: 'LIBRARY/rig-root.xml',
+    xml: graphic('rig-root', rootLayers),
+  }, {
+    name: 'LIBRARY/child-art.xml',
+    xml: graphic('child-art', [layer('art', frame(0, shape()))]),
+  }, ...Array.from({ length: parentObjectCount }, (_, index) => ({
+    name: `LIBRARY/parent-art-${index}.xml`,
+    xml: graphic(`parent-art-${index}`, [layer('art', frame(0, shape()))]),
+  }))]);
+  return adapted;
+}
+
+function buildRiggingAdapterFixture(options: Parameters<typeof buildRiggingAdapterFixtureResult>[0] = {}) {
+  const adapted = buildRiggingAdapterFixtureResult(options);
+  if (!adapted.ok) throw new Error(`Rig adapter fixture failed: ${adapted.message}`);
+  return adapted.source;
+}
+
 function descriptor(source: ReturnType<typeof buildAdapterFixture>['adapted'], name: string): FlaXflGraphicSymbolDescriptor {
   const result = source.graphicSymbols.find((candidate) => candidate.sourceLibraryItemName === name);
   if (!result) throw new Error(`Missing Graphic fixture: ${name}`);
@@ -1220,6 +1315,155 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     );
     expect(mismatchedResult.ok).toBe(false);
     if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('supported Classic Motion structure');
+  });
+});
+
+describe('Classic Motion Snap option and Motion Guide handling (#1061)', () => {
+  it.each([
+    { label: 'true with no guide layer', snap: 'true' },
+    { label: 'false', snap: 'false' },
+    { label: 'missing', snap: null },
+  ])('interpolates ordinary Motion when Snap is $label and carries the BlurFilter', ({ label, snap }) => {
+    const source = buildSnapAdapterFixture(snap);
+    const target = descriptor(source, 'motion-root');
+    const result = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      `snap-${label.replaceAll(' ', '-')}`,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const movingLayer = result.value.layers.find((candidate) => candidate.name === 'moving');
+    const element = movingLayer?.elements[0];
+    expect(element?.kind).toBe('symbol');
+    if (element?.kind !== 'symbol' || !element.localTransform) return;
+    expect(element.localTransform.tx).toBeCloseTo(10, 10);
+    expect(element.localTransform.ty).toBeCloseTo(15, 10);
+    expect(element.localTransform.a).toBeCloseTo(Math.SQRT1_2, 10);
+    expect(element.localTransform.b).toBeCloseTo(Math.SQRT1_2, 10);
+    expect(movingLayer?.frameFilter).toMatchObject({ blurX: 10, blurY: 2 });
+  });
+
+  it('keeps malformed Snap values diagnosed', () => {
+    const source = buildSnapAdapterFixture('enabled');
+    const target = descriptor(source, 'motion-root');
+    const result = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'malformed-snap-value',
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('motionTweenSync or motionTweenSnap has an invalid authored value');
+  });
+
+  it('keeps an associated Motion Guide on the explicit unsupported path', () => {
+    const source = buildSnapAdapterFixture(null, '17921', true);
+    const target = descriptor(source, 'motion-root');
+    const result = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'motion-guide-path',
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('Motion Guide on layer 0 requires unsupported guide-path evaluation');
+  });
+});
+
+describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
+  function childAt(source: ReturnType<typeof buildAdapterFixture>['adapted'], frameIndex: number) {
+    const target = descriptor(source, 'rig-root');
+    const result = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      frameIndex,
+      `rig-child-frame-${frameIndex}`,
+    );
+    if (!result.ok) return result;
+    const childLayer = result.value.layers.find((candidate) => candidate.name === 'child');
+    return { ...result, childLayer, element: childLayer?.elements[0] };
+  }
+
+  it('uses rigging id instead of DOM layer ordinal and applies the parent pose once at start, middle, and end', () => {
+    const source = buildRiggingAdapterFixture();
+    const start = childAt(source, 0);
+    const middle = childAt(source, 2);
+    const end = childAt(source, 4);
+
+    expect(start.ok).toBe(true);
+    expect(middle.ok).toBe(true);
+    expect(end.ok).toBe(true);
+    for (const [frameIndex, result] of [[0, start], [2, middle], [4, end]] as const) {
+      expect(result.ok, `frame ${frameIndex}`).toBe(true);
+      if (!result.ok) continue;
+      expect(result.element?.kind).toBe('symbol');
+      if (result.element?.kind !== 'symbol' || !result.element.localTransform) continue;
+      if (frameIndex === 0) {
+        expect(result.element.localTransform).toMatchObject({ tx: 10, ty: 0, a: 1, b: 0 });
+      } else if (frameIndex === 2) {
+        expect(result.element.localTransform.tx).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+        expect(result.element.localTransform.ty).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+        expect(result.element.localTransform.a).toBeCloseTo(Math.SQRT1_2, 9);
+        expect(result.element.localTransform.b).toBeCloseTo(Math.SQRT1_2, 9);
+      } else {
+        expect(result.element.localTransform).toMatchObject({ tx: 0, ty: 10, a: 0, b: 1 });
+      }
+    }
+  });
+
+  it('moves a held world-space child by the parent pose delta', () => {
+    const result = childAt(buildRiggingAdapterFixture({ childTween: false }), 2);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.element?.kind !== 'symbol' || !result.element.localTransform) return;
+    expect(result.element.localTransform.tx).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+    expect(result.element.localTransform.ty).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+    expect(result.element.localTransform.a).toBeCloseTo(Math.SQRT1_2, 9);
+    expect(result.element.localTransform.b).toBeCloseTo(Math.SQRT1_2, 9);
+  });
+
+  it.each([
+    {
+      label: 'unknown parent id',
+      options: { childRigParent: '99' },
+      message: 'DOMFrame Rig parent id 99 has no DOMLayer.layerRiggingIndex match',
+    },
+    {
+      label: 'non-numeric parent id',
+      options: { childRigParent: 'rig-x' },
+      message: 'is not a numeric Rig id',
+    },
+    {
+      label: 'parent cycle',
+      options: { childRigId: '8', parentFrameParent: '8' },
+      message: 'Rig parent cycle detected',
+    },
+    {
+      label: 'multiple parent objects',
+      options: { parentObjectCount: 2 },
+      message: 'parent frame must contain exactly one display object',
+    },
+    {
+      label: 'malformed propagation matrix metadata',
+      options: { rigPropagationMatrix: 'not-json' },
+      message: 'rigPropagationMatrix is not valid JSON',
+    },
+    {
+      label: 'singular parent endpoint',
+      options: { parentMatrix: transformedMatrix(0, 0, 0, 0, 0, 0) },
+      message: 'Rig parent endpoint matrix is singular',
+    },
+  ])('fails closed for $label with a local reason', ({ options, message }) => {
+    const adapted = buildRiggingAdapterFixtureResult(options);
+    const result = adapted.ok
+      ? childAt(adapted.source, 2)
+      : adapted;
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain(message);
   });
 });
 
