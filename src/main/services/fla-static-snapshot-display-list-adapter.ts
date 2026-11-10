@@ -137,6 +137,7 @@ export interface FlaStaticSnapshotDisplaySource {
     frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
     frameIndex: number,
     scope: string,
+    options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
   ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext>;
 }
 
@@ -1295,13 +1296,26 @@ interface RigEvaluationContext {
   readonly timelineXml: string;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly layers: readonly FlaXflElementBlock[];
+  /** Scoped to one Graphic frame build; never shared across timelines or requests. */
+  readonly matrixCache: Map<string, RigLayerMatrixEvaluation>;
+  readonly onMatrixComputed?: (layerIndex: number, frameIndex: number) => void;
+}
+
+interface RigLayerMatrixEvaluation {
+  readonly matrix: FlaDisplayListMatrix;
+  /** Layers visited while producing this pose, used to retain ancestry checks on cache hits. */
+  readonly dependencies: readonly number[];
+  /** Longest additional parent chain below this layer for depth checks on cache hits. */
+  readonly maxParentDepth: number;
 }
 
 interface RigMotionParentPoses {
   readonly parentLayerIndex: number;
-  readonly start: FlaDisplayListMatrix;
-  readonly end: FlaDisplayListMatrix;
-  readonly current: FlaDisplayListMatrix;
+  readonly start: RigLayerMatrixEvaluation;
+  readonly end: RigLayerMatrixEvaluation;
+  readonly current: RigLayerMatrixEvaluation;
+  readonly dependencies: readonly number[];
+  readonly maxParentDepth: number;
 }
 
 function isNormalRigLayer(layer: FlaXflElementBlock | undefined): boolean {
@@ -1410,9 +1424,25 @@ function rigMotionParentPoses(
   if (!end.ok) return end;
   const current = evaluateRigLayerObjectMatrix(context, parentLayerIndex, frameIndex, ancestry);
   if (!current.ok) return current;
+  const dependencies = [...new Set([
+    ...start.value.dependencies,
+    ...end.value.dependencies,
+    ...current.value.dependencies,
+  ])];
   return {
     ok: true,
-    value: { parentLayerIndex, start: start.value, end: end.value, current: current.value },
+    value: {
+      parentLayerIndex,
+      start: start.value,
+      end: end.value,
+      current: current.value,
+      dependencies,
+      maxParentDepth: Math.max(
+        start.value.maxParentDepth,
+        end.value.maxParentDepth,
+        current.value.maxParentDepth,
+      ),
+    },
   };
 }
 
@@ -1446,10 +1476,36 @@ function evaluateRigLayerObjectMatrix(
   layerIndex: number,
   frameIndex: number,
   ancestry: readonly number[] = [],
-): RigCalculationResult<FlaDisplayListMatrix> {
+): RigCalculationResult<RigLayerMatrixEvaluation> {
   if (ancestry.includes(layerIndex)) {
     return { ok: false, message: `Rig parent cycle detected at layer ${layerIndex}` };
   }
+  const cacheKey = `${layerIndex}:${frameIndex}`;
+  const cached = context.matrixCache.get(cacheKey);
+  if (cached) {
+    const cyclicDependency = cached.dependencies.find((dependency) => ancestry.includes(dependency));
+    if (cyclicDependency !== undefined) {
+      return { ok: false, message: `Rig parent cycle detected at layer ${cyclicDependency}` };
+    }
+    if (cached.maxParentDepth > 0 && ancestry.length + cached.maxParentDepth > MAX_RIG_PARENT_DEPTH) {
+      return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
+    }
+    return { ok: true, value: cached };
+  }
+  const evaluated = computeRigLayerObjectMatrix(context, layerIndex, frameIndex, ancestry);
+  if (evaluated.ok) {
+    context.matrixCache.set(cacheKey, evaluated.value);
+    context.onMatrixComputed?.(layerIndex, frameIndex);
+  }
+  return evaluated;
+}
+
+function computeRigLayerObjectMatrix(
+  context: RigEvaluationContext,
+  layerIndex: number,
+  frameIndex: number,
+  ancestry: readonly number[],
+): RigCalculationResult<RigLayerMatrixEvaluation> {
   const layer = context.layers[layerIndex];
   const indexedLayer = context.frameSpanIndex.layers[layerIndex];
   if (!layer || !indexedLayer) return { ok: false, message: `Rig parent layer ${layerIndex} has no frame spans` };
@@ -1497,8 +1553,8 @@ function evaluateRigLayerObjectMatrix(
     let from = startMatrix.value;
     let to = endMatrix.value;
     if (parentPoses.value) {
-      const parentStartInverse = inverse(parentPoses.value.start);
-      const parentEndInverse = inverse(parentPoses.value.end);
+      const parentStartInverse = inverse(parentPoses.value.start.matrix);
+      const parentEndInverse = inverse(parentPoses.value.end.matrix);
       if (!parentStartInverse || !parentEndInverse) {
         return { ok: false, message: 'Rig parent endpoint matrix is singular' };
       }
@@ -1512,11 +1568,18 @@ function evaluateRigLayerObjectMatrix(
       tween.value.rotation,
     );
     if (!interpolated.ok) return { ok: false, message: interpolated.message };
+    const dependencies = parentPoses.value
+      ? [...new Set([layerIndex, ...parentPoses.value.dependencies])]
+      : [layerIndex];
     return {
       ok: true,
-      value: parentPoses.value
-        ? compose(parentPoses.value.current, interpolated.matrix)
-        : interpolated.matrix,
+      value: {
+        matrix: parentPoses.value
+          ? compose(parentPoses.value.current.matrix, interpolated.matrix)
+          : interpolated.matrix,
+        dependencies,
+        maxParentDepth: parentPoses.value ? 1 + parentPoses.value.maxParentDepth : 0,
+      },
     };
   }
 
@@ -1524,7 +1587,12 @@ function evaluateRigLayerObjectMatrix(
   if (!authoredMatrix.ok) return authoredMatrix;
   const parent = rigParentLayerForFrame(span.sourceFrame, layerIndex, context.layers);
   if (!parent.ok) return parent;
-  if (parent.value === null) return authoredMatrix;
+  if (parent.value === null) {
+    return {
+      ok: true,
+      value: { matrix: authoredMatrix.value, dependencies: [layerIndex], maxParentDepth: 0 },
+    };
+  }
   if (nextAncestry.length > MAX_RIG_PARENT_DEPTH) {
     return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
   }
@@ -1532,11 +1600,22 @@ function evaluateRigLayerObjectMatrix(
   if (!parentAtStart.ok) return parentAtStart;
   const parentAtFrame = evaluateRigLayerObjectMatrix(context, parent.value, frameIndex, nextAncestry);
   if (!parentAtFrame.ok) return parentAtFrame;
-  const startInverse = inverse(parentAtStart.value);
+  const startInverse = inverse(parentAtStart.value.matrix);
   if (!startInverse) return { ok: false, message: 'Rig parent keyframe matrix is singular' };
   return {
     ok: true,
-    value: compose(compose(parentAtFrame.value, startInverse), authoredMatrix.value),
+    value: {
+      matrix: compose(compose(parentAtFrame.value.matrix, startInverse), authoredMatrix.value),
+      dependencies: [...new Set([
+        layerIndex,
+        ...parentAtStart.value.dependencies,
+        ...parentAtFrame.value.dependencies,
+      ])],
+      maxParentDepth: 1 + Math.max(
+        parentAtStart.value.maxParentDepth,
+        parentAtFrame.value.maxParentDepth,
+      ),
+    },
   };
 }
 
@@ -1559,9 +1638,9 @@ function applyRigCorrectionToElements(
   if (!parentAtStart.ok) return parentAtStart;
   const parentAtFrame = evaluateRigLayerObjectMatrix(context, parent.value, frameIndex, ancestry);
   if (!parentAtFrame.ok) return parentAtFrame;
-  const startInverse = inverse(parentAtStart.value);
+  const startInverse = inverse(parentAtStart.value.matrix);
   if (!startInverse) return { ok: false, message: 'Rig parent keyframe matrix is singular' };
-  const correction = compose(parentAtFrame.value, startInverse);
+  const correction = compose(parentAtFrame.value.matrix, startInverse);
   return {
     ok: true,
     value: elements.map((element) => ({
@@ -1732,12 +1811,19 @@ function buildGraphicFrameContext(
   frameIndex: number,
   scope: string,
   state: SourceBuildState,
+  options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext> {
   const resolution = resolveFlaTimelineFrameSpan(frameSpanIndex, frameIndex);
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
-  const rigContext: RigEvaluationContext = { timelineXml, frameSpanIndex, layers };
+  const rigContext: RigEvaluationContext = {
+    timelineXml,
+    frameSpanIndex,
+    layers,
+    matrixCache: new Map(),
+    ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
+  };
   const maskLayerIds = new Map<number, string>();
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
@@ -1899,8 +1985,8 @@ function buildGraphicFrameContext(
       const progress = evaluatedProgress.progress;
       const rawSync = startFrame.attributes.motionTweenSync;
       const sourceMotionSync = rawSync === undefined ? undefined : rawSync === 'true';
-      const rigStartInverse = rigParentPoses.value ? inverse(rigParentPoses.value.start) : null;
-      const rigEndInverse = rigParentPoses.value ? inverse(rigParentPoses.value.end) : null;
+      const rigStartInverse = rigParentPoses.value ? inverse(rigParentPoses.value.start.matrix) : null;
+      const rigEndInverse = rigParentPoses.value ? inverse(rigParentPoses.value.end.matrix) : null;
       if (rigParentPoses.value && (!rigStartInverse || !rigEndInverse)) {
         return rejectTween('Rig parent endpoint matrix is singular');
       }
@@ -1960,7 +2046,7 @@ function buildGraphicFrameContext(
         );
         if (!interpolated.ok) return rejectTween(interpolated.message);
         const worldTransform = rigParentPoses.value
-          ? compose(rigParentPoses.value.current, interpolated.matrix)
+          ? compose(rigParentPoses.value.current.matrix, interpolated.matrix)
           : interpolated.matrix;
         const startAlpha = startTarget.alphaMultiplier ?? 1;
         const endAlpha = endTarget.alphaMultiplier ?? 1;
@@ -2199,10 +2285,10 @@ function* adaptFlaXflDisplaySourceSteps(
         frameBuildStateIsBase = false;
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },
-      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope, options) => {
         resetFrameBuildState();
         frameBuildStateIsBase = false;
-        return buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state);
+        return buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state, options);
       },
     },
   };

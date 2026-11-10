@@ -227,6 +227,7 @@ function buildRiggingAdapterFixtureResult(options: {
   readonly childRigId?: string;
   readonly parentTween?: boolean;
   readonly parentFrameParent?: string;
+  readonly withGrandparent?: boolean;
   readonly parentObjectCount?: number;
   readonly parentMatrix?: string;
   readonly rigPropagationMatrix?: string;
@@ -237,6 +238,7 @@ function buildRiggingAdapterFixtureResult(options: {
   const childRigId = options.childRigId;
   const parentTween = options.parentTween ?? true;
   const parentFrameParent = options.parentFrameParent;
+  const withGrandparent = options.withGrandparent ?? false;
   const parentObjectCount = options.parentObjectCount ?? 1;
   const parentMatrix = options.parentMatrix ?? transformedMatrix(0, 1, -1, 0, 0, 0);
   const rigPropagationMatrix = options.rigPropagationMatrix ??
@@ -266,6 +268,11 @@ function buildRiggingAdapterFixtureResult(options: {
   const rootLayers = [
     `<DOMLayer name="child"${childLayerRigId}><frames>${childStart}${childEnd}</frames></DOMLayer>`,
     `<DOMLayer name="parent" layerRiggingIndex="${parentRigId}"><frames>${parentStart}${parentEnd}</frames></DOMLayer>`,
+    ...(withGrandparent ? [
+      `<DOMLayer name="grandparent" layerRiggingIndex="8"><frames><DOMFrame index="0" duration="5"><elements>` +
+        `<DOMSymbolInstance libraryItemName="grandparent-art" symbolType="graphic">${matrix(0, 0)}</DOMSymbolInstance>` +
+        `</elements></DOMFrame></frames></DOMLayer>`,
+    ] : []),
   ];
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
     layer('scene', [frame(0, symbol('rig-root'))].join('')),
@@ -279,7 +286,10 @@ function buildRiggingAdapterFixtureResult(options: {
   }, ...Array.from({ length: parentObjectCount }, (_, index) => ({
     name: `LIBRARY/parent-art-${index}.xml`,
     xml: graphic(`parent-art-${index}`, [layer('art', frame(0, shape()))]),
-  }))]);
+  })), ...(withGrandparent ? [{
+    name: 'LIBRARY/grandparent-art.xml',
+    xml: graphic('grandparent-art', [layer('art', frame(0, shape()))]),
+  }] : [])]);
   return adapted;
 }
 
@@ -1460,6 +1470,30 @@ describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
     expect(result.element.localTransform.ty).toBeCloseTo(Math.SQRT1_2 * 10, 9);
     expect(result.element.localTransform.a).toBeCloseTo(Math.SQRT1_2, 9);
     expect(result.element.localTransform.b).toBeCloseTo(Math.SQRT1_2, 9);
+  });
+
+  it('memoizes repeated successful layer/frame poses inside one Graphic evaluation', () => {
+    const source = buildRiggingAdapterFixture({ withGrandparent: true, parentFrameParent: '8' });
+    const target = descriptor(source, 'rig-root');
+    const computed: Array<{ layerIndex: number; frameIndex: number }> = [];
+    const result = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      2,
+      'rig-matrix-cache',
+      { onRigMatrixComputed: (layerIndex, frameIndex) => computed.push({ layerIndex, frameIndex }) },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const child = result.value.layers.find((layer) => layer.name === 'child')?.elements[0];
+    expect(child?.kind).toBe('symbol');
+    if (child?.kind !== 'symbol' || !child.localTransform) return;
+    expect(child.localTransform.tx).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+    expect(child.localTransform.ty).toBeCloseTo(Math.SQRT1_2 * 10, 9);
+    for (const frameIndex of [0, 2, 4]) {
+      expect(computed.filter((pose) => pose.layerIndex === 2 && pose.frameIndex === frameIndex)).toHaveLength(1);
+    }
   });
 
   it('does not displace a held child when its parent pose is static', () => {
