@@ -105,6 +105,8 @@ export type FlaDisplayListElement =
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
       readonly firstFrame?: string;
       readonly lastFrame?: string;
+      /** Effective firstFrame accumulated across a verified Classic Motion Sync chain. */
+      readonly synchronizedFirstFrame?: number;
       /** Bounded source alpha multiplier for the #1044 synchronized motion span. */
       readonly alphaMultiplier?: number;
       /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */

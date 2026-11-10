@@ -108,7 +108,7 @@ function buildMotionAdapterFixture(
   endLibraryItemName = 'moving-target',
   duration = 2,
   holdEndpoint = false,
-  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string | undefined>>> = {},
+  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'motionTweenSync' | 'keyMode', string | undefined>>> = {},
   startKeyMode: string | null = '22017',
   motionFrameAttributes: Readonly<Record<string, string>> = {},
   firstFrameTransition = false,
@@ -1080,6 +1080,36 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
     }
 
+    for (const terminalKeyMode of ['9728', '15872'] as const) {
+      const synchronizedStart = buildMotionAdapterFixture(
+        '',
+        '',
+        'moving-target',
+        7,
+        true,
+        { keyMode: terminalKeyMode },
+        '24065',
+        { motionTweenSync: 'true' },
+      );
+      const synchronizedTarget = descriptor(synchronizedStart, 'motion-root');
+      for (const [frameIndex, progress] of [[1, 1 / 7], [3, 3 / 7], [6, 6 / 7]] as const) {
+        const selected = synchronizedStart.buildGraphicFrameContext(
+          synchronizedTarget.timelineXml,
+          synchronizedTarget.frameSpanIndex,
+          frameIndex,
+          `sync-start-terminal-${terminalKeyMode}-frame-${frameIndex}`,
+        );
+        expect(selected.ok, `terminal keyMode=${terminalKeyMode}, frame=${frameIndex}`).toBe(true);
+        if (!selected.ok) continue;
+        const interpolated = selected.value.layers[0]?.elements[0];
+        expect(interpolated?.kind).toBe('symbol');
+        if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+        expect(interpolated.sourceParentMotionTweenSync).toBe(true);
+        expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+        expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      }
+    }
+
     const explicitNoneTerminal = buildMotionAdapterFixture(
       '',
       '',
@@ -1099,7 +1129,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     const expectBlocked = (
       label: string,
       duration = 29,
-      terminalAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {
+      terminalAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'motionTweenSync' | 'keyMode', string>>> = {
         keyMode: '9728',
       },
       endLibraryItemName = 'moving-target',
@@ -1128,12 +1158,44 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
 
     expectBlocked('invalid-terminal-keyMode', 29, { keyMode: 'not-an-integer' });
     expectBlocked('invalid-terminal-motionTweenSnap', 29, { keyMode: '9728', motionTweenSnap: 'invalid' });
+    expectBlocked('terminal-with-Sync-metadata', 29, { keyMode: '9728', motionTweenSync: 'true' });
     expectBlocked('invalid-start-keyMode', 29, { keyMode: '9728' }, 'moving-target', 'not-an-integer');
+    expectBlocked('untweened-start-keyMode-is-not-Classic-Motion', 29, { keyMode: '9728' }, 'moving-target', '9728');
     expectBlocked('easing-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
       '<Ease><Property name="x" value="1"/></Ease>');
     expectBlocked('motion-path-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
       '<MotionPath><Point x="1" y="2"/></MotionPath>');
     expectBlocked('different-endpoint-identity', 29, { keyMode: '9728' }, 'different-target');
+  });
+
+  it('pairs a Sync Classic start to the next valid Motion key without keyMode-family coupling', () => {
+    const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', [frame(0, symbol('motion-root'))].join('')),
+    ])}</timelines></DOMDocument>`;
+    const start = `<DOMFrame index="0" duration="2" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065"><elements>${symbol('moving-target')}</elements></DOMFrame>`;
+    const nextMotionKey = `<DOMFrame index="2" duration="2" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${symbol('moving-target', 20, 30)}</elements></DOMFrame>`;
+    const adapted = adaptFlaXflDisplaySource(documentXml, [{
+      name: 'LIBRARY/motion-root.xml',
+      xml: graphic('motion-root', [layer('moving', start + nextMotionKey)]),
+    }]);
+    expect(adapted.ok).toBe(true);
+    if (!adapted.ok) return;
+
+    const target = descriptor(adapted.source, 'motion-root');
+    const selected = adapted.source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'sync-motion-to-ordinary-motion-key',
+    );
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) return;
+    const interpolated = selected.value.layers[0]?.elements[0];
+    expect(interpolated?.kind).toBe('symbol');
+    if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) return;
+    expect(interpolated.sourceParentMotionTweenSync).toBe(true);
+    expect(interpolated.localTransform.tx).toBeCloseTo(10, 12);
+    expect(interpolated.localTransform.ty).toBeCloseTo(15, 12);
   });
 
   it('keeps motion tween interiors fail-closed when source easing or target identity changes', () => {

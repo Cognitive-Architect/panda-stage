@@ -65,6 +65,21 @@ function syncMotionOwnedLoop(firstFrame: string, spanDuration = 7): string {
   return start + end;
 }
 
+function chainedSyncMotionFrames(): string {
+  const instance = (firstFrame: string | undefined, tx: number) => {
+    const first = firstFrame === undefined ? '' : ` firstFrame="${firstFrame}"`;
+    return `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${first}>${matrix(tx)}</DOMSymbolInstance>`;
+  };
+  const syncKey = (index: number, duration: number, firstFrame: string, tx: number) =>
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065"><elements>${instance(firstFrame, tx)}</elements></DOMFrame>`;
+  return [
+    syncKey(0, 7, '1', 0),
+    syncKey(7, 7, '2', 10),
+    syncKey(14, 6, '3', 20),
+    `<DOMFrame index="20" duration="1" keyMode="9728"><elements>${instance(undefined, 30)}</elements></DOMFrame>`,
+  ].join('');
+}
+
 function adapt(parentFrames: string, childFrames: string) {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', '')}</timelines></DOMDocument>`;
   const result = adaptFlaXflDisplaySource(documentXml, [
@@ -658,6 +673,55 @@ describe('nested Graphic authored-frame selection', () => {
     expect(synchronizedMultiFrameResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
     if (!synchronizedMultiFrameResult.ok) {
       expect(synchronizedMultiFrameResult.message).toContain('firstFrame=7 is outside child frameCount 4');
+    }
+  });
+
+  it('carries Graphic firstFrame across adjacent Sync Classic keys and a normal terminal key', () => {
+    const source = adapt(chainedSyncMotionFrames(), emptyFrames(5));
+    const cases = [
+      { frame: 0, sourceFirstFrame: '1', explicit: true, effectiveFirstFrame: 1, childFrame: 1, spanStart: 0, tx: 0 },
+      { frame: 7, sourceFirstFrame: '2', explicit: true, effectiveFirstFrame: 8, childFrame: 3, spanStart: 7, tx: 10 },
+      { frame: 8, sourceFirstFrame: '2', explicit: true, effectiveFirstFrame: 8, childFrame: 4, spanStart: 7, tx: 80 / 7 },
+      { frame: 14, sourceFirstFrame: '3', explicit: true, effectiveFirstFrame: 15, childFrame: 0, spanStart: 14, tx: 20 },
+      { frame: 15, sourceFirstFrame: '3', explicit: true, effectiveFirstFrame: 15, childFrame: 1, spanStart: 14, tx: 130 / 6 },
+      { frame: 20, sourceFirstFrame: undefined, explicit: false, effectiveFirstFrame: 21, childFrame: 1, spanStart: 20, tx: 30 },
+    ] as const;
+
+    for (const testCase of cases) {
+      const result = prepareFlaNestedGraphicFrameSelections(
+        source,
+        graphicRoot(source, 'parent', testCase.frame),
+      );
+      expect(result.ok, `frame ${testCase.frame}`).toBe(true);
+      if (!result.ok) continue;
+      const selection = result.selections[0];
+      expect(selection?.firstFrame).toBe(testCase.sourceFirstFrame);
+      expect(selection?.firstFrameWasExplicit).toBe(testCase.explicit);
+      expect(selection?.effectiveFirstFrame).toBe(testCase.effectiveFirstFrame);
+      expect(selection?.selectedChildFrameIndex).toBe(testCase.childFrame);
+      expect(selection?.sourceParentFrameSpanStart).toBe(testCase.spanStart);
+      expect(selection?.sourceTransform.tx).toBeCloseTo(testCase.tx, 12);
+    }
+  });
+
+  it('does not carry firstFrame through an ordinary Classic Motion key without Sync', () => {
+    const ordinary =
+      `<DOMFrame index="0" duration="7" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>` +
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="1">${matrix()}</DOMSymbolInstance>` +
+      `</elements></DOMFrame>` +
+      `<DOMFrame index="7" duration="1" keyMode="9728"><elements>` +
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="4">${matrix(10)}</DOMSymbolInstance>` +
+      `</elements></DOMFrame>`;
+    const source = adapt(ordinary, emptyFrames(5));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 7));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.selections[0]).toMatchObject({
+        firstFrame: '4',
+        firstFrameWasExplicit: true,
+        effectiveFirstFrame: 4,
+        selectedChildFrameIndex: 4,
+      });
     }
   });
 

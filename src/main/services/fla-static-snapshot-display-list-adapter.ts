@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import {
   buildFlaTimelineFrameSpanIndex,
   resolveFlaTimelineFrameSpan,
+  type FlaNormalizedFrameSpan,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
 import {
@@ -1163,15 +1164,11 @@ function classicMotionFramePairRejectionReason(
   if (!startKeyModeFamily) {
     return `start frame keyMode=${rawKeyMode(startFrame)} is unsupported for Classic Motion; expected 22017 without motionTweenSync or 24065 with motionTweenSync=true`;
   }
-  const endKeyModeFamily = motionKeyModeFamily(endFrame);
   if (endFrame.attributes.tweenType === 'motion') {
-    if (!endKeyModeFamily) {
-      return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for a Classic Motion key; expected the matching 22017 or 24065 family`;
+    if (!motionKeyModeFamily(endFrame)) {
+      return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for a Classic Motion key; expected 22017 without motionTweenSync or 24065 with motionTweenSync=true`;
     }
-    if (endKeyModeFamily !== startKeyModeFamily) {
-      return `Classic Motion keyMode families do not match (start=${rawKeyMode(startFrame)}, end=${rawKeyMode(endFrame)})`;
-    }
-  } else if (startKeyModeFamily !== 'motion' || !isSupportedTerminalKeyMode(endFrame)) {
+  } else if (!isSupportedTerminalKeyMode(endFrame)) {
     return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for this Classic Motion endpoint role`;
   }
   if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
@@ -1269,6 +1266,144 @@ function isClassicMotionSpan(
   return startIndex >= 0 && rejectionReason === null;
 }
 
+type ClassicMotionSyncFrameSpan = FlaNormalizedFrameSpan<FlaXflElementBlock>;
+
+interface ClassicMotionSyncFirstFrameState {
+  readonly libraryItemName: string;
+  readonly firstFrame: number;
+  readonly inherited: boolean;
+}
+
+type ClassicMotionSyncFirstFrameResult =
+  | { readonly ok: true; readonly firstFrames: readonly (number | undefined)[] }
+  | { readonly ok: false; readonly message: string };
+
+function parseAuthoredGraphicFirstFrame(frame: FlaXflElementBlock): number | null {
+  const raw = frame.attributes.firstFrame;
+  if (raw === undefined) return 0;
+  const trimmed = raw.trim();
+  if (!/^\d+$/u.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Resolve the first-frame origin Flare carries through adjacent, synchronized
+ * Classic Motion keys. Element order and library identity are both retained;
+ * source-authored firstFrame values remain on the parsed display elements.
+ */
+function classicMotionSyncFirstFrames(
+  spans: readonly ClassicMotionSyncFrameSpan[],
+  currentSpan: ClassicMotionSyncFrameSpan,
+): ClassicMotionSyncFirstFrameResult {
+  let currentPosition = spans.indexOf(currentSpan);
+  if (currentPosition < 0) {
+    currentPosition = spans.findIndex((span) => span.index === currentSpan.index);
+  }
+  if (currentPosition < 0) return { ok: true, firstFrames: [] };
+
+  const reversedChain = [currentSpan];
+  let successor = currentSpan;
+  while (currentPosition > 0) {
+    const previous = spans[currentPosition - 1];
+    if (!previous || previous.tweenType !== 'motion' ||
+        previous.sourceFrame.attributes.motionTweenSync !== 'true' ||
+        previous.endExclusive !== successor.index ||
+        !isClassicMotionSpan(previous.sourceFrame, successor.sourceFrame, previous.index, previous.duration)) {
+      break;
+    }
+    reversedChain.push(previous);
+    successor = previous;
+    currentPosition -= 1;
+  }
+  if (reversedChain.length < 2) return { ok: true, firstFrames: [] };
+
+  const chain = reversedChain.reverse();
+  const readFrameState = (
+    frame: FlaXflElementBlock,
+    frameIndex: number,
+  ): { readonly ok: true; readonly states: readonly (ClassicMotionSyncFirstFrameState | undefined)[] } |
+    { readonly ok: false; readonly message: string } => {
+    const elements = frameDisplayElements(frame);
+    const states: (ClassicMotionSyncFirstFrameState | undefined)[] = [];
+    for (let elementIndex = 0; elementIndex < elements.length; elementIndex += 1) {
+      const element = elements[elementIndex];
+      if (element?.name !== 'DOMSymbolInstance') {
+        states.push(undefined);
+        continue;
+      }
+      const libraryItemName = element.attributes.libraryItemName?.trim();
+      const firstFrame = parseAuthoredGraphicFirstFrame(element);
+      if (!libraryItemName || firstFrame === null) {
+        return {
+          ok: false,
+          message: `Classic Motion Sync keyframe ${frameIndex} has an invalid Graphic instance identity or firstFrame at element ${elementIndex}`,
+        };
+      }
+      states.push({ libraryItemName, firstFrame, inherited: false });
+    }
+    return { ok: true, states };
+  };
+
+  const firstSpan = chain[0];
+  if (!firstSpan) return { ok: true, firstFrames: [] };
+  let statesResult = readFrameState(firstSpan.sourceFrame, firstSpan.index);
+  if (!statesResult.ok) return statesResult;
+  let states = statesResult.states;
+
+  for (let chainIndex = 1; chainIndex < chain.length; chainIndex += 1) {
+    const previousSpan = chain[chainIndex - 1];
+    const current = chain[chainIndex];
+    if (!previousSpan || !current) continue;
+    const step = current.index - previousSpan.index;
+    if (!Number.isSafeInteger(step) || step <= 0) {
+      return { ok: false, message: `Classic Motion Sync keyframe ${current.index} has an invalid frame interval` };
+    }
+    statesResult = readFrameState(current.sourceFrame, current.index);
+    if (!statesResult.ok) return statesResult;
+    const authoredStates = statesResult.states;
+    const nextStates: (ClassicMotionSyncFirstFrameState | undefined)[] = [];
+    for (let elementIndex = 0; elementIndex < authoredStates.length; elementIndex += 1) {
+      const authored = authoredStates[elementIndex];
+      if (!authored) {
+        nextStates.push(undefined);
+        continue;
+      }
+      const previous = states[elementIndex];
+      if (previous?.libraryItemName === authored.libraryItemName) {
+        const firstFrame = previous.firstFrame + step;
+        if (!Number.isSafeInteger(firstFrame)) {
+          return {
+            ok: false,
+            message: `Classic Motion Sync firstFrame exceeds the safe range at keyframe ${current.index}, element ${elementIndex}`,
+          };
+        }
+        nextStates.push({ ...authored, firstFrame, inherited: true });
+      } else {
+        nextStates.push(authored);
+      }
+    }
+    states = nextStates;
+  }
+
+  return {
+    ok: true,
+    firstFrames: states.map((state) => state?.inherited ? state.firstFrame : undefined),
+  };
+}
+
+function applyClassicMotionSyncFirstFrames(
+  elements: readonly FlaDisplayListElement[],
+  firstFrames: readonly (number | undefined)[],
+): readonly FlaDisplayListElement[] {
+  if (firstFrames.length === 0) return elements;
+  return elements.map((element, index) => {
+    const synchronizedFirstFrame = firstFrames[index];
+    if (element.kind !== 'symbol' || synchronizedFirstFrame === undefined) return element;
+    return { ...element, synchronizedFirstFrame };
+  });
+}
+
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
 function normalizeXflTimelineLayersForPainterOrder<T>(
   layers: readonly T[],
@@ -1306,6 +1441,13 @@ function buildGraphicFrameContext(
       const frame = selection.sourceFrame;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
+      const selectedLayerSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
+      const syncFirstFrames = selectedLayerSpan && indexedLayer
+        ? classicMotionSyncFirstFrames(indexedLayer.spans, selectedLayerSpan)
+        : { ok: true as const, firstFrames: [] as readonly (number | undefined)[] };
+      if (!syncFirstFrames.ok) {
+        return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has an unsupported Classic Motion Sync chain: ${syncFirstFrames.message}`);
+      }
       const incomingMotionSpan = indexedLayer?.spans.find((span) =>
         span.tweenType === 'motion' && span.endExclusive === selection.span.index);
       if (incomingMotionSpan) {
@@ -1375,7 +1517,7 @@ function buildGraphicFrameContext(
         state,
       });
       if (!parsed.ok) return parsed;
-      elements = parsed.value;
+      elements = applyClassicMotionSyncFirstFrames(parsed.value, syncFirstFrames.firstFrames);
     } else if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
       const rejectTween = (reason: string) => fail(
         'RENDER_FAILED',
@@ -1384,8 +1526,9 @@ function buildGraphicFrameContext(
       if (selection.span.tweenType !== 'motion') return rejectTween('only Classic Motion spans are supported');
 
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
-      const startSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
-      const endSpan = indexedLayer?.spans.find((span) => span.index === selection.span.endExclusive);
+      if (!indexedLayer) return rejectTween('timeline layer span metadata is missing');
+      const startSpan = indexedLayer.spans.find((span) => span.index === selection.span.index);
+      const endSpan = indexedLayer.spans.find((span) => span.index === selection.span.endExclusive);
       if (!startSpan || !endSpan) return rejectTween('an adjacent authored end keyframe is required');
       const startFrame = startSpan.sourceFrame;
       const endFrame = endSpan.sourceFrame;
@@ -1398,6 +1541,8 @@ function buildGraphicFrameContext(
       if (pairRejectionReason) {
         return rejectTween(`source metadata is outside the supported Classic Motion structure: ${pairRejectionReason}`);
       }
+      const syncFirstFrames = classicMotionSyncFirstFrames(indexedLayer.spans, startSpan);
+      if (!syncFirstFrames.ok) return rejectTween(syncFirstFrames.message);
       const sourceRotationResult = classicMotionRotationForFrame(startFrame);
       if (!sourceRotationResult.ok) return rejectTween(sourceRotationResult.message);
       const sourceEaseResult = classicMotionEasesForFrame(startFrame);
@@ -1433,7 +1578,8 @@ function buildGraphicFrameContext(
       if (!startParsed.ok) return startParsed;
       const endParsed = parseTweenTarget(endFrame, endSpan.index);
       if (!endParsed.ok) return endParsed;
-      if (startParsed.value.length !== endParsed.value.length || startParsed.value.length === 0) {
+      const syncedStartElements = applyClassicMotionSyncFirstFrames(startParsed.value, syncFirstFrames.firstFrames);
+      if (syncedStartElements.length !== endParsed.value.length || syncedStartElements.length === 0) {
         return rejectTween('Classic Motion endpoints must preserve the same non-empty display element count');
       }
       const interpolatedFrameFilter = interpolateClassicMotionFrameBlurFilter(
@@ -1444,8 +1590,8 @@ function buildGraphicFrameContext(
       if (!interpolatedFrameFilter.ok) return rejectTween(interpolatedFrameFilter.message);
       frameFilter = interpolatedFrameFilter.filter;
       const interpolatedElements: FlaDisplayListElement[] = [];
-      for (let index = 0; index < startParsed.value.length; index += 1) {
-        const startTarget = startParsed.value[index];
+      for (let index = 0; index < syncedStartElements.length; index += 1) {
+        const startTarget = syncedStartElements[index];
         const endTarget = endParsed.value[index];
         if (startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
             startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
