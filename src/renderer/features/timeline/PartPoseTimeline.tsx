@@ -1,9 +1,25 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, Trash2 } from 'lucide-react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import { createPortal } from 'react-dom';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Copy,
+  MoreHorizontal,
+  Trash2,
+} from 'lucide-react';
 import {
   hasAuthoredPartPose,
   isValidFrameTime,
   lastValidFrameTime,
+  resolveTimelineFrameTime,
   type AdaptivePartsCharacter,
   type PartPoseEasing,
   type PartPoseKeyframe,
@@ -11,27 +27,32 @@ import {
   type Shot,
   type Layer,
 } from '../../../domain';
-import type { PartPoseEditorUi } from '../part-pose/partPoseEditorTypes';
+import {
+  canAddPartPoseKeyAtTime,
+  getPartPosePartLabel,
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../part-pose/partPoseEditorTypes';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { IconButton } from '../../ui/Button';
-import { formatTimecode, timeToPx } from './timeGeometry';
+import { formatTimecode, pxToTime, timeToPx } from './timeGeometry';
 import { timelineUiStore } from './timelineUiStore';
 import { PositionLaneErrorNotice } from './PositionLane';
 import { previewPartPoseKeyTime } from './partPoseTimelineGesture';
 
 export interface PartPoseTimelineProps {
   partPoseEditor: PartPoseEditorUi;
+  toolbarHost: HTMLElement | null;
   shot: Shot;
   layer: Layer;
   snapshot: EditorProjectSnapshot;
   currentTimeMs: number;
   pixelsPerMs: number;
   trackWidth: number;
-  laneLabelWidth: number;
 }
 
 interface PartPoseClipboard {
@@ -67,14 +88,13 @@ function errorText(error: unknown): string {
     : 'Part 姿势关键帧操作失败，请重试。';
 }
 
-function isCurrentPartPoseTarget(input: {
+function isCurrentPartPoseEditorContext(input: {
   snapshot: EditorProjectSnapshot;
   instanceId: number | null;
   shotId: string;
   layerId: string;
   partId: string;
   partPoseEditor: PartPoseEditorUi;
-  sourceTimeMs?: number;
 }): boolean {
   const {
     snapshot,
@@ -83,7 +103,6 @@ function isCurrentPartPoseTarget(input: {
     layerId,
     partId,
     partPoseEditor,
-    sourceTimeMs,
   } = input;
   if (
     editorProjectStore.getSnapshot() !== snapshot ||
@@ -101,26 +120,39 @@ function isCurrentPartPoseTarget(input: {
   }
   const shot = snapshot.project.shots.find((candidate) => candidate.id === shotId);
   const layer = shot?.layers.find((candidate) => candidate.id === layerId);
-  if (!layer || layer.locked || !layer.poseAnimation) return false;
-  const track = layer.poseAnimation.tracks.find(
-    (candidate) => candidate.partId === partId,
-  );
-  return !!track && (
-    sourceTimeMs === undefined ||
-    track.keys.some((key) => key.timeMs === sourceTimeMs)
+  if (!layer || layer.locked) return false;
+  const character = adaptiveCharacterForLayer(snapshot, layer);
+  return Boolean(
+    character &&
+      resolvePartPoseEditorParts(character, layer).some(
+        (part) => part.partId === partId,
+      ),
   );
 }
 
-function partName(
-  character: AdaptivePartsCharacter,
-  track: PartPoseTrack | undefined,
-  partId: string,
-): string {
-  const partIndex = character.parts.findIndex((part) => part.partId === partId);
-  return (
-    track?.displayName ??
-    character.parts[partIndex]?.displayName ??
-    `Part ${partIndex + 1}`
+function isCurrentPartPoseTarget(input: {
+  snapshot: EditorProjectSnapshot;
+  instanceId: number | null;
+  shotId: string;
+  layerId: string;
+  partId: string;
+  partPoseEditor: PartPoseEditorUi;
+  sourceTimeMs?: number;
+}): boolean {
+  if (!isCurrentPartPoseEditorContext(input)) return false;
+  const shot = input.snapshot.project.shots.find(
+    (candidate) => candidate.id === input.shotId,
+  );
+  const layer = shot?.layers.find(
+    (candidate) => candidate.id === input.layerId,
+  );
+  if (!layer?.poseAnimation) return false;
+  const track = layer.poseAnimation.tracks.find(
+    (candidate) => candidate.partId === input.partId,
+  );
+  return !!track && (
+    input.sourceTimeMs === undefined ||
+    track.keys.some((key) => key.timeMs === input.sourceTimeMs)
   );
 }
 
@@ -145,18 +177,30 @@ interface PartPoseTimelineContentProps extends PartPoseTimelineProps {
 
 function PartPoseTimelineContent({
   partPoseEditor,
+  toolbarHost,
   shot,
   layer,
   snapshot,
   currentTimeMs,
   pixelsPerMs,
   trackWidth,
-  laneLabelWidth,
   character,
 }: PartPoseTimelineContentProps): React.JSX.Element {
   const instanceId = editorProjectStore.getProjectInstanceId();
   const isPartPoseMode = partPoseEditor.activeLayerId === layer.id;
   const animation = layer.poseAnimation;
+  const poseParts = [...resolvePartPoseEditorParts(character, layer)].sort(
+    (left, right) => left.drawOrder - right.drawOrder,
+  );
+  const partName = (
+    track: PartPoseTrack | undefined,
+    partId: string,
+  ): string => {
+    const partIndex = poseParts.findIndex((part) => part.partId === partId);
+    const displayName =
+      track?.displayName ?? poseParts[partIndex]?.displayName;
+    return getPartPosePartLabel(displayName, Math.max(0, partIndex));
+  };
 
   const tracks = animation?.tracks ?? [];
   const authoredTracks = tracks.filter(hasAuthoredPartPose);
@@ -169,6 +213,9 @@ function PartPoseTimelineContent({
     tracks[0]?.partId ??
     character.parts[0]?.partId ??
     null;
+  const primaryPart = poseParts.find(
+    (part) => part.partId === primaryPartId,
+  );
   const primaryTrack = tracks.find((track) => track.partId === primaryPartId);
   const keys = primaryTrack?.keys.filter(
     (key) => key.timeMs <= shot.durationMs,
@@ -189,6 +236,7 @@ function PartPoseTimelineContent({
   const otherTracks = authoredTracks.filter(
     (track) => track.partId !== primaryPartId,
   );
+  const [poseGroupExpanded, setPoseGroupExpanded] = useState(true);
   const [expandedOtherParts, setExpandedOtherParts] = useState(false);
   const [selectedKey, setSelectedKey] = useState<{
     partId: string;
@@ -389,8 +437,59 @@ function PartPoseTimelineContent({
     timelineUiStore.seek(timeMs, shot.durationMs);
   };
 
+  const addKeyAtTime = (partId: string, timeMs: number): void => {
+    if (partId !== primaryPartId || !selectedPartActive) return;
+    const track = tracks.find((candidate) => candidate.partId === partId);
+    const hasKeyAtTime = Boolean(
+      track?.keys.some((key) => key.timeMs === timeMs),
+    );
+    if (hasKeyAtTime) {
+      activateKey(partId, timeMs);
+      return;
+    }
+    if (timeMs === 0) {
+      timelineUiStore.seek(timeMs, shot.durationMs);
+      return;
+    }
+    if (!canAddPartPoseKeyAtTime({
+      part: primaryPart,
+      layerLocked: layer.locked,
+      timeMs,
+      durationMs: shot.durationMs,
+      hasKeyAtTime,
+      calibratingPivot: partPoseEditor.calibratingPivot,
+    })) {
+      return;
+    }
+    if (!isCurrentPartPoseEditorContext({
+      snapshot,
+      instanceId,
+      shotId: shot.id,
+      layerId: layer.id,
+      partId,
+      partPoseEditor,
+    })) {
+      reportStale();
+      return;
+    }
+    const pivotDraft =
+      partPoseEditor.pivotDraft?.layerId === layer.id &&
+      partPoseEditor.pivotDraft.partId === partId
+        ? partPoseEditor.pivotDraft.point
+        : undefined;
+    try {
+      setError(null);
+      layerStore.addPartPoseKeyframe(layer.id, partId, timeMs, pivotDraft);
+      partPoseEditor.onPivotUsed();
+      setSelectedKey({ partId, timeMs });
+      timelineUiStore.seek(timeMs, shot.durationMs);
+    } catch (operationError) {
+      setError(errorText(operationError));
+    }
+  };
+
   const primaryName = primaryPartId
-    ? partName(character, primaryTrack, primaryPartId)
+    ? partName(primaryTrack, primaryPartId)
     : 'Part';
   const legacyEasingLabel: Record<string, string> = {
     'ease-in': '现有缓入',
@@ -399,124 +498,170 @@ function PartPoseTimelineContent({
 
   return (
     <>
-      <div
-        aria-label="Part 姿势关键帧操作"
-        className="timeline-pose-toolbar"
-        data-testid="part-pose-toolbar"
-        role="group"
-        style={{ width: `${trackWidth + laneLabelWidth}px` }}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <span
-          className="timeline-pose-toolbar-label"
-          style={{ width: `${laneLabelWidth}px` }}
-        >
-          {primaryName}
-        </span>
-        <IconButton
-          aria-label="上一个 Part 姿势关键帧"
-          className="timeline-pose-control"
-          disabled={!previousKey || !primaryPartId}
-          icon={<ChevronLeft aria-hidden="true" size={14} />}
-          onClick={() => {
-            if (previousKey && primaryPartId) {
-              selectAndSeek(primaryPartId, previousKey.timeMs);
-            }
-          }}
-          title="上一个关键帧"
-          variant="secondary"
-        />
-        <IconButton
-          aria-label="下一个 Part 姿势关键帧"
-          className="timeline-pose-control"
-          disabled={!followingKey || !primaryPartId}
-          icon={<ChevronRight aria-hidden="true" size={14} />}
-          onClick={() => {
-            if (followingKey && primaryPartId) {
-              selectAndSeek(primaryPartId, followingKey.timeMs);
-            }
-          }}
-          title="下一个关键帧"
-          variant="secondary"
-        />
-        <IconButton
-          aria-label="复制当前 Part 姿势关键帧"
-          className="timeline-pose-control"
-          disabled={!selectedKeyframe || !selectedPartActive}
-          icon={<Copy aria-hidden="true" size={13} />}
-          onClick={copySelectedKey}
-          title="复制关键帧"
-          variant="secondary"
-        />
-        <button
-          aria-label="粘贴 Part 姿势关键帧到播放头"
-          className="timeline-pose-text-control"
-          data-testid="part-pose-paste"
-          disabled={!clipboardMatches || !validPasteTime || !selectedPartActive}
-          onClick={pasteAtPlayhead}
-          title="粘贴到播放头"
-          type="button"
-        >
-          粘贴
-        </button>
-        <IconButton
-          aria-label="删除当前 Part 姿势关键帧"
-          className="timeline-pose-control"
-          disabled={
-            !selectedKeyframe ||
-            selectedKeyTime === 0 ||
-            !selectedPartActive
-          }
-          icon={<Trash2 aria-hidden="true" size={13} />}
-          onClick={deleteSelectedKey}
-          title="删除关键帧"
-          variant="secondary"
-        />
-        {selectedKeyframe && nextKey ? (
-          <select
-            aria-label="到下个关键帧的缓动"
-            className="timeline-pose-easing"
-            data-testid="part-pose-easing"
-            disabled={!selectedPartActive}
-            value={selectedKeyframe.easingToNext}
-            onChange={(event) =>
-              setSelectedEasing(event.currentTarget.value as PartPoseEasing)
-            }
-          >
-            {legacyEasingLabel[selectedKeyframe.easingToNext] ? (
-              <option disabled value={selectedKeyframe.easingToNext}>
-                {legacyEasingLabel[selectedKeyframe.easingToNext]}
-              </option>
-            ) : null}
-            <option value="linear">匀速</option>
-            <option value="ease-in-out">平滑</option>
-            <option value="step">保持</option>
-          </select>
-        ) : null}
-        {otherTracks.length > 0 ? (
-          <button
-            aria-expanded={expandedOtherParts}
-            aria-label={expandedOtherParts ? '收起其他 Part 轨道' : '展开其他 Part 轨道'}
-            className="timeline-pose-text-control"
-            data-testid="part-pose-expand-others"
-            onClick={() => setExpandedOtherParts((expanded) => !expanded)}
-            type="button"
-          >
-            {expandedOtherParts ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            其他 {otherTracks.length}
-          </button>
-        ) : null}
-      </div>
+      {toolbarHost && selectedPartActive
+        ? createPortal(
+            <div
+              aria-label="Part 姿势关键帧操作"
+              className="timeline-pose-toolbar"
+              data-testid="part-pose-toolbar"
+              role="group"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <IconButton
+                aria-label="上一个 Part 姿势关键帧"
+                className="timeline-pose-control"
+                disabled={!previousKey || !primaryPartId}
+                icon={<ChevronLeft aria-hidden="true" size={14} />}
+                onClick={() => {
+                  if (previousKey && primaryPartId) {
+                    selectAndSeek(primaryPartId, previousKey.timeMs);
+                  }
+                }}
+                title="上一个关键帧"
+                variant="secondary"
+              />
+              <IconButton
+                aria-label="下一个 Part 姿势关键帧"
+                className="timeline-pose-control"
+                disabled={!followingKey || !primaryPartId}
+                icon={<ChevronRight aria-hidden="true" size={14} />}
+                onClick={() => {
+                  if (followingKey && primaryPartId) {
+                    selectAndSeek(primaryPartId, followingKey.timeMs);
+                  }
+                }}
+                title="下一个关键帧"
+                variant="secondary"
+              />
+              <details
+                className="timeline-pose-overflow"
+                data-testid="part-pose-more-actions"
+              >
+                <summary
+                  aria-label="更多 Part 姿势关键帧操作"
+                  className="timeline-pose-overflow-trigger"
+                  title="更多关键帧操作"
+                >
+                  <MoreHorizontal aria-hidden="true" size={16} />
+                </summary>
+                <div
+                  aria-label="其他关键帧操作"
+                  className="timeline-pose-overflow-content"
+                  role="group"
+                >
+                  <IconButton
+                    aria-label="复制当前 Part 姿势关键帧"
+                    className="timeline-pose-control"
+                    disabled={!selectedKeyframe || !selectedPartActive}
+                    icon={<Copy aria-hidden="true" size={13} />}
+                    onClick={copySelectedKey}
+                    title="复制关键帧"
+                    variant="secondary"
+                  />
+                  <button
+                    aria-label="粘贴 Part 姿势关键帧到播放头"
+                    className="timeline-pose-text-control"
+                    data-testid="part-pose-paste"
+                    disabled={!clipboardMatches || !validPasteTime || !selectedPartActive}
+                    onClick={pasteAtPlayhead}
+                    title="粘贴到播放头"
+                    type="button"
+                  >
+                    粘贴
+                  </button>
+                  <IconButton
+                    aria-label="删除当前 Part 姿势关键帧"
+                    className="timeline-pose-control"
+                    disabled={
+                      !selectedKeyframe ||
+                      selectedKeyTime === 0 ||
+                      !selectedPartActive
+                    }
+                    icon={<Trash2 aria-hidden="true" size={13} />}
+                    onClick={deleteSelectedKey}
+                    title="删除关键帧"
+                    variant="secondary"
+                  />
+                  {selectedKeyframe && nextKey ? (
+                    <select
+                      aria-label="到下个关键帧的缓动"
+                      className="timeline-pose-easing"
+                      data-testid="part-pose-easing"
+                      disabled={!selectedPartActive}
+                      value={selectedKeyframe.easingToNext}
+                      onChange={(event) =>
+                        setSelectedEasing(event.currentTarget.value as PartPoseEasing)
+                      }
+                    >
+                      {legacyEasingLabel[selectedKeyframe.easingToNext] ? (
+                        <option disabled value={selectedKeyframe.easingToNext}>
+                          {legacyEasingLabel[selectedKeyframe.easingToNext]}
+                        </option>
+                      ) : null}
+                      <option value="linear">匀速</option>
+                      <option value="ease-in-out">平滑</option>
+                      <option value="step">保持</option>
+                    </select>
+                  ) : null}
+                </div>
+              </details>
+            </div>,
+            toolbarHost,
+          )
+        : null}
 
       <div
         aria-label="人物动作总览"
         className="timeline-lane timeline-pose-overview-lane"
+        data-expanded={poseGroupExpanded ? 'true' : 'false'}
         data-testid="part-pose-overview-lane"
         role="group"
       >
-        <span className="timeline-lane-label" data-track-label="part-pose-overview">
+        <span
+          className="timeline-lane-label timeline-pose-overview-label"
+          data-track-label="part-pose-overview"
+        >
+          <button
+            aria-expanded={poseGroupExpanded}
+            aria-label={poseGroupExpanded ? '收起人物动作轨道' : '展开人物动作轨道'}
+            className="timeline-pose-group-toggle"
+            data-testid="part-pose-group-toggle"
+            onClick={(event) => {
+              event.stopPropagation();
+              setPoseGroupExpanded((expanded) => !expanded);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            title={poseGroupExpanded ? '收起人物动作轨道' : '展开人物动作轨道'}
+            type="button"
+          >
+            {poseGroupExpanded
+              ? <ChevronDown aria-hidden="true" size={13} />
+              : <ChevronRight aria-hidden="true" size={13} />}
+          </button>
           <span className="timeline-lane-label-text">人物动作</span>
+          {otherTracks.length > 0 ? (
+            <button
+              aria-expanded={expandedOtherParts}
+              aria-label={expandedOtherParts
+                ? `收起其他有动作的部位（${otherTracks.length}）`
+                : `展开其他有动作的部位（${otherTracks.length}）`}
+              className="timeline-pose-other-toggle"
+              data-testid="part-pose-expand-others"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpandedOtherParts((expanded) => !expanded);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              title={expandedOtherParts ? '收起其他部位' : '展开其他部位'}
+              type="button"
+            >
+              {expandedOtherParts
+                ? <ChevronUp aria-hidden="true" size={11} />
+                : <ChevronDown aria-hidden="true" size={11} />}
+              <span aria-hidden="true">{otherTracks.length}</span>
+            </button>
+          ) : null}
         </span>
         <div
           className="timeline-lane-content timeline-pose-lane-content"
@@ -535,6 +680,7 @@ function PartPoseTimelineContent({
                 event.stopPropagation();
                 timelineUiStore.seek(timeMs, shot.durationMs);
               }}
+              onDoubleClick={(event) => event.stopPropagation()}
               style={{ left: `${timeToPx(timeMs, pixelsPerMs)}px` }}
               title={formatTimecode(timeMs)}
               type="button"
@@ -545,7 +691,7 @@ function PartPoseTimelineContent({
         </div>
       </div>
 
-      {primaryPartId ? (
+      {poseGroupExpanded && primaryPartId ? (
         <PartPoseLane
           currentTimeMs={currentTimeMs}
           durationMs={shot.durationMs}
@@ -561,12 +707,13 @@ function PartPoseTimelineContent({
           track={primaryTrack}
           trackWidth={trackWidth}
           onActivate={activateKey}
+          onAddAtTime={addKeyAtTime}
           onError={setError}
           onRetime={retimeSelectedMarker}
         />
       ) : null}
 
-      {expandedOtherParts
+      {poseGroupExpanded && expandedOtherParts
         ? otherTracks.map((track) => (
             <PartPoseLane
               currentTimeMs={currentTimeMs}
@@ -575,7 +722,7 @@ function PartPoseTimelineContent({
               layerId={layer.id}
               key={track.partId}
               partId={track.partId}
-              partName={partName(character, track, track.partId)}
+              partName={partName(track, track.partId)}
               partPoseEditor={partPoseEditor}
               pixelsPerMs={pixelsPerMs}
               selectedTimeMs={null}
@@ -611,6 +758,7 @@ interface PartPoseLaneProps {
   track: PartPoseTrack | undefined;
   trackWidth: number;
   onActivate(partId: string, timeMs: number): void;
+  onAddAtTime?(partId: string, timeMs: number): void;
   onError(message: string): void;
   onRetime(partId: string, timeMs: number): void;
 }
@@ -630,17 +778,41 @@ function PartPoseLane({
   track,
   trackWidth,
   onActivate,
+  onAddAtTime,
   onError,
   onRetime,
 }: PartPoseLaneProps): React.JSX.Element {
   const keys = track?.keys.filter(
     (key) => key.timeMs <= durationMs,
   ) ?? [];
+  const lastPointerTypeRef = useRef<string | null>(null);
+
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    event.stopPropagation();
+    if (
+      event.target !== event.currentTarget ||
+      event.detail !== 2 ||
+      lastPointerTypeRef.current !== 'mouse' ||
+      !editable ||
+      !onAddAtTime
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const timeMs = resolveTimelineFrameTime(
+      pxToTime(event.clientX - bounds.left, pixelsPerMs),
+      durationMs,
+    );
+    onAddAtTime(partId, timeMs);
+  };
+
   return (
     <div
       aria-label={`${label} Part 姿势`}
       className="timeline-lane timeline-pose-part-lane"
       data-part-id={partId}
+      data-selected-part={editable ? 'true' : 'false'}
       data-testid="part-pose-part-lane"
       role="group"
     >
@@ -649,6 +821,10 @@ function PartPoseLane({
       </span>
       <div
         className="timeline-lane-content timeline-pose-lane-content"
+        onDoubleClick={handleDoubleClick}
+        onPointerDown={(event) => {
+          lastPointerTypeRef.current = event.pointerType;
+        }}
         style={{ width: `${trackWidth}px` }}
       >
         {keys.map((keyframe, index) => (
@@ -858,6 +1034,7 @@ function PartPoseKeyMarker({
         ref={markerRef}
         aria-current={current ? 'time' : undefined}
         aria-label={`${formatTimecode(keyframe.timeMs)}，${label} Part 姿势关键帧`}
+        aria-pressed={selected}
         className="part-pose-key-marker"
         data-current={current ? 'true' : 'false'}
         data-dragging={previewTimeMs === null ? 'false' : 'true'}
@@ -873,6 +1050,7 @@ function PartPoseKeyMarker({
           }
           onActivate(partId, keyframe.timeMs);
         }}
+        onDoubleClick={(event) => event.stopPropagation()}
         onPointerCancel={handleCancel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

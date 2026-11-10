@@ -4,6 +4,52 @@ import type {
   Layer,
   PartPosePoint,
 } from '../../../domain';
+import { isValidFrameTime } from '../../../domain';
+
+const KNOWN_PART_LABELS: Readonly<Record<string, string>> = {
+  Torso: '身体',
+  Head: '头部',
+  'Upper arm': '上臂',
+  Forearm: '前臂',
+};
+
+/** Keep Part names consistent between the inspector and Timeline. */
+export function getPartPosePartLabel(
+  displayName: string | undefined,
+  index: number,
+): string {
+  const name = displayName?.trim();
+  if (!name) return `部件 ${index + 1}`;
+  return KNOWN_PART_LABELS[name] ?? name;
+}
+
+/** The shared visibility, lock, frame, collision, and calibration add-key rule. */
+export function canAddPartPoseKeyAtTime(input: {
+  part: Pick<CharacterPart, 'visible'> | undefined;
+  layerLocked: boolean;
+  timeMs: number;
+  durationMs: number;
+  hasKeyAtTime: boolean;
+  calibratingPivot: boolean;
+}): boolean {
+  const {
+    part,
+    layerLocked,
+    timeMs,
+    durationMs,
+    hasKeyAtTime,
+    calibratingPivot,
+  } = input;
+  return Boolean(
+    part &&
+      part.visible !== false &&
+      !layerLocked &&
+      isValidFrameTime(timeMs) &&
+      timeMs <= durationMs &&
+      !hasKeyAtTime &&
+      !calibratingPivot,
+  );
+}
 
 /** Resolve the parts editable on this instance, preserving its captured action snapshot. */
 export function resolvePartPoseEditorParts(

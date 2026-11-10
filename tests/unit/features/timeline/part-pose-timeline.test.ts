@@ -31,7 +31,14 @@ function adaptiveLayerProject(): {
 } {
   const project = new CharacterService().createAdaptiveParts(buildProject(), {
     name: 'Timeline Pose Character',
-    parts: adaptivePartsFixture(IDS.assetChar),
+    parts: adaptivePartsFixture(IDS.assetChar).map((part, index) => ({
+      ...part,
+      displayName: index === 0
+        ? 'Torso'
+        : index === 1
+          ? 'My custom part'
+          : part.displayName,
+    })),
   });
   const character = project.characters.at(-1)!;
   if (character.mode !== 'adaptive-parts') {
@@ -79,7 +86,12 @@ function currentLayer(layerId: string) {
 
 function pointerEvent(
   type: string,
-  values: { pointerId: number; clientX: number; button: number },
+  values: {
+    pointerId: number;
+    clientX: number;
+    button: number;
+    pointerType?: string;
+  },
 ): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
   for (const [name, value] of Object.entries(values)) {
@@ -88,7 +100,42 @@ function pointerEvent(
   return event;
 }
 
+async function doubleClickAt(
+  target: HTMLElement,
+  clientX: number,
+  pointerType = 'mouse',
+): Promise<void> {
+  await act(async () => {
+    for (const [index, pointerId] of [41, 42].entries()) {
+      const values = { pointerId, clientX, button: 0, pointerType };
+      target.dispatchEvent(pointerEvent('pointerdown', values));
+      target.dispatchEvent(pointerEvent('pointerup', values));
+      target.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        detail: index + 1,
+        clientX,
+      }));
+    }
+    target.dispatchEvent(new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      detail: 2,
+      clientX,
+    }));
+  });
+}
+
+function setPartLaneGeometry(element: HTMLElement, width = 3_000): void {
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => new DOMRect(0, 0, width, 38),
+  });
+}
+
 let container: HTMLDivElement;
+let rootMount: HTMLDivElement;
+let toolbarHost: HTMLDivElement;
 let root: Root;
 let fixture: ReturnType<typeof adaptiveLayerProject>;
 
@@ -109,8 +156,11 @@ describe('Part Pose Timeline lanes', () => {
     timelineUiStore.seek(0, 3_000);
     timelineUiStore.setExpanded(true);
     container = document.createElement('div');
+    rootMount = document.createElement('div');
+    toolbarHost = document.createElement('div');
+    container.append(rootMount, toolbarHost);
     document.body.append(container);
-    root = createRoot(container);
+    root = createRoot(rootMount);
   });
 
   afterEach(async () => {
@@ -130,18 +180,26 @@ describe('Part Pose Timeline lanes', () => {
         ...editorUi(fixture.layerId, selectedPartId),
         onSelectPart,
       },
+      toolbarHost,
       shot,
       layer,
       snapshot: editorProjectStore.getSnapshot()!,
       currentTimeMs,
       pixelsPerMs: 1,
-      trackWidth: 3_000,
-      laneLabelWidth: 82,
+      trackWidth: shot.durationMs,
     })));
     expect(project.id).toBe(editorProjectStore.getSnapshot()?.project.id);
   };
 
-  it('deduplicates the overview and keeps seek and Part selection read-only', async () => {
+  const openMoreActions = async (): Promise<void> => {
+    const details = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="part-pose-more-actions"]',
+    );
+    if (!details || details.open) return;
+    await act(async () => details.querySelector('summary')?.click());
+  };
+
+  it('keeps the overview read-only and collapses the selected Part without losing state', async () => {
     const onSelectPart = vi.fn();
     await renderTimeline(fixture.partIds[0]!, 0, onSelectPart);
     const snapshot = editorProjectStore.getSnapshot()!;
@@ -170,9 +228,40 @@ describe('Part Pose Timeline lanes', () => {
     expect(editorProjectStore.getSnapshot()).toBe(snapshot);
     expect(editorProjectStore.history.getSnapshot()).toEqual(history);
 
-    await act(async () => timelineUiStore.seek(750, 3_000));
+    await act(async () => timelineUiStore.seek(1_500, 3_000));
+    await renderTimeline(fixture.partIds[0]!, 1_500, onSelectPart);
+    const selectedMarker = container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="500"]`,
+    )!;
+    const playheadMarker = container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="1500"]`,
+    )!;
+    expect(selectedMarker.getAttribute('aria-pressed')).toBe('true');
+    expect(selectedMarker.getAttribute('aria-current')).toBeNull();
+    expect(playheadMarker.getAttribute('aria-pressed')).toBe('false');
+    expect(playheadMarker.getAttribute('aria-current')).toBe('time');
+
+    const groupToggle = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-group-toggle"]',
+    )!;
+    await act(async () => groupToggle.click());
+    expect(groupToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelectorAll('[data-testid="part-pose-part-lane"]'))
+      .toHaveLength(0);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1_500);
     expect(editorProjectStore.getSnapshot()).toBe(snapshot);
     expect(editorProjectStore.history.getSnapshot()).toEqual(history);
+
+    await act(async () => groupToggle.click());
+    expect(groupToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelectorAll('[data-testid="part-pose-part-lane"]'))
+      .toHaveLength(1);
+    expect(container.querySelector(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="500"]`,
+    )?.getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="1500"]`,
+    )?.getAttribute('aria-pressed')).toBe('false');
 
     const expandOtherParts = container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-expand-others"]',
@@ -185,6 +274,165 @@ describe('Part Pose Timeline lanes', () => {
     )).not.toBeNull();
     expect(editorProjectStore.getSnapshot()).toBe(snapshot);
     expect(editorProjectStore.history.getSnapshot()).toEqual(history);
+  });
+
+  it('uses the Chinese default Part label and preserves custom names', async () => {
+    await renderTimeline();
+    const selectedLane = container.querySelector(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"]`,
+    );
+    expect(selectedLane?.querySelector('.timeline-lane-label-text')?.textContent)
+      .toBe('身体');
+
+    const expandOtherParts = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-expand-others"]',
+    )!;
+    await act(async () => expandOtherParts.click());
+    const customLane = container.querySelector(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[1]}"]`,
+    );
+    expect(customLane?.querySelector('.timeline-lane-label-text')?.textContent)
+      .toBe('My custom part');
+  });
+
+  it('activates an expanded other Part key and keeps the project read-only', async () => {
+    let selectedPartId = fixture.partIds[0]!;
+    const onSelectPart = vi.fn((partId: string) => {
+      selectedPartId = partId;
+    });
+    await renderTimeline(selectedPartId, 0, onSelectPart);
+    const snapshot = editorProjectStore.getSnapshot();
+    const history = editorProjectStore.history.getSnapshot();
+    const expandOtherParts = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-expand-others"]',
+    )!;
+    await act(async () => expandOtherParts.click());
+
+    const otherKey = container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[1]}"][data-time-ms="1000"]`,
+    )!;
+    await act(async () => otherKey.click());
+    expect(onSelectPart).toHaveBeenCalledWith(fixture.partIds[1]);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1_000);
+    expect(editorProjectStore.getSnapshot()).toBe(snapshot);
+    expect(editorProjectStore.history.getSnapshot()).toEqual(history);
+
+    await renderTimeline(selectedPartId, 1_000, onSelectPart);
+    expect(container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[1]}"][data-time-ms="1000"]`,
+    )?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('adds one snapped key on a blank selected Part lane double-click', async () => {
+    await renderTimeline();
+    const laneContent = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"] .timeline-lane-content`,
+    )!;
+    setPartLaneGeometry(laneContent);
+    const revision = editorProjectStore.getSnapshot()!.revision;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+
+    await doubleClickAt(laneContent, 750);
+    expect(currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.map((key) => key.timeMs)).toContain(750);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount + 1);
+
+    await renderTimeline(fixture.partIds[0]!, 750);
+    expect(container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="750"]`,
+    )?.getAttribute('aria-pressed')).toBe('true');
+
+    const existingKey = currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.find((key) => key.timeMs === 750);
+    const existingRevision = editorProjectStore.getSnapshot()!.revision;
+    const existingUndoCount = editorProjectStore.history.getSnapshot().undoCount;
+    await doubleClickAt(laneContent, 750);
+    expect(currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.find((key) => key.timeMs === 750)).toEqual(existingKey);
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(existingRevision);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(existingUndoCount);
+  });
+
+  it('snaps double-clicks to an aligned Shot end or the last legal frame', async () => {
+    await renderTimeline();
+    let laneContent = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"] .timeline-lane-content`,
+    )!;
+    setPartLaneGeometry(laneContent);
+    await doubleClickAt(laneContent, 2_999);
+    expect(currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.map((key) => key.timeMs)).toContain(3_000);
+
+    const { project } = currentLayer(fixture.layerId);
+    const longerProject = {
+      ...project,
+      shots: project.shots.map((shot) =>
+        shot.id === IDS.shot ? { ...shot, durationMs: 3_050 } : shot,
+      ),
+    };
+    await act(async () => {
+      editorProjectStore.open(PROJECT_ROOT, longerProject);
+      shotStore.select(IDS.shot);
+      selectionStore.select(fixture.layerId);
+      timelineUiStore.seek(0, 3_050);
+    });
+    await renderTimeline(fixture.partIds[0]!, 0);
+    laneContent = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"] .timeline-lane-content`,
+    )!;
+    setPartLaneGeometry(laneContent, 3_050);
+    await doubleClickAt(laneContent, 3_049);
+    const endKeys = currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.map((key) => key.timeMs);
+    expect(endKeys).toContain(3_042);
+    expect(endKeys).not.toContain(3_050);
+  });
+
+  it('does not add keys from 0ms, occupied markers, overview, touch, or other Parts', async () => {
+    await renderTimeline();
+    const laneContent = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"] .timeline-lane-content`,
+    )!;
+    setPartLaneGeometry(laneContent);
+    const revision = editorProjectStore.getSnapshot()!.revision;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+
+    await doubleClickAt(laneContent, 0);
+    expect(container.querySelector<HTMLButtonElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="0"]`,
+    )?.getAttribute('aria-pressed')).toBe('true');
+
+    const occupiedMarker = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="500"]`,
+    )!;
+    await doubleClickAt(occupiedMarker, 500);
+    const overviewMarker = container.querySelector<HTMLElement>(
+      '[data-testid="part-pose-overview-marker"][data-time-ms="1000"]',
+    )!;
+    await doubleClickAt(overviewMarker, 1_000);
+    await doubleClickAt(laneContent, 750, 'touch');
+
+    const expandOtherParts = container.querySelector<HTMLButtonElement>(
+      '[data-testid="part-pose-expand-others"]',
+    )!;
+    await act(async () => expandOtherParts.click());
+    const otherLane = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[1]}"] .timeline-lane-content`,
+    )!;
+    setPartLaneGeometry(otherLane);
+    await doubleClickAt(otherLane, 750);
+
+    expect(editorProjectStore.getSnapshot()?.revision).toBe(revision);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+    expect(currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys.map((key) => key.timeMs)).toEqual([0, 500, 1_500]);
   });
 
   it('moves between keys on the selected Part only', async () => {
@@ -233,6 +481,25 @@ describe('Part Pose Timeline lanes', () => {
       .not.toBeNull();
     expect(container.querySelector('[data-testid="position-lane"]')
       ?.closest('.timeline-media-lanes')).toBeNull();
+    const toolbarHost = container.querySelector('[data-testid="timeline-pose-toolbar-host"]');
+    const poseToolbar = toolbarHost?.querySelector('[data-testid="part-pose-toolbar"]');
+    expect(poseToolbar).not.toBeNull();
+    expect(poseToolbar?.closest('.timeline-ruler-scroll')).toBeNull();
+    expect(container.querySelector('[data-testid="timeline-timecode"]')).not.toBeNull();
+    expect(container.querySelector('.timeline-zoom')).not.toBeNull();
+
+    const snapshot = editorProjectStore.getSnapshot();
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    for (const lane of [
+      container.querySelector<HTMLElement>('[data-testid="timeline-subtitle-track"]'),
+      container.querySelector<HTMLElement>('[data-testid="timeline-audio-track"]'),
+      container.querySelector<HTMLElement>('[data-testid="position-lane"]'),
+    ]) {
+      const content = lane?.querySelector<HTMLElement>('.timeline-lane-content');
+      if (content) await doubleClickAt(content, 750);
+    }
+    expect(editorProjectStore.getSnapshot()).toBe(snapshot);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
   });
 
   it('previews a drag without writing, then commits one retime command on release', async () => {
@@ -281,6 +548,7 @@ describe('Part Pose Timeline lanes', () => {
     await act(async () => source.click());
     const initialRevision = editorProjectStore.getSnapshot()!.revision;
     const initialUndoCount = editorProjectStore.history.getSnapshot().undoCount;
+    await openMoreActions();
     const copy = container.querySelector<HTMLButtonElement>(
       '[aria-label="复制当前 Part 姿势关键帧"]',
     )!;
@@ -290,6 +558,7 @@ describe('Part Pose Timeline lanes', () => {
 
     timelineUiStore.seek(750, 3_000);
     await renderTimeline(fixture.partIds[0]!, 750);
+    await openMoreActions();
     const paste = container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-paste"]',
     )!;
@@ -299,6 +568,7 @@ describe('Part Pose Timeline lanes', () => {
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(initialUndoCount + 1);
 
     await renderTimeline(fixture.partIds[0]!, 750);
+    await openMoreActions();
     const easing = container.querySelector<HTMLSelectElement>(
       '[data-testid="part-pose-easing"]',
     )!;
@@ -310,6 +580,7 @@ describe('Part Pose Timeline lanes', () => {
     )!.keys.find((key) => key.timeMs === 750)?.easingToNext).toBe('step');
 
     await renderTimeline(fixture.partIds[0]!, 750);
+    await openMoreActions();
     const remove = container.querySelector<HTMLButtonElement>(
       '[aria-label="删除当前 Part 姿势关键帧"]',
     )!;
@@ -333,6 +604,7 @@ describe('Part Pose Timeline lanes', () => {
       `[data-testid="part-pose-key-marker"][data-part-id="${fixture.partIds[0]}"][data-time-ms="500"]`,
     )!;
     await act(async () => source.click());
+    await openMoreActions();
     const copy = container.querySelector<HTMLButtonElement>(
       '[aria-label="复制当前 Part 姿势关键帧"]',
     )!;
@@ -340,6 +612,7 @@ describe('Part Pose Timeline lanes', () => {
 
     timelineUiStore.seek(3_000, 3_000);
     await renderTimeline(fixture.partIds[0]!, 3_000);
+    await openMoreActions();
     const paste = container.querySelector<HTMLButtonElement>(
       '[data-testid="part-pose-paste"]',
     )!;

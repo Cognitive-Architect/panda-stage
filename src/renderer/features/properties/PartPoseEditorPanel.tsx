@@ -21,6 +21,8 @@ import { layerStore } from '../../stores/layerStore';
 import { Button, IconButton } from '../../ui';
 import { useTimelineUi } from '../timeline/timelineUiStore';
 import {
+  canAddPartPoseKeyAtTime,
+  getPartPosePartLabel,
   resolvePartPoseEditorParts,
   type PartPoseEditorUi,
 } from '../part-pose/partPoseEditorTypes';
@@ -31,13 +33,6 @@ export interface PartPoseEditorPanelProps {
   layer: Layer;
   editor: PartPoseEditorUi;
 }
-
-const KNOWN_PART_LABELS: Readonly<Record<string, string>> = {
-  Torso: '身体',
-  Head: '头部',
-  'Upper arm': '上臂',
-  Forearm: '前臂',
-};
 
 function readableError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
@@ -60,15 +55,6 @@ function formatTime(timeMs: number): string {
   const seconds = Math.floor(timeMs / 1_000);
   const milliseconds = Math.abs(timeMs % 1_000);
   return `${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')} 秒`;
-}
-
-function getPartLabel(
-  displayName: string | undefined,
-  index: number,
-): string {
-  const name = displayName?.trim();
-  if (!name) return `部件 ${index + 1}`;
-  return KNOWN_PART_LABELS[name] ?? name;
 }
 
 export function PartPoseEditorPanel({
@@ -104,7 +90,7 @@ export function PartPoseEditorPanel({
     (part) => part.partId === selectedPartId,
   );
   const selectedPartLabel = selectedPart
-    ? `${getPartLabel(selectedPart.displayName, selectedPartIndex)}${
+    ? `${getPartPosePartLabel(selectedPart.displayName, selectedPartIndex)}${
         selectedPart.visible === false ? '（隐藏）' : ''
       }`
     : '当前零件';
@@ -147,14 +133,14 @@ export function PartPoseEditorPanel({
       keyframe &&
       !editor.calibratingPivot,
   );
-  const canAddKey = Boolean(
-    selectedPart &&
-      selectedPart.visible !== false &&
-      !layer.locked &&
-      timeIsValid &&
-      !keyframe &&
-      !editor.calibratingPivot,
-  );
+  const canAddKey = canAddPartPoseKeyAtTime({
+    part: selectedPart,
+    layerLocked: layer.locked,
+    timeMs,
+    durationMs: shot.durationMs,
+    hasKeyAtTime: Boolean(keyframe),
+    calibratingPivot: editor.calibratingPivot,
+  });
   const keyReason = editor.calibratingPivot
     ? '正在校准旋转点，请先完成或取消。'
     : !timeIsValid
@@ -271,7 +257,7 @@ export function PartPoseEditorPanel({
               ) : null}
               {parts.map((part, index) => (
                 <option key={part.partId} value={part.partId}>
-                  {getPartLabel(part.displayName, index)}
+                  {getPartPosePartLabel(part.displayName, index)}
                   {part.visible === false ? '（隐藏）' : ''}
                 </option>
               ))}
