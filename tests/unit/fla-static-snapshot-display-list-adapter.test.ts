@@ -108,8 +108,8 @@ function buildMotionAdapterFixture(
   endLibraryItemName = 'moving-target',
   duration = 2,
   holdEndpoint = false,
-  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {},
-  startKeyMode = '22017',
+  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string | undefined>>> = {},
+  startKeyMode: string | null = '22017',
   motionFrameAttributes: Readonly<Record<string, string>> = {},
   firstFrameTransition = false,
   playbackMode = 'single frame',
@@ -151,7 +151,8 @@ function buildMotionAdapterFixture(
     const colorTransformXml = isStartFrame
       ? alphaColorTransformXml
       : sampleEndColorTransformXml ?? alphaColorTransformXml;
-    return `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}"${motionFrameAttributeXml}${isStartFrame ? sourceRotationAttributeXml : ''}>${metadata}` +
+    const keyModeAttribute = keyMode === null ? '' : ` keyMode="${keyMode}"`;
+    return `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true"${keyModeAttribute}${motionFrameAttributeXml}${isStartFrame ? sourceRotationAttributeXml : ''}>${metadata}` +
       `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${isStartFrame ? '' : ' selected="true"'}${firstFrame}>` +
       `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${colorTransformXml}</DOMSymbolInstance></elements></DOMFrame>`;
   };
@@ -530,7 +531,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
 
   });
 
-  it('preserves sync metadata and accepts arbitrary validated Classic Motion key modes', () => {
+  it('preserves evidence-backed Sync and ordinary Classic Motion key-mode metadata', () => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -538,7 +539,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
     );
     const target = descriptor(source, 'motion-root');
@@ -557,7 +558,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       }
     }
 
-    const withoutSyncFlag = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3');
+    const withoutSyncFlag = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '22017');
     const withoutSyncTarget = descriptor(withoutSyncFlag, 'motion-root');
     const afterSyncFlag = withoutSyncFlag.buildGraphicFrameContext(
       withoutSyncTarget.timelineXml,
@@ -571,7 +572,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(instance).not.toHaveProperty('sourceParentMotionTweenSync');
     }
 
-    const explicitFalse = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3', {
+    const explicitFalse = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '22017', {
       motionTweenSync: 'false',
     });
     const explicitFalseTarget = descriptor(explicitFalse, 'motion-root');
@@ -581,12 +582,10 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       3,
       'explicit-false-motion-sync',
     );
-    expect(falseSyncFrame.ok).toBe(true);
-    if (falseSyncFrame.ok) {
-      expect(falseSyncFrame.value.layers[0]?.elements[0]).toMatchObject({ sourceParentMotionTweenSync: false });
-    }
+    expect(falseSyncFrame.ok).toBe(false);
+    if (!falseSyncFrame.ok) expect(falseSyncFrame.message).toContain('keyMode=22017');
 
-    const malformedSync = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3', {
+    const malformedSync = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '24065', {
       motionTweenSync: 'yes',
     });
     const malformedSyncTarget = descriptor(malformedSync, 'motion-root');
@@ -600,6 +599,82 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     if (!malformedSyncFrame.ok) expect(malformedSyncFrame.message).toContain('invalid authored value');
   });
 
+  it('accepts the supported keyMode roles and rejects unknown or malformed authored values', () => {
+    const accepted = [
+      buildMotionAdapterFixture('', '', 'moving-target', 2, false, {}, '22017'),
+      buildMotionAdapterFixture('', '', 'moving-target', 2, false, {}, '24065', { motionTweenSync: 'true' }),
+      buildMotionAdapterFixture('', '', 'moving-target', 2, true, { keyMode: '15872' }, '22017'),
+      buildMotionAdapterFixture('', '', 'moving-target', 2, true, { keyMode: '9728' }, '22017'),
+    ];
+    for (const [index, source] of accepted.entries()) {
+      const target = descriptor(source, 'motion-root');
+      const result = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        1,
+        `supported-keyMode-role-${index}`,
+      );
+      expect(result.ok).toBe(true);
+    }
+
+    const rejected: readonly { readonly label: string; readonly keyMode: string | null; readonly sync?: string; readonly expected: string }[] = [
+      { label: 'synthetic integer 3', keyMode: '3', expected: 'keyMode=3' },
+      { label: 'negative integer', keyMode: '-1', expected: 'keyMode=-1' },
+      { label: 'unknown bit pattern', keyMode: '12345', sync: 'true', expected: 'keyMode=12345' },
+      { label: 'sync mode without sync flag', keyMode: '24065', expected: 'keyMode=24065' },
+      { label: 'ordinary mode with sync flag', keyMode: '22017', sync: 'true', expected: 'keyMode=22017' },
+      { label: 'missing keyMode', keyMode: null, expected: 'keyMode=(missing)' },
+      { label: 'malformed keyMode', keyMode: 'not-an-integer', expected: 'keyMode=not-an-integer is not a valid safe integer' },
+    ];
+    for (const { label, keyMode, sync, expected } of rejected) {
+      const source = buildMotionAdapterFixture(
+        '',
+        '',
+        'moving-target',
+        2,
+        false,
+        {},
+        keyMode,
+        sync === undefined ? {} : { motionTweenSync: sync },
+      );
+      const target = descriptor(source, 'motion-root');
+      const result = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        1,
+        `unsupported-keyMode-${label}`,
+      );
+      expect(result.ok, label).toBe(false);
+      if (!result.ok) expect(result.message, label).toContain(expected);
+    }
+
+    const unsupportedTerminal = buildMotionAdapterFixture(
+      '', '', 'moving-target', 2, true, { keyMode: '12345' }, '22017',
+    );
+    const terminalTarget = descriptor(unsupportedTerminal, 'motion-root');
+    const terminalResult = unsupportedTerminal.buildGraphicFrameContext(
+      terminalTarget.timelineXml,
+      terminalTarget.frameSpanIndex,
+      1,
+      'unsupported-terminal-keyMode',
+    );
+    expect(terminalResult.ok).toBe(false);
+    if (!terminalResult.ok) expect(terminalResult.message).toContain('keyMode=12345');
+
+    const missingTerminal = buildMotionAdapterFixture(
+      '', '', 'moving-target', 2, true, { keyMode: undefined }, '22017',
+    );
+    const missingTerminalTarget = descriptor(missingTerminal, 'motion-root');
+    const missingTerminalResult = missingTerminal.buildGraphicFrameContext(
+      missingTerminalTarget.timelineXml,
+      missingTerminalTarget.frameSpanIndex,
+      1,
+      'missing-terminal-keyMode',
+    );
+    expect(missingTerminalResult.ok).toBe(false);
+    if (!missingTerminalResult.ok) expect(missingTerminalResult.message).toContain('keyMode=(missing)');
+  });
+
   it('accepts Classic Motion source metadata while preserving authored Graphic frame boundaries', () => {
     const source = buildMotionAdapterFixture(
       '',
@@ -608,7 +683,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -654,7 +729,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       duration,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -700,7 +775,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -835,7 +910,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -872,7 +947,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       duration,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -904,7 +979,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       false,
       'loop',
@@ -957,7 +1032,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '3',
+      '24065',
       { motionTweenSync: 'true' },
       false,
       'loop',

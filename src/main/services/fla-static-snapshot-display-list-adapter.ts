@@ -1095,16 +1095,44 @@ function classicMotionFramePairRejectionReason(
   startIndex: number,
   duration: number,
 ): string | null {
+  type ParsedKeyMode =
+    | { readonly kind: 'missing' }
+    | { readonly kind: 'invalid' }
+    | { readonly kind: 'integer'; readonly value: number };
+  type MotionKeyModeFamily = 'motion' | 'sync-motion';
+  const parseKeyMode = (raw: string | undefined): ParsedKeyMode => {
+    if (raw === undefined) return { kind: 'missing' };
+    if (!/^-?\d+$/u.test(raw)) return { kind: 'invalid' };
+    const value = Number(raw);
+    return Number.isSafeInteger(value) ? { kind: 'integer', value } : { kind: 'invalid' };
+  };
+  const rawKeyMode = (frame: FlaXflElementBlock): string => frame.attributes.keyMode ?? '(missing)';
+  const motionKeyModeFamily = (frame: FlaXflElementBlock): MotionKeyModeFamily | null => {
+    if (frame.attributes.tweenType !== 'motion' || frame.attributes.motionTweenSnap !== 'true') return null;
+    const parsed = parseKeyMode(frame.attributes.keyMode);
+    if (parsed.kind !== 'integer') return null;
+    if (parsed.value === 22017 && frame.attributes.motionTweenSync === undefined) return 'motion';
+    if (parsed.value === 24065 && frame.attributes.motionTweenSync === 'true') return 'sync-motion';
+    return null;
+  };
+  const isSupportedTerminalKeyMode = (frame: FlaXflElementBlock): boolean => {
+    const tweenType = frame.attributes.tweenType;
+    if ((tweenType !== undefined && tweenType !== 'none') ||
+        frame.attributes.motionTweenSnap !== undefined || frame.attributes.motionTweenSync !== undefined) {
+      return false;
+    }
+    const parsed = parseKeyMode(frame.attributes.keyMode);
+    return parsed.kind === 'integer' && (parsed.value === 15872 || parsed.value === 9728);
+  };
   const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
     Object.keys(frame.attributes).filter((name) =>
       !CLASSIC_MOTION_FRAME_ATTRIBUTES.has(name));
-  const validFrameMetadata = (frame: FlaXflElementBlock): boolean => {
+  const validBooleanMetadata = (frame: FlaXflElementBlock): boolean => {
     for (const name of ['motionTweenSync', 'motionTweenSnap']) {
       const value = frame.attributes[name];
       if (value !== undefined && value !== 'true' && value !== 'false') return false;
     }
-    const keyMode = frame.attributes.keyMode;
-    return keyMode === undefined || (/^-?\d+$/u.test(keyMode) && Number.isSafeInteger(Number(keyMode)));
+    return true;
   };
   const unsupportedStartAttributes = unsupportedFrameAttributes(startFrame);
   if (unsupportedStartAttributes.length > 0) {
@@ -1114,8 +1142,13 @@ function classicMotionFramePairRejectionReason(
   if (unsupportedEndAttributes.length > 0) {
     return `end frame contains unsupported attributes: ${unsupportedEndAttributes.join(', ')}`;
   }
-  if (!validFrameMetadata(startFrame) || !validFrameMetadata(endFrame)) {
-    return 'motionTweenSync, motionTweenSnap, or keyMode has an invalid authored value';
+  if (!validBooleanMetadata(startFrame) || !validBooleanMetadata(endFrame)) {
+    return 'motionTweenSync or motionTweenSnap has an invalid authored value';
+  }
+  for (const [role, frame] of [['start', startFrame], ['end', endFrame]] as const) {
+    if (parseKeyMode(frame.attributes.keyMode).kind === 'invalid') {
+      return `${role} frame keyMode=${rawKeyMode(frame)} is not a valid safe integer`;
+    }
   }
   const startRotation = classicMotionRotationForFrame(startFrame);
   if (!startRotation.ok) return startRotation.message;
@@ -1125,6 +1158,22 @@ function classicMotionFramePairRejectionReason(
   if (Number(startFrame.attributes.index) !== startIndex) return 'start frame index does not match the selected span';
   if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
   if (startFrame.attributes.tweenType !== 'motion') return 'start frame is not a motion tween keyframe';
+  if (startFrame.attributes.motionTweenSnap !== 'true') return 'start frame motionTweenSnap is not true';
+  const startKeyModeFamily = motionKeyModeFamily(startFrame);
+  if (!startKeyModeFamily) {
+    return `start frame keyMode=${rawKeyMode(startFrame)} is unsupported for Classic Motion; expected 22017 without motionTweenSync or 24065 with motionTweenSync=true`;
+  }
+  const endKeyModeFamily = motionKeyModeFamily(endFrame);
+  if (endFrame.attributes.tweenType === 'motion') {
+    if (!endKeyModeFamily) {
+      return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for a Classic Motion key; expected the matching 22017 or 24065 family`;
+    }
+    if (endKeyModeFamily !== startKeyModeFamily) {
+      return `Classic Motion keyMode families do not match (start=${rawKeyMode(startFrame)}, end=${rawKeyMode(endFrame)})`;
+    }
+  } else if (startKeyModeFamily !== 'motion' || !isSupportedTerminalKeyMode(endFrame)) {
+    return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for this Classic Motion endpoint role`;
+  }
   if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
     return 'frame XML contains unsupported motion metadata';
   }

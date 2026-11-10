@@ -174,7 +174,10 @@ function selectAuthoredChildFrame(
   if (firstFrame === null) {
     return failure('UNSUPPORTED_TIMING', `Graphic firstFrame is invalid: ${element.firstFrame}`, sourceAddress);
   }
-  if (firstFrame >= childFrameCount) {
+  const syncedSingletonLoopOrigin = mode === 'loop' && element.sourceParentSpanTweenType === 'motion' &&
+    element.sourceParentMotionTweenSync === true && childFrameCount === 1 &&
+    element.firstFrame !== undefined && element.lastFrame === undefined;
+  if (firstFrame >= childFrameCount && !syncedSingletonLoopOrigin) {
     return failure(
       'UNSUPPORTED_TIMING',
       `Graphic firstFrame=${firstFrame} is outside child frameCount ${childFrameCount}`,

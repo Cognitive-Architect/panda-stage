@@ -57,6 +57,14 @@ function motionOwnedMissingFirstFrame(options: {
   return start + end;
 }
 
+function syncMotionOwnedLoop(firstFrame: string, spanDuration = 7): string {
+  const instance = () =>
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="${firstFrame}">${matrix()}</DOMSymbolInstance>`;
+  const start = `<DOMFrame index="0" duration="${spanDuration}" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065"><elements>${instance()}</elements></DOMFrame>`;
+  const end = `<DOMFrame index="${spanDuration}" duration="1" tweenType="motion" motionTweenSnap="true" motionTweenSync="true" keyMode="24065"><elements>${instance()}</elements></DOMFrame>`;
+  return start + end;
+}
+
 function adapt(parentFrames: string, childFrames: string) {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', '')}</timelines></DOMDocument>`;
   const result = adaptFlaXflDisplaySource(documentXml, [
@@ -612,6 +620,44 @@ describe('nested Graphic authored-frame selection', () => {
         expect(nested.children[0]?.kind).toBe('shape');
         expect(nested.worldTransform.tx).toBe(prepared.selections[0]?.sourceTransform.tx);
       }
+    }
+  });
+
+  it('normalizes an authored firstFrame on a singleton Sync Loop while preserving its source value (#1059)', () => {
+    const source = adapt(syncMotionOwnedLoop('7'), frame(0, shape()));
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 1));
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      playbackMode: 'loop',
+      firstFrame: '7',
+      firstFrameWasExplicit: true,
+      effectiveFirstFrame: 7,
+      sourceParentFrameIndex: 1,
+      sourceParentFrameSpanStart: 0,
+      childFrameCount: 1,
+      selectedChildFrameIndex: 0,
+      selectionRule: 'loop-parent-timeline',
+    }]);
+
+    const unsynchronized = adapt(motionOwnedMissingFirstFrame({ firstFrame: '7' }), frame(0, shape()));
+    const unsynchronizedResult = prepareFlaNestedGraphicFrameSelections(
+      unsynchronized,
+      graphicRoot(unsynchronized, 'parent', 1),
+    );
+    expect(unsynchronizedResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!unsynchronizedResult.ok) {
+      expect(unsynchronizedResult.message).toContain('firstFrame=7 is outside child frameCount 1');
+    }
+
+    const synchronizedMultiFrame = adapt(syncMotionOwnedLoop('7'), emptyFrames(4));
+    const synchronizedMultiFrameResult = prepareFlaNestedGraphicFrameSelections(
+      synchronizedMultiFrame,
+      graphicRoot(synchronizedMultiFrame, 'parent', 1),
+    );
+    expect(synchronizedMultiFrameResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!synchronizedMultiFrameResult.ok) {
+      expect(synchronizedMultiFrameResult.message).toContain('firstFrame=7 is outside child frameCount 4');
     }
   });
 
