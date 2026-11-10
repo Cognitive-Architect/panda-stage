@@ -225,6 +225,7 @@ function buildRiggingAdapterFixtureResult(options: {
   readonly childRigParent?: string;
   readonly parentRigId?: string;
   readonly childRigId?: string;
+  readonly parentTween?: boolean;
   readonly parentFrameParent?: string;
   readonly parentObjectCount?: number;
   readonly parentMatrix?: string;
@@ -234,6 +235,7 @@ function buildRiggingAdapterFixtureResult(options: {
   const childRigParent = options.childRigParent ?? '7';
   const parentRigId = options.parentRigId ?? '7';
   const childRigId = options.childRigId;
+  const parentTween = options.parentTween ?? true;
   const parentFrameParent = options.parentFrameParent;
   const parentObjectCount = options.parentObjectCount ?? 1;
   const parentMatrix = options.parentMatrix ?? transformedMatrix(0, 1, -1, 0, 0, 0);
@@ -255,9 +257,11 @@ function buildRiggingAdapterFixtureResult(options: {
   const parentElements = (matrixXml: string) => Array.from({ length: parentObjectCount }, (_, index) =>
     `<DOMSymbolInstance libraryItemName="parent-art-${index}" symbolType="graphic">${matrixXml}</DOMSymbolInstance>`,
   ).join('');
-  const parentStart = `<DOMFrame index="0" duration="4" tweenType="motion" keyMode="22017" motionTweenSnap="true"${parentFrameParent !== undefined ? ` parentLayerIndex="${parentFrameParent}"` : ''}>` +
+  const parentStart = `<DOMFrame index="0" duration="${parentTween ? 4 : 5}"${parentTween ? ' tweenType="motion" keyMode="22017" motionTweenSnap="true"' : ''}${parentFrameParent !== undefined ? ` parentLayerIndex="${parentFrameParent}"` : ''}>` +
     `<elements>${parentElements(matrix(0, 0))}</elements></DOMFrame>`;
-  const parentEnd = `<DOMFrame ${parentEndAttributes}><elements>${parentElements(parentMatrix)}</elements></DOMFrame>`;
+  const parentEnd = parentTween
+    ? `<DOMFrame ${parentEndAttributes}><elements>${parentElements(parentMatrix)}</elements></DOMFrame>`
+    : '';
   const childLayerRigId = childRigId !== undefined ? ` layerRiggingIndex="${childRigId}"` : '';
   const rootLayers = [
     `<DOMLayer name="child"${childLayerRigId}><frames>${childStart}${childEnd}</frames></DOMLayer>`,
@@ -283,6 +287,38 @@ function buildRiggingAdapterFixture(options: Parameters<typeof buildRiggingAdapt
   const adapted = buildRiggingAdapterFixtureResult(options);
   if (!adapted.ok) throw new Error(`Rig adapter fixture failed: ${adapted.message}`);
   return adapted.source;
+}
+
+function buildRiggingDepthFixtureResult(parentDepth: number) {
+  const childFrames = `<DOMFrame index="0" duration="4" tweenType="motion" keyMode="22017" parentLayerIndex="7">` +
+    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${matrix(10, 0)}</DOMSymbolInstance></elements></DOMFrame>` +
+    `<DOMFrame index="4" keyMode="9728" parentLayerIndex="7"><elements>` +
+    `<DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${transformedMatrix(0, 1, -1, 0, 0, 10)}</DOMSymbolInstance>` +
+    `</elements></DOMFrame>`;
+  const parentLayers = Array.from({ length: parentDepth }, (_, index) => {
+    const rigId = 7 + index;
+    const parent = index + 1 < parentDepth ? ` parentLayerIndex="${rigId + 1}"` : '';
+    const parentFrame = `<DOMFrame index="0" duration="5"${parent}><elements>` +
+      `<DOMSymbolInstance libraryItemName="parent-art-${index}" symbolType="graphic">${matrix(0, 0)}</DOMSymbolInstance>` +
+      `</elements></DOMFrame>`;
+    return `<DOMLayer name="parent-${index}" layerRiggingIndex="${rigId}"><frames>${parentFrame}</frames></DOMLayer>`;
+  });
+  const adapted = adaptFlaXflDisplaySource(
+    `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', frame(0, symbol('rig-root'))),
+    ])}</timelines></DOMDocument>`,
+    [{ name: 'LIBRARY/rig-root.xml', xml: graphic('rig-root', [
+      `<DOMLayer name="child"><frames>${childFrames}</frames></DOMLayer>`,
+      ...parentLayers,
+    ]) }, {
+      name: 'LIBRARY/child-art.xml',
+      xml: graphic('child-art', [layer('art', frame(0, shape()))]),
+    }, ...Array.from({ length: parentDepth }, (_, index) => ({
+      name: `LIBRARY/parent-art-${index}.xml`,
+      xml: graphic(`parent-art-${index}`, [layer('art', frame(0, shape()))]),
+    }))],
+  );
+  return adapted;
 }
 
 function descriptor(source: ReturnType<typeof buildAdapterFixture>['adapted'], name: string): FlaXflGraphicSymbolDescriptor {
@@ -1426,11 +1462,29 @@ describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
     expect(result.element.localTransform.b).toBeCloseTo(Math.SQRT1_2, 9);
   });
 
+  it('does not displace a held child when its parent pose is static', () => {
+    const result = childAt(buildRiggingAdapterFixture({ childTween: false, parentTween: false }), 2);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.element?.kind !== 'symbol' || !result.element.localTransform) return;
+    expect(result.element.localTransform).toMatchObject({ tx: 10, ty: 0, a: 1, b: 0, c: 0, d: 1 });
+  });
+
+  it('rejects Rig parent chains beyond the bounded depth', () => {
+    const result = buildRiggingDepthFixtureResult(9);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('Rig parent chain exceeds depth 8');
+  });
+
   it.each([
     {
       label: 'unknown parent id',
       options: { childRigParent: '99' },
       message: 'DOMFrame Rig parent id 99 has no DOMLayer.layerRiggingIndex match',
+    },
+    {
+      label: 'duplicate Rig id',
+      options: { childRigId: '7' },
+      message: 'DOMLayer.layerRiggingIndex 7 is ambiguous',
     },
     {
       label: 'non-numeric parent id',
