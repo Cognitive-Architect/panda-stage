@@ -174,6 +174,13 @@ function selectAuthoredChildFrame(
   if (firstFrame === null) {
     return failure('UNSUPPORTED_TIMING', `Graphic firstFrame is invalid: ${element.firstFrame}`, sourceAddress);
   }
+  if (firstFrame >= childFrameCount) {
+    return failure(
+      'UNSUPPORTED_TIMING',
+      `Graphic firstFrame=${firstFrame} is outside child frameCount ${childFrameCount}`,
+      sourceAddress,
+    );
+  }
   let lastFrame: number | undefined;
   if (element.lastFrame !== undefined) {
     const rawLastFrame = element.lastFrame.trim();
