@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  CharacterService,
+  LayerService,
+  PartPoseAnimationService,
+  ProjectSchema,
+  migrateProject,
+} from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+import { buildProject, IDS } from './domain/testProject';
 
 describe('EditorProjectStore', () => {
   it('exposes the last saved Project snapshot while newer edits remain dirty', () => {
@@ -138,6 +146,155 @@ describe('EditorProjectStore', () => {
         id: '99000000-0000-4000-8000-000000000001',
       }),
     ).toThrow('identity mismatch');
+  });
+
+  it('cancels a command captured from a stale revision or reopened project session', () => {
+    const store = new EditorProjectStore();
+    const project = migrateProject(exampleProject);
+    const root = 'D:\\project.pandastage';
+    store.open(root, project);
+    const staleRevision = store.captureEditContext()!;
+    store.updateProject({ ...project, name: 'Current revision' });
+    const beforeRejectedWrite = store.getSnapshot();
+
+    expect(() =>
+      store.updateProjectAtContext(
+        staleRevision,
+        { ...project, name: 'Stale command' },
+        'Stale command',
+      ),
+    ).toThrow('captured project session or revision is stale');
+    expect(store.getSnapshot()).toBe(beforeRejectedWrite);
+    expect(store.history.getSnapshot().undoCount).toBe(1);
+
+    const staleSession = store.captureEditContext()!;
+    store.open(root, project);
+    expect(() =>
+      store.updateProjectAtContext(
+        staleSession,
+        { ...project, name: 'Reopened stale command' },
+        'Reopened stale command',
+      ),
+    ).toThrow('captured project session or revision is stale');
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: project.name },
+      dirty: false,
+      revision: 0,
+    });
+    expect(store.history.getSnapshot().undoCount).toBe(0);
+  });
+
+  it('checks asset references retained by both undo and redo project states', () => {
+    const store = new EditorProjectStore();
+    const project = migrateProject(exampleProject);
+    const character = project.characters[0]!;
+    const assetId =
+      character.mode === 'adaptive-parts'
+        ? character.parts[0]!.assetId
+        : character.baseAssetId;
+    store.open('D:\\project.pandastage', project);
+    expect(store.history.referencesAsset(assetId)).toBe(false);
+
+    store.updateProject({ ...project, name: 'Project edit' }, 'Project edit');
+    expect(store.history.referencesAsset(assetId)).toBe(true);
+    expect(store.undo()).toBe(true);
+    expect(store.history.referencesAsset(assetId)).toBe(true);
+    expect(store.redo()).toBe(true);
+    expect(store.history.referencesAsset(assetId)).toBe(true);
+
+    store.open('D:\\project.pandastage', project);
+    expect(store.history.referencesAsset(assetId)).toBe(false);
+  });
+
+  it('retains Part snapshot asset references while the current Project has cleared them', () => {
+    const base = buildProject();
+    const withCharacter = new CharacterService().createAdaptiveParts(base, {
+      name: 'History pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = withCharacter.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      withCharacter,
+      IDS.shot,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+    });
+    const assetId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.assetId;
+    const cleared = poses.clearAnimation(captured, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+    }).project;
+
+    const store = new EditorProjectStore();
+    store.open('D:\\history-pose.pandastage', captured);
+    store.updateProject(cleared, 'Clear pose snapshot');
+    expect(store.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation).toBeUndefined();
+    expect(store.history.referencesAsset(assetId)).toBe(true);
+    expect(store.history.referencesPoseSnapshotAsset(assetId)).toBe(true);
+
+    expect(store.undo()).toBe(true);
+    expect(store.history.referencesPoseSnapshotAsset(assetId)).toBe(true);
+    expect(store.redo()).toBe(true);
+    expect(store.history.referencesPoseSnapshotAsset(assetId)).toBe(true);
+
+    store.open('D:\\history-pose.pandastage', cleared);
+    expect(store.history.referencesAsset(assetId)).toBe(false);
+    expect(store.history.referencesPoseSnapshotAsset(assetId)).toBe(false);
+  });
+
+  it('preserves History when a stale asset-delete acknowledgement conflicts with a newer reference', () => {
+    const base = buildProject();
+    const unusedAssetId = '10000000-0000-4000-8000-000000000099';
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets,
+        {
+          id: unusedAssetId,
+          kind: 'image',
+          name: 'Unused image',
+          relativePath: 'unused.png',
+          mimeType: 'image/png',
+          width: 640,
+          height: 640,
+          usage: 'uncategorized',
+          keywords: [],
+        },
+      ],
+    });
+    const savedWithoutAsset = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.filter((asset) => asset.id !== unusedAssetId),
+    });
+    const store = new EditorProjectStore();
+    store.open('D:\\project.pandastage', project);
+    const referenced = new LayerService().createFromAsset(project, IDS.shot, {
+      version: 2,
+      type: 'asset-image',
+      assetId: unusedAssetId,
+      position: { x: 420, y: 440 },
+    }).project;
+    store.updateProject(referenced, 'Reference image');
+    const beforeRejectedDelete = store.getSnapshot();
+
+    expect(() =>
+      store.applyAssetDelete(savedWithoutAsset, unusedAssetId, 0, 1),
+    ).toThrow('Newer editor changes reference the deleted asset');
+    expect(store.getSnapshot()).toBe(beforeRejectedDelete);
+    expect(store.history.getSnapshot().undoCount).toBe(1);
+    expect(store.history.referencesAsset(unusedAssetId)).toBe(true);
   });
 
   it('commits an asset import at the matching base revision', () => {

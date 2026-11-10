@@ -11,7 +11,16 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  CharacterService,
+  LayerService,
+  PartPoseAnimationService,
+  ProjectSchema,
+  ShotService,
+  scanAssetReferences,
+  type Project,
+} from '../../src/domain';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
 import { buildProjectWithAnimation } from '../unit/domain/testProject';
 import { applyAssetDeleteResponse } from '../../src/renderer/features/assets/applyAssetDeleteResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -80,6 +89,7 @@ async function createHarness(
     headReferenced?: boolean;
     animationReferenced?: boolean;
     partReferenced?: boolean;
+    poseReferenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
     beforeCommitValidation?: () => void | Promise<void>;
     beforeAtomicReplace?: () => void | Promise<void>;
@@ -128,8 +138,8 @@ async function createHarness(
     relativePath: 'assets/待删除 图片.png',
     mimeType: 'image/png',
     kind: 'image' as const,
-    width: 16,
-    height: 12,
+    width: options.poseReferenced ? 640 : 16,
+    height: options.poseReferenced ? 640 : 12,
     sha256: hash,
     usage: 'uncategorized' as const,
     keywords: [],
@@ -164,9 +174,12 @@ async function createHarness(
   const characterImageAssetId = options.headReferenced
     ? headSupportAsset.id
     : asset.id;
-  const project = ProjectSchema.parse({
+  let project = ProjectSchema.parse({
     ...created.project,
-    assets: options.headReferenced ? [asset, headSupportAsset] : [asset],
+    assets:
+      options.headReferenced || options.poseReferenced
+        ? [asset, headSupportAsset]
+        : [asset],
     animations,
     characters: options.partReferenced
       ? [
@@ -292,6 +305,94 @@ async function createHarness(
         ]
       : [],
   });
+  if (options.poseReferenced) {
+    const shotProject = new ShotService().create(project, {
+      name: 'Hidden Part pose snapshot',
+      durationMs: 3_000,
+    });
+    const characters = new CharacterService();
+    const withCharacter = characters.createAdaptiveParts(shotProject, {
+      name: 'Current defaults use another asset',
+      parts: adaptivePartsFixture(asset.id),
+    });
+    const character = withCharacter.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const shotId = withCharacter.shots.at(-1)!.id;
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      withCharacter,
+      shotId,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const poses = new PartPoseAnimationService();
+    const captured = poses.create(placed.project, {
+      shotId,
+      layerId: placed.layer.id,
+    });
+    const definition = characters.getAdaptivePartsDefinition(
+      captured,
+      character.id,
+    );
+    const withDifferentDefaults = characters.applyAdaptivePartsDefinition(
+      captured,
+      character.id,
+      {
+        ...definition,
+        parts: definition.parts.map((part) => ({
+          ...part,
+          assetId: headSupportAsset.id,
+        })),
+      },
+    );
+    project = ProjectSchema.parse({
+      ...withDifferentDefaults,
+      shots: withDifferentDefaults.shots.map((shot) =>
+        shot.id !== shotId
+          ? shot
+          : {
+              ...shot,
+              layers: shot.layers.map((layer) =>
+                layer.id !== placed.layer.id || !layer.poseAnimation
+                  ? layer
+                  : {
+                      ...layer,
+                      poseAnimation: {
+                        ...layer.poseAnimation,
+                        tracks: layer.poseAnimation.tracks.map((track, index) => ({
+                          ...track,
+                          visible: false,
+                          ...(index === 0
+                            ? {
+                                keys: [
+                                  track.keys[0]!,
+                                  {
+                                    timeMs: 1_000,
+                                    offsetX: 0,
+                                    offsetY: 0,
+                                    rotationDeg: 35,
+                                    scale: 1,
+                                    easingToNext: 'linear' as const,
+                                  },
+                                ],
+                              }
+                            : {}),
+                        })),
+                      },
+                    },
+              ),
+            },
+      ),
+    });
+    const references = scanAssetReferences(project, asset.id);
+    if (
+      references.length === 0 ||
+      references.some((reference) => reference.kind !== 'pose-animation-part')
+    ) {
+      throw new Error('Expected the hidden pose snapshot to be the only asset reference.');
+    }
+  }
   await projectService.save(projectRoot, project, 1);
   enableAtomicReplaceHook.current = true;
   const cache = new CacheService();
@@ -376,12 +477,14 @@ function request(
   input: Awaited<ReturnType<typeof createHarness>>,
   project: Project = input.revision3,
   baseRevision = 3,
+  historyReferencesAsset = false,
 ) {
   return {
     projectRoot: input.projectRoot,
     project,
     baseRevision,
     assetId: input.asset.id,
+    historyReferencesAsset,
   };
 }
 
@@ -533,6 +636,60 @@ describe('asset delete integration', () => {
       ]),
     });
     expect(await state(input)).toEqual(before);
+  });
+
+  it('blocks an asset referenced only by a hidden, non-current pose snapshot track', async () => {
+    const input = await createHarness({ poseReferenced: true });
+    const before = await state(input);
+    const opened = await input.projectService.open(input.projectRoot);
+    const currentReferences = scanAssetReferences(opened.project, input.asset.id);
+    expect(currentReferences.length).toBeGreaterThan(0);
+    expect(currentReferences.every(
+      (reference) => reference.kind === 'pose-animation-part',
+    )).toBe(true);
+    const poseTrack = opened.project.shots[0]!.layers.find(
+      (layer) => layer.poseAnimation,
+    )!.poseAnimation!.tracks[0]!;
+    expect(poseTrack.visible).toBe(false);
+    expect(poseTrack.keys.at(-1)!.timeMs).toBe(1_000);
+
+    await expect(
+      input.deleteService.deleteAsset(request(input)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'pose-animation-part',
+          path: expect.stringContaining('.poseAnimation.tracks[0].assetId'),
+        }),
+      ]),
+    });
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({ revision: 3, dirty: true });
+  });
+
+  it('blocks deletion when an undo or redo Project state still references the asset', async () => {
+    const input = await createHarness();
+    expect(scanAssetReferences(input.revision3, input.asset.id)).toEqual([]);
+    const before = await state(input);
+
+    await expect(
+      input.deleteService.deleteAsset(
+        request(input, input.revision3, 3, true),
+      ),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: [],
+      message: expect.stringContaining('undo or redo'),
+    });
+
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({ revision: 3, dirty: true });
+    expect(await stagedDeleteFiles(input)).toEqual([]);
   });
 
   it('rolls the asset file back when cache staging fails', async () => {

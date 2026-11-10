@@ -1,4 +1,4 @@
-import type { Project } from '../../domain';
+import { scanAssetReferences, type Project } from '../../domain';
 import type {
   HistoryCommand,
   HistoryReplayEffects,
@@ -27,6 +27,21 @@ export class ProjectCommand implements HistoryCommand {
   redo(): void {
     this.applyProject(this.after);
     this.replayEffects.afterRedo?.();
+  }
+
+  referencesAsset(assetId: string): boolean {
+    return (
+      scanAssetReferences(this.before, assetId).length > 0 ||
+      scanAssetReferences(this.after, assetId).length > 0
+    );
+  }
+
+  referencesPoseSnapshotAsset(assetId: string): boolean {
+    return [this.before, this.after].some((project) =>
+      scanAssetReferences(project, assetId).some(
+        (reference) => reference.kind === 'pose-animation-part',
+      ),
+    );
   }
 
   mergeWith(next: HistoryCommand): HistoryCommand | null {

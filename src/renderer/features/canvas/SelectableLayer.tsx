@@ -1,13 +1,19 @@
 import Konva from 'konva';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Circle,
   Group,
   Image as KonvaImage,
+  Line,
   Rect,
 } from 'react-konva';
 import {
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
   clampLayerPosition,
   type Layer,
   type LayerTransformInput,
+  type PartPoseKeyframe,
   visualPartRenderTransform,
   visualHeadGroupRenderTransform,
   type LayerVisualParts,
@@ -55,6 +61,55 @@ export interface SelectableLayerProps {
   positionAuthoringShakeOffset?: Point | null;
   onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
+  poseEditing?: boolean;
+  poseSelectionEnabled?: boolean;
+  poseSelectedPartId?: string | null;
+  poseCurrentKeyframe?: PartPoseKeyframe | null;
+  poseCanTransform?: boolean;
+  poseCanSetPivot?: boolean;
+  posePivotLayerPoint?: Point | null;
+  posePivotCalibrationPreview?: { point: Point; valid: boolean } | null;
+  poseGestureContextKey?: string;
+  onSelectPart?: (partId: string) => void;
+  onStartPartPose?: (layerId: string, partId: string) => void;
+  onCommitPartPose?: (
+    partId: string,
+    keyframe: PartPoseKeyframe,
+    gestureContextKey: string,
+  ) => void;
+  onCommitPivotDrag?: (
+    layerId: string,
+    partId: string,
+    layerPoint: Point,
+    gestureContextKey: string,
+  ) => void;
+}
+
+type PoseGestureKind = 'move' | 'rotate' | 'scale';
+
+interface PoseGesture {
+  kind: PoseGestureKind;
+  contextKey: string;
+  keyframe: PartPoseKeyframe;
+  node: Konva.Node;
+  startPosition: Point;
+  pivot: Point;
+  startPointerAngle: number;
+  lastPointerAngle: number;
+  accumulatedAngle: number;
+  startRadius: number;
+}
+
+interface PivotDragGesture {
+  contextKey: string;
+  partId: string;
+  node: Konva.Node;
+  startPosition: Point;
+}
+
+function setPivotCursor(node: Konva.Node, cursor: string): void {
+  const container = node.getStage()?.container();
+  if (container) container.style.cursor = cursor;
 }
 
 function stopAndSelect(
@@ -66,7 +121,333 @@ function stopAndSelect(
   onSelect(layerId);
 }
 
-export function SelectableLayer({
+interface PoseGestureController {
+  poseDraft: PartPoseKeyframe | null;
+  beginPoseGesture: (
+    kind: PoseGestureKind,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  updatePoseGesture: (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  finishPoseGesture: (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  beginPivotDrag: (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  updatePivotDrag: (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  finishPivotDrag: (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) => void;
+  cancelPivotDrag: () => void;
+}
+
+const NO_POSE_GESTURE_CONTROLLER: PoseGestureController = {
+  poseDraft: null,
+  beginPoseGesture: () => undefined,
+  updatePoseGesture: () => undefined,
+  finishPoseGesture: () => undefined,
+  beginPivotDrag: () => undefined,
+  updatePivotDrag: () => undefined,
+  finishPivotDrag: () => undefined,
+  cancelPivotDrag: () => undefined,
+};
+
+export function SelectableLayer(props: SelectableLayerProps): React.JSX.Element {
+  if (props.poseEditing) {
+    return <PoseEditableSelectableLayer {...props} />;
+  }
+  return renderSelectableLayer(props, NO_POSE_GESTURE_CONTROLLER);
+}
+
+function PoseEditableSelectableLayer(
+  props: SelectableLayerProps,
+): React.JSX.Element {
+  const controller = usePoseGestureController(props);
+  return renderSelectableLayer(props, controller);
+}
+
+function usePoseGestureController({
+  layer,
+  nodeRef,
+  onCommitPivotDrag = () => undefined,
+  poseCanTransform = false,
+  poseCanSetPivot = false,
+  poseCurrentKeyframe = null,
+  poseEditing = false,
+  poseGestureContextKey = '',
+  posePivotLayerPoint = null,
+  poseSelectedPartId = null,
+  onCommitPartPose = () => undefined,
+  onError,
+}: SelectableLayerProps): PoseGestureController {
+  const poseGestureRef = useRef<PoseGesture | null>(null);
+  const poseDraftRef = useRef<PartPoseKeyframe | null>(null);
+  const pivotDragRef = useRef<PivotDragGesture | null>(null);
+  const [poseDraft, setPoseDraft] = useState<PartPoseKeyframe | null>(null);
+  const cancelPoseGesture = useCallback((): void => {
+    const gesture = poseGestureRef.current;
+    if (gesture) {
+      gesture.node.stopDrag();
+      gesture.node.position(gesture.startPosition);
+    }
+    poseGestureRef.current = null;
+    poseDraftRef.current = null;
+    setPoseDraft(null);
+  }, []);
+  const cancelPivotDrag = useCallback((): void => {
+    const gesture = pivotDragRef.current;
+    if (!gesture) return;
+    pivotDragRef.current = null;
+    gesture.node.stopDrag();
+    gesture.node.position(gesture.startPosition);
+    gesture.node.getLayer()?.batchDraw();
+    setPivotCursor(gesture.node, '');
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      if (pivotDragRef.current) {
+        event.preventDefault();
+        cancelPivotDrag();
+        return;
+      }
+      if (!poseGestureRef.current) return;
+      event.preventDefault();
+      cancelPoseGesture();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelPivotDrag, cancelPoseGesture]);
+  useEffect(() => {
+    const gesture = poseGestureRef.current;
+    if (
+      gesture &&
+      (gesture.contextKey !== poseGestureContextKey ||
+        !poseEditing ||
+        !poseCanTransform)
+    ) {
+      cancelPoseGesture();
+    }
+    const pivotGesture = pivotDragRef.current;
+    if (
+      pivotGesture &&
+      (pivotGesture.contextKey !== poseGestureContextKey ||
+        pivotGesture.partId !== poseSelectedPartId ||
+        !poseEditing ||
+        !poseCanSetPivot)
+    ) {
+      cancelPivotDrag();
+    }
+  }, [
+    cancelPivotDrag,
+    cancelPoseGesture,
+    poseCanTransform,
+    poseCanSetPivot,
+    poseEditing,
+    poseGestureContextKey,
+    poseSelectedPartId,
+  ]);
+  useEffect(() => () => cancelPivotDrag(), [cancelPivotDrag]);
+
+  const beginPoseGesture = (
+    kind: PoseGestureKind,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    if (
+      !poseEditing ||
+      !poseCanTransform ||
+      !poseCurrentKeyframe ||
+      !poseSelectedPartId ||
+      !posePivotLayerPoint
+    ) {
+      event.target.stopDrag();
+      return;
+    }
+    const pointer = nodeRef.current?.getRelativePointerPosition();
+    if (!pointer) {
+      event.target.stopDrag();
+      return;
+    }
+    const pointerAngle = Math.atan2(
+      pointer.y - posePivotLayerPoint.y,
+      pointer.x - posePivotLayerPoint.x,
+    );
+    const startRadius = Math.max(
+      1,
+      Math.hypot(
+        pointer.x - posePivotLayerPoint.x,
+        pointer.y - posePivotLayerPoint.y,
+      ),
+    );
+    poseGestureRef.current = {
+      kind,
+      contextKey: poseGestureContextKey,
+      keyframe: poseCurrentKeyframe,
+      node: event.target,
+      startPosition: { x: event.target.x(), y: event.target.y() },
+      pivot: { ...posePivotLayerPoint },
+      startPointerAngle: pointerAngle,
+      lastPointerAngle: pointerAngle,
+      accumulatedAngle: 0,
+      startRadius,
+    };
+    poseDraftRef.current = poseCurrentKeyframe;
+  };
+
+  const updatePoseGesture = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    const gesture = poseGestureRef.current;
+    if (!gesture) return;
+    let next: PartPoseKeyframe;
+    if (gesture.kind === 'move') {
+      next = {
+        ...gesture.keyframe,
+        offsetX:
+          gesture.keyframe.offsetX + event.target.x() - gesture.startPosition.x,
+        offsetY:
+          gesture.keyframe.offsetY + event.target.y() - gesture.startPosition.y,
+      };
+    } else {
+      const pointer = nodeRef.current?.getRelativePointerPosition();
+      if (!pointer) return;
+      if (gesture.kind === 'rotate') {
+        const pointerAngle = Math.atan2(
+          pointer.y - gesture.pivot.y,
+          pointer.x - gesture.pivot.x,
+        );
+        let delta = pointerAngle - gesture.lastPointerAngle;
+        while (delta > Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        gesture.accumulatedAngle += delta;
+        gesture.lastPointerAngle = pointerAngle;
+        next = {
+          ...gesture.keyframe,
+          rotationDeg:
+            gesture.keyframe.rotationDeg +
+            (gesture.accumulatedAngle * 180) / Math.PI,
+        };
+      } else {
+        const radius = Math.hypot(
+          pointer.x - gesture.pivot.x,
+          pointer.y - gesture.pivot.y,
+        );
+        next = {
+          ...gesture.keyframe,
+          scale: Math.max(
+            CHARACTER_PART_MIN_SCALE,
+            Math.min(
+              CHARACTER_PART_MAX_SCALE,
+              gesture.keyframe.scale * (radius / gesture.startRadius),
+            ),
+          ),
+        };
+      }
+    }
+    poseDraftRef.current = next;
+    setPoseDraft(next);
+  };
+
+  const finishPoseGesture = (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    const gesture = poseGestureRef.current;
+    if (!gesture) return;
+    if (
+      gesture.contextKey !== poseGestureContextKey ||
+      !poseEditing ||
+      !poseCanTransform
+    ) {
+      cancelPoseGesture();
+      onError('工程、镜头或时间已变化，拖动已取消。');
+      return;
+    }
+    updatePoseGesture(event);
+    const next = poseDraftRef.current;
+    gesture.node.stopDrag();
+    gesture.node.position(gesture.startPosition);
+    poseGestureRef.current = null;
+    poseDraftRef.current = null;
+    setPoseDraft(null);
+    if (next) onCommitPartPose(partId, next, gesture.contextKey);
+  };
+
+  const beginPivotDrag = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    if (
+      !poseEditing ||
+      !poseCanSetPivot ||
+      !posePivotLayerPoint ||
+      !poseSelectedPartId
+    ) {
+      event.target.stopDrag();
+      return;
+    }
+    pivotDragRef.current = {
+      contextKey: poseGestureContextKey,
+      partId: poseSelectedPartId,
+      node: event.target,
+      startPosition: { x: event.target.x(), y: event.target.y() },
+    };
+    setPivotCursor(event.target, 'grabbing');
+  };
+
+  const updatePivotDrag = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    if (pivotDragRef.current) setPivotCursor(event.target, 'grabbing');
+  };
+
+  const finishPivotDrag = (
+    partId: string,
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ): void => {
+    event.cancelBubble = true;
+    const gesture = pivotDragRef.current;
+    if (!gesture) return;
+    pivotDragRef.current = null;
+    const nextPoint = { x: gesture.node.x(), y: gesture.node.y() };
+    gesture.node.position(gesture.startPosition);
+    gesture.node.getLayer()?.batchDraw();
+    setPivotCursor(gesture.node, poseCanSetPivot ? 'grab' : '');
+
+    if (
+      gesture.contextKey !== poseGestureContextKey ||
+      gesture.partId !== partId ||
+      partId !== poseSelectedPartId ||
+      !poseEditing ||
+      !poseCanSetPivot ||
+      (nextPoint.x === gesture.startPosition.x &&
+        nextPoint.y === gesture.startPosition.y)
+    ) {
+      return;
+    }
+    onCommitPivotDrag(layer.id, partId, nextPoint, gesture.contextKey);
+  };
+
+  return {
+    poseDraft,
+    beginPoseGesture,
+    updatePoseGesture,
+    finishPoseGesture,
+    beginPivotDrag,
+    updatePivotDrag,
+    finishPivotDrag,
+    cancelPivotDrag,
+  };
+}
+
+function renderSelectableLayer({
   image,
   images,
   imagesByResourceKey,
@@ -84,11 +465,34 @@ export function SelectableLayer({
   positionAuthoringShakeOffset = null,
   onPositionAuthoringCommit = () => undefined,
   onError,
-}: SelectableLayerProps): React.JSX.Element {
+  poseEditing = false,
+  poseSelectionEnabled = false,
+  poseSelectedPartId = null,
+  poseCurrentKeyframe = null,
+  poseCanSetPivot = false,
+  poseCanTransform = false,
+  posePivotCalibrationPreview = null,
+  posePivotLayerPoint = null,
+  onSelectPart = () => undefined,
+  onStartPartPose = () => undefined,
+}: SelectableLayerProps,
+  gestureController: PoseGestureController,
+): React.JSX.Element {
+  const {
+    poseDraft,
+    beginPoseGesture,
+    updatePoseGesture,
+    finishPoseGesture,
+    beginPivotDrag,
+    updatePivotDrag,
+    finishPivotDrag,
+  } = gestureController;
   const canSelect = true;
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
-    (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
+    (directEditingEnabled || positionAuthoringEnabled) &&
+    !layer.locked &&
+    !poseEditing;
   const canTransform = canMove;
 
   const legacyBounds = {
@@ -154,8 +558,8 @@ export function SelectableLayer({
     ) return;
     // Konva applies a Group opacity while drawing each child. Cache the
     // complete Body+Head+Face group first so the logical Character opacity is
-    // applied once to the flattened overlap, while the outer root remains
-    // the only transform/interaction owner.
+    // applied once to the flattened overlap. Pose handles and hit areas remain
+    // separate from this visual cache.
     visualNode.cache({
       height: visualBounds.height,
       width: visualBounds.width,
@@ -164,21 +568,119 @@ export function SelectableLayer({
     });
     visualNode.getLayer()?.batchDraw();
   };
+  const selectVisualPart = (
+    event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+    part: (typeof visualParts)[number],
+  ): void => {
+    event.cancelBubble = true;
+    onSelect(layer.id);
+    if (part.source.kind === 'adaptive-part') {
+      if (poseEditing) {
+        onSelectPart(part.source.characterPartId);
+      } else if (poseSelectionEnabled && !positionAuthoringEnabled) {
+        onStartPartPose(layer.id, part.source.characterPartId);
+      }
+    }
+  };
+  const selectedPosePart = resolvedPartImages.find(
+    ({ part }) =>
+      poseEditing &&
+      part.source.kind === 'adaptive-part' &&
+      part.source.characterPartId === poseSelectedPartId,
+  )?.part;
+  const partPosePreview =
+    poseDraft && poseCurrentKeyframe && posePivotLayerPoint
+      ? {
+          x:
+            posePivotLayerPoint.x +
+            poseDraft.offsetX - poseCurrentKeyframe.offsetX,
+          y:
+            posePivotLayerPoint.y +
+            poseDraft.offsetY - poseCurrentKeyframe.offsetY,
+          offsetX: posePivotLayerPoint.x,
+          offsetY: posePivotLayerPoint.y,
+          rotation: poseDraft.rotationDeg - poseCurrentKeyframe.rotationDeg,
+          scaleX: poseDraft.scale / poseCurrentKeyframe.scale,
+          scaleY: poseDraft.scale / poseCurrentKeyframe.scale,
+        }
+      : posePivotLayerPoint
+        ? {
+            x: posePivotLayerPoint.x,
+            y: posePivotLayerPoint.y,
+            offsetX: posePivotLayerPoint.x,
+            offsetY: posePivotLayerPoint.y,
+            rotation: 0,
+            scaleX: 1,
+            scaleY: 1,
+          }
+        : null;
+  const partCenter = selectedPosePart?.imageTransform
+    ? {
+        x:
+          selectedPosePart.imageTransform.a *
+            (selectedPosePart.localRect.x + selectedPosePart.localRect.width / 2) +
+          selectedPosePart.imageTransform.c *
+            (selectedPosePart.localRect.y + selectedPosePart.localRect.height / 2) +
+          selectedPosePart.imageTransform.tx,
+        y:
+          selectedPosePart.imageTransform.b *
+            (selectedPosePart.localRect.x + selectedPosePart.localRect.width / 2) +
+          selectedPosePart.imageTransform.d *
+            (selectedPosePart.localRect.y + selectedPosePart.localRect.height / 2) +
+          selectedPosePart.imageTransform.ty,
+      }
+    : null;
+  const handleDistance = selectedPosePart
+    ? Math.max(
+        54,
+        Math.min(
+          110,
+          Math.max(
+            selectedPosePart.localRect.width,
+            selectedPosePart.localRect.height,
+          ) * 0.35,
+        ),
+      )
+    : 64;
   const renderPart = ({
     part,
     image: partImage,
-  }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
-    <KonvaImage
-      height={part.localRect.height}
-      image={partImage}
-      key={part.partId}
-      listening={canSelect}
-      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-      onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-      {...visualPartRenderTransform(part)}
-      width={part.localRect.width}
-    />
-  );
+  }: (typeof resolvedPartImages)[number]): React.JSX.Element => {
+    const partId =
+      part.source.kind === 'adaptive-part'
+        ? part.source.characterPartId
+        : null;
+    const editingThisPart =
+      poseEditing && partId !== null && partId === poseSelectedPartId;
+    const imageNode = (
+      <KonvaImage
+        height={part.localRect.height}
+        image={partImage}
+        key={part.partId}
+        listening={canSelect}
+        onClick={(event) => selectVisualPart(event, part)}
+        onTap={(event) => selectVisualPart(event, part)}
+        {...visualPartRenderTransform(part)}
+        width={part.localRect.width}
+      />
+    );
+    if (!editingThisPart || !partPosePreview || !partId) {
+      return imageNode;
+    }
+    return (
+      <Group
+        draggable={poseCanTransform}
+        key={part.partId}
+        name="part-pose-transform-draft"
+        onDragEnd={(event) => finishPoseGesture(partId, event)}
+        onDragMove={updatePoseGesture}
+        onDragStart={(event) => beginPoseGesture('move', event)}
+        {...partPosePreview}
+      >
+        {imageNode}
+      </Group>
+    );
+  };
   const renderHitArea = ({
     part,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
@@ -186,11 +688,19 @@ export function SelectableLayer({
       fill="#000000"
       height={part.localRect.height}
       key={`${part.partId}:hit`}
-      listening={canSelect}
+      listening={
+        canSelect &&
+        !(
+          poseEditing &&
+          poseCanTransform &&
+          part.source.kind === 'adaptive-part' &&
+          part.source.characterPartId === poseSelectedPartId
+        )
+      }
       name="composite-visual-hit-area"
       opacity={0}
-      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-      onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+      onClick={(event) => selectVisualPart(event, part)}
+      onTap={(event) => selectVisualPart(event, part)}
       {...visualPartRenderTransform(part)}
       width={part.localRect.width}
     />
@@ -386,6 +896,129 @@ export function SelectableLayer({
           renderedParts
         )}
         {renderedHitAreas}
+        {poseEditing &&
+        selectedPosePart &&
+        posePivotLayerPoint &&
+        partPosePreview ? (
+          <>
+            <Group
+              listening={false}
+              name="part-pose-selection-outline"
+              {...partPosePreview}
+            >
+              <Rect
+                dash={[6, 4]}
+                fill="rgba(131, 211, 154, 0.025)"
+                height={selectedPosePart.localRect.height}
+                listening={false}
+                stroke="#83d39a"
+                strokeWidth={2}
+                {...visualPartRenderTransform(selectedPosePart)}
+                width={selectedPosePart.localRect.width}
+              />
+            </Group>
+            <Circle
+              draggable={poseCanSetPivot}
+              fill={
+                posePivotCalibrationPreview?.valid === false
+                  ? '#ed8a82'
+                  : '#f4d35e'
+              }
+              hitStrokeWidth={28}
+              name="part-pose-fixed-pivot"
+              onDragEnd={(event) =>
+                poseSelectedPartId
+                  ? finishPivotDrag(poseSelectedPartId, event)
+                  : undefined
+              }
+              onDragMove={updatePivotDrag}
+              onDragStart={beginPivotDrag}
+              onMouseEnter={(event) =>
+                setPivotCursor(event.target, poseCanSetPivot ? 'grab' : '')
+              }
+              onMouseLeave={(event) => setPivotCursor(event.target, '')}
+              radius={8}
+              stroke="#3b2e12"
+              strokeWidth={2}
+              x={posePivotCalibrationPreview?.point.x ?? posePivotLayerPoint.x}
+              y={posePivotCalibrationPreview?.point.y ?? posePivotLayerPoint.y}
+            />
+            {poseCanTransform && partCenter && poseSelectedPartId ? (
+              <>
+                <Line
+                  listening={false}
+                  points={[
+                    posePivotLayerPoint.x,
+                    posePivotLayerPoint.y,
+                    posePivotLayerPoint.x,
+                    posePivotLayerPoint.y - handleDistance,
+                  ]}
+                  stroke="#7bb9ff"
+                  strokeWidth={2}
+                />
+                <Line
+                  listening={false}
+                  points={[
+                    posePivotLayerPoint.x,
+                    posePivotLayerPoint.y,
+                    posePivotLayerPoint.x + handleDistance,
+                    posePivotLayerPoint.y,
+                  ]}
+                  stroke="#f3a712"
+                  strokeWidth={3}
+                />
+                <Circle
+                  draggable
+                  fill="#83d39a"
+                  name="part-pose-move-handle"
+                  onDragEnd={(event) =>
+                    finishPoseGesture(poseSelectedPartId, event)
+                  }
+                  onDragMove={updatePoseGesture}
+                  onDragStart={(event) => beginPoseGesture('move', event)}
+                  hitStrokeWidth={7}
+                  radius={9}
+                  stroke="#173d26"
+                  strokeWidth={2}
+                  x={partCenter.x}
+                  y={partCenter.y}
+                />
+                <Circle
+                  draggable
+                  fill="#dcecff"
+                  name="part-pose-rotate-handle"
+                  onDragEnd={(event) =>
+                    finishPoseGesture(poseSelectedPartId, event)
+                  }
+                  onDragMove={updatePoseGesture}
+                  onDragStart={(event) => beginPoseGesture('rotate', event)}
+                  hitStrokeWidth={5}
+                  radius={9}
+                  stroke="#2564a5"
+                  strokeWidth={2}
+                  x={posePivotLayerPoint.x}
+                  y={posePivotLayerPoint.y - handleDistance}
+                />
+                <Circle
+                  draggable
+                  fill="#fff0cc"
+                  name="part-pose-scale-handle"
+                  onDragEnd={(event) =>
+                    finishPoseGesture(poseSelectedPartId, event)
+                  }
+                  onDragMove={updatePoseGesture}
+                  onDragStart={(event) => beginPoseGesture('scale', event)}
+                  hitStrokeWidth={5}
+                  radius={9}
+                  stroke="#a36300"
+                  strokeWidth={2}
+                  x={posePivotLayerPoint.x + handleDistance}
+                  y={posePivotLayerPoint.y}
+                />
+              </>
+            ) : null}
+          </>
+        ) : null}
         {animationVisual ? (
           <Rect
             fill="#000000"
@@ -400,7 +1033,7 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady ? (
+        {selected && !poseEditing && completeVisualReady ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}

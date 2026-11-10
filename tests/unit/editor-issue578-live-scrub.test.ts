@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
-import { LayerTransformPanel } from '../../src/renderer/features/properties/LayerTransformPanel';
+import {
+  LayerTransformPanel,
+  PositionAuthoringControls,
+} from '../../src/renderer/features/properties/LayerTransformPanel';
 import {
   evaluateShotAtTime,
   LayerService,
@@ -121,53 +124,112 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     expect(zero).not.toContain('disabled=""');
   });
 
-  it('renders PK-05 ready and active states with Position-only controls', () => {
-    const ready = renderToStaticMarkup(
+  it('renders PK-05 Position controls separately from Transform', () => {
+    const readyController: LayerTransformController = {
+      ...temporalController(),
+      positionAuthoringSupported: true,
+      positionAuthoringAvailable: true,
+      positionHoldAvailable: true,
+      startPositionAuthoring: () => undefined,
+      createPositionHold: () => undefined,
+    };
+    const transformReady = renderToStaticMarkup(
       LayerTransformPanel({
         compact: true,
-        controller: {
-          ...temporalController(),
-          positionAuthoringAvailable: true,
-          positionHoldAvailable: true,
-          startPositionAuthoring: () => undefined,
-          createPositionHold: () => undefined,
-        },
+        controller: readyController,
         showResetTransform: true,
       }),
     );
-    expect(ready).toContain('我要调整位置');
-    expect(ready).toContain('保持不动到这里');
+    const ready = renderToStaticMarkup(
+      PositionAuthoringControls({ controller: readyController }),
+    );
+    expect(ready).toContain('aria-label="调整位置"');
+    expect(ready).toContain('title="调整位置"');
+    expect(ready).toContain('aria-label="保持当前位置"');
+    expect(ready).toContain('title="保持当前位置"');
+    expect(ready.match(/class="position-authoring-icon"/gu) ?? []).toHaveLength(2);
+    expect(ready).toContain('M3 12.5h6');
+    expect(ready).toContain('M2 21.5h7');
+    expect(ready).toContain('M21 14 17 25h8z');
+    expect(ready).not.toMatch(/>调整位置<|>保持当前位置</u);
+    expect(ready).not.toContain('我要调整位置');
+    expect(ready).not.toContain('保持不动到这里');
     expect(ready).not.toContain('把人物拖到想要的位置');
     expect(ready).not.toContain(TEMPORAL_TRANSFORM_STATUS);
-    expect(ready).toContain('data-ui-variant="primary"');
+    expect(ready).not.toContain('data-ui-variant="primary"');
     expect(ready).toContain('data-ui-variant="secondary"');
-    expect(ready).toMatch(
+
+    const zeroPosition = renderToStaticMarkup(PositionAuthoringControls({
+      controller: {
+        ...readyController,
+        temporalInspection: false,
+        positionAuthoringAvailable: false,
+        positionHoldAvailable: false,
+      },
+    }));
+    const zeroStartButton = zeroPosition.match(
+      /<button\b(?=[^>]*data-testid="position-authoring-start")[^>]*>/u,
+    )?.[0] ?? '';
+    const zeroHoldButton = zeroPosition.match(
+      /<button\b(?=[^>]*data-testid="position-authoring-hold")[^>]*>/u,
+    )?.[0] ?? '';
+    expect(zeroStartButton).toContain('aria-label="调整位置，移动播放头后设置位置关键帧"');
+    expect(zeroStartButton).toContain('disabled=""');
+    expect(zeroStartButton).toContain('title="移动播放头后设置位置关键帧"');
+    expect(zeroHoldButton).toContain('aria-label="保持当前位置，移动播放头后设置位置保持关键帧"');
+    expect(zeroHoldButton).toContain('disabled=""');
+    expect(zeroHoldButton).toContain('title="移动播放头后设置位置保持关键帧"');
+    expect(zeroPosition.match(/class="position-authoring-icon"/gu) ?? [])
+      .toHaveLength(2);
+    expect(transformReady).not.toContain('aria-label="调整位置"');
+    expect(transformReady).not.toContain('aria-label="保持当前位置"');
+    expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*value="500"/u,
     );
-    expect(ready).toMatch(
+    expect(transformReady).toMatch(
       /data-testid="layer-transform-x"[^>]*disabled=""/u,
     );
 
-    const active = renderToStaticMarkup(
+    const unavailable = renderToStaticMarkup(PositionAuthoringControls({
+      controller: {
+        ...readyController,
+        positionAuthoringAvailable: false,
+        positionHoldAvailable: false,
+      },
+    }));
+    expect(unavailable).toMatch(
+      /data-testid="position-authoring-start"[^>]*disabled=""/u,
+    );
+    expect(unavailable).toMatch(
+      /data-testid="position-authoring-hold"[^>]*disabled=""/u,
+    );
+
+    const activeController: LayerTransformController = {
+      ...temporalController(),
+      positionAuthoringSupported: true,
+      positionAuthoringActive: true,
+    };
+    const transformActive = renderToStaticMarkup(
       LayerTransformPanel({
         compact: true,
-        controller: {
-          ...temporalController(),
-          positionAuthoringActive: true,
-        },
+        controller: activeController,
         showResetTransform: true,
       }),
     );
+    const active = renderToStaticMarkup(
+      PositionAuthoringControls({ controller: activeController }),
+    );
     expect(active).toContain('把人物拖到想要的位置');
     expect(active.match(/把人物拖到想要的位置/gu) ?? []).toHaveLength(1);
-    expect(active).not.toContain('我要调整位置');
-    expect(active).not.toContain('保持不动到这里');
+    expect(active).not.toContain('aria-label="调整位置"');
+    expect(active).not.toContain('aria-label="保持当前位置"');
     expect(active).not.toContain(TEMPORAL_TRANSFORM_STATUS);
-    expect(active).not.toContain('应用变换');
-    expect(active).not.toMatch(
+    expect(transformActive).not.toContain('把人物拖到想要的位置');
+    expect(transformActive).not.toContain('应用变换');
+    expect(transformActive).not.toMatch(
       /data-testid="layer-transform-x"[^>]*disabled=""/u,
     );
-    expect(active).toMatch(
+    expect(transformActive).toMatch(
       /data-testid="layer-transform-scale"[\s\S]*disabled=""/u,
     );
   });
@@ -209,6 +271,31 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
         status: '位置已更新。',
       }).status,
     ).toBe('位置已更新。');
+
+    expect(getPositionAuthoringPresentation({
+      temporalInspection: true,
+      active: false,
+      available: false,
+      holdAvailable: false,
+      status: TEMPORAL_TRANSFORM_STATUS,
+    })).toMatchObject({
+      primaryVisible: true,
+      holdVisible: true,
+      guidanceVisible: false,
+      status: TEMPORAL_TRANSFORM_STATUS,
+    });
+
+    expect(getPositionAuthoringPresentation({
+      temporalInspection: false,
+      active: false,
+      available: false,
+      holdAvailable: false,
+      status: '',
+    })).toMatchObject({
+      primaryVisible: true,
+      holdVisible: true,
+      guidanceVisible: false,
+    });
   });
 
   it('keeps formal Position precision behind concise display text', () => {

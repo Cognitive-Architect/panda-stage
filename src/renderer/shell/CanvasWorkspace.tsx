@@ -1,8 +1,13 @@
 import { CanvasStage } from '../features/canvas/CanvasStage';
+import {
+  EMPTY_PART_POSE_EDITOR_UI,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 
 export interface CanvasWorkspaceProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 /**
@@ -15,6 +20,7 @@ export interface CanvasWorkspaceProps {
 export function CanvasWorkspace({
   showHeading = true,
   showToolbar = true,
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
   return (
     <section
@@ -22,7 +28,11 @@ export function CanvasWorkspace({
       className="canvas-workspace"
       data-testid="canvas-workspace-scroll"
     >
-      <CanvasStage showHeading={showHeading} showToolbar={showToolbar} />
+      <CanvasStage
+        partPoseEditor={partPoseEditor}
+        showHeading={showHeading}
+        showToolbar={showToolbar}
+      />
     </section>
   );
 }

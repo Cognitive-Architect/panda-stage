@@ -20,7 +20,7 @@ import {
   type FlaPartPreviewRequest,
   type FlaPartPreviewResponse,
 } from '../../shared/fla-part-preview-api';
-import type { Project } from '../../domain';
+import type { PartPosePoint, Project } from '../../domain';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
   ProjectSessionController,
@@ -38,6 +38,9 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { selectionStore } from '../stores/selectionStore';
+import { layerStore } from '../stores/layerStore';
+import { positionAuthoringSessionStore } from '../stores/positionAuthoringSessionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
@@ -88,6 +91,10 @@ import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
 import { RightWorkspace } from './RightWorkspace';
+import {
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -490,6 +497,15 @@ interface ProductPreviewProjectIdentity {
   projectRoot: string;
 }
 
+interface PartPoseEditSessionIdentity {
+  projectId: string;
+  projectRoot: string;
+  projectInstanceId: number;
+  shotId: string;
+  layerId: string;
+  characterId: string;
+}
+
 export function EditorShell({
   debugSurface,
   gatePreview,
@@ -509,6 +525,22 @@ export function EditorShell({
     shotStore.subscribe,
     shotStore.getCurrentShotId,
   );
+  const selectedLayerId = useSyncExternalStore(
+    selectionStore.subscribe,
+    selectionStore.getSelectedLayerId,
+  );
+  const [partPoseEditSession, setPartPoseEditSession] =
+    useState<PartPoseEditSessionIdentity | null>(null);
+  const [partPoseActionSectionOpen, setPartPoseActionSectionOpen] =
+    useState(false);
+  const [partPoseSelectedPartId, setPartPoseSelectedPartId] =
+    useState<string | null>(null);
+  const [partPosePivotMode, setPartPosePivotMode] = useState(false);
+  const [partPosePivotDraft, setPartPosePivotDraft] = useState<{
+    layerId: string;
+    partId: string;
+    point: PartPosePoint;
+  } | null>(null);
   const [session] = useState(createBrowserSession);
   const createFlaCharacter = useCallback<CreateFlaCharacter>(
     async (preview, name, operationId) => {
@@ -738,6 +770,181 @@ export function EditorShell({
   const { debug, gateA } = useDebugFlag();
   const renderProductSurface = shouldRenderProductSurface(gateA);
   const isPortrait = layoutMode === 'portrait';
+  const partPoseProjectInstanceId = editorProjectStore.getProjectInstanceId();
+  const partPoseShot = projectSnapshot?.project.shots.find(
+    (candidate) => candidate.id === currentShotId,
+  );
+  const partPoseLayer = partPoseShot?.layers.find(
+    (candidate) => candidate.id === partPoseEditSession?.layerId,
+  );
+  const partPoseLayerSource = partPoseLayer?.source;
+  const partPoseCharacter =
+    partPoseLayerSource?.kind === 'character'
+      ? projectSnapshot?.project.characters.find(
+          (candidate) => candidate.id === partPoseLayerSource.characterId,
+        )
+      : undefined;
+  const partPoseParts =
+    partPoseCharacter?.mode === 'adaptive-parts' && partPoseLayer
+      ? resolvePartPoseEditorParts(partPoseCharacter, partPoseLayer)
+      : [];
+  const partPoseSessionValid = Boolean(
+    !isPortrait &&
+      partPoseEditSession &&
+      projectSnapshot &&
+      partPoseProjectInstanceId === partPoseEditSession.projectInstanceId &&
+      projectSnapshot.project.id === partPoseEditSession.projectId &&
+      projectSnapshot.projectRoot === partPoseEditSession.projectRoot &&
+      currentShotId === partPoseEditSession.shotId &&
+      selectedLayerId === partPoseEditSession.layerId &&
+      partPoseLayer?.locked === false &&
+      partPoseLayerSource?.kind === 'character' &&
+      partPoseLayerSource.characterId === partPoseEditSession.characterId &&
+      partPoseCharacter?.mode === 'adaptive-parts' &&
+      partPoseParts.some(
+        (part) => part.partId === partPoseSelectedPartId,
+      ),
+  );
+  const activePartPoseLayerId = partPoseSessionValid
+    ? partPoseEditSession?.layerId ?? null
+    : null;
+  useEffect(() => {
+    if (partPoseEditSession && !partPoseSessionValid) {
+      setPartPoseEditSession(null);
+      setPartPoseSelectedPartId(null);
+      setPartPosePivotMode(false);
+      setPartPosePivotDraft(null);
+    }
+  }, [partPoseEditSession, partPoseSessionValid]);
+  const startPartPoseEdit = (layerId: string, partId: string): boolean => {
+    const snapshot = editorProjectStore.getSnapshot();
+    const shot = snapshot?.project.shots.find(
+      (candidate) => candidate.id === shotStore.getCurrentShotId(),
+    );
+    const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+    const layerSource = layer?.source;
+    const character =
+      layerSource?.kind === 'character'
+        ? snapshot?.project.characters.find(
+            (candidate) => candidate.id === layerSource.characterId,
+          )
+        : undefined;
+    const projectInstanceId = editorProjectStore.getProjectInstanceId();
+    if (
+      !snapshot ||
+      !shot ||
+      !layer ||
+      layer.locked ||
+      layer.id !== selectionStore.getSelectedLayerId() ||
+      layer.source.kind !== 'character' ||
+      !character ||
+      character.mode !== 'adaptive-parts' ||
+      projectInstanceId === null ||
+      !resolvePartPoseEditorParts(character, layer).some(
+        (part) => part.partId === partId,
+      )
+    ) {
+      return false;
+    }
+    positionAuthoringSessionStore.getActiveSessionHandle()?.cancel();
+    setPartPoseEditSession({
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      projectInstanceId,
+      shotId: shot.id,
+      layerId,
+      characterId: character.id,
+    });
+    setPartPoseSelectedPartId(partId);
+    setPartPosePivotMode(false);
+    setPartPosePivotDraft(null);
+    return true;
+  };
+  const exitPartPoseEdit = (): void => {
+    setPartPoseEditSession(null);
+    setPartPoseSelectedPartId(null);
+    setPartPosePivotMode(false);
+    setPartPosePivotDraft(null);
+  };
+  const commitPartPosePivotPoint = (
+    layerId: string,
+    partId: string,
+    point: { x: number; y: number },
+  ): void => {
+    if (
+      activePartPoseLayerId !== layerId ||
+      partPoseSelectedPartId !== partId
+    ) {
+      throw new Error('Part pose selection changed before the pivot was set.');
+    }
+    const currentSnapshot = editorProjectStore.getSnapshot();
+    const currentShot = currentSnapshot?.project.shots.find(
+      (candidate) => candidate.id === partPoseEditSession?.shotId,
+    );
+    const currentLayer = currentShot?.layers.find(
+      (candidate) => candidate.id === layerId,
+    );
+    if (!currentLayer || currentLayer.locked) {
+      throw new Error('Part pose layer is missing or locked.');
+    }
+    if (currentLayer.poseAnimation) {
+      layerStore.setPartPosePivot(layerId, partId, point);
+      setPartPosePivotDraft(null);
+      return;
+    }
+    setPartPosePivotDraft({ layerId, partId, point });
+  };
+  const partPoseEditorUi: PartPoseEditorUi = {
+    actionSectionOpen: partPoseActionSectionOpen,
+    onActionSectionOpenChange: setPartPoseActionSectionOpen,
+    activeLayerId: activePartPoseLayerId,
+    selectedPartId: activePartPoseLayerId ? partPoseSelectedPartId : null,
+    calibratingPivot: activePartPoseLayerId ? partPosePivotMode : false,
+    pivotDraft:
+      activePartPoseLayerId &&
+      partPosePivotDraft?.layerId === activePartPoseLayerId &&
+      partPosePivotDraft.partId === partPoseSelectedPartId
+        ? partPosePivotDraft
+        : null,
+    onStart: startPartPoseEdit,
+    onExit: exitPartPoseEdit,
+    onSelectPart: (partId) => {
+      if (!activePartPoseLayerId) return;
+      setPartPoseSelectedPartId(partId);
+      setPartPosePivotMode(false);
+      setPartPosePivotDraft(null);
+    },
+    onStartPivot: (layerId, partId) => {
+      if (
+        activePartPoseLayerId !== layerId ||
+        partPoseSelectedPartId !== partId
+      ) {
+        if (!startPartPoseEdit(layerId, partId)) return;
+      }
+      setPartPosePivotDraft(null);
+      setPartPosePivotMode(true);
+    },
+    onCancelPivot: () => setPartPosePivotMode(false),
+    onSetPivot: (layerId, partId, point) => {
+      if (
+        activePartPoseLayerId !== layerId ||
+        partPoseSelectedPartId !== partId ||
+        !partPosePivotMode
+      ) {
+        return;
+      }
+      commitPartPosePivotPoint(layerId, partId, point);
+      setPartPosePivotMode(false);
+    },
+    onCommitPivotDrag: (layerId, partId, point) => {
+      if (partPosePivotMode) return;
+      commitPartPosePivotPoint(layerId, partId, point);
+    },
+    onPivotUsed: () => {
+      setPartPosePivotDraft(null);
+      setPartPosePivotMode(false);
+    },
+  };
 
   const setExportTaskState = (next: ExportTaskState): void => {
     exportTaskRef.current = next;
@@ -2689,6 +2896,7 @@ export function EditorShell({
                 <CanvasWorkspace
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  partPoseEditor={partPoseEditorUi}
                 />
               </div>
               {activeAssemblySession && projectSnapshot ? (
@@ -2711,28 +2919,30 @@ export function EditorShell({
             >
               {isPortrait ? (
                 <RightInspector
-                compact={isPortrait ? portraitPropertiesVisible : undefined}
-                dialogueSelectionVisible={
-                  !isPortrait || portraitWorkspace !== 'timeline'
-                }
-                drawerOpen={
-                  isPortrait && portraitPropertiesVisible ? true : undefined
-                }
-                onDrawerOpenChange={(open) => {
-                  if (!isPortrait || open) return;
-                  if (portraitWorkspace === 'properties') {
-                    setPortraitWorkspace('canvas');
-                  } else {
-                    closePortraitCanvasSurface();
+                  compact={isPortrait ? portraitPropertiesVisible : undefined}
+                  dialogueSelectionVisible={
+                    !isPortrait || portraitWorkspace !== 'timeline'
                   }
-                }}
-                shellMode={layoutMode}
+                  drawerOpen={
+                    isPortrait && portraitPropertiesVisible ? true : undefined
+                  }
+                  onDrawerOpenChange={(open) => {
+                    if (!isPortrait || open) return;
+                    if (portraitWorkspace === 'properties') {
+                      setPortraitWorkspace('canvas');
+                    } else {
+                      closePortraitCanvasSurface();
+                    }
+                  }}
+                  shellMode={layoutMode}
+                  partPoseEditor={partPoseEditorUi}
                 />
               ) : (
                 <RightWorkspace
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
+                  partPoseEditor={partPoseEditorUi}
                 />
               )}
             </div>
@@ -2740,6 +2950,7 @@ export function EditorShell({
             </div>
             <BottomWorkspace
               productPreviewOpen={productPreviewOpen}
+              partPoseEditor={partPoseEditorUi}
               hidden={
                 isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
               }

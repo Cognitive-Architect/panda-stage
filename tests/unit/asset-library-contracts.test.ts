@@ -17,8 +17,10 @@ describe('asset library IPC contracts', () => {
       project: migrateProject(exampleProject),
       baseRevision: 3,
       assetId: exampleProject.assets[0]!.id,
+      historyReferencesAsset: false,
     });
     expect(request.baseRevision).toBe(3);
+    expect(request.historyReferencesAsset).toBe(false);
     const response = AssetDeleteResponseSchema.parse({
       ok: false,
       error: {
@@ -31,6 +33,32 @@ describe('asset library IPC contracts', () => {
             kind: 'shot-background',
             path: 'shots[0].layers[0].source.assetId',
             label: '镜头“Opening”的背景“Background”',
+          },
+        ],
+      },
+    });
+    expect(response.ok).toBe(false);
+  });
+
+  it('accepts references discovered in pose snapshots and Adaptive Parts', () => {
+    const project = migrateProject(exampleProject);
+    const response = AssetDeleteResponseSchema.parse({
+      ok: false,
+      error: {
+        code: 'ASSET_DELETE_REFERENCED',
+        message: 'Asset remains in use.',
+        projectRoot: 'D:\\project.pandastage',
+        assetId: project.assets[0]!.id,
+        references: [
+          {
+            kind: 'pose-animation-part',
+            path: 'shots[0].layers[0].poseAnimation.tracks[0].assetId',
+            label: 'Part pose snapshot for Layer "Character A"',
+          },
+          {
+            kind: 'character-part',
+            path: 'characters[0].parts[0].assetId',
+            label: 'Character "Character A" Part Head',
           },
         ],
       },

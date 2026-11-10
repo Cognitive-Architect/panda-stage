@@ -25,6 +25,7 @@ export type LayerServiceErrorCode =
   | 'ASSET_TYPE_MISMATCH'
   | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
+  | 'CHARACTER_LAYER_REQUIRED'
   | 'ANIMATION_NOT_FOUND'
   | 'ANIMATION_LAYER_REQUIRED'
   | 'INVALID_ANIMATION_START_TIME'
@@ -727,6 +728,59 @@ export class LayerService {
       project: this.replaceShot(project, nextShot),
       layer: duplicate,
     };
+  }
+
+  duplicateCharacterLayer(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'character') {
+      throw new LayerServiceError(
+        'CHARACTER_LAYER_REQUIRED',
+        '只能复制角色图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+
+    const usedIds = this.projectIds(project);
+    const duplicateId = this.nextUniqueId(usedIds);
+    usedIds.add(duplicateId);
+    const offsetPosition = clampLayerPosition({
+      x: layer.x + 24,
+      y: layer.y + 24,
+    });
+    const position =
+      offsetPosition.x === layer.x && offsetPosition.y === layer.y
+        ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
+        : offsetPosition;
+    const duplicate: Layer = {
+      ...structuredClone(layer),
+      id: duplicateId,
+      name: `${layer.name} 副本`,
+      x: position.x,
+      y: position.y,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    const duplicatedEvents = shot.timelineEvents
+      .filter((event) => event.layerId === layer.id)
+      .map((event) => {
+        const id = this.nextUniqueId(usedIds);
+        usedIds.add(id);
+        return { ...event, id, layerId: duplicate.id };
+      });
+    const nextProject = this.replaceShot(project, {
+      ...shot,
+      layers: [...shot.layers, duplicate],
+      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
+    });
+    const savedDuplicate = nextProject.shots
+      .find((candidate) => candidate.id === shot.id)!
+      .layers.find((candidate) => candidate.id === duplicateId)!;
+    return { project: nextProject, layer: savedDuplicate };
   }
 
   setLocked(

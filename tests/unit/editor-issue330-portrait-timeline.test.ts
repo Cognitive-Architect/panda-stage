@@ -7,6 +7,14 @@ function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
+function expectTimelineDockContract(bottom: string): void {
+  const invocations = bottom.match(/<TimelineDock\b[^>]*\/>/gu) ?? [];
+  expect(invocations).toHaveLength(1);
+  expect(invocations[0]).toContain('presentation={presentation}');
+  expect(invocations[0]).toContain('productPreviewOpen={productPreviewOpen}');
+  expect(invocations[0]).toContain('partPoseEditor={partPoseEditor}');
+}
+
 describe('Issue #330 portrait Timeline first pass', () => {
   it('uses the approved Chinese top-level Timeline label', () => {
     const switcher = source(
@@ -29,7 +37,7 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(shell).toContain("portraitWorkspace !== 'timeline'");
     expect(shell).toContain('dialogueSelectionVisible=');
     expect(shell).not.toContain('timelineStore');
-    expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
+    expectTimelineDockContract(bottom);
   });
 
   it('promotes the existing ruler and current subtitle/audio clip owners', () => {

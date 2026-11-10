@@ -105,6 +105,11 @@
   display: block;
 }
 
+[data-testid='project-canvas-stage'][data-part-pose-pivot-calibrating='true']
+  .konvajs-content {
+  cursor: crosshair;
+}
+
 .canvas-stage-message {
   position: absolute;
   z-index: 2;

@@ -1,7 +1,12 @@
+// @vitest-environment happy-dom
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import {
+  CharacterService,
+  LayerService,
   evaluateShotAtTime,
   buildEditorStageRenderModel,
   projectShotMouth,
@@ -12,6 +17,7 @@ import {
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import type { PositionAuthoringSessionHandle } from '../../src/renderer/stores/positionAuthoringSessionStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { projectProductPreviewMouth } from '../../src/renderer/shell/productPreviewModel';
 import {
@@ -22,6 +28,75 @@ import {
 } from '../../src/renderer/features/canvas/editorTemporalCanvasContinuity';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { buildProject, IDS } from './domain/testProject';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+
+vi.mock('react-konva', async () => {
+  const React = await import('react');
+  type MockProps = {
+    children?: React.ReactNode;
+    draggable?: boolean;
+    hitStrokeWidth?: number;
+    listening?: boolean;
+    name?: string;
+    opacity?: number;
+    onDragEnd?: (event: { cancelBubble: boolean; target: unknown }) => void;
+    onDragMove?: (event: { cancelBubble: boolean; target: unknown }) => void;
+    onDragStart?: (event: { cancelBubble: boolean; target: unknown }) => void;
+    onClick?: (event: { cancelBubble: boolean }) => void;
+    onTap?: (event: { cancelBubble: boolean }) => void;
+    radius?: number;
+    strokeWidth?: number;
+  };
+  const globals = globalThis as typeof globalThis & {
+    __pandaStageKonvaCacheCalls?: unknown[];
+    __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
+  };
+  const cacheCalls = (globals.__pandaStageKonvaCacheCalls ??= []);
+  const capturedProps = (globals.__pandaStageKonvaPropsByName ??= new Map());
+  const node = {
+    clearCache: () => undefined,
+    cache: (options: unknown) => cacheCalls.push(options),
+    getLayer: () => ({ batchDraw: () => undefined }),
+  };
+  const mockNode = (kind: string) =>
+    React.forwardRef<unknown, MockProps>((props, ref) => {
+      React.useImperativeHandle(ref, () => node, []);
+      if (props.name) {
+        capturedProps.set(props.name, props as unknown as Record<string, unknown>);
+      }
+      return React.createElement(
+        'div',
+        {
+          'data-konva-kind': kind,
+          'data-name': props.name,
+          'data-opacity': props.opacity,
+          'data-draggable': props.draggable,
+          'data-hit-stroke-width': props.hitStrokeWidth,
+          'data-listening': props.listening,
+          'data-radius': props.radius,
+          'data-stroke-width': props.strokeWidth,
+          onClick: props.onClick
+            ? (event: React.MouseEvent<HTMLDivElement>) => {
+                const konvaEvent = { cancelBubble: false };
+                props.onClick?.(konvaEvent);
+                if (konvaEvent.cancelBubble) event.stopPropagation();
+              }
+            : undefined,
+          onTouchEnd: props.onTap
+            ? () => props.onTap?.({ cancelBubble: false })
+            : undefined,
+        },
+        props.children,
+      );
+    });
+  return {
+    Circle: mockNode('Circle'),
+    Group: mockNode('Group'),
+    Image: mockNode('Image'),
+    Line: mockNode('Line'),
+    Rect: mockNode('Rect'),
+  };
+});
 
 const BODY_ID = '10000000-0000-4000-8000-000000000004';
 const FACE_NORMAL_ID = '10000000-0000-4000-8000-000000000005';
@@ -358,7 +433,397 @@ function selectableComposite(
   return { element, model };
 }
 
+function adaptivePoseLayer(opacity: number) {
+  const project = new CharacterService().createAdaptiveParts(buildProject(), {
+    name: 'Pose opacity Character',
+    parts: adaptivePartsFixture(IDS.assetChar),
+  });
+  const character = project.characters.at(-1)!;
+  if (character.mode !== 'adaptive-parts') {
+    throw new Error('Expected an Adaptive Parts Character.');
+  }
+  const placed = new LayerService().createFromAdaptiveCharacter(
+    project,
+    IDS.shot,
+    character.id,
+    { x: 500, y: 600 },
+  );
+  const withOpacity = ProjectSchema.parse({
+    ...placed.project,
+    shots: placed.project.shots.map((shot) => ({
+      ...shot,
+      layers: shot.layers.map((layer) =>
+        layer.id === placed.layer.id ? { ...layer, opacity } : layer,
+      ),
+    })),
+  });
+  const shot = withOpacity.shots.find((candidate) => candidate.id === IDS.shot)!;
+  const evaluated = evaluateShotAtTime(shot, 0, withOpacity);
+  const stage = buildEditorStageRenderModel(withOpacity, shot, evaluated);
+  return {
+    model: stage.layers.find((candidate) => candidate.layer.id === placed.layer.id)!,
+    partId: character.parts[0]!.partId,
+  };
+}
+
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  it('starts Part pose from canvas selection only while Action is open and Position is inactive', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const { model } = adaptivePoseLayer(1);
+    const selectedPart = model.visual.parts
+      .filter((part) => part.visible !== false)
+      .sort((left, right) => left.drawOrder - right.drawOrder)[0];
+    if (!selectedPart || selectedPart.source.kind !== 'adaptive-part') {
+      throw new Error('Adaptive Parts fixture has no visible canvas part.');
+    }
+    const selectedPartId = selectedPart.source.characterPartId;
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onSelect = vi.fn();
+    const cancelPositionSession = vi.fn();
+    const positionSession = {
+      cancel: cancelPositionSession,
+    } as unknown as PositionAuthoringSessionHandle;
+    const onStartPartPose = vi.fn();
+    const renderLayer = async (
+      poseSelectionEnabled: boolean,
+      positionAuthoringSession: typeof positionSession | null = null,
+    ): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: false,
+        visual: model.visual,
+        onSelect,
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        positionAuthoringSession,
+        poseSelectionEnabled,
+        onStartPartPose,
+      })));
+    };
+
+    try {
+      await renderLayer(false);
+      const image = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(image).not.toBeNull();
+      await act(async () => image!.click());
+      expect(onSelect).toHaveBeenCalledWith(model.layer.id);
+      expect(onStartPartPose).not.toHaveBeenCalled();
+
+      await renderLayer(true);
+      const enabledImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      await act(async () => enabledImage!.click());
+      expect(onStartPartPose).toHaveBeenCalledWith(
+        model.layer.id,
+        selectedPartId,
+      );
+
+      onStartPartPose.mockClear();
+      onStartPartPose.mockImplementation(() => positionSession.cancel());
+      await renderLayer(true, positionSession);
+      const positionActiveImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(positionActiveImage).not.toBeNull();
+      await act(async () => positionActiveImage!.click());
+      expect(onStartPartPose).not.toHaveBeenCalled();
+      expect(cancelPositionSession).not.toHaveBeenCalled();
+
+      onStartPartPose.mockClear();
+      onStartPartPose.mockImplementation(() => undefined);
+      await renderLayer(true);
+      const positionExitedImage = container.querySelector<HTMLElement>(
+        '[data-konva-kind="Image"]',
+      );
+      expect(positionExitedImage).not.toBeNull();
+      await act(async () => positionExitedImage!.click());
+      expect(onStartPartPose).toHaveBeenCalledWith(
+        model.layer.id,
+        selectedPartId,
+      );
+
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect,
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: selectedPartId,
+        poseCurrentKeyframe: {
+          timeMs: 1_000,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        posePivotLayerPoint: { x: 0, y: 0 },
+        poseGestureContextKey: 'pivot-calibration-test',
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+      })));
+      expect(container.querySelector('[data-name="part-pose-move-handle"]'))
+        .toBeNull();
+      expect(container.querySelector('[data-name="part-pose-rotate-handle"]'))
+        .toBeNull();
+      expect(container.querySelector('[data-name="part-pose-scale-handle"]'))
+        .toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('previews a direct pivot drag and commits once on release only while available', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const capturedProps = globals.__pandaStageKonvaPropsByName!;
+    capturedProps.clear();
+    const { model, partId } = adaptivePoseLayer(1);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onCommitPivotDrag = vi.fn();
+    const onCommitPartPose = vi.fn();
+    const contextKey = 'pivot-drag-commit-test';
+    const renderLayer = async (poseCanSetPivot: boolean): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        poseCanSetPivot,
+        posePivotLayerPoint: { x: 100, y: 120 },
+        poseGestureContextKey: contextKey,
+        onSelectPart: vi.fn(),
+        onCommitPartPose,
+        onCommitPivotDrag,
+      })));
+    };
+    const targetAt = (x: number, y: number) => {
+      let current = { x, y };
+      const cursor = { style: { cursor: '' } };
+      const stopDrag = vi.fn();
+      const batchDraw = vi.fn();
+      return {
+        target: {
+          x: () => current.x,
+          y: () => current.y,
+          position: (next?: { x: number; y: number }) => {
+            if (next) current = { ...next };
+            return { ...current };
+          },
+          stopDrag,
+          getLayer: () => ({ batchDraw }),
+          getStage: () => ({ container: () => cursor }),
+        },
+        position: () => ({ ...current }),
+        stopDrag,
+      };
+    };
+    const eventFor = (target: ReturnType<typeof targetAt>['target']) => ({
+      cancelBubble: false,
+      target,
+    });
+
+    try {
+      await renderLayer(true);
+      const pivot = container.querySelector<HTMLElement>(
+        '[data-name="part-pose-fixed-pivot"]',
+      );
+      expect(pivot?.getAttribute('data-draggable')).toBe('true');
+      expect(pivot?.getAttribute('data-radius')).toBe('8');
+      expect(pivot?.getAttribute('data-hit-stroke-width')).toBe('28');
+      const props = capturedProps.get('part-pose-fixed-pivot')!;
+      const onDragStart = props.onDragStart as (event: ReturnType<typeof eventFor>) => void;
+      const onDragMove = props.onDragMove as (event: ReturnType<typeof eventFor>) => void;
+      const onDragEnd = props.onDragEnd as (event: ReturnType<typeof eventFor>) => void;
+      const mockNode = targetAt(100, 120);
+      const dragStart = eventFor(mockNode.target);
+      await act(async () => onDragStart(dragStart));
+      expect(dragStart.cancelBubble).toBe(true);
+      mockNode.target.position({ x: 140, y: 160 });
+      await act(async () => onDragMove(eventFor(mockNode.target)));
+      expect(mockNode.position()).toEqual({ x: 140, y: 160 });
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
+      expect(onCommitPartPose).not.toHaveBeenCalled();
+
+      await act(async () => onDragEnd(eventFor(mockNode.target)));
+      expect(mockNode.position()).toEqual({ x: 100, y: 120 });
+      expect(onCommitPivotDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).toHaveBeenCalledWith(
+        model.layer.id,
+        partId,
+        { x: 140, y: 160 },
+        contextKey,
+      );
+      expect(onCommitPartPose).not.toHaveBeenCalled();
+
+      await renderLayer(false);
+      expect(container.querySelector('[data-name="part-pose-fixed-pivot"]')
+        ?.getAttribute('data-draggable')).toBe('false');
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('rolls a direct pivot drag back on Escape or gesture-context changes', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaPropsByName?: Map<string, Record<string, unknown>>;
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const capturedProps = globals.__pandaStageKonvaPropsByName!;
+    capturedProps.clear();
+    const { model, partId } = adaptivePoseLayer(1);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const onCommitPivotDrag = vi.fn();
+    const contextKey = 'pivot-drag-cancel-test';
+    let renderedContextKey = contextKey;
+    const renderLayer = async (): Promise<void> => {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: false,
+        poseCanSetPivot: true,
+        posePivotLayerPoint: { x: 100, y: 120 },
+        poseGestureContextKey: renderedContextKey,
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+        onCommitPivotDrag,
+      })));
+    };
+    const targetAt = (x: number, y: number) => {
+      let current = { x, y };
+      const cursor = { style: { cursor: '' } };
+      const stopDrag = vi.fn();
+      return {
+        target: {
+          x: () => current.x,
+          y: () => current.y,
+          position: (next?: { x: number; y: number }) => {
+            if (next) current = { ...next };
+            return { ...current };
+          },
+          stopDrag,
+          getLayer: () => ({ batchDraw: vi.fn() }),
+          getStage: () => ({ container: () => cursor }),
+        },
+        position: () => ({ ...current }),
+        stopDrag,
+      };
+    };
+    const eventFor = (target: ReturnType<typeof targetAt>['target']) => ({
+      cancelBubble: false,
+      target,
+    });
+    const callbacks = () => capturedProps.get('part-pose-fixed-pivot')!;
+
+    try {
+      await renderLayer();
+      const dragCallbacks = callbacks() as {
+        onDragStart: (event: ReturnType<typeof eventFor>) => void;
+        onDragMove: (event: ReturnType<typeof eventFor>) => void;
+      };
+      const first = targetAt(100, 120);
+      await act(async () => dragCallbacks.onDragStart(eventFor(first.target)));
+      first.target.position({ x: 130, y: 150 });
+      await act(async () => dragCallbacks.onDragMove(eventFor(first.target)));
+      const escape = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => window.dispatchEvent(escape));
+      expect(escape.defaultPrevented).toBe(true);
+      expect(first.position()).toEqual({ x: 100, y: 120 });
+      expect(first.stopDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
+
+      const second = targetAt(100, 120);
+      await act(async () => dragCallbacks.onDragStart(eventFor(second.target)));
+      second.target.position({ x: 170, y: 180 });
+      await act(async () => dragCallbacks.onDragMove(eventFor(second.target)));
+      renderedContextKey = `${contextKey}:time-changed`;
+      await renderLayer();
+      expect(second.position()).toEqual({ x: 100, y: 120 });
+      expect(second.stopDrag).toHaveBeenCalledOnce();
+      expect(onCommitPivotDrag).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
   it('previews opacity on the one Character root without fading Body and Face separately', () => {
     const project = compositeProject({ mouth: false });
     const { model } = selectableComposite(project, 0, [BODY_ID, FACE_NORMAL_ID]);
@@ -750,6 +1215,85 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
 
     expect(root.opacity).toBe(0.5);
     expect(expectedOutputAlpha).toBeCloseTo(0.5, 10);
+  });
+
+  it('keeps the flattened half-opacity composite while Part pose handles stay interactive', async () => {
+    const globals = globalThis as typeof globalThis & {
+      IS_REACT_ACT_ENVIRONMENT?: boolean;
+      __pandaStageKonvaCacheCalls?: unknown[];
+    };
+    globals.IS_REACT_ACT_ENVIRONMENT = true;
+    const cacheCalls = globals.__pandaStageKonvaCacheCalls!;
+    cacheCalls.length = 0;
+    const { model, partId } = adaptivePoseLayer(0.5);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    const images = imageMap(
+      [...new Set(model.visual.parts.map((part) => part.assetId))],
+    );
+
+    try {
+      await act(async () => root.render(createElement(SelectableLayer, {
+        images,
+        layer: model.layer,
+        nodeRef: { current: null },
+        render: model.render,
+        selected: true,
+        visual: model.visual,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+        poseEditing: true,
+        poseSelectedPartId: partId,
+        poseCurrentKeyframe: {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+        poseCanTransform: true,
+        posePivotLayerPoint: { x: 0, y: 0 },
+        poseGestureContextKey: 'pose-opacity-test',
+        onSelectPart: vi.fn(),
+        onCommitPartPose: vi.fn(),
+      })));
+
+      const visual = container.querySelector(
+        '[data-name="selectable-canvas-visual"]',
+      );
+      const layerRoot = container.querySelector(
+        '[data-name="selectable-canvas-layer"]',
+      );
+      const moveHandle = container.querySelector(
+        '[data-name="part-pose-move-handle"]',
+      );
+      const poseHandles = [
+        'part-pose-move-handle',
+        'part-pose-rotate-handle',
+        'part-pose-scale-handle',
+      ].map((name) => container.querySelector(`[data-name="${name}"]`));
+      expect(cacheCalls).toHaveLength(1);
+      expect(visual?.getAttribute('data-opacity')).toBeNull();
+      expect(layerRoot?.getAttribute('data-opacity')).toBe('0.5');
+      expect(moveHandle?.getAttribute('data-draggable')).toBe('true');
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')),
+      )).toEqual([9, 9, 9]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-stroke-width')),
+      )).toEqual([2, 2, 2]);
+      expect(poseHandles.map((handle) =>
+        Number(handle?.getAttribute('data-radius')) +
+          Number(handle?.getAttribute('data-hit-stroke-width')) / 2,
+      )).toEqual([12.5, 11.5, 11.5]);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+    }
   });
 
   it('retains a complete visual for Body-first and Face-first loading, never a half Character', () => {

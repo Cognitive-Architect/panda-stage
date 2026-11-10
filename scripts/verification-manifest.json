@@ -531,7 +531,8 @@
       {
         "id": "assets",
         "sourcePatterns": [
-          "src/renderer/features/assets/**"
+          "src/renderer/features/assets/**",
+          "docs/evidence/day-17/results.json"
         ],
         "testPatterns": [
           "tests/unit/asset-*.test.ts",
@@ -697,6 +698,7 @@
         "id": "canvas",
         "sourcePatterns": [
           "src/renderer/features/canvas/**",
+          "src/renderer/features/part-pose/**",
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
           "src/export-renderer/**",
@@ -712,6 +714,7 @@
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
+          "tests/unit/part-pose-*.test.ts",
           "tests/unit/issue669-talking-head-motion.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/konva-pixel-ratio.test.ts",
@@ -727,7 +730,8 @@
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
       "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+      "tests/integration/ap03-animation-image-prewarm.test.ts",
+      "tests/integration/part-pose-animation-persistence.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",

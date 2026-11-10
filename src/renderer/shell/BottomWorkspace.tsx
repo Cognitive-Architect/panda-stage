@@ -14,6 +14,10 @@ import {
   type TimelineHeightBounds,
 } from '../features/timeline/timelineUiStore';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
+import {
+  EMPTY_PART_POSE_EDITOR_UI,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 
 /**
  * The formal editor bottom owner. Stage 3-C keeps the history behavior intact;
@@ -35,6 +39,7 @@ export interface BottomWorkspaceProps {
   presentation?: EditorShellLayoutMode;
   resizable?: boolean;
   showHistoryControls?: boolean;
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 interface TimelineResizePointer {
@@ -145,6 +150,7 @@ export function BottomWorkspace({
   presentation = 'landscape',
   resizable = false,
   showHistoryControls = presentation !== 'landscape',
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: BottomWorkspaceProps = {}): React.JSX.Element {
   const ui = useTimelineUi();
   const { expanded } = ui;
@@ -331,7 +337,11 @@ export function BottomWorkspace({
           <span className="timeline-resize-grip" aria-hidden="true" />
         </div>
       ) : null}
-      <TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />
+      <TimelineDock
+        partPoseEditor={partPoseEditor}
+        presentation={presentation}
+        productPreviewOpen={productPreviewOpen}
+      />
       {showHistoryControls ? <HistoryControls presentation="bottom" /> : null}
     </section>
   );

@@ -31,6 +31,7 @@ import {
   ShotV14Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
+  ShotV16Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -119,6 +120,12 @@ const ProjectDataSchema = z
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+/** Exact persisted v16 envelope before per-Layer Part pose animation. */
+export const ProjectV16Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(16),
+  shots: z.array(ShotV16Schema),
+}).strict();
 
 const ProjectV12DataSchema = z
   .object({
@@ -515,7 +522,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v15 -> v16) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v16 -> v17) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,
