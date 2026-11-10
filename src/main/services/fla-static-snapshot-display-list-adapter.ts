@@ -4,8 +4,8 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds a fail-closed, source-bounded motion subset for transforms and one
- * directional frame BlurFilter; unrelated XFL semantics (shape tweens,
+ * adds fail-closed Classic Motion interpolation for transforms, color, easing,
+ * and one directional frame BlurFilter; unrelated XFL semantics (shape tweens,
  * non-vector/animated masks, other filters, or ActionScript) remain unsupported.
  * Static filled-vector mask layers have a bounded resolver path.
  */
@@ -21,6 +21,11 @@ import {
   type FlaMotionTweenRotation,
 } from './fla-motion-tween-transform-interpolator';
 import {
+  evaluateFlaViewerClassicTweenProgress,
+  type FlaViewerEasePoint,
+  type FlaViewerTweenEase,
+} from './fla-viewer-tween-evaluator';
+import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
   type FlaDisplayListBlurFilter,
@@ -32,17 +37,19 @@ import {
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
-const MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS = 1_000_000;
-const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
+const MAX_CLASSIC_MOTION_ROTATION_TURNS = 1_000_000;
+const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
   'index',
   'duration',
   'tweenType',
   'motionTweenSnap',
   'keyMode',
+  'motionTweenSync',
+  'acceleration',
+  'motionTweenRotate',
+  'motionTweenRotateTimes',
 ]);
-// #720 authorizes 9728 only as a non-motion terminal marker for this family.
-const BOUNDED_MOTION_TERMINAL_KEY_MODES = new Set(['15872', '9728']);
-const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
+const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
   'selected',
   'symbolType',
@@ -51,31 +58,24 @@ const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'loop',
   'firstFrame',
   'lastFrame',
+  'name',
 ]);
 const UNSUPPORTED_MOTION_METADATA_TAGS = new Set([
   'motionobject',
   'motionpath',
-  'ease',
-  'customease',
   'domtween',
   'animationcore',
-  'propertycontainer',
   'motionobjectxml',
 ]);
 const UNSUPPORTED_MOTION_METADATA_ATTRIBUTES = new Set([
-  'acceleration',
   'easein',
   'easeout',
   'motionpath',
   'orienttopath',
   'rotate',
   'rotatedirection',
-  'rotatetimes',
   'rotationdirection',
-  'rotationtimes',
   'tweeneasing',
-  'motiontweenrotate',
-  'motiontweenrotatetimes',
 ]);
 
 interface XmlToken {
@@ -548,29 +548,27 @@ interface ElementParseContext {
   readonly sourceParentFrameSpanStart: number;
   readonly sourceParentSpanTweenType?: string;
   readonly sourceParentMotionTweenSync?: boolean;
+  readonly motionTweenEndpoint?: boolean;
   readonly unsupportedDisplayReasons: string[];
   readonly state: SourceBuildState;
 }
 
-type BoundedMotionColorMode = 'alphaMultiplier' | 'brightness';
-
-interface BoundedMotionColorTransform {
-  readonly mode: BoundedMotionColorMode;
+interface ClassicMotionColorTransform {
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
 }
 
-type BoundedMotionColorParseResult =
-  | { readonly ok: true; readonly transform: BoundedMotionColorTransform | null }
+type ClassicMotionColorParseResult =
+  | { readonly ok: true; readonly transform: ClassicMotionColorTransform | null }
   | { readonly ok: false; readonly message: string };
 
-function boundedMotionColorTransform(target: FlaXflElementBlock): BoundedMotionColorParseResult {
+function classicMotionColorTransform(target: FlaXflElementBlock): ClassicMotionColorParseResult {
   const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
     .filter((child) => child.name === 'color');
   if (colorWrappers.length === 0) return { ok: true, transform: null };
-  const unsupported = (reason: string): BoundedMotionColorParseResult => ({
+  const unsupported = (reason: string): ClassicMotionColorParseResult => ({
     ok: false,
-    message: `Synchronized motion experiment encountered unsupported Color: ${reason}`,
+    message: `Classic Motion contains unsupported Color data: ${reason}`,
   });
   if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
   const wrapper = colorWrappers[0]!;
@@ -584,34 +582,44 @@ function boundedMotionColorTransform(target: FlaXflElementBlock): BoundedMotionC
 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
-  if (names.length !== 1) {
-    return unsupported(names.length === 0
-      ? 'Color is missing a supported alphaMultiplier or brightness attribute'
-      : `unsupported Color attribute combination: ${names.join(', ')}`);
+  if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness')) {
+    return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
   }
-  if (names[0] === 'alphaMultiplier') {
+  let alphaMultiplier: number | undefined;
+  if (attributes.alphaMultiplier !== undefined) {
     const rawAlpha = attributes.alphaMultiplier;
-    const alphaMultiplier = rawAlpha === undefined || rawAlpha.trim() === '' ? Number.NaN : Number(rawAlpha);
+    alphaMultiplier = rawAlpha.trim() === '' ? Number.NaN : Number(rawAlpha);
     if (!Number.isFinite(alphaMultiplier) || alphaMultiplier < 0 || alphaMultiplier > 1) {
       return unsupported('alphaMultiplier must be finite and within 0..1');
     }
-    return { ok: true, transform: { mode: 'alphaMultiplier', alphaMultiplier } };
   }
-  if (names[0] === 'brightness') {
+  let rgbTransform: FlaDisplayListRgbTransform | undefined;
+  if (attributes.brightness !== undefined) {
     const rawBrightness = attributes.brightness;
     const brightness = rawBrightness === undefined || rawBrightness.trim() === ''
       ? Number.NaN
       : Number(rawBrightness);
-    if (brightness !== 1) return unsupported('only brightness="1" is supported');
-    return {
-      ok: true,
-      transform: {
-        mode: 'brightness',
-        rgbTransform: { multiplier: 0, offset: 255 },
-      },
-    };
+    if (!Number.isFinite(brightness) || brightness < -1 || brightness > 1) {
+      return unsupported('brightness must be finite and within -1..1');
+    }
+    rgbTransform = brightness >= 0
+      ? { multiplier: 1 - brightness, offset: brightness * 255 }
+      : { multiplier: 1 + brightness, offset: 0 };
   }
-  return unsupported(`unsupported Color mode or attributes: ${names.join(', ') || '(none)'}`);
+  if (names.length === 0) return unsupported('Color has no supported attributes');
+  const effectiveAlpha = alphaMultiplier === 1 ? undefined : alphaMultiplier;
+  const effectiveRgb = rgbTransform?.multiplier === 1 && rgbTransform.offset === 0
+    ? undefined
+    : rgbTransform;
+  return {
+    ok: true,
+    transform: effectiveAlpha === undefined && effectiveRgb === undefined
+      ? null
+      : {
+          ...(effectiveAlpha !== undefined ? { alphaMultiplier: effectiveAlpha } : {}),
+          ...(effectiveRgb ? { rgbTransform: effectiveRgb } : {}),
+        },
+  };
 }
 
 function parseDisplayElements(
@@ -660,9 +668,10 @@ function parseDisplayElements(
             ...(context.sourceParentSpanTweenType !== undefined
               ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
               : {}),
-            ...(context.sourceParentMotionTweenSync
-              ? { sourceParentMotionTweenSync: true }
+            ...(context.sourceParentMotionTweenSync !== undefined
+              ? { sourceParentMotionTweenSync: context.sourceParentMotionTweenSync }
               : {}),
+            ...(context.motionTweenEndpoint ? { motionTweenEndpoint: true } : {}),
             unsupportedDisplayReasons: context.unsupportedDisplayReasons,
             state: context.state,
           })
@@ -735,8 +744,8 @@ function parseDisplayElements(
     const resolvedName = resolveSymbolAlias(context.state.symbolAliases, libraryItemName) ?? libraryItemName;
     let alphaMultiplier: number | undefined;
     let rgbTransform: FlaDisplayListRgbTransform | undefined;
-    if (context.sourceParentMotionTweenSync) {
-      const colorResult = boundedMotionColorTransform(child);
+    if (context.motionTweenEndpoint) {
+      const colorResult = classicMotionColorTransform(child);
       if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
       alphaMultiplier = colorResult.transform?.alphaMultiplier;
       rgbTransform = colorResult.transform?.rgbTransform;
@@ -755,9 +764,10 @@ function parseDisplayElements(
       ...(context.sourceParentSpanTweenType !== undefined
         ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
         : {}),
-      ...(context.sourceParentMotionTweenSync
-        ? { sourceParentMotionTweenSync: true }
+      ...(context.sourceParentMotionTweenSync !== undefined
+        ? { sourceParentMotionTweenSync: context.sourceParentMotionTweenSync }
         : {}),
+      ...(context.motionTweenEndpoint ? { motionTweenEndpoint: true } : {}),
       sourceAddress: `${context.scope}/${path}`,
       ...(localTransform ? { localTransform } : {}),
     });
@@ -804,9 +814,8 @@ function buildFrameContext(
           path: `layer-${layerIndex}-frame-${frameIndex}`,
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart,
-          // #722 — Scene-owned spans carry the same owning-span tween metadata as
-          // the Graphic path so the #721 bounded Loop contract is reachable from a
-          // static Scene span ('none') while a tweened Scene span stays fail-closed.
+          // Preserve the Scene keyframe's source span metadata just like the
+          // Graphic path; nested playback is evaluated relative to this keyframe.
           sourceParentSpanTweenType: frame.attributes.tweenType ?? 'none',
           unsupportedDisplayReasons,
           state,
@@ -849,26 +858,15 @@ function buildFrameContext(
   };
 }
 
-function containsUnsupportedMotionMetadata(
-  xml: string,
-  allowRootSynchronizedRotation: boolean = false,
-): boolean {
+function containsUnsupportedMotionMetadata(xml: string): boolean {
   let cursor = 0;
-  let rootElementSeen = false;
   while (cursor < xml.length) {
     const token = nextTagToken(xml, cursor);
     if (!token) return xml.slice(cursor).trim().length > 0;
     const lowerTagName = token.name.toLocaleLowerCase('en-US');
-    const isRootFrame = !rootElementSeen && !token.closing && lowerTagName === 'domframe';
-    if (!token.closing) rootElementSeen = true;
     if (UNSUPPORTED_MOTION_METADATA_TAGS.has(lowerTagName) ||
-        Object.keys(token.attributes).some((name) => {
-          const lowerName = name.toLocaleLowerCase('en-US');
-          const synchronizedRotation = lowerName === 'motiontweenrotate' ||
-            lowerName === 'motiontweenrotatetimes';
-          return UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(lowerName) &&
-            !(allowRootSynchronizedRotation && isRootFrame && synchronizedRotation);
-        })) {
+        Object.keys(token.attributes).some((name) =>
+          UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(name.toLocaleLowerCase('en-US')))) {
       return true;
     }
     cursor = token.end;
@@ -876,35 +874,113 @@ function containsUnsupportedMotionMetadata(
   return false;
 }
 
-type SynchronizedMotionRotationResult =
+type ClassicMotionRotationResult =
   | { readonly ok: true; readonly rotation?: FlaMotionTweenRotation }
   | { readonly ok: false; readonly message: string };
 
-function synchronizedMotionRotationForFrame(
-  frame: FlaXflElementBlock,
-  allowed: boolean,
-): SynchronizedMotionRotationResult {
+function classicMotionRotationForFrame(frame: FlaXflElementBlock): ClassicMotionRotationResult {
   const direction = frame.attributes.motionTweenRotate;
   const rawTurns = frame.attributes.motionTweenRotateTimes;
   if (direction === undefined && rawTurns === undefined) return { ok: true };
-  if (!allowed) {
-    return { ok: false, message: 'motion rotation metadata is only supported on the synchronized 24065 start key' };
+  if (direction !== undefined && !['clockwise', 'counter-clockwise', 'cw', 'ccw', 'auto', 'none'].includes(direction)) {
+    return { ok: false, message: `Unsupported motionTweenRotate value: ${direction}` };
   }
-  if (direction === undefined || rawTurns === undefined) {
-    return { ok: false, message: 'motionTweenRotate and motionTweenRotateTimes must both be authored' };
+  let turns = 0;
+  if (rawTurns !== undefined) {
+    if (!/^\d+$/u.test(rawTurns.trim())) {
+      return { ok: false, message: 'motionTweenRotateTimes must be a non-negative whole number' };
+    }
+    turns = Number(rawTurns.trim());
   }
-  if (direction !== 'clockwise' && direction !== 'counter-clockwise') {
-    return { ok: false, message: 'motionTweenRotate must be clockwise or counter-clockwise' };
-  }
-  const turns = Number(rawTurns);
-  if (rawTurns.trim().length === 0 || !Number.isSafeInteger(turns) || turns < 0 ||
-      turns > MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS) {
+  if (!Number.isSafeInteger(turns) || turns < 0 || turns > MAX_CLASSIC_MOTION_ROTATION_TURNS) {
     return {
       ok: false,
-      message: `motionTweenRotateTimes must be a whole number from 0 to ${MAX_SYNCHRONIZED_MOTION_ROTATION_TURNS}`,
+      message: `motionTweenRotateTimes must be a whole number from 0 to ${MAX_CLASSIC_MOTION_ROTATION_TURNS}`,
     };
   }
-  return { ok: true, rotation: { direction, turns } };
+  const normalizedDirection = direction === 'clockwise' || direction === 'cw'
+    ? 'clockwise'
+    : direction === 'counter-clockwise' || direction === 'ccw'
+      ? 'counter-clockwise'
+      : undefined;
+  return normalizedDirection
+    ? { ok: true, rotation: { direction: normalizedDirection, turns } }
+    : { ok: true };
+}
+
+type ClassicMotionEaseParseResult =
+  | { readonly ok: true; readonly acceleration?: number; readonly eases: readonly FlaViewerTweenEase[] }
+  | { readonly ok: false; readonly message: string };
+
+function classicMotionEasesForFrame(frame: FlaXflElementBlock): ClassicMotionEaseParseResult {
+  let acceleration: number | undefined;
+  if (frame.attributes.acceleration !== undefined) {
+    const raw = frame.attributes.acceleration.trim();
+    if (!/^-?\d+$/u.test(raw)) {
+      return { ok: false, message: 'DOMFrame acceleration must be a whole number' };
+    }
+    acceleration = Number(raw);
+    if (!Number.isSafeInteger(acceleration) || acceleration < -100 || acceleration > 100) {
+      return { ok: false, message: 'DOMFrame acceleration must be between -100 and 100' };
+    }
+  }
+  const containers = getFlaXflDirectChildren(frame.xml, frame.name)
+    .filter((child) => child.name === 'tweens');
+  if (containers.length > 1) return { ok: false, message: 'DOMFrame contains multiple tweens containers' };
+  if (containers.length === 0) return { ok: true, ...(acceleration !== undefined ? { acceleration } : {}), eases: [] };
+  const container = containers[0]!;
+  if (Object.keys(container.attributes).length > 0) {
+    return { ok: false, message: 'tweens container has unsupported attributes' };
+  }
+  const easeResults: FlaViewerTweenEase[] = [];
+  for (const child of getFlaXflDirectChildren(container.xml, container.name)) {
+    const target = child.attributes.target ?? 'all';
+    if (child.name === 'Ease') {
+      const allowedAttributes = new Set(['target', 'intensity', 'method']);
+      if (Object.keys(child.attributes).some((name) => !allowedAttributes.has(name)) ||
+          getFlaXflDirectChildren(child.xml, child.name).length > 0) {
+        return { ok: false, message: 'Ease contains unsupported attributes or child elements' };
+      }
+      let intensity: number | undefined;
+      if (child.attributes.intensity !== undefined) {
+        const raw = child.attributes.intensity.trim();
+        if (!/^-?\d+$/u.test(raw)) return { ok: false, message: 'Ease intensity must be a whole number' };
+        intensity = Number(raw);
+        if (!Number.isSafeInteger(intensity) || intensity < -100 || intensity > 100) {
+          return { ok: false, message: 'Ease intensity must be between -100 and 100' };
+        }
+      }
+      easeResults.push({
+        target,
+        ...(child.attributes.method !== undefined ? { method: child.attributes.method } : {}),
+        ...(intensity !== undefined ? { intensity } : {}),
+      });
+      continue;
+    }
+    if (child.name === 'CustomEase') {
+      if (Object.keys(child.attributes).some((name) => name !== 'target')) {
+        return { ok: false, message: 'CustomEase contains unsupported attributes' };
+      }
+      const points: FlaViewerEasePoint[] = [];
+      for (const point of getFlaXflDirectChildren(child.xml, child.name)) {
+        if (point.name !== 'Point' || Object.keys(point.attributes).some((name) => name !== 'x' && name !== 'y') ||
+            point.attributes.x === undefined || point.attributes.y === undefined ||
+            getFlaXflDirectChildren(point.xml, point.name).length > 0) {
+          return { ok: false, message: 'CustomEase contains malformed Point data' };
+        }
+        const x = Number(point.attributes.x);
+        const y = Number(point.attributes.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          return { ok: false, message: 'CustomEase Point coordinates must be finite' };
+        }
+        points.push({ x, y });
+      }
+      easeResults.push({ target, customPoints: points });
+      continue;
+    }
+    return { ok: false, message: `Unsupported tweens element: ${child.name}` };
+  }
+  return { ok: true, ...(acceleration !== undefined ? { acceleration } : {}), eases: easeResults };
 }
 
 function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
@@ -912,21 +988,21 @@ function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElement
   return getFlaXflDirectChildren(container.xml, container.name);
 }
 
-type BoundedFrameBlurResult =
+type ClassicMotionFrameBlurResult =
   | { readonly ok: true; readonly filter?: FlaDisplayListBlurFilter }
   | { readonly ok: false; readonly message: string };
 
-function parseBoundedBlurValue(raw: string | undefined): number | null {
+function parseClassicMotionBlurValue(raw: string | undefined): number | null {
   const value = raw?.trim();
   if (!value || !/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value)) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 255 ? parsed : null;
 }
 
-function boundedMotionFrameBlurFilter(
+function classicMotionFrameBlurFilter(
   frame: FlaXflElementBlock,
   endpoint: 'start' | 'end',
-): BoundedFrameBlurResult {
+): ClassicMotionFrameBlurResult {
   const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
   const frameFilterContainers = frameChildren.filter((child) => child.name === 'frameFilters');
   if (frameFilterContainers.length > 1) {
@@ -942,12 +1018,11 @@ function boundedMotionFrameBlurFilter(
     const blurY = filter.attributes.blurY?.slice(0, 32) ?? 'default';
     return `BlurFilter (blurX=${blurX}, blurY=${blurY})`;
   };
-  const unsupported = (detail?: string): BoundedFrameBlurResult => ({
+  const unsupported = (detail?: string): ClassicMotionFrameBlurResult => ({
     ok: false,
     message: `${endpoint} frame contains unsupported frame filter interpolation: ${filters
       .map(describeFilter).join(', ')}${detail ? `; ${detail}` : ''}`,
   });
-  if (endpoint === 'start') return unsupported('the bounded subset requires an unfiltered start frame');
   if (filters.length !== 1 || filters[0]?.name !== 'BlurFilter') return unsupported();
 
   const filter = filters[0]!;
@@ -958,8 +1033,8 @@ function boundedMotionFrameBlurFilter(
   if (getFlaXflDirectChildren(filter.xml, filter.name).length !== 0) {
     return unsupported('BlurFilter child nodes are unsupported');
   }
-  const blurX = parseBoundedBlurValue(filter.attributes.blurX);
-  const blurY = parseBoundedBlurValue(filter.attributes.blurY);
+  const blurX = parseClassicMotionBlurValue(filter.attributes.blurX);
+  const blurY = parseClassicMotionBlurValue(filter.attributes.blurY);
   if (blurX === null || blurY === null) {
     return unsupported('blurX and blurY must be finite decimal values in 0..255');
   }
@@ -969,7 +1044,7 @@ function boundedMotionFrameBlurFilter(
   };
 }
 
-function boundedMotionFrameStructureRejectionReason(
+function classicMotionFrameStructureRejectionReason(
   frame: FlaXflElementBlock,
   endpoint: 'start' | 'end',
 ): string | null {
@@ -979,82 +1054,57 @@ function boundedMotionFrameStructureRejectionReason(
     return `${endpoint} frame must contain exactly one elements container`;
   }
   const unsupportedFrameChildren = frameChildren.filter((child) =>
-    child.name !== 'elements' && child.name !== 'frameFilters');
+    child.name !== 'elements' && child.name !== 'frameFilters' && child.name !== 'tweens');
   if (unsupportedFrameChildren.length > 0) {
     return `${endpoint} frame contains unsupported direct child: ${unsupportedFrameChildren
       .map((child) => child.name).join(', ')}`;
   }
 
-  const filterResult = boundedMotionFrameBlurFilter(frame, endpoint);
+  const filterResult = classicMotionFrameBlurFilter(frame, endpoint);
   return filterResult.ok ? null : filterResult.message;
 }
 
-function interpolateBoundedMotionFrameBlurFilter(
+function interpolateClassicMotionFrameBlurFilter(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
   progress: number,
-): BoundedFrameBlurResult {
-  const startFilter = boundedMotionFrameBlurFilter(startFrame, 'start');
+): ClassicMotionFrameBlurResult {
+  const startFilter = classicMotionFrameBlurFilter(startFrame, 'start');
   if (!startFilter.ok) return startFilter;
-  const endFilter = boundedMotionFrameBlurFilter(endFrame, 'end');
+  const endFilter = classicMotionFrameBlurFilter(endFrame, 'end');
   if (!endFilter.ok) return endFilter;
-  if (!endFilter.filter) return { ok: true };
+  if (!startFilter.filter && !endFilter.filter) return { ok: true };
   if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
     return { ok: false, message: 'motion filter progress must be finite and within 0..1' };
   }
+  const from = startFilter.filter ?? { blurX: 0, blurY: 0, quality: 'low' as const, enabled: true as const, kind: 'blur' as const };
+  const to = endFilter.filter ?? { blurX: 0, blurY: 0, quality: 'low' as const, enabled: true as const, kind: 'blur' as const };
   return {
     ok: true,
     filter: {
-      ...endFilter.filter,
-      blurX: endFilter.filter.blurX * progress,
-      blurY: endFilter.filter.blurY * progress,
+      ...to,
+      blurX: from.blurX + (to.blurX - from.blurX) * progress,
+      blurY: from.blurY + (to.blurY - from.blurY) * progress,
     },
   };
 }
 
-function boundedMotionFramePairRejectionReason(
+function classicMotionFramePairRejectionReason(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
   startIndex: number,
   duration: number,
 ): string | null {
-  const isSynchronizedMotionKey = (frame: FlaXflElementBlock): boolean =>
-    frame.attributes.tweenType === 'motion' &&
-    frame.attributes.motionTweenSnap === 'true' &&
-    frame.attributes.motionTweenSync === 'true' &&
-    frame.attributes.keyMode === '24065';
-  const synchronizedMotionStartTarget = frameDisplayElements(startFrame)[0];
-  const synchronizedMotionEndTarget = frameDisplayElements(endFrame)[0];
-  const synchronizedMotionFirstFramePair = startIndex === 0
-    ? synchronizedMotionStartTarget?.attributes.firstFrame === undefined &&
-      (synchronizedMotionEndTarget?.attributes.firstFrame === undefined ||
-        synchronizedMotionEndTarget.attributes.firstFrame === String(startIndex + duration))
-    : startIndex > 0 &&
-      synchronizedMotionStartTarget?.attributes.firstFrame === String(startIndex) &&
-      synchronizedMotionEndTarget?.attributes.firstFrame === String(startIndex + duration);
-  const synchronizedMotionPair = Boolean(duration === 7 && Number.isSafeInteger(startIndex) && startIndex >= 0 &&
-    Number(startFrame.attributes.index) === startIndex &&
-    Number(endFrame.attributes.index) === startIndex + duration &&
-    synchronizedMotionFirstFramePair &&
-    isSynchronizedMotionKey(startFrame) && isSynchronizedMotionKey(endFrame));
   const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
     Object.keys(frame.attributes).filter((name) =>
-      !BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name) &&
-      !(synchronizedMotionPair && name === 'motionTweenSync') &&
-      !(synchronizedMotionPair && frame === startFrame &&
-        (name === 'motionTweenRotate' || name === 'motionTweenRotateTimes')));
-  const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
-    const tweenType = frame.attributes.tweenType;
-    if (tweenType === 'motion') {
-      return frame.attributes.motionTweenSnap === 'true' && (
-        synchronizedMotionPair
-          ? isSynchronizedMotionKey(frame)
-          : frame.attributes.motionTweenSync === undefined && frame.attributes.keyMode === '22017'
-      );
+      !CLASSIC_MOTION_FRAME_ATTRIBUTES.has(name));
+  const validFrameMetadata = (frame: FlaXflElementBlock): boolean => {
+    for (const name of ['motionTweenSync', 'motionTweenSnap']) {
+      const value = frame.attributes[name];
+      if (value !== undefined && value !== 'true' && value !== 'false') return false;
     }
-    return (tweenType === undefined || tweenType === 'none') &&
-      frame.attributes.motionTweenSnap === undefined &&
-      BOUNDED_MOTION_TERMINAL_KEY_MODES.has(frame.attributes.keyMode ?? '');
+    const keyMode = frame.attributes.keyMode;
+    return keyMode === undefined || (/^-?\d+$/u.test(keyMode) && Number.isSafeInteger(Number(keyMode)));
   };
   const unsupportedStartAttributes = unsupportedFrameAttributes(startFrame);
   if (unsupportedStartAttributes.length > 0) {
@@ -1064,97 +1114,62 @@ function boundedMotionFramePairRejectionReason(
   if (unsupportedEndAttributes.length > 0) {
     return `end frame contains unsupported attributes: ${unsupportedEndAttributes.join(', ')}`;
   }
-  const startRotation = synchronizedMotionRotationForFrame(startFrame, synchronizedMotionPair);
+  if (!validFrameMetadata(startFrame) || !validFrameMetadata(endFrame)) {
+    return 'motionTweenSync, motionTweenSnap, or keyMode has an invalid authored value';
+  }
+  const startRotation = classicMotionRotationForFrame(startFrame);
   if (!startRotation.ok) return startRotation.message;
-  const endRotation = synchronizedMotionRotationForFrame(endFrame, false);
-  if (!endRotation.ok) return endRotation.message;
+  const startEase = classicMotionEasesForFrame(startFrame);
+  if (!startEase.ok) return startEase.message;
   if (!Number.isSafeInteger(duration) || duration <= 0) return 'span duration must be a positive safe integer';
   if (Number(startFrame.attributes.index) !== startIndex) return 'start frame index does not match the selected span';
   if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
   if (startFrame.attributes.tweenType !== 'motion') return 'start frame is not a motion tween keyframe';
-  if (startFrame.attributes.motionTweenSnap !== 'true') return 'start frame motionTweenSnap is not true';
-  if (!synchronizedMotionPair && startFrame.attributes.motionTweenSync !== undefined) {
-    return 'start frame motionTweenSync is outside the synchronized motion family';
-  }
-  if (!synchronizedMotionPair && startFrame.attributes.keyMode !== '22017') return 'start frame keyMode is not 22017';
-  if (!endpointDefinesSupportedOutgoingState(endFrame)) return 'end frame has an unsupported outgoing keyframe state';
-  if (containsUnsupportedMotionMetadata(startFrame.xml, synchronizedMotionPair) ||
-      containsUnsupportedMotionMetadata(endFrame.xml)) {
+  if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
     return 'frame XML contains unsupported motion metadata';
   }
 
-  const startStructureRejectionReason = boundedMotionFrameStructureRejectionReason(startFrame, 'start');
+  const startStructureRejectionReason = classicMotionFrameStructureRejectionReason(startFrame, 'start');
   if (startStructureRejectionReason) return startStructureRejectionReason;
-  const endStructureRejectionReason = boundedMotionFrameStructureRejectionReason(endFrame, 'end');
+  const endStructureRejectionReason = classicMotionFrameStructureRejectionReason(endFrame, 'end');
   if (endStructureRejectionReason) return endStructureRejectionReason;
 
   const startElements = frameDisplayElements(startFrame);
   const endElements = frameDisplayElements(endFrame);
-  if (startElements.length !== 1 || endElements.length !== 1 ||
-      startElements[0]?.name !== 'DOMSymbolInstance' || endElements[0]?.name !== 'DOMSymbolInstance' ||
-      !elementIsVisible(startElements[0].attributes) || !elementIsVisible(endElements[0].attributes)) {
-    return 'each endpoint must contain one visible symbol instance';
+  if (startElements.length === 0 || startElements.length !== endElements.length) {
+    return 'Classic Motion endpoints must preserve the same non-empty display element count';
   }
-
-  const startTarget = startElements[0];
-  const endTarget = endElements[0];
   const allowedInstanceAttributes = (target: FlaXflElementBlock): boolean =>
-    Object.keys(target.attributes).every((name) => BOUNDED_MOTION_INSTANCE_ATTRIBUTES.has(name));
-  if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
-    return 'symbol instance contains unsupported attributes';
-  }
-  if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName) {
-    return 'symbol instance identity changes between endpoints';
-  }
-  if (startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
-    return 'both endpoint instances must be Graphic symbols';
-  }
-  if (synchronizedMotionPair &&
-      (startTarget.attributes.loop !== 'loop' || endTarget.attributes.loop !== 'loop')) {
-    return 'synchronized motion experiment requires the source Loop playback mode';
-  }
-  const sampleFirstFrameTransition = synchronizedMotionPair && startIndex === 0 &&
-    startTarget.attributes.firstFrame === undefined &&
-    endTarget.attributes.firstFrame === String(startIndex + duration);
-  const nonzeroSynchronizedFirstFrameTransition = synchronizedMotionPair && startIndex > 0 &&
-    startTarget.attributes.firstFrame === String(startIndex) &&
-    endTarget.attributes.firstFrame === String(startIndex + duration);
-  const synchronizedFirstFrameTransition =
-    sampleFirstFrameTransition || nonzeroSynchronizedFirstFrameTransition;
-  for (const target of [startTarget, endTarget]) {
+    Object.keys(target.attributes).every((name) => CLASSIC_MOTION_INSTANCE_ATTRIBUTES.has(name));
+  for (let index = 0; index < startElements.length; index += 1) {
+    const startTarget = startElements[index]!;
+    const endTarget = endElements[index]!;
+    if (startTarget.name !== 'DOMSymbolInstance' || endTarget.name !== 'DOMSymbolInstance' ||
+        !elementIsVisible(startTarget.attributes) || !elementIsVisible(endTarget.attributes)) {
+      return `Classic Motion display element ${index} must remain a visible symbol instance`;
+    }
+    if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
+      return `Classic Motion symbol instance ${index} contains unsupported attributes`;
+    }
+    if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
+        startTarget.attributes.symbolType !== endTarget.attributes.symbolType) {
+      return `Classic Motion symbol identity changes at source order ${index}`;
+    }
+    if (startTarget.attributes.symbolType !== 'graphic') {
+      return `Classic Motion symbol ${index} is not a Graphic instance`;
+    }
     for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
-      const raw = target.attributes[name];
-      if (raw !== undefined && !Number.isFinite(Number(raw))) {
-        return `symbol instance ${name} must be finite`;
+      for (const target of [startTarget, endTarget]) {
+        const raw = target.attributes[name];
+        if (raw !== undefined && !Number.isFinite(Number(raw))) {
+          return `symbol instance ${name} must be finite`;
+        }
       }
     }
-  }
-  for (const name of new Set([
-    ...Object.keys(startTarget.attributes),
-    ...Object.keys(endTarget.attributes),
-  ])) {
-    // selected and centerPoint3D* are authoring metadata; the renderer consumes
-    // the authored matrices and never serializes those attributes.
-    if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
-    if (startTarget.attributes[name] !== endTarget.attributes[name]) {
-      if (name === 'firstFrame' && synchronizedFirstFrameTransition) continue;
-      return `symbol instance attribute ${name} changes between endpoints`;
-    }
-  }
-
-  if (synchronizedMotionPair) {
-    const startColor = boundedMotionColorTransform(startTarget);
+    const startColor = classicMotionColorTransform(startTarget);
     if (!startColor.ok) return startColor.message;
-    const endColor = boundedMotionColorTransform(endTarget);
+    const endColor = classicMotionColorTransform(endTarget);
     if (!endColor.ok) return endColor.message;
-    const isAlphaOnly = [startColor.transform, endColor.transform]
-      .every((transform) => transform === null || transform.mode === 'alphaMultiplier');
-    const isVerifiedAlphaToBrightness = startIndex === 7 && duration === 7 &&
-      startColor.transform?.mode === 'alphaMultiplier' &&
-      endColor.transform?.mode === 'brightness';
-    if (!isAlphaOnly && !isVerifiedAlphaToBrightness) {
-      return 'Synchronized motion experiment supports only alphaMultiplier-to-brightness Color interpolation for F7-to-F14';
-    }
   }
 
   const hasSupportedTransformChildren = (
@@ -1185,28 +1200,24 @@ function boundedMotionFramePairRejectionReason(
     if (colors.length > 0 && !allowColorTransform) return false;
     return true;
   };
-  if (!hasSupportedTransformChildren(startTarget, nonzeroSynchronizedFirstFrameTransition) ||
-      !hasSupportedTransformChildren(endTarget, synchronizedFirstFrameTransition)) {
-    return 'symbol instance matrix or transformation point is outside the supported structure';
+  for (let index = 0; index < startElements.length; index += 1) {
+    const startTarget = startElements[index]!;
+    const endTarget = endElements[index]!;
+    if (!hasSupportedTransformChildren(startTarget, true) || !hasSupportedTransformChildren(endTarget, true)) {
+      return `symbol instance ${index} matrix, color, or transformation point is outside the supported structure`;
+    }
   }
   return null;
 }
 
-function isIssue1044SynchronizedMotionSpan(
+function isClassicMotionSpan(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
   startIndex: number,
   duration: number,
 ): boolean {
-  const isSynchronizedKey = (frame: FlaXflElementBlock): boolean =>
-    frame.attributes.tweenType === 'motion' &&
-    frame.attributes.motionTweenSnap === 'true' &&
-    frame.attributes.motionTweenSync === 'true' &&
-    frame.attributes.keyMode === '24065';
-  const rejectionReason = boundedMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration);
-  return startIndex >= 0 && duration === 7 &&
-    isSynchronizedKey(startFrame) && isSynchronizedKey(endFrame) &&
-    rejectionReason === null;
+  const rejectionReason = classicMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration);
+  return startIndex >= 0 && rejectionReason === null;
 }
 
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
@@ -1249,10 +1260,10 @@ function buildGraphicFrameContext(
       const incomingMotionSpan = indexedLayer?.spans.find((span) =>
         span.tweenType === 'motion' && span.endExclusive === selection.span.index);
       if (incomingMotionSpan) {
-        const authoredFilterResult = boundedMotionFrameBlurFilter(frame, 'end');
+        const authoredFilterResult = classicMotionFrameBlurFilter(frame, 'end');
         if (!authoredFilterResult.ok) return fail('RENDER_FAILED', authoredFilterResult.message);
         if (authoredFilterResult.filter) {
-          const incomingPairRejectionReason = boundedMotionFramePairRejectionReason(
+          const incomingPairRejectionReason = classicMotionFramePairRejectionReason(
             incomingMotionSpan.sourceFrame,
             frame,
             incomingMotionSpan.index,
@@ -1267,30 +1278,38 @@ function buildGraphicFrameContext(
           frameFilter = authoredFilterResult.filter;
         }
       }
-      let synchronizedMotionKey = false;
+      let motionSpanMetadata = false;
+      let motionSync: boolean | undefined;
       const outgoingMotionSpan = indexedLayer?.spans.find((span) =>
         span.index === selection.span.index && span.tweenType === 'motion');
       const outgoingMotionEndSpan = outgoingMotionSpan
         ? indexedLayer?.spans.find((span) => span.index === outgoingMotionSpan.endExclusive)
         : undefined;
-      if (outgoingMotionSpan && outgoingMotionEndSpan) {
-        synchronizedMotionKey = isIssue1044SynchronizedMotionSpan(
+      if (outgoingMotionSpan && outgoingMotionEndSpan && isClassicMotionSpan(
           outgoingMotionSpan.sourceFrame,
           outgoingMotionEndSpan.sourceFrame,
           outgoingMotionSpan.index,
           outgoingMotionSpan.duration,
-        );
+        )) {
+        motionSpanMetadata = true;
+        const rawSync = outgoingMotionSpan.sourceFrame.attributes.motionTweenSync;
+        motionSync = rawSync === undefined ? undefined : rawSync === 'true';
       }
-      if (!synchronizedMotionKey) {
-        const incomingSynchronizedMotionSpan = indexedLayer?.spans.find((span) =>
+      if (!motionSpanMetadata) {
+        const incomingMotionSpan = indexedLayer?.spans.find((span) =>
           span.tweenType === 'motion' && span.endExclusive === selection.span.index);
-        if (incomingSynchronizedMotionSpan) {
-          synchronizedMotionKey = isIssue1044SynchronizedMotionSpan(
-            incomingSynchronizedMotionSpan.sourceFrame,
-            frame,
-            incomingSynchronizedMotionSpan.index,
-            incomingSynchronizedMotionSpan.duration,
-          );
+        const incomingMotionEndSpan = incomingMotionSpan
+          ? indexedLayer?.spans.find((span) => span.index === incomingMotionSpan.endExclusive)
+          : undefined;
+        if (incomingMotionSpan && incomingMotionEndSpan && isClassicMotionSpan(
+          incomingMotionSpan.sourceFrame,
+          incomingMotionEndSpan.sourceFrame,
+          incomingMotionSpan.index,
+          incomingMotionSpan.duration,
+        )) {
+          motionSpanMetadata = true;
+          const rawSync = incomingMotionSpan.sourceFrame.attributes.motionTweenSync;
+          motionSync = rawSync === undefined ? undefined : rawSync === 'true';
         }
       }
       const parsed = parseDisplayElements(elementContainer, {
@@ -1301,7 +1320,8 @@ function buildGraphicFrameContext(
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
-        ...(synchronizedMotionKey ? { sourceParentMotionTweenSync: true } : {}),
+        ...(motionSync !== undefined ? { sourceParentMotionTweenSync: motionSync } : {}),
+        ...(motionSpanMetadata ? { motionTweenEndpoint: true } : {}),
         unsupportedDisplayReasons,
         state,
       });
@@ -1312,7 +1332,7 @@ function buildGraphicFrameContext(
         'RENDER_FAILED',
         `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}: ${reason}`,
       );
-      if (selection.span.tweenType !== 'motion') return rejectTween('only the bounded motion subset is supported');
+      if (selection.span.tweenType !== 'motion') return rejectTween('only Classic Motion spans are supported');
 
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
       const startSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
@@ -1320,28 +1340,29 @@ function buildGraphicFrameContext(
       if (!startSpan || !endSpan) return rejectTween('an adjacent authored end keyframe is required');
       const startFrame = startSpan.sourceFrame;
       const endFrame = endSpan.sourceFrame;
-      const pairRejectionReason = boundedMotionFramePairRejectionReason(
+      const pairRejectionReason = classicMotionFramePairRejectionReason(
         startFrame,
         endFrame,
         startSpan.index,
         startSpan.duration,
       );
       if (pairRejectionReason) {
-        return rejectTween(`source metadata falls outside the bounded transform-only subset: ${pairRejectionReason}`);
+        return rejectTween(`source metadata is outside the supported Classic Motion structure: ${pairRejectionReason}`);
       }
-      const synchronizedMotionPair = startFrame.attributes.tweenType === 'motion' &&
-        startFrame.attributes.motionTweenSnap === 'true' &&
-        startFrame.attributes.motionTweenSync === 'true' &&
-        startFrame.attributes.keyMode === '24065' &&
-        endFrame.attributes.tweenType === 'motion' &&
-        endFrame.attributes.motionTweenSnap === 'true' &&
-        endFrame.attributes.motionTweenSync === 'true' &&
-        endFrame.attributes.keyMode === '24065';
-      const sourceRotationResult = synchronizedMotionRotationForFrame(
-        startFrame,
-        synchronizedMotionPair,
-      );
+      const sourceRotationResult = classicMotionRotationForFrame(startFrame);
       if (!sourceRotationResult.ok) return rejectTween(sourceRotationResult.message);
+      const sourceEaseResult = classicMotionEasesForFrame(startFrame);
+      if (!sourceEaseResult.ok) return rejectTween(sourceEaseResult.message);
+      const linearProgress = (frameIndex - startSpan.index) / startSpan.duration;
+      const evaluatedProgress = evaluateFlaViewerClassicTweenProgress(
+        linearProgress,
+        sourceEaseResult.acceleration,
+        sourceEaseResult.eases,
+      );
+      if (!evaluatedProgress.ok) return rejectTween(evaluatedProgress.message);
+      const progress = evaluatedProgress.progress;
+      const rawSync = startFrame.attributes.motionTweenSync;
+      const sourceMotionSync = rawSync === undefined ? undefined : rawSync === 'true';
 
       const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {
         const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
@@ -1353,7 +1374,8 @@ function buildGraphicFrameContext(
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart: startSpan.index,
           sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
-          ...(synchronizedMotionPair ? { sourceParentMotionTweenSync: true } : {}),
+          ...(sourceMotionSync !== undefined ? { sourceParentMotionTweenSync: sourceMotionSync } : {}),
+          motionTweenEndpoint: true,
           unsupportedDisplayReasons,
           state,
         });
@@ -1362,52 +1384,53 @@ function buildGraphicFrameContext(
       if (!startParsed.ok) return startParsed;
       const endParsed = parseTweenTarget(endFrame, endSpan.index);
       if (!endParsed.ok) return endParsed;
-      const startTarget = startParsed.value[0];
-      const endTarget = endParsed.value[0];
-      if (startParsed.value.length !== 1 || endParsed.value.length !== 1 ||
-          startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
-          startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
-          startTarget.libraryItemName !== endTarget.libraryItemName ||
-          !startTarget.localTransform || !endTarget.localTransform) {
-        return rejectTween('matching Graphic instances with authored matrices are required');
+      if (startParsed.value.length !== endParsed.value.length || startParsed.value.length === 0) {
+        return rejectTween('Classic Motion endpoints must preserve the same non-empty display element count');
       }
-      const progress = (frameIndex - startSpan.index) / startSpan.duration;
-      const interpolatedFrameFilter = interpolateBoundedMotionFrameBlurFilter(
+      const interpolatedFrameFilter = interpolateClassicMotionFrameBlurFilter(
         startFrame,
         endFrame,
         progress,
       );
       if (!interpolatedFrameFilter.ok) return rejectTween(interpolatedFrameFilter.message);
       frameFilter = interpolatedFrameFilter.filter;
-      const interpolated = interpolateFlaLinearMotionTransform(
-        startTarget.localTransform,
-        endTarget.localTransform,
-        progress,
-        sourceRotationResult.rotation,
-      );
-      if (!interpolated.ok) return rejectTween(interpolated.message);
-      const interpolatedAlphaMultiplier = synchronizedMotionPair
-        ? (startTarget.alphaMultiplier ?? 1) +
-          ((endTarget.alphaMultiplier ?? 1) - (startTarget.alphaMultiplier ?? 1)) * progress
-        : undefined;
-      const interpolatedRgbTransform = synchronizedMotionPair
-        ? {
-            multiplier: (startTarget.rgbTransform?.multiplier ?? 1) +
-              ((endTarget.rgbTransform?.multiplier ?? 1) - (startTarget.rgbTransform?.multiplier ?? 1)) * progress,
-            offset: (startTarget.rgbTransform?.offset ?? 0) +
-              ((endTarget.rgbTransform?.offset ?? 0) - (startTarget.rgbTransform?.offset ?? 0)) * progress,
-          }
-        : undefined;
-      const effectiveRgbTransform = interpolatedRgbTransform &&
-          interpolatedRgbTransform.multiplier === 1 && interpolatedRgbTransform.offset === 0
-        ? undefined
-        : interpolatedRgbTransform;
-      elements = [{
-        ...startTarget,
-        ...(interpolatedAlphaMultiplier !== undefined ? { alphaMultiplier: interpolatedAlphaMultiplier } : {}),
-        ...(effectiveRgbTransform ? { rgbTransform: effectiveRgbTransform } : {}),
-        localTransform: interpolated.matrix,
-      }];
+      const interpolatedElements: FlaDisplayListElement[] = [];
+      for (let index = 0; index < startParsed.value.length; index += 1) {
+        const startTarget = startParsed.value[index];
+        const endTarget = endParsed.value[index];
+        if (startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
+            startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
+            startTarget.libraryItemName !== endTarget.libraryItemName ||
+            !startTarget.localTransform || !endTarget.localTransform) {
+          return rejectTween(`matching Graphic instances with authored matrices are required at source order ${index}`);
+        }
+        const interpolated = interpolateFlaLinearMotionTransform(
+          startTarget.localTransform,
+          endTarget.localTransform,
+          progress,
+          sourceRotationResult.rotation,
+        );
+        if (!interpolated.ok) return rejectTween(interpolated.message);
+        const startAlpha = startTarget.alphaMultiplier ?? 1;
+        const endAlpha = endTarget.alphaMultiplier ?? 1;
+        const interpolatedAlpha = startAlpha + (endAlpha - startAlpha) * progress;
+        const rgbTransform = {
+          multiplier: (startTarget.rgbTransform?.multiplier ?? 1) +
+            ((endTarget.rgbTransform?.multiplier ?? 1) - (startTarget.rgbTransform?.multiplier ?? 1)) * progress,
+          offset: (startTarget.rgbTransform?.offset ?? 0) +
+            ((endTarget.rgbTransform?.offset ?? 0) - (startTarget.rgbTransform?.offset ?? 0)) * progress,
+        };
+        const effectiveRgbTransform = rgbTransform.multiplier === 1 && rgbTransform.offset === 0
+          ? undefined
+          : rgbTransform;
+        interpolatedElements.push({
+          ...startTarget,
+          ...(interpolatedAlpha !== 1 ? { alphaMultiplier: interpolatedAlpha } : {}),
+          ...(effectiveRgbTransform ? { rgbTransform: effectiveRgbTransform } : {}),
+          localTransform: interpolated.matrix,
+        });
+      }
+      elements = interpolatedElements;
     }
 
     let maskedBy: string | undefined;

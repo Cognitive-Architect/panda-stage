@@ -421,7 +421,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     if (end.ok) expect(end.value.layers[0]?.frameFilter?.blurY).toBe(33);
   });
 
-  it('rejects unsupported BlurFilter combinations, attributes, children, values, and start filters', () => {
+  it('rejects unsupported BlurFilter combinations and interpolates an authored start filter', () => {
     const unsupportedEndFilters = [
       '<frameFilters><GlowFilter/></frameFilters>',
       '<frameFilters><BlurFilter blurX="0" blurY="33" quality="low"/></frameFilters>',
@@ -457,9 +457,9 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       1,
       'motion-frame-with-unsupported-start-filter',
     );
-    expect(selectedWithStartFilter.ok).toBe(false);
-    if (!selectedWithStartFilter.ok) {
-      expect(selectedWithStartFilter.message).toContain('unfiltered start frame');
+    expect(selectedWithStartFilter.ok).toBe(true);
+    if (selectedWithStartFilter.ok) {
+      expect(selectedWithStartFilter.value.layers[0]?.frameFilter?.blurY).toBeCloseTo(1 - 1 / 13, 12);
     }
   });
 
@@ -530,7 +530,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
 
   });
 
-  it('reports the first source guard rejection for the sample motion metadata', () => {
+  it('preserves sync metadata and accepts arbitrary validated Classic Motion key modes', () => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -538,7 +538,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
     );
     const target = descriptor(source, 'motion-root');
@@ -550,14 +550,14 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         `sample-motion-metadata-frame-${frameIndex + 1}`,
       );
 
-      expect(selected.ok).toBe(false);
-      if (!selected.ok) {
-        expect(selected.message).toContain('source metadata falls outside the bounded transform-only subset');
-        expect(selected.message).toContain('synchronized motion experiment requires the source Loop playback mode');
+      expect(selected.ok).toBe(true);
+      if (selected.ok) {
+        const instance = selected.value.layers[0]?.elements[0];
+        expect(instance).toMatchObject({ kind: 'symbol', sourceParentMotionTweenSync: true });
       }
     }
 
-    const withoutSyncFlag = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '24065');
+    const withoutSyncFlag = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3');
     const withoutSyncTarget = descriptor(withoutSyncFlag, 'motion-root');
     const afterSyncFlag = withoutSyncFlag.buildGraphicFrameContext(
       withoutSyncTarget.timelineXml,
@@ -565,11 +565,42 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       3,
       'sample-motion-key-mode-after-sync-flag',
     );
-    expect(afterSyncFlag.ok).toBe(false);
-    if (!afterSyncFlag.ok) expect(afterSyncFlag.message).toContain('start frame keyMode is not 22017');
+    expect(afterSyncFlag.ok).toBe(true);
+    if (afterSyncFlag.ok) {
+      const instance = afterSyncFlag.value.layers[0]?.elements[0];
+      expect(instance).not.toHaveProperty('sourceParentMotionTweenSync');
+    }
+
+    const explicitFalse = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3', {
+      motionTweenSync: 'false',
+    });
+    const explicitFalseTarget = descriptor(explicitFalse, 'motion-root');
+    const falseSyncFrame = explicitFalse.buildGraphicFrameContext(
+      explicitFalseTarget.timelineXml,
+      explicitFalseTarget.frameSpanIndex,
+      3,
+      'explicit-false-motion-sync',
+    );
+    expect(falseSyncFrame.ok).toBe(true);
+    if (falseSyncFrame.ok) {
+      expect(falseSyncFrame.value.layers[0]?.elements[0]).toMatchObject({ sourceParentMotionTweenSync: false });
+    }
+
+    const malformedSync = buildMotionAdapterFixture('', '', 'moving-target', 7, false, {}, '3', {
+      motionTweenSync: 'yes',
+    });
+    const malformedSyncTarget = descriptor(malformedSync, 'motion-root');
+    const malformedSyncFrame = malformedSync.buildGraphicFrameContext(
+      malformedSyncTarget.timelineXml,
+      malformedSyncTarget.frameSpanIndex,
+      3,
+      'malformed-motion-sync',
+    );
+    expect(malformedSyncFrame.ok).toBe(false);
+    if (!malformedSyncFrame.ok) expect(malformedSyncFrame.message).toContain('invalid authored value');
   });
 
-  it('admits the bounded synchronized 24065 span and preserves its authored firstFrame boundary', () => {
+  it('accepts Classic Motion source metadata while preserving authored Graphic frame boundaries', () => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -577,7 +608,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -589,7 +620,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         target.timelineXml,
         target.frameSpanIndex,
         frameIndex,
-        `issue1044-sync-motion-frame-${frameIndex}`,
+        `classic-motion-frame-${frameIndex}`,
       );
       expect(selected.ok).toBe(true);
       if (!selected.ok) continue;
@@ -613,7 +644,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     }
   });
 
-  it('admits the same synchronized seven-frame span from a non-zero authored origin', () => {
+  it('evaluates a generic Graphic child span from a non-zero parent origin', () => {
     const startIndex = 7;
     const duration = 7;
     const source = buildMotionAdapterFixture(
@@ -623,7 +654,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       duration,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -639,7 +670,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         target.timelineXml,
         target.frameSpanIndex,
         frameIndex,
-        `issue1053-sync-motion-frame-${frameIndex}`,
+        `generic-motion-frame-${frameIndex}`,
       );
       expect(selected.ok).toBe(true);
       if (!selected.ok) continue;
@@ -652,7 +683,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       });
       if (instance?.kind !== 'symbol' || !instance.localTransform) continue;
       expect(instance.firstFrame).toBe(frameIndex === 14 ? '14' : '7');
-      expect(instance.alphaMultiplier).toBeCloseTo(0.44921875 + (1 - 0.44921875) * progress, 12);
+      expect(instance.alphaMultiplier ?? 1).toBeCloseTo(0.44921875 + (1 - 0.44921875) * progress, 12);
       expect(instance.localTransform.tx).toBeCloseTo(20 * progress, 12);
       expect(instance.localTransform.ty).toBeCloseTo(30 * progress, 12);
       expect(instance.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
@@ -661,7 +692,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     }
   });
 
-  it('interpolates the verified F7-to-F14 alpha and RGB brightness channels independently', () => {
+  it('interpolates alpha and RGB brightness channels independently across a tween span', () => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -669,7 +700,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -687,7 +718,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         target.timelineXml,
         target.frameSpanIndex,
         frameIndex,
-        `issue1055-sync-color-frame-${frameIndex}`,
+        `classic-motion-color-frame-${frameIndex}`,
       );
       expect(selected.ok).toBe(true);
       if (!selected.ok) continue;
@@ -704,23 +735,99 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     }
   });
 
+  it('interpolates non-endpoint brightness values and applies Classic Motion easing', () => {
+    const brightnessSource = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      2,
+      false,
+      {},
+      '22017',
+      {},
+      false,
+      'single frame',
+      undefined,
+      {},
+      0,
+      undefined,
+      undefined,
+      '<color><Color brightness="0.5"/></color>',
+    );
+    const brightnessTarget = descriptor(brightnessSource, 'motion-root');
+    const brightnessFrame = brightnessSource.buildGraphicFrameContext(
+      brightnessTarget.timelineXml,
+      brightnessTarget.frameSpanIndex,
+      1,
+      'classic-motion-mid-brightness',
+    );
+    expect(brightnessFrame.ok).toBe(true);
+    if (brightnessFrame.ok) {
+      const instance = brightnessFrame.value.layers[0]?.elements[0];
+      expect(instance?.kind).toBe('symbol');
+      if (instance?.kind === 'symbol') {
+        expect(instance.rgbTransform?.multiplier).toBeCloseTo(0.75, 12);
+        expect(instance.rgbTransform?.offset).toBeCloseTo(63.75, 12);
+      }
+    }
+
+    const easeSource = buildMotionAdapterFixture(
+      '<tweens><Ease target="all" method="quadIn"/></tweens>',
+      '',
+      'moving-target',
+      2,
+    );
+    const easeTarget = descriptor(easeSource, 'motion-root');
+    const eased = easeSource.buildGraphicFrameContext(
+      easeTarget.timelineXml,
+      easeTarget.frameSpanIndex,
+      1,
+      'classic-motion-mid-ease',
+    );
+    expect(eased.ok).toBe(true);
+    if (eased.ok) {
+      const instance = eased.value.layers[0]?.elements[0];
+      expect(instance?.kind).toBe('symbol');
+      if (instance?.kind === 'symbol') expect(instance.localTransform?.tx).toBeCloseTo(5, 12);
+    }
+
+    const accelerationSource = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      2,
+      false,
+      {},
+      '22017',
+      { acceleration: '100' },
+    );
+    const accelerationTarget = descriptor(accelerationSource, 'motion-root');
+    const accelerated = accelerationSource.buildGraphicFrameContext(
+      accelerationTarget.timelineXml,
+      accelerationTarget.frameSpanIndex,
+      1,
+      'classic-motion-mid-acceleration',
+    );
+    expect(accelerated.ok).toBe(true);
+    if (accelerated.ok) {
+      const instance = accelerated.value.layers[0]?.elements[0];
+      expect(instance?.kind).toBe('symbol');
+      if (instance?.kind === 'symbol') expect(instance.localTransform?.tx).toBeCloseTo(17.5, 12);
+    }
+  });
+
   it.each([
-    {
-      name: 'a non-endpoint brightness value',
-      color: '<color><Color brightness="0.5"/></color>',
-      reason: 'only brightness="1" is supported',
-    },
     {
       name: 'an unknown Color channel',
       color: '<color><Color redMultiplier="1"/></color>',
-      reason: 'unsupported Color mode or attributes',
+      reason: 'redMultiplier',
     },
     {
       name: 'multiple Color wrappers',
       color: '<color><Color brightness="1"/></color><color><Color brightness="1"/></color>',
       reason: 'multiple color wrappers',
     },
-  ])('keeps synchronized motion fail-closed for $name with a Color-specific reason', ({ color, reason }) => {
+  ])('keeps Classic Motion fail-closed for $name with a Color-specific reason', ({ color, reason }) => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -728,7 +835,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -744,7 +851,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       target.timelineXml,
       target.frameSpanIndex,
       8,
-      `issue1055-invalid-sync-color-${reason}`,
+      `invalid-sync-color-${reason}`,
     );
 
     expect(selected.ok).toBe(false);
@@ -756,8 +863,8 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
 
   it.each([
     { name: 'a six-frame span', duration: 6, endFirstFrame: undefined },
-    { name: 'a non-matching child-frame endpoint', duration: 7, endFirstFrame: '13' },
-  ])('keeps non-zero synchronized motion fail-closed for $name', ({ duration, endFirstFrame }) => {
+    { name: 'a differing authored child-frame endpoint', duration: 7, endFirstFrame: '13' },
+  ])('accepts generic motion spans with $name', ({ duration, endFirstFrame }) => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -765,7 +872,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       duration,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       true,
       'loop',
@@ -780,11 +887,10 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       target.timelineXml,
       target.frameSpanIndex,
       8,
-      `issue1053-invalid-sync-pair-${duration}-${endFirstFrame ?? 'aligned'}`,
+      `invalid-sync-pair-${duration}-${endFirstFrame ?? 'aligned'}`,
     );
 
-    expect(selected.ok).toBe(false);
-    if (!selected.ok) expect(selected.message).toContain('start frame contains unsupported attributes: motionTweenSync');
+    expect(selected.ok).toBe(true);
   });
 
   it.each([
@@ -798,7 +904,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       false,
       'loop',
@@ -830,25 +936,20 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
   it.each([
     {
       name: 'unsupported direction',
-      attrs: { motionTweenRotate: 'cw', motionTweenRotateTimes: '1' },
-      reason: 'motionTweenRotate must be clockwise or counter-clockwise',
+      attrs: { motionTweenRotate: 'sideways' },
+      reason: 'Unsupported motionTweenRotate value',
     },
     {
       name: 'fractional turn count',
       attrs: { motionTweenRotate: 'clockwise', motionTweenRotateTimes: '1.5' },
-      reason: 'motionTweenRotateTimes must be a whole number',
+      reason: 'motionTweenRotateTimes must be a non-negative whole number',
     },
     {
       name: 'empty turn count',
       attrs: { motionTweenRotate: 'clockwise', motionTweenRotateTimes: '' },
-      reason: 'motionTweenRotateTimes must be a whole number',
+      reason: 'motionTweenRotateTimes must be a non-negative whole number',
     },
-    {
-      name: 'missing turn count',
-      attrs: { motionTweenRotate: 'clockwise' },
-      reason: 'motionTweenRotate and motionTweenRotateTimes must both be authored',
-    },
-  ])('rejects synchronized rotation source metadata with $name', ({ attrs, reason }) => {
+  ])('rejects malformed Classic Motion rotation metadata with $name', ({ attrs, reason }) => {
     const source = buildMotionAdapterFixture(
       '',
       '',
@@ -856,7 +957,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       7,
       false,
       {},
-      '24065',
+      '3',
       { motionTweenSync: 'true' },
       false,
       'loop',
@@ -874,7 +975,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     if (!selected.ok) expect(selected.message).toContain(reason);
   });
 
-  it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
+  it('supports generic motion durations and validates source metadata at both endpoints', () => {
     const duration29 = buildMotionAdapterFixture(
       '',
       '',
@@ -947,13 +1048,12 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
         `duration29-terminal9728-negative-${label}`,
       );
       expect(result.ok, label).toBe(false);
-      if (!result.ok) expect(result.message).toContain('bounded transform-only subset');
+        if (!result.ok) expect(result.message).toContain('supported Classic Motion structure');
     };
 
-    expectBlocked('terminal9728-with-snap', 29, { keyMode: '9728', motionTweenSnap: 'true' });
-    expectBlocked('terminal9728-with-motion-role', 29, { keyMode: '9728', tweenType: 'motion' });
-    expectBlocked('unknown-terminal-keyMode', 29, { keyMode: '12345' });
-    expectBlocked('start-keyMode-9728', 29, { keyMode: '9728' }, 'moving-target', '9728');
+    expectBlocked('invalid-terminal-keyMode', 29, { keyMode: 'not-an-integer' });
+    expectBlocked('invalid-terminal-motionTweenSnap', 29, { keyMode: '9728', motionTweenSnap: 'invalid' });
+    expectBlocked('invalid-start-keyMode', 29, { keyMode: '9728' }, 'moving-target', 'not-an-integer');
     expectBlocked('easing-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
       '<Ease><Property name="x" value="1"/></Ease>');
     expectBlocked('motion-path-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
@@ -971,7 +1071,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       'eased-motion-interior',
     );
     expect(easedResult.ok).toBe(false);
-    if (!easedResult.ok) expect(easedResult.message).toContain('bounded transform-only subset');
+    if (!easedResult.ok) expect(easedResult.message).toContain('supported Classic Motion structure');
 
     const mismatched = buildMotionAdapterFixture('', '', 'different-target');
     const mismatchedTarget = descriptor(mismatched, 'motion-root');
@@ -982,7 +1082,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       'mismatched-motion-interior',
     );
     expect(mismatchedResult.ok).toBe(false);
-    if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('bounded transform-only subset');
+    if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('supported Classic Motion structure');
   });
 });
 

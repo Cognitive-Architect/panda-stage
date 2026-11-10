@@ -1,40 +1,8 @@
 /**
- * Bounded nested Graphic frame selection for static, authored XFL states.
- *
- * The base display-list resolver still consumes concrete frame contexts. This
- * selector prepares per-instance frame definitions first, preserving source
- * library identity while allowing two instances of one symbol to display
- * different authored frames. Unknown playback modes and tween interiors fail
- * closed.
- *
- * Issue #721 adds one bounded subset (#720 A1, SOURCE/EXTERNAL-PROVEN): an
- * explicit Loop with an explicit static/span-local firstFrame over a known child
- * range selects `firstFrame + (elapsed % N)`; the wrap target is firstFrame, not
- * child frame 0.
- *
- * Issue #723 adds a bounded subset (#720 A4, SOURCE/EXTERNAL-PROVEN): when a
- * forward Loop omits the firstFrame attribute *inside a static/span-local owning
- * span*, its effective first frame is the proven default 0
- * (`effectiveFirstFrame = authoredFirstFrame ?? 0`) and the same modulo selector
- * applies over `N = childFrameCount`. Raw authored absence is preserved —
- * `firstFrame` stays undefined and `firstFrameWasExplicit` records the
- * distinction — so a missing attribute is never rewritten into an authored
- * `firstFrame="0"`.
- *
- * Issue #724 re-tightens #723: the missing-firstFrame modulo is scoped to a
- * static/span-local owning span only. A motion/tween owning span keeps just the
- * pre-existing legacy bounded path — origin 0, no authored lastFrame, no wrap
- * (`childFrame = elapsed` while `elapsed < childFrameCount`) — so the real
- * `com22` compatibility case still advances without granting unproven generic
- * modulo semantics to tween-owned instances.
- *
- * Issue #726 adds a separate mode-invariant case: when playback mode is absent
- * and the child has exactly one frame, select frame 0 without assigning a mode.
- * Missing playback on multi-frame children remains UNKNOWN_PLAYBACK_DEFAULT.
- *
- * Everything else (animated/tweened firstFrame, reverse loop, tween-span
- * wrap/non-zero-origin/authored-lastFrame, generic lastFrame animation) remains
- * fail-closed.
+ * Selects nested Graphic frames from concrete Panda display-list contexts. The
+ * pinned fla-viewer frame evaluator owns loop, play-once, single-frame, reverse,
+ * and first/last-frame range behavior; Panda validates source bounds and keeps
+ * source-authored values and per-instance provenance intact.
  */
 
 import crypto from 'node:crypto';
@@ -48,6 +16,7 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import type { FlaStaticSnapshotDisplaySource } from './fla-static-snapshot-display-list-adapter';
+import { evaluateFlaViewerGraphicFrame } from './fla-viewer-tween-evaluator';
 
 export const FLA_NESTED_GRAPHIC_FRAME_SELECTOR_LIMITS = Object.freeze({
   maxDepth: 64,
@@ -68,14 +37,13 @@ export interface FlaNestedGraphicFrameSelection {
   readonly lastFrame?: string;
   /**
    * Whether the selected first frame came from an authored attribute.
-   * `missing firstFrame` (false) is kept distinguishable from an authored
-   * `firstFrame="0"` (true) even though both are bounded-equivalent (#723 M1-A).
+   * Missing `firstFrame` stays distinguishable from an authored
+   * `firstFrame="0"` even though both pass an origin of zero to the evaluator.
    */
   readonly firstFrameWasExplicit: boolean;
   /**
-   * The first frame actually used by the selection rule
-   * (`authoredFirstFrame ?? 0`). Recorded so the bounded fallback is observable
-   * without re-deriving it from the source attributes (#723).
+   * The authored first-frame value or the default origin of zero, before the
+   * evaluator normalizes it against the child timeline length.
    */
   readonly effectiveFirstFrame: number;
   readonly sourceParentFrameIndex: number;
@@ -84,15 +52,12 @@ export interface FlaNestedGraphicFrameSelection {
   readonly selectedChildFrameIndex: number;
   readonly selectionRule:
     | 'mode-invariant-single-frame'
-    | 'single-frame-explicit-first-frame'
-    | 'single-frame-default-first-frame-zero'
-    | 'loop-single-frame-constant'
-    | 'loop-zero-origin-no-wrap'
-    | 'loop-static-first-frame-modulo'
-    | 'loop-missing-first-frame-modulo'
-    | 'loop-sync-motion-modulo-experiment'
-    | 'play-once-relative-containing-span'
-    | 'play-once-hold-last-frame';
+    | 'loop-parent-timeline'
+    | 'loop-reverse-parent-timeline'
+    | 'play-once-parent-timeline'
+    | 'play-once-reverse-parent-timeline'
+    | 'play-once-hold-terminal'
+    | 'single-frame-parent-keyframe';
   readonly selectionBasis?: 'mode-invariant-single-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
 }
@@ -195,242 +160,62 @@ function selectAuthoredChildFrame(
     );
   }
 
-  // #721/#722/#723/#724 — bounded forward Loop. The owning-span tween type splits
-  // the proven sub-cases; every other combination fails closed.
-  //
-  //   #721  explicit firstFrame          + static span -> modulo over [F, L]
-  //   #723  missing  firstFrame (F = 0)  + static span -> modulo over [0, L]
-  //   #724  missing  firstFrame          + tween  span -> legacy origin=0/no-wrap
-  //
-  // The static/span-local owning-span gate (#721 / #720 A3) guards an AUTHORED
-  // firstFrame, because a tween can animate that attribute across the span
-  // (UNPROVEN_ANIMATED_FIRST_FRAME_SEMANTIC). #724 holds the same conservative
-  // stance for a missing firstFrame on a tween-owned instance: an absent
-  // attribute no longer unlocks generic modulo there, only the pre-existing
-  // origin=0 / no-lastFrame / no-wrap compatibility path (com22). Raw authored
-  // absence is preserved: `firstFrame` stays undefined and `firstFrameWasExplicit`
-  // records the missing-vs-authored-'0' distinction. An authored lastFrame is
-  // consumed only by the static sub-cases.
-  if (mode === 'loop') {
-    const firstFrameWasExplicit = element.firstFrame !== undefined;
-    const owningSpanIsStatic = element.sourceParentSpanTweenType === 'none';
-    if (element.sourceParentMotionTweenSync === true) {
-      const firstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
-      if (firstFrame === null) {
-        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop has an invalid firstFrame', sourceAddress);
-      }
-      if (element.lastFrame !== undefined) {
-        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop experiment does not support lastFrame', sourceAddress);
-      }
-      const elapsed = parentFrameIndex - parentSpanStart;
-      const requestedFrame = firstFrame + elapsed;
-      if (!Number.isSafeInteger(elapsed) || elapsed < 0 || !Number.isSafeInteger(requestedFrame)) {
-        return failure('UNSUPPORTED_TIMING', 'Synchronized motion Loop frame request is invalid', sourceAddress);
-      }
-      return {
-        ok: true,
-        frameIndex: requestedFrame % childFrameCount,
-        selectionRule: 'loop-sync-motion-modulo-experiment',
-        effectiveFirstFrame: firstFrame,
-      };
-    }
-
-    // #721 — explicit firstFrame inside a static/span-local owning span.
-    if (firstFrameWasExplicit) {
-      const firstFrame = parseFrameIndex(element.firstFrame);
-      if (firstFrame === null) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          'Loop Graphic requires a valid source-authored firstFrame',
-          sourceAddress,
-        );
-      }
-      if (!owningSpanIsStatic) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          'Loop Graphic with an explicit firstFrame is only proven inside a static authored span; a tweened owning span (animated firstFrame) stays fail-closed',
-          sourceAddress,
-        );
-      }
-      const lastFrame = element.lastFrame === undefined
-        ? childFrameCount - 1
-        : parseFrameIndex(element.lastFrame);
-      if (lastFrame === null) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          `Loop Graphic lastFrame is not a valid non-negative index: ${element.lastFrame}`,
-          sourceAddress,
-        );
-      }
-      if (firstFrame > lastFrame || lastFrame >= childFrameCount) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          `Loop Graphic bounds fall outside child frameCount ${childFrameCount} (firstFrame=${firstFrame}, lastFrame=${lastFrame})`,
-          sourceAddress,
-        );
-      }
-      const rangeLength = lastFrame - firstFrame + 1;
-      const elapsed = parentFrameIndex - parentSpanStart;
-      if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
-        return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
-      }
-      return {
-        ok: true,
-        frameIndex: firstFrame + (elapsed % rangeLength),
-        selectionRule: 'loop-static-first-frame-modulo',
-        effectiveFirstFrame: firstFrame,
-      };
-    }
-
-    // #1051: a missing firstFrame defaults to 0. With no lastFrame and a one-frame child,
-    // the only legal child index is 0 regardless of non-negative elapsed time.
-    if (!firstFrameWasExplicit && element.lastFrame === undefined && childFrameCount === 1) {
-      const elapsed = parentFrameIndex - parentSpanStart;
-      if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
-        return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
-      }
-      return {
-        ok: true,
-        frameIndex: 0,
-        selectionRule: 'loop-single-frame-constant',
-        effectiveFirstFrame: 0,
-      };
-    }
-
-    // #723: the broader missing-firstFrame modulo rule remains static-span only.
-    if (owningSpanIsStatic) {
-      const lastFrame = element.lastFrame === undefined
-        ? childFrameCount - 1
-        : parseFrameIndex(element.lastFrame);
-      if (lastFrame === null) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          `Loop Graphic lastFrame is not a valid non-negative index: ${element.lastFrame}`,
-          sourceAddress,
-        );
-      }
-      if (lastFrame >= childFrameCount) {
-        return failure(
-          'UNSUPPORTED_TIMING',
-          `Loop Graphic bounds fall outside child frameCount ${childFrameCount} (firstFrame=0, lastFrame=${lastFrame})`,
-          sourceAddress,
-        );
-      }
-      const rangeLength = lastFrame + 1;
-      const elapsed = parentFrameIndex - parentSpanStart;
-      if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
-        return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
-      }
-      return {
-        ok: true,
-        frameIndex: elapsed % rangeLength,
-        selectionRule: 'loop-missing-first-frame-modulo',
-        effectiveFirstFrame: 0,
-      };
-    }
-
-    // #724 — missing firstFrame inside a motion/tween owning span: only the legacy
-    // origin=0 / no-lastFrame / no-wrap bounded path is proven (com22).
-    if (parentSpanStart !== 0) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Loop Graphic whose containing span starts at ${parentSpanStart} is outside the proven origin boundary`,
-        sourceAddress,
-      );
-    }
-    if (element.lastFrame !== undefined) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Loop Graphic lastFrame is not proven inside a tween-owned span: ${element.lastFrame}`,
-        sourceAddress,
-      );
-    }
-    const elapsed = parentFrameIndex - parentSpanStart;
-    if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
-      return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
-    }
-    if (elapsed >= childFrameCount) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Loop Graphic wrap is outside the proven boundary (elapsed=${elapsed}, childFrameCount=${childFrameCount})`,
-        sourceAddress,
-      );
-    }
-    return { ok: true, frameIndex: elapsed, selectionRule: 'loop-zero-origin-no-wrap', effectiveFirstFrame: 0 };
-  }
-
-  if (element.lastFrame !== undefined) {
+  const supportedModes = new Set([
+    'loop', 'play once', 'single frame', 'loop reverse', 'play once reverse',
+  ]);
+  if (!supportedModes.has(mode)) {
     return failure(
       'UNSUPPORTED_TIMING',
-      `Nested Graphic lastFrame is outside the proven static selection boundary: ${element.lastFrame}`,
+      `Nested Graphic playback mode is unsupported: ${element.playbackMode ?? '(missing)'}`,
       sourceAddress,
     );
   }
+  const firstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
+  if (firstFrame === null) {
+    return failure('UNSUPPORTED_TIMING', `Graphic firstFrame is invalid: ${element.firstFrame}`, sourceAddress);
+  }
+  let lastFrame: number | undefined;
+  if (element.lastFrame !== undefined) {
+    const rawLastFrame = element.lastFrame.trim();
+    if (!/^-?\d+$/u.test(rawLastFrame)) {
+      return failure('UNSUPPORTED_TIMING', `Graphic lastFrame is invalid: ${element.lastFrame}`, sourceAddress);
+    }
+    const parsedLastFrame = Number(rawLastFrame);
+    if (!Number.isSafeInteger(parsedLastFrame)) {
+      return failure('UNSUPPORTED_TIMING', `Graphic lastFrame is invalid: ${element.lastFrame}`, sourceAddress);
+    }
+    // The pinned viewer treats a negative lastFrame as an unbounded range.
+    if (parsedLastFrame >= 0) lastFrame = parsedLastFrame;
+  }
+  const elapsed = parentFrameIndex - parentSpanStart;
+  const selected = evaluateFlaViewerGraphicFrame(mode, firstFrame, lastFrame, childFrameCount, elapsed);
+  if (!selected.ok) return failure('UNSUPPORTED_TIMING', selected.message, sourceAddress);
 
+  let selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
   if (mode === 'single frame') {
-    const selectedFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
-    if (selectedFrame === null) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        'Single Frame Graphic requires a valid source-authored firstFrame',
-        sourceAddress,
-      );
-    }
-    if (selectedFrame >= childFrameCount) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Single Frame firstFrame ${selectedFrame} is outside child frameCount ${childFrameCount}`,
-        sourceAddress,
-      );
-    }
-    return {
-      ok: true,
-      frameIndex: selectedFrame,
-      selectionRule: element.firstFrame === undefined
-        ? 'single-frame-default-first-frame-zero'
-        : 'single-frame-explicit-first-frame',
-      effectiveFirstFrame: selectedFrame,
-    };
+    selectionRule = 'single-frame-parent-keyframe';
+  } else if (mode === 'loop reverse') {
+    selectionRule = 'loop-reverse-parent-timeline';
+  } else if (mode === 'loop') {
+    selectionRule = 'loop-parent-timeline';
+  } else {
+    const reverse = mode === 'play once reverse';
+    const distanceToTerminal = lastFrame === undefined
+      ? (reverse ? firstFrame : childFrameCount - 1 - firstFrame)
+      : reverse
+        ? ((firstFrame - lastFrame + childFrameCount) % childFrameCount)
+        : ((lastFrame - firstFrame + childFrameCount) % childFrameCount);
+    const held = elapsed > distanceToTerminal;
+    selectionRule = held
+      ? 'play-once-hold-terminal'
+      : reverse ? 'play-once-reverse-parent-timeline' : 'play-once-parent-timeline';
   }
-
-  if (mode === 'play once') {
-    const firstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
-    if (firstFrame === null) {
-      return failure('UNSUPPORTED_TIMING', 'Play Once Graphic has an invalid firstFrame', sourceAddress);
-    }
-    if (firstFrame >= childFrameCount) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Play Once firstFrame ${firstFrame} is outside child frameCount ${childFrameCount}`,
-        sourceAddress,
-      );
-    }
-    const elapsed = parentFrameIndex - parentSpanStart;
-    const requestedFrame = firstFrame + elapsed;
-    if (!Number.isSafeInteger(requestedFrame) || requestedFrame < firstFrame) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Play Once selection is invalid (firstFrame=${firstFrame}, elapsed=${elapsed})`,
-        sourceAddress,
-      );
-    }
-    const lastFrame = childFrameCount - 1;
-    const selectedFrame = Math.min(requestedFrame, lastFrame);
-    return {
-      ok: true,
-      frameIndex: selectedFrame,
-      selectionRule: requestedFrame > lastFrame
-        ? 'play-once-hold-last-frame'
-        : 'play-once-relative-containing-span',
-      effectiveFirstFrame: firstFrame,
-    };
-  }
-
-  return failure(
-    'UNSUPPORTED_TIMING',
-    `Nested Graphic playback mode or bounds are outside the proven boundary (loop=${element.playbackMode ?? '(missing)'}, firstFrame=${element.firstFrame ?? '(missing)'})`,
-    sourceAddress,
-  );
+  return {
+    ok: true,
+    frameIndex: selected.frameIndex,
+    selectionRule,
+    effectiveFirstFrame: firstFrame,
+  };
 }
 
 /**

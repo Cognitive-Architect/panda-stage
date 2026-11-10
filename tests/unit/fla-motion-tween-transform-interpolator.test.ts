@@ -7,7 +7,7 @@ import type { FlaDisplayListMatrix } from '../../src/main/services/fla-display-l
 
 const IDENTITY: FlaDisplayListMatrix = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 
-describe('bounded FLA linear motion transform interpolation', () => {
+describe('FLA Classic Motion transform interpolation', () => {
   it('interpolates position and rotation as properties without shrinking the object', () => {
     const end: FlaDisplayListMatrix = {
       a: 0,
@@ -155,33 +155,44 @@ describe('bounded FLA linear motion transform interpolation', () => {
     });
   });
 
-  it('fails closed for skew, reflection, and ambiguous half-turns', () => {
-    expect(interpolateFlaLinearMotionTransform(IDENTITY, {
+  it('interpolates skew and uses entry-wise interpolation across a reflection', () => {
+    const skewed = interpolateFlaLinearMotionTransform(IDENTITY, {
       a: 1,
       b: 0,
       c: 0.1,
       d: 1,
       tx: 0,
       ty: 0,
-    }, 0.5)).toMatchObject({ ok: false, code: 'UNSUPPORTED_SKEW' });
+    }, 0.5);
+    expect(skewed.ok).toBe(true);
+    if (skewed.ok) {
+      expect(skewed.matrix.c).toBeGreaterThan(0);
+      expect(skewed.matrix.c).toBeLessThan(0.1);
+    }
 
-    expect(interpolateFlaLinearMotionTransform(IDENTITY, {
+    const reflected = interpolateFlaLinearMotionTransform(IDENTITY, {
       a: -1,
       b: 0,
       c: 0,
       d: 1,
       tx: 0,
       ty: 0,
-    }, 0.5)).toMatchObject({ ok: false, code: 'UNSUPPORTED_REFLECTION' });
+    }, 0.5);
+    expect(reflected).toEqual({
+      ok: true,
+      matrix: { a: 0, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+    });
 
-    expect(interpolateFlaLinearMotionTransform(IDENTITY, {
+    const halfTurn = interpolateFlaLinearMotionTransform(IDENTITY, {
       a: -1,
       b: 0,
       c: 0,
       d: -1,
       tx: 0,
       ty: 0,
-    }, 0.5)).toMatchObject({ ok: false, code: 'AMBIGUOUS_ROTATION' });
+    }, 0.5);
+    expect(halfTurn.ok).toBe(true);
+    if (halfTurn.ok) expect(halfTurn.matrix.b).toBeCloseTo(-1, 12);
   });
 
   it('rejects non-finite matrices', () => {
