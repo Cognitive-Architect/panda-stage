@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentType } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CharacterService,
@@ -9,6 +10,7 @@ import {
 } from '../../../../src/domain';
 import type { PartPoseEditorUi } from '../../../../src/renderer/features/part-pose/partPoseEditorTypes';
 import { PartPoseTimeline } from '../../../../src/renderer/features/timeline/PartPoseTimeline';
+import { snapToFrame } from '../../../../src/renderer/features/timeline/timeGeometry';
 import {
   TimelineDock,
   type TimelineDockProps,
@@ -121,6 +123,20 @@ async function doubleClickAt(
       bubbles: true,
       cancelable: true,
       detail: 2,
+      clientX,
+    }));
+  });
+}
+
+async function clickAt(target: HTMLElement, clientX: number): Promise<void> {
+  await act(async () => {
+    const values = { pointerId: 61, clientX, button: 0, pointerType: 'mouse' };
+    target.dispatchEvent(pointerEvent('pointerdown', values));
+    target.dispatchEvent(pointerEvent('pointerup', values));
+    target.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      detail: 1,
       clientX,
     }));
   });
@@ -500,6 +516,154 @@ describe('Part Pose Timeline lanes', () => {
     }
     expect(editorProjectStore.getSnapshot()).toBe(snapshot);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+  });
+
+  it('routes active Part blank mouse seeks and double-clicks through the lane in TimelineDock', async () => {
+    const originalClientWidth = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientWidth',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => 3_000,
+    });
+    try {
+      await act(async () => root.render(createElement(
+        PendingDialoguePlacementProvider,
+        null,
+        createElement(TimelineDock as ComponentType<TimelineDockProps>, {
+          partPoseEditor: editorUi(fixture.layerId, fixture.partIds[0]!),
+          presentation: 'landscape',
+        }),
+      )));
+    } finally {
+      if (originalClientWidth) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'clientWidth',
+          originalClientWidth,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
+      }
+    }
+
+    const laneContent = container.querySelector<HTMLElement>(
+      `[data-testid="part-pose-part-lane"][data-part-id="${fixture.partIds[0]}"] .timeline-lane-content`,
+    )!;
+    const rulerTrack = container.querySelector<HTMLElement>(
+      '[data-testid="timeline-ruler-track"]',
+    )!;
+    setPartLaneGeometry(laneContent);
+    const laneSetCapture = vi.fn();
+    const laneReleaseCapture = vi.fn();
+    Object.defineProperty(laneContent, 'setPointerCapture', {
+      configurable: true,
+      value: laneSetCapture,
+    });
+    Object.defineProperty(laneContent, 'hasPointerCapture', {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(laneContent, 'releasePointerCapture', {
+      configurable: true,
+      value: laneReleaseCapture,
+    });
+    const rulerSetCapture = vi.fn();
+    Object.defineProperty(rulerTrack, 'setPointerCapture', {
+      configurable: true,
+      value: rulerSetCapture,
+    });
+
+    const revision = editorProjectStore.getSnapshot()!.revision;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    await clickAt(laneContent, 400);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(snapToFrame(400));
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(revision);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+
+    await act(async () => {
+      laneContent.dispatchEvent(pointerEvent('pointerdown', {
+        pointerId: 62,
+        clientX: 200,
+        button: 0,
+        pointerType: 'mouse',
+      }));
+      laneContent.dispatchEvent(pointerEvent('pointermove', {
+        pointerId: 62,
+        clientX: 650,
+        button: 0,
+        pointerType: 'mouse',
+      }));
+      laneContent.dispatchEvent(pointerEvent('pointerup', {
+        pointerId: 62,
+        clientX: 650,
+        button: 0,
+        pointerType: 'mouse',
+      }));
+    });
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(snapToFrame(650));
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(revision);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+
+    await doubleClickAt(laneContent, 750);
+    const keys = currentLayer(fixture.layerId).layer.poseAnimation!.tracks.find(
+      (track) => track.partId === fixture.partIds[0],
+    )!.keys;
+    expect(keys.filter((key) => key.timeMs === 750)).toHaveLength(1);
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount + 1);
+    expect(laneSetCapture).toHaveBeenCalledTimes(4);
+    expect(laneReleaseCapture).toHaveBeenCalledTimes(4);
+    expect(rulerSetCapture).not.toHaveBeenCalled();
+  });
+
+  it('keeps essential controls and Part actions in the narrow Timeline toolbar row', async () => {
+    await act(async () => root.render(createElement(
+      PendingDialoguePlacementProvider,
+      null,
+      createElement(TimelineDock as ComponentType<TimelineDockProps>, {
+        partPoseEditor: editorUi(fixture.layerId, fixture.partIds[0]!),
+        presentation: 'landscape',
+      }),
+    )));
+    const toolbar = container.querySelector<HTMLElement>(
+      '[data-testid="timeline-toolbar"]',
+    )!;
+    expect(toolbar.querySelector('[data-testid="timeline-timecode"]')).not.toBeNull();
+    expect(toolbar.querySelector('[data-testid="timeline-return-to-start"]')).not.toBeNull();
+    expect(toolbar.querySelector('[data-testid="timeline-zoom-in"]')).not.toBeNull();
+    const details = toolbar.querySelector<HTMLDetailsElement>(
+      '[data-testid="part-pose-more-actions"]',
+    )!;
+    const trigger = details.querySelector<HTMLElement>('summary')!;
+    const menu = details.querySelector<HTMLElement>(
+      '.timeline-pose-overflow-content',
+    )!;
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(300, 40, 44, 32),
+    });
+    Object.defineProperty(menu, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 160, 60),
+    });
+    await openMoreActions();
+    await act(async () => new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    }));
+    expect(menu.dataset.positioned).toBe('true');
+    expect(menu.style.left).toBe('184px');
+    expect(menu.style.top).toBe('77px');
+
+    const css = readFileSync(
+      'src/renderer/styles/features/timeline/part-pose-lanes.css',
+      'utf8',
+    );
+    expect(css).toMatch(/\.timeline-dock \.timeline-header\.timeline-toolbar\s*\{[^}]*flex-wrap:\s*nowrap/s);
+    expect(css).toMatch(/\.timeline-pose-overflow-content\s*\{[^}]*position:\s*fixed/s);
+    expect(css).toContain(".timeline-pose-overflow-content[data-positioned='false']");
+    expect(css).toContain('flex-basis: 220px;');
   });
 
   it('previews a drag without writing, then commits one retime command on release', async () => {

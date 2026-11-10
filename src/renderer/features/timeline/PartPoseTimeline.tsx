@@ -238,6 +238,12 @@ function PartPoseTimelineContent({
   );
   const [poseGroupExpanded, setPoseGroupExpanded] = useState(true);
   const [expandedOtherParts, setExpandedOtherParts] = useState(false);
+  const [poseActionsOpen, setPoseActionsOpen] = useState(false);
+  const [poseActionsPosition, setPoseActionsPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const poseActionsRef = useRef<HTMLDetailsElement>(null);
   const [selectedKey, setSelectedKey] = useState<{
     partId: string;
     timeMs: number;
@@ -252,6 +258,50 @@ function PartPoseTimelineContent({
     layer.id,
     primaryPartId,
   ]);
+
+  useEffect(() => {
+    if (!poseActionsOpen) {
+      setPoseActionsPosition(null);
+      return;
+    }
+
+    const positionMenu = (): void => {
+      const details = poseActionsRef.current;
+      const trigger = details?.querySelector('summary');
+      const menu = details?.querySelector<HTMLElement>(
+        '.timeline-pose-overflow-content',
+      );
+      if (!details?.open || !trigger || !menu) return;
+
+      const triggerBounds = trigger.getBoundingClientRect();
+      const menuBounds = menu.getBoundingClientRect();
+      const menuWidth = menuBounds.width || menu.scrollWidth;
+      const menuHeight = menuBounds.height || menu.scrollHeight;
+      const left = Math.min(
+        Math.max(8, triggerBounds.right - menuWidth),
+        Math.max(8, window.innerWidth - menuWidth - 8),
+      );
+      const below = triggerBounds.bottom + 5;
+      const top = below + menuHeight <= window.innerHeight - 8
+        ? below
+        : Math.max(8, triggerBounds.top - menuHeight - 5);
+
+      setPoseActionsPosition((current) =>
+        current?.left === left && current.top === top
+          ? current
+          : { left, top },
+      );
+    };
+
+    const frame = window.requestAnimationFrame(positionMenu);
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [poseActionsOpen]);
 
   useEffect(() => {
     setSelectedKey((current) =>
@@ -537,6 +587,10 @@ function PartPoseTimelineContent({
               <details
                 className="timeline-pose-overflow"
                 data-testid="part-pose-more-actions"
+                onToggle={(event) =>
+                  setPoseActionsOpen(event.currentTarget.open)
+                }
+                ref={poseActionsRef}
               >
                 <summary
                   aria-label="更多 Part 姿势关键帧操作"
@@ -548,7 +602,9 @@ function PartPoseTimelineContent({
                 <div
                   aria-label="其他关键帧操作"
                   className="timeline-pose-overflow-content"
+                  data-positioned={poseActionsPosition ? 'true' : 'false'}
                   role="group"
+                  style={poseActionsPosition ?? undefined}
                 >
                   <IconButton
                     aria-label="复制当前 Part 姿势关键帧"
@@ -786,6 +842,60 @@ function PartPoseLane({
     (key) => key.timeMs <= durationMs,
   ) ?? [];
   const lastPointerTypeRef = useRef<string | null>(null);
+  const blankLanePointerIdRef = useRef<number | null>(null);
+
+  const seekBlankLane = (
+    element: HTMLDivElement,
+    clientX: number,
+  ): void => {
+    const bounds = element.getBoundingClientRect();
+    timelineUiStore.seek(
+      pxToTime(clientX - bounds.left, pixelsPerMs),
+      durationMs,
+    );
+  };
+
+  const handleBlankLanePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    lastPointerTypeRef.current = event.pointerType;
+    if (
+      event.target !== event.currentTarget ||
+      event.pointerType !== 'mouse' ||
+      event.button !== 0 ||
+      !editable ||
+      !onAddAtTime
+    ) {
+      return;
+    }
+
+    // Own only blank clicks on the active Part lane. The outer ruler still
+    // captures seeks everywhere else; keeping capture on this lane lets the
+    // browser deliver its click/dblclick sequence back to the intended target.
+    event.stopPropagation();
+    blankLanePointerIdRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seekBlankLane(event.currentTarget, event.clientX);
+  };
+
+  const handleBlankLanePointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    if (blankLanePointerIdRef.current !== event.pointerId) return;
+    event.stopPropagation();
+    seekBlankLane(event.currentTarget, event.clientX);
+  };
+
+  const handleBlankLanePointerEnd = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    if (blankLanePointerIdRef.current !== event.pointerId) return;
+    event.stopPropagation();
+    blankLanePointerIdRef.current = null;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+  };
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
     event.stopPropagation();
@@ -822,9 +932,11 @@ function PartPoseLane({
       <div
         className="timeline-lane-content timeline-pose-lane-content"
         onDoubleClick={handleDoubleClick}
-        onPointerDown={(event) => {
-          lastPointerTypeRef.current = event.pointerType;
-        }}
+        onLostPointerCapture={handleBlankLanePointerEnd}
+        onPointerCancel={handleBlankLanePointerEnd}
+        onPointerDown={handleBlankLanePointerDown}
+        onPointerMove={handleBlankLanePointerMove}
+        onPointerUp={handleBlankLanePointerEnd}
         style={{ width: `${trackWidth}px` }}
       >
         {keys.map((keyframe, index) => (
