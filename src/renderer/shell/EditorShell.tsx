@@ -80,6 +80,7 @@ import {
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
+import type { FlaGroupEditTarget } from '../features/canvas/flaGroupEditTypes';
 import {
   CompactProjectBar,
   type CompactProjectSaveState,
@@ -512,6 +513,18 @@ export function EditorShell({
     shotStore.subscribe,
     shotStore.getCurrentShotId,
   );
+  const [flaGroupEditTarget, setFlaGroupEditTarget] = useState<FlaGroupEditTarget | null>(null);
+  useEffect(() => {
+    setFlaGroupEditTarget((current) => current &&
+      current.projectId === projectSnapshot?.project.id &&
+      current.projectRoot === projectSnapshot?.projectRoot &&
+      current.shotId === currentShotId
+      ? current
+      : null);
+  }, [currentShotId, projectSnapshot?.project.id, projectSnapshot?.projectRoot]);
+  const clearFlaGroupEditTarget = useCallback(() => {
+    setFlaGroupEditTarget(null);
+  }, []);
   const [session] = useState(createBrowserSession);
   const createFlaCharacter = useCallback<CreateFlaCharacter>(
     async (preview, name, operationId) => {
@@ -593,7 +606,18 @@ export function EditorShell({
             '导入 FLA 对象',
           );
         }
-        if (shotStore.getCurrentShotId() === shot.id) selectionStore.select(response.layerId);
+        if (shotStore.getCurrentShotId() === shot.id) {
+          selectionStore.select(response.layerId);
+          setFlaGroupEditTarget(response.groupEditPreview
+            ? {
+                projectId: snapshot.project.id,
+                projectRoot: snapshot.projectRoot,
+                shotId: shot.id,
+                layerId: response.layerId,
+                preview: response.groupEditPreview,
+              }
+            : null);
+        }
       } finally {
         editorProjectStore.releaseProjectOperationLease(lease);
       }
@@ -2761,6 +2785,8 @@ export function EditorShell({
                 <CanvasWorkspace
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  flaGroupEditTarget={flaGroupEditTarget}
+                  onClearFlaGroupEditTarget={clearFlaGroupEditTarget}
                 />
               </div>
               {activeAssemblySession && projectSnapshot ? (

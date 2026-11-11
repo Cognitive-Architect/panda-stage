@@ -67,6 +67,37 @@ function frameBatch(overrides: {
       documentHeight: 1_080,
     },
     frames,
+    groupEditPreview: {
+      version: 1,
+      source: {
+        sha256: 'b'.repeat(64),
+        outerOccurrenceId: overrides.occurrenceId ?? OCCURRENCE_ID,
+        outerSourceAddress: overrides.sourceAddress ?? 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[0]',
+        graphicSymbolName: 'Walk',
+      },
+      frameIndex: 0,
+      frameOrigin: { x: 0, y: 0 },
+      frameCanvas: { width: 12, height: 12 },
+      group: {
+        groupId: 'group-1',
+        sourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]',
+        worldTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        canvasTransform: { a: 1, b: 0, c: 0, d: 1, tx: -6, ty: -6 },
+      },
+      background: null,
+      children: [{
+        sourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]/member[0]',
+        parentGroupSourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]',
+        kind: 'shape',
+        sourceIdentity: 'shape-a',
+        localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        worldTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        artwork: {
+          svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><path d="M0 0h12v12H0z" fill="#f03a55"/></svg>',
+          viewBox: { x: 0, y: 0, width: 12, height: 12 },
+        },
+      }],
+    },
   };
 }
 
@@ -177,8 +208,11 @@ describe('FLA Graphic instance commit', () => {
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error(first.error.message);
     expect(first.projectChanged).toBe(true);
+    expect(first.groupEditPreview?.children).toHaveLength(1);
     expect(first.savedRevision).toBe(1);
     expect(first.project.animations).toHaveLength(1);
+    expect(first.project.animations[0]).not.toHaveProperty('groupEditPreview');
+    expect(first.project).not.toHaveProperty('groupEditPreview');
     expect(first.project.animations[0]).toMatchObject({ kind: 'fla-graphic' });
     expect(first.project.animations[0]?.frames.every((frame) => !frame.createdBySequenceImport)).toBe(true);
     expect(first.project.shots[0]?.layers.at(-1)).toMatchObject({

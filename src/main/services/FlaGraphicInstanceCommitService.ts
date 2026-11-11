@@ -16,6 +16,7 @@ import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
 import {
   FlaGraphicInstanceCommitRequestSchema,
   FlaGraphicInstanceCommitResponseSchema,
+  type FlaGraphicGroupEditPreview,
   type FlaGraphicInstanceCommitErrorCode,
   type FlaGraphicInstanceCommitRequest,
   type FlaGraphicInstanceCommitResponse,
@@ -444,7 +445,16 @@ export class FlaGraphicInstanceCommitService {
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
         }
-        return this.success(request, current.project, current.revision, current.revision, false, definition.id, existingLayer.id);
+        return this.success(
+          request,
+          current.project,
+          current.revision,
+          current.revision,
+          false,
+          definition.id,
+          existingLayer.id,
+          batch.groupEditPreview,
+        );
       }
       const created = this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
@@ -480,7 +490,16 @@ export class FlaGraphicInstanceCommitService {
         const hash = await this.hashService.hashFile(path.resolve(transaction.projectRoot, savedAsset.relativePath));
         if (hash.hex !== asset.sha256) throw new Error('An FLA Graphic frame failed post-save hash verification.');
       }
-      return this.success(request, savedDocument.project, current.revision, current.revision + 1, true, definition.id, created.layer.id);
+      return this.success(
+        request,
+        savedDocument.project,
+        current.revision,
+        current.revision + 1,
+        true,
+        definition.id,
+        created.layer.id,
+        batch.groupEditPreview,
+      );
     } catch (error) {
       if (projectSaved) {
         try {
@@ -539,6 +558,7 @@ export class FlaGraphicInstanceCommitService {
     projectChanged: boolean,
     animationId: string,
     layerId: string,
+    groupEditPreview?: FlaGraphicGroupEditPreview,
   ): FlaGraphicInstanceCommitResponse {
     return FlaGraphicInstanceCommitResponseSchema.parse({
       ok: true,
@@ -553,6 +573,7 @@ export class FlaGraphicInstanceCommitService {
       projectChanged,
       animationId,
       layerId,
+      ...(groupEditPreview ? { groupEditPreview } : {}),
     });
   }
 

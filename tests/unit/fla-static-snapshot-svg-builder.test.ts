@@ -239,7 +239,7 @@ function pickFirst<T>(arr: ReadonlyArray<T> | undefined): T | null {
 describe('R1-B SVG builder: catalog discovery', () => {
   it('applies symbol alpha to the composed Graphic as one opacity group', () => {
     const transform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
-    const shape = (shapeId: string) => ({ kind: 'shape' as const, shapeId, worldTransform: transform });
+    const shape = (shapeId: string) => ({ kind: 'shape' as const, shapeId, localTransform: transform, worldTransform: transform });
     const displayList: FlaResolvedDisplayList = {
       kind: 'graphic',
       sourceName: 'alpha-symbol',
@@ -252,6 +252,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
             kind: 'group',
             groupId: 'symbol:alpha-symbol',
             symbolLibraryItemName: 'alpha-symbol',
+            localTransform: transform,
             worldTransform: transform,
             opacity: 0.5,
             children: [shape('shape-a'), shape('shape-b')],
@@ -289,7 +290,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
 
   it('applies RGB brightness through a filter scoped to the selected Graphic instance', () => {
     const transform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
-    const shape = (shapeId: string) => ({ kind: 'shape' as const, shapeId, worldTransform: transform });
+    const shape = (shapeId: string) => ({ kind: 'shape' as const, shapeId, localTransform: transform, worldTransform: transform });
     const displayList: FlaResolvedDisplayList = {
       kind: 'graphic',
       sourceName: 'brightness-symbol',
@@ -302,6 +303,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
             kind: 'group',
             groupId: 'symbol:brightness-symbol',
             symbolLibraryItemName: 'brightness-symbol',
+            localTransform: transform,
             worldTransform: transform,
             opacity: 0.68,
             rgbTransform: { multiplier: 4 / 7, offset: 255 * 3 / 7 },

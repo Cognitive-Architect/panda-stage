@@ -184,6 +184,46 @@ async function buildTwoInstanceNestedGraphicFla(
   return zip.generateAsync({ type: 'uint8array' });
 }
 
+async function buildOneFrameGroupedGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMShape><fills><FillStyle index="1"><SolidColor color="#222222" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!28 0|32 0|32 4|28 4|28 0"/></edges>
+      </DOMShape>
+      <DOMGroup><matrix><Matrix a="0" b="2" c="-2" d="0" tx="20" ty="10"/></matrix><members>
+        <DOMShape><matrix><Matrix a="0" b="2" c="-2" d="0" tx="14" ty="14"/></matrix>
+          <fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
+          <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+        </DOMShape>
+        <DOMShape><matrix><Matrix a="0" b="2" c="-2" d="0" tx="18" ty="2"/></matrix>
+          <fills><FillStyle index="1"><SolidColor color="#2555aa" alpha="1"/></FillStyle></fills>
+          <edges><Edge fillStyle1="1" cubics="!0 0|8 0|8 8|0 8|0 0"/></edges>
+        </DOMShape>
+      </members></DOMGroup>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
+  zip.file('LIBRARY/MyGraphic.xml', graphic);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
 async function fixture(
   withAddresses = true,
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
@@ -513,6 +553,52 @@ describe('F1-02 Main part preview service', () => {
     expect(result.batch.frames.every((frame) =>
       createHash('sha256').update(frame.svg).digest('hex') === frame.sha256,
     )).toBe(true);
+    previewService.close();
+  });
+
+  it('keeps one real XFL Group and its source-addressed direct vector children interactive before full-frame baking', async () => {
+    const sourceBytes = await buildOneFrameGroupedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Graphic instance');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    const editPreview = result.batch.groupEditPreview;
+    expect(editPreview).toBeDefined();
+    if (!editPreview) throw new Error('Expected a transient Group edit preview');
+    expect(editPreview.source.outerOccurrenceId).toBe(unit.occurrenceId);
+    expect(editPreview.source.outerSourceAddress).toBe(unit.sourceAddress);
+    expect(editPreview.children).toHaveLength(2);
+    expect(editPreview.children.map((child) => child.kind)).toEqual(['shape', 'shape']);
+    expect(editPreview.children[0]?.sourceAddress).not.toBe(editPreview.children[1]?.sourceAddress);
+    expect(editPreview.children[0]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: 2, ty: 3 });
+    expect(editPreview.children[1]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: -4, ty: 1 });
+    expect(editPreview.children[0]?.artwork.svg).toContain('#f03a55');
+    expect(editPreview.children[0]?.artwork.svg).not.toContain('#2555aa');
+    expect(editPreview.children[1]?.artwork.svg).toContain('#2555aa');
+    expect(editPreview.children[1]?.artwork.svg).not.toContain('#f03a55');
+    expect(editPreview.background?.artwork.svg).toContain('#222222');
+    expect(editPreview.background?.artwork.svg).not.toContain('#f03a55');
+    expect(editPreview.background?.artwork.svg).not.toContain('#2555aa');
     previewService.close();
   });
 

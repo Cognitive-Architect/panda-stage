@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { multiplyAffineMatrices } from '../../src/shared/affine-matrix';
+import type { FlaGraphicGroupEditPreview } from '../../src/shared/fla-graphic-instance-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   buildEditorStageRenderModel,
@@ -11,6 +13,67 @@ import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLa
 import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
 import { mapClientPointToLayerPosition } from '../../src/renderer/features/canvas/useCanvasDrop';
 import { parseLayerPositionDraft } from '../../src/renderer/features/properties/LayerPositionPanel';
+
+function testGroupEditPreview(): FlaGraphicGroupEditPreview {
+  const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+  const art = {
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h10v10H0z" fill="#f03a55"/></svg>',
+    viewBox: { x: 0, y: 0, width: 10, height: 10 },
+  };
+  return {
+    version: 1,
+    source: {
+      sha256: 'a'.repeat(64),
+      outerOccurrenceId: 'occ-0123456789abcdef01234567',
+      outerSourceAddress: 'DOMDocument.xml/Scene/instance[0]',
+      graphicSymbolName: 'Walk',
+    },
+    frameIndex: 0,
+    frameOrigin: { x: 0, y: 0 },
+    frameCanvas: { width: 20, height: 20 },
+    group: {
+      groupId: 'group-1',
+      sourceAddress: 'LIBRARY/Walk/layer[0]/group[0]',
+      worldTransform: identity,
+      canvasTransform: identity,
+    },
+    background: null,
+    children: [
+      {
+        sourceAddress: 'LIBRARY/Walk/layer[0]/group[0]/member[0]',
+        parentGroupSourceAddress: 'LIBRARY/Walk/layer[0]/group[0]',
+        kind: 'shape',
+        sourceIdentity: 'shape-a',
+        localTransform: { ...identity, tx: 3, ty: 4 },
+        worldTransform: { ...identity, tx: 3, ty: 4 },
+        artwork: art,
+      },
+      {
+        sourceAddress: 'LIBRARY/Walk/layer[0]/group[0]/member[1]',
+        parentGroupSourceAddress: 'LIBRARY/Walk/layer[0]/group[0]',
+        kind: 'shape',
+        sourceIdentity: 'shape-b',
+        localTransform: { ...identity, tx: 11, ty: 5 },
+        worldTransform: { ...identity, tx: 11, ty: 5 },
+        artwork: art,
+      },
+    ],
+  };
+}
+
+function findElementByName(node: unknown, name: string): { props: Record<string, unknown> } | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findElementByName(child, name);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object' || !('props' in node)) return null;
+  const element = node as { props: Record<string, unknown> };
+  if (element.props.name === name) return element;
+  return findElementByName(element.props.children, name);
+}
 
 describe('canvas drop coordinate mapping', () => {
   it.each([
@@ -484,6 +547,95 @@ describe('SelectableLayer interaction adapter', () => {
     ).toBe('selectable-canvas-layer');
   });
 
+  it('enters the explicit Group scope only from a selected parent double-click', () => {
+    const enter = vi.fn();
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      flaGroupEditPreview: testGroupEditPreview(),
+      onFlaGroupEditEnter: enter,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const props = element.props as {
+      draggable: boolean;
+      onDblClick: (event: { cancelBubble: boolean }) => void;
+    };
+
+    props.onDblClick({ cancelBubble: false });
+
+    expect(enter).toHaveBeenCalledTimes(1);
+    expect(props.draggable).toBe(true);
+  });
+
+  it('drags only the selected direct Group child and localizes its absolute matrix without committing the parent', () => {
+    const preview = testGroupEditPreview();
+    const parentWorld = { a: 0, b: 2, c: -2, d: 0, tx: 100, ty: 50 };
+    const draggedLocal = { a: 1, b: 0, c: 0, d: 1, tx: 9, ty: -4 };
+    const childAbsolute = multiplyAffineMatrices(parentWorld, draggedLocal);
+    const toArray = (matrix: typeof parentWorld) => [
+      matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty,
+    ];
+    const parentRef = {
+      current: {
+        getAbsoluteTransform: () => ({ getMatrix: () => toArray(parentWorld) }),
+      },
+    } as never;
+    const parentSelect = vi.fn();
+    const positionCommit = vi.fn();
+    const transformCommit = vi.fn();
+    const childTransform = vi.fn();
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      flaGroupEditPreview: preview,
+      flaGroupEditScope: true,
+      flaGroupEditParentNodeRef: parentRef,
+      onFlaGroupEditChildTransform: childTransform,
+      onSelect: parentSelect,
+      onCommitPosition: positionCommit,
+      onCommitTransform: transformCommit,
+      onError: vi.fn(),
+    });
+    const child = findElementByName(element, 'fla-group-edit-child-shape');
+    expect(child).not.toBeNull();
+    if (!child) throw new Error('Expected a direct child Konva Group');
+    const onDragEnd = child.props.onDragEnd as (event: {
+      cancelBubble: boolean;
+      target: {
+        getAbsoluteTransform: () => { getMatrix: () => number[] };
+        setAttrs: (attrs: Record<string, unknown>) => void;
+      };
+    }) => void;
+    const setAttrs = vi.fn();
+
+    onDragEnd({
+      cancelBubble: false,
+      target: {
+        getAbsoluteTransform: () => ({ getMatrix: () => toArray(childAbsolute) }),
+        setAttrs,
+      },
+    });
+
+    expect(child.props.draggable).toBe(true);
+    expect(child.props.listening).toBe(true);
+    expect(childTransform).toHaveBeenCalledTimes(1);
+    expect(childTransform).toHaveBeenCalledWith(preview.children[0]!.sourceAddress, draggedLocal);
+    expect(parentSelect).not.toHaveBeenCalled();
+    expect(positionCommit).not.toHaveBeenCalled();
+    expect(transformCommit).not.toHaveBeenCalled();
+    expect(setAttrs).not.toHaveBeenCalled();
+    expect(preview.children[1]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: 11, ty: 5 });
+  });
+
   it('uses the original canvas-image API through the Canvas resource session', () => {
     const stage = readFileSync(
       'src/renderer/features/canvas/CanvasStage.tsx',
@@ -518,6 +670,18 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
+    expect(stage).toContain("if (event.key !== 'Escape' || !groupEditScope) return;");
+    expect(stage).toContain('setGroupScopeTargetKey(null);');
+    expect(stage).toContain('setSelectedGroupChildAddress(null);');
+    expect(stage).toContain('flaGroupEditTarget.projectId === snapshot.project.id');
+    expect(stage).toContain('flaGroupEditTarget.shotId === shot.id');
+    expect(stage).toContain('flaGroupEditTarget.layerId === selectedLayerId');
+    expect(stage).toContain('setGroupEditDraft(null);');
+    const groupEditEscapeHandler = stage.slice(
+      stage.indexOf('const handleGroupEditKeyDownCapture'),
+      stage.indexOf('const activeOpacityPreview'),
+    );
+    expect(groupEditEscapeHandler).not.toContain('selectionStore.');
     const viewport = readFileSync(
       'src/renderer/features/canvas/CanvasViewport.tsx',
       'utf8',

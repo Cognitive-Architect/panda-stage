@@ -1,3 +1,5 @@
+import type { AffineMatrix2D } from '../../shared/affine-matrix';
+
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
  *
@@ -8,14 +10,7 @@
  * without selecting timeline frames or interpolating tweens (P1).
  */
 
-export interface FlaDisplayListMatrix {
-  readonly a: number;
-  readonly b: number;
-  readonly c: number;
-  readonly d: number;
-  readonly tx: number;
-  readonly ty: number;
-}
+export type FlaDisplayListMatrix = AffineMatrix2D;
 
 export const FLA_DISPLAY_LIST_IDENTITY_MATRIX: FlaDisplayListMatrix =
   Object.freeze({ a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 });
@@ -175,6 +170,8 @@ export const DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS: FlaDisplayListResolverLim
 export interface FlaResolvedShapeNode {
   readonly kind: 'shape';
   readonly shapeId: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
@@ -182,6 +179,8 @@ export interface FlaResolvedShapeNode {
 export interface FlaResolvedBitmapNode {
   readonly kind: 'bitmap';
   readonly libraryItemName: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
@@ -200,6 +199,8 @@ export interface FlaResolvedGroupNode {
   readonly kind: 'group';
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly opacity?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
@@ -503,7 +504,14 @@ function resolveElements(
       if (!element.shapeId) return failure('INVALID_INPUT', 'Shape reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
       if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'shape', shapeId: element.shapeId, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
+      nodes.push({
+        kind: 'shape',
+        shapeId: element.shapeId,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
       continue;
     }
 
@@ -511,7 +519,14 @@ function resolveElements(
       if (!element.libraryItemName) return failure('INVALID_INPUT', 'Bitmap reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
       if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'bitmap', libraryItemName: element.libraryItemName, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
+      nodes.push({
+        kind: 'bitmap',
+        libraryItemName: element.libraryItemName,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
       continue;
     }
 
@@ -535,7 +550,14 @@ function resolveElements(
         clipPaths,
       );
       if (!children.ok) return children;
-      nodes.push({ kind: 'group', groupId: element.groupId, worldTransform, children: children.nodes });
+      nodes.push({
+        kind: 'group',
+        groupId: element.groupId,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        children: children.nodes,
+      });
       continue;
     }
 
@@ -601,6 +623,8 @@ function resolveElements(
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
+      ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+      localTransform,
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),

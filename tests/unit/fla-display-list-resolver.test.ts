@@ -194,6 +194,51 @@ describe('P0-C01 FLA display-list resolver', () => {
     expect(displayList.resolvedNodeCount).toBe(9);
   });
 
+  it('preserves resolved Group and leaf source addresses with immediate-parent local transforms', () => {
+    const parent = { a: 0, b: 2, c: -2, d: 0, tx: 20, ty: 10 };
+    const leafLocal = { a: 1, b: 0, c: 0, d: 1, tx: 2, ty: 3 };
+    const result = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'group-source-identity',
+        frameContext: frameContext([{
+          name: 'group-layer',
+          visible: true,
+          elements: [{
+            kind: 'group',
+            groupId: 'authored-group',
+            sourceAddress: 'graphic:Walk/layer[0]/element[0]',
+            localTransform: parent,
+            elements: [{
+              kind: 'shape',
+              shapeId: 'shape-child-a',
+              sourceAddress: 'graphic:Walk/layer[0]/element[0]/member[0]',
+              localTransform: leafLocal,
+            }],
+          }],
+        }]),
+      },
+      symbols: new Map(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const group = result.displayList.layers[0]?.children[0];
+    expect(group).toMatchObject({
+      kind: 'group',
+      sourceAddress: 'graphic:Walk/layer[0]/element[0]',
+      localTransform: parent,
+      worldTransform: parent,
+    });
+    if (group?.kind !== 'group') return;
+    expect(group.children[0]).toMatchObject({
+      kind: 'shape',
+      sourceAddress: 'graphic:Walk/layer[0]/element[0]/member[0]',
+      localTransform: leafLocal,
+      worldTransform: { a: 0, b: 2, c: -2, d: 0, tx: 14, ty: 14 },
+    });
+  });
+
   it('fails deterministically when a referenced Graphic definition is missing', () => {
     const input: FlaDisplayListResolverInput = {
       root: {

@@ -3,6 +3,61 @@ import { ProjectSchema } from '../domain';
 
 const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
+const AffineMatrixSchema = z.object({
+  a: z.number().finite(),
+  b: z.number().finite(),
+  c: z.number().finite(),
+  d: z.number().finite(),
+  tx: z.number().finite(),
+  ty: z.number().finite(),
+}).strict();
+
+export const FlaGraphicGroupEditArtworkSchema = z.object({
+  svg: z.string().min(1).max(2_000_000),
+  viewBox: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().finite().positive().max(100_000),
+    height: z.number().finite().positive().max(100_000),
+  }).strict(),
+}).strict();
+
+/** Read-only source-backed canvas data; child transforms remain session-only. */
+export const FlaGraphicGroupEditPreviewSchema = z.object({
+  version: z.literal(1),
+  source: z.object({
+    sha256: Sha256Schema,
+    outerOccurrenceId: z.string().regex(/^occ-[a-f0-9]{24,64}$/u),
+    outerSourceAddress: z.string().trim().min(1).max(1_000),
+    graphicSymbolName: z.string().trim().min(1).max(500),
+  }).strict(),
+  frameIndex: z.literal(0),
+  frameOrigin: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
+  frameCanvas: z.object({
+    width: z.number().finite().positive().max(100_000),
+    height: z.number().finite().positive().max(100_000),
+  }).strict(),
+  group: z.object({
+    groupId: z.string().trim().min(1).max(500),
+    sourceAddress: z.string().trim().min(1).max(1_000),
+    worldTransform: AffineMatrixSchema,
+    canvasTransform: AffineMatrixSchema,
+    opacity: z.number().finite().min(0).max(1).optional(),
+  }).strict(),
+  background: z.object({
+    artwork: FlaGraphicGroupEditArtworkSchema,
+    position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
+  }).strict().nullable(),
+  children: z.array(z.object({
+    sourceAddress: z.string().trim().min(1).max(1_000),
+    parentGroupSourceAddress: z.string().trim().min(1).max(1_000),
+    kind: z.enum(['shape', 'bitmap']),
+    sourceIdentity: z.string().trim().min(1).max(500),
+    localTransform: AffineMatrixSchema,
+    worldTransform: AffineMatrixSchema,
+    artwork: FlaGraphicGroupEditArtworkSchema,
+  }).strict()).min(1).max(2),
+}).strict();
 
 export const FlaGraphicInstanceCommitRequestSchema = z.object({
   format: z.literal('fla-graphic-instance-commit'),
@@ -51,6 +106,7 @@ export const FlaGraphicInstanceCommitResponseSchema = z.discriminatedUnion('ok',
     projectChanged: z.boolean(),
     animationId: z.uuid(),
     layerId: z.uuid(),
+    groupEditPreview: FlaGraphicGroupEditPreviewSchema.optional(),
   }).strict().refine(
     (result) => result.project.id === result.projectId &&
       (result.projectChanged
@@ -74,4 +130,6 @@ export const FlaGraphicInstanceCommitResponseSchema = z.discriminatedUnion('ok',
 
 export type FlaGraphicInstanceCommitRequest = z.infer<typeof FlaGraphicInstanceCommitRequestSchema>;
 export type FlaGraphicInstanceCommitErrorCode = z.infer<typeof FlaGraphicInstanceCommitErrorCodeSchema>;
+export type FlaGraphicGroupEditArtwork = z.infer<typeof FlaGraphicGroupEditArtworkSchema>;
+export type FlaGraphicGroupEditPreview = z.infer<typeof FlaGraphicGroupEditPreviewSchema>;
 export type FlaGraphicInstanceCommitResponse = z.infer<typeof FlaGraphicInstanceCommitResponseSchema>;

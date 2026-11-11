@@ -53,9 +53,11 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
       /\{showToolbar \? \([\s\S]*?<CanvasToolbar[\s\S]*?\) : null\}/u,
     );
     expect(canvasWorkspace).toContain('showToolbar?: boolean');
-    expect(canvasWorkspace).toContain(
-      '<CanvasStage showHeading={showHeading} showToolbar={showToolbar} />',
-    );
+    expect(canvasWorkspace.match(/<CanvasStage\b/gu)).toHaveLength(1);
+    expect(canvasWorkspace).toContain('showHeading={showHeading}');
+    expect(canvasWorkspace).toContain('showToolbar={showToolbar}');
+    expect(canvasWorkspace).toContain('flaGroupEditTarget={flaGroupEditTarget}');
+    expect(canvasWorkspace).toContain('onClearFlaGroupEditTarget={onClearFlaGroupEditTarget}');
     expect(shell).toContain(
       "const canvasToolbarVisible =\n    !isPortrait || portraitWorkspace === 'canvas';",
     );

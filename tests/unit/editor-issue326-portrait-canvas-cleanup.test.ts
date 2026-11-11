@@ -32,9 +32,11 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     );
     expect(shell).not.toContain('portrait-canvas-context-actions');
     expect(shell).not.toContain('portrait-open-properties');
-    expect(canvasWorkspace).toContain(
-      '<CanvasStage showHeading={showHeading} showToolbar={showToolbar} />',
-    );
+    expect(canvasWorkspace.match(/<CanvasStage\b/gu)).toHaveLength(1);
+    expect(canvasWorkspace).toContain('showHeading={showHeading}');
+    expect(canvasWorkspace).toContain('showToolbar={showToolbar}');
+    expect(canvasWorkspace).toContain('flaGroupEditTarget={flaGroupEditTarget}');
+    expect(canvasWorkspace).toContain('onClearFlaGroupEditTarget={onClearFlaGroupEditTarget}');
     expect(resourceDock).toContain('<ShotManager');
     expect(resourceDock).toContain('hideSectionLabels?: boolean');
     expect(resourceDock).toContain('hideSectionLabels = false');

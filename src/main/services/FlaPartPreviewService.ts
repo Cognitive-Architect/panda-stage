@@ -20,12 +20,20 @@ import {
   FLA_STATIC_SNAPSHOT_LIMITS,
   type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
+import {
+  multiplyAffineMatrices,
+  type AffineMatrix2D,
+} from '../../shared/affine-matrix';
+import type { FlaGraphicGroupEditPreview } from '../../shared/fla-graphic-instance-api';
 import { isR05SafeGraphicSource } from '../../shared/fla-character-import-safe-graphic-targets';
 import type {
   FlaDisplayListElement,
   FlaDisplayListFrameContext,
   FlaDisplayListLayer,
   FlaDisplayListMatrix,
+  FlaResolvedDisplayList,
+  FlaResolvedDisplayNode,
+  FlaResolvedGroupNode,
   FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import {
@@ -592,6 +600,204 @@ function digestPng(bytes: Uint8Array): string {
   return crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex');
 }
 
+function collectResolvedGroups(
+  nodes: readonly FlaResolvedDisplayNode[],
+  groups: FlaResolvedGroupNode[],
+  hasSymbol: { value: boolean },
+): void {
+  for (const node of nodes) {
+    if (node.kind !== 'group') continue;
+    if (node.symbolLibraryItemName) hasSymbol.value = true;
+    else groups.push(node);
+    collectResolvedGroups(node.children, groups, hasSymbol);
+  }
+}
+
+function hasResolvedClipPaths(nodes: readonly FlaResolvedDisplayNode[]): boolean {
+  return nodes.some((node) => node.kind === 'group'
+    ? hasResolvedClipPaths(node.children)
+    : Boolean(node.clipPaths?.length));
+}
+
+function removeResolvedNode(
+  nodes: readonly FlaResolvedDisplayNode[],
+  removed: FlaResolvedDisplayNode,
+): FlaResolvedDisplayNode[] {
+  const result: FlaResolvedDisplayNode[] = [];
+  for (const node of nodes) {
+    if (node === removed) continue;
+    if (node.kind !== 'group') {
+      result.push(node);
+      continue;
+    }
+    result.push({ ...node, children: removeResolvedNode(node.children, removed) });
+  }
+  return result;
+}
+
+function isResolvedGroupTopmost(
+  displayList: FlaResolvedDisplayList,
+  group: FlaResolvedGroupNode,
+): boolean {
+  let found = false;
+  for (const layer of displayList.layers) {
+    for (const node of layer.children) {
+      if (found && node !== group) return false;
+      if (node === group) found = true;
+    }
+  }
+  return found;
+}
+
+function buildGroupEditArtwork(
+  displayList: FlaResolvedDisplayList,
+  shapeBlocks: ReadonlyMap<string, string>,
+  resolveBitmapMedia: ReturnType<typeof createFlaStaticSnapshotBitmapMediaLookup>,
+  renderTargetId: string,
+  stageWidth: number,
+  stageHeight: number,
+): FlaGraphicGroupEditPreview['children'][number]['artwork'] | null {
+  const rendered = buildSvgForResolvedDisplayList({
+    displayList,
+    renderTargetId,
+    stageWidth,
+    stageHeight,
+    shapeBlocks,
+    resolveBitmapMedia,
+  });
+  if (!rendered.ok || Buffer.byteLength(rendered.svg, 'utf8') > 2_000_000) return null;
+  return {
+    svg: rendered.svg,
+    viewBox: rendered.composition.framing.viewBox,
+  };
+}
+
+function buildGroupEditPreview(input: {
+  displayList: FlaResolvedDisplayList;
+  sourceFrameHasUnsupportedContent: boolean;
+  sourceFrameHasMasksOrFilters: boolean;
+  hasNestedSymbol: boolean;
+  sourceBytes: Uint8Array;
+  sourceSha256: string;
+  outerOccurrenceId: string;
+  outerSourceAddress: string;
+  graphicSymbolName: string;
+  frameOrigin: { readonly x: number; readonly y: number };
+  frameCanvas: { readonly width: number; readonly height: number };
+  shapeBlocks: ReadonlyMap<string, string>;
+  resolveBitmapMedia: ReturnType<typeof createFlaStaticSnapshotBitmapMediaLookup>;
+  stageWidth: number;
+  stageHeight: number;
+  renderTargetId: string;
+}): FlaGraphicGroupEditPreview | undefined {
+  if (input.sourceFrameHasUnsupportedContent || input.sourceFrameHasMasksOrFilters || input.hasNestedSymbol) return undefined;
+  const groups: FlaResolvedGroupNode[] = [];
+  const hasSymbol = { value: false };
+  for (const layer of input.displayList.layers) {
+    collectResolvedGroups(layer.children, groups, hasSymbol);
+  }
+  if (hasSymbol.value || hasResolvedClipPaths(input.displayList.layers.flatMap((layer) => layer.children))) return undefined;
+  if (groups.length !== 1) return undefined;
+  const group = groups[0]!;
+  const groupSourceAddress = group.sourceAddress;
+  if (!groupSourceAddress || group.rgbTransform || (group.opacity !== undefined && group.opacity !== 1)) return undefined;
+  if (!isResolvedGroupTopmost(input.displayList, group)) return undefined;
+  if (group.children.length < 1 || group.children.length > 2 ||
+      group.children.some((child) => child.kind === 'group' || !child.sourceAddress)) return undefined;
+
+  const children: FlaGraphicGroupEditPreview['children'][number][] = [];
+  let previewBytes = 0;
+  for (const child of group.children) {
+    if (child.kind === 'group') return undefined;
+    const sourceIdentity = child.kind === 'shape' ? child.shapeId : child.libraryItemName;
+    const localArtNode: FlaResolvedDisplayNode = {
+      ...child,
+      localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+      worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+    };
+    const childDisplayList: FlaResolvedDisplayList = {
+      ...input.displayList,
+      resolvedNodeCount: 1,
+      layers: [{ name: `group-child-${children.length}`, children: [localArtNode] }],
+    };
+    const artwork = buildGroupEditArtwork(
+      childDisplayList,
+      input.shapeBlocks,
+      input.resolveBitmapMedia,
+      stableRenderTargetId(input.sourceBytes, `${input.renderTargetId}\u0000${child.sourceAddress}`),
+      input.stageWidth,
+      input.stageHeight,
+    );
+    if (!artwork) return undefined;
+    previewBytes += Buffer.byteLength(artwork.svg, 'utf8');
+    if (previewBytes > 2_000_000) return undefined;
+    children.push({
+      sourceAddress: child.sourceAddress!,
+      parentGroupSourceAddress: groupSourceAddress,
+      kind: child.kind,
+      sourceIdentity,
+      localTransform: child.localTransform,
+      worldTransform: child.worldTransform,
+      artwork,
+    });
+  }
+
+  const backgroundNodes = input.displayList.layers.flatMap((layer) =>
+    removeResolvedNode(layer.children, group));
+  let background: FlaGraphicGroupEditPreview['background'] = null;
+  if (backgroundNodes.length > 0) {
+    const backgroundDisplayList: FlaResolvedDisplayList = {
+      ...input.displayList,
+      resolvedNodeCount: Math.max(1, backgroundNodes.length),
+      layers: [{ name: 'group-edit-background', children: backgroundNodes }],
+    };
+    const artwork = buildGroupEditArtwork(
+      backgroundDisplayList,
+      input.shapeBlocks,
+      input.resolveBitmapMedia,
+      `${input.renderTargetId}:group-background`,
+      input.stageWidth,
+      input.stageHeight,
+    );
+    if (!artwork) return undefined;
+    previewBytes += Buffer.byteLength(artwork.svg, 'utf8');
+    if (previewBytes > 2_000_000) return undefined;
+    background = {
+      artwork,
+      position: {
+        x: artwork.viewBox.x - input.frameOrigin.x - input.frameCanvas.width / 2,
+        y: artwork.viewBox.y - input.frameOrigin.y - input.frameCanvas.height / 2,
+      },
+    };
+  }
+
+  const canvasOriginTransform: AffineMatrix2D = {
+    ...FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+    tx: -input.frameOrigin.x - input.frameCanvas.width / 2,
+    ty: -input.frameOrigin.y - input.frameCanvas.height / 2,
+  };
+  return {
+    version: 1,
+    source: {
+      sha256: input.sourceSha256,
+      outerOccurrenceId: input.outerOccurrenceId,
+      outerSourceAddress: input.outerSourceAddress,
+      graphicSymbolName: input.graphicSymbolName,
+    },
+    frameIndex: 0,
+    frameOrigin: input.frameOrigin,
+    frameCanvas: input.frameCanvas,
+    group: {
+      groupId: group.groupId,
+      sourceAddress: groupSourceAddress,
+      worldTransform: group.worldTransform,
+      canvasTransform: multiplyAffineMatrices(canvasOriginTransform, group.worldTransform),
+    },
+    background,
+    children,
+  };
+}
+
 /**
  * Persisted Animation Layers can play from firstFrame through the Definition's
  * final frame, but cannot represent an earlier or wrapped terminal frame.
@@ -744,6 +950,7 @@ export interface FlaGraphicDefinitionFrameBatch {
       readonly height: number;
     };
   }[];
+  readonly groupEditPreview?: FlaGraphicGroupEditPreview;
 }
 
 export type FlaGraphicDefinitionFrameBatchResult =
@@ -1054,6 +1261,40 @@ export class FlaPartPreviewService {
       });
       await execution.yieldToEventLoop();
     }
+    let groupEditPreview: FlaGraphicGroupEditPreview | undefined;
+    const firstFrame = frames[0];
+    if (frameCount === 1 && firstFrame && unit.sourceAddress) {
+      prepared.source.resetFrameBuildState();
+      const resolvedFirstFrame = resolveFlaDisplayList({
+        root: {
+          kind: 'graphic',
+          name: descriptor.sourceLibraryItemName,
+          frameContext: descriptor.frameContext,
+        },
+        symbols: prepared.source.symbols,
+      });
+      if (resolvedFirstFrame.ok) {
+        groupEditPreview = buildGroupEditPreview({
+          displayList: resolvedFirstFrame.displayList,
+          sourceFrameHasUnsupportedContent: Boolean(descriptor.frameContext.unsupportedDisplayReason),
+          sourceFrameHasMasksOrFilters: descriptor.frameContext.layers.some((layer) =>
+            Boolean(layer.frameFilter || layer.maskLayerId || layer.maskedBy)),
+          hasNestedSymbol: descriptor.hasNestedSymbol,
+          sourceBytes: source.bytes,
+          sourceSha256: source.sha256,
+          outerOccurrenceId: unit.occurrenceId,
+          outerSourceAddress: unit.sourceAddress,
+          graphicSymbolName: descriptor.sourceLibraryItemName,
+          frameOrigin: { x: firstFrame.sourceViewport.x, y: firstFrame.sourceViewport.y },
+          frameCanvas: { width: firstFrame.sourceViewport.width, height: firstFrame.sourceViewport.height },
+          shapeBlocks: prepared.source.shapeBlocks,
+          resolveBitmapMedia: mediaLookup,
+          stageWidth: prepared.source.stageWidth,
+          stageHeight: prepared.source.stageHeight,
+          renderTargetId,
+        });
+      }
+    }
     return {
       ok: true,
       batch: {
@@ -1075,6 +1316,7 @@ export class FlaPartPreviewService {
           documentHeight: session.ir.document.height > 0 ? session.ir.document.height : prepared.source.stageHeight,
         },
         frames,
+        ...(groupEditPreview ? { groupEditPreview } : {}),
       },
     };
   }

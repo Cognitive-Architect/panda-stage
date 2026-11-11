@@ -35,6 +35,7 @@ import {
   type FlaDisplayListRgbTransform,
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
+import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
@@ -542,15 +543,10 @@ function localizeAbsoluteLeafMatrix(
   parentWorld: FlaDisplayListMatrix,
   sourceAbsolute: FlaDisplayListMatrix,
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListMatrix> {
-  const parentInverse = inverse(parentWorld);
-  if (!parentInverse) {
-    return fail('RENDER_FAILED', 'Cannot localize an absolute XFL child matrix under a singular parent group');
-  }
-  const local = compose(parentInverse, sourceAbsolute);
-  if (![local.a, local.b, local.c, local.d, local.tx, local.ty].every(Number.isFinite)) {
-    return fail('RENDER_FAILED', 'Localized XFL child matrix is not finite');
-  }
-  return { ok: true, value: local };
+  const localized = localizeSharedAbsoluteLeafMatrix(parentWorld, sourceAbsolute);
+  return localized.ok
+    ? { ok: true, value: localized.value }
+    : fail('RENDER_FAILED', localized.message);
 }
 
 function elementIsVisible(attributes: Readonly<Record<string, string>>): boolean {
