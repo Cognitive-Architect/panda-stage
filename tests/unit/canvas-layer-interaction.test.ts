@@ -38,6 +38,7 @@ function testGroupEditPreview(): FlaGraphicGroupEditPreview {
       canvasTransform: identity,
     },
     background: null,
+    foreground: null,
     children: [
       {
         sourceAddress: 'LIBRARY/Walk/layer[0]/group[0]/member[0]',
@@ -573,6 +574,64 @@ describe('SelectableLayer interaction adapter', () => {
     expect(props.draggable).toBe(true);
   });
 
+  it.each([45, 90])(
+    'passes a %s degree parent and child-local angle to rendered Konva Groups in degrees',
+    (parentRotationDeg) => {
+      const matrixAtRotation = (
+        rotationDeg: number,
+        tx: number,
+        ty: number,
+        scaleX = 1,
+        scaleY = 1,
+      ) => {
+        const radians = rotationDeg * Math.PI / 180;
+        return {
+          a: Math.cos(radians) * scaleX,
+          b: Math.sin(radians) * scaleX,
+          c: -Math.sin(radians) * scaleY,
+          d: Math.cos(radians) * scaleY,
+          tx,
+          ty,
+        };
+      };
+      const basePreview = testGroupEditPreview();
+      const preview: FlaGraphicGroupEditPreview = {
+        ...basePreview,
+        group: {
+          ...basePreview.group,
+          canvasTransform: matrixAtRotation(parentRotationDeg, 80, 35, 1.5, 0.75),
+        },
+        children: basePreview.children.map((child, index) => index === 0
+          ? { ...child, localTransform: matrixAtRotation(30, 3, 4, 1.25, 0.8) }
+          : child),
+      };
+      const element = SelectableLayer({
+        image: {} as HTMLImageElement,
+        layer: ordinary.layer,
+        nodeRef,
+        render: ordinary.render,
+        selected: true,
+        flaGroupEditPreview: preview,
+        flaGroupEditScope: true,
+        onSelect: vi.fn(),
+        onCommitPosition: vi.fn(),
+        onCommitTransform: vi.fn(),
+        onError: vi.fn(),
+      });
+      const parent = findElementByName(element, 'fla-group-edit-parent');
+      const child = findElementByName(element, 'fla-group-edit-child-shape');
+
+      expect(parent).not.toBeNull();
+      expect(child).not.toBeNull();
+      expect(parent?.props.rotation).toBeCloseTo(parentRotationDeg, 8);
+      expect(parent?.props.x).toBeCloseTo(80, 8);
+      expect(parent?.props.y).toBeCloseTo(35, 8);
+      expect(child?.props.rotation).toBeCloseTo(30, 8);
+      expect(child?.props.x).toBeCloseTo(3, 8);
+      expect(child?.props.y).toBeCloseTo(4, 8);
+    },
+  );
+
   it('drags only the selected direct Group child and localizes its absolute matrix without committing the parent', () => {
     const preview = testGroupEditPreview();
     const parentWorld = { a: 0, b: 2, c: -2, d: 0, tx: 100, ty: 50 };
@@ -634,6 +693,40 @@ describe('SelectableLayer interaction adapter', () => {
     expect(transformCommit).not.toHaveBeenCalled();
     expect(setAttrs).not.toHaveBeenCalled();
     expect(preview.children[1]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: 11, ty: 5 });
+  });
+
+  it('renders the retained foreground after the Group children in source painter order', () => {
+    const basePreview = testGroupEditPreview();
+    const preview: FlaGraphicGroupEditPreview = {
+      ...basePreview,
+      foreground: {
+        artwork: basePreview.children[0]!.artwork,
+        position: { x: 7, y: 9 },
+      },
+    };
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: true,
+      flaGroupEditPreview: preview,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const editPreview = findElementByName(element, 'fla-group-edit-preview');
+    expect(editPreview).not.toBeNull();
+    const children = editPreview?.props.children as readonly (null | undefined | { props?: { name?: string } })[];
+    const names = children
+      .filter((child): child is { props?: { name?: string } } => Boolean(child))
+      .map((child) => child.props?.name);
+
+    expect(names.indexOf('fla-group-edit-parent')).toBeGreaterThan(-1);
+    expect(names.indexOf('fla-group-edit-foreground')).toBeGreaterThan(
+      names.indexOf('fla-group-edit-parent'),
+    );
   });
 
   it('uses the original canvas-image API through the Canvas resource session', () => {

@@ -712,6 +712,7 @@
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
+          "tests/unit/affine-matrix.test.ts",
           "tests/unit/issue669-talking-head-motion.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/konva-pixel-ratio.test.ts",

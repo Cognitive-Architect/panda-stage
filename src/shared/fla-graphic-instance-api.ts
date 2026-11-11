@@ -22,6 +22,11 @@ export const FlaGraphicGroupEditArtworkSchema = z.object({
   }).strict(),
 }).strict();
 
+const FlaGraphicGroupEditArtworkPlacementSchema = z.object({
+  artwork: FlaGraphicGroupEditArtworkSchema,
+  position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
+}).strict();
+
 /** Read-only source-backed canvas data; child transforms remain session-only. */
 export const FlaGraphicGroupEditPreviewSchema = z.object({
   version: z.literal(1),
@@ -44,10 +49,8 @@ export const FlaGraphicGroupEditPreviewSchema = z.object({
     canvasTransform: AffineMatrixSchema,
     opacity: z.number().finite().min(0).max(1).optional(),
   }).strict(),
-  background: z.object({
-    artwork: FlaGraphicGroupEditArtworkSchema,
-    position: z.object({ x: z.number().finite(), y: z.number().finite() }).strict(),
-  }).strict().nullable(),
+  background: FlaGraphicGroupEditArtworkPlacementSchema.nullable(),
+  foreground: FlaGraphicGroupEditArtworkPlacementSchema.nullable(),
   children: z.array(z.object({
     sourceAddress: z.string().trim().min(1).max(1_000),
     parentGroupSourceAddress: z.string().trim().min(1).max(1_000),

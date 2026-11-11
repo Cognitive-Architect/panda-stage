@@ -149,7 +149,7 @@ function matrixTransformProps(matrix: AffineMatrix2D): {
   return {
     x: decomposed.x,
     y: decomposed.y,
-    rotation: decomposed.rotation * 180 / Math.PI,
+    rotation: decomposed.rotation,
     scaleX: decomposed.scaleX,
     scaleY: decomposed.scaleY,
     skewX: decomposed.skewX,
@@ -479,6 +479,16 @@ export function SelectableLayer({
           );
         })}
       </Group>
+      {flaGroupEditPreview.foreground ? (
+        <SvgArtworkImage
+          height={flaGroupEditPreview.foreground.artwork.viewBox.height}
+          name="fla-group-edit-foreground"
+          svg={flaGroupEditPreview.foreground.artwork.svg}
+          width={flaGroupEditPreview.foreground.artwork.viewBox.width}
+          x={flaGroupEditPreview.foreground.position.x}
+          y={flaGroupEditPreview.foreground.position.y}
+        />
+      ) : null}
     </Group>
   ) : null;
 

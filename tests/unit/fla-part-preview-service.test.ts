@@ -224,6 +224,52 @@ async function buildOneFrameGroupedGraphicFla(): Promise<Uint8Array> {
   return zip.generateAsync({ type: 'uint8array' });
 }
 
+async function buildMultiGroupWithSymbolGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const shape = (color: string, tx: number) => `<DOMShape>
+    <matrix><Matrix a="1" d="1" tx="${tx}" ty="0"/></matrix>
+    <fills><FillStyle index="1"><SolidColor color="${color}" alpha="1"/></FillStyle></fills>
+    <edges><Edge fillStyle1="1" cubics="!0 0|8 0|8 8|0 8|0 0"/></edges>
+  </DOMShape>`;
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      ${shape('#222222', 0)}
+      <DOMGroup><members>${shape('#19a45b', 2)}</members></DOMGroup>
+      <DOMSymbolInstance libraryItemName="Backdrop" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="5" ty="1"/></matrix>
+      </DOMSymbolInstance>
+      <DOMGroup><members>${shape('#f03a55', 4)}${shape('#2555aa', 12)}</members></DOMGroup>
+      ${shape('#e8b72a', 20)}
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const backdrop = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="Backdrop" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Backdrop"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>${shape('#873bb5', 0)}</elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
+  zip.file('LIBRARY/MyGraphic.xml', graphic);
+  zip.file('LIBRARY/Backdrop.xml', backdrop);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
 async function fixture(
   withAddresses = true,
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
@@ -599,6 +645,110 @@ describe('F1-02 Main part preview service', () => {
     expect(editPreview.background?.artwork.svg).toContain('#222222');
     expect(editPreview.background?.artwork.svg).not.toContain('#f03a55');
     expect(editPreview.background?.artwork.svg).not.toContain('#2555aa');
+    previewService.close();
+  });
+
+  it('selects the topmost eligible Group among multiple Groups and preserves sibling Symbol painter order', async () => {
+    const sourceBytes = await buildMultiGroupWithSymbolGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error(`Expected a source-addressed Graphic instance: ${JSON.stringify(response)}`);
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    const editPreview = result.batch.groupEditPreview;
+    expect(editPreview).toBeDefined();
+    if (!editPreview) throw new Error('Expected a transient multi-Group edit preview');
+    expect(editPreview.children).toHaveLength(2);
+    expect(editPreview.group.sourceAddress).toBe(editPreview.children[0]?.parentGroupSourceAddress);
+    expect(editPreview.children[0]?.artwork.svg).toContain('#f03a55');
+    expect(editPreview.children[0]?.artwork.svg).not.toContain('#19a45b');
+    expect(editPreview.children[1]?.artwork.svg).toContain('#2555aa');
+    expect(editPreview.background?.artwork.svg).toContain('#222222');
+    expect(editPreview.background?.artwork.svg).toContain('#19a45b');
+    expect(editPreview.background?.artwork.svg).toContain('#873bb5');
+    expect(editPreview.background?.artwork.svg).not.toContain('#e8b72a');
+    expect(editPreview.foreground?.artwork.svg).toContain('#e8b72a');
+    expect(editPreview.foreground?.artwork.svg).not.toContain('#f03a55');
+    const backgroundSvg = editPreview.background?.artwork.svg ?? '';
+    expect(backgroundSvg.indexOf('#222222')).toBeLessThan(backgroundSvg.indexOf('#19a45b'));
+    expect(backgroundSvg.indexOf('#19a45b')).toBeLessThan(backgroundSvg.indexOf('#873bb5'));
+    previewService.close();
+  });
+
+  it('keeps the Group edit preview fail-closed when the selected Group layer owns a frame filter', async () => {
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false,
+      await buildOneFrameGroupedGraphicFla());
+    const filteredDisplaySource = {
+      ...data.displaySource,
+      graphicSymbols: data.displaySource.graphicSymbols.map((symbol) =>
+        symbol.sourceLibraryItemName === 'MyGraphic'
+          ? {
+            ...symbol,
+            frameContext: {
+              ...symbol.frameContext,
+              layers: symbol.frameContext.layers.map((layer, index) => index === 0 && layer
+                ? {
+                  ...layer,
+                  frameFilter: {
+                    kind: 'blur' as const,
+                    blurX: 2,
+                    blurY: 2,
+                    quality: 'low' as const,
+                    enabled: true as const,
+                  },
+                }
+                : layer),
+            },
+          }
+          : symbol),
+    };
+    data.renderSession.prepareDisplaySourceForPartPreview.mockResolvedValue({
+      ok: true,
+      source: filteredDisplaySource,
+      xmlByteLength: 1,
+      cacheHit: false,
+    });
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Graphic instance');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.batch.groupEditPreview).toBeUndefined();
     previewService.close();
   });
 

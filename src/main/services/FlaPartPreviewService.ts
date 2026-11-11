@@ -31,6 +31,7 @@ import type {
   FlaDisplayListFrameContext,
   FlaDisplayListLayer,
   FlaDisplayListMatrix,
+  FlaResolvedDisplayLayer,
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
   FlaResolvedGroupNode,
@@ -600,53 +601,77 @@ function digestPng(bytes: Uint8Array): string {
   return crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex');
 }
 
-function collectResolvedGroups(
-  nodes: readonly FlaResolvedDisplayNode[],
-  groups: FlaResolvedGroupNode[],
-  hasSymbol: { value: boolean },
-): void {
-  for (const node of nodes) {
-    if (node.kind !== 'group') continue;
-    if (node.symbolLibraryItemName) hasSymbol.value = true;
-    else groups.push(node);
-    collectResolvedGroups(node.children, groups, hasSymbol);
-  }
+interface FlaResolvedGroupEditCandidate {
+  readonly group: FlaResolvedGroupNode;
+  readonly layer: FlaResolvedDisplayLayer;
 }
 
-function hasResolvedClipPaths(nodes: readonly FlaResolvedDisplayNode[]): boolean {
-  return nodes.some((node) => node.kind === 'group'
-    ? hasResolvedClipPaths(node.children)
-    : Boolean(node.clipPaths?.length));
-}
-
-function removeResolvedNode(
-  nodes: readonly FlaResolvedDisplayNode[],
-  removed: FlaResolvedDisplayNode,
-): FlaResolvedDisplayNode[] {
-  const result: FlaResolvedDisplayNode[] = [];
-  for (const node of nodes) {
-    if (node === removed) continue;
-    if (node.kind !== 'group') {
-      result.push(node);
-      continue;
-    }
-    result.push({ ...node, children: removeResolvedNode(node.children, removed) });
-  }
-  return result;
-}
-
-function isResolvedGroupTopmost(
+function collectTopLevelGroupEditCandidates(
   displayList: FlaResolvedDisplayList,
-  group: FlaResolvedGroupNode,
-): boolean {
-  let found = false;
+): FlaResolvedGroupEditCandidate[] {
+  const candidates: FlaResolvedGroupEditCandidate[] = [];
   for (const layer of displayList.layers) {
     for (const node of layer.children) {
-      if (found && node !== group) return false;
-      if (node === group) found = true;
+      if (node.kind === 'group' && !node.symbolLibraryItemName) {
+        candidates.push({ group: node, layer });
+      }
     }
   }
-  return found;
+  return candidates;
+}
+
+function isSafeGroupEditCandidate(
+  candidate: FlaResolvedGroupEditCandidate,
+): boolean {
+  const { group, layer } = candidate;
+  return !layer.frameFilter &&
+    Boolean(group.sourceAddress) &&
+    !group.rgbTransform &&
+    (group.opacity === undefined || group.opacity === 1) &&
+    group.children.length >= 1 &&
+    group.children.length <= 2 &&
+    group.children.every((child) => child.kind !== 'group' &&
+      Boolean(child.sourceAddress) &&
+      !child.clipPaths?.length);
+}
+
+function splitResolvedDisplayListAtGroup(
+  displayList: FlaResolvedDisplayList,
+  target: FlaResolvedGroupNode,
+): {
+  readonly backgroundLayers: readonly FlaResolvedDisplayLayer[];
+  readonly foregroundLayers: readonly FlaResolvedDisplayLayer[];
+} | null {
+  const backgroundLayers: FlaResolvedDisplayLayer[] = [];
+  const foregroundLayers: FlaResolvedDisplayLayer[] = [];
+  let targetSeen = false;
+
+  for (const layer of displayList.layers) {
+    const backgroundChildren: FlaResolvedDisplayNode[] = [];
+    const foregroundChildren: FlaResolvedDisplayNode[] = [];
+    for (const node of layer.children) {
+      if (node === target) {
+        if (targetSeen) return null;
+        targetSeen = true;
+        continue;
+      }
+      (targetSeen ? foregroundChildren : backgroundChildren).push(node);
+    }
+    if (backgroundChildren.length > 0) {
+      backgroundLayers.push({ ...layer, children: backgroundChildren });
+    }
+    if (foregroundChildren.length > 0) {
+      foregroundLayers.push({ ...layer, children: foregroundChildren });
+    }
+  }
+
+  return targetSeen ? { backgroundLayers, foregroundLayers } : null;
+}
+
+function countResolvedDisplayNodes(nodes: readonly FlaResolvedDisplayNode[]): number {
+  return nodes.reduce((total, node) => total + 1 + (node.kind === 'group'
+    ? countResolvedDisplayNodes(node.children)
+    : 0), 0);
 }
 
 function buildGroupEditArtwork(
@@ -674,9 +699,6 @@ function buildGroupEditArtwork(
 
 function buildGroupEditPreview(input: {
   displayList: FlaResolvedDisplayList;
-  sourceFrameHasUnsupportedContent: boolean;
-  sourceFrameHasMasksOrFilters: boolean;
-  hasNestedSymbol: boolean;
   sourceBytes: Uint8Array;
   sourceSha256: string;
   outerOccurrenceId: string;
@@ -690,20 +712,15 @@ function buildGroupEditPreview(input: {
   stageHeight: number;
   renderTargetId: string;
 }): FlaGraphicGroupEditPreview | undefined {
-  if (input.sourceFrameHasUnsupportedContent || input.sourceFrameHasMasksOrFilters || input.hasNestedSymbol) return undefined;
-  const groups: FlaResolvedGroupNode[] = [];
-  const hasSymbol = { value: false };
-  for (const layer of input.displayList.layers) {
-    collectResolvedGroups(layer.children, groups, hasSymbol);
-  }
-  if (hasSymbol.value || hasResolvedClipPaths(input.displayList.layers.flatMap((layer) => layer.children))) return undefined;
-  if (groups.length !== 1) return undefined;
-  const group = groups[0]!;
+  const candidate = collectTopLevelGroupEditCandidates(input.displayList)
+    .filter(isSafeGroupEditCandidate)
+    .at(-1);
+  if (!candidate) return undefined;
+  const { group } = candidate;
   const groupSourceAddress = group.sourceAddress;
-  if (!groupSourceAddress || group.rgbTransform || (group.opacity !== undefined && group.opacity !== 1)) return undefined;
-  if (!isResolvedGroupTopmost(input.displayList, group)) return undefined;
-  if (group.children.length < 1 || group.children.length > 2 ||
-      group.children.some((child) => child.kind === 'group' || !child.sourceAddress)) return undefined;
+  if (!groupSourceAddress) return undefined;
+  const split = splitResolvedDisplayListAtGroup(input.displayList, group);
+  if (!split) return undefined;
 
   const children: FlaGraphicGroupEditPreview['children'][number][] = [];
   let previewBytes = 0;
@@ -742,34 +759,38 @@ function buildGroupEditPreview(input: {
     });
   }
 
-  const backgroundNodes = input.displayList.layers.flatMap((layer) =>
-    removeResolvedNode(layer.children, group));
-  let background: FlaGraphicGroupEditPreview['background'] = null;
-  if (backgroundNodes.length > 0) {
-    const backgroundDisplayList: FlaResolvedDisplayList = {
-      ...input.displayList,
-      resolvedNodeCount: Math.max(1, backgroundNodes.length),
-      layers: [{ name: 'group-edit-background', children: backgroundNodes }],
-    };
-    const artwork = buildGroupEditArtwork(
-      backgroundDisplayList,
-      input.shapeBlocks,
-      input.resolveBitmapMedia,
-      `${input.renderTargetId}:group-background`,
-      input.stageWidth,
-      input.stageHeight,
+  const buildSegment = (
+    layers: readonly FlaResolvedDisplayLayer[],
+    renderTargetSuffix: 'background' | 'foreground',
+  ): FlaGraphicGroupEditPreview['background'] | undefined => {
+    const resolvedNodeCount = layers.reduce(
+      (total, layer) => total + countResolvedDisplayNodes(layer.children),
+      0,
     );
+    if (resolvedNodeCount === 0) return null;
+    const artwork = buildGroupEditArtwork({
+      ...input.displayList,
+      resolvedNodeCount: Math.max(1, resolvedNodeCount),
+      layers,
+    }, input.shapeBlocks, input.resolveBitmapMedia,
+    `${input.renderTargetId}:group-${renderTargetSuffix}`,
+    input.stageWidth, input.stageHeight);
     if (!artwork) return undefined;
     previewBytes += Buffer.byteLength(artwork.svg, 'utf8');
     if (previewBytes > 2_000_000) return undefined;
-    background = {
+    return {
       artwork,
       position: {
         x: artwork.viewBox.x - input.frameOrigin.x - input.frameCanvas.width / 2,
         y: artwork.viewBox.y - input.frameOrigin.y - input.frameCanvas.height / 2,
       },
     };
-  }
+  };
+
+  const background = buildSegment(split.backgroundLayers, 'background');
+  if (background === undefined) return undefined;
+  const foreground = buildSegment(split.foregroundLayers, 'foreground');
+  if (foreground === undefined) return undefined;
 
   const canvasOriginTransform: AffineMatrix2D = {
     ...FLA_DISPLAY_LIST_IDENTITY_MATRIX,
@@ -794,6 +815,7 @@ function buildGroupEditPreview(input: {
       canvasTransform: multiplyAffineMatrices(canvasOriginTransform, group.worldTransform),
     },
     background,
+    foreground,
     children,
   };
 }
@@ -1276,10 +1298,6 @@ export class FlaPartPreviewService {
       if (resolvedFirstFrame.ok) {
         groupEditPreview = buildGroupEditPreview({
           displayList: resolvedFirstFrame.displayList,
-          sourceFrameHasUnsupportedContent: Boolean(descriptor.frameContext.unsupportedDisplayReason),
-          sourceFrameHasMasksOrFilters: descriptor.frameContext.layers.some((layer) =>
-            Boolean(layer.frameFilter || layer.maskLayerId || layer.maskedBy)),
-          hasNestedSymbol: descriptor.hasNestedSymbol,
           sourceBytes: source.bytes,
           sourceSha256: source.sha256,
           outerOccurrenceId: unit.occurrenceId,

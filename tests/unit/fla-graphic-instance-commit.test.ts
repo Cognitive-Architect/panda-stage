@@ -85,6 +85,7 @@ function frameBatch(overrides: {
         canvasTransform: { a: 1, b: 0, c: 0, d: 1, tx: -6, ty: -6 },
       },
       background: null,
+      foreground: null,
       children: [{
         sourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]/member[0]',
         parentGroupSourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]',
