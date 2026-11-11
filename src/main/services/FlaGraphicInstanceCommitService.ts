@@ -33,7 +33,10 @@ import {
 } from './AssetImportFileSystemService';
 import { HashService } from './HashService';
 import type { FlaGraphicDefinitionFrameBatch } from './FlaPartPreviewService';
-import { FlaPartPreviewService } from './FlaPartPreviewService';
+import {
+  FlaPartPreviewService,
+  isGraphicPlaybackRangeRepresentable,
+} from './FlaPartPreviewService';
 import { ProjectService, ProjectServiceError, type ProjectTransaction } from './ProjectService';
 
 export interface FlaGraphicInstanceProjectSnapshot {
@@ -129,6 +132,13 @@ function instancePlayback(batch: FlaGraphicDefinitionFrameBatch): {
   playback: { mode: 'once' | 'loop' | 'single-frame'; endBehavior: 'hold' };
 } | null {
   const sourceFrame = batch.unit.sourceFrame;
+  if (!isGraphicPlaybackRangeRepresentable(
+    sourceFrame.lastFrame,
+    batch.target.frameCount,
+    sourceFrame.playbackMode,
+  )) {
+    return null;
+  }
   const rawFirstFrame = sourceFrame.firstFrame;
   const firstFrameIndex = rawFirstFrame === null ? 0 : Number(rawFirstFrame);
   if (
@@ -450,13 +460,8 @@ export class FlaGraphicInstanceCommitService {
           drawOrder: batch.unit.drawOrder,
         },
       });
-      const orderedProject = this.applySourceDrawOrder(
-        created.project,
-        request.shotId,
-        batch.source.rawSha256,
-      );
       const nextProject = ProjectSchema.parse({
-        ...orderedProject,
+        ...created.project,
         updatedAt: this.now().toISOString(),
       });
       const savedDocument = await transaction.save(nextProject, current.revision + 1, () => {
@@ -515,43 +520,6 @@ export class FlaGraphicInstanceCommitService {
       );
     }
     return { ...current, project: ProjectSchema.parse(current.project) };
-  }
-
-  private applySourceDrawOrder(project: Project, shotId: string, sourceSha256: string): Project {
-    const shot = project.shots.find((candidate) => candidate.id === shotId);
-    if (!shot) return project;
-    const belongsToSource = (layer: Project['shots'][number]['layers'][number]): boolean => {
-      if (layer.source.kind !== 'animation' || !layer.source.flaOccurrence) return false;
-      const animationId = layer.source.animationId;
-      const definition = project.animations.find((candidate) => candidate.id === animationId);
-      return Boolean(
-        definition &&
-        'kind' in definition &&
-        definition.kind === 'fla-graphic' &&
-        definition.source.sha256 === sourceSha256,
-      );
-    };
-    const sourceLayers = shot.layers.filter(belongsToSource);
-    const otherLayers = shot.layers.filter((layer) => !belongsToSource(layer));
-    const startZIndex = Math.max(-1, ...otherLayers.map((layer) => layer.zIndex)) + 1;
-    const orderedSourceLayers = [...sourceLayers].sort((left, right) => {
-      const leftOrder = left.source.kind === 'animation' ? left.source.flaOccurrence?.drawOrder ?? 0 : 0;
-      const rightOrder = right.source.kind === 'animation' ? right.source.flaOccurrence?.drawOrder ?? 0 : 0;
-      return leftOrder - rightOrder || left.id.localeCompare(right.id);
-    });
-    const orderByLayerId = new Map(orderedSourceLayers.map((layer, index) => [layer.id, startZIndex + index]));
-    return {
-      ...project,
-      shots: project.shots.map((candidate) => candidate.id === shotId
-        ? {
-            ...candidate,
-            layers: candidate.layers.map((layer) => {
-              const zIndex = orderByLayerId.get(layer.id);
-              return zIndex === undefined ? layer : { ...layer, zIndex };
-            }),
-          }
-        : candidate),
-    };
   }
 
   private currentSnapshot(projectRoot: string): FlaGraphicInstanceProjectSnapshot | null {

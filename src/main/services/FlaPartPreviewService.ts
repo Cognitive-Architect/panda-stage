@@ -592,24 +592,49 @@ function digestPng(bytes: Uint8Array): string {
   return crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex');
 }
 
+/**
+ * Persisted Animation Layers can play from firstFrame through the Definition's
+ * final frame, but cannot represent an earlier or wrapped terminal frame.
+ * Single-frame playback uses only firstFrame, and fla-viewer treats omitted
+ * and negative lastFrame values as unbounded.
+ */
+export function isGraphicPlaybackRangeRepresentable(
+  lastFrame: string | null,
+  frameCount: number,
+  playbackMode: string | null,
+): boolean {
+  if (!Number.isSafeInteger(frameCount) || frameCount <= 0) return false;
+  if (lastFrame === null) return true;
+  const raw = lastFrame.trim();
+  if (!/^-?\d+$/u.test(raw)) return false;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return false;
+  if (parsed < 0) return true;
+  if (parsed >= frameCount) return false;
+  return playbackMode?.trim().toLocaleLowerCase('en-US') === 'single frame' ||
+    parsed === frameCount - 1;
+}
+
 function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
   const mode = unit.sourceFrame.playbackMode?.trim().toLocaleLowerCase('en-US');
   const firstFrame = unit.sourceFrame.firstFrame === null
     ? 0
     : Number(unit.sourceFrame.firstFrame);
+  const frameCount = unit.sourceDefinitionFrameCount;
   return unit.sourceKind === 'graphic-symbol-occurrence' &&
     unit.sourceSymbolId !== null &&
     unit.sourceAddress !== null &&
     unit.adapterIdentity !== null &&
     unit.traceability === 'source-address-and-parent-chain' &&
-    unit.sourceDefinitionFrameCount !== null &&
-    unit.sourceDefinitionFrameCount > 0 &&
-    unit.sourceDefinitionFrameCount <= FLA_GRAPHIC_MAX_FRAMES &&
+    frameCount !== null &&
+    frameCount > 0 &&
+    frameCount <= FLA_GRAPHIC_MAX_FRAMES &&
+    isGraphicPlaybackRangeRepresentable(unit.sourceFrame.lastFrame, frameCount, unit.sourceFrame.playbackMode) &&
     unit.maskDependencies.length === 0 &&
     (mode === 'loop' || mode === 'play once' || mode === 'single frame') &&
     Number.isSafeInteger(firstFrame) &&
     firstFrame >= 0 &&
-    firstFrame < (unit.sourceDefinitionFrameCount ?? 0);
+    firstFrame < (frameCount ?? 0);
 }
 
 export interface FlaPartPreviewServiceOptions {

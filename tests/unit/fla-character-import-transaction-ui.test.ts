@@ -155,12 +155,14 @@ describe('F1-04 import transaction UI safeguards', () => {
     expect(flow).toContain('data-testid="fla-character-import-parts-panel"');
     expect(flow).toContain('className="fla-character-import-preview-workspace"');
     expect(flow).toContain('sourceBasename || \'选择 FLA 文件\'');
-    expect(flow).toContain('const showPreviewStatus = !centerLoading');
+    expect(flow).toMatch(/const showPreviewStatus = graphicInstanceImporting \|\|\s*\(\s*!centerLoading/u);
+    expect(flow).toContain('{showPreviewStatus ? (');
+    expect(flow).toContain('aria-live="polite"');
     expect(flow).not.toContain('查看原始整图');
     expect(styles).toContain('position: absolute;');
     expect(styles).toContain('right: var(--ui-space-2);');
-    expect(styles).toContain('.fla-character-import-preview-workspace[data-parts-expanded=\'true\']');
-    expect(styles).toContain('grid-template-rows: auto minmax(0, 1fr);');
+    expect(styles).toMatch(/\.fla-character-import-preview-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/u);
+    expect(styles).toMatch(/\.fla-character-import-preview-workspace\[data-parts-expanded='true'\]\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(180px,\s*220px\);/u);
     expect(styles).toContain('.fla-character-import-parts-header');
     expect(styles).toContain('min-height: var(--ui-touch-icon);');
     expect(styles).toContain('grid-template-rows: auto minmax(0, 1fr) auto;');

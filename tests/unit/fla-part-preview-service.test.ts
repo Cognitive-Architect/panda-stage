@@ -149,7 +149,12 @@ async function buildTwoPartFla(
   return zip.generateAsync({ type: 'uint8array' });
 }
 
-async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
+async function buildTwoInstanceNestedGraphicFla(
+  lastFrame: string | null = null,
+  playbackMode = 'loop',
+  firstFrame = '8',
+): Promise<Uint8Array> {
+  const secondLastFrame = lastFrame === null ? '' : ` lastFrame="${lastFrame}"`;
   const scene = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
@@ -157,7 +162,7 @@ async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
       <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
         <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
       </DOMSymbolInstance>
-      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="8">
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="${playbackMode}" firstFrame="${firstFrame}"${secondLastFrame}>
         <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
       </DOMSymbolInstance>
     </elements></DOMFrame>
@@ -508,6 +513,49 @@ describe('F1-02 Main part preview service', () => {
     expect(result.batch.frames.every((frame) =>
       createHash('sha256').update(frame.svg).digest('hex') === frame.sha256,
     )).toBe(true);
+    previewService.close();
+  });
+
+  it.each([
+    ['omitted lastFrame with nonzero loop firstFrame', null, 'loop', '8', true],
+    ['explicit terminal frame', '8', 'loop', '8', true],
+    ['truncated loop range', '4', 'loop', '1', false],
+    ['wrapped loop range', '1', 'loop', '8', false],
+    ['nonzero firstFrame single-frame playback', '7', 'single frame', '8', true],
+  ] as const)('classifies %s at preview and Main frame-batch boundaries', async (_label, lastFrame, playbackMode, firstFrame, importable) => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla(lastFrame, playbackMode, firstFrame);
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Scene Graphic instance preview');
+    }
+    expect(response.partPreviews.map((part) => part.graphicInstanceImportable)).toEqual([true, importable]);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[1];
+    if (!plan || !unit) throw new Error('Expected a held Graphic occurrence plan');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+    expect(result.ok).toBe(importable);
+    if (importable) {
+      if (!result.ok) throw new Error(result.message);
+      expect(result.batch.frames).toHaveLength(9);
+    } else if (result.ok) {
+      throw new Error('A restricted Graphic range must fail closed before frame rendering.');
+    } else {
+      expect(result.code).toBe('UNSUPPORTED_SOURCE');
+    }
     previewService.close();
   });
 

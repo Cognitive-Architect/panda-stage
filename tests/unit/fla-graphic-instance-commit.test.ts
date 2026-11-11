@@ -16,11 +16,16 @@ const temporaryRoots: string[] = [];
 const OPEN_INSTANCE_ID = 42;
 const OCCURRENCE_ID = 'occ-0123456789abcdef01234567';
 const SECOND_OCCURRENCE_ID = 'occ-abcdef0123456789abcdef01';
+const THIRD_OCCURRENCE_ID = 'occ-00112233445566778899aabb';
+const SECOND_UNIT_ID = 'part-1123456789abcdef';
+const THIRD_UNIT_ID = 'part-2123456789abcdef';
 
 function frameBatch(overrides: {
   occurrenceId?: string;
   sourceAddress?: string;
   drawOrder?: number;
+  firstFrame?: string;
+  lastFrame?: string | null;
 } = {}): FlaGraphicDefinitionFrameBatch {
   const frames = [0, 1].map((ordinal) => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M0 0h12v12H0z" fill="${ordinal ? '#2555aa' : '#f03a55'}"/></svg>`;
@@ -43,7 +48,11 @@ function frameBatch(overrides: {
       sourceAddress: overrides.sourceAddress ?? 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[0]',
       adapterIdentity: 'Walk',
       drawOrder: overrides.drawOrder ?? 3,
-      sourceFrame: { firstFrame: '1', playbackMode: 'loop' },
+      sourceFrame: {
+        firstFrame: overrides.firstFrame ?? '1',
+        playbackMode: 'loop',
+        lastFrame: overrides.lastFrame ?? null,
+      },
       worldTransform: { a: 1, b: 0, c: 0, d: 1, tx: 4, ty: 2 },
     } as unknown as FlaGraphicDefinitionFrameBatch['unit'],
     source: { basename: 'walk.fla', rawSha256: 'a'.repeat(64), normalizedSha256: 'b'.repeat(64) },
@@ -68,7 +77,11 @@ interface Harness {
   service: FlaGraphicInstanceCommitService;
 }
 
-async function harness(hashService?: HashService): Promise<Harness> {
+async function harness(
+  hashService?: HashService,
+  sourceLastFrame: string | null = null,
+  sourceFirstFrame = '1',
+): Promise<Harness> {
   const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-fla-graphic-'));
   temporaryRoots.push(parent);
   const projectRoot = path.join(parent, 'FLA Graphic Test.pandastage');
@@ -106,13 +119,19 @@ async function harness(hashService?: HashService): Promise<Harness> {
   const partPreviewService = {
     buildGraphicDefinitionFrameBatch: vi.fn(async (identity: { unitId: string }) => ({
       ok: true as const,
-      batch: identity.unitId === 'part-1123456789abcdef'
+      batch: identity.unitId === SECOND_UNIT_ID
         ? frameBatch({
             occurrenceId: SECOND_OCCURRENCE_ID,
             sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[1]',
             drawOrder: 1,
           })
-        : frameBatch(),
+        : identity.unitId === THIRD_UNIT_ID
+          ? frameBatch({
+              occurrenceId: THIRD_OCCURRENCE_ID,
+              sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[2]',
+              drawOrder: 2,
+            })
+          : frameBatch({ firstFrame: sourceFirstFrame, lastFrame: sourceLastFrame }),
     })),
   } as unknown as FlaPartPreviewService;
   const service = new FlaGraphicInstanceCommitService({
@@ -189,22 +208,86 @@ describe('FLA Graphic instance commit', () => {
       source: { flaOccurrence: { occurrenceId: OCCURRENCE_ID, drawOrder: 3 } },
     });
 
-    const second = await h.service.commit(commitRequest(h, 1, 'part-1123456789abcdef'));
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
     expect(second.ok).toBe(true);
     if (!second.ok) throw new Error(second.error.message);
     expect(second.projectChanged).toBe(true);
-    expect(second.project.shots[0]!.layers.find((layer) => layer.id === first.layerId)?.zIndex).toBe(1);
-    expect(second.project.shots[0]!.layers.find((layer) => layer.id === second.layerId)?.zIndex).toBe(0);
+    expect(second.project.shots[0]!.layers.find((layer) => layer.id === first.layerId)?.zIndex).toBe(0);
+    expect(second.project.shots[0]!.layers.find((layer) => layer.id === second.layerId)?.zIndex).toBe(1);
+    expect(second.project.shots[0]!.layers.find((layer) => layer.id === first.layerId)?.source)
+      .toMatchObject({ kind: 'animation', flaOccurrence: { occurrenceId: OCCURRENCE_ID, drawOrder: 3 } });
+    expect(second.project.shots[0]!.layers.find((layer) => layer.id === second.layerId)?.source)
+      .toMatchObject({ kind: 'animation', flaOccurrence: { occurrenceId: SECOND_OCCURRENCE_ID, drawOrder: 1 } });
     expect(second.project.animations).toHaveLength(1);
     expect(second.project.shots[0]!.layers).toHaveLength(first.project.shots[0]!.layers.length + 1);
 
-    const third = await h.service.commit(commitRequest(h, 2, 'part-1123456789abcdef'));
+    const third = await h.service.commit(commitRequest(h, 2, SECOND_UNIT_ID));
     expect(third.ok).toBe(true);
     if (!third.ok) throw new Error(third.error.message);
     expect(third.projectChanged).toBe(false);
     expect(third.layerId).toBe(second.layerId);
     expect(third.project.animations).toHaveLength(1);
     expect(third.project.shots[0]!.layers).toHaveLength(second.project.shots[0]!.layers.length);
+  });
+
+  it('preserves manually reordered and interleaved existing layers when another occurrence is imported', async () => {
+    const h = await harness();
+    const layerService = new LayerService();
+    const first = await h.service.commit(commitRequest(h, 0));
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.error.message);
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error(second.error.message);
+
+    const shot = second.project.shots[0]!;
+    const interleaved = layerService.createFromAnimation(second.project, shot.id, {
+      animationId: first.animationId,
+      position: { x: 20, y: 20 },
+      startTimeMs: 0,
+      firstFrameIndex: 1,
+      playback: { mode: 'loop', endBehavior: 'hold' },
+    });
+    const plainLayerId = interleaved.layer.id;
+    const manuallyReordered = layerService.reorder(
+      interleaved.project,
+      shot.id,
+      second.layerId,
+      'back',
+    );
+    await h.projectService.save(h.projectRoot, manuallyReordered, 2);
+    const orderBefore = h.current.project.shots[0]!.layers
+      .slice()
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((layer) => layer.id);
+    expect(orderBefore).toEqual([second.layerId, first.layerId, plainLayerId]);
+
+    const third = await h.service.commit(commitRequest(h, 2, THIRD_UNIT_ID));
+    expect(third.ok).toBe(true);
+    if (!third.ok) throw new Error(third.error.message);
+    const afterLayers = third.project.shots[0]!.layers;
+    const orderAfter = afterLayers
+      .filter((layer) => layer.id !== third.layerId)
+      .slice()
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .map((layer) => layer.id);
+    expect(orderAfter).toEqual(orderBefore);
+    expect(afterLayers.find((layer) => layer.id === third.layerId)?.source)
+      .toMatchObject({ kind: 'animation', flaOccurrence: { occurrenceId: THIRD_OCCURRENCE_ID, drawOrder: 2 } });
+    expect(third.project.animations).toHaveLength(1);
+  });
+
+  it('rejects an explicitly truncated lastFrame at the Main commit boundary', async () => {
+    const h = await harness(undefined, '0', '0');
+
+    const result = await h.service.commit(commitRequest(h, 0));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('A truncated Graphic range must not be persisted.');
+    expect(result.error.code).toBe('TRANSFORM_UNSUPPORTED');
+    expect(h.current.revision).toBe(0);
+    expect(h.current.project.animations).toHaveLength(0);
+    expect(h.current.project.shots[0]!.layers).toHaveLength(0);
   });
 
   it('rolls the Project back before deleting newly generated frames after a post-save failure', async () => {
