@@ -154,7 +154,7 @@ function buildMotionAdapterFixture(
     const keyModeAttribute = keyMode === null ? '' : ` keyMode="${keyMode}"`;
     return `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true"${keyModeAttribute}${motionFrameAttributeXml}${isStartFrame ? sourceRotationAttributeXml : ''}>${metadata}` +
       `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="${playbackMode}"${isStartFrame ? '' : ' selected="true"'}${firstFrame}>` +
-      `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint>${colorTransformXml}</DOMSymbolInstance></elements></DOMFrame>`;
+      `${transform}${colorTransformXml}</DOMSymbolInstance></elements></DOMFrame>`;
   };
   const terminalFrame = () => {
     const attributes = {
@@ -169,7 +169,7 @@ function buildMotionAdapterFixture(
       .join(' ');
     return `<DOMFrame ${attributeXml}>${endMetadata}<elements>` +
       `<DOMSymbolInstance libraryItemName="${endLibraryItemName}" symbolType="graphic" loop="single frame">` +
-      `${transformedMatrix(0, 1, -1, 0, 20, 30)}<transformationPoint><Point x="5" y="7"/></transformationPoint>` +
+      `${transformedMatrix(0, 1, -1, 0, 20, 30)}` +
       `</DOMSymbolInstance></elements></DOMFrame>`;
   };
   const endpointFrame = holdEndpoint
@@ -187,6 +187,30 @@ function buildMotionAdapterFixture(
   }];
   const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
   if (!adapted.ok) throw new Error(`Motion adapter fixture failed: ${adapted.message}`);
+  return adapted.source;
+}
+
+function buildPivotMotionAdapterFixture(
+  startPivot: { readonly x: number; readonly y: number },
+  endPivot: { readonly x: number; readonly y: number },
+) {
+  const pivotXml = (point: { readonly x: number; readonly y: number }) =>
+    `<transformationPoint><Point x="${point.x}" y="${point.y}"/></transformationPoint>`;
+  const motionFrame = `<DOMFrame index="0" duration="2" tweenType="motion" keyMode="22017"><elements>` +
+    `<DOMSymbolInstance libraryItemName="moving-target" symbolType="graphic">${matrix(0, 0)}` +
+    `${pivotXml(startPivot)}</DOMSymbolInstance></elements></DOMFrame>`;
+  const endpointFrame = `<DOMFrame index="2" keyMode="15872"><elements>` +
+    `<DOMSymbolInstance libraryItemName="moving-target" symbolType="graphic">` +
+    `${transformedMatrix(0, 1, -1, 0, 20, 30)}${pivotXml(endPivot)}` +
+    `</DOMSymbolInstance></elements></DOMFrame>`;
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene', [frame(0, symbol('motion-root'))].join('')),
+  ])}</timelines></DOMDocument>`;
+  const adapted = adaptFlaXflDisplaySource(documentXml, [{
+    name: 'LIBRARY/motion-root.xml',
+    xml: graphic('motion-root', [layer('moving', `${motionFrame}${endpointFrame}`)]),
+  }]);
+  if (!adapted.ok) throw new Error(`Pivot motion adapter fixture failed: ${adapted.message}`);
   return adapted.source;
 }
 
@@ -500,6 +524,59 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.b).toBeCloseTo(Math.SQRT1_2, 12);
     expect(interpolated.localTransform.c).toBeCloseTo(-Math.SQRT1_2, 12);
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('keeps the XFL transformation point on its authored world path inside Classic Motion', () => {
+    const source = buildPivotMotionAdapterFixture(
+      { x: 5, y: 7 },
+      { x: 8, y: 3 },
+    );
+    const target = descriptor(source, 'motion-root');
+    const start = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      0,
+      'pivot-motion-start',
+    );
+    const interior = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'pivot-motion-interior',
+    );
+    const end = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      2,
+      'pivot-motion-end',
+    );
+
+    expect(start.ok).toBe(true);
+    expect(interior.ok).toBe(true);
+    expect(end.ok).toBe(true);
+    if (!start.ok || !interior.ok || !end.ok) return;
+    const startElement = start.value.layers[0]?.elements[0];
+    const interiorElement = interior.value.layers[0]?.elements[0];
+    const endElement = end.value.layers[0]?.elements[0];
+    expect(startElement?.localTransform).toEqual({
+      a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0,
+    });
+    expect(endElement?.localTransform).toEqual({
+      a: 0, b: 1, c: -1, d: 0, tx: 20, ty: 30,
+    });
+    expect(interiorElement?.localTransform?.tx).toBeCloseTo(9.939339828220179, 12);
+    expect(interiorElement?.localTransform?.ty).toBeCloseTo(14.368272016354704, 12);
+    if (interiorElement?.kind !== 'symbol' || !interiorElement.localTransform) return;
+    expect(
+      interiorElement.localTransform.a * 6.5 +
+      interiorElement.localTransform.c * 5 +
+      interiorElement.localTransform.tx,
+    ).toBeCloseTo(11, 12);
+    expect(
+      interiorElement.localTransform.b * 6.5 +
+      interiorElement.localTransform.d * 5 +
+      interiorElement.localTransform.ty,
+    ).toBeCloseTo(22.5, 12);
   });
 
   it('interpolates one source-supported directional frame BlurFilter within its motion span', () => {

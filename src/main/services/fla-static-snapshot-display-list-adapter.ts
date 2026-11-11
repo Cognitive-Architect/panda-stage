@@ -18,6 +18,7 @@ import {
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
 import {
+  interpolateFlaClassicMotionInstanceTransform,
   interpolateFlaLinearMotionTransform,
   type FlaMotionTweenRotation,
 } from './fla-motion-tween-transform-interpolator';
@@ -494,6 +495,19 @@ function readDirectMatrix(element: FlaXflElementBlock): MatrixReadResult | Matri
     return fail('RENDER_FAILED', `Non-finite ${element.name} matrix`);
   }
   return { ok: true, present: true, matrix };
+}
+
+function readDirectTransformationPoint(
+  element: FlaXflElementBlock,
+): { readonly x: number; readonly y: number } | null {
+  const wrapper = directChild(element.xml, element.name, 'transformationPoint');
+  if (!wrapper) return { x: 0, y: 0 };
+  const point = getFlaXflDirectChildren(wrapper.xml, 'transformationPoint')
+    .find((child) => child.name === 'Point');
+  if (!point) return null;
+  const x = Number(point.attributes.x ?? 0);
+  const y = Number(point.attributes.y ?? 0);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 function compose(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): FlaDisplayListMatrix {
@@ -2011,6 +2025,8 @@ function buildGraphicFrameContext(
       if (!startParsed.ok) return startParsed;
       const endParsed = parseTweenTarget(endFrame, endSpan.index);
       if (!endParsed.ok) return endParsed;
+      const startSourceElements = frameDisplayElements(startFrame);
+      const endSourceElements = frameDisplayElements(endFrame);
       const syncedStartElements = applyClassicMotionSyncFirstFrames(startParsed.value, syncFirstFrames.firstFrames);
       if (syncedStartElements.length !== endParsed.value.length || syncedStartElements.length === 0) {
         return rejectTween('Classic Motion endpoints must preserve the same non-empty display element count');
@@ -2026,11 +2042,20 @@ function buildGraphicFrameContext(
       for (let index = 0; index < syncedStartElements.length; index += 1) {
         const startTarget = syncedStartElements[index];
         const endTarget = endParsed.value[index];
+        const startSourceTarget = startSourceElements[index];
+        const endSourceTarget = endSourceElements[index];
         if (startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
             startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
             startTarget.libraryItemName !== endTarget.libraryItemName ||
+            startSourceTarget?.name !== 'DOMSymbolInstance' ||
+            endSourceTarget?.name !== 'DOMSymbolInstance' ||
             !startTarget.localTransform || !endTarget.localTransform) {
           return rejectTween(`matching Graphic instances with authored matrices are required at source order ${index}`);
+        }
+        const startPivot = readDirectTransformationPoint(startSourceTarget);
+        const endPivot = readDirectTransformationPoint(endSourceTarget);
+        if (!startPivot || !endPivot) {
+          return rejectTween(`Graphic instance pivot is invalid at source order ${index}`);
         }
         const localStart = rigStartInverse
           ? compose(rigStartInverse, startTarget.localTransform)
@@ -2038,11 +2063,13 @@ function buildGraphicFrameContext(
         const localEnd = rigEndInverse
           ? compose(rigEndInverse, endTarget.localTransform)
           : endTarget.localTransform;
-        const interpolated = interpolateFlaLinearMotionTransform(
+        const interpolated = interpolateFlaClassicMotionInstanceTransform(
           localStart,
           localEnd,
           progress,
           sourceRotationResult.rotation,
+          startPivot,
+          endPivot,
         );
         if (!interpolated.ok) return rejectTween(interpolated.message);
         const worldTransform = rigParentPoses.value

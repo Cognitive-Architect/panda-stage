@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  interpolateFlaClassicMotionInstanceTransform,
   interpolateFlaLinearMotionTransform,
   type FlaMotionTweenRotation,
 } from '../../src/main/services/fla-motion-tween-transform-interpolator';
@@ -51,6 +52,81 @@ describe('FLA Classic Motion transform interpolation', () => {
 
     expect(interpolateFlaLinearMotionTransform(start, end, 0)).toEqual({ ok: true, matrix: start });
     expect(interpolateFlaLinearMotionTransform(start, end, 1)).toEqual({ ok: true, matrix: end });
+  });
+
+  it('keeps an instance pivot on the straight world-space path through a Classic Motion span', () => {
+    const end: FlaDisplayListMatrix = {
+      a: 0,
+      b: 1,
+      c: -1,
+      d: 0,
+      tx: 20,
+      ty: 30,
+    };
+    const startPivot = { x: 5, y: 7 };
+    const endPivot = { x: 8, y: 3 };
+    const result = interpolateFlaClassicMotionInstanceTransform(
+      IDENTITY,
+      end,
+      0.5,
+      undefined,
+      startPivot,
+      endPivot,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const pivot = {
+      x: startPivot.x + (endPivot.x - startPivot.x) * 0.5,
+      y: startPivot.y + (endPivot.y - startPivot.y) * 0.5,
+    };
+    const expectedWorldPivot = { x: 11, y: 22.5 };
+    expect(result.matrix.tx).toBeCloseTo(9.939339828220179, 12);
+    expect(result.matrix.ty).toBeCloseTo(14.368272016354704, 12);
+    expect(result.matrix.a * pivot.x + result.matrix.c * pivot.y + result.matrix.tx)
+      .toBeCloseTo(expectedWorldPivot.x, 12);
+    expect(result.matrix.b * pivot.x + result.matrix.d * pivot.y + result.matrix.ty)
+      .toBeCloseTo(expectedWorldPivot.y, 12);
+  });
+
+  it('keeps authored matrices exact at pivot-corrected endpoint boundaries', () => {
+    const end = { a: 0, b: 1, c: -1, d: 0, tx: 20, ty: 30 };
+    const startPivot = { x: 5, y: 7 };
+    const endPivot = { x: 8, y: 3 };
+    expect(interpolateFlaClassicMotionInstanceTransform(
+      IDENTITY,
+      end,
+      0,
+      undefined,
+      startPivot,
+      endPivot,
+    )).toEqual({ ok: true, matrix: IDENTITY });
+    expect(interpolateFlaClassicMotionInstanceTransform(
+      IDENTITY,
+      end,
+      1,
+      undefined,
+      startPivot,
+      endPivot,
+    )).toEqual({ ok: true, matrix: end });
+  });
+
+  it('leaves the legacy transform unchanged when both pivots are at the origin', () => {
+    const end = { a: 0, b: 1, c: -1, d: 0, tx: 20, ty: 30 };
+    expect(interpolateFlaClassicMotionInstanceTransform(IDENTITY, end, 0.5)).toEqual(
+      interpolateFlaLinearMotionTransform(IDENTITY, end, 0.5),
+    );
+  });
+
+  it('rejects non-finite transformation points', () => {
+    expect(interpolateFlaClassicMotionInstanceTransform(
+      IDENTITY,
+      IDENTITY,
+      0.5,
+      undefined,
+      { x: Number.NaN, y: 0 },
+      { x: 0, y: 0 },
+    )).toMatchObject({ ok: false, code: 'INVALID_PIVOT' });
   });
 
   it('keeps the legacy shortest arc when source rotation metadata is absent', () => {
