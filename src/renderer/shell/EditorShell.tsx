@@ -612,6 +612,7 @@ export function EditorShell({
             ? {
                 projectId: snapshot.project.id,
                 projectRoot: snapshot.projectRoot,
+                projectInstanceId: openInstanceId,
                 shotId: shot.id,
                 layerId: response.layerId,
                 preview: response.groupEditPreview,

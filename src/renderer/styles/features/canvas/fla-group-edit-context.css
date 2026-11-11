@@ -1,0 +1,55 @@
+.canvas-group-edit-control {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+  text-shadow: none;
+}
+
+.canvas-group-edit-temporary {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.canvas-group-edit-toggle {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.canvas-group-edit-control .canvas-group-edit-info {
+  color: var(--ui-color-text-secondary);
+}
+
+.canvas-group-edit-tooltip-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.canvas-group-edit-tooltip {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 7px 9px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  font: var(--ui-font-secondary);
+  text-shadow: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-group-edit-tooltip-anchor:hover .canvas-group-edit-tooltip,
+.canvas-group-edit-tooltip-anchor:focus-within .canvas-group-edit-tooltip {
+  visibility: visible;
+  opacity: 1;
+}

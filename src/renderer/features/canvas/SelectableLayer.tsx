@@ -368,8 +368,43 @@ export function SelectableLayer({
   const groupEditTransform = flaGroupEditPreview
     ? matrixTransformProps(flaGroupEditPreview.group.canvasTransform)
     : null;
+  const renderedGroupEditParentHitAreas = flaGroupEditPreview && groupEditTransform ? (
+    <Group
+      {...groupEditTransform}
+      listening={canSelect && !flaGroupEditScope}
+      name="fla-group-edit-parent-hit-area-group"
+    >
+      {flaGroupEditPreview.children.map((child) => {
+        const childMatrix = flaGroupEditDraftMatrices[child.sourceAddress] ?? child.localTransform;
+        const childTransform = matrixTransformProps(childMatrix);
+        if (!childTransform) return null;
+        return (
+          <Group
+            {...childTransform}
+            key={child.sourceAddress}
+            listening={canSelect && !flaGroupEditScope}
+            name="fla-group-edit-parent-hit-child"
+          >
+            <Rect
+              fill="#000000"
+              height={child.artwork.viewBox.height}
+              listening={canSelect && !flaGroupEditScope}
+              name="fla-group-edit-parent-hit-area"
+              opacity={0}
+              onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+              onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+              width={child.artwork.viewBox.width}
+              x={child.artwork.viewBox.x}
+              y={child.artwork.viewBox.y}
+            />
+          </Group>
+        );
+      })}
+    </Group>
+  ) : null;
   const renderedGroupEditPreview = flaGroupEditPreview && groupEditTransform ? (
     <Group listening name="fla-group-edit-preview">
+      {renderedGroupEditParentHitAreas}
       {flaGroupEditPreview.background ? (
         <SvgArtworkImage
           height={flaGroupEditPreview.background.artwork.viewBox.height}
@@ -380,18 +415,6 @@ export function SelectableLayer({
           y={flaGroupEditPreview.background.position.y}
         />
       ) : null}
-      <Rect
-        fill="#000000"
-        height={flaGroupEditPreview.frameCanvas.height}
-        listening={canSelect}
-        name="fla-group-edit-parent-hit-area"
-        opacity={0}
-        onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-        onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-        width={flaGroupEditPreview.frameCanvas.width}
-        x={-flaGroupEditPreview.frameCanvas.width / 2}
-        y={-flaGroupEditPreview.frameCanvas.height / 2}
-      />
       <Group
         {...groupEditTransform}
         listening={flaGroupEditScope}

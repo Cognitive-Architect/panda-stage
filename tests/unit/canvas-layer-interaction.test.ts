@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { multiplyAffineMatrices } from '../../src/shared/affine-matrix';
 import type { FlaGraphicGroupEditPreview } from '../../src/shared/fla-graphic-instance-api';
@@ -10,6 +12,7 @@ import {
   migrateProject,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
 import { mapClientPointToLayerPosition } from '../../src/renderer/features/canvas/useCanvasDrop';
 import { parseLayerPositionDraft } from '../../src/renderer/features/properties/LayerPositionPanel';
@@ -729,6 +732,51 @@ describe('SelectableLayer interaction adapter', () => {
     );
   });
 
+  it('limits the non-edit parent hit area to transformed direct Child SVG bounds', () => {
+    const preview = testGroupEditPreview();
+    const element = SelectableLayer({
+      image: {} as HTMLImageElement,
+      layer: ordinary.layer,
+      nodeRef,
+      render: ordinary.render,
+      selected: false,
+      flaGroupEditPreview: preview,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const hitArea = findElementByName(element, 'fla-group-edit-parent-hit-area');
+
+    expect(hitArea?.props.width).toBe(preview.children[0]?.artwork.viewBox.width);
+    expect(hitArea?.props.height).toBe(preview.children[0]?.artwork.viewBox.height);
+    expect(hitArea?.props.width).not.toBe(preview.frameCanvas.width);
+    expect(hitArea?.props.height).not.toBe(preview.frameCanvas.height);
+  });
+
+  it('shows the group edit context action and temporary-save tooltip only for an eligible target', () => {
+    const transform = calculateViewportTransform({ width: 960, height: 540 }, 'fit');
+    const activeMarkup = renderToStaticMarkup(createElement(CanvasToolbar, {
+      mode: 'fit',
+      point: null,
+      transform,
+      groupEditAvailable: true,
+      groupEditActive: true,
+    }));
+    const unavailableMarkup = renderToStaticMarkup(createElement(CanvasToolbar, {
+      mode: 'fit',
+      point: null,
+      transform,
+      groupEditAvailable: false,
+    }));
+
+    expect(activeMarkup).toContain('返回整体');
+    expect(activeMarkup).toContain('临时编辑');
+    expect(activeMarkup).toContain('当前分组调整尚不能保存到项目');
+    expect(activeMarkup).toContain('aria-describedby=');
+    expect(unavailableMarkup).not.toContain('编辑分组');
+  });
+
   it('uses the original canvas-image API through the Canvas resource session', () => {
     const stage = readFileSync(
       'src/renderer/features/canvas/CanvasStage.tsx',
@@ -768,8 +816,24 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('setSelectedGroupChildAddress(null);');
     expect(stage).toContain('flaGroupEditTarget.projectId === snapshot.project.id');
     expect(stage).toContain('flaGroupEditTarget.shotId === shot.id');
-    expect(stage).toContain('flaGroupEditTarget.layerId === selectedLayerId');
+    expect(stage).toContain('flaGroupEditTarget.projectInstanceId === projectInstanceId');
+    expect(stage).toContain('groupEditTargetLayer.source.flaOccurrence');
+    expect(stage).toContain('groupEditTargetAnimation.source.sha256 === flaGroupEditTarget.preview.source.sha256');
+    expect(stage).not.toContain('flaGroupEditTarget.layerId === selectedLayerId\n    ?');
+    expect(stage).toContain('groupEditTargetSelected');
+    expect(stage).toContain('setGroupScopeTargetKey((current) =>');
     expect(stage).toContain('setGroupEditDraft(null);');
+    const normalizedStage = stage.replace(/\r\n/gu, '\n');
+    const targetResetStart = normalizedStage.indexOf(
+      'useEffect(() => {\n    setGroupScopeTargetKey(null);',
+    );
+    const targetResetEnd = normalizedStage.indexOf(
+      '}, [groupEditTargetKey]);',
+      targetResetStart,
+    ) + '}, [groupEditTargetKey]);'.length;
+    const targetResetEffect = normalizedStage.slice(targetResetStart, targetResetEnd);
+    expect(targetResetEffect).toContain('[groupEditTargetKey]');
+    expect(targetResetEffect).not.toContain('selectedLayerId');
     const groupEditEscapeHandler = stage.slice(
       stage.indexOf('const handleGroupEditKeyDownCapture'),
       stage.indexOf('const activeOpacityPreview'),
@@ -784,6 +848,7 @@ describe('SelectableLayer interaction adapter', () => {
       'utf8',
     );
     expect(viewport).toContain('disabled: dropDisabled,');
+    expect(viewport).toContain('data-canvas-interactive-chrome="true"');
     expect(viewport).toContain(
       'interactionDisabled: dropInteractionDisabled,',
     );
