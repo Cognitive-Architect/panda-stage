@@ -254,6 +254,7 @@ const FlaPartPreviewEditableReadySchema = FlaPartPreviewBaseResponseSchema.exten
     unitId: z.string().regex(/^part-[a-z0-9-]{8,160}$/u),
     occurrenceId: z.string().regex(/^occ-[a-f0-9]{24,64}$/u),
     drawOrder: z.number().int().nonnegative().max(FLA_PART_PREVIEW_LIMITS.maxParts),
+    graphicInstanceImportable: z.boolean().optional(),
     image: FlaPartPreviewPngSchema,
   }).strict()).min(2).max(FLA_PART_PREVIEW_LIMITS.maxParts),
   reassembledPreview: FlaPartPreviewPngSchema,

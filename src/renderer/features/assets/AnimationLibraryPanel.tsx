@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
-import type { AnimationDefinition, Project } from '../../../domain';
+import type { ProjectAnimationDefinition, Project } from '../../../domain';
 import {
   createAnimationPlaybackTimeline,
   markAnimationPlaybackFrameVisible,
@@ -17,7 +17,7 @@ import {
 } from './AssetDropPayload';
 
 export interface AnimationLibraryPanelProps {
-  animations: readonly AnimationDefinition[];
+  animations: readonly ProjectAnimationDefinition[];
   project: Project;
   projectRoot: string;
   searchQuery: string;
@@ -72,7 +72,11 @@ export function createAnimationCoverLoader(options: {
         if (visible) load();
         return;
       }
-      if (!response.ok || response.mimeType !== 'image/png' || !response.bytes) {
+      if (
+        !response.ok ||
+        (response.mimeType !== 'image/png' && response.mimeType !== 'image/svg+xml') ||
+        !response.bytes
+      ) {
         publish({ url: null, error: true, loading: false });
         return;
       }
@@ -120,7 +124,7 @@ interface AnimationCardScrollPosition {
 }
 
 export interface AnimationLibraryCardProps {
-  animation: AnimationDefinition;
+  animation: ProjectAnimationDefinition;
   project: Project;
   projectRoot: string;
 }
@@ -423,7 +427,7 @@ export function AnimationLibraryPanel({
 }
 
 interface AnimationPreviewProps {
-  animation: AnimationDefinition;
+  animation: ProjectAnimationDefinition;
   project: Project;
   projectRoot: string;
   titleId: string;

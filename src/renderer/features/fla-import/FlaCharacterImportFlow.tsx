@@ -63,6 +63,11 @@ export type EditableFlaCharacterPreview = Extract<
   { ok: true; status: 'PREVIEW_READY'; capability: 'EDITABLE_PARTS_READY' }
 >;
 
+export type ImportFlaGraphicInstance = (
+  preview: EditableFlaCharacterPreview,
+  unitId: string,
+) => Promise<void>;
+
 export interface FlaCharacterImportAttempt {
   lifecycle: FlaInspectionLifecycle;
   operation: FlaInspectionOperation;
@@ -200,6 +205,7 @@ export interface FlaCharacterImportFlowProps {
   snapshot: EditorProjectSnapshot | null;
   attempt: FlaCharacterImportAttempt;
   onCreateCharacter: CreateFlaCharacter;
+  onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   onCommittingChange?(committing: boolean): void;
   onRecoveryCredentialChange?(credential: PendingFlaCharacterCreateCredential | null): void;
@@ -215,6 +221,7 @@ export function FlaCharacterImportFlow({
   snapshot,
   attempt,
   onCreateCharacter,
+  onImportGraphicInstance,
   onQueryCharacterCreateStatus,
   onCommittingChange,
   onRecoveryCredentialChange,
@@ -256,6 +263,8 @@ export function FlaCharacterImportFlow({
   const [preview, setPreview] = useState<FlaPartPreviewResponse | null>(null);
   const [previewImages, setPreviewImages] = useState<ImportPreviewImages | null>(null);
   const [partsExpanded, setPartsExpanded] = useState(false);
+  const [selectedGraphicUnitId, setSelectedGraphicUnitId] = useState<string | null>(null);
+  const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
   const [name, setName] = useState('');
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const thumbnailUrlsRef = useRef(new Map<string, string>());
@@ -265,6 +274,7 @@ export function FlaCharacterImportFlow({
   const previewGenerationRef = useRef(0);
   const operationIdRef = useRef<string | null>(null);
   const pendingCreateOperationRef = useRef<PendingCreateOperation | null>(null);
+  const graphicInstanceImportingRef = useRef(false);
   const [operationOutcome, setOperationOutcome] = useState<CreateOperationOutcome>(null);
   const [safeExitAvailable, setSafeExitAvailable] = useState(false);
   const [receiptCopied, setReceiptCopied] = useState(false);
@@ -361,6 +371,7 @@ export function FlaCharacterImportFlow({
 
     const flowGeneration = ++flowGenerationRef.current;
     setPreview(null);
+    setSelectedGraphicUnitId(null);
     setSelectedTargetId(entry.target.renderTargetId);
     setSelectedFrameIndex(frameIndex);
     selectedFrameIndexRef.current = frameIndex;
@@ -399,6 +410,9 @@ export function FlaCharacterImportFlow({
       ) return;
       activePartRequestRef.current = null;
       setPreview(response);
+      setSelectedGraphicUnitId(response.ok && response.capability === 'EDITABLE_PARTS_READY'
+        ? response.partPreviews.find((part) => part.graphicInstanceImportable === true)?.unitId ?? null
+        : null);
       if (response.ok && response.status === 'PREVIEW_READY') {
         if (response.capability === 'EDITABLE_PARTS_READY') {
           setStatusMessage(`${response.partPreviews.length} 个零件已准备好。`);
@@ -679,6 +693,7 @@ export function FlaCharacterImportFlow({
     void cancelActiveThumbnail();
     void releaseCurrentPlan();
     setPreview(null);
+    setSelectedGraphicUnitId(null);
     operationIdRef.current = null;
     setOperationOutcome(null);
     transition('selecting');
@@ -711,6 +726,7 @@ export function FlaCharacterImportFlow({
   };
 
   const closeFlow = useCallback(async (): Promise<void> => {
+    if (graphicInstanceImportingRef.current) return;
     if (shouldBlockFlaCharacterImportClose(
       phaseRef.current,
       Boolean(pendingCreateOperationRef.current),
@@ -1054,19 +1070,60 @@ export function FlaCharacterImportFlow({
   const hasPendingOperation = Boolean(pendingCreateOperationRef.current);
   const pendingCredential = pendingCreateOperationRef.current?.credential ?? null;
   const canCreate = !hasPendingOperation &&
+    !graphicInstanceImporting &&
     phase === 'preview-ready' &&
     Boolean(editablePreview) &&
     name.trim().length > 0 &&
     !invalidatedRef.current;
   const canQueryStatus = hasPendingOperation && phase !== 'committing' && !recoveryBusy;
   const centerLoading = phase === 'inspecting' || phase === 'preparing';
-  const showPreviewStatus = !centerLoading && phase !== 'preview-ready' && Boolean(statusMessage) &&
-    !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction);
+  const showPreviewStatus = graphicInstanceImporting || (
+    !centerLoading && phase !== 'preview-ready' && Boolean(statusMessage) &&
+      !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction)
+  );
   const createLabel = hasPendingOperation
     ? '查询保存结果'
     : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
       ? '重新创建角色'
       : '创建角色';
+
+  const selectedGraphicPart = editablePreview?.partPreviews.find(
+    (part) => part.unitId === selectedGraphicUnitId,
+  );
+  const canImportGraphicInstance = Boolean(
+    onImportGraphicInstance &&
+    editablePreview &&
+    phase === 'preview-ready' &&
+    selectedTarget?.target.kind === 'scene' &&
+    selectedTarget.target.sourceTimelineIndex === 0 &&
+    selectedFrameIndex === 0 &&
+    selectedGraphicPart?.graphicInstanceImportable === true &&
+    !graphicInstanceImporting &&
+    !hasPendingOperation &&
+    !invalidatedRef.current,
+  );
+  const importGraphicInstance = async (): Promise<void> => {
+    if (!canImportGraphicInstance || !onImportGraphicInstance || !editablePreview || !selectedGraphicPart) return;
+    graphicInstanceImportingRef.current = true;
+    setGraphicInstanceImporting(true);
+    onCommittingChange?.(true);
+    setStatusMessage('正在导入对象…');
+    transition('committing');
+    try {
+      await onImportGraphicInstance(editablePreview, selectedGraphicPart.unitId);
+      setGraphicInstanceImporting(false);
+      graphicInstanceImportingRef.current = false;
+      onCommittingChange?.(false);
+      transition('preview-ready');
+      await closeFlow();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : '对象导入失败，请重试。');
+      setGraphicInstanceImporting(false);
+      graphicInstanceImportingRef.current = false;
+      onCommittingChange?.(false);
+      transition('error');
+    }
+  };
 
   return createPortal(
     <div
@@ -1218,7 +1275,7 @@ export function FlaCharacterImportFlow({
               <div className="fla-character-import-preview-surface">
                 {editablePreview && !partsExpanded ? (
                   <FlaCharacterImportPartsControl
-                    disabled={hasPendingOperation}
+                    disabled={hasPendingOperation || graphicInstanceImporting}
                     expanded={false}
                     onToggle={() => setPartsExpanded(true)}
                     partCount={partCount}
@@ -1255,14 +1312,33 @@ export function FlaCharacterImportFlow({
                   data-testid="fla-character-import-parts-panel"
                 >
                   <FlaCharacterImportPartsControl
-                    disabled={hasPendingOperation}
+                    disabled={hasPendingOperation || graphicInstanceImporting}
                     expanded
                     onToggle={() => setPartsExpanded(false)}
                     partCount={partCount}
                   />
                   <ol className="fla-character-import-parts-list">
-                    {previewImages.parts.map((part, index) => (
-                      <li key={part.sha256}>
+                    {previewImages.parts.map((part, index) => {
+                      const unit = editablePreview.partPreviews[index];
+                      const selected = unit?.unitId === selectedGraphicUnitId;
+                      return (
+                      <li
+                        aria-disabled={!unit?.graphicInstanceImportable || graphicInstanceImporting}
+                        aria-pressed={selected}
+                        data-selected={selected}
+                        key={unit?.unitId ?? `${part.sha256}-${index}`}
+                        onClick={() => {
+                          if (unit?.graphicInstanceImportable && !graphicInstanceImporting) setSelectedGraphicUnitId(unit.unitId);
+                        }}
+                        onKeyDown={(event) => {
+                          if ((event.key === 'Enter' || event.key === ' ') && unit?.graphicInstanceImportable && !graphicInstanceImporting) {
+                            event.preventDefault();
+                            setSelectedGraphicUnitId(unit.unitId);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={unit?.graphicInstanceImportable && !graphicInstanceImporting ? 0 : -1}
+                      >
                         <span className="fla-character-import-part-thumb">
                           <VisibleBoundsThumbnail
                             alt={`零件 ${index + 1}`}
@@ -1272,8 +1348,20 @@ export function FlaCharacterImportFlow({
                         </span>
                         <span>零件 {index + 1}</span>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ol>
+                  {onImportGraphicInstance ? (
+                    <button
+                      className="fla-character-import-instance-action"
+                      data-testid="fla-character-import-instance-action"
+                      disabled={!canImportGraphicInstance}
+                      onClick={() => void importGraphicInstance()}
+                      type="button"
+                    >
+                      导入到舞台
+                    </button>
+                  ) : null}
                 </aside>
               ) : null}
             </div>

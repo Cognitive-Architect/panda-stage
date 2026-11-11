@@ -1,9 +1,9 @@
 import type {
-  AnimationDefinition,
   Asset,
   AssetDropPayload,
   ImageAssetUsage,
   Project,
+  ProjectAnimationDefinition,
 } from '../../domain';
 
 export type AssetLibraryCategory =
@@ -25,7 +25,7 @@ export interface AssetLibraryEntry {
 
 export type AssetLibraryItem =
   | { kind: 'asset'; id: string; entry: AssetLibraryEntry }
-  | { kind: 'animation'; id: string; animation: AnimationDefinition };
+  | { kind: 'animation'; id: string; animation: ProjectAnimationDefinition };
 
 export const ASSET_LIBRARY_CATEGORIES = [
   { id: 'all', label: '全部' },
@@ -109,6 +109,7 @@ export function selectAssetLibraryEntries(
     }
   }
   for (const asset of project.assets) {
+    if (asset.kind === 'image' && asset.flaGraphicFrame) continue;
     if (
       asset.kind === 'image' &&
       sequenceCreatedAssetIds.has(asset.id) &&

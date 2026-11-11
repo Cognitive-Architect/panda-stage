@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { IdSchema, NameSchema } from './common';
 
 export const ANIMATION_MAX_FRAMES = 24;
+export const FLA_GRAPHIC_MAX_FRAMES = 256;
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
@@ -28,42 +29,49 @@ export const AnimationFrameSchema = z
   })
   .strict();
 
-export const AnimationDefinitionSchema = z
+const AnimationSourceSchema = z
   .object({
-    id: IdSchema,
-    name: NameSchema,
-    source: z
+    basename: z.string().trim().min(1).max(260),
+    sha256: Sha256Schema,
+    renderTargetId: z.string().trim().min(1).max(180),
+    targetKind: z.enum(['scene', 'timeline', 'graphic-symbol', 'unknown']),
+    targetName: z.string().trim().min(1).max(500),
+    startFrameIndex: z.number().int().nonnegative(),
+    endFrameIndex: z.number().int().nonnegative(),
+    sourceFps: z.number().finite().positive().max(1_000),
+    canvas: z
       .object({
-        basename: z.string().trim().min(1).max(260),
-        sha256: Sha256Schema,
-        renderTargetId: z.string().trim().min(1).max(180),
-        targetKind: z.enum(['scene', 'timeline', 'graphic-symbol', 'unknown']),
-        targetName: z.string().trim().min(1).max(500),
-        startFrameIndex: z.number().int().nonnegative(),
-        endFrameIndex: z.number().int().nonnegative(),
-        sourceFps: z.number().finite().positive().max(1_000),
-        canvas: z
-          .object({
-            width: z.number().finite().positive(),
-            height: z.number().finite().positive(),
-          })
-          .strict(),
-        anchor: z
-          .object({ x: z.number().finite(), y: z.number().finite() })
-          .strict(),
-        documentCanvas: z
-          .object({
-            width: z.number().finite().positive(),
-            height: z.number().finite().positive(),
-          })
-          .strict(),
+        width: z.number().finite().positive(),
+        height: z.number().finite().positive(),
       })
       .strict(),
-    durationMs: z.number().finite().positive(),
-    frames: z.array(AnimationFrameSchema).min(1).max(ANIMATION_MAX_FRAMES),
+    anchor: z
+      .object({ x: z.number().finite(), y: z.number().finite() })
+      .strict(),
+    documentCanvas: z
+      .object({
+        width: z.number().finite().positive(),
+        height: z.number().finite().positive(),
+      })
+      .strict(),
   })
-  .strict()
-  .superRefine((animation, context) => {
+  .strict();
+
+const AnimationDefinitionShape = {
+  id: IdSchema,
+  name: NameSchema,
+  source: AnimationSourceSchema,
+  durationMs: z.number().finite().positive(),
+};
+
+function validateAnimationDefinition(
+  animation: {
+    source: z.infer<typeof AnimationSourceSchema>;
+    durationMs: number;
+    frames: z.infer<typeof AnimationFrameSchema>[];
+  },
+  context: z.RefinementCtx,
+): void {
     const expectedCount =
       animation.source.endFrameIndex - animation.source.startFrameIndex + 1;
     if (
@@ -129,7 +137,50 @@ export const AnimationDefinitionSchema = z
         message: 'Animation duration must equal frame count divided by source FPS.',
       });
     }
+}
+
+export const AnimationDefinitionSchema = z
+  .object({
+    ...AnimationDefinitionShape,
+    frames: z.array(AnimationFrameSchema).min(1).max(ANIMATION_MAX_FRAMES),
+  })
+  .strict()
+  .superRefine(validateAnimationDefinition);
+
+/** A reusable, vector-frame Definition produced by the bounded FLA adapter. */
+export const FlaGraphicDefinitionSchema = z
+  .object({
+    ...AnimationDefinitionShape,
+    kind: z.literal('fla-graphic'),
+    frames: z.array(AnimationFrameSchema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
+  })
+  .strict()
+  .superRefine((definition, context) => {
+    validateAnimationDefinition(definition, context);
+    if (definition.source.targetKind !== 'graphic-symbol') {
+      context.addIssue({
+        code: 'custom',
+        path: ['source', 'targetKind'],
+        message: 'FLA Graphic Definitions must reference a Graphic Symbol target.',
+      });
+    }
+    definition.frames.forEach((frame, index) => {
+      if (frame.createdBySequenceImport) {
+        context.addIssue({
+          code: 'custom',
+          path: ['frames', index, 'createdBySequenceImport'],
+          message: 'FLA Graphic vector frames are not sequence-import frames.',
+        });
+      }
+    });
   });
+
+export const ProjectAnimationDefinitionSchema = z.union([
+  AnimationDefinitionSchema,
+  FlaGraphicDefinitionSchema,
+]);
 
 export type AnimationFrame = z.infer<typeof AnimationFrameSchema>;
 export type AnimationDefinition = z.infer<typeof AnimationDefinitionSchema>;
+export type FlaGraphicDefinition = z.infer<typeof FlaGraphicDefinitionSchema>;
+export type ProjectAnimationDefinition = z.infer<typeof ProjectAnimationDefinitionSchema>;

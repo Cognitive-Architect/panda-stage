@@ -4,6 +4,7 @@ import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import type {
   CreateFlaCharacter,
+  ImportFlaGraphicInstance,
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
@@ -26,6 +27,7 @@ export interface LeftWorkspaceProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onImportFlaGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord: PendingFlaCharacterCreateRecord;
   onQueryPendingFlaCharacterCreateStatus(
@@ -62,6 +64,7 @@ export function LeftWorkspace({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
+  onImportFlaGraphicInstance,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord,
   onQueryPendingFlaCharacterCreateStatus,
@@ -108,6 +111,7 @@ export function LeftWorkspace({
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
+        onImportFlaGraphicInstance={onImportFlaGraphicInstance}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
         flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
         onQueryPendingFlaCharacterCreateStatus={onQueryPendingFlaCharacterCreateStatus}

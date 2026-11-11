@@ -32,7 +32,31 @@ export const LayerSourceV14Schema = z.discriminatedUnion('kind', [
   CharacterLayerSourceSchema,
 ]);
 
+export const AnimationLayerSourceV15Schema = z
+  .object({
+    kind: z.literal('animation'),
+    animationId: IdSchema,
+  })
+  .strict();
+
 export const AnimationLayerSourceSchema = z
+  .object({
+    kind: z.literal('animation'),
+    animationId: IdSchema,
+    flaOccurrence: z
+      .object({
+        occurrenceId: z.string().regex(/^occ-[a-f0-9]{24,64}$/u),
+        sourceAddress: z.string().trim().min(1).max(1_000),
+        adapterIdentity: z.string().trim().min(1).max(500),
+        drawOrder: z.number().int().nonnegative().max(100_000),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** Exact persisted animation source shape before FLA occurrence provenance. */
+export const AnimationLayerSourceV16Schema = z
   .object({
     kind: z.literal('animation'),
     animationId: IdSchema,
@@ -49,7 +73,7 @@ export const LayerSourceV15AdaptiveSchema = z.discriminatedUnion('kind', [
 export const LayerSourceV15AnimationSchema = z.discriminatedUnion('kind', [
   AssetLayerSourceSchema,
   CharacterLayerSourceSchema,
-  AnimationLayerSourceSchema,
+  AnimationLayerSourceV15Schema,
 ]);
 
 /** Current v16 source contract combines Adaptive Parts and animation layers. */
@@ -59,9 +83,23 @@ export const LayerSourceSchema = z.discriminatedUnion('kind', [
   AnimationLayerSourceSchema,
 ]);
 
-export const AnimationPlaybackSchema = z
+/** Exact source variants persisted by schema v16. */
+export const LayerSourceV16Schema = z.discriminatedUnion('kind', [
+  AssetLayerSourceSchema,
+  CharacterLayerSourceV15Schema,
+  AnimationLayerSourceV16Schema,
+]);
+
+export const AnimationPlaybackV16Schema = z
   .object({
     mode: z.enum(['once', 'loop']),
+    endBehavior: z.enum(['hold', 'hide']),
+  })
+  .strict();
+
+export const AnimationPlaybackSchema = z
+  .object({
+    mode: z.enum(['once', 'loop', 'single-frame']),
     endBehavior: z.enum(['hold', 'hide']),
   })
   .strict();
@@ -106,6 +144,7 @@ function validateAnimationLayerFields(
   layer: {
     source: LayerSource;
     startTimeMs?: number;
+    animationFirstFrame?: number;
     animationPlayback?: z.infer<typeof AnimationPlaybackSchema>;
   },
   context: z.RefinementCtx,
@@ -126,6 +165,14 @@ function validateAnimationLayerFields(
         message: 'Animation layers require persisted playback settings.',
       });
     }
+    if (layer.animationFirstFrame !== undefined &&
+        (!Number.isSafeInteger(layer.animationFirstFrame) || layer.animationFirstFrame < 0)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationFirstFrame'],
+        message: 'Animation first frame must be a nonnegative integer.',
+      });
+    }
     return;
   }
 
@@ -141,6 +188,13 @@ function validateAnimationLayerFields(
       code: 'custom',
       path: ['animationPlayback'],
       message: 'Only animation layers may have playback settings.',
+    });
+  }
+  if (layer.animationFirstFrame !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['animationFirstFrame'],
+      message: 'Only animation layers may have an animation first frame.',
     });
   }
 }
@@ -170,7 +224,21 @@ export const LayerSchema = z
   .object({
     ...LayerV15AnimationShape,
     source: LayerSourceSchema,
+    /** Authored first frame offset for Graphic or raster animation instances. */
+    animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
     animationPlayback: AnimationPlaybackSchema.optional(),
+  })
+  .strict()
+  .superRefine((layer, context) => {
+    validateAnimationLayerFields(layer, context, true);
+  });
+
+/** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
+export const LayerV16Schema = z
+  .object({
+    ...LayerV15AnimationShape,
+    source: LayerSourceV16Schema,
+    animationPlayback: AnimationPlaybackV16Schema.optional(),
   })
   .strict()
   .superRefine((layer, context) => {

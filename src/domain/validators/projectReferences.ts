@@ -85,6 +85,21 @@ export function validateProjectReferences(
           `Animation frame hash does not match image asset ${asset.id}.`,
         );
       }
+      if ('kind' in animation && animation.kind === 'fla-graphic') {
+        if (
+          !asset ||
+          asset.kind !== 'image' ||
+          asset.mimeType !== 'image/svg+xml' ||
+          asset.flaGraphicFrame?.definitionId !== animation.id ||
+          asset.flaGraphicFrame.ordinal !== frame.ordinal
+        ) {
+          addIssue(
+            context,
+            ['animations', animationIndex, 'frames', frameIndex, 'assetId'],
+            `FLA Graphic frame ${frame.assetId} is not an SVG owned by Definition ${animation.id}.`,
+          );
+        }
+      }
     });
   });
 
@@ -277,11 +292,21 @@ export function validateProjectReferences(
         return;
       }
       if (layer.source.kind === 'animation') {
-        if (!animations.has(layer.source.animationId)) {
+        const animation = animations.get(layer.source.animationId);
+        if (!animation) {
           addIssue(
             context,
             ['shots', shotIndex, 'layers', layerIndex, 'source', 'animationId'],
             `Layer references unknown animation: ${layer.source.animationId}`,
+          );
+        } else if (
+          layer.animationFirstFrame !== undefined &&
+          layer.animationFirstFrame >= animation.frames.length
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'animationFirstFrame'],
+            'Animation first frame is outside the referenced Definition.',
           );
         }
         if (

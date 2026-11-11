@@ -78,6 +78,22 @@ export interface AnimationPlaybackInput {
   endBehavior?: AnimationPlayback['endBehavior'];
 }
 
+export interface CreateAnimationLayerInput {
+  animationId: string;
+  position: Point;
+  startTimeMs: number;
+  firstFrameIndex?: number;
+  playback?: AnimationPlayback;
+  transform?: {
+    scaleX?: number;
+    scaleY?: number;
+    rotationDeg?: number;
+    opacity?: number;
+    flipX?: boolean;
+  };
+  flaOccurrence?: Extract<Layer['source'], { kind: 'animation' }>['flaOccurrence'];
+}
+
 export type LayerOrderAction =
   | 'forward'
   | 'backward'
@@ -164,65 +180,17 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const position = clampLayerPosition(input.position);
     if (input.type === 'animation') {
-      const animation = project.animations.find(
-        (candidate) => candidate.id === input.animationId,
-      );
-      if (!animation) {
-        throw new LayerServiceError(
-          'ANIMATION_NOT_FOUND',
-          'Animation definition is unavailable.',
-        );
-      }
-      if (
-        input.startTimeMs === undefined ||
-        !Number.isFinite(input.startTimeMs) ||
-        input.startTimeMs < 0 ||
-        input.startTimeMs > shot.durationMs
-      ) {
+      if (input.startTimeMs === undefined) {
         throw new LayerServiceError(
           'INVALID_ANIMATION_START_TIME',
           'Animation start time must be within the shot duration.',
         );
       }
-      for (const frame of animation.frames) {
-        const frameAsset = project.assets.find(
-          (candidate) => candidate.id === frame.assetId,
-        );
-        if (
-          !frameAsset ||
-          frameAsset.kind !== 'image' ||
-          frameAsset.sha256 !== frame.sha256
-        ) {
-          throw new LayerServiceError(
-            'ANIMATION_FRAME_INVALID',
-            'An animation frame is missing or has a mismatched content hash.',
-          );
-        }
-      }
-      const usedIds = this.projectIds(project);
-      const layer: Layer = {
-        id: this.nextUniqueId(usedIds),
-        name: animation.name,
-        source: { kind: 'animation', animationId: animation.id },
+      return this.createFromAnimation(project, shotId, {
+        animationId: input.animationId,
+        position,
         startTimeMs: input.startTimeMs,
-        animationPlayback: { mode: 'once', endBehavior: 'hold' },
-        anchor: 'center',
-        x: position.x,
-        y: position.y,
-        scaleX: 1,
-        scaleY: 1,
-        rotationDeg: 0,
-        opacity: 1,
-        visible: true,
-        locked: false,
-        flipX: false,
-        zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
-      };
-      const nextShot = { ...shot, layers: [...shot.layers, layer] };
-      return {
-        project: this.replaceShot(project, nextShot),
-        layer,
-      };
+      });
     }
     const asset = project.assets.find(
       (candidate) => candidate.id === input.assetId,
@@ -299,6 +267,89 @@ export class LayerService {
       scale,
       input.type === 'character-expression' ? character!.defaultFlipX : false,
     );
+  }
+
+  createFromAnimation(
+    project: Project,
+    shotId: string,
+    input: CreateAnimationLayerInput,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const animation = project.animations.find(
+      (candidate) => candidate.id === input.animationId,
+    );
+    if (!animation) {
+      throw new LayerServiceError(
+        'ANIMATION_NOT_FOUND',
+        'Animation definition is unavailable.',
+      );
+    }
+    const position = validateLayerPosition(input.position);
+    if (
+      !Number.isFinite(input.startTimeMs) ||
+      input.startTimeMs < 0 ||
+      input.startTimeMs > shot.durationMs
+    ) {
+      throw new LayerServiceError(
+        'INVALID_ANIMATION_START_TIME',
+        'Animation start time must be within the shot duration.',
+      );
+    }
+    const firstFrameIndex = input.firstFrameIndex ?? 0;
+    if (
+      !Number.isSafeInteger(firstFrameIndex) ||
+      firstFrameIndex < 0 ||
+      firstFrameIndex >= animation.frames.length
+    ) {
+      throw new LayerServiceError(
+        'ANIMATION_FRAME_INVALID',
+        'Animation first frame is outside the referenced Definition.',
+      );
+    }
+    for (const frame of animation.frames) {
+      const frameAsset = project.assets.find(
+        (candidate) => candidate.id === frame.assetId,
+      );
+      if (
+        !frameAsset ||
+        frameAsset.kind !== 'image' ||
+        frameAsset.sha256 !== frame.sha256
+      ) {
+        throw new LayerServiceError(
+          'ANIMATION_FRAME_INVALID',
+          'An animation frame is missing or has a mismatched content hash.',
+        );
+      }
+    }
+    const transform = input.transform ?? {};
+    const usedIds = this.projectIds(project);
+    const layer: Layer = {
+      id: this.nextUniqueId(usedIds),
+      name: animation.name,
+      source: {
+        kind: 'animation',
+        animationId: animation.id,
+        ...(input.flaOccurrence ? { flaOccurrence: input.flaOccurrence } : {}),
+      },
+      startTimeMs: input.startTimeMs,
+      animationFirstFrame: firstFrameIndex,
+      animationPlayback: input.playback ?? { mode: 'once', endBehavior: 'hold' },
+      anchor: 'center',
+      x: position.x,
+      y: position.y,
+      scaleX: validateLayerScale(transform.scaleX ?? 1),
+      scaleY: validateLayerScale(transform.scaleY ?? 1),
+      rotationDeg: normalizeLayerRotation(transform.rotationDeg ?? 0),
+      opacity: validateLayerOpacity(transform.opacity ?? 1),
+      visible: true,
+      locked: false,
+      flipX: transform.flipX ?? false,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    return {
+      project: this.replaceShot(project, { ...shot, layers: [...shot.layers, layer] }),
+      layer,
+    };
   }
 
   createFromAdaptiveCharacter(

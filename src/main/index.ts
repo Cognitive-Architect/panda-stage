@@ -66,6 +66,8 @@ import { registerFlaCharacterCreateIpcHandlers } from './ipc/register-fla-charac
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
+import { FlaGraphicInstanceCommitService } from './services/FlaGraphicInstanceCommitService';
+import { registerFlaGraphicInstanceIpcHandlers } from './ipc/register-fla-graphic-instance-ipc-handlers';
 import { ExportPreparationService } from './services/ExportPreparationService';
 import { buildRenderableTargetCatalog } from './services/fla-static-snapshot-svg-builder';
 import { createFlaStaticSnapshotBitmapMediaLookup } from './services/fla-static-snapshot-media-resolver';
@@ -99,6 +101,8 @@ let removeFlaSessionReleaseListener: (() => void) | null = null;
 let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
+let flaGraphicInstanceCommitService: FlaGraphicInstanceCommitService | null = null;
+let removeFlaGraphicInstanceIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
@@ -708,6 +712,24 @@ async function initialize(): Promise<void> {
       },
     },
   });
+  flaGraphicInstanceCommitService = new FlaGraphicInstanceCommitService({
+    projectService,
+    partPreviewService: flaPartPreviewService,
+    getCurrentProjectSnapshot: (projectRoot) => {
+      const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
+      return snapshot
+        ? {
+            project: snapshot.project,
+            revision: snapshot.revision,
+            openInstanceId: snapshot.openInstanceId ?? null,
+          }
+        : null;
+    },
+  });
+  removeFlaGraphicInstanceIpcHandlers = registerFlaGraphicInstanceIpcHandlers({
+    getMainWindow: () => mainWindow,
+    service: flaGraphicInstanceCommitService,
+  });
   unsavedCloseController = new UnsavedCloseController({
     getDirtyProject: () =>
       autosaveService?.getDirtyProjectSnapshot() ?? null,
@@ -880,6 +902,9 @@ app.on('will-quit', () => {
   flaFrameSequenceService?.close();
   flaFrameSequenceService = null;
   flaFrameSequenceCommitService = null;
+  removeFlaGraphicInstanceIpcHandlers?.();
+  removeFlaGraphicInstanceIpcHandlers = null;
+  flaGraphicInstanceCommitService = null;
   removeNativeCloseSyncListener?.();
   removeNativeCloseSyncListener = null;
   rendererCloseSynchronizer?.dispose();

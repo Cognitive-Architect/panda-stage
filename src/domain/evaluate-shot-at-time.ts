@@ -114,6 +114,7 @@ function resolveAnimationFrame(
   project: Project,
   animationId: string,
   startTimeMs: number,
+  firstFrameIndex: number,
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
 ): ResolvedLayerVisualState {
@@ -131,11 +132,14 @@ function resolveAnimationFrame(
   const elapsedSourceFrames = Math.floor(
     Math.max(0, elapsedMs) * animation.source.sourceFps / 1_000,
   );
-  const completedOnce = elapsedSourceFrames >= animation.frames.length;
-  const sourceFrameIndex =
-    playback.mode === 'loop'
-      ? elapsedSourceFrames % animation.frames.length
-      : Math.min(animation.frames.length - 1, elapsedSourceFrames);
+  const firstFrame = Math.min(firstFrameIndex, animation.frames.length - 1);
+  const availableFrames = animation.frames.length - firstFrame;
+  const completedOnce = elapsedSourceFrames >= availableFrames;
+  const sourceFrameIndex = playback.mode === 'single-frame'
+    ? firstFrame
+    : playback.mode === 'loop'
+      ? firstFrame + (elapsedSourceFrames % availableFrames)
+      : Math.min(animation.frames.length - 1, firstFrame + elapsedSourceFrames);
   const frame = animation.frames[sourceFrameIndex];
   if (!frame) {
     return {
@@ -231,6 +235,7 @@ export function evaluateShotAtTime(
             project,
             animationSource.animationId,
             layer.startTimeMs ?? 0,
+            layer.animationFirstFrame ?? 0,
             layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
             timeMs,
           )

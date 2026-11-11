@@ -215,6 +215,7 @@ async function fixture(
     sessionId: SESSION_ID,
     ir: {
       source: { basename: 'parts.fla', sha256: rawSha256 },
+      document: { width: 32, height: 24, frameRate: 12 },
       media: [],
     },
     originalSourceSha256: originalSourceSha256 ?? rawSha256,
@@ -466,6 +467,47 @@ describe('F1-02 Main part preview service', () => {
     expect(calls[2]?.svg).toContain('fill="#120008"');
     expect(calls[2]?.svg).not.toContain('fill="#120000"');
     expect(calls[3]?.svg.match(/<image /gu)).toHaveLength(2);
+    previewService.close();
+  });
+
+  it('retains a selected Scene Graphic instance and renders every bounded Definition frame', async () => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Scene Graphic instance preview');
+    }
+    expect(response.partPreviews.map((part) => part.graphicInstanceImportable)).toEqual([true, true]);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const secondUnit = plan?.units[1];
+    expect(secondUnit?.sourceFrame.firstFrame).toBe('8');
+    if (!plan || !secondUnit) throw new Error('Expected a held Graphic occurrence plan');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: secondUnit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.batch.frames).toHaveLength(9);
+    expect(result.batch.unit.occurrenceId).toBe(secondUnit.occurrenceId);
+    expect(result.batch.frames.map((frame) => frame.sourceFrameIndex)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    expect(result.batch.frames.every((frame) =>
+      createHash('sha256').update(frame.svg).digest('hex') === frame.sha256,
+    )).toBe(true);
     previewService.close();
   });
 

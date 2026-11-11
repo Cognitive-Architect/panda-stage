@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain';
 import {
   FlaPartPlanSchema,
   FlaPartPreviewCancelRequestSchema,
@@ -42,6 +43,7 @@ import type {
 } from './fla-static-snapshot-display-list-adapter';
 import {
   buildSvgForResolvedDisplayList,
+  buildSvgForRenderTarget,
   stableRenderTargetId,
 } from './fla-static-snapshot-svg-builder';
 import {
@@ -69,6 +71,7 @@ interface FlaPartPreviewPart {
   readonly unitId: string;
   readonly occurrenceId: string;
   readonly drawOrder: number;
+  readonly graphicInstanceImportable?: boolean;
   readonly image: FlaPartPreviewPng;
 }
 
@@ -589,6 +592,26 @@ function digestPng(bytes: Uint8Array): string {
   return crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex');
 }
 
+function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
+  const mode = unit.sourceFrame.playbackMode?.trim().toLocaleLowerCase('en-US');
+  const firstFrame = unit.sourceFrame.firstFrame === null
+    ? 0
+    : Number(unit.sourceFrame.firstFrame);
+  return unit.sourceKind === 'graphic-symbol-occurrence' &&
+    unit.sourceSymbolId !== null &&
+    unit.sourceAddress !== null &&
+    unit.adapterIdentity !== null &&
+    unit.traceability === 'source-address-and-parent-chain' &&
+    unit.sourceDefinitionFrameCount !== null &&
+    unit.sourceDefinitionFrameCount > 0 &&
+    unit.sourceDefinitionFrameCount <= FLA_GRAPHIC_MAX_FRAMES &&
+    unit.maskDependencies.length === 0 &&
+    (mode === 'loop' || mode === 'play once' || mode === 'single frame') &&
+    Number.isSafeInteger(firstFrame) &&
+    firstFrame >= 0 &&
+    firstFrame < (unit.sourceDefinitionFrameCount ?? 0);
+}
+
 export interface FlaPartPreviewServiceOptions {
   readonly flaImportService: FlaImportService;
   readonly renderSession: FlaStaticSnapshotRenderSession;
@@ -654,6 +677,57 @@ export interface FlaPreparedPartBatchMetadata {
   })[];
   readonly partPngBytes: number;
 }
+
+export interface FlaGraphicInstancePlanIdentity {
+  readonly sessionId: string;
+  readonly planId: string;
+  readonly generation: number;
+  readonly poseIdentity: string;
+  readonly unitId: string;
+}
+
+export interface FlaGraphicDefinitionFrameBatch {
+  readonly plan: FlaPartPlan;
+  readonly unit: FlaPartPreviewUnit;
+  readonly source: {
+    readonly basename: string;
+    readonly rawSha256: string;
+    readonly normalizedSha256: string;
+  };
+  readonly target: {
+    readonly renderTargetId: string;
+    readonly name: string;
+    readonly frameCount: number;
+    readonly sourceFps: number;
+    readonly stageWidth: number;
+    readonly stageHeight: number;
+    readonly documentWidth: number;
+    readonly documentHeight: number;
+  };
+  readonly frames: readonly {
+    readonly ordinal: number;
+    readonly sourceFrameIndex: number;
+    readonly svg: string;
+    readonly sha256: string;
+    readonly byteLength: number;
+    readonly width: number;
+    readonly height: number;
+    readonly sourceViewport: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    };
+  }[];
+}
+
+export type FlaGraphicDefinitionFrameBatchResult =
+  | { readonly ok: true; readonly batch: FlaGraphicDefinitionFrameBatch }
+  | {
+    readonly ok: false;
+    readonly code: 'STALE_PLAN' | 'UNSUPPORTED_SOURCE' | 'RENDER_FAILED' | 'RENDER_TIMEOUT';
+    readonly message: string;
+  };
 
 export function flaPreparedPartBatchMetadata(
   batch: FlaPreparedPartBatch,
@@ -812,6 +886,172 @@ export class FlaPartPreviewService {
         (sessionId && held.plan.sessionId !== sessionId) ||
         (generation !== undefined && held.plan.generation !== generation)) return null;
     return structuredClone(held.plan);
+  }
+
+  /**
+   * Build the trusted vector frames for one source-addressed Graphic instance.
+   * The preview plan remains the authority for the selected Scene0/F1
+   * occurrence; child Graphic contents are flattened into SVG frame assets.
+   */
+  async buildGraphicDefinitionFrameBatch(
+    identity: FlaGraphicInstancePlanIdentity,
+  ): Promise<FlaGraphicDefinitionFrameBatchResult> {
+    const held = this.getValidHeldResult();
+    if (
+      !held ||
+      held.plan.planId !== identity.planId ||
+      held.plan.sessionId !== identity.sessionId ||
+      held.plan.generation !== identity.generation ||
+      held.plan.poseIdentity !== identity.poseIdentity ||
+      held.plan.capability !== 'EDITABLE_PARTS_READY' ||
+      !held.parts
+    ) {
+      return { ok: false, code: 'STALE_PLAN', message: 'The FLA Part plan expired or changed. Preview the source again.' };
+    }
+    const plan = held.plan;
+    if (
+      plan.target.kind !== 'scene' ||
+      plan.target.sceneIndex !== 0 ||
+      plan.target.selectedFrameIndex !== 0
+    ) {
+      return { ok: false, code: 'UNSUPPORTED_SOURCE', message: 'Only Scene 0, frame 1 instances are supported for this import.' };
+    }
+    const unit = plan.units.find((candidate) => candidate.unitId === identity.unitId);
+    if (!unit || !canImportGraphicInstance(unit)) {
+      return { ok: false, code: 'UNSUPPORTED_SOURCE', message: 'This object has no safe source-addressed Graphic instance import path.' };
+    }
+    const session = this.flaImportService.getSession(identity.sessionId);
+    const source = toSnapshotSource(session);
+    if (!session || !source) {
+      return { ok: false, code: 'STALE_PLAN', message: 'The FLA inspection session expired. Inspect the source again.' };
+    }
+    const startedAt = Date.now();
+    const execution: FlaStaticSnapshotDisplaySourceExecution = {
+      shouldContinue: () => {
+        const current = this.getValidHeldResult();
+        return !this.closed &&
+          Date.now() - startedAt < FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs &&
+          current?.plan.planId === plan.planId &&
+          this.flaImportService.getSession(identity.sessionId)?.sourceBytes === source.bytes;
+      },
+      yieldToEventLoop: () => new Promise<void>((resolve) => setImmediate(resolve)),
+    };
+    const prepared = await this.renderSession.prepareDisplaySourceForPartPreview(identity.sessionId, execution);
+    if (!prepared.ok) {
+      return {
+        ok: false,
+        code: prepared.code === 'BUDGET_EXCEEDED' ? 'RENDER_TIMEOUT' : 'STALE_PLAN',
+        message: prepared.message,
+      };
+    }
+    if (!execution.shouldContinue()) {
+      return { ok: false, code: 'RENDER_TIMEOUT', message: 'Graphic frame rendering exceeded its bounded time.' };
+    }
+    const sourceName = unit.sourceSymbolId!;
+    const descriptors = prepared.source.graphicSymbols.filter(
+      (candidate) => candidate.sourceLibraryItemName === sourceName,
+    );
+    const descriptor = descriptors.length === 1 ? descriptors[0] : null;
+    const frameCount = descriptor?.frameCount ?? 0;
+    const sourceFps = session.ir.document.frameRate;
+    if (
+      !descriptor ||
+      frameCount !== unit.sourceDefinitionFrameCount ||
+      frameCount > FLA_GRAPHIC_MAX_FRAMES ||
+      !Number.isFinite(sourceFps) ||
+      sourceFps <= 0 ||
+      sourceFps > 1_000
+    ) {
+      return { ok: false, code: 'UNSUPPORTED_SOURCE', message: 'The Graphic Definition frame count or source frame rate is not verified.' };
+    }
+    const renderTargetId = stableRenderTargetId(
+      source.bytes,
+      `graphic-symbol\u0000${descriptor.sourceLibraryItemName}\u0000${descriptor.userLabel}`,
+    );
+    const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []);
+    const frames: FlaGraphicDefinitionFrameBatch['frames'][number][] = [];
+    let totalBytes = 0;
+    for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
+      if (!execution.shouldContinue()) {
+        const timedOut = Date.now() - startedAt >= FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs;
+        return {
+          ok: false,
+          code: timedOut ? 'RENDER_TIMEOUT' : 'STALE_PLAN',
+          message: timedOut ? 'Graphic frame rendering exceeded its bounded time.' : 'The FLA Part plan changed during frame rendering.',
+        };
+      }
+      const target: FlaRenderTarget = {
+        renderTargetId,
+        kind: 'graphic-symbol',
+        userLabel: descriptor.userLabel,
+        sourceLibraryItemName: descriptor.sourceLibraryItemName,
+        frameCount,
+        selectedFrameIndex: ordinal,
+        compatibility: ['degraded'],
+      };
+      const rendered = await buildSvgForRenderTarget(
+        source.bytes,
+        target,
+        mediaLookup,
+        prepared.source,
+      );
+      if (!rendered.ok) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Graphic frame ${ordinal} could not be rendered: ${rendered.message}`.slice(0, 1_000) };
+      }
+      const svgBytes = Buffer.from(rendered.svg, 'utf8');
+      totalBytes += svgBytes.byteLength;
+      const viewport = rendered.composition.framing.viewBox;
+      if (
+        svgBytes.byteLength <= 0 ||
+        totalBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
+        !Number.isSafeInteger(rendered.width) ||
+        !Number.isSafeInteger(rendered.height) ||
+        rendered.width <= 0 ||
+        rendered.height <= 0 ||
+        !Number.isFinite(viewport.x) ||
+        !Number.isFinite(viewport.y) ||
+        !Number.isFinite(viewport.width) ||
+        viewport.width <= 0 ||
+        !Number.isFinite(viewport.height) ||
+        viewport.height <= 0
+      ) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Graphic frame ${ordinal} exceeded the bounded SVG asset dimensions or bytes.` };
+      }
+      frames.push({
+        ordinal,
+        sourceFrameIndex: ordinal,
+        svg: rendered.svg,
+        sha256: crypto.createHash('sha256').update(svgBytes).digest('hex'),
+        byteLength: svgBytes.byteLength,
+        width: rendered.width,
+        height: rendered.height,
+        sourceViewport: { ...viewport },
+      });
+      await execution.yieldToEventLoop();
+    }
+    return {
+      ok: true,
+      batch: {
+        plan: structuredClone(plan),
+        unit: structuredClone(unit),
+        source: {
+          basename: source.basename,
+          rawSha256: source.originalSourceSha256 ?? source.sha256,
+          normalizedSha256: source.sha256,
+        },
+        target: {
+          renderTargetId,
+          name: descriptor.userLabel,
+          frameCount,
+          sourceFps,
+          stageWidth: prepared.source.stageWidth,
+          stageHeight: prepared.source.stageHeight,
+          documentWidth: session.ir.document.width > 0 ? session.ir.document.width : prepared.source.stageWidth,
+          documentHeight: session.ir.document.height > 0 ? session.ir.document.height : prepared.source.stageHeight,
+        },
+        frames,
+      },
+    };
   }
 
   /** Main-only, read-only handoff for the exact Parts emitted with a held plan. */
@@ -1305,6 +1545,7 @@ export class FlaPartPreviewService {
           unitId: candidate.unit.unitId,
           occurrenceId: candidate.unit.occurrenceId,
           drawOrder: candidate.unit.drawOrder,
+          graphicInstanceImportable: canImportGraphicInstance(candidate.unit),
           image,
         });
       } catch (error) {

@@ -38,7 +38,9 @@ import {
   type EditorProjectSnapshot,
 } from '../stores/EditorProjectStore';
 import { shotStore } from '../stores/shotStore';
+import { selectionStore } from '../stores/selectionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
+import { timelineUiStore } from '../features/timeline/timelineUiStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
   createCharacterFromPreparedParts,
@@ -59,6 +61,7 @@ import {
 } from '../features/fla-import/fla-character-create-recovery';
 import type {
   CreateFlaCharacter,
+  ImportFlaGraphicInstance,
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
@@ -526,6 +529,74 @@ export function EditorShell({
           session.assertNoControllerTransition();
         },
       });
+    },
+    [session],
+  );
+  const importFlaGraphicInstance = useCallback<ImportFlaGraphicInstance>(
+    async (preview, unitId) => {
+      session.assertNoControllerTransition();
+      const snapshot = editorProjectStore.getSnapshot();
+      const openInstanceId = editorProjectStore.getProjectInstanceId();
+      const shotId = shotStore.getCurrentShotId();
+      const shot = snapshot?.project.shots.find((candidate) => candidate.id === shotId);
+      if (!snapshot || openInstanceId === null || !shot) {
+        throw new Error('先打开项目并选择一个镜头。');
+      }
+      if (!preview.sessionId || !preview.generation || !preview.planId || !preview.poseIdentity) {
+        throw new Error('FLA 对象预览已失效，请重新准备。');
+      }
+      const lease = editorProjectStore.acquireProjectOperationLease({
+        projectRoot: snapshot.projectRoot,
+        projectId: snapshot.project.id,
+        revision: snapshot.revision,
+        openInstanceId,
+      });
+      try {
+        const sync = await session.syncAutosave(snapshot);
+        if (sync && !sync.ok) throw new Error(sync.error.message);
+        session.assertNoControllerTransition();
+        if (editorProjectStore.getSnapshot() !== snapshot) {
+          throw new Error('项目状态已变化，请重新准备 FLA 对象。');
+        }
+        const response = await window.pandaStage.fla.commitGraphicInstance({
+          format: 'fla-graphic-instance-commit',
+          version: 1,
+          requestId: crypto.randomUUID(),
+          projectRoot: snapshot.projectRoot,
+          projectId: snapshot.project.id,
+          baseRevision: snapshot.revision,
+          openInstanceId,
+          shotId: shot.id,
+          startTimeMs: Math.min(timelineUiStore.getSnapshot().currentTimeMs, shot.durationMs),
+          plan: {
+            sessionId: preview.sessionId,
+            planId: preview.planId,
+            generation: preview.generation,
+            poseIdentity: preview.poseIdentity,
+            unitId,
+          },
+        });
+        if (!response.ok) throw new Error(response.error.message);
+        if (
+          response.projectRoot !== lease.projectRoot ||
+          response.projectId !== lease.projectId ||
+          response.openInstanceId !== lease.openInstanceId ||
+          response.baseRevision !== lease.revision
+        ) {
+          throw new Error('Main Process returned an FLA instance result for a different project session.');
+        }
+        if (response.projectChanged) {
+          editorProjectStore.acceptSavedProjectCommand(
+            lease,
+            response.project,
+            response.savedRevision,
+            '导入 FLA 对象',
+          );
+        }
+        if (shotStore.getCurrentShotId() === shot.id) selectionStore.select(response.layerId);
+      } finally {
+        editorProjectStore.releaseProjectOperationLease(lease);
+      }
     },
     [session],
   );
@@ -2619,6 +2690,7 @@ export function EditorShell({
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
+                onImportFlaGraphicInstance={importFlaGraphicInstance}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
                 flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
                 onQueryPendingFlaCharacterCreateStatus={queryPendingFlaCreateStatus}

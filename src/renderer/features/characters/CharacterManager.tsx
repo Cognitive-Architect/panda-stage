@@ -43,6 +43,7 @@ import { CharacterList } from './CharacterList';
 import {
   FlaCharacterImportFlow,
   type CreateFlaCharacter,
+  type ImportFlaGraphicInstance,
   type FlaCharacterCreateOperationState,
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
@@ -139,6 +140,7 @@ export interface CharacterManagerProps {
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onImportFlaGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
   onQueryPendingFlaCharacterCreateStatus?(
@@ -296,6 +298,7 @@ export function CharacterManager({
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
+  onImportFlaGraphicInstance,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord = { kind: 'none' },
   onQueryPendingFlaCharacterCreateStatus = async () => ({
@@ -879,6 +882,7 @@ export function CharacterManager({
           onClose={onCloseFlaCharacterImport}
           onCommittingChange={onFlaCharacterCommitStateChange}
           onCreateCharacter={onCreateFlaCharacter}
+          onImportGraphicInstance={onImportFlaGraphicInstance}
           onQueryCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
           onRecoveryCredentialChange={onFlaCharacterRecoveryCredentialChange}
           onOperationStateChange={onFlaCharacterOperationStateChange}

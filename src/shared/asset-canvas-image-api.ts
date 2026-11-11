@@ -12,6 +12,7 @@ export const CANVAS_IMAGE_MAX_BYTES = 64 * 1024 * 1024;
 const CanvasImageMimeTypeSchema = z.enum([
   'image/png',
   'image/jpeg',
+  'image/svg+xml',
 ]);
 
 const CanvasImageBytesSchema = z

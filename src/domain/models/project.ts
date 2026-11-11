@@ -6,10 +6,14 @@ import {
   PROJECT_WIDTH,
   SHOT_MIN_DURATION_MS,
 } from '../constants';
-import { AnimationDefinitionSchema } from './animation';
+import {
+  AnimationDefinitionSchema,
+  ProjectAnimationDefinitionSchema,
+} from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
 import {
   AssetSchema,
+  AssetV16Schema,
   AssetV12Schema,
   type AssetV12,
 } from './asset';
@@ -29,6 +33,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV16Schema,
   ShotV15AdaptiveSchema,
   ShotV15AnimationSchema,
   ShotV2Schema,
@@ -110,7 +115,7 @@ const ProjectDataSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    animations: z.array(AnimationDefinitionSchema),
+    animations: z.array(ProjectAnimationDefinitionSchema),
     characters: z.array(CharacterSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -147,9 +152,18 @@ export const ProjectV13Schema = ProjectV12DataSchema.extend({
 /** Strict persisted v14 envelope, before Adaptive Parts Characters. */
 export const ProjectV14Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(14),
+  animations: z.array(AnimationDefinitionSchema),
   characters: z.array(CharacterV14Schema),
   shots: z.array(ShotV14Schema),
 });
+
+/** Strict persisted v16 envelope before reusable FLA Graphic Definitions. */
+export const ProjectV16Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(16),
+  animations: z.array(AnimationDefinitionSchema),
+  assets: z.array(AssetV16Schema),
+  shots: z.array(ShotV16Schema),
+}).strict();
 
 export const ProjectV1Schema = z
   .object({
@@ -515,7 +529,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v15 -> v16) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v16 -> v17) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,
