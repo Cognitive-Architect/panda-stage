@@ -19,7 +19,6 @@ import {
 } from './fla-timeline-frame-span-resolver';
 import {
   interpolateFlaClassicMotionInstanceTransform,
-  interpolateFlaLinearMotionTransform,
   type FlaMotionTweenRotation,
 } from './fla-motion-tween-transform-interpolator';
 import {
@@ -1392,10 +1391,15 @@ function motionGuideLayerFor(
   return { ok: true, value: parentType === 'guide' ? parentLayerIndex : null };
 }
 
-function soleGraphicFrameMatrix(
+interface SoleGraphicFrameObject {
+  readonly instance: FlaXflElementBlock;
+  readonly matrix: FlaDisplayListMatrix;
+}
+
+function soleGraphicFrameObject(
   frame: FlaXflElementBlock,
   role: string,
-): RigCalculationResult<FlaDisplayListMatrix> {
+): RigCalculationResult<SoleGraphicFrameObject> {
   const elements = frameDisplayElements(frame);
   if (elements.length !== 1) {
     return { ok: false, message: `${role} parent frame must contain exactly one display object` };
@@ -1409,7 +1413,19 @@ function soleGraphicFrameMatrix(
     return { ok: false, message: `${role} parent object is not a Graphic instance` };
   }
   const matrix = readDirectMatrix(instance);
-  return matrix.ok ? { ok: true, value: matrix.matrix } : { ok: false, message: matrix.message };
+  return matrix.ok
+    ? { ok: true, value: { instance, matrix: matrix.matrix } }
+    : { ok: false, message: matrix.message };
+}
+
+function soleGraphicFrameMatrix(
+  frame: FlaXflElementBlock,
+  role: string,
+): RigCalculationResult<FlaDisplayListMatrix> {
+  const object = soleGraphicFrameObject(frame, role);
+  return object.ok
+    ? { ok: true, value: object.value.matrix }
+    : object;
 }
 
 function rigMotionParentPoses(
@@ -1549,10 +1565,15 @@ function computeRigLayerObjectMatrix(
     if (guide.value !== null) {
       return { ok: false, message: `Rig parent Motion Guide on layer ${guide.value} requires unsupported path evaluation` };
     }
-    const startMatrix = soleGraphicFrameMatrix(span.sourceFrame, 'start');
-    if (!startMatrix.ok) return startMatrix;
-    const endMatrix = soleGraphicFrameMatrix(endSpan.sourceFrame, 'end');
-    if (!endMatrix.ok) return endMatrix;
+    const startObject = soleGraphicFrameObject(span.sourceFrame, 'start');
+    if (!startObject.ok) return startObject;
+    const endObject = soleGraphicFrameObject(endSpan.sourceFrame, 'end');
+    if (!endObject.ok) return endObject;
+    const startPivot = readDirectTransformationPoint(startObject.value.instance);
+    const endPivot = readDirectTransformationPoint(endObject.value.instance);
+    if (!startPivot || !endPivot) {
+      return { ok: false, message: 'Rig parent transformation point is invalid' };
+    }
     const parentPoses = rigMotionParentPoses(
       context,
       layerIndex,
@@ -1564,8 +1585,8 @@ function computeRigLayerObjectMatrix(
     if (!parentPoses.ok) return parentPoses;
     const tween = classicMotionProgress(span.sourceFrame, frameIndex, span.index, span.duration);
     if (!tween.ok) return tween;
-    let from = startMatrix.value;
-    let to = endMatrix.value;
+    let from = startObject.value.matrix;
+    let to = endObject.value.matrix;
     if (parentPoses.value) {
       const parentStartInverse = inverse(parentPoses.value.start.matrix);
       const parentEndInverse = inverse(parentPoses.value.end.matrix);
@@ -1575,11 +1596,13 @@ function computeRigLayerObjectMatrix(
       from = compose(parentStartInverse, from);
       to = compose(parentEndInverse, to);
     }
-    const interpolated = interpolateFlaLinearMotionTransform(
+    const interpolated = interpolateFlaClassicMotionInstanceTransform(
       from,
       to,
       tween.value.progress,
       tween.value.rotation,
+      startPivot,
+      endPivot,
     );
     if (!interpolated.ok) return { ok: false, message: interpolated.message };
     const dependencies = parentPoses.value

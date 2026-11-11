@@ -253,7 +253,12 @@ function buildRiggingAdapterFixtureResult(options: {
   readonly parentFrameParent?: string;
   readonly withGrandparent?: boolean;
   readonly parentObjectCount?: number;
+  readonly childStartMatrix?: string;
+  readonly parentStartMatrix?: string;
   readonly parentMatrix?: string;
+  readonly parentStartPivot?: { readonly x: number; readonly y: number };
+  readonly parentEndPivot?: { readonly x: number; readonly y: number };
+  readonly grandparentMatrix?: string;
   readonly rigPropagationMatrix?: string;
 } = {}) {
   const childTween = options.childTween ?? true;
@@ -264,11 +269,18 @@ function buildRiggingAdapterFixtureResult(options: {
   const parentFrameParent = options.parentFrameParent;
   const withGrandparent = options.withGrandparent ?? false;
   const parentObjectCount = options.parentObjectCount ?? 1;
+  const childStartMatrix = options.childStartMatrix ?? matrix(10, 0);
+  const parentStartMatrix = options.parentStartMatrix ?? matrix(0, 0);
   const parentMatrix = options.parentMatrix ?? transformedMatrix(0, 1, -1, 0, 0, 0);
+  const pivotXml = (pivot: { readonly x: number; readonly y: number } | undefined) =>
+    pivot ? `<transformationPoint><Point x="${pivot.x}" y="${pivot.y}"/></transformationPoint>` : '';
+  const parentStartPivotXml = pivotXml(options.parentStartPivot);
+  const parentEndPivotXml = pivotXml(options.parentEndPivot);
+  const grandparentMatrix = options.grandparentMatrix ?? matrix(0, 0);
   const rigPropagationMatrix = options.rigPropagationMatrix ??
     '{&quot;a&quot;:64859,&quot;b&quot;:-9181,&quot;c&quot;:9181,&quot;d&quot;:64859,&quot;tx&quot;:0,&quot;ty&quot;:0}';
-  const childStart = `<DOMFrame index="0" duration="4"${childTween ? ' tweenType="motion" keyMode="22017"' : ''} parentLayerIndex="${childRigParent}">` +
-    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${matrix(10, 0)}</DOMSymbolInstance></elements></DOMFrame>`;
+  const childStart = `<DOMFrame index="0" duration="${childTween ? 4 : 5}"${childTween ? ' tweenType="motion" keyMode="22017"' : ''} parentLayerIndex="${childRigParent}">` +
+    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${childStartMatrix}</DOMSymbolInstance></elements></DOMFrame>`;
   const childEnd = childTween
     ? `<DOMFrame index="4" keyMode="9728" parentLayerIndex="${childRigParent}"><elements>` +
       `<DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${transformedMatrix(0, 1, -1, 0, 0, 10)}</DOMSymbolInstance>` +
@@ -280,13 +292,13 @@ function buildRiggingAdapterFixtureResult(options: {
     ...(parentFrameParent !== undefined ? [`parentLayerIndex="${parentFrameParent}"`] : []),
     `rigPropagationMatrix="${rigPropagationMatrix}"`,
   ].join(' ');
-  const parentElements = (matrixXml: string) => Array.from({ length: parentObjectCount }, (_, index) =>
-    `<DOMSymbolInstance libraryItemName="parent-art-${index}" symbolType="graphic">${matrixXml}</DOMSymbolInstance>`,
+  const parentElements = (matrixXml: string, pivotXml: string) => Array.from({ length: parentObjectCount }, (_, index) =>
+    `<DOMSymbolInstance libraryItemName="parent-art-${index}" symbolType="graphic">${matrixXml}${pivotXml}</DOMSymbolInstance>`,
   ).join('');
   const parentStart = `<DOMFrame index="0" duration="${parentTween ? 4 : 5}"${parentTween ? ' tweenType="motion" keyMode="22017" motionTweenSnap="true"' : ''}${parentFrameParent !== undefined ? ` parentLayerIndex="${parentFrameParent}"` : ''}>` +
-    `<elements>${parentElements(matrix(0, 0))}</elements></DOMFrame>`;
+    `<elements>${parentElements(parentStartMatrix, parentStartPivotXml)}</elements></DOMFrame>`;
   const parentEnd = parentTween
-    ? `<DOMFrame ${parentEndAttributes}><elements>${parentElements(parentMatrix)}</elements></DOMFrame>`
+    ? `<DOMFrame ${parentEndAttributes}><elements>${parentElements(parentMatrix, parentEndPivotXml)}</elements></DOMFrame>`
     : '';
   const childLayerRigId = childRigId !== undefined ? ` layerRiggingIndex="${childRigId}"` : '';
   const rootLayers = [
@@ -294,7 +306,7 @@ function buildRiggingAdapterFixtureResult(options: {
     `<DOMLayer name="parent" layerRiggingIndex="${parentRigId}"><frames>${parentStart}${parentEnd}</frames></DOMLayer>`,
     ...(withGrandparent ? [
       `<DOMLayer name="grandparent" layerRiggingIndex="8"><frames><DOMFrame index="0" duration="5"><elements>` +
-        `<DOMSymbolInstance libraryItemName="grandparent-art" symbolType="graphic">${matrix(0, 0)}</DOMSymbolInstance>` +
+        `<DOMSymbolInstance libraryItemName="grandparent-art" symbolType="graphic">${grandparentMatrix}</DOMSymbolInstance>` +
         `</elements></DOMFrame></frames></DOMLayer>`,
     ] : []),
   ];
@@ -1512,8 +1524,14 @@ describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
     return { ...result, childLayer, element: childLayer?.elements[0] };
   }
 
-  it('uses rigging id instead of DOM layer ordinal and applies the parent pose once at start, middle, and end', () => {
-    const source = buildRiggingAdapterFixture();
+  it.each([
+    { pivotCase: 'missing', pivots: {} },
+    {
+      pivotCase: 'explicit zero',
+      pivots: { parentStartPivot: { x: 0, y: 0 }, parentEndPivot: { x: 0, y: 0 } },
+    },
+  ])('uses rigging id and applies the parent pose once with $pivotCase pivots', ({ pivots }) => {
+    const source = buildRiggingAdapterFixture(pivots);
     const start = childAt(source, 0);
     const middle = childAt(source, 2);
     const end = childAt(source, 4);
@@ -1536,6 +1554,106 @@ describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
       } else {
         expect(result.element.localTransform).toMatchObject({ tx: 0, ty: 10, a: 0, b: 1 });
       }
+    }
+  });
+
+  it('keeps a parent pivot on its path through a transformed three-level Rig chain', () => {
+    const grandparent = transformedMatrix(0, 1, -1, 0, 100, 20);
+    const source = buildRiggingAdapterFixture({
+      childTween: false,
+      childStartMatrix: transformedMatrix(0, 1, -1, 0, 100, 30),
+      parentStartMatrix: grandparent,
+      parentMatrix: transformedMatrix(-1, 0, 0, -1, 140, 60),
+      parentStartPivot: { x: 40, y: 0 },
+      parentEndPivot: { x: 40, y: 0 },
+      parentFrameParent: '8',
+      withGrandparent: true,
+      grandparentMatrix: grandparent,
+    });
+    const target = descriptor(source, 'rig-root');
+    const contextAt = (frameIndex: number) => source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      frameIndex,
+      `rig-pivot-frame-${frameIndex}`,
+    );
+    const atStart = contextAt(0);
+    const atMiddle = contextAt(2);
+    const atEnd = contextAt(4);
+
+    expect(atStart.ok).toBe(true);
+    expect(atMiddle.ok).toBe(true);
+    expect(atEnd.ok).toBe(true);
+    if (!atStart.ok || !atMiddle.ok || !atEnd.ok) return;
+
+    const expected = [
+      {
+        frameIndex: 0,
+        context: atStart.value,
+        parent: { a: 0, b: 1, c: -1, d: 0, tx: 100, ty: 20 },
+        child: { a: 0, b: 1, c: -1, d: 0, tx: 100, ty: 30 },
+      },
+      {
+        frameIndex: 2,
+        context: atMiddle.value,
+        parent: {
+          a: -Math.SQRT1_2,
+          b: Math.SQRT1_2,
+          c: -Math.SQRT1_2,
+          d: -Math.SQRT1_2,
+          tx: 128.2842712474619,
+          ty: 31.7157287525381,
+        },
+        child: {
+          a: -Math.SQRT1_2,
+          b: Math.SQRT1_2,
+          c: -Math.SQRT1_2,
+          d: -Math.SQRT1_2,
+          tx: 121.21320343559643,
+          ty: 38.78679656440357,
+        },
+      },
+      {
+        frameIndex: 4,
+        context: atEnd.value,
+        parent: { a: -1, b: 0, c: 0, d: -1, tx: 140, ty: 60 },
+        child: { a: -1, b: 0, c: 0, d: -1, tx: 130, ty: 60 },
+      },
+    ] as const;
+    type TestMatrix = {
+      readonly a: number;
+      readonly b: number;
+      readonly c: number;
+      readonly d: number;
+      readonly tx: number;
+      readonly ty: number;
+    };
+    const expectMatrix = (
+      actual: TestMatrix,
+      expectedMatrix: TestMatrix,
+    ) => {
+      expect(actual.a).toBeCloseTo(expectedMatrix.a, 9);
+      expect(actual.b).toBeCloseTo(expectedMatrix.b, 9);
+      expect(actual.c).toBeCloseTo(expectedMatrix.c, 9);
+      expect(actual.d).toBeCloseTo(expectedMatrix.d, 9);
+      expect(actual.tx).toBeCloseTo(expectedMatrix.tx, 9);
+      expect(actual.ty).toBeCloseTo(expectedMatrix.ty, 9);
+    };
+
+    for (const { frameIndex, context, parent: expectedParent, child: expectedChild } of expected) {
+      const parentElement = context.layers.find((layer) => layer.name === 'parent')?.elements[0];
+      const childElement = context.layers.find((layer) => layer.name === 'child')?.elements[0];
+      expect(parentElement?.kind, `parent frame ${frameIndex}`).toBe('symbol');
+      expect(childElement?.kind, `child frame ${frameIndex}`).toBe('symbol');
+      if (parentElement?.kind !== 'symbol' || !parentElement.localTransform ||
+          childElement?.kind !== 'symbol' || !childElement.localTransform) continue;
+
+      const parentMatrix = parentElement.localTransform;
+      const childMatrix = childElement.localTransform;
+      expectMatrix(parentMatrix, expectedParent);
+      expectMatrix(childMatrix, expectedChild);
+      expect(parentMatrix.a * 40 + parentMatrix.tx).toBeCloseTo(100, 9);
+      expect(parentMatrix.b * 40 + parentMatrix.ty).toBeCloseTo(60, 9);
     }
   });
 
