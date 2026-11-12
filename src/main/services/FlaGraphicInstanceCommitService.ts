@@ -9,6 +9,8 @@ import {
   LayerService,
   ProjectSchema,
   type FlaGraphicDefinition,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureNode,
   type ImageAsset,
   type Project,
 } from '../../domain';
@@ -75,6 +77,49 @@ function uniqueAnimationName(project: Project, baseName: string): string {
   throw new Error('Unable to allocate a unique FLA Graphic Definition name.');
 }
 
+function bindFallbackAssetToStructure(
+  structure: FlaGraphicStructure,
+  frameAssetIds: readonly string[],
+): FlaGraphicStructure {
+  const fallbackAssetId = frameAssetIds[0];
+  if (!fallbackAssetId) return structure;
+  const visitNodes = (nodes: readonly FlaGraphicStructureNode[]): FlaGraphicStructureNode[] =>
+    nodes.map((node) => {
+      if (node.type === 'opaque') {
+        return {
+          ...node,
+          ...(!node.fallbackAssetId ? { fallbackAssetId } : {}),
+        };
+      }
+      if (node.type === 'group' || node.type === 'symbol') {
+        return {
+          ...node,
+          children: visitNodes(node.children),
+        };
+      }
+      return node;
+    });
+
+  return {
+    ...structure,
+    frames: structure.frames.map((frame, index) => {
+      const frameFallback = frameAssetIds[index] ?? fallbackAssetId;
+      return {
+        ...frame,
+        layers: frame.layers.map((layer) => ({
+          ...layer,
+          nodes: visitNodes(layer.nodes.map((node) => {
+            if (node.type === 'opaque' && !node.fallbackAssetId) {
+              return { ...node, fallbackAssetId: frameFallback };
+            }
+            return node;
+          })),
+        })),
+      };
+    }),
+  };
+}
+
 function buildGraphicDefinition(
   batch: FlaGraphicDefinitionFrameBatch,
   assetIds: readonly string[],
@@ -90,6 +135,9 @@ function buildGraphicDefinition(
   const bottom = Math.max(...viewports.map((viewport) => viewport.y + viewport.height));
   const canvas = { width: right - anchor.x, height: bottom - anchor.y };
   const frameDurationMs = 1_000 / batch.target.sourceFps;
+  const boundStructure = batch.structure
+    ? bindFallbackAssetToStructure(batch.structure, assetIds)
+    : undefined;
   return FlaGraphicDefinitionSchema.parse({
     id,
     name,
@@ -111,7 +159,7 @@ function buildGraphicDefinition(
       },
     },
     durationMs: batch.target.frameCount * frameDurationMs,
-    ...(batch.structure ? { structure: batch.structure } : {}),
+    ...(boundStructure ? { structure: boundStructure } : {}),
     frames: batch.frames.map((frame, index) => ({
       ordinal: index,
       sourceFrameIndex: frame.sourceFrameIndex,
@@ -427,18 +475,23 @@ export class FlaGraphicInstanceCommitService {
           assets.push(asset);
         }
       }
-      const definition = reused ?? buildGraphicDefinition(
+      let definition = reused ?? buildGraphicDefinition(
         batch,
         assets.map((asset) => asset.id),
         definitionId,
         uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.fla$/iu, '')} ${batch.target.name}`),
       );
+      if (reused && upgradeStructure && batch.structure) {
+        const frameAssetIds = reused.frames.map((frame) => frame.assetId);
+        const boundStructure = bindFallbackAssetToStructure(batch.structure, frameAssetIds);
+        definition = { ...reused, structure: boundStructure };
+      }
       const baseProject = ProjectSchema.parse({
         ...current.project,
         assets: reused ? current.project.assets : [...current.project.assets, ...assets],
         animations: reused
           ? upgradeStructure
-            ? current.project.animations.map((animation) => animation.id === reused.id ? reused : animation)
+            ? current.project.animations.map((animation) => animation.id === definition.id ? definition : animation)
             : current.project.animations
           : [...current.project.animations, definition],
         updatedAt: this.now().toISOString(),

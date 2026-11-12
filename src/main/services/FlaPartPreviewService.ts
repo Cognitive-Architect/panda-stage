@@ -1297,35 +1297,50 @@ export class FlaPartPreviewService {
     let structure: FlaGraphicStructure | undefined;
     if (firstFrame && unit.sourceAddress) {
       prepared.source.resetFrameBuildState();
-      const resolvedFirstFrame = resolveFlaDisplayList({
+      // Resolve display list in tolerant mode for structure capture so unsupported
+      // subtrees degrade locally rather than dropping the whole structure.
+      const resolvedFirstFrameTolerant = resolveFlaDisplayList({
         root: {
           kind: 'graphic',
           name: descriptor.sourceLibraryItemName,
           frameContext: descriptor.frameContext,
         },
         symbols: prepared.source.symbols,
-      });
-      if (resolvedFirstFrame.ok) {
+      }, { tolerant: true });
+      if (resolvedFirstFrameTolerant.ok) {
         // E1: capture the authored tree from the resolved source, before SVG baking.
-        // Independent of the legacy group-edit preview eligibility gates.
-        structure = captureFlaGraphicStructure(resolvedFirstFrame.displayList);
-      }
-      if (resolvedFirstFrame.ok && frameCount === 1) {
-        groupEditPreview = buildGroupEditPreview({
-          displayList: resolvedFirstFrame.displayList,
-          sourceBytes: source.bytes,
-          sourceSha256: source.sha256,
-          outerOccurrenceId: unit.occurrenceId,
-          outerSourceAddress: unit.sourceAddress,
-          graphicSymbolName: descriptor.sourceLibraryItemName,
-          frameOrigin: { x: firstFrame.sourceViewport.x, y: firstFrame.sourceViewport.y },
-          frameCanvas: { width: firstFrame.sourceViewport.width, height: firstFrame.sourceViewport.height },
-          shapeBlocks: prepared.source.shapeBlocks,
-          resolveBitmapMedia: mediaLookup,
-          stageWidth: prepared.source.stageWidth,
-          stageHeight: prepared.source.stageHeight,
-          renderTargetId,
+        // Pass fallback viewBox and source basename for project-persistent fallback references.
+        structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
+          fallbackViewBox: firstFrame.sourceViewport,
+          sourceBasename: source.basename,
         });
+      }
+      if (frameCount === 1) {
+        const resolvedForPreview = resolveFlaDisplayList({
+          root: {
+            kind: 'graphic',
+            name: descriptor.sourceLibraryItemName,
+            frameContext: descriptor.frameContext,
+          },
+          symbols: prepared.source.symbols,
+        });
+        if (resolvedForPreview.ok) {
+          groupEditPreview = buildGroupEditPreview({
+            displayList: resolvedForPreview.displayList,
+            sourceBytes: source.bytes,
+            sourceSha256: source.sha256,
+            outerOccurrenceId: unit.occurrenceId,
+            outerSourceAddress: unit.sourceAddress,
+            graphicSymbolName: descriptor.sourceLibraryItemName,
+            frameOrigin: { x: firstFrame.sourceViewport.x, y: firstFrame.sourceViewport.y },
+            frameCanvas: { width: firstFrame.sourceViewport.width, height: firstFrame.sourceViewport.height },
+            shapeBlocks: prepared.source.shapeBlocks,
+            resolveBitmapMedia: mediaLookup,
+            stageWidth: prepared.source.stageWidth,
+            stageHeight: prepared.source.stageHeight,
+            renderTargetId,
+          });
+        }
       }
     }
     return {

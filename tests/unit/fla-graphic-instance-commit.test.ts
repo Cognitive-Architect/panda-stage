@@ -404,7 +404,29 @@ describe('FLA Graphic structured Definition (E1)', () => {
     const definition = reopened.project.animations[0]!;
     expect(definition).toMatchObject({ kind: 'fla-graphic' });
     if (!('structure' in definition) || !definition.structure) throw new Error('structure was not persisted');
-    expect(definition.structure).toEqual(h.batchStructure.current);
+    expect(definition.structure).toMatchObject({
+      version: 1,
+      frames: [{
+        ordinal: 0,
+        layers: [{
+          name: 'Body',
+          nodes: [{
+            type: 'group',
+            id: 'g-outer',
+            children: [
+              { type: 'symbol', id: 'sym-1', symbolRef: 'Arm' },
+              { type: 'symbol', id: 'sym-2', symbolRef: 'Arm' },
+              {
+                type: 'opaque',
+                id: 'shape-node',
+                opaqueKind: 'shape',
+                fallbackAssetId: definition.frames[0]!.assetId,
+              },
+            ],
+          }],
+        }],
+      }],
+    });
     const flat = reconstructFlaGraphicStructure(definition.structure);
     expect(flat.map((entry) => `${entry.parentId ?? '-'}>${entry.node.id}:${entry.node.type}`)).toEqual([
       '->g-outer:group', 'g-outer>sym-1:symbol', 'sym-1>bmp-1:bitmap',

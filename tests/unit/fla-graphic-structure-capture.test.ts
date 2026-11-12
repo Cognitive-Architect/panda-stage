@@ -61,4 +61,90 @@ describe('captureFlaGraphicStructure', () => {
     expect(body!.nodes[0]!.type).toBe('group');
     expect(blurred!.nodes[0]).toMatchObject({ type: 'opaque', opaqueKind: 'filter' });
   });
+
+  it('captures playbackMode and frameSelectionKey on symbol nodes, and fallback/assetId metadata', () => {
+    const legFrame = {
+      frameIndex: 0,
+      layers: [
+        layer('leg-layer', [
+          { kind: 'bitmap', libraryItemName: 'leg.png', sourceAddress: 'LIB/Leg/bitmap[0]', localTransform: m(0, 0) },
+        ]),
+      ],
+    };
+
+    const resolvedTolerant = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'TolerantChar',
+        frameContext: {
+          frameIndex: 0,
+          layers: [
+            layer('main', [
+              {
+                kind: 'symbol',
+                libraryItemName: 'Leg',
+                symbolType: 'graphic',
+                sourceAddress: 'LIB/TolerantChar/leg[0]',
+                localTransform: m(5, 5),
+                playbackMode: 'single-frame',
+                firstFrame: '3',
+                lastFrame: '3',
+                synchronizedFirstFrame: 3,
+                frameSelectionKey: 'key_sym_3',
+              },
+              {
+                kind: 'symbol',
+                libraryItemName: 'MissingOrUnsupported',
+                symbolType: 'movieclip',
+                sourceAddress: 'LIB/TolerantChar/clip[0]',
+                localTransform: m(10, 10),
+              },
+            ]),
+          ],
+        },
+      },
+      symbols: new Map([['key_sym_3', { kind: 'graphic' as const, libraryItemName: 'Leg', frameContext: legFrame }]]),
+    }, { tolerant: true });
+
+    if (!resolvedTolerant.ok) throw new Error(resolvedTolerant.message);
+
+    const structure = captureFlaGraphicStructure(resolvedTolerant.displayList, {
+      fallbackAssetId: 'fallback-asset-uuid',
+      fallbackViewBox: { x: 0, y: 0, width: 200, height: 150 },
+      sourceBasename: 'char.fla',
+      bitmapAssetMap: new Map([['leg.png', 'leg-asset-uuid']]),
+    })!;
+
+    expect(structure).toBeDefined();
+    const flat = reconstructFlaGraphicStructure(structure);
+
+    // Find symbol node
+    const symbolNode = flat.find((e) => e.node.type === 'symbol');
+    expect(symbolNode).toBeDefined();
+    if (symbolNode && symbolNode.node.type === 'symbol') {
+      expect(symbolNode.node.playbackMode).toBe('single-frame');
+      expect(symbolNode.node.firstFrame).toBe('3');
+      expect(symbolNode.node.lastFrame).toBe('3');
+      expect(symbolNode.node.synchronizedFirstFrame).toBe(3);
+      expect(symbolNode.node.frameSelectionKey).toBe('key_sym_3');
+    }
+
+    // Find bitmap node
+    const bitmapNode = flat.find((e) => e.node.type === 'bitmap');
+    expect(bitmapNode).toBeDefined();
+    if (bitmapNode && bitmapNode.node.type === 'bitmap') {
+      expect(bitmapNode.node.assetId).toBe('leg-asset-uuid');
+      expect(bitmapNode.node.sourceBasename).toBe('char.fla');
+    }
+
+    // Find opaque node (from movieclip)
+    const opaqueNode = flat.find((e) => e.node.type === 'opaque');
+    expect(opaqueNode).toBeDefined();
+    if (opaqueNode && opaqueNode.node.type === 'opaque') {
+      expect(opaqueNode.node.opaqueKind).toBe('symbol');
+      expect(opaqueNode.node.reason).toContain('movieclip');
+      expect(opaqueNode.node.fallbackAssetId).toBe('fallback-asset-uuid');
+      expect(opaqueNode.node.fallbackViewBox).toEqual({ x: 0, y: 0, width: 200, height: 150 });
+    }
+  });
 });

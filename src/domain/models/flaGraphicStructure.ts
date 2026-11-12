@@ -81,6 +81,11 @@ export type FlaGraphicStructureNode =
       clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
       /** Shared Symbol Definition reference (source library item name). */
       symbolRef: string;
+      frameSelectionKey?: string;
+      playbackMode?: string;
+      firstFrame?: string;
+      lastFrame?: string;
+      synchronizedFirstFrame?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
       children: FlaGraphicStructureNode[];
@@ -94,6 +99,10 @@ export type FlaGraphicStructureNode =
       clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
       /** Source media library item name; bytes stay in the source/media cache. */
       bitmapRef: string;
+      /** Project asset ID fallback if bound, e.g. from generated or existing ImageAssets. */
+      assetId?: string;
+      /** Source provenance identifier in the project/FLA cache. */
+      sourceBasename?: string;
     }
   | {
       type: 'opaque';
@@ -103,8 +112,18 @@ export type FlaGraphicStructureNode =
       localTransform: z.infer<typeof FlaStructureMatrixSchema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
       /** Why this subtree is read-only: its display comes from the frame SVG fallback. */
-      opaqueKind: 'shape' | 'text' | 'filter' | 'unknown';
+      opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
       sourceRef?: string;
+      reason?: string;
+      /** Fallback reference to a project asset (e.g. SVG frame asset ID). */
+      fallbackAssetId?: string;
+      /** Framing / viewBox bounds within the fallback asset to avoid full-frame duplication in future. */
+      fallbackViewBox?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
     };
 
 export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
@@ -122,20 +141,42 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         ...NodeBase,
         type: z.literal('symbol'),
         symbolRef: SourceTextSchema,
+        frameSelectionKey: SourceTextSchema.optional(),
+        playbackMode: SourceTextSchema.optional(),
+        firstFrame: SourceTextSchema.optional(),
+        lastFrame: SourceTextSchema.optional(),
+        synchronizedFirstFrame: z.number().int().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
         children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
       })
       .strict(),
     z
-      .object({ ...NodeBase, type: z.literal('bitmap'), bitmapRef: SourceTextSchema })
+      .object({
+        ...NodeBase,
+        type: z.literal('bitmap'),
+        bitmapRef: SourceTextSchema,
+        assetId: SourceTextSchema.optional(),
+        sourceBasename: SourceTextSchema.optional(),
+      })
       .strict(),
     z
       .object({
         ...NodeBase,
         type: z.literal('opaque'),
-        opaqueKind: z.enum(['shape', 'text', 'filter', 'unknown']),
+        opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
         sourceRef: SourceTextSchema.optional(),
+        reason: SourceTextSchema.optional(),
+        fallbackAssetId: SourceTextSchema.optional(),
+        fallbackViewBox: z
+          .object({
+            x: FiniteNumber,
+            y: FiniteNumber,
+            width: FiniteNumber.positive(),
+            height: FiniteNumber.positive(),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
   ]),

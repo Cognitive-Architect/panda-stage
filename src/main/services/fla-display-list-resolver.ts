@@ -159,6 +159,12 @@ export interface FlaDisplayListResolverLimits {
   readonly maxRecursionDepth: number;
   /** Bounds emitted nodes and source nodes visited, including hidden nodes. */
   readonly maxResolvedNodeCount: number;
+  /**
+   * When true, elements/subtrees that fail resolution (e.g. unsupported symbol
+   * types, cycles, missing symbols, exceeded limits) degrade to typed opaque
+   * stand-in nodes instead of failing the entire display list.
+   */
+  readonly tolerant?: boolean;
 }
 
 export const DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS: FlaDisplayListResolverLimits =
@@ -204,6 +210,18 @@ export interface FlaResolvedGroupNode {
   readonly worldTransform: FlaDisplayListMatrix;
   readonly opacity?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly symbolInstance?: {
+    readonly frameSelectionKey?: string;
+    readonly playbackMode?: string;
+    readonly firstFrame?: string;
+    readonly lastFrame?: string;
+    readonly synchronizedFirstFrame?: number;
+  };
+  readonly opaque?: {
+    readonly kind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
+    readonly reason: string;
+    readonly sourceRef?: string;
+  };
   readonly children: readonly FlaResolvedDisplayNode[];
 }
 
@@ -469,6 +487,44 @@ function resolveLayers(
   return { ok: true, layers };
 }
 
+function opaqueStandIn(
+  element: FlaDisplayListElement,
+  parentTransform: FlaDisplayListMatrix,
+  reason: string,
+): FlaResolvedGroupNode {
+  const authored = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const localTransform = isValidMatrix(authored) ? authored : FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const composed = composeTransforms(parentTransform, localTransform);
+  const sourceRef = element.kind === 'symbol' || element.kind === 'bitmap'
+    ? element.libraryItemName
+    : element.kind === 'shape' ? element.shapeId : element.groupId;
+  const symbolInstance =
+    element.kind === 'symbol'
+      ? {
+          ...(element.frameSelectionKey !== undefined ? { frameSelectionKey: element.frameSelectionKey } : {}),
+          ...(element.playbackMode !== undefined ? { playbackMode: element.playbackMode } : {}),
+          ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
+          ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
+          ...(element.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: element.synchronizedFirstFrame } : {}),
+        }
+      : undefined;
+  return {
+    kind: 'group',
+    groupId: `opaque:${sourceRef || element.kind}`,
+    ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+    ...(element.kind === 'symbol' ? { symbolLibraryItemName: element.libraryItemName } : {}),
+    localTransform,
+    worldTransform: isValidMatrix(composed) ? composed : localTransform,
+    children: [],
+    ...(symbolInstance && Object.keys(symbolInstance).length > 0 ? { symbolInstance } : {}),
+    opaque: {
+      kind: element.kind === 'symbol' ? 'symbol' : element.kind === 'shape' ? 'shape' : 'unknown',
+      reason,
+      ...(sourceRef ? { sourceRef } : {}),
+    },
+  };
+}
+
 function resolveElements(
   elements: readonly FlaDisplayListElement[],
   parentTransform: FlaDisplayListMatrix,
@@ -487,23 +543,39 @@ function resolveElements(
     const element = elements[elementIndex];
     const elementPath = `${sourcePath}/element[${elementIndex}]`;
     const nodeBudgetFailure = enterSourceNode(context, elementPath);
-    if (nodeBudgetFailure) return nodeBudgetFailure;
+    if (nodeBudgetFailure) {
+      if (!context.limits.tolerant || !element) return nodeBudgetFailure;
+      nodes.push(opaqueStandIn(element, parentTransform, nodeBudgetFailure.message));
+      continue;
+    }
     if (!element) return failure('INVALID_INPUT', 'Missing display element', elementPath);
     if (element.visible === false) continue;
 
     const localTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
     if (!isValidMatrix(localTransform)) {
-      return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Display element matrix contains a non-finite value'));
+      continue;
     }
     const worldTransform = composeTransforms(parentTransform, localTransform);
     if (!isValidMatrix(worldTransform)) {
-      return failure('INVALID_MATRIX', 'Accumulated display element matrix is not finite', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_MATRIX', 'Accumulated display element matrix is not finite', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Accumulated display element matrix is not finite'));
+      continue;
     }
 
     if (element.kind === 'shape') {
       if (!element.shapeId) return failure('INVALID_INPUT', 'Shape reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
       nodes.push({
         kind: 'shape',
         shapeId: element.shapeId,
@@ -518,7 +590,11 @@ function resolveElements(
     if (element.kind === 'bitmap') {
       if (!element.libraryItemName) return failure('INVALID_INPUT', 'Bitmap reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
       nodes.push({
         kind: 'bitmap',
         libraryItemName: element.libraryItemName,
@@ -533,13 +609,21 @@ function resolveElements(
     if (element.kind === 'group') {
       const nextDepth = nestingDepth + 1;
       if (nextDepth > context.limits.maxRecursionDepth) {
-        return failure(
-          'MAX_RECURSION_DEPTH_EXCEEDED',
-          `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`, elementPath,
-        );
+        if (!context.limits.tolerant) {
+          return failure(
+            'MAX_RECURSION_DEPTH_EXCEEDED',
+            `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`, elementPath,
+          );
+        }
+        nodes.push(opaqueStandIn(element, parentTransform, `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`));
+        continue;
       }
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
       const children = resolveElements(
         element.elements,
         worldTransform,
@@ -549,7 +633,11 @@ function resolveElements(
         context,
         clipPaths,
       );
-      if (!children.ok) return children;
+      if (!children.ok) {
+        if (!context.limits.tolerant) return children;
+        nodes.push(opaqueStandIn(element, parentTransform, children.message));
+        continue;
+      }
       nodes.push({
         kind: 'group',
         groupId: element.groupId,
@@ -562,53 +650,89 @@ function resolveElements(
     }
 
     if (element.symbolType !== 'graphic') {
-      return failure(
-        'UNSUPPORTED_SYMBOL_TYPE',
-        `Only Graphic symbols are supported in C01: ${element.libraryItemName} (${element.symbolType})`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'UNSUPPORTED_SYMBOL_TYPE',
+          `Only Graphic symbols are supported in C01: ${element.libraryItemName} (${element.symbolType})`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Unsupported symbol type: ${element.symbolType}`));
+      continue;
     }
     if (element.alphaMultiplier !== undefined &&
         (!Number.isFinite(element.alphaMultiplier) || element.alphaMultiplier < 0 || element.alphaMultiplier > 1)) {
-      return failure('INVALID_INPUT', 'Graphic alpha multiplier must be within 0..1', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic alpha multiplier must be within 0..1', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic alpha multiplier must be within 0..1'));
+      continue;
     }
     if (element.rgbTransform !== undefined &&
         (!Number.isFinite(element.rgbTransform.multiplier) || element.rgbTransform.multiplier < 0 ||
           element.rgbTransform.multiplier > 1 || !Number.isFinite(element.rgbTransform.offset) ||
           element.rgbTransform.offset < 0 || element.rgbTransform.offset > 255)) {
-      return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255'));
+      continue;
     }
     if (!element.libraryItemName) {
-      return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic symbol reference is empty'));
+      continue;
     }
     if (symbolStack.includes(element.libraryItemName)) {
-      return failure(
-        'SYMBOL_CYCLE',
-        `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'SYMBOL_CYCLE',
+          `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`));
+      continue;
     }
     const definition = context.input.symbols.get(element.frameSelectionKey ?? element.libraryItemName);
     if (!definition) {
-      return failure(
-        'MISSING_SYMBOL',
-        `Graphic symbol definition not found: ${element.libraryItemName}`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'MISSING_SYMBOL',
+          `Graphic symbol definition not found: ${element.libraryItemName}`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Graphic symbol definition not found: ${element.libraryItemName}`));
+      continue;
     }
     if (definition.libraryItemName !== element.libraryItemName || definition.kind !== 'graphic') {
-      return failure('INVALID_INPUT', 'Graphic symbol definition identity is inconsistent', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic symbol definition identity is inconsistent', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic symbol definition identity is inconsistent'));
+      continue;
     }
 
     const nextDepth = nestingDepth + 1;
     if (nextDepth > context.limits.maxRecursionDepth) {
-      return failure(
-        'MAX_RECURSION_DEPTH_EXCEEDED',
-        `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`, elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'MAX_RECURSION_DEPTH_EXCEEDED',
+          `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`, elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`));
+      continue;
     }
     const budgetFailure = addResolvedNode(context, elementPath);
-    if (budgetFailure) return budgetFailure;
+    if (budgetFailure) {
+      if (!context.limits.tolerant) return budgetFailure;
+      nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+      continue;
+    }
     const childLayers = resolveLayers(
       definition.frameContext,
       worldTransform,
@@ -618,7 +742,18 @@ function resolveElements(
       context,
       clipPaths,
     );
-    if (!childLayers.ok) return childLayers;
+    if (!childLayers.ok) {
+      if (!context.limits.tolerant) return childLayers;
+      nodes.push(opaqueStandIn(element, parentTransform, childLayers.message));
+      continue;
+    }
+    const symbolInstance = {
+      ...(element.frameSelectionKey !== undefined ? { frameSelectionKey: element.frameSelectionKey } : {}),
+      ...(element.playbackMode !== undefined ? { playbackMode: element.playbackMode } : {}),
+      ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
+      ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
+      ...(element.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: element.synchronizedFirstFrame } : {}),
+    };
     nodes.push({
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
@@ -628,6 +763,7 @@ function resolveElements(
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(Object.keys(symbolInstance).length ? { symbolInstance } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });
   }

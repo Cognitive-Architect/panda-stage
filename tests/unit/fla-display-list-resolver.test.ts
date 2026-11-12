@@ -344,4 +344,163 @@ describe('P0-C01 FLA display-list resolver', () => {
     });
     expect(invalidMatrix).toMatchObject({ ok: false, code: 'INVALID_MATRIX' });
   });
+
+  describe('tolerant mode', () => {
+    it('converts unsupported symbol types, missing symbols, and invalid elements into opaque stand-ins while preserving valid siblings', () => {
+      const result = resolveFlaDisplayList({
+        root: {
+          kind: 'scene',
+          name: 'tolerant-scene',
+          frameContext: frameContext([
+            {
+              name: 'mixed-layer',
+              visible: true,
+              elements: [
+                { kind: 'shape', shapeId: 'valid-shape', localTransform: IDENTITY },
+                {
+                  kind: 'symbol',
+                  libraryItemName: 'movie-clip-elem',
+                  symbolType: 'movieclip',
+                  sourceAddress: 'LIB/movie-clip-elem',
+                  playbackMode: 'play-once',
+                  firstFrame: '2',
+                  lastFrame: '5',
+                  frameSelectionKey: 'key-1',
+                },
+                {
+                  kind: 'symbol',
+                  libraryItemName: 'missing-symbol-elem',
+                  symbolType: 'graphic',
+                  sourceAddress: 'LIB/missing-symbol-elem',
+                },
+                {
+                  kind: 'bitmap',
+                  libraryItemName: 'broken-matrix.png',
+                  localTransform: { ...IDENTITY, tx: Number.NaN },
+                  sourceAddress: 'LIB/broken-matrix',
+                },
+              ],
+            },
+          ]),
+        },
+        symbols: new Map(),
+      }, { tolerant: true });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('Expected tolerant resolution to succeed');
+
+      const nodes = result.displayList.layers[0]!.children;
+      expect(nodes).toHaveLength(4);
+
+      // Node 0: valid shape
+      expect(nodes[0]!.kind).toBe('shape');
+
+      // Node 1: unsupported movieclip converted to opaque stand-in
+      expect(nodes[1]!.kind).toBe('group');
+      if (nodes[1]!.kind === 'group') {
+        expect(nodes[1]!.opaque).toMatchObject({
+          kind: 'symbol',
+          reason: expect.stringContaining('movieclip'),
+          sourceRef: 'movie-clip-elem',
+        });
+        expect(nodes[1]!.sourceAddress).toBe('LIB/movie-clip-elem');
+        expect(nodes[1]!.symbolInstance).toMatchObject({
+          playbackMode: 'play-once',
+          firstFrame: '2',
+          lastFrame: '5',
+          frameSelectionKey: 'key-1',
+        });
+      }
+
+      // Node 2: missing symbol converted to opaque stand-in
+      expect(nodes[2]!.kind).toBe('group');
+      if (nodes[2]!.kind === 'group') {
+        expect(nodes[2]!.opaque).toMatchObject({
+          kind: 'symbol',
+          reason: expect.stringContaining('Graphic symbol definition not found'),
+          sourceRef: 'missing-symbol-elem',
+        });
+        expect(nodes[2]!.sourceAddress).toBe('LIB/missing-symbol-elem');
+      }
+
+      // Node 3: invalid matrix converted to opaque stand-in
+      expect(nodes[3]!.kind).toBe('group');
+      if (nodes[3]!.kind === 'group') {
+        expect(nodes[3]!.opaque).toMatchObject({
+          kind: 'unknown',
+          reason: expect.stringContaining('non-finite value'),
+          sourceRef: 'broken-matrix.png',
+        });
+        expect(nodes[3]!.sourceAddress).toBe('LIB/broken-matrix');
+      }
+    });
+
+    it('converts symbol cycle into opaque stand-in instead of failing resolution', () => {
+      const symbolA: FlaGraphicSymbolDefinition = {
+        kind: 'graphic',
+        libraryItemName: 'symbol-cycle-a',
+        frameContext: frameContext([
+          {
+            name: 'layer',
+            visible: true,
+            elements: [
+              { kind: 'symbol', libraryItemName: 'symbol-cycle-b', symbolType: 'graphic' },
+            ],
+          },
+        ]),
+      };
+      const symbolB: FlaGraphicSymbolDefinition = {
+        kind: 'graphic',
+        libraryItemName: 'symbol-cycle-b',
+        frameContext: frameContext([
+          {
+            name: 'layer',
+            visible: true,
+            elements: [
+              { kind: 'symbol', libraryItemName: 'symbol-cycle-a', symbolType: 'graphic' },
+            ],
+          },
+        ]),
+      };
+
+      const result = resolveFlaDisplayList({
+        root: {
+          kind: 'scene',
+          name: 'cycle-scene',
+          frameContext: frameContext([
+            {
+              name: 'layer',
+              visible: true,
+              elements: [
+                { kind: 'symbol', libraryItemName: 'symbol-cycle-a', symbolType: 'graphic' },
+              ],
+            },
+          ]),
+        },
+        symbols: new Map([
+          ['symbol-cycle-a', symbolA],
+          ['symbol-cycle-b', symbolB],
+        ]),
+      }, { tolerant: true });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('Expected tolerant resolution to succeed');
+      const nodes = result.displayList.layers[0]!.children;
+      expect(nodes[0]!.kind).toBe('group');
+      if (nodes[0]!.kind === 'group') {
+        const nestedGroup = nodes[0]!.children[0];
+        expect(nestedGroup?.kind).toBe('group');
+        if (nestedGroup?.kind === 'group') {
+          const cycleNode = nestedGroup.children[0];
+          expect(cycleNode?.kind).toBe('group');
+          if (cycleNode?.kind === 'group') {
+            expect(cycleNode.opaque).toMatchObject({
+              kind: 'symbol',
+              reason: expect.stringContaining('cycle'),
+            });
+          }
+        }
+      }
+    });
+  });
 });
