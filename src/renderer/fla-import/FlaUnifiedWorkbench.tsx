@@ -42,6 +42,10 @@ interface FlaUnifiedWorkbenchProps {
   previewSectionLabel?: string;
   previewEmptyTitle?: string;
   previewEmptyDescription?: string;
+  previewEmptyContent?: ReactNode;
+  previewAuxiliary?: ReactNode;
+  candidateEmptyMessage?: string | null;
+  graphicKindLabel?: string;
   progressMessage?: string;
   testIdPrefix?: string;
   workbenchClassName?: string;
@@ -92,6 +96,10 @@ export function FlaUnifiedWorkbench({
   previewSectionLabel = '素材预览',
   previewEmptyTitle,
   previewEmptyDescription,
+  previewEmptyContent,
+  previewAuxiliary,
+  candidateEmptyMessage,
+  graphicKindLabel = 'Graphic',
   progressMessage,
   testIdPrefix,
   workbenchClassName,
@@ -159,6 +167,7 @@ export function FlaUnifiedWorkbench({
 
   const renderPreview = (): ReactNode => {
     if (!focusedCandidate) {
+      if (previewEmptyContent !== undefined) return previewEmptyContent;
       return (
         <div className="fla-c03-preview-placeholder" data-testid={testId('preview-empty', 'fla-c03-preview-empty')}>
           <strong>{previewEmptyTitle ?? (progress.phase === 'loading' ? '正在读取素材…' : '选择一个素材查看预览')}</strong>
@@ -366,7 +375,7 @@ export function FlaUnifiedWorkbench({
                         {candidate.kind === 'sequence'
                           ? '动画'
                           : candidate.kind === 'graphic'
-                            ? `Graphic${candidate.provenance.frameCount === null ? '' : ` · ${candidate.provenance.frameCount} 帧`}`
+                            ? `${graphicKindLabel}${candidate.provenance.frameCount === null ? '' : ` · ${candidate.provenance.frameCount} 帧`}`
                             : '图片'}
                       </small>
                       {statusLabel ? (
@@ -398,13 +407,13 @@ export function FlaUnifiedWorkbench({
                   ) : null}
                 </li>
               );
-            }) : (
+            }) : candidateEmptyMessage === null ? null : (
               <li className="fla-c03-empty-state" data-testid={testId('empty-state', 'fla-c03-empty-state')}>
-                {selectedOnly
+                {candidateEmptyMessage ?? (selectedOnly
                   ? '还没有已选择的素材。'
                   : searchText.trim()
                     ? `没有找到匹配的${candidateListLabel.replace(/ 列表$/u, '')}。`
-                    : `暂时没有可显示的${candidateListLabel.replace(/ 列表$/u, '')}。`}
+                    : `暂时没有可显示的${candidateListLabel.replace(/ 列表$/u, '')}。`)}
               </li>
             )}
           </ul>
@@ -467,6 +476,11 @@ export function FlaUnifiedWorkbench({
           >
             {sequencePreview}
           </div>
+          {previewAuxiliary !== undefined ? (
+            <div className="fla-c03-preview-auxiliary" data-testid={testId('preview-auxiliary', 'fla-c03-preview-auxiliary')}>
+              {previewAuxiliary}
+            </div>
+          ) : null}
         </section>
       </main>
 
@@ -705,7 +719,7 @@ function receiptSummary(receipt: FlaUnifiedImportReceipt): string {
 
 function focusedCandidateStatus(candidate: FlaWorkbenchCandidate): string | null {
   if (candidate.kind === 'graphic') {
-    if (!candidate.selectable) return '此 Graphic 暂不支持导入。';
+    if (!candidate.selectable) return '此元件暂不支持导入。';
     return candidate.provenance.frameCount === null ? null : `${candidate.provenance.frameCount} 帧`;
   }
   if (candidate.kind === 'sequence' && candidate.preview.status === 'verified' && candidate.selectable) {

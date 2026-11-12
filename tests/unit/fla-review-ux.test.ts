@@ -67,7 +67,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(session).not.toContain('fla-render-mode-tabs');
     expect(session).not.toContain('data-testid="fla-review-pagination"');
     expect(styles).toMatch(/\.fla-c03-candidate-grid\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u);
-    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto minmax\(0, 1fr\);/u);
+    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/u);
     expect(styles).toContain('.fla-c03-preview');
     expect(styles).toMatch(/\.fla-c03-import-overlay-panel\s*\{[^}]*width:\s*min\(400px, 100%\);/u);
     expect(styles).toMatch(/\.fla-c03-import-overlay\s*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*auto;/u);
@@ -76,8 +76,11 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
   it('routes Graphic occurrences through the same single-select workbench without bulk controls', () => {
     expect(graphicWorkbench).toContain('<FlaUnifiedWorkbench');
     expect(graphicWorkbench).toContain('showMultiSelectControls={false}');
-    expect(graphicWorkbench).toContain('candidateSearchLabel="搜索 Graphic"');
-    expect(graphicWorkbench).toContain('singleImportLabel="导入到舞台"');
+    expect(graphicWorkbench).toContain('candidateSearchLabel="搜索元件"');
+    expect(graphicWorkbench).toContain('candidateListLabel="元件列表"');
+    expect(graphicWorkbench).toContain('previewSectionLabel="元件预览"');
+    expect(graphicWorkbench).toContain('graphicKindLabel="元件"');
+    expect(graphicWorkbench).toContain('singleImportLabel="导入此元件"');
     expect(unified).toContain("focusedCandidate.kind === 'graphic'");
     expect(unified).toContain('data-occurrence-id={focusedCandidate.kind');
   });
@@ -153,7 +156,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain('data-testid="fla-unified-import-counts"');
     expect(unified).toContain('data-testid="fla-unified-import-items"');
     expect(session).toContain("event.key !== 'Escape'");
-    expect(session).toContain('unifiedImportRunningRef.current || renderTerminalState !==');
+    expect(session).toContain('unifiedImportRunningRef.current || graphicImportRunningRef.current ||');
     expect(unified).toContain('data-testid="fla-unified-import-stop"');
     expect(session).not.toContain('window.pandaStage.assets');
     expect(session).not.toContain('updateProject');

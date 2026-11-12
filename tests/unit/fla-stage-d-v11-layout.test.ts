@@ -172,6 +172,16 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain("targetViewport: { width: 1008, height: 580 }");
   });
 
+  it('places the added route tabs in the header and expands the short-wide desktop session', () => {
+    expect(session).toContain('<nav className="fla-c03-route-tabs"');
+    expect(session).toMatch(/<header className="fla-c03-header"[\s\S]*?<nav className="fla-c03-route-tabs"/u);
+    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/u);
+    expect(styles).toMatch(
+      /@media \(min-width:\s*901px\) and \(max-height:\s*600px\)[\s\S]*?\.fla-review-portal \.fla-c03-session\s*\{[^}]*height:\s*calc\(100dvh - 8px\);/u,
+    );
+    expect(verifier).toContain('sequenceShortWideReachable');
+  });
+
   it('keeps the G009 icon target, compact footer, and same-window spacing evidence bounded', () => {
     expect(styles).toMatch(
       /\.fla-frame-sequence-review-unified-preview \.fla-c03-sequence-actions \.fla-frame-sequence-playback-button\s*\{[^}]*width:\s*44px;[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/u,

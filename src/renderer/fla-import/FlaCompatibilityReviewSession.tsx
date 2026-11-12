@@ -106,6 +106,7 @@ export function FlaCompatibilityReviewSession({
   const sequenceImportRunnerRef = useRef<FlaUnifiedImportRunner | null>(null);
   const cancelAfterCurrentRef = useRef(false);
   const unifiedImportRunningRef = useRef(false);
+  const graphicImportRunningRef = useRef(false);
 
   useEffect(() => {
     return subscribeToFlaInspection(
@@ -242,7 +243,7 @@ export function FlaCompatibilityReviewSession({
   const showSequencePreview = Boolean(focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.preview.status === 'error'));
   const showGeneratedSequencePreview = focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable;
-  const selectionLocked = unifiedImportRunning;
+  const selectionLocked = unifiedImportRunning || graphicInstanceImporting;
   const newEligibleCandidates = useMemo(() => {
     return newSelectableFlaUnifiedCandidates(unifiedCandidates, searchText);
   }, [searchText, unifiedCandidates]);
@@ -493,6 +494,9 @@ export function FlaCompatibilityReviewSession({
       !snapshot ||
       items.length === 0 ||
       unifiedImportRunning ||
+      graphicInstanceImporting ||
+      unifiedImportRunningRef.current ||
+      graphicImportRunningRef.current ||
       snapshotWorkInProgress ||
       sequenceWorkInProgress ||
       renderTerminalState !== 'active'
@@ -500,7 +504,7 @@ export function FlaCompatibilityReviewSession({
     return items.every((item) => item.kind === 'raster' ||
       (item.kind === 'snapshot' && snapshotImportRunnerRef.current !== null) ||
       (item.kind === 'sequence' && sequenceImportRunnerRef.current !== null));
-  }, [importRunnerRevision, renderTerminalState, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
+  }, [graphicInstanceImporting, importRunnerRevision, renderTerminalState, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
   const canImportSelected = canImportItems(selectedUnifiedItems);
   const focusedSingleCandidate = !multiSelectMode && focusedCandidate?.selectable &&
     (focusedCandidate.kind === 'raster' ||
@@ -527,7 +531,7 @@ export function FlaCompatibilityReviewSession({
     requestedItems: readonly FlaUnifiedImportItem[] = selectedUnifiedItems,
   ): Promise<void> => {
     const items = [...requestedItems];
-    if (!snapshot || !canImportItems(items) || unifiedImportRunningRef.current) return;
+    if (!snapshot || !canImportItems(items) || unifiedImportRunningRef.current || graphicImportRunningRef.current) return;
     cancelAfterCurrentRef.current = false;
     unifiedImportRunningRef.current = true;
     const hasAnimation = items.some((item) => item.kind === 'sequence');
@@ -594,9 +598,27 @@ export function FlaCompatibilityReviewSession({
   };
 
   const closeSession = (): void => {
-    if (unifiedImportRunningRef.current || renderTerminalState !== 'active') return;
+    if (phase === 'committing' || unifiedImportRunningRef.current || graphicImportRunningRef.current ||
+        renderTerminalState !== 'active') return;
     onClose();
   };
+
+  const changeReviewRoute = (route: 'assets' | 'graphic'): void => {
+    if (phase === 'committing' || unifiedImportRunningRef.current || graphicImportRunningRef.current ||
+        renderTerminalState !== 'active') return;
+    setReviewRoute(route);
+  };
+
+  const updateGraphicImporting = useCallback((importing: boolean): boolean => {
+    if (importing) {
+      if (unifiedImportRunningRef.current || graphicImportRunningRef.current) return false;
+      graphicImportRunningRef.current = true;
+    } else {
+      graphicImportRunningRef.current = false;
+    }
+    setGraphicInstanceImporting(importing);
+    return true;
+  }, []);
 
   useEffect(() => {
     if (phase !== 'inspecting' && (!ir || !sessionId)) return undefined;
@@ -661,12 +683,13 @@ export function FlaCompatibilityReviewSession({
     );
   }
 
-  const closeLocked = phase === 'committing' || unifiedImportRunning || graphicInstanceImporting || renderTerminalState !== 'active';
+  const closeLocked = phase === 'committing' || unifiedImportRunning || graphicInstanceImporting ||
+    unifiedImportRunningRef.current || graphicImportRunningRef.current || renderTerminalState !== 'active';
   const snapshotPreview = (
     <FlaStaticSnapshotReview
       key={sessionId + ':' + ir.source.sha256 + ':snapshot'}
       checkedCandidateKeys={checkedCandidateKeys}
-      importLocked={unifiedImportRunning}
+      importLocked={selectionLocked}
       onToggleCandidate={toggleUnifiedCandidate}
       onCheckCandidates={checkUnifiedCandidates}
       onClearCandidates={clearUnifiedCandidates}
@@ -688,7 +711,7 @@ export function FlaCompatibilityReviewSession({
     <FlaFrameSequenceReview
       key={sessionId + ':' + ir.source.sha256 + ':sequence'}
       checkedCandidateKeys={checkedCandidateKeys}
-      importLocked={unifiedImportRunning}
+      importLocked={selectionLocked}
       onToggleCandidate={toggleUnifiedCandidate}
       onReconcileCandidates={reconcileUnifiedCandidates}
       onRegisterImportRunner={registerSequenceImportRunner}
@@ -728,6 +751,32 @@ export function FlaCompatibilityReviewSession({
           <div>
             <h1 title={ir.source.basename}>{ir.source.basename}</h1>
           </div>
+          <nav className="fla-c03-route-tabs" aria-label="FLA 导入类型" role="tablist">
+            <button
+              aria-controls="fla-review-assets-panel"
+              aria-selected={reviewRoute === 'assets'}
+              data-testid="fla-review-assets-tab"
+              disabled={closeLocked}
+              id="fla-review-assets-tab-control"
+              onClick={() => changeReviewRoute('assets')}
+              role="tab"
+              type="button"
+            >
+              素材
+            </button>
+            <button
+              aria-controls="fla-review-graphic-panel"
+              aria-selected={reviewRoute === 'graphic'}
+              data-testid="fla-review-graphic-tab"
+              disabled={closeLocked}
+              id="fla-review-graphic-tab-control"
+              onClick={() => changeReviewRoute('graphic')}
+              role="tab"
+              type="button"
+            >
+              元件
+            </button>
+          </nav>
           <button
             aria-label="关闭"
             data-testid="fla-review-cancel"
@@ -740,30 +789,6 @@ export function FlaCompatibilityReviewSession({
           </button>
         </header>
 
-        <nav className="fla-c03-route-tabs" aria-label="FLA 导入类型" role="tablist">
-          <button
-            aria-controls="fla-review-assets-panel"
-            aria-selected={reviewRoute === 'assets'}
-            data-testid="fla-review-assets-tab"
-            id="fla-review-assets-tab-control"
-            onClick={() => setReviewRoute('assets')}
-            role="tab"
-            type="button"
-          >
-            素材
-          </button>
-          <button
-            aria-controls="fla-review-graphic-panel"
-            aria-selected={reviewRoute === 'graphic'}
-            data-testid="fla-review-graphic-tab"
-            id="fla-review-graphic-tab-control"
-            onClick={() => setReviewRoute('graphic')}
-            role="tab"
-            type="button"
-          >
-            Graphic
-          </button>
-        </nav>
         <div
           aria-labelledby="fla-review-assets-tab-control"
           className="fla-c03-review-route-panel"
@@ -829,11 +854,13 @@ export function FlaCompatibilityReviewSession({
           role="tabpanel"
         >
           <FlaGraphicInstanceWorkbench
-            enabled={reviewRoute === 'graphic'}
+            enabled={reviewRoute === 'graphic' && !unifiedImportRunning}
+            importLocked={selectionLocked}
             importDisabledReason={graphicImportDisabledReason}
             onImportComplete={closeSession}
+            onRequestReimport={closeSession}
             onImportGraphicInstance={onImportGraphicInstance}
-            onImportingChange={setGraphicInstanceImporting}
+            onImportingChange={updateGraphicImporting}
             sessionId={sessionId}
             source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
             targetLookupPending={catalogProgress.phase === 'loading' || catalogProgress.phase === 'scanning'}

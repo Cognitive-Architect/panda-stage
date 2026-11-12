@@ -45,7 +45,7 @@ function part(
   };
 }
 
-function readyPreview(): EditableFlaGraphicInstancePreview {
+function readyPreview(generation = 1): EditableFlaGraphicInstancePreview {
   const image = part('part-native', 'occ-aaaaaaaaaaaaaaaaaaaaaaaa', 'native', 'shape-occurrence', 0).image;
   return {
     ok: true,
@@ -53,7 +53,7 @@ function readyPreview(): EditableFlaGraphicInstancePreview {
     capability: 'EDITABLE_PARTS_READY',
     requestId: '00000000-0000-4000-8000-000000001074',
     sessionId: SESSION_ID,
-    generation: 1,
+    generation,
     planId: PLAN_ID,
     poseIdentity: 'c'.repeat(64),
     target: {
@@ -82,6 +82,27 @@ function readyPreview(): EditableFlaGraphicInstancePreview {
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function previewError(code: string, message: string): EditableFlaGraphicInstancePreview {
+  return {
+    ok: false,
+    error: { code, message },
+  } as unknown as EditableFlaGraphicInstancePreview;
+}
+
 let container: HTMLDivElement;
 let root: Root;
 let previewResponse: EditableFlaGraphicInstancePreview;
@@ -105,6 +126,14 @@ async function renderWorkbench(props: Partial<React.ComponentProps<typeof FlaGra
   });
 }
 
+function replacePartPreview(next: ReturnType<typeof vi.fn>): void {
+  partPreview = next;
+  Object.defineProperty(window, 'pandaStage', {
+    configurable: true,
+    value: { fla: { partPreview, partPreviewCancel } },
+  });
+}
+
 function click(testId: string): void {
   const button = container.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
   if (!button) throw new Error(`Missing button ${testId}.`);
@@ -116,7 +145,12 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
     previewResponse = readyPreview();
-    partPreview = vi.fn(async () => previewResponse);
+    partPreview = vi.fn(async (request: { requestId: string; sessionId: string; generation: number }) => ({
+      ...previewResponse,
+      requestId: request.requestId,
+      sessionId: request.sessionId,
+      generation: request.generation,
+    }));
     partPreviewCancel = vi.fn(async () => undefined);
     priorPandaStageDescriptor = Object.getOwnPropertyDescriptor(window, 'pandaStage');
     Object.defineProperty(window, 'pandaStage', {
@@ -192,7 +226,12 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     expect(container.querySelectorAll('.fla-c03-footer-actions button')).toHaveLength(1);
     expect(container.querySelector('[data-testid="fla-graphic-instance-import"]')?.textContent)
-      .toBe('导入到舞台');
+      .toBe('导入此元件');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-search"]')?.getAttribute('aria-label'))
+      .toBe('搜索元件');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-candidates"]')?.getAttribute('aria-label'))
+      .toBe('元件列表');
+    expect(first?.querySelector('.fla-c03-candidate-kind')?.textContent).toBe('元件 · 1 帧');
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
     await act(async () => second!.click());
@@ -259,5 +298,131 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(importCall[0].planId).toBe(PLAN_ID);
     expect(importCall[1]).toBe('part-graphic2');
     expect(onImportComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('separates loading, an empty Graphic result, and a failed preview with collapsed diagnostics', async () => {
+    const pending = deferred<EditableFlaGraphicInstancePreview>();
+    replacePartPreview(vi.fn(() => pending.promise));
+    await renderWorkbench();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-loading"]')?.textContent)
+      .toContain('正在加载预览…');
+
+    await act(async () => {
+      pending.resolve({
+        ...readyPreview(),
+        partPreviews: [part('part-shape', 'occ-aaaaaaaaaaaaaaaaaaaaaaaa', 'shape', 'shape-occurrence', 0)],
+      });
+      await pending.promise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-empty"]')?.textContent)
+      .toContain('未找到元件');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-empty-state"]')).toBeNull();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).toBeNull();
+
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    replacePartPreview(vi.fn(async () => previewError(
+      'UNKNOWN_ERROR',
+      'ERR_FAILED (-2) loading http://127.0.0.1:5190/fla-static-snapshot.html; Snapshot rasterization failed',
+    )));
+    await renderWorkbench();
+
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent)
+      .toContain('预览加载失败');
+    const details = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="fla-graphic-instance-error-details"]',
+    );
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toContain('ERR_FAILED (-2)');
+    expect(details?.textContent).toContain('Snapshot rasterization failed');
+    const visibleCopy = container.cloneNode(true) as HTMLDivElement;
+    visibleCopy.querySelector('details')?.remove();
+    expect(visibleCopy.textContent).not.toContain('ERR_FAILED (-2)');
+    expect(visibleCopy.textContent).not.toContain('Snapshot rasterization failed');
+    expect(container.querySelector('.fla-c03-graphic-retry span')?.textContent).toBe('请重试');
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('重试预览')))
+      .toBe(false);
+    expect(container.textContent).not.toContain('请稍后重试');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-reset-preview"]')?.getAttribute('aria-label'))
+      .toBe('重置预览');
+    expect(container.querySelectorAll('[data-testid="fla-graphic-instance-reset-preview"]')).toHaveLength(1);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-import"]')?.hasAttribute('disabled'))
+      .toBe(true);
+    expect(container.querySelectorAll('button')).not.toHaveLength(0);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-reimport"]')).toBeNull();
+  });
+
+  it('retries a failed preview once, shows loading, and restores candidates on success', async () => {
+    const reset = deferred<EditableFlaGraphicInstancePreview>();
+    replacePartPreview(vi.fn()
+      .mockResolvedValueOnce(previewError('UNKNOWN_ERROR', 'Snapshot rasterization failed'))
+      .mockImplementationOnce(() => reset.promise));
+    await renderWorkbench();
+    const resetButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="fla-graphic-instance-reset-preview"]',
+    );
+    if (!resetButton) throw new Error('Preview reset button is missing.');
+
+    await act(async () => {
+      resetButton.click();
+      resetButton.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(partPreview).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-loading"]')?.textContent)
+      .toContain('正在加载预览…');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-import"]')?.hasAttribute('disabled'))
+      .toBe(true);
+
+    await act(async () => {
+      reset.resolve(readyPreview(2));
+      await reset.promise;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).toBeNull();
+    expect(container.querySelectorAll('li[data-candidate-kind="graphic"]')).toHaveLength(2);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-reset-preview"]')).toBeNull();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-selected-preview"]')?.getAttribute('src'))
+      .toMatch(/^blob:fla-graphic-instance-/u);
+  });
+
+  it('releases a failed import plan before resetting and routes an expired session to FLA reimport', async () => {
+    const onImportGraphicInstance = vi.fn(async () => {
+      throw new Error('Snapshot rasterization failed');
+    });
+    await renderWorkbench({ onImportGraphicInstance });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(container.querySelector('[data-testid="fla-graphic-instance-summary"]')?.textContent)
+      .toContain('导入失败');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-error-details"]')?.textContent)
+      .toContain('Snapshot rasterization failed');
+    await act(async () => click('fla-graphic-instance-reset-preview'));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(partPreview).toHaveBeenCalledTimes(2);
+    expect(partPreviewCancel).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: SESSION_ID,
+      generation: 1,
+    }));
+
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    const onRequestReimport = vi.fn();
+    replacePartPreview(vi.fn(async () => previewError('SESSION_NOT_FOUND', 'FLA session no longer exists')));
+    await renderWorkbench({ onRequestReimport });
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent)
+      .toContain('FLA 会话已失效');
+    expect(container.querySelector('[data-testid="fla-graphic-instance-reset-preview"]')).toBeNull();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-reimport"]')?.textContent)
+      .toBe('重新导入 FLA');
+    await act(async () => click('fla-graphic-instance-reimport'));
+    expect(onRequestReimport).toHaveBeenCalledTimes(1);
   });
 });
