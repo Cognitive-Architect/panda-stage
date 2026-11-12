@@ -1438,4 +1438,12 @@
     height: calc(100dvh - 24px);
     max-height: calc(100dvh - 24px);
   }
+
+  .fla-c03-sequence-preview-slot {
+    grid-template-rows: minmax(120px, 1fr) auto auto;
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage {
+    min-height: 120px;
+  }
 }
