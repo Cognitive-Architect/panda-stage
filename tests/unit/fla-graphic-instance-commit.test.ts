@@ -3,7 +3,14 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LayerService, ProjectSchema, type Project } from '../../src/domain';
+import {
+  FlaGraphicStructureSchema,
+  LayerService,
+  ProjectSchema,
+  reconstructFlaGraphicStructure,
+  type FlaGraphicStructure,
+  type Project,
+} from '../../src/domain';
 import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
 import { HashService } from '../../src/main/services/HashService';
 import { ProjectService } from '../../src/main/services/ProjectService';
@@ -107,6 +114,7 @@ interface Harness {
   projectService: ProjectService;
   current: { project: Project; revision: number; openInstanceId: number };
   service: FlaGraphicInstanceCommitService;
+  batchStructure: { current: FlaGraphicStructure | undefined };
 }
 
 async function harness(
@@ -148,10 +156,13 @@ async function harness(
   await projectService.save(projectRoot, project, 0);
   current.project = project;
   current.revision = 0;
+  const batchStructure: { current: FlaGraphicStructure | undefined } = { current: undefined };
+  const withStructure = (batch: FlaGraphicDefinitionFrameBatch): FlaGraphicDefinitionFrameBatch =>
+    batchStructure.current ? { ...batch, structure: batchStructure.current } : batch;
   const partPreviewService = {
     buildGraphicDefinitionFrameBatch: vi.fn(async (identity: { unitId: string }) => ({
       ok: true as const,
-      batch: identity.unitId === SECOND_UNIT_ID
+      batch: withStructure(identity.unitId === SECOND_UNIT_ID
         ? frameBatch({
             occurrenceId: SECOND_OCCURRENCE_ID,
             sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[1]',
@@ -163,7 +174,7 @@ async function harness(
               sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[2]',
               drawOrder: 2,
             })
-          : frameBatch({ firstFrame: sourceFirstFrame, lastFrame: sourceLastFrame }),
+          : frameBatch({ firstFrame: sourceFirstFrame, lastFrame: sourceLastFrame })),
     })),
   } as unknown as FlaPartPreviewService;
   const service = new FlaGraphicInstanceCommitService({
@@ -172,7 +183,7 @@ async function harness(
     getCurrentProjectSnapshot: (root) => root === projectRoot ? current : null,
     ...(hashService ? { hashService } : {}),
   });
-  return { projectRoot, projectService, current, service };
+  return { projectRoot, projectService, current, service, batchStructure };
 }
 
 function commitRequest(h: Harness, baseRevision: number, unitId = 'part-0123456789abcdef') {
@@ -345,5 +356,107 @@ describe('FLA Graphic instance commit', () => {
     const saved = await h.projectService.open(h.projectRoot);
     expect(saved.project).toEqual(baselineProject);
     expect((await readdir(path.join(h.projectRoot, 'assets'))).sort()).toEqual([...baselineFiles].sort());
+  });
+});
+
+const M = (tx: number, ty: number, scale = 1) => ({ a: scale, b: 0, c: 0, d: scale, tx, ty });
+
+function sampleStructure(extraShapeId = 'shape-a'): FlaGraphicStructure {
+  return FlaGraphicStructureSchema.parse({
+    version: 1,
+    frames: [{
+      ordinal: 0,
+      layers: [{
+        name: 'Body',
+        nodes: [{
+          type: 'group', id: 'g-outer', sourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]',
+          drawOrder: 0, groupId: 'outer', localTransform: M(10, 5, 2),
+          children: [
+            {
+              type: 'symbol', id: 'sym-1', sourceAddress: 'LIBRARY/Walk/layer[0]/frame[0]/group[0]/symbol[0]',
+              drawOrder: 0, symbolRef: 'Arm', localTransform: M(3, 0), opacity: 0.5,
+              children: [{
+                type: 'bitmap', id: 'bmp-1', drawOrder: 0, bitmapRef: 'arm.png', localTransform: M(1, 1),
+                clipPaths: [{ shapes: [{ shapeId: 'mask-1', worldTransform: M(0, 0) }] }],
+              }],
+            },
+            {
+              type: 'symbol', id: 'sym-2', drawOrder: 1, symbolRef: 'Arm', localTransform: M(-3, 0), children: [],
+            },
+            {
+              type: 'opaque', id: 'shape-node', drawOrder: 2, opaqueKind: 'shape',
+              sourceRef: extraShapeId, localTransform: M(0, 0),
+            },
+          ],
+        }],
+      }],
+    }],
+  });
+}
+
+describe('FLA Graphic structured Definition (E1)', () => {
+  it('saves the authored tree with the Definition, reloads it, and recomposes parent-local matrices', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    const reopened = await h.projectService.open(h.projectRoot);
+    const definition = reopened.project.animations[0]!;
+    expect(definition).toMatchObject({ kind: 'fla-graphic' });
+    if (!('structure' in definition) || !definition.structure) throw new Error('structure was not persisted');
+    expect(definition.structure).toEqual(h.batchStructure.current);
+    const flat = reconstructFlaGraphicStructure(definition.structure);
+    expect(flat.map((entry) => `${entry.parentId ?? '-'}>${entry.node.id}:${entry.node.type}`)).toEqual([
+      '->g-outer:group', 'g-outer>sym-1:symbol', 'sym-1>bmp-1:bitmap',
+      'g-outer>sym-2:symbol', 'g-outer>shape-node:opaque',
+    ]);
+    // Both Arm instances share one Symbol reference.
+    expect(flat.filter((entry) => entry.node.type === 'symbol' && entry.node.symbolRef === 'Arm')).toHaveLength(2);
+    // outer scale 2 at (10,5); sym-1 local x=3 -> world x = 10 + 2*3 = 16; no double transform.
+    expect(flat.find((entry) => entry.node.id === 'sym-1')!.worldTransform).toMatchObject({ a: 2, tx: 16, ty: 5 });
+    expect(flat.find((entry) => entry.node.id === 'bmp-1')!.worldTransform).toMatchObject({ a: 2, tx: 18, ty: 7 });
+  });
+
+  it('upgrades an SVG-only Definition in place instead of dropping the structure, without a second Layer', async () => {
+    const h = await harness();
+    const svgOnly = await h.service.commit(commitRequest(h, 0));
+    if (!svgOnly.ok) throw new Error(svgOnly.error.message);
+    expect(svgOnly.project.animations[0]).not.toHaveProperty('structure');
+    const assetCount = svgOnly.project.assets.length;
+
+    h.batchStructure.current = sampleStructure();
+    const upgraded = await h.service.commit(commitRequest(h, 1));
+    if (!upgraded.ok) throw new Error(upgraded.error.message);
+    expect(upgraded.projectChanged).toBe(true);
+    expect(upgraded.layerId).toBe(svgOnly.layerId);
+    expect(upgraded.animationId).toBe(svgOnly.animationId);
+    expect(upgraded.project.animations).toHaveLength(1);
+    expect(upgraded.project.assets).toHaveLength(assetCount);
+    expect(upgraded.project.shots[0]!.layers).toHaveLength(svgOnly.project.shots[0]!.layers.length);
+    expect(upgraded.project.animations[0]).toMatchObject({ structure: { version: 1 } });
+    expect((await h.projectService.open(h.projectRoot)).project).toEqual(upgraded.project);
+  });
+
+  it('does not merge Definitions whose structures differ even when pictures are identical', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure('shape-a');
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    h.batchStructure.current = sampleStructure('shape-b');
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.animationId).not.toBe(first.animationId);
+    expect(second.project.animations).toHaveLength(2);
+    expect(second.project.animations.every((animation) => 'structure' in animation && animation.structure)).toBe(true);
+  });
+
+  it('keeps legacy SVG-only Definitions valid and rejects a duplicated node id', () => {
+    const structure = sampleStructure();
+    const duplicated = structuredClone(structure);
+    const group = duplicated.frames[0]!.layers[0]!.nodes[0]!;
+    if (group.type !== 'group') throw new Error('unexpected sample');
+    group.children[1]!.id = 'sym-1';
+    expect(FlaGraphicStructureSchema.safeParse(duplicated).success).toBe(false);
+    expect(FlaGraphicStructureSchema.safeParse(structure).success).toBe(true);
   });
 });

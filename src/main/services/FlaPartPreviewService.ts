@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain';
+import { FLA_GRAPHIC_MAX_FRAMES, type FlaGraphicStructure } from '../../domain';
+import { captureFlaGraphicStructure } from './flaGraphicStructureCapture';
 import {
   FlaPartPlanSchema,
   FlaPartPreviewCancelRequestSchema,
@@ -979,6 +980,8 @@ export interface FlaGraphicDefinitionFrameBatch {
     };
   }[];
   readonly groupEditPreview?: FlaGraphicGroupEditPreview;
+  /** Source-backed authored object tree captured before SVG baking (E1). */
+  readonly structure?: FlaGraphicStructure;
 }
 
 export type FlaGraphicDefinitionFrameBatchResult =
@@ -1291,7 +1294,8 @@ export class FlaPartPreviewService {
     }
     let groupEditPreview: FlaGraphicGroupEditPreview | undefined;
     const firstFrame = frames[0];
-    if (frameCount === 1 && firstFrame && unit.sourceAddress) {
+    let structure: FlaGraphicStructure | undefined;
+    if (firstFrame && unit.sourceAddress) {
       prepared.source.resetFrameBuildState();
       const resolvedFirstFrame = resolveFlaDisplayList({
         root: {
@@ -1302,6 +1306,11 @@ export class FlaPartPreviewService {
         symbols: prepared.source.symbols,
       });
       if (resolvedFirstFrame.ok) {
+        // E1: capture the authored tree from the resolved source, before SVG baking.
+        // Independent of the legacy group-edit preview eligibility gates.
+        structure = captureFlaGraphicStructure(resolvedFirstFrame.displayList);
+      }
+      if (resolvedFirstFrame.ok && frameCount === 1) {
         groupEditPreview = buildGroupEditPreview({
           displayList: resolvedFirstFrame.displayList,
           sourceBytes: source.bytes,
@@ -1341,6 +1350,7 @@ export class FlaPartPreviewService {
         },
         frames,
         ...(groupEditPreview ? { groupEditPreview } : {}),
+        ...(structure ? { structure } : {}),
       },
     };
   }

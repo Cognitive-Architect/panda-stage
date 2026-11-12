@@ -111,6 +111,7 @@ function buildGraphicDefinition(
       },
     },
     durationMs: batch.target.frameCount * frameDurationMs,
+    ...(batch.structure ? { structure: batch.structure } : {}),
     frames: batch.frames.map((frame, index) => ({
       ordinal: index,
       sourceFrameIndex: frame.sourceFrameIndex,
@@ -209,11 +210,20 @@ function placementTransform(
   return { position, transform };
 }
 
+function sameStructure(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Reuse a Definition for the same source + frames. A Definition that lacks the
+ * captured structure is upgraded in place; one with a different structure is
+ * never merged, even when its pictures are identical.
+ */
 function existingDefinition(
   project: Project,
   batch: FlaGraphicDefinitionFrameBatch,
-): FlaGraphicDefinition | null {
-  const match = project.animations.find((animation) =>
+): { definition: FlaGraphicDefinition; upgrade: boolean } | null {
+  const matches = project.animations.filter((animation): animation is FlaGraphicDefinition =>
     'kind' in animation &&
     animation.kind === 'fla-graphic' &&
     animation.source.sha256 === batch.source.rawSha256 &&
@@ -224,10 +234,16 @@ function existingDefinition(
       frame.sha256 === batch.frames[index]?.sha256,
     ),
   );
-  return match && 'kind' in match && match.kind === 'fla-graphic'
-    ? match
-    : null;
+  if (!batch.structure) {
+    const match = matches[0];
+    return match ? { definition: match, upgrade: false } : null;
+  }
+  const exact = matches.find((match) => sameStructure(match.structure, batch.structure));
+  if (exact) return { definition: exact, upgrade: false };
+  const upgradable = matches.find((match) => !match.structure);
+  return upgradable ? { definition: { ...upgradable, structure: batch.structure }, upgrade: true } : null;
 }
+
 
 export class FlaGraphicInstanceCommitService {
   private readonly projectService: ProjectService;
@@ -356,7 +372,9 @@ export class FlaGraphicInstanceCommitService {
     if (!previousShot || request.startTimeMs > previousShot.durationMs) {
       return this.failure('SHOT_NOT_FOUND', transaction.projectRoot, 'The selected Shot is unavailable.', request);
     }
-    const reused = existingDefinition(current.project, batch);
+    const reusedMatch = existingDefinition(current.project, batch);
+    const reused = reusedMatch?.definition ?? null;
+    const upgradeStructure = reusedMatch?.upgrade ?? false;
     const pendingFiles: PendingFrameFile[] = [];
     let projectSaved = false;
     try {
@@ -418,7 +436,11 @@ export class FlaGraphicInstanceCommitService {
       const baseProject = ProjectSchema.parse({
         ...current.project,
         assets: reused ? current.project.assets : [...current.project.assets, ...assets],
-        animations: reused ? current.project.animations : [...current.project.animations, definition],
+        animations: reused
+          ? upgradeStructure
+            ? current.project.animations.map((animation) => animation.id === reused.id ? reused : animation)
+            : current.project.animations
+          : [...current.project.animations, definition],
         updatedAt: this.now().toISOString(),
       });
       const playback = instancePlayback(batch);
@@ -440,7 +462,7 @@ export class FlaGraphicInstanceCommitService {
           animation?.source.sha256 === batch.source.rawSha256 &&
           occurrence.sourceAddress === batch.unit.sourceAddress;
       });
-      if (existingLayer) {
+      if (existingLayer && !upgradeStructure) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
@@ -451,12 +473,16 @@ export class FlaGraphicInstanceCommitService {
           current.revision,
           current.revision,
           false,
-          definition.id,
+          existingLayer.source.kind === 'animation' ? existingLayer.source.animationId : definition.id,
           existingLayer.id,
           batch.groupEditPreview,
         );
       }
-      const created = this.layerService.createFromAnimation(baseProject, request.shotId, {
+      // An already-imported occurrence only needs a Project save when its
+      // SVG-only Definition is being upgraded with the captured structure.
+      const created = existingLayer
+        ? { project: baseProject, layer: existingLayer }
+        : this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
         position: transform.position,
         startTimeMs: request.startTimeMs,

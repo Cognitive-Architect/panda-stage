@@ -3,6 +3,7 @@ export * from './animation';
 export * from './audio';
 export * from './character';
 export * from './dialogue';
+export * from './flaGraphicStructure';
 export * from './layer';
 export * from './project';
 export * from './shot';

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IdSchema, NameSchema } from './common';
+import { FlaGraphicStructureSchema } from './flaGraphicStructure';
 
 export const ANIMATION_MAX_FRAMES = 24;
 export const FLA_GRAPHIC_MAX_FRAMES = 256;
@@ -153,6 +154,8 @@ export const FlaGraphicDefinitionSchema = z
     ...AnimationDefinitionShape,
     kind: z.literal('fla-graphic'),
     frames: z.array(AnimationFrameSchema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
+    /** Optional so older SVG-only Definitions keep loading unchanged. */
+    structure: FlaGraphicStructureSchema.optional(),
   })
   .strict()
   .superRefine((definition, context) => {

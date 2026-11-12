@@ -1,0 +1,246 @@
+import { z } from 'zod';
+import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
+
+/**
+ * Persisted, source-backed object tree of an FLA Graphic Definition (STRUCT-04-E1).
+ *
+ * The per-frame SVG assets remain the display cache and fallback; this tree is
+ * the structural fact. Every transform is parent-local (never a world matrix),
+ * sibling order is authored back-to-front draw order, and Symbol instances keep
+ * a shared reference to their source library item instead of being copied.
+ */
+export const FLA_GRAPHIC_STRUCTURE_MAX_NODES = 20_000;
+export const FLA_GRAPHIC_STRUCTURE_MAX_DEPTH = 64;
+
+const FiniteNumber = z.number().finite();
+
+export const FlaStructureMatrixSchema = z
+  .object({
+    a: FiniteNumber,
+    b: FiniteNumber,
+    c: FiniteNumber,
+    d: FiniteNumber,
+    tx: FiniteNumber,
+    ty: FiniteNumber,
+  })
+  .strict();
+
+const SourceTextSchema = z.string().trim().min(1).max(1_000);
+
+/** One XFL mask dependency: the union of the listed shapes clips the node. */
+export const FlaStructureClipPathSchema = z
+  .object({
+    shapes: z
+      .array(
+        z
+          .object({
+            shapeId: SourceTextSchema,
+            /** Mask geometry placement in the Graphic symbol's coordinate space. */
+            worldTransform: FlaStructureMatrixSchema,
+          })
+          .strict(),
+      )
+      .max(1_000),
+  })
+  .strict();
+
+const NodeBase = {
+  /** Stable node identity: the source address, or a deterministic path fallback. */
+  id: SourceTextSchema,
+  sourceAddress: SourceTextSchema.optional(),
+  /** Index among siblings in authored back-to-front draw order. */
+  drawOrder: z.number().int().nonnegative(),
+  localTransform: FlaStructureMatrixSchema,
+  clipPaths: z.array(FlaStructureClipPathSchema).max(64).optional(),
+};
+
+const RgbTransformSchema = z
+  .object({
+    multiplier: FiniteNumber.min(0).max(1),
+    offset: FiniteNumber.min(0).max(255),
+  })
+  .strict();
+
+export type FlaGraphicStructureNode =
+  | {
+      type: 'group';
+      id: string;
+      sourceAddress?: string;
+      drawOrder: number;
+      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      groupId: string;
+      children: FlaGraphicStructureNode[];
+    }
+  | {
+      type: 'symbol';
+      id: string;
+      sourceAddress?: string;
+      drawOrder: number;
+      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      /** Shared Symbol Definition reference (source library item name). */
+      symbolRef: string;
+      opacity?: number;
+      rgbTransform?: z.infer<typeof RgbTransformSchema>;
+      children: FlaGraphicStructureNode[];
+    }
+  | {
+      type: 'bitmap';
+      id: string;
+      sourceAddress?: string;
+      drawOrder: number;
+      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      /** Source media library item name; bytes stay in the source/media cache. */
+      bitmapRef: string;
+    }
+  | {
+      type: 'opaque';
+      id: string;
+      sourceAddress?: string;
+      drawOrder: number;
+      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      /** Why this subtree is read-only: its display comes from the frame SVG fallback. */
+      opaqueKind: 'shape' | 'text' | 'filter' | 'unknown';
+      sourceRef?: string;
+    };
+
+export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
+  z.discriminatedUnion('type', [
+    z
+      .object({
+        ...NodeBase,
+        type: z.literal('group'),
+        groupId: SourceTextSchema,
+        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+      })
+      .strict(),
+    z
+      .object({
+        ...NodeBase,
+        type: z.literal('symbol'),
+        symbolRef: SourceTextSchema,
+        opacity: FiniteNumber.min(0).max(1).optional(),
+        rgbTransform: RgbTransformSchema.optional(),
+        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+      })
+      .strict(),
+    z
+      .object({ ...NodeBase, type: z.literal('bitmap'), bitmapRef: SourceTextSchema })
+      .strict(),
+    z
+      .object({
+        ...NodeBase,
+        type: z.literal('opaque'),
+        opaqueKind: z.enum(['shape', 'text', 'filter', 'unknown']),
+        sourceRef: SourceTextSchema.optional(),
+      })
+      .strict(),
+  ]),
+);
+
+export const FlaGraphicStructureLayerSchema = z
+  .object({
+    name: z.string().max(500),
+    nodes: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+  })
+  .strict();
+
+/** Structure captured for one Definition frame; the shape allows more frames later. */
+export const FlaGraphicStructureFrameSchema = z
+  .object({
+    ordinal: z.number().int().nonnegative(),
+    layers: z.array(FlaGraphicStructureLayerSchema).max(1_000),
+  })
+  .strict();
+
+export const FlaGraphicStructureSchema = z
+  .object({
+    version: z.literal(1),
+    frames: z.array(FlaGraphicStructureFrameSchema).min(1).max(256),
+  })
+  .strict()
+  .superRefine((structure, context) => {
+    const seenIds = new Set<string>();
+    let count = 0;
+    const walk = (
+      nodes: readonly FlaGraphicStructureNode[],
+      path: (string | number)[],
+      depth: number,
+    ): void => {
+      if (depth > FLA_GRAPHIC_STRUCTURE_MAX_DEPTH) {
+        context.addIssue({ code: 'custom', path, message: 'Structure nesting is too deep.' });
+        return;
+      }
+      nodes.forEach((node, index) => {
+        count += 1;
+        const nodePath = [...path, index];
+        if (count > FLA_GRAPHIC_STRUCTURE_MAX_NODES) {
+          if (count === FLA_GRAPHIC_STRUCTURE_MAX_NODES + 1) {
+            context.addIssue({ code: 'custom', path: nodePath, message: 'Structure has too many nodes.' });
+          }
+          return;
+        }
+        if (node.drawOrder !== index) {
+          context.addIssue({ code: 'custom', path: [...nodePath, 'drawOrder'], message: 'Node draw order must match its sibling index.' });
+        }
+        if (seenIds.has(node.id)) {
+          context.addIssue({ code: 'custom', path: [...nodePath, 'id'], message: 'Structure node ids must be unique.' });
+        }
+        seenIds.add(node.id);
+        if (node.type === 'group' || node.type === 'symbol') {
+          walk(node.children, [...nodePath, 'children'], depth + 1);
+        }
+      });
+    };
+    structure.frames.forEach((frame, frameIndex) => {
+      if (frame.ordinal !== frameIndex) {
+        context.addIssue({ code: 'custom', path: ['frames', frameIndex, 'ordinal'], message: 'Structure frame ordinals must be contiguous from zero.' });
+      }
+      frame.layers.forEach((layer, layerIndex) =>
+        walk(layer.nodes, ['frames', frameIndex, 'layers', layerIndex, 'nodes'], 1));
+    });
+  });
+
+export type FlaGraphicStructure = z.infer<typeof FlaGraphicStructureSchema>;
+
+export interface ReconstructedFlaStructureNode {
+  readonly node: FlaGraphicStructureNode;
+  readonly layerIndex: number;
+  /** Parent id, or null for a top-level node of its layer. */
+  readonly parentId: string | null;
+  /** Local transform composed through every ancestor. */
+  readonly worldTransform: AffineMatrix2D;
+}
+
+/**
+ * Read a persisted structure back as a flat, ordered (pre-order, back-to-front)
+ * list with world matrices recomposed from the stored parent-local matrices.
+ */
+export function reconstructFlaGraphicStructure(
+  structure: FlaGraphicStructure,
+  frameOrdinal = 0,
+): ReconstructedFlaStructureNode[] {
+  const frame = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  if (!frame) return [];
+  const result: ReconstructedFlaStructureNode[] = [];
+  const identity: AffineMatrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+  const walk = (
+    nodes: readonly FlaGraphicStructureNode[],
+    layerIndex: number,
+    parentId: string | null,
+    parentWorld: AffineMatrix2D,
+  ): void => {
+    for (const node of nodes) {
+      const worldTransform = multiplyAffineMatrices(parentWorld, node.localTransform);
+      result.push({ node, layerIndex, parentId, worldTransform });
+      if (node.type === 'group' || node.type === 'symbol') {
+        walk(node.children, layerIndex, node.id, worldTransform);
+      }
+    }
+  };
+  frame.layers.forEach((layer, layerIndex) => walk(layer.nodes, layerIndex, null, identity));
+  return result;
+}
