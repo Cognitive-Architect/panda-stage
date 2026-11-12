@@ -177,7 +177,7 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(session).toMatch(/<header className="fla-c03-header"[\s\S]*?<nav className="fla-c03-route-tabs"/u);
     expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/u);
     expect(styles).toMatch(
-      /@media \(min-width:\s*901px\) and \(max-height:\s*600px\)[\s\S]*?\.fla-review-portal \.fla-c03-session\s*\{[^}]*height:\s*calc\(100dvh - 8px\);/u,
+      /@media \(min-width:\s*901px\) and \(max-height:\s*600px\)[\s\S]*?\.fla-review-portal \.fla-c03-session\s*\{[^}]*height:\s*calc\(100dvh - 24px\);/u,
     );
     expect(verifier).toContain('sequenceShortWideReachable');
   });

@@ -1435,7 +1435,7 @@
 
 @media (min-width: 901px) and (max-height: 600px) {
   .fla-review-portal .fla-c03-session {
-    height: calc(100dvh - 8px);
-    max-height: calc(100dvh - 8px);
+    height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 24px);
   }
 }
