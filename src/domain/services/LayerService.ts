@@ -15,6 +15,13 @@ import {
   type Project,
   type Shot,
 } from '../models';
+import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import {
+  cloneFlaGraphicInstanceTransformOverrides,
+  findFlaGraphicStructureNodeAtPath,
+  pruneFlaGraphicInstanceTransformOverrides,
+  setFlaGraphicInstanceTransformOverride,
+} from '../models/flaGraphicInstanceOverrides';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { PositionProjectService } from './PositionProjectService';
 
@@ -592,6 +599,63 @@ export class LayerService {
     );
   }
 
+  updateFlaGraphicInstanceTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (
+      !definition ||
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const node = findFlaGraphicStructureNodeAtPath(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!node || node.type === 'opaque') return project;
+
+    const pruned = pruneFlaGraphicInstanceTransformOverrides(
+      layer.flaGraphicInstanceTransformOverrides,
+      definition.structure,
+    );
+    const nextOverrides = setFlaGraphicInstanceTransformOverride(
+      pruned,
+      frameOrdinal,
+      nodePath,
+      node.localTransform,
+      localTransform,
+    );
+    if (nextOverrides === layer.flaGraphicInstanceTransformOverrides) {
+      return project;
+    }
+
+    const nextLayer: Layer = { ...layer };
+    delete nextLayer.flaGraphicInstanceTransformOverrides;
+    if (nextOverrides) {
+      nextLayer.flaGraphicInstanceTransformOverrides = nextOverrides;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = nextLayer;
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
   toggleFlipX(
     project: Project,
     shotId: string,
@@ -756,6 +820,14 @@ export class LayerService {
         : offsetPosition;
     const duplicate: Layer = {
       ...layer,
+      ...(layer.flaGraphicInstanceTransformOverrides
+        ? {
+            flaGraphicInstanceTransformOverrides:
+              cloneFlaGraphicInstanceTransformOverrides(
+                layer.flaGraphicInstanceTransformOverrides,
+              ),
+          }
+        : {}),
       id: duplicateId,
       name: `${layer.name} 副本`,
       x: position.x,

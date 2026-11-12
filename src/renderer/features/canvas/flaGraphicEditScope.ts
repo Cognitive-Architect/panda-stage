@@ -3,6 +3,7 @@ import type {
   FlaGraphicStructureFrame,
   FlaGraphicStructureNode,
   ImageAsset,
+  Layer,
   Project,
   Shot,
 } from '../../../domain';
@@ -19,6 +20,7 @@ export interface FlaGraphicEditTarget {
   readonly projectInstanceId: number;
   readonly shotId: string;
   readonly layerId: string;
+  readonly layer: Layer;
   readonly animation: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly frame: FlaGraphicStructureFrame;
@@ -51,6 +53,32 @@ export function recordFlaGraphicEditDraft(
       [nodeKey]: matrix,
     },
   };
+}
+
+export function clearFlaGraphicEditDraft(
+  drafts: FlaGraphicEditDrafts,
+  targetKey: string,
+  path: readonly string[],
+): FlaGraphicEditDrafts {
+  const nodeKey = flaGraphicNodePathKey(path);
+  const targetDraft = drafts[targetKey];
+  if (!targetDraft || !(nodeKey in targetDraft)) return drafts;
+  const nextTargetDraft = { ...targetDraft };
+  delete nextTargetDraft[nodeKey];
+  const next = { ...drafts };
+  if (Object.keys(nextTargetDraft).length === 0) delete next[targetKey];
+  else next[targetKey] = nextTargetDraft;
+  return next;
+}
+
+export function clearFlaGraphicEditTargetDrafts(
+  drafts: FlaGraphicEditDrafts,
+  targetKey: string,
+): FlaGraphicEditDrafts {
+  if (!(targetKey in drafts)) return drafts;
+  const next = { ...drafts };
+  delete next[targetKey];
+  return next;
 }
 
 export function retainValidFlaGraphicEditDrafts(
@@ -130,6 +158,7 @@ export function resolveFlaGraphicEditTarget(input: {
     projectInstanceId,
     shotId: shot.id,
     layerId: layer.id,
+    layer,
     animation,
     frameOrdinal: frame.ordinal,
     frame,

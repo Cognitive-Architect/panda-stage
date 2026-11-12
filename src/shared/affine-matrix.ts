@@ -8,6 +8,23 @@ export interface AffineMatrix2D {
   readonly ty: number;
 }
 
+export interface AffineMatrixScale {
+  readonly scaleX: number;
+  readonly scaleY: number;
+}
+
+/** Returns the absolute local axis scales using the same matrix decomposition as Konva. */
+export function getAffineMatrixScale(
+  matrix: AffineMatrix2D,
+): AffineMatrixScale {
+  const scaleX = Math.hypot(matrix.a, matrix.b);
+  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+  const scaleY = scaleX > 1e-12
+    ? determinant / scaleX
+    : Math.hypot(matrix.c, matrix.d);
+  return { scaleX: Math.abs(scaleX), scaleY: Math.abs(scaleY) };
+}
+
 export type AffineMatrixResult =
   | { readonly ok: true; readonly value: AffineMatrix2D }
   | { readonly ok: false; readonly message: string };

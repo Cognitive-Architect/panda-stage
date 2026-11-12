@@ -436,6 +436,24 @@ describe('FLA Graphic structured Definition (E1)', () => {
         }],
       }],
     });
+    const edited = new LayerService().updateFlaGraphicInstanceTransform(
+      reopened.project,
+      reopened.project.shots[0]!.id,
+      first.layerId,
+      0,
+      ['g-outer', 'sym-1', 'bmp-1'],
+      { a: 1, b: 0, c: 0, d: 1, tx: 17, ty: -9 },
+    );
+    expect(edited.animations[0]).toEqual(reopened.project.animations[0]);
+    await h.projectService.save(h.projectRoot, edited, first.savedRevision);
+    const reopenedEdit = await h.projectService.open(h.projectRoot);
+    expect(reopenedEdit.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.layerId,
+    )?.flaGraphicInstanceTransformOverrides).toEqual({
+      '0': {
+        '["g-outer","sym-1","bmp-1"]': { a: 1, b: 0, c: 0, d: 1, tx: 17, ty: -9 },
+      },
+    });
     const flat = reconstructFlaGraphicStructure(definition.structure);
     expect(flat.map((entry) => `${entry.parentId ?? '-'}>${entry.node.id}:${entry.node.type}`)).toEqual([
       '->g-outer:group', 'g-outer>sym-1:symbol', 'sym-1>bmp-1:bitmap',

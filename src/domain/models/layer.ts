@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
 
 export const AssetLayerSourceSchema = z
   .object({
@@ -227,6 +228,9 @@ export const LayerSchema = z
     /** Authored first frame offset for Graphic or raster animation instances. */
     animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
     animationPlayback: AnimationPlaybackSchema.optional(),
+    /** Sparse transforms authored on this Layer instance, never on its Definition. */
+    flaGraphicInstanceTransformOverrides:
+      FlaGraphicInstanceTransformOverridesSchema.optional(),
   })
   .strict()
   .superRefine((layer, context) => {

@@ -18,6 +18,7 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  getFlaGraphicInstanceTransformOverride,
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
@@ -45,6 +46,7 @@ import canvasEmptyStateArt from './assets/canvas-empty-state.png';
 import {
   isTransformerOverlayVisible,
   LayerTransformer,
+  structuredChildTransformerScales,
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
@@ -83,6 +85,8 @@ import {
 } from './editorTemporalCanvasContinuity';
 import {
   collectFlaGraphicStructureAssetIds,
+  clearFlaGraphicEditDraft,
+  clearFlaGraphicEditTargetDrafts,
   flaGraphicNodeCanTransform,
   flaGraphicNodeHasReadyVisual,
   flaGraphicNodePathKey,
@@ -318,6 +322,20 @@ export function CanvasStage({
   const activeFlaGraphicEditDraftMatrices = selectedFlaGraphicTarget
     ? flaGraphicEditDrafts[selectedFlaGraphicTarget.key] ?? {}
     : {};
+  const selectedStructuredNodeScales =
+    selectedFlaGraphicNode && selectedFlaGraphicTarget && selectedFlaGraphicNodePath
+      ? structuredChildTransformerScales(
+          selectedFlaGraphicNode.localTransform,
+          getFlaGraphicInstanceTransformOverride(
+            selectedFlaGraphicTarget.layer.flaGraphicInstanceTransformOverrides,
+            selectedFlaGraphicTarget.frameOrdinal,
+            selectedFlaGraphicNodePath,
+          ),
+          activeFlaGraphicEditDraftMatrices[
+            flaGraphicNodePathKey(selectedFlaGraphicNodePath)
+          ],
+        )
+      : null;
   const structuredEditAssets = useMemo<CanvasImageAssetSource[]>(() => {
     if (!flaGraphicEditActive || !selectedFlaGraphicTarget || !snapshot) return [];
     return collectFlaGraphicStructureAssetIds(selectedFlaGraphicTarget.frame)
@@ -349,6 +367,11 @@ export function CanvasStage({
   }, [flaGraphicEditScope, validFlaGraphicTargetKeys]);
   useEffect(() => {
     if (flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget?.key) return;
+    if (flaGraphicEditScope) {
+      setFlaGraphicEditDrafts((current) =>
+        clearFlaGraphicEditTargetDrafts(current, flaGraphicEditScope.targetKey),
+      );
+    }
     if (flaGraphicEditScope) setFlaGraphicEditScope(null);
     if (selectedFlaGraphicNodePath) setSelectedFlaGraphicNodePath(null);
   }, [flaGraphicEditScope, selectedFlaGraphicNodePath, selectedFlaGraphicTarget?.key]);
@@ -366,8 +389,37 @@ export function CanvasStage({
       ),
     );
   }, [selectedFlaGraphicTarget]);
+  const commitFlaGraphicChildTransform = useCallback((
+    nodePath: readonly string[],
+    matrix: AffineMatrix2D,
+  ) => {
+    if (!selectedFlaGraphicTarget) return;
+    try {
+      layerStore.updateFlaGraphicInstanceTransform(
+        selectedFlaGraphicTarget.layerId,
+        selectedFlaGraphicTarget.frameOrdinal,
+        nodePath,
+        matrix,
+      );
+    } catch (error) {
+      setInteractionStatus(
+        error instanceof Error ? error.message : 'Graphic instance transform could not be saved.',
+      );
+    } finally {
+      setFlaGraphicEditDrafts((current) =>
+        clearFlaGraphicEditDraft(
+          current,
+          selectedFlaGraphicTarget.key,
+          nodePath,
+        ),
+      );
+    }
+  }, [selectedFlaGraphicTarget]);
   const exitOrPopFlaGraphicScope = useCallback(() => {
     if (!selectedFlaGraphicTarget || !flaGraphicEditActive || !flaGraphicEditScope) return;
+    setFlaGraphicEditDrafts((current) =>
+      clearFlaGraphicEditTargetDrafts(current, selectedFlaGraphicTarget.key),
+    );
     setSelectedFlaGraphicNodePath(null);
     const parentPath = parentFlaGraphicEditScopePath(flaGraphicEditScope.path);
     if (parentPath) {
@@ -978,13 +1030,16 @@ export function CanvasStage({
                                 assets: projectImageDimensions,
                                 scopePath: flaGraphicEditPath,
                                 selectedNodePathKey: selectedFlaGraphicNodePathKey,
+                                instanceTransformOverrides:
+                                  layer.flaGraphicInstanceTransformOverrides,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,
                                 selectedNodeRef: flaGraphicEditSelectedNodeRef,
                                 onSelect: setSelectedFlaGraphicNodePath,
                                 onEnter: enterFlaGraphicScope,
-                                onTransform: updateFlaGraphicChildTransform,
+                                onTransformPreview: updateFlaGraphicChildTransform,
+                                onCommitTransform: commitFlaGraphicChildTransform,
                                 onError: setInteractionStatus,
                               }
                             : undefined;
@@ -1099,7 +1154,12 @@ export function CanvasStage({
                       nodeRef={structuredTransformerVisible
                         ? flaGraphicEditSelectedNodeRef
                         : getLayerNodeRef(selectedStageLayer.layer.id)}
-                      scale={selectedStageLayer.render.scaleX}
+                      scale={structuredTransformerVisible
+                        ? selectedStructuredNodeScales?.scaleX ?? selectedStageLayer.render.scaleX
+                        : selectedStageLayer.render.scaleX}
+                      scaleY={structuredTransformerVisible
+                        ? selectedStructuredNodeScales?.scaleY
+                        : undefined}
                       selected
                     />
                   ) : null}

@@ -9,6 +9,7 @@ import type {
 import {
   FlaGraphicDefinitionSchema,
   ProjectSchema,
+  type FlaGraphicInstanceTransformOverrides,
   buildEditorStageRenderModel,
   migrateProject,
 } from '../../src/domain';
@@ -21,6 +22,8 @@ import { FlaGraphicStructureProjection } from '../../src/renderer/features/canva
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import {
   collectFlaGraphicStructureAssetIds,
+  clearFlaGraphicEditDraft,
+  clearFlaGraphicEditTargetDrafts,
   flaGraphicNodeCanSelect,
   flaGraphicNodeCanTransform,
   flaGraphicNodeHasReadyVisual,
@@ -216,8 +219,10 @@ function projectionProps(input: {
   scopePath?: readonly string[];
   images?: ReadonlyMap<string, HTMLImageElement>;
   assets?: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
+  instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   parentMatrix?: AffineMatrix2D;
   onTransform?: (path: readonly string[], matrix: AffineMatrix2D) => void;
+  onTransformPreview?: (path: readonly string[], matrix: AffineMatrix2D) => void;
 }) {
   const definition = input.definition ?? makeDefinition();
   const image = { naturalWidth: 640, naturalHeight: 640 } as HTMLImageElement;
@@ -244,13 +249,17 @@ function projectionProps(input: {
     assets,
     scopePath: input.scopePath ?? [],
     selectedNodePathKey: null,
+    ...(input.instanceTransformOverrides
+      ? { instanceTransformOverrides: input.instanceTransformOverrides }
+      : {}),
     draftMatrices: {},
     layerLocked: false,
     scopeParentNodeRef: parentRef,
     selectedNodeRef: selectedRef,
     onSelect: vi.fn(),
     onEnter: vi.fn(),
-    onTransform: input.onTransform ?? vi.fn(),
+    onTransformPreview: input.onTransformPreview ?? vi.fn(),
+    onCommitTransform: input.onTransform ?? vi.fn(),
     onError: vi.fn(),
   };
 }
@@ -407,6 +416,25 @@ describe('saved Fla Graphic edit scope', () => {
     expect(namedElement(projection, 'fla-structure-hit-root-bitmap')).not.toBeNull();
   });
 
+  it('projects saved instance-local matrices over the shared authored Definition', () => {
+    const definition = makeDefinition();
+    const frame = definition.structure!.frames[0]!;
+    const override = matrixAt(0, 2, 3, 17, -9);
+    const projection = FlaGraphicStructureProjection(projectionProps({
+      frame,
+      definition,
+      scopePath: ['group-a'],
+      instanceTransformOverrides: {
+        '0': { '["group-a","bitmap-one"]': override },
+      },
+    }));
+    const child = namedElement(projection, 'fla-structure-node-bitmap-one');
+
+    expect(child?.props).toMatchObject({ x: 17, y: -9, scaleX: 2, scaleY: 3 });
+    expect(definition.structure!.frames[0]!.layers[0]!.nodes[0]!.localTransform)
+      .toEqual(matrixAt(30, 1.4, 0.8, 45, -12));
+  });
+
   it.each([
     ['move', { ...identity, tx: 13, ty: -8 }],
     ['scale', { ...identity, a: 1.35, d: 0.72 }],
@@ -495,7 +523,46 @@ describe('saved Fla Graphic edit scope', () => {
     }
   });
 
-  it('stores drafts by instance and full path, retains them across layer switches, and prunes replaced identities', () => {
+  it('keeps pointer movement in a transient preview until gesture completion commits once', () => {
+    const definition = makeDefinition();
+    const frame = definition.structure!.frames[0]!;
+    const parentWorld = matrixAt(18, 2, 3, 80, -20);
+    const childLocal = matrixAt(40, 0.8, 1.2, 25, 30);
+    const childAbsolute = multiplyAffineMatrices(parentWorld, childLocal);
+    const onTransformPreview = vi.fn();
+    const onCommitTransform = vi.fn();
+    const projection = FlaGraphicStructureProjection(projectionProps({
+      frame,
+      definition,
+      scopePath: ['group-a'],
+      parentMatrix: parentWorld,
+      onTransformPreview,
+      onTransform: onCommitTransform,
+    }));
+    const child = namedElement(projection, 'fla-structure-node-bitmap-one');
+    const event = {
+      cancelBubble: false,
+      target: {
+        getAbsoluteTransform: () => ({ getMatrix: () => matrixArray(childAbsolute) }),
+        setAttrs: vi.fn(),
+      },
+    };
+    const onDragMove = child?.props.onDragMove as ((value: typeof event) => void) | undefined;
+    const onDragEnd = child?.props.onDragEnd as ((value: typeof event) => void) | undefined;
+    expect(onDragMove).toBeTypeOf('function');
+    expect(onDragEnd).toBeTypeOf('function');
+    if (!onDragMove || !onDragEnd) throw new Error('Expected drag preview and commit handlers.');
+
+    onDragMove(event);
+    expect(onTransformPreview).toHaveBeenCalledTimes(1);
+    expect(onCommitTransform).not.toHaveBeenCalled();
+    onDragEnd(event);
+    expect(onTransformPreview).toHaveBeenCalledTimes(1);
+    expect(onCommitTransform).toHaveBeenCalledTimes(1);
+    expect(onCommitTransform.mock.calls[0]?.[0]).toEqual(['group-a', 'bitmap-one']);
+  });
+
+  it('stores gesture previews by instance and full path and prunes completed or replaced drafts', () => {
     const { project, shot, layerId } = projectWithSavedGraphic();
     const target = resolveFlaGraphicEditTarget({
       project,
@@ -510,6 +577,8 @@ describe('saved Fla Graphic edit scope', () => {
 
     expect(drafts[target.key]?.[JSON.stringify(path)]).toEqual(matrix);
     expect(retainValidFlaGraphicEditDrafts(drafts, new Set([target.key]))).toBe(drafts);
+    expect(clearFlaGraphicEditDraft(drafts, target.key, path)).toEqual({});
+    expect(clearFlaGraphicEditTargetDrafts(drafts, target.key)).toEqual({});
 
     const differentInstance = resolveFlaGraphicEditTarget({
       project,

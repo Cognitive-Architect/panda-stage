@@ -8,6 +8,7 @@ import {
   type Point,
   type Project,
 } from '../../domain';
+import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
   EditorProjectStore,
   editorProjectStore,
@@ -200,6 +201,27 @@ export class LayerStore {
     );
     if (next !== project) {
       this.editorStore.updateProject(next, 'Transform layer');
+    }
+    return next;
+  }
+
+  updateFlaGraphicInstanceTransform(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicInstanceTransform(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      localTransform,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Edit Graphic instance');
     }
     return next;
   }

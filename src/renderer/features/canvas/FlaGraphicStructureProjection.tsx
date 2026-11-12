@@ -11,6 +11,10 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import {
+  evaluateFlaGraphicInstanceTransform,
+  type FlaGraphicInstanceTransformOverrides,
+} from '../../../domain';
+import {
   invertAffineMatrix,
   localizeAbsoluteLeafMatrix,
   multiplyAffineMatrices,
@@ -110,13 +114,16 @@ export interface FlaGraphicStructureProjectionProps {
   readonly assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
   readonly scopePath: readonly string[];
   readonly selectedNodePathKey: string | null;
+  readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  /** Transient gesture preview matrices; committed values live on the Layer. */
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
   readonly layerLocked: boolean;
   readonly scopeParentNodeRef: React.RefObject<Konva.Group | null>;
   readonly selectedNodeRef: React.RefObject<Konva.Group | null>;
   readonly onSelect: (path: readonly string[]) => void;
   readonly onEnter: (path: readonly string[]) => void;
-  readonly onTransform: (path: readonly string[], matrix: AffineMatrix2D) => void;
+  readonly onTransformPreview: (path: readonly string[], matrix: AffineMatrix2D) => void;
+  readonly onCommitTransform: (path: readonly string[], matrix: AffineMatrix2D) => void;
   readonly onError: (message: string) => void;
 }
 
@@ -127,13 +134,15 @@ export function FlaGraphicStructureProjection({
   assets,
   scopePath,
   selectedNodePathKey,
+  instanceTransformOverrides,
   draftMatrices,
   layerLocked,
   scopeParentNodeRef,
   selectedNodeRef,
   onSelect,
   onEnter,
-  onTransform,
+  onTransformPreview,
+  onCommitTransform,
   onError,
 }: FlaGraphicStructureProjectionProps): React.JSX.Element {
   const animationFrame = definition.frames.find(
@@ -185,6 +194,30 @@ export function FlaGraphicStructureProjection({
     });
   };
 
+  const effectiveNodeMatrix = (
+    node: FlaGraphicStructureNode,
+    parentBaseWorld: AffineMatrix2D,
+    path: readonly string[],
+  ): AffineMatrix2D | null => {
+    const base = baseNodeMatrix(node, parentBaseWorld);
+    if (!base || node.type === 'opaque') return base;
+    return evaluateFlaGraphicInstanceTransform(
+      base,
+      instanceTransformOverrides,
+      frame.ordinal,
+      path,
+    );
+  };
+
+  const previewNodeMatrix = (
+    node: FlaGraphicStructureNode,
+    parentBaseWorld: AffineMatrix2D,
+    path: readonly string[],
+  ): AffineMatrix2D | null => {
+    const effective = effectiveNodeMatrix(node, parentBaseWorld, path);
+    return effective ? draftMatrices[nodePathKey(path)] ?? effective : null;
+  };
+
   const nodeContentBounds = (
     node: FlaGraphicStructureNode,
     parentBaseWorld: AffineMatrix2D,
@@ -218,7 +251,12 @@ export function FlaGraphicStructureProjection({
         };
       }
     } else {
-      const nodeBaseWorld = multiplyAffineMatrices(parentBaseWorld, node.localTransform);
+      const nodeTransform = previewNodeMatrix(node, parentBaseWorld, path);
+      if (!nodeTransform) {
+        boundsCache.set(key, null);
+        return null;
+      }
+      const nodeBaseWorld = multiplyAffineMatrices(parentBaseWorld, nodeTransform);
       result = unionBounds(node.children.map((child) =>
         nodeBoundsInParent(child, nodeBaseWorld, [...path, child.id]),
       ));
@@ -235,13 +273,13 @@ export function FlaGraphicStructureProjection({
     const key = nodePathKey(path);
     if (boundsCache.has(key)) {
       const content = boundsCache.get(key) ?? null;
-      const matrix = baseNodeMatrix(node, parentBaseWorld);
-      return content && matrix ? transformBounds(content, draftMatrices[key] ?? matrix) : null;
+      const matrix = previewNodeMatrix(node, parentBaseWorld, path);
+      return content && matrix ? transformBounds(content, matrix) : null;
     }
     const content = nodeContentBounds(node, parentBaseWorld, path);
-    const matrix = baseNodeMatrix(node, parentBaseWorld);
+    const matrix = previewNodeMatrix(node, parentBaseWorld, path);
     const result = content && matrix
-      ? transformBounds(content, draftMatrices[key] ?? matrix)
+      ? transformBounds(content, matrix)
       : null;
     boundsCache.set(key, content);
     return result;
@@ -256,8 +294,7 @@ export function FlaGraphicStructureProjection({
   ): React.JSX.Element | null => {
     const path = [...parentPath, node.id];
     const key = nodePathKey(path);
-    const originalMatrix = baseNodeMatrix(node, parentBaseWorld);
-    const matrix = originalMatrix ? (draftMatrices[key] ?? originalMatrix) : null;
+    const matrix = previewNodeMatrix(node, parentBaseWorld, path);
     const transform = matrix ? matrixTransformProps(matrix) : null;
     const bounds = nodeContentBounds(node, parentBaseWorld, path);
     if (!transform) return null;
@@ -298,7 +335,21 @@ export function FlaGraphicStructureProjection({
         onError(localized.message);
         return;
       }
-      onTransform(path, localized.value);
+      onCommitTransform(path, localized.value);
+    };
+    const handleTransformPreview = (event: Konva.KonvaEventObject<Event>): void => {
+      event.cancelBubble = true;
+      if (!transformable) return;
+      const parentKonvaMatrix = scopeParentNodeRef.current
+        ?.getAbsoluteTransform()
+        .getMatrix();
+      if (!parentKonvaMatrix) return;
+      const absolute = event.target.getAbsoluteTransform().getMatrix();
+      const localized = localizeAbsoluteLeafMatrix(
+        matrixFromKonva(parentKonvaMatrix),
+        matrixFromKonva(absolute),
+      );
+      if (localized.ok) onTransformPreview(path, localized.value);
     };
     const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>): void => {
       event.cancelBubble = true;
@@ -307,7 +358,10 @@ export function FlaGraphicStructureProjection({
     const content = nodeContentBounds(node, parentBaseWorld, path);
     const nodeBaseWorld = node.type === 'opaque'
       ? parentBaseWorld
-      : multiplyAffineMatrices(parentBaseWorld, node.localTransform);
+      : multiplyAffineMatrices(
+          parentBaseWorld,
+          previewNodeMatrix(node, parentBaseWorld, path) ?? node.localTransform,
+        );
     const wrapperRef = selected
       ? selectedNodeRef
       : equalPath(path, scopePath)
@@ -376,7 +430,9 @@ export function FlaGraphicStructureProjection({
           event.cancelBubble = true;
           onSelect(path);
         } : undefined}
+        onDragMove={transformable ? handleTransformPreview : undefined}
         onDragEnd={transformable ? handleDragEnd : undefined}
+        onTransform={transformable ? handleTransformPreview : undefined}
         onTransformEnd={transformable ? handleTransformEnd : undefined}
         opacity={node.type === 'symbol' ? node.opacity ?? 1 : 1}
         ref={wrapperRef}

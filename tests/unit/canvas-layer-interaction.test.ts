@@ -509,7 +509,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(activeMarkup).toContain('返回上级');
     expect(activeMarkup).toContain('进入');
     expect(activeMarkup).toContain('当前对象只读');
-    expect(activeMarkup).toContain('当前内部调整将在后续保存阶段接入项目');
+    expect(activeMarkup).not.toContain('当前内部调整将在后续保存阶段接入项目');
     expect(activeMarkup).not.toContain('临时编辑');
     expect(entryMarkup).toContain('data-testid="fla-group-edit-toggle"');
     expect(entryMarkup).toContain('编辑元件');

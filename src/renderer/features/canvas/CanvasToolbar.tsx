@@ -1,5 +1,5 @@
 import { useId, type KeyboardEventHandler } from 'react';
-import { ArrowLeft, Info, LockKeyhole, LogIn } from 'lucide-react';
+import { ArrowLeft, LockKeyhole, LogIn } from 'lucide-react';
 import type {
   CanvasViewportMode,
   Point,
@@ -40,11 +40,9 @@ export function CanvasToolbar({
   onReturn = () => undefined,
   onFlaGraphicEditKeyDownCapture,
 }: CanvasToolbarProps): React.JSX.Element {
-  const tooltipId = `fla-group-edit-tooltip-${useId()}`;
   const returnTooltipId = `fla-group-edit-return-${useId()}`;
   const enterTooltipId = `fla-group-edit-enter-${useId()}`;
   const readOnlyTooltipId = `fla-group-edit-readonly-${useId()}`;
-  const temporaryEditMessage = '当前内部调整将在后续保存阶段接入项目';
 
   return (
     <div
@@ -132,23 +130,6 @@ export function CanvasToolbar({
                   </span>
                 </span>
               ) : null}
-              <span className="canvas-group-edit-tooltip-anchor">
-                <button
-                  aria-describedby={tooltipId}
-                  aria-label="内部编辑保存说明"
-                  className="canvas-group-edit-icon"
-                  data-ui-button
-                  data-ui-size="icon"
-                  data-ui-variant="secondary"
-                  title={temporaryEditMessage}
-                  type="button"
-                >
-                  <Info aria-hidden="true" focusable="false" size={16} />
-                </button>
-                <span className="canvas-group-edit-tooltip" id={tooltipId} role="tooltip">
-                  {temporaryEditMessage}
-                </span>
-              </span>
             </>
           ) : (
             <button

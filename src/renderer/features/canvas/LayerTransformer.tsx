@@ -5,6 +5,8 @@ import {
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
 } from '../../../domain';
+import type { AffineMatrix2D } from '../../../shared/affine-matrix';
+import { getAffineMatrixScale } from '../../../shared/affine-matrix';
 
 export interface TransformerBox {
   width: number;
@@ -31,6 +33,7 @@ export function isTransformerBoxAllowed(
   oldBox: TransformerBox,
   newBox: TransformerBox,
   currentScale: number,
+  currentScaleY = currentScale,
 ): boolean {
   if (
     !Number.isFinite(oldBox.width) ||
@@ -38,6 +41,7 @@ export function isTransformerBoxAllowed(
     !Number.isFinite(newBox.width) ||
     !Number.isFinite(newBox.height) ||
     !Number.isFinite(currentScale) ||
+    !Number.isFinite(currentScaleY) ||
     oldBox.width === 0 ||
     oldBox.height === 0 ||
     newBox.width === 0 ||
@@ -48,12 +52,22 @@ export function isTransformerBoxAllowed(
   const widthScale =
     Math.abs(newBox.width / oldBox.width) * Math.abs(currentScale);
   const heightScale =
-    Math.abs(newBox.height / oldBox.height) * Math.abs(currentScale);
+    Math.abs(newBox.height / oldBox.height) * Math.abs(currentScaleY);
   return (
     widthScale >= LAYER_MIN_SCALE &&
     widthScale <= LAYER_MAX_SCALE &&
     heightScale >= LAYER_MIN_SCALE &&
     heightScale <= LAYER_MAX_SCALE
+  );
+}
+
+export function structuredChildTransformerScales(
+  authoredLocalTransform: AffineMatrix2D,
+  instanceOverride?: AffineMatrix2D,
+  gestureDraft?: AffineMatrix2D,
+): { scaleX: number; scaleY: number } {
+  return getAffineMatrixScale(
+    gestureDraft ?? instanceOverride ?? authoredLocalTransform,
   );
 }
 
@@ -63,6 +77,7 @@ export interface LayerTransformerProps {
   selected: boolean;
   locked: boolean;
   scale: number;
+  scaleY?: number;
 }
 
 export function LayerTransformer({
@@ -71,6 +86,7 @@ export function LayerTransformer({
   selected,
   locked,
   scale,
+  scaleY = scale,
 }: LayerTransformerProps): React.JSX.Element | null {
   const transformerRef = useRef<Konva.Transformer>(null);
 
@@ -91,7 +107,7 @@ export function LayerTransformer({
       borderStroke="#83d39a"
       borderStrokeWidth={3}
       boundBoxFunc={(oldBox, newBox) =>
-        isTransformerBoxAllowed(oldBox, newBox, scale)
+        isTransformerBoxAllowed(oldBox, newBox, scale, scaleY)
           ? newBox
           : oldBox
       }

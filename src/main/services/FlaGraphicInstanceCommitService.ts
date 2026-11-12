@@ -8,6 +8,7 @@ import {
   ImageAssetSchema,
   LayerService,
   ProjectSchema,
+  pruneFlaGraphicInstanceTransformOverrides,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -600,6 +601,40 @@ export class FlaGraphicInstanceCommitService {
         }
         definition = { ...reused, structure: boundStructure };
       }
+      const upgradedStructure =
+        upgradeStructure &&
+        'kind' in definition &&
+        definition.kind === 'fla-graphic'
+          ? definition.structure
+          : undefined;
+      const shots = upgradedStructure
+        ? current.project.shots.map((shot) => {
+              let changed = false;
+              const layers = shot.layers.map((layer) => {
+                if (
+                  layer.source.kind !== 'animation' ||
+                  layer.source.animationId !== definition.id ||
+                  !layer.flaGraphicInstanceTransformOverrides
+                ) {
+                  return layer;
+                }
+                const overrides = pruneFlaGraphicInstanceTransformOverrides(
+                  layer.flaGraphicInstanceTransformOverrides,
+                  upgradedStructure,
+                );
+                if (overrides === layer.flaGraphicInstanceTransformOverrides) {
+                  return layer;
+                }
+                changed = true;
+                const layerWithoutOverrides = { ...layer };
+                delete layerWithoutOverrides.flaGraphicInstanceTransformOverrides;
+                return overrides
+                  ? { ...layerWithoutOverrides, flaGraphicInstanceTransformOverrides: overrides }
+                  : layerWithoutOverrides;
+              });
+              return changed ? { ...shot, layers } : shot;
+          })
+        : current.project.shots;
       const baseProject = ProjectSchema.parse({
         ...current.project,
         assets: [...current.project.assets, ...assets],
@@ -608,6 +643,7 @@ export class FlaGraphicInstanceCommitService {
             ? current.project.animations.map((animation) => animation.id === definition.id ? definition : animation)
             : current.project.animations
           : [...current.project.animations, definition],
+        shots,
         updatedAt: this.now().toISOString(),
       });
       const playback = instancePlayback(batch);
