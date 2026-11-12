@@ -1,5 +1,4 @@
 import Konva from 'konva';
-import { useEffect, useState } from 'react';
 import {
   Group,
   Image as KonvaImage,
@@ -19,11 +18,10 @@ import type {
   PositionAuthoringSessionHandle,
 } from '../../stores/positionAuthoringSessionStore';
 import { canvasImageResourceKey } from './canvasImageResources';
-import type { FlaGraphicGroupEditPreview } from '../../../shared/fla-graphic-instance-api';
 import {
-  localizeAbsoluteLeafMatrix,
-  type AffineMatrix2D,
-} from '../../../shared/affine-matrix';
+  FlaGraphicStructureProjection,
+  type FlaGraphicStructureProjectionProps,
+} from './FlaGraphicStructureProjection';
 
 interface Point {
   readonly x: number;
@@ -59,113 +57,9 @@ export interface SelectableLayerProps {
   positionAuthoringSession?: PositionAuthoringSessionHandle | null;
   /** The visual-only Shake offset that must not be baked into Position. */
   positionAuthoringShakeOffset?: Point | null;
-  flaGroupEditPreview?: FlaGraphicGroupEditPreview | null;
-  flaGroupEditDraftMatrices?: Readonly<Record<string, AffineMatrix2D>>;
-  flaGroupEditScope?: boolean;
-  flaGroupEditSelectedChildAddress?: string | null;
-  flaGroupEditParentNodeRef?: React.RefObject<Konva.Group | null>;
-  onFlaGroupEditEnter?: () => void;
-  onFlaGroupEditChildSelect?: (sourceAddress: string) => void;
-  onFlaGroupEditChildTransform?: (sourceAddress: string, matrix: AffineMatrix2D) => void;
+  flaGraphicEditProjection?: FlaGraphicStructureProjectionProps | null;
   onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
-}
-
-interface SvgArtworkImageProps {
-  readonly svg: string;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly listening?: boolean;
-  readonly name: string;
-}
-
-function SvgArtworkImage({
-  svg,
-  x,
-  y,
-  width,
-  height,
-  listening = false,
-  name,
-}: SvgArtworkImageProps): React.JSX.Element | null {
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  useEffect(() => {
-    setImage(null);
-    if (typeof Image === 'undefined' || typeof URL.createObjectURL !== 'function') return undefined;
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-    const nextImage = new Image();
-    nextImage.onload = () => setImage(nextImage);
-    nextImage.onerror = () => setImage(null);
-    nextImage.src = url;
-    return () => {
-      nextImage.onload = null;
-      nextImage.onerror = null;
-      URL.revokeObjectURL(url);
-    };
-  }, [svg]);
-  if (!image) return null;
-  return (
-    <KonvaImage
-      height={height}
-      image={image}
-      listening={listening}
-      name={name}
-      width={width}
-      x={x}
-      y={y}
-    />
-  );
-}
-
-function matrixTransformProps(matrix: AffineMatrix2D): {
-  x: number;
-  y: number;
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-  skewX: number;
-  skewY: number;
-} | null {
-  const decomposed = new Konva.Transform([
-    matrix.a,
-    matrix.b,
-    matrix.c,
-    matrix.d,
-    matrix.tx,
-    matrix.ty,
-  ]).decompose();
-  const values = [
-    decomposed.x,
-    decomposed.y,
-    decomposed.rotation,
-    decomposed.scaleX,
-    decomposed.scaleY,
-    decomposed.skewX,
-    decomposed.skewY,
-  ];
-  if (!values.every(Number.isFinite)) return null;
-  return {
-    x: decomposed.x,
-    y: decomposed.y,
-    rotation: decomposed.rotation,
-    scaleX: decomposed.scaleX,
-    scaleY: decomposed.scaleY,
-    skewX: decomposed.skewX,
-    skewY: decomposed.skewY,
-  };
-}
-
-function matrixFromKonvaTransform(matrix: number[]): AffineMatrix2D {
-  return {
-    a: matrix[0] ?? 1,
-    b: matrix[1] ?? 0,
-    c: matrix[2] ?? 0,
-    d: matrix[3] ?? 1,
-    tx: matrix[4] ?? 0,
-    ty: matrix[5] ?? 0,
-  };
 }
 
 function stopAndSelect(
@@ -193,14 +87,7 @@ export function SelectableLayer({
   onCommitTransform,
   positionAuthoringSession = null,
   positionAuthoringShakeOffset = null,
-  flaGroupEditPreview = null,
-  flaGroupEditDraftMatrices = {},
-  flaGroupEditScope = false,
-  flaGroupEditSelectedChildAddress = null,
-  flaGroupEditParentNodeRef,
-  onFlaGroupEditEnter = () => undefined,
-  onFlaGroupEditChildSelect = () => undefined,
-  onFlaGroupEditChildTransform = () => undefined,
+  flaGraphicEditProjection = null,
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
@@ -208,7 +95,7 @@ export function SelectableLayer({
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const canTransform = canMove && !flaGroupEditScope;
+  const canTransform = canMove && !flaGraphicEditProjection;
 
   const legacyBounds = {
     x: -render.offsetX,
@@ -365,156 +252,6 @@ export function SelectableLayer({
         : visiblePartImages.map(renderHitArea)
       : null;
 
-  const groupEditTransform = flaGroupEditPreview
-    ? matrixTransformProps(flaGroupEditPreview.group.canvasTransform)
-    : null;
-  const renderedGroupEditParentHitAreas = flaGroupEditPreview && groupEditTransform ? (
-    <Group
-      {...groupEditTransform}
-      listening={canSelect && !flaGroupEditScope}
-      name="fla-group-edit-parent-hit-area-group"
-    >
-      {flaGroupEditPreview.children.map((child) => {
-        const childMatrix = flaGroupEditDraftMatrices[child.sourceAddress] ?? child.localTransform;
-        const childTransform = matrixTransformProps(childMatrix);
-        if (!childTransform) return null;
-        return (
-          <Group
-            {...childTransform}
-            key={child.sourceAddress}
-            listening={canSelect && !flaGroupEditScope}
-            name="fla-group-edit-parent-hit-child"
-          >
-            <Rect
-              fill="#000000"
-              height={child.artwork.viewBox.height}
-              listening={canSelect && !flaGroupEditScope}
-              name="fla-group-edit-parent-hit-area"
-              opacity={0}
-              onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-              onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-              width={child.artwork.viewBox.width}
-              x={child.artwork.viewBox.x}
-              y={child.artwork.viewBox.y}
-            />
-          </Group>
-        );
-      })}
-    </Group>
-  ) : null;
-  const renderedGroupEditPreview = flaGroupEditPreview && groupEditTransform ? (
-    <Group listening name="fla-group-edit-preview">
-      {renderedGroupEditParentHitAreas}
-      {flaGroupEditPreview.background ? (
-        <SvgArtworkImage
-          height={flaGroupEditPreview.background.artwork.viewBox.height}
-          name="fla-group-edit-background"
-          svg={flaGroupEditPreview.background.artwork.svg}
-          width={flaGroupEditPreview.background.artwork.viewBox.width}
-          x={flaGroupEditPreview.background.position.x}
-          y={flaGroupEditPreview.background.position.y}
-        />
-      ) : null}
-      <Group
-        {...groupEditTransform}
-        listening={flaGroupEditScope}
-        name="fla-group-edit-parent"
-        opacity={flaGroupEditPreview.group.opacity ?? 1}
-        ref={flaGroupEditParentNodeRef}
-      >
-        {flaGroupEditPreview.children.map((child) => {
-          const childMatrix = flaGroupEditDraftMatrices[child.sourceAddress] ?? child.localTransform;
-          const childTransform = matrixTransformProps(childMatrix);
-          if (!childTransform) return null;
-          return (
-            <Group
-              {...childTransform}
-              draggable={flaGroupEditScope && !layer.locked}
-              key={child.sourceAddress}
-              listening={flaGroupEditScope}
-              name={`fla-group-edit-child-${child.kind}`}
-              onClick={(event) => {
-                event.cancelBubble = true;
-                onFlaGroupEditChildSelect(child.sourceAddress);
-              }}
-              onTap={(event) => {
-                event.cancelBubble = true;
-                onFlaGroupEditChildSelect(child.sourceAddress);
-              }}
-              onDragStart={(event) => {
-                event.cancelBubble = true;
-                onFlaGroupEditChildSelect(child.sourceAddress);
-              }}
-              onDragEnd={(event) => {
-                event.cancelBubble = true;
-                const parentKonvaMatrix = flaGroupEditParentNodeRef?.current
-                  ?.getAbsoluteTransform().getMatrix();
-                if (!parentKonvaMatrix) {
-                  event.target.setAttrs(childTransform);
-                  onError('Group 變換不可用，子圖層位置已還原。');
-                  return;
-                }
-                const childAbsoluteMatrix = event.target.getAbsoluteTransform().getMatrix();
-                const localized = localizeAbsoluteLeafMatrix(
-                  matrixFromKonvaTransform(parentKonvaMatrix),
-                  matrixFromKonvaTransform(childAbsoluteMatrix),
-                );
-                if (!localized.ok) {
-                  event.target.setAttrs(childTransform);
-                  onError(localized.message);
-                  return;
-                }
-                onFlaGroupEditChildTransform(child.sourceAddress, localized.value);
-              }}
-            >
-              <Rect
-                fill="#000000"
-                height={child.artwork.viewBox.height}
-                listening={flaGroupEditScope}
-                name="fla-group-edit-child-hit-area"
-                opacity={0}
-                width={child.artwork.viewBox.width}
-                x={child.artwork.viewBox.x}
-                y={child.artwork.viewBox.y}
-              />
-              <SvgArtworkImage
-                height={child.artwork.viewBox.height}
-                listening={flaGroupEditScope}
-                name={`fla-group-edit-art-${child.sourceAddress}`}
-                svg={child.artwork.svg}
-                width={child.artwork.viewBox.width}
-                x={child.artwork.viewBox.x}
-                y={child.artwork.viewBox.y}
-              />
-              {flaGroupEditScope && flaGroupEditSelectedChildAddress === child.sourceAddress ? (
-                <Rect
-                  height={child.artwork.viewBox.height}
-                  listening={false}
-                  name="fla-group-edit-child-selection"
-                  stroke="#83d39a"
-                  strokeWidth={2}
-                  width={child.artwork.viewBox.width}
-                  x={child.artwork.viewBox.x}
-                  y={child.artwork.viewBox.y}
-                />
-              ) : null}
-            </Group>
-          );
-        })}
-      </Group>
-      {flaGroupEditPreview.foreground ? (
-        <SvgArtworkImage
-          height={flaGroupEditPreview.foreground.artwork.viewBox.height}
-          name="fla-group-edit-foreground"
-          svg={flaGroupEditPreview.foreground.artwork.svg}
-          width={flaGroupEditPreview.foreground.artwork.viewBox.width}
-          x={flaGroupEditPreview.foreground.position.x}
-          y={flaGroupEditPreview.foreground.position.y}
-        />
-      ) : null}
-    </Group>
-  ) : null;
-
   const clampNode = (node: Konva.Node): void => {
     const position = clampLayerPosition({
       x: node.x(),
@@ -556,11 +293,6 @@ export function SelectableLayer({
       onClick={(event) =>
         stopAndSelect(event, layer.id, onSelect)
       }
-      onDblClick={(event) => {
-        if (!flaGroupEditPreview || !selected || flaGroupEditScope) return;
-        event.cancelBubble = true;
-        onFlaGroupEditEnter();
-      }}
       onDragEnd={(event) => {
         if (positionAuthoringSession) {
           clampPositionAuthoringNode(event.target);
@@ -615,7 +347,7 @@ export function SelectableLayer({
       opacity={render.opacity}
       onTransformEnd={(event) => {
         const node = event.target as Konva.Group;
-        if (positionAuthoringSession || !directEditingEnabled || flaGroupEditScope) {
+        if (positionAuthoringSession || !directEditingEnabled || flaGraphicEditProjection) {
           resetNode(node);
           return;
         }
@@ -644,11 +376,13 @@ export function SelectableLayer({
       rotation={render.rotationDeg}
       scaleX={render.scaleX}
       scaleY={render.scaleY}
-      visible={render.visible}
+      visible={render.visible || Boolean(flaGraphicEditProjection)}
       x={render.x}
       y={render.y}
       >
-        {renderedGroupEditPreview ?? (compositeVisual ? (
+        {flaGraphicEditProjection ? (
+          <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
+        ) : compositeVisual ? (
           <Group
             listening={canSelect}
             name="selectable-canvas-visual"
@@ -658,9 +392,9 @@ export function SelectableLayer({
           </Group>
         ) : (
           renderedParts
-        ))}
-        {!flaGroupEditPreview ? renderedHitAreas : null}
-        {!flaGroupEditPreview && animationVisual ? (
+        )}
+        {!flaGraphicEditProjection ? renderedHitAreas : null}
+        {!flaGraphicEditProjection && animationVisual ? (
           <Rect
             fill="#000000"
             height={visualBounds.height}
@@ -674,7 +408,7 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady && !flaGroupEditScope ? (
+        {selected && completeVisualReady && !flaGraphicEditProjection ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}

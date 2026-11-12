@@ -35,8 +35,8 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     expect(canvasWorkspace.match(/<CanvasStage\b/gu)).toHaveLength(1);
     expect(canvasWorkspace).toContain('showHeading={showHeading}');
     expect(canvasWorkspace).toContain('showToolbar={showToolbar}');
-    expect(canvasWorkspace).toContain('flaGroupEditTarget={flaGroupEditTarget}');
-    expect(canvasWorkspace).toContain('onClearFlaGroupEditTarget={onClearFlaGroupEditTarget}');
+    expect(canvasWorkspace).not.toContain('flaGroupEditTarget');
+    expect(canvasWorkspace).not.toContain('onClearFlaGroupEditTarget');
     expect(resourceDock).toContain('<ShotManager');
     expect(resourceDock).toContain('hideSectionLabels?: boolean');
     expect(resourceDock).toContain('hideSectionLabels = false');

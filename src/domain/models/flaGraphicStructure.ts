@@ -192,6 +192,8 @@ export const FlaGraphicStructureLayerSchema = z
   })
   .strict();
 
+export type FlaGraphicStructureLayer = z.infer<typeof FlaGraphicStructureLayerSchema>;
+
 /** Structure captured for one Definition frame; the shape allows more frames later. */
 export const FlaGraphicStructureFrameSchema = z
   .object({
@@ -199,6 +201,8 @@ export const FlaGraphicStructureFrameSchema = z
     layers: z.array(FlaGraphicStructureLayerSchema).max(1_000),
   })
   .strict();
+
+export type FlaGraphicStructureFrame = z.infer<typeof FlaGraphicStructureFrameSchema>;
 
 export const FlaGraphicStructureSchema = z
   .object({

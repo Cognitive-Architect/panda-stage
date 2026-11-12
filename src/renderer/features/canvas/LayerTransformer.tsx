@@ -59,6 +59,7 @@ export function isTransformerBoxAllowed(
 
 export interface LayerTransformerProps {
   nodeRef: React.RefObject<Konva.Group | null>;
+  nodeBindingKey: string;
   selected: boolean;
   locked: boolean;
   scale: number;
@@ -66,6 +67,7 @@ export interface LayerTransformerProps {
 
 export function LayerTransformer({
   nodeRef,
+  nodeBindingKey,
   selected,
   locked,
   scale,
@@ -78,7 +80,7 @@ export function LayerTransformer({
     if (!transformer) return;
     transformer.nodes(selected && !locked && node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [locked, nodeRef, selected]);
+  }, [locked, nodeBindingKey, nodeRef, selected]);
 
   if (!selected || locked) return null;
   return (

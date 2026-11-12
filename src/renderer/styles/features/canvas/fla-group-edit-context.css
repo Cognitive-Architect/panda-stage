@@ -9,19 +9,26 @@
   text-shadow: none;
 }
 
-.canvas-group-edit-temporary {
-  color: var(--ui-color-text-secondary);
-  font: var(--ui-font-secondary);
-}
-
 .canvas-group-edit-toggle {
   min-height: 32px;
   padding: 5px 10px;
   font-size: 12px;
 }
 
-.canvas-group-edit-control .canvas-group-edit-info {
+.canvas-group-edit-icon {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
   color: var(--ui-color-text-secondary);
+}
+
+.canvas-group-edit-readonly {
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-text-secondary);
+  cursor: help;
 }
 
 .canvas-group-edit-tooltip-anchor {

@@ -1,11 +1,8 @@
 import { CanvasStage } from '../features/canvas/CanvasStage';
-import type { FlaGroupEditTarget } from '../features/canvas/flaGroupEditTypes';
 
 export interface CanvasWorkspaceProps {
   showHeading?: boolean;
   showToolbar?: boolean;
-  flaGroupEditTarget?: FlaGroupEditTarget | null;
-  onClearFlaGroupEditTarget?: () => void;
 }
 
 /**
@@ -18,8 +15,6 @@ export interface CanvasWorkspaceProps {
 export function CanvasWorkspace({
   showHeading = true,
   showToolbar = true,
-  flaGroupEditTarget = null,
-  onClearFlaGroupEditTarget = () => undefined,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
   return (
     <section
@@ -30,8 +25,6 @@ export function CanvasWorkspace({
       <CanvasStage
         showHeading={showHeading}
         showToolbar={showToolbar}
-        flaGroupEditTarget={flaGroupEditTarget}
-        onClearFlaGroupEditTarget={onClearFlaGroupEditTarget}
       />
     </section>
   );

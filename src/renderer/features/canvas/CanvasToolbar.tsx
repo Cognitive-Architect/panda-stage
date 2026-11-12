@@ -1,4 +1,5 @@
 import { useId, type KeyboardEventHandler } from 'react';
+import { ArrowLeft, Info, LockKeyhole, LogIn } from 'lucide-react';
 import type {
   CanvasViewportMode,
   Point,
@@ -10,29 +11,40 @@ export interface CanvasToolbarProps {
   point: Point | null;
   transform: ViewportTransform;
   showStatus?: boolean;
-  groupEditAvailable?: boolean;
-  groupEditActive?: boolean;
-  onToggleGroupEdit?: () => void;
-  onGroupEditKeyDownCapture?: KeyboardEventHandler<HTMLDivElement>;
+  flaGraphicEditAvailable?: boolean;
+  flaGraphicEditActive?: boolean;
+  canEnterSelected?: boolean;
+  readOnlySelected?: boolean;
+  onToggleFlaGraphicEdit?: () => void;
+  onEnterSelected?: () => void;
+  onReturn?: () => void;
+  onFlaGraphicEditKeyDownCapture?: KeyboardEventHandler<HTMLDivElement>;
   onModeChange?: never;
 }
 
 /**
- * Lightweight viewport chrome for status and the selected layer's transient
- * Group edit action. The component lives outside the scaled logical stage.
+ * Lightweight viewport chrome for status and the selected Structured FLA
+ * instance's hierarchical edit actions.
  */
 export function CanvasToolbar({
   mode,
   point,
   transform,
   showStatus = true,
-  groupEditAvailable = false,
-  groupEditActive = false,
-  onToggleGroupEdit = () => undefined,
-  onGroupEditKeyDownCapture,
+  flaGraphicEditAvailable = false,
+  flaGraphicEditActive = false,
+  canEnterSelected = false,
+  readOnlySelected = false,
+  onToggleFlaGraphicEdit = () => undefined,
+  onEnterSelected = () => undefined,
+  onReturn = () => undefined,
+  onFlaGraphicEditKeyDownCapture,
 }: CanvasToolbarProps): React.JSX.Element {
   const tooltipId = `fla-group-edit-tooltip-${useId()}`;
-  const temporaryEditMessage = '当前分组调整尚不能保存到项目';
+  const returnTooltipId = `fla-group-edit-return-${useId()}`;
+  const enterTooltipId = `fla-group-edit-enter-${useId()}`;
+  const readOnlyTooltipId = `fla-group-edit-readonly-${useId()}`;
+  const temporaryEditMessage = '当前内部调整将在后续保存阶段接入项目';
 
   return (
     <div
@@ -58,47 +70,100 @@ export function CanvasToolbar({
           </output>
         </>
       ) : null}
-      {groupEditAvailable ? (
+      {flaGraphicEditAvailable ? (
         <div
           className="canvas-group-edit-control"
           data-canvas-interactive-chrome="true"
           data-testid="fla-group-edit-control"
-          onKeyDownCapture={onGroupEditKeyDownCapture}
+          onKeyDownCapture={onFlaGraphicEditKeyDownCapture}
         >
-          {groupEditActive ? (
+          {flaGraphicEditActive ? (
             <>
-              <span className="canvas-group-edit-temporary">临时编辑</span>
+              <span className="canvas-group-edit-tooltip-anchor">
+                <button
+                  aria-describedby={returnTooltipId}
+                  aria-label="返回上级"
+                  className="canvas-group-edit-icon"
+                  data-ui-button
+                  data-ui-size="icon"
+                  data-ui-variant="secondary"
+                  onClick={onReturn}
+                  title="返回上级"
+                  type="button"
+                >
+                  <ArrowLeft aria-hidden="true" focusable="false" size={16} />
+                </button>
+                <span className="canvas-group-edit-tooltip" id={returnTooltipId} role="tooltip">
+                  返回上级
+                </span>
+              </span>
+              {canEnterSelected ? (
+                <span className="canvas-group-edit-tooltip-anchor">
+                  <button
+                    aria-describedby={enterTooltipId}
+                    aria-label="进入子元件"
+                    className="canvas-group-edit-icon"
+                    data-ui-button
+                    data-ui-size="icon"
+                    data-ui-variant="secondary"
+                    onClick={onEnterSelected}
+                    title="进入"
+                    type="button"
+                  >
+                    <LogIn aria-hidden="true" focusable="false" size={16} />
+                  </button>
+                  <span className="canvas-group-edit-tooltip" id={enterTooltipId} role="tooltip">
+                    进入
+                  </span>
+                </span>
+              ) : null}
+              {readOnlySelected ? (
+                <span
+                  aria-describedby={readOnlyTooltipId}
+                  aria-label="当前对象只读"
+                  className="canvas-group-edit-tooltip-anchor canvas-group-edit-readonly"
+                  role="img"
+                  tabIndex={0}
+                  title="当前对象只读"
+                >
+                  <LockKeyhole aria-hidden="true" focusable="false" size={16} />
+                  <span className="canvas-group-edit-tooltip" id={readOnlyTooltipId} role="tooltip">
+                    当前对象只读
+                  </span>
+                </span>
+              ) : null}
               <span className="canvas-group-edit-tooltip-anchor">
                 <button
                   aria-describedby={tooltipId}
-                  aria-label="分组编辑保存说明"
-                  className="canvas-group-edit-info"
+                  aria-label="内部编辑保存说明"
+                  className="canvas-group-edit-icon"
                   data-ui-button
                   data-ui-size="icon"
                   data-ui-variant="secondary"
                   title={temporaryEditMessage}
                   type="button"
                 >
-                  <span aria-hidden="true">ⓘ</span>
+                  <Info aria-hidden="true" focusable="false" size={16} />
                 </button>
                 <span className="canvas-group-edit-tooltip" id={tooltipId} role="tooltip">
                   {temporaryEditMessage}
                 </span>
               </span>
             </>
-          ) : null}
-          <button
-            aria-controls="project-canvas-stage"
-            aria-pressed={groupEditActive}
-            className="canvas-group-edit-toggle"
-            data-testid="fla-group-edit-toggle"
-            data-ui-button
-            data-ui-variant="secondary"
-            onClick={onToggleGroupEdit}
-            type="button"
-          >
-            {groupEditActive ? '返回整体' : '编辑分组'}
-          </button>
+          ) : (
+            <button
+              aria-controls="project-canvas-stage"
+              aria-pressed={false}
+              className="canvas-group-edit-toggle"
+              data-testid="fla-group-edit-toggle"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={onToggleFlaGraphicEdit}
+              type="button"
+            >
+              编辑元件
+            </button>
+          )}
         </div>
       ) : null}
     </div>

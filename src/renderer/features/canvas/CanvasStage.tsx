@@ -21,11 +21,11 @@ import {
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type ImageAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
 import type { AffineMatrix2D } from '../../../shared/affine-matrix';
-import type { FlaGroupEditTarget } from './flaGroupEditTypes';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
@@ -81,6 +81,19 @@ import {
   readEditorTemporalContinuityBucket,
   type EditorTemporalContinuityMode,
 } from './editorTemporalCanvasContinuity';
+import {
+  collectFlaGraphicStructureAssetIds,
+  flaGraphicNodeCanTransform,
+  flaGraphicNodeHasReadyVisual,
+  flaGraphicNodePathKey,
+  getFlaGraphicNodeAtPath,
+  isFlaGraphicNodeEnterable,
+  parentFlaGraphicEditScopePath,
+  recordFlaGraphicEditDraft,
+  retainValidFlaGraphicEditDrafts,
+  resolveFlaGraphicEditTarget,
+  type FlaGraphicEditScopeState,
+} from './flaGraphicEditScope';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
 // allowing an unbounded DPR to multiply canvas memory.
@@ -192,15 +205,11 @@ function isCurrentCanvasAssetReady(
 export interface CanvasStageProps {
   showHeading?: boolean;
   showToolbar?: boolean;
-  flaGroupEditTarget?: FlaGroupEditTarget | null;
-  onClearFlaGroupEditTarget?: () => void;
 }
 
 export function CanvasStage({
   showHeading = true,
   showToolbar = true,
-  flaGroupEditTarget = null,
-  onClearFlaGroupEditTarget = () => undefined,
 }: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -230,13 +239,15 @@ export function CanvasStage({
     );
   const [dropPreview, setDropPreview] =
     useState<CanvasDropPreview | null>(null);
-  const [groupScopeTargetKey, setGroupScopeTargetKey] = useState<string | null>(null);
-  const [selectedGroupChildAddress, setSelectedGroupChildAddress] = useState<string | null>(null);
-  const [groupEditDraft, setGroupEditDraft] = useState<{
-    readonly targetKey: string;
-    readonly matrices: Readonly<Record<string, AffineMatrix2D>>;
-  } | null>(null);
-  const groupEditParentNodeRef = useRef<Konva.Group | null>(null);
+  const [flaGraphicEditScope, setFlaGraphicEditScope] =
+    useState<FlaGraphicEditScopeState | null>(null);
+  const [selectedFlaGraphicNodePath, setSelectedFlaGraphicNodePath] =
+    useState<readonly string[] | null>(null);
+  const [flaGraphicEditDrafts, setFlaGraphicEditDrafts] = useState<
+    Readonly<Record<string, Readonly<Record<string, AffineMatrix2D>>>>
+  >({});
+  const flaGraphicEditParentNodeRef = useRef<Konva.Group | null>(null);
+  const flaGraphicEditSelectedNodeRef = useRef<Konva.Group | null>(null);
   const canvasStageElementRef = useRef<HTMLDivElement>(null);
   const [interactionStatus, setInteractionStatus] = useState(
     '从素材库拖入图片或动画，或点击普通图层进行选择。',
@@ -262,114 +273,155 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
-  const groupEditTargetLayer = flaGroupEditTarget && shot
-    ? shot.layers.find((layer) => layer.id === flaGroupEditTarget.layerId) ?? null
+  const editContextKey = snapshot && shot && projectInstanceId !== null
+    ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
-  const groupEditTargetAnimationId = groupEditTargetLayer?.source.kind === 'animation'
-    ? groupEditTargetLayer.source.animationId
-    : null;
-  const groupEditTargetOccurrence = groupEditTargetLayer?.source.kind === 'animation'
-    ? groupEditTargetLayer.source.flaOccurrence
-    : null;
-  const groupEditTargetAnimation = groupEditTargetAnimationId && snapshot
-    ? snapshot.project.animations.find(
-        (animation) => animation.id === groupEditTargetAnimationId,
-      ) ?? null
-    : null;
-  const groupEditSourceMatches = Boolean(
-    flaGroupEditTarget &&
-    groupEditTargetOccurrence?.occurrenceId === flaGroupEditTarget.preview.source.outerOccurrenceId &&
-    groupEditTargetOccurrence?.sourceAddress === flaGroupEditTarget.preview.source.outerSourceAddress &&
-    groupEditTargetAnimation &&
-    'kind' in groupEditTargetAnimation &&
-    groupEditTargetAnimation.kind === 'fla-graphic' &&
-    groupEditTargetAnimation.source.sha256 === flaGroupEditTarget.preview.source.sha256 &&
-    groupEditTargetAnimation.source.targetName === flaGroupEditTarget.preview.source.graphicSymbolName
+  const selectedFlaGraphicTarget = useMemo(
+    () => resolveFlaGraphicEditTarget({
+      project: snapshot?.project ?? null,
+      projectRoot: snapshot?.projectRoot ?? null,
+      projectInstanceId,
+      shot,
+      layerId: selectedLayerId,
+    }),
+    [projectInstanceId, selectedLayerId, shot, snapshot?.project, snapshot?.projectRoot],
   );
-  const groupEditTargetKey = flaGroupEditTarget && snapshot && shot &&
-      flaGroupEditTarget.projectId === snapshot.project.id &&
-      flaGroupEditTarget.projectRoot === snapshot.projectRoot &&
-      flaGroupEditTarget.shotId === shot.id &&
-      flaGroupEditTarget.projectInstanceId === projectInstanceId &&
-      groupEditTargetLayer !== null &&
-      groupEditSourceMatches
-    ? `${flaGroupEditTarget.projectInstanceId}:${flaGroupEditTarget.projectId}:${flaGroupEditTarget.projectRoot}:${flaGroupEditTarget.shotId}:${flaGroupEditTarget.layerId}:${flaGroupEditTarget.preview.source.sha256}:${flaGroupEditTarget.preview.source.outerOccurrenceId}:${flaGroupEditTarget.preview.group.sourceAddress}`
-    : null;
-  const groupEditTargetSelected = Boolean(
-    groupEditTargetKey && flaGroupEditTarget?.layerId === selectedLayerId,
+  const validFlaGraphicTargetKeys = useMemo(() => {
+    if (!snapshot || !shot) return new Set<string>();
+    return new Set(shot.layers.flatMap((layer) => {
+      const target = resolveFlaGraphicEditTarget({
+        project: snapshot.project,
+        projectRoot: snapshot.projectRoot,
+        projectInstanceId,
+        shot,
+        layerId: layer.id,
+      });
+      return target ? [target.key] : [];
+    }));
+  }, [projectInstanceId, shot, snapshot]);
+  const flaGraphicEditActive = Boolean(
+    selectedFlaGraphicTarget &&
+      flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget.key,
   );
-  const groupEditScope = groupEditTargetSelected && groupScopeTargetKey === groupEditTargetKey;
-  const groupEditDraftMatrices = groupEditTargetKey && groupEditDraft?.targetKey === groupEditTargetKey
-    ? groupEditDraft.matrices
+  const flaGraphicEditPath = flaGraphicEditActive
+    ? flaGraphicEditScope?.path ?? []
+    : [];
+  const selectedFlaGraphicNodePathKey = selectedFlaGraphicNodePath
+    ? flaGraphicNodePathKey(selectedFlaGraphicNodePath)
+    : null;
+  const selectedFlaGraphicNode = flaGraphicEditActive && selectedFlaGraphicTarget &&
+      selectedFlaGraphicNodePath &&
+      selectedFlaGraphicNodePath.length === flaGraphicEditPath.length + 1 &&
+      flaGraphicEditPath.every((id, index) => selectedFlaGraphicNodePath[index] === id)
+    ? getFlaGraphicNodeAtPath(selectedFlaGraphicTarget.frame, selectedFlaGraphicNodePath)
+    : null;
+  const activeFlaGraphicEditDraftMatrices = selectedFlaGraphicTarget
+    ? flaGraphicEditDrafts[selectedFlaGraphicTarget.key] ?? {}
     : {};
-  useEffect(() => {
-    if (!flaGroupEditTarget) {
-      setGroupScopeTargetKey(null);
-      setSelectedGroupChildAddress(null);
-      setGroupEditDraft(null);
-      return;
+  const structuredEditAssets = useMemo<CanvasImageAssetSource[]>(() => {
+    if (!flaGraphicEditActive || !selectedFlaGraphicTarget || !snapshot) return [];
+    return collectFlaGraphicStructureAssetIds(selectedFlaGraphicTarget.frame)
+      .flatMap((assetId) => {
+        const asset = resolveImageAsset(snapshot.project, assetId);
+        return asset?.sha256 ? [{ id: asset.id, sha256: asset.sha256 }] : [];
+      });
+  }, [flaGraphicEditActive, selectedFlaGraphicTarget, snapshot]);
+  const projectImageDimensions = useMemo(() => {
+    const dimensions = new Map<string, Pick<ImageAsset, 'width' | 'height'>>();
+    for (const asset of snapshot?.project.assets ?? []) {
+      if (asset.kind === 'image') dimensions.set(asset.id, asset);
     }
-    if (!groupEditTargetKey) onClearFlaGroupEditTarget();
-  }, [
-    flaGroupEditTarget,
-    groupEditTargetKey,
-    onClearFlaGroupEditTarget,
-  ]);
+    return dimensions;
+  }, [snapshot?.project.assets]);
   useEffect(() => {
-    setGroupScopeTargetKey(null);
-    setSelectedGroupChildAddress(null);
-    setGroupEditDraft(null);
-  }, [groupEditTargetKey]);
+    setFlaGraphicEditScope(null);
+    setSelectedFlaGraphicNodePath(null);
+    setFlaGraphicEditDrafts({});
+  }, [editContextKey]);
   useEffect(() => {
-    if (!groupEditTargetKey || selectedLayerId === flaGroupEditTarget?.layerId) return;
-    setGroupScopeTargetKey((current) =>
-      current === groupEditTargetKey ? null : current,
+    if (flaGraphicEditScope && !validFlaGraphicTargetKeys.has(flaGraphicEditScope.targetKey)) {
+      setFlaGraphicEditScope(null);
+      setSelectedFlaGraphicNodePath(null);
+    }
+    setFlaGraphicEditDrafts((current) =>
+      retainValidFlaGraphicEditDrafts(current, validFlaGraphicTargetKeys),
     );
-    setSelectedGroupChildAddress(null);
-  }, [flaGroupEditTarget?.layerId, groupEditTargetKey, selectedLayerId]);
-  const updateGroupEditChildTransform = useCallback((
-    sourceAddress: string,
+  }, [flaGraphicEditScope, validFlaGraphicTargetKeys]);
+  useEffect(() => {
+    if (flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget?.key) return;
+    if (flaGraphicEditScope) setFlaGraphicEditScope(null);
+    if (selectedFlaGraphicNodePath) setSelectedFlaGraphicNodePath(null);
+  }, [flaGraphicEditScope, selectedFlaGraphicNodePath, selectedFlaGraphicTarget?.key]);
+  const updateFlaGraphicChildTransform = useCallback((
+    nodePath: readonly string[],
     matrix: AffineMatrix2D,
   ) => {
-    if (!groupEditTargetKey) return;
-    setGroupEditDraft((current) => ({
-      targetKey: groupEditTargetKey,
-      matrices: {
-        ...(current?.targetKey === groupEditTargetKey ? current.matrices : {}),
-        [sourceAddress]: matrix,
-      },
-    }));
-  }, [groupEditTargetKey]);
-  const exitGroupEditScope = useCallback(() => {
-    setGroupScopeTargetKey(null);
-    setSelectedGroupChildAddress(null);
-    if (flaGroupEditTarget) selectionStore.selectExplicit(flaGroupEditTarget.layerId);
+    if (!selectedFlaGraphicTarget) return;
+    setFlaGraphicEditDrafts((current) =>
+      recordFlaGraphicEditDraft(
+        current,
+        selectedFlaGraphicTarget.key,
+        nodePath,
+        matrix,
+      ),
+    );
+  }, [selectedFlaGraphicTarget]);
+  const exitOrPopFlaGraphicScope = useCallback(() => {
+    if (!selectedFlaGraphicTarget || !flaGraphicEditActive || !flaGraphicEditScope) return;
+    setSelectedFlaGraphicNodePath(null);
+    const parentPath = parentFlaGraphicEditScopePath(flaGraphicEditScope.path);
+    if (parentPath) {
+      setFlaGraphicEditScope({
+        targetKey: selectedFlaGraphicTarget.key,
+        frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+        path: parentPath,
+      });
+    } else {
+      setFlaGraphicEditScope(null);
+      selectionStore.selectExplicit(selectedFlaGraphicTarget.layerId);
+    }
     canvasStageElementRef.current?.focus({ preventScroll: true });
-  }, [flaGroupEditTarget]);
-  const toggleGroupEditScope = useCallback(() => {
-    if (!flaGroupEditTarget || !groupEditTargetKey ||
-        selectedLayerId !== flaGroupEditTarget.layerId) return;
-    if (groupEditScope) {
-      exitGroupEditScope();
+  }, [flaGraphicEditActive, flaGraphicEditScope, selectedFlaGraphicTarget]);
+  const enterFlaGraphicScope = useCallback((path: readonly string[]) => {
+    if (!selectedFlaGraphicTarget || !flaGraphicEditActive) return;
+    setFlaGraphicEditScope({
+      targetKey: selectedFlaGraphicTarget.key,
+      frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+      path: [...path],
+    });
+    setSelectedFlaGraphicNodePath(null);
+    canvasStageElementRef.current?.focus({ preventScroll: true });
+  }, [flaGraphicEditActive, selectedFlaGraphicTarget]);
+  const enterSelectedFlaGraphicNode = useCallback(() => {
+    if (!selectedFlaGraphicNode || !isFlaGraphicNodeEnterable(selectedFlaGraphicNode)) return;
+    enterFlaGraphicScope(selectedFlaGraphicNodePath ?? []);
+  }, [enterFlaGraphicScope, selectedFlaGraphicNode, selectedFlaGraphicNodePath]);
+  const toggleFlaGraphicEditScope = useCallback(() => {
+    if (!selectedFlaGraphicTarget || selectedLayerId !== selectedFlaGraphicTarget.layerId) return;
+    if (flaGraphicEditActive) {
+      exitOrPopFlaGraphicScope();
       return;
     }
-    setSelectedGroupChildAddress(null);
-    selectionStore.selectExplicit(flaGroupEditTarget.layerId);
-    setGroupScopeTargetKey(groupEditTargetKey);
+    setSelectedFlaGraphicNodePath(null);
+    selectionStore.selectExplicit(selectedFlaGraphicTarget.layerId);
+    setFlaGraphicEditScope({
+      targetKey: selectedFlaGraphicTarget.key,
+      frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+      path: [],
+    });
     canvasStageElementRef.current?.focus({ preventScroll: true });
   }, [
-    exitGroupEditScope,
-    flaGroupEditTarget,
-    groupEditScope,
-    groupEditTargetKey,
+    exitOrPopFlaGraphicScope,
+    flaGraphicEditActive,
+    selectedFlaGraphicTarget,
     selectedLayerId,
   ]);
-  const handleGroupEditKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Escape' || !groupEditScope) return;
+  const handleFlaGraphicEditKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape' || !flaGraphicEditActive) return;
     event.preventDefault();
     event.stopPropagation();
-    exitGroupEditScope();
-  }, [exitGroupEditScope, groupEditScope]);
+    exitOrPopFlaGraphicScope();
+  }, [exitOrPopFlaGraphicScope, flaGraphicEditActive]);
   const activeOpacityPreview =
     opacityPreview &&
     snapshot &&
@@ -413,8 +465,11 @@ export function CanvasStage({
         assets.set(`${assetId}:${sha256}`, { id: assetId, sha256 });
       }
     }
+    for (const asset of structuredEditAssets) {
+      assets.set(`${asset.id}:${asset.sha256}`, asset);
+    }
     return [...assets.values()];
-  }, [previousTemporalVisuals]);
+  }, [previousTemporalVisuals, structuredEditAssets]);
   const imageState = useCanvasImages(snapshot, shot, retainedAssets);
   const temporalCanvasModel = useMemo(
     () =>
@@ -688,7 +743,25 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
-  const transformerVisible = !groupEditScope && isTransformerOverlayVisible({
+  const selectedStructuredNodeReady = Boolean(
+    selectedFlaGraphicTarget &&
+      selectedFlaGraphicNode &&
+      flaGraphicNodeHasReadyVisual(
+        selectedFlaGraphicNode,
+        currentReadyImages,
+        projectImageDimensions,
+      ),
+  );
+  const selectedStructuredNodeCanTransform = Boolean(
+    selectedStructuredNodeReady &&
+      selectedStageLayer?.layer.locked === false &&
+      selectedFlaGraphicNode &&
+      flaGraphicNodeCanTransform(selectedFlaGraphicNode),
+  );
+  const structuredTransformerVisible = Boolean(
+    flaGraphicEditActive && selectedStructuredNodeCanTransform,
+  );
+  const layerTransformerVisible = !flaGraphicEditActive && isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
         selectedStageLayer.render.visible &&
@@ -700,6 +773,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
+  const transformerVisible = structuredTransformerVisible || layerTransformerVisible;
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -772,31 +846,31 @@ export function CanvasStage({
         onViewportChromePointerDown={() => selectionStore.clear()}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
-          <>
-            {showToolbar ? (
-              <CanvasToolbar
-                groupEditActive={groupEditScope}
-                groupEditAvailable={groupEditTargetSelected}
-                mode={viewport.mode}
-                onGroupEditKeyDownCapture={handleGroupEditKeyDownCapture}
-                onToggleGroupEdit={toggleGroupEditScope}
-                point={viewport.lastStagePoint}
-                transform={toolbarTransform}
-              />
-            ) : null}
-            {!showToolbar && groupEditTargetSelected ? (
-              <CanvasToolbar
-                groupEditActive={groupEditScope}
-                groupEditAvailable
-                mode={viewport.mode}
-                onGroupEditKeyDownCapture={handleGroupEditKeyDownCapture}
-                onToggleGroupEdit={toggleGroupEditScope}
-                point={viewport.lastStagePoint}
-                showStatus={false}
-                transform={toolbarTransform}
-              />
-            ) : null}
-          </>
+          showToolbar || selectedFlaGraphicTarget ? (
+            <CanvasToolbar
+              canEnterSelected={Boolean(
+                flaGraphicEditActive &&
+                  selectedStructuredNodeReady &&
+                  selectedFlaGraphicNode &&
+                  isFlaGraphicNodeEnterable(selectedFlaGraphicNode),
+              )}
+              flaGraphicEditActive={flaGraphicEditActive}
+              flaGraphicEditAvailable={Boolean(selectedFlaGraphicTarget)}
+              readOnlySelected={Boolean(
+                flaGraphicEditActive &&
+                  selectedFlaGraphicNode?.type === 'opaque' &&
+                  selectedStructuredNodeReady,
+              )}
+              mode={viewport.mode}
+              onEnterSelected={enterSelectedFlaGraphicNode}
+              onFlaGraphicEditKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
+              onReturn={exitOrPopFlaGraphicScope}
+              onToggleFlaGraphicEdit={toggleFlaGraphicEditScope}
+              point={viewport.lastStagePoint}
+              showStatus={showToolbar}
+              transform={toolbarTransform}
+            />
+          ) : null
         )}
       >
         {(transform) => (
@@ -869,7 +943,7 @@ export function CanvasStage({
               data-testid="project-canvas-stage"
               id="project-canvas-stage"
               ref={canvasStageElementRef}
-              onKeyDownCapture={handleGroupEditKeyDownCapture}
+              onKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
               onMouseDownCapture={(event) =>
                 event.currentTarget.focus({ preventScroll: true })
               }
@@ -893,10 +967,27 @@ export function CanvasStage({
                     ? stageModel.layers.map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
                         const image = imageForStageLayer(stageLayer);
-                      const layerGroupEditPreview = groupEditTargetKey &&
-                          flaGroupEditTarget?.layerId === layer.id
-                        ? flaGroupEditTarget.preview
-                        : null;
+                        const editProjection =
+                          flaGraphicEditActive &&
+                          flaGraphicEditScope &&
+                          selectedFlaGraphicTarget?.layerId === layer.id
+                            ? {
+                                definition: selectedFlaGraphicTarget.animation,
+                                frame: selectedFlaGraphicTarget.frame,
+                                images: currentReadyImages,
+                                assets: projectImageDimensions,
+                                scopePath: flaGraphicEditPath,
+                                selectedNodePathKey: selectedFlaGraphicNodePathKey,
+                                draftMatrices: activeFlaGraphicEditDraftMatrices,
+                                layerLocked: layer.locked,
+                                scopeParentNodeRef: flaGraphicEditParentNodeRef,
+                                selectedNodeRef: flaGraphicEditSelectedNodeRef,
+                                onSelect: setSelectedFlaGraphicNodePath,
+                                onEnter: enterFlaGraphicScope,
+                                onTransform: updateFlaGraphicChildTransform,
+                                onError: setInteractionStatus,
+                              }
+                            : undefined;
                         return (
                           <SelectableLayer
                             directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
@@ -906,20 +997,8 @@ export function CanvasStage({
                             key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
-                            flaGroupEditPreview={layerGroupEditPreview}
-                            flaGroupEditDraftMatrices={layerGroupEditPreview ? groupEditDraftMatrices : undefined}
-                            flaGroupEditScope={Boolean(layerGroupEditPreview && groupEditScope)}
-                            flaGroupEditSelectedChildAddress={layerGroupEditPreview ? selectedGroupChildAddress : null}
-                            flaGroupEditParentNodeRef={layerGroupEditPreview ? groupEditParentNodeRef : undefined}
-                            onFlaGroupEditEnter={() => {
-                              if (!groupEditTargetKey) return;
-                              setSelectedGroupChildAddress(null);
-                              setGroupScopeTargetKey(groupEditTargetKey);
-                              canvasStageElementRef.current?.focus({ preventScroll: true });
-                            }}
-                            onFlaGroupEditChildSelect={setSelectedGroupChildAddress}
-                            onFlaGroupEditChildTransform={updateGroupEditChildTransform}
-                             onCommitPosition={(layerId, position) => {
+                            flaGraphicEditProjection={editProjection}
+                            onCommitPosition={(layerId, position) => {
                               if (!canCommitCanvasEdit(stageLayer)) {
                                 throw new Error(
                                   rejectTemporalCanvasEdit(
@@ -932,7 +1011,7 @@ export function CanvasStage({
                                 `图层位置已提交为 (${position.x.toFixed(1)}, ${position.y.toFixed(1)})。`,
                                );
                              }}
-                             onPositionAuthoringCommit={(result) => {
+                            onPositionAuthoringCommit={(result) => {
                                setInteractionStatus(
                                  result.status === 'committed'
                                    ? '位置已更新。'
@@ -941,7 +1020,7 @@ export function CanvasStage({
                                      : result.error.message,
                                );
                              }}
-                             onCommitTransform={(layerId, transform) => {
+                            onCommitTransform={(layerId, transform) => {
                               if (!canCommitCanvasEdit(stageLayer)) {
                                 throw new Error(
                                   rejectTemporalCanvasEdit(
@@ -954,11 +1033,11 @@ export function CanvasStage({
                                 `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
                               );
                             }}
-                             onError={setInteractionStatus}
-                             onSelect={(layerId) => {
-                              if (flaGroupEditTarget && flaGroupEditTarget.layerId !== layerId) {
-                                setGroupScopeTargetKey(null);
-                                setSelectedGroupChildAddress(null);
+                            onError={setInteractionStatus}
+                            onSelect={(layerId) => {
+                              if (flaGraphicEditScope && selectedFlaGraphicTarget?.layerId !== layerId) {
+                                setFlaGraphicEditScope(null);
+                                setSelectedFlaGraphicNodePath(null);
                               }
                               if (render.isBackground) {
                                 selectionStore.selectExplicit(layerId);
@@ -967,7 +1046,7 @@ export function CanvasStage({
                               }
                               setInteractionStatus('已选择图层。');
                             }}
-                             render={
+                            render={
                                activeOpacityPreview?.layerId === layer.id
                                  ? {
                                      ...render,
@@ -975,13 +1054,13 @@ export function CanvasStage({
                                    }
                                  : render
                              }
-                             positionAuthoringSession={
+                            positionAuthoringSession={
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
                                  ? positionAuthoringSession
                                  : null
                              }
-                             positionAuthoringShakeOffset={
+                            positionAuthoringShakeOffset={
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
@@ -1010,10 +1089,16 @@ export function CanvasStage({
                 >
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
-                      locked={selectedStageLayer.layer.locked}
-                      nodeRef={getLayerNodeRef(
-                        selectedStageLayer.layer.id,
-                      )}
+                      locked={
+                        selectedStageLayer.layer.locked ||
+                        (structuredTransformerVisible && !selectedStructuredNodeCanTransform)
+                      }
+                      nodeBindingKey={structuredTransformerVisible
+                        ? selectedFlaGraphicNodePathKey ?? ''
+                        : selectedStageLayer.layer.id}
+                      nodeRef={structuredTransformerVisible
+                        ? flaGraphicEditSelectedNodeRef
+                        : getLayerNodeRef(selectedStageLayer.layer.id)}
                       scale={selectedStageLayer.render.scaleX}
                       selected
                     />
