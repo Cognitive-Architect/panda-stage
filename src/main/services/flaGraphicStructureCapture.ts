@@ -21,6 +21,16 @@ function clipPathsOf(clipPaths: readonly FlaResolvedClipPath[] | undefined): Str
   }));
 }
 
+export interface SubtreeBounds {
+  readonly viewBox: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly scope?: 'subtree' | 'frame-crop';
+}
+
 export interface CaptureFlaGraphicStructureOptions {
   readonly fallbackAssetId?: string;
   readonly fallbackViewBox?: {
@@ -29,6 +39,8 @@ export interface CaptureFlaGraphicStructureOptions {
     readonly width: number;
     readonly height: number;
   };
+  readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
+  readonly subtreeBoundsMap?: ReadonlyMap<string, SubtreeBounds>;
   readonly sourceBasename?: string;
   readonly bitmapAssetMap?: ReadonlyMap<string, string>;
 }
@@ -69,13 +81,33 @@ export function captureFlaGraphicStructure(
           return clipPaths ? { clipPaths } : {};
         })()),
       };
+      const resolveBounds = (): SubtreeBounds | undefined => {
+        if (node.sourceAddress && options.subtreeBoundsMap?.has(node.sourceAddress)) {
+          return options.subtreeBoundsMap.get(node.sourceAddress);
+        }
+        if (node.kind === 'shape' && options.subtreeBoundsMap?.has(node.shapeId)) {
+          return options.subtreeBoundsMap.get(node.shapeId);
+        }
+        const resolved = options.resolveSubtreeBounds?.(node);
+        if (resolved) return resolved;
+        if (options.fallbackViewBox && !options.resolveSubtreeBounds && !options.subtreeBoundsMap) {
+          return { viewBox: options.fallbackViewBox, scope: 'subtree' };
+        }
+        return undefined;
+      };
+      const bounds = resolveBounds();
+      const fallbackScope = bounds?.scope ?? (bounds ? 'frame-crop' : undefined);
+      const fallbackViewBox = bounds?.viewBox;
+      const fallbackAssetId = fallbackViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
+
       if (forceOpaque) {
         return {
           ...base,
           type: 'opaque',
           opaqueKind: forceOpaque,
-          ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
-          ...(options.fallbackViewBox ? { fallbackViewBox: { ...options.fallbackViewBox } } : {}),
+          ...(fallbackScope ? { fallbackScope } : {}),
+          ...(fallbackAssetId ? { fallbackAssetId } : {}),
+          ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
         };
       }
       if (node.kind === 'shape') {
@@ -84,8 +116,9 @@ export function captureFlaGraphicStructure(
           type: 'opaque',
           opaqueKind: 'shape',
           sourceRef: node.shapeId,
-          ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
-          ...(options.fallbackViewBox ? { fallbackViewBox: { ...options.fallbackViewBox } } : {}),
+          ...(fallbackScope ? { fallbackScope } : {}),
+          ...(fallbackAssetId ? { fallbackAssetId } : {}),
+          ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
         };
       }
       if (node.kind === 'bitmap') {
@@ -105,8 +138,9 @@ export function captureFlaGraphicStructure(
           opaqueKind: node.opaque.kind,
           ...(node.opaque.sourceRef ? { sourceRef: node.opaque.sourceRef } : {}),
           reason: node.opaque.reason,
-          ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
-          ...(options.fallbackViewBox ? { fallbackViewBox: { ...options.fallbackViewBox } } : {}),
+          ...(fallbackScope ? { fallbackScope } : {}),
+          ...(fallbackAssetId ? { fallbackAssetId } : {}),
+          ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
         };
       }
       const children = convert(node.children, id, null);

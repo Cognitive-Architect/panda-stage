@@ -115,6 +115,8 @@ export type FlaGraphicStructureNode =
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
       sourceRef?: string;
       reason?: string;
+      /** Scope of fallback: 'subtree' (dedicated asset) or 'frame-crop' (shared frame cropped to viewBox). */
+      fallbackScope?: 'subtree' | 'frame-crop';
       /** Fallback reference to a project asset (e.g. SVG frame asset ID). */
       fallbackAssetId?: string;
       /** Framing / viewBox bounds within the fallback asset to avoid full-frame duplication in future. */
@@ -167,6 +169,7 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
         sourceRef: SourceTextSchema.optional(),
         reason: SourceTextSchema.optional(),
+        fallbackScope: z.enum(['subtree', 'frame-crop']).optional(),
         fallbackAssetId: SourceTextSchema.optional(),
         fallbackViewBox: z
           .object({
@@ -284,4 +287,96 @@ export function reconstructFlaGraphicStructure(
   };
   frame.layers.forEach((layer, layerIndex) => walk(layer.nodes, layerIndex, null, identity));
   return result;
+}
+
+function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
+  const base = {
+    type: node.type,
+    drawOrder: node.drawOrder,
+    localTransform: {
+      a: node.localTransform.a,
+      b: node.localTransform.b,
+      c: node.localTransform.c,
+      d: node.localTransform.d,
+      tx: node.localTransform.tx,
+      ty: node.localTransform.ty,
+    },
+    ...(node.sourceAddress ? { sourceAddress: node.sourceAddress } : {}),
+    ...(node.clipPaths ? { clipPaths: node.clipPaths } : {}),
+  };
+  if (node.type === 'group') {
+    return {
+      ...base,
+      groupId: node.groupId,
+      children: node.children.map(canonicalizeStructureNode),
+    };
+  }
+  if (node.type === 'symbol') {
+    return {
+      ...base,
+      symbolRef: node.symbolRef,
+      playbackMode: node.playbackMode,
+      firstFrame: node.firstFrame,
+      lastFrame: node.lastFrame,
+      synchronizedFirstFrame: node.synchronizedFirstFrame,
+      frameSelectionKey: node.frameSelectionKey,
+      opacity: node.opacity,
+      rgbTransform: node.rgbTransform,
+      children: node.children.map(canonicalizeStructureNode),
+    };
+  }
+  if (node.type === 'bitmap') {
+    return {
+      ...base,
+      bitmapRef: node.bitmapRef,
+      sourceBasename: node.sourceBasename,
+    };
+  }
+  if (node.type === 'opaque') {
+    return {
+      ...base,
+      opaqueKind: node.opaqueKind,
+      sourceRef: node.sourceRef,
+      reason: node.reason,
+      fallbackScope: node.fallbackScope,
+      fallbackViewBox: node.fallbackViewBox,
+    };
+  }
+  return base;
+}
+
+/**
+ * Produce an authored/semantic projection of a structure, stripping out
+ * project-bound storage IDs (such as image assetId and fallbackAssetId) and
+ * transient runtime IDs so that identical authored definitions can be
+ * compared and reused across different occurrences and commit runs.
+ */
+export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure): unknown {
+  return {
+    version: structure.version,
+    frames: structure.frames.map((frame) => ({
+      ordinal: frame.ordinal,
+      layers: frame.layers.map((layer) => ({
+        name: layer.name,
+        nodes: layer.nodes.map(canonicalizeStructureNode),
+      })),
+    })),
+  };
+}
+
+/**
+ * Compare two Graphic structures for authored/semantic equivalence, ignoring
+ * storage-bound asset IDs while strictly preserving topology, transforms,
+ * symbol playback semantics, and subtree bounds.
+ */
+export function sameAuthoredStructure(
+  left: FlaGraphicStructure | undefined,
+  right: FlaGraphicStructure | undefined,
+): boolean {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return (
+    JSON.stringify(canonicalizeFlaGraphicStructure(left)) ===
+    JSON.stringify(canonicalizeFlaGraphicStructure(right))
+  );
 }

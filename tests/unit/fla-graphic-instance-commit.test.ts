@@ -8,6 +8,7 @@ import {
   LayerService,
   ProjectSchema,
   reconstructFlaGraphicStructure,
+  sameAuthoredStructure,
   type FlaGraphicStructure,
   type Project,
 } from '../../src/domain';
@@ -15,6 +16,7 @@ import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGrap
 import { HashService } from '../../src/main/services/HashService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import type {
+  FlaGraphicBatchBitmap,
   FlaGraphicDefinitionFrameBatch,
   FlaPartPreviewService,
 } from '../../src/main/services/FlaPartPreviewService';
@@ -115,6 +117,7 @@ interface Harness {
   current: { project: Project; revision: number; openInstanceId: number };
   service: FlaGraphicInstanceCommitService;
   batchStructure: { current: FlaGraphicStructure | undefined };
+  batchBitmaps: { current: readonly FlaGraphicBatchBitmap[] | undefined };
 }
 
 async function harness(
@@ -157,8 +160,12 @@ async function harness(
   current.project = project;
   current.revision = 0;
   const batchStructure: { current: FlaGraphicStructure | undefined } = { current: undefined };
-  const withStructure = (batch: FlaGraphicDefinitionFrameBatch): FlaGraphicDefinitionFrameBatch =>
-    batchStructure.current ? { ...batch, structure: batchStructure.current } : batch;
+  const batchBitmaps: { current: readonly FlaGraphicBatchBitmap[] | undefined } = { current: undefined };
+  const withStructure = (batch: FlaGraphicDefinitionFrameBatch): FlaGraphicDefinitionFrameBatch => ({
+    ...batch,
+    ...(batchStructure.current ? { structure: batchStructure.current } : {}),
+    ...(batchBitmaps.current ? { bitmaps: batchBitmaps.current } : {}),
+  });
   const partPreviewService = {
     buildGraphicDefinitionFrameBatch: vi.fn(async (identity: { unitId: string }) => ({
       ok: true as const,
@@ -183,7 +190,7 @@ async function harness(
     getCurrentProjectSnapshot: (root) => root === projectRoot ? current : null,
     ...(hashService ? { hashService } : {}),
   });
-  return { projectRoot, projectService, current, service, batchStructure };
+  return { projectRoot, projectService, current, service, batchStructure, batchBitmaps };
 }
 
 function commitRequest(h: Harness, baseRevision: number, unitId = 'part-0123456789abcdef') {
@@ -386,6 +393,8 @@ function sampleStructure(extraShapeId = 'shape-a'): FlaGraphicStructure {
             {
               type: 'opaque', id: 'shape-node', drawOrder: 2, opaqueKind: 'shape',
               sourceRef: extraShapeId, localTransform: M(0, 0),
+              fallbackScope: 'frame-crop',
+              fallbackViewBox: { x: 0, y: 0, width: 50, height: 50 },
             },
           ],
         }],
@@ -480,5 +489,151 @@ describe('FLA Graphic structured Definition (E1)', () => {
     group.children[1]!.id = 'sym-1';
     expect(FlaGraphicStructureSchema.safeParse(duplicated).success).toBe(false);
     expect(FlaGraphicStructureSchema.safeParse(structure).success).toBe(true);
+  });
+
+  it('persists bitmap media into project assets and binds assetId onto structure.bitmap nodes', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const sha256 = createHash('sha256').update(pngBytes).digest('hex');
+    h.batchBitmaps.current = [{
+      libraryItemName: 'arm.png',
+      width: 1,
+      height: 1,
+      pngBytes,
+      sha256,
+    }];
+
+    const result = await h.service.commit(commitRequest(h, 0));
+    if (!result.ok) throw new Error(result.error.message);
+
+    const reopened = await h.projectService.open(h.projectRoot);
+    const bitmapAsset = reopened.project.assets.find((asset) => asset.kind === 'image' && asset.mimeType === 'image/png');
+    expect(bitmapAsset).toBeDefined();
+    expect(bitmapAsset?.sha256).toBe(sha256);
+
+    const definition = reopened.project.animations[0]!;
+    if (!('structure' in definition) || !definition.structure) throw new Error('structure missing');
+    const flat = reconstructFlaGraphicStructure(definition.structure);
+    const bitmapNode = flat.find((entry) => entry.node.type === 'bitmap');
+    expect(bitmapNode).toBeDefined();
+    if (bitmapNode && bitmapNode.node.type === 'bitmap') {
+      expect(bitmapNode.node.assetId).toBe(bitmapAsset!.id);
+      expect(bitmapNode.node.bitmapRef).toBe('arm.png');
+    }
+
+    const diskFiles = await readdir(path.join(h.projectRoot, 'assets'));
+    expect(diskFiles.some((f) => f.endsWith('.png'))).toBe(true);
+  });
+
+  it('reuses existing project ImageAsset for duplicate bitmaps across instances without creating duplicate files', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const sha256 = createHash('sha256').update(pngBytes).digest('hex');
+    h.batchBitmaps.current = [{
+      libraryItemName: 'arm.png',
+      width: 1,
+      height: 1,
+      pngBytes,
+      sha256,
+    }];
+
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    const initialPngCount = first.project.assets.filter((a) => a.kind === 'image' && a.mimeType === 'image/png').length;
+    expect(initialPngCount).toBe(1);
+
+    // Commit second instance with same bitmap media
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+    const secondPngCount = second.project.assets.filter((a) => a.kind === 'image' && a.mimeType === 'image/png').length;
+    expect(secondPngCount).toBe(1); // Reused without duplicating!
+  });
+
+  it('reuses existing Structured Definition on second occurrence even when first Definition has bound storage IDs', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.project.animations).toHaveLength(1);
+    const firstDef = first.project.animations[0]!;
+    if (!('structure' in firstDef) || !firstDef.structure) throw new Error('structure missing');
+
+    // In firstDef.structure, shape-node has fallbackAssetId bound.
+    const firstFlat = reconstructFlaGraphicStructure(firstDef.structure);
+    const shapeNode = firstFlat.find((e) => e.node.type === 'opaque' && e.node.id === 'shape-node');
+    expect(shapeNode).toBeDefined();
+    if (shapeNode && shapeNode.node.type === 'opaque') {
+      expect(shapeNode.node.fallbackAssetId).toBeDefined();
+    }
+
+    // Now commit second occurrence with the original authored sampleStructure() (which has NO fallbackAssetId).
+    // Because canonical equality ignores storage-bound fallbackAssetId, it must recognize them as the same Definition!
+    h.batchStructure.current = sampleStructure();
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+
+    expect(second.animationId).toBe(first.animationId);
+    expect(second.project.animations).toHaveLength(1);
+    expect(second.project.shots[0]!.layers).toHaveLength(2); // Two layers referencing the same animationId!
+  });
+
+  it('preserves real structure differences (playbackMode, localTransform) and does not merge definitions', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+
+    // Create a genuinely different authored structure (different playbackMode on sym-1)
+    const diffStructure = sampleStructure();
+    const sym1 = diffStructure.frames[0]!.layers[0]!.nodes[0]!;
+    if (sym1.type !== 'group') throw new Error('unexpected');
+    const childSym = sym1.children[0]!;
+    if (childSym.type !== 'symbol') throw new Error('unexpected');
+    childSym.playbackMode = 'single-frame';
+    childSym.firstFrame = '5';
+
+    h.batchStructure.current = diffStructure;
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+
+    expect(second.animationId).not.toBe(first.animationId);
+    expect(second.project.animations).toHaveLength(2);
+  });
+
+  it('ignores storage-bound IDs in sameAuthoredStructure while checking authored semantics', () => {
+    const base = sampleStructure();
+    const withStorageIds = structuredClone(base);
+    const shape = withStorageIds.frames[0]!.layers[0]!.nodes[0]!;
+    if (shape.type !== 'group') throw new Error('unexpected');
+    const opaqueChild = shape.children[2]!;
+    if (opaqueChild.type !== 'opaque') throw new Error('unexpected');
+    opaqueChild.fallbackAssetId = 'bound-asset-uuid-12345';
+
+    const sym1 = shape.children[0]!;
+    if (sym1.type !== 'symbol') throw new Error('unexpected');
+    const bitmapChild = sym1.children[0]!;
+    if (bitmapChild.type !== 'bitmap') throw new Error('unexpected');
+    bitmapChild.assetId = 'bitmap-asset-uuid-67890';
+
+    expect(sameAuthoredStructure(base, withStorageIds)).toBe(true);
+
+    // A change in localTransform must NOT be equal
+    const changedTransform = structuredClone(base);
+    const group1 = changedTransform.frames[0]!.layers[0]!.nodes[0]!;
+    if (group1.type !== 'group') throw new Error('unexpected');
+    const symNode = group1.children[0]!;
+    symNode.localTransform = { a: 99, b: 0, c: 0, d: 99, tx: 0, ty: 0 };
+    expect(sameAuthoredStructure(base, changedTransform)).toBe(false);
+
+    // A change in symbol playback must NOT be equal
+    const changedPlayback = structuredClone(base);
+    const group2 = changedPlayback.frames[0]!.layers[0]!.nodes[0]!;
+    if (group2.type !== 'group') throw new Error('unexpected');
+    const symPlayback = group2.children[0]!;
+    if (symPlayback.type !== 'symbol') throw new Error('unexpected');
+    symPlayback.playbackMode = 'loop';
+    expect(sameAuthoredStructure(base, changedPlayback)).toBe(false);
   });
 });

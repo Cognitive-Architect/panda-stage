@@ -147,4 +147,57 @@ describe('captureFlaGraphicStructure', () => {
       expect(opaqueNode.node.fallbackViewBox).toEqual({ x: 0, y: 0, width: 200, height: 150 });
     }
   });
+
+  it('assigns verified subtree bounds to supported shapes, and keeps unsafe opaque nodes without fake bounds', () => {
+    const resolved = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'BoundsTest',
+        frameContext: {
+          frameIndex: 0,
+          layers: [
+            layer('main', [
+              { kind: 'shape', shapeId: 'shape-with-bounds', localTransform: m(0, 0) },
+              { kind: 'symbol', libraryItemName: 'unsafe-clip', symbolType: 'movieclip' },
+            ]),
+          ],
+        },
+      },
+      symbols: new Map(),
+    }, { tolerant: true });
+
+    if (!resolved.ok) throw new Error(resolved.message);
+
+    const structure = captureFlaGraphicStructure(resolved.displayList, {
+      fallbackAssetId: 'frame-svg-asset-id',
+      resolveSubtreeBounds: (node) => {
+        if (node.kind === 'shape' && node.shapeId === 'shape-with-bounds') {
+          return {
+            scope: 'frame-crop',
+            viewBox: { x: 10, y: 15, width: 40, height: 60 },
+          };
+        }
+        return undefined;
+      },
+    })!;
+
+    expect(structure).toBeDefined();
+    const flat = reconstructFlaGraphicStructure(structure);
+    const shapeNode = flat.find((e) => e.node.type === 'opaque' && e.node.sourceRef === 'shape-with-bounds');
+    expect(shapeNode).toBeDefined();
+    if (shapeNode && shapeNode.node.type === 'opaque') {
+      expect(shapeNode.node.fallbackScope).toBe('frame-crop');
+      expect(shapeNode.node.fallbackViewBox).toEqual({ x: 10, y: 15, width: 40, height: 60 });
+      expect(shapeNode.node.fallbackAssetId).toBe('frame-svg-asset-id');
+    }
+
+    const unsafeNode = flat.find((e) => e.node.type === 'opaque' && e.node.opaqueKind === 'symbol');
+    expect(unsafeNode).toBeDefined();
+    if (unsafeNode && unsafeNode.node.type === 'opaque') {
+      expect(unsafeNode.node.fallbackScope).toBeUndefined();
+      expect(unsafeNode.node.fallbackViewBox).toBeUndefined();
+      expect(unsafeNode.node.fallbackAssetId).toBeUndefined();
+      expect(unsafeNode.node.reason).toContain('movieclip');
+    }
+  });
 });

@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
-import { FLA_GRAPHIC_MAX_FRAMES, type FlaGraphicStructure } from '../../domain';
-import { captureFlaGraphicStructure } from './flaGraphicStructureCapture';
+import {
+  FLA_GRAPHIC_MAX_FRAMES,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureNode,
+} from '../../domain';
+import {
+  captureFlaGraphicStructure,
+  type SubtreeBounds,
+} from './flaGraphicStructureCapture';
 import {
   FlaPartPlanSchema,
   FlaPartPreviewCancelRequestSchema,
@@ -982,6 +989,16 @@ export interface FlaGraphicDefinitionFrameBatch {
   readonly groupEditPreview?: FlaGraphicGroupEditPreview;
   /** Source-backed authored object tree captured before SVG baking (E1). */
   readonly structure?: FlaGraphicStructure;
+  /** Decoded bitmap media items referenced by the structure, ready for project commit/reuse. */
+  readonly bitmaps?: readonly FlaGraphicBatchBitmap[];
+}
+
+export interface FlaGraphicBatchBitmap {
+  readonly libraryItemName: string;
+  readonly width: number;
+  readonly height: number;
+  readonly pngBytes: Uint8Array;
+  readonly sha256: string;
 }
 
 export type FlaGraphicDefinitionFrameBatchResult =
@@ -1309,9 +1326,44 @@ export class FlaPartPreviewService {
       }, { tolerant: true });
       if (resolvedFirstFrameTolerant.ok) {
         // E1: capture the authored tree from the resolved source, before SVG baking.
-        // Pass fallback viewBox and source basename for project-persistent fallback references.
+        // Compute tight subtree bounds for shapes; unsafe opaque nodes remain without fake fallback.
+        const resolveSubtreeBounds = (node: FlaResolvedDisplayNode): SubtreeBounds | undefined => {
+          if (node.kind === 'shape') {
+            const shapeBlock = prepared.source.shapeBlocks.get(node.shapeId);
+            if (!shapeBlock) return undefined;
+            const shapeDisplayList: FlaResolvedDisplayList = {
+              kind: 'graphic',
+              sourceName: node.shapeId,
+              frameIndex: 0,
+              resolvedNodeCount: 1,
+              layers: [{ name: 'shape', children: [node] }],
+            };
+            const rendered = buildSvgForResolvedDisplayList({
+              displayList: shapeDisplayList,
+              renderTargetId: stableRenderTargetId(
+                source.bytes,
+                `shape-crop\u0000${node.shapeId}\u0000${node.sourceAddress ?? ''}`,
+              ),
+              stageWidth: prepared.source.stageWidth,
+              stageHeight: prepared.source.stageHeight,
+              shapeBlocks: prepared.source.shapeBlocks,
+              resolveBitmapMedia: mediaLookup,
+            });
+            if (rendered.ok && rendered.composition.framing.viewBox) {
+              const vb = rendered.composition.framing.viewBox;
+              if (Number.isFinite(vb.x) && Number.isFinite(vb.y) && vb.width > 0 && vb.height > 0) {
+                return {
+                  scope: 'frame-crop',
+                  viewBox: { x: vb.x, y: vb.y, width: vb.width, height: vb.height },
+                };
+              }
+            }
+          }
+          return undefined;
+        };
+
         structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
-          fallbackViewBox: firstFrame.sourceViewport,
+          resolveSubtreeBounds,
           sourceBasename: source.basename,
         });
       }
@@ -1343,6 +1395,35 @@ export class FlaPartPreviewService {
         }
       }
     }
+    const batchBitmaps: FlaGraphicBatchBitmap[] = [];
+    if (structure) {
+      const referencedBitmapNames = new Set<string>();
+      const walk = (nodes: readonly FlaGraphicStructureNode[]): void => {
+        for (const node of nodes) {
+          if (node.type === 'bitmap') referencedBitmapNames.add(node.bitmapRef);
+          else if (node.type === 'group' || node.type === 'symbol') walk(node.children);
+        }
+      };
+      for (const frame of structure.frames) {
+        for (const layer of frame.layers) {
+          walk(layer.nodes);
+        }
+      }
+      for (const name of referencedBitmapNames) {
+        const lookup = mediaLookup(name);
+        if (lookup.ok) {
+          const sha256 = crypto.createHash('sha256').update(Buffer.from(lookup.media.pngBytes)).digest('hex');
+          batchBitmaps.push({
+            libraryItemName: name,
+            width: lookup.media.width,
+            height: lookup.media.height,
+            pngBytes: lookup.media.pngBytes,
+            sha256,
+          });
+        }
+      }
+    }
+
     return {
       ok: true,
       batch: {
@@ -1366,6 +1447,7 @@ export class FlaPartPreviewService {
         frames,
         ...(groupEditPreview ? { groupEditPreview } : {}),
         ...(structure ? { structure } : {}),
+        ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
       },
     };
   }
