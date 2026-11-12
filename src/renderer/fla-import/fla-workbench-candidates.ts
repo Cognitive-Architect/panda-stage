@@ -6,7 +6,7 @@ import type {
   FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
 
-export type FlaWorkbenchCandidateKind = 'raster' | 'snapshot' | 'sequence';
+export type FlaWorkbenchCandidateKind = 'raster' | 'snapshot' | 'sequence' | 'graphic';
 export type FlaWorkbenchPreviewStatus =
   | 'verified'
   | 'checking'
@@ -124,6 +124,29 @@ export type FlaWorkbenchCandidate =
         sourceSha256: string;
         target: FlaRenderTarget;
         range: { startFrameIndex: number; endFrameIndex: number } | null;
+      };
+    })
+  | (FlaWorkbenchCandidateBase & {
+      kind: 'graphic';
+      provenance: {
+        renderTargetId: FlaRenderTarget['renderTargetId'];
+        targetKind: 'scene';
+        selectedFrameIndex: 0;
+        frameCount: number | null;
+        sourceSymbolId: string | null;
+        sourceAddress: string | null;
+        occurrenceId: string;
+        adapterIdentity: string | null;
+        layerName: string;
+      };
+      operation: {
+        kind: 'graphic';
+        sessionId: string;
+        sourceSha256: string;
+        planId: string;
+        generation: number;
+        poseIdentity: string;
+        unitId: string;
       };
     });
 
@@ -490,6 +513,7 @@ export function sortFlaWorkbenchCandidates(
     if (candidate.catalogRole === 'scene') return 1;
     if (candidate.kind === 'sequence') return 2;
     if (candidate.kind === 'raster') return 3;
+    if (candidate.kind === 'graphic') return 4;
     if (candidate.catalogRole === 'graphic-state') return 4;
     return 5;
   };

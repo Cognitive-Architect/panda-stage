@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { Check, ChevronLeft, ChevronRight, Filter, Search, X } from 'lucide-react';
 import {
@@ -13,6 +14,7 @@ import {
 import type { ImageAssetAuthorMetadata } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { shotStore } from '../../stores/shotStore';
 import {
   ASSET_LIBRARY_CATEGORIES,
   ASSET_LIBRARY_FILTERS,
@@ -53,6 +55,7 @@ import {
   isFlaInspectionUserCancelled,
   type FlaInspectionOperation,
 } from '../../fla-import/fla-inspection-lifecycle';
+import type { ImportFlaGraphicInstance } from '../fla-import/fla-graphic-instance-import';
 
 export type AssetWorkspaceView = 'browser' | 'details';
 export type AssetLibraryPresentation = 'default' | 'portrait' | 'landscape';
@@ -70,6 +73,7 @@ export interface AssetLibraryProps {
   closeRequestToken?: number;
   hideHeading?: boolean;
   showFlaAction?: boolean;
+  onImportGraphicInstance?: ImportFlaGraphicInstance;
 }
 
 export function AssetLibrary({
@@ -82,7 +86,30 @@ export function AssetLibrary({
   closeRequestToken,
   hideHeading = false,
   showFlaAction = true,
+  onImportGraphicInstance,
 }: AssetLibraryProps): React.JSX.Element {
+  const liveSnapshot = useSyncExternalStore(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+    editorProjectStore.getSnapshot,
+  );
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+    shotStore.getCurrentShotId,
+  );
+  const currentShotExists = Boolean(
+    liveSnapshot?.project.shots.some((shot) => shot.id === currentShotId),
+  );
+  const graphicImportDisabledReason = !onImportGraphicInstance
+    ? 'Graphic 导入暂不可用。'
+    : !liveSnapshot
+      ? '请先打开项目。'
+      : liveSnapshot.dirty
+        ? '请先保存项目。'
+        : !currentShotExists
+          ? '请先选择镜头。'
+          : null;
   const resolvedPresentation =
     presentation ?? (hideHeading ? 'portrait' : 'default');
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
@@ -884,6 +911,9 @@ export function AssetLibrary({
         <FlaCompatibilityReviewSession
           inspection={flaInspection}
           onClose={closeFlaReview}
+          onImportGraphicInstance={onImportGraphicInstance}
+          graphicImportDisabledReason={graphicImportDisabledReason}
+          snapshot={snapshot}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(
               response,
@@ -905,7 +935,6 @@ export function AssetLibrary({
             );
             setStatus(response.ok ? '' : outcome.status);
           }}
-          snapshot={snapshot}
         />
       ) : (
         <>

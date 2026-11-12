@@ -171,10 +171,8 @@ describe('Issue #402 integration/source contracts', () => {
   });
 
   it('keeps import progress and result feedback in the single C03 footer', () => {
-    expect(unified).toContain('data-testid="fla-c03-import-footer"');
-    expect(unified).toContain(
-      "data-testid={multiSelectMode ? 'fla-unified-import-selected-count' : 'fla-single-mode-summary'}",
-    );
+    expect(unified).toContain("testId('footer', 'fla-c03-import-footer')");
+    expect(unified).toContain("testId('summary', 'fla-single-mode-summary')");
     expect(unified).toContain('data-testid="fla-unified-import"');
     expect(unified).toContain('data-testid="fla-unified-import-stop"');
     expect(unified).toContain('data-testid="fla-unified-import-receipt"');

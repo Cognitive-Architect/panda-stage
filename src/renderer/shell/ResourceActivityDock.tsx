@@ -13,11 +13,11 @@ import { CharacterManager } from '../features/characters/CharacterManager';
 import {
   startFlaCharacterImport,
   type CreateFlaCharacter,
-  type ImportFlaGraphicInstance,
   type FlaCharacterCreateOperationState,
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type {
   PendingFlaCharacterCreateCredential,
   PendingFlaCharacterCreateRecord,
@@ -69,7 +69,7 @@ export interface ResourceActivityDockProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
-  onImportFlaGraphicInstance?: ImportFlaGraphicInstance;
+  onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
   onQueryPendingFlaCharacterCreateStatus?(
@@ -153,7 +153,7 @@ export function ResourceActivityDock({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
-  onImportFlaGraphicInstance,
+  onImportGraphicInstance,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord,
   onQueryPendingFlaCharacterCreateStatus,
@@ -753,6 +753,7 @@ export function ResourceActivityDock({
                 flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
+                onImportGraphicInstance={onImportGraphicInstance}
                 onViewChange={setAssetView}
                 presentation={
                   landscapePresentation
@@ -774,7 +775,6 @@ export function ResourceActivityDock({
                 hideHeading={landscapePresentation}
                 onCloseFlaCharacterImport={closeFlaCharacterImport}
                 onCreateFlaCharacter={onCreateFlaCharacter}
-                onImportFlaGraphicInstance={onImportFlaGraphicInstance}
                 onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
                 flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
                 onQueryPendingFlaCharacterCreateStatus={onQueryPendingFlaCharacterCreateStatus}

@@ -61,10 +61,10 @@ import {
 } from '../features/fla-import/fla-character-create-recovery';
 import type {
   CreateFlaCharacter,
-  ImportFlaGraphicInstance,
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -2715,7 +2715,7 @@ export function EditorShell({
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
-                onImportFlaGraphicInstance={importFlaGraphicInstance}
+                onImportGraphicInstance={importFlaGraphicInstance}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
                 flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
                 onQueryPendingFlaCharacterCreateStatus={queryPendingFlaCreateStatus}

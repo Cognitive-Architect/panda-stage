@@ -79,6 +79,12 @@ interface FlaPartPreviewPng {
 interface FlaPartPreviewPart {
   readonly unitId: string;
   readonly occurrenceId: string;
+  readonly sourceKind: FlaPartPreviewUnit['sourceKind'];
+  readonly sourceSymbolId: string | null;
+  readonly sourceAddress: string | null;
+  readonly adapterIdentity: string | null;
+  readonly sourceDefinitionFrameCount: number | null;
+  readonly layerName: string;
   readonly drawOrder: number;
   readonly graphicInstanceImportable?: boolean;
   readonly image: FlaPartPreviewPng;
@@ -1829,6 +1835,12 @@ export class FlaPartPreviewService {
         partPreviews.push({
           unitId: candidate.unit.unitId,
           occurrenceId: candidate.unit.occurrenceId,
+          sourceKind: candidate.unit.sourceKind,
+          sourceSymbolId: candidate.unit.sourceSymbolId,
+          sourceAddress: candidate.unit.sourceAddress,
+          adapterIdentity: candidate.unit.adapterIdentity,
+          sourceDefinitionFrameCount: candidate.unit.sourceDefinitionFrameCount,
+          layerName: candidate.unit.layer.name,
           drawOrder: candidate.unit.drawOrder,
           graphicInstanceImportable: canImportGraphicInstance(candidate.unit),
           image,
@@ -2129,6 +2141,9 @@ export class FlaPartPreviewService {
         const unit = plan.units[index];
         const image = part.image;
         if (!unit || unit.unitId !== part.unitId || unit.occurrenceId !== part.occurrenceId ||
+            unit.sourceKind !== part.sourceKind || unit.sourceSymbolId !== part.sourceSymbolId ||
+            unit.sourceAddress !== part.sourceAddress || unit.adapterIdentity !== part.adapterIdentity ||
+            unit.sourceDefinitionFrameCount !== part.sourceDefinitionFrameCount || unit.layer.name !== part.layerName ||
             unit.drawOrder !== index || part.drawOrder !== index ||
             image.width !== plan.stage.width || image.height !== plan.stage.height ||
             image.pixelCount !== plan.stage.pixelCount || image.byteLength !== image.bytes.byteLength ||
@@ -2143,6 +2158,12 @@ export class FlaPartPreviewService {
         return Object.freeze({
           unitId: part.unitId,
           occurrenceId: part.occurrenceId,
+          sourceKind: part.sourceKind,
+          sourceSymbolId: part.sourceSymbolId,
+          sourceAddress: part.sourceAddress,
+          adapterIdentity: part.adapterIdentity,
+          sourceDefinitionFrameCount: part.sourceDefinitionFrameCount,
+          layerName: part.layerName,
           drawOrder: part.drawOrder,
           image: Object.freeze({
             width: image.width,

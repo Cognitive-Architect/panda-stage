@@ -32,6 +32,8 @@ import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTer
 import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
 import { FlaUnifiedWorkbench, type FlaUnifiedWorkbenchProgress } from './FlaUnifiedWorkbench';
+import { FlaGraphicInstanceWorkbench } from './FlaGraphicInstanceWorkbench';
+import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import {
   describeFlaUnifiedCandidate,
   flaUnifiedCandidateSelectionKey,
@@ -53,6 +55,8 @@ interface FlaCompatibilityReviewSessionProps {
   onCommit?: (response: FlaAssetCommitResponse) => void;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
   onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
+  onImportGraphicInstance?: ImportFlaGraphicInstance;
+  graphicImportDisabledReason: string | null;
 }
 
 type SessionPhase =
@@ -68,6 +72,8 @@ export function FlaCompatibilityReviewSession({
   onCommit,
   onSnapshotImported,
   onSequenceImported,
+  onImportGraphicInstance,
+  graphicImportDisabledReason,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
@@ -90,6 +96,8 @@ export function FlaCompatibilityReviewSession({
   const [stopAfterCurrentAvailable, setStopAfterCurrentAvailable] = useState(false);
   const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
+  const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic'>('assets');
+  const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [snapshotWorkInProgress, setSnapshotWorkInProgress] = useState(false);
   const [sequenceWorkInProgress, setSequenceWorkInProgress] = useState(false);
@@ -124,6 +132,7 @@ export function FlaCompatibilityReviewSession({
           setCatalogProgress({ phase: 'loading', completed: 0, total: 0, omittedCandidateCount: 0 });
           setCheckedCandidates(new Map());
           setImportReceipt(null);
+          setReviewRoute('assets');
           setSnapshotWorkInProgress(true);
           setSequenceWorkInProgress(true);
           setRenderTerminalState('active');
@@ -201,6 +210,14 @@ export function FlaCompatibilityReviewSession({
       candidate.operation.target.frameCount <= 1 ||
       !sequenceTargets.has(candidate.provenance.renderTargetId));
   }, [multiSelectMode, unifiedCandidates, visibleSequenceCandidates]);
+  const mainSceneRenderTargetId = useMemo(() => {
+    const candidate = snapshotCandidates.find((item) =>
+      item.kind === 'snapshot' &&
+      item.provenance.targetKind === 'scene' &&
+      item.provenance.sourceTimelineIndex === 0,
+    );
+    return candidate?.kind === 'snapshot' ? candidate.provenance.renderTargetId : null;
+  }, [snapshotCandidates]);
   const selectedCount = checkedCandidates.size;
   const focusedCandidate = workbenchCandidates.find((candidate) =>
     candidate.identityKey === focusedCandidateIdentityKey,
@@ -644,7 +661,7 @@ export function FlaCompatibilityReviewSession({
     );
   }
 
-  const closeLocked = phase === 'committing' || unifiedImportRunning || renderTerminalState !== 'active';
+  const closeLocked = phase === 'committing' || unifiedImportRunning || graphicInstanceImporting || renderTerminalState !== 'active';
   const snapshotPreview = (
     <FlaStaticSnapshotReview
       key={sessionId + ':' + ir.source.sha256 + ':snapshot'}
@@ -723,6 +740,38 @@ export function FlaCompatibilityReviewSession({
           </button>
         </header>
 
+        <nav className="fla-c03-route-tabs" aria-label="FLA 导入类型" role="tablist">
+          <button
+            aria-controls="fla-review-assets-panel"
+            aria-selected={reviewRoute === 'assets'}
+            data-testid="fla-review-assets-tab"
+            id="fla-review-assets-tab-control"
+            onClick={() => setReviewRoute('assets')}
+            role="tab"
+            type="button"
+          >
+            素材
+          </button>
+          <button
+            aria-controls="fla-review-graphic-panel"
+            aria-selected={reviewRoute === 'graphic'}
+            data-testid="fla-review-graphic-tab"
+            id="fla-review-graphic-tab-control"
+            onClick={() => setReviewRoute('graphic')}
+            role="tab"
+            type="button"
+          >
+            Graphic
+          </button>
+        </nav>
+        <div
+          aria-labelledby="fla-review-assets-tab-control"
+          className="fla-c03-review-route-panel"
+          data-testid="fla-review-assets-panel"
+          hidden={reviewRoute !== 'assets'}
+          id="fla-review-assets-panel"
+          role="tabpanel"
+        >
         <FlaUnifiedWorkbench
           candidates={workbenchCandidates}
           allCandidates={unifiedCandidates}
@@ -770,6 +819,27 @@ export function FlaCompatibilityReviewSession({
           }}
           onStopAfterCurrent={requestStopAfterCurrent}
         />
+        </div>
+        <div
+          aria-labelledby="fla-review-graphic-tab-control"
+          className="fla-c03-review-route-panel"
+          data-testid="fla-review-graphic-panel"
+          hidden={reviewRoute !== 'graphic'}
+          id="fla-review-graphic-panel"
+          role="tabpanel"
+        >
+          <FlaGraphicInstanceWorkbench
+            enabled={reviewRoute === 'graphic'}
+            importDisabledReason={graphicImportDisabledReason}
+            onImportComplete={closeSession}
+            onImportGraphicInstance={onImportGraphicInstance}
+            onImportingChange={setGraphicInstanceImporting}
+            sessionId={sessionId}
+            source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+            targetLookupPending={catalogProgress.phase === 'loading' || catalogProgress.phase === 'scanning'}
+            targetRenderTargetId={mainSceneRenderTargetId}
+          />
+        </div>
       </section>
     </FlaReviewPortal>
   );

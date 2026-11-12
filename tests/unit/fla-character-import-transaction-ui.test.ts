@@ -155,7 +155,7 @@ describe('F1-04 import transaction UI safeguards', () => {
     expect(flow).toContain('data-testid="fla-character-import-parts-panel"');
     expect(flow).toContain('className="fla-character-import-preview-workspace"');
     expect(flow).toContain('sourceBasename || \'选择 FLA 文件\'');
-    expect(flow).toMatch(/const showPreviewStatus = graphicInstanceImporting \|\|\s*\(\s*!centerLoading/u);
+    expect(flow).toMatch(/const showPreviewStatus =\s*!centerLoading/u);
     expect(flow).toContain('{showPreviewStatus ? (');
     expect(flow).toContain('aria-live="polite"');
     expect(flow).not.toContain('查看原始整图');
@@ -168,6 +168,20 @@ describe('F1-04 import transaction UI safeguards', () => {
     expect(styles).toContain('grid-template-rows: auto minmax(0, 1fr) auto;');
     expect(styles).toContain('width: clamp(240px, 22vw, 300px);');
     expect(styles).toContain('align-items: center;');
+  });
+
+  it('keeps the Character parts list read-only and removes Graphic stage import', () => {
+    const flow = source('src/renderer/features/fla-import/FlaCharacterImportFlow.tsx');
+    const characterManager = source('src/renderer/features/characters/CharacterManager.tsx');
+    const listStart = flow.indexOf('className="fla-character-import-parts-list"');
+    const listEnd = flow.indexOf('</ol>', listStart);
+    const list = flow.slice(listStart, listEnd);
+
+    expect(listStart).toBeGreaterThanOrEqual(0);
+    expect(list).toContain('<li');
+    expect(list).not.toMatch(/role="button"|aria-pressed|onClick=|onKeyDown=|tabIndex=/u);
+    expect(flow).not.toMatch(/selectedGraphicUnitId|graphicInstanceImporting|onImportGraphicInstance|fla-character-import-instance-action/u);
+    expect(characterManager).not.toContain('onImportFlaGraphicInstance');
   });
 
   it('keeps character list entry actions paired and confines styling to landscape', () => {

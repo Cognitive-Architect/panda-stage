@@ -10,9 +10,9 @@ describe('Issue #390 raster candidates in the Issue #775 unified workbench', () 
   it('keeps raster candidates in the single scrollable list beside one preview and footer', () => {
     expect(session).toContain('<FlaUnifiedWorkbench');
     expect(unified).toContain('className="fla-c03-browser"');
-    expect(unified).toContain('data-testid="fla-c03-candidate-grid"');
+    expect(unified).toContain("testId('candidates', 'fla-c03-candidate-grid')");
     expect(unified).toContain('className="fla-c03-preview"');
-    expect(unified).toContain('data-testid="fla-c03-import-footer"');
+    expect(unified).toContain("testId('footer', 'fla-c03-import-footer')");
     expect(styles).toMatch(/\.fla-c03-candidate-grid\s*\{[\s\S]*?overflow:\s*auto;/u);
     expect(styles).toMatch(/\.fla-c03-workbench\s*\{[\s\S]*?grid-template-columns:\s*minmax\(300px, 0\.9fr\) minmax\(0, 1\.25fr\);/u);
     expect(unified).not.toContain('data-testid="fla-raster-overview"');

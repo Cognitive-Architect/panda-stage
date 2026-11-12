@@ -253,6 +253,12 @@ const FlaPartPreviewEditableReadySchema = FlaPartPreviewBaseResponseSchema.exten
   partPreviews: z.array(z.object({
     unitId: z.string().regex(/^part-[a-z0-9-]{8,160}$/u),
     occurrenceId: z.string().regex(/^occ-[a-f0-9]{24,64}$/u),
+    sourceKind: z.enum(['graphic-symbol-occurrence', 'shape-occurrence', 'bitmap-occurrence', 'group-occurrence']),
+    sourceSymbolId: z.string().trim().min(1).max(500).nullable(),
+    sourceAddress: z.string().trim().min(1).max(1_000).nullable(),
+    adapterIdentity: z.string().trim().min(1).max(500).nullable(),
+    sourceDefinitionFrameCount: z.number().int().positive().max(100_000).nullable(),
+    layerName: z.string().trim().min(1).max(500),
     drawOrder: z.number().int().nonnegative().max(FLA_PART_PREVIEW_LIMITS.maxParts),
     graphicInstanceImportable: z.boolean().optional(),
     image: FlaPartPreviewPngSchema,

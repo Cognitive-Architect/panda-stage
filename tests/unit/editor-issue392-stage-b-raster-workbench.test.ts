@@ -16,7 +16,7 @@ describe('Issue #775 C03 keeps the full raster catalog in the unified workbench'
     expect(route).toContain("? 'v1-raster-review'");
     expect(component).toContain('<FlaUnifiedWorkbench');
     expect(component).not.toContain('<FlaRenderWorkbench');
-    expect(workbench).toContain('data-testid="fla-c03-candidate-grid"');
+    expect(workbench).toContain("testId('candidates', 'fla-c03-candidate-grid')");
     expect(workbench).toContain('visibleCandidates.map((candidate) =>');
     expect(c03Styles).toMatch(/\.fla-c03-candidate-grid\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u);
     expect(workbench).not.toContain('data-testid="fla-review-pagination"');
@@ -25,7 +25,7 @@ describe('Issue #775 C03 keeps the full raster catalog in the unified workbench'
 
   it('searches the whole candidate catalog and keeps checked items global to the current view', () => {
     expect(workbench).toContain('filterFlaUnifiedCandidates(candidates, searchText, selectedOnly)');
-    expect(workbench).toContain('data-testid="fla-c03-search"');
+    expect(workbench).toContain("testId('search', 'fla-c03-search')");
     expect(workbench).toContain('data-testid="fla-c03-selected-view"');
     expect(selection).toContain('newSelectableFlaUnifiedCandidates');
     expect(selection).toContain('!candidate.selectable || candidate.checked');

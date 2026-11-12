@@ -546,6 +546,26 @@ describe('F1-02 Main part preview service', () => {
     }
     expect(response.partPreviews).toHaveLength(2);
     const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(response.partPreviews.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      sourceKind: part.sourceKind,
+      sourceSymbolId: part.sourceSymbolId,
+      sourceAddress: part.sourceAddress,
+      adapterIdentity: part.adapterIdentity,
+      sourceDefinitionFrameCount: part.sourceDefinitionFrameCount,
+      layerName: part.layerName,
+    }))).toEqual(plan?.units.map((unit) => ({
+      unitId: unit.unitId,
+      occurrenceId: unit.occurrenceId,
+      sourceKind: unit.sourceKind,
+      sourceSymbolId: unit.sourceSymbolId,
+      sourceAddress: unit.sourceAddress,
+      adapterIdentity: unit.adapterIdentity,
+      sourceDefinitionFrameCount: unit.sourceDefinitionFrameCount,
+      layerName: unit.layer.name,
+    })));
+    expect(new Set(response.partPreviews.map((part) => part.sourceAddress)).size).toBe(2);
     expect(plan?.units.map((unit) => unit.selectedEffectiveChildFrameIndex)).toEqual([0, 8]);
     expect(plan?.units.map((unit) => unit.sourceFrame.effectiveChildFrameIndex)).toEqual([0, 8]);
     expect(response.poseIdentity).toBe(plan?.poseIdentity);
