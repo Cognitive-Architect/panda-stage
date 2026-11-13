@@ -305,8 +305,8 @@ function addFlaGraphicAnimationMedia(
   for (const animationId of activeAnimationIds) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
     if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
-    const resourceIds = new Set(animation.frames.map((frame) => frame.assetId));
     const definition = animation as FlaGraphicDefinition;
+    const resourceIds = new Set<string>();
     const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
       for (const node of nodes) {
         if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
@@ -325,8 +325,15 @@ function addFlaGraphicAnimationMedia(
         }
       }
     };
-    for (const structureFrame of definition.structure?.frames ?? []) {
-      for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
+    for (const frame of definition.frames) {
+      const structureFrame = definition.structure?.frames.find(
+        (candidate) => candidate.ordinal === frame.ordinal,
+      );
+      if (structureFrame) {
+        for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
+      } else {
+        resourceIds.add(frame.assetId);
+      }
     }
     for (const assetId of resourceIds) {
       const asset = project.assets.find(
