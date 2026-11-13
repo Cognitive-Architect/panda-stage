@@ -403,6 +403,7 @@
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/position-authoring-session.test.ts",
+          "tests/unit/selection-store.test.ts",
           "tests/unit/position-project-service.test.ts",
           "tests/unit/speaker-focus-camera.test.ts",
           "tests/unit/migrations/**",
