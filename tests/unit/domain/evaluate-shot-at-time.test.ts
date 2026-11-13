@@ -55,7 +55,9 @@ describe('T02 evaluateShotAtTime', () => {
       animationFrame: { offset: { x: 0, y: 0 } },
     });
     expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_040).animationFrame?.frameOrdinal).toBe(1);
     expect(at(1_800).animationFrame?.offset.x).toBe(20);
+    expect(at(1_800).animationFrame?.frameOrdinal).toBe(20);
     expect(at(1_840).animationFrame?.offset.x).toBe(20);
     expect(at(1_040).animationFrame?.offset.x).toBe(1);
     expect(at(1_000).animationFrame?.offset.x).toBe(0);

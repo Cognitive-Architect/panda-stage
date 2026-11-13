@@ -15,7 +15,7 @@
   },
   "capabilityMatrix": {
     "version": "dl06-2026-10-23.1",
-    "visibleSummary": "支持 PNG 静态图和 MP3/WAV 音频正式导出；JPEG 导出代码已支持但尚无完整 Windows 端到端证据。FLA 连续帧请先导出为 PNG，不能直接作为镜头动画导出。",
+    "visibleSummary": "正式导出支持 PNG/JPEG 静态图、MP3/WAV 音频和受信 FLA Graphic SVG 帧；JPEG、SVG 尚未完成 Windows 端到端验证。",
     "layers": [
       { "id": "import", "label": "导入素材库 / FLA 工作台" },
       { "id": "shot", "label": "放入镜头" },
@@ -71,6 +71,27 @@
           "tests/unit/asset-canvas-image-service.test.ts"
         ],
         "note": "导入、镜头使用和图像读取有自动证据；本票尚无 JPEG 背景走完 Windows 正式导出的端到端证据。"
+      },
+      {
+        "id": "generated-fla-graphic-svg-frame",
+        "label": "Generated FLA Graphic SVG frame",
+        "mediaKind": "image",
+        "formats": ["Generated FLA Graphic frame SVG"],
+        "mimeTypes": ["image/svg+xml"],
+        "statuses": {
+          "import": "SUPPORTED_VERIFIED",
+          "shot": "SUPPORTED_UNVERIFIED",
+          "preview": "SUPPORTED_UNVERIFIED",
+          "formalExport": "SUPPORTED_UNVERIFIED"
+        },
+        "evidence": [
+          "src/main/services/FlaGraphicInstanceCommitService.ts",
+          "src/main/services/AssetCanvasImageService.ts",
+          "src/renderer/features/canvas/flaGraphicCanvasRenderer.ts",
+          "src/domain/export-preparation.ts",
+          "tests/unit/export-preparation.test.ts"
+        ],
+        "note": "Only hashed SVG frames created by the trusted FLA Graphic pipeline are supported. Arbitrary project SVG files remain blocked by the Main Process image reader."
       },
       {
         "id": "mp3-wav-audio",

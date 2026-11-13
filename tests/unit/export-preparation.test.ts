@@ -17,7 +17,12 @@ import {
   evaluateExportPreparationBudget,
   evaluateExportPreparationSupport,
 } from '../../src/domain/export-preparation';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  evaluateShotAtTime,
+  FlaGraphicDefinitionSchema,
+  ProjectSchema,
+  type Project,
+} from '../../src/domain';
 import {
   ExportPreparationService,
   type ExportPreparationMediaReader,
@@ -97,6 +102,91 @@ function projectWithMedia(media = new Map<string, Uint8Array>()): Project {
     ],
   });
   return project;
+}
+
+function projectWithFlaGraphicAnimation(
+  media: Map<string, Uint8Array>,
+  startTimeMs = 0,
+): Project {
+  const base = projectWithMedia(media);
+  const animationScaffold = buildProjectWithAnimation().animations[0]!;
+  const frameAssetId = '10000000-0000-4000-8000-000000000099';
+  const frameBytes = new Uint8Array(
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"/>'),
+  );
+  const frameSha = hash(frameBytes);
+  media.set(frameAssetId, frameBytes);
+  const frameAsset = {
+    id: frameAssetId,
+    kind: 'image' as const,
+    name: 'Generated FLA Graphic frame',
+    relativePath: 'assets/generated-frame.svg',
+    mimeType: 'image/svg+xml',
+    sha256: frameSha,
+    width: 640,
+    height: 640,
+    usage: 'uncategorized' as const,
+    keywords: [],
+    flaGraphicFrame: { definitionId: IDS.animation, ordinal: 0 },
+  };
+  const frame = {
+    ...animationScaffold.frames[0]!,
+    assetId: frameAssetId,
+    sha256: frameSha,
+    createdBySequenceImport: false,
+  };
+  const animation = FlaGraphicDefinitionSchema.parse({
+    ...animationScaffold,
+    kind: 'fla-graphic',
+    source: {
+      ...animationScaffold.source,
+      endFrameIndex: animationScaffold.source.startFrameIndex,
+    },
+    durationMs: frame.durationMs,
+    frames: [frame],
+    structure: {
+      version: 1,
+      frames: [{
+        ordinal: 0,
+        layers: [{
+          name: 'Project-backed bitmap resources',
+          nodes: [{
+            type: 'bitmap',
+            id: 'export-bitmap',
+            drawOrder: 0,
+            localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+            bitmapRef: 'Library/assetChar2.png',
+            assetId: IDS.assetChar2,
+          }],
+        }],
+      }],
+    },
+  });
+  const shot = base.shots[0]!;
+  const animationLayer = {
+    id: IDS.animationLayer,
+    name: 'FLA Graphic instance',
+    source: { kind: 'animation' as const, animationId: animation.id },
+    startTimeMs,
+    animationPlayback: { mode: 'loop' as const, endBehavior: 'hold' as const },
+    anchor: 'center' as const,
+    x: 700,
+    y: 500,
+    scaleX: 1,
+    scaleY: 1,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    flipX: false,
+    zIndex: shot.layers.length,
+  };
+  return ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, frameAsset],
+    animations: [animation],
+    shots: [{ ...shot, layers: [...shot.layers, animationLayer] }],
+  });
 }
 
 function mediaReader(
@@ -243,6 +333,9 @@ describe('DL-01 export preparation domain rules', () => {
     expect(exportCapabilityStatusForMimeType('image/jpeg')).toBe(
       'SUPPORTED_UNVERIFIED',
     );
+    expect(exportCapabilityStatusForMimeType('image/svg+xml')).toBe(
+      'SUPPORTED_UNVERIFIED',
+    );
     expect(exportCapabilityStatusForMimeType('audio/wav')).toBe(
       'SUPPORTED_VERIFIED',
     );
@@ -255,7 +348,7 @@ describe('DL-01 export preparation domain rules', () => {
     });
     expect(
       EXPORT_PREPARATION_SUPPORT_PROFILE.imageMimeTypes,
-    ).toEqual(['image/png', 'image/jpeg']);
+    ).toEqual(['image/png', 'image/jpeg', 'image/svg+xml']);
     expect(EXPORT_PREPARATION_SUPPORT_PROFILE.audioMimeTypes).toEqual([
       'audio/mpeg',
       'audio/wav',
@@ -272,6 +365,100 @@ describe('DL-01 export preparation domain rules', () => {
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
+  });
+
+  it('keeps arbitrary SVG image assets outside formal export support', () => {
+    const base = projectWithMedia();
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) => asset.id === IDS.assetBg
+        ? { ...asset, mimeType: 'image/svg+xml' }
+        : asset),
+    });
+    const issues = evaluateExportPreparationSupport(project, 'static');
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          location: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it('freezes generated FLA Graphic SVG frames for formal playback export', async () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithFlaGraphicAnimation(media);
+    const requiredAssets = collectExportPreparationMedia(project);
+    const frameAsset = project.assets.find(
+      (asset) => asset.kind === 'image' &&
+        asset.flaGraphicFrame?.definitionId === IDS.animation,
+    )!;
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
+    expect(requiredAssets.map((entry) => entry.asset.id)).toContain(frameAsset.id);
+    expect(requiredAssets.map((entry) => entry.asset.id)).toContain(IDS.assetChar2);
+
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture, 'fla-graphic-export.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+    const manifest = prepared.candidate.mediaManifest.find(
+      (entry) => entry.assetId === frameAsset.id,
+    );
+    expect(manifest?.mimeType).toBe('image/svg+xml');
+    const acquired = await fixture.service.acquireCandidateForExport(
+      prepared.candidate.snapshotId,
+    );
+    const acquiredFrame = acquired.media.find(
+      (entry) => entry.assetId === frameAsset.id,
+    );
+    const acquiredBitmap = acquired.media.find(
+      (entry) => entry.assetId === IDS.assetChar2,
+    );
+    expect(acquiredFrame).toMatchObject({
+      assetId: frameAsset.id,
+      kind: 'image',
+      mimeType: 'image/svg+xml',
+    });
+    expect([...acquiredFrame!.bytes]).toEqual([...media.get(frameAsset.id)!]);
+    expect(acquiredBitmap).toMatchObject({
+      assetId: IDS.assetChar2,
+      kind: 'image',
+      mimeType: 'image/png',
+    });
+    fixture.service.releaseCandidateExport(prepared.candidate.snapshotId);
+  });
+
+  it('freezes structured FLA resources when the animation starts after time zero', () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithFlaGraphicAnimation(media, 500);
+    const shot = project.shots[0]!;
+    const animationLayer = shot.layers.find(
+      (layer) => layer.source.kind === 'animation',
+    )!;
+    if (animationLayer.source.kind !== 'animation') {
+      throw new Error('Expected a FLA Graphic animation layer.');
+    }
+    const animationId = animationLayer.source.animationId;
+    const animation = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') {
+      throw new Error('Expected a FLA Graphic Definition.');
+    }
+    const beforeStart = evaluateShotAtTime(shot, 0, project).layers.find(
+      (layer) => layer.id === animationLayer.id,
+    );
+    const requiredAssetIds = new Set(
+      collectExportPreparationMedia(project).map((entry) => entry.asset.id),
+    );
+
+    expect(beforeStart?.visible).toBe(false);
+    expect(requiredAssetIds).toContain(animation.frames[0]!.assetId);
+    expect(requiredAssetIds).toContain(IDS.assetChar2);
   });
 
   it.each([

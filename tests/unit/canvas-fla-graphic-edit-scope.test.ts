@@ -355,7 +355,7 @@ describe('saved Fla Graphic edit scope', () => {
     expect(flaGraphicNodeHasReadyVisual(unsafe, new Map(), new Map())).toBe(false);
   });
 
-  it('renders only direct children as selectable, loads bitmap and crop fallback assets, and omits unsafe hit areas', () => {
+  it('renders one shared canvas and keeps direct-child hit areas without drawing duplicate leaf images', () => {
     const definition = makeDefinition();
     const frame = definition.structure!.frames[0]!;
     const props = projectionProps({ frame, definition, scopePath: ['group-a'] });
@@ -365,8 +365,6 @@ describe('saved Fla Graphic edit scope', () => {
     const bitmap = namedElement(projection, 'fla-structure-node-bitmap-one');
     const safeOpaque = namedElement(projection, 'fla-structure-node-opaque-safe');
     const unsafeOpaque = namedElement(projection, 'fla-structure-node-opaque-unsafe');
-    const bitmapImage = namedElement(projection, 'fla-structure-bitmap-bitmap-one');
-    const fallbackImage = namedElement(projection, 'fla-structure-opaque-fallback-opaque-safe');
 
     expect(symbol?.props.listening).toBe(true);
     expect(symbol?.props.draggable).toBe(true);
@@ -379,12 +377,9 @@ describe('saved Fla Graphic edit scope', () => {
     expect(safeOpaque?.props.draggable).toBe(false);
     expect(unsafeOpaque?.props.listening).toBe(false);
     expect(unsafeOpaque?.props.draggable).toBe(false);
-    expect(bitmapImage).not.toBeNull();
-    const crop = fallbackImage?.props.crop as { x: number; y: number; width: number; height: number };
-    expect(crop.x).toBeCloseTo(576, 8);
-    expect(crop.y).toBeCloseTo(216, 8);
-    expect(crop.width).toBeCloseTo(192, 8);
-    expect(crop.height).toBeCloseTo(194.4, 8);
+    expect(namedElement(projection, 'fla-structure-bitmap-bitmap-one')).toBeNull();
+    expect(namedElement(projection, 'fla-structure-opaque-fallback-opaque-safe')).toBeNull();
+    expect(namedElement(projection, 'fla-structure-hit-opaque-safe')).not.toBeNull();
     expect(namedElement(projection, 'fla-structure-hit-opaque-unsafe')).toBeNull();
     expect(namedElement(projection, 'fla-structure-hit-bitmap-one')).not.toBeNull();
 
@@ -399,7 +394,7 @@ describe('saved Fla Graphic edit scope', () => {
     expect(props.onEnter).toHaveBeenCalledWith(['group-a', 'symbol-b']);
   });
 
-  it('routes Group selection through visible descendant images without a bounding-box hit rect', () => {
+  it('routes Group selection through a transparent bounds hit rect behind nested children', () => {
     const definition = makeDefinition();
     const frame = definition.structure!.frames[0]!;
     const projection = FlaGraphicStructureProjection(projectionProps({
@@ -411,8 +406,8 @@ describe('saved Fla Graphic edit scope', () => {
     const descendantBitmap = namedElement(projection, 'fla-structure-bitmap-bitmap-one');
 
     expect(group?.props.listening).toBe(true);
-    expect(namedElement(projection, 'fla-structure-hit-group-a')).toBeNull();
-    expect(descendantBitmap?.props.listening).toBe(true);
+    expect(namedElement(projection, 'fla-structure-hit-group-a')).not.toBeNull();
+    expect(descendantBitmap).toBeNull();
     expect(namedElement(projection, 'fla-structure-hit-root-bitmap')).not.toBeNull();
   });
 
@@ -651,7 +646,7 @@ describe('saved Fla Graphic edit scope', () => {
     )).toEqual({});
   });
 
-  it('projects the structured tree in SelectableLayer without drawing the full frame visual or hit area', () => {
+  it('projects the structured editor layer without the legacy animation hit area', () => {
     const project = migrateProject(exampleProject);
     const shot = project.shots[0]!;
     const stageLayer = buildEditorStageRenderModel(project, shot).layers.find(

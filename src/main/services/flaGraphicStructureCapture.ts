@@ -1,4 +1,8 @@
 import {
+  FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
+  FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+  FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE,
+  FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN,
   FlaGraphicStructureSchema,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -8,15 +12,67 @@ import type {
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
 } from './fla-display-list-resolver';
+import {
+  localizeAbsoluteLeafMatrix,
+  multiplyAffineMatrices,
+  type AffineMatrix2D,
+} from '../../shared/affine-matrix';
 
 type StructureClipPaths = NonNullable<FlaGraphicStructureNode['clipPaths']>;
 
-function clipPathsOf(clipPaths: readonly FlaResolvedClipPath[] | undefined): StructureClipPaths | undefined {
+interface MaskPathByteBudget {
+  remainingBytes: number;
+}
+
+const identityMatrix: AffineMatrix2D = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  tx: 0,
+  ty: 0,
+};
+const maskPathTextEncoder = new TextEncoder();
+
+function clipPathsOf(
+  clipPaths: readonly FlaResolvedClipPath[] | undefined,
+  parentWorld: AffineMatrix2D,
+  shapePathData: ReadonlyMap<string, readonly string[]>,
+  maskPathByteBudget: MaskPathByteBudget,
+): StructureClipPaths | undefined {
   if (!clipPaths?.length) return undefined;
   return clipPaths.map((clip) => ({
     shapes: clip.shapes.map((shape) => ({
       shapeId: shape.shapeId,
       worldTransform: { ...shape.worldTransform },
+      ...(() => {
+        const localized = localizeAbsoluteLeafMatrix(parentWorld, shape.worldTransform);
+        return localized.ok
+          ? { parentLocalTransform: { ...localized.value } }
+          : {};
+      })(),
+      ...(() => {
+        const pathData = shapePathData.get(shape.shapeId);
+        if (!pathData?.length || pathData.length > FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE) {
+          return {};
+        }
+        let pathBytes = 0;
+        for (const path of pathData) {
+          const pathByteLength = maskPathTextEncoder.encode(path).byteLength;
+          if (
+            path.length === 0 ||
+            pathByteLength > FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH ||
+            !FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN.test(path)
+          ) {
+            return {};
+          }
+          pathBytes += pathByteLength;
+          if (pathBytes > maskPathByteBudget.remainingBytes) return {};
+        }
+        // Charge each persisted copy, including repeated shape references.
+        maskPathByteBudget.remainingBytes -= pathBytes;
+        return { pathData: [...pathData] };
+      })(),
     })),
   }));
 }
@@ -43,6 +99,8 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly subtreeBoundsMap?: ReadonlyMap<string, SubtreeBounds>;
   readonly sourceBasename?: string;
   readonly bitmapAssetMap?: ReadonlyMap<string, string>;
+  /** Main-process, bounded vector contours extracted from source shape blocks. */
+  readonly clipPathShapePathData?: ReadonlyMap<string, readonly string[]>;
 }
 
 /**
@@ -57,6 +115,9 @@ export function captureFlaGraphicStructure(
   options: CaptureFlaGraphicStructureOptions = {},
 ): FlaGraphicStructure | undefined {
   const usedIds = new Set<string>();
+  const maskPathByteBudget: MaskPathByteBudget = {
+    remainingBytes: FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
+  };
   const uniqueId = (preferred: string): string => {
     let id = preferred.slice(0, 900);
     for (let suffix = 2; usedIds.has(id); suffix += 1) id = `${preferred.slice(0, 880)}#${suffix}`;
@@ -67,19 +128,24 @@ export function captureFlaGraphicStructure(
     nodes: readonly FlaResolvedDisplayNode[],
     parentId: string,
     forceOpaque: 'filter' | null,
+    parentWorld: AffineMatrix2D = identityMatrix,
   ): FlaGraphicStructureNode[] =>
     nodes.map((node, drawOrder): FlaGraphicStructureNode => {
       const fallbackId = `${parentId}/${node.kind}[${drawOrder}]`;
       const id = uniqueId(node.sourceAddress ?? fallbackId);
+      const authoredWorld = multiplyAffineMatrices(parentWorld, node.localTransform);
+      const clipPaths = clipPathsOf(
+        node.kind === 'group' ? undefined : node.clipPaths,
+        parentWorld,
+        options.clipPathShapePathData ?? new Map(),
+        maskPathByteBudget,
+      );
       const base = {
         id,
         ...(node.sourceAddress ? { sourceAddress: node.sourceAddress } : {}),
         drawOrder,
         localTransform: { ...node.localTransform },
-        ...(node.kind === 'group' ? {} : (() => {
-          const clipPaths = clipPathsOf(node.clipPaths);
-          return clipPaths ? { clipPaths } : {};
-        })()),
+        ...(clipPaths ? { clipPaths } : {}),
       };
       const resolveBounds = (): SubtreeBounds | undefined => {
         if (node.sourceAddress && options.subtreeBoundsMap?.has(node.sourceAddress)) {
@@ -143,7 +209,7 @@ export function captureFlaGraphicStructure(
           ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
         };
       }
-      const children = convert(node.children, id, null);
+      const children = convert(node.children, id, null, authoredWorld);
       if (node.symbolLibraryItemName) {
         const symbolInstance = node.symbolInstance;
         return {

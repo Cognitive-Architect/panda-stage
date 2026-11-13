@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { reconstructFlaGraphicStructure } from '../../src/domain';
+import {
+  FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
+  FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+  reconstructFlaGraphicStructure,
+} from '../../src/domain';
 import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
 import {
   resolveFlaDisplayList,
@@ -60,6 +64,102 @@ describe('captureFlaGraphicStructure', () => {
     const [body, blurred] = structure.frames[0]!.layers;
     expect(body!.nodes[0]!.type).toBe('group');
     expect(blurred!.nodes[0]).toMatchObject({ type: 'opaque', opaqueKind: 'filter' });
+  });
+
+  it('captures bounded mask paths with transforms localized to the clipped parent', () => {
+    const masked = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'MaskedGraphic',
+        frameContext: {
+          frameIndex: 0,
+          layers: [
+            layer('content', [{
+              kind: 'group',
+              groupId: 'body',
+              sourceAddress: 'LIB/MaskedGraphic/group[0]',
+              localTransform: m(10, 0),
+              elements: [{
+                kind: 'bitmap',
+                libraryItemName: 'arm.png',
+                sourceAddress: 'LIB/MaskedGraphic/arm[0]',
+                localTransform: m(4, 0),
+              }],
+            }], { maskedBy: 'mask-1' }),
+            layer('mask', [{
+              kind: 'shape',
+              shapeId: 'mask-shape',
+              sourceAddress: 'LIB/MaskedGraphic/mask-shape[0]',
+              localTransform: m(8, 0),
+            }], { maskLayerId: 'mask-1' }),
+          ],
+        },
+      },
+      symbols: new Map(),
+    });
+    if (!masked.ok) throw new Error(masked.message);
+
+    const structure = captureFlaGraphicStructure(masked.displayList, {
+      clipPathShapePathData: new Map([[
+        'mask-shape',
+        ['M0 0L10 0L10 10Z'],
+      ]]),
+    });
+    const flat = reconstructFlaGraphicStructure(structure!);
+    const bitmap = flat.find((entry) => entry.node.type === 'bitmap')?.node;
+    expect(bitmap?.clipPaths?.[0]?.shapes[0]).toMatchObject({
+      shapeId: 'mask-shape',
+      worldTransform: m(8, 0),
+      parentLocalTransform: m(-2, 0),
+      pathData: ['M0 0L10 0L10 10Z'],
+    });
+  });
+
+  it('degrades only clipped nodes whose mask paths exceed the aggregate capture budget', () => {
+    const maskPath = 'M0 0L1 1'.repeat(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH / 8);
+    const maskCount = Math.floor(
+      FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES / FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+    ) + 1;
+    const layers: FlaDisplayListLayer[] = [];
+    const clipPathShapePathData = new Map<string, readonly string[]>();
+
+    for (let index = 0; index < maskCount; index += 1) {
+      const maskId = `mask-${index}`;
+      const shapeId = `mask-shape-${index}`;
+      layers.push(layer(`content-${index}`, [{
+        kind: 'bitmap',
+        libraryItemName: `bitmap-${index}`,
+        localTransform: m(0, 0),
+      }], { maskedBy: maskId }));
+      layers.push(layer(`mask-${index}`, [{
+        kind: 'shape',
+        shapeId,
+        localTransform: m(0, 0),
+      }], { maskLayerId: maskId }));
+      clipPathShapePathData.set(shapeId, [maskPath]);
+    }
+
+    const masked = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'MaskBudgetGraphic',
+        frameContext: { frameIndex: 0, layers },
+      },
+      symbols: new Map(),
+    });
+    if (!masked.ok) throw new Error(masked.message);
+
+    const structure = captureFlaGraphicStructure(masked.displayList, { clipPathShapePathData });
+    expect(structure).toBeDefined();
+    const bitmaps = reconstructFlaGraphicStructure(structure!)
+      .filter((entry) => entry.node.type === 'bitmap')
+      .map((entry) => entry.node);
+    expect(bitmaps).toHaveLength(maskCount);
+    expect(bitmaps.slice(0, maskCount - 1).every((node) => (
+      node.type === 'bitmap' && node.clipPaths?.[0]?.shapes[0]?.pathData?.[0]?.length ===
+        FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH
+    ))).toBe(true);
+    expect(bitmaps[maskCount - 1]?.clipPaths?.[0]?.shapes[0]?.pathData).toBeUndefined();
   });
 
   it('captures playbackMode and frameSelectionKey on symbol nodes, and fallback/assetId metadata', () => {

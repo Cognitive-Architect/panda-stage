@@ -11,6 +11,12 @@ import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine
  */
 export const FLA_GRAPHIC_STRUCTURE_MAX_NODES = 20_000;
 export const FLA_GRAPHIC_STRUCTURE_MAX_DEPTH = 64;
+export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES = 8 * 1024 * 1024;
+export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH = 512 * 1024;
+export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE = 256;
+
+export const FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN = /^[MLQCZ0-9.,+\-\s]+$/u;
+const maskPathTextEncoder = new TextEncoder();
 
 const FiniteNumber = z.number().finite();
 
@@ -37,6 +43,24 @@ export const FlaStructureClipPathSchema = z
             shapeId: SourceTextSchema,
             /** Mask geometry placement in the Graphic symbol's coordinate space. */
             worldTransform: FlaStructureMatrixSchema,
+            /** Transform relative to the clipped node's authored parent. */
+            parentLocalTransform: FlaStructureMatrixSchema.optional(),
+            /** Filled mask contours from the trusted FLA shape resolver. */
+            pathData: z
+              .array(
+                z
+                  .string()
+                  .min(1)
+                  .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH)
+                  .refine(
+                    (path) => maskPathTextEncoder.encode(path).byteLength <=
+                      FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+                    'Structured Graphic mask path exceeds its byte limit.',
+                  )
+                  .regex(FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN),
+              )
+              .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE)
+              .optional(),
           })
           .strict(),
       )
@@ -213,6 +237,7 @@ export const FlaGraphicStructureSchema = z
   .superRefine((structure, context) => {
     const seenIds = new Set<string>();
     let count = 0;
+    let maskPathBytes = 0;
     const walk = (
       nodes: readonly FlaGraphicStructureNode[],
       path: (string | number)[],
@@ -238,6 +263,21 @@ export const FlaGraphicStructureSchema = z
           context.addIssue({ code: 'custom', path: [...nodePath, 'id'], message: 'Structure node ids must be unique.' });
         }
         seenIds.add(node.id);
+        for (const [clipIndex, clipPath] of (node.clipPaths ?? []).entries()) {
+          for (const [shapeIndex, shape] of clipPath.shapes.entries()) {
+            for (const [pathIndex, pathData] of (shape.pathData ?? []).entries()) {
+              maskPathBytes += maskPathTextEncoder.encode(pathData).byteLength;
+              if (maskPathBytes > FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES) {
+                context.addIssue({
+                  code: 'custom',
+                  path: [...nodePath, 'clipPaths', clipIndex, 'shapes', shapeIndex, 'pathData', pathIndex],
+                  message: 'Structured Graphic mask geometry exceeds its byte budget.',
+                });
+                return;
+              }
+            }
+          }
+        }
         if (node.type === 'group' || node.type === 'symbol') {
           walk(node.children, [...nodePath, 'children'], depth + 1);
         }

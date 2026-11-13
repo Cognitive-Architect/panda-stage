@@ -1788,6 +1788,41 @@ function reconstructFills(
   };
 }
 
+/**
+ * Extracts the same bounded filled contours used by the formal SVG builder so
+ * persisted Structured Graphic masks do not need a second XFL shape parser.
+ */
+export function extractFlaGraphicMaskPathData(input: {
+  readonly shapeBlock: string;
+  readonly shapeId: string;
+  readonly renderTargetId: string;
+  readonly frameIndex: number;
+}): readonly string[] | undefined {
+  try {
+    const representation = buildStyleAwareShapeRepresentation(
+      parseShapeAt(input.shapeBlock),
+      input.shapeId,
+    );
+    if (!representation.ok) return undefined;
+    const reconstructed = reconstructFills(
+      representation.representation,
+      input.shapeId,
+      input.renderTargetId,
+      input.frameIndex,
+    );
+    if (!reconstructed.ok || reconstructed.result.fills.length > 256) {
+      return undefined;
+    }
+    const pathData = reconstructed.result.fills.map((fill) => fill.pathD);
+    const totalLength = pathData.reduce((total, path) => total + path.length, 0);
+    return totalLength > 512 * 1024 || pathData.some((path) => path.length === 0)
+      ? undefined
+      : pathData;
+  } catch {
+    return undefined;
+  }
+}
+
 type StrokeCap = 'butt' | 'round' | 'square';
 type StrokeJoin = 'miter' | 'round' | 'bevel';
 type StrokeScaleMode = 'normal' | 'horizontal';

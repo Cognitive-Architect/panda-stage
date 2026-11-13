@@ -41,7 +41,7 @@ export const ExportStartFormalRequestSchema = z
 export const ExportLoadFormalMediaSchema = z
   .object({
     assetId: z.uuid(),
-    mimeType: z.enum(['image/png', 'image/jpeg']),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/svg+xml']),
     bytes: z.instanceof(Uint8Array).refine(
       (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
       'Formal export image exceeds its media budget.',

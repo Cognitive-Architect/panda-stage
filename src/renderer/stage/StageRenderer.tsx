@@ -20,8 +20,10 @@ import {
   buildStageRenderModel,
   type StageAssetUrlMap,
   type StageRenderPart,
+  type StageRenderResource,
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
+import { renderFlaGraphicCanvas } from '../features/canvas/flaGraphicCanvasRenderer';
 import {
   layoutSubtitleText,
   subtitleStyleOrDefault,
@@ -151,15 +153,22 @@ function buildStagePartSources(
   layers: readonly StageRenderLayer[],
   projectId: string,
 ): StageImageLayerSource[] {
-  return layers.flatMap((layer) =>
-    layer.parts.map(({ id, asset, sourceUrl }) => ({
+  return layers.flatMap((layer) => [
+    ...layer.parts.map(({ id, asset, sourceUrl }) => ({
       id,
       assetId: asset.id,
       projectId,
       sha256: asset.sha256,
       sourceUrl,
     })),
-  );
+    ...(layer.resources ?? []).map(({ id, asset, sourceUrl }) => ({
+      id,
+      assetId: asset.id,
+      projectId,
+      sha256: asset.sha256,
+      sourceUrl,
+    })),
+  ]);
 }
 
 function buildStagePrewarmSources(
@@ -199,6 +208,8 @@ interface StagePartImagesProps {
   scheduleLayerDraw: boolean;
   headGroup: LayerVisualHeadGroup | null;
   visualBounds: VisualLocalRect;
+  structuredVisual?: NonNullable<StageRenderLayer['visual']>['flaGraphic'];
+  resources?: readonly StageRenderResource[];
 }
 
 function StagePartImages({
@@ -209,6 +220,8 @@ function StagePartImages({
   scheduleLayerDraw,
   headGroup,
   visualBounds,
+  structuredVisual,
+  resources = [],
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
   const cachedVisualSignatureRef = useRef<string | null>(null);
@@ -218,6 +231,24 @@ function StagePartImages({
       left.drawOrder - right.drawOrder,
   );
   const complete = orderedParts.every((part) => images.has(part.id));
+  const structuredImages = useMemo(() => {
+    const result = new Map<string, HTMLImageElement>();
+    for (const part of parts) {
+      const image = images.get(part.id);
+      if (image) result.set(part.asset.id, image);
+    }
+    for (const resource of resources) {
+      const image = images.get(resource.id);
+      if (image) result.set(resource.asset.id, image);
+    }
+    return result;
+  }, [images, parts, resources]);
+  const structuredCanvas = useMemo(
+    () => structuredVisual
+      ? renderFlaGraphicCanvas(structuredVisual, structuredImages)
+      : null,
+    [structuredImages, structuredVisual],
+  );
   const cacheInputSignature = createStageCompositeCacheSignature({
     ownerLayerId,
     composite,
@@ -320,7 +351,18 @@ function StagePartImages({
 
   return (
     <Group listening={false} ref={visualRef}>
-      {complete
+      {structuredCanvas && structuredVisual
+        ? (
+            <KonvaImage
+              height={structuredVisual.canvas.height}
+              image={structuredCanvas}
+              listening={false}
+              width={structuredVisual.canvas.width}
+              x={-structuredVisual.canvas.width / 2}
+              y={-structuredVisual.canvas.height / 2}
+            />
+          )
+        : complete
         ? headGroup
           ? (
               <>
@@ -686,7 +728,9 @@ export function StageRenderer({
                   images={imageState.images}
                   ownerLayerId={layer.id}
                   parts={layer.parts}
+                  resources={layer.resources}
                   scheduleLayerDraw={drawMode === 'legacy-raf'}
+                  structuredVisual={layer.visual.flaGraphic}
                   visualBounds={layer.visual.combinedLocalBounds}
                 />
               </Group>

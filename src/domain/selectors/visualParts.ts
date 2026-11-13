@@ -6,10 +6,15 @@ import type {
 import type {
   CharacterPartTransform,
   FacePlacement,
+  FlaGraphicDefinition,
   ImageAsset,
   Layer,
   Project,
 } from '../models';
+import {
+  evaluateFlaGraphicVisual,
+  type EvaluatedFlaGraphicVisual,
+} from '../evaluate-fla-graphic';
 import { resolveImageAsset } from './canvasLayers';
 
 export type LayerVisualKind =
@@ -17,6 +22,7 @@ export type LayerVisualKind =
   | 'single-image-character'
   | 'composite-character'
   | 'adaptive-parts-character'
+  | 'fla-graphic'
   | 'unsupported-character';
 
 export type VisualPartSlot =
@@ -133,7 +139,8 @@ export type VisualResourceReason =
   | 'alternate-expression'
   | 'mouth-override'
   | 'current-expression-fallback'
-  | 'animation-frame';
+  | 'animation-frame'
+  | 'fla-graphic-resource';
 
 export interface VisualResourceReference {
   assetId: string;
@@ -162,6 +169,8 @@ export interface LayerVisualParts {
   combinedLocalBounds: VisualLocalRect;
   activeFace: ActiveCharacterFace | null;
   resources: LayerVisualResources;
+  /** Exact per-frame Definition/Instance result for structured FLA Graphics. */
+  flaGraphic?: EvaluatedFlaGraphicVisual;
 }
 
 function imageAsset(
@@ -717,6 +726,75 @@ export function resolveLayerVisualParts(
     const animation = project.animations.find(
       (candidate) => candidate.id === source.animationId,
     );
+    if (animation && 'kind' in animation && animation.kind === 'fla-graphic') {
+      const frameOrdinal =
+        evaluated.animationFrame?.animationId === animation.id
+          ? evaluated.animationFrame.frameOrdinal
+          : animation.frames.find(
+              (candidate) => candidate.assetId === evaluated.assetId,
+            )?.ordinal ?? animation.frames[0]?.ordinal ?? 0;
+      const flaGraphic = evaluateFlaGraphicVisual({
+        definition: animation as FlaGraphicDefinition,
+        frameOrdinal,
+        mode: 'instance',
+        instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+      });
+      if (!flaGraphic) {
+        throw new Error('Cannot resolve FLA Graphic frame ' + frameOrdinal + ' for layer ' + layer.id + '.');
+      }
+      const asset = imageAsset(project, flaGraphic.frameAssetId, layer.id);
+      const part: LayerVisualPart = {
+        partId: layer.id + ':animation-frame',
+        ownerLayerId: layer.id,
+        slot: 'single',
+        source: {
+          kind: 'animation-frame',
+          animationId: animation.id,
+          assetId: asset.id,
+        },
+        assetId: asset.id,
+        localRect: {
+          x: flaGraphic.frameOffset.x - flaGraphic.canvas.width / 2,
+          y: flaGraphic.frameOffset.y - flaGraphic.canvas.height / 2,
+          width: flaGraphic.frameViewport.width,
+          height: flaGraphic.frameViewport.height,
+        },
+        rotationDeg: 0,
+        flipX: false,
+        drawOrder: 0,
+        ownerZIndex: evaluated.zIndex,
+      };
+      const required = flaGraphic.resourceAssetIds.flatMap((assetId) => {
+        const resource = project.assets.find(
+          (candidate) => candidate.id === assetId && candidate.kind === 'image',
+        );
+        return resource
+          ? [{
+              assetId,
+              reason: assetId === asset.id
+                ? 'current-layer' as const
+                : 'fla-graphic-resource' as const,
+            }]
+          : [];
+      });
+      return {
+        ...baseResult(
+          evaluated,
+          'fla-graphic',
+          null,
+          [part],
+          null,
+          { required, candidates: [], fallback: [] },
+        ),
+        flaGraphic,
+        combinedLocalBounds: {
+          x: -flaGraphic.canvas.width / 2,
+          y: -flaGraphic.canvas.height / 2,
+          width: flaGraphic.canvas.width,
+          height: flaGraphic.canvas.height,
+        },
+      };
+    }
     const frameAssetId = evaluated.assetId || animation?.frames[0]?.assetId;
     if (!animation || !frameAssetId) {
       throw new Error(`Cannot resolve animation ${source.animationId}.`);

@@ -18,6 +18,7 @@ export interface EvaluatedLayer {
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
     animationId: string;
+    frameOrdinal: number;
     offset: { x: number; y: number };
     viewport: { width: number; height: number };
     canvas: { width: number; height: number };
@@ -156,6 +157,7 @@ function resolveAnimationFrame(
       !(playback.mode === 'once' && playback.endBehavior === 'hide' && completedOnce),
     animationFrame: {
       animationId: animation.id,
+      frameOrdinal: frame.ordinal,
       offset: frame.offset,
       viewport: {
         width: frame.sourceViewport.width,

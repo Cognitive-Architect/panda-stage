@@ -61,6 +61,7 @@ import type {
 import {
   buildSvgForResolvedDisplayList,
   buildSvgForRenderTarget,
+  extractFlaGraphicMaskPathData,
   stableRenderTargetId,
 } from './fla-static-snapshot-svg-builder';
 import {
@@ -1362,9 +1363,39 @@ export class FlaPartPreviewService {
           return undefined;
         };
 
+        const clipPathShapeIds = new Set<string>();
+        const collectClipShapeIds = (nodes: readonly FlaResolvedDisplayNode[]): void => {
+          for (const node of nodes) {
+            if (node.kind !== 'group') {
+              for (const clipPath of node.clipPaths ?? []) {
+                for (const shape of clipPath.shapes) {
+                  clipPathShapeIds.add(shape.shapeId);
+                }
+              }
+            }
+            if (node.kind === 'group') collectClipShapeIds(node.children);
+          }
+        };
+        for (const resolvedLayer of resolvedFirstFrameTolerant.displayList.layers) {
+          collectClipShapeIds(resolvedLayer.children);
+        }
+        const clipPathShapePathData = new Map<string, readonly string[]>();
+        for (const shapeId of clipPathShapeIds) {
+          const shapeBlock = prepared.source.shapeBlocks.get(shapeId);
+          if (!shapeBlock) continue;
+          const pathData = extractFlaGraphicMaskPathData({
+            shapeBlock,
+            shapeId,
+            renderTargetId,
+            frameIndex: resolvedFirstFrameTolerant.displayList.frameIndex,
+          });
+          if (pathData?.length) clipPathShapePathData.set(shapeId, pathData);
+        }
+
         structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
           resolveSubtreeBounds,
           sourceBasename: source.basename,
+          clipPathShapePathData,
         });
       }
       if (frameCount === 1) {

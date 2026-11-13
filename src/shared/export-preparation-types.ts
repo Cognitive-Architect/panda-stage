@@ -312,6 +312,7 @@ export const ExportPreparationMediaManifestEntrySchema = z
     mimeType: z.enum([
       'image/png',
       'image/jpeg',
+      'image/svg+xml',
       'audio/mpeg',
       'audio/wav',
     ]),

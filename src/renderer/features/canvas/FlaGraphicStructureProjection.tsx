@@ -5,22 +5,20 @@ import {
   Rect,
 } from 'react-konva';
 import type {
+  EvaluatedFlaGraphicNode,
   FlaGraphicDefinition,
   FlaGraphicStructureFrame,
   FlaGraphicStructureNode,
+  FlaGraphicInstanceTransformOverrides,
   ImageAsset,
 } from '../../../domain';
+import { evaluateFlaGraphicVisual } from '../../../domain';
 import {
-  evaluateFlaGraphicInstanceTransform,
-  type FlaGraphicInstanceTransformOverrides,
-} from '../../../domain';
-import {
-  invertAffineMatrix,
   localizeAbsoluteLeafMatrix,
-  multiplyAffineMatrices,
   type AffineMatrix2D,
 } from '../../../shared/affine-matrix';
 import { flaGraphicNodePathKey, isFlaGraphicNodeEnterable } from './flaGraphicEditScope';
+import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Bounds {
   readonly x: number;
@@ -145,10 +143,29 @@ export function FlaGraphicStructureProjection({
   onCommitTransform,
   onError,
 }: FlaGraphicStructureProjectionProps): React.JSX.Element {
+  const evaluationOverrides = (() => {
+    if (Object.keys(draftMatrices).length === 0) return instanceTransformOverrides;
+    const frameKey = String(frame.ordinal);
+    return {
+      ...(instanceTransformOverrides ?? {}),
+      [frameKey]: {
+        ...(instanceTransformOverrides?.[frameKey] ?? {}),
+        ...draftMatrices,
+      },
+    } as FlaGraphicInstanceTransformOverrides;
+  })();
+  const evaluatedVisual = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: frame.ordinal,
+      mode: 'instance',
+      instanceTransformOverrides: evaluationOverrides,
+    });
+  const renderedCanvas = evaluatedVisual
+    ? renderFlaGraphicCanvas(evaluatedVisual, images)
+    : null;
   const animationFrame = definition.frames.find(
     (candidate) => candidate.ordinal === frame.ordinal,
   ) ?? definition.frames[0];
-  const nodePathKey = (path: readonly string[]): string => flaGraphicNodePathKey(path);
   const boundsCache = new Map<string, Bounds | null>();
 
   const fallbackCrop = (
@@ -178,128 +195,67 @@ export function FlaGraphicStructureProjection({
     return { x, y, width: right - x, height: bottom - y };
   };
 
-  const baseNodeMatrix = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-  ): AffineMatrix2D | null => {
-    if (node.type !== 'opaque' || node.fallbackScope !== 'frame-crop' || !node.fallbackViewBox) {
-      return node.localTransform;
-    }
-    const inverse = invertAffineMatrix(parentBaseWorld);
-    if (!inverse) return null;
-    return multiplyAffineMatrices(inverse, {
-      ...identityMatrix,
-      tx: node.fallbackViewBox.x,
-      ty: node.fallbackViewBox.y,
-    });
-  };
-
-  const effectiveNodeMatrix = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-    path: readonly string[],
-  ): AffineMatrix2D | null => {
-    const base = baseNodeMatrix(node, parentBaseWorld);
-    if (!base || node.type === 'opaque') return base;
-    return evaluateFlaGraphicInstanceTransform(
-      base,
-      instanceTransformOverrides,
-      frame.ordinal,
-      path,
-    );
-  };
-
-  const previewNodeMatrix = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-    path: readonly string[],
-  ): AffineMatrix2D | null => {
-    const effective = effectiveNodeMatrix(node, parentBaseWorld, path);
-    return effective ? draftMatrices[nodePathKey(path)] ?? effective : null;
-  };
-
-  const nodeContentBounds = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-    path: readonly string[],
-  ): Bounds | null => {
-    const key = nodePathKey(path);
+  const nodeContentBounds = (node: EvaluatedFlaGraphicNode): Bounds | null => {
+    const key = flaGraphicNodePathKey(node.path);
     if (boundsCache.has(key)) return boundsCache.get(key) ?? null;
+    if (!node.renderable) {
+      boundsCache.set(key, null);
+      return null;
+    }
+    const source = node.source;
     let result: Bounds | null = null;
-    if (node.type === 'bitmap') {
-      const asset = node.assetId ? assets.get(node.assetId) : undefined;
-      if (node.assetId && images.has(node.assetId) && asset) {
+    if (source.type === 'bitmap') {
+      const asset = source.assetId ? assets.get(source.assetId) : undefined;
+      if (source.assetId && images.has(source.assetId) && asset) {
         result = { x: 0, y: 0, width: asset.width, height: asset.height };
       }
-    } else if (node.type === 'opaque') {
-      const assetId = node.fallbackAssetId;
-      const image = assetId ? images.get(assetId) : undefined;
-      const asset = assetId ? assets.get(assetId) : undefined;
+    } else if (source.type === 'opaque') {
+      const image = source.fallbackAssetId
+        ? images.get(source.fallbackAssetId)
+        : undefined;
+      const asset = source.fallbackAssetId
+        ? assets.get(source.fallbackAssetId)
+        : undefined;
       if (
-        node.fallbackScope &&
-        node.fallbackViewBox &&
+        source.fallbackScope &&
+        source.fallbackViewBox &&
         image &&
         asset &&
-        fallbackCrop(node, image) &&
-        baseNodeMatrix(node, parentBaseWorld)
+        fallbackCrop(source, image)
       ) {
         result = {
           x: 0,
           y: 0,
-          width: node.fallbackViewBox.width,
-          height: node.fallbackViewBox.height,
+          width: source.fallbackViewBox.width,
+          height: source.fallbackViewBox.height,
         };
       }
     } else {
-      const nodeTransform = previewNodeMatrix(node, parentBaseWorld, path);
-      if (!nodeTransform) {
-        boundsCache.set(key, null);
-        return null;
-      }
-      const nodeBaseWorld = multiplyAffineMatrices(parentBaseWorld, nodeTransform);
-      result = unionBounds(node.children.map((child) =>
-        nodeBoundsInParent(child, nodeBaseWorld, [...path, child.id]),
-      ));
+      result = unionBounds(node.children.map((child) => {
+        const childBounds = nodeContentBounds(child);
+        return childBounds
+          ? transformBounds(childBounds, child.localTransform)
+          : null;
+      }));
     }
     boundsCache.set(key, result);
     return result;
   };
 
-  const nodeBoundsInParent = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-    path: readonly string[],
-  ): Bounds | null => {
-    const key = nodePathKey(path);
-    if (boundsCache.has(key)) {
-      const content = boundsCache.get(key) ?? null;
-      const matrix = previewNodeMatrix(node, parentBaseWorld, path);
-      return content && matrix ? transformBounds(content, matrix) : null;
-    }
-    const content = nodeContentBounds(node, parentBaseWorld, path);
-    const matrix = previewNodeMatrix(node, parentBaseWorld, path);
-    const result = content && matrix
-      ? transformBounds(content, matrix)
-      : null;
-    boundsCache.set(key, content);
-    return result;
-  };
-
   const renderNode = (
-    node: FlaGraphicStructureNode,
-    parentBaseWorld: AffineMatrix2D,
-    parentPath: readonly string[],
+    evaluatedNode: EvaluatedFlaGraphicNode,
     directScopePath: readonly string[],
     selectionAncestorPath: readonly string[] | null,
   ): React.JSX.Element | null => {
-    const path = [...parentPath, node.id];
-    const key = nodePathKey(path);
-    const matrix = previewNodeMatrix(node, parentBaseWorld, path);
-    const transform = matrix ? matrixTransformProps(matrix) : null;
-    const bounds = nodeContentBounds(node, parentBaseWorld, path);
+    const node = evaluatedNode.source;
+    const path = evaluatedNode.path;
+    const key = flaGraphicNodePathKey(path);
+    const localMatrix = draftMatrices[key] ?? evaluatedNode.localTransform;
+    const transform = matrixTransformProps(localMatrix);
+    const content = nodeContentBounds(evaluatedNode);
     if (!transform) return null;
-    const isDirectChild = equalPath(parentPath, directScopePath);
-    const imageReady = Boolean(bounds);
+    const isDirectChild = equalPath(path.slice(0, -1), directScopePath);
+    const imageReady = Boolean(content);
     const selectable = isDirectChild && imageReady && !layerLocked;
     const transformable = selectable && node.type !== 'opaque';
     const bubbleToSelectionAncestor =
@@ -322,7 +278,7 @@ export function FlaGraphicStructureProjection({
         .getMatrix();
       if (!parentKonvaMatrix) {
         event.target.setAttrs(transform);
-        onError('元件层级变换不可用，Child 变换已还原。');
+        onError('Graphic parent transform is unavailable; the gesture was reverted.');
         return;
       }
       const absolute = event.target.getAbsoluteTransform().getMatrix();
@@ -355,63 +311,16 @@ export function FlaGraphicStructureProjection({
       event.cancelBubble = true;
       handleTransformEnd(event as Konva.KonvaEventObject<Event>);
     };
-    const content = nodeContentBounds(node, parentBaseWorld, path);
-    const nodeBaseWorld = node.type === 'opaque'
-      ? parentBaseWorld
-      : multiplyAffineMatrices(
-          parentBaseWorld,
-          previewNodeMatrix(node, parentBaseWorld, path) ?? node.localTransform,
-        );
+    const children = evaluatedNode.children.map((child) =>
+      renderNode(child, directScopePath, childSelectionAncestorPath),
+    );
+    const canEnter = selectable && isFlaGraphicNodeEnterable(node);
     const wrapperRef = selected
       ? selectedNodeRef
       : equalPath(path, scopePath)
         ? scopeParentNodeRef
         : undefined;
 
-    let visual: React.ReactNode = null;
-    if (node.type === 'bitmap' && node.assetId) {
-      const asset = assets.get(node.assetId);
-      const image = images.get(node.assetId);
-      if (asset && image) {
-        visual = (
-          <KonvaImage
-            height={asset.height}
-            image={image}
-            listening={bubbleToSelectionAncestor}
-            name={`fla-structure-bitmap-${node.id}`}
-            width={asset.width}
-          />
-        );
-      }
-    } else if (node.type === 'opaque' && node.fallbackAssetId && node.fallbackViewBox) {
-      const image = images.get(node.fallbackAssetId);
-      const crop = image ? fallbackCrop(node, image) : null;
-      if (image && crop) {
-        visual = (
-          <KonvaImage
-            crop={crop}
-            height={node.fallbackViewBox.height}
-            image={image}
-            listening={bubbleToSelectionAncestor}
-            name={`fla-structure-opaque-fallback-${node.id}`}
-            width={node.fallbackViewBox.width}
-          />
-        );
-      }
-    } else if (node.type === 'group' || node.type === 'symbol') {
-      visual = node.children
-        .slice()
-        .sort((left, right) => left.drawOrder - right.drawOrder)
-        .map((child) => renderNode(
-          child,
-          nodeBaseWorld,
-          path,
-          directScopePath,
-          childSelectionAncestorPath,
-        ));
-    }
-
-    const canEnter = selectable && isFlaGraphicNodeEnterable(node);
     return (
       <Group
         {...transform}
@@ -437,8 +346,7 @@ export function FlaGraphicStructureProjection({
         opacity={node.type === 'symbol' ? node.opacity ?? 1 : 1}
         ref={wrapperRef}
       >
-        {visual}
-        {content && selectable && (node.type === 'bitmap' || node.type === 'opaque') ? (
+        {content && selectable ? (
           <Rect
             fill="#000000"
             height={content.height}
@@ -452,6 +360,7 @@ export function FlaGraphicStructureProjection({
             y={content.y}
           />
         ) : null}
+        {children}
         {content && selected ? (
           <Rect
             height={content.height}
@@ -474,20 +383,32 @@ export function FlaGraphicStructureProjection({
     tx: -definition.source.anchor.x - definition.source.canvas.width / 2,
     ty: -definition.source.anchor.y - definition.source.canvas.height / 2,
   });
-  if (!rootTransform) return <Group name="fla-structure-projection" />;
-  const roots = frame.layers.flatMap((layer) =>
-    [...layer.nodes].sort((left, right) => left.drawOrder - right.drawOrder),
-  );
-  const rootBaseWorld = identityMatrix;
+  if (!rootTransform || !evaluatedVisual) {
+    return <Group name="fla-structure-projection" />;
+  }
+  const roots = evaluatedVisual.layers?.flatMap((layer) => layer.nodes) ?? [];
   return (
-    <Group
-      {...rootTransform}
-      listening
-      name="fla-structure-projection"
-      ref={rootPath ? scopeParentNodeRef : undefined}
-    >
-      {roots.map((node) => renderNode(node, rootBaseWorld, [], scopePath, null))}
-    </Group>
+    <>
+      {renderedCanvas ? (
+        <KonvaImage
+          height={evaluatedVisual.canvas.height}
+          image={renderedCanvas}
+          listening={false}
+          name="fla-structure-shared-render"
+          width={evaluatedVisual.canvas.width}
+          x={-evaluatedVisual.canvas.width / 2}
+          y={-evaluatedVisual.canvas.height / 2}
+        />
+      ) : null}
+      <Group
+        {...rootTransform}
+        listening
+        name="fla-structure-projection"
+        ref={rootPath ? scopeParentNodeRef : undefined}
+      >
+        {roots.map((node) => renderNode(node, scopePath, null))}
+      </Group>
+    </>
   );
 }
 

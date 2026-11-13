@@ -22,6 +22,7 @@ import {
   FlaGraphicStructureProjection,
   type FlaGraphicStructureProjectionProps,
 } from './FlaGraphicStructureProjection';
+import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Point {
   readonly x: number;
@@ -147,6 +148,9 @@ export function SelectableLayer({
   const animationVisual = visual?.parts.some(
     (part) => part.source.kind === 'animation-frame',
   ) ?? false;
+  const structuredCanvas = visual?.flaGraphic && images
+    ? renderFlaGraphicCanvas(visual.flaGraphic, images)
+    : null;
   const headGroup = visual?.headGroup ?? null;
   const headPartIds = new Set(headGroup?.partIds ?? []);
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
@@ -382,6 +386,17 @@ export function SelectableLayer({
       >
         {flaGraphicEditProjection ? (
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
+        ) : structuredCanvas && visual?.flaGraphic ? (
+          <KonvaImage
+            height={visual.flaGraphic.canvas.height}
+            image={structuredCanvas}
+            listening={canSelect}
+            onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+            onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+            width={visual.flaGraphic.canvas.width}
+            x={-visual.flaGraphic.canvas.width / 2}
+            y={-visual.flaGraphic.canvas.height / 2}
+          />
         ) : compositeVisual ? (
           <Group
             listening={canSelect}
