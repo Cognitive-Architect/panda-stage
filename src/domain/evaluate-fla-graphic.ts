@@ -11,6 +11,12 @@ import {
   type FlaGraphicStructureNode,
 } from './models';
 import {
+  collectFlaGraphicTimelineDurationMs,
+  evaluateFlaGraphicTrackAtTime,
+  resolveFlaGraphicStableNodeIdentity,
+  type FlaGraphicInternalTimeline,
+} from './models/flaGraphicTimeline';
+import {
   getFlaGraphicInstanceTransformOverride,
   type FlaGraphicInstanceTransformOverrides,
 } from './models/flaGraphicInstanceOverrides';
@@ -28,15 +34,15 @@ const identity: AffineMatrix2D = {
 // keys let playback reuse the same evaluated tree while scrubbing a held frame.
 const definitionVisualCache = new WeakMap<
   FlaGraphicDefinition,
-  Map<number, EvaluatedFlaGraphicVisual>
+  Map<string, EvaluatedFlaGraphicVisual>
 >();
 const instanceAuthoredVisualCache = new WeakMap<
   FlaGraphicDefinition,
-  Map<number, EvaluatedFlaGraphicVisual>
+  Map<string, EvaluatedFlaGraphicVisual>
 >();
 const instanceOverrideVisualCache = new WeakMap<
   object,
-  WeakMap<FlaGraphicDefinition, Map<number, EvaluatedFlaGraphicVisual>>
+  WeakMap<FlaGraphicDefinition, Map<string, EvaluatedFlaGraphicVisual>>
 >();
 
 export type FlaGraphicEvaluationMode = 'definition' | 'instance';
@@ -207,7 +213,7 @@ function visualCacheFor(input: {
   readonly frameOrdinal: number;
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
-}): Map<number, EvaluatedFlaGraphicVisual> {
+}): Map<string, EvaluatedFlaGraphicVisual> {
   const { definition, frameOrdinal, mode, instanceTransformOverrides } = input;
   if (mode === 'definition') {
     let cache = definitionVisualCache.get(definition);
@@ -269,6 +275,37 @@ function evaluateClipPaths(
   return { clips, valid: true };
 }
 
+function resolveNestedSymbolInternalTimeMs(
+  node: Extract<FlaGraphicStructureNode, { type: 'symbol' }>,
+  nestedTimeline: FlaGraphicInternalTimeline | undefined,
+  parentInternalTimeMs: number,
+  fps: number,
+): number {
+  const rawFirstFrame =
+    node.synchronizedFirstFrame ??
+    (node.firstFrame !== undefined ? Number.parseInt(node.firstFrame, 10) : 0);
+  const firstFrameIndex =
+    Number.isFinite(rawFirstFrame) && rawFirstFrame > 0 ? rawFirstFrame : 0;
+  const frameMs = 1_000 / Math.max(1, fps);
+  const firstFrameMs = Math.round(firstFrameIndex * frameMs);
+  const mode = node.playbackMode?.trim().toLowerCase();
+  if (mode === 'single-frame' || mode === 'single frame') {
+    return firstFrameMs;
+  }
+  const durationMs = collectFlaGraphicTimelineDurationMs(nestedTimeline);
+  if (mode === 'play-once' || mode === 'play once') {
+    const rawTime = firstFrameMs + parentInternalTimeMs;
+    return durationMs > 0 ? Math.min(durationMs, rawTime) : rawTime;
+  }
+  if (durationMs > firstFrameMs) {
+    return firstFrameMs + (parentInternalTimeMs % (durationMs - firstFrameMs));
+  }
+  if (durationMs > 0) {
+    return parentInternalTimeMs % durationMs;
+  }
+  return firstFrameMs + parentInternalTimeMs;
+}
+
 /**
  * The one formal FLA Graphic evaluator. Definition mode ignores Layer state;
  * Instance mode applies only sparse node-local matrices from the owning Layer.
@@ -279,11 +316,18 @@ export function evaluateFlaGraphicVisual(input: {
   readonly frameOrdinal: number;
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
   const { definition, frameOrdinal, mode } = input;
   if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0) return null;
+  const fps = Math.max(1, definition.source.sourceFps || 24);
+  const effectiveInternalTimeMs =
+    input.internalTimeMs !== undefined && Number.isFinite(input.internalTimeMs)
+      ? Math.max(0, input.internalTimeMs)
+      : Math.round(frameOrdinal * (1_000 / fps));
+  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}`;
   const cache = visualCacheFor(input);
-  const cachedVisual = cache.get(frameOrdinal);
+  const cachedVisual = cache.get(cacheKey);
   if (cachedVisual) return cachedVisual;
   const frame = definition.frames.find((candidate) => candidate.ordinal === frameOrdinal);
   if (!frame) return null;
@@ -304,7 +348,7 @@ export function evaluateFlaGraphicVisual(input: {
       layers: null,
       resourceAssetIds: [...resourceAssetIds],
     };
-    cache.set(frameOrdinal, visual);
+    if (cache.size < 256) cache.set(cacheKey, visual);
     return visual;
   }
 
@@ -316,11 +360,20 @@ export function evaluateFlaGraphicVisual(input: {
   const overrides = mode === 'instance'
     ? input.instanceTransformOverrides
     : undefined;
+  const structure = definition.structure!;
+  interface TimelineEvaluationContext {
+    readonly ownerKind: 'frame' | 'symbol';
+    readonly ownerSymbolDefId: string | null;
+    readonly containerRootNodes: readonly FlaGraphicStructureNode[];
+    readonly timeline: FlaGraphicInternalTimeline | undefined;
+    readonly internalTimeMs: number;
+  }
   const evaluateNodes = (
     nodes: readonly FlaGraphicStructureNode[],
     parentAuthoredWorld: AffineMatrix2D,
     parentEffectiveWorld: AffineMatrix2D,
     parentPath: readonly string[],
+    timelineContext: TimelineEvaluationContext,
   ): readonly EvaluatedFlaGraphicNode[] =>
     nodes
       .slice()
@@ -328,6 +381,26 @@ export function evaluateFlaGraphicVisual(input: {
       .map((node) => {
         const path = [...parentPath, node.id];
         let authoredLocalTransform = node.localTransform;
+        if (node.type !== 'opaque' && timelineContext.timeline) {
+          const trackId = resolveFlaGraphicStableNodeIdentity(
+            node,
+            structure,
+            timelineContext.ownerKind,
+            timelineContext.ownerSymbolDefId,
+            timelineContext.containerRootNodes,
+          );
+          if (trackId) {
+            const track = timelineContext.timeline.tracks.find(
+              (candidate) => candidate.trackId === trackId,
+            );
+            const evaluatedMatrix = track
+              ? evaluateFlaGraphicTrackAtTime(track, timelineContext.internalTimeMs)
+              : null;
+            if (evaluatedMatrix) {
+              authoredLocalTransform = evaluatedMatrix;
+            }
+          }
+        }
         if (
           node.type === 'opaque' &&
           node.fallbackScope === 'frame-crop' &&
@@ -357,23 +430,51 @@ export function evaluateFlaGraphicVisual(input: {
           ? { clips: [], valid: true }
           : evaluateClipPaths(node, parentAuthoredWorld, parentEffectiveWorld);
         const renderable = Boolean(worldTransform && fallbackReady && clipResult.valid);
-        const nextAuthoredWorld = compose(parentAuthoredWorld, node.localTransform);
+        const nextAuthoredWorld = compose(parentAuthoredWorld, authoredLocalTransform);
         const nextEffectiveWorld = worldTransform;
-        const children = node.type === 'group'
-          ? evaluateNodes(
-              node.children,
-              nextAuthoredWorld ?? parentAuthoredWorld,
-              nextEffectiveWorld ?? parentEffectiveWorld,
-              path,
-            )
-          : node.type === 'symbol'
-            ? evaluateNodes(
-                resolveFlaGraphicSymbolChildren(node, definition.structure),
-                nextAuthoredWorld ?? parentAuthoredWorld,
-                nextEffectiveWorld ?? parentEffectiveWorld,
-                path,
-              )
-            : [];
+        let children: readonly EvaluatedFlaGraphicNode[] = [];
+        if (node.type === 'group') {
+          children = evaluateNodes(
+            node.children,
+            nextAuthoredWorld ?? parentAuthoredWorld,
+            nextEffectiveWorld ?? parentEffectiveWorld,
+            path,
+            timelineContext,
+          );
+        } else if (node.type === 'symbol') {
+          const nestedDef = node.nestedDefinitionId
+            ? structure.symbolDefinitions?.[node.nestedDefinitionId]
+            : undefined;
+          const childTimelineContext: TimelineEvaluationContext = nestedDef
+            ? {
+                ownerKind: 'symbol',
+                ownerSymbolDefId: node.nestedDefinitionId!,
+                containerRootNodes: nestedDef.children,
+                timeline: nestedDef.timeline,
+                internalTimeMs: resolveNestedSymbolInternalTimeMs(
+                  node,
+                  nestedDef.timeline,
+                  timelineContext.internalTimeMs,
+                  fps,
+                ),
+              }
+            : {
+                ...timelineContext,
+                internalTimeMs: resolveNestedSymbolInternalTimeMs(
+                  node,
+                  undefined,
+                  timelineContext.internalTimeMs,
+                  fps,
+                ),
+              };
+          children = evaluateNodes(
+            resolveFlaGraphicSymbolChildren(node, structure),
+            nextAuthoredWorld ?? parentAuthoredWorld,
+            nextEffectiveWorld ?? parentEffectiveWorld,
+            path,
+            childTimelineContext,
+          );
+        }
         return {
           source: node,
           path,
@@ -385,9 +486,17 @@ export function evaluateFlaGraphicVisual(input: {
           children,
         };
       });
+  const frameRootNodes = structureFrame.layers.flatMap((layer) => layer.nodes);
+  const rootTimelineContext: TimelineEvaluationContext = {
+    ownerKind: 'frame',
+    ownerSymbolDefId: null,
+    containerRootNodes: frameRootNodes,
+    timeline: structure.timeline,
+    internalTimeMs: effectiveInternalTimeMs,
+  };
   const layers = structureFrame.layers.map((layer) => ({
     name: layer.name,
-    nodes: evaluateNodes(layer.nodes, identity, identity, []),
+    nodes: evaluateNodes(layer.nodes, identity, identity, [], rootTimelineContext),
   }));
   const visual: EvaluatedFlaGraphicVisual = {
     mode,
@@ -401,6 +510,6 @@ export function evaluateFlaGraphicVisual(input: {
     layers,
     resourceAssetIds: [...resourceAssetIds],
   };
-  cache.set(frameOrdinal, visual);
+  if (cache.size < 256) cache.set(cacheKey, visual);
   return visual;
 }

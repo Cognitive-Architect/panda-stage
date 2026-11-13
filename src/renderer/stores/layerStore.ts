@@ -2,6 +2,7 @@ import {
   LayerService,
   type CreateLayerInput,
   type AnimationPlaybackInput,
+  type FlaGraphicTransformEasing,
   type Layer,
   type LayerOrderAction,
   type LayerTransformInput,
@@ -245,6 +246,135 @@ export class LayerStore {
       this.editorStore.updateProject(next, '编辑共享元件');
     }
     return next;
+  }
+
+  private commitTimelineEdit(
+    project: Project,
+    next: Project,
+    label: string,
+  ): Project {
+    if (next !== project) {
+      this.editorStore.updateProject(next, label);
+    }
+    return next;
+  }
+
+  addFlaGraphicTimelineKeyframe(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing = 'linear',
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.addFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      timeMs,
+      easing,
+    );
+    return this.commitTimelineEdit(project, next, '添加元件关键帧');
+  }
+
+  updateFlaGraphicTimelineKeyframeTransform(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      timeMs,
+      localTransform,
+    );
+    return this.commitTimelineEdit(project, next, '编辑元件关键帧');
+  }
+
+  deleteFlaGraphicTimelineKeyframe(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.deleteFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      timeMs,
+    );
+    return this.commitTimelineEdit(project, next, '删除元件关键帧');
+  }
+
+  moveFlaGraphicTimelineKeyframe(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.moveFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      fromTimeMs,
+      toTimeMs,
+    );
+    return this.commitTimelineEdit(project, next, '移动元件关键帧');
+  }
+
+  duplicateFlaGraphicTimelineKeyframe(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.duplicateFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      fromTimeMs,
+      toTimeMs,
+    );
+    return this.commitTimelineEdit(project, next, '复制元件关键帧');
+  }
+
+  setFlaGraphicTimelineKeyframeEasing(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setFlaGraphicTimelineKeyframeEasing(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      timeMs,
+      easing,
+    );
+    return this.commitTimelineEdit(project, next, '修改元件补间曲线');
   }
 
   toggleFlipX(layerId: string): Project {

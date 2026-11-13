@@ -738,6 +738,7 @@ export function resolveLayerVisualParts(
         frameOrdinal,
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+        internalTimeMs: evaluated.animationFrame?.internalTimeMs,
       });
       if (!flaGraphic) {
         throw new Error('Cannot resolve FLA Graphic frame ' + frameOrdinal + ' for layer ' + layer.id + '.');

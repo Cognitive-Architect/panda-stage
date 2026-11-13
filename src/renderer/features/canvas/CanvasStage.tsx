@@ -21,6 +21,7 @@ import {
   getFlaGraphicInstanceTransformOverride,
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
+  resolveFlaGraphicTimelineTarget,
   resolveImageAsset,
   type ImageAsset,
   type Shot,
@@ -310,6 +311,10 @@ export function CanvasStage({
   const flaGraphicEditMode = flaGraphicEditActive
     ? flaGraphicEditScope?.editMode ?? 'instance'
     : 'instance';
+  const sharedInternalTimeMs =
+    flaGraphicEditActive && flaGraphicEditMode === 'definition'
+      ? (timelineUi.flaGraphicInternalContext?.internalTimeMs ?? 0)
+      : undefined;
   const flaGraphicEditPath = flaGraphicEditActive
     ? flaGraphicEditScope?.path ?? []
     : [];
@@ -433,6 +438,24 @@ export function CanvasStage({
       ),
     );
   }, [selectedFlaGraphicTarget]);
+  useEffect(() => {
+    if (flaGraphicEditActive && flaGraphicEditMode === 'definition' && selectedFlaGraphicTarget) {
+      timelineUiStore.setFlaGraphicInternalContext({
+        layerId: selectedFlaGraphicTarget.layerId,
+        animationId: selectedFlaGraphicTarget.animation.id,
+        frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+        selectedNodePath: selectedFlaGraphicNodePath,
+        fps: Math.max(1, selectedFlaGraphicTarget.animation.source.sourceFps || 24),
+      });
+      return;
+    }
+    timelineUiStore.setFlaGraphicInternalContext(null);
+  }, [
+    flaGraphicEditActive,
+    flaGraphicEditMode,
+    selectedFlaGraphicNodePath,
+    selectedFlaGraphicTarget,
+  ]);
   const commitFlaGraphicChildTransform = useCallback((
     nodePath: readonly string[],
     matrix: AffineMatrix2D,
@@ -440,12 +463,39 @@ export function CanvasStage({
     if (!selectedFlaGraphicTarget) return;
     try {
       if (flaGraphicEditScope?.editMode === 'definition') {
-        layerStore.updateFlaGraphicSharedDefinitionTransform(
-          selectedFlaGraphicTarget.layerId,
-          selectedFlaGraphicTarget.frameOrdinal,
-          nodePath,
-          matrix,
+        const internalTime = sharedInternalTimeMs ?? 0;
+        const timelineTarget = selectedFlaGraphicTarget.animation.structure
+          ? resolveFlaGraphicTimelineTarget(
+              selectedFlaGraphicTarget.animation.structure,
+              selectedFlaGraphicTarget.frameOrdinal,
+              nodePath,
+            )
+          : null;
+        const track =
+          timelineTarget?.trackId && timelineTarget.timeline
+            ? timelineTarget.timeline.tracks.find(
+                (candidate) => candidate.trackId === timelineTarget.trackId,
+              )
+            : undefined;
+        const hasKeyframeAtTime = Boolean(
+          track?.keyframes.some((kf) => kf.timeMs === internalTime),
         );
+        if (timelineTarget?.trackId && hasKeyframeAtTime) {
+          layerStore.updateFlaGraphicTimelineKeyframeTransform(
+            selectedFlaGraphicTarget.layerId,
+            selectedFlaGraphicTarget.frameOrdinal,
+            nodePath,
+            internalTime,
+            matrix,
+          );
+        } else {
+          layerStore.updateFlaGraphicSharedDefinitionTransform(
+            selectedFlaGraphicTarget.layerId,
+            selectedFlaGraphicTarget.frameOrdinal,
+            nodePath,
+            matrix,
+          );
+        }
       } else {
         layerStore.updateFlaGraphicInstanceTransform(
           selectedFlaGraphicTarget.layerId,
@@ -467,7 +517,7 @@ export function CanvasStage({
         ),
       );
     }
-  }, [flaGraphicEditScope?.editMode, selectedFlaGraphicTarget]);
+  }, [flaGraphicEditScope?.editMode, selectedFlaGraphicTarget, sharedInternalTimeMs]);
   const exitOrPopFlaGraphicScope = useCallback(() => {
     if (!selectedFlaGraphicTarget || !flaGraphicEditActive || !flaGraphicEditScope) return;
     setFlaGraphicEditDrafts((current) =>
@@ -1110,6 +1160,7 @@ export function CanvasStage({
                                 assets: projectImageDimensions,
                                 scopePath: flaGraphicEditPath,
                                 editMode: flaGraphicEditMode,
+                                internalTimeMs: sharedInternalTimeMs,
                                 selectedNodePathKey: selectedFlaGraphicNodePathKey,
                                 instanceTransformOverrides:
                                   flaGraphicEditMode === 'definition'

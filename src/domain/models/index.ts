@@ -4,6 +4,7 @@ export * from './audio';
 export * from './character';
 export * from './dialogue';
 export * from './flaGraphicStructure';
+export * from './flaGraphicTimeline';
 export * from './flaGraphicInstanceOverrides';
 export * from './layer';
 export * from './project';

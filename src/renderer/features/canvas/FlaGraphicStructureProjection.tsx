@@ -14,7 +14,10 @@ import type {
 } from '../../../domain';
 import {
   evaluateFlaGraphicVisual,
+  resolveFlaGraphicTimelineTarget,
   updateFlaGraphicStructureAuthoredTransform,
+  updateFlaGraphicTimelineKeyframeTransform,
+  withFlaGraphicContainerTimeline,
 } from '../../../domain';
 import {
   localizeAbsoluteLeafMatrix,
@@ -118,6 +121,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
   readonly scopePath: readonly string[];
   readonly editMode?: FlaGraphicEditMode;
+  readonly internalTimeMs?: number;
   readonly selectedNodePathKey: string | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   /** Transient gesture preview matrices; committed values live on the Layer. */
@@ -141,6 +145,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly editMode: FlaGraphicEditMode;
+  readonly internalTimeMs?: number;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
 }) {
@@ -148,6 +153,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     definition,
     frameOrdinal,
     editMode,
+    internalTimeMs,
     instanceTransformOverrides,
     draftMatrices,
   } = input;
@@ -167,12 +173,37 @@ export function evaluateFlaGraphicProjectionVisual(input: {
           Array.isArray(parsed) &&
           parsed.every((part): part is string => typeof part === 'string')
         ) {
-          nextStructure = updateFlaGraphicStructureAuthoredTransform(
-            nextStructure,
-            frameOrdinal,
-            parsed,
-            matrix,
-          );
+          const target =
+            internalTimeMs !== undefined
+              ? resolveFlaGraphicTimelineTarget(nextStructure, frameOrdinal, parsed)
+              : null;
+          const track =
+            target?.trackId && target.timeline
+              ? target.timeline.tracks.find((t) => t.trackId === target.trackId)
+              : undefined;
+          const hasKeyframeAtTime =
+            internalTimeMs !== undefined &&
+            Boolean(track?.keyframes.some((kf) => kf.timeMs === internalTimeMs));
+          if (target?.trackId && hasKeyframeAtTime && internalTimeMs !== undefined) {
+            const nextTimeline = updateFlaGraphicTimelineKeyframeTransform(
+              target.timeline,
+              target.trackId,
+              internalTimeMs,
+              matrix,
+            );
+            nextStructure = withFlaGraphicContainerTimeline(
+              nextStructure,
+              target,
+              nextTimeline,
+            );
+          } else {
+            nextStructure = updateFlaGraphicStructureAuthoredTransform(
+              nextStructure,
+              frameOrdinal,
+              parsed,
+              matrix,
+            );
+          }
         }
       }
       if (nextStructure !== definition.structure) {
@@ -186,6 +217,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
       definition: previewDefinition,
       frameOrdinal,
       mode: 'definition',
+      internalTimeMs,
     });
   }
 
@@ -215,6 +247,7 @@ export function FlaGraphicStructureProjection({
   assets,
   scopePath,
   editMode = 'instance',
+  internalTimeMs,
   selectedNodePathKey,
   instanceTransformOverrides,
   draftMatrices,
@@ -231,6 +264,7 @@ export function FlaGraphicStructureProjection({
     definition,
     frameOrdinal: frame.ordinal,
     editMode,
+    internalTimeMs,
     instanceTransformOverrides,
     draftMatrices,
   });

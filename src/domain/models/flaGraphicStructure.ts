@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
+import { FlaGraphicInternalTimelineSchema } from './flaGraphicTimeline';
 
 /**
  * Persisted, source-backed object tree of an FLA Graphic Definition (STRUCT-04-E1).
@@ -236,6 +237,7 @@ export const FlaGraphicNestedSymbolDefinitionSchema = z
     symbolRef: SourceTextSchema,
     frameSelectionKey: SourceTextSchema.optional(),
     children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+    timeline: FlaGraphicInternalTimelineSchema.optional(),
   })
   .strict();
 
@@ -246,6 +248,7 @@ export const FlaGraphicStructureSchema = z
     version: z.literal(1),
     symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionSchema).optional(),
     frames: z.array(FlaGraphicStructureFrameSchema).min(1).max(256),
+    timeline: FlaGraphicInternalTimelineSchema.optional(),
   })
   .strict()
   .superRefine((structure, context) => {
@@ -443,6 +446,7 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
               symbolRef: def.symbolRef,
               ...(def.frameSelectionKey ? { frameSelectionKey: def.frameSelectionKey } : {}),
               children: def.children.map(canonicalizeStructureNode),
+              ...(def.timeline ? { timeline: def.timeline } : {}),
             },
           ]),
       )
@@ -457,6 +461,7 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
         nodes: layer.nodes.map(canonicalizeStructureNode),
       })),
     })),
+    ...(structure.timeline ? { timeline: structure.timeline } : {}),
   };
 }
 

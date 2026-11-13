@@ -23,6 +23,20 @@ import {
   setFlaGraphicInstanceTransformOverride,
   updateFlaGraphicStructureAuthoredTransform,
 } from '../models/flaGraphicInstanceOverrides';
+import {
+  addFlaGraphicTimelineKeyframe as addTimelineKeyframePure,
+  deleteFlaGraphicTimelineKeyframe as deleteTimelineKeyframePure,
+  duplicateFlaGraphicTimelineKeyframe as duplicateTimelineKeyframePure,
+  evaluateFlaGraphicTrackAtTime,
+  moveFlaGraphicTimelineKeyframe as moveTimelineKeyframePure,
+  resolveFlaGraphicTimelineTarget,
+  setFlaGraphicTimelineKeyframeEasing as setTimelineKeyframeEasingPure,
+  updateFlaGraphicTimelineKeyframeTransform as updateTimelineKeyframeTransformPure,
+  withFlaGraphicContainerTimeline,
+  type FlaGraphicInternalTimeline,
+  type FlaGraphicTimelineTargetInfo,
+  type FlaGraphicTransformEasing,
+} from '../models/flaGraphicTimeline';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { PositionProjectService } from './PositionProjectService';
 
@@ -700,6 +714,210 @@ export class LayerService {
       ...project,
       animations: nextAnimations,
     };
+  }
+
+  private mutateFlaGraphicTimeline(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    mutator: (
+      target: FlaGraphicTimelineTargetInfo & { readonly trackId: string },
+    ) => FlaGraphicInternalTimeline | undefined,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const animationIndex = project.animations.findIndex(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (animationIndex < 0) return project;
+    const definition = project.animations[animationIndex]!;
+    if (
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const target = resolveFlaGraphicTimelineTarget(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target || !target.trackId) return project;
+    const nextTimeline = mutator({ ...target, trackId: target.trackId });
+    const nextStructure = withFlaGraphicContainerTimeline(
+      definition.structure,
+      target,
+      nextTimeline,
+    );
+    if (nextStructure === definition.structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return {
+      ...project,
+      animations: nextAnimations,
+    };
+  }
+
+  addFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing = 'linear',
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) => {
+        const existingTrack = target.timeline?.tracks.find(
+          (t) => t.trackId === target.trackId,
+        );
+        const initialMatrix =
+          (existingTrack
+            ? evaluateFlaGraphicTrackAtTime(existingTrack, timeMs)
+            : null) ?? target.targetNode.localTransform;
+        return addTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          initialMatrix,
+          easing,
+        );
+      },
+    );
+  }
+
+  updateFlaGraphicTimelineKeyframeTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    localTransform: AffineMatrix2D,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        updateTimelineKeyframeTransformPure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          localTransform,
+        ),
+    );
+  }
+
+  deleteFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        deleteTimelineKeyframePure(target.timeline, target.trackId, timeMs),
+    );
+  }
+
+  moveFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        moveTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          fromTimeMs,
+          toTimeMs,
+        ),
+    );
+  }
+
+  duplicateFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        duplicateTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          fromTimeMs,
+          toTimeMs,
+        ),
+    );
+  }
+
+  setFlaGraphicTimelineKeyframeEasing(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        setTimelineKeyframeEasingPure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          easing,
+        ),
+    );
   }
 
   toggleFlipX(

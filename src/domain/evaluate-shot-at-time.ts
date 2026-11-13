@@ -1,4 +1,5 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
+import { collectFlaGraphicTimelineDurationMs } from './models/flaGraphicTimeline';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
@@ -19,6 +20,7 @@ export interface EvaluatedLayer {
   animationFrame?: {
     animationId: string;
     frameOrdinal: number;
+    internalTimeMs?: number;
     offset: { x: number; y: number };
     viewport: { width: number; height: number };
     canvas: { width: number; height: number };
@@ -141,6 +143,32 @@ function resolveAnimationFrame(
     : playback.mode === 'loop'
       ? firstFrame + (elapsedSourceFrames % availableFrames)
       : Math.min(animation.frames.length - 1, firstFrame + elapsedSourceFrames);
+  const frameMs = 1_000 / Math.max(1, animation.source.sourceFps || 24);
+  const firstFrameMs = Math.round(firstFrame * frameMs);
+  const clampedElapsedMs = Math.max(0, elapsedMs);
+  let internalTimeMs = firstFrameMs;
+  if (playback.mode !== 'single-frame') {
+    if (playback.mode === 'loop') {
+      const timelineDurationMs =
+        'kind' in animation &&
+        animation.kind === 'fla-graphic' &&
+        animation.structure
+          ? collectFlaGraphicTimelineDurationMs(animation.structure.timeline)
+          : 0;
+      const loopDurationMs =
+        animation.frames.length > 1
+          ? Math.round(availableFrames * frameMs)
+          : timelineDurationMs > firstFrameMs
+            ? timelineDurationMs - firstFrameMs
+            : 0;
+      internalTimeMs =
+        loopDurationMs > 0
+          ? firstFrameMs + (clampedElapsedMs % loopDurationMs)
+          : firstFrameMs + clampedElapsedMs;
+    } else {
+      internalTimeMs = firstFrameMs + clampedElapsedMs;
+    }
+  }
   const frame = animation.frames[sourceFrameIndex];
   if (!frame) {
     return {
@@ -158,6 +186,7 @@ function resolveAnimationFrame(
     animationFrame: {
       animationId: animation.id,
       frameOrdinal: frame.ordinal,
+      internalTimeMs,
       offset: frame.offset,
       viewport: {
         width: frame.sourceViewport.width,
