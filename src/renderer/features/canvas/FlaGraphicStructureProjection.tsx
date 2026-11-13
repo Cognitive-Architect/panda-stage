@@ -371,7 +371,8 @@ export function FlaGraphicStructureProjection({
     if (!transform) return null;
     const isDirectChild = equalPath(path.slice(0, -1), directScopePath);
     const imageReady = Boolean(content);
-    const selectable = isDirectChild && imageReady && !layerLocked;
+    const selectedFromTree = selectedNodePathKey === key;
+    const selectable = (isDirectChild || selectedFromTree) && imageReady && !layerLocked;
     const canEditNodeTransform =
       editMode === 'definition' && timelineAuthoringActive
         ? resolveFlaGraphicInternalAuthoringState({
@@ -385,7 +386,10 @@ export function FlaGraphicStructureProjection({
     const transformable = selectable && node.type !== 'opaque' && canEditNodeTransform;
     const bubbleToSelectionAncestor =
       !isDirectChild && selectionAncestorPath !== null && !layerLocked;
-    const listening = selectable || bubbleToSelectionAncestor;
+    const selectedPath: readonly string[] | null = selectedNodePathKey ? JSON.parse(selectedNodePathKey) : null;
+    const containsSelection = selectedPath && path.every((id, index) => selectedPath[index] === id);
+    const containsScope = path.every((id, index) => scopePath[index] === id);
+    const listening = selectable || bubbleToSelectionAncestor || Boolean(containsSelection) || containsScope;
     const selected = selectable && selectedNodePathKey === key;
     const childSelectionAncestorPath = selectable &&
         (node.type === 'group' || node.type === 'symbol')
@@ -445,7 +449,7 @@ export function FlaGraphicStructureProjection({
       evaluatedNode.children.length > 0;
     const wrapperRef = selected
       ? selectedNodeRef
-      : equalPath(path, scopePath)
+      : equalPath(path, selectedPath ? selectedPath.slice(0, -1) : scopePath)
         ? scopeParentNodeRef
         : undefined;
 
@@ -505,7 +509,9 @@ export function FlaGraphicStructureProjection({
     );
   };
 
-  const rootPath = scopePath.length === 0;
+  const rootPath = selectedNodePathKey
+    ? (JSON.parse(selectedNodePathKey) as string[]).length === 1
+    : scopePath.length === 0;
   const rootTransform = matrixTransformProps({
     ...identityMatrix,
     tx: -definition.source.anchor.x - definition.source.canvas.width / 2,

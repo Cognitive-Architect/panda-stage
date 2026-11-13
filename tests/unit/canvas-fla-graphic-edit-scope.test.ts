@@ -266,6 +266,25 @@ function projectionProps(input: {
 }
 
 describe('saved Fla Graphic edit scope', () => {
+  it('selects a deep tree occurrence without entering its scope and binds gestures to its actual parent', () => {
+    const definition = makeDefinition();
+    const frame = definition.structure!.frames[0]!;
+    const props = projectionProps({ frame, definition, scopePath: [] });
+    const path = ['group-a', 'symbol-b', 'bitmap-grandchild'];
+    const projection = FlaGraphicStructureProjection({ ...props, selectedNodePathKey: JSON.stringify(path) });
+    const leaf = namedElement(projection, 'fla-structure-node-bitmap-grandchild');
+    const parent = namedElement(projection, 'fla-structure-node-symbol-b');
+    expect(leaf?.props.draggable).toBe(true);
+    expect(leaf?.props.ref).toBe(props.selectedNodeRef);
+    expect(parent?.props.ref).toBe(props.scopeParentNodeRef);
+    expect(parent?.props.listening).toBe(true);
+    expect(props.scopePath).toEqual([]);
+    expect(props.onEnter).not.toHaveBeenCalled();
+    const nested = FlaGraphicStructureProjection(projectionProps({ frame, definition, scopePath: ['group-a', 'symbol-b'] }));
+    expect(namedElement(nested, 'fla-structure-node-group-a')?.props.listening).toBe(true);
+    expect(namedElement(nested, 'fla-structure-node-symbol-b')?.props.listening).toBe(true);
+    expect(namedElement(nested, 'fla-structure-node-bitmap-grandchild')?.props.onClick).toBeTypeOf('function');
+  });
   it('resolves entry from persisted structure and allows a multi-frame Definition', () => {
     const { project, shot, layerId, definition } = projectWithSavedGraphic();
     const reopenedProject = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));

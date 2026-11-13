@@ -30,6 +30,7 @@ import {
 } from '../../stores/positionAuthoringSessionStore';
 import { Button, DecorativeIcon } from '../../ui';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
+import { FlaGraphicChildTransform } from './FlaGraphicChildTransform';
 import {
   isLayerTransformEditableAtTime,
   isAnimationBaseTransformEditableAtTime,
@@ -1405,6 +1406,9 @@ function LayerTransformPanelWithController(
 export function LayerTransformPanel(
   props: LayerTransformPanelProps = {},
 ): React.JSX.Element {
+  const structuredPath = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedStructuredNodePath);
+  const structuredScope = useSyncExternalStore(selectionStore.subscribe, selectionStore.getStructuredEditScope);
+  if (structuredScope && structuredPath?.length) return <FlaGraphicChildTransform />;
   if (props.controller) {
     return (
       <LayerTransformPanelView

@@ -99,7 +99,6 @@ import {
   resolveFlaGraphicExitScopeTransition,
   retainValidFlaGraphicEditDrafts,
   resolveFlaGraphicEditTarget,
-  type FlaGraphicEditScopeState,
 } from './flaGraphicEditScope';
 
 // Keep the editor backing store sharp on Windows 125%/150% scaling without
@@ -246,10 +245,14 @@ export function CanvasStage({
     );
   const [dropPreview, setDropPreview] =
     useState<CanvasDropPreview | null>(null);
-  const [flaGraphicEditScope, setFlaGraphicEditScope] =
-    useState<FlaGraphicEditScopeState | null>(null);
-  const [selectedFlaGraphicNodePath, setSelectedFlaGraphicNodePath] =
-    useState<readonly string[] | null>(null);
+  const flaGraphicEditScope = useSyncExternalStore(
+    selectionStore.subscribe, selectionStore.getStructuredEditScope,
+  );
+  const selectedFlaGraphicNodePath = useSyncExternalStore(
+    selectionStore.subscribe, selectionStore.getSelectedStructuredNodePath,
+  );
+  const setFlaGraphicEditScope = selectionStore.setStructuredEditScope;
+  const setSelectedFlaGraphicNodePath = selectionStore.setSelectedStructuredNodePath;
   const [flaGraphicEditDrafts, setFlaGraphicEditDrafts] = useState<
     Readonly<Record<string, Readonly<Record<string, AffineMatrix2D>>>>
   >({});
@@ -332,8 +335,7 @@ export function CanvasStage({
     : null;
   const selectedFlaGraphicNode = flaGraphicEditActive && selectedFlaGraphicTarget &&
       selectedFlaGraphicNodePath &&
-      selectedFlaGraphicNodePath.length === flaGraphicEditPath.length + 1 &&
-      flaGraphicEditPath.every((id, index) => selectedFlaGraphicNodePath[index] === id)
+      selectedFlaGraphicNodePath.length > 0
     ? getFlaGraphicNodeAtPath(
         selectedFlaGraphicTarget.frame,
         selectedFlaGraphicNodePath,
