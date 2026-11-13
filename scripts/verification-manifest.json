@@ -540,7 +540,8 @@
           "tests/unit/apply-asset-import-response.test.ts",
           "tests/unit/animation-library-components.test.ts",
           "tests/unit/animation-playback.test.ts",
-          "tests/unit/animation-preview-lifecycle.test.ts"
+          "tests/unit/animation-preview-lifecycle.test.ts",
+          "tests/unit/animation-preview-e6-lifecycle-stability.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day16*",
