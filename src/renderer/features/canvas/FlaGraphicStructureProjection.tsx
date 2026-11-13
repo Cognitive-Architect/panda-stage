@@ -12,7 +12,10 @@ import type {
   FlaGraphicInstanceTransformOverrides,
   ImageAsset,
 } from '../../../domain';
-import { evaluateFlaGraphicVisual } from '../../../domain';
+import {
+  evaluateFlaGraphicVisual,
+  updateFlaGraphicStructureAuthoredTransform,
+} from '../../../domain';
 import {
   localizeAbsoluteLeafMatrix,
   type AffineMatrix2D,
@@ -129,6 +132,82 @@ export interface FlaGraphicStructureProjectionProps {
   readonly onError: (message: string) => void;
 }
 
+/**
+ * Applies transient shared-definition gesture drafts onto a temporary copy of
+ * `definition` without mutating Project or History, then evaluates in pure
+ * `definition` mode so all normalized symbol occurrences fan out in real time.
+ */
+export function evaluateFlaGraphicProjectionVisual(input: {
+  readonly definition: FlaGraphicDefinition;
+  readonly frameOrdinal: number;
+  readonly editMode: FlaGraphicEditMode;
+  readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
+}) {
+  const {
+    definition,
+    frameOrdinal,
+    editMode,
+    instanceTransformOverrides,
+    draftMatrices,
+  } = input;
+  const draftEntries = Object.entries(draftMatrices);
+  if (editMode === 'definition') {
+    let previewDefinition = definition;
+    if (draftEntries.length > 0 && definition.structure) {
+      let nextStructure = definition.structure;
+      for (const [pathKey, matrix] of draftEntries) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(pathKey);
+        } catch {
+          continue;
+        }
+        if (
+          Array.isArray(parsed) &&
+          parsed.every((part): part is string => typeof part === 'string')
+        ) {
+          nextStructure = updateFlaGraphicStructureAuthoredTransform(
+            nextStructure,
+            frameOrdinal,
+            parsed,
+            matrix,
+          );
+        }
+      }
+      if (nextStructure !== definition.structure) {
+        previewDefinition = {
+          ...definition,
+          structure: nextStructure,
+        };
+      }
+    }
+    return evaluateFlaGraphicVisual({
+      definition: previewDefinition,
+      frameOrdinal,
+      mode: 'definition',
+    });
+  }
+
+  const evaluationOverrides = (() => {
+    if (draftEntries.length === 0) return instanceTransformOverrides;
+    const frameKey = String(frameOrdinal);
+    return {
+      ...(instanceTransformOverrides ?? {}),
+      [frameKey]: {
+        ...(instanceTransformOverrides?.[frameKey] ?? {}),
+        ...draftMatrices,
+      },
+    } as FlaGraphicInstanceTransformOverrides;
+  })();
+  return evaluateFlaGraphicVisual({
+    definition,
+    frameOrdinal,
+    mode: 'instance',
+    instanceTransformOverrides: evaluationOverrides,
+  });
+}
+
 export function FlaGraphicStructureProjection({
   definition,
   frame,
@@ -148,30 +227,12 @@ export function FlaGraphicStructureProjection({
   onCommitTransform,
   onError,
 }: FlaGraphicStructureProjectionProps): React.JSX.Element {
-  const hasDrafts = Object.keys(draftMatrices).length > 0;
-  const evaluationOverrides = (() => {
-    if (editMode === 'definition') {
-      if (!hasDrafts) return undefined;
-      const frameKey = String(frame.ordinal);
-      return {
-        [frameKey]: draftMatrices,
-      } as FlaGraphicInstanceTransformOverrides;
-    }
-    if (!hasDrafts) return instanceTransformOverrides;
-    const frameKey = String(frame.ordinal);
-    return {
-      ...(instanceTransformOverrides ?? {}),
-      [frameKey]: {
-        ...(instanceTransformOverrides?.[frameKey] ?? {}),
-        ...draftMatrices,
-      },
-    } as FlaGraphicInstanceTransformOverrides;
-  })();
-  const evaluatedVisual = evaluateFlaGraphicVisual({
+  const evaluatedVisual = evaluateFlaGraphicProjectionVisual({
     definition,
     frameOrdinal: frame.ordinal,
-    mode: editMode === 'definition' && !hasDrafts ? 'definition' : 'instance',
-    instanceTransformOverrides: evaluationOverrides,
+    editMode,
+    instanceTransformOverrides,
+    draftMatrices,
   });
   const renderedCanvas = evaluatedVisual
     ? renderFlaGraphicCanvas(evaluatedVisual, images)

@@ -15,9 +15,11 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 import {
+  recordFlaGraphicEditDraft,
   resolveFlaGraphicEditTarget,
   resolveFlaGraphicExitScopeTransition,
 } from '../../src/renderer/features/canvas/flaGraphicEditScope';
+import { evaluateFlaGraphicProjectionVisual } from '../../src/renderer/features/canvas/FlaGraphicStructureProjection';
 import { buildProjectWithAnimation, IDS } from './domain/testProject';
 
 const FLA_FRAME_ASSET_ID = '10000000-0000-4000-8000-000000000004';
@@ -500,5 +502,130 @@ describe('FLA Graphic Shared Definition Editing (E5)', () => {
       nextScopePath: [],
       nextSelectedNodePath: ['sym-left'],
     });
+  });
+
+  it('fans out transient shared drafts to all nested symbol occurrences in real time without mutating Project or History, while keeping Instance Edit isolated', () => {
+    const { project: base, shotId, layerAId, service } = twoInstanceGraphicProject();
+    // Give layerA an instance override so we also verify override isolation during shared preview.
+    const withOverride = service.updateFlaGraphicInstanceTransform(
+      base,
+      shotId,
+      layerAId,
+      0,
+      ['sym-left', 'hand-bmp'],
+      OVERRIDE_ARM,
+    );
+    const editor = new EditorProjectStore();
+    editor.open('D:\\PandaStage-Acceptance\\shared-draft.pandastage', withOverride);
+    const layerStore = new LayerStore(
+      editor,
+      { getCurrentShotId: () => shotId },
+      service,
+    );
+
+    const defBefore = getDefinition(editor.getSnapshot()!.project);
+    const layerOverridesBefore = getLayer(
+      editor.getSnapshot()!.project,
+      shotId,
+      layerAId,
+    ).flaGraphicInstanceTransformOverrides;
+
+    const findTransformInVisual = (
+      visual: ReturnType<typeof evaluateFlaGraphicProjectionVisual>,
+      targetPath: readonly string[],
+    ): AffineMatrix2D | null => {
+      if (!visual?.layers) return null;
+      const visit = (nodes: typeof visual.layers[number]['nodes']): AffineMatrix2D | null => {
+        for (const node of nodes) {
+          if (
+            node.path.length === targetPath.length &&
+            node.path.every((part, idx) => part === targetPath[idx])
+          ) {
+            return node.localTransform;
+          }
+          const nested = visit(node.children);
+          if (nested) return nested;
+        }
+        return null;
+      };
+      return visit(visual.layers.flatMap((l) => l.nodes));
+    };
+
+    // 1. Nested shared draft fan-out + override isolation (before commit).
+    const nestedDrafts = recordFlaGraphicEditDraft(
+      {},
+      'target-a',
+      ['sym-left', 'hand-bmp'],
+      UPDATED_ARM,
+    )['target-a']!;
+    const sharedPreview = evaluateFlaGraphicProjectionVisual({
+      definition: defBefore,
+      frameOrdinal: 0,
+      editMode: 'definition',
+      instanceTransformOverrides: layerOverridesBefore,
+      draftMatrices: nestedDrafts,
+    });
+    expect(findTransformInVisual(sharedPreview, ['sym-left', 'hand-bmp'])).toEqual(UPDATED_ARM);
+    expect(findTransformInVisual(sharedPreview, ['sym-right', 'hand-bmp'])).toEqual(UPDATED_ARM);
+
+    // 2. No Project or History mutation during draft.
+    expect(getDefinition(editor.getSnapshot()!.project)).toBe(defBefore);
+    expect(editor.history.getSnapshot().undoCount).toBe(0);
+
+    // 3. Instance Edit regression: instance draft affects ONLY sym-left, not sym-right.
+    const instancePreview = evaluateFlaGraphicProjectionVisual({
+      definition: defBefore,
+      frameOrdinal: 0,
+      editMode: 'instance',
+      instanceTransformOverrides: layerOverridesBefore,
+      draftMatrices: nestedDrafts,
+    });
+    expect(findTransformInVisual(instancePreview, ['sym-left', 'hand-bmp'])).toEqual(UPDATED_ARM);
+    expect(findTransformInVisual(instancePreview, ['sym-right', 'hand-bmp'])).toEqual(AUTHORED_ARM);
+
+    // 4. Root Definition shared draft regression & Read-only opaque guard.
+    const rootAndOpaqueDrafts = recordFlaGraphicEditDraft(
+      recordFlaGraphicEditDraft({}, 'target-a', ['group-a', 'bitmap-a'], UPDATED_ARM),
+      'target-a',
+      ['group-a', 'opaque-a'],
+      UPDATED_ARM,
+    )['target-a']!;
+    const rootPreview = evaluateFlaGraphicProjectionVisual({
+      definition: defBefore,
+      frameOrdinal: 0,
+      editMode: 'definition',
+      instanceTransformOverrides: layerOverridesBefore,
+      draftMatrices: rootAndOpaqueDrafts,
+    });
+    expect(findTransformInVisual(rootPreview, ['group-a', 'bitmap-a'])).toEqual(UPDATED_ARM);
+    expect(findTransformInVisual(rootPreview, ['group-a', 'opaque-a'])).toEqual({
+      a: 1,
+      b: 0,
+      c: 0,
+      d: 1,
+      tx: 0,
+      ty: 0,
+    });
+
+    // 5. Commit parity: committed definition matches shared preview with 1 History entry.
+    layerStore.updateFlaGraphicSharedDefinitionTransform(
+      layerAId,
+      0,
+      ['sym-left', 'hand-bmp'],
+      UPDATED_ARM,
+    );
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    const committedView = evaluateFlaGraphicProjectionVisual({
+      definition: getDefinition(editor.getSnapshot()!.project),
+      frameOrdinal: 0,
+      editMode: 'definition',
+      draftMatrices: {},
+    });
+    expect(findTransformInVisual(committedView, ['sym-left', 'hand-bmp'])).toEqual(
+      findTransformInVisual(sharedPreview, ['sym-left', 'hand-bmp']),
+    );
+    expect(findTransformInVisual(committedView, ['sym-right', 'hand-bmp'])).toEqual(
+      findTransformInVisual(sharedPreview, ['sym-right', 'hand-bmp']),
+    );
   });
 });
