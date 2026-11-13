@@ -18,7 +18,7 @@
 .fla-inspector-preview canvas, .fla-inspector-preview img { width: 100%; height: 100%; object-fit: contain; }
 .fla-inspector-preview[aria-busy='true'] { background: linear-gradient(100deg, var(--ui-color-surface-work), var(--ui-color-surface-panel), var(--ui-color-surface-work)); }
 @media (pointer: coarse) { .fla-structure-row { min-height: 44px; } .fla-structure-chevron { width: 40px; height: 44px; } }
-@media (orientation: portrait) { .fla-inspector-preview { aspect-ratio: 3 / 1; } }
+@media (orientation: portrait) { .fla-inspector-preview { aspect-ratio: auto; height: 120px; } }
 .editor-layout .right-inspector-drawer:has(> .fla-structure-section) { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; }
 .editor-layout[data-shell-mode] .right-inspector-drawer .right-inspector-section.fla-structure-section { border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .editor-layout .right-inspector-drawer:has(> .fla-structure-section) .right-inspector-selection { border: 0; padding: 0; background: transparent; }
