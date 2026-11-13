@@ -666,7 +666,9 @@ export function AnimationPreview({
     shouldApply?: () => boolean,
   ): Promise<FrameLoadResult> => {
     const requestId = ++loadRequestRef.current;
-    const sample = previewTimelineSpec.sampleAtFrameIndex(requestedIndex);
+    const sample = resolveFlaGraphicPreviewTimeline(animation).sampleAtFrameIndex(
+      requestedIndex,
+    );
     const frame = animation.frames.find(
       (candidate) => candidate.ordinal === sample.frameOrdinal,
     ) ?? animation.frames[requestedIndex];
@@ -724,7 +726,7 @@ export function AnimationPreview({
       );
       return 'error';
     }
-  }, [animation, previewTimelineSpec, project.assets, projectRoot, replaceFrameUrl]);
+  }, [animation, project.assets, projectRoot, replaceFrameUrl]);
 
   useEffect(() => {
     playingRef.current = false;
@@ -750,16 +752,17 @@ export function AnimationPreview({
   }, [loadFrame, replaceFrameUrl]);
 
   const startPlayback = useCallback((fromIndex: number): void => {
+    const spec = resolveFlaGraphicPreviewTimeline(animation);
     playbackTimelineRef.current = createAnimationPlaybackTimeline(
-      previewTimelineSpec.fps,
-      totalPreviewFrames,
+      spec.fps,
+      spec.totalFrames,
       performance.now(),
       fromIndex,
     );
     pendingFrameIndexRef.current = null;
     playingRef.current = true;
     setPlaying(true);
-  }, [previewTimelineSpec.fps, totalPreviewFrames]);
+  }, [animation]);
 
   const pausePlayback = (): void => {
     playingRef.current = false;
