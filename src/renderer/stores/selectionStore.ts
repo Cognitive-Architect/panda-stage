@@ -138,7 +138,6 @@ export class LayerSelectionStore {
     const context = this.currentContext();
     if (
       !context ||
-      context.projectInstanceId !== this.selectedContext.projectInstanceId ||
       context.projectId !== this.selectedContext.projectId ||
       context.projectRoot !== this.selectedContext.projectRoot ||
       context.shotId !== this.selectedContext.shotId ||
@@ -147,6 +146,11 @@ export class LayerSelectionStore {
       )
     ) {
       this.setSelectedLayerId(null, null);
+    } else if (context.projectInstanceId !== this.selectedContext.projectInstanceId) {
+      this.selectedContext = context;
+      this.structuredEditScope = null;
+      this.selectedStructuredNodePath = null;
+      for (const listener of this.listeners) listener();
     }
   }
 

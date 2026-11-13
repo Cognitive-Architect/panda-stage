@@ -28,6 +28,10 @@ describe('LayerSelectionStore project boundary', () => {
     expect(selection.getSelectedStructuredNodePath()).toBeNull();
     selection.select(layerId);
     selection.setStructuredEditScope(scope);
+    editor.open('D:/structured-selection.pandastage', project);
+    expect(selection.getSelectedLayerId()).toBe(layerId);
+    expect(selection.getStructuredEditScope()).toBeNull();
+    selection.setStructuredEditScope(scope);
     editor.open('D:/other-structured-selection.pandastage', project);
     expect(selection.getStructuredEditScope()).toBeNull();
     selection.dispose(); shots.dispose();

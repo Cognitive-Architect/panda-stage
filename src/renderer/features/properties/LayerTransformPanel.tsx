@@ -1403,11 +1403,11 @@ function LayerTransformPanelWithController(
   );
 }
 
-export function LayerTransformPanel(
+function LayerTransformPanelSelection(
   props: LayerTransformPanelProps = {},
 ): React.JSX.Element {
-  const structuredPath = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedStructuredNodePath);
-  const structuredScope = useSyncExternalStore(selectionStore.subscribe, selectionStore.getStructuredEditScope);
+  const structuredPath = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedStructuredNodePath, selectionStore.getSelectedStructuredNodePath);
+  const structuredScope = useSyncExternalStore(selectionStore.subscribe, selectionStore.getStructuredEditScope, selectionStore.getStructuredEditScope);
   if (structuredScope && structuredPath?.length) return <FlaGraphicChildTransform />;
   if (props.controller) {
     return (
@@ -1420,4 +1420,8 @@ export function LayerTransformPanel(
     );
   }
   return <LayerTransformPanelWithController {...props} />;
+}
+
+export function LayerTransformPanel(props: LayerTransformPanelProps = {}): React.JSX.Element {
+  return <LayerTransformPanelSelection {...props} />;
 }
