@@ -783,6 +783,11 @@ export class LayerService {
       frameOrdinal,
       nodePath,
       (target) => {
+        if (!target.trsSafe) {
+          throw new Error(
+            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持添加关键帧。',
+          );
+        }
         const existingTrack = target.timeline?.tracks.find(
           (t) => t.trackId === target.trackId,
         );
@@ -816,13 +821,19 @@ export class LayerService {
       layerId,
       frameOrdinal,
       nodePath,
-      (target) =>
-        updateTimelineKeyframeTransformPure(
+      (target) => {
+        if (!target.trsSafe) {
+          throw new Error(
+            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持编辑关键帧。',
+          );
+        }
+        return updateTimelineKeyframeTransformPure(
           target.timeline,
           target.trackId,
           timeMs,
           localTransform,
-        ),
+        );
+      },
     );
   }
 

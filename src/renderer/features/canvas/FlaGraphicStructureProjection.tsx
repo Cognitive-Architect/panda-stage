@@ -14,7 +14,7 @@ import type {
 } from '../../../domain';
 import {
   evaluateFlaGraphicVisual,
-  resolveFlaGraphicTimelineTarget,
+  resolveFlaGraphicInternalAuthoringState,
   updateFlaGraphicStructureAuthoredTransform,
   updateFlaGraphicTimelineKeyframeTransform,
   withFlaGraphicContainerTimeline,
@@ -121,6 +121,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
   readonly scopePath: readonly string[];
   readonly editMode?: FlaGraphicEditMode;
+  readonly timelineAuthoringActive?: boolean;
   readonly internalTimeMs?: number;
   readonly selectedNodePathKey: string | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
@@ -145,6 +146,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly editMode: FlaGraphicEditMode;
+  readonly timelineAuthoringActive?: boolean;
   readonly internalTimeMs?: number;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
@@ -154,6 +156,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     frameOrdinal,
     editMode,
     internalTimeMs,
+    timelineAuthoringActive = internalTimeMs !== undefined,
     instanceTransformOverrides,
     draftMatrices,
   } = input;
@@ -173,29 +176,31 @@ export function evaluateFlaGraphicProjectionVisual(input: {
           Array.isArray(parsed) &&
           parsed.every((part): part is string => typeof part === 'string')
         ) {
-          const target =
-            internalTimeMs !== undefined
-              ? resolveFlaGraphicTimelineTarget(nextStructure, frameOrdinal, parsed)
-              : null;
-          const track =
-            target?.trackId && target.timeline
-              ? target.timeline.tracks.find((t) => t.trackId === target.trackId)
-              : undefined;
-          const hasKeyframeAtTime =
-            internalTimeMs !== undefined &&
-            Boolean(track?.keyframes.some((kf) => kf.timeMs === internalTimeMs));
-          if (target?.trackId && hasKeyframeAtTime && internalTimeMs !== undefined) {
-            const nextTimeline = updateFlaGraphicTimelineKeyframeTransform(
-              target.timeline,
-              target.trackId,
+          if (timelineAuthoringActive) {
+            const authoringState = resolveFlaGraphicInternalAuthoringState({
+              structure: nextStructure,
+              frameOrdinal,
+              nodePath: parsed,
               internalTimeMs,
-              matrix,
-            );
-            nextStructure = withFlaGraphicContainerTimeline(
-              nextStructure,
-              target,
-              nextTimeline,
-            );
+              timelineAuthoringActive: true,
+            });
+            if (
+              authoringState.canEditTransform &&
+              authoringState.target?.trackId &&
+              internalTimeMs !== undefined
+            ) {
+              const nextTimeline = updateFlaGraphicTimelineKeyframeTransform(
+                authoringState.target.timeline,
+                authoringState.target.trackId,
+                internalTimeMs,
+                matrix,
+              );
+              nextStructure = withFlaGraphicContainerTimeline(
+                nextStructure,
+                authoringState.target,
+                nextTimeline,
+              );
+            }
           } else {
             nextStructure = updateFlaGraphicStructureAuthoredTransform(
               nextStructure,
@@ -247,6 +252,7 @@ export function FlaGraphicStructureProjection({
   assets,
   scopePath,
   editMode = 'instance',
+  timelineAuthoringActive = false,
   internalTimeMs,
   selectedNodePathKey,
   instanceTransformOverrides,
@@ -264,6 +270,7 @@ export function FlaGraphicStructureProjection({
     definition,
     frameOrdinal: frame.ordinal,
     editMode,
+    timelineAuthoringActive,
     internalTimeMs,
     instanceTransformOverrides,
     draftMatrices,
@@ -365,7 +372,17 @@ export function FlaGraphicStructureProjection({
     const isDirectChild = equalPath(path.slice(0, -1), directScopePath);
     const imageReady = Boolean(content);
     const selectable = isDirectChild && imageReady && !layerLocked;
-    const transformable = selectable && node.type !== 'opaque';
+    const canEditNodeTransform =
+      editMode === 'definition' && timelineAuthoringActive
+        ? resolveFlaGraphicInternalAuthoringState({
+            structure: definition.structure,
+            frameOrdinal: frame.ordinal,
+            nodePath: path,
+            internalTimeMs,
+            timelineAuthoringActive: true,
+          }).canEditTransform
+        : true;
+    const transformable = selectable && node.type !== 'opaque' && canEditNodeTransform;
     const bubbleToSelectionAncestor =
       !isDirectChild && selectionAncestorPath !== null && !layerLocked;
     const listening = selectable || bubbleToSelectionAncestor;

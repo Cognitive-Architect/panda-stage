@@ -18,10 +18,11 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  collectFlaGraphicTimelineDurationMs,
   getFlaGraphicInstanceTransformOverride,
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
-  resolveFlaGraphicTimelineTarget,
+  resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
   type ImageAsset,
   type Shot,
@@ -311,8 +312,15 @@ export function CanvasStage({
   const flaGraphicEditMode = flaGraphicEditActive
     ? flaGraphicEditScope?.editMode ?? 'instance'
     : 'instance';
+  const sharedTimelineAuthoringActive = Boolean(
+    flaGraphicEditActive &&
+      flaGraphicEditMode === 'definition' &&
+      timelineUi.flaGraphicInternalContext?.timelineAuthoringActive,
+  );
   const sharedInternalTimeMs =
-    flaGraphicEditActive && flaGraphicEditMode === 'definition'
+    flaGraphicEditActive &&
+    flaGraphicEditMode === 'definition' &&
+    sharedTimelineAuthoringActive
       ? (timelineUi.flaGraphicInternalContext?.internalTimeMs ?? 0)
       : undefined;
   const flaGraphicEditPath = flaGraphicEditActive
@@ -440,12 +448,22 @@ export function CanvasStage({
   }, [selectedFlaGraphicTarget]);
   useEffect(() => {
     if (flaGraphicEditActive && flaGraphicEditMode === 'definition' && selectedFlaGraphicTarget) {
+      const existingContext = timelineUiStore.getSnapshot().flaGraphicInternalContext;
+      const defaultAuthoringActive =
+        existingContext &&
+        existingContext.animationId === selectedFlaGraphicTarget.animation.id
+          ? existingContext.timelineAuthoringActive
+          : collectFlaGraphicTimelineDurationMs(
+              selectedFlaGraphicTarget.animation.structure?.timeline,
+              selectedFlaGraphicTarget.animation.structure,
+            ) > 0;
       timelineUiStore.setFlaGraphicInternalContext({
         layerId: selectedFlaGraphicTarget.layerId,
         animationId: selectedFlaGraphicTarget.animation.id,
         frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
         selectedNodePath: selectedFlaGraphicNodePath,
         fps: Math.max(1, selectedFlaGraphicTarget.animation.source.sourceFps || 24),
+        timelineAuthoringActive: defaultAuthoringActive,
       });
       return;
     }
@@ -463,24 +481,23 @@ export function CanvasStage({
     if (!selectedFlaGraphicTarget) return;
     try {
       if (flaGraphicEditScope?.editMode === 'definition') {
-        const internalTime = sharedInternalTimeMs ?? 0;
-        const timelineTarget = selectedFlaGraphicTarget.animation.structure
-          ? resolveFlaGraphicTimelineTarget(
-              selectedFlaGraphicTarget.animation.structure,
-              selectedFlaGraphicTarget.frameOrdinal,
-              nodePath,
-            )
-          : null;
-        const track =
-          timelineTarget?.trackId && timelineTarget.timeline
-            ? timelineTarget.timeline.tracks.find(
-                (candidate) => candidate.trackId === timelineTarget.trackId,
-              )
-            : undefined;
-        const hasKeyframeAtTime = Boolean(
-          track?.keyframes.some((kf) => kf.timeMs === internalTime),
-        );
-        if (timelineTarget?.trackId && hasKeyframeAtTime) {
+        if (sharedTimelineAuthoringActive) {
+          const internalTime = sharedInternalTimeMs ?? 0;
+          const authoringState = resolveFlaGraphicInternalAuthoringState({
+            structure: selectedFlaGraphicTarget.animation.structure,
+            frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+            nodePath,
+            internalTimeMs: internalTime,
+            timelineAuthoringActive: true,
+          });
+          if (!authoringState.canEditTransform) {
+            setInteractionStatus(
+              authoringState.reason === 'trs-unsafe-readonly'
+                ? '当前节点包含倾斜变换，内部时间轴暂不支持编辑。'
+                : '当前时间点没有关键帧，请先添加关键帧后再编辑。',
+            );
+            return;
+          }
           layerStore.updateFlaGraphicTimelineKeyframeTransform(
             selectedFlaGraphicTarget.layerId,
             selectedFlaGraphicTarget.frameOrdinal,
@@ -517,7 +534,12 @@ export function CanvasStage({
         ),
       );
     }
-  }, [flaGraphicEditScope?.editMode, selectedFlaGraphicTarget, sharedInternalTimeMs]);
+  }, [
+    flaGraphicEditScope?.editMode,
+    selectedFlaGraphicTarget,
+    sharedInternalTimeMs,
+    sharedTimelineAuthoringActive,
+  ]);
   const exitOrPopFlaGraphicScope = useCallback(() => {
     if (!selectedFlaGraphicTarget || !flaGraphicEditActive || !flaGraphicEditScope) return;
     setFlaGraphicEditDrafts((current) =>
@@ -929,11 +951,26 @@ export function CanvasStage({
         selectedFlaGraphicTarget.animation.structure,
       ),
   );
+  const selectedStructuredAuthoringState =
+    flaGraphicEditActive &&
+    flaGraphicEditMode === 'definition' &&
+    selectedFlaGraphicTarget &&
+    selectedFlaGraphicNodePath
+      ? resolveFlaGraphicInternalAuthoringState({
+          structure: selectedFlaGraphicTarget.animation.structure,
+          frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+          nodePath: selectedFlaGraphicNodePath,
+          internalTimeMs: sharedInternalTimeMs ?? 0,
+          timelineAuthoringActive: sharedTimelineAuthoringActive,
+        })
+      : null;
   const selectedStructuredNodeCanTransform = Boolean(
     selectedStructuredNodeReady &&
       selectedStageLayer?.layer.locked === false &&
       selectedFlaGraphicNode &&
-      flaGraphicNodeCanTransform(selectedFlaGraphicNode),
+      flaGraphicNodeCanTransform(selectedFlaGraphicNode) &&
+      (!sharedTimelineAuthoringActive ||
+        Boolean(selectedStructuredAuthoringState?.canEditTransform)),
   );
   const structuredTransformerVisible = Boolean(
     flaGraphicEditActive && selectedStructuredNodeCanTransform,
@@ -1039,8 +1076,11 @@ export function CanvasStage({
               flaGraphicEditMode={flaGraphicEditMode}
               readOnlySelected={Boolean(
                 flaGraphicEditActive &&
-                  selectedFlaGraphicNode?.type === 'opaque' &&
-                  selectedStructuredNodeReady,
+                  ((selectedFlaGraphicNode?.type === 'opaque' &&
+                    selectedStructuredNodeReady) ||
+                    (sharedTimelineAuthoringActive &&
+                      selectedFlaGraphicNode &&
+                      !selectedStructuredAuthoringState?.canEditTransform)),
               )}
               mode={viewport.mode}
               onEnterSelected={enterSelectedFlaGraphicNode}
@@ -1160,6 +1200,7 @@ export function CanvasStage({
                                 assets: projectImageDimensions,
                                 scopePath: flaGraphicEditPath,
                                 editMode: flaGraphicEditMode,
+                                timelineAuthoringActive: sharedTimelineAuthoringActive,
                                 internalTimeMs: sharedInternalTimeMs,
                                 selectedNodePathKey: selectedFlaGraphicNodePathKey,
                                 instanceTransformOverrides:

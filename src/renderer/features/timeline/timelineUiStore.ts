@@ -121,6 +121,7 @@ export interface FlaGraphicInternalTimelineContext {
   readonly selectedNodePath: readonly string[] | null;
   readonly internalTimeMs: number;
   readonly fps: number;
+  readonly timelineAuthoringActive: boolean;
 }
 
 export interface TimelineUiState {
@@ -213,8 +214,12 @@ export class TimelineUiStore {
 
   setFlaGraphicInternalContext(
     context:
-      | (Omit<FlaGraphicInternalTimelineContext, 'internalTimeMs'> & {
+      | (Omit<
+          FlaGraphicInternalTimelineContext,
+          'internalTimeMs' | 'timelineAuthoringActive'
+        > & {
           readonly internalTimeMs?: number;
+          readonly timelineAuthoringActive?: boolean;
         })
       | null,
   ): void {
@@ -229,6 +234,11 @@ export class TimelineUiStore {
       (prev && prev.animationId === context.animationId
         ? prev.internalTimeMs
         : 0);
+    const timelineAuthoringActive =
+      context.timelineAuthoringActive ??
+      (prev && prev.animationId === context.animationId
+        ? prev.timelineAuthoringActive
+        : false);
     if (
       prev &&
       prev.layerId === context.layerId &&
@@ -236,6 +246,7 @@ export class TimelineUiStore {
       prev.frameOrdinal === context.frameOrdinal &&
       prev.internalTimeMs === internalTimeMs &&
       prev.fps === context.fps &&
+      prev.timelineAuthoringActive === timelineAuthoringActive &&
       JSON.stringify(prev.selectedNodePath) ===
         JSON.stringify(context.selectedNodePath)
     ) {
@@ -249,6 +260,18 @@ export class TimelineUiStore {
         selectedNodePath: context.selectedNodePath,
         internalTimeMs,
         fps: context.fps,
+        timelineAuthoringActive,
+      },
+    });
+  }
+
+  setFlaGraphicTimelineAuthoringActive(active: boolean): void {
+    const current = this.state.flaGraphicInternalContext;
+    if (!current || current.timelineAuthoringActive === active) return;
+    this.patch({
+      flaGraphicInternalContext: {
+        ...current,
+        timelineAuthoringActive: active,
       },
     });
   }
@@ -258,11 +281,17 @@ export class TimelineUiStore {
     if (!current) return;
     const clamped = clampTime(timeMs, durationMs);
     const snapped = Math.min(snapToFrame(clamped), durationMs);
-    if (snapped === current.internalTimeMs) return;
+    if (
+      snapped === current.internalTimeMs &&
+      current.timelineAuthoringActive
+    ) {
+      return;
+    }
     this.patch({
       flaGraphicInternalContext: {
         ...current,
         internalTimeMs: snapped,
+        timelineAuthoringActive: true,
       },
     });
   }

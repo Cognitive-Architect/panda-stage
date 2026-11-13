@@ -126,6 +126,39 @@ export function composeAffineMatrix(
   };
 }
 
+/**
+ * Checks whether an authored affine matrix can be losslessly represented by
+ * E6 V1 decomposed TRS (`tx`, `ty`, `rotationDeg`, `scaleX`, `scaleY`).
+ * Matrices with shear / skew fail round-trip recomposition and are marked
+ * locally read-only for E6 timeline authoring.
+ */
+export function isAffineMatrixTrsSafe(
+  matrix: AffineMatrix2D,
+  epsilon = 1e-4,
+): boolean {
+  if (
+    !Number.isFinite(matrix.a) ||
+    !Number.isFinite(matrix.b) ||
+    !Number.isFinite(matrix.c) ||
+    !Number.isFinite(matrix.d) ||
+    !Number.isFinite(matrix.tx) ||
+    !Number.isFinite(matrix.ty)
+  ) {
+    return false;
+  }
+  const recomposed = composeAffineMatrix(decomposeAffineMatrix(matrix));
+  const within = (actual: number, expected: number): boolean =>
+    Math.abs(actual - expected) <= Math.max(epsilon, Math.abs(expected) * 1e-6);
+  return (
+    within(recomposed.a, matrix.a) &&
+    within(recomposed.b, matrix.b) &&
+    within(recomposed.c, matrix.c) &&
+    within(recomposed.d, matrix.d) &&
+    within(recomposed.tx, matrix.tx) &&
+    within(recomposed.ty, matrix.ty)
+  );
+}
+
 function easeProgress(
   rawProgress: number,
   easing: FlaGraphicTransformEasing,
@@ -195,12 +228,21 @@ export function evaluateFlaGraphicTrackAtTime(
 
 export function collectFlaGraphicTimelineDurationMs(
   timeline?: FlaGraphicInternalTimeline | null,
+  structure?: FlaGraphicStructure,
 ): number {
-  if (!timeline) return 0;
   let maxTimeMs = 0;
-  for (const track of timeline.tracks) {
-    const last = track.keyframes[track.keyframes.length - 1];
-    if (last && last.timeMs > maxTimeMs) maxTimeMs = last.timeMs;
+  const scan = (candidate?: FlaGraphicInternalTimeline | null): void => {
+    if (!candidate) return;
+    for (const track of candidate.tracks) {
+      const last = track.keyframes[track.keyframes.length - 1];
+      if (last && last.timeMs > maxTimeMs) maxTimeMs = last.timeMs;
+    }
+  };
+  scan(timeline);
+  if (structure?.symbolDefinitions) {
+    for (const def of Object.values(structure.symbolDefinitions)) {
+      scan(def.timeline);
+    }
   }
   return maxTimeMs;
 }
@@ -383,12 +425,20 @@ export function setFlaGraphicTimelineKeyframeEasing(
   });
 }
 
+export type FlaGraphicTimelineAuthoringCapability =
+  | 'editable'
+  | 'readonly-opaque'
+  | 'readonly-identity'
+  | 'readonly-trs-unsafe';
+
 export interface FlaGraphicTimelineTargetInfo {
   readonly ownerKind: 'frame' | 'symbol';
   readonly ownerSymbolDefId: string | null;
   readonly trackId: string | null;
   readonly targetNode: FlaGraphicStructureNode;
   readonly timeline: FlaGraphicInternalTimeline | undefined;
+  readonly trsSafe: boolean;
+  readonly authoringCapability: FlaGraphicTimelineAuthoringCapability;
 }
 
 function countSourceAddressInNodes(
@@ -489,6 +539,15 @@ export function resolveFlaGraphicTimelineTarget(
     ownerSymbolDefId,
     containerRootNodes,
   );
+  const trsSafe = isAffineMatrixTrsSafe(targetNode.localTransform);
+  const authoringCapability: FlaGraphicTimelineAuthoringCapability =
+    targetNode.type === 'opaque'
+      ? 'readonly-opaque'
+      : !trackId
+        ? 'readonly-identity'
+        : !trsSafe
+          ? 'readonly-trs-unsafe'
+          : 'editable';
   const timeline =
     ownerKind === 'symbol' && ownerSymbolDefId
       ? structure.symbolDefinitions?.[ownerSymbolDefId]?.timeline
@@ -499,6 +558,146 @@ export function resolveFlaGraphicTimelineTarget(
     trackId,
     targetNode,
     timeline,
+    trsSafe,
+    authoringCapability,
+  };
+}
+
+export interface FlaGraphicInternalAuthoringState {
+  readonly mode: 'base' | 'timeline';
+  readonly target: FlaGraphicTimelineTargetInfo | null;
+  readonly authoringCapability: FlaGraphicTimelineAuthoringCapability | 'none';
+  readonly trsSafe: boolean;
+  readonly hasTrack: boolean;
+  readonly hasKeyframeAtTime: boolean;
+  readonly canEditTransform: boolean;
+  readonly canAddKeyframe: boolean;
+  readonly reason:
+    | 'ok'
+    | 'no-selection'
+    | 'no-key-readonly'
+    | 'trs-unsafe-readonly'
+    | 'opaque-readonly'
+    | 'identity-readonly';
+}
+
+/**
+ * Derives whether a selected child node is transformable and/or keyframeable
+ * under the active Shared Definition Edit mode (`base` E5 vs `timeline` E6).
+ */
+export function resolveFlaGraphicInternalAuthoringState(input: {
+  readonly structure: FlaGraphicStructure | undefined;
+  readonly frameOrdinal: number;
+  readonly nodePath: readonly string[] | null;
+  readonly internalTimeMs?: number;
+  readonly timelineAuthoringActive: boolean;
+}): FlaGraphicInternalAuthoringState {
+  const {
+    structure,
+    frameOrdinal,
+    nodePath,
+    internalTimeMs = 0,
+    timelineAuthoringActive,
+  } = input;
+  if (!structure || !nodePath || nodePath.length === 0) {
+    return {
+      mode: timelineAuthoringActive ? 'timeline' : 'base',
+      target: null,
+      authoringCapability: 'none',
+      trsSafe: false,
+      hasTrack: false,
+      hasKeyframeAtTime: false,
+      canEditTransform: false,
+      canAddKeyframe: false,
+      reason: 'no-selection',
+    };
+  }
+  const target = resolveFlaGraphicTimelineTarget(structure, frameOrdinal, nodePath);
+  if (!target) {
+    return {
+      mode: timelineAuthoringActive ? 'timeline' : 'base',
+      target: null,
+      authoringCapability: 'none',
+      trsSafe: false,
+      hasTrack: false,
+      hasKeyframeAtTime: false,
+      canEditTransform: false,
+      canAddKeyframe: false,
+      reason: 'no-selection',
+    };
+  }
+  if (!timelineAuthoringActive) {
+    const isOpaque = target.targetNode.type === 'opaque';
+    return {
+      mode: 'base',
+      target,
+      authoringCapability: target.authoringCapability,
+      trsSafe: target.trsSafe,
+      hasTrack: false,
+      hasKeyframeAtTime: false,
+      canEditTransform: !isOpaque,
+      canAddKeyframe: target.authoringCapability === 'editable',
+      reason: isOpaque ? 'opaque-readonly' : 'ok',
+    };
+  }
+
+  const track =
+    target.trackId && target.timeline
+      ? target.timeline.tracks.find((candidate) => candidate.trackId === target.trackId)
+      : undefined;
+  const hasTrack = Boolean(track);
+  const hasKeyframeAtTime = Boolean(
+    track?.keyframes.some((kf) => kf.timeMs === internalTimeMs),
+  );
+  if (target.authoringCapability === 'readonly-opaque') {
+    return {
+      mode: 'timeline',
+      target,
+      authoringCapability: target.authoringCapability,
+      trsSafe: target.trsSafe,
+      hasTrack,
+      hasKeyframeAtTime,
+      canEditTransform: false,
+      canAddKeyframe: false,
+      reason: 'opaque-readonly',
+    };
+  }
+  if (target.authoringCapability === 'readonly-identity') {
+    return {
+      mode: 'timeline',
+      target,
+      authoringCapability: target.authoringCapability,
+      trsSafe: target.trsSafe,
+      hasTrack,
+      hasKeyframeAtTime,
+      canEditTransform: false,
+      canAddKeyframe: false,
+      reason: 'identity-readonly',
+    };
+  }
+  if (target.authoringCapability === 'readonly-trs-unsafe') {
+    return {
+      mode: 'timeline',
+      target,
+      authoringCapability: target.authoringCapability,
+      trsSafe: false,
+      hasTrack,
+      hasKeyframeAtTime,
+      canEditTransform: false,
+      canAddKeyframe: false,
+      reason: 'trs-unsafe-readonly',
+    };
+  }
+  return {
+    mode: 'timeline',
+    target,
+    authoringCapability: 'editable',
+    trsSafe: true,
+    hasTrack,
+    hasKeyframeAtTime,
+    canEditTransform: hasKeyframeAtTime,
+    canAddKeyframe: !hasKeyframeAtTime,
+    reason: hasKeyframeAtTime ? 'ok' : 'no-key-readonly',
   };
 }
 

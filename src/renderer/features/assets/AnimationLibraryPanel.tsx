@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import {
+  collectFlaGraphicTimelineDurationMs,
   evaluateFlaGraphicVisual,
+  type EvaluatedFlaGraphicVisual,
   type ProjectAnimationDefinition,
   type Project,
 } from '../../../domain';
@@ -71,11 +73,86 @@ async function decodeCanvasImage(
   }
 }
 
+export interface FlaGraphicPreviewTimelineSpec {
+  readonly hasInternalTimeline: boolean;
+  readonly timelineDurationMs: number;
+  readonly fps: number;
+  readonly totalFrames: number;
+  readonly sampleAtFrameIndex: (frameIndex: number) => {
+    readonly frameOrdinal: number;
+    readonly internalTimeMs: number | undefined;
+  };
+}
+
+export function resolveFlaGraphicPreviewTimeline(
+  animation: ProjectAnimationDefinition,
+): FlaGraphicPreviewTimelineSpec {
+  const fps = Math.max(1, animation.source.sourceFps || 24);
+  const timelineDurationMs =
+    'kind' in animation && animation.kind === 'fla-graphic' && animation.structure
+      ? collectFlaGraphicTimelineDurationMs(
+          animation.structure.timeline,
+          animation.structure,
+        )
+      : 0;
+  const hasInternalTimeline = timelineDurationMs > 0;
+  const totalFrames = hasInternalTimeline
+    ? Math.max(
+        animation.frames.length,
+        Math.floor((timelineDurationMs * fps) / 1_000) + 1,
+      )
+    : animation.frames.length;
+
+  return {
+    hasInternalTimeline,
+    timelineDurationMs,
+    fps,
+    totalFrames,
+    sampleAtFrameIndex(frameIndex: number) {
+      const clampedIndex = Math.max(
+        0,
+        Math.min(frameIndex, Math.max(0, totalFrames - 1)),
+      );
+      const mappedFrameIndex = Math.min(
+        clampedIndex,
+        Math.max(0, animation.frames.length - 1),
+      );
+      const frameOrdinal = animation.frames[mappedFrameIndex]?.ordinal ?? 0;
+      if (!hasInternalTimeline) {
+        return { frameOrdinal, internalTimeMs: undefined };
+      }
+      const internalTimeMs =
+        clampedIndex >= totalFrames - 1
+          ? timelineDurationMs
+          : Math.min(
+              timelineDurationMs,
+              Math.round((clampedIndex * 1_000) / fps),
+            );
+      return { frameOrdinal, internalTimeMs };
+    },
+  };
+}
+
+export function evaluateFlaGraphicDefinitionPreviewVisual(
+  animation: Extract<ProjectAnimationDefinition, { kind: 'fla-graphic' }>,
+  frameIndex: number,
+): EvaluatedFlaGraphicVisual | null {
+  const spec = resolveFlaGraphicPreviewTimeline(animation);
+  const sample = spec.sampleAtFrameIndex(frameIndex);
+  return evaluateFlaGraphicVisual({
+    definition: animation,
+    frameOrdinal: sample.frameOrdinal,
+    mode: 'definition',
+    internalTimeMs: sample.internalTimeMs,
+  });
+}
+
 async function readFlaGraphicFramePreview(
   animation: Extract<ProjectAnimationDefinition, { kind: 'fla-graphic' }>,
   project: Project,
   projectRoot: string,
   frameOrdinal: number,
+  internalTimeMs?: number,
 ): Promise<{ bytes: Uint8Array; mimeType: string; structured: boolean }> {
   const frame = animation.frames.find((candidate) => candidate.ordinal === frameOrdinal);
   if (!frame) throw new Error('The selected FLA Graphic frame is unavailable.');
@@ -83,6 +160,7 @@ async function readFlaGraphicFramePreview(
     definition: animation,
     frameOrdinal,
     mode: 'definition',
+    internalTimeMs,
   });
   if (!visual?.structureFrame) {
     const frameAsset = project.assets.find((asset) => asset.id === frame.assetId);
@@ -572,8 +650,10 @@ export function AnimationPreview({
   const playingRef = useRef(false);
   const playbackTimelineRef = useRef<AnimationPlaybackTimeline | null>(null);
   const pendingFrameIndexRef = useRef<number | null>(null);
+  const previewTimelineSpec = resolveFlaGraphicPreviewTimeline(animation);
   const animationFrameRef = useRef<number | null>(null);
-  const lastFrameIndex = animation.frames.length - 1;
+  const totalPreviewFrames = previewTimelineSpec.totalFrames;
+  const lastFrameIndex = Math.max(0, totalPreviewFrames - 1);
 
   const replaceFrameUrl = useCallback((nextUrl: string | null): void => {
     if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
@@ -586,7 +666,10 @@ export function AnimationPreview({
     shouldApply?: () => boolean,
   ): Promise<FrameLoadResult> => {
     const requestId = ++loadRequestRef.current;
-    const frame = animation.frames[requestedIndex];
+    const sample = previewTimelineSpec.sampleAtFrameIndex(requestedIndex);
+    const frame = animation.frames.find(
+      (candidate) => candidate.ordinal === sample.frameOrdinal,
+    ) ?? animation.frames[requestedIndex];
     if (!frame) return 'error';
     setLoading(true);
     setError(null);
@@ -603,6 +686,7 @@ export function AnimationPreview({
           project,
           projectRoot,
           frame.ordinal,
+          sample.internalTimeMs,
         );
         previewBytes = preview.bytes;
         previewMimeType = preview.mimeType;
@@ -640,7 +724,7 @@ export function AnimationPreview({
       );
       return 'error';
     }
-  }, [animation, project.assets, projectRoot, replaceFrameUrl]);
+  }, [animation, previewTimelineSpec, project.assets, projectRoot, replaceFrameUrl]);
 
   useEffect(() => {
     playingRef.current = false;
@@ -667,15 +751,15 @@ export function AnimationPreview({
 
   const startPlayback = useCallback((fromIndex: number): void => {
     playbackTimelineRef.current = createAnimationPlaybackTimeline(
-      animation.source.sourceFps,
-      animation.frames.length,
+      previewTimelineSpec.fps,
+      totalPreviewFrames,
       performance.now(),
       fromIndex,
     );
     pendingFrameIndexRef.current = null;
     playingRef.current = true;
     setPlaying(true);
-  }, [animation]);
+  }, [previewTimelineSpec.fps, totalPreviewFrames]);
 
   const pausePlayback = (): void => {
     playingRef.current = false;
@@ -763,7 +847,11 @@ export function AnimationPreview({
     void loadFrame(requestedIndex);
   };
 
-  const displayedFrame = animation.frames[frameIndex];
+  const displayedFrameIndex = Math.min(
+    frameIndex,
+    Math.max(0, animation.frames.length - 1),
+  );
+  const displayedFrame = animation.frames[displayedFrameIndex];
   const displayedFrameIsStructured = Boolean(
     'kind' in animation && animation.kind === 'fla-graphic' &&
     displayedFrame &&
@@ -849,7 +937,7 @@ export function AnimationPreview({
             type="range"
             value={frameIndex}
           />
-          <output>{frameIndex + 1} / {animation.frames.length}</output>
+          <output>{frameIndex + 1} / {totalPreviewFrames}</output>
         </label>
       </div>
     </section>

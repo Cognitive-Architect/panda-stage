@@ -7,7 +7,12 @@ import {
   type Project,
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
-import { formatTimecode } from './timeGeometry';
+import {
+  formatTimecode,
+  integerFrameSpanMs,
+  snapToFrame,
+  TIMELINE_FPS,
+} from './timeGeometry';
 import {
   timelineUiStore,
   type FlaGraphicInternalTimelineContext,
@@ -37,6 +42,10 @@ export function FlaGraphicInternalTimelineBar({
   project,
 }: FlaGraphicInternalTimelineBarProps): React.JSX.Element | null {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const frameStepMs = integerFrameSpanMs(TIMELINE_FPS);
+  const [targetTimeInput, setTargetTimeInput] = useState<string>(() =>
+    String(snapToFrame(context.internalTimeMs + frameStepMs, TIMELINE_FPS)),
+  );
   const animation = project.animations.find(
     (candidate) => candidate.id === context.animationId,
   );
@@ -78,19 +87,34 @@ export function FlaGraphicInternalTimelineBar({
     .find((kf) => kf.timeMs < context.internalTimeMs);
   const nextKf = keyframes.find((kf) => kf.timeMs > context.internalTimeMs);
 
-  const timelineDurationMs = collectFlaGraphicTimelineDurationMs(activeTimeline);
+  const timelineDurationMs = collectFlaGraphicTimelineDurationMs(
+    activeTimeline,
+    structure,
+  );
   const rangeMaxMs = Math.max(2_000, timelineDurationMs, context.internalTimeMs);
-  const frameStepMs = Math.max(1, Math.round(1_000 / Math.max(1, context.fps)));
+
+  const resolveSnappedTargetTimeMs = (): number | null => {
+    const parsed = Number(targetTimeInput);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setStatusMessage('目标时间必须为非负数字。');
+      return null;
+    }
+    return snapToFrame(parsed, TIMELINE_FPS);
+  };
 
   const handleAddKeyframe = (): void => {
-    if (!context.selectedNodePath || !target?.trackId) return;
+    if (!context.selectedNodePath || target?.authoringCapability !== 'editable') {
+      return;
+    }
+    const snappedTimeMs = snapToFrame(context.internalTimeMs, TIMELINE_FPS);
     try {
       setStatusMessage(null);
+      timelineUiStore.setFlaGraphicTimelineAuthoringActive(true);
       layerStore.addFlaGraphicTimelineKeyframe(
         context.layerId,
         context.frameOrdinal,
         context.selectedNodePath,
-        context.internalTimeMs,
+        snappedTimeMs,
         'linear',
       );
     } catch (error) {
@@ -109,6 +133,58 @@ export function FlaGraphicInternalTimelineBar({
       context.selectedNodePath,
       currentKf.timeMs,
     );
+  };
+
+  const handleMoveKeyframe = (): void => {
+    if (!context.selectedNodePath || !currentKf) return;
+    const toTimeMs = resolveSnappedTargetTimeMs();
+    if (toTimeMs === null) return;
+    if (toTimeMs === currentKf.timeMs) {
+      setStatusMessage('目标时间与当前关键帧相同。');
+      return;
+    }
+    try {
+      setStatusMessage(null);
+      layerStore.moveFlaGraphicTimelineKeyframe(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+        currentKf.timeMs,
+        toTimeMs,
+      );
+      timelineUiStore.seekFlaGraphicInternalTime(
+        toTimeMs,
+        Math.max(rangeMaxMs, toTimeMs),
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '移动关键帧失败。',
+      );
+    }
+  };
+
+  const handleDuplicateKeyframe = (): void => {
+    if (!context.selectedNodePath || !currentKf) return;
+    const toTimeMs = resolveSnappedTargetTimeMs();
+    if (toTimeMs === null) return;
+    try {
+      setStatusMessage(null);
+      layerStore.duplicateFlaGraphicTimelineKeyframe(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+        currentKf.timeMs,
+        toTimeMs,
+      );
+      timelineUiStore.seekFlaGraphicInternalTime(
+        toTimeMs,
+        Math.max(rangeMaxMs, toTimeMs),
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '复制关键帧失败。',
+      );
+    }
   };
 
   const handleEasingChange = (easing: FlaGraphicTransformEasing): void => {
@@ -141,6 +217,20 @@ export function FlaGraphicInternalTimelineBar({
           flexWrap: 'wrap',
         }}
       >
+        <button
+          aria-pressed={context.timelineAuthoringActive}
+          data-testid="fla-internal-authoring-toggle"
+          data-ui-button
+          data-ui-variant={context.timelineAuthoringActive ? 'primary' : 'secondary'}
+          onClick={() =>
+            timelineUiStore.setFlaGraphicTimelineAuthoringActive(
+              !context.timelineAuthoringActive,
+            )
+          }
+          type="button"
+        >
+          {context.timelineAuthoringActive ? '内部时间轴' : '基础姿势'}
+        </button>
         <output data-testid="fla-internal-timecode">
           {formatTimecode(context.internalTimeMs)}
         </output>
@@ -174,7 +264,7 @@ export function FlaGraphicInternalTimelineBar({
           </button>
         ))}
         {context.selectedNodePath && context.selectedNodePath.length > 0 ? (
-          target?.trackId ? (
+          target?.authoringCapability === 'editable' ? (
             <>
               <button
                 data-testid="fla-internal-prev-key"
@@ -243,10 +333,48 @@ export function FlaGraphicInternalTimelineBar({
                   </option>
                 ))}
               </select>
+              <input
+                aria-label="目标关键帧时间"
+                data-testid="fla-internal-target-time-input"
+                disabled={!currentKf}
+                min={0}
+                onChange={(event) => setTargetTimeInput(event.target.value)}
+                step={frameStepMs}
+                style={{ width: '76px' }}
+                type="number"
+                value={targetTimeInput}
+              />
+              <button
+                data-testid="fla-internal-move-key"
+                data-ui-button
+                data-ui-variant="secondary"
+                disabled={!currentKf}
+                onClick={handleMoveKeyframe}
+                type="button"
+              >
+                移动关键帧
+              </button>
+              <button
+                data-testid="fla-internal-duplicate-key"
+                data-ui-button
+                data-ui-variant="secondary"
+                disabled={!currentKf}
+                onClick={handleDuplicateKeyframe}
+                type="button"
+              >
+                复制关键帧
+              </button>
+              {context.timelineAuthoringActive && !currentKf ? (
+                <span data-testid="fla-internal-nokey-hint">
+                  无键时间只读（请先添加关键帧）
+                </span>
+              ) : null}
             </>
           ) : (
             <span data-testid="fla-internal-readonly-node">
-              当前节点不可建轨（只读）
+              {target?.authoringCapability === 'readonly-trs-unsafe'
+                ? '当前节点含倾斜变换（只读）'
+                : '当前节点不可建轨（只读）'}
             </span>
           )
         ) : (
