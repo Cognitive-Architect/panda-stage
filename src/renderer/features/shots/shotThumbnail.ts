@@ -260,10 +260,11 @@ async function readAssetThumbnail(
     name: string;
     sha256?: string;
   },
+  allowCanvasImageFallback = false,
 ): Promise<string> {
   const key = scopedKey(
     projectRoot,
-    `${asset.id}\u0000${asset.sha256 ?? ''}`,
+    `${asset.id}\u0000${asset.sha256 ?? ''}\u0000${allowCanvasImageFallback ? 'canvas-image' : 'thumbnail-only'}`,
   );
   const cached = readyAssetDataUrls.get(key);
   if (cached) return cached;
@@ -280,7 +281,7 @@ async function readAssetThumbnail(
       sha256: asset.sha256,
     });
     if (response.ok && response.status === 'ready') return response.dataUrl;
-    if (asset.sha256) {
+    if (allowCanvasImageFallback && asset.sha256) {
       const canvasImage = await window.pandaStage.assets.readCanvasImage({
         projectRoot,
         assetId: asset.id,
@@ -353,6 +354,14 @@ export async function createShotThumbnailDataUrl(
     throw new ShotThumbnailSourceError('Shot has no visual layers.');
   }
 
+  const structuredResourceAssetIds = new Set(
+    model.layers.flatMap(({ visual }) => visual.flaGraphic?.resourceAssetIds ?? []),
+  );
+  const legacyAssetIds = new Set(
+    model.layers.flatMap(({ visual }) =>
+      visual.flaGraphic ? [] : visual.parts.map((part) => part.assetId),
+    ),
+  );
   const assetsById = new Map(
     model.layers.flatMap(({ visual }) =>
       visual.parts.map((part) => {
@@ -391,7 +400,11 @@ export async function createShotThumbnailDataUrl(
   const imageEntries = await Promise.all(
     assets.map(async (asset) => {
       try {
-        const dataUrl = await readAssetThumbnail(input.projectRoot, asset);
+        const dataUrl = await readAssetThumbnail(
+          input.projectRoot,
+          asset,
+          structuredResourceAssetIds.has(asset.id) && !legacyAssetIds.has(asset.id),
+        );
         return [asset.id, await loadImage(dataUrl)] as const;
       } catch (error) {
         throw new ShotThumbnailSourceError(
@@ -407,7 +420,7 @@ export async function createShotThumbnailDataUrl(
   const structuredImageEntries = await Promise.all(
     [...structuredAssetsById.values()].map(async (asset) => {
       try {
-        const dataUrl = await readAssetThumbnail(input.projectRoot, asset);
+        const dataUrl = await readAssetThumbnail(input.projectRoot, asset, true);
         return [asset.id, await loadImage(dataUrl)] as const;
       } catch {
         // Missing structure resources degrade at their node; the baked frame

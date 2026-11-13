@@ -114,13 +114,37 @@ class FakeImage {
   }
 }
 
-function installBrowser(readThumbnail: (assetId: string) => Promise<unknown>) {
+class FakeFileReader {
+  result: string | ArrayBuffer | null = null;
+  error: DOMException | null = null;
+  onload: FileReader['onload'] = null;
+  onerror: FileReader['onerror'] = null;
+
+  readAsDataURL(): void {
+    this.result = 'data:image/png;base64,Y2FudmFzLWltYWdl';
+    queueMicrotask(() =>
+      this.onload?.call(
+        this as unknown as FileReader,
+        {} as ProgressEvent<FileReader>,
+      ),
+    );
+  }
+}
+
+function installBrowser(
+  readThumbnail: (assetId: string) => Promise<unknown>,
+  readCanvasImage: (assetId: string) => Promise<unknown> = async (assetId) => ({
+    ok: false,
+    error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED', message: 'No test image.', assetId },
+  }),
+) {
   const canvases: FakeCanvas[] = [];
   vi.stubGlobal('window', {
     Image: FakeImage,
     pandaStage: {
       assets: {
         readThumbnail: ({ assetId }: { assetId: string }) => readThumbnail(assetId),
+        readCanvasImage: ({ assetId }: { assetId: string }) => readCanvasImage(assetId),
       },
     },
   });
@@ -491,6 +515,111 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       }],
     });
     expect(shotThumbnailFingerprint(changed, changed.shots[0]!)).not.toBe(baseline);
+  });
+
+  it('uses raw Canvas images for missing Structured FLA Graphic resource thumbnails', async () => {
+    const baseProject = makeStructuredFlaGraphicProject();
+    const shot = baseProject.shots[0]!;
+    const definition = baseProject.animations[0];
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic') {
+      throw new Error('Expected a Structured FLA Graphic Definition.');
+    }
+    const bitmapNode = definition.structure!.frames[0]!.layers[0]!.nodes[0]!;
+    if (bitmapNode.type !== 'bitmap' || !bitmapNode.assetId) {
+      throw new Error('Expected the fixture node to reference a Bitmap asset.');
+    }
+    const bitmapAssetId = 'a1000000-0000-4000-8000-000000000097';
+    const sourceBitmapAsset = baseProject.assets.find(
+      (asset) => asset.id === bitmapNode.assetId,
+    );
+    if (!sourceBitmapAsset) throw new Error('Expected the source Bitmap Project asset.');
+    const bitmapAsset = {
+      ...sourceBitmapAsset,
+      id: bitmapAssetId,
+      name: 'Standalone Structured Bitmap',
+      relativePath: 'assets/standalone-structured-bitmap.png',
+      sha256: 'c'.repeat(64),
+    };
+    const standaloneDefinition = {
+      ...definition,
+      structure: {
+        ...definition.structure!,
+        frames: definition.structure!.frames.map((frame) => ({
+          ...frame,
+          layers: frame.layers.map((layer) => ({
+            ...layer,
+            nodes: layer.nodes.map((node) =>
+              node.id === bitmapNode.id ? { ...node, assetId: bitmapAssetId } : node,
+            ),
+          })),
+        })),
+      },
+    };
+    const project = ProjectSchema.parse({
+      ...baseProject,
+      assets: [...baseProject.assets, bitmapAsset],
+      animations: [standaloneDefinition],
+    });
+    const readThumbnail = vi.fn(async (assetId: string) =>
+      assetId === bitmapAssetId
+        ? { ok: true, status: 'missing', assetId }
+        : readyThumbnail(assetId),
+    );
+    const readCanvasImage = vi.fn(async (assetId: string) => ({
+      ok: true,
+      status: 'ready',
+      assetId,
+      mimeType: 'image/png',
+      width: 640,
+      height: 640,
+      byteLength: 4,
+      bytes: new Uint8Array([1, 2, 3, 255]),
+    }));
+    const canvases = installBrowser(readThumbnail, readCanvasImage);
+    vi.stubGlobal('FileReader', FakeFileReader);
+
+    const dataUrl = await createShotThumbnailDataUrl({
+      projectRoot: 'D:\\issue1080-structured-canvas-fallback',
+      project,
+      shot,
+    });
+
+    expect(dataUrl).toMatch(/^data:image\/png/u);
+    expect(readCanvasImage).toHaveBeenCalledWith(bitmapAssetId);
+    expect(canvases).toHaveLength(2);
+  });
+
+  it('does not replace a missing legacy Shot thumbnail with a raw Canvas image', async () => {
+    const project = makeCompositeProject();
+    const shot = project.shots[0]!;
+    const model = buildEditorStageRenderModel(project, shot);
+    const missingAssetId = model.layers[1]!.visual.parts[0]!.assetId;
+    const readThumbnail = vi.fn(async (assetId: string) =>
+      assetId === missingAssetId
+        ? { ok: true, status: 'missing', assetId }
+        : readyThumbnail(assetId),
+    );
+    const readCanvasImage = vi.fn(async (assetId: string) => ({
+      ok: true,
+      status: 'ready',
+      assetId,
+      mimeType: 'image/png',
+      width: 640,
+      height: 640,
+      byteLength: 4,
+      bytes: new Uint8Array([1, 2, 3, 255]),
+    }));
+    installBrowser(readThumbnail, readCanvasImage);
+    vi.stubGlobal('FileReader', FakeFileReader);
+
+    const result = await requestShotThumbnail({
+      projectRoot: 'D:\\issue1080-legacy-missing-thumbnail',
+      project,
+      shot,
+    });
+
+    expect(result.status).toBe('missing');
+    expect(readCanvasImage).not.toHaveBeenCalled();
   });
 
   it('reuses raster output when the resource map is rebuilt with the same Project images', () => {
