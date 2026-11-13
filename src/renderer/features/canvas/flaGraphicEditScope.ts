@@ -15,8 +15,11 @@ export type FlaGraphicEditDrafts = Readonly<
   Record<string, Readonly<Record<string, AffineMatrix2D>>>
 >;
 
+export type FlaGraphicEditMode = 'instance' | 'definition';
+
 export interface FlaGraphicEditTarget {
   readonly key: string;
+  readonly sessionKey: string;
   readonly projectId: string;
   readonly projectRoot: string;
   readonly projectInstanceId: number;
@@ -30,6 +33,8 @@ export interface FlaGraphicEditTarget {
 
 export interface FlaGraphicEditScopeState {
   readonly targetKey: string;
+  readonly sessionKey?: string;
+  readonly editMode: FlaGraphicEditMode;
   readonly frameOrdinal: number;
   readonly path: readonly string[];
 }
@@ -157,7 +162,7 @@ export function resolveFlaGraphicEditTarget(input: {
   ) return null;
   const frame = animation.structure.frames.find((candidate) => candidate.ordinal === 0);
   if (!frame) return null;
-  const key = JSON.stringify([
+  const sessionParts = [
     projectInstanceId,
     project.id,
     projectRoot,
@@ -178,10 +183,15 @@ export function resolveFlaGraphicEditTarget(input: {
       candidate.sha256,
       candidate.sourceViewport,
     ]),
+  ];
+  const sessionKey = JSON.stringify(sessionParts);
+  const key = JSON.stringify([
+    ...sessionParts,
     structureIdentity(animation),
   ]);
   return {
     key,
+    sessionKey,
     projectId: project.id,
     projectRoot,
     projectInstanceId,

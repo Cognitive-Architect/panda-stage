@@ -1,10 +1,11 @@
 import { useId, type KeyboardEventHandler } from 'react';
-import { ArrowLeft, LockKeyhole, LogIn } from 'lucide-react';
+import { ArrowLeft, Link2, LockKeyhole, LogIn } from 'lucide-react';
 import type {
   CanvasViewportMode,
   Point,
   ViewportTransform,
 } from '../../../domain';
+import type { FlaGraphicEditMode } from './flaGraphicEditScope';
 
 export interface CanvasToolbarProps {
   mode: CanvasViewportMode;
@@ -13,9 +14,11 @@ export interface CanvasToolbarProps {
   showStatus?: boolean;
   flaGraphicEditAvailable?: boolean;
   flaGraphicEditActive?: boolean;
+  flaGraphicEditMode?: FlaGraphicEditMode;
   canEnterSelected?: boolean;
   readOnlySelected?: boolean;
   onToggleFlaGraphicEdit?: () => void;
+  onToggleFlaGraphicSharedEdit?: () => void;
   onEnterSelected?: () => void;
   onReturn?: () => void;
   onFlaGraphicEditKeyDownCapture?: KeyboardEventHandler<HTMLDivElement>;
@@ -33,9 +36,11 @@ export function CanvasToolbar({
   showStatus = true,
   flaGraphicEditAvailable = false,
   flaGraphicEditActive = false,
+  flaGraphicEditMode = 'instance',
   canEnterSelected = false,
   readOnlySelected = false,
   onToggleFlaGraphicEdit = () => undefined,
+  onToggleFlaGraphicSharedEdit = () => undefined,
   onEnterSelected = () => undefined,
   onReturn = () => undefined,
   onFlaGraphicEditKeyDownCapture,
@@ -43,6 +48,7 @@ export function CanvasToolbar({
   const returnTooltipId = `fla-group-edit-return-${useId()}`;
   const enterTooltipId = `fla-group-edit-enter-${useId()}`;
   const readOnlyTooltipId = `fla-group-edit-readonly-${useId()}`;
+  const sharedTooltipId = `fla-group-edit-shared-${useId()}`;
 
   return (
     <div
@@ -130,20 +136,50 @@ export function CanvasToolbar({
                   </span>
                 </span>
               ) : null}
+              {flaGraphicEditMode === 'definition' ? (
+                <span
+                  aria-describedby={sharedTooltipId}
+                  className="canvas-group-edit-tooltip-anchor canvas-group-edit-shared-badge"
+                  data-testid="fla-shared-definition-badge"
+                  tabIndex={0}
+                  title="编辑共享元件：修改将同步到所有未单独覆盖的实例"
+                >
+                  <Link2 aria-hidden="true" focusable="false" size={14} />
+                  <span>共享</span>
+                  <span className="canvas-group-edit-tooltip" id={sharedTooltipId} role="tooltip">
+                    编辑共享元件：修改将同步到所有未单独覆盖的实例
+                  </span>
+                </span>
+              ) : null}
             </>
           ) : (
-            <button
-              aria-controls="project-canvas-stage"
-              aria-pressed={false}
-              className="canvas-group-edit-toggle"
-              data-testid="fla-group-edit-toggle"
-              data-ui-button
-              data-ui-variant="secondary"
-              onClick={onToggleFlaGraphicEdit}
-              type="button"
-            >
-              编辑元件
-            </button>
+            <>
+              <button
+                aria-controls="project-canvas-stage"
+                aria-pressed={false}
+                className="canvas-group-edit-toggle"
+                data-testid="fla-group-edit-toggle"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={onToggleFlaGraphicEdit}
+                type="button"
+              >
+                编辑元件
+              </button>
+              <button
+                aria-controls="project-canvas-stage"
+                aria-pressed={false}
+                className="canvas-group-edit-toggle"
+                data-testid="fla-shared-definition-edit-toggle"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={onToggleFlaGraphicSharedEdit}
+                title="编辑共享元件定义（同步到所有未单独覆盖的实例）"
+                type="button"
+              >
+                编辑共享元件
+              </button>
+            </>
           )}
         </div>
       ) : null}

@@ -21,6 +21,7 @@ import {
   findFlaGraphicStructureNodeAtPath,
   pruneFlaGraphicInstanceTransformOverrides,
   setFlaGraphicInstanceTransformOverride,
+  updateFlaGraphicStructureAuthoredTransform,
 } from '../models/flaGraphicInstanceOverrides';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { PositionProjectService } from './PositionProjectService';
@@ -654,6 +655,51 @@ export class LayerService {
     const layers = [...shot.layers];
     layers[layerIndex] = nextLayer;
     return this.replaceShot(project, { ...shot, layers });
+  }
+
+  updateFlaGraphicSharedDefinitionTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const animationIndex = project.animations.findIndex(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (animationIndex < 0) return project;
+    const definition = project.animations[animationIndex]!;
+    if (
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const nextStructure = updateFlaGraphicStructureAuthoredTransform(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+      localTransform,
+    );
+    if (nextStructure === definition.structure) {
+      return project;
+    }
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return {
+      ...project,
+      animations: nextAnimations,
+    };
   }
 
   toggleFlipX(

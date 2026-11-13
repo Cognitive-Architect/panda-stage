@@ -158,6 +158,162 @@ function matricesEqual(left: AffineMatrix2D, right: AffineMatrix2D): boolean {
   return keys.every((key) => Math.abs(left[key] - right[key]) <= 1e-9);
 }
 
+function isFiniteMatrix(matrix: AffineMatrix2D): boolean {
+  const keys: (keyof AffineMatrix2D)[] = ['a', 'b', 'c', 'd', 'tx', 'ty'];
+  return keys.every((key) => Number.isFinite(matrix[key]));
+}
+
+function updateNodeTransformInList(
+  nodes: readonly FlaGraphicStructureNode[],
+  relativePath: readonly string[],
+  localTransform: AffineMatrix2D,
+): FlaGraphicStructureNode[] | null {
+  if (relativePath.length === 0) return null;
+  const [head, ...rest] = relativePath;
+  const index = nodes.findIndex((node) => node.id === head);
+  if (index < 0) return null;
+  const target = nodes[index]!;
+  if (rest.length === 0) {
+    if (target.type === 'opaque') return null;
+    if (matricesEqual(target.localTransform, localTransform)) return null;
+    const nextNodes = [...nodes];
+    nextNodes[index] = { ...target, localTransform: { ...localTransform } };
+    return nextNodes;
+  }
+  if (target.type === 'group') {
+    const nextChildren = updateNodeTransformInList(target.children, rest, localTransform);
+    if (!nextChildren) return null;
+    const nextNodes = [...nodes];
+    nextNodes[index] = { ...target, children: nextChildren };
+    return nextNodes;
+  }
+  if (target.type === 'symbol' && !target.nestedDefinitionId && target.children) {
+    const nextChildren = updateNodeTransformInList(target.children, rest, localTransform);
+    if (!nextChildren) return null;
+    const nextNodes = [...nodes];
+    nextNodes[index] = { ...target, children: nextChildren };
+    return nextNodes;
+  }
+  return null;
+}
+
+/**
+ * Updates one non-opaque node's authored parent-local transform inside the
+ * owning Definition container (either the specified frame ordinal or the
+ * innermost normalized `symbolDefinitions[nestedDefinitionId]`). Returns the
+ * original structure unchanged when the target is missing, opaque, stale, or
+ * already equal.
+ */
+export function updateFlaGraphicStructureAuthoredTransform(
+  structure: FlaGraphicStructure,
+  frameOrdinal: number,
+  nodePath: readonly string[],
+  localTransform: AffineMatrix2D,
+): FlaGraphicStructure {
+  if (
+    !Number.isSafeInteger(frameOrdinal) ||
+    frameOrdinal < 0 ||
+    nodePath.length === 0 ||
+    nodePath.length > FLA_GRAPHIC_STRUCTURE_MAX_DEPTH ||
+    !isFiniteMatrix(localTransform)
+  ) {
+    return structure;
+  }
+  const frameIndex = structure.frames.findIndex(
+    (candidate) => candidate.ordinal === frameOrdinal,
+  );
+  if (frameIndex < 0) return structure;
+  const frame = structure.frames[frameIndex]!;
+
+  let ownerKind: 'frame' | 'symbol' = 'frame';
+  let ownerSymbolDefId: string | null = null;
+  let ownerRelativePath: string[] = [];
+  let searchNodes: readonly FlaGraphicStructureNode[] = frame.layers.flatMap(
+    (layer) => layer.nodes,
+  );
+  let targetNode: FlaGraphicStructureNode | undefined;
+
+  for (let i = 0; i < nodePath.length; i += 1) {
+    const nodeId = nodePath[i]!;
+    targetNode = searchNodes.find((node) => node.id === nodeId);
+    if (!targetNode) return structure;
+    ownerRelativePath.push(nodeId);
+    if (i < nodePath.length - 1) {
+      if (targetNode.type === 'group') {
+        searchNodes = targetNode.children;
+      } else if (targetNode.type === 'symbol') {
+        if (targetNode.nestedDefinitionId) {
+          const def = structure.symbolDefinitions?.[targetNode.nestedDefinitionId];
+          if (!def) return structure;
+          ownerKind = 'symbol';
+          ownerSymbolDefId = targetNode.nestedDefinitionId;
+          ownerRelativePath = [];
+          searchNodes = def.children;
+        } else {
+          searchNodes = targetNode.children ?? [];
+        }
+      } else {
+        return structure;
+      }
+    }
+  }
+
+  if (!targetNode || targetNode.type === 'opaque') return structure;
+  if (matricesEqual(targetNode.localTransform, localTransform)) return structure;
+
+  if (ownerKind === 'symbol' && ownerSymbolDefId) {
+    const symbolDef = structure.symbolDefinitions?.[ownerSymbolDefId];
+    if (!symbolDef) return structure;
+    const nextChildren = updateNodeTransformInList(
+      symbolDef.children,
+      ownerRelativePath,
+      localTransform,
+    );
+    if (!nextChildren) return structure;
+    return {
+      ...structure,
+      symbolDefinitions: {
+        ...structure.symbolDefinitions,
+        [ownerSymbolDefId]: {
+          ...symbolDef,
+          children: nextChildren,
+        },
+      },
+    };
+  }
+
+  let updatedLayerIndex = -1;
+  let updatedLayerNodes: FlaGraphicStructureNode[] | null = null;
+  for (let l = 0; l < frame.layers.length; l += 1) {
+    const candidateNodes = updateNodeTransformInList(
+      frame.layers[l]!.nodes,
+      ownerRelativePath,
+      localTransform,
+    );
+    if (candidateNodes) {
+      updatedLayerIndex = l;
+      updatedLayerNodes = candidateNodes;
+      break;
+    }
+  }
+  if (updatedLayerIndex < 0 || !updatedLayerNodes) return structure;
+
+  const nextLayers = [...frame.layers];
+  nextLayers[updatedLayerIndex] = {
+    ...frame.layers[updatedLayerIndex]!,
+    nodes: updatedLayerNodes,
+  };
+  const nextFrames = [...structure.frames];
+  nextFrames[frameIndex] = {
+    ...frame,
+    layers: nextLayers,
+  };
+  return {
+    ...structure,
+    frames: nextFrames,
+  };
+}
+
 /** Adds or removes one sparse entry, pruning it when it matches authored data. */
 export function setFlaGraphicInstanceTransformOverride(
   overrides: FlaGraphicInstanceTransformOverrides | undefined,

@@ -307,6 +307,9 @@ export function CanvasStage({
     selectedFlaGraphicTarget &&
       flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget.key,
   );
+  const flaGraphicEditMode = flaGraphicEditActive
+    ? flaGraphicEditScope?.editMode ?? 'instance'
+    : 'instance';
   const flaGraphicEditPath = flaGraphicEditActive
     ? flaGraphicEditScope?.path ?? []
     : [];
@@ -330,11 +333,13 @@ export function CanvasStage({
     selectedFlaGraphicNode && selectedFlaGraphicTarget && selectedFlaGraphicNodePath
       ? structuredChildTransformerScales(
           selectedFlaGraphicNode.localTransform,
-          getFlaGraphicInstanceTransformOverride(
-            selectedFlaGraphicTarget.layer.flaGraphicInstanceTransformOverrides,
-            selectedFlaGraphicTarget.frameOrdinal,
-            selectedFlaGraphicNodePath,
-          ),
+          flaGraphicEditMode === 'definition'
+            ? undefined
+            : getFlaGraphicInstanceTransformOverride(
+                selectedFlaGraphicTarget.layer.flaGraphicInstanceTransformOverrides,
+                selectedFlaGraphicTarget.frameOrdinal,
+                selectedFlaGraphicNodePath,
+              ),
           activeFlaGraphicEditDraftMatrices[
             flaGraphicNodePathKey(selectedFlaGraphicNodePath)
           ],
@@ -365,15 +370,47 @@ export function CanvasStage({
   }, [editContextKey]);
   useEffect(() => {
     if (flaGraphicEditScope && !validFlaGraphicTargetKeys.has(flaGraphicEditScope.targetKey)) {
+      if (
+        flaGraphicEditScope.editMode === 'definition' &&
+        selectedFlaGraphicTarget &&
+        flaGraphicEditScope.sessionKey === selectedFlaGraphicTarget.sessionKey
+      ) {
+        const scopeStillValid =
+          flaGraphicEditScope.path.length === 0 ||
+          Boolean(
+            getFlaGraphicNodeAtPath(
+              selectedFlaGraphicTarget.frame,
+              flaGraphicEditScope.path,
+              selectedFlaGraphicTarget.animation.structure,
+            ),
+          );
+        if (scopeStillValid) {
+          setFlaGraphicEditScope({
+            ...flaGraphicEditScope,
+            targetKey: selectedFlaGraphicTarget.key,
+          });
+          setFlaGraphicEditDrafts((current) =>
+            retainValidFlaGraphicEditDrafts(current, validFlaGraphicTargetKeys),
+          );
+          return;
+        }
+      }
       setFlaGraphicEditScope(null);
       setSelectedFlaGraphicNodePath(null);
     }
     setFlaGraphicEditDrafts((current) =>
       retainValidFlaGraphicEditDrafts(current, validFlaGraphicTargetKeys),
     );
-  }, [flaGraphicEditScope, validFlaGraphicTargetKeys]);
+  }, [flaGraphicEditScope, selectedFlaGraphicTarget, validFlaGraphicTargetKeys]);
   useEffect(() => {
     if (flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget?.key) return;
+    if (
+      flaGraphicEditScope?.editMode === 'definition' &&
+      selectedFlaGraphicTarget &&
+      flaGraphicEditScope.sessionKey === selectedFlaGraphicTarget.sessionKey
+    ) {
+      return;
+    }
     if (flaGraphicEditScope) {
       setFlaGraphicEditDrafts((current) =>
         clearFlaGraphicEditTargetDrafts(current, flaGraphicEditScope.targetKey),
@@ -381,7 +418,7 @@ export function CanvasStage({
     }
     if (flaGraphicEditScope) setFlaGraphicEditScope(null);
     if (selectedFlaGraphicNodePath) setSelectedFlaGraphicNodePath(null);
-  }, [flaGraphicEditScope, selectedFlaGraphicNodePath, selectedFlaGraphicTarget?.key]);
+  }, [flaGraphicEditScope, selectedFlaGraphicNodePath, selectedFlaGraphicTarget]);
   const updateFlaGraphicChildTransform = useCallback((
     nodePath: readonly string[],
     matrix: AffineMatrix2D,
@@ -402,12 +439,21 @@ export function CanvasStage({
   ) => {
     if (!selectedFlaGraphicTarget) return;
     try {
-      layerStore.updateFlaGraphicInstanceTransform(
-        selectedFlaGraphicTarget.layerId,
-        selectedFlaGraphicTarget.frameOrdinal,
-        nodePath,
-        matrix,
-      );
+      if (flaGraphicEditScope?.editMode === 'definition') {
+        layerStore.updateFlaGraphicSharedDefinitionTransform(
+          selectedFlaGraphicTarget.layerId,
+          selectedFlaGraphicTarget.frameOrdinal,
+          nodePath,
+          matrix,
+        );
+      } else {
+        layerStore.updateFlaGraphicInstanceTransform(
+          selectedFlaGraphicTarget.layerId,
+          selectedFlaGraphicTarget.frameOrdinal,
+          nodePath,
+          matrix,
+        );
+      }
     } catch (error) {
       setInteractionStatus(
         error instanceof Error ? error.message : 'Graphic instance transform could not be saved.',
@@ -421,7 +467,7 @@ export function CanvasStage({
         ),
       );
     }
-  }, [selectedFlaGraphicTarget]);
+  }, [flaGraphicEditScope?.editMode, selectedFlaGraphicTarget]);
   const exitOrPopFlaGraphicScope = useCallback(() => {
     if (!selectedFlaGraphicTarget || !flaGraphicEditActive || !flaGraphicEditScope) return;
     setFlaGraphicEditDrafts((current) =>
@@ -438,6 +484,8 @@ export function CanvasStage({
     if (transition.nextScopePath) {
       setFlaGraphicEditScope({
         targetKey: selectedFlaGraphicTarget.key,
+        sessionKey: flaGraphicEditScope.sessionKey ?? selectedFlaGraphicTarget.sessionKey,
+        editMode: flaGraphicEditScope.editMode,
         frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
         path: transition.nextScopePath,
       });
@@ -451,12 +499,14 @@ export function CanvasStage({
     if (!selectedFlaGraphicTarget || !flaGraphicEditActive) return;
     setFlaGraphicEditScope({
       targetKey: selectedFlaGraphicTarget.key,
+      sessionKey: flaGraphicEditScope?.sessionKey ?? selectedFlaGraphicTarget.sessionKey,
+      editMode: flaGraphicEditScope?.editMode ?? 'instance',
       frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
       path: [...path],
     });
     setSelectedFlaGraphicNodePath(null);
     canvasStageElementRef.current?.focus({ preventScroll: true });
-  }, [flaGraphicEditActive, selectedFlaGraphicTarget]);
+  }, [flaGraphicEditActive, flaGraphicEditScope?.editMode, flaGraphicEditScope?.sessionKey, selectedFlaGraphicTarget]);
   const enterSelectedFlaGraphicNode = useCallback(() => {
     if (
       !selectedFlaGraphicNode ||
@@ -464,7 +514,7 @@ export function CanvasStage({
     ) return;
     enterFlaGraphicScope(selectedFlaGraphicNodePath ?? []);
   }, [enterFlaGraphicScope, selectedFlaGraphicNode, selectedFlaGraphicNodePath]);
-  const toggleFlaGraphicEditScope = useCallback(() => {
+  const enterFlaGraphicMode = useCallback((mode: 'instance' | 'definition') => {
     if (!selectedFlaGraphicTarget || selectedLayerId !== selectedFlaGraphicTarget.layerId) return;
     if (flaGraphicEditActive) {
       exitOrPopFlaGraphicScope();
@@ -474,6 +524,8 @@ export function CanvasStage({
     selectionStore.selectExplicit(selectedFlaGraphicTarget.layerId);
     setFlaGraphicEditScope({
       targetKey: selectedFlaGraphicTarget.key,
+      sessionKey: selectedFlaGraphicTarget.sessionKey,
+      editMode: mode,
       frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
       path: [],
     });
@@ -484,6 +536,12 @@ export function CanvasStage({
     selectedFlaGraphicTarget,
     selectedLayerId,
   ]);
+  const toggleFlaGraphicEditScope = useCallback(() => {
+    enterFlaGraphicMode('instance');
+  }, [enterFlaGraphicMode]);
+  const toggleFlaGraphicSharedEditScope = useCallback(() => {
+    enterFlaGraphicMode('definition');
+  }, [enterFlaGraphicMode]);
   const handleFlaGraphicEditKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || !flaGraphicEditActive) return;
     event.preventDefault();
@@ -928,6 +986,7 @@ export function CanvasStage({
               )}
               flaGraphicEditActive={flaGraphicEditActive}
               flaGraphicEditAvailable={Boolean(selectedFlaGraphicTarget)}
+              flaGraphicEditMode={flaGraphicEditMode}
               readOnlySelected={Boolean(
                 flaGraphicEditActive &&
                   selectedFlaGraphicNode?.type === 'opaque' &&
@@ -938,6 +997,7 @@ export function CanvasStage({
               onFlaGraphicEditKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
               onReturn={exitOrPopFlaGraphicScope}
               onToggleFlaGraphicEdit={toggleFlaGraphicEditScope}
+              onToggleFlaGraphicSharedEdit={toggleFlaGraphicSharedEditScope}
               point={viewport.lastStagePoint}
               showStatus={showToolbar}
               transform={toolbarTransform}
@@ -1049,9 +1109,12 @@ export function CanvasStage({
                                 images: currentReadyImages,
                                 assets: projectImageDimensions,
                                 scopePath: flaGraphicEditPath,
+                                editMode: flaGraphicEditMode,
                                 selectedNodePathKey: selectedFlaGraphicNodePathKey,
                                 instanceTransformOverrides:
-                                  layer.flaGraphicInstanceTransformOverrides,
+                                  flaGraphicEditMode === 'definition'
+                                    ? undefined
+                                    : layer.flaGraphicInstanceTransformOverrides,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,

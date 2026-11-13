@@ -31,6 +31,21 @@
   cursor: help;
 }
 
+.canvas-group-edit-shared-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  font-size: 12px;
+  cursor: help;
+}
+
 .canvas-group-edit-tooltip-anchor {
   position: relative;
   display: inline-flex;

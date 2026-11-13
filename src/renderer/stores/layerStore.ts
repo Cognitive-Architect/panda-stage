@@ -226,6 +226,27 @@ export class LayerStore {
     return next;
   }
 
+  updateFlaGraphicSharedDefinitionTransform(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicSharedDefinitionTransform(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      localTransform,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(next, '编辑共享元件');
+    }
+    return next;
+  }
+
   toggleFlipX(layerId: string): Project {
     const { project, shotId } = this.context();
     const next = this.service.toggleFlipX(project, shotId, layerId);

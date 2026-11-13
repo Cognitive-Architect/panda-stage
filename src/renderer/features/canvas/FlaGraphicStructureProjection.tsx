@@ -17,7 +17,10 @@ import {
   localizeAbsoluteLeafMatrix,
   type AffineMatrix2D,
 } from '../../../shared/affine-matrix';
-import { flaGraphicNodePathKey } from './flaGraphicEditScope';
+import {
+  flaGraphicNodePathKey,
+  type FlaGraphicEditMode,
+} from './flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Bounds {
@@ -111,6 +114,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly images: ReadonlyMap<string, HTMLImageElement>;
   readonly assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
   readonly scopePath: readonly string[];
+  readonly editMode?: FlaGraphicEditMode;
   readonly selectedNodePathKey: string | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   /** Transient gesture preview matrices; committed values live on the Layer. */
@@ -131,6 +135,7 @@ export function FlaGraphicStructureProjection({
   images,
   assets,
   scopePath,
+  editMode = 'instance',
   selectedNodePathKey,
   instanceTransformOverrides,
   draftMatrices,
@@ -143,8 +148,16 @@ export function FlaGraphicStructureProjection({
   onCommitTransform,
   onError,
 }: FlaGraphicStructureProjectionProps): React.JSX.Element {
+  const hasDrafts = Object.keys(draftMatrices).length > 0;
   const evaluationOverrides = (() => {
-    if (Object.keys(draftMatrices).length === 0) return instanceTransformOverrides;
+    if (editMode === 'definition') {
+      if (!hasDrafts) return undefined;
+      const frameKey = String(frame.ordinal);
+      return {
+        [frameKey]: draftMatrices,
+      } as FlaGraphicInstanceTransformOverrides;
+    }
+    if (!hasDrafts) return instanceTransformOverrides;
     const frameKey = String(frame.ordinal);
     return {
       ...(instanceTransformOverrides ?? {}),
@@ -155,11 +168,11 @@ export function FlaGraphicStructureProjection({
     } as FlaGraphicInstanceTransformOverrides;
   })();
   const evaluatedVisual = evaluateFlaGraphicVisual({
-      definition,
-      frameOrdinal: frame.ordinal,
-      mode: 'instance',
-      instanceTransformOverrides: evaluationOverrides,
-    });
+    definition,
+    frameOrdinal: frame.ordinal,
+    mode: editMode === 'definition' && !hasDrafts ? 'definition' : 'instance',
+    instanceTransformOverrides: evaluationOverrides,
+  });
   const renderedCanvas = evaluatedVisual
     ? renderFlaGraphicCanvas(evaluatedVisual, images)
     : null;
