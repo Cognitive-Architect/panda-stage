@@ -354,12 +354,9 @@ function StagePartImages({
       {structuredCanvas && structuredVisual
         ? (
             <KonvaImage
-              height={structuredVisual.canvas.height}
-              image={structuredCanvas}
+              {...structuredCanvas.rect}
+              image={structuredCanvas.canvas}
               listening={false}
-              width={structuredVisual.canvas.width}
-              x={-structuredVisual.canvas.width / 2}
-              y={-structuredVisual.canvas.height / 2}
             />
           )
         : complete

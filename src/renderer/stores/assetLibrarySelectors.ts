@@ -5,6 +5,7 @@ import type {
   Project,
   ProjectAnimationDefinition,
 } from '../../domain';
+import { reconstructFlaGraphicStructure } from '../../domain';
 
 export type AssetLibraryCategory =
   | 'character'
@@ -76,6 +77,13 @@ export function selectAssetLibraryEntries(
   category: AssetLibraryFilter,
 ): AssetLibraryEntry[] {
   const entries: AssetLibraryEntry[] = [];
+  const isolatedFallbackIds = new Set(project.animations.flatMap((animation) =>
+    'kind' in animation && animation.kind === 'fla-graphic' && animation.structure
+      ? reconstructFlaGraphicStructure(animation.structure).flatMap(({ node }) =>
+          node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackAssetId ? [node.fallbackAssetId] : [],
+        )
+      : [],
+  ));
   const sequenceCreatedAssetIds = new Set(
     project.animations.flatMap((animation) =>
       animation.frames
@@ -110,6 +118,7 @@ export function selectAssetLibraryEntries(
   }
   for (const asset of project.assets) {
     if (asset.kind === 'image' && asset.flaGraphicFrame) continue;
+    if (isolatedFallbackIds.has(asset.id) && !separatelyUsedAssetIds.has(asset.id)) continue;
     if (
       asset.kind === 'image' &&
       sequenceCreatedAssetIds.has(asset.id) &&

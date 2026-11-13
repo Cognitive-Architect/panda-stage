@@ -992,6 +992,17 @@ export interface FlaGraphicDefinitionFrameBatch {
   readonly structure?: FlaGraphicStructure;
   /** Decoded bitmap media items referenced by the structure, ready for project commit/reuse. */
   readonly bitmaps?: readonly FlaGraphicBatchBitmap[];
+  /** Main-only isolated SVG artwork, bound to opaque Shape nodes at commit. */
+  readonly fallbacks?: readonly FlaGraphicBatchFallback[];
+}
+
+export interface FlaGraphicBatchFallback {
+  readonly sourceRef: string;
+  readonly svg: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface FlaGraphicBatchBitmap {
@@ -1313,6 +1324,7 @@ export class FlaPartPreviewService {
     let groupEditPreview: FlaGraphicGroupEditPreview | undefined;
     const firstFrame = frames[0];
     let structure: FlaGraphicStructure | undefined;
+    const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
     if (firstFrame && unit.sourceAddress) {
       prepared.source.resetFrameBuildState();
       // Resolve display list in tolerant mode for structure capture so unsupported
@@ -1394,6 +1406,36 @@ export class FlaPartPreviewService {
 
         structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
           resolveSubtreeBounds,
+          resolveIsolatedShape: (node) => {
+            // Render this Shape alone in its own authored local space. Parent
+            // masks remain in the structural evaluator, rather than baking
+            // sibling occlusion or a world-space pose into the reusable part.
+            const rendered = buildSvgForResolvedDisplayList({
+              displayList: {
+                kind: 'graphic', sourceName: node.shapeId, frameIndex: 0, resolvedNodeCount: 1,
+                layers: [{ name: 'shape', children: [{ ...node,
+                  localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+                  worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX, clipPaths: undefined,
+                }] }],
+              },
+              renderTargetId: stableRenderTargetId(source.bytes, `isolated-shape\u0000${node.shapeId}`),
+              stageWidth: prepared.source.stageWidth, stageHeight: prepared.source.stageHeight,
+              shapeBlocks: prepared.source.shapeBlocks, resolveBitmapMedia: mediaLookup,
+            });
+            if (!rendered.ok) return undefined;
+            const bytes = Buffer.from(rendered.svg, 'utf8');
+            if (!isolatedFallbacks.has(node.shapeId) &&
+                (bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
+                 totalBytes + bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes)) return undefined;
+            if (!isolatedFallbacks.has(node.shapeId)) {
+              totalBytes += bytes.byteLength;
+              isolatedFallbacks.set(node.shapeId, { sourceRef: node.shapeId, svg: rendered.svg,
+                sha256: crypto.createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.byteLength,
+                width: rendered.width, height: rendered.height,
+              });
+            }
+            return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
+          },
           sourceBasename: source.basename,
           clipPathShapePathData,
         });
@@ -1483,6 +1525,7 @@ export class FlaPartPreviewService {
         ...(groupEditPreview ? { groupEditPreview } : {}),
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
+        ...(isolatedFallbacks.size ? { fallbacks: [...isolatedFallbacks.values()] } : {}),
       },
     };
   }

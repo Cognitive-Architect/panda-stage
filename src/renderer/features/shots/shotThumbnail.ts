@@ -483,11 +483,11 @@ export async function createShotThumbnailDataUrl(
       target.scale(render.scaleX * scale, render.scaleY * scale);
       if (structuredCanvas && visual.flaGraphic) {
         target.drawImage(
-          structuredCanvas,
-          -visual.flaGraphic.canvas.width / 2,
-          -visual.flaGraphic.canvas.height / 2,
-          visual.flaGraphic.canvas.width,
-          visual.flaGraphic.canvas.height,
+          structuredCanvas.canvas,
+          structuredCanvas.rect.x,
+          structuredCanvas.rect.y,
+          structuredCanvas.rect.width,
+          structuredCanvas.rect.height,
         );
         target.restore();
         return;

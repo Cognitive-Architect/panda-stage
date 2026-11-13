@@ -519,13 +519,10 @@ export function FlaGraphicStructureProjection({
     <>
       {renderedCanvas ? (
         <KonvaImage
-          height={evaluatedVisual.canvas.height}
-          image={renderedCanvas}
+          {...renderedCanvas.rect}
+          image={renderedCanvas.canvas}
           listening={false}
           name="fla-structure-shared-render"
-          width={evaluatedVisual.canvas.width}
-          x={-evaluatedVisual.canvas.width / 2}
-          y={-evaluatedVisual.canvas.height / 2}
         />
       ) : null}
       <Group

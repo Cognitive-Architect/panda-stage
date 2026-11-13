@@ -7,12 +7,18 @@ import {
 
 export type FlaGraphicImageMap = ReadonlyMap<string, CanvasImageSource>;
 
+export interface FlaGraphicRaster {
+  readonly canvas: HTMLCanvasElement;
+  /** Placement in the existing owner-local space; the authored anchor stays fixed. */
+  readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+}
+
 const MAX_RENDER_EDGE = 4_096;
 const MAX_RENDER_PIXELS = 4_194_304;
 const MAX_COMPOSITE_DEPTH = 8;
 interface RenderedCanvasCacheEntry {
   readonly imageSources: readonly (CanvasImageSource | undefined)[];
-  readonly canvas: HTMLCanvasElement | null;
+  readonly raster: FlaGraphicRaster | null;
 }
 
 const renderedCanvasCache = new WeakMap<
@@ -63,7 +69,7 @@ export function renderFlaGraphicCanvas(
   visual: EvaluatedFlaGraphicVisual,
   images: FlaGraphicImageMap,
   requestedScale = 1,
-): HTMLCanvasElement | null {
+): FlaGraphicRaster | null {
   const imageSources = visual.resourceAssetIds.map((assetId) => images.get(assetId));
   let cacheByScale = renderedCanvasCache.get(visual);
   const cached = cacheByScale?.get(requestedScale);
@@ -72,27 +78,58 @@ export function renderFlaGraphicCanvas(
     cached.imageSources.length === imageSources.length &&
     cached.imageSources.every((image, index) => image === imageSources[index])
   ) {
-    return cached.canvas;
+    return cached.raster;
   }
-  const canvas = renderFlaGraphicCanvasUncached(visual, images, requestedScale);
+  const raster = renderFlaGraphicCanvasUncached(visual, images, requestedScale);
   if (!cacheByScale) {
     cacheByScale = new Map();
     renderedCanvasCache.set(visual, cacheByScale);
   }
-  cacheByScale.set(requestedScale, { imageSources, canvas });
-  return canvas;
+  cacheByScale.set(requestedScale, { imageSources, raster });
+  return raster;
 }
 
 function renderFlaGraphicCanvasUncached(
   visual: EvaluatedFlaGraphicVisual,
   images: FlaGraphicImageMap,
   requestedScale: number,
-): HTMLCanvasElement | null {
+): FlaGraphicRaster | null {
   if (!visual.structureFrame || !visual.layers || typeof document === 'undefined') {
     return null;
   }
-  const sourceWidth = visual.canvas.width;
-  const sourceHeight = visual.canvas.height;
+  // Include the authored canvas to preserve its anchor, and every drawable
+  // evaluated leaf so negative/outside Child transforms are never clipped.
+  let left = visual.anchor.x;
+  let top = visual.anchor.y;
+  let right = left + visual.canvas.width;
+  let bottom = top + visual.canvas.height;
+  const includeNodes = (nodes: readonly EvaluatedFlaGraphicNode[]): void => {
+    for (const node of nodes) {
+      if (!node.renderable) continue;
+      const source = node.source;
+      if (source.type === 'group' || source.type === 'symbol') {
+        includeNodes(node.children);
+        continue;
+      }
+      const image = images.get(source.type === 'bitmap' ? source.assetId ?? '' : source.fallbackAssetId ?? '');
+      if (!image) continue;
+      const size = source.type === 'bitmap' ? sourceSize(image) : source.fallbackViewBox;
+      if (!size || size.width <= 0 || size.height <= 0) continue;
+      const m = node.worldTransform;
+      for (const [x, y] of [[0, 0], [size.width, 0], [0, size.height], [size.width, size.height]] as const) {
+        const worldX = m.a * x + m.c * y + m.tx;
+        const worldY = m.b * x + m.d * y + m.ty;
+        if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) continue;
+        left = Math.min(left, worldX);
+        top = Math.min(top, worldY);
+        right = Math.max(right, worldX);
+        bottom = Math.max(bottom, worldY);
+      }
+    }
+  };
+  includeNodes(visual.layers.flatMap((layer) => layer.nodes));
+  const sourceWidth = right - left;
+  const sourceHeight = bottom - top;
   if (
     !Number.isFinite(sourceWidth) ||
     !Number.isFinite(sourceHeight) ||
@@ -107,10 +144,8 @@ function renderFlaGraphicCanvasUncached(
   const scaleByArea = Math.sqrt(
     MAX_RENDER_PIXELS / Math.max(1, sourceWidth * sourceHeight),
   );
-  const scale = Math.max(
-    0.0001,
-    Math.min(requestedScale, scaleByEdge, scaleByArea),
-  );
+  const scale = Math.min(Math.max(0.0001, requestedScale), scaleByEdge, scaleByArea);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
   const width = Math.max(1, Math.ceil(sourceWidth * scale));
   const height = Math.max(1, Math.ceil(sourceHeight * scale));
   const canvas = document.createElement('canvas');
@@ -124,9 +159,15 @@ function renderFlaGraphicCanvasUncached(
     0,
     0,
     scale,
-    -scale * visual.anchor.x,
-    -scale * visual.anchor.y,
+    -scale * left,
+    -scale * top,
   ];
+  const raster: FlaGraphicRaster = { canvas, rect: {
+    x: left - visual.anchor.x - visual.canvas.width / 2,
+    y: top - visual.anchor.y - visual.canvas.height / 2,
+    width: sourceWidth,
+    height: sourceHeight,
+  } };
   let renderedNodeCount = 0;
 
   const makeScratch = (): {
@@ -319,7 +360,7 @@ function renderFlaGraphicCanvasUncached(
   if (renderedNodeCount === 0) {
     // A structured frame may intentionally degrade to empty when every node
     // is unsafe; the baked frame must not resurrect unsupported content.
-    return canvas;
+    return raster;
   }
-  return canvas;
+  return raster;
 }

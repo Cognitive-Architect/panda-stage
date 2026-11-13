@@ -388,14 +388,11 @@ export function SelectableLayer({
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
         ) : structuredCanvas && visual?.flaGraphic ? (
           <KonvaImage
-            height={visual.flaGraphic.canvas.height}
-            image={structuredCanvas}
+            {...structuredCanvas.rect}
+            image={structuredCanvas.canvas}
             listening={canSelect}
             onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
             onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-            width={visual.flaGraphic.canvas.width}
-            x={-visual.flaGraphic.canvas.width / 2}
-            y={-visual.flaGraphic.canvas.height / 2}
           />
         ) : compositeVisual ? (
           <Group

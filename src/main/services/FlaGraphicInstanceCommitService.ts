@@ -82,6 +82,7 @@ function uniqueAnimationName(project: Project, baseName: string): string {
 function bindFallbackAssetToStructure(
   structure: FlaGraphicStructure,
   frameAssetIds: readonly string[],
+  isolatedAssets: ReadonlyMap<string, string> = new Map(),
 ): FlaGraphicStructure {
   const fallbackAssetId = frameAssetIds[0];
   if (!fallbackAssetId) return structure;
@@ -90,10 +91,13 @@ function bindFallbackAssetToStructure(
       if (node.type === 'opaque') {
         // Only bind fallbackAssetId if the node has verified fallbackViewBox and fallbackScope!
         // Unsafe opaque nodes without bounds must remain without fallbackAssetId.
-        if (node.fallbackViewBox && node.fallbackScope && !node.fallbackAssetId) {
+        const assetId = node.fallbackScope === 'subtree'
+          ? isolatedAssets.get(node.sourceRef ?? '')
+          : frameFallback;
+        if (node.fallbackViewBox && node.fallbackScope && !node.fallbackAssetId && assetId) {
           return {
             ...node,
-            fallbackAssetId: frameFallback,
+            fallbackAssetId: assetId,
           };
         }
         return node;
@@ -200,6 +204,7 @@ function buildGraphicDefinition(
   id: string,
   name: string,
   bitmapAssetMap?: ReadonlyMap<string, string>,
+  isolatedAssetMap?: ReadonlyMap<string, string>,
 ): FlaGraphicDefinition {
   const viewports = batch.frames.map((frame) => frame.sourceViewport);
   const anchor = {
@@ -211,7 +216,7 @@ function buildGraphicDefinition(
   const canvas = { width: right - anchor.x, height: bottom - anchor.y };
   const frameDurationMs = 1_000 / batch.target.sourceFps;
   let boundStructure = batch.structure
-    ? bindFallbackAssetToStructure(batch.structure, assetIds)
+    ? bindFallbackAssetToStructure(batch.structure, assetIds, isolatedAssetMap)
     : undefined;
   if (boundStructure && bitmapAssetMap && bitmapAssetMap.size > 0) {
     boundStructure = bindBitmapAssetsToStructure(boundStructure, bitmapAssetMap, batch.source.basename);
@@ -351,7 +356,14 @@ function sameStructure(left: unknown, right: unknown): boolean {
 function existingDefinition(
   project: Project,
   batch: FlaGraphicDefinitionFrameBatch,
+  shotId: string,
 ): { definition: FlaGraphicDefinition; upgrade: boolean } | null {
+  const occurrence = project.shots.find((shot) => shot.id === shotId)?.layers.find((layer) =>
+    layer.source.kind === 'animation' &&
+    layer.source.flaOccurrence?.occurrenceId === batch.unit.occurrenceId &&
+    layer.source.flaOccurrence.sourceAddress === batch.unit.sourceAddress,
+  );
+  const occurrenceDefinitionId = occurrence?.source.kind === 'animation' ? occurrence.source.animationId : undefined;
   const semanticCandidates = project.animations.filter((animation): animation is FlaGraphicDefinition =>
     'kind' in animation &&
     animation.kind === 'fla-graphic' &&
@@ -369,11 +381,60 @@ function existingDefinition(
       Boolean(match.structure && sameStructure(match.structure, batch.structure)),
     );
     if (exactSemantic) return { definition: exactSemantic, upgrade: false };
+    // The verified source identity/frame coordinates above own this upgrade.
+    // SVG bytes are a rendering cache and can change between renderer versions.
     const upgradable = semanticCandidates.find((match) =>
-      !match.structure &&
-      match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
+      !match.structure && (!occurrenceDefinitionId || match.id === occurrenceDefinitionId),
     );
-    return upgradable ? { definition: { ...upgradable, structure: batch.structure }, upgrade: true } : null;
+    if (upgradable) return { definition: { ...upgradable, structure: batch.structure }, upgrade: true };
+    // Refresh only the selected source's verified Shape fallback metadata.
+    // Preserve shared edits, timelines, node paths and every Layer override.
+    if (batch.fallbacks?.length) {
+      const isolated = new Map<string, Extract<FlaGraphicStructureNode, { type: 'opaque' }>>();
+      const collect = (nodes: readonly FlaGraphicStructureNode[]): void => {
+        for (const node of nodes) {
+          if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'subtree' && node.sourceRef) {
+            isolated.set(node.sourceRef, node);
+          } else if (node.type === 'group' || node.type === 'symbol') {
+            collect(node.children ?? []);
+          }
+        }
+      };
+      for (const frame of batch.structure.frames) for (const layer of frame.layers) collect(layer.nodes);
+      for (const def of Object.values(batch.structure.symbolDefinitions ?? {})) collect(def.children);
+      for (const match of semanticCandidates) {
+        if (!match.structure || (occurrenceDefinitionId && match.id !== occurrenceDefinitionId)) continue;
+        let changed = false;
+        const refresh = (nodes: readonly FlaGraphicStructureNode[]): FlaGraphicStructureNode[] => nodes.map((node) => {
+          if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'frame-crop') {
+            const next = isolated.get(node.sourceRef ?? '');
+            if (next && next.id === node.id && next.sourceAddress === node.sourceAddress) {
+              const refreshed = { ...node, fallbackScope: next.fallbackScope, fallbackViewBox: next.fallbackViewBox };
+              delete refreshed.fallbackAssetId;
+              changed = true;
+              return refreshed;
+            }
+          }
+          if (node.type === 'group') return { ...node, children: refresh(node.children) };
+          if (node.type === 'symbol' && node.children) return { ...node, children: refresh(node.children) };
+          return node;
+        });
+        const structure: FlaGraphicStructure = {
+          ...match.structure,
+          frames: match.structure.frames.map((frame) => ({
+            ...frame,
+            layers: frame.layers.map((layer) => ({ ...layer, nodes: refresh(layer.nodes) })),
+          })),
+          ...(match.structure.symbolDefinitions ? {
+            symbolDefinitions: Object.fromEntries(Object.entries(match.structure.symbolDefinitions).map(
+              ([id, def]) => [id, { ...def, children: refresh(def.children) }],
+            )),
+          } : {}),
+        };
+        if (changed) return { definition: { ...match, structure }, upgrade: true };
+      }
+    }
+    return null;
   }
   const legacyMatch = semanticCandidates.find((match) =>
     match.source.renderTargetId === batch.target.renderTargetId &&
@@ -497,7 +558,7 @@ export class FlaGraphicInstanceCommitService {
       });
     }
     if (!batch.frames.length || batch.frames.length > FLA_GRAPHIC_MAX_FRAMES ||
-        batch.frames.some((frame) => {
+        [...batch.frames, ...(batch.fallbacks ?? [])].some((frame) => {
           const bytes = Buffer.from(frame.svg, 'utf8');
           return bytes.byteLength !== frame.byteLength ||
             this.hashService.hashBytes(bytes).hex !== frame.sha256 ||
@@ -510,7 +571,7 @@ export class FlaGraphicInstanceCommitService {
     if (!previousShot || request.startTimeMs > previousShot.durationMs) {
       return this.failure('SHOT_NOT_FOUND', transaction.projectRoot, 'The selected Shot is unavailable.', request);
     }
-    const reusedMatch = existingDefinition(current.project, batch);
+    const reusedMatch = existingDefinition(current.project, batch, request.shotId);
     const reused = reusedMatch?.definition ?? null;
     const upgradeStructure = reusedMatch?.upgrade ?? false;
     const pendingFiles: PendingFrameFile[] = [];
@@ -519,30 +580,41 @@ export class FlaGraphicInstanceCommitService {
       const definitionId = reused?.id ?? this.createId();
       const assets: ImageAsset[] = [];
       const bitmapAssetMap = new Map<string, string>();
+      const isolatedAssetMap = new Map<string, string>();
       const newBitmapAssets: ImageAsset[] = [];
       const occupiedNames = new Set(
         current.project.assets.map((asset) => path.basename(asset.relativePath).toLowerCase()),
       );
       const sourceStem = path.basename(batch.source.basename).replace(/\.fla$/iu, '') || 'fla-graphic';
 
-      if (batch.bitmaps && batch.bitmaps.length > 0) {
-        for (const item of batch.bitmaps) {
+      const resources = [
+        ...(batch.bitmaps ?? []).map((item) => ({
+          ...item, key: item.libraryItemName, bytes: item.pngBytes,
+          extension: '.png' as const, mimeType: 'image/png', map: bitmapAssetMap, label: 'bitmap',
+        })),
+        ...(batch.fallbacks ?? []).map((item) => ({
+          ...item, key: item.sourceRef, bytes: Buffer.from(item.svg, 'utf8'),
+          extension: '.svg' as const, mimeType: 'image/svg+xml', map: isolatedAssetMap, label: 'shape',
+        })),
+      ];
+      if (resources.length > 0) {
+        for (const item of resources) {
           const existingAsset = current.project.assets.find(
             (candidate) => candidate.kind === 'image' && candidate.sha256 === item.sha256,
           );
           if (existingAsset) {
-            bitmapAssetMap.set(item.libraryItemName, existingAsset.id);
+            item.map.set(item.key, existingAsset.id);
             continue;
           }
           const alreadyCreated = newBitmapAssets.find((candidate) => candidate.sha256 === item.sha256);
           if (alreadyCreated) {
-            bitmapAssetMap.set(item.libraryItemName, alreadyCreated.id);
+            item.map.set(item.key, alreadyCreated.id);
             continue;
           }
 
           const preferred = sanitizeAssetFileName(
-            `${sourceStem}-bitmap-${path.basename(item.libraryItemName).replace(/[^a-zA-Z0-9_-]/gu, '_')}`.slice(0, 120),
-            '.png',
+            `${sourceStem}-${item.label}-${path.basename(item.key).replace(/[^a-zA-Z0-9_-]/gu, '_')}`.slice(0, 120),
+            item.extension,
           );
           const targetFileName = await allocateAssetTargetName(
             this.fileSystem,
@@ -555,7 +627,7 @@ export class FlaGraphicInstanceCommitService {
           const temporaryFileName = `.fla-graphic-commit-bitmap.${this.createId()}.tmp`;
           const operation: PendingFrameFile = { temporaryFileName, targetFileName, targetCreated: false };
           pendingFiles.push(operation);
-          await this.fileSystem.writeFlaCommitTemporary(transaction.projectRoot, item.pngBytes, temporaryFileName);
+          await this.fileSystem.writeFlaCommitTemporary(transaction.projectRoot, item.bytes, temporaryFileName);
           try {
             await this.fileSystem.finalizeFlaCommitTemporary(transaction.projectRoot, temporaryFileName, targetFileName);
           } catch (error) {
@@ -568,9 +640,9 @@ export class FlaGraphicInstanceCommitService {
           operation.targetCreated = true;
           const asset = ImageAssetSchema.parse({
             id: this.createId(),
-            name: `${assetDisplayName(sourceStem)} ${path.basename(item.libraryItemName)}`.slice(0, 100),
+            name: `${assetDisplayName(sourceStem)} ${path.basename(item.key)}`.slice(0, 100),
             relativePath: `assets/${targetFileName}`,
-            mimeType: 'image/png',
+            mimeType: item.mimeType,
             sha256: item.sha256,
             kind: 'image',
             width: item.width,
@@ -579,7 +651,7 @@ export class FlaGraphicInstanceCommitService {
             keywords: [],
           });
           newBitmapAssets.push(asset);
-          bitmapAssetMap.set(item.libraryItemName, asset.id);
+          item.map.set(item.key, asset.id);
         }
       }
       assets.push(...newBitmapAssets);
@@ -631,14 +703,15 @@ export class FlaGraphicInstanceCommitService {
       }
       let definition = reused ?? buildGraphicDefinition(
         batch,
-        assets.filter((asset) => asset.mimeType === 'image/svg+xml').map((asset) => asset.id),
+        assets.filter((asset) => asset.flaGraphicFrame?.definitionId === definitionId).map((asset) => asset.id),
         definitionId,
         uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.fla$/iu, '')} ${batch.target.name}`),
         bitmapAssetMap,
+        isolatedAssetMap,
       );
       if (reused && upgradeStructure && batch.structure) {
         const frameAssetIds = reused.frames.map((frame) => frame.assetId);
-        let boundStructure = bindFallbackAssetToStructure(batch.structure, frameAssetIds);
+        let boundStructure = bindFallbackAssetToStructure(reused.structure ?? batch.structure, frameAssetIds, isolatedAssetMap);
         if (bitmapAssetMap.size > 0) {
           boundStructure = bindBitmapAssetsToStructure(boundStructure, bitmapAssetMap, batch.source.basename);
         }

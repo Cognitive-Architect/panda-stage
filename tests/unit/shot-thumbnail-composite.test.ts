@@ -483,12 +483,14 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
     const [thumbnail, structured] = canvases;
     expect(structured!.context.draws).toHaveLength(1);
     const scale = Math.min(256 / model.width, 256 / model.height);
-    expect(structured!.context.setTransforms[0]?.[4]).toBeCloseTo((15 - 100) * scale, 8);
-    expect(structured!.context.setTransforms[0]?.[5]).toBeCloseTo((8 - 100) * scale, 8);
+    // This leaf begins left/above the authored anchor: the raster expands and
+    // its owner-local placement compensates, preserving the source position.
+    expect(structured!.context.setTransforms[0]?.[4]).toBeCloseTo(0 * scale, 8);
+    expect(structured!.context.setTransforms[0]?.[5]).toBeCloseTo(0 * scale, 8);
     const structuredDraw = thumbnail!.context.draws.find(
       ({ image }) => image === structured,
     );
-    expect(structuredDraw?.args).toEqual([-500, -500, 1_000, 1_000]);
+    expect(structuredDraw?.args).toEqual([-585, -592, 1_085, 1_092]);
     expect(readThumbnail).toHaveBeenCalled();
 
     const graphic = project.animations[0];

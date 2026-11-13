@@ -97,6 +97,8 @@ export interface CaptureFlaGraphicStructureOptions {
     readonly height: number;
   };
   readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
+  /** Isolated Shape artwork is in source-node local space; filtered layers stay residual. */
+  readonly resolveIsolatedShape?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => SubtreeBounds | undefined;
   readonly subtreeBoundsMap?: ReadonlyMap<string, SubtreeBounds>;
   readonly sourceBasename?: string;
   readonly bitmapAssetMap?: ReadonlyMap<string, string>;
@@ -163,7 +165,7 @@ export function captureFlaGraphicStructure(
         }
         return undefined;
       };
-      const bounds = resolveBounds();
+      const bounds = (node.kind === 'shape' && !forceOpaque ? options.resolveIsolatedShape?.(node) : undefined) ?? resolveBounds();
       const fallbackScope = bounds?.scope ?? (bounds ? 'frame-crop' : undefined);
       const fallbackViewBox = bounds?.viewBox;
       const fallbackAssetId = fallbackViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;

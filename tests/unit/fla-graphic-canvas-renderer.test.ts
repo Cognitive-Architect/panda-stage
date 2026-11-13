@@ -4,6 +4,8 @@ import {
   FlaGraphicDefinitionSchema,
 } from '../../src/domain';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { buildProjectWithAnimation } from './domain/testProject';
+import { decomposeAffineMatrix } from '../../src/domain';
 
 type DrawRecord = {
   image: unknown;
@@ -93,6 +95,57 @@ afterEach(() => {
 });
 
 describe('shared FLA Graphic Canvas renderer', () => {
+  it.each([
+    { name: 'up', matrix: matrix(2, -40), rect: { x: -10, y: -50, width: 20, height: 60 } },
+    { name: 'left', matrix: matrix(-40, 2), rect: { x: -42, y: -10, width: 52, height: 20 } },
+    { name: 'right/down', matrix: matrix(40, 40), rect: { x: -10, y: -10, width: 56, height: 48 } },
+    { name: 'scale/rotate', matrix: { a: 0, b: 3, c: -2, d: 0, tx: 2, ty: 2 }, rect: { x: -16, y: -10, width: 26, height: 26 } },
+  ])('keeps a nested Child visible outside authored bounds: $name (#1092 B)', ({ matrix: childMatrix, rect }) => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{ ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false, sourceViewport: { x: 0, y: 0, width: 20, height: 20 } }],
+      structure: { version: 1, symbolDefinitions: { child: {
+        symbolRef: 'Child', children: [{ type: 'bitmap', id: 'bitmap', sourceAddress: 'child-bitmap', drawOrder: 0,
+          localTransform: childMatrix, bitmapRef: 'child.png', assetId }],
+      } }, frames: [{ ordinal: 0, layers: [{ name: 'Layer', nodes: [{
+        type: 'group', id: 'group', groupId: 'group', drawOrder: 0, localTransform: matrix(3), children: [{
+          type: 'symbol', id: 'symbol', symbolRef: 'Child', nestedDefinitionId: 'child', drawOrder: 0, localTransform: matrix(5),
+        }],
+      }] }] }] },
+    });
+    vi.stubGlobal('document', { createElement: () => new FakeCanvas() });
+    const images = new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]);
+    for (const mode of ['definition', 'instance', 'timeline']) {
+      // Both a persisted Shared Definition and a sparse Instance override use
+      // the same evaluated world bounds; selection keeps the authored origin.
+      const restored = FlaGraphicDefinitionSchema.parse(JSON.parse(JSON.stringify(definition)));
+      if (mode !== 'definition') restored.structure!.symbolDefinitions!.child!.children[0]!.localTransform = matrix();
+      if (mode === 'timeline') restored.structure!.symbolDefinitions!.child!.timeline = { tracks: [{
+        trackId: 'addr:child-bitmap', keyframes: [
+          { timeMs: 0, easing: 'linear', transform: decomposeAffineMatrix(matrix()) },
+          { timeMs: 1000, easing: 'linear', transform: decomposeAffineMatrix(childMatrix) },
+        ],
+      }] };
+      const visual = evaluateFlaGraphicVisual({ definition: restored, frameOrdinal: 0, mode: mode === 'instance' ? 'instance' : 'definition', internalTimeMs: 1000,
+        ...(mode === 'instance' ? { instanceTransformOverrides: { '0': { '["group","symbol","bitmap"]': childMatrix } } } : {}),
+      })!;
+      const raster = renderFlaGraphicCanvas(visual, images)!;
+      for (const [key, value] of Object.entries(rect)) {
+        expect(raster.rect[key as keyof typeof rect]).toBeCloseTo(value, 6);
+      }
+      const canvas = raster.canvas as unknown as FakeCanvas;
+      expect(canvas.width).toBeGreaterThanOrEqual(rect.width);
+      expect(canvas.height).toBeGreaterThanOrEqual(rect.height);
+      expect(canvas.context.draws[0]?.image).toBe(images.get(assetId));
+      const placement = canvas.context.setTransforms[0]!;
+      expect(raster.rect.x + placement[4]!).toBeCloseTo(childMatrix.tx + 8 - 10, 6);
+      expect(raster.rect.y + placement[5]!).toBeCloseTo(childMatrix.ty - 10, 6);
+    }
+  });
+
   it('composites a transformed nested mask, applies Symbol RGB transform and opacity, and keeps sibling fallback local', () => {
     const frameAssetId = 'a1000000-0000-4000-8000-000000000001';
     const bitmapAssetId = '10000000-0000-4000-8000-000000000001';
@@ -208,7 +261,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
       [siblingAssetId, sibling],
     ]));
 
-    const output = rendered as unknown as FakeCanvas;
+    const output = rendered!.canvas as unknown as FakeCanvas;
     const symbolCanvas = canvases[1]!;
     const maskCanvas = canvases[2]!;
     expect(output.context.draws).toHaveLength(2);

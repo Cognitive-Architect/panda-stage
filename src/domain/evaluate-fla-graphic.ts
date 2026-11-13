@@ -429,6 +429,12 @@ export function evaluateFlaGraphicVisual(input: {
               })
             : null;
           if (localized) authoredLocalTransform = localized;
+        } else if (node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackViewBox) {
+          // The isolated SVG's viewBox can begin away from (0,0). Keep the
+          // authored node matrix and place its tight image at that local origin.
+          authoredLocalTransform = compose(authoredLocalTransform, {
+            ...identity, tx: node.fallbackViewBox.x, ty: node.fallbackViewBox.y,
+          }) ?? authoredLocalTransform;
         }
         const localTransform = node.type === 'opaque'
           ? authoredLocalTransform
@@ -439,7 +445,7 @@ export function evaluateFlaGraphicVisual(input: {
             ) ?? authoredLocalTransform;
         const worldTransform = compose(parentEffectiveWorld, localTransform);
         const fallbackReady = node.type !== 'opaque' || safeOpaqueFallback(node);
-        const clipResult = node.type === 'opaque' && fallbackReady
+        const clipResult = node.type === 'opaque' && fallbackReady && node.fallbackScope === 'frame-crop'
           // Safe opaque fallback images already contain their authored mask.
           ? { clips: [], valid: true }
           : evaluateClipPaths(node, parentAuthoredWorld, parentEffectiveWorld);

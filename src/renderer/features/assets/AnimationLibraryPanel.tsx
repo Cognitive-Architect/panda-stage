@@ -206,7 +206,7 @@ async function readFlaGraphicFramePreview(
   }
   const canvas = renderFlaGraphicCanvas(visual, images);
   if (!canvas) throw new Error('FLA Graphic structure could not be rendered.');
-  return { bytes: await canvasPngBytes(canvas), mimeType: 'image/png', structured: true };
+  return { bytes: await canvasPngBytes(canvas.canvas), mimeType: 'image/png', structured: true };
 }
 
 interface AnimationCoverState {

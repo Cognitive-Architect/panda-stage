@@ -148,7 +148,7 @@ export type FlaGraphicStructureNode =
       fallbackScope?: 'subtree' | 'frame-crop';
       /** Fallback reference to a project asset (e.g. SVG frame asset ID). */
       fallbackAssetId?: string;
-      /** Framing / viewBox bounds within the fallback asset to avoid full-frame duplication in future. */
+      /** Source-frame crop bounds, or the isolated SVG's tight node-local viewBox. */
       fallbackViewBox?: {
         x: number;
         y: number;
