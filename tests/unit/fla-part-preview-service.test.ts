@@ -19,7 +19,9 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { calculateViewportTransform, evaluateFlaGraphicVisual, migrateProject, ProjectSchema, reconstructFlaGraphicStructure, scanAssetReferences, type Project } from '../../src/domain';
 import { AssetReferenceSchema } from '../../src/shared/asset-delete-api';
 import { selectAssetLibraryEntries } from '../../src/renderer/stores/assetLibrarySelectors';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
 import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
 import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 import { getFlaGraphicScopeNodes, resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
@@ -666,9 +668,24 @@ describe('F1-02 Main part preview service', () => {
         expect(references.some((reference) => reference.kind === 'animation-structure')).toBe(true);
         expect(references.every((reference) => AssetReferenceSchema.safeParse(reference).success)).toBe(true);
         expect(selectAssetLibraryEntries(reopened.project, 'all').some((entry) => entry.asset.id === asset.id)).toBe(false);
+        const canvasImages = new AssetCanvasImageService({ getCurrentProjectSnapshot: () => ({ project: reopened.project }) });
+        expect((await canvasImages.read({ projectRoot, assetId: asset.id, sha256: asset.sha256 })).ok).toBe(true);
       }
+      const unbound = structuredClone(reopened.project);
+      const unboundDefinition = unbound.animations[0]!;
+      if ('kind' in unboundDefinition && unboundDefinition.kind === 'fla-graphic') delete unboundDefinition.structure;
+      const unboundImages = new AssetCanvasImageService({ getCurrentProjectSnapshot: () => ({ project: unbound }) });
+      const unboundAsset = unbound.assets.find((asset) => asset.kind === 'image' && asset.mimeType === 'image/svg+xml' && !asset.flaGraphicFrame)!;
+      expect((await unboundImages.read({ projectRoot, assetId: unboundAsset.id, sha256: unboundAsset.sha256 })).ok).toBe(false);
       const visual = evaluateFlaGraphicVisual({ definition: target!.animation, frameOrdinal: 0, mode: 'definition' })!;
       expect(visual.resourceAssetIds).not.toContain(target!.animation.frames[0]!.assetId);
+      const ready = new Set(visual.resourceAssetIds);
+      const canvasModel = buildEditorTemporalCanvasModel({
+        project: reopened.project, shot: reopened.project.shots[0]!, currentTimeMs: 0,
+        readyAssetIds: ready, previousVisuals: new Map(),
+        readyAssetSourceKeys: new Map(reopened.project.assets.filter((asset) => ready.has(asset.id)).map((asset) => [asset.id, asset.sha256!])),
+      });
+      expect(canvasModel.targetReadyLayerIds.has(imported.layerId)).toBe(true);
       // Tight isolated artwork can have a non-zero SVG origin (including its
       // renderer-owned antialias margin); preserve that origin in local space.
       const firstShape = visual.layers![0]!.nodes[0]!;

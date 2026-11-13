@@ -73,6 +73,7 @@ import {
 import {
   buildEditorTemporalCanvasModel,
 } from './editorTemporalCanvasModel';
+import { visualAssetIds } from './temporalVisualContinuity';
 import { isAnimationBaseTransformEditableAtTime } from '../properties/layerTransformTemporalGuard';
 import {
   failedRequiredCanvasLayers,
@@ -728,21 +729,22 @@ export function CanvasStage({
   const isStageLayerVisualReady = useCallback(
     (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean => {
       if (!stageLayer.visual.parts.length) return false;
+      const assetIds = visualAssetIds(stageLayer.visual, stageLayer.evaluated);
       const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
         stageLayer.layer.id,
       );
       if (sourceKeys && sourceKeys.size > 0) {
-        return stageLayer.visual.parts.every((part) => {
-          const sourceKey = sourceKeys.get(part.assetId);
+        return assetIds.every((assetId) => {
+          const sourceKey = sourceKeys.get(assetId);
           return sourceKey
             ? imageState.readyResourceKeys.has(
-                canvasImageResourceKey(part.assetId, sourceKey),
+                canvasImageResourceKey(assetId, sourceKey),
               )
             : Boolean(
                 snapshot &&
                   isCurrentCanvasAssetReady(
                     snapshot.project,
-                    part.assetId,
+                    assetId,
                     imageState,
                   ),
               );
@@ -750,8 +752,8 @@ export function CanvasStage({
       }
       return Boolean(
         snapshot &&
-          stageLayer.visual.parts.every((part) =>
-            isCurrentCanvasAssetReady(snapshot.project, part.assetId, imageState),
+          assetIds.every((assetId) =>
+            isCurrentCanvasAssetReady(snapshot.project, assetId, imageState),
           ),
       );
     },

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import {
   ProjectSchema,
+  reconstructFlaGraphicStructure,
   type Project,
 } from '../../domain';
 import {
@@ -149,8 +150,14 @@ export class AssetCanvasImageService {
     const mimeType = asset.mimeType;
     const generatedFlaSvg =
       asset.kind === 'image' &&
-      Boolean(asset.flaGraphicFrame) &&
-      mimeType === 'image/svg+xml';
+      mimeType === 'image/svg+xml' &&
+      (Boolean(asset.flaGraphicFrame) || project.animations.some((animation) =>
+        'kind' in animation && animation.kind === 'fla-graphic' && animation.structure &&
+        reconstructFlaGraphicStructure(animation.structure).some(({ node }) =>
+          node.type === 'opaque' && node.opaqueKind === 'shape' &&
+          node.fallbackScope === 'subtree' && node.fallbackAssetId === asset.id,
+        ),
+      ));
     if (
       asset.kind !== 'image' ||
       (mimeType !== 'image/png' && mimeType !== 'image/jpeg' && !generatedFlaSvg)
