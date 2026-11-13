@@ -299,8 +299,15 @@ function resolveNestedSymbolInternalTimeMs(
     const selected = evaluateFlaGraphicFrame(mode, firstFrameIndex, lastFrame, sourceFrameCount, frameOffset);
     const next = evaluateFlaGraphicFrame(mode, firstFrameIndex, lastFrame, sourceFrameCount, frameOffset + 1);
     if (selected.ok && next.ok) {
-      const phaseMs = selected.frameIndex === next.frameIndex ? 0 : Math.max(0, elapsedMs - frameOffset * frameMs);
       const direction = mode.endsWith('reverse') ? -1 : 1;
+      const naturalNextFrame = (selected.frameIndex + direction + sourceFrameCount) % sourceFrameCount;
+      const boundedWrap = lastFrame !== undefined && lastFrame >= 0 &&
+        (mode === 'loop' || mode === 'loop reverse') && next.frameIndex !== naturalNextFrame;
+      // A bounded repeat jumps over excluded source frames. Hold the selected
+      // pose until the real frame boundary instead of tweening into that gap.
+      const phaseMs = selected.frameIndex === next.frameIndex || boundedWrap
+        ? 0
+        : Math.max(0, elapsedMs - frameOffset * frameMs);
       const localMs = selected.frameIndex * frameMs + direction * phaseMs;
       return localMs < 0 ? localMs + sourceFrameCount * frameMs : localMs;
     }

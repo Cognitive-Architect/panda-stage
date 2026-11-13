@@ -37,14 +37,20 @@ const NESTED_DEF_ID = 'symdef_e6_fix_arm';
 
 // Source content visibly identifies its selected child frame; the authored
 // property track ends much earlier than the 20-frame (1000ms) source timeline.
-function nestedSourceClockFixture(firstFrame: number, playbackMode = 'loop', sourceStartFrame = 0, propertyEndMs = 200) {
+function nestedSourceClockFixture(
+  firstFrame: number,
+  playbackMode = 'loop',
+  sourceStartFrame = 0,
+  propertyEndMs = 200,
+  lastFrame?: number,
+) {
   const timeline = (frames: string) => `<DOMTimeline name="clock"><layers><DOMLayer name="content"><frames>${frames}</frames></DOMLayer></layers></DOMTimeline>`;
   const graphic = (name: string, frames: string) => ({
     name: `LIBRARY/${name}.xml`,
     xml: `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(frames)}</timeline></DOMSymbolItem>`,
   });
   const adapted = adaptFlaXflDisplaySource('<DOMDocument width="100" height="100"/>', [
-    graphic('parent', `<DOMFrame index="${sourceStartFrame}" duration="40"><elements><DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="${playbackMode}" firstFrame="${firstFrame}"/></elements></DOMFrame>`),
+    graphic('parent', `<DOMFrame index="${sourceStartFrame}" duration="40"><elements><DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="${playbackMode}" firstFrame="${firstFrame}"${lastFrame !== undefined ? ` lastFrame="${lastFrame}"` : ''}/></elements></DOMFrame>`),
     graphic('child', Array.from({ length: 20 }, (_, index) =>
       `<DOMFrame index="${index}" duration="1"><elements><DOMBitmapInstance libraryItemName="source-frame-${index}.png"/></elements></DOMFrame>`,
     ).join('')),
@@ -150,6 +156,44 @@ describe('Issue #1090 nested Graphic source clock', () => {
       definition: legacy, frameOrdinal: 5, mode: 'definition', internalTimeMs: 250,
     });
     expect(visual!.layers![0]!.nodes[0]!.children[0]!.localTransform.tx).toBe(200);
+  });
+});
+
+describe('Issue #1091 bounded Graphic sub-frame wrap', () => {
+  it.each([
+    { mode: 'loop', lastFrame: 5, frames: [3, 4, 5], adjacentPoses: [175, 225] },
+    { mode: 'loop reverse', lastFrame: 1, frames: [3, 2, 1], adjacentPoses: [125, 75] },
+  ])('holds the bounded $mode wrap while preserving natural adjacent tween', ({ mode, lastFrame, frames, adjacentPoses }) => {
+    const sample = nestedSourceClockFixture(3, mode, 0, 1000, lastFrame);
+    for (const parentFrame of [0, 1]) {
+      const { selection, child } = sample(parentFrame, 25);
+      expect(selection.selectedChildFrameIndex).toBe(frames[parentFrame]);
+      expect(child.source).toMatchObject({ bitmapRef: `source-frame-${frames[parentFrame]}.png` });
+      expect(child.localTransform.tx).toBeCloseTo(adjacentPoses[parentFrame]!, 6);
+    }
+    for (const parentFrame of [2, 5]) {
+      for (const phaseMs of [0, 25, 49]) {
+        const { selection, child } = sample(parentFrame, phaseMs);
+        expect(selection.selectedChildFrameIndex).toBe(lastFrame);
+        expect(child.source).toMatchObject({ bitmapRef: `source-frame-${lastFrame}.png` });
+        expect(child.localTransform.tx, `${mode}: terminal frame at phase ${phaseMs}ms`).toBeCloseTo(lastFrame * 50, 6);
+      }
+      // Only the actual source-frame boundary switches to the first pose.
+      const { selection, child } = sample(parentFrame + 1);
+      expect(selection.selectedChildFrameIndex).toBe(3);
+      expect(child.source).toMatchObject({ bitmapRef: 'source-frame-3.png' });
+      expect(child.localTransform.tx).toBeCloseTo(150, 6);
+    }
+  });
+
+  it('preserves unbounded reverse sub-frame tween across the source boundary', () => {
+    const sample = nestedSourceClockFixture(3, 'loop reverse', 0, 1000);
+    expect(sample(0, 25).child.localTransform.tx).toBeCloseTo(125, 6);
+    const { selection, child } = sample(3, 25);
+    expect(selection.selectedChildFrameIndex).toBe(0);
+    expect(child.source).toMatchObject({ bitmapRef: 'source-frame-0.png' });
+    expect(child.localTransform.tx).toBeCloseTo(975, 6);
+    expect(sample(4, 25).child.localTransform.tx).toBeCloseTo(925, 6);
   });
 });
 
