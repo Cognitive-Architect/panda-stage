@@ -3,6 +3,7 @@ import {
   invertAffineMatrix,
   multiplyAffineMatrices,
 } from '../shared/affine-matrix';
+import { evaluateFlaGraphicFrame } from '../shared/fla-graphic-playback';
 import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
@@ -11,7 +12,6 @@ import {
   type FlaGraphicStructureNode,
 } from './models';
 import {
-  collectFlaGraphicTimelineDurationMs,
   evaluateFlaGraphicTrackAtTime,
   resolveFlaGraphicStableNodeIdentity,
   type FlaGraphicInternalTimeline,
@@ -277,7 +277,7 @@ function evaluateClipPaths(
 
 function resolveNestedSymbolInternalTimeMs(
   node: Extract<FlaGraphicStructureNode, { type: 'symbol' }>,
-  nestedTimeline: FlaGraphicInternalTimeline | undefined,
+  sourceFrameCount: number | undefined,
   parentInternalTimeMs: number,
   fps: number,
 ): number {
@@ -287,22 +287,29 @@ function resolveNestedSymbolInternalTimeMs(
   const firstFrameIndex =
     Number.isFinite(rawFirstFrame) && rawFirstFrame > 0 ? rawFirstFrame : 0;
   const frameMs = 1_000 / Math.max(1, fps);
-  const firstFrameMs = Math.round(firstFrameIndex * frameMs);
-  const mode = node.playbackMode?.trim().toLowerCase();
-  if (mode === 'single-frame' || mode === 'single frame') {
+  const firstFrameMs = firstFrameIndex * frameMs;
+  const mode = node.playbackMode?.trim().toLowerCase().replaceAll('-', ' ') ?? 'loop';
+  if (sourceFrameCount !== undefined) {
+    const elapsedMs = Math.max(0, parentInternalTimeMs - (node.sourceParentFrameSpanStart ?? 0) * frameMs);
+    const elapsedFrames = elapsedMs / frameMs;
+    const frameOffset = Math.floor(elapsedFrames + 1e-9);
+    const lastFrame = node.lastFrame !== undefined ? Number(node.lastFrame) : undefined;
+    // Source visual selection and E6 properties use the very same Graphic clock.
+    // Only the sub-frame fraction is retained for continuous property tweens.
+    const selected = evaluateFlaGraphicFrame(mode, firstFrameIndex, lastFrame, sourceFrameCount, frameOffset);
+    const next = evaluateFlaGraphicFrame(mode, firstFrameIndex, lastFrame, sourceFrameCount, frameOffset + 1);
+    if (selected.ok && next.ok) {
+      const phaseMs = selected.frameIndex === next.frameIndex ? 0 : Math.max(0, elapsedMs - frameOffset * frameMs);
+      const direction = mode.endsWith('reverse') ? -1 : 1;
+      const localMs = selected.frameIndex * frameMs + direction * phaseMs;
+      return localMs < 0 ? localMs + sourceFrameCount * frameMs : localMs;
+    }
+  }
+  if (mode === 'single frame') {
     return firstFrameMs;
   }
-  const durationMs = collectFlaGraphicTimelineDurationMs(nestedTimeline);
-  if (mode === 'play-once' || mode === 'play once') {
-    const rawTime = firstFrameMs + parentInternalTimeMs;
-    return durationMs > 0 ? Math.min(durationMs, rawTime) : rawTime;
-  }
-  if (durationMs > firstFrameMs) {
-    return firstFrameMs + (parentInternalTimeMs % (durationMs - firstFrameMs));
-  }
-  if (durationMs > 0) {
-    return parentInternalTimeMs % durationMs;
-  }
+  // Older structures have no source span. Hold the property's terminal pose
+  // through its evaluator instead of inventing a Symbol duration from its keys.
   return firstFrameMs + parentInternalTimeMs;
 }
 
@@ -445,6 +452,10 @@ export function evaluateFlaGraphicVisual(input: {
           const nestedDef = node.nestedDefinitionId
             ? structure.symbolDefinitions?.[node.nestedDefinitionId]
             : undefined;
+          const parentSourceTimeMs = timelineContext.internalTimeMs +
+            (timelineContext.ownerKind === 'frame' && node.sourceParentFrameSpanStart !== undefined
+              ? definition.source.startFrameIndex * (1_000 / fps)
+              : 0);
           const childTimelineContext: TimelineEvaluationContext = nestedDef
             ? {
                 ownerKind: 'symbol',
@@ -453,8 +464,8 @@ export function evaluateFlaGraphicVisual(input: {
                 timeline: nestedDef.timeline,
                 internalTimeMs: resolveNestedSymbolInternalTimeMs(
                   node,
-                  nestedDef.timeline,
-                  timelineContext.internalTimeMs,
+                  nestedDef.sourceFrameCount,
+                  parentSourceTimeMs,
                   fps,
                 ),
               }
@@ -463,7 +474,7 @@ export function evaluateFlaGraphicVisual(input: {
                 internalTimeMs: resolveNestedSymbolInternalTimeMs(
                   node,
                   undefined,
-                  timelineContext.internalTimeMs,
+                  parentSourceTimeMs,
                   fps,
                 ),
               };

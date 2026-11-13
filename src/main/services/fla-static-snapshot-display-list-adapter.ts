@@ -2284,6 +2284,7 @@ function* adaptFlaXflDisplaySourceSteps(
     const definition: FlaGraphicSymbolDefinition = {
       kind: 'graphic',
       libraryItemName: shell.sourceLibraryItemName,
+      sourceFrameCount: shell.frameCount,
       frameContext: parsed.value,
     };
     symbols.set(shell.sourceLibraryItemName, definition);

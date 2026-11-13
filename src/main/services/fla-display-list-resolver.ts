@@ -129,6 +129,7 @@ export type FlaDisplayListElement =
 export interface FlaGraphicSymbolDefinition {
   readonly kind: 'graphic';
   readonly libraryItemName: string;
+  readonly sourceFrameCount?: number;
   /** Concrete frame context for this definition; no frame selection occurs here. */
   readonly frameContext: FlaDisplayListFrameContext;
 }
@@ -211,6 +212,8 @@ export interface FlaResolvedGroupNode {
   readonly opacity?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly symbolInstance?: {
+    readonly sourceFrameCount?: number;
+    readonly sourceParentFrameSpanStart?: number;
     readonly frameSelectionKey?: string;
     readonly playbackMode?: string;
     readonly firstFrame?: string;
@@ -748,6 +751,8 @@ function resolveElements(
       continue;
     }
     const symbolInstance = {
+      ...(definition.sourceFrameCount !== undefined ? { sourceFrameCount: definition.sourceFrameCount } : {}),
+      ...(element.sourceParentFrameSpanStart !== undefined ? { sourceParentFrameSpanStart: element.sourceParentFrameSpanStart } : {}),
       ...(element.frameSelectionKey !== undefined ? { frameSelectionKey: element.frameSelectionKey } : {}),
       ...(element.playbackMode !== undefined ? { playbackMode: element.playbackMode } : {}),
       ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),

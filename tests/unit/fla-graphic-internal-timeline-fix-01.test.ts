@@ -27,9 +27,131 @@ import {
   TIMELINE_FPS,
 } from '../../src/renderer/features/timeline/timeGeometry';
 import { buildProjectWithAnimation, IDS } from './domain/testProject';
+import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+import { prepareFlaNestedGraphicFrameSelections } from '../../src/main/services/fla-nested-graphic-frame-selector';
+import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
+import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
 
 const FLA_FRAME_ASSET_ID = '10000000-0000-4000-8000-000000000004';
 const NESTED_DEF_ID = 'symdef_e6_fix_arm';
+
+// Source content visibly identifies its selected child frame; the authored
+// property track ends much earlier than the 20-frame (1000ms) source timeline.
+function nestedSourceClockFixture(firstFrame: number, playbackMode = 'loop', sourceStartFrame = 0, propertyEndMs = 200) {
+  const timeline = (frames: string) => `<DOMTimeline name="clock"><layers><DOMLayer name="content"><frames>${frames}</frames></DOMLayer></layers></DOMTimeline>`;
+  const graphic = (name: string, frames: string) => ({
+    name: `LIBRARY/${name}.xml`,
+    xml: `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(frames)}</timeline></DOMSymbolItem>`,
+  });
+  const adapted = adaptFlaXflDisplaySource('<DOMDocument width="100" height="100"/>', [
+    graphic('parent', `<DOMFrame index="${sourceStartFrame}" duration="40"><elements><DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="${playbackMode}" firstFrame="${firstFrame}"/></elements></DOMFrame>`),
+    graphic('child', Array.from({ length: 20 }, (_, index) =>
+      `<DOMFrame index="${index}" duration="1"><elements><DOMBitmapInstance libraryItemName="source-frame-${index}.png"/></elements></DOMFrame>`,
+    ).join('')),
+  ]);
+  if (!adapted.ok) throw new Error(adapted.message);
+  const source = adapted.source;
+  const parent = source.graphicSymbols.find((item) => item.sourceLibraryItemName === 'parent')!;
+  const base = createStructuredGraphicFixture({ sourceFps: 20 }).definition;
+  return (parentFrameIndex: number, subFrameMs = 0) => {
+    const root = source.buildGraphicFrameContext(parent.timelineXml, parent.frameSpanIndex, sourceStartFrame + parentFrameIndex, 'clock-parent');
+    if (!root.ok) throw new Error(root.message);
+    const selected = prepareFlaNestedGraphicFrameSelections(source, {
+      kind: 'graphic', name: 'parent', frameContext: root.value,
+    });
+    if (!selected.ok) throw new Error(selected.message);
+    const resolved = resolveFlaDisplayList(selected.resolverInput);
+    if (!resolved.ok) throw new Error(resolved.message);
+    const structure = captureFlaGraphicStructure(resolved.displayList)!;
+    const symbol = structure.frames[0]!.layers[0]!.nodes[0]!;
+    if (symbol.type !== 'symbol') throw new Error('Expected nested Graphic');
+    const nested = structure.symbolDefinitions![symbol.nestedDefinitionId!]!;
+    expect(nested.sourceFrameCount).toBe(20);
+    expect(symbol.sourceParentFrameSpanStart).toBe(sourceStartFrame);
+    const child = nested.children[0]!;
+    nested.timeline = {
+      tracks: [{
+        trackId: `addr:${child.sourceAddress}`,
+        keyframes: [0, propertyEndMs].map((timeMs) => ({
+          timeMs,
+          transform: { tx: timeMs, ty: 0, rotationDeg: 0, scaleX: 1, scaleY: 1 },
+          easing: 'linear' as const,
+        })),
+      }],
+    };
+    structure.frames[0]!.ordinal = parentFrameIndex;
+    const definition: FlaGraphicDefinition = {
+      ...base,
+      source: { ...base.source, startFrameIndex: sourceStartFrame },
+      frames: [{ ...base.frames[0]!, ordinal: parentFrameIndex }],
+      structure,
+    };
+    const visual = evaluateFlaGraphicVisual({
+      definition, frameOrdinal: parentFrameIndex, mode: 'definition',
+      internalTimeMs: parentFrameIndex * 50 + subFrameMs,
+    });
+    return {
+      selection: selected.selections[0]!,
+      child: visual!.layers![0]!.nodes[0]!.children[0]!,
+      definition,
+    };
+  };
+}
+
+describe('Issue #1090 nested Graphic source clock', () => {
+  it.each([0, 3])('keeps 20-frame source playback and 200ms property keys in sync (firstFrame=%i)', (firstFrame) => {
+    const sample = nestedSourceClockFixture(firstFrame);
+    for (const parentFrame of [0, 1, 4, 5, 16, 17, 19, 20, 21]) {
+      const { selection, child } = sample(parentFrame);
+      const localFrame = (firstFrame + parentFrame) % 20;
+      expect(selection.selectedChildFrameIndex).toBe(localFrame);
+      expect(child.source).toMatchObject({ type: 'bitmap', bitmapRef: `source-frame-${localFrame}.png` });
+      expect(child.localTransform.tx, `parent=${parentFrame}, source local frame=${localFrame}`).toBeCloseTo(Math.min(localFrame * 50, 200), 6);
+    }
+  });
+
+  it.each(['play once', 'single frame'])('preserves source %s playback with non-zero firstFrame', (mode) => {
+    const sample = nestedSourceClockFixture(3, mode);
+    for (const parentFrame of [0, 1, 5, 16, 17, 20, 25]) {
+      const { selection, child } = sample(parentFrame);
+      const localFrame = mode === 'single frame' ? 3 : Math.min(3 + parentFrame, 19);
+      expect(selection.selectedChildFrameIndex).toBe(localFrame);
+      expect(child.source).toMatchObject({ bitmapRef: `source-frame-${localFrame}.png` });
+      expect(child.localTransform.tx).toBeCloseTo(Math.min(localFrame * 50, 200), 6);
+    }
+  });
+
+  it('preserves continuous tween interpolation and a non-zero parent source origin', () => {
+    const sample = nestedSourceClockFixture(0, 'loop', 3);
+    expect(sample(1, 25).child.localTransform.tx).toBeCloseTo(75, 6);
+    expect(sample(5).child.localTransform.tx).toBe(200);
+    expect(sample(20, 25).child.localTransform.tx).toBeCloseTo(25, 6);
+    // Source clock metadata survives the strict persisted structure schema.
+    const structure = sample(0).definition.structure!;
+    expect(FlaGraphicStructureSchema.parse(JSON.parse(JSON.stringify(structure)))).toEqual(structure);
+  });
+
+  it('holds play-once at the source terminal frame while loop keeps its sub-frame phase', () => {
+    const once = nestedSourceClockFixture(3, 'play once', 0, 1000);
+    const loop = nestedSourceClockFixture(3, 'loop', 0, 1000);
+    expect(once(16, 25).child.localTransform.tx).toBeCloseTo(950, 6);
+    expect(once(25, 25).child.localTransform.tx).toBeCloseTo(950, 6);
+    expect(loop(16, 25).child.localTransform.tx).toBeCloseTo(975, 6);
+    expect(loop(17, 25).child.localTransform.tx).toBeCloseTo(25, 6);
+  });
+
+  it('does not invent a loop duration from property keys for legacy structures without source span', () => {
+    const { definition } = nestedSourceClockFixture(0)(5);
+    const legacy = structuredClone(definition);
+    for (const nested of Object.values(legacy.structure!.symbolDefinitions!)) {
+      delete nested.sourceFrameCount;
+    }
+    const visual = evaluateFlaGraphicVisual({
+      definition: legacy, frameOrdinal: 5, mode: 'definition', internalTimeMs: 250,
+    });
+    expect(visual!.layers![0]!.nodes[0]!.children[0]!.localTransform.tx).toBe(200);
+  });
+});
 
 function findEvaluatedTransform(
   visual: EvaluatedFlaGraphicVisual | null,

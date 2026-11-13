@@ -35,6 +35,7 @@ function e6Structure(): FlaGraphicStructure {
     symbolDefinitions: {
       [NESTED_DEF_ID]: {
         symbolRef: 'Library/Hand',
+        sourceFrameCount: 25, // Source span: 25 frames at 25fps, independently of property keys.
         children: [
           {
             type: 'bitmap',

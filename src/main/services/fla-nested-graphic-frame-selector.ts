@@ -315,7 +315,7 @@ export function prepareFlaNestedGraphicFrameSelections(
     );
     building.delete(key);
     if (!prepared.ok) return prepared;
-    definitions.set(key, { kind: 'graphic', libraryItemName, frameContext: prepared.frameContext });
+    definitions.set(key, { kind: 'graphic', libraryItemName, sourceFrameCount: descriptor.frameCount, frameContext: prepared.frameContext });
     return { ok: true, key };
   };
 

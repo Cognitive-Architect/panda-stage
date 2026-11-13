@@ -113,6 +113,8 @@ export type FlaGraphicStructureNode =
       firstFrame?: string;
       lastFrame?: string;
       synchronizedFirstFrame?: number;
+      /** Containing source keyframe origin, in the parent Symbol timeline. */
+      sourceParentFrameSpanStart?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
       children?: FlaGraphicStructureNode[];
@@ -176,6 +178,7 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         firstFrame: SourceTextSchema.optional(),
         lastFrame: SourceTextSchema.optional(),
         synchronizedFirstFrame: z.number().int().optional(),
+        sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
         children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
@@ -235,6 +238,8 @@ export type FlaGraphicStructureFrame = z.infer<typeof FlaGraphicStructureFrameSc
 export const FlaGraphicNestedSymbolDefinitionSchema = z
   .object({
     symbolRef: SourceTextSchema,
+    /** Authoritative source timeline span, independent of authored property keys. */
+    sourceFrameCount: z.number().int().positive().max(100_000).optional(),
     frameSelectionKey: SourceTextSchema.optional(),
     children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
     timeline: FlaGraphicInternalTimelineSchema.optional(),
@@ -403,6 +408,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       firstFrame: node.firstFrame,
       lastFrame: node.lastFrame,
       synchronizedFirstFrame: node.synchronizedFirstFrame,
+      sourceParentFrameSpanStart: node.sourceParentFrameSpanStart,
       frameSelectionKey: node.frameSelectionKey,
       opacity: node.opacity,
       rgbTransform: node.rgbTransform,
@@ -444,6 +450,7 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
             defId,
             {
               symbolRef: def.symbolRef,
+              ...(def.sourceFrameCount !== undefined ? { sourceFrameCount: def.sourceFrameCount } : {}),
               ...(def.frameSelectionKey ? { frameSelectionKey: def.frameSelectionKey } : {}),
               children: def.children.map(canonicalizeStructureNode),
               ...(def.timeline ? { timeline: def.timeline } : {}),

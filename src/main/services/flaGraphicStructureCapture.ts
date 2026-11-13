@@ -224,6 +224,7 @@ export function captureFlaGraphicStructure(
           const defChildren = convert(node.children, `def:${nestedDefinitionId}`, null, authoredWorld);
           symbolDefinitions[nestedDefinitionId] = {
             symbolRef: node.symbolLibraryItemName,
+            ...(symbolInstance?.sourceFrameCount !== undefined ? { sourceFrameCount: symbolInstance.sourceFrameCount } : {}),
             ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
             children: defChildren,
           };
@@ -240,6 +241,7 @@ export function captureFlaGraphicStructure(
           ...(symbolInstance?.firstFrame !== undefined ? { firstFrame: symbolInstance.firstFrame } : {}),
           ...(symbolInstance?.lastFrame !== undefined ? { lastFrame: symbolInstance.lastFrame } : {}),
           ...(symbolInstance?.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: symbolInstance.synchronizedFirstFrame } : {}),
+          ...(symbolInstance?.sourceParentFrameSpanStart !== undefined ? { sourceParentFrameSpanStart: symbolInstance.sourceParentFrameSpanStart } : {}),
         };
       }
       const children = convert(node.children, id, null, authoredWorld);
