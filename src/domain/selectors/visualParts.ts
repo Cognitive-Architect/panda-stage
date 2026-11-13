@@ -742,28 +742,32 @@ export function resolveLayerVisualParts(
       if (!flaGraphic) {
         throw new Error('Cannot resolve FLA Graphic frame ' + frameOrdinal + ' for layer ' + layer.id + '.');
       }
-      const asset = imageAsset(project, flaGraphic.frameAssetId, layer.id);
-      const part: LayerVisualPart = {
-        partId: layer.id + ':animation-frame',
-        ownerLayerId: layer.id,
-        slot: 'single',
-        source: {
-          kind: 'animation-frame',
-          animationId: animation.id,
-          assetId: asset.id,
-        },
-        assetId: asset.id,
-        localRect: {
-          x: flaGraphic.frameOffset.x - flaGraphic.canvas.width / 2,
-          y: flaGraphic.frameOffset.y - flaGraphic.canvas.height / 2,
-          width: flaGraphic.frameViewport.width,
-          height: flaGraphic.frameViewport.height,
-        },
-        rotationDeg: 0,
-        flipX: false,
-        drawOrder: 0,
-        ownerZIndex: evaluated.zIndex,
-      };
+      const bakedAsset = flaGraphic.structureFrame
+        ? resolveImageAsset(project, flaGraphic.frameAssetId)
+        : imageAsset(project, flaGraphic.frameAssetId, layer.id);
+      const parts: LayerVisualPart[] = bakedAsset
+        ? [{
+            partId: layer.id + ':animation-frame',
+            ownerLayerId: layer.id,
+            slot: 'single',
+            source: {
+              kind: 'animation-frame',
+              animationId: animation.id,
+              assetId: bakedAsset.id,
+            },
+            assetId: bakedAsset.id,
+            localRect: {
+              x: flaGraphic.frameOffset.x - flaGraphic.canvas.width / 2,
+              y: flaGraphic.frameOffset.y - flaGraphic.canvas.height / 2,
+              width: flaGraphic.frameViewport.width,
+              height: flaGraphic.frameViewport.height,
+            },
+            rotationDeg: 0,
+            flipX: false,
+            drawOrder: 0,
+            ownerZIndex: evaluated.zIndex,
+          }]
+        : [];
       const required = flaGraphic.resourceAssetIds.flatMap((assetId) => {
         const resource = project.assets.find(
           (candidate) => candidate.id === assetId && candidate.kind === 'image',
@@ -771,7 +775,7 @@ export function resolveLayerVisualParts(
         return resource
           ? [{
               assetId,
-              reason: assetId === asset.id
+              reason: assetId === flaGraphic.frameAssetId
                 ? 'current-layer' as const
                 : 'fla-graphic-resource' as const,
             }]
@@ -782,7 +786,7 @@ export function resolveLayerVisualParts(
           evaluated,
           'fla-graphic',
           null,
-          [part],
+          parts,
           null,
           { required, candidates: [], fallback: [] },
         ),

@@ -1432,9 +1432,13 @@ export class FlaPartPreviewService {
       const walk = (nodes: readonly FlaGraphicStructureNode[]): void => {
         for (const node of nodes) {
           if (node.type === 'bitmap') referencedBitmapNames.add(node.bitmapRef);
-          else if (node.type === 'group' || node.type === 'symbol') walk(node.children);
+          else if (node.type === 'group') walk(node.children);
+          else if (node.type === 'symbol' && node.children) walk(node.children);
         }
       };
+      for (const def of Object.values(structure.symbolDefinitions ?? {})) {
+        walk(def.children);
+      }
       for (const frame of structure.frames) {
         for (const layer of frame.layers) {
           walk(layer.nodes);

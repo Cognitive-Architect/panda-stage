@@ -1,7 +1,10 @@
 import type { Project } from './models/project';
 import type { Asset } from './models/asset';
 import type { FlaGraphicDefinition } from './models/animation';
-import type { FlaGraphicStructureNode } from './models/flaGraphicStructure';
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicStructureNode,
+} from './models/flaGraphicStructure';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
@@ -303,6 +306,7 @@ function addFlaGraphicAnimationMedia(
     const animation = project.animations.find((candidate) => candidate.id === animationId);
     if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
     const resourceIds = new Set(animation.frames.map((frame) => frame.assetId));
+    const definition = animation as FlaGraphicDefinition;
     const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
       for (const node of nodes) {
         if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
@@ -314,12 +318,13 @@ function addFlaGraphicAnimationMedia(
         ) {
           resourceIds.add(node.fallbackAssetId);
         }
-        if (node.type === 'group' || node.type === 'symbol') {
+        if (node.type === 'group') {
           collectNodeResources(node.children);
+        } else if (node.type === 'symbol') {
+          collectNodeResources(resolveFlaGraphicSymbolChildren(node, definition.structure));
         }
       }
     };
-    const definition = animation as FlaGraphicDefinition;
     for (const structureFrame of definition.structure?.frames ?? []) {
       for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
     }

@@ -17,7 +17,7 @@ import {
   localizeAbsoluteLeafMatrix,
   type AffineMatrix2D,
 } from '../../../shared/affine-matrix';
-import { flaGraphicNodePathKey, isFlaGraphicNodeEnterable } from './flaGraphicEditScope';
+import { flaGraphicNodePathKey } from './flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Bounds {
@@ -314,7 +314,10 @@ export function FlaGraphicStructureProjection({
     const children = evaluatedNode.children.map((child) =>
       renderNode(child, directScopePath, childSelectionAncestorPath),
     );
-    const canEnter = selectable && isFlaGraphicNodeEnterable(node);
+    const canEnter =
+      selectable &&
+      (node.type === 'group' || node.type === 'symbol') &&
+      evaluatedNode.children.length > 0;
     const wrapperRef = selected
       ? selectedNodeRef
       : equalPath(path, scopePath)

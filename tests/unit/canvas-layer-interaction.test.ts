@@ -550,7 +550,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
     expect(stage).toContain("if (event.key !== 'Escape' || !flaGraphicEditActive) return;");
     expect(stage).toContain('resolveFlaGraphicEditTarget');
-    expect(stage).toContain('parentFlaGraphicEditScopePath');
+    expect(stage).toContain('resolveFlaGraphicExitScopeTransition');
     expect(stage).toContain('collectFlaGraphicStructureAssetIds');
     expect(stage).toContain('JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])');
     expect(stage).toContain('setFlaGraphicEditDrafts({});');

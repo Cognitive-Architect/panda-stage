@@ -1,6 +1,8 @@
-import type {
-  EvaluatedFlaGraphicNode,
-  EvaluatedFlaGraphicVisual,
+import {
+  evaluateFlaGraphicNodeCompositePlan,
+  evaluateOpaqueFrameCropNormalizedRect,
+  type EvaluatedFlaGraphicNode,
+  type EvaluatedFlaGraphicVisual,
 } from '../../../domain';
 
 export type FlaGraphicImageMap = ReadonlyMap<string, CanvasImageSource>;
@@ -164,20 +166,17 @@ function renderFlaGraphicCanvasUncached(
       destinationHeight = source.fallbackViewBox.height;
       if (source.fallbackScope === 'frame-crop') {
         const size = sourceSize(image);
-        const viewport = visual.frameViewport;
-        if (viewport.width <= 0 || viewport.height <= 0) return false;
-        const scaleX = size.width / viewport.width;
-        const scaleY = size.height / viewport.height;
-        const rawX = (source.fallbackViewBox.x - viewport.x) * scaleX;
-        const rawY = (source.fallbackViewBox.y - viewport.y) * scaleY;
-        const rawWidth = source.fallbackViewBox.width * scaleX;
-        const rawHeight = source.fallbackViewBox.height * scaleY;
-        const x = Math.max(0, rawX);
-        const y = Math.max(0, rawY);
-        const right = Math.min(size.width, rawX + rawWidth);
-        const bottom = Math.min(size.height, rawY + rawHeight);
-        if (right <= x || bottom <= y) return false;
-        crop = { x, y, width: right - x, height: bottom - y };
+        const normalizedCrop = evaluateOpaqueFrameCropNormalizedRect(
+          source.fallbackViewBox,
+          visual.frameViewport,
+        );
+        if (!normalizedCrop) return false;
+        crop = {
+          x: normalizedCrop.normX * size.width,
+          y: normalizedCrop.normY * size.height,
+          width: normalizedCrop.normWidth * size.width,
+          height: normalizedCrop.normHeight * size.height,
+        };
       }
     } else {
       return false;
@@ -262,11 +261,10 @@ function renderFlaGraphicCanvasUncached(
 
   const applyRgbTransform = (
     target: CanvasRenderingContext2D,
-    node: EvaluatedFlaGraphicNode,
+    rgbTransform: { readonly multiplier: number; readonly offset: number } | null,
   ): boolean => {
-    if (node.source.type !== 'symbol' || !node.source.rgbTransform) return true;
-    const { multiplier, offset } = node.source.rgbTransform;
-    if (multiplier === 1 && offset === 0) return true;
+    if (!rgbTransform) return true;
+    const { multiplier, offset } = rgbTransform;
     try {
       const imageData = target.getImageData(0, 0, width, height);
       const pixels = imageData.data;
@@ -288,11 +286,8 @@ function renderFlaGraphicCanvasUncached(
     compositeDepth = 0,
   ): boolean => {
     if (!node.renderable) return false;
-    const needsComposite =
-      node.clipPaths.length > 0 ||
-      (node.source.type === 'symbol' &&
-        ((node.source.opacity ?? 1) !== 1 || Boolean(node.source.rgbTransform)));
-    if (!needsComposite) {
+    const compositePlan = evaluateFlaGraphicNodeCompositePlan(node);
+    if (!compositePlan.needsComposite) {
       return renderContents(
         target,
         node,
@@ -308,12 +303,10 @@ function renderFlaGraphicCanvasUncached(
       (context, child) => drawNode(context, child, compositeDepth + 1),
     );
     if (!drewContent) return false;
-    if (!applyNodeClips(scratch.canvas, node)) return false;
-    if (!applyRgbTransform(scratch.context, node)) return false;
+    if (compositePlan.hasClips && !applyNodeClips(scratch.canvas, node)) return false;
+    if (!applyRgbTransform(scratch.context, compositePlan.rgbTransform)) return false;
     target.save();
-    if (node.source.type === 'symbol') {
-      target.globalAlpha = node.source.opacity ?? 1;
-    }
+    target.globalAlpha = compositePlan.opacity;
     target.setTransform(1, 0, 0, 1, 0, 0);
     target.drawImage(scratch.canvas, 0, 0);
     target.restore();

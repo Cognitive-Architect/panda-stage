@@ -34,6 +34,7 @@ import {
   recordFlaGraphicEditDraft,
   retainValidFlaGraphicEditDrafts,
   resolveFlaGraphicEditTarget,
+  resolveFlaGraphicExitScopeTransition,
 } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 
 const BITMAP_ASSET_ID = '10000000-0000-4000-8000-000000000003';
@@ -330,6 +331,29 @@ describe('saved Fla Graphic edit scope', () => {
     expect(isFlaGraphicNodeEnterable(getFlaGraphicNodeAtPath(
       makeDefinition().structure!.frames[0]!, ['group-a', 'symbol-b'],
     )!)).toBe(true);
+
+    // F6: ExitScope restores selection of the just-exited Group/Symbol, and clears stale nodes safely
+    const frame = makeDefinition().structure!.frames[0]!;
+    const popInner = resolveFlaGraphicExitScopeTransition(frame, ['group-a', 'symbol-b']);
+    expect(popInner).toEqual({
+      nextScopePath: ['group-a'],
+      nextSelectedNodePath: ['group-a', 'symbol-b'],
+    });
+    const popOuter = resolveFlaGraphicExitScopeTransition(frame, popInner.nextScopePath!);
+    expect(popOuter).toEqual({
+      nextScopePath: [],
+      nextSelectedNodePath: ['group-a'],
+    });
+    const exitRoot = resolveFlaGraphicExitScopeTransition(frame, popOuter.nextScopePath!);
+    expect(exitRoot).toEqual({
+      nextScopePath: null,
+      nextSelectedNodePath: null,
+    });
+    const stalePop = resolveFlaGraphicExitScopeTransition(frame, ['group-a', 'missing-symbol']);
+    expect(stalePop).toEqual({
+      nextScopePath: ['group-a'],
+      nextSelectedNodePath: null,
+    });
   });
 
   it('keeps safe opaque children read-only and only retains bitmap and safe fallback assets', () => {

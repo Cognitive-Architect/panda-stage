@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
   FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+  FlaGraphicStructureSchema,
   reconstructFlaGraphicStructure,
 } from '../../src/domain';
 import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
@@ -52,7 +53,7 @@ describe('captureFlaGraphicStructure', () => {
     expect(flat.map((entry) => entry.node.type)).toEqual(['group', 'symbol', 'bitmap', 'symbol', 'bitmap', 'opaque', 'opaque']);
     const symbols = flat.filter((entry) => entry.node.type === 'symbol');
     expect(symbols.every((entry) => entry.node.type === 'symbol' && entry.node.symbolRef === 'Arm')).toBe(true);
-    expect(new Set(flat.map((entry) => entry.node.id)).size).toBe(flat.length);
+    expect(new Set(flat.map((entry) => `${entry.parentId ?? '-'}>${entry.node.id}`)).size).toBe(flat.length);
     // The bitmap under the first Arm: world = group(10,5,×2) · sym(3,0) · bitmap(1,1) = (18, 7).
     expect(flat[2]!.worldTransform).toMatchObject({ a: 2, tx: 18, ty: 7 });
     expect(flat[2]!.node.localTransform).toMatchObject({ a: 1, tx: 1, ty: 1 });
@@ -299,5 +300,86 @@ describe('captureFlaGraphicStructure', () => {
       expect(unsafeNode.node.fallbackAssetId).toBeUndefined();
       expect(unsafeNode.node.reason).toContain('movieclip');
     }
+  });
+
+  it('normalizes repeated nested Symbol instances into one shared symbolDefinitions entry (#1082 F2)', () => {
+    const legFrame = {
+      frameIndex: 0,
+      layers: [
+        layer('art', [
+          { kind: 'bitmap', libraryItemName: 'leg.png', sourceAddress: 'LIB/Leg/bitmap[0]', localTransform: m(2, 3) },
+        ]),
+      ],
+    };
+    const resolved = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: 'TwoLegs',
+        frameContext: {
+          frameIndex: 0,
+          layers: [
+            layer('main', [
+              {
+                kind: 'symbol',
+                libraryItemName: 'Leg',
+                symbolType: 'graphic',
+                sourceAddress: 'LIB/TwoLegs/leg[0]',
+                localTransform: m(10, 0),
+                frameSelectionKey: 'key_leg_0',
+              },
+              {
+                kind: 'symbol',
+                libraryItemName: 'Leg',
+                symbolType: 'graphic',
+                sourceAddress: 'LIB/TwoLegs/leg[1]',
+                localTransform: m(30, 0),
+                frameSelectionKey: 'key_leg_0',
+              },
+            ]),
+          ],
+        },
+      },
+      symbols: new Map([['key_leg_0', { kind: 'graphic' as const, libraryItemName: 'Leg', frameContext: legFrame }]]),
+    });
+
+    if (!resolved.ok) throw new Error(resolved.message);
+    const structure = captureFlaGraphicStructure(resolved.displayList, {
+      bitmapAssetMap: new Map([['leg.png', 'leg-asset-uuid']]),
+    })!;
+
+    expect(structure.symbolDefinitions).toBeDefined();
+    const defEntries = Object.entries(structure.symbolDefinitions ?? {});
+    expect(defEntries).toHaveLength(1);
+    const [sharedDefId, sharedDef] = defEntries[0]!;
+    expect(sharedDef.symbolRef).toBe('Leg');
+    expect(sharedDef.children).toHaveLength(1);
+
+    const topNodes = structure.frames[0]!.layers[0]!.nodes;
+    expect(topNodes).toHaveLength(2);
+    const symA = topNodes[0]!;
+    const symB = topNodes[1]!;
+    expect(symA.type).toBe('symbol');
+    expect(symB.type).toBe('symbol');
+    if (symA.type === 'symbol' && symB.type === 'symbol') {
+      expect(symA.nestedDefinitionId).toBe(sharedDefId);
+      expect(symB.nestedDefinitionId).toBe(sharedDefId);
+      expect(symA.children ?? []).toEqual([]);
+      expect(symB.children ?? []).toEqual([]);
+    }
+
+    const flat = reconstructFlaGraphicStructure(structure);
+    const bitmaps = flat.filter((e) => e.node.type === 'bitmap');
+    expect(bitmaps).toHaveLength(2);
+    expect(bitmaps[0]!.worldTransform.tx).toBe(12);
+    expect(bitmaps[1]!.worldTransform.tx).toBe(32);
+
+    // Missing/stale nestedDefinitionId degrades locally without crashing
+    const staleStructure = FlaGraphicStructureSchema.parse({
+      ...structure,
+      symbolDefinitions: {},
+    });
+    const staleFlat = reconstructFlaGraphicStructure(staleStructure);
+    expect(staleFlat.filter((e) => e.node.type === 'bitmap')).toHaveLength(0);
+    expect(staleFlat.filter((e) => e.node.type === 'symbol')).toHaveLength(2);
   });
 });

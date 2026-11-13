@@ -1,11 +1,13 @@
-import type {
-  FlaGraphicDefinition,
-  FlaGraphicStructureFrame,
-  FlaGraphicStructureNode,
-  ImageAsset,
-  Layer,
-  Project,
-  Shot,
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicDefinition,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureFrame,
+  type FlaGraphicStructureNode,
+  type ImageAsset,
+  type Layer,
+  type Project,
+  type Shot,
 } from '../../../domain';
 import type { AffineMatrix2D } from '../../../shared/affine-matrix';
 
@@ -37,6 +39,33 @@ export function parentFlaGraphicEditScopePath(
   path: readonly string[],
 ): readonly string[] | null {
   return path.length === 0 ? null : path.slice(0, -1);
+}
+
+export interface FlaGraphicExitScopeTransition {
+  readonly nextScopePath: readonly string[] | null;
+  readonly nextSelectedNodePath: readonly string[] | null;
+}
+
+/**
+ * Computes the next scope path and selection continuity when exiting one level
+ * of FLA Graphic edit scope: popping to a parent scope re-selects the exited
+ * Group/Symbol if it is still selectable; popping from the root scope exits
+ * edit mode.
+ */
+export function resolveFlaGraphicExitScopeTransition(
+  frame: FlaGraphicStructureFrame,
+  currentScopePath: readonly string[],
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
+): FlaGraphicExitScopeTransition {
+  const parentPath = parentFlaGraphicEditScopePath(currentScopePath);
+  if (!parentPath) {
+    return { nextScopePath: null, nextSelectedNodePath: null };
+  }
+  const exitedNode = getFlaGraphicNodeAtPath(frame, currentScopePath, structure);
+  const nextSelectedNodePath = exitedNode && flaGraphicNodeCanSelect(exitedNode)
+    ? [...currentScopePath]
+    : null;
+  return { nextScopePath: parentPath, nextSelectedNodePath };
 }
 
 export function recordFlaGraphicEditDraft(
@@ -168,20 +197,29 @@ export function resolveFlaGraphicEditTarget(input: {
 export function getFlaGraphicScopeNodes(
   frame: FlaGraphicStructureFrame,
   path: readonly string[],
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): readonly FlaGraphicStructureNode[] {
   if (path.length === 0) {
     return frame.layers.flatMap((layer) =>
       [...layer.nodes].sort((left, right) => left.drawOrder - right.drawOrder),
     );
   }
-  const parent = getFlaGraphicNodeAtPath(frame, path);
-  if (parent?.type !== 'group' && parent?.type !== 'symbol') return [];
-  return [...parent.children].sort((left, right) => left.drawOrder - right.drawOrder);
+  const parent = getFlaGraphicNodeAtPath(frame, path, structure);
+  if (parent?.type === 'group') {
+    return [...parent.children].sort((left, right) => left.drawOrder - right.drawOrder);
+  }
+  if (parent?.type === 'symbol') {
+    return [...resolveFlaGraphicSymbolChildren(parent, structure)].sort(
+      (left, right) => left.drawOrder - right.drawOrder,
+    );
+  }
+  return [];
 }
 
 export function getFlaGraphicNodeAtPath(
   frame: FlaGraphicStructureFrame,
   path: readonly string[],
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): FlaGraphicStructureNode | null {
   if (path.length === 0) return null;
   let nodes: readonly FlaGraphicStructureNode[] = frame.layers.flatMap(
@@ -191,9 +229,11 @@ export function getFlaGraphicNodeAtPath(
   for (const nodeId of path) {
     current = nodes.find((node) => node.id === nodeId);
     if (!current) return null;
-    nodes = current.type === 'group' || current.type === 'symbol'
+    nodes = current.type === 'group'
       ? current.children
-      : [];
+      : current.type === 'symbol'
+        ? resolveFlaGraphicSymbolChildren(current, structure)
+        : [];
   }
   return current ?? null;
 }
@@ -204,12 +244,16 @@ export function flaGraphicNodePathKey(path: readonly string[]): string {
 
 export function isFlaGraphicNodeEnterable(
   node: FlaGraphicStructureNode,
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): node is Extract<FlaGraphicStructureNode, { type: 'group' | 'symbol' }> {
-  return (node.type === 'group' || node.type === 'symbol') && node.children.length > 0;
+  if (node.type === 'group') return node.children.length > 0;
+  if (node.type === 'symbol') return resolveFlaGraphicSymbolChildren(node, structure).length > 0;
+  return false;
 }
 
 export function collectFlaGraphicStructureAssetIds(
   frame: FlaGraphicStructureFrame,
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): string[] {
   const assetIds = new Set<string>();
   const visit = (nodes: readonly FlaGraphicStructureNode[]): void => {
@@ -218,7 +262,8 @@ export function collectFlaGraphicStructureAssetIds(
       if (node.type === 'opaque' && node.fallbackAssetId && node.fallbackViewBox && node.fallbackScope) {
         assetIds.add(node.fallbackAssetId);
       }
-      if (node.type === 'group' || node.type === 'symbol') visit(node.children);
+      if (node.type === 'group') visit(node.children);
+      else if (node.type === 'symbol') visit(resolveFlaGraphicSymbolChildren(node, structure));
     }
   };
   for (const layer of frame.layers) visit(layer.nodes);
@@ -243,6 +288,7 @@ export function flaGraphicNodeHasReadyVisual(
   node: FlaGraphicStructureNode,
   images: ReadonlyMap<string, HTMLImageElement>,
   assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>,
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): boolean {
   if (node.type === 'bitmap') {
     return Boolean(node.assetId && images.has(node.assetId) && assets.has(node.assetId));
@@ -256,5 +302,8 @@ export function flaGraphicNodeHasReadyVisual(
         assets.has(node.fallbackAssetId),
     );
   }
-  return node.children.some((child) => flaGraphicNodeHasReadyVisual(child, images, assets));
+  const children = node.type === 'group'
+    ? node.children
+    : resolveFlaGraphicSymbolChildren(node, structure);
+  return children.some((child) => flaGraphicNodeHasReadyVisual(child, images, assets, structure));
 }

@@ -79,26 +79,25 @@ async function readFlaGraphicFramePreview(
 ): Promise<{ bytes: Uint8Array; mimeType: string; structured: boolean }> {
   const frame = animation.frames.find((candidate) => candidate.ordinal === frameOrdinal);
   if (!frame) throw new Error('The selected FLA Graphic frame is unavailable.');
-  const frameAsset = project.assets.find((asset) => asset.id === frame.assetId);
-  if (
-    !frameAsset || frameAsset.kind !== 'image' ||
-    frameAsset.sha256 !== frame.sha256
-  ) {
-    throw new Error('The selected FLA Graphic frame asset is missing or changed.');
-  }
-  const frameResponse = await window.pandaStage.assets.readCanvasImage({
-    projectRoot,
-    assetId: frameAsset.id,
-    sha256: frame.sha256,
-  });
-  if (!frameResponse.ok) throw new Error(frameResponse.error.message);
-
   const visual = evaluateFlaGraphicVisual({
     definition: animation,
     frameOrdinal,
     mode: 'definition',
   });
   if (!visual?.structureFrame) {
+    const frameAsset = project.assets.find((asset) => asset.id === frame.assetId);
+    if (
+      !frameAsset || frameAsset.kind !== 'image' ||
+      frameAsset.sha256 !== frame.sha256
+    ) {
+      throw new Error('The selected FLA Graphic frame asset is missing or changed.');
+    }
+    const frameResponse = await window.pandaStage.assets.readCanvasImage({
+      projectRoot,
+      assetId: frameAsset.id,
+      sha256: frame.sha256,
+    });
+    if (!frameResponse.ok) throw new Error(frameResponse.error.message);
     return {
       bytes: frameResponse.bytes,
       mimeType: frameResponse.mimeType,
@@ -107,12 +106,7 @@ async function readFlaGraphicFramePreview(
   }
 
   const images = new Map<string, HTMLImageElement>();
-  images.set(
-    frameAsset.id,
-    await decodeCanvasImage(frameResponse.bytes, frameResponse.mimeType),
-  );
-  const otherAssetIds = visual.resourceAssetIds.filter((assetId) => assetId !== frameAsset.id);
-  const imageEntries = await Promise.all(otherAssetIds.map(async (assetId) => {
+  const imageEntries = await Promise.all(visual.resourceAssetIds.map(async (assetId) => {
     const asset = project.assets.find(
       (candidate) => candidate.id === assetId && candidate.kind === 'image',
     );

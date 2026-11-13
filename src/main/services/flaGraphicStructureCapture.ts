@@ -4,6 +4,7 @@ import {
   FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE,
   FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN,
   FlaGraphicStructureSchema,
+  type FlaGraphicNestedSymbolDefinition,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
 } from '../../domain';
@@ -115,6 +116,7 @@ export function captureFlaGraphicStructure(
   options: CaptureFlaGraphicStructureOptions = {},
 ): FlaGraphicStructure | undefined {
   const usedIds = new Set<string>();
+  const symbolDefinitions: Record<string, FlaGraphicNestedSymbolDefinition> = {};
   const maskPathByteBudget: MaskPathByteBudget = {
     remainingBytes: FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
   };
@@ -209,23 +211,38 @@ export function captureFlaGraphicStructure(
           ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
         };
       }
-      const children = convert(node.children, id, null, authoredWorld);
       if (node.symbolLibraryItemName) {
         const symbolInstance = node.symbolInstance;
+        const frameSelectionKey = symbolInstance?.frameSelectionKey;
+        const baseDefKey = (
+          frameSelectionKey
+            ? `${node.symbolLibraryItemName}::${frameSelectionKey}`
+            : node.symbolLibraryItemName
+        ).slice(0, 880);
+        const nestedDefinitionId = baseDefKey;
+        if (!symbolDefinitions[nestedDefinitionId]) {
+          const defChildren = convert(node.children, `def:${nestedDefinitionId}`, null, authoredWorld);
+          symbolDefinitions[nestedDefinitionId] = {
+            symbolRef: node.symbolLibraryItemName,
+            ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
+            children: defChildren,
+          };
+        }
         return {
           ...base,
           type: 'symbol',
           symbolRef: node.symbolLibraryItemName,
+          nestedDefinitionId,
           ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
           ...(node.rgbTransform ? { rgbTransform: { ...node.rgbTransform } } : {}),
-          ...(symbolInstance?.frameSelectionKey !== undefined ? { frameSelectionKey: symbolInstance.frameSelectionKey } : {}),
+          ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
           ...(symbolInstance?.playbackMode !== undefined ? { playbackMode: symbolInstance.playbackMode } : {}),
           ...(symbolInstance?.firstFrame !== undefined ? { firstFrame: symbolInstance.firstFrame } : {}),
           ...(symbolInstance?.lastFrame !== undefined ? { lastFrame: symbolInstance.lastFrame } : {}),
           ...(symbolInstance?.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: symbolInstance.synchronizedFirstFrame } : {}),
-          children,
         };
       }
+      const children = convert(node.children, id, null, authoredWorld);
       return { ...base, type: 'group', groupId: node.groupId, children };
     });
 
@@ -235,6 +252,7 @@ export function captureFlaGraphicStructure(
   }));
   const parsed = FlaGraphicStructureSchema.safeParse({
     version: 1,
+    ...(Object.keys(symbolDefinitions).length > 0 ? { symbolDefinitions } : {}),
     frames: [{ ordinal: 0, layers }],
   });
   return parsed.success ? parsed.data : undefined;

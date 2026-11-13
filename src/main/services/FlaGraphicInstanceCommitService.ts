@@ -98,17 +98,35 @@ function bindFallbackAssetToStructure(
         }
         return node;
       }
-      if (node.type === 'group' || node.type === 'symbol') {
+      if (node.type === 'group') {
         return {
           ...node,
           children: visitNodes(node.children, frameFallback),
         };
       }
+      if (node.type === 'symbol') {
+        return node.children
+          ? {
+              ...node,
+              children: visitNodes(node.children, frameFallback),
+            }
+          : node;
+      }
       return node;
     });
 
+  const symbolDefinitions = structure.symbolDefinitions
+    ? Object.fromEntries(
+        Object.entries(structure.symbolDefinitions).map(([defId, def]) => [
+          defId,
+          { ...def, children: visitNodes(def.children, fallbackAssetId) },
+        ]),
+      )
+    : undefined;
+
   return {
     ...structure,
+    ...(symbolDefinitions ? { symbolDefinitions } : {}),
     frames: structure.frames.map((frame, index) => {
       const frameFallback = frameAssetIds[index] ?? fallbackAssetId;
       return {
@@ -137,17 +155,35 @@ function bindBitmapAssetsToStructure(
           ...(sourceBasename && !node.sourceBasename ? { sourceBasename } : {}),
         };
       }
-      if (node.type === 'group' || node.type === 'symbol') {
+      if (node.type === 'group') {
         return {
           ...node,
           children: visitNodes(node.children),
         };
       }
+      if (node.type === 'symbol') {
+        return node.children
+          ? {
+              ...node,
+              children: visitNodes(node.children),
+            }
+          : node;
+      }
       return node;
     });
 
+  const symbolDefinitions = structure.symbolDefinitions
+    ? Object.fromEntries(
+        Object.entries(structure.symbolDefinitions).map(([defId, def]) => [
+          defId,
+          { ...def, children: visitNodes(def.children) },
+        ]),
+      )
+    : undefined;
+
   return {
     ...structure,
+    ...(symbolDefinitions ? { symbolDefinitions } : {}),
     frames: structure.frames.map((frame) => ({
       ...frame,
       layers: frame.layers.map((layer) => ({
@@ -316,27 +352,34 @@ function existingDefinition(
   project: Project,
   batch: FlaGraphicDefinitionFrameBatch,
 ): { definition: FlaGraphicDefinition; upgrade: boolean } | null {
-  const matches = project.animations.filter((animation): animation is FlaGraphicDefinition =>
+  const semanticCandidates = project.animations.filter((animation): animation is FlaGraphicDefinition =>
     'kind' in animation &&
     animation.kind === 'fla-graphic' &&
     animation.source.sha256 === batch.source.rawSha256 &&
-    animation.source.renderTargetId === batch.target.renderTargetId &&
+    animation.source.targetKind === 'graphic-symbol' &&
+    animation.source.targetName === batch.target.name &&
+    animation.source.sourceFps === batch.target.sourceFps &&
     animation.frames.length === batch.frames.length &&
     animation.frames.every((frame, index) =>
-      frame.sourceFrameIndex === batch.frames[index]?.sourceFrameIndex &&
-      frame.sha256 === batch.frames[index]?.sha256,
+      frame.sourceFrameIndex === batch.frames[index]?.sourceFrameIndex,
     ),
   );
-  if (!batch.structure) {
-    const match = matches[0];
-    return match ? { definition: match, upgrade: false } : null;
+  if (batch.structure) {
+    const exactSemantic = semanticCandidates.find((match) =>
+      Boolean(match.structure && sameStructure(match.structure, batch.structure)),
+    );
+    if (exactSemantic) return { definition: exactSemantic, upgrade: false };
+    const upgradable = semanticCandidates.find((match) =>
+      !match.structure &&
+      match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
+    );
+    return upgradable ? { definition: { ...upgradable, structure: batch.structure }, upgrade: true } : null;
   }
-  const exact = matches.find((match) =>
-    Boolean(match.structure && sameStructure(match.structure, batch.structure)),
+  const legacyMatch = semanticCandidates.find((match) =>
+    match.source.renderTargetId === batch.target.renderTargetId &&
+    match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
   );
-  if (exact) return { definition: exact, upgrade: false };
-  const upgradable = matches.find((match) => !match.structure);
-  return upgradable ? { definition: { ...upgradable, structure: batch.structure }, upgrade: true } : null;
+  return legacyMatch ? { definition: legacyMatch, upgrade: false } : null;
 }
 
 

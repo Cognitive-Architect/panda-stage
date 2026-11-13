@@ -3,10 +3,12 @@ import {
   invertAffineMatrix,
   multiplyAffineMatrices,
 } from '../shared/affine-matrix';
-import type {
-  FlaGraphicDefinition,
-  FlaGraphicStructureFrame,
-  FlaGraphicStructureNode,
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicDefinition,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureFrame,
+  type FlaGraphicStructureNode,
 } from './models';
 import {
   getFlaGraphicInstanceTransformOverride,
@@ -60,6 +62,61 @@ export interface EvaluatedFlaGraphicNode {
   /** False means this node or subtree degrades locally. */
   readonly renderable: boolean;
   readonly children: readonly EvaluatedFlaGraphicNode[];
+}
+
+export interface FlaGraphicNodeCompositePlan {
+  readonly needsComposite: boolean;
+  readonly hasClips: boolean;
+  readonly opacity: number;
+  readonly rgbTransform: { readonly multiplier: number; readonly offset: number } | null;
+}
+
+/**
+ * Pure domain compositing semantics for an evaluated FLA Graphic node so the
+ * raster backend never owns mask/opacity/rgb-transform rules.
+ */
+export function evaluateFlaGraphicNodeCompositePlan(
+  node: EvaluatedFlaGraphicNode,
+): FlaGraphicNodeCompositePlan {
+  const hasClips = node.clipPaths.length > 0;
+  const opacity = node.source.type === 'symbol' ? (node.source.opacity ?? 1) : 1;
+  const rawRgb = node.source.type === 'symbol' ? node.source.rgbTransform : undefined;
+  const rgbTransform =
+    rawRgb && !(rawRgb.multiplier === 1 && rawRgb.offset === 0)
+      ? rawRgb
+      : null;
+  return {
+    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null,
+    hasClips,
+    opacity,
+    rgbTransform,
+  };
+}
+
+/**
+ * Normalized [0..1] source-rect ratios for a frame-crop opaque fallback within
+ * the evaluated frame viewport.
+ */
+export function evaluateOpaqueFrameCropNormalizedRect(
+  fallbackViewBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+): { readonly normX: number; readonly normY: number; readonly normWidth: number; readonly normHeight: number } | null {
+  if (frameViewport.width <= 0 || frameViewport.height <= 0) return null;
+  const rawLeft = (fallbackViewBox.x - frameViewport.x) / frameViewport.width;
+  const rawTop = (fallbackViewBox.y - frameViewport.y) / frameViewport.height;
+  const rawRight = rawLeft + fallbackViewBox.width / frameViewport.width;
+  const rawBottom = rawTop + fallbackViewBox.height / frameViewport.height;
+  const normX = Math.max(0, rawLeft);
+  const normY = Math.max(0, rawTop);
+  const right = Math.min(1, rawRight);
+  const bottom = Math.min(1, rawBottom);
+  if (right <= normX || bottom <= normY) return null;
+  return {
+    normX,
+    normY,
+    normWidth: right - normX,
+    normHeight: bottom - normY,
+  };
 }
 
 export interface EvaluatedFlaGraphicLayer {
@@ -130,14 +187,17 @@ function clipPathLocalTransform(
 function collectNodeAssetIds(
   nodes: readonly FlaGraphicStructureNode[],
   target: Set<string>,
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
 ): void {
   for (const node of nodes) {
     if (node.type === 'bitmap' && node.assetId) target.add(node.assetId);
     if (node.type === 'opaque' && safeOpaqueFallback(node)) {
       target.add(node.fallbackAssetId!);
     }
-    if (node.type === 'group' || node.type === 'symbol') {
-      collectNodeAssetIds(node.children, target);
+    if (node.type === 'group') {
+      collectNodeAssetIds(node.children, target, structure);
+    } else if (node.type === 'symbol') {
+      collectNodeAssetIds(resolveFlaGraphicSymbolChildren(node, structure), target, structure);
     }
   }
 }
@@ -230,7 +290,7 @@ export function evaluateFlaGraphicVisual(input: {
   const structureFrame = definition.structure?.frames.find(
     (candidate) => candidate.ordinal === frameOrdinal,
   ) ?? null;
-  const resourceAssetIds = new Set<string>([frame.assetId]);
+  const resourceAssetIds = new Set<string>(structureFrame ? [] : [frame.assetId]);
   if (!structureFrame) {
     const visual: EvaluatedFlaGraphicVisual = {
       mode,
@@ -251,6 +311,7 @@ export function evaluateFlaGraphicVisual(input: {
   collectNodeAssetIds(
     structureFrame.layers.flatMap((layer) => layer.nodes),
     resourceAssetIds,
+    definition.structure,
   );
   const overrides = mode === 'instance'
     ? input.instanceTransformOverrides
@@ -298,14 +359,21 @@ export function evaluateFlaGraphicVisual(input: {
         const renderable = Boolean(worldTransform && fallbackReady && clipResult.valid);
         const nextAuthoredWorld = compose(parentAuthoredWorld, node.localTransform);
         const nextEffectiveWorld = worldTransform;
-        const children = node.type === 'group' || node.type === 'symbol'
+        const children = node.type === 'group'
           ? evaluateNodes(
               node.children,
               nextAuthoredWorld ?? parentAuthoredWorld,
               nextEffectiveWorld ?? parentEffectiveWorld,
               path,
             )
-          : [];
+          : node.type === 'symbol'
+            ? evaluateNodes(
+                resolveFlaGraphicSymbolChildren(node, definition.structure),
+                nextAuthoredWorld ?? parentAuthoredWorld,
+                nextEffectiveWorld ?? parentEffectiveWorld,
+                path,
+              )
+            : [];
         return {
           source: node,
           path,

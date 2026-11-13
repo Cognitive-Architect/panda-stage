@@ -1790,3 +1790,46 @@ describe('Scene parent span tween metadata (#722)', () => {
     expect(element).toMatchObject({ kind: 'symbol', libraryItemName: 'child', sourceParentSpanTweenType: 'none' });
   });
 });
+
+describe('Nested DOMGroup member relative conversion (#1082 F1)', () => {
+  it('localizes nested DOMGroup authored placement into parent-local coordinates without double-transform', () => {
+    const nestedShape = `<DOMShape>${matrix(140, 110)}<fills><FillStyle index="1"><SolidColor color="#112233"/></SolidColor></FillStyle></fills><edges><Edge fillStyle1="1" edges="!0 0|200 0|200 200|0 200|0 0"/></edges></DOMShape>`;
+    const nestedGroup = `<DOMGroup>${transformedMatrix(1, 0, 0, 1, 120, 90)}<members>${nestedShape}</members></DOMGroup>`;
+    const outerGroup = `<DOMGroup>${transformedMatrix(0, 2, -2, 0, 100, 50)}<members>${nestedGroup}</members></DOMGroup>`;
+    const documentXml = `<DOMDocument width="400" height="300"><timelines>${timeline('Scene 1', [
+      layer('scene', frame(0, outerGroup)),
+    ])}</timelines></DOMDocument>`;
+
+    const adapted = adaptFlaXflDisplaySource(documentXml, []);
+    expect(adapted.ok).toBe(true);
+    if (!adapted.ok) return;
+
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: 'Scene 1', frameContext: adapted.source.sceneTimelines[0]!.frameContext },
+      symbols: adapted.source.symbols,
+    });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+
+    const outerNode = resolved.displayList.layers[0]!.children[0];
+    expect(outerNode?.kind).toBe('group');
+    if (outerNode?.kind !== 'group') return;
+    expect(outerNode.worldTransform).toEqual({ a: 0, b: 2, c: -2, d: 0, tx: 100, ty: 50 });
+
+    const nestedNode = outerNode.children[0];
+    expect(nestedNode?.kind).toBe('group');
+    if (nestedNode?.kind !== 'group') return;
+    expect(nestedNode.worldTransform.tx).toBeCloseTo(120, 6);
+    expect(nestedNode.worldTransform.ty).toBeCloseTo(90, 6);
+    expect(nestedNode.worldTransform.a).toBeCloseTo(1, 6);
+    expect(nestedNode.worldTransform.b).toBeCloseTo(0, 6);
+    expect(nestedNode.worldTransform.c).toBeCloseTo(0, 6);
+    expect(nestedNode.worldTransform.d).toBeCloseTo(1, 6);
+
+    const leafNode = nestedNode.children[0];
+    expect(leafNode?.kind).toBe('shape');
+    if (leafNode?.kind !== 'shape') return;
+    expect(leafNode.worldTransform.tx).toBeCloseTo(140, 6);
+    expect(leafNode.worldTransform.ty).toBeCloseTo(110, 6);
+  });
+});

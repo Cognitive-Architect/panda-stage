@@ -105,6 +105,8 @@ export type FlaGraphicStructureNode =
       clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
       /** Shared Symbol Definition reference (source library item name). */
       symbolRef: string;
+      /** Key into `FlaGraphicStructure.symbolDefinitions` when normalized. */
+      nestedDefinitionId?: string;
       frameSelectionKey?: string;
       playbackMode?: string;
       firstFrame?: string;
@@ -112,7 +114,7 @@ export type FlaGraphicStructureNode =
       synchronizedFirstFrame?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
-      children: FlaGraphicStructureNode[];
+      children?: FlaGraphicStructureNode[];
     }
   | {
       type: 'bitmap';
@@ -167,6 +169,7 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         ...NodeBase,
         type: z.literal('symbol'),
         symbolRef: SourceTextSchema,
+        nestedDefinitionId: SourceTextSchema.optional(),
         frameSelectionKey: SourceTextSchema.optional(),
         playbackMode: SourceTextSchema.optional(),
         firstFrame: SourceTextSchema.optional(),
@@ -174,7 +177,7 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         synchronizedFirstFrame: z.number().int().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
-        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
       .strict(),
     z
@@ -228,9 +231,20 @@ export const FlaGraphicStructureFrameSchema = z
 
 export type FlaGraphicStructureFrame = z.infer<typeof FlaGraphicStructureFrameSchema>;
 
+export const FlaGraphicNestedSymbolDefinitionSchema = z
+  .object({
+    symbolRef: SourceTextSchema,
+    frameSelectionKey: SourceTextSchema.optional(),
+    children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+  })
+  .strict();
+
+export type FlaGraphicNestedSymbolDefinition = z.infer<typeof FlaGraphicNestedSymbolDefinitionSchema>;
+
 export const FlaGraphicStructureSchema = z
   .object({
     version: z.literal(1),
+    symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionSchema).optional(),
     frames: z.array(FlaGraphicStructureFrameSchema).min(1).max(256),
   })
   .strict()
@@ -279,10 +293,15 @@ export const FlaGraphicStructureSchema = z
           }
         }
         if (node.type === 'group' || node.type === 'symbol') {
-          walk(node.children, [...nodePath, 'children'], depth + 1);
+          if (node.children) {
+            walk(node.children, [...nodePath, 'children'], depth + 1);
+          }
         }
       });
     };
+    for (const [defId, def] of Object.entries(structure.symbolDefinitions ?? {})) {
+      walk(def.children, ['symbolDefinitions', defId, 'children'], 1);
+    }
     structure.frames.forEach((frame, frameIndex) => {
       if (frame.ordinal !== frameIndex) {
         context.addIssue({ code: 'custom', path: ['frames', frameIndex, 'ordinal'], message: 'Structure frame ordinals must be contiguous from zero.' });
@@ -301,6 +320,21 @@ export interface ReconstructedFlaStructureNode {
   readonly parentId: string | null;
   /** Local transform composed through every ancestor. */
   readonly worldTransform: AffineMatrix2D;
+}
+
+/**
+ * Resolve a symbol node's authored children from `symbolDefinitions` when
+ * normalized, falling back to inline `children` for legacy structures or `[]`
+ * if the nested definition reference is missing/stale.
+ */
+export function resolveFlaGraphicSymbolChildren(
+  node: Extract<FlaGraphicStructureNode, { type: 'symbol' }>,
+  structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
+): readonly FlaGraphicStructureNode[] {
+  if (node.nestedDefinitionId) {
+    return structure?.symbolDefinitions?.[node.nestedDefinitionId]?.children ?? node.children ?? [];
+  }
+  return node.children ?? [];
 }
 
 /**
@@ -324,8 +358,10 @@ export function reconstructFlaGraphicStructure(
     for (const node of nodes) {
       const worldTransform = multiplyAffineMatrices(parentWorld, node.localTransform);
       result.push({ node, layerIndex, parentId, worldTransform });
-      if (node.type === 'group' || node.type === 'symbol') {
+      if (node.type === 'group') {
         walk(node.children, layerIndex, node.id, worldTransform);
+      } else if (node.type === 'symbol') {
+        walk(resolveFlaGraphicSymbolChildren(node, structure), layerIndex, node.id, worldTransform);
       }
     }
   };
@@ -359,6 +395,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
     return {
       ...base,
       symbolRef: node.symbolRef,
+      ...(node.nestedDefinitionId ? { nestedDefinitionId: node.nestedDefinitionId } : {}),
       playbackMode: node.playbackMode,
       firstFrame: node.firstFrame,
       lastFrame: node.lastFrame,
@@ -366,7 +403,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       frameSelectionKey: node.frameSelectionKey,
       opacity: node.opacity,
       rgbTransform: node.rgbTransform,
-      children: node.children.map(canonicalizeStructureNode),
+      children: (node.children ?? []).map(canonicalizeStructureNode),
     };
   }
   if (node.type === 'bitmap') {
@@ -396,8 +433,23 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
  * compared and reused across different occurrences and commit runs.
  */
 export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure): unknown {
+  const symbolDefinitions = structure.symbolDefinitions
+    ? Object.fromEntries(
+        Object.entries(structure.symbolDefinitions)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([defId, def]) => [
+            defId,
+            {
+              symbolRef: def.symbolRef,
+              ...(def.frameSelectionKey ? { frameSelectionKey: def.frameSelectionKey } : {}),
+              children: def.children.map(canonicalizeStructureNode),
+            },
+          ]),
+      )
+    : undefined;
   return {
     version: structure.version,
+    ...(symbolDefinitions ? { symbolDefinitions } : {}),
     frames: structure.frames.map((frame) => ({
       ordinal: frame.ordinal,
       layers: frame.layers.map((layer) => ({

@@ -631,7 +631,7 @@ describe('FLA Graphic structured Definition (E1)', () => {
 
     const sym1 = shape.children[0]!;
     if (sym1.type !== 'symbol') throw new Error('unexpected');
-    const bitmapChild = sym1.children[0]!;
+    const bitmapChild = sym1.children![0]!;
     if (bitmapChild.type !== 'bitmap') throw new Error('unexpected');
     bitmapChild.assetId = 'bitmap-asset-uuid-67890';
 
@@ -653,5 +653,55 @@ describe('FLA Graphic structured Definition (E1)', () => {
     if (symPlayback.type !== 'symbol') throw new Error('unexpected');
     symPlayback.playbackMode = 'loop';
     expect(sameAuthoredStructure(base, changedPlayback)).toBe(false);
+  });
+
+  it('reuses structured Definition across userLabel/renderTargetId and rendered-frame SHA changes when authored semantics match (#1082 F3)', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    expect(first.project.animations).toHaveLength(1);
+
+    // Override partPreviewService to simulate a changed userLabel -> different renderTargetId
+    // AND a changed SVG renderer output -> different frame.sha256, while source + targetName + structure match.
+    const spy = vi.spyOn(
+      (h.service as unknown as { partPreviewService: FlaPartPreviewService }).partPreviewService,
+      'buildGraphicDefinitionFrameBatch',
+    );
+    spy.mockImplementationOnce(async () => {
+      const base = frameBatch({
+        occurrenceId: SECOND_OCCURRENCE_ID,
+        sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[1]',
+        drawOrder: 1,
+      });
+      return {
+        ok: true as const,
+        batch: {
+          ...base,
+          target: {
+            ...base.target,
+            renderTargetId: 'fla-target-renamed-userlabel',
+          },
+          frames: base.frames.map((frame, index) => {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><rect width="12" height="12" fill="${index ? '#112233' : '#445566'}"/></svg>`;
+            const bytes = Buffer.from(svg, 'utf8');
+            return {
+              ...frame,
+              byteLength: bytes.byteLength,
+              sha256: createHash('sha256').update(bytes).digest('hex'),
+              svg,
+            };
+          }),
+          structure: sampleStructure(),
+        },
+      };
+    });
+
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+
+    expect(second.animationId).toBe(first.animationId);
+    expect(second.project.animations).toHaveLength(1);
+    expect(second.project.shots[0]!.layers).toHaveLength(2);
   });
 });

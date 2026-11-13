@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateFlaGraphicVisual,
   FlaGraphicDefinitionSchema,
+  resolveLayerVisualParts,
   type FlaGraphicStructureFrame,
 } from '../../../src/domain';
 import type { AffineMatrix2D } from '../../../src/shared/affine-matrix';
+import { buildProjectWithAnimation } from './testProject';
 
 const identity: AffineMatrix2D = {
   a: 1,
@@ -165,7 +167,7 @@ describe('evaluateFlaGraphicVisual', () => {
     expect(instanceVisual?.layers?.[0]?.nodes[0]?.children[0]?.worldTransform.tx).toBe(37);
     expect(secondFrameVisual?.frameAssetId).toBe(frameIds[1]);
     expect(secondFrameVisual?.structureFrame?.layers[0]?.nodes[0]?.id).toBe('second-frame-bitmap');
-    expect(secondFrameVisual?.resourceAssetIds).toEqual([frameIds[1], bitmapAssetId]);
+    expect(secondFrameVisual?.resourceAssetIds).toEqual([bitmapAssetId]);
   });
 
   it('keeps mask geometry in parent-local space and anchors a frame crop to the authored parent', () => {
@@ -187,8 +189,9 @@ describe('evaluateFlaGraphicVisual', () => {
     expect(frameCrop?.renderable).toBe(true);
     expect(unsafeOpaque?.renderable).toBe(false);
     expect(visual?.resourceAssetIds).toEqual(
-      expect.arrayContaining([frameIds[0], bitmapAssetId, fallbackAssetId]),
+      expect.arrayContaining([bitmapAssetId, fallbackAssetId]),
     );
+    expect(visual?.resourceAssetIds).not.toContain(frameIds[0]);
   });
 
   it('rejects invalid ordinals and leaves missing structure as a baked-frame fallback', () => {
@@ -288,5 +291,72 @@ describe('evaluateFlaGraphicVisual', () => {
     expect(secondA).toBe(firstA);
     expect(firstA?.layers?.[0]?.nodes[0]?.children[0]?.worldTransform.tx).toBe(50);
     expect(instanceB?.layers?.[0]?.nodes[0]?.children[0]?.worldTransform.tx).toBe(70);
+  });
+
+  it('resolves a structured frame even when its baked frame asset is missing from project.assets (#1082 F5)', () => {
+    const source = definition();
+    const base = buildProjectWithAnimation();
+    const project = {
+      ...base,
+      assets: [
+        {
+          id: bitmapAssetId,
+          name: 'bmp',
+          kind: 'image' as const,
+          relativePath: 'assets/bmp.png',
+          mimeType: 'image/png',
+          sha256: '1'.repeat(64),
+          width: 10,
+          height: 10,
+          usage: 'uncategorized' as const,
+          keywords: [],
+        },
+        {
+          id: fallbackAssetId,
+          name: 'fallback',
+          kind: 'image' as const,
+          relativePath: 'assets/fallback.svg',
+          mimeType: 'image/svg+xml',
+          sha256: '2'.repeat(64),
+          width: 100,
+          height: 100,
+          usage: 'uncategorized' as const,
+          keywords: [],
+        },
+      ],
+      animations: [source],
+      shots: [{
+        ...base.shots[0]!,
+        layers: [{
+          ...base.shots[0]!.layers[0]!,
+          source: { kind: 'animation' as const, animationId: source.id },
+        }],
+      }],
+    };
+    const shot = project.shots[0]!;
+    const layer = shot.layers[0]!;
+    const resolved = resolveLayerVisualParts(project, shot, {
+      id: layer.id,
+      anchor: layer.anchor,
+      visible: true,
+      zIndex: 0,
+      assetId: frameIds[0]!,
+      animationFrame: {
+        animationId: source.id,
+        frameOrdinal: 0,
+        offset: { x: 0, y: 0 },
+        viewport: { width: 100, height: 100 },
+        canvas: { width: 100, height: 100 },
+      },
+      x: layer.x,
+      y: layer.y,
+      scaleX: layer.scaleX,
+      scaleY: layer.scaleY,
+      rotationDeg: layer.rotationDeg,
+      flipX: layer.flipX,
+      opacity: layer.opacity,
+    });
+    expect(resolved.kind).toBe('fla-graphic');
+    expect(resolved.resources.required.map((r) => r.assetId)).toEqual([bitmapAssetId, fallbackAssetId]);
   });
 });

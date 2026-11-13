@@ -4,6 +4,7 @@ import {
   FLA_GRAPHIC_STRUCTURE_MAX_DEPTH,
   FLA_GRAPHIC_STRUCTURE_MAX_NODES,
   FlaStructureMatrixSchema,
+  resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
 } from './flaGraphicStructure';
@@ -143,9 +144,11 @@ export function findFlaGraphicStructureNodeAtPath(
   for (const nodeId of nodePath) {
     current = nodes.find((node) => node.id === nodeId);
     if (!current) return null;
-    nodes = current.type === 'group' || current.type === 'symbol'
+    nodes = current.type === 'group'
       ? current.children
-      : [];
+      : current.type === 'symbol'
+        ? resolveFlaGraphicSymbolChildren(current, structure)
+        : [];
   }
   return current ?? null;
 }
@@ -224,8 +227,10 @@ function collectTransformablePaths(
         if (node.type !== 'opaque') {
           validPaths.set(flaGraphicInstanceNodePathKey(path), node.localTransform);
         }
-        if (node.type === 'group' || node.type === 'symbol') {
+        if (node.type === 'group') {
           visit(node.children, path);
+        } else if (node.type === 'symbol') {
+          visit(resolveFlaGraphicSymbolChildren(node, structure), path);
         }
       }
     };

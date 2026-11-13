@@ -92,8 +92,8 @@ import {
   flaGraphicNodePathKey,
   getFlaGraphicNodeAtPath,
   isFlaGraphicNodeEnterable,
-  parentFlaGraphicEditScopePath,
   recordFlaGraphicEditDraft,
+  resolveFlaGraphicExitScopeTransition,
   retainValidFlaGraphicEditDrafts,
   resolveFlaGraphicEditTarget,
   type FlaGraphicEditScopeState,
@@ -317,7 +317,11 @@ export function CanvasStage({
       selectedFlaGraphicNodePath &&
       selectedFlaGraphicNodePath.length === flaGraphicEditPath.length + 1 &&
       flaGraphicEditPath.every((id, index) => selectedFlaGraphicNodePath[index] === id)
-    ? getFlaGraphicNodeAtPath(selectedFlaGraphicTarget.frame, selectedFlaGraphicNodePath)
+    ? getFlaGraphicNodeAtPath(
+        selectedFlaGraphicTarget.frame,
+        selectedFlaGraphicNodePath,
+        selectedFlaGraphicTarget.animation.structure,
+      )
     : null;
   const activeFlaGraphicEditDraftMatrices = selectedFlaGraphicTarget
     ? flaGraphicEditDrafts[selectedFlaGraphicTarget.key] ?? {}
@@ -338,7 +342,10 @@ export function CanvasStage({
       : null;
   const structuredEditAssets = useMemo<CanvasImageAssetSource[]>(() => {
     if (!flaGraphicEditActive || !selectedFlaGraphicTarget || !snapshot) return [];
-    return collectFlaGraphicStructureAssetIds(selectedFlaGraphicTarget.frame)
+    return collectFlaGraphicStructureAssetIds(
+      selectedFlaGraphicTarget.frame,
+      selectedFlaGraphicTarget.animation.structure,
+    )
       .flatMap((assetId) => {
         const asset = resolveImageAsset(snapshot.project, assetId);
         return asset?.sha256 ? [{ id: asset.id, sha256: asset.sha256 }] : [];
@@ -420,13 +427,19 @@ export function CanvasStage({
     setFlaGraphicEditDrafts((current) =>
       clearFlaGraphicEditTargetDrafts(current, selectedFlaGraphicTarget.key),
     );
-    setSelectedFlaGraphicNodePath(null);
-    const parentPath = parentFlaGraphicEditScopePath(flaGraphicEditScope.path);
-    if (parentPath) {
+    const transition = resolveFlaGraphicExitScopeTransition(
+      selectedFlaGraphicTarget.frame,
+      flaGraphicEditScope.path,
+      selectedFlaGraphicTarget.animation.structure,
+    );
+    setSelectedFlaGraphicNodePath(
+      transition.nextSelectedNodePath ? [...transition.nextSelectedNodePath] : null,
+    );
+    if (transition.nextScopePath) {
       setFlaGraphicEditScope({
         targetKey: selectedFlaGraphicTarget.key,
         frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
-        path: parentPath,
+        path: transition.nextScopePath,
       });
     } else {
       setFlaGraphicEditScope(null);
@@ -445,7 +458,10 @@ export function CanvasStage({
     canvasStageElementRef.current?.focus({ preventScroll: true });
   }, [flaGraphicEditActive, selectedFlaGraphicTarget]);
   const enterSelectedFlaGraphicNode = useCallback(() => {
-    if (!selectedFlaGraphicNode || !isFlaGraphicNodeEnterable(selectedFlaGraphicNode)) return;
+    if (
+      !selectedFlaGraphicNode ||
+      !isFlaGraphicNodeEnterable(selectedFlaGraphicNode, selectedFlaGraphicTarget?.animation.structure)
+    ) return;
     enterFlaGraphicScope(selectedFlaGraphicNodePath ?? []);
   }, [enterFlaGraphicScope, selectedFlaGraphicNode, selectedFlaGraphicNodePath]);
   const toggleFlaGraphicEditScope = useCallback(() => {
@@ -802,6 +818,7 @@ export function CanvasStage({
         selectedFlaGraphicNode,
         currentReadyImages,
         projectImageDimensions,
+        selectedFlaGraphicTarget.animation.structure,
       ),
   );
   const selectedStructuredNodeCanTransform = Boolean(
@@ -904,7 +921,10 @@ export function CanvasStage({
                 flaGraphicEditActive &&
                   selectedStructuredNodeReady &&
                   selectedFlaGraphicNode &&
-                  isFlaGraphicNodeEnterable(selectedFlaGraphicNode),
+                  isFlaGraphicNodeEnterable(
+                    selectedFlaGraphicNode,
+                    selectedFlaGraphicTarget?.animation.structure,
+                  ),
               )}
               flaGraphicEditActive={flaGraphicEditActive}
               flaGraphicEditAvailable={Boolean(selectedFlaGraphicTarget)}

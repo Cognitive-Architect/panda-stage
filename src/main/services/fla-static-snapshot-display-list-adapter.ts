@@ -669,7 +669,14 @@ function parseDisplayElements(
       if (nextDepth > MAX_SOURCE_GROUP_DEPTH) {
         return fail('BUDGET_EXCEEDED', `XFL groups exceed recursion depth ${MAX_SOURCE_GROUP_DEPTH}`);
       }
-      const groupWorld = compose(context.parentWorld, matrixResult.matrix);
+      let groupLocalTransform = matrixResult.matrix;
+      let groupWorld = context.parentWorld;
+      if (matrixResult.present) {
+        const localized = localizeAbsoluteLeafMatrix(context.parentWorld, matrixResult.matrix);
+        if (!localized.ok) return localized;
+        groupLocalTransform = localized.value;
+        groupWorld = matrixResult.matrix;
+      }
       const members = directChild(child.xml, child.name, 'members');
       const parsedChildren = members
         ? parseDisplayElements(members, {
@@ -700,7 +707,7 @@ function parseDisplayElements(
         ...(context.sourceParentSpanTweenType !== undefined
           ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
           : {}),
-        localTransform: matrixResult.matrix,
+        localTransform: groupLocalTransform,
         elements: parsedChildren.value,
       });
       continue;
