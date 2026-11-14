@@ -6,6 +6,7 @@ import type { FlaRenderTarget } from '../../shared/fla-static-snapshot-api';
 import { IconButton } from '../ui';
 import {
   createFlaGraphicInstanceWorkbenchCandidates,
+  FlaGraphicImportError,
   type EditableFlaGraphicInstancePreview,
   type ImportFlaGraphicInstance,
 } from '../features/fla-import/fla-graphic-instance-import';
@@ -68,6 +69,8 @@ export function FlaGraphicInstanceWorkbench({
   onImportingChange,
 }: FlaGraphicInstanceWorkbenchProps): React.JSX.Element {
   const [preview, setPreview] = useState<EditableFlaGraphicInstancePreview | null>(null);
+  const [previewContext, setPreviewContext] = useState<string | null>(null);
+  const context = JSON.stringify([sessionId, source.sha256, targetRenderTargetId]);
   const [selectedIdentityKey, setSelectedIdentityKey] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [previewUrls, setPreviewUrls] = useState<Readonly<Record<string, string>>>({});
@@ -77,6 +80,8 @@ export function FlaGraphicInstanceWorkbench({
   const [emptyGraphicList, setEmptyGraphicList] = useState(false);
   const [importing, setImporting] = useState(false);
   const [planInvalidated, setPlanInvalidated] = useState(false);
+  const [importCompleted, setImportCompleted] = useState(false);
+  const importingRef = useRef(false);
   const generationBySessionRef = useRef(new Map<string, number>());
   const flowGenerationRef = useRef(0);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
@@ -99,9 +104,9 @@ export function FlaGraphicInstanceWorkbench({
     candidate.identityKey === selectedIdentityKey,
   ) ?? null;
   const canCommit = Boolean(
-    enabled && sessionId && preview && targetRenderTargetId && selectedCandidate?.selectable &&
+    enabled && sessionId && preview && previewContext === context && targetRenderTargetId && selectedCandidate?.selectable &&
     !importDisabledReason && onImportGraphicInstance && !importing && !importLocked && !planInvalidated &&
-    !previewFailure,
+    (!previewFailure || previewFailure.kind === 'import'),
   );
 
   const cancelRequest = useCallback(async (request: ActiveRequest | null): Promise<void> => {
@@ -205,6 +210,7 @@ export function FlaGraphicInstanceWorkbench({
           setSelectedIdentityKey(candidateToFocus?.identityKey ?? null);
         }
         setPreview(validatedPreview);
+        setPreviewContext(context);
         heldPlanRef.current = request;
         const graphicCount = validatedPreview.partPreviews.filter((part) =>
           part.sourceKind === 'graphic-symbol-occurrence',
@@ -245,7 +251,7 @@ export function FlaGraphicInstanceWorkbench({
         setPreviewLoading(false);
       }
     }
-  }, [cancelRequest, importing, importLocked, releaseHeldPlan, selectedCandidate, sessionId, source, targetRenderTargetId]);
+  }, [cancelRequest, context, importing, importLocked, releaseHeldPlan, selectedCandidate, sessionId, source, targetRenderTargetId]);
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
@@ -258,10 +264,10 @@ export function FlaGraphicInstanceWorkbench({
       setStatusMessage('');
       return;
     }
-    if (preview?.sessionId === sessionId) return;
+    if (preview?.sessionId === sessionId && previewContext === context) return;
     if (preparingPreviewRef.current) return;
     void preparePreview();
-  }, [enabled, preparePreview, preview?.sessionId, sessionId, targetLookupPending, targetRenderTargetId]);
+  }, [context, enabled, preparePreview, preview?.sessionId, previewContext, sessionId, targetLookupPending, targetRenderTargetId]);
 
   useEffect(() => {
     if (!preview) return undefined;
@@ -294,24 +300,38 @@ export function FlaGraphicInstanceWorkbench({
   }, [cancelRequest, releaseHeldPlan]);
 
   const importSelected = async (): Promise<void> => {
-    if (!canCommit || !preview || !selectedCandidate || !onImportGraphicInstance) return;
+    if (importingRef.current || !canCommit || !preview || !selectedCandidate || !onImportGraphicInstance) return;
     if (onImportingChange?.(true) === false) return;
+    importingRef.current = true;
     let imported = false;
     setImporting(true);
+    setImportCompleted(false);
+    setPreviewFailure(null);
     setStatusMessage('正在导入元件…');
     try {
       await onImportGraphicInstance(preview, selectedCandidate.operation.unitId);
       imported = true;
+      setImportCompleted(true);
+      setStatusMessage('');
     } catch (error) {
-      setPlanInvalidated(true);
+      setPlanInvalidated(error instanceof FlaGraphicImportError &&
+        (error.code === 'STALE_PLAN' || error.code === 'PROJECT_NOT_TRACKED' ||
+          error.code === 'UNSUPPORTED_SOURCE' || error.code === 'ROLLBACK_FAILED'));
       setPreviewFailure({ kind: 'import', details: diagnosticText(error) });
       setStatusMessage('导入失败');
     } finally {
       setImporting(false);
+      importingRef.current = false;
       onImportingChange?.(false);
     }
     if (imported) onImportComplete?.();
   };
+
+  useEffect(() => {
+    if (!importCompleted) return;
+    const timer = window.setTimeout(() => setImportCompleted(false), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [importCompleted]);
 
   const onFocusCandidate = (candidate: FlaWorkbenchCandidate): void => {
     if (candidate.kind !== 'graphic' || importing || importLocked || planInvalidated) return;
@@ -334,7 +354,7 @@ export function FlaGraphicInstanceWorkbench({
   const previewEmptyContent = previewFailure ? (
     <div className="fla-c03-preview-placeholder fla-graphic-preview-failure" data-testid="fla-graphic-instance-preview-failure" role="alert">
       <ImageOff aria-hidden="true" size={22} />
-      <strong>{previewFailure.kind === 'session-expired' ? 'FLA 会话已失效' : '预览加载失败'}</strong>
+      <strong>{previewFailure.kind === 'session-expired' ? 'FLA 会话已失效' : previewFailure.kind === 'import' ? '导入失败，请重试' : '预览加载失败'}</strong>
     </div>
   ) : previewLoading || isTargetLoading ? (
     <div className="fla-c03-preview-placeholder" data-testid="fla-graphic-instance-preview-loading" role="status">
@@ -359,7 +379,7 @@ export function FlaGraphicInstanceWorkbench({
       <pre>{previewFailure.details}</pre>
     </details>
   ) : undefined;
-  const retryAction = previewFailure ? (
+  const retryAction = previewFailure && (previewFailure.kind !== 'import' || planInvalidated) ? (
     previewFailure.kind === 'session-expired' || previewFailure.kind === 'no-main' ? (
       <button
         className="fla-c03-graphic-reimport"
@@ -422,7 +442,9 @@ export function FlaGraphicInstanceWorkbench({
       testIdPrefix="fla-graphic-instance"
       workbenchClassName="fla-graphic-instance-workbench"
       contentClassName="fla-graphic-instance-workbench-content"
-      footerAuxiliary={retryAction}
+      footerAuxiliary={retryAction ?? (importCompleted ? (
+        <output className="fla-c03-receipt-transient" role="status">已导入元件</output>
+      ) : null)}
       snapshotPreview={null}
       sequencePreview={null}
       onSearchTextChange={setSearchText}

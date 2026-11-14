@@ -857,7 +857,6 @@ export function FlaCompatibilityReviewSession({
             enabled={reviewRoute === 'graphic' && !unifiedImportRunning}
             importLocked={selectionLocked}
             importDisabledReason={graphicImportDisabledReason}
-            onImportComplete={closeSession}
             onRequestReimport={closeSession}
             onImportGraphicInstance={onImportGraphicInstance}
             onImportingChange={updateGraphicImporting}
