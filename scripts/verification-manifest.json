@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
-  "generatedFor": "issue-209 gate inventory; issue-1094 optional subsystem routing",
+  "generatedFor": "issue-209 gate inventory; issue-1095 Core-only CI and manual diagnostics",
   "generatedFrom": "main@8024a701a97b1ddacf18758eb55ac06a6e2b98c9",
-  "description": "Ledger of every top-level verify:* script and the optional path-to-subsystem mapping used by Core CI. Full suites are manual only.",
+  "description": "Verifier command ledger. Daily CI runs Core only; this inventory does not select CI jobs. Scoped historical runtime diagnostics are manual (CI-LEAN-02).",
   "statusVocabulary": [
     "active",
     "superseded",
@@ -22,462 +22,7 @@
     "manual",
     "unknown"
   ],
-  "routing": {
-    "schemaVersion": 3,
-    "description": "CI-LEAN-01: optional path-to-subsystem mapping; unmapped paths run Core only.",
-    "docsPatterns": [
-      "README.md",
-      "AGENTS.md",
-      "DESIGN.md",
-      "docs/**/*.md"
-    ],
-    "fullRegressionSuites": [
-      "project",
-      "assets",
-      "character",
-      "shot",
-      "canvas",
-      "history",
-      "editor",
-      "timeline"
-    ],
-    "routes": [
-      {
-        "id": "project",
-        "sourcePatterns": [
-          "src/renderer/features/recovery/**",
-          "src/renderer/features/welcome/**",
-          "public/project-launcher-banner.png"
-        ],
-        "testPatterns": [
-          "tests/unit/recovery-*.test.ts",
-          "tests/unit/recent-projects-*.test.ts",
-          "tests/integration/recovery-lifecycle.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day13*",
-          "scripts/verify-day14*",
-          "scripts/verify-m1*",
-          "scripts/verify-issue73*",
-          "scripts/verify-issue76*",
-          "scripts/verify-issue102-task1*",
-          "scripts/verify-issue102-task3*"
-        ],
-        "suites": [
-          "project"
-        ],
-        "owner": "project"
-      },
-      {
-        "id": "assets",
-        "sourcePatterns": [
-          "src/renderer/features/assets/**"
-        ],
-        "testPatterns": [
-          "tests/unit/asset-*.test.ts",
-          "tests/integration/asset-*.test.ts",
-          "tests/unit/product-copy.test.ts",
-          "tests/unit/apply-asset-import-response.test.ts",
-          "tests/unit/animation-library-components.test.ts",
-          "tests/unit/animation-playback.test.ts",
-          "tests/unit/animation-preview-lifecycle.test.ts",
-          "tests/unit/animation-preview-e6-lifecycle-stability.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day16*",
-          "scripts/verify-day17*",
-          "scripts/verify-day18*"
-        ],
-        "suites": [
-          "assets",
-          "character"
-        ],
-        "owner": "assets"
-      },
-      {
-        "id": "fla-import",
-        "sourcePatterns": [
-          "src/renderer/fla-import/**",
-          "src/renderer/styles/features/fla-import/c03-unified-workbench.css",
-          "fla-parser.html",
-          "fla-static-snapshot.html",
-          "src/renderer/fla-static-snapshot-renderer.ts",
-          "docs/research/fla-corpus-manifest.json",
-          "docs/research/fla-v1.5-c1-recovery-evidence.json",
-          "docs/research/fla-v1.5-c2-safe-recovery-envelope.json",
-          "docs/research/fla-v1.5-c3-compatibility-recovery.json",
-          "docs/research/fla-v1.5-c4-recovered-content-routing.json",
-          "docs/research/issue-704-black-candidate-discovery.json",
-          "docs/research/issue-704-black-candidate-manifest.json",
-          "scripts/research/issue705-black-asset-batch-core.cjs",
-          "scripts/research/issue705-black-asset-batch.cjs",
-          "docs/research/issue-705-black-asset-batch.md",
-          "docs/research/issue-705-black-asset-batch.json",
-          "docs/research/issue-705-black-asset-batch-manifest.json",
-          "docs/research/issue-706-cross-corpus-generalization.md",
-          "docs/research/issue-706-cross-corpus-generalization.json",
-          "docs/evidence/issue-697/target-fill-edges.json",
-          "docs/evidence/issue-737/swf-crossstage-map.json",
-          "docs/evidence/issue-739/issue739-open-fill-corpus-differential.json",
-          "docs/research/issue-702-black-multi-pose-census.json",
-          "docs/research/issue-703-nested-graphic-frame-sync.json",
-          "docs/research/issue-732-cross-category-capability-census.csv",
-          "docs/research/issue-732-cross-category-capability-census.json",
-          "scripts/research/issue706-cross-corpus-core.cjs",
-          "scripts/research/issue706-cross-corpus-electron-probe.cjs",
-          "scripts/research/issue706-cross-corpus-batch.cjs",
-          "docs/evidence/issue-284-r0/.gitignore",
-          "docs/evidence/issue-284-r0/r0-budget.json",
-          "docs/evidence/issue-284-r0/r0-determinism.json",
-          "docs/evidence/issue-284-r0/r0-extract.json",
-          "docs/evidence/issue-284-r0/r0-render-sword.png",
-          "docs/evidence/issue-284-r0/r0-render-sword.svg",
-          "docs/evidence/issue-294-r2/r2-summary.json"
-        ],
-        "testPatterns": [
-          "tests/unit/fla-*.test.ts",
-          "tests/unit/fla-static-snapshot-render-session.test.ts",
-          "tests/unit/fla-static-snapshot-commit.test.ts",
-          "tests/unit/fla-static-snapshot-api.test.ts",
-          "tests/unit/issue705-black-asset-batch.test.ts",
-          "tests/unit/issue706-cross-corpus.test.ts",
-          "tests/contract/issue260-slice4.test.ts",
-          "tests/unit/apply-fla-asset-commit-response.test.ts",
-          "tests/unit/apply-fla-frame-sequence-commit-response.test.ts",
-          "tests/helpers/fla-structural-probe.ts",
-          "tests/helpers/fla-render-fixture.ts",
-          "tests/integration/fla-b0-structural-probe.test.ts",
-          "tests/unit/fla-derive-structure-summary.test.ts",
-          "tests/integration/fla-b1-structural-fields.test.ts",
-          "tests/unit/fla-corpus-probe.test.ts",
-          "tests/integration/fla-corpus-collector.test.ts",
-          "tests/helpers/fla-corpus-probe.cjs",
-          "tests/helpers/fla-corpus-probe.d.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/fla-f1-03-electron-acceptance.cjs",
-          "scripts/verify-issue251-slice1*",
-          "scripts/verify-issue253-slice2*",
-          "scripts/verify-issue257-slice3*",
-          "scripts/verify-issue260-slice4*",
-          "scripts/verify-issue396-stage-d*",
-          "scripts/verify-issue399-stage-e*",
-          "scripts/verify-issue402-stage-f*",
-          "scripts/verify-issue403-raster-containment*",
-          "scripts/verify-issue405-stage-g*",
-          "scripts/verify-issue407-stage-a*",
-          "scripts/verify-issue676-p0-c02*",
-          "scripts/verify-issue676-p0-c03*",
-          "scripts/verify-issue680-p1-c03*",
-          "scripts/verify-issue775-c03.cjs",
-          "scripts/verify-issue686-p2-c02.cjs",
-          "scripts/verify-issue686-p2-c03.cjs",
-          "scripts/verify-issue686-p2-c04.cjs",
-          "scripts/verify-issue686-p2-c05.cjs"
-        ],
-        "suites": [
-          "assets"
-        ],
-        "owner": "fla-import"
-      },
-      {
-        "id": "characters",
-        "sourcePatterns": [
-          "src/renderer/features/characters/**",
-          "public/character-empty-normal.png",
-          "public/character-empty-angry.png"
-        ],
-        "testPatterns": [
-          "tests/unit/character-*.test.ts",
-          "tests/unit/issue815-talking-head-settings.test.ts",
-          "tests/unit/legacy-character-layer-reminder.test.ts",
-          "tests/integration/character-*.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day19*",
-          "scripts/verify-issue609-character-assembly.cjs",
-          "scripts/verify-issue897-c2-adaptive-parts.cjs",
-          "scripts/verify-issue899-c3-v0.cjs"
-        ],
-        "suites": [
-          "character"
-        ],
-        "owner": "character"
-      },
-      {
-        "id": "shots",
-        "sourcePatterns": [
-          "src/renderer/features/shots/**"
-        ],
-        "testPatterns": [
-          "tests/unit/shot-*.test.ts",
-          "tests/integration/shot-*.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day20*",
-          "scripts/verify-issue608-shot-thumbnail.cjs"
-        ],
-        "suites": [
-          "shot"
-        ],
-        "owner": "shot"
-      },
-      {
-        "id": "canvas",
-        "sourcePatterns": [
-          "src/renderer/features/canvas/**",
-          "src/renderer/features/properties/**",
-          "src/renderer/stage/**",
-          "src/export-renderer/**",
-          "docs/evidence/issue-606/receipt.json",
-          "docs/design/huabu.png",
-          "src/domain/evaluate-shot-at-time.ts",
-          "src/domain/migrations/**",
-          "src/domain/models/layer.ts",
-          "src/domain/models/project.ts",
-          "src/domain/models/shot.ts",
-          "src/domain/services/LayerService.ts",
-          "src/renderer/stores/layerStore.ts"
-        ],
-        "testPatterns": [
-          "tests/unit/canvas-*.test.ts",
-          "tests/unit/affine-matrix.test.ts",
-          "tests/unit/issue669-talking-head-motion.test.ts",
-          "tests/unit/stage-*.test.ts",
-          "tests/unit/konva-pixel-ratio.test.ts",
-          "tests/unit/viewport-*.test.ts",
-          "tests/unit/editor-issue578-live-scrub.test.ts",
-          "tests/unit/temporal-visual-continuity.test.ts",
-          "tests/unit/feedback-hygiene.test.ts",
-          "tests/unit/domain/evaluate-shot-at-time.test.ts",
-          "tests/unit/domain/migrations/project-migration.test.ts",
-          "tests/unit/animation-playback-controls.test.ts",
-          "tests/unit/issue915-animation-properties.test.ts",
-          "tests/unit/export-preparation.test.ts",
-          "tests/unit/layer-service.test.ts",
-          "tests/unit/layer-stores.test.ts",
-          "tests/integration/animation-persistence.test.ts",
-          "tests/integration/ap03-animation-image-prewarm.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day21*",
-          "scripts/verify-day22*",
-          "scripts/verify-day23*",
-          "scripts/verify-issue47*",
-          "scripts/verify-issue95*",
-          "scripts/verify-issue99*",
-          "scripts/verify-issue457*",
-          "scripts/verify-issue579*",
-          "scripts/verify-issue602*",
-          "scripts/verify-issue606*",
-          "scripts/verify-issue872-motion-preview-pixels.cjs",
-          "scripts/verify-issue871-am03-electron*",
-          "scripts/verify-issue890-am04-electron*"
-        ],
-        "suites": [
-          "canvas",
-          "history"
-        ],
-        "owner": "canvas"
-      },
-      {
-        "id": "history-controls",
-        "sourcePatterns": [
-          "src/renderer/features/editor/HistoryControls*",
-          "src/renderer/features/editor/useHistoryShortcuts*"
-        ],
-        "testPatterns": [
-          "tests/unit/history-*.test.ts",
-          "tests/unit/editor-history.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-day24*"
-        ],
-        "suites": [
-          "history",
-          "canvas"
-        ],
-        "owner": "history"
-      },
-      {
-        "id": "timeline",
-        "sourcePatterns": [
-          "src/renderer/features/timeline/**"
-        ],
-        "testPatterns": [
-          "tests/unit/features/timeline/**",
-          "tests/integration/timeline-selection.test.ts",
-          "tests/contract/*timeline*.test.ts",
-          "tests/contract/day26-*.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue197*",
-          "scripts/verify-issue199*",
-          "scripts/verify-issue207*",
-          "scripts/verify-issue655-preview-isolation.cjs",
-          "scripts/verify-issue658-audio-timeline.cjs"
-        ],
-        "suites": [
-          "timeline"
-        ],
-        "owner": "timeline"
-      },
-      {
-        "id": "dialogue",
-        "sourcePatterns": [
-          "src/renderer/features/dialogue/**"
-        ],
-        "testPatterns": [
-          "tests/unit/dialogue-*.test.ts",
-          "tests/contract/issue220-*.test.ts",
-          "tests/contract/issue221-*.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue663-dialogue-voice.cjs"
-        ],
-        "suites": [
-          "editor",
-          "timeline"
-        ],
-        "owner": "dialogue"
-      },
-      {
-        "id": "subtitles",
-        "sourcePatterns": [
-          "src/renderer/features/subtitles/**"
-        ],
-        "testPatterns": [
-          "tests/unit/subtitle-*.test.ts"
-        ],
-        "verifierPatterns": [],
-        "suites": [
-          "canvas",
-          "timeline"
-        ],
-        "owner": "subtitles"
-      },
-      {
-        "id": "editor-shell",
-        "sourcePatterns": [
-          "src/renderer/features/actions/**",
-          "src/renderer/features/editor/**",
-          "src/renderer/shell/**",
-          "src/main/services/AssetPreviewAudioService.ts",
-          "src/main/ipc/register-asset-library-ipc-handlers.ts",
-          "src/preload/index.ts",
-          "src/renderer/global.d.ts",
-          "src/shared/asset-preview-audio-api.ts",
-          "src/shared/ipc/channels.ts",
-          "src/renderer/styles.css",
-          "src/renderer/styles/**",
-          "src/renderer/ui/**",
-          "docs/evidence/issue-530-css-split/receipt.json",
-          "docs/evidence/issue-541-p2-01/**",
-          "docs/evidence/issue-549-p2-20/**",
-          "docs/evidence/issue-549-p2-22/**",
-          "docs/evidence/issue-549-p2-23/**",
-          "docs/evidence/issue-549-p2-24/**",
-          "docs/evidence/issue-549-p2-25/**",
-          "docs/evidence/issue-549-p2-26/**",
-          "docs/evidence/issue-550-p2-15/**",
-          "docs/evidence/issue-551-p2-16/**",
-          "docs/evidence/issue-551-p2-17/**",
-          "docs/evidence/issue-552-p2-18/**",
-          "docs/evidence/issue-552-p2-19/**",
-          "docs/evidence/issue-552-p2-21/**",
-          "docs/evidence/issue-553-p2-27/**",
-          "docs/evidence/issue-553-p2-28/**",
-          "docs/evidence/issue-546-p2-b06/**",
-          "docs/evidence/issue-545-p2-02/**",
-          "docs/evidence/issue-545-p2-03/**",
-          "docs/evidence/issue-547-p2-06/**",
-          "docs/evidence/issue-547-p2-07/**",
-          "docs/evidence/issue-547-p2-08/**",
-          "docs/evidence/issue-547-p2-09/**",
-          "docs/evidence/issue-548-p2-04/**",
-          "docs/evidence/issue-548-p2-05/**",
-          "docs/evidence/issue-548-p2-10/**",
-          "docs/evidence/issue-548-p2-11/**",
-          "docs/evidence/issue-555-p3-01/**",
-          "docs/evidence/issue-567/**",
-          "docs/evidence/issue-568/**",
-          "docs/evidence/issue-569/**",
-          "docs/evidence/P4-00/**",
-          "docs/evidence/P4-SER/**",
-          "public/subtitle-empty-state.png"
-        ],
-        "testPatterns": [
-          "tests/unit/editor-*.test.ts",
-          "tests/unit/close-project-flow.test.ts",
-          "tests/unit/project-launcher.test.ts",
-          "tests/unit/product-preview-*.test.ts",
-          "tests/unit/issue886-au03-audio-working-set.test.ts",
-          "tests/unit/issue887-au03-capacity.test.ts",
-          "tests/unit/issue888-au03-followup.test.ts",
-          "tests/unit/issue889-au03-transition.test.ts",
-          "tests/unit/asset-preview-audio-service.test.ts",
-          "tests/unit/asset-library-ipc-handlers.test.ts",
-          "tests/unit/speaker-focus-preview-contract.test.ts",
-          "tests/unit/issue653-auto-camera-mode.test.ts",
-          "tests/unit/project-time-mapper.test.ts",
-          "tests/unit/left-workspace.test.ts",
-          "tests/unit/right-inspector*.test.ts",
-          "tests/unit/ui-m1-*.test.ts",
-          "tests/integration/editor-shell-*.test.ts",
-          "tests/integration/left-workspace.test.ts",
-          "tests/integration/right-inspector*.test.ts",
-          "tests/contract/ui-m1-*.test.ts",
-          "tests/contract/dom-selectors.baseline.test.ts",
-          "tests/contract/right-inspector-narrow-review.test.ts",
-          "tests/contract/issue541-p2-01.test.ts",
-          "tests/contract/issue546-p2-b06.test.ts",
-          "tests/contract/issue545-p2-b01.test.ts",
-          "tests/contract/issue547-p2-b03.test.ts",
-          "tests/contract/issue547-p2-b04.test.ts",
-          "tests/contract/issue548-p2-b05.test.ts",
-          "tests/contract/issue548-p2-b02.test.ts",
-          "tests/contract/issue549-ser02.test.ts",
-          "tests/contract/issue550-p2-15.test.ts",
-          "tests/contract/issue551-p2-16.test.ts",
-          "tests/contract/issue551-p2-17.test.ts",
-          "tests/contract/issue552-p2-18.test.ts",
-          "tests/contract/issue552-p2-19-p2-21.test.ts",
-          "tests/contract/issue553-ser06.test.ts",
-          "tests/contract/issue555-p3-01-selected-asset-surface.test.ts",
-          "tests/contract/issue561-p4-ser.test.ts",
-          "tests/helpers/read-stylesheet-source.ts",
-          "tests/unit/issue102-task4-responsive.test.ts",
-          "tests/unit/issue109-resource-workspace.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue102-task2*",
-          "scripts/verify-issue102-task4*",
-          "scripts/verify-issue109*",
-          "scripts/verify-issue410-project-launcher*",
-          "scripts/verify-issue456*",
-          "scripts/verify-issue457*",
-          "scripts/verify-issue460*",
-          "scripts/verify-css-split.cjs",
-          "scripts/verify-issue659-preview-mixer.cjs",
-          "scripts/verify-issue880-preview-clock.cjs",
-          "scripts/verify-issue884-au02-audio-schedule.cjs",
-          "scripts/verify-issue886-au03-audio-workset.cjs",
-          "scripts/generate-issue887-au03-capacity-fixtures.cjs",
-          "scripts/verify-issue887-au03-capacity.cjs",
-          "scripts/generate-issue888-au03-followup-fixtures.cjs",
-          "scripts/verify-issue888-au03-followup.cjs",
-          "scripts/generate-issue889-au03-transition-fixtures.cjs",
-          "scripts/verify-issue889-au03-transition.cjs"
-        ],
-        "suites": [
-          "editor",
-          "timeline"
-        ],
-        "owner": "editor"
-      }
-    ]
-  },
-  "count": 111,
+  "count": 103,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -540,18 +85,6 @@
       "notes": "A01 bounded sandboxed Electron proof for v7/v8 audio role migration, trusted Project IPC, invalid-role rejection and save/reopen; not multi-track UI or human acceptance."
     },
     {
-      "id": "assets",
-      "script": "verify:assets",
-      "suite": "assets",
-      "subsystem": "assets",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "assets",
-      "supersedes": null,
-      "notes": "Wrapper over verify:day16/17/18. Preserved per RH-04 (do not replace current subsystem routing)."
-    },
-    {
       "id": "issue251-slice1",
       "script": "verify:issue251-slice1",
       "suite": "assets",
@@ -604,12 +137,12 @@
       "script": "verify:issue396-stage-d",
       "suite": "assets",
       "subsystem": "fla-import",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "fla-import",
       "supersedes": null,
-      "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
+      "notes": "CI-LEAN-02: retained as a specific local runtime diagnostic, outside daily CI and merge gates. Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
     },
     {
       "id": "issue767-u1",
@@ -772,36 +305,36 @@
       "script": "verify:issue579",
       "suite": "canvas",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Focused real Windows Electron Live Scrub proof for the 0:00 Base Edit View, non-zero read-only temporal inspection, real Timeline-to-Canvas wiring, blur-race write guard, return-to-zero transition, and one ordinary 0ms edit commit."
+      "notes": "CI-LEAN-02: retained as a specific local runtime diagnostic, outside daily CI and merge gates. Focused real Windows Electron Live Scrub proof for the 0:00 Base Edit View, non-zero read-only temporal inspection, real Timeline-to-Canvas wiring, blur-race write guard, return-to-zero transition, and one ordinary 0ms edit commit."
     },
     {
       "id": "issue602",
       "script": "verify:issue602",
       "suite": "canvas",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Focused real Windows Electron composite Character proof for Body+Face pixels, shared selection/drag, combined bounds, partial opacity, pending complete-visual retention, and Mouth fallback."
+      "notes": "CI-LEAN-02: retained as a specific local runtime diagnostic, outside daily CI and merge gates. Focused real Windows Electron composite Character proof for Body+Face pixels, shared selection/drag, combined bounds, partial opacity, pending complete-visual retention, and Mouth fallback."
     },
     {
       "id": "issue606",
       "script": "verify:issue606",
       "suite": "canvas",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+      "notes": "CI-LEAN-02: retained as a specific local runtime diagnostic, outside daily CI and merge gates. Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
     },
     {
       "id": "issue872-motion-pixels",
@@ -996,30 +529,6 @@
       "notes": "Issue #680 P1-C03 production proof using the approved read-only 人物倒地.fla corpus fixture: true non-tween Graphic source-state difference at frames 0 and 2, static PNG difference, and a bounded three-frame R2 sequence with static/sequence PNG parity. Writes PNGs and metadata-only receipt to an external --out directory; maintainer visual acceptance remains separate."
     },
     {
-      "id": "canvas",
-      "script": "verify:canvas",
-      "suite": "canvas",
-      "subsystem": "canvas",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "canvas",
-      "supersedes": null,
-      "notes": "Wrapper over verify:day21/22/23; also runs verify-issue47.cjs directly. Preserved per RH-04."
-    },
-    {
-      "id": "character",
-      "script": "verify:character",
-      "suite": "character",
-      "subsystem": "character",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "character",
-      "supersedes": null,
-      "notes": "Wrapper over verify:day19. Preserved per RH-04."
-    },
-    {
       "id": "day03",
       "script": "verify:day03",
       "suite": "day03",
@@ -1108,144 +617,132 @@
       "script": "verify:day13",
       "suite": "day13",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Electron IPC and project lifecycle."
     },
     {
       "id": "day14",
       "script": "verify:day14",
       "suite": "day14",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Native close decisions and recovery UI."
     },
     {
       "id": "day16",
       "script": "verify:day16",
       "suite": "day16",
       "subsystem": "assets",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "assets",
       "supersedes": null,
-      "notes": "Leaf gate of verify:assets wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Runtime asset import and filesystem integration."
     },
     {
       "id": "day17",
       "script": "verify:day17",
       "suite": "day17",
       "subsystem": "assets",
-      "status": "active",
+      "status": "manual",
       "platform": "cross-platform",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "assets",
       "supersedes": null,
-      "notes": "Node-based (no Electron build required); leaf gate of verify:assets."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Packaged FFmpeg/FFprobe metadata, thumbnails, media integrity and failure cases."
     },
     {
       "id": "day18",
       "script": "verify:day18",
       "suite": "day18",
       "subsystem": "assets",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "assets",
       "supersedes": null,
-      "notes": "Leaf gate of verify:assets wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Resource library interactions in Electron."
     },
     {
       "id": "day19",
       "script": "verify:day19",
       "suite": "day19",
       "subsystem": "character",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "character",
       "supersedes": null,
-      "notes": "Leaf gate of verify:character wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Character composition interactions in Electron."
     },
     {
       "id": "day20",
       "script": "verify:day20",
       "suite": "day20",
       "subsystem": "shot",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "shot",
       "supersedes": null,
-      "notes": "Leaf gate of verify:shot wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Shot lifecycle interactions in Electron."
     },
     {
       "id": "day21",
       "script": "verify:day21",
       "suite": "day21",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Leaf gate of verify:canvas wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Canvas rendering and editing in Electron."
     },
     {
       "id": "day22",
       "script": "verify:day22",
       "suite": "day22",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Leaf gate of verify:canvas wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Canvas selection and transform interactions in Electron."
     },
     {
       "id": "day23",
       "script": "verify:day23",
       "suite": "day23",
       "subsystem": "canvas",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Leaf gate of verify:canvas; also runs verify-issue47.cjs directly."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Layer controls in Electron; also runs verify-issue47.cjs."
     },
     {
       "id": "day24",
       "script": "verify:day24",
       "suite": "day24",
       "subsystem": "history",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "history",
       "supersedes": null,
-      "notes": "Leaf gate of verify:history wrapper."
-    },
-    {
-      "id": "editor",
-      "script": "verify:editor",
-      "suite": "editor",
-      "subsystem": "editor",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "editor",
-      "supersedes": null,
-      "notes": "Wrapper over verify:issue102-task2/4 + verify:issue109-resource-workspace. Preserved per RH-04."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. History gestures and lifecycle in Electron."
     },
     {
       "id": "gate-a",
@@ -1258,18 +755,6 @@
       "owner": "unassigned",
       "supersedes": null,
       "notes": "Added via PR #158 (gate-a-dpi). Standalone node-based gate; not wired into any subsystem wrapper in this checkout — owner to confirm intended role."
-    },
-    {
-      "id": "history",
-      "script": "verify:history",
-      "suite": "history",
-      "subsystem": "history",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "history",
-      "supersedes": null,
-      "notes": "Wrapper alias over verify:day24. Preserved per RH-04."
     },
     {
       "id": "issue100",
@@ -1300,60 +785,60 @@
       "script": "verify:issue102-task1",
       "suite": "issue102-task1",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Project Center startup and lazy editor loading."
     },
     {
       "id": "issue102-task2",
       "script": "verify:issue102-task2",
       "suite": "issue102-task2",
       "subsystem": "editor",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "editor",
       "supersedes": null,
-      "notes": "Leaf gate of verify:editor wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Clean/dirty editor shell lifecycle."
     },
     {
       "id": "issue102-task3",
       "script": "verify:issue102-task3",
       "suite": "issue102-task3",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project; also reused by verify:issue125."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Dirty/revision roundtrip and project switching; also reused by verify:issue125."
     },
     {
       "id": "issue102-task4",
       "script": "verify:issue102-task4",
       "suite": "issue102-task4",
       "subsystem": "editor",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "editor",
       "supersedes": null,
-      "notes": "Leaf gate of verify:editor wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Editor core actions in Electron."
     },
     {
       "id": "issue109-resource-workspace",
       "script": "verify:issue109-resource-workspace",
       "suite": "issue109-resource-workspace",
       "subsystem": "editor",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "editor",
       "supersedes": null,
-      "notes": "Leaf gate of verify:editor wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Resource workspace layout, focus and touch interactions."
     },
     {
       "id": "issue125",
@@ -1372,36 +857,36 @@
       "script": "verify:issue197",
       "suite": "issue197",
       "subsystem": "timeline",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "timeline",
       "supersedes": null,
-      "notes": "Leaf gate of verify:timeline wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Timeline collapse and real DOM layout."
     },
     {
       "id": "issue199",
       "script": "verify:issue199",
       "suite": "issue199",
       "subsystem": "timeline",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "timeline",
       "supersedes": null,
-      "notes": "Leaf gate of verify:timeline wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Timeline seek/scrub geometry."
     },
     {
       "id": "issue207",
       "script": "verify:issue207",
       "suite": "issue207",
       "subsystem": "timeline",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "timeline",
       "supersedes": null,
-      "notes": "Leaf gate of verify:timeline wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Empty timeline runtime gate."
     },
     {
       "id": "issue47",
@@ -1420,24 +905,24 @@
       "script": "verify:issue73",
       "suite": "issue73",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project wrapper."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Dirty project switching in Electron."
     },
     {
       "id": "issue76",
       "script": "verify:issue76",
       "suite": "issue76",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project; also reused by verify:issue125."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Project creation, preview and recovery; also reused by verify:issue125."
     },
     {
       "id": "issue94",
@@ -1480,48 +965,24 @@
       "script": "verify:m1",
       "suite": "m1",
       "subsystem": "project",
-      "status": "active",
+      "status": "manual",
       "platform": "cross-platform",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "project",
       "supersedes": null,
-      "notes": "Leaf gate of verify:project (milestone-1 gate)."
-    },
-    {
-      "id": "project",
-      "script": "verify:project",
-      "suite": "project",
-      "subsystem": "project",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "project",
-      "supersedes": null,
-      "notes": "Top-level subsystem routing wrapper aggregating day13/14, m1, issue73/76, issue102-task1/3. Preserved per RH-04."
-    },
-    {
-      "id": "shot",
-      "script": "verify:shot",
-      "suite": "shot",
-      "subsystem": "shot",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "shot",
-      "supersedes": null,
-      "notes": "Wrapper over verify:day20 (also runs build). Preserved per RH-04."
+      "notes": "CI-LEAN-02 manual diagnostic, outside daily CI and merge gates. Real Unicode filesystem lifecycle, atomic-save fault safety, recovery, relocation and close decisions."
     },
     {
       "id": "issue608-shot-thumbnail",
       "script": "verify:issue608-shot-thumbnail",
       "suite": "shot",
       "subsystem": "shot",
-      "status": "active",
+      "status": "manual",
       "platform": "windows",
-      "runIn": "ci-and-local",
+      "runIn": "manual",
       "owner": "shot",
       "supersedes": null,
-      "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
+      "notes": "CI-LEAN-02: retained as a specific local runtime diagnostic, outside daily CI and merge gates. Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
     },
     {
       "id": "issue609-character-assembly",
@@ -1774,18 +1235,6 @@
       "owner": "fla-rendering",
       "supersedes": null,
       "notes": "Issue #908 F1-03 Windows Electron proof for Main-owned Character creation from confirmed Part batches, idempotent recovery, formal save/reopen, and existing project History. Source artwork, screenshots, and receipts stay in the external acceptance directory."
-    },
-    {
-      "id": "timeline",
-      "script": "verify:timeline",
-      "suite": "timeline",
-      "subsystem": "timeline",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "ci-and-local",
-      "owner": "timeline",
-      "supersedes": null,
-      "notes": "Wrapper over verify:issue197/199/207. Preserved per RH-04."
     },
     {
       "id": "issue871-am03-electron",

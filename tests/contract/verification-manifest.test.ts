@@ -18,7 +18,6 @@ const manifest = JSON.parse(
   runInVocabulary: string[];
   count: number;
   gates: Array<Record<string, unknown>>;
-  routing: Record<string, unknown>;
 };
 
 // Canonical vocabularies from Issue #209 (RH-04). The manifest must declare the
@@ -31,11 +30,10 @@ const REQUIRED = ['id', 'script', 'suite', 'subsystem', 'status', 'platform', 'r
 const pkgVerify = Object.keys(pkg.scripts).filter((k) => k.startsWith('verify:'));
 const manifestByScript = new Map(manifest.gates.map((g) => [g.script as string, g]));
 
-describe('RH-07 verification routing manifest', () => {
-  it('evolves the RH-04/RH-05 ledger without creating a separate routing file', () => {
+describe('Verifier command inventory', () => {
+  it('keeps the command ledger without a daily suite-selection database', () => {
     expect(manifest.manifestVersion).toBe(2);
-    expect(manifest.routing).toBeTruthy();
-    expect((manifest.routing as { schemaVersion?: number }).schemaVersion).toBe(3);
+    expect(manifest).not.toHaveProperty('routing');
   });
 });
 

@@ -22,12 +22,12 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Select subsystem regressions
+      - name: Determine docs-only scope
         id: scope
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/ci-routing.cjs classify
+        run: node scripts/ci-routing.cjs scope
       - name: Validate diff whitespace
         env:
           BASE_SHA: ${{ steps.scope.outputs.base }}
@@ -64,30 +64,10 @@ jobs:
       - name: Build
         if: steps.scope.outputs.docs_only != 'true'
         run: pnpm build
-      - name: Prepare Electron for selected regressions
-        if: steps.scope.outputs.suites != ''
-        run: |
-          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
-            $env:force_no_cache = 'true'
-            pnpm exec electron --version
-          }
-          if (-not (Test-Path -LiteralPath 'node_modules/electron/dist/electron.exe')) {
-            throw 'Electron runtime binary was not installed.'
-          }
-      - name: Subsystem regressions
-        if: steps.scope.outputs.suites != ''
-        env:
-          SUBSYSTEM_SUITES: ${{ steps.scope.outputs.suites }}
-        run: |
-          foreach ($suite in $env:SUBSYSTEM_SUITES.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            & pnpm "verify:$suite"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
       - name: Summarize checks
         if: always()
         env:
           DOCS_ONLY: ${{ steps.scope.outputs.docs_only }}
-          SUBSYSTEM_SUITES: ${{ steps.scope.outputs.suites }}
           JOB_STATUS: ${{ job.status }}
         run: |
           "## Core CI: $env:JOB_STATUS" >> $env:GITHUB_STEP_SUMMARY
@@ -96,7 +76,6 @@ jobs:
           } else {
             "Core: diff check, typecheck, lint, unit, integration, build." >> $env:GITHUB_STEP_SUMMARY
           }
-          "Subsystem regression: $env:SUBSYSTEM_SUITES" >> $env:GITHUB_STEP_SUMMARY
 
   final:
     name: Final CI result
@@ -108,5 +87,5 @@ jobs:
         env:
           CORE_RESULT: ${{ needs.core.result }}
         run: |
-          echo "Core + selected subsystem regressions: $CORE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo "Core CI: $CORE_RESULT" >> "$GITHUB_STEP_SUMMARY"
           test "$CORE_RESULT" = success
