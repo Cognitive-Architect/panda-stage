@@ -63,7 +63,7 @@ jobs:
         run: pnpm test:integration
       - name: Build
         if: steps.scope.outputs.docs_only != 'true'
-        run: pnpm build
+        run: pnpm build:renderer && pnpm build:electron
       - name: Summarize checks
         if: always()
         env:
