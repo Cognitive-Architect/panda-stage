@@ -141,7 +141,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain("return '空白画面';");
     expect(snapshotReview).toContain("status: 'error', reason: message");
     expect(unified).not.toContain('fla-c03-preview-reason');
-    expect(session).toContain('focusedSnapshotCandidate?.selectable');
+    expect(session).toContain('const showSnapshotPreview = Boolean(focusedSnapshotCandidate &&');
     expect(unified).toContain("testId('catalog-progress', 'fla-c03-catalog-progress')");
     expect(unified).toContain('aria-label={`预览 ${fullItemLabel}`}');
     expect(unified).toContain('aria-label={`选择 ${fullItemLabel}`}');

@@ -64,6 +64,7 @@ export interface FlaGraphicInstanceCommitServiceOptions {
   readonly onProjectRollback?: (
     projectRoot: string, previous: FlaGraphicInstanceProjectSnapshot, failedProject: Project,
   ) => void;
+  readonly onRecoveryRequired?: (sessionId: string) => void;
 }
 
 interface PendingFrameFile {
@@ -460,6 +461,8 @@ export class FlaGraphicInstanceCommitService {
   private readonly now: () => Date;
   private readonly onProjectRollback: FlaGraphicInstanceCommitServiceOptions['onProjectRollback'];
   private readonly activeSessions = new Set<string>();
+  private readonly recoverySessions = new Set<string>();
+  private readonly onRecoveryRequired: FlaGraphicInstanceCommitServiceOptions['onRecoveryRequired'];
 
   constructor(options: FlaGraphicInstanceCommitServiceOptions) {
     this.projectService = options.projectService;
@@ -471,6 +474,7 @@ export class FlaGraphicInstanceCommitService {
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
     this.onProjectRollback = options.onProjectRollback;
+    this.onRecoveryRequired = options.onRecoveryRequired;
   }
 
   async commit(rawRequest: unknown): Promise<FlaGraphicInstanceCommitResponse> {
@@ -483,6 +487,9 @@ export class FlaGraphicInstanceCommitService {
         '(unknown project)',
         'Invalid FLA Graphic instance import request.',
       );
+    }
+    if (this.recoverySessions.has(request.plan.sessionId)) {
+      return this.failure('ROLLBACK_FAILED', request.projectRoot, 'This import session requires Project recovery. Reopen the Project before importing again.', request);
     }
     if (this.activeSessions.has(request.plan.sessionId)) {
       return this.failure('COMMIT_BUSY', request.projectRoot, 'This FLA instance import is already being committed.', request);
@@ -972,6 +979,10 @@ export class FlaGraphicInstanceCommitService {
       openInstanceId?: number;
     } = {},
   ): FlaGraphicInstanceCommitResponse {
+    if (code === 'ROLLBACK_FAILED' && request && !this.recoverySessions.has(request.plan.sessionId)) {
+      this.recoverySessions.add(request.plan.sessionId);
+      this.onRecoveryRequired?.(request.plan.sessionId);
+    }
     return FlaGraphicInstanceCommitResponseSchema.parse({
       ok: false,
       error: {

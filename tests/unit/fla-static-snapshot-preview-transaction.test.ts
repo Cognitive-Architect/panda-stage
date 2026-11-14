@@ -54,6 +54,36 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 }
 
 describe('FLA static snapshot preview transaction', () => {
+  it('offers one fresh request for a still-needed cancellation and never loops (#1107)', async () => {
+    const client = {
+      preview: vi.fn(async (input: FlaStaticSnapshotPreviewRequest) => ({
+        ok: false as const, error: { code: 'RENDER_CANCELLED' as const, message: 'superseded', requestId: input.requestId },
+      })),
+      cancel: vi.fn(async () => ({ accepted: true })),
+    };
+    const result = await runFlaStaticSnapshotPreviewTransaction(client, request(REQUEST_A), new FlaStaticSnapshotPreviewQueue(), undefined,
+      { retryCancelled: true, shouldRun: () => true });
+    expect(client.preview).toHaveBeenCalledTimes(2);
+    expect(client.preview.mock.calls[0]![0].requestId).toBe(REQUEST_A);
+    expect(client.preview.mock.calls[1]![0].requestId).not.toBe(REQUEST_A);
+    expect(client.cancel).toHaveBeenCalledTimes(2);
+    expect(result.response?.ok).toBe(false);
+  });
+
+  it('discards an obsolete cancellation without reissuing or replacing the latest request', async () => {
+    let current = true;
+    const client = {
+      preview: vi.fn(async () => {
+        current = false;
+        return { ok: false as const, error: { code: 'RENDER_CANCELLED' as const, message: 'superseded', requestId: REQUEST_A } };
+      }),
+      cancel: vi.fn(async () => ({ accepted: true })),
+    };
+    await runFlaStaticSnapshotPreviewTransaction(client, request(REQUEST_A), new FlaStaticSnapshotPreviewQueue(), undefined,
+      { retryCancelled: true, shouldRun: () => current });
+    expect(client.preview).toHaveBeenCalledOnce();
+    expect(client.cancel).toHaveBeenCalledWith(expect.objectContaining({ requestId: REQUEST_A }));
+  });
   it('serializes scan and focus previews through request-scoped cleanup', async () => {
     const events: string[] = [];
     const firstStarted = deferred<void>();

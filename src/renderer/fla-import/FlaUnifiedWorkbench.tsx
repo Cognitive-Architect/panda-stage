@@ -43,6 +43,7 @@ interface FlaUnifiedWorkbenchProps {
   previewEmptyTitle?: string;
   previewEmptyDescription?: string;
   previewEmptyContent?: ReactNode;
+  previewOverride?: ReactNode;
   previewAuxiliary?: ReactNode;
   candidateEmptyMessage?: string | null;
   graphicKindLabel?: string;
@@ -97,6 +98,7 @@ export function FlaUnifiedWorkbench({
   previewEmptyTitle,
   previewEmptyDescription,
   previewEmptyContent,
+  previewOverride,
   previewAuxiliary,
   candidateEmptyMessage,
   graphicKindLabel = 'Graphic',
@@ -166,6 +168,7 @@ export function FlaUnifiedWorkbench({
   };
 
   const renderPreview = (): ReactNode => {
+    if (previewOverride !== undefined) return previewOverride;
     if (!focusedCandidate) {
       if (previewEmptyContent !== undefined) return previewEmptyContent;
       return (
@@ -195,6 +198,7 @@ export function FlaUnifiedWorkbench({
     }
 
     if (focusedCandidate.kind === 'snapshot' || focusedCandidate.kind === 'sequence') {
+      if (focusedCandidate.kind === 'snapshot' && showSnapshotPreview) return null;
       if (focusedCandidate.kind === 'snapshot' && !focusedCandidate.selectable) {
         return <PreviewPlaceholder candidate={focusedCandidate} />;
       }

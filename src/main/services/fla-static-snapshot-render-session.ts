@@ -68,6 +68,16 @@ export interface FlaStaticSnapshotRasterizeInput {
   pixelCount: number;
 }
 
+export class FlaStaticSnapshotRasterizerError extends Error {
+  constructor(
+    readonly code: 'RENDER_CANCELLED' | 'RENDER_TIMEOUT' | 'RENDER_FAILED' | 'RENDERER_CRASH',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'FlaStaticSnapshotRasterizerError';
+  }
+}
+
 export interface FlaStaticSnapshotRasterizeOutput {
   pngBytes: Uint8Array;
   width: number;
@@ -576,7 +586,7 @@ export class FlaStaticSnapshotRenderSession {
           this.settleActive(
             active,
             this.previewError(
-              'RENDERER_CRASH',
+              error instanceof FlaStaticSnapshotRasterizerError ? error.code : 'RENDERER_CRASH',
               `Snapshot rasterization failed: ${error instanceof Error ? error.message : String(error)}`,
               requestId,
             ),
