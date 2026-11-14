@@ -114,6 +114,16 @@ export function getTimelineHeightFromPointer(
   );
 }
 
+export interface FlaGraphicInternalTimelineContext {
+  readonly layerId: string;
+  readonly animationId: string;
+  readonly frameOrdinal: number;
+  readonly selectedNodePath: readonly string[] | null;
+  readonly internalTimeMs: number;
+  readonly fps: number;
+  readonly timelineAuthoringActive: boolean;
+}
+
 export interface TimelineUiState {
   /** Current playhead position in real milliseconds. UI-only, never persisted. */
   currentTimeMs: number;
@@ -129,6 +139,8 @@ export interface TimelineUiState {
   expandedHeightMaxPx: number;
   /** Whether the dedicated Stage A resize handle currently owns a pointer. */
   resizing: boolean;
+  /** Active Shared Definition internal timeline session context, if any. */
+  flaGraphicInternalContext: FlaGraphicInternalTimelineContext | null;
 }
 
 const INITIAL_STATE: TimelineUiState = {
@@ -142,6 +154,7 @@ const INITIAL_STATE: TimelineUiState = {
   expandedHeightPx: TIMELINE_EXPANDED_MIN_HEIGHT,
   expandedHeightMaxPx: TIMELINE_EXPANDED_MAX_HEIGHT,
   resizing: false,
+  flaGraphicInternalContext: null,
 };
 
 /**
@@ -197,6 +210,90 @@ export class TimelineUiStore {
     const snapped = Math.min(snapToFrame(clamped), durationMs);
     if (snapped === this.state.currentTimeMs) return;
     this.patch({ currentTimeMs: snapped });
+  }
+
+  setFlaGraphicInternalContext(
+    context:
+      | (Omit<
+          FlaGraphicInternalTimelineContext,
+          'internalTimeMs' | 'timelineAuthoringActive'
+        > & {
+          readonly internalTimeMs?: number;
+          readonly timelineAuthoringActive?: boolean;
+        })
+      | null,
+  ): void {
+    if (!context) {
+      if (this.state.flaGraphicInternalContext === null) return;
+      this.patch({ flaGraphicInternalContext: null });
+      return;
+    }
+    const prev = this.state.flaGraphicInternalContext;
+    const internalTimeMs =
+      context.internalTimeMs ??
+      (prev && prev.animationId === context.animationId
+        ? prev.internalTimeMs
+        : 0);
+    const timelineAuthoringActive =
+      context.timelineAuthoringActive ??
+      (prev && prev.animationId === context.animationId
+        ? prev.timelineAuthoringActive
+        : false);
+    if (
+      prev &&
+      prev.layerId === context.layerId &&
+      prev.animationId === context.animationId &&
+      prev.frameOrdinal === context.frameOrdinal &&
+      prev.internalTimeMs === internalTimeMs &&
+      prev.fps === context.fps &&
+      prev.timelineAuthoringActive === timelineAuthoringActive &&
+      JSON.stringify(prev.selectedNodePath) ===
+        JSON.stringify(context.selectedNodePath)
+    ) {
+      return;
+    }
+    this.patch({
+      flaGraphicInternalContext: {
+        layerId: context.layerId,
+        animationId: context.animationId,
+        frameOrdinal: context.frameOrdinal,
+        selectedNodePath: context.selectedNodePath,
+        internalTimeMs,
+        fps: context.fps,
+        timelineAuthoringActive,
+      },
+    });
+  }
+
+  setFlaGraphicTimelineAuthoringActive(active: boolean): void {
+    const current = this.state.flaGraphicInternalContext;
+    if (!current || current.timelineAuthoringActive === active) return;
+    this.patch({
+      flaGraphicInternalContext: {
+        ...current,
+        timelineAuthoringActive: active,
+      },
+    });
+  }
+
+  seekFlaGraphicInternalTime(timeMs: number, durationMs = 10_000): void {
+    const current = this.state.flaGraphicInternalContext;
+    if (!current) return;
+    const clamped = clampTime(timeMs, durationMs);
+    const snapped = Math.min(snapToFrame(clamped), durationMs);
+    if (
+      snapped === current.internalTimeMs &&
+      current.timelineAuthoringActive
+    ) {
+      return;
+    }
+    this.patch({
+      flaGraphicInternalContext: {
+        ...current,
+        internalTimeMs: snapped,
+        timelineAuthoringActive: true,
+      },
+    });
   }
 
   /**
@@ -287,8 +384,18 @@ export class TimelineUiStore {
 
   /** Reset playhead + scroll on shot change. Zoom is intentionally kept. */
   resetForShot(): void {
-    if (this.state.currentTimeMs === 0 && this.state.scrollPx === 0) return;
-    this.patch({ currentTimeMs: 0, scrollPx: 0 });
+    if (
+      this.state.currentTimeMs === 0 &&
+      this.state.scrollPx === 0 &&
+      this.state.flaGraphicInternalContext === null
+    ) {
+      return;
+    }
+    this.patch({
+      currentTimeMs: 0,
+      scrollPx: 0,
+      flaGraphicInternalContext: null,
+    });
   }
 
   dispose(): void {

@@ -77,8 +77,14 @@ const AssetBaseShape = {
     .optional(),
 };
 
-export const ImageAssetSchema = z
+const FlaGraphicFrameSchema = z
   .object({
+    definitionId: IdSchema,
+    ordinal: z.number().int().nonnegative().max(100_000),
+  })
+  .strict();
+
+const ImageAssetV16Shape = {
     ...AssetBaseShape,
     kind: z.literal('image'),
     width: z.number().int().positive(),
@@ -97,8 +103,28 @@ export const ImageAssetSchema = z
       })
       .strict()
       .optional(),
+};
+
+/** Exact image asset shape persisted by schema v16, before FLA Graphic frames. */
+export const ImageAssetV16Schema = z.object(ImageAssetV16Shape).strict();
+
+export const ImageAssetSchema = z
+  .object({
+    ...ImageAssetV16Shape,
+    /** Internal vector frame owned by a reusable FLA Graphic Definition. */
+    flaGraphicFrame: FlaGraphicFrameSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((asset, context) => {
+    if (asset.flaGraphicFrame &&
+        (asset.mimeType !== 'image/svg+xml' || !asset.sha256)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['mimeType'],
+        message: 'FLA Graphic frame assets must be hashed SVG images.',
+      });
+    }
+  });
 
 /** Strict image shape persisted by schema v12 and earlier. */
 export const ImageAssetV12Schema = z
@@ -146,6 +172,11 @@ export const AssetV12Schema = z.discriminatedUnion('kind', [
 
 export const AssetSchema = z.discriminatedUnion('kind', [
   ImageAssetSchema,
+  AudioAssetSchema,
+]);
+
+export const AssetV16Schema = z.discriminatedUnion('kind', [
+  ImageAssetV16Schema,
   AudioAssetSchema,
 ]);
 

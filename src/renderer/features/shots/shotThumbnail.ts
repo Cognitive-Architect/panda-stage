@@ -4,6 +4,7 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 
 export const SHOT_THUMBNAIL_MAX_EDGE = 256;
 export const SHOT_THUMBNAIL_MAX_CONCURRENT_RENDERS = 1;
@@ -170,6 +171,16 @@ export function shotThumbnailFingerprint(
           flipX: part.flipX,
           drawOrder: part.drawOrder,
         })),
+        flaGraphic: visual.flaGraphic
+          ? {
+              mode: visual.flaGraphic.mode,
+              frameOrdinal: visual.flaGraphic.frameOrdinal,
+              layers: visual.flaGraphic.layers,
+              resources: visual.flaGraphic.resourceAssetIds.map((assetId) =>
+                assetContentFingerprint(project, assetId),
+              ),
+            }
+          : null,
       })),
     });
   } catch {
@@ -249,10 +260,11 @@ async function readAssetThumbnail(
     name: string;
     sha256?: string;
   },
+  allowCanvasImageFallback = false,
 ): Promise<string> {
   const key = scopedKey(
     projectRoot,
-    `${asset.id}\u0000${asset.sha256 ?? ''}`,
+    `${asset.id}\u0000${asset.sha256 ?? ''}\u0000${allowCanvasImageFallback ? 'canvas-image' : 'thumbnail-only'}`,
   );
   const cached = readyAssetDataUrls.get(key);
   if (cached) return cached;
@@ -269,6 +281,29 @@ async function readAssetThumbnail(
       sha256: asset.sha256,
     });
     if (response.ok && response.status === 'ready') return response.dataUrl;
+    if (allowCanvasImageFallback && asset.sha256) {
+      const canvasImage = await window.pandaStage.assets.readCanvasImage({
+        projectRoot,
+        assetId: asset.id,
+        sha256: asset.sha256,
+      });
+      if (canvasImage.ok) {
+        const blob = new Blob(
+          [canvasImage.bytes.buffer as ArrayBuffer],
+          { type: canvasImage.mimeType },
+        );
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            if (typeof reader.result === 'string') resolve(reader.result);
+            else reject(new Error('Canvas image data URL could not be created.'));
+          };
+          reader.onerror = () => reject(reader.error ?? new Error('Canvas image read failed.'));
+          reader.readAsDataURL(blob);
+        });
+        return dataUrl;
+      }
+    }
     const message = response.ok
       ? `Asset thumbnail is unavailable for “${asset.name}”.`
       : response.error.message;
@@ -319,6 +354,14 @@ export async function createShotThumbnailDataUrl(
     throw new ShotThumbnailSourceError('Shot has no visual layers.');
   }
 
+  const structuredResourceAssetIds = new Set(
+    model.layers.flatMap(({ visual }) => visual.flaGraphic?.resourceAssetIds ?? []),
+  );
+  const legacyAssetIds = new Set(
+    model.layers.flatMap(({ visual }) =>
+      visual.flaGraphic ? [] : visual.parts.map((part) => part.assetId),
+    ),
+  );
   const assetsById = new Map(
     model.layers.flatMap(({ visual }) =>
       visual.parts.map((part) => {
@@ -329,6 +372,15 @@ export async function createShotThumbnailDataUrl(
           );
         }
         return [asset.id, asset] as const;
+      }),
+    ),
+  );
+  const structuredAssetsById = new Map(
+    model.layers.flatMap(({ visual }) =>
+      (visual.flaGraphic?.resourceAssetIds ?? []).flatMap((assetId) => {
+        if (assetsById.has(assetId)) return [];
+        const asset = resolveImageAsset(input.project, assetId);
+        return asset ? [[asset.id, asset] as const] : [];
       }),
     ),
   );
@@ -348,7 +400,11 @@ export async function createShotThumbnailDataUrl(
   const imageEntries = await Promise.all(
     assets.map(async (asset) => {
       try {
-        const dataUrl = await readAssetThumbnail(input.projectRoot, asset);
+        const dataUrl = await readAssetThumbnail(
+          input.projectRoot,
+          asset,
+          structuredResourceAssetIds.has(asset.id) && !legacyAssetIds.has(asset.id),
+        );
         return [asset.id, await loadImage(dataUrl)] as const;
       } catch (error) {
         throw new ShotThumbnailSourceError(
@@ -358,6 +414,18 @@ export async function createShotThumbnailDataUrl(
           ),
           { cause: error },
         );
+      }
+    }),
+  );
+  const structuredImageEntries = await Promise.all(
+    [...structuredAssetsById.values()].map(async (asset) => {
+      try {
+        const dataUrl = await readAssetThumbnail(input.projectRoot, asset, true);
+        return [asset.id, await loadImage(dataUrl)] as const;
+      } catch {
+        // Missing structure resources degrade at their node; the baked frame
+        // remains available as the legacy fallback for non-structured frames.
+        return null;
       }
     }),
   );
@@ -393,9 +461,17 @@ export async function createShotThumbnailDataUrl(
 
   context.fillStyle = '#111914';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  const images = new Map(imageEntries);
+  const images = new Map([
+    ...imageEntries,
+    ...structuredImageEntries.filter(
+      (entry): entry is readonly [string, HTMLImageElement] => entry !== null,
+    ),
+  ]);
   for (const { render, visual } of model.layers) {
     if (!render.visible) continue;
+    const structuredCanvas = visual.flaGraphic?.structureFrame
+      ? renderFlaGraphicCanvas(visual.flaGraphic, images, scale)
+      : null;
     const drawOwnerParts = (
       target: CanvasRenderingContext2D,
       opacity: number,
@@ -405,9 +481,18 @@ export async function createShotThumbnailDataUrl(
       target.rotate((render.rotationDeg * Math.PI) / 180);
       target.globalAlpha = opacity;
       target.scale(render.scaleX * scale, render.scaleY * scale);
-      for (const part of [...visual.parts].sort(
-        (left, right) => left.drawOrder - right.drawOrder,
-      )) {
+      if (structuredCanvas && visual.flaGraphic) {
+        target.drawImage(
+          structuredCanvas.canvas,
+          structuredCanvas.rect.x,
+          structuredCanvas.rect.y,
+          structuredCanvas.rect.width,
+          structuredCanvas.rect.height,
+        );
+        target.restore();
+        return;
+      }
+      for (const part of [...visual.parts].sort((left, right) => left.drawOrder - right.drawOrder)) {
         if (part.visible === false) continue;
         const image = images.get(part.assetId);
         if (!image) {

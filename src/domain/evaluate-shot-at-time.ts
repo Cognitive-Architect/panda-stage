@@ -1,4 +1,5 @@
 import type { Layer, Project, Shot, TimelineEvent } from './models';
+import { collectFlaGraphicTimelineDurationMs } from './models/flaGraphicTimeline';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
@@ -18,6 +19,8 @@ export interface EvaluatedLayer {
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
     animationId: string;
+    frameOrdinal: number;
+    internalTimeMs?: number;
     offset: { x: number; y: number };
     viewport: { width: number; height: number };
     canvas: { width: number; height: number };
@@ -114,6 +117,7 @@ function resolveAnimationFrame(
   project: Project,
   animationId: string,
   startTimeMs: number,
+  firstFrameIndex: number,
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
 ): ResolvedLayerVisualState {
@@ -131,11 +135,40 @@ function resolveAnimationFrame(
   const elapsedSourceFrames = Math.floor(
     Math.max(0, elapsedMs) * animation.source.sourceFps / 1_000,
   );
-  const completedOnce = elapsedSourceFrames >= animation.frames.length;
-  const sourceFrameIndex =
-    playback.mode === 'loop'
-      ? elapsedSourceFrames % animation.frames.length
-      : Math.min(animation.frames.length - 1, elapsedSourceFrames);
+  const firstFrame = Math.min(firstFrameIndex, animation.frames.length - 1);
+  const availableFrames = animation.frames.length - firstFrame;
+  const completedOnce = elapsedSourceFrames >= availableFrames;
+  const sourceFrameIndex = playback.mode === 'single-frame'
+    ? firstFrame
+    : playback.mode === 'loop'
+      ? firstFrame + (elapsedSourceFrames % availableFrames)
+      : Math.min(animation.frames.length - 1, firstFrame + elapsedSourceFrames);
+  const frameMs = 1_000 / Math.max(1, animation.source.sourceFps || 24);
+  const firstFrameMs = Math.round(firstFrame * frameMs);
+  const clampedElapsedMs = Math.max(0, elapsedMs);
+  let internalTimeMs = firstFrameMs;
+  if (playback.mode !== 'single-frame') {
+    if (playback.mode === 'loop') {
+      const timelineDurationMs =
+        'kind' in animation &&
+        animation.kind === 'fla-graphic' &&
+        animation.structure
+          ? collectFlaGraphicTimelineDurationMs(animation.structure.timeline)
+          : 0;
+      const loopDurationMs =
+        animation.frames.length > 1
+          ? Math.round(availableFrames * frameMs)
+          : timelineDurationMs > firstFrameMs
+            ? timelineDurationMs - firstFrameMs
+            : 0;
+      internalTimeMs =
+        loopDurationMs > 0
+          ? firstFrameMs + (clampedElapsedMs % loopDurationMs)
+          : firstFrameMs + clampedElapsedMs;
+    } else {
+      internalTimeMs = firstFrameMs + clampedElapsedMs;
+    }
+  }
   const frame = animation.frames[sourceFrameIndex];
   if (!frame) {
     return {
@@ -152,6 +185,8 @@ function resolveAnimationFrame(
       !(playback.mode === 'once' && playback.endBehavior === 'hide' && completedOnce),
     animationFrame: {
       animationId: animation.id,
+      frameOrdinal: frame.ordinal,
+      internalTimeMs,
       offset: frame.offset,
       viewport: {
         width: frame.sourceViewport.width,
@@ -231,6 +266,7 @@ export function evaluateShotAtTime(
             project,
             animationSource.animationId,
             layer.startTimeMs ?? 0,
+            layer.animationFirstFrame ?? 0,
             layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
             timeMs,
           )

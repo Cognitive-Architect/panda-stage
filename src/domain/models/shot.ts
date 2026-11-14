@@ -6,6 +6,7 @@ import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
+  LayerV16Schema,
   LayerV15AdaptiveSchema,
   LayerV15AnimationSchema,
   LayerV3Schema,
@@ -39,6 +40,11 @@ export const ShotSchema = z
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();
+
+/** Exact persisted v16 shot contract before Graphic instance layer fields. */
+export const ShotV16Schema = ShotSchema.extend({
+  layers: z.array(LayerV16Schema),
+});
 
 /** Strict animation-era v15 shot shape before persisted playback settings. */
 export const ShotV15AnimationSchema = z

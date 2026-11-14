@@ -119,7 +119,7 @@ export type FrozenExportMedia =
   | {
       assetId: string;
       kind: 'image';
-      mimeType: 'image/png' | 'image/jpeg';
+      mimeType: 'image/png' | 'image/jpeg' | 'image/svg+xml';
       bytes: Uint8Array<ArrayBuffer>;
     }
   | {
@@ -861,7 +861,7 @@ export class ExportPreparationService {
         const digest = createHash('sha256').update(bytes).digest('hex');
         const allowedMimeTypes: readonly string[] =
           entry.kind === 'image'
-            ? ['image/png', 'image/jpeg']
+            ? ['image/png', 'image/jpeg', 'image/svg+xml']
             : ['audio/mpeg', 'audio/wav'];
         if (
           bytes.byteLength !== entry.byteLength ||
@@ -874,7 +874,7 @@ export class ExportPreparationService {
           media.push({
             assetId: entry.assetId,
             kind: 'image',
-            mimeType: entry.mimeType as 'image/png' | 'image/jpeg',
+            mimeType: entry.mimeType as 'image/png' | 'image/jpeg' | 'image/svg+xml',
             bytes,
           });
         } else {

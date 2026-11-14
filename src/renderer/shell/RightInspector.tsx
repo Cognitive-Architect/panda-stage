@@ -21,6 +21,9 @@ import {
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
+import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
+import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
@@ -109,7 +112,7 @@ export function getRightInspectorLayerSummary(
       snapshot.project.assets.find(
         (candidate) => candidate.id === firstFrameAssetId,
       ) ?? null;
-    return { asset, typeLabel: '正式动画图层' };
+    return { asset, typeLabel: animation && 'kind' in animation && animation.kind === 'fla-graphic' && animation.structure ? '元件' : '正式动画图层' };
   }
 
   const character =
@@ -383,6 +386,7 @@ export function RightInspector({
     snapshot,
     selection.layer,
   );
+  const structuredSelection = useStructuredGraphicSelection();
   const selectionTypeLabel = compact
     ? getPortraitLayerTypeLabel(layerSummary.typeLabel)
     : landscapePresentation
@@ -514,7 +518,7 @@ export function RightInspector({
           className="right-inspector-selection-summary"
           data-testid="right-inspector-selection-summary"
         >
-          <div className="right-inspector-selection-thumbnail">
+          {structuredSelection.target ? null : <div className="right-inspector-selection-thumbnail">
             {selectionThumbnail?.status === 'ready' ? (
               <img alt="" src={selectionThumbnail.dataUrl} />
             ) : (
@@ -526,7 +530,7 @@ export function RightInspector({
                     : '图片'}
               </span>
             )}
-          </div>
+          </div>}
           <div className="right-inspector-selection-copy">
             <strong>{selection.layer.name}</strong>
             <span>{selectionTypeLabel}</span>
@@ -543,7 +547,7 @@ export function RightInspector({
           </span>
         </>
       )}
-      {selection.layer ? (
+      {selection.layer && !structuredSelection.target ? (
         <span
           className="right-inspector-selection-message"
           data-testid="right-inspector-selection-message"
@@ -587,7 +591,9 @@ export function RightInspector({
   const inspectorBody = (
     <>
       {inspectorHeading}
+      <FlaGraphicInspectorPreview />
       {inspectorSelection}
+      <FlaGraphicStructureTree />
       {snapshot && currentShot && selection.layer?.source.kind === 'character' ? (
         <ExpressionAtTimeControl
           key={`${currentShot.id}:${selection.layer.id}`}

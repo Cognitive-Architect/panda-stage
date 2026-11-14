@@ -34,6 +34,7 @@ import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
 import { StandaloneAudioControls } from './StandaloneAudioControls';
+import { FlaGraphicInternalTimelineBar } from './FlaGraphicInternalTimelineBar';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -380,6 +381,12 @@ export function TimelineDock({
                 role="group"
               >
                 <div className="timeline-lanes" data-testid="timeline-lanes">
+                  {ui.flaGraphicInternalContext && snapshot?.project ? (
+                    <FlaGraphicInternalTimelineBar
+                      context={ui.flaGraphicInternalContext}
+                      project={snapshot.project}
+                    />
+                  ) : null}
                   {positionLane && shot ? (
                     <PositionLane
                       productPreviewOpen={productPreviewOpen}

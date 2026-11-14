@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
-import type { AnimationDefinition, Project } from '../../../domain';
+import {
+  collectFlaGraphicTimelineDurationMs,
+  evaluateFlaGraphicVisual,
+  type EvaluatedFlaGraphicVisual,
+  type ProjectAnimationDefinition,
+  type Project,
+} from '../../../domain';
 import {
   createAnimationPlaybackTimeline,
   markAnimationPlaybackFrameVisible,
@@ -9,6 +15,7 @@ import {
   type AnimationPlaybackTimeline,
 } from './animationPlayback';
 import { createAnimationImageBlob } from './animationImageBytes';
+import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import {
@@ -17,7 +24,7 @@ import {
 } from './AssetDropPayload';
 
 export interface AnimationLibraryPanelProps {
-  animations: readonly AnimationDefinition[];
+  animations: readonly ProjectAnimationDefinition[];
   project: Project;
   projectRoot: string;
   searchQuery: string;
@@ -29,6 +36,177 @@ function formatDuration(durationMs: number): string {
 
 function blobUrl(bytes: Uint8Array, mimeType: string): string {
   return URL.createObjectURL(createAnimationImageBlob(bytes, mimeType));
+}
+
+async function canvasPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => {
+      if (value) resolve(value);
+      else reject(new Error('FLA Graphic preview could not be encoded.'));
+    }, 'image/png');
+  });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function decodeCanvasImage(
+  bytes: Uint8Array,
+  mimeType: string,
+): Promise<HTMLImageElement> {
+  const objectUrl = URL.createObjectURL(
+    new Blob([bytes.buffer as ArrayBuffer], { type: mimeType }),
+  );
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = objectUrl;
+    await new Promise<void>((resolve, reject) => {
+      if (image.complete && image.naturalWidth > 0) {
+        resolve();
+        return;
+      }
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('FLA Graphic preview image could not be decoded.'));
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export interface FlaGraphicPreviewTimelineSpec {
+  readonly hasInternalTimeline: boolean;
+  readonly timelineDurationMs: number;
+  readonly fps: number;
+  readonly totalFrames: number;
+  readonly sampleAtFrameIndex: (frameIndex: number) => {
+    readonly frameOrdinal: number;
+    readonly internalTimeMs: number | undefined;
+  };
+}
+
+export function resolveFlaGraphicPreviewTimeline(
+  animation: ProjectAnimationDefinition,
+): FlaGraphicPreviewTimelineSpec {
+  const fps = Math.max(1, animation.source.sourceFps || 24);
+  const timelineDurationMs =
+    'kind' in animation && animation.kind === 'fla-graphic' && animation.structure
+      ? collectFlaGraphicTimelineDurationMs(
+          animation.structure.timeline,
+          animation.structure,
+        )
+      : 0;
+  const hasInternalTimeline = timelineDurationMs > 0;
+  const totalFrames = hasInternalTimeline
+    ? Math.max(
+        animation.frames.length,
+        Math.floor((timelineDurationMs * fps) / 1_000) + 1,
+      )
+    : animation.frames.length;
+
+  return {
+    hasInternalTimeline,
+    timelineDurationMs,
+    fps,
+    totalFrames,
+    sampleAtFrameIndex(frameIndex: number) {
+      const clampedIndex = Math.max(
+        0,
+        Math.min(frameIndex, Math.max(0, totalFrames - 1)),
+      );
+      const mappedFrameIndex = Math.min(
+        clampedIndex,
+        Math.max(0, animation.frames.length - 1),
+      );
+      const frameOrdinal = animation.frames[mappedFrameIndex]?.ordinal ?? 0;
+      if (!hasInternalTimeline) {
+        return { frameOrdinal, internalTimeMs: undefined };
+      }
+      const internalTimeMs =
+        clampedIndex >= totalFrames - 1
+          ? timelineDurationMs
+          : Math.min(
+              timelineDurationMs,
+              Math.round((clampedIndex * 1_000) / fps),
+            );
+      return { frameOrdinal, internalTimeMs };
+    },
+  };
+}
+
+export function evaluateFlaGraphicDefinitionPreviewVisual(
+  animation: Extract<ProjectAnimationDefinition, { kind: 'fla-graphic' }>,
+  frameIndex: number,
+): EvaluatedFlaGraphicVisual | null {
+  const spec = resolveFlaGraphicPreviewTimeline(animation);
+  const sample = spec.sampleAtFrameIndex(frameIndex);
+  return evaluateFlaGraphicVisual({
+    definition: animation,
+    frameOrdinal: sample.frameOrdinal,
+    mode: 'definition',
+    internalTimeMs: sample.internalTimeMs,
+  });
+}
+
+async function readFlaGraphicFramePreview(
+  animation: Extract<ProjectAnimationDefinition, { kind: 'fla-graphic' }>,
+  project: Project,
+  projectRoot: string,
+  frameOrdinal: number,
+  internalTimeMs?: number,
+): Promise<{ bytes: Uint8Array; mimeType: string; structured: boolean }> {
+  const frame = animation.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  if (!frame) throw new Error('The selected FLA Graphic frame is unavailable.');
+  const visual = evaluateFlaGraphicVisual({
+    definition: animation,
+    frameOrdinal,
+    mode: 'definition',
+    internalTimeMs,
+  });
+  if (!visual?.structureFrame) {
+    const frameAsset = project.assets.find((asset) => asset.id === frame.assetId);
+    if (
+      !frameAsset || frameAsset.kind !== 'image' ||
+      frameAsset.sha256 !== frame.sha256
+    ) {
+      throw new Error('The selected FLA Graphic frame asset is missing or changed.');
+    }
+    const frameResponse = await window.pandaStage.assets.readCanvasImage({
+      projectRoot,
+      assetId: frameAsset.id,
+      sha256: frame.sha256,
+    });
+    if (!frameResponse.ok) throw new Error(frameResponse.error.message);
+    return {
+      bytes: frameResponse.bytes,
+      mimeType: frameResponse.mimeType,
+      structured: false,
+    };
+  }
+
+  const images = new Map<string, HTMLImageElement>();
+  const imageEntries = await Promise.all(visual.resourceAssetIds.map(async (assetId) => {
+    const asset = project.assets.find(
+      (candidate) => candidate.id === assetId && candidate.kind === 'image',
+    );
+    if (!asset?.sha256) return null;
+    try {
+      const response = await window.pandaStage.assets.readCanvasImage({
+        projectRoot,
+        assetId: asset.id,
+        sha256: asset.sha256,
+      });
+      if (!response.ok) return null;
+      return [asset.id, await decodeCanvasImage(response.bytes, response.mimeType)] as const;
+    } catch {
+      return null;
+    }
+  }));
+  for (const entry of imageEntries) {
+    if (entry) images.set(entry[0], entry[1]);
+  }
+  const canvas = renderFlaGraphicCanvas(visual, images);
+  if (!canvas) throw new Error('FLA Graphic structure could not be rendered.');
+  return { bytes: await canvasPngBytes(canvas.canvas), mimeType: 'image/png', structured: true };
 }
 
 interface AnimationCoverState {
@@ -72,7 +250,11 @@ export function createAnimationCoverLoader(options: {
         if (visible) load();
         return;
       }
-      if (!response.ok || response.mimeType !== 'image/png' || !response.bytes) {
+      if (
+        !response.ok ||
+        (response.mimeType !== 'image/png' && response.mimeType !== 'image/svg+xml') ||
+        !response.bytes
+      ) {
         publish({ url: null, error: true, loading: false });
         return;
       }
@@ -120,7 +302,7 @@ interface AnimationCardScrollPosition {
 }
 
 export interface AnimationLibraryCardProps {
-  animation: AnimationDefinition;
+  animation: ProjectAnimationDefinition;
   project: Project;
   projectRoot: string;
 }
@@ -141,6 +323,11 @@ export function AnimationLibraryCard({
   const wasOpenRef = useRef(false);
   const draggedCardRef = useRef(false);
   const firstFrame = animation.frames[0];
+  const hasStructuredCover = Boolean(
+    'kind' in animation && animation.kind === 'fla-graphic' &&
+    firstFrame &&
+    animation.structure?.frames.some((frame) => frame.ordinal === firstFrame.ordinal),
+  );
 
   useEffect(() => {
     setCover({ url: null, error: false, loading: false });
@@ -156,11 +343,26 @@ export function AnimationLibraryCard({
     const stage = coverStageRef.current;
     if (!stage) return undefined;
     const loader = createAnimationCoverLoader({
-      read: () => window.pandaStage.assets.readCanvasImage({
-        projectRoot,
-        assetId: firstFrame.assetId,
-        sha256: firstFrame.sha256,
-      }),
+      read: async () => {
+        if ('kind' in animation && animation.kind === 'fla-graphic') {
+          try {
+            const preview = await readFlaGraphicFramePreview(
+              animation,
+              project,
+              projectRoot,
+              firstFrame.ordinal,
+            );
+            return { ok: true, mimeType: preview.mimeType, bytes: preview.bytes };
+          } catch {
+            return { ok: false };
+          }
+        }
+        return window.pandaStage.assets.readCanvasImage({
+          projectRoot,
+          assetId: firstFrame.assetId,
+          sha256: firstFrame.sha256,
+        });
+      },
       createUrl: blobUrl,
       revokeUrl: (url) => URL.revokeObjectURL(url),
       onStateChange: setCover,
@@ -177,7 +379,7 @@ export function AnimationLibraryCard({
       observer?.disconnect();
       loader.dispose();
     };
-  }, [animation.id, firstFrame, project.assets, projectRoot]);
+  }, [animation, firstFrame, project, projectRoot]);
 
   useEffect(() => {
     if (open) {
@@ -363,10 +565,10 @@ export function AnimationLibraryCard({
                   draggable={false}
                   src={cover.url}
                   style={{
-                    left: `${firstFrame.offset.x / animation.source.canvas.width * 100}%`,
-                    top: `${firstFrame.offset.y / animation.source.canvas.height * 100}%`,
-                    width: `${firstFrame.sourceViewport.width / animation.source.canvas.width * 100}%`,
-                    height: `${firstFrame.sourceViewport.height / animation.source.canvas.height * 100}%`,
+                    left: hasStructuredCover ? '0%' : `${firstFrame.offset.x / animation.source.canvas.width * 100}%`,
+                    top: hasStructuredCover ? '0%' : `${firstFrame.offset.y / animation.source.canvas.height * 100}%`,
+                    width: hasStructuredCover ? '100%' : `${firstFrame.sourceViewport.width / animation.source.canvas.width * 100}%`,
+                    height: hasStructuredCover ? '100%' : `${firstFrame.sourceViewport.height / animation.source.canvas.height * 100}%`,
                   }}
                 />
               </div>
@@ -423,7 +625,7 @@ export function AnimationLibraryPanel({
 }
 
 interface AnimationPreviewProps {
-  animation: AnimationDefinition;
+  animation: ProjectAnimationDefinition;
   project: Project;
   projectRoot: string;
   titleId: string;
@@ -448,8 +650,10 @@ export function AnimationPreview({
   const playingRef = useRef(false);
   const playbackTimelineRef = useRef<AnimationPlaybackTimeline | null>(null);
   const pendingFrameIndexRef = useRef<number | null>(null);
+  const previewTimelineSpec = resolveFlaGraphicPreviewTimeline(animation);
   const animationFrameRef = useRef<number | null>(null);
-  const lastFrameIndex = animation.frames.length - 1;
+  const totalPreviewFrames = previewTimelineSpec.totalFrames;
+  const lastFrameIndex = Math.max(0, totalPreviewFrames - 1);
 
   const replaceFrameUrl = useCallback((nextUrl: string | null): void => {
     if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
@@ -462,7 +666,12 @@ export function AnimationPreview({
     shouldApply?: () => boolean,
   ): Promise<FrameLoadResult> => {
     const requestId = ++loadRequestRef.current;
-    const frame = animation.frames[requestedIndex];
+    const sample = resolveFlaGraphicPreviewTimeline(animation).sampleAtFrameIndex(
+      requestedIndex,
+    );
+    const frame = animation.frames.find(
+      (candidate) => candidate.ordinal === sample.frameOrdinal,
+    ) ?? animation.frames[requestedIndex];
     if (!frame) return 'error';
     setLoading(true);
     setError(null);
@@ -471,21 +680,36 @@ export function AnimationPreview({
       if (!asset || asset.kind !== 'image' || asset.sha256 !== frame.sha256) {
         throw new Error('项目中的帧图片缺失或哈希不匹配。');
       }
-      const response = await window.pandaStage.assets.readCanvasImage({
-        projectRoot,
-        assetId: frame.assetId,
-        sha256: frame.sha256,
-      });
-      if (requestId !== loadRequestRef.current) return 'stale';
-      if (!response.ok) throw new Error(response.error.message);
-      if (response.mimeType !== 'image/png') {
-        throw new Error('帧图片格式无效。');
+      let previewBytes: Uint8Array;
+      let previewMimeType: string;
+      if ('kind' in animation && animation.kind === 'fla-graphic') {
+        const preview = await readFlaGraphicFramePreview(
+          animation,
+          project,
+          projectRoot,
+          frame.ordinal,
+          sample.internalTimeMs,
+        );
+        previewBytes = preview.bytes;
+        previewMimeType = preview.mimeType;
+      } else {
+        const response = await window.pandaStage.assets.readCanvasImage({
+          projectRoot,
+          assetId: frame.assetId,
+          sha256: frame.sha256,
+        });
+        if (!response.ok) throw new Error(response.error.message);
+        previewBytes = response.bytes;
+        previewMimeType = response.mimeType;
       }
-      if (shouldApply && !shouldApply()) {
+      if (requestId !== loadRequestRef.current) return 'stale';
+      if (!['image/png', 'image/jpeg', 'image/svg+xml'].includes(previewMimeType)) {
+        throw new Error('Frame image MIME type is invalid.');
+      }      if (shouldApply && !shouldApply()) {
         setLoading(false);
         return 'stale';
       }
-      const nextUrl = blobUrl(response.bytes, response.mimeType);
+      const nextUrl = blobUrl(previewBytes, previewMimeType);
       replaceFrameUrl(nextUrl);
       frameIndexRef.current = requestedIndex;
       setFrameIndex(requestedIndex);
@@ -528,9 +752,10 @@ export function AnimationPreview({
   }, [loadFrame, replaceFrameUrl]);
 
   const startPlayback = useCallback((fromIndex: number): void => {
+    const spec = resolveFlaGraphicPreviewTimeline(animation);
     playbackTimelineRef.current = createAnimationPlaybackTimeline(
-      animation.source.sourceFps,
-      animation.frames.length,
+      spec.fps,
+      spec.totalFrames,
       performance.now(),
       fromIndex,
     );
@@ -625,6 +850,19 @@ export function AnimationPreview({
     void loadFrame(requestedIndex);
   };
 
+  const displayedFrameIndex = Math.min(
+    frameIndex,
+    Math.max(0, animation.frames.length - 1),
+  );
+  const displayedFrame = animation.frames[displayedFrameIndex];
+  const displayedFrameIsStructured = Boolean(
+    'kind' in animation && animation.kind === 'fla-graphic' &&
+    displayedFrame &&
+    animation.structure?.frames.some(
+      (candidate) => candidate.ordinal === displayedFrame.ordinal,
+    ),
+  );
+
   return (
     <section className="animation-preview" data-animation-id={animation.id} data-testid="animation-preview">
       <header className="animation-preview-header">
@@ -651,10 +889,10 @@ export function AnimationPreview({
               alt={`${animation.name}，第 ${frameIndex + 1} 帧`}
               src={frameUrl}
               style={{
-                left: `${animation.frames[frameIndex]!.offset.x / animation.source.canvas.width * 100}%`,
-                top: `${animation.frames[frameIndex]!.offset.y / animation.source.canvas.height * 100}%`,
-                width: `${animation.frames[frameIndex]!.sourceViewport.width / animation.source.canvas.width * 100}%`,
-                height: `${animation.frames[frameIndex]!.sourceViewport.height / animation.source.canvas.height * 100}%`,
+                left: displayedFrameIsStructured ? '0%' : `${displayedFrame!.offset.x / animation.source.canvas.width * 100}%`,
+                top: displayedFrameIsStructured ? '0%' : `${displayedFrame!.offset.y / animation.source.canvas.height * 100}%`,
+                width: displayedFrameIsStructured ? '100%' : `${displayedFrame!.sourceViewport.width / animation.source.canvas.width * 100}%`,
+                height: displayedFrameIsStructured ? '100%' : `${displayedFrame!.sourceViewport.height / animation.source.canvas.height * 100}%`,
               }}
             />
           </div>
@@ -702,7 +940,7 @@ export function AnimationPreview({
             type="range"
             value={frameIndex}
           />
-          <output>{frameIndex + 1} / {animation.frames.length}</output>
+          <output>{frameIndex + 1} / {totalPreviewFrames}</output>
         </label>
       </div>
     </section>

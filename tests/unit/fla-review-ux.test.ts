@@ -14,6 +14,10 @@ const unified = readFileSync(
   'src/renderer/fla-import/FlaUnifiedWorkbench.tsx',
   'utf8',
 );
+const graphicWorkbench = readFileSync(
+  'src/renderer/fla-import/FlaGraphicInstanceWorkbench.tsx',
+  'utf8',
+);
 const selection = readFileSync(
   'src/renderer/fla-import/fla-unified-workbench-selection.ts',
   'utf8',
@@ -54,9 +58,9 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
   it('uses one two-column candidate grid, one preview, and a pinned footer', () => {
     expect(session).toContain('<FlaUnifiedWorkbench');
     expect(session).toContain('data-workbench-route="unified"');
-    expect(unified).toContain('data-testid="fla-c03-candidate-grid"');
-    expect(unified).toContain('data-testid="fla-c03-preview"');
-    expect(unified).toContain('data-testid="fla-c03-import-footer"');
+    expect(unified).toContain("testId('candidates', 'fla-c03-candidate-grid')");
+    expect(unified).toContain("testId('preview', 'fla-c03-preview')");
+    expect(unified).toContain("testId('footer', 'fla-c03-import-footer')");
     expect(unified).toContain('inert={importing}');
     expect(unified).toContain('data-testid="fla-c03-import-overlay"');
     expect(session).not.toContain('fla-import-workbench-tabs');
@@ -67,6 +71,18 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(styles).toContain('.fla-c03-preview');
     expect(styles).toMatch(/\.fla-c03-import-overlay-panel\s*\{[^}]*width:\s*min\(400px, 100%\);/u);
     expect(styles).toMatch(/\.fla-c03-import-overlay\s*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*auto;/u);
+  });
+
+  it('routes Graphic occurrences through the same single-select workbench without bulk controls', () => {
+    expect(graphicWorkbench).toContain('<FlaUnifiedWorkbench');
+    expect(graphicWorkbench).toContain('showMultiSelectControls={false}');
+    expect(graphicWorkbench).toContain('candidateSearchLabel="搜索元件"');
+    expect(graphicWorkbench).toContain('candidateListLabel="元件列表"');
+    expect(graphicWorkbench).toContain('previewSectionLabel="元件预览"');
+    expect(graphicWorkbench).toContain('graphicKindLabel="元件"');
+    expect(graphicWorkbench).toContain('singleImportLabel="导入此元件"');
+    expect(unified).toContain("focusedCandidate.kind === 'graphic'");
+    expect(unified).toContain('data-occurrence-id={focusedCandidate.kind');
   });
 
   it('searches the display list while preserving checks and restores selected-view browsing', () => {
@@ -126,7 +142,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(snapshotReview).toContain("status: 'error', reason: message");
     expect(unified).not.toContain('fla-c03-preview-reason');
     expect(session).toContain('focusedSnapshotCandidate?.selectable');
-    expect(unified).toContain('data-testid="fla-c03-catalog-progress"');
+    expect(unified).toContain("testId('catalog-progress', 'fla-c03-catalog-progress')");
     expect(unified).toContain('aria-label={`预览 ${fullItemLabel}`}');
     expect(unified).toContain('aria-label={`选择 ${fullItemLabel}`}');
     expect(session).toContain('onCatalogProgressChange={setCatalogProgress}');
@@ -140,7 +156,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain('data-testid="fla-unified-import-counts"');
     expect(unified).toContain('data-testid="fla-unified-import-items"');
     expect(session).toContain("event.key !== 'Escape'");
-    expect(session).toContain('unifiedImportRunningRef.current || renderTerminalState !==');
+    expect(session).toContain('unifiedImportRunningRef.current || graphicImportRunningRef.current ||');
     expect(unified).toContain('data-testid="fla-unified-import-stop"');
     expect(session).not.toContain('window.pandaStage.assets');
     expect(session).not.toContain('updateProject');

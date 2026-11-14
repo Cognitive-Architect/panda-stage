@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -8,6 +10,7 @@ import {
   migrateProject,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 import { isViewportChromePointerTarget } from '../../src/renderer/features/canvas/CanvasViewport';
 import { mapClientPointToLayerPosition } from '../../src/renderer/features/canvas/useCanvasDrop';
 import { parseLayerPositionDraft } from '../../src/renderer/features/properties/LayerPositionPanel';
@@ -484,6 +487,33 @@ describe('SelectableLayer interaction adapter', () => {
     ).toBe('selectable-canvas-layer');
   });
 
+  it('shows the saved-structure edit entry and scoped actions', () => {
+    const transform = calculateViewportTransform({ width: 960, height: 540 }, 'fit');
+    const activeMarkup = renderToStaticMarkup(createElement(CanvasToolbar, {
+      mode: 'fit',
+      point: null,
+      transform,
+      flaGraphicEditAvailable: true,
+      flaGraphicEditActive: true,
+      canEnterSelected: true,
+      readOnlySelected: true,
+    }));
+    const entryMarkup = renderToStaticMarkup(createElement(CanvasToolbar, {
+      mode: 'fit',
+      point: null,
+      transform,
+      flaGraphicEditAvailable: true,
+    }));
+
+    expect(activeMarkup).toContain('role="tooltip"');
+    expect(activeMarkup).toContain('返回上级');
+    expect(activeMarkup).toContain('进入');
+    expect(activeMarkup).toContain('当前对象只读');
+    expect(activeMarkup).not.toContain('当前内部调整将在后续保存阶段接入项目');
+    expect(activeMarkup).not.toContain('临时编辑');
+    expect(entryMarkup).toContain('data-testid="fla-group-edit-toggle"');
+    expect(entryMarkup).toContain('编辑元件');
+  });
   it('uses the original canvas-image API through the Canvas resource session', () => {
     const stage = readFileSync(
       'src/renderer/features/canvas/CanvasStage.tsx',
@@ -518,6 +548,15 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
+    expect(stage).toContain("if (event.key !== 'Escape' || !flaGraphicEditActive) return;");
+    expect(stage).toContain('resolveFlaGraphicEditTarget');
+    expect(stage).toContain('resolveFlaGraphicExitScopeTransition');
+    expect(stage).toContain('collectFlaGraphicStructureAssetIds');
+    expect(stage).toContain('JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])');
+    expect(stage).toContain('setFlaGraphicEditDrafts({});');
+    expect(stage).toContain('}, [editContextKey]);');
+    expect(stage).not.toContain('groupEditPreview');
+    expect(stage).not.toContain('FlaGroupEditTarget');
     const viewport = readFileSync(
       'src/renderer/features/canvas/CanvasViewport.tsx',
       'utf8',
@@ -527,6 +566,7 @@ describe('SelectableLayer interaction adapter', () => {
       'utf8',
     );
     expect(viewport).toContain('disabled: dropDisabled,');
+    expect(viewport).toContain('data-canvas-interactive-chrome="true"');
     expect(viewport).toContain(
       'interactionDisabled: dropInteractionDisabled,',
     );

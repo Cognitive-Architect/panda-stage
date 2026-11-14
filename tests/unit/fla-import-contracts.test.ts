@@ -289,6 +289,7 @@ describe('FLA import contracts and parser boundary', () => {
       // FLADocument value crosses this module's boundary).
       const previewResource =
         filePath.endsWith(`${path.sep}FlaCompatibilityReviewSession.tsx`) ||
+        filePath.endsWith(`${path.sep}FlaGraphicInstanceWorkbench.tsx`) ||
         filePath.endsWith(`${path.sep}FlaStaticSnapshotReview.tsx`) ||
         filePath.endsWith(`${path.sep}FlaFrameSequenceReview.tsx`);
       const forbidden = previewResource

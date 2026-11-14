@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import {
   ProjectSchema,
+  reconstructFlaGraphicStructure,
   type Project,
 } from '../../domain';
 import {
@@ -13,6 +14,33 @@ import {
 import { MediaInspectionService } from './MediaInspectionService';
 import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 import { resolveProjectAssetPath } from './project-asset-path';
+
+export function isSafeGeneratedFlaSvg(
+  bytes: Uint8Array,
+  width: number,
+  height: number,
+): boolean {
+  let svg: string;
+  try {
+    svg = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return false;
+  }
+  if (
+    /<!DOCTYPE|<!ENTITY|<script\b|<foreignObject\b|<iframe\b|<object\b|<embed\b|\bon[a-z]+\s*=/iu.test(svg) ||
+    /javascript:/iu.test(svg)
+  ) return false;
+  const root = svg.match(/<svg\b([^>]*)>/u)?.[1];
+  if (!root || !/\bxmlns=["']http:\/\/www\.w3\.org\/2000\/svg["']/u.test(root)) return false;
+  const svgWidth = root.match(/\bwidth=["']([0-9]+(?:\.[0-9]+)?)["']/u)?.[1];
+  const svgHeight = root.match(/\bheight=["']([0-9]+(?:\.[0-9]+)?)["']/u)?.[1];
+  if (Number(svgWidth) !== width || Number(svgHeight) !== height) return false;
+  const hrefs = [...svg.matchAll(/\b(?:xlink:)?href=["']([^"']+)["']/gu)];
+  return hrefs.every((match) => {
+    const href = match[1] ?? '';
+    return href.startsWith('#') || /^data:image\/png;base64,[a-z0-9+/=]+$/iu.test(href);
+  });
+}
 
 export interface AssetCanvasImageServiceOptions {
   getCurrentProjectSnapshot: (
@@ -120,9 +148,19 @@ export class AssetCanvasImageService {
     }
 
     const mimeType = asset.mimeType;
+    const generatedFlaSvg =
+      asset.kind === 'image' &&
+      mimeType === 'image/svg+xml' &&
+      (Boolean(asset.flaGraphicFrame) || project.animations.some((animation) =>
+        'kind' in animation && animation.kind === 'fla-graphic' && animation.structure &&
+        reconstructFlaGraphicStructure(animation.structure).some(({ node }) =>
+          node.type === 'opaque' && node.opaqueKind === 'shape' &&
+          node.fallbackScope === 'subtree' && node.fallbackAssetId === asset.id,
+        ),
+      ));
     if (
       asset.kind !== 'image' ||
-      (mimeType !== 'image/png' && mimeType !== 'image/jpeg')
+      (mimeType !== 'image/png' && mimeType !== 'image/jpeg' && !generatedFlaSvg)
     ) {
       return this.failure(
         'ASSET_CANVAS_IMAGE_READ_FAILED',
@@ -166,19 +204,21 @@ export class AssetCanvasImageService {
         );
       }
 
-      const inspected = await this.inspectionService.inspect(
-        sourcePath,
-        mimeType,
-      );
-      if (
-        inspected.kind !== 'image' ||
-        inspected.mimeType !== mimeType ||
-        inspected.width !== asset.width ||
-        inspected.height !== asset.height
-      ) {
-        throw new Error(
-          `The source metadata does not match the project asset (${asset.width}x${asset.height}).`,
+      if (!generatedFlaSvg) {
+        const inspected = await this.inspectionService.inspect(
+          sourcePath,
+          mimeType,
         );
+        if (
+          inspected.kind !== 'image' ||
+          inspected.mimeType !== mimeType ||
+          inspected.width !== asset.width ||
+          inspected.height !== asset.height
+        ) {
+          throw new Error(
+            `The source metadata does not match the project asset (${asset.width}x${asset.height}).`,
+          );
+        }
       }
 
       const bytes = await readFile(sourcePath);
@@ -189,6 +229,9 @@ export class AssetCanvasImageService {
         throw new Error(
           `The source exceeds the ${CANVAS_IMAGE_MAX_BYTES}-byte canvas image limit.`,
         );
+      }
+      if (generatedFlaSvg && !isSafeGeneratedFlaSvg(bytes, asset.width, asset.height)) {
+        throw new Error('The FLA Graphic vector frame is not a bounded Panda-generated SVG.');
       }
       const actualSha256 = createHash('sha256')
         .update(bytes)

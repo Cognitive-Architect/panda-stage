@@ -46,6 +46,7 @@ import type { FlaStaticSnapshotSource } from '../services/fla-static-snapshot-re
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
+  prepareFlaStaticSnapshotDisplaySource,
 } from '../services/fla-static-snapshot-svg-builder';
 import { createFlaStaticSnapshotBitmapMediaLookup } from '../services/fla-static-snapshot-media-resolver';
 import type { FlaRenderTarget } from '../../shared/fla-static-snapshot-api';
@@ -100,7 +101,16 @@ const defaultBuildFrameSource = async function* buildFrameSource(
   // the builder must therefore return the same Panda-owned target identity
   // for the selected logical target on both calls.
   const resolveBitmapMedia = createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []);
-  const catalog = await buildRenderableTargetCatalog(source.bytes, resolveBitmapMedia);
+  const prepared = await prepareFlaStaticSnapshotDisplaySource(source.bytes, 'catalog');
+  if (!prepared.ok) {
+    throw new Error(`R2 display source preparation failed: ${prepared.message}`);
+  }
+  const catalog = await buildRenderableTargetCatalog(
+    source.bytes,
+    resolveBitmapMedia,
+    {},
+    prepared.source,
+  );
   if (!catalog.ok) {
     // R2-F: a catalog failure aborts the whole sequence (we cannot
     // build any per-frame SVG without a target). The R2-C service
@@ -117,7 +127,12 @@ const defaultBuildFrameSource = async function* buildFrameSource(
   }
   for (let i = range.startFrameIndex; i <= range.endFrameIndex; i += 1) {
     const frameTarget: FlaRenderTarget = { ...baseTarget, selectedFrameIndex: i };
-    const svg = await buildSvgForRenderTarget(source.bytes, frameTarget, resolveBitmapMedia);
+    const svg = await buildSvgForRenderTarget(
+      source.bytes,
+      frameTarget,
+      resolveBitmapMedia,
+      prepared.source,
+    );
     if (!svg.ok) {
       throw new Error(`R2 SVG build failed for frame ${i}: ${svg.message}`);
     }

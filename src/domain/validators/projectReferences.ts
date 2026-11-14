@@ -1,4 +1,8 @@
 import type { z } from 'zod';
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicStructureNode,
+} from '../models/flaGraphicStructure';
 import type { ProjectData } from '../models/project';
 
 function addIssue(
@@ -70,7 +74,76 @@ export function validateProjectReferences(
   );
 
   project.animations.forEach((animation, animationIndex) => {
+    const isFlaGraphic = 'kind' in animation && animation.kind === 'fla-graphic';
+    const structure = isFlaGraphic ? animation.structure : undefined;
+    const validatedNestedDefinitions = new Set<string>();
+    const validateStructureNodes = (
+      nodes: readonly FlaGraphicStructureNode[],
+      nodePathPrefix: PropertyKey[],
+    ): void => {
+      nodes.forEach((node, nodeIndex) => {
+        const path = [...nodePathPrefix, nodeIndex];
+        if (node.type === 'bitmap' && node.assetId) {
+          const bitmapAsset = assets.get(node.assetId);
+          if (!bitmapAsset || bitmapAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [...path, 'assetId'],
+              `FLA Graphic structured bitmap references unknown or non-image asset: ${node.assetId}`,
+            );
+          }
+        } else if (
+          node.type === 'opaque' &&
+          node.fallbackAssetId &&
+          node.fallbackScope &&
+          node.fallbackViewBox
+        ) {
+          const fallbackAsset = assets.get(node.fallbackAssetId);
+          if (!fallbackAsset || fallbackAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [...path, 'fallbackAssetId'],
+              `FLA Graphic structured opaque fallback references unknown or non-image asset: ${node.fallbackAssetId}`,
+            );
+          }
+        } else if (node.type === 'group') {
+          validateStructureNodes(node.children, [...path, 'children']);
+        } else if (node.type === 'symbol') {
+          if (node.nestedDefinitionId) {
+            if (!validatedNestedDefinitions.has(node.nestedDefinitionId)) {
+              validatedNestedDefinitions.add(node.nestedDefinitionId);
+              validateStructureNodes(
+                resolveFlaGraphicSymbolChildren(node, structure),
+                ['animations', animationIndex, 'structure', 'symbolDefinitions', node.nestedDefinitionId, 'children'],
+              );
+            }
+          } else if (node.children) {
+            validateStructureNodes(node.children, [...path, 'children']);
+          }
+        }
+      });
+    };
+
     animation.frames.forEach((frame, frameIndex) => {
+      const structureFrame = structure?.frames.find(
+        (candidate) => candidate.ordinal === frame.ordinal,
+      );
+      if (structureFrame) {
+        structureFrame.layers.forEach((layer, layerIndex) => {
+          validateStructureNodes(layer.nodes, [
+            'animations',
+            animationIndex,
+            'structure',
+            'frames',
+            frame.ordinal,
+            'layers',
+            layerIndex,
+            'nodes',
+          ]);
+        });
+        return;
+      }
+
       const asset = assets.get(frame.assetId);
       if (!asset || asset.kind !== 'image') {
         addIssue(
@@ -84,6 +157,21 @@ export function validateProjectReferences(
           ['animations', animationIndex, 'frames', frameIndex, 'sha256'],
           `Animation frame hash does not match image asset ${asset.id}.`,
         );
+      }
+      if (isFlaGraphic) {
+        if (
+          !asset ||
+          asset.kind !== 'image' ||
+          asset.mimeType !== 'image/svg+xml' ||
+          asset.flaGraphicFrame?.definitionId !== animation.id ||
+          asset.flaGraphicFrame.ordinal !== frame.ordinal
+        ) {
+          addIssue(
+            context,
+            ['animations', animationIndex, 'frames', frameIndex, 'assetId'],
+            `FLA Graphic frame ${frame.assetId} is not an SVG owned by Definition ${animation.id}.`,
+          );
+        }
       }
     });
   });
@@ -277,11 +365,21 @@ export function validateProjectReferences(
         return;
       }
       if (layer.source.kind === 'animation') {
-        if (!animations.has(layer.source.animationId)) {
+        const animation = animations.get(layer.source.animationId);
+        if (!animation) {
           addIssue(
             context,
             ['shots', shotIndex, 'layers', layerIndex, 'source', 'animationId'],
             `Layer references unknown animation: ${layer.source.animationId}`,
+          );
+        } else if (
+          layer.animationFirstFrame !== undefined &&
+          layer.animationFirstFrame >= animation.frames.length
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'animationFirstFrame'],
+            'Animation first frame is outside the referenced Definition.',
           );
         }
         if (

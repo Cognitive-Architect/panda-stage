@@ -1060,8 +1060,9 @@ export function FlaCharacterImportFlow({
     !invalidatedRef.current;
   const canQueryStatus = hasPendingOperation && phase !== 'committing' && !recoveryBusy;
   const centerLoading = phase === 'inspecting' || phase === 'preparing';
-  const showPreviewStatus = !centerLoading && phase !== 'preview-ready' && Boolean(statusMessage) &&
-    !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction);
+  const showPreviewStatus =
+    !centerLoading && phase !== 'preview-ready' && Boolean(statusMessage) &&
+      !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction);
   const createLabel = hasPendingOperation
     ? '查询保存结果'
     : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
@@ -1261,8 +1262,11 @@ export function FlaCharacterImportFlow({
                     partCount={partCount}
                   />
                   <ol className="fla-character-import-parts-list">
-                    {previewImages.parts.map((part, index) => (
-                      <li key={part.sha256}>
+                    {previewImages.parts.map((part, index) => {
+                      return (
+                      <li
+                        key={`${part.sha256}-${index}`}
+                      >
                         <span className="fla-character-import-part-thumb">
                           <VisibleBoundsThumbnail
                             alt={`零件 ${index + 1}`}
@@ -1272,7 +1276,8 @@ export function FlaCharacterImportFlow({
                         </span>
                         <span>零件 {index + 1}</span>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ol>
                 </aside>
               ) : null}

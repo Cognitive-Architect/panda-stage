@@ -1,4 +1,5 @@
 import type { Project } from '../models/project';
+import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -11,7 +12,8 @@ export type AssetReferenceKind =
   | 'shot-layer'
   | 'audio-clip'
   | 'dialogue-audio'
-  | 'animation-frame';
+  | 'animation-frame'
+  | 'animation-structure';
 
 export interface AssetReference {
   kind: AssetReferenceKind;
@@ -53,6 +55,17 @@ export function scanAssetReferences(
   const references: AssetReference[] = [];
 
   project.animations.forEach((animation, animationIndex) => {
+    if ('kind' in animation && animation.kind === 'fla-graphic' && animation.structure &&
+        reconstructFlaGraphicStructure(animation.structure).some(({ node }) =>
+          (node.type === 'bitmap' && node.assetId === assetId) ||
+          (node.type === 'opaque' && node.fallbackAssetId === assetId),
+        )) {
+      references.push({
+        kind: 'animation-structure',
+        path: `animations[${animationIndex}].structure`,
+        label: `动画“${animation.name}”的元件内容`,
+      });
+    }
     animation.frames.forEach((frame, frameIndex) => {
       if (frame.assetId !== assetId) return;
       references.push({

@@ -36,6 +36,21 @@ interface FlaUnifiedWorkbenchProps {
   singleImportDisabled: boolean;
   showSnapshotPreview: boolean;
   showSequencePreview: boolean;
+  showMultiSelectControls?: boolean;
+  candidateSearchLabel?: string;
+  candidateListLabel?: string;
+  previewSectionLabel?: string;
+  previewEmptyTitle?: string;
+  previewEmptyDescription?: string;
+  previewEmptyContent?: ReactNode;
+  previewAuxiliary?: ReactNode;
+  candidateEmptyMessage?: string | null;
+  graphicKindLabel?: string;
+  progressMessage?: string;
+  testIdPrefix?: string;
+  workbenchClassName?: string;
+  contentClassName?: string;
+  footerAuxiliary?: ReactNode;
   snapshotPreview: ReactNode;
   sequencePreview: ReactNode;
   onSearchTextChange: (value: string) => void;
@@ -75,6 +90,21 @@ export function FlaUnifiedWorkbench({
   singleImportDisabled,
   showSnapshotPreview,
   showSequencePreview,
+  showMultiSelectControls = true,
+  candidateSearchLabel = '搜索素材',
+  candidateListLabel = 'FLA 素材',
+  previewSectionLabel = '素材预览',
+  previewEmptyTitle,
+  previewEmptyDescription,
+  previewEmptyContent,
+  previewAuxiliary,
+  candidateEmptyMessage,
+  graphicKindLabel = 'Graphic',
+  progressMessage,
+  testIdPrefix,
+  workbenchClassName,
+  contentClassName,
+  footerAuxiliary,
   snapshotPreview,
   sequencePreview,
   onSearchTextChange,
@@ -112,6 +142,7 @@ export function FlaUnifiedWorkbench({
     : null;
   const status = focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
   const canZoom = Boolean(focusedCandidate?.preview.previewUrl || showSnapshotPreview || showSequencePreview);
+  const testId = (name: string, fallback: string): string => testIdPrefix ? `${testIdPrefix}-${name}` : fallback;
 
   useLayoutEffect(() => {
     if (selectedOnly) return;
@@ -136,22 +167,27 @@ export function FlaUnifiedWorkbench({
 
   const renderPreview = (): ReactNode => {
     if (!focusedCandidate) {
+      if (previewEmptyContent !== undefined) return previewEmptyContent;
       return (
-        <div className="fla-c03-preview-placeholder" data-testid="fla-c03-preview-empty">
-          <strong>{progress.phase === 'loading' ? '正在读取素材…' : '选择一个素材查看预览'}</strong>
-          <span>{progress.phase === 'scanning' ? '正在加载素材…' : '单击缩略图只会打开预览。'}</span>
+        <div className="fla-c03-preview-placeholder" data-testid={testId('preview-empty', 'fla-c03-preview-empty')}>
+          <strong>{previewEmptyTitle ?? (progress.phase === 'loading' ? '正在读取素材…' : '选择一个素材查看预览')}</strong>
+          <span>{previewEmptyDescription ?? (progress.phase === 'scanning' ? '正在加载素材…' : '单击缩略图只会打开预览。')}</span>
         </div>
       );
     }
 
-    if (focusedCandidate.kind === 'raster') {
+    if (focusedCandidate.kind === 'raster' || focusedCandidate.kind === 'graphic') {
       return focusedCandidate.preview.previewUrl ? (
         <img
           alt={focusedCandidate.displayLabel}
           className="fla-c03-preview-image"
           data-preview-candidate-identity={focusedCandidate.identityKey}
           data-preview-target-id={focusedPreviewTargetId ?? undefined}
-          data-testid="fla-c03-focused-raster-preview"
+          data-occurrence-id={focusedCandidate.kind === 'graphic' ? focusedCandidate.provenance.occurrenceId : undefined}
+          data-source-address={focusedCandidate.kind === 'graphic' ? focusedCandidate.provenance.sourceAddress ?? '' : undefined}
+          data-testid={focusedCandidate.kind === 'graphic'
+            ? testId('selected-preview', 'fla-graphic-instance-selected-preview')
+            : 'fla-c03-focused-raster-preview'}
           src={focusedCandidate.preview.previewUrl}
           style={{ transform: `scale(${previewZoom})` }}
         />
@@ -174,31 +210,31 @@ export function FlaUnifiedWorkbench({
   return (
     <div
       aria-busy={importing || undefined}
-      className="fla-c03-workbench-content"
+      className={['fla-c03-workbench-content', contentClassName].filter(Boolean).join(' ')}
       data-importing={importing ? 'true' : 'false'}
     >
       <main
-        className="fla-c03-workbench"
+        className={['fla-c03-workbench', workbenchClassName].filter(Boolean).join(' ')}
         data-multi-select={multiSelectMode ? 'true' : 'false'}
         data-sequence-preview={showSequencePreview ? 'true' : undefined}
-        data-testid="fla-c03-workbench"
+        data-testid={testId('workbench', 'fla-c03-workbench')}
         inert={importing}
       >
-        <section className="fla-c03-browser" aria-label="素材列表">
+        <section className="fla-c03-browser" aria-label={candidateListLabel}>
           <div className="fla-c03-browser-tools">
             <label className="fla-c03-search">
-              <span className="sr-only">搜索素材</span>
+              <span className="sr-only">{candidateSearchLabel}</span>
               <input
-                aria-label="搜索素材"
-                data-testid="fla-c03-search"
+                aria-label={candidateSearchLabel}
+                data-testid={testId('search', 'fla-c03-search')}
                 disabled={selectedOnly || locked}
                 onChange={(event) => onSearchTextChange(event.currentTarget.value)}
-                placeholder={selectedOnly ? '返回浏览后继续搜索' : '搜索素材'}
+                placeholder={selectedOnly ? '返回浏览后继续搜索' : candidateSearchLabel}
                 type="search"
                 value={searchText}
               />
             </label>
-            <button
+            {showMultiSelectControls ? <button
               aria-label={multiSelectMode ? '返回单素材模式' : '进入多选模式'}
               aria-pressed={multiSelectMode}
               data-testid="fla-c03-multi-select-toggle"
@@ -207,7 +243,7 @@ export function FlaUnifiedWorkbench({
               type="button"
             >
               {multiSelectMode ? '单素材' : '多选'}
-            </button>
+            </button> : null}
             {multiSelectMode ? (
               <>
                 <button
@@ -262,9 +298,9 @@ export function FlaUnifiedWorkbench({
           <output
             aria-live={progress.phase === 'ready' && progress.omittedCandidateCount === 0 ? undefined : 'polite'}
             className="fla-c03-progress"
-            data-testid="fla-c03-catalog-progress"
+            data-testid={testId('catalog-progress', 'fla-c03-catalog-progress')}
           >
-            {progress.phase === 'scanning'
+            {progressMessage ?? (progress.phase === 'scanning'
               ? '正在加载素材…'
               : progress.phase === 'loading'
                 ? '正在加载素材…'
@@ -272,13 +308,13 @@ export function FlaUnifiedWorkbench({
                   ? '部分素材预览未能读取。'
                   : progress.omittedCandidateCount > 0
                     ? `另有 ${progress.omittedCandidateCount} 项未列出，这些项目不能导入。`
-                    : ''}
+                    : '')}
           </output>
 
           <ul
-            aria-label={selectedOnly ? '已选择素材' : 'FLA 素材'}
+            aria-label={selectedOnly ? '已选择素材' : candidateListLabel}
             className="fla-c03-candidate-grid"
-            data-testid="fla-c03-candidate-grid"
+            data-testid={testId('candidates', 'fla-c03-candidate-grid')}
             data-view={selectedOnly ? 'selected' : 'browse'}
             onScroll={(event) => {
               if (!selectedOnly) browseScrollTopRef.current = event.currentTarget.scrollTop;
@@ -305,6 +341,9 @@ export function FlaUnifiedWorkbench({
                   className={`fla-c03-candidate${candidate.identityKey === focusedCandidateIdentityKey ? ' is-focused' : ''}${candidate.checked ? ' is-checked' : ''}`}
                   data-candidate-kind={candidate.kind}
                   data-candidate-identity={candidate.identityKey}
+                  data-occurrence-id={candidate.kind === 'graphic' ? candidate.provenance.occurrenceId : undefined}
+                  data-source-address={candidate.kind === 'graphic' ? candidate.provenance.sourceAddress ?? '' : undefined}
+                  data-adapter-identity={candidate.kind === 'graphic' ? candidate.provenance.adapterIdentity ?? '' : undefined}
                   data-preview-status={candidate.preview.status}
                   data-selectable={candidate.selectable ? 'true' : 'false'}
                   key={candidate.identityKey}
@@ -314,7 +353,7 @@ export function FlaUnifiedWorkbench({
                     aria-label={`预览 ${fullItemLabel}`}
                     aria-pressed={candidate.identityKey === focusedCandidateIdentityKey}
                     className="fla-c03-candidate-focus"
-                    data-testid={`fla-c03-focus-${candidate.kind}-${candidate.id}`}
+                    data-testid={testId(`candidate-${candidate.id}`, `fla-c03-focus-${candidate.kind}-${candidate.id}`)}
                     onClick={() => onFocusCandidate(candidate)}
                     onKeyDown={(event) => {
                       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -332,7 +371,13 @@ export function FlaUnifiedWorkbench({
                     </span>
                     <span className="fla-c03-candidate-copy">
                       <strong title={fullItemLabel}>{itemLabel}</strong>
-                      <small className="fla-c03-candidate-kind">{candidate.kind === 'sequence' ? '动画' : '图片'}</small>
+                      <small className="fla-c03-candidate-kind">
+                        {candidate.kind === 'sequence'
+                          ? '动画'
+                          : candidate.kind === 'graphic'
+                            ? `${graphicKindLabel}${candidate.provenance.frameCount === null ? '' : ` · ${candidate.provenance.frameCount} 帧`}`
+                            : '图片'}
+                      </small>
                       {statusLabel ? (
                         <small
                           data-status={candidate.preview.status}
@@ -362,16 +407,20 @@ export function FlaUnifiedWorkbench({
                   ) : null}
                 </li>
               );
-            }) : (
-              <li className="fla-c03-empty-state" data-testid="fla-c03-empty-state">
-                {selectedOnly ? '还没有已选择的素材。' : searchText.trim() ? '没有找到匹配的素材。' : '暂时没有可显示的素材。'}
+            }) : candidateEmptyMessage === null ? null : (
+              <li className="fla-c03-empty-state" data-testid={testId('empty-state', 'fla-c03-empty-state')}>
+                {candidateEmptyMessage ?? (selectedOnly
+                  ? '还没有已选择的素材。'
+                  : searchText.trim()
+                    ? `没有找到匹配的${candidateListLabel.replace(/ 列表$/u, '')}。`
+                    : `暂时没有可显示的${candidateListLabel.replace(/ 列表$/u, '')}。`)}
               </li>
             )}
           </ul>
         </section>
 
         <section
-          aria-label="素材预览"
+          aria-label={previewSectionLabel}
           className="fla-c03-preview"
           data-candidate-kind={focusedCandidate?.kind ?? 'none'}
           data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
@@ -379,7 +428,7 @@ export function FlaUnifiedWorkbench({
           data-preview-target-id={focusedPreviewTargetId ?? undefined}
           data-sequence-canvas={focusedCandidate?.kind === 'sequence' && showSequencePreview ? 'true' : 'false'}
           data-sequence-preview={showSequencePreview ? 'true' : 'false'}
-          data-testid="fla-c03-preview"
+          data-testid={testId('preview', 'fla-c03-preview')}
           style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
         >
           <header className="fla-c03-preview-header">
@@ -388,11 +437,11 @@ export function FlaUnifiedWorkbench({
                 data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
                 data-preview-owner="focused-candidate"
                 data-preview-target-id={focusedPreviewTargetId ?? undefined}
-                data-testid="fla-c03-focused-label"
+                data-testid={testId('focused-label', 'fla-c03-focused-label')}
               >
                 {focusedCandidateLabel ?? '预览'}
               </h2>
-              {status ? <output data-testid="fla-c03-focused-status">{status}</output> : null}
+              {status ? <output data-testid={testId('focused-status', 'fla-c03-focused-status')}>{status}</output> : null}
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
               <button aria-label="缩小预览" disabled={!canZoom} onClick={() => updateZoom(-0.25)} type="button">−</button>
@@ -412,7 +461,7 @@ export function FlaUnifiedWorkbench({
             className="fla-c03-preview-stage"
             data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
             data-preview-target-id={focusedPreviewTargetId ?? undefined}
-            data-testid="fla-c03-preview-stage"
+            data-testid={testId('preview-stage', 'fla-c03-preview-stage')}
             style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
           >
             {renderPreview()}
@@ -422,17 +471,22 @@ export function FlaUnifiedWorkbench({
           </div>
           <div
             className="fla-c03-sequence-preview-slot"
-            data-testid="fla-c03-sequence-preview-slot"
+            data-testid={testId('sequence-preview-slot', 'fla-c03-sequence-preview-slot')}
             hidden={!showSequencePreview}
           >
             {sequencePreview}
           </div>
+          {previewAuxiliary !== undefined ? (
+            <div className="fla-c03-preview-auxiliary" data-testid={testId('preview-auxiliary', 'fla-c03-preview-auxiliary')}>
+              {previewAuxiliary}
+            </div>
+          ) : null}
         </section>
       </main>
 
-      {!importing ? <footer className="fla-c03-import-footer" data-testid="fla-c03-import-footer">
+      {!importing ? <footer className="fla-c03-import-footer" data-testid={testId('footer', 'fla-c03-import-footer')}>
         <div className="fla-c03-footer-summary">
-          <strong data-testid={multiSelectMode ? 'fla-unified-import-selected-count' : 'fla-single-mode-summary'}>
+          <strong data-testid={multiSelectMode ? 'fla-unified-import-selected-count' : testId('summary', 'fla-single-mode-summary')}>
             {importing
               ? stopAfterCurrentRequested
                 ? '当前操作完成后将停止后续导入'
@@ -442,6 +496,7 @@ export function FlaUnifiedWorkbench({
           {importing ? <span>当前操作结束后停止，已完成的结果会保留。</span> : null}
         </div>
         <div className="fla-c03-footer-actions">
+          {footerAuxiliary}
           {importing ? (
             <button
               data-testid="fla-unified-import-stop"
@@ -464,7 +519,7 @@ export function FlaUnifiedWorkbench({
           ) : singleImportLabel ? (
             <button
               className="fla-c03-import-primary"
-              data-testid="fla-single-import"
+              data-testid={testId('import', 'fla-single-import')}
               disabled={singleImportDisabled || locked}
               onClick={onImportFocused}
               type="button"
@@ -638,6 +693,7 @@ function thumbnailPlaceholder(candidate: FlaWorkbenchCandidate): string {
 }
 
 function candidateStatus(candidate: FlaWorkbenchCandidate): string {
+  if (candidate.kind === 'graphic' && !candidate.selectable) return '暂不支持导入';
   switch (candidate.preview.status) {
     case 'verified':
       return candidate.kind === 'sequence' ? '已生成' : '';
@@ -662,6 +718,10 @@ function receiptSummary(receipt: FlaUnifiedImportReceipt): string {
 }
 
 function focusedCandidateStatus(candidate: FlaWorkbenchCandidate): string | null {
+  if (candidate.kind === 'graphic') {
+    if (!candidate.selectable) return '此元件暂不支持导入。';
+    return candidate.provenance.frameCount === null ? null : `${candidate.provenance.frameCount} 帧`;
+  }
   if (candidate.kind === 'sequence' && candidate.preview.status === 'verified' && candidate.selectable) {
     return null;
   }

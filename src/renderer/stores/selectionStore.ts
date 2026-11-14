@@ -3,6 +3,7 @@ import {
   editorProjectStore,
 } from './EditorProjectStore';
 import type { Shot } from '../../domain';
+import type { FlaGraphicEditScopeState } from '../features/canvas/flaGraphicEditScope';
 import {
   shotStore,
   type ShotStore,
@@ -11,12 +12,15 @@ import {
 type Listener = () => void;
 
 interface SelectionContext {
+  projectInstanceId: number | null;
   projectId: string;
   projectRoot: string;
   shotId: string;
 }
 
 export class LayerSelectionStore {
+  private structuredEditScope: FlaGraphicEditScopeState | null = null;
+  private selectedStructuredNodePath: readonly string[] | null = null;
   private selectedLayerId: string | null = null;
   private selectedContext: SelectionContext | null = null;
   private readonly listeners = new Set<Listener>();
@@ -40,6 +44,21 @@ export class LayerSelectionStore {
 
   readonly getSelectedLayerId = (): string | null =>
     this.selectedLayerId;
+
+  readonly getStructuredEditScope = (): FlaGraphicEditScopeState | null => this.structuredEditScope;
+  readonly getSelectedStructuredNodePath = (): readonly string[] | null => this.selectedStructuredNodePath;
+
+  readonly setStructuredEditScope = (scope: FlaGraphicEditScopeState | null): void => {
+    if (this.structuredEditScope === scope) return;
+    this.structuredEditScope = scope;
+    for (const listener of this.listeners) listener();
+  };
+
+  readonly setSelectedStructuredNodePath = (path: readonly string[] | null): void => {
+    if (this.selectedStructuredNodePath === path) return;
+    this.selectedStructuredNodePath = path;
+    for (const listener of this.listeners) listener();
+  };
 
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -106,6 +125,7 @@ export class LayerSelectionStore {
     );
     if (!snapshot || !shot) return null;
     return {
+      projectInstanceId: this.editorStore.getProjectInstanceId(),
       projectId: snapshot.project.id,
       projectRoot: snapshot.projectRoot,
       shotId: shot.id,
@@ -126,6 +146,11 @@ export class LayerSelectionStore {
       )
     ) {
       this.setSelectedLayerId(null, null);
+    } else if (context.projectInstanceId !== this.selectedContext.projectInstanceId) {
+      this.selectedContext = context;
+      this.structuredEditScope = null;
+      this.selectedStructuredNodePath = null;
+      for (const listener of this.listeners) listener();
     }
   }
 
@@ -136,6 +161,8 @@ export class LayerSelectionStore {
     if (layerId === this.selectedLayerId) return;
     this.selectedLayerId = layerId;
     this.selectedContext = context;
+    this.structuredEditScope = null;
+    this.selectedStructuredNodePath = null;
     for (const listener of this.listeners) listener();
   }
 }

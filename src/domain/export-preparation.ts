@@ -1,5 +1,10 @@
 import type { Project } from './models/project';
 import type { Asset } from './models/asset';
+import type { FlaGraphicDefinition } from './models/animation';
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicStructureNode,
+} from './models/flaGraphicStructure';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
@@ -87,6 +92,14 @@ function addUsage(
     return;
   }
   entries.set(asset.id, { asset, usages: [...new Set(usages)] });
+}
+
+function isSupportedFormalImageAsset(asset: Asset): boolean {
+  if (asset.kind !== 'image') return false;
+  if (asset.mimeType === 'image/svg+xml') {
+    return Boolean(asset.flaGraphicFrame);
+  }
+  return isFormalExportMimeTypeSupported(asset.mimeType);
 }
 
 function referenceLabelsForShot(
@@ -257,6 +270,92 @@ function addShotVisualAssets(
  * shot's visual state changes. Preview-only alternate-expression preloads are
  * excluded; audio-bound Mouth assets are included when the shot can use them.
  */
+function addFlaGraphicAnimationMedia(
+  entries: Map<string, ExportPreparationMediaSource>,
+  project: Project,
+  shot: Project['shots'][number],
+  shotIndex: number,
+  referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+): void {
+  const activeAnimationIds = new Set<string>();
+  const sampleTimes = new Set(shotVisualSampleTimes(shot));
+  for (const layer of shot.layers) {
+    const layerStartTimeMs = layer.startTimeMs;
+    if (
+      layer.source.kind === 'animation' &&
+      layerStartTimeMs !== undefined &&
+      Number.isFinite(layerStartTimeMs) &&
+      layerStartTimeMs >= 0 &&
+      layerStartTimeMs < shot.durationMs
+    ) {
+      sampleTimes.add(layerStartTimeMs);
+    }
+  }
+  for (const timeMs of [...sampleTimes].sort((left, right) => left - right)) {
+    const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
+    for (const evaluatedLayer of evaluatedShot.layers) {
+      if (!evaluatedLayer.visible) continue;
+      const layer = shot.layers.find((candidate) => candidate.id === evaluatedLayer.id);
+      if (layer?.source.kind === 'animation') {
+        activeAnimationIds.add(layer.source.animationId);
+      }
+    }
+  }
+
+  for (const animationId of activeAnimationIds) {
+    const animation = project.animations.find((candidate) => candidate.id === animationId);
+    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
+    const definition = animation as FlaGraphicDefinition;
+    const resourceIds = new Set<string>();
+    const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
+      for (const node of nodes) {
+        if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
+        if (
+          node.type === 'opaque' &&
+          node.fallbackAssetId &&
+          node.fallbackScope &&
+          node.fallbackViewBox
+        ) {
+          resourceIds.add(node.fallbackAssetId);
+        }
+        if (node.type === 'group') {
+          collectNodeResources(node.children);
+        } else if (node.type === 'symbol') {
+          collectNodeResources(resolveFlaGraphicSymbolChildren(node, definition.structure));
+        }
+      }
+    };
+    for (const frame of definition.frames) {
+      const structureFrame = definition.structure?.frames.find(
+        (candidate) => candidate.ordinal === frame.ordinal,
+      );
+      if (structureFrame) {
+        for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
+      } else {
+        resourceIds.add(frame.assetId);
+      }
+    }
+    for (const assetId of resourceIds) {
+      const asset = project.assets.find(
+        (candidate) => candidate.id === assetId && candidate.kind === 'image',
+      );
+      if (!asset || asset.kind !== 'image') continue;
+      const labels = referenceLabelsForShot(
+        referencesByAssetId.get(asset.id) ?? [],
+        project,
+        shotIndex,
+      );
+      addUsage(
+        entries,
+        asset,
+        labels.length > 0
+          ? labels
+          : ['Shot "' + shot.name + '" FLA Graphic "' + animation.name + '" resource'],
+      );
+    }
+  }
+}
+
 export function collectExportPreparationMedia(
   project: Project,
 ): ExportPreparationMediaSource[] {
@@ -270,6 +369,13 @@ export function collectExportPreparationMedia(
 
   project.shots.forEach((shot, shotIndex) => {
     addShotVisualAssets(
+      entries,
+      project,
+      shot,
+      shotIndex,
+      referencesByAssetId,
+    );
+    addFlaGraphicAnimationMedia(
       entries,
       project,
       shot,
@@ -347,7 +453,14 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
-    if (shot.layers.some((layer) => layer.source.kind === 'animation')) {
+    if (shot.layers.some((layer) => {
+      if (layer.source.kind !== 'animation') return false;
+      const animationId = layer.source.animationId;
+      const animation = project.animations.find(
+        (candidate) => candidate.id === animationId,
+      );
+      return !animation || !('kind' in animation) || animation.kind !== 'fla-graphic';
+    })) {
       issues.push(
         issue(
           location,
@@ -392,7 +505,7 @@ export function evaluateExportPreparationSupport(
             '显示镜头的图像背景后重新检查。',
           ),
         );
-      } else if (!isFormalExportMimeTypeSupported(backgroundAsset.mimeType)) {
+      } else if (!isSupportedFormalImageAsset(backgroundAsset)) {
         issues.push(
           issue(
             location,

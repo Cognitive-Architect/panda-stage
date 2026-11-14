@@ -54,6 +54,13 @@ export interface StageRenderPart {
   readonly render: StageLayerRenderInstruction;
 }
 
+export interface StageRenderResource {
+  /** Stable runtime identity for one additional decoded visual resource. */
+  readonly id: string;
+  readonly asset: RenderModelAsset;
+  readonly sourceUrl: string;
+}
+
 export interface StageRenderLayer extends EvaluatedLayer {
   asset: RenderModelAsset;
   sourceUrl: string;
@@ -62,6 +69,8 @@ export interface StageRenderLayer extends EvaluatedLayer {
   parts: StageRenderPart[];
   /** Null only for the historical structural probe compatibility path. */
   visual: LayerVisualParts | null;
+  /** Non-drawn resources referenced by the shared structured renderer. */
+  resources?: StageRenderResource[];
 }
 
 export interface StageRenderModel {
@@ -300,6 +309,18 @@ function buildFormalStageRenderModel(
             ),
       };
     });
+    const resourceAssetIds = visual.flaGraphic
+      ? [...new Set(visual.resources.required.map((resource) => resource.assetId))]
+          .filter((assetId) => !visual.parts.some((part) => part.assetId === assetId))
+      : [];
+    const resources: StageRenderResource[] = resourceAssetIds.map((assetId) => {
+      const asset = imageAsset(project, assetId, layer.id);
+      return {
+        id: layer.id + ':fla-graphic-resource:' + asset.id,
+        asset,
+        sourceUrl: sourceUrlFor(assetUrls, asset, layer.id),
+      };
+    });
 
     return {
       ...layer,
@@ -308,6 +329,7 @@ function buildFormalStageRenderModel(
       render,
       parts,
       visual,
+      resources,
     };
   });
 

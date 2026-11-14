@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AnimationDefinitionSchema,
+  FlaGraphicDefinitionSchema,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  ProjectV16Schema,
+  migrateProject,
   scanAssetReferences,
   type AnimationDefinition,
 } from '../../../src/domain';
@@ -54,6 +59,29 @@ function animation(): AnimationDefinition {
   };
 }
 
+function definitionWithFrameCount(frameCount: number): AnimationDefinition {
+  const base = animation();
+  const frameDurationMs = 1_000 / base.source.sourceFps;
+  const template = base.frames[0]!;
+  return {
+    ...base,
+    source: {
+      ...base.source,
+      startFrameIndex: 0,
+      endFrameIndex: frameCount - 1,
+    },
+    durationMs: frameCount * frameDurationMs,
+    frames: Array.from({ length: frameCount }, (_, ordinal) => ({
+      ...template,
+      ordinal,
+      sourceFrameIndex: ordinal,
+      startMs: ordinal * frameDurationMs,
+      durationMs: frameDurationMs,
+      createdBySequenceImport: false,
+    })),
+  };
+}
+
 function projectWithAnimation(nextAnimation = animation()) {
   const project = buildProject();
   return {
@@ -66,6 +94,39 @@ function projectWithAnimation(nextAnimation = animation()) {
 }
 
 describe('formal AnimationDefinition', () => {
+  it('keeps the sequence-import limit while allowing bounded FLA Graphic Definitions', () => {
+    const regular = definitionWithFrameCount(25);
+    expect(AnimationDefinitionSchema.safeParse(regular).success).toBe(false);
+
+    const graphic = {
+      ...definitionWithFrameCount(65),
+      kind: 'fla-graphic' as const,
+    };
+    expect(FlaGraphicDefinitionSchema.parse(graphic).frames).toHaveLength(65);
+    expect(FlaGraphicDefinitionSchema.safeParse({
+      ...definitionWithFrameCount(257),
+      kind: 'fla-graphic',
+    }).success).toBe(false);
+  });
+
+  it('migrates a strict v16 project to the new schema without changing its animation data', () => {
+    const projectV16 = ProjectV16Schema.parse({
+      ...projectWithAnimation(),
+      schemaVersion: 16,
+    });
+    const migrated = migrateProject(projectV16);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.animations).toEqual(projectV16.animations);
+    expect(migrated.shots).toEqual(projectV16.shots);
+    expect(ProjectV16Schema.safeParse({
+      ...projectV16,
+      assets: projectV16.assets.map((asset) => asset.id === IDS.assetBg
+        ? { ...asset, flaGraphicFrame: { definitionId: IDS.animation, ordinal: 0 } }
+        : asset),
+    }).success).toBe(false);
+  });
+
   it('accepts repeated frame image references and records each source frame timing', () => {
     const project = ProjectSchema.parse(projectWithAnimation());
     const references = scanAssetReferences(project, IDS.assetBg);

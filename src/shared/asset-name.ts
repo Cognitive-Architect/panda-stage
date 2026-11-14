@@ -6,6 +6,7 @@
 
 export type AssetFileExtension =
   | '.png'
+  | '.svg'
   | '.jpg'
   | '.jpeg'
   | '.mp3'

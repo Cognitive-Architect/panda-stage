@@ -132,6 +132,10 @@ import type {
   FlaCharacterCreateStatusRequest,
   FlaCharacterCreateStatusResponse,
 } from '../shared/fla-character-create-api';
+import type {
+  FlaGraphicInstanceCommitRequest,
+  FlaGraphicInstanceCommitResponse,
+} from '../shared/fla-graphic-instance-api';
 
 declare global {
   interface Window {
@@ -314,6 +318,9 @@ declare global {
         frameSequenceCommit: (
           request: FlaFrameSequenceCommitRequest,
         ) => Promise<FlaFrameSequenceCommitResponse>;
+        commitGraphicInstance: (
+          request: FlaGraphicInstanceCommitRequest,
+        ) => Promise<FlaGraphicInstanceCommitResponse>;
         frameSequenceProgressSubscribe: (
           callback: (progress: FlaFrameSequenceProgress) => void,
         ) => () => void;

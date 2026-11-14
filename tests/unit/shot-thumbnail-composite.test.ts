@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   CharacterService,
+  evaluateFlaGraphicVisual,
+  evaluateShotAtTime,
+  FlaGraphicDefinitionSchema,
   buildEditorStageRenderModel,
   LayerService,
   ProjectSchema,
@@ -17,7 +20,12 @@ import {
   requestShotThumbnail,
   shotThumbnailFingerprint,
 } from '../../src/renderer/features/shots/shotThumbnail';
-import { buildProject as buildSyntheticProject } from './domain/testProject';
+import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { buildStageRenderModel } from '../../src/shared/stage/render-model';
+import {
+  buildProject as buildSyntheticProject,
+  buildProjectWithAnimation,
+} from './domain/testProject';
 
 const IDS = {
   body: '60800000-0000-4000-8000-000000000001',
@@ -37,6 +45,7 @@ class FakeCanvasContext {
   fillStyle: string | CanvasGradient | CanvasPattern = '';
   draws: DrawCall[] = [];
   transforms: number[][] = [];
+  setTransforms: number[][] = [];
   private alphaStack: number[] = [];
 
   save(): void {
@@ -57,7 +66,9 @@ class FakeCanvasContext {
     this.transforms.push(values);
   }
 
-  setTransform(): void {}
+  setTransform(...values: number[]): void {
+    this.setTransforms.push(values);
+  }
 
   clearRect(): void {}
 
@@ -83,6 +94,8 @@ class FakeCanvas {
 }
 
 class FakeImage {
+  width = 640;
+  height = 640;
   decoding = '';
   onload: HTMLImageElement['onload'] = null;
   onerror: HTMLImageElement['onerror'] = null;
@@ -101,13 +114,37 @@ class FakeImage {
   }
 }
 
-function installBrowser(readThumbnail: (assetId: string) => Promise<unknown>) {
+class FakeFileReader {
+  result: string | ArrayBuffer | null = null;
+  error: DOMException | null = null;
+  onload: FileReader['onload'] = null;
+  onerror: FileReader['onerror'] = null;
+
+  readAsDataURL(): void {
+    this.result = 'data:image/png;base64,Y2FudmFzLWltYWdl';
+    queueMicrotask(() =>
+      this.onload?.call(
+        this as unknown as FileReader,
+        {} as ProgressEvent<FileReader>,
+      ),
+    );
+  }
+}
+
+function installBrowser(
+  readThumbnail: (assetId: string) => Promise<unknown>,
+  readCanvasImage: (assetId: string) => Promise<unknown> = async (assetId) => ({
+    ok: false,
+    error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED', message: 'No test image.', assetId },
+  }),
+) {
   const canvases: FakeCanvas[] = [];
   vi.stubGlobal('window', {
     Image: FakeImage,
     pandaStage: {
       assets: {
         readThumbnail: ({ assetId }: { assetId: string }) => readThumbnail(assetId),
+        readCanvasImage: ({ assetId }: { assetId: string }) => readCanvasImage(assetId),
       },
     },
   });
@@ -119,6 +156,87 @@ function installBrowser(readThumbnail: (assetId: string) => Promise<unknown>) {
     },
   });
   return canvases;
+}
+
+function makeStructuredFlaGraphicProject(): Project {
+  const base = buildProjectWithAnimation();
+  const animationScaffold = base.animations[0]!;
+  const frameAssetId = 'a1000000-0000-4000-8000-000000000099';
+  const frameAssetSha = 'f'.repeat(64);
+  const frameAsset = {
+    id: frameAssetId,
+    kind: 'image' as const,
+    name: 'Generated Graphic frame',
+    relativePath: 'assets/generated-graphic-frame.svg',
+    mimeType: 'image/svg+xml',
+    sha256: frameAssetSha,
+    width: 640,
+    height: 640,
+    usage: 'uncategorized' as const,
+    keywords: [],
+    flaGraphicFrame: {
+      definitionId: animationScaffold.id,
+      ordinal: 0,
+    },
+  };
+  const frame = {
+    ...animationScaffold.frames[0]!,
+    assetId: frameAssetId,
+    sha256: frameAssetSha,
+    createdBySequenceImport: false,
+  };
+  const definition = FlaGraphicDefinitionSchema.parse({
+    ...animationScaffold,
+    kind: 'fla-graphic',
+    source: {
+      ...animationScaffold.source,
+      endFrameIndex: animationScaffold.source.startFrameIndex,
+    },
+    durationMs: frame.durationMs,
+    frames: [frame],
+    structure: {
+      version: 1,
+      frames: [{
+        ordinal: 0,
+        layers: [{
+          name: 'Graphic layer',
+          nodes: [{
+            type: 'bitmap',
+            id: 'root-bitmap',
+            drawOrder: 0,
+            localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 15, ty: 8 },
+            bitmapRef: 'Library/bitmap.png',
+            assetId: animationScaffold.frames[0]!.assetId,
+          }],
+        }],
+      }],
+    },
+  });
+  const shot = base.shots[0]!;
+  const animationLayer = {
+    id: '70000000-0000-4000-8000-000000000099',
+    name: 'Graphic instance',
+    source: { kind: 'animation' as const, animationId: definition.id },
+    startTimeMs: 0,
+    animationPlayback: { mode: 'loop' as const, endBehavior: 'hold' as const },
+    anchor: 'center' as const,
+    x: 700,
+    y: 500,
+    scaleX: 1,
+    scaleY: 1,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    flipX: false,
+    zIndex: shot.layers.length,
+  };
+  return ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, frameAsset],
+    animations: [definition],
+    shots: [{ ...shot, layers: [...shot.layers, animationLayer] }],
+  });
 }
 
 function makeCompositeProject(): Project {
@@ -257,6 +375,341 @@ afterEach(() => {
 });
 
 describe('Shot thumbnail composite rendering (Issue #608)', () => {
+  it('shares one runtime result across A/B Stage instances, clean Definition mode, and hidden-export model', () => {
+    const base = makeStructuredFlaGraphicProject();
+    const shot = base.shots[0]!;
+    const template = shot.layers.find((layer) => layer.source.kind === 'animation')!;
+    const instanceA = {
+      ...template,
+      id: '70000000-0000-4000-8000-0000000000a1',
+      name: 'Graphic instance A',
+      x: 300,
+      flaGraphicInstanceTransformOverrides: {
+        '0': {
+          '["root-bitmap"]': { a: 1, b: 0, c: 0, d: 1, tx: 100, ty: 20 },
+        },
+      },
+    };
+    const instanceB = {
+      ...template,
+      id: '70000000-0000-4000-8000-0000000000a2',
+      name: 'Graphic instance B',
+      x: 900,
+      flaGraphicInstanceTransformOverrides: {
+        '0': {
+          '["root-bitmap"]': { a: 1, b: 0, c: 0, d: 1, tx: 300, ty: 40 },
+        },
+      },
+    };
+    const freshInstance = {
+      ...template,
+      id: '70000000-0000-4000-8000-0000000000a3',
+      name: 'Graphic instance C',
+      x: 1_400,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [{
+        ...shot,
+        layers: [...shot.layers, instanceA, instanceB, freshInstance],
+      }],
+    });
+    const reopenedProject = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
+    const runtimeShot = reopenedProject.shots[0]!;
+    const evaluatedShot = evaluateShotAtTime(runtimeShot, 0, reopenedProject);
+    const editorModel = buildEditorStageRenderModel(reopenedProject, runtimeShot, evaluatedShot);
+    const stageAssetUrls = Object.fromEntries(
+      reopenedProject.assets.map((asset) => [asset.id, asset.relativePath]),
+    );
+    const hiddenExportStageModel = buildStageRenderModel(
+      reopenedProject,
+      evaluatedShot,
+      stageAssetUrls,
+    );
+    const layerFor = (model: typeof editorModel, id: string) =>
+      model.layers.find((layer) => layer.layer.id === id)!;
+    const stageLayerFor = (id: string) =>
+      hiddenExportStageModel.layers.find((layer) => layer.id === id)!;
+    const a = layerFor(editorModel, instanceA.id);
+    const b = layerFor(editorModel, instanceB.id);
+    const c = layerFor(editorModel, freshInstance.id);
+    const visualA = a.visual.flaGraphic!;
+    const visualB = b.visual.flaGraphic!;
+    const visualC = c.visual.flaGraphic!;
+
+    expect(visualA.mode).toBe('instance');
+    expect(visualA.layers?.[0]?.nodes[0]?.worldTransform).toMatchObject({ tx: 100, ty: 20 });
+    expect(visualB.layers?.[0]?.nodes[0]?.worldTransform).toMatchObject({ tx: 300, ty: 40 });
+    expect(visualC.layers?.[0]?.nodes[0]?.worldTransform).toMatchObject({ tx: 15, ty: 8 });
+    expect(a.render.x).toBe(a.evaluated.x);
+    expect(a.visual.ownerTransform.x).toBe(instanceA.x);
+    expect(visualA.layers?.[0]?.nodes[0]?.worldTransform.tx).not.toBe(instanceA.x);
+
+    const definition = reopenedProject.animations[0];
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic') {
+      throw new Error('Expected a FLA Graphic Definition.');
+    }
+    const definitionVisual = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: 0,
+      mode: 'definition',
+      instanceTransformOverrides: instanceA.flaGraphicInstanceTransformOverrides,
+    });
+    expect(definitionVisual?.layers?.[0]?.nodes[0]?.worldTransform).toMatchObject({ tx: 15, ty: 8 });
+    expect(definition.structure?.frames[0]?.layers[0]?.nodes[0]?.localTransform)
+      .toMatchObject({ tx: 15, ty: 8 });
+
+    expect(stageLayerFor(instanceA.id).visual?.flaGraphic).toBe(visualA);
+    expect(stageLayerFor(instanceB.id).visual?.flaGraphic).toBe(visualB);
+  });
+
+  it('renders the shared FLA Graphic visual for Shot thumbnails and fingerprints its structure', async () => {
+    const project = makeStructuredFlaGraphicProject();
+    const shot = project.shots[0]!;
+    const model = buildEditorStageRenderModel(project, shot);
+    const graphicLayer = model.layers.find(({ visual }) => visual.kind === 'fla-graphic')!;
+    expect(graphicLayer.visual.flaGraphic?.frameOrdinal).toBe(0);
+    const baseline = shotThumbnailFingerprint(project, shot);
+    const readThumbnail = vi.fn(async (assetId: string) => readyThumbnail(assetId));
+    const canvases = installBrowser(readThumbnail);
+
+    await createShotThumbnailDataUrl({
+      projectRoot: 'D:\\issue1080-fla-thumbnail',
+      project,
+      shot,
+    });
+
+    expect(canvases).toHaveLength(2);
+    const [thumbnail, structured] = canvases;
+    expect(structured!.context.draws).toHaveLength(1);
+    const scale = Math.min(256 / model.width, 256 / model.height);
+    // This leaf begins left/above the authored anchor: the raster expands and
+    // its owner-local placement compensates, preserving the source position.
+    expect(structured!.context.setTransforms[0]?.[4]).toBeCloseTo(0 * scale, 8);
+    expect(structured!.context.setTransforms[0]?.[5]).toBeCloseTo(0 * scale, 8);
+    const structuredDraw = thumbnail!.context.draws.find(
+      ({ image }) => image === structured,
+    );
+    expect(structuredDraw?.args).toEqual([-585, -592, 1_085, 1_092]);
+    expect(readThumbnail).toHaveBeenCalled();
+
+    const graphic = project.animations[0];
+    if (!graphic || !('kind' in graphic) || graphic.kind !== 'fla-graphic' || !graphic.structure) {
+      throw new Error('Expected a structured FLA Graphic fixture.');
+    }
+    const changed = ProjectSchema.parse({
+      ...project,
+      animations: [{
+        ...graphic,
+        structure: {
+          ...graphic.structure,
+          frames: graphic.structure.frames.map((frame) => ({
+            ...frame,
+            layers: frame.layers.map((layer) => ({
+              ...layer,
+              nodes: layer.nodes.map((node) => ({
+                ...node,
+                localTransform: { ...node.localTransform, tx: node.localTransform.tx + 1 },
+              })),
+            })),
+          })),
+        },
+      }],
+    });
+    expect(shotThumbnailFingerprint(changed, changed.shots[0]!)).not.toBe(baseline);
+  });
+
+  it('uses raw Canvas images for missing Structured FLA Graphic resource thumbnails', async () => {
+    const baseProject = makeStructuredFlaGraphicProject();
+    const shot = baseProject.shots[0]!;
+    const definition = baseProject.animations[0];
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic') {
+      throw new Error('Expected a Structured FLA Graphic Definition.');
+    }
+    const bitmapNode = definition.structure!.frames[0]!.layers[0]!.nodes[0]!;
+    if (bitmapNode.type !== 'bitmap' || !bitmapNode.assetId) {
+      throw new Error('Expected the fixture node to reference a Bitmap asset.');
+    }
+    const bitmapAssetId = 'a1000000-0000-4000-8000-000000000097';
+    const sourceBitmapAsset = baseProject.assets.find(
+      (asset) => asset.id === bitmapNode.assetId,
+    );
+    if (!sourceBitmapAsset) throw new Error('Expected the source Bitmap Project asset.');
+    const bitmapAsset = {
+      ...sourceBitmapAsset,
+      id: bitmapAssetId,
+      name: 'Standalone Structured Bitmap',
+      relativePath: 'assets/standalone-structured-bitmap.png',
+      sha256: 'c'.repeat(64),
+    };
+    const standaloneDefinition = {
+      ...definition,
+      structure: {
+        ...definition.structure!,
+        frames: definition.structure!.frames.map((frame) => ({
+          ...frame,
+          layers: frame.layers.map((layer) => ({
+            ...layer,
+            nodes: layer.nodes.map((node) =>
+              node.id === bitmapNode.id ? { ...node, assetId: bitmapAssetId } : node,
+            ),
+          })),
+        })),
+      },
+    };
+    const project = ProjectSchema.parse({
+      ...baseProject,
+      assets: [...baseProject.assets, bitmapAsset],
+      animations: [standaloneDefinition],
+    });
+    const readThumbnail = vi.fn(async (assetId: string) =>
+      assetId === bitmapAssetId
+        ? { ok: true, status: 'missing', assetId }
+        : readyThumbnail(assetId),
+    );
+    const readCanvasImage = vi.fn(async (assetId: string) => ({
+      ok: true,
+      status: 'ready',
+      assetId,
+      mimeType: 'image/png',
+      width: 640,
+      height: 640,
+      byteLength: 4,
+      bytes: new Uint8Array([1, 2, 3, 255]),
+    }));
+    const canvases = installBrowser(readThumbnail, readCanvasImage);
+    vi.stubGlobal('FileReader', FakeFileReader);
+
+    const dataUrl = await createShotThumbnailDataUrl({
+      projectRoot: 'D:\\issue1080-structured-canvas-fallback',
+      project,
+      shot,
+    });
+
+    expect(dataUrl).toMatch(/^data:image\/png/u);
+    expect(readCanvasImage).toHaveBeenCalledWith(bitmapAssetId);
+    expect(canvases).toHaveLength(2);
+  });
+
+  it('does not replace a missing legacy Shot thumbnail with a raw Canvas image', async () => {
+    const project = makeCompositeProject();
+    const shot = project.shots[0]!;
+    const model = buildEditorStageRenderModel(project, shot);
+    const missingAssetId = model.layers[1]!.visual.parts[0]!.assetId;
+    const readThumbnail = vi.fn(async (assetId: string) =>
+      assetId === missingAssetId
+        ? { ok: true, status: 'missing', assetId }
+        : readyThumbnail(assetId),
+    );
+    const readCanvasImage = vi.fn(async (assetId: string) => ({
+      ok: true,
+      status: 'ready',
+      assetId,
+      mimeType: 'image/png',
+      width: 640,
+      height: 640,
+      byteLength: 4,
+      bytes: new Uint8Array([1, 2, 3, 255]),
+    }));
+    installBrowser(readThumbnail, readCanvasImage);
+    vi.stubGlobal('FileReader', FakeFileReader);
+
+    const result = await requestShotThumbnail({
+      projectRoot: 'D:\\issue1080-legacy-missing-thumbnail',
+      project,
+      shot,
+    });
+
+    expect(result.status).toBe('missing');
+    expect(readCanvasImage).not.toHaveBeenCalled();
+  });
+
+  it('reuses raster output when the resource map is rebuilt with the same Project images', () => {
+    const project = makeStructuredFlaGraphicProject();
+    const layer = project.shots[0]!.layers.find((candidate) => candidate.source.kind === 'animation')!;
+    const model = buildEditorStageRenderModel(project, project.shots[0]!);
+    const visual = model.layers.find((candidate) => candidate.layer.id === layer.id)!.visual.flaGraphic!;
+    const canvases = installBrowser(async (assetId) => readyThumbnail(assetId));
+    const image = new FakeImage() as unknown as CanvasImageSource;
+    const firstImages = new Map(visual.resourceAssetIds.map((assetId) => [assetId, image]));
+    const secondImages = new Map(firstImages);
+
+    const first = renderFlaGraphicCanvas(visual, firstImages);
+    const second = renderFlaGraphicCanvas(visual, secondImages);
+
+    expect(second).toBe(first);
+    expect(canvases).toHaveLength(1);
+  });
+
+  it('uses structured frames when present and only the matching baked frame when a later frame has no structure', () => {
+    const base = makeStructuredFlaGraphicProject();
+    const definition = base.animations[0];
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic') {
+      throw new Error('Expected a FLA Graphic Definition.');
+    }
+    const firstFrame = definition.frames[0]!;
+    const secondFrameAssetId = 'a1000000-0000-4000-8000-000000000098';
+    const secondFrameSha = 'e'.repeat(64);
+    const secondFrameAsset = {
+      id: secondFrameAssetId,
+      kind: 'image' as const,
+      name: 'Legacy fallback frame',
+      relativePath: 'assets/legacy-fallback-frame.svg',
+      mimeType: 'image/svg+xml',
+      sha256: secondFrameSha,
+      width: 640,
+      height: 640,
+      usage: 'uncategorized' as const,
+      keywords: [],
+      flaGraphicFrame: { definitionId: definition.id, ordinal: 1 },
+    };
+    const secondFrame = {
+      ...firstFrame,
+      ordinal: 1,
+      sourceFrameIndex: firstFrame.sourceFrameIndex + 1,
+      assetId: secondFrameAssetId,
+      sha256: secondFrameSha,
+      startMs: firstFrame.durationMs,
+    };
+    const multiFrameDefinition = FlaGraphicDefinitionSchema.parse({
+      ...definition,
+      source: {
+        ...definition.source,
+        endFrameIndex: definition.source.endFrameIndex + 1,
+      },
+      durationMs: firstFrame.durationMs * 2,
+      frames: [firstFrame, secondFrame],
+      structure: {
+        ...definition.structure!,
+        frames: definition.structure!.frames.filter((frame) => frame.ordinal === 0),
+      },
+    });
+    const baseShot = base.shots[0]!;
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, secondFrameAsset],
+      animations: [multiFrameDefinition],
+      shots: [baseShot],
+    });
+    const shot = project.shots[0]!;
+    const firstTime = evaluateShotAtTime(shot, 0, project);
+    const secondTime = evaluateShotAtTime(
+      shot,
+      firstFrame.durationMs + 0.1,
+      project,
+    );
+    const firstVisual = buildEditorStageRenderModel(project, shot, firstTime)
+      .layers.find((candidate) => candidate.visual.kind === 'fla-graphic')!.visual;
+    const secondVisual = buildEditorStageRenderModel(project, shot, secondTime)
+      .layers.find((candidate) => candidate.visual.kind === 'fla-graphic')!.visual;
+
+    expect(firstVisual.flaGraphic?.frameOrdinal).toBe(0);
+    expect(firstVisual.flaGraphic?.structureFrame).not.toBeNull();
+    expect(secondVisual.flaGraphic?.frameOrdinal).toBe(1);
+    expect(secondVisual.flaGraphic?.structureFrame).toBeNull();
+    expect(secondVisual.parts[0]?.assetId).toBe(secondFrameAssetId);
+  });
+
   it('takes Body, base Face, draw order, local geometry, and the shared owner transform from S03', () => {
     const project = makeCompositeProject();
     const model = buildEditorStageRenderModel(project, project.shots[0]!);

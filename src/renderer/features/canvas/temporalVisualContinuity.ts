@@ -66,10 +66,11 @@ function isAssetReady(
   return readyAssetSourceKeys.get(assetId) === asset.sha256;
 }
 
-function visualAssetIds(
+export function visualAssetIds(
   visual: LayerVisualParts,
   evaluated: EvaluatedLayer,
 ): string[] {
+  if (visual.flaGraphic?.structureFrame) return [...visual.flaGraphic.resourceAssetIds];
   return visual.parts.map((part) =>
     part.slot === 'face' || part.slot === 'single'
       ? evaluated.assetId || part.assetId

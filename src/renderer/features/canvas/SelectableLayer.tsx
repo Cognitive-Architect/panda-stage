@@ -18,6 +18,11 @@ import type {
   PositionAuthoringSessionHandle,
 } from '../../stores/positionAuthoringSessionStore';
 import { canvasImageResourceKey } from './canvasImageResources';
+import {
+  FlaGraphicStructureProjection,
+  type FlaGraphicStructureProjectionProps,
+} from './FlaGraphicStructureProjection';
+import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Point {
   readonly x: number;
@@ -53,6 +58,7 @@ export interface SelectableLayerProps {
   positionAuthoringSession?: PositionAuthoringSessionHandle | null;
   /** The visual-only Shake offset that must not be baked into Position. */
   positionAuthoringShakeOffset?: Point | null;
+  flaGraphicEditProjection?: FlaGraphicStructureProjectionProps | null;
   onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
 }
@@ -82,6 +88,7 @@ export function SelectableLayer({
   onCommitTransform,
   positionAuthoringSession = null,
   positionAuthoringShakeOffset = null,
+  flaGraphicEditProjection = null,
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
@@ -89,7 +96,7 @@ export function SelectableLayer({
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const canTransform = canMove;
+  const canTransform = canMove && !flaGraphicEditProjection;
 
   const legacyBounds = {
     x: -render.offsetX,
@@ -141,6 +148,9 @@ export function SelectableLayer({
   const animationVisual = visual?.parts.some(
     (part) => part.source.kind === 'animation-frame',
   ) ?? false;
+  const structuredCanvas = visual?.flaGraphic && images
+    ? renderFlaGraphicCanvas(visual.flaGraphic, images)
+    : null;
   const headGroup = visual?.headGroup ?? null;
   const headPartIds = new Set(headGroup?.partIds ?? []);
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
@@ -341,7 +351,7 @@ export function SelectableLayer({
       opacity={render.opacity}
       onTransformEnd={(event) => {
         const node = event.target as Konva.Group;
-        if (positionAuthoringSession || !directEditingEnabled) {
+        if (positionAuthoringSession || !directEditingEnabled || flaGraphicEditProjection) {
           resetNode(node);
           return;
         }
@@ -370,11 +380,21 @@ export function SelectableLayer({
       rotation={render.rotationDeg}
       scaleX={render.scaleX}
       scaleY={render.scaleY}
-      visible={render.visible}
+      visible={render.visible || Boolean(flaGraphicEditProjection)}
       x={render.x}
       y={render.y}
       >
-        {compositeVisual ? (
+        {flaGraphicEditProjection ? (
+          <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
+        ) : structuredCanvas && visual?.flaGraphic ? (
+          <KonvaImage
+            {...structuredCanvas.rect}
+            image={structuredCanvas.canvas}
+            listening={canSelect}
+            onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+            onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+          />
+        ) : compositeVisual ? (
           <Group
             listening={canSelect}
             name="selectable-canvas-visual"
@@ -385,8 +405,8 @@ export function SelectableLayer({
         ) : (
           renderedParts
         )}
-        {renderedHitAreas}
-        {animationVisual ? (
+        {!flaGraphicEditProjection ? renderedHitAreas : null}
+        {!flaGraphicEditProjection && animationVisual ? (
           <Rect
             fill="#000000"
             height={visualBounds.height}
@@ -400,7 +420,7 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady ? (
+        {selected && completeVisualReady && !flaGraphicEditProjection ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}

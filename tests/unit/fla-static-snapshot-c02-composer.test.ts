@@ -96,7 +96,7 @@ const SHAPE_BLOCK = `<DOMShape>
   <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
 </DOMShape>`;
 
-function c02Fixture(): {
+function c02Fixture(withFrameBlur = false): {
   readonly lookup: FlaStaticSnapshotBitmapMediaLookup;
   readonly shapeBlocks: ReadonlyMap<string, string>;
   readonly displayList: FlaResolvedDisplayList;
@@ -111,6 +111,9 @@ function c02Fixture(): {
           {
             name: 'Layer 1',
             visible: true,
+            ...(withFrameBlur ? {
+              frameFilter: { kind: 'blur' as const, blurX: 0, blurY: 2, quality: 'low' as const, enabled: true as const },
+            } : {}),
             elements: [
               { kind: 'bitmap', libraryItemName: 'LIBRARY/background.png' },
               {
@@ -194,6 +197,45 @@ describe('P0-C02 composed snapshot SVG', () => {
       composition: { bitmapInstanceCount: 2, shapeCount: 1 },
       hasRenderablePath: true,
     });
+  });
+
+  it('applies a vertical BlurFilter to its owning frame layer and expands filtered content bounds', () => {
+    const fixture = c02Fixture(true);
+    const displayList: FlaResolvedDisplayList = { ...fixture.displayList, kind: 'graphic' };
+    const baselineFixture = c02Fixture();
+    const baselineList: FlaResolvedDisplayList = { ...baselineFixture.displayList, kind: 'graphic' };
+    const result = buildSvgForResolvedDisplayList({
+      displayList,
+      renderTargetId: 'c02-frame-blur-scene',
+      stageWidth: 4,
+      stageHeight: 4,
+      shapeBlocks: fixture.shapeBlocks,
+      resolveBitmapMedia: fixture.lookup,
+    });
+    const baseline = buildSvgForResolvedDisplayList({
+      displayList: baselineList,
+      renderTargetId: 'c02-frame-blur-baseline',
+      stageWidth: 4,
+      stageHeight: 4,
+      shapeBlocks: baselineFixture.shapeBlocks,
+      resolveBitmapMedia: baselineFixture.lookup,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(baseline.ok).toBe(true);
+    if (!result.ok || !baseline.ok) return;
+    expect(result.svg).toContain('<feGaussianBlur in="SourceGraphic" stdDeviation="0 2"/>');
+    expect(result.height).toBeGreaterThan(0);
+    const filterGroupStart = result.svg.indexOf('<g filter="url(#fla-frame-blur-');
+    const shapePath = result.svg.indexOf('<path');
+    const filterGroupEnd = result.svg.indexOf('</g>', filterGroupStart);
+    const unfilteredFrontLayerUse = result.svg.lastIndexOf('transform="matrix(1 0 0 1 2 1)"');
+    expect(filterGroupStart).toBeGreaterThanOrEqual(0);
+    expect(shapePath).toBeGreaterThan(filterGroupStart);
+    expect(filterGroupEnd).toBeGreaterThan(shapePath);
+    expect(unfilteredFrontLayerUse).toBeGreaterThan(filterGroupEnd);
+    expect(result.composition.framing.contentBounds?.height)
+      .toBeGreaterThan(baseline.composition.framing.contentBounds?.height ?? 0);
   });
 
   it('resolves exact media references and refuses ambiguous basename fallback', () => {

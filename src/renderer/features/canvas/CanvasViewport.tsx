@@ -200,6 +200,7 @@ export function CanvasViewport({
     );
     const target = event.target;
     if (!logicalStage || !(target instanceof Node)) return;
+    if (isViewportInteractiveChromePointerTarget(target)) return;
     if (
       isViewportChromePointerTarget(target, (candidate) =>
         logicalStage.contains(candidate),
@@ -212,6 +213,7 @@ export function CanvasViewport({
   const handlePointerDownCapture = (
     event: PointerEvent<HTMLDivElement>,
   ): void => {
+    if (isViewportInteractiveChromePointerTarget(event.target)) return;
     if (
       mode !== 'actual' ||
       !spaceHeldRef.current ||
@@ -318,6 +320,17 @@ export function CanvasViewport({
       {viewportChrome}
     </div>
   );
+}
+
+function isViewportInteractiveChromePointerTarget(
+  target: EventTarget | null,
+): boolean {
+  const element = target instanceof Element
+    ? target
+    : target instanceof Node
+      ? target.parentElement
+      : null;
+  return Boolean(element?.closest('[data-canvas-interactive-chrome="true"]'));
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

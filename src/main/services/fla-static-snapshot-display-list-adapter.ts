@@ -4,41 +4,57 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds one fail-closed, source-bounded transform-only motion subset; unrelated XFL
- * semantics (shape tweens, non-vector/animated masks, text, filters, or ActionScript)
- * remain unsupported. Static filled-vector mask layers have a bounded resolver path.
+ * adds fail-closed Classic Motion interpolation for transforms, color, easing,
+ * and one directional frame BlurFilter; unrelated XFL semantics (shape tweens,
+ * non-vector/animated masks, other filters, or ActionScript) remain unsupported.
+ * Static filled-vector mask layers have a bounded resolver path.
  */
 
 import crypto from 'node:crypto';
 import {
   buildFlaTimelineFrameSpanIndex,
   resolveFlaTimelineFrameSpan,
+  type FlaNormalizedFrameSpan,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
-import { interpolateFlaLinearMotionTransform } from './fla-motion-tween-transform-interpolator';
+import {
+  interpolateFlaClassicMotionInstanceTransform,
+  type FlaMotionTweenRotation,
+} from './fla-motion-tween-transform-interpolator';
+import {
+  evaluateFlaViewerClassicTweenProgress,
+  type FlaViewerEasePoint,
+  type FlaViewerTweenEase,
+} from './fla-viewer-tween-evaluator';
 import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
+  type FlaDisplayListBlurFilter,
   type FlaDisplayListFrameContext,
   type FlaDisplayListMatrix,
+  type FlaDisplayListRgbTransform,
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
+import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
-const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
+const MAX_RIG_PARENT_DEPTH = 8;
+const MAX_CLASSIC_MOTION_ROTATION_TURNS = 1_000_000;
+const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
   'index',
   'duration',
   'tweenType',
   'motionTweenSnap',
   'keyMode',
+  'motionTweenSync',
+  'acceleration',
+  'motionTweenRotate',
+  'motionTweenRotateTimes',
+  'parentLayerIndex',
+  'rigPropagationMatrix',
 ]);
-// #713 graduated the existing short transform-only duration family. #728 adds
-// only duration 29 under the same strict guards; keep every supported length explicit.
-const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3, 5, 6, 14, 29]);
-// #720 authorizes 9728 only as a non-motion terminal marker for this family.
-const BOUNDED_MOTION_TERMINAL_KEY_MODES = new Set(['15872', '9728']);
-const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
+const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
   'selected',
   'symbolType',
@@ -47,30 +63,24 @@ const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'loop',
   'firstFrame',
   'lastFrame',
+  'name',
 ]);
 const UNSUPPORTED_MOTION_METADATA_TAGS = new Set([
   'motionobject',
   'motionpath',
-  'ease',
-  'customease',
   'domtween',
   'animationcore',
-  'propertycontainer',
   'motionobjectxml',
 ]);
 const UNSUPPORTED_MOTION_METADATA_ATTRIBUTES = new Set([
-  'acceleration',
   'easein',
   'easeout',
   'motionpath',
   'orienttopath',
   'rotate',
   'rotatedirection',
-  'rotatetimes',
   'rotationdirection',
-  'rotationtimes',
   'tweeneasing',
-  'motiontweenrotate',
 ]);
 
 interface XmlToken {
@@ -128,6 +138,7 @@ export interface FlaStaticSnapshotDisplaySource {
     frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
     frameIndex: number,
     scope: string,
+    options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
   ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext>;
 }
 
@@ -486,6 +497,19 @@ function readDirectMatrix(element: FlaXflElementBlock): MatrixReadResult | Matri
   return { ok: true, present: true, matrix };
 }
 
+function readDirectTransformationPoint(
+  element: FlaXflElementBlock,
+): { readonly x: number; readonly y: number } | null {
+  const wrapper = directChild(element.xml, element.name, 'transformationPoint');
+  if (!wrapper) return { x: 0, y: 0 };
+  const point = getFlaXflDirectChildren(wrapper.xml, 'transformationPoint')
+    .find((child) => child.name === 'Point');
+  if (!point) return null;
+  const x = Number(point.attributes.x ?? 0);
+  const y = Number(point.attributes.y ?? 0);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 function compose(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): FlaDisplayListMatrix {
   return {
     a: parent.a * local.a + parent.c * local.b,
@@ -519,15 +543,10 @@ function localizeAbsoluteLeafMatrix(
   parentWorld: FlaDisplayListMatrix,
   sourceAbsolute: FlaDisplayListMatrix,
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListMatrix> {
-  const parentInverse = inverse(parentWorld);
-  if (!parentInverse) {
-    return fail('RENDER_FAILED', 'Cannot localize an absolute XFL child matrix under a singular parent group');
-  }
-  const local = compose(parentInverse, sourceAbsolute);
-  if (![local.a, local.b, local.c, local.d, local.tx, local.ty].every(Number.isFinite)) {
-    return fail('RENDER_FAILED', 'Localized XFL child matrix is not finite');
-  }
-  return { ok: true, value: local };
+  const localized = localizeSharedAbsoluteLeafMatrix(parentWorld, sourceAbsolute);
+  return localized.ok
+    ? { ok: true, value: localized.value }
+    : fail('RENDER_FAILED', localized.message);
 }
 
 function elementIsVisible(attributes: Readonly<Record<string, string>>): boolean {
@@ -542,8 +561,79 @@ interface ElementParseContext {
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
   readonly sourceParentSpanTweenType?: string;
+  readonly sourceParentMotionTweenSync?: boolean;
+  readonly motionTweenEndpoint?: boolean;
   readonly unsupportedDisplayReasons: string[];
   readonly state: SourceBuildState;
+}
+
+interface ClassicMotionColorTransform {
+  readonly alphaMultiplier?: number;
+  readonly rgbTransform?: FlaDisplayListRgbTransform;
+}
+
+type ClassicMotionColorParseResult =
+  | { readonly ok: true; readonly transform: ClassicMotionColorTransform | null }
+  | { readonly ok: false; readonly message: string };
+
+function classicMotionColorTransform(target: FlaXflElementBlock): ClassicMotionColorParseResult {
+  const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
+    .filter((child) => child.name === 'color');
+  if (colorWrappers.length === 0) return { ok: true, transform: null };
+  const unsupported = (reason: string): ClassicMotionColorParseResult => ({
+    ok: false,
+    message: `Classic Motion contains unsupported Color data: ${reason}`,
+  });
+  if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
+  const wrapper = colorWrappers[0]!;
+  if (Object.keys(wrapper.attributes).length > 0) return unsupported('color wrapper has attributes');
+  const values = getFlaXflDirectChildren(wrapper.xml, wrapper.name);
+  const color = values[0];
+  if (values.length !== 1 || color?.name !== 'Color' ||
+      getFlaXflDirectChildren(color.xml, color.name).length !== 0) {
+    return unsupported('malformed Color element structure');
+  }
+
+  const attributes = color.attributes;
+  const names = Object.keys(attributes);
+  if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness')) {
+    return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
+  }
+  let alphaMultiplier: number | undefined;
+  if (attributes.alphaMultiplier !== undefined) {
+    const rawAlpha = attributes.alphaMultiplier;
+    alphaMultiplier = rawAlpha.trim() === '' ? Number.NaN : Number(rawAlpha);
+    if (!Number.isFinite(alphaMultiplier) || alphaMultiplier < 0 || alphaMultiplier > 1) {
+      return unsupported('alphaMultiplier must be finite and within 0..1');
+    }
+  }
+  let rgbTransform: FlaDisplayListRgbTransform | undefined;
+  if (attributes.brightness !== undefined) {
+    const rawBrightness = attributes.brightness;
+    const brightness = rawBrightness === undefined || rawBrightness.trim() === ''
+      ? Number.NaN
+      : Number(rawBrightness);
+    if (!Number.isFinite(brightness) || brightness < -1 || brightness > 1) {
+      return unsupported('brightness must be finite and within -1..1');
+    }
+    rgbTransform = brightness >= 0
+      ? { multiplier: 1 - brightness, offset: brightness * 255 }
+      : { multiplier: 1 + brightness, offset: 0 };
+  }
+  if (names.length === 0) return unsupported('Color has no supported attributes');
+  const effectiveAlpha = alphaMultiplier === 1 ? undefined : alphaMultiplier;
+  const effectiveRgb = rgbTransform?.multiplier === 1 && rgbTransform.offset === 0
+    ? undefined
+    : rgbTransform;
+  return {
+    ok: true,
+    transform: effectiveAlpha === undefined && effectiveRgb === undefined
+      ? null
+      : {
+          ...(effectiveAlpha !== undefined ? { alphaMultiplier: effectiveAlpha } : {}),
+          ...(effectiveRgb ? { rgbTransform: effectiveRgb } : {}),
+        },
+  };
 }
 
 function parseDisplayElements(
@@ -579,7 +669,14 @@ function parseDisplayElements(
       if (nextDepth > MAX_SOURCE_GROUP_DEPTH) {
         return fail('BUDGET_EXCEEDED', `XFL groups exceed recursion depth ${MAX_SOURCE_GROUP_DEPTH}`);
       }
-      const groupWorld = compose(context.parentWorld, matrixResult.matrix);
+      let groupLocalTransform = matrixResult.matrix;
+      let groupWorld = context.parentWorld;
+      if (matrixResult.present) {
+        const localized = localizeAbsoluteLeafMatrix(context.parentWorld, matrixResult.matrix);
+        if (!localized.ok) return localized;
+        groupLocalTransform = localized.value;
+        groupWorld = matrixResult.matrix;
+      }
       const members = directChild(child.xml, child.name, 'members');
       const parsedChildren = members
         ? parseDisplayElements(members, {
@@ -592,6 +689,10 @@ function parseDisplayElements(
             ...(context.sourceParentSpanTweenType !== undefined
               ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
               : {}),
+            ...(context.sourceParentMotionTweenSync !== undefined
+              ? { sourceParentMotionTweenSync: context.sourceParentMotionTweenSync }
+              : {}),
+            ...(context.motionTweenEndpoint ? { motionTweenEndpoint: true } : {}),
             unsupportedDisplayReasons: context.unsupportedDisplayReasons,
             state: context.state,
           })
@@ -606,7 +707,7 @@ function parseDisplayElements(
         ...(context.sourceParentSpanTweenType !== undefined
           ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
           : {}),
-        localTransform: matrixResult.matrix,
+        localTransform: groupLocalTransform,
         elements: parsedChildren.value,
       });
       continue;
@@ -662,6 +763,14 @@ function parseDisplayElements(
         ? 'button'
         : 'movieclip';
     const resolvedName = resolveSymbolAlias(context.state.symbolAliases, libraryItemName) ?? libraryItemName;
+    let alphaMultiplier: number | undefined;
+    let rgbTransform: FlaDisplayListRgbTransform | undefined;
+    if (context.motionTweenEndpoint) {
+      const colorResult = classicMotionColorTransform(child);
+      if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
+      alphaMultiplier = colorResult.transform?.alphaMultiplier;
+      rgbTransform = colorResult.transform?.rgbTransform;
+    }
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
@@ -669,11 +778,17 @@ function parseDisplayElements(
       ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
+      ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
+      ...(rgbTransform ? { rgbTransform } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
       ...(context.sourceParentSpanTweenType !== undefined
         ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
         : {}),
+      ...(context.sourceParentMotionTweenSync !== undefined
+        ? { sourceParentMotionTweenSync: context.sourceParentMotionTweenSync }
+        : {}),
+      ...(context.motionTweenEndpoint ? { motionTweenEndpoint: true } : {}),
       sourceAddress: `${context.scope}/${path}`,
       ...(localTransform ? { localTransform } : {}),
     });
@@ -720,9 +835,8 @@ function buildFrameContext(
           path: `layer-${layerIndex}-frame-${frameIndex}`,
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart,
-          // #722 — Scene-owned spans carry the same owning-span tween metadata as
-          // the Graphic path so the #721 bounded Loop contract is reachable from a
-          // static Scene span ('none') while a tweened Scene span stays fail-closed.
+          // Preserve the Scene keyframe's source span metadata just like the
+          // Graphic path; nested playback is evaluated relative to this keyframe.
           sourceParentSpanTweenType: frame.attributes.tweenType ?? 'none',
           unsupportedDisplayReasons,
           state,
@@ -770,7 +884,8 @@ function containsUnsupportedMotionMetadata(xml: string): boolean {
   while (cursor < xml.length) {
     const token = nextTagToken(xml, cursor);
     if (!token) return xml.slice(cursor).trim().length > 0;
-    if (UNSUPPORTED_MOTION_METADATA_TAGS.has(token.name.toLocaleLowerCase('en-US')) ||
+    const lowerTagName = token.name.toLocaleLowerCase('en-US');
+    if (UNSUPPORTED_MOTION_METADATA_TAGS.has(lowerTagName) ||
         Object.keys(token.attributes).some((name) =>
           UNSUPPORTED_MOTION_METADATA_ATTRIBUTES.has(name.toLocaleLowerCase('en-US')))) {
       return true;
@@ -780,79 +895,388 @@ function containsUnsupportedMotionMetadata(xml: string): boolean {
   return false;
 }
 
+type ClassicMotionRotationResult =
+  | { readonly ok: true; readonly rotation?: FlaMotionTweenRotation }
+  | { readonly ok: false; readonly message: string };
+
+function classicMotionRotationForFrame(frame: FlaXflElementBlock): ClassicMotionRotationResult {
+  const direction = frame.attributes.motionTweenRotate;
+  const rawTurns = frame.attributes.motionTweenRotateTimes;
+  if (direction === undefined && rawTurns === undefined) return { ok: true };
+  if (direction !== undefined && !['clockwise', 'counter-clockwise', 'cw', 'ccw', 'auto', 'none'].includes(direction)) {
+    return { ok: false, message: `Unsupported motionTweenRotate value: ${direction}` };
+  }
+  let turns = 0;
+  if (rawTurns !== undefined) {
+    if (!/^\d+$/u.test(rawTurns.trim())) {
+      return { ok: false, message: 'motionTweenRotateTimes must be a non-negative whole number' };
+    }
+    turns = Number(rawTurns.trim());
+  }
+  if (!Number.isSafeInteger(turns) || turns < 0 || turns > MAX_CLASSIC_MOTION_ROTATION_TURNS) {
+    return {
+      ok: false,
+      message: `motionTweenRotateTimes must be a whole number from 0 to ${MAX_CLASSIC_MOTION_ROTATION_TURNS}`,
+    };
+  }
+  const normalizedDirection = direction === 'clockwise' || direction === 'cw'
+    ? 'clockwise'
+    : direction === 'counter-clockwise' || direction === 'ccw'
+      ? 'counter-clockwise'
+      : undefined;
+  return normalizedDirection
+    ? { ok: true, rotation: { direction: normalizedDirection, turns } }
+    : { ok: true };
+}
+
+type ClassicMotionEaseParseResult =
+  | { readonly ok: true; readonly acceleration?: number; readonly eases: readonly FlaViewerTweenEase[] }
+  | { readonly ok: false; readonly message: string };
+
+function classicMotionEasesForFrame(frame: FlaXflElementBlock): ClassicMotionEaseParseResult {
+  let acceleration: number | undefined;
+  if (frame.attributes.acceleration !== undefined) {
+    const raw = frame.attributes.acceleration.trim();
+    if (!/^-?\d+$/u.test(raw)) {
+      return { ok: false, message: 'DOMFrame acceleration must be a whole number' };
+    }
+    acceleration = Number(raw);
+    if (!Number.isSafeInteger(acceleration) || acceleration < -100 || acceleration > 100) {
+      return { ok: false, message: 'DOMFrame acceleration must be between -100 and 100' };
+    }
+  }
+  const containers = getFlaXflDirectChildren(frame.xml, frame.name)
+    .filter((child) => child.name === 'tweens');
+  if (containers.length > 1) return { ok: false, message: 'DOMFrame contains multiple tweens containers' };
+  if (containers.length === 0) return { ok: true, ...(acceleration !== undefined ? { acceleration } : {}), eases: [] };
+  const container = containers[0]!;
+  if (Object.keys(container.attributes).length > 0) {
+    return { ok: false, message: 'tweens container has unsupported attributes' };
+  }
+  const easeResults: FlaViewerTweenEase[] = [];
+  for (const child of getFlaXflDirectChildren(container.xml, container.name)) {
+    const target = child.attributes.target ?? 'all';
+    if (child.name === 'Ease') {
+      const allowedAttributes = new Set(['target', 'intensity', 'method']);
+      if (Object.keys(child.attributes).some((name) => !allowedAttributes.has(name)) ||
+          getFlaXflDirectChildren(child.xml, child.name).length > 0) {
+        return { ok: false, message: 'Ease contains unsupported attributes or child elements' };
+      }
+      let intensity: number | undefined;
+      if (child.attributes.intensity !== undefined) {
+        const raw = child.attributes.intensity.trim();
+        if (!/^-?\d+$/u.test(raw)) return { ok: false, message: 'Ease intensity must be a whole number' };
+        intensity = Number(raw);
+        if (!Number.isSafeInteger(intensity) || intensity < -100 || intensity > 100) {
+          return { ok: false, message: 'Ease intensity must be between -100 and 100' };
+        }
+      }
+      easeResults.push({
+        target,
+        ...(child.attributes.method !== undefined ? { method: child.attributes.method } : {}),
+        ...(intensity !== undefined ? { intensity } : {}),
+      });
+      continue;
+    }
+    if (child.name === 'CustomEase') {
+      if (Object.keys(child.attributes).some((name) => name !== 'target')) {
+        return { ok: false, message: 'CustomEase contains unsupported attributes' };
+      }
+      const points: FlaViewerEasePoint[] = [];
+      for (const point of getFlaXflDirectChildren(child.xml, child.name)) {
+        if (point.name !== 'Point' || Object.keys(point.attributes).some((name) => name !== 'x' && name !== 'y') ||
+            point.attributes.x === undefined || point.attributes.y === undefined ||
+            getFlaXflDirectChildren(point.xml, point.name).length > 0) {
+          return { ok: false, message: 'CustomEase contains malformed Point data' };
+        }
+        const x = Number(point.attributes.x);
+        const y = Number(point.attributes.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          return { ok: false, message: 'CustomEase Point coordinates must be finite' };
+        }
+        points.push({ x, y });
+      }
+      easeResults.push({ target, customPoints: points });
+      continue;
+    }
+    return { ok: false, message: `Unsupported tweens element: ${child.name}` };
+  }
+  return { ok: true, ...(acceleration !== undefined ? { acceleration } : {}), eases: easeResults };
+}
+
 function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
-  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
-  if (frameChildren.length !== 1 || frameChildren[0]?.name !== 'elements') return [];
   const container = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
   return getFlaXflDirectChildren(container.xml, container.name);
 }
 
-function isBoundedMotionFramePair(
+type ClassicMotionFrameBlurResult =
+  | { readonly ok: true; readonly filter?: FlaDisplayListBlurFilter }
+  | { readonly ok: false; readonly message: string };
+
+function parseClassicMotionBlurValue(raw: string | undefined): number | null {
+  const value = raw?.trim();
+  if (!value || !/^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 255 ? parsed : null;
+}
+
+function classicMotionFrameBlurFilter(
+  frame: FlaXflElementBlock,
+  endpoint: 'start' | 'end',
+): ClassicMotionFrameBlurResult {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
+  const frameFilterContainers = frameChildren.filter((child) => child.name === 'frameFilters');
+  if (frameFilterContainers.length > 1) {
+    return { ok: false, message: `${endpoint} frame contains multiple frameFilters containers` };
+  }
+  const filters = frameFilterContainers.flatMap((container) =>
+    getFlaXflDirectChildren(container.xml, container.name));
+  if (filters.length === 0) return { ok: true };
+
+  const describeFilter = (filter: FlaXflElementBlock): string => {
+    if (filter.name !== 'BlurFilter') return filter.name;
+    const blurX = filter.attributes.blurX?.slice(0, 32) ?? 'default';
+    const blurY = filter.attributes.blurY?.slice(0, 32) ?? 'default';
+    return `BlurFilter (blurX=${blurX}, blurY=${blurY})`;
+  };
+  const unsupported = (detail?: string): ClassicMotionFrameBlurResult => ({
+    ok: false,
+    message: `${endpoint} frame contains unsupported frame filter interpolation: ${filters
+      .map(describeFilter).join(', ')}${detail ? `; ${detail}` : ''}`,
+  });
+  if (filters.length !== 1 || filters[0]?.name !== 'BlurFilter') return unsupported();
+
+  const filter = filters[0]!;
+  const attributes = Object.keys(filter.attributes).sort();
+  if (attributes.length !== 2 || attributes[0] !== 'blurX' || attributes[1] !== 'blurY') {
+    return unsupported('BlurFilter must author only blurX and blurY');
+  }
+  if (getFlaXflDirectChildren(filter.xml, filter.name).length !== 0) {
+    return unsupported('BlurFilter child nodes are unsupported');
+  }
+  const blurX = parseClassicMotionBlurValue(filter.attributes.blurX);
+  const blurY = parseClassicMotionBlurValue(filter.attributes.blurY);
+  if (blurX === null || blurY === null) {
+    return unsupported('blurX and blurY must be finite decimal values in 0..255');
+  }
+  return {
+    ok: true,
+    filter: { kind: 'blur', blurX, blurY, quality: 'low', enabled: true },
+  };
+}
+
+function classicMotionFrameStructureRejectionReason(
+  frame: FlaXflElementBlock,
+  endpoint: 'start' | 'end',
+): string | null {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, 'DOMFrame');
+  const elementContainers = frameChildren.filter((child) => child.name === 'elements');
+  if (elementContainers.length !== 1) {
+    return `${endpoint} frame must contain exactly one elements container`;
+  }
+  const unsupportedFrameChildren = frameChildren.filter((child) =>
+    child.name !== 'elements' && child.name !== 'frameFilters' && child.name !== 'tweens');
+  if (unsupportedFrameChildren.length > 0) {
+    return `${endpoint} frame contains unsupported direct child: ${unsupportedFrameChildren
+      .map((child) => child.name).join(', ')}`;
+  }
+
+  const filterResult = classicMotionFrameBlurFilter(frame, endpoint);
+  return filterResult.ok ? null : filterResult.message;
+}
+
+function interpolateClassicMotionFrameBlurFilter(
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  progress: number,
+): ClassicMotionFrameBlurResult {
+  const startFilter = classicMotionFrameBlurFilter(startFrame, 'start');
+  if (!startFilter.ok) return startFilter;
+  const endFilter = classicMotionFrameBlurFilter(endFrame, 'end');
+  if (!endFilter.ok) return endFilter;
+  if (!startFilter.filter && !endFilter.filter) return { ok: true };
+  if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
+    return { ok: false, message: 'motion filter progress must be finite and within 0..1' };
+  }
+  const from = startFilter.filter ?? { blurX: 0, blurY: 0, quality: 'low' as const, enabled: true as const, kind: 'blur' as const };
+  const to = endFilter.filter ?? { blurX: 0, blurY: 0, quality: 'low' as const, enabled: true as const, kind: 'blur' as const };
+  return {
+    ok: true,
+    filter: {
+      ...to,
+      blurX: from.blurX + (to.blurX - from.blurX) * progress,
+      blurY: from.blurY + (to.blurY - from.blurY) * progress,
+    },
+  };
+}
+
+function rigPropagationMatrixRejectionReason(frame: FlaXflElementBlock): string | null {
+  const raw = frame.attributes.rigPropagationMatrix;
+  if (raw === undefined) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return 'rigPropagationMatrix is not valid JSON';
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return 'rigPropagationMatrix must be a matrix object';
+  }
+  const matrix = value as Record<string, unknown>;
+  const names = ['a', 'b', 'c', 'd', 'tx', 'ty'];
+  if (Object.keys(matrix).some((name) => !names.includes(name)) ||
+      names.some((name) => typeof matrix[name] !== 'number' || !Number.isFinite(matrix[name]))) {
+    return 'rigPropagationMatrix must contain finite a, b, c, d, tx, and ty values';
+  }
+  return null;
+}
+
+function classicMotionFramePairRejectionReason(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
   startIndex: number,
   duration: number,
-): boolean {
-  const allowedFrameAttributes = (frame: FlaXflElementBlock): boolean =>
-    Object.keys(frame.attributes).every((name) => BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
-  const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
-    const tweenType = frame.attributes.tweenType;
-    if (tweenType === 'motion') {
-      return frame.attributes.motionTweenSnap === 'true' && frame.attributes.keyMode === '22017';
-    }
-    return (tweenType === undefined || tweenType === 'none') &&
-      frame.attributes.motionTweenSnap === undefined &&
-      BOUNDED_MOTION_TERMINAL_KEY_MODES.has(frame.attributes.keyMode ?? '');
+): string | null {
+  type ParsedKeyMode =
+    | { readonly kind: 'missing' }
+    | { readonly kind: 'invalid' }
+    | { readonly kind: 'integer'; readonly value: number };
+  type MotionKeyModeFamily = 'motion' | 'sync-motion';
+  const parseKeyMode = (raw: string | undefined): ParsedKeyMode => {
+    if (raw === undefined) return { kind: 'missing' };
+    if (!/^-?\d+$/u.test(raw)) return { kind: 'invalid' };
+    const value = Number(raw);
+    return Number.isSafeInteger(value) ? { kind: 'integer', value } : { kind: 'invalid' };
   };
-  if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
-      !BOUNDED_MOTION_SPAN_DURATIONS.has(duration) || Number(startFrame.attributes.index) !== startIndex ||
-      Number(endFrame.attributes.index) !== startIndex + duration ||
-      startFrame.attributes.tweenType !== 'motion' ||
-      startFrame.attributes.motionTweenSnap !== 'true' || startFrame.attributes.keyMode !== '22017' ||
-      !endpointDefinesSupportedOutgoingState(endFrame) ||
-      containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
-    return false;
+  const rawKeyMode = (frame: FlaXflElementBlock): string => frame.attributes.keyMode ?? '(missing)';
+  const motionKeyModeFamily = (frame: FlaXflElementBlock): MotionKeyModeFamily | null => {
+    if (frame.attributes.tweenType !== 'motion') return null;
+    const parsed = parseKeyMode(frame.attributes.keyMode);
+    if (parsed.kind !== 'integer') return null;
+    // Flare classifies Classic Motion from tweenType and treats Snap separately.
+    // 17921 is also present on the failing ordinary, Snap-disabled source span.
+    if ((parsed.value === 17921 || parsed.value === 22017) && frame.attributes.motionTweenSync === undefined) {
+      return 'motion';
+    }
+    if (parsed.value === 24065 && frame.attributes.motionTweenSync === 'true') return 'sync-motion';
+    return null;
+  };
+  const isSupportedTerminalKeyMode = (frame: FlaXflElementBlock): boolean => {
+    const tweenType = frame.attributes.tweenType;
+    if ((tweenType !== undefined && tweenType !== 'none') ||
+        frame.attributes.motionTweenSnap !== undefined || frame.attributes.motionTweenSync !== undefined) {
+      return false;
+    }
+    const parsed = parseKeyMode(frame.attributes.keyMode);
+    return parsed.kind === 'integer' && (parsed.value === 15872 || parsed.value === 9728);
+  };
+  const unsupportedFrameAttributes = (frame: FlaXflElementBlock): string[] =>
+    Object.keys(frame.attributes).filter((name) =>
+      !CLASSIC_MOTION_FRAME_ATTRIBUTES.has(name));
+  const validBooleanMetadata = (frame: FlaXflElementBlock): boolean => {
+    for (const name of ['motionTweenSync', 'motionTweenSnap']) {
+      const value = frame.attributes[name];
+      if (value !== undefined && value !== 'true' && value !== 'false') return false;
+    }
+    return true;
+  };
+  const unsupportedStartAttributes = unsupportedFrameAttributes(startFrame);
+  if (unsupportedStartAttributes.length > 0) {
+    return `start frame contains unsupported attributes: ${unsupportedStartAttributes.join(', ')}`;
   }
+  const unsupportedEndAttributes = unsupportedFrameAttributes(endFrame);
+  if (unsupportedEndAttributes.length > 0) {
+    return `end frame contains unsupported attributes: ${unsupportedEndAttributes.join(', ')}`;
+  }
+  if (!validBooleanMetadata(startFrame) || !validBooleanMetadata(endFrame)) {
+    return 'motionTweenSync or motionTweenSnap has an invalid authored value';
+  }
+  const startRigPropagationRejection = rigPropagationMatrixRejectionReason(startFrame);
+  if (startRigPropagationRejection) return startRigPropagationRejection;
+  const endRigPropagationRejection = rigPropagationMatrixRejectionReason(endFrame);
+  if (endRigPropagationRejection) return endRigPropagationRejection;
+  for (const [role, frame] of [['start', startFrame], ['end', endFrame]] as const) {
+    if (parseKeyMode(frame.attributes.keyMode).kind === 'invalid') {
+      return `${role} frame keyMode=${rawKeyMode(frame)} is not a valid safe integer`;
+    }
+  }
+  const startRotation = classicMotionRotationForFrame(startFrame);
+  if (!startRotation.ok) return startRotation.message;
+  const startEase = classicMotionEasesForFrame(startFrame);
+  if (!startEase.ok) return startEase.message;
+  if (!Number.isSafeInteger(duration) || duration <= 0) return 'span duration must be a positive safe integer';
+  if (Number(startFrame.attributes.index) !== startIndex) return 'start frame index does not match the selected span';
+  if (Number(endFrame.attributes.index) !== startIndex + duration) return 'end frame is not the exact authored span endpoint';
+  if (startFrame.attributes.tweenType !== 'motion') return 'start frame is not a motion tween keyframe';
+  const startKeyModeFamily = motionKeyModeFamily(startFrame);
+  if (!startKeyModeFamily) {
+    return `start frame keyMode=${rawKeyMode(startFrame)} is unsupported for Classic Motion; expected 17921 or 22017 without motionTweenSync, or 24065 with motionTweenSync=true`;
+  }
+  if (endFrame.attributes.tweenType === 'motion') {
+    if (!motionKeyModeFamily(endFrame)) {
+      return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for a Classic Motion key; expected 17921 or 22017 without motionTweenSync, or 24065 with motionTweenSync=true`;
+    }
+  } else if (!isSupportedTerminalKeyMode(endFrame)) {
+    return `end frame keyMode=${rawKeyMode(endFrame)} is unsupported for this Classic Motion endpoint role`;
+  }
+  if (containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
+    return 'frame XML contains unsupported motion metadata';
+  }
+
+  const startStructureRejectionReason = classicMotionFrameStructureRejectionReason(startFrame, 'start');
+  if (startStructureRejectionReason) return startStructureRejectionReason;
+  const endStructureRejectionReason = classicMotionFrameStructureRejectionReason(endFrame, 'end');
+  if (endStructureRejectionReason) return endStructureRejectionReason;
 
   const startElements = frameDisplayElements(startFrame);
   const endElements = frameDisplayElements(endFrame);
-  if (startElements.length !== 1 || endElements.length !== 1 ||
-      startElements[0]?.name !== 'DOMSymbolInstance' || endElements[0]?.name !== 'DOMSymbolInstance' ||
-      !elementIsVisible(startElements[0].attributes) || !elementIsVisible(endElements[0].attributes)) {
-    return false;
+  if (startElements.length === 0 || startElements.length !== endElements.length) {
+    return 'Classic Motion endpoints must preserve the same non-empty display element count';
   }
-
-  const startTarget = startElements[0];
-  const endTarget = endElements[0];
   const allowedInstanceAttributes = (target: FlaXflElementBlock): boolean =>
-    Object.keys(target.attributes).every((name) => BOUNDED_MOTION_INSTANCE_ATTRIBUTES.has(name));
-  if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget) ||
-      startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
-      startTarget.attributes.symbolType !== 'graphic' || endTarget.attributes.symbolType !== 'graphic') {
-    return false;
-  }
-  for (const target of [startTarget, endTarget]) {
-    for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
-      const raw = target.attributes[name];
-      if (raw !== undefined && !Number.isFinite(Number(raw))) return false;
+    Object.keys(target.attributes).every((name) => CLASSIC_MOTION_INSTANCE_ATTRIBUTES.has(name));
+  for (let index = 0; index < startElements.length; index += 1) {
+    const startTarget = startElements[index]!;
+    const endTarget = endElements[index]!;
+    if (startTarget.name !== 'DOMSymbolInstance' || endTarget.name !== 'DOMSymbolInstance' ||
+        !elementIsVisible(startTarget.attributes) || !elementIsVisible(endTarget.attributes)) {
+      return `Classic Motion display element ${index} must remain a visible symbol instance`;
     }
-  }
-  for (const name of new Set([
-    ...Object.keys(startTarget.attributes),
-    ...Object.keys(endTarget.attributes),
-  ])) {
-    // selected and centerPoint3D* are authoring metadata; the renderer consumes
-    // the authored matrices and never serializes those attributes.
-    if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
-    if (startTarget.attributes[name] !== endTarget.attributes[name]) return false;
+    if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
+      return `Classic Motion symbol instance ${index} contains unsupported attributes`;
+    }
+    if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
+        startTarget.attributes.symbolType !== endTarget.attributes.symbolType) {
+      return `Classic Motion symbol identity changes at source order ${index}`;
+    }
+    if (startTarget.attributes.symbolType !== 'graphic') {
+      return `Classic Motion symbol ${index} is not a Graphic instance`;
+    }
+    for (const name of ['centerPoint3DX', 'centerPoint3DY']) {
+      for (const target of [startTarget, endTarget]) {
+        const raw = target.attributes[name];
+        if (raw !== undefined && !Number.isFinite(Number(raw))) {
+          return `symbol instance ${name} must be finite`;
+        }
+      }
+    }
+    const startColor = classicMotionColorTransform(startTarget);
+    if (!startColor.ok) return startColor.message;
+    const endColor = classicMotionColorTransform(endTarget);
+    if (!endColor.ok) return endColor.message;
   }
 
-  const hasSupportedTransformChildren = (target: FlaXflElementBlock): boolean => {
+  const hasSupportedTransformChildren = (
+    target: FlaXflElementBlock,
+    allowColorTransform: boolean,
+  ): boolean => {
     const children = getFlaXflDirectChildren(target.xml, target.name);
     const matrices = children.filter((child) => child.name === 'matrix');
     const points = children.filter((child) => child.name === 'transformationPoint');
-    if (matrices.length !== 1 || points.length > 1 ||
-        children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint')) {
+    const colors = children.filter((child) => child.name === 'color');
+    if (matrices.length !== 1 || points.length > 1 || colors.length > 1 ||
+        children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
+          !(allowColorTransform && child.name === 'color'))) {
       return false;
     }
     const matrixValues = getFlaXflDirectChildren(matrices[0]!.xml, 'matrix');
@@ -867,9 +1291,551 @@ function isBoundedMotionFramePair(
         return false;
       }
     }
+    if (colors.length > 0 && !allowColorTransform) return false;
     return true;
   };
-  return hasSupportedTransformChildren(startTarget) && hasSupportedTransformChildren(endTarget);
+  for (let index = 0; index < startElements.length; index += 1) {
+    const startTarget = startElements[index]!;
+    const endTarget = endElements[index]!;
+    if (!hasSupportedTransformChildren(startTarget, true) || !hasSupportedTransformChildren(endTarget, true)) {
+      return `symbol instance ${index} matrix, color, or transformation point is outside the supported structure`;
+    }
+  }
+  return null;
+}
+
+type RigCalculationResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly message: string };
+
+interface RigEvaluationContext {
+  readonly timelineXml: string;
+  readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
+  readonly layers: readonly FlaXflElementBlock[];
+  /** Scoped to one Graphic frame build; never shared across timelines or requests. */
+  readonly matrixCache: Map<string, RigLayerMatrixEvaluation>;
+  readonly onMatrixComputed?: (layerIndex: number, frameIndex: number) => void;
+}
+
+interface RigLayerMatrixEvaluation {
+  readonly matrix: FlaDisplayListMatrix;
+  /** Layers visited while producing this pose, used to retain ancestry checks on cache hits. */
+  readonly dependencies: readonly number[];
+  /** Longest additional parent chain below this layer for depth checks on cache hits. */
+  readonly maxParentDepth: number;
+}
+
+interface RigMotionParentPoses {
+  readonly parentLayerIndex: number;
+  readonly start: RigLayerMatrixEvaluation;
+  readonly end: RigLayerMatrixEvaluation;
+  readonly current: RigLayerMatrixEvaluation;
+  readonly dependencies: readonly number[];
+  readonly maxParentDepth: number;
+}
+
+function isNormalRigLayer(layer: FlaXflElementBlock | undefined): boolean {
+  const layerType = (layer?.attributes.layerType ?? '').trim().toLocaleLowerCase('en-US');
+  return layerType === '' || layerType === 'normal';
+}
+
+/**
+ * DOMFrame.parentLayerIndex is the keyframe's Rig id. DOMLayer.parentLayerIndex
+ * remains the separate folder/mask/guide hierarchy field.
+ */
+function rigParentLayerForFrame(
+  frame: FlaXflElementBlock,
+  childLayerIndex: number,
+  layers: readonly FlaXflElementBlock[],
+): RigCalculationResult<number | null> {
+  const rawRigId = frame.attributes.parentLayerIndex;
+  if (rawRigId === undefined) return { ok: true, value: null };
+  if (!/^\d+$/u.test(rawRigId) || !Number.isSafeInteger(Number(rawRigId))) {
+    return { ok: false, message: `DOMFrame parentLayerIndex=${rawRigId} is not a numeric Rig id` };
+  }
+  if (!isNormalRigLayer(layers[childLayerIndex])) {
+    return { ok: false, message: 'Rig parenting is supported only on normal child layers' };
+  }
+  const matches = layers.flatMap((layer, layerIndex) =>
+    layer.attributes.layerRiggingIndex === rawRigId ? [layerIndex] : [],
+  );
+  if (matches.length === 0) {
+    return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} has no DOMLayer.layerRiggingIndex match` };
+  }
+  if (matches.length !== 1) {
+    return { ok: false, message: `DOMLayer.layerRiggingIndex ${rawRigId} is ambiguous` };
+  }
+  const parentLayerIndex = matches[0]!;
+  if (parentLayerIndex === childLayerIndex) {
+    return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} points to its own layer` };
+  }
+  if (!isNormalRigLayer(layers[parentLayerIndex])) {
+    return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} resolves to a non-normal layer` };
+  }
+  return { ok: true, value: parentLayerIndex };
+}
+
+function motionGuideLayerFor(
+  layerIndex: number,
+  layers: readonly FlaXflElementBlock[],
+): RigCalculationResult<number | null> {
+  const layer = layers[layerIndex];
+  if (!layer) return { ok: false, message: `XFL layer ${layerIndex} is missing` };
+  const rawParent = layer.attributes.parentLayerIndex;
+  if (rawParent === undefined) return { ok: true, value: null };
+  if (!/^\d+$/u.test(rawParent) || !Number.isSafeInteger(Number(rawParent))) {
+    return { ok: false, message: `DOMLayer parentLayerIndex=${rawParent} is not a valid layer ordinal` };
+  }
+  const parentLayerIndex = Number(rawParent);
+  if (parentLayerIndex >= layerIndex) return { ok: true, value: null };
+  const parentLayer = layers[parentLayerIndex];
+  if (!parentLayer) return { ok: true, value: null };
+  const parentType = (parentLayer.attributes.layerType ?? '').trim().toLocaleLowerCase('en-US');
+  return { ok: true, value: parentType === 'guide' ? parentLayerIndex : null };
+}
+
+interface SoleGraphicFrameObject {
+  readonly instance: FlaXflElementBlock;
+  readonly matrix: FlaDisplayListMatrix;
+}
+
+function soleGraphicFrameObject(
+  frame: FlaXflElementBlock,
+  role: string,
+): RigCalculationResult<SoleGraphicFrameObject> {
+  const elements = frameDisplayElements(frame);
+  if (elements.length !== 1) {
+    return { ok: false, message: `${role} parent frame must contain exactly one display object` };
+  }
+  const instance = elements[0];
+  if (!instance || instance.name !== 'DOMSymbolInstance' || !elementIsVisible(instance.attributes)) {
+    return { ok: false, message: `${role} parent object must be one visible Graphic instance` };
+  }
+  const symbolType = (instance.attributes.symbolType ?? 'graphic').trim().toLocaleLowerCase('en-US');
+  if (symbolType !== 'graphic') {
+    return { ok: false, message: `${role} parent object is not a Graphic instance` };
+  }
+  const matrix = readDirectMatrix(instance);
+  return matrix.ok
+    ? { ok: true, value: { instance, matrix: matrix.matrix } }
+    : { ok: false, message: matrix.message };
+}
+
+function soleGraphicFrameMatrix(
+  frame: FlaXflElementBlock,
+  role: string,
+): RigCalculationResult<FlaDisplayListMatrix> {
+  const object = soleGraphicFrameObject(frame, role);
+  return object.ok
+    ? { ok: true, value: object.value.matrix }
+    : object;
+}
+
+function rigMotionParentPoses(
+  context: RigEvaluationContext,
+  childLayerIndex: number,
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  frameIndex: number,
+  ancestry: readonly number[],
+): RigCalculationResult<RigMotionParentPoses | null> {
+  const startParent = rigParentLayerForFrame(startFrame, childLayerIndex, context.layers);
+  if (!startParent.ok) return startParent;
+  const endParent = rigParentLayerForFrame(endFrame, childLayerIndex, context.layers);
+  if (!endParent.ok) return endParent;
+  if (startParent.value !== endParent.value) {
+    return { ok: false, message: 'Classic Motion Rig parent id changes between endpoint keyframes' };
+  }
+  const parentLayerIndex = startParent.value;
+  if (parentLayerIndex === null) return { ok: true, value: null };
+  if (ancestry.length > MAX_RIG_PARENT_DEPTH) {
+    return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
+  }
+  const start = evaluateRigLayerObjectMatrix(context, parentLayerIndex, Number(startFrame.attributes.index), ancestry);
+  if (!start.ok) return start;
+  const end = evaluateRigLayerObjectMatrix(context, parentLayerIndex, Number(endFrame.attributes.index), ancestry);
+  if (!end.ok) return end;
+  const current = evaluateRigLayerObjectMatrix(context, parentLayerIndex, frameIndex, ancestry);
+  if (!current.ok) return current;
+  const dependencies = [...new Set([
+    ...start.value.dependencies,
+    ...end.value.dependencies,
+    ...current.value.dependencies,
+  ])];
+  return {
+    ok: true,
+    value: {
+      parentLayerIndex,
+      start: start.value,
+      end: end.value,
+      current: current.value,
+      dependencies,
+      maxParentDepth: Math.max(
+        start.value.maxParentDepth,
+        end.value.maxParentDepth,
+        current.value.maxParentDepth,
+      ),
+    },
+  };
+}
+
+function classicMotionProgress(
+  frame: FlaXflElementBlock,
+  frameIndex: number,
+  spanIndex: number,
+  duration: number,
+): RigCalculationResult<{ readonly progress: number; readonly rotation?: FlaMotionTweenRotation }> {
+  const rotation = classicMotionRotationForFrame(frame);
+  if (!rotation.ok) return { ok: false, message: rotation.message };
+  const ease = classicMotionEasesForFrame(frame);
+  if (!ease.ok) return { ok: false, message: ease.message };
+  const evaluated = evaluateFlaViewerClassicTweenProgress(
+    (frameIndex - spanIndex) / duration,
+    ease.acceleration,
+    ease.eases,
+  );
+  if (!evaluated.ok) return { ok: false, message: evaluated.message };
+  return {
+    ok: true,
+    value: {
+      progress: evaluated.progress,
+      ...(rotation.rotation ? { rotation: rotation.rotation } : {}),
+    },
+  };
+}
+
+function evaluateRigLayerObjectMatrix(
+  context: RigEvaluationContext,
+  layerIndex: number,
+  frameIndex: number,
+  ancestry: readonly number[] = [],
+): RigCalculationResult<RigLayerMatrixEvaluation> {
+  if (ancestry.includes(layerIndex)) {
+    return { ok: false, message: `Rig parent cycle detected at layer ${layerIndex}` };
+  }
+  const cacheKey = `${layerIndex}:${frameIndex}`;
+  const cached = context.matrixCache.get(cacheKey);
+  if (cached) {
+    const cyclicDependency = cached.dependencies.find((dependency) => ancestry.includes(dependency));
+    if (cyclicDependency !== undefined) {
+      return { ok: false, message: `Rig parent cycle detected at layer ${cyclicDependency}` };
+    }
+    if (cached.maxParentDepth > 0 && ancestry.length + cached.maxParentDepth > MAX_RIG_PARENT_DEPTH) {
+      return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
+    }
+    return { ok: true, value: cached };
+  }
+  const evaluated = computeRigLayerObjectMatrix(context, layerIndex, frameIndex, ancestry);
+  if (evaluated.ok) {
+    context.matrixCache.set(cacheKey, evaluated.value);
+    context.onMatrixComputed?.(layerIndex, frameIndex);
+  }
+  return evaluated;
+}
+
+function computeRigLayerObjectMatrix(
+  context: RigEvaluationContext,
+  layerIndex: number,
+  frameIndex: number,
+  ancestry: readonly number[],
+): RigCalculationResult<RigLayerMatrixEvaluation> {
+  const layer = context.layers[layerIndex];
+  const indexedLayer = context.frameSpanIndex.layers[layerIndex];
+  if (!layer || !indexedLayer) return { ok: false, message: `Rig parent layer ${layerIndex} has no frame spans` };
+  if (!isNormalRigLayer(layer)) return { ok: false, message: `Rig parent layer ${layerIndex} is not a normal layer` };
+  const span = indexedLayer.spans.find((candidate) =>
+    candidate.index <= frameIndex && frameIndex < candidate.endExclusive);
+  if (!span) return { ok: false, message: `Rig parent layer ${layerIndex} has no authored pose at frame ${frameIndex}` };
+  const nextAncestry = [...ancestry, layerIndex];
+
+  if (span.tweenType === 'shape' && frameIndex > span.index) {
+    return { ok: false, message: `Rig parent layer ${layerIndex} uses unsupported Shape Tween interpolation` };
+  }
+  if (span.tweenType === 'motion') {
+    const endSpan = indexedLayer.spans.find((candidate) => candidate.index === span.endExclusive);
+    if (!endSpan) return { ok: false, message: `Rig parent layer ${layerIndex} is missing its Motion endpoint` };
+    const pairRejection = classicMotionFramePairRejectionReason(
+      span.sourceFrame,
+      endSpan.sourceFrame,
+      span.index,
+      span.duration,
+    );
+    if (pairRejection) {
+      return { ok: false, message: `Rig parent Classic Motion is unsupported: ${pairRejection}` };
+    }
+    const guide = motionGuideLayerFor(layerIndex, context.layers);
+    if (!guide.ok) return guide;
+    if (guide.value !== null) {
+      return { ok: false, message: `Rig parent Motion Guide on layer ${guide.value} requires unsupported path evaluation` };
+    }
+    const startObject = soleGraphicFrameObject(span.sourceFrame, 'start');
+    if (!startObject.ok) return startObject;
+    const endObject = soleGraphicFrameObject(endSpan.sourceFrame, 'end');
+    if (!endObject.ok) return endObject;
+    const startPivot = readDirectTransformationPoint(startObject.value.instance);
+    const endPivot = readDirectTransformationPoint(endObject.value.instance);
+    if (!startPivot || !endPivot) {
+      return { ok: false, message: 'Rig parent transformation point is invalid' };
+    }
+    const parentPoses = rigMotionParentPoses(
+      context,
+      layerIndex,
+      span.sourceFrame,
+      endSpan.sourceFrame,
+      frameIndex,
+      nextAncestry,
+    );
+    if (!parentPoses.ok) return parentPoses;
+    const tween = classicMotionProgress(span.sourceFrame, frameIndex, span.index, span.duration);
+    if (!tween.ok) return tween;
+    let from = startObject.value.matrix;
+    let to = endObject.value.matrix;
+    if (parentPoses.value) {
+      const parentStartInverse = inverse(parentPoses.value.start.matrix);
+      const parentEndInverse = inverse(parentPoses.value.end.matrix);
+      if (!parentStartInverse || !parentEndInverse) {
+        return { ok: false, message: 'Rig parent endpoint matrix is singular' };
+      }
+      from = compose(parentStartInverse, from);
+      to = compose(parentEndInverse, to);
+    }
+    const interpolated = interpolateFlaClassicMotionInstanceTransform(
+      from,
+      to,
+      tween.value.progress,
+      tween.value.rotation,
+      startPivot,
+      endPivot,
+    );
+    if (!interpolated.ok) return { ok: false, message: interpolated.message };
+    const dependencies = parentPoses.value
+      ? [...new Set([layerIndex, ...parentPoses.value.dependencies])]
+      : [layerIndex];
+    return {
+      ok: true,
+      value: {
+        matrix: parentPoses.value
+          ? compose(parentPoses.value.current.matrix, interpolated.matrix)
+          : interpolated.matrix,
+        dependencies,
+        maxParentDepth: parentPoses.value ? 1 + parentPoses.value.maxParentDepth : 0,
+      },
+    };
+  }
+
+  const authoredMatrix = soleGraphicFrameMatrix(span.sourceFrame, 'authored');
+  if (!authoredMatrix.ok) return authoredMatrix;
+  const parent = rigParentLayerForFrame(span.sourceFrame, layerIndex, context.layers);
+  if (!parent.ok) return parent;
+  if (parent.value === null) {
+    return {
+      ok: true,
+      value: { matrix: authoredMatrix.value, dependencies: [layerIndex], maxParentDepth: 0 },
+    };
+  }
+  if (nextAncestry.length > MAX_RIG_PARENT_DEPTH) {
+    return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
+  }
+  const parentAtStart = evaluateRigLayerObjectMatrix(context, parent.value, span.index, nextAncestry);
+  if (!parentAtStart.ok) return parentAtStart;
+  const parentAtFrame = evaluateRigLayerObjectMatrix(context, parent.value, frameIndex, nextAncestry);
+  if (!parentAtFrame.ok) return parentAtFrame;
+  const startInverse = inverse(parentAtStart.value.matrix);
+  if (!startInverse) return { ok: false, message: 'Rig parent keyframe matrix is singular' };
+  return {
+    ok: true,
+    value: {
+      matrix: compose(compose(parentAtFrame.value.matrix, startInverse), authoredMatrix.value),
+      dependencies: [...new Set([
+        layerIndex,
+        ...parentAtStart.value.dependencies,
+        ...parentAtFrame.value.dependencies,
+      ])],
+      maxParentDepth: 1 + Math.max(
+        parentAtStart.value.maxParentDepth,
+        parentAtFrame.value.maxParentDepth,
+      ),
+    },
+  };
+}
+
+function applyRigCorrectionToElements(
+  context: RigEvaluationContext,
+  layerIndex: number,
+  frame: FlaXflElementBlock,
+  frameIndex: number,
+  frameSpanStart: number,
+  elements: readonly FlaDisplayListElement[],
+): RigCalculationResult<readonly FlaDisplayListElement[]> {
+  const parent = rigParentLayerForFrame(frame, layerIndex, context.layers);
+  if (!parent.ok) return parent;
+  if (parent.value === null) return { ok: true, value: elements };
+  const ancestry = [layerIndex];
+  if (ancestry.length > MAX_RIG_PARENT_DEPTH) {
+    return { ok: false, message: `Rig parent chain exceeds depth ${MAX_RIG_PARENT_DEPTH}` };
+  }
+  const parentAtStart = evaluateRigLayerObjectMatrix(context, parent.value, frameSpanStart, ancestry);
+  if (!parentAtStart.ok) return parentAtStart;
+  const parentAtFrame = evaluateRigLayerObjectMatrix(context, parent.value, frameIndex, ancestry);
+  if (!parentAtFrame.ok) return parentAtFrame;
+  const startInverse = inverse(parentAtStart.value.matrix);
+  if (!startInverse) return { ok: false, message: 'Rig parent keyframe matrix is singular' };
+  const correction = compose(parentAtFrame.value.matrix, startInverse);
+  return {
+    ok: true,
+    value: elements.map((element) => ({
+      ...element,
+      localTransform: compose(correction, element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
+    })),
+  };
+}
+
+function isClassicMotionSpan(
+  startFrame: FlaXflElementBlock,
+  endFrame: FlaXflElementBlock,
+  startIndex: number,
+  duration: number,
+): boolean {
+  const rejectionReason = classicMotionFramePairRejectionReason(startFrame, endFrame, startIndex, duration);
+  return startIndex >= 0 && rejectionReason === null;
+}
+
+type ClassicMotionSyncFrameSpan = FlaNormalizedFrameSpan<FlaXflElementBlock>;
+
+interface ClassicMotionSyncFirstFrameState {
+  readonly libraryItemName: string;
+  readonly firstFrame: number;
+  readonly inherited: boolean;
+}
+
+type ClassicMotionSyncFirstFrameResult =
+  | { readonly ok: true; readonly firstFrames: readonly (number | undefined)[] }
+  | { readonly ok: false; readonly message: string };
+
+function parseAuthoredGraphicFirstFrame(frame: FlaXflElementBlock): number | null {
+  const raw = frame.attributes.firstFrame;
+  if (raw === undefined) return 0;
+  const trimmed = raw.trim();
+  if (!/^\d+$/u.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Resolve the first-frame origin Flare carries through adjacent, synchronized
+ * Classic Motion keys. Element order and library identity are both retained;
+ * source-authored firstFrame values remain on the parsed display elements.
+ */
+function classicMotionSyncFirstFrames(
+  spans: readonly ClassicMotionSyncFrameSpan[],
+  currentSpan: ClassicMotionSyncFrameSpan,
+): ClassicMotionSyncFirstFrameResult {
+  let currentPosition = spans.indexOf(currentSpan);
+  if (currentPosition < 0) {
+    currentPosition = spans.findIndex((span) => span.index === currentSpan.index);
+  }
+  if (currentPosition < 0) return { ok: true, firstFrames: [] };
+
+  const reversedChain = [currentSpan];
+  let successor = currentSpan;
+  while (currentPosition > 0) {
+    const previous = spans[currentPosition - 1];
+    if (!previous || previous.tweenType !== 'motion' ||
+        previous.sourceFrame.attributes.motionTweenSync !== 'true' ||
+        previous.endExclusive !== successor.index ||
+        !isClassicMotionSpan(previous.sourceFrame, successor.sourceFrame, previous.index, previous.duration)) {
+      break;
+    }
+    reversedChain.push(previous);
+    successor = previous;
+    currentPosition -= 1;
+  }
+  if (reversedChain.length < 2) return { ok: true, firstFrames: [] };
+
+  const chain = reversedChain.reverse();
+  const readFrameState = (
+    frame: FlaXflElementBlock,
+    frameIndex: number,
+  ): { readonly ok: true; readonly states: readonly (ClassicMotionSyncFirstFrameState | undefined)[] } |
+    { readonly ok: false; readonly message: string } => {
+    const elements = frameDisplayElements(frame);
+    const states: (ClassicMotionSyncFirstFrameState | undefined)[] = [];
+    for (let elementIndex = 0; elementIndex < elements.length; elementIndex += 1) {
+      const element = elements[elementIndex];
+      if (element?.name !== 'DOMSymbolInstance') {
+        states.push(undefined);
+        continue;
+      }
+      const libraryItemName = element.attributes.libraryItemName?.trim();
+      const firstFrame = parseAuthoredGraphicFirstFrame(element);
+      if (!libraryItemName || firstFrame === null) {
+        return {
+          ok: false,
+          message: `Classic Motion Sync keyframe ${frameIndex} has an invalid Graphic instance identity or firstFrame at element ${elementIndex}`,
+        };
+      }
+      states.push({ libraryItemName, firstFrame, inherited: false });
+    }
+    return { ok: true, states };
+  };
+
+  const firstSpan = chain[0];
+  if (!firstSpan) return { ok: true, firstFrames: [] };
+  let statesResult = readFrameState(firstSpan.sourceFrame, firstSpan.index);
+  if (!statesResult.ok) return statesResult;
+  let states = statesResult.states;
+
+  for (let chainIndex = 1; chainIndex < chain.length; chainIndex += 1) {
+    const previousSpan = chain[chainIndex - 1];
+    const current = chain[chainIndex];
+    if (!previousSpan || !current) continue;
+    const step = current.index - previousSpan.index;
+    if (!Number.isSafeInteger(step) || step <= 0) {
+      return { ok: false, message: `Classic Motion Sync keyframe ${current.index} has an invalid frame interval` };
+    }
+    statesResult = readFrameState(current.sourceFrame, current.index);
+    if (!statesResult.ok) return statesResult;
+    const authoredStates = statesResult.states;
+    const nextStates: (ClassicMotionSyncFirstFrameState | undefined)[] = [];
+    for (let elementIndex = 0; elementIndex < authoredStates.length; elementIndex += 1) {
+      const authored = authoredStates[elementIndex];
+      if (!authored) {
+        nextStates.push(undefined);
+        continue;
+      }
+      const previous = states[elementIndex];
+      if (previous?.libraryItemName === authored.libraryItemName) {
+        const firstFrame = previous.firstFrame + step;
+        if (!Number.isSafeInteger(firstFrame)) {
+          return {
+            ok: false,
+            message: `Classic Motion Sync firstFrame exceeds the safe range at keyframe ${current.index}, element ${elementIndex}`,
+          };
+        }
+        nextStates.push({ ...authored, firstFrame, inherited: true });
+      } else {
+        nextStates.push(authored);
+      }
+    }
+    states = nextStates;
+  }
+
+  return {
+    ok: true,
+    firstFrames: states.map((state) => state?.inherited ? state.firstFrame : undefined),
+  };
+}
+
+function applyClassicMotionSyncFirstFrames(
+  elements: readonly FlaDisplayListElement[],
+  firstFrames: readonly (number | undefined)[],
+): readonly FlaDisplayListElement[] {
+  if (firstFrames.length === 0) return elements;
+  return elements.map((element, index) => {
+    const synchronizedFirstFrame = firstFrames[index];
+    if (element.kind !== 'symbol' || synchronizedFirstFrame === undefined) return element;
+    return { ...element, synchronizedFirstFrame };
+  });
 }
 
 /** XFL lists timeline layers front-to-back; Panda frame contexts paint back-to-front. */
@@ -885,11 +1851,19 @@ function buildGraphicFrameContext(
   frameIndex: number,
   scope: string,
   state: SourceBuildState,
+  options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext> {
   const resolution = resolveFlaTimelineFrameSpan(frameSpanIndex, frameIndex);
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
+  const rigContext: RigEvaluationContext = {
+    timelineXml,
+    frameSpanIndex,
+    layers,
+    matrixCache: new Map(),
+    ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
+  };
   const maskLayerIds = new Map<number, string>();
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
@@ -904,9 +1878,73 @@ function buildGraphicFrameContext(
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
     let elements: readonly FlaDisplayListElement[] = [];
+    let frameFilter: FlaDisplayListBlurFilter | undefined;
     if (selection.kind === 'authored-frame') {
       const frame = selection.sourceFrame;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
+      const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
+      const selectedLayerSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
+      const syncFirstFrames = selectedLayerSpan && indexedLayer
+        ? classicMotionSyncFirstFrames(indexedLayer.spans, selectedLayerSpan)
+        : { ok: true as const, firstFrames: [] as readonly (number | undefined)[] };
+      if (!syncFirstFrames.ok) {
+        return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has an unsupported Classic Motion Sync chain: ${syncFirstFrames.message}`);
+      }
+      const incomingMotionSpan = indexedLayer?.spans.find((span) =>
+        span.tweenType === 'motion' && span.endExclusive === selection.span.index);
+      if (incomingMotionSpan) {
+        const authoredFilterResult = classicMotionFrameBlurFilter(frame, 'end');
+        if (!authoredFilterResult.ok) return fail('RENDER_FAILED', authoredFilterResult.message);
+        if (authoredFilterResult.filter) {
+          const incomingPairRejectionReason = classicMotionFramePairRejectionReason(
+            incomingMotionSpan.sourceFrame,
+            frame,
+            incomingMotionSpan.index,
+            incomingMotionSpan.duration,
+          );
+          if (incomingPairRejectionReason) {
+            return fail(
+              'RENDER_FAILED',
+              `Graphic frame ${frameIndex} has an unsupported incoming frame-filter tween: ${incomingPairRejectionReason}`,
+            );
+          }
+          frameFilter = authoredFilterResult.filter;
+        }
+      }
+      let motionSpanMetadata = false;
+      let motionSync: boolean | undefined;
+      const outgoingMotionSpan = indexedLayer?.spans.find((span) =>
+        span.index === selection.span.index && span.tweenType === 'motion');
+      const outgoingMotionEndSpan = outgoingMotionSpan
+        ? indexedLayer?.spans.find((span) => span.index === outgoingMotionSpan.endExclusive)
+        : undefined;
+      if (outgoingMotionSpan && outgoingMotionEndSpan && isClassicMotionSpan(
+          outgoingMotionSpan.sourceFrame,
+          outgoingMotionEndSpan.sourceFrame,
+          outgoingMotionSpan.index,
+          outgoingMotionSpan.duration,
+        )) {
+        motionSpanMetadata = true;
+        const rawSync = outgoingMotionSpan.sourceFrame.attributes.motionTweenSync;
+        motionSync = rawSync === undefined ? undefined : rawSync === 'true';
+      }
+      if (!motionSpanMetadata) {
+        const incomingMotionSpan = indexedLayer?.spans.find((span) =>
+          span.tweenType === 'motion' && span.endExclusive === selection.span.index);
+        const incomingMotionEndSpan = incomingMotionSpan
+          ? indexedLayer?.spans.find((span) => span.index === incomingMotionSpan.endExclusive)
+          : undefined;
+        if (incomingMotionSpan && incomingMotionEndSpan && isClassicMotionSpan(
+          incomingMotionSpan.sourceFrame,
+          incomingMotionEndSpan.sourceFrame,
+          incomingMotionSpan.index,
+          incomingMotionSpan.duration,
+        )) {
+          motionSpanMetadata = true;
+          const rawSync = incomingMotionSpan.sourceFrame.attributes.motionTweenSync;
+          motionSync = rawSync === undefined ? undefined : rawSync === 'true';
+        }
+      }
       const parsed = parseDisplayElements(elementContainer, {
         scope,
         parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
@@ -915,26 +1953,82 @@ function buildGraphicFrameContext(
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
+        ...(motionSync !== undefined ? { sourceParentMotionTweenSync: motionSync } : {}),
+        ...(motionSpanMetadata ? { motionTweenEndpoint: true } : {}),
         unsupportedDisplayReasons,
         state,
       });
       if (!parsed.ok) return parsed;
-      elements = parsed.value;
+      const synchronizedElements = applyClassicMotionSyncFirstFrames(parsed.value, syncFirstFrames.firstFrames);
+      const riggedElements = applyRigCorrectionToElements(
+        rigContext,
+        selection.layerIndex,
+        frame,
+        frameIndex,
+        selection.span.index,
+        synchronizedElements,
+      );
+      if (!riggedElements.ok) {
+        return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has unsupported Rig parenting: ${riggedElements.message}`);
+      }
+      elements = riggedElements.value;
     } else if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
       const rejectTween = (reason: string) => fail(
         'RENDER_FAILED',
         `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}: ${reason}`,
       );
-      if (selection.span.tweenType !== 'motion') return rejectTween('only the bounded motion subset is supported');
+      if (selection.span.tweenType !== 'motion') return rejectTween('only Classic Motion spans are supported');
 
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
-      const startSpan = indexedLayer?.spans.find((span) => span.index === selection.span.index);
-      const endSpan = indexedLayer?.spans.find((span) => span.index === selection.span.endExclusive);
+      if (!indexedLayer) return rejectTween('timeline layer span metadata is missing');
+      const startSpan = indexedLayer.spans.find((span) => span.index === selection.span.index);
+      const endSpan = indexedLayer.spans.find((span) => span.index === selection.span.endExclusive);
       if (!startSpan || !endSpan) return rejectTween('an adjacent authored end keyframe is required');
       const startFrame = startSpan.sourceFrame;
       const endFrame = endSpan.sourceFrame;
-      if (!isBoundedMotionFramePair(startFrame, endFrame, startSpan.index, startSpan.duration)) {
-        return rejectTween('source metadata falls outside the bounded transform-only subset');
+      const pairRejectionReason = classicMotionFramePairRejectionReason(
+        startFrame,
+        endFrame,
+        startSpan.index,
+        startSpan.duration,
+      );
+      if (pairRejectionReason) {
+        return rejectTween(`source metadata is outside the supported Classic Motion structure: ${pairRejectionReason}`);
+      }
+      const guide = motionGuideLayerFor(selection.layerIndex, layers);
+      if (!guide.ok) return rejectTween(guide.message);
+      if (guide.value !== null) {
+        return rejectTween(`Motion Guide on layer ${guide.value} requires unsupported guide-path evaluation`);
+      }
+      const rigParentPoses = rigMotionParentPoses(
+        rigContext,
+        selection.layerIndex,
+        startFrame,
+        endFrame,
+        frameIndex,
+        [selection.layerIndex],
+      );
+      if (!rigParentPoses.ok) return rejectTween(rigParentPoses.message);
+      const syncFirstFrames = classicMotionSyncFirstFrames(indexedLayer.spans, startSpan);
+      if (!syncFirstFrames.ok) return rejectTween(syncFirstFrames.message);
+      const sourceRotationResult = classicMotionRotationForFrame(startFrame);
+      if (!sourceRotationResult.ok) return rejectTween(sourceRotationResult.message);
+      const sourceEaseResult = classicMotionEasesForFrame(startFrame);
+      if (!sourceEaseResult.ok) return rejectTween(sourceEaseResult.message);
+      const linearProgress = (frameIndex - startSpan.index) / startSpan.duration;
+      const evaluatedProgress = evaluateFlaViewerClassicTweenProgress(
+        linearProgress,
+        sourceEaseResult.acceleration,
+        sourceEaseResult.eases,
+      );
+      if (!evaluatedProgress.ok) return rejectTween(evaluatedProgress.message);
+      const progress = evaluatedProgress.progress;
+      const rawSync = startFrame.attributes.motionTweenSync;
+      const sourceMotionSync = rawSync === undefined ? undefined : rawSync === 'true';
+      const rigStartInverse = rigParentPoses.value ? inverse(rigParentPoses.value.start.matrix) : null;
+      const rigEndInverse = rigParentPoses.value ? inverse(rigParentPoses.value.end.matrix) : null;
+      if (rigParentPoses.value && (!rigStartInverse || !rigEndInverse)) {
+        return rejectTween('Rig parent endpoint matrix is singular');
       }
 
       const parseTweenTarget = (frame: FlaXflElementBlock, sourceFrameIndex: number) => {
@@ -947,6 +2041,8 @@ function buildGraphicFrameContext(
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart: startSpan.index,
           sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
+          ...(sourceMotionSync !== undefined ? { sourceParentMotionTweenSync: sourceMotionSync } : {}),
+          motionTweenEndpoint: true,
           unsupportedDisplayReasons,
           state,
         });
@@ -955,23 +2051,76 @@ function buildGraphicFrameContext(
       if (!startParsed.ok) return startParsed;
       const endParsed = parseTweenTarget(endFrame, endSpan.index);
       if (!endParsed.ok) return endParsed;
-      const startTarget = startParsed.value[0];
-      const endTarget = endParsed.value[0];
-      if (startParsed.value.length !== 1 || endParsed.value.length !== 1 ||
-          startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
-          startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
-          startTarget.libraryItemName !== endTarget.libraryItemName ||
-          !startTarget.localTransform || !endTarget.localTransform) {
-        return rejectTween('matching Graphic instances with authored matrices are required');
+      const startSourceElements = frameDisplayElements(startFrame);
+      const endSourceElements = frameDisplayElements(endFrame);
+      const syncedStartElements = applyClassicMotionSyncFirstFrames(startParsed.value, syncFirstFrames.firstFrames);
+      if (syncedStartElements.length !== endParsed.value.length || syncedStartElements.length === 0) {
+        return rejectTween('Classic Motion endpoints must preserve the same non-empty display element count');
       }
-      const progress = (frameIndex - startSpan.index) / startSpan.duration;
-      const interpolated = interpolateFlaLinearMotionTransform(
-        startTarget.localTransform,
-        endTarget.localTransform,
+      const interpolatedFrameFilter = interpolateClassicMotionFrameBlurFilter(
+        startFrame,
+        endFrame,
         progress,
       );
-      if (!interpolated.ok) return rejectTween(interpolated.message);
-      elements = [{ ...startTarget, localTransform: interpolated.matrix }];
+      if (!interpolatedFrameFilter.ok) return rejectTween(interpolatedFrameFilter.message);
+      frameFilter = interpolatedFrameFilter.filter;
+      const interpolatedElements: FlaDisplayListElement[] = [];
+      for (let index = 0; index < syncedStartElements.length; index += 1) {
+        const startTarget = syncedStartElements[index];
+        const endTarget = endParsed.value[index];
+        const startSourceTarget = startSourceElements[index];
+        const endSourceTarget = endSourceElements[index];
+        if (startTarget?.kind !== 'symbol' || endTarget?.kind !== 'symbol' ||
+            startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
+            startTarget.libraryItemName !== endTarget.libraryItemName ||
+            startSourceTarget?.name !== 'DOMSymbolInstance' ||
+            endSourceTarget?.name !== 'DOMSymbolInstance' ||
+            !startTarget.localTransform || !endTarget.localTransform) {
+          return rejectTween(`matching Graphic instances with authored matrices are required at source order ${index}`);
+        }
+        const startPivot = readDirectTransformationPoint(startSourceTarget);
+        const endPivot = readDirectTransformationPoint(endSourceTarget);
+        if (!startPivot || !endPivot) {
+          return rejectTween(`Graphic instance pivot is invalid at source order ${index}`);
+        }
+        const localStart = rigStartInverse
+          ? compose(rigStartInverse, startTarget.localTransform)
+          : startTarget.localTransform;
+        const localEnd = rigEndInverse
+          ? compose(rigEndInverse, endTarget.localTransform)
+          : endTarget.localTransform;
+        const interpolated = interpolateFlaClassicMotionInstanceTransform(
+          localStart,
+          localEnd,
+          progress,
+          sourceRotationResult.rotation,
+          startPivot,
+          endPivot,
+        );
+        if (!interpolated.ok) return rejectTween(interpolated.message);
+        const worldTransform = rigParentPoses.value
+          ? compose(rigParentPoses.value.current.matrix, interpolated.matrix)
+          : interpolated.matrix;
+        const startAlpha = startTarget.alphaMultiplier ?? 1;
+        const endAlpha = endTarget.alphaMultiplier ?? 1;
+        const interpolatedAlpha = startAlpha + (endAlpha - startAlpha) * progress;
+        const rgbTransform = {
+          multiplier: (startTarget.rgbTransform?.multiplier ?? 1) +
+            ((endTarget.rgbTransform?.multiplier ?? 1) - (startTarget.rgbTransform?.multiplier ?? 1)) * progress,
+          offset: (startTarget.rgbTransform?.offset ?? 0) +
+            ((endTarget.rgbTransform?.offset ?? 0) - (startTarget.rgbTransform?.offset ?? 0)) * progress,
+        };
+        const effectiveRgbTransform = rgbTransform.multiplier === 1 && rgbTransform.offset === 0
+          ? undefined
+          : rgbTransform;
+        interpolatedElements.push({
+          ...startTarget,
+          ...(interpolatedAlpha !== 1 ? { alphaMultiplier: interpolatedAlpha } : {}),
+          ...(effectiveRgbTransform ? { rgbTransform: effectiveRgbTransform } : {}),
+          localTransform: worldTransform,
+        });
+      }
+      elements = interpolatedElements;
     }
 
     let maskedBy: string | undefined;
@@ -991,6 +2140,7 @@ function buildGraphicFrameContext(
       ...(maskLayerIds.has(selection.layerIndex)
         ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
         : {}),
+      ...(frameFilter ? { frameFilter } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
   }
@@ -1134,6 +2284,7 @@ function* adaptFlaXflDisplaySourceSteps(
     const definition: FlaGraphicSymbolDefinition = {
       kind: 'graphic',
       libraryItemName: shell.sourceLibraryItemName,
+      sourceFrameCount: shell.frameCount,
       frameContext: parsed.value,
     };
     symbols.set(shell.sourceLibraryItemName, definition);
@@ -1188,10 +2339,10 @@ function* adaptFlaXflDisplaySourceSteps(
         frameBuildStateIsBase = false;
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },
-      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope, options) => {
         resetFrameBuildState();
         frameBuildStateIsBase = false;
-        return buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state);
+        return buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state, options);
       },
     },
   };

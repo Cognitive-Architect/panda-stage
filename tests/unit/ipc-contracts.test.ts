@@ -109,6 +109,7 @@ describe('IPC channel registry', () => {
       'fla:frame-sequence-cancel',
       'fla:frame-sequence-commit',
       'fla:frame-sequence-progress',
+      'fla:graphic-instance-commit',
     ]);
   });
 });

@@ -16,6 +16,7 @@ import {
   ProjectV14Schema,
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
+  ProjectV16Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -49,6 +50,7 @@ export type DetectedSchemaVersion =
   | 13
   | 14
   | 15
+  | 16
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -56,7 +58,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -88,6 +90,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 13 ||
     version === 14 ||
     version === 15 ||
+    version === 16 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -362,8 +365,16 @@ export function migrateProject(input: unknown): Project {
     case 15:
       project = migrateVersion15(input);
       break;
+    case 16: {
+      const version16 = ProjectV16Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version16,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v16 envelope: validate it, then apply only the narrow
+      // Current v17 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

@@ -1,3 +1,5 @@
+import type { AffineMatrix2D } from '../../shared/affine-matrix';
+
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
  *
@@ -8,14 +10,7 @@
  * without selecting timeline frames or interpolating tweens (P1).
  */
 
-export interface FlaDisplayListMatrix {
-  readonly a: number;
-  readonly b: number;
-  readonly c: number;
-  readonly d: number;
-  readonly tx: number;
-  readonly ty: number;
-}
+export type FlaDisplayListMatrix = AffineMatrix2D;
 
 export const FLA_DISPLAY_LIST_IDENTITY_MATRIX: FlaDisplayListMatrix =
   Object.freeze({ a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 });
@@ -33,10 +28,27 @@ export interface FlaDisplayListFrameContext {
   readonly unsupportedDisplayReason?: string;
 }
 
+export interface FlaDisplayListBlurFilter {
+  readonly kind: 'blur';
+  readonly blurX: number;
+  readonly blurY: number;
+  readonly quality: 'low';
+  readonly enabled: true;
+}
+
+/** Per-channel shared RGB transform used by the verified Sync brightness tween. */
+export interface FlaDisplayListRgbTransform {
+  readonly multiplier: number;
+  /** Additive channel offset in 0..255 units. */
+  readonly offset: number;
+}
+
 export interface FlaDisplayListLayer {
   readonly name: string;
   readonly visible: boolean;
   readonly elements: readonly FlaDisplayListElement[];
+  /** One source-supported DOMFrame BlurFilter scoped to this layer's contents. */
+  readonly frameFilter?: FlaDisplayListBlurFilter;
   /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
   readonly maskLayerId?: string;
   /** Source XFL mask identity linked to this layer through parentLayerIndex. */
@@ -88,6 +100,12 @@ export type FlaDisplayListElement =
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
       readonly firstFrame?: string;
       readonly lastFrame?: string;
+      /** Effective firstFrame accumulated across a verified Classic Motion Sync chain. */
+      readonly synchronizedFirstFrame?: number;
+      /** Bounded source alpha multiplier for the #1044 synchronized motion span. */
+      readonly alphaMultiplier?: number;
+      /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
+      readonly rgbTransform?: FlaDisplayListRgbTransform;
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
@@ -97,6 +115,8 @@ export type FlaDisplayListElement =
        * owning span; an animated (tweened) firstFrame stays fail-closed (#721/#720).
        */
       readonly sourceParentSpanTweenType?: string;
+      /** Raw Sync marker for the bounded #1044 synchronized-motion experiment. */
+      readonly sourceParentMotionTweenSync?: boolean;
       /** Stable source address of this DOMSymbolInstance within the XFL. */
       readonly sourceAddress?: string;
       /** Per-instance definition lookup; libraryItemName remains source identity. */
@@ -109,6 +129,7 @@ export type FlaDisplayListElement =
 export interface FlaGraphicSymbolDefinition {
   readonly kind: 'graphic';
   readonly libraryItemName: string;
+  readonly sourceFrameCount?: number;
   /** Concrete frame context for this definition; no frame selection occurs here. */
   readonly frameContext: FlaDisplayListFrameContext;
 }
@@ -139,6 +160,12 @@ export interface FlaDisplayListResolverLimits {
   readonly maxRecursionDepth: number;
   /** Bounds emitted nodes and source nodes visited, including hidden nodes. */
   readonly maxResolvedNodeCount: number;
+  /**
+   * When true, elements/subtrees that fail resolution (e.g. unsupported symbol
+   * types, cycles, missing symbols, exceeded limits) degrade to typed opaque
+   * stand-in nodes instead of failing the entire display list.
+   */
+  readonly tolerant?: boolean;
 }
 
 export const DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS: FlaDisplayListResolverLimits =
@@ -150,6 +177,8 @@ export const DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS: FlaDisplayListResolverLim
 export interface FlaResolvedShapeNode {
   readonly kind: 'shape';
   readonly shapeId: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
@@ -157,6 +186,8 @@ export interface FlaResolvedShapeNode {
 export interface FlaResolvedBitmapNode {
   readonly kind: 'bitmap';
   readonly libraryItemName: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
@@ -175,7 +206,25 @@ export interface FlaResolvedGroupNode {
   readonly kind: 'group';
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly opacity?: number;
+  readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly symbolInstance?: {
+    readonly sourceFrameCount?: number;
+    readonly sourceParentFrameSpanStart?: number;
+    readonly frameSelectionKey?: string;
+    readonly playbackMode?: string;
+    readonly firstFrame?: string;
+    readonly lastFrame?: string;
+    readonly synchronizedFirstFrame?: number;
+  };
+  readonly opaque?: {
+    readonly kind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
+    readonly reason: string;
+    readonly sourceRef?: string;
+  };
   readonly children: readonly FlaResolvedDisplayNode[];
 }
 
@@ -187,6 +236,7 @@ export type FlaResolvedDisplayNode =
 export interface FlaResolvedDisplayLayer {
   readonly name: string;
   readonly children: readonly FlaResolvedDisplayNode[];
+  readonly frameFilter?: FlaDisplayListBlurFilter;
 }
 
 export interface FlaResolvedDisplayList {
@@ -431,9 +481,51 @@ function resolveLayers(
       activeClipPaths,
     );
     if (!resolved.ok) return resolved;
-    layers.push({ name: layer.name, children: resolved.nodes });
+    layers.push({
+      name: layer.name,
+      children: resolved.nodes,
+      ...(layer.frameFilter ? { frameFilter: layer.frameFilter } : {}),
+    });
   }
   return { ok: true, layers };
+}
+
+function opaqueStandIn(
+  element: FlaDisplayListElement,
+  parentTransform: FlaDisplayListMatrix,
+  reason: string,
+): FlaResolvedGroupNode {
+  const authored = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const localTransform = isValidMatrix(authored) ? authored : FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const composed = composeTransforms(parentTransform, localTransform);
+  const sourceRef = element.kind === 'symbol' || element.kind === 'bitmap'
+    ? element.libraryItemName
+    : element.kind === 'shape' ? element.shapeId : element.groupId;
+  const symbolInstance =
+    element.kind === 'symbol'
+      ? {
+          ...(element.frameSelectionKey !== undefined ? { frameSelectionKey: element.frameSelectionKey } : {}),
+          ...(element.playbackMode !== undefined ? { playbackMode: element.playbackMode } : {}),
+          ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
+          ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
+          ...(element.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: element.synchronizedFirstFrame } : {}),
+        }
+      : undefined;
+  return {
+    kind: 'group',
+    groupId: `opaque:${sourceRef || element.kind}`,
+    ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+    ...(element.kind === 'symbol' ? { symbolLibraryItemName: element.libraryItemName } : {}),
+    localTransform,
+    worldTransform: isValidMatrix(composed) ? composed : localTransform,
+    children: [],
+    ...(symbolInstance && Object.keys(symbolInstance).length > 0 ? { symbolInstance } : {}),
+    opaque: {
+      kind: element.kind === 'symbol' ? 'symbol' : element.kind === 'shape' ? 'shape' : 'unknown',
+      reason,
+      ...(sourceRef ? { sourceRef } : {}),
+    },
+  };
 }
 
 function resolveElements(
@@ -454,45 +546,87 @@ function resolveElements(
     const element = elements[elementIndex];
     const elementPath = `${sourcePath}/element[${elementIndex}]`;
     const nodeBudgetFailure = enterSourceNode(context, elementPath);
-    if (nodeBudgetFailure) return nodeBudgetFailure;
+    if (nodeBudgetFailure) {
+      if (!context.limits.tolerant || !element) return nodeBudgetFailure;
+      nodes.push(opaqueStandIn(element, parentTransform, nodeBudgetFailure.message));
+      continue;
+    }
     if (!element) return failure('INVALID_INPUT', 'Missing display element', elementPath);
     if (element.visible === false) continue;
 
     const localTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
     if (!isValidMatrix(localTransform)) {
-      return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Display element matrix contains a non-finite value'));
+      continue;
     }
     const worldTransform = composeTransforms(parentTransform, localTransform);
     if (!isValidMatrix(worldTransform)) {
-      return failure('INVALID_MATRIX', 'Accumulated display element matrix is not finite', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_MATRIX', 'Accumulated display element matrix is not finite', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Accumulated display element matrix is not finite'));
+      continue;
     }
 
     if (element.kind === 'shape') {
       if (!element.shapeId) return failure('INVALID_INPUT', 'Shape reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'shape', shapeId: element.shapeId, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
+      nodes.push({
+        kind: 'shape',
+        shapeId: element.shapeId,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
       continue;
     }
 
     if (element.kind === 'bitmap') {
       if (!element.libraryItemName) return failure('INVALID_INPUT', 'Bitmap reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'bitmap', libraryItemName: element.libraryItemName, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
+      nodes.push({
+        kind: 'bitmap',
+        libraryItemName: element.libraryItemName,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
       continue;
     }
 
     if (element.kind === 'group') {
       const nextDepth = nestingDepth + 1;
       if (nextDepth > context.limits.maxRecursionDepth) {
-        return failure(
-          'MAX_RECURSION_DEPTH_EXCEEDED',
-          `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`, elementPath,
-        );
+        if (!context.limits.tolerant) {
+          return failure(
+            'MAX_RECURSION_DEPTH_EXCEEDED',
+            `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`, elementPath,
+          );
+        }
+        nodes.push(opaqueStandIn(element, parentTransform, `Display-list nesting exceeded ${context.limits.maxRecursionDepth}`));
+        continue;
       }
       const budgetFailure = addResolvedNode(context, elementPath);
-      if (budgetFailure) return budgetFailure;
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
       const children = resolveElements(
         element.elements,
         worldTransform,
@@ -502,49 +636,106 @@ function resolveElements(
         context,
         clipPaths,
       );
-      if (!children.ok) return children;
-      nodes.push({ kind: 'group', groupId: element.groupId, worldTransform, children: children.nodes });
+      if (!children.ok) {
+        if (!context.limits.tolerant) return children;
+        nodes.push(opaqueStandIn(element, parentTransform, children.message));
+        continue;
+      }
+      nodes.push({
+        kind: 'group',
+        groupId: element.groupId,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        children: children.nodes,
+      });
       continue;
     }
 
     if (element.symbolType !== 'graphic') {
-      return failure(
-        'UNSUPPORTED_SYMBOL_TYPE',
-        `Only Graphic symbols are supported in C01: ${element.libraryItemName} (${element.symbolType})`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'UNSUPPORTED_SYMBOL_TYPE',
+          `Only Graphic symbols are supported in C01: ${element.libraryItemName} (${element.symbolType})`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Unsupported symbol type: ${element.symbolType}`));
+      continue;
+    }
+    if (element.alphaMultiplier !== undefined &&
+        (!Number.isFinite(element.alphaMultiplier) || element.alphaMultiplier < 0 || element.alphaMultiplier > 1)) {
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic alpha multiplier must be within 0..1', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic alpha multiplier must be within 0..1'));
+      continue;
+    }
+    if (element.rgbTransform !== undefined &&
+        (!Number.isFinite(element.rgbTransform.multiplier) || element.rgbTransform.multiplier < 0 ||
+          element.rgbTransform.multiplier > 1 || !Number.isFinite(element.rgbTransform.offset) ||
+          element.rgbTransform.offset < 0 || element.rgbTransform.offset > 255)) {
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255'));
+      continue;
     }
     if (!element.libraryItemName) {
-      return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic symbol reference is empty', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic symbol reference is empty'));
+      continue;
     }
     if (symbolStack.includes(element.libraryItemName)) {
-      return failure(
-        'SYMBOL_CYCLE',
-        `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'SYMBOL_CYCLE',
+          `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Graphic symbol cycle: ${[...symbolStack, element.libraryItemName].join(' -> ')}`));
+      continue;
     }
     const definition = context.input.symbols.get(element.frameSelectionKey ?? element.libraryItemName);
     if (!definition) {
-      return failure(
-        'MISSING_SYMBOL',
-        `Graphic symbol definition not found: ${element.libraryItemName}`,
-        elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'MISSING_SYMBOL',
+          `Graphic symbol definition not found: ${element.libraryItemName}`,
+          elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Graphic symbol definition not found: ${element.libraryItemName}`));
+      continue;
     }
     if (definition.libraryItemName !== element.libraryItemName || definition.kind !== 'graphic') {
-      return failure('INVALID_INPUT', 'Graphic symbol definition identity is inconsistent', elementPath);
+      if (!context.limits.tolerant) {
+        return failure('INVALID_INPUT', 'Graphic symbol definition identity is inconsistent', elementPath);
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, 'Graphic symbol definition identity is inconsistent'));
+      continue;
     }
 
     const nextDepth = nestingDepth + 1;
     if (nextDepth > context.limits.maxRecursionDepth) {
-      return failure(
-        'MAX_RECURSION_DEPTH_EXCEEDED',
-        `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`, elementPath,
-      );
+      if (!context.limits.tolerant) {
+        return failure(
+          'MAX_RECURSION_DEPTH_EXCEEDED',
+          `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`, elementPath,
+        );
+      }
+      nodes.push(opaqueStandIn(element, parentTransform, `Symbol expansion exceeded ${context.limits.maxRecursionDepth}`));
+      continue;
     }
     const budgetFailure = addResolvedNode(context, elementPath);
-    if (budgetFailure) return budgetFailure;
+    if (budgetFailure) {
+      if (!context.limits.tolerant) return budgetFailure;
+      nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+      continue;
+    }
     const childLayers = resolveLayers(
       definition.frameContext,
       worldTransform,
@@ -554,12 +745,30 @@ function resolveElements(
       context,
       clipPaths,
     );
-    if (!childLayers.ok) return childLayers;
+    if (!childLayers.ok) {
+      if (!context.limits.tolerant) return childLayers;
+      nodes.push(opaqueStandIn(element, parentTransform, childLayers.message));
+      continue;
+    }
+    const symbolInstance = {
+      ...(definition.sourceFrameCount !== undefined ? { sourceFrameCount: definition.sourceFrameCount } : {}),
+      ...(element.sourceParentFrameSpanStart !== undefined ? { sourceParentFrameSpanStart: element.sourceParentFrameSpanStart } : {}),
+      ...(element.frameSelectionKey !== undefined ? { frameSelectionKey: element.frameSelectionKey } : {}),
+      ...(element.playbackMode !== undefined ? { playbackMode: element.playbackMode } : {}),
+      ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
+      ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
+      ...(element.synchronizedFirstFrame !== undefined ? { synchronizedFirstFrame: element.synchronizedFirstFrame } : {}),
+    };
     nodes.push({
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
+      ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+      localTransform,
       worldTransform,
+      ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
+      ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(Object.keys(symbolInstance).length ? { symbolInstance } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });
   }

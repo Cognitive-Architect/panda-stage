@@ -13,6 +13,7 @@ export const AssetReferenceSchema = z
       'shot-layer',
       'audio-clip',
       'dialogue-audio',
+      'animation-structure',
     ]),
     path: z.string().trim().min(1).max(500),
     label: z.string().trim().min(1).max(500),

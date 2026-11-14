@@ -22,7 +22,10 @@ export function CanvasWorkspace({
       className="canvas-workspace"
       data-testid="canvas-workspace-scroll"
     >
-      <CanvasStage showHeading={showHeading} showToolbar={showToolbar} />
+      <CanvasStage
+        showHeading={showHeading}
+        showToolbar={showToolbar}
+      />
     </section>
   );
 }

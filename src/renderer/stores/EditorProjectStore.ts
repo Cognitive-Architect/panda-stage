@@ -1,5 +1,6 @@
 import {
   ProjectSchema,
+  pruneFlaGraphicInstanceTransformOverrides,
   scanAssetReferences,
   type Asset,
   type Project,
@@ -39,6 +40,64 @@ interface ActiveEditorProjectOperation {
 }
 
 type Listener = () => void;
+
+function reconcileFlaGraphicLayerOverrides(
+  previous: Project,
+  next: Project,
+): Project {
+  const previousLayers = new Map(
+    previous.shots.flatMap((shot) => shot.layers.map((layer) => [layer.id, layer] as const)),
+  );
+  const nextAnimations = new Map(next.animations.map((animation) => [animation.id, animation]));
+  const previousAnimations = new Map(previous.animations.map((animation) => [animation.id, animation]));
+  let projectChanged = false;
+  const shots = next.shots.map((shot) => {
+    let shotChanged = false;
+    const layers = shot.layers.map((layer) => {
+      const overrides = layer.flaGraphicInstanceTransformOverrides;
+      if (!overrides) return layer;
+      const prior = previousLayers.get(layer.id);
+      if (prior && JSON.stringify(prior.source) !== JSON.stringify(layer.source)) {
+        projectChanged = true;
+        shotChanged = true;
+        const withoutOverrides = { ...layer };
+        delete withoutOverrides.flaGraphicInstanceTransformOverrides;
+        return withoutOverrides;
+      }
+      if (layer.source.kind !== 'animation') return layer;
+      const definition = nextAnimations.get(layer.source.animationId);
+      if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic' || !definition.structure) {
+        projectChanged = true;
+        shotChanged = true;
+        const withoutOverrides = { ...layer };
+        delete withoutOverrides.flaGraphicInstanceTransformOverrides;
+        return withoutOverrides;
+      }
+      const previousDefinition = previousAnimations.get(layer.source.animationId);
+      if (
+        JSON.stringify(previousDefinition && 'kind' in previousDefinition
+          ? previousDefinition.structure
+          : undefined) === JSON.stringify(definition.structure)
+      ) {
+        return layer;
+      }
+      const pruned = pruneFlaGraphicInstanceTransformOverrides(
+        overrides,
+        definition.structure,
+      );
+      if (pruned === overrides) return layer;
+      projectChanged = true;
+      shotChanged = true;
+      const withoutOverrides = { ...layer };
+      delete withoutOverrides.flaGraphicInstanceTransformOverrides;
+      return pruned
+        ? { ...withoutOverrides, flaGraphicInstanceTransformOverrides: pruned }
+        : withoutOverrides;
+    });
+    return shotChanged ? { ...shot, layers } : shot;
+  });
+  return projectChanged ? { ...next, shots } : next;
+}
 
 export class EditorProjectStore {
   private snapshot: EditorProjectSnapshot | null = null;
@@ -108,8 +167,9 @@ export class EditorProjectStore {
   ): void {
     this.assertNoProjectOperation();
     const current = this.requireSnapshot();
-    const project = ProjectSchema.parse(rawProject);
-    this.assertSameProject(current.project, project);
+    const parsedProject = ProjectSchema.parse(rawProject);
+    this.assertSameProject(current.project, parsedProject);
+    const project = reconcileFlaGraphicLayerOverrides(current.project, parsedProject);
     if (JSON.stringify(project) === JSON.stringify(current.project)) return;
     this.history.execute(
       new ProjectCommand(
@@ -126,8 +186,9 @@ export class EditorProjectStore {
   restore(rawProject: Project): void {
     this.assertNoProjectOperation();
     const current = this.requireSnapshot();
-    const project = ProjectSchema.parse(rawProject);
-    this.assertSameProject(current.project, project);
+    const parsedProject = ProjectSchema.parse(rawProject);
+    this.assertSameProject(current.project, parsedProject);
+    const project = reconcileFlaGraphicLayerOverrides(current.project, parsedProject);
     this.history.clear();
     this.snapshot = {
       ...current,

@@ -15,6 +15,28 @@ import {
   type Project,
   type Shot,
 } from '../models';
+import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import {
+  cloneFlaGraphicInstanceTransformOverrides,
+  findFlaGraphicStructureNodeAtPath,
+  pruneFlaGraphicInstanceTransformOverrides,
+  setFlaGraphicInstanceTransformOverride,
+  updateFlaGraphicStructureAuthoredTransform,
+} from '../models/flaGraphicInstanceOverrides';
+import {
+  addFlaGraphicTimelineKeyframe as addTimelineKeyframePure,
+  deleteFlaGraphicTimelineKeyframe as deleteTimelineKeyframePure,
+  duplicateFlaGraphicTimelineKeyframe as duplicateTimelineKeyframePure,
+  evaluateFlaGraphicTrackAtTime,
+  moveFlaGraphicTimelineKeyframe as moveTimelineKeyframePure,
+  resolveFlaGraphicTimelineTarget,
+  setFlaGraphicTimelineKeyframeEasing as setTimelineKeyframeEasingPure,
+  updateFlaGraphicTimelineKeyframeTransform as updateTimelineKeyframeTransformPure,
+  withFlaGraphicContainerTimeline,
+  type FlaGraphicInternalTimeline,
+  type FlaGraphicTimelineTargetInfo,
+  type FlaGraphicTransformEasing,
+} from '../models/flaGraphicTimeline';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { PositionProjectService } from './PositionProjectService';
 
@@ -76,6 +98,22 @@ export interface AnimationPlaybackInput {
   startTimeMs?: number;
   mode?: AnimationPlayback['mode'];
   endBehavior?: AnimationPlayback['endBehavior'];
+}
+
+export interface CreateAnimationLayerInput {
+  animationId: string;
+  position: Point;
+  startTimeMs: number;
+  firstFrameIndex?: number;
+  playback?: AnimationPlayback;
+  transform?: {
+    scaleX?: number;
+    scaleY?: number;
+    rotationDeg?: number;
+    opacity?: number;
+    flipX?: boolean;
+  };
+  flaOccurrence?: Extract<Layer['source'], { kind: 'animation' }>['flaOccurrence'];
 }
 
 export type LayerOrderAction =
@@ -164,65 +202,17 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const position = clampLayerPosition(input.position);
     if (input.type === 'animation') {
-      const animation = project.animations.find(
-        (candidate) => candidate.id === input.animationId,
-      );
-      if (!animation) {
-        throw new LayerServiceError(
-          'ANIMATION_NOT_FOUND',
-          'Animation definition is unavailable.',
-        );
-      }
-      if (
-        input.startTimeMs === undefined ||
-        !Number.isFinite(input.startTimeMs) ||
-        input.startTimeMs < 0 ||
-        input.startTimeMs > shot.durationMs
-      ) {
+      if (input.startTimeMs === undefined) {
         throw new LayerServiceError(
           'INVALID_ANIMATION_START_TIME',
           'Animation start time must be within the shot duration.',
         );
       }
-      for (const frame of animation.frames) {
-        const frameAsset = project.assets.find(
-          (candidate) => candidate.id === frame.assetId,
-        );
-        if (
-          !frameAsset ||
-          frameAsset.kind !== 'image' ||
-          frameAsset.sha256 !== frame.sha256
-        ) {
-          throw new LayerServiceError(
-            'ANIMATION_FRAME_INVALID',
-            'An animation frame is missing or has a mismatched content hash.',
-          );
-        }
-      }
-      const usedIds = this.projectIds(project);
-      const layer: Layer = {
-        id: this.nextUniqueId(usedIds),
-        name: animation.name,
-        source: { kind: 'animation', animationId: animation.id },
+      return this.createFromAnimation(project, shotId, {
+        animationId: input.animationId,
+        position,
         startTimeMs: input.startTimeMs,
-        animationPlayback: { mode: 'once', endBehavior: 'hold' },
-        anchor: 'center',
-        x: position.x,
-        y: position.y,
-        scaleX: 1,
-        scaleY: 1,
-        rotationDeg: 0,
-        opacity: 1,
-        visible: true,
-        locked: false,
-        flipX: false,
-        zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
-      };
-      const nextShot = { ...shot, layers: [...shot.layers, layer] };
-      return {
-        project: this.replaceShot(project, nextShot),
-        layer,
-      };
+      });
     }
     const asset = project.assets.find(
       (candidate) => candidate.id === input.assetId,
@@ -299,6 +289,89 @@ export class LayerService {
       scale,
       input.type === 'character-expression' ? character!.defaultFlipX : false,
     );
+  }
+
+  createFromAnimation(
+    project: Project,
+    shotId: string,
+    input: CreateAnimationLayerInput,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const animation = project.animations.find(
+      (candidate) => candidate.id === input.animationId,
+    );
+    if (!animation) {
+      throw new LayerServiceError(
+        'ANIMATION_NOT_FOUND',
+        'Animation definition is unavailable.',
+      );
+    }
+    const position = validateLayerPosition(input.position);
+    if (
+      !Number.isFinite(input.startTimeMs) ||
+      input.startTimeMs < 0 ||
+      input.startTimeMs > shot.durationMs
+    ) {
+      throw new LayerServiceError(
+        'INVALID_ANIMATION_START_TIME',
+        'Animation start time must be within the shot duration.',
+      );
+    }
+    const firstFrameIndex = input.firstFrameIndex ?? 0;
+    if (
+      !Number.isSafeInteger(firstFrameIndex) ||
+      firstFrameIndex < 0 ||
+      firstFrameIndex >= animation.frames.length
+    ) {
+      throw new LayerServiceError(
+        'ANIMATION_FRAME_INVALID',
+        'Animation first frame is outside the referenced Definition.',
+      );
+    }
+    for (const frame of animation.frames) {
+      const frameAsset = project.assets.find(
+        (candidate) => candidate.id === frame.assetId,
+      );
+      if (
+        !frameAsset ||
+        frameAsset.kind !== 'image' ||
+        frameAsset.sha256 !== frame.sha256
+      ) {
+        throw new LayerServiceError(
+          'ANIMATION_FRAME_INVALID',
+          'An animation frame is missing or has a mismatched content hash.',
+        );
+      }
+    }
+    const transform = input.transform ?? {};
+    const usedIds = this.projectIds(project);
+    const layer: Layer = {
+      id: this.nextUniqueId(usedIds),
+      name: animation.name,
+      source: {
+        kind: 'animation',
+        animationId: animation.id,
+        ...(input.flaOccurrence ? { flaOccurrence: input.flaOccurrence } : {}),
+      },
+      startTimeMs: input.startTimeMs,
+      animationFirstFrame: firstFrameIndex,
+      animationPlayback: input.playback ?? { mode: 'once', endBehavior: 'hold' },
+      anchor: 'center',
+      x: position.x,
+      y: position.y,
+      scaleX: validateLayerScale(transform.scaleX ?? 1),
+      scaleY: validateLayerScale(transform.scaleY ?? 1),
+      rotationDeg: normalizeLayerRotation(transform.rotationDeg ?? 0),
+      opacity: validateLayerOpacity(transform.opacity ?? 1),
+      visible: true,
+      locked: false,
+      flipX: transform.flipX ?? false,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    return {
+      project: this.replaceShot(project, { ...shot, layers: [...shot.layers, layer] }),
+      layer,
+    };
   }
 
   createFromAdaptiveCharacter(
@@ -541,6 +614,323 @@ export class LayerService {
     );
   }
 
+  updateFlaGraphicInstanceTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (
+      !definition ||
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const node = findFlaGraphicStructureNodeAtPath(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!node || node.type === 'opaque') return project;
+
+    const pruned = pruneFlaGraphicInstanceTransformOverrides(
+      layer.flaGraphicInstanceTransformOverrides,
+      definition.structure,
+    );
+    const nextOverrides = setFlaGraphicInstanceTransformOverride(
+      pruned,
+      frameOrdinal,
+      nodePath,
+      node.localTransform,
+      localTransform,
+    );
+    if (nextOverrides === layer.flaGraphicInstanceTransformOverrides) {
+      return project;
+    }
+
+    const nextLayer: Layer = { ...layer };
+    delete nextLayer.flaGraphicInstanceTransformOverrides;
+    if (nextOverrides) {
+      nextLayer.flaGraphicInstanceTransformOverrides = nextOverrides;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = nextLayer;
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
+  updateFlaGraphicSharedDefinitionTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    localTransform: AffineMatrix2D,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const animationIndex = project.animations.findIndex(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (animationIndex < 0) return project;
+    const definition = project.animations[animationIndex]!;
+    if (
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const nextStructure = updateFlaGraphicStructureAuthoredTransform(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+      localTransform,
+    );
+    if (nextStructure === definition.structure) {
+      return project;
+    }
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return {
+      ...project,
+      animations: nextAnimations,
+    };
+  }
+
+  private mutateFlaGraphicTimeline(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    mutator: (
+      target: FlaGraphicTimelineTargetInfo & { readonly trackId: string },
+    ) => FlaGraphicInternalTimeline | undefined,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const animationIndex = project.animations.findIndex(
+      (candidate) => candidate.id === source.animationId,
+    );
+    if (animationIndex < 0) return project;
+    const definition = project.animations[animationIndex]!;
+    if (
+      !('kind' in definition) ||
+      definition.kind !== 'fla-graphic' ||
+      !definition.structure
+    ) {
+      return project;
+    }
+    const target = resolveFlaGraphicTimelineTarget(
+      definition.structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target || !target.trackId) return project;
+    const nextTimeline = mutator({ ...target, trackId: target.trackId });
+    const nextStructure = withFlaGraphicContainerTimeline(
+      definition.structure,
+      target,
+      nextTimeline,
+    );
+    if (nextStructure === definition.structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return {
+      ...project,
+      animations: nextAnimations,
+    };
+  }
+
+  addFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing = 'linear',
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) => {
+        if (!target.trsSafe) {
+          throw new Error(
+            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持添加关键帧。',
+          );
+        }
+        const existingTrack = target.timeline?.tracks.find(
+          (t) => t.trackId === target.trackId,
+        );
+        const initialMatrix =
+          (existingTrack
+            ? evaluateFlaGraphicTrackAtTime(existingTrack, timeMs)
+            : null) ?? target.targetNode.localTransform;
+        return addTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          initialMatrix,
+          easing,
+        );
+      },
+    );
+  }
+
+  updateFlaGraphicTimelineKeyframeTransform(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    localTransform: AffineMatrix2D,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) => {
+        if (!target.trsSafe) {
+          throw new Error(
+            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持编辑关键帧。',
+          );
+        }
+        return updateTimelineKeyframeTransformPure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          localTransform,
+        );
+      },
+    );
+  }
+
+  deleteFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        deleteTimelineKeyframePure(target.timeline, target.trackId, timeMs),
+    );
+  }
+
+  moveFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        moveTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          fromTimeMs,
+          toTimeMs,
+        ),
+    );
+  }
+
+  duplicateFlaGraphicTimelineKeyframe(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    fromTimeMs: number,
+    toTimeMs: number,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        duplicateTimelineKeyframePure(
+          target.timeline,
+          target.trackId,
+          fromTimeMs,
+          toTimeMs,
+        ),
+    );
+  }
+
+  setFlaGraphicTimelineKeyframeEasing(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    timeMs: number,
+    easing: FlaGraphicTransformEasing,
+  ): Project {
+    return this.mutateFlaGraphicTimeline(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      (target) =>
+        setTimelineKeyframeEasingPure(
+          target.timeline,
+          target.trackId,
+          timeMs,
+          easing,
+        ),
+    );
+  }
+
   toggleFlipX(
     project: Project,
     shotId: string,
@@ -705,6 +1095,14 @@ export class LayerService {
         : offsetPosition;
     const duplicate: Layer = {
       ...layer,
+      ...(layer.flaGraphicInstanceTransformOverrides
+        ? {
+            flaGraphicInstanceTransformOverrides:
+              cloneFlaGraphicInstanceTransformOverrides(
+                layer.flaGraphicInstanceTransformOverrides,
+              ),
+          }
+        : {}),
       id: duplicateId,
       name: `${layer.name} 副本`,
       x: position.x,

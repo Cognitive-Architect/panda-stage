@@ -174,6 +174,11 @@ import {
   type FlaCharacterCreateRequest,
   type FlaCharacterCreateStatusRequest,
 } from '../shared/fla-character-create-api';
+import {
+  FlaGraphicInstanceCommitRequestSchema,
+  FlaGraphicInstanceCommitResponseSchema,
+  type FlaGraphicInstanceCommitRequest,
+} from '../shared/fla-graphic-instance-api';
 
 type Unsubscribe = () => void;
 
@@ -699,6 +704,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaFrameSequenceCommitResponseSchema.parse(response);
+    },
+    commitGraphicInstance: async (rawRequest: FlaGraphicInstanceCommitRequest) => {
+      const request = FlaGraphicInstanceCommitRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_GRAPHIC_INSTANCE_COMMIT,
+        request,
+      );
+      return FlaGraphicInstanceCommitResponseSchema.parse(response);
     },
     // R2-B (Corrective B): narrow typed progress subscription. The
     // Renderer receives only the Panda-owned R2 progress contract; the

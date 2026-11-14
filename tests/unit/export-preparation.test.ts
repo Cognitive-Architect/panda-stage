@@ -17,7 +17,12 @@ import {
   evaluateExportPreparationBudget,
   evaluateExportPreparationSupport,
 } from '../../src/domain/export-preparation';
-import { ProjectSchema, type Project } from '../../src/domain';
+import {
+  evaluateShotAtTime,
+  FlaGraphicDefinitionSchema,
+  ProjectSchema,
+  type Project,
+} from '../../src/domain';
 import {
   ExportPreparationService,
   type ExportPreparationMediaReader,
@@ -97,6 +102,91 @@ function projectWithMedia(media = new Map<string, Uint8Array>()): Project {
     ],
   });
   return project;
+}
+
+function projectWithFlaGraphicAnimation(
+  media: Map<string, Uint8Array>,
+  startTimeMs = 0,
+): Project {
+  const base = projectWithMedia(media);
+  const animationScaffold = buildProjectWithAnimation().animations[0]!;
+  const frameAssetId = '10000000-0000-4000-8000-000000000099';
+  const frameBytes = new Uint8Array(
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"/>'),
+  );
+  const frameSha = hash(frameBytes);
+  media.set(frameAssetId, frameBytes);
+  const frameAsset = {
+    id: frameAssetId,
+    kind: 'image' as const,
+    name: 'Generated FLA Graphic frame',
+    relativePath: 'assets/generated-frame.svg',
+    mimeType: 'image/svg+xml',
+    sha256: frameSha,
+    width: 640,
+    height: 640,
+    usage: 'uncategorized' as const,
+    keywords: [],
+    flaGraphicFrame: { definitionId: IDS.animation, ordinal: 0 },
+  };
+  const frame = {
+    ...animationScaffold.frames[0]!,
+    assetId: frameAssetId,
+    sha256: frameSha,
+    createdBySequenceImport: false,
+  };
+  const animation = FlaGraphicDefinitionSchema.parse({
+    ...animationScaffold,
+    kind: 'fla-graphic',
+    source: {
+      ...animationScaffold.source,
+      endFrameIndex: animationScaffold.source.startFrameIndex,
+    },
+    durationMs: frame.durationMs,
+    frames: [frame],
+    structure: {
+      version: 1,
+      frames: [{
+        ordinal: 0,
+        layers: [{
+          name: 'Project-backed bitmap resources',
+          nodes: [{
+            type: 'bitmap',
+            id: 'export-bitmap',
+            drawOrder: 0,
+            localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+            bitmapRef: 'Library/assetChar2.png',
+            assetId: IDS.assetChar2,
+          }],
+        }],
+      }],
+    },
+  });
+  const shot = base.shots[0]!;
+  const animationLayer = {
+    id: IDS.animationLayer,
+    name: 'FLA Graphic instance',
+    source: { kind: 'animation' as const, animationId: animation.id },
+    startTimeMs,
+    animationPlayback: { mode: 'loop' as const, endBehavior: 'hold' as const },
+    anchor: 'center' as const,
+    x: 700,
+    y: 500,
+    scaleX: 1,
+    scaleY: 1,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    flipX: false,
+    zIndex: shot.layers.length,
+  };
+  return ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, frameAsset],
+    animations: [animation],
+    shots: [{ ...shot, layers: [...shot.layers, animationLayer] }],
+  });
 }
 
 function mediaReader(
@@ -243,6 +333,9 @@ describe('DL-01 export preparation domain rules', () => {
     expect(exportCapabilityStatusForMimeType('image/jpeg')).toBe(
       'SUPPORTED_UNVERIFIED',
     );
+    expect(exportCapabilityStatusForMimeType('image/svg+xml')).toBe(
+      'SUPPORTED_UNVERIFIED',
+    );
     expect(exportCapabilityStatusForMimeType('audio/wav')).toBe(
       'SUPPORTED_VERIFIED',
     );
@@ -255,7 +348,7 @@ describe('DL-01 export preparation domain rules', () => {
     });
     expect(
       EXPORT_PREPARATION_SUPPORT_PROFILE.imageMimeTypes,
-    ).toEqual(['image/png', 'image/jpeg']);
+    ).toEqual(['image/png', 'image/jpeg', 'image/svg+xml']);
     expect(EXPORT_PREPARATION_SUPPORT_PROFILE.audioMimeTypes).toEqual([
       'audio/mpeg',
       'audio/wav',
@@ -272,6 +365,320 @@ describe('DL-01 export preparation domain rules', () => {
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
+  });
+
+  it('keeps arbitrary SVG image assets outside formal export support', () => {
+    const base = projectWithMedia();
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) => asset.id === IDS.assetBg
+        ? { ...asset, mimeType: 'image/svg+xml' }
+        : asset),
+    });
+    const issues = evaluateExportPreparationSupport(project, 'static');
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          location: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it('freezes generated FLA Graphic SVG frames for formal playback export', async () => {
+    const media = new Map<string, Uint8Array>();
+    const structuredProject = projectWithFlaGraphicAnimation(media);
+    const project = ProjectSchema.parse({
+      ...structuredProject,
+      animations: structuredProject.animations.map((animation) => {
+        if ('kind' in animation && animation.kind === 'fla-graphic') {
+          const legacyUnstructured = { ...animation };
+          delete legacyUnstructured.structure;
+          return legacyUnstructured;
+        }
+        return animation;
+      }),
+    });
+    const requiredAssets = collectExportPreparationMedia(project);
+    const frameAsset = project.assets.find(
+      (asset) => asset.kind === 'image' &&
+        asset.flaGraphicFrame?.definitionId === IDS.animation,
+    )!;
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
+    expect(requiredAssets.map((entry) => entry.asset.id)).toContain(frameAsset.id);
+
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture, 'fla-graphic-export.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+    const manifest = prepared.candidate.mediaManifest.find(
+      (entry) => entry.assetId === frameAsset.id,
+    );
+    expect(manifest?.mimeType).toBe('image/svg+xml');
+    const acquired = await fixture.service.acquireCandidateForExport(
+      prepared.candidate.snapshotId,
+    );
+    const acquiredFrame = acquired.media.find(
+      (entry) => entry.assetId === frameAsset.id,
+    );
+    expect(acquiredFrame).toMatchObject({
+      assetId: frameAsset.id,
+      kind: 'image',
+      mimeType: 'image/svg+xml',
+    });
+    expect([...acquiredFrame!.bytes]).toEqual([...media.get(frameAsset.id)!]);
+    fixture.service.releaseCandidateExport(prepared.candidate.snapshotId);
+  });
+
+  it('freezes structured FLA resources when the animation starts after time zero', () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithFlaGraphicAnimation(media, 500);
+    const shot = project.shots[0]!;
+    const animationLayer = shot.layers.find(
+      (layer) => layer.source.kind === 'animation',
+    )!;
+    if (animationLayer.source.kind !== 'animation') {
+      throw new Error('Expected a FLA Graphic animation layer.');
+    }
+    const animationId = animationLayer.source.animationId;
+    const animation = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') {
+      throw new Error('Expected a FLA Graphic Definition.');
+    }
+    const beforeStart = evaluateShotAtTime(shot, 0, project).layers.find(
+      (layer) => layer.id === animationLayer.id,
+    );
+    const requiredAssetIds = new Set(
+      collectExportPreparationMedia(project).map((entry) => entry.asset.id),
+    );
+
+    expect(beforeStart?.visible).toBe(false);
+    expect(requiredAssetIds).not.toContain(animation.frames[0]!.assetId);
+    expect(requiredAssetIds).toContain(IDS.assetChar2);
+  });
+
+  it('validates and exports a structured FLA Graphic when its baked frame asset is missing or has a stale hash (#1083)', async () => {
+    const media = new Map<string, Uint8Array>();
+    const baseProject = projectWithFlaGraphicAnimation(media);
+    const animation = baseProject.animations.find(
+      (candidate) => 'kind' in candidate && candidate.kind === 'fla-graphic',
+    )!;
+    const bakedFrameAssetId = animation.frames[0]!.assetId;
+
+    // 1. Remove baked frame asset completely from project.assets
+    const missingBakedProject = ProjectSchema.parse({
+      ...baseProject,
+      assets: baseProject.assets.filter((asset) => asset.id !== bakedFrameAssetId),
+    });
+    expect(evaluateExportPreparationSupport(missingBakedProject, 'static')).toEqual([]);
+    const requiredIds = collectExportPreparationMedia(missingBakedProject).map((e) => e.asset.id);
+    expect(requiredIds).toContain(IDS.assetChar2);
+    expect(requiredIds).not.toContain(bakedFrameAssetId);
+
+    const fixture = await harness({ project: missingBakedProject, media });
+    const selection = await selectOutput(fixture, 'structured-no-baked.mp4');
+    const prepared = await fixture.service.prepare(requestFor(fixture, selection.selectionId));
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+    expect(prepared.candidate.mediaManifest.some((m) => m.assetId === bakedFrameAssetId)).toBe(false);
+    expect(prepared.candidate.mediaManifest.some((m) => m.assetId === IDS.assetChar2)).toBe(true);
+    fixture.service.releaseCandidateExport(prepared.candidate.snapshotId);
+
+    // 2. Stale baked hash on an unused baked frame asset must not fail validation or export
+    const staleBakedProject = ProjectSchema.parse({
+      ...baseProject,
+      assets: baseProject.assets.map((asset) =>
+        asset.id === bakedFrameAssetId ? { ...asset, sha256: 'f'.repeat(64) } : asset,
+      ),
+    });
+    expect(evaluateExportPreparationSupport(staleBakedProject, 'static')).toEqual([]);
+    const staleRequiredIds = collectExportPreparationMedia(staleBakedProject).map((e) => e.asset.id);
+    expect(staleRequiredIds).not.toContain(bakedFrameAssetId);
+  });
+
+  it('requires and freezes baked frame asset when structured opaque fallback actually references it (#1083)', () => {
+    const media = new Map<string, Uint8Array>();
+    const baseProject = projectWithFlaGraphicAnimation(media);
+    const animation = baseProject.animations.find(
+      (candidate) => 'kind' in candidate && candidate.kind === 'fla-graphic',
+    )!;
+    if (!('kind' in animation) || animation.kind !== 'fla-graphic' || !animation.structure) {
+      throw new Error('Expected structured FLA Graphic');
+    }
+    const bakedFrameAssetId = animation.frames[0]!.assetId;
+    const withOpaqueFallback = {
+      ...baseProject,
+      animations: baseProject.animations.map((candidate) =>
+        candidate.id !== animation.id
+          ? candidate
+          : {
+              ...animation,
+              structure: {
+                ...animation.structure!,
+                frames: [{
+                  ordinal: 0,
+                  layers: [{
+                    name: 'Opaque',
+                    nodes: [{
+                      type: 'opaque' as const,
+                      id: 'opaque-shape',
+                      drawOrder: 0,
+                      localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+                      opaqueKind: 'shape' as const,
+                      fallbackScope: 'frame-crop' as const,
+                      fallbackAssetId: bakedFrameAssetId,
+                      fallbackViewBox: { x: 0, y: 0, width: 100, height: 100 },
+                    }],
+                  }],
+                }],
+              },
+            },
+      ),
+    };
+    const parsed = ProjectSchema.parse(withOpaqueFallback);
+    const requiredIds = collectExportPreparationMedia(parsed).map((e) => e.asset.id);
+    expect(requiredIds).toContain(bakedFrameAssetId);
+
+    // Removing the referenced fallbackAssetId must fail Formal Project validation
+    const missingFallback = ProjectSchema.safeParse({
+      ...withOpaqueFallback,
+      assets: withOpaqueFallback.assets.filter((asset) => asset.id !== bakedFrameAssetId),
+    });
+    expect(missingFallback.success).toBe(false);
+  });
+
+  it('enforces baked frame validation and freezes only unstructured frames in legacy and mixed multi-frame Graphics (#1083)', () => {
+    const media = new Map<string, Uint8Array>();
+    const baseProject = projectWithFlaGraphicAnimation(media);
+    const animation = baseProject.animations.find(
+      (candidate) => 'kind' in candidate && candidate.kind === 'fla-graphic',
+    )!;
+    if (!('kind' in animation) || animation.kind !== 'fla-graphic') {
+      throw new Error('Expected FLA Graphic');
+    }
+    const frame0 = animation.frames[0]!;
+    const frame1AssetId = 'c1000000-0000-4000-8000-000000000001';
+    const frame1Sha = 'e'.repeat(64);
+    const frame1Asset = {
+      ...baseProject.assets.find((a) => a.id === frame0.assetId)!,
+      id: frame1AssetId,
+      sha256: frame1Sha,
+      relativePath: 'assets/frame1.svg',
+      flaGraphicFrame: { definitionId: animation.id, ordinal: 1 },
+    };
+    const mixedAnim = {
+      ...animation,
+      source: {
+        ...animation.source,
+        endFrameIndex: animation.source.startFrameIndex + 1,
+      },
+      durationMs: frame0.durationMs * 2,
+      frames: [
+        frame0,
+        {
+          ...frame0,
+          ordinal: 1,
+          sourceFrameIndex: frame0.sourceFrameIndex + 1,
+          assetId: frame1AssetId,
+          sha256: frame1Sha,
+          startMs: frame0.durationMs,
+        },
+      ],
+    };
+    // Frame 0 has structure (baked asset missing -> OK), Frame 1 has NO structure (baked asset present -> OK)
+    const mixedValid = ProjectSchema.parse({
+      ...baseProject,
+      assets: [
+        ...baseProject.assets.filter((a) => a.id !== frame0.assetId),
+        frame1Asset,
+      ],
+      animations: [mixedAnim],
+    });
+    const requiredIds = collectExportPreparationMedia(mixedValid).map((e) => e.asset.id);
+    expect(requiredIds).not.toContain(frame0.assetId);
+    expect(requiredIds).toContain(IDS.assetChar2);
+    expect(requiredIds).toContain(frame1AssetId);
+
+    // If unstructured Frame 1's baked asset is missing or has wrong hash -> validation MUST fail
+    const mixedMissingFrame1 = ProjectSchema.safeParse({
+      ...mixedValid,
+      assets: mixedValid.assets.filter((a) => a.id !== frame1AssetId),
+    });
+    expect(mixedMissingFrame1.success).toBe(false);
+
+    const mixedBadHashFrame1 = ProjectSchema.safeParse({
+      ...mixedValid,
+      assets: mixedValid.assets.map((a) =>
+        a.id === frame1AssetId ? { ...a, sha256: 'd'.repeat(64) } : a,
+      ),
+    });
+    expect(mixedBadHashFrame1.success).toBe(false);
+  });
+
+  it('validates and freezes bitmap resources inside normalized nested symbolDefinitions (#1083)', () => {
+    const media = new Map<string, Uint8Array>();
+    const baseProject = projectWithFlaGraphicAnimation(media);
+    const animation = baseProject.animations.find(
+      (candidate) => 'kind' in candidate && candidate.kind === 'fla-graphic',
+    )!;
+    if (!('kind' in animation) || animation.kind !== 'fla-graphic') {
+      throw new Error('Expected FLA Graphic');
+    }
+    const bakedFrameAssetId = animation.frames[0]!.assetId;
+    const normalizedProject = ProjectSchema.parse({
+      ...baseProject,
+      assets: baseProject.assets.filter((a) => a.id !== bakedFrameAssetId),
+      animations: [{
+        ...animation,
+        structure: {
+          version: 1,
+          symbolDefinitions: {
+            'Arm::0': {
+              symbolRef: 'Arm',
+              frameSelectionKey: '0',
+              children: [{
+                type: 'bitmap',
+                id: 'def-arm-bmp',
+                drawOrder: 0,
+                localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+                bitmapRef: 'Library/assetChar2.png',
+                assetId: IDS.assetChar2,
+              }],
+            },
+          },
+          frames: [{
+            ordinal: 0,
+            layers: [{
+              name: 'Main',
+              nodes: [{
+                type: 'symbol',
+                id: 'sym-arm-a',
+                drawOrder: 0,
+                localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+                symbolRef: 'Arm',
+                nestedDefinitionId: 'Arm::0',
+              }],
+            }],
+          }],
+        },
+      }],
+    });
+    const requiredIds = collectExportPreparationMedia(normalizedProject).map((e) => e.asset.id);
+    expect(requiredIds).toContain(IDS.assetChar2);
+    expect(requiredIds).not.toContain(bakedFrameAssetId);
+
+    // Missing bitmap asset inside symbolDefinitions must fail validation
+    const missingNestedBmp = ProjectSchema.safeParse({
+      ...normalizedProject,
+      assets: normalizedProject.assets.filter((a) => a.id !== IDS.assetChar2),
+    });
+    expect(missingNestedBmp.success).toBe(false);
   });
 
   it.each([

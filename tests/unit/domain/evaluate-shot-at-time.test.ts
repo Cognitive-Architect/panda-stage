@@ -55,7 +55,9 @@ describe('T02 evaluateShotAtTime', () => {
       animationFrame: { offset: { x: 0, y: 0 } },
     });
     expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_040).animationFrame?.frameOrdinal).toBe(1);
     expect(at(1_800).animationFrame?.offset.x).toBe(20);
+    expect(at(1_800).animationFrame?.frameOrdinal).toBe(20);
     expect(at(1_840).animationFrame?.offset.x).toBe(20);
     expect(at(1_040).animationFrame?.offset.x).toBe(1);
     expect(at(1_000).animationFrame?.offset.x).toBe(0);
@@ -130,6 +132,43 @@ describe('T02 evaluateShotAtTime', () => {
     expect(at(1_840, 'once', 'hide').visible).toBe(false);
     expect(at(1_039, 'once', 'hide').visible).toBe(true);
     expect(at(1_839, 'once', 'hide').animationFrame?.offset.x).toBe(20);
+  });
+
+  it('honors an animation instance first frame for loop and single-frame playback', () => {
+    const animationProject = buildProjectWithAnimation();
+    const baseShot = animationProject.shots[0]!;
+    const layer: Layer = {
+      id: IDS.animationLayer,
+      name: 'graphic instance',
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 0,
+      animationFirstFrame: 5,
+      animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+      anchor: 'center',
+      x: 700,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const at = (timeMs: number, mode: 'loop' | 'single-frame') =>
+      evaluateShotAtTime({
+        ...baseShot,
+        layers: [{ ...layer, animationPlayback: { mode, endBehavior: 'hold' } }],
+      }, timeMs, animationProject).layers[0]!;
+
+    expect(at(0, 'loop').animationFrame?.offset.x).toBe(5);
+    expect(at(40, 'loop').animationFrame?.offset.x).toBe(6);
+    expect(at(640, 'loop').animationFrame?.offset.x).toBe(5);
+    expect(at(9_000, 'single-frame')).toMatchObject({
+      visible: true,
+      animationFrame: { offset: { x: 5 } },
+    });
   });
 
   it('uses source-frame counts for fractional-millisecond loop periods and one-frame cycles', () => {

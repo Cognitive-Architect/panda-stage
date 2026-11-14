@@ -10,7 +10,9 @@ import {
 import {
   isTransformerBoxAllowed,
   isTransformerOverlayVisible,
+  structuredChildTransformerScales,
 } from '../../src/renderer/features/canvas/LayerTransformer';
+import { multiplyAffineMatrices } from '../../src/shared/affine-matrix';
 import { shouldDeleteSelectedLayer } from '../../src/renderer/features/properties/LayerOrderControls';
 import {
   canRunTransformAction,
@@ -92,6 +94,57 @@ describe('Day 23 layer control adapters', () => {
         1,
       ),
     ).toBe(false);
+  });
+
+  it('uses the selected Child local scale instead of the outer Layer or nested parent scale', () => {
+    const parent = { a: 100, b: 0, c: 0, d: 80, tx: 0, ty: 0 };
+    const childLocal = { a: 0.5, b: 0, c: 0, d: 0.75, tx: 0, ty: 0 };
+    const childScales = structuredChildTransformerScales(childLocal);
+    const composedWorld = multiplyAffineMatrices(parent, childLocal);
+
+    expect(childScales).toEqual({ scaleX: 0.5, scaleY: 0.75 });
+    expect(structuredChildTransformerScales(composedWorld)).toEqual({
+      scaleX: 50,
+      scaleY: 60,
+    });
+    expect(isTransformerBoxAllowed(
+      { width: 100, height: 100 },
+      { width: 200, height: 200 },
+      childScales.scaleX,
+      childScales.scaleY,
+    )).toBe(true);
+    expect(isTransformerBoxAllowed(
+      { width: 100, height: 100 },
+      { width: 200, height: 200 },
+      100,
+    )).toBe(false);
+  });
+
+  it('uses transient Child gesture scale first, then the instance override, then authored scale', () => {
+    const authored = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const override = { a: 4, b: 0, c: 0, d: 6, tx: 0, ty: 0 };
+    const draft = { a: 0.2, b: 0, c: 0, d: 0.3, tx: 0, ty: 0 };
+
+    expect(structuredChildTransformerScales(authored, override, draft)).toEqual({
+      scaleX: 0.2,
+      scaleY: 0.3,
+    });
+    expect(structuredChildTransformerScales(authored, override)).toEqual({
+      scaleX: 4,
+      scaleY: 6,
+    });
+    expect(structuredChildTransformerScales(authored)).toEqual({
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+
+  it('checks non-uniform Child scale bounds independently on X and Y', () => {
+    const box = { width: 100, height: 100 };
+    const doubled = { width: 200, height: 200 };
+    expect(isTransformerBoxAllowed(box, doubled, 0.2, 11)).toBe(false);
+    expect(isTransformerBoxAllowed(box, doubled, 11, 0.2)).toBe(false);
+    expect(isTransformerBoxAllowed(box, doubled, 0.2, 10)).toBe(true);
   });
 
   it('only exposes the overlay for a ready, selected, unlocked content layer', () => {

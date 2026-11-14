@@ -10,6 +10,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
+  'image/svg+xml': '.svg',
   'audio/mpeg': '.mp3',
   'audio/wav': '.wav',
 };

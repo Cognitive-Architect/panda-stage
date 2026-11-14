@@ -13,14 +13,18 @@ import {
 import type { ConfirmedSequenceFrame } from '../../src/main/services/fla-frame-sequence-service';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import {
+  buildEditorStageRenderModel,
   evaluateShotAtTime,
+  FlaGraphicDefinitionSchema,
   LayerService,
   listShotRuntimeImageAssets,
+  ProjectSchema,
   ShotService,
 } from '../../src/domain';
 import { FlaFrameSequenceCommitRequestSchema } from '../../src/shared/fla-frame-sequence-api';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
+import { buildProjectWithAnimation } from '../unit/domain/testProject';
 
 const temporaryParents: string[] = [];
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -309,6 +313,153 @@ describe('formal animation persistence', () => {
     }).read({ projectRoot, assetId: asset!.id, sha256: asset!.sha256 });
     expect(imageRead.ok).toBe(true);
     if (imageRead.ok) expect(Buffer.from(imageRead.bytes)).toEqual(png);
+  });
+
+  it('reopens an FLA Graphic Instance override and evaluates it on the ordinary Stage model', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-fla-graphic-runtime-persistence-'));
+    temporaryParents.push(parent);
+    const projectRoot = path.join(parent, 'graphic.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(projectRoot, { name: 'Graphic runtime persistence' });
+    const withShot = new ShotService().create(created.project, {
+      name: 'Graphic runtime shot',
+      durationMs: 2_000,
+    });
+
+    const scaffold = buildProjectWithAnimation().animations[0]!;
+    const definitionId = '7a000000-0000-4000-8000-000000000001';
+    const frameAssetId = '1a000000-0000-4000-8000-000000000001';
+    const bitmapAssetId = '1a000000-0000-4000-8000-000000000002';
+    const frameSha = 'b'.repeat(64);
+    const bitmapSha = 'c'.repeat(64);
+    const frameAsset = {
+      id: frameAssetId,
+      kind: 'image' as const,
+      name: 'Generated Graphic frame',
+      relativePath: 'assets/graphic-frame.svg',
+      mimeType: 'image/svg+xml',
+      sha256: frameSha,
+      width: 64,
+      height: 64,
+      usage: 'uncategorized' as const,
+      keywords: [],
+      flaGraphicFrame: { definitionId, ordinal: 0 },
+    };
+    const bitmapAsset = {
+      id: bitmapAssetId,
+      kind: 'image' as const,
+      name: 'Graphic bitmap',
+      relativePath: 'assets/graphic-bitmap.png',
+      mimeType: 'image/png',
+      sha256: bitmapSha,
+      width: 32,
+      height: 32,
+      usage: 'uncategorized' as const,
+      keywords: [],
+    };
+    const frame = {
+      ...scaffold.frames[0]!,
+      assetId: frameAssetId,
+      sha256: frameSha,
+      sourceViewport: { x: 0, y: 0, width: 64, height: 64 },
+      offset: { x: 0, y: 0 },
+      createdBySequenceImport: false,
+    };
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...scaffold,
+      id: definitionId,
+      kind: 'fla-graphic',
+      name: 'Runtime Graphic',
+      source: {
+        ...scaffold.source,
+        endFrameIndex: scaffold.source.startFrameIndex,
+        canvas: { width: 64, height: 64 },
+        anchor: { x: 0, y: 0 },
+        documentCanvas: { width: 64, height: 64 },
+      },
+      durationMs: frame.durationMs,
+      frames: [frame],
+      structure: {
+        version: 1,
+        frames: [{
+          ordinal: 0,
+          layers: [{
+            name: 'Body',
+            nodes: [{
+              type: 'group',
+              id: 'group',
+              drawOrder: 0,
+              localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 20, ty: 0 },
+              groupId: 'body',
+              children: [{
+                type: 'bitmap',
+                id: 'bitmap',
+                drawOrder: 0,
+                localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 10, ty: 5 },
+                bitmapRef: 'Library/body.png',
+                assetId: bitmapAssetId,
+              }],
+            }],
+          }],
+        }],
+      },
+    });
+    const projectWithDefinition = ProjectSchema.parse({
+      ...withShot,
+      assets: [frameAsset, bitmapAsset],
+      animations: [definition],
+    });
+    const shot = projectWithDefinition.shots[0]!;
+    const layerService = new LayerService({
+      createId: () => '6a000000-0000-4000-8000-000000000001',
+    });
+    const placed = layerService.createFromAsset(
+      projectWithDefinition,
+      shot.id,
+      {
+        version: 3,
+        type: 'animation',
+        animationId: definition.id,
+        position: { x: 320, y: 240 },
+        startTimeMs: 0,
+      },
+    );
+    const edited = layerService.updateFlaGraphicInstanceTransform(
+      placed.project,
+      shot.id,
+      placed.layer.id,
+      0,
+      ['group', 'bitmap'],
+      { a: 1, b: 0, c: 0, d: 1, tx: 50, ty: 15 },
+    );
+    await projectService.save(projectRoot, edited, 0);
+
+    const reopened = await projectService.open(projectRoot);
+    const reopenedShot = reopened.project.shots.find((candidate) => candidate.id === shot.id)!;
+    const evaluated = evaluateShotAtTime(reopenedShot, 0, reopened.project);
+    const stageModel = buildEditorStageRenderModel(
+      reopened.project,
+      reopenedShot,
+      evaluated,
+    );
+    const runtimeLayer = stageModel.layers.find(
+      (candidate) => candidate.layer.id === placed.layer.id,
+    )!;
+    const evaluatedBitmap = runtimeLayer.visual.flaGraphic?.layers?.[0]?.nodes[0]?.children[0];
+
+    expect(reopened.migrated).toBe(false);
+    expect(runtimeLayer.visual.flaGraphic?.mode).toBe('instance');
+    expect(evaluatedBitmap?.worldTransform).toMatchObject({ tx: 70, ty: 15 });
+    const reopenedDefinition = reopened.project.animations[0];
+    if (
+      !reopenedDefinition ||
+      !('kind' in reopenedDefinition) ||
+      reopenedDefinition.kind !== 'fla-graphic' ||
+      !reopenedDefinition.structure
+    ) {
+      throw new Error('Expected the reopened structured Definition.');
+    }
+    expect(reopenedDefinition.structure.frames[0]?.layers[0]?.nodes[0]?.type).toBe('group');
   });
 
   it('loads three content-distinct PNG frames through Shot resources and the temporal Canvas render model', async () => {

@@ -1,5 +1,5 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const electronMocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -36,6 +36,7 @@ import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
+import * as flaSvgBuilder from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { buildMultiFrameGraphicFla } from '../helpers/fla-render-fixture';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject, type Project } from '../../src/domain';
@@ -90,6 +91,10 @@ const successResponse: FlaFrameSequenceResponse = {
 };
 
 const source: FlaStaticSnapshotSource = { bytes: new Uint8Array([9, 9]) } as unknown as FlaStaticSnapshotSource;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function mainWindow(senderId = 42): BrowserWindow {
   return { isDestroyed: () => false, webContents: { id: senderId } } as unknown as BrowserWindow;
@@ -196,7 +201,7 @@ describe('R2-H.1 frame sequence render IPC', () => {
     expect(FlaFrameSequenceResponseSchema.safeParse(response).success).toBe(true);
   });
 
-  it('uses a real catalog target id in the default R2 frame-source bridge', async () => {
+  it('prepares one source per request and reuses it for catalog and selected SVG frames', async () => {
     const bytes = await buildMultiFrameGraphicFla();
     const catalog = await buildRenderableTargetCatalog(bytes);
     expect(catalog.ok).toBe(true);
@@ -205,20 +210,57 @@ describe('R2-H.1 frame sequence render IPC', () => {
     expect(target).toBeDefined();
     if (!target) return;
 
+    const replacementBytes = await buildMultiFrameGraphicFla({ blankFirstFrame: true });
+    const replacementCatalog = await buildRenderableTargetCatalog(replacementBytes);
+    expect(replacementCatalog.ok).toBe(true);
+    if (!replacementCatalog.ok) return;
+    const replacementTarget = replacementCatalog.entries.find(
+      (entry) => entry.target.kind === 'graphic-symbol' && entry.target.frameCount >= 2,
+    )?.target;
+    expect(replacementTarget).toBeDefined();
+    if (!replacementTarget) return;
+
+    const originalPrepare = flaSvgBuilder.prepareFlaStaticSnapshotDisplaySource;
+    const preparedSources: unknown[] = [];
+    const prepareSpy = vi.spyOn(flaSvgBuilder, 'prepareFlaStaticSnapshotDisplaySource')
+      .mockImplementation(async (sourceBytes, operation, execution) => {
+        const prepared = await originalPrepare(sourceBytes, operation, execution);
+        if (prepared.ok) preparedSources.push(prepared.source);
+        return prepared;
+      });
+    const catalogSpy = vi.spyOn(flaSvgBuilder, 'buildRenderableTargetCatalog');
+    const svgSpy = vi.spyOn(flaSvgBuilder, 'buildSvgForRenderTarget');
+
     const collected: Array<{ frameIndex: number; svg: string }> = [];
     const mocks = makeMocks();
+    let currentBytes = bytes;
+    let currentTargetId = target.renderTargetId;
     mocks.sourceLookup.getSource = vi.fn((): FlaStaticSnapshotSource => ({
-      bytes,
+      bytes: currentBytes,
       basename: 'r2-multi-frame-fixture.fla',
       sha256: 'b'.repeat(64),
     }));
+    let sequenceCall = 0;
     mocks.sequenceService.renderSequence.mockImplementation(async (
       _session: string,
       _requestedRange: FlaFrameSequenceRange,
       sourceIterable: AsyncIterable<{ frameIndex: number; svg: string }>,
+      options?: { readonly sequenceRequestId?: string },
     ) => {
-      for await (const frame of sourceIterable) collected.push(frame);
-      return { ...successResponse, renderTargetId: target.renderTargetId };
+      sequenceCall += 1;
+      if (sequenceCall === 1) {
+        const iterator = sourceIterable[Symbol.asyncIterator]();
+        const first = await iterator.next();
+        if (!first.done) collected.push(first.value);
+        await iterator.return?.();
+      } else {
+        for await (const frame of sourceIterable) collected.push(frame);
+      }
+      return {
+        ...successResponse,
+        requestId: options?.sequenceRequestId ?? requestId,
+        renderTargetId: currentTargetId,
+      };
     });
     register(mocks);
 
@@ -228,16 +270,54 @@ describe('R2-H.1 frame sequence render IPC', () => {
     });
 
     expect(response).toMatchObject({ ok: true, renderTargetId: target.renderTargetId });
-    expect(collected.map((frame) => frame.frameIndex)).toEqual([0, 1]);
-    expect(collected.every((frame) => frame.svg.includes('<path'))).toBe(true);
+    expect(collected.map((frame) => frame.frameIndex)).toEqual([0]);
+    expect(collected[0]?.svg).toContain('<path');
+    expect(prepareSpy).toHaveBeenCalledTimes(1);
+    expect(catalogSpy).toHaveBeenCalledTimes(1);
+    expect(svgSpy).toHaveBeenCalledTimes(1);
+    expect(catalogSpy.mock.calls[0]?.[0]).toBe(bytes);
+    expect(catalogSpy.mock.calls[0]?.[3]).toBe(preparedSources[0]);
+    expect(svgSpy.mock.calls[0]?.[1].selectedFrameIndex).toBe(0);
+    expect(svgSpy.mock.calls[0]?.[3]).toBe(preparedSources[0]);
+
+    currentBytes = replacementBytes;
+    currentTargetId = replacementTarget.renderTargetId;
+    const replacementRequestId = '22222222-2222-4222-8222-222222222222';
+    const replacementResponse = await handler(IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER)(event(), {
+      ...validRenderRequest,
+      requestId: replacementRequestId,
+      range: { renderTargetId: replacementTarget.renderTargetId, startFrameIndex: 0, endFrameIndex: 1 },
+    });
+    expect(replacementResponse).toMatchObject({ ok: true, requestId: replacementRequestId });
+    expect(collected.map((frame) => frame.frameIndex)).toEqual([0, 0, 1]);
+    expect(collected[1]?.svg).not.toContain('<path');
+    expect(collected[2]?.svg).not.toContain('<path');
+    expect(prepareSpy).toHaveBeenCalledTimes(2);
+    expect(catalogSpy).toHaveBeenCalledTimes(2);
+    expect(svgSpy).toHaveBeenCalledTimes(3);
+    expect(catalogSpy.mock.calls[1]?.[0]).toBe(replacementBytes);
+    expect(catalogSpy.mock.calls[1]?.[3]).toBe(preparedSources[1]);
+    expect(preparedSources[1]).not.toBe(preparedSources[0]);
+    expect(svgSpy.mock.calls.slice(1).map((call) => call[1].selectedFrameIndex)).toEqual([0, 1]);
+    expect(svgSpy.mock.calls.slice(1).every((call) => call[3] === preparedSources[1])).toBe(true);
+
     const staticFrameZero = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
-    const staticFrameOne = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1 });
+    const staticReplacementFrameZero = await buildSvgForRenderTarget(
+      replacementBytes,
+      { ...replacementTarget, selectedFrameIndex: 0 },
+    );
+    const staticReplacementFrameOne = await buildSvgForRenderTarget(
+      replacementBytes,
+      { ...replacementTarget, selectedFrameIndex: 1 },
+    );
     expect(staticFrameZero.ok).toBe(true);
-    expect(staticFrameOne.ok).toBe(true);
-    if (!staticFrameZero.ok || !staticFrameOne.ok) return;
+    expect(staticReplacementFrameZero.ok).toBe(true);
+    expect(staticReplacementFrameOne.ok).toBe(true);
+    if (!staticFrameZero.ok || !staticReplacementFrameZero.ok || !staticReplacementFrameOne.ok) return;
     expect(collected[0]?.svg).toBe(staticFrameZero.svg);
-    expect(collected[1]?.svg).toBe(staticFrameOne.svg);
-    expect(staticFrameOne.svg).not.toBe(staticFrameZero.svg);
+    expect(collected[1]?.svg).toBe(staticReplacementFrameZero.svg);
+    expect(collected[2]?.svg).toBe(staticReplacementFrameOne.svg);
+    expect(staticReplacementFrameZero.svg).not.toBe(staticFrameZero.svg);
   });
 
   it('keeps blank-first Graphic frames reachable in a sequence', async () => {

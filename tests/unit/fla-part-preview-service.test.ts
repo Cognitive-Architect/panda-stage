@@ -1,4 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import JSZip from 'jszip';
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
@@ -11,7 +16,15 @@ import type {
 import { stableRenderTargetId } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import type { FlaImportService } from '../../src/main/services/FlaImportService';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
-import { migrateProject } from '../../src/domain';
+import { calculateViewportTransform, evaluateFlaGraphicVisual, migrateProject, ProjectSchema, reconstructFlaGraphicStructure, scanAssetReferences, type Project } from '../../src/domain';
+import { AssetReferenceSchema } from '../../src/shared/asset-delete-api';
+import { selectAssetLibraryEntries } from '../../src/renderer/stores/assetLibrarySelectors';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { ProjectService } from '../../src/main/services/ProjectService';
+import { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
+import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
+import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
+import { getFlaGraphicScopeNodes, resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { FLA_PART_PREVIEW_LIMITS, FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
 
@@ -149,7 +162,12 @@ async function buildTwoPartFla(
   return zip.generateAsync({ type: 'uint8array' });
 }
 
-async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
+async function buildTwoInstanceNestedGraphicFla(
+  lastFrame: string | null = null,
+  playbackMode = 'loop',
+  firstFrame = '8',
+): Promise<Uint8Array> {
+  const secondLastFrame = lastFrame === null ? '' : ` lastFrame="${lastFrame}"`;
   const scene = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
@@ -157,7 +175,7 @@ async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
       <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
         <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
       </DOMSymbolInstance>
-      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="8">
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="${playbackMode}" firstFrame="${firstFrame}"${secondLastFrame}>
         <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
       </DOMSymbolInstance>
     </elements></DOMFrame>
@@ -176,6 +194,92 @@ async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
   const zip = new JSZip();
   zip.file('DOMDocument.xml', scene);
   zip.file('LIBRARY/MyGraphic.xml', graphic);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+async function buildOneFrameGroupedGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMShape><fills><FillStyle index="1"><SolidColor color="#222222" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!28 0|32 0|32 4|28 4|28 0"/></edges>
+      </DOMShape>
+      <DOMGroup><matrix><Matrix a="0" b="2" c="-2" d="0" tx="20" ty="10"/></matrix><members>
+        <DOMShape><matrix><Matrix a="0" b="2" c="-2" d="0" tx="14" ty="14"/></matrix>
+          <fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
+          <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+        </DOMShape>
+        <DOMShape><matrix><Matrix a="0" b="2" c="-2" d="0" tx="18" ty="2"/></matrix>
+          <fills><FillStyle index="1"><SolidColor color="#2555aa" alpha="1"/></FillStyle></fills>
+          <edges><Edge fillStyle1="1" cubics="!0 0|8 0|8 8|0 8|0 0"/></edges>
+        </DOMShape>
+      </members></DOMGroup>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
+  zip.file('LIBRARY/MyGraphic.xml', graphic);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+async function buildMultiGroupWithSymbolGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const shape = (color: string, tx: number) => `<DOMShape>
+    <matrix><Matrix a="1" d="1" tx="${tx}" ty="0"/></matrix>
+    <fills><FillStyle index="1"><SolidColor color="${color}" alpha="1"/></FillStyle></fills>
+    <edges><Edge fillStyle1="1" cubics="!0 0|8 0|8 8|0 8|0 0"/></edges>
+  </DOMShape>`;
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      ${shape('#222222', 0)}
+      <DOMGroup><members>${shape('#19a45b', 2)}</members></DOMGroup>
+      <DOMSymbolInstance libraryItemName="Backdrop" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="5" ty="1"/></matrix>
+      </DOMSymbolInstance>
+      <DOMGroup><members>${shape('#f03a55', 4)}${shape('#2555aa', 12)}</members></DOMGroup>
+      ${shape('#e8b72a', 20)}
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const backdrop = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="Backdrop" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Backdrop"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>${shape('#873bb5', 0)}</elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
+  zip.file('LIBRARY/MyGraphic.xml', graphic);
+  zip.file('LIBRARY/Backdrop.xml', backdrop);
   return zip.generateAsync({ type: 'uint8array' });
 }
 
@@ -215,6 +319,7 @@ async function fixture(
     sessionId: SESSION_ID,
     ir: {
       source: { basename: 'parts.fla', sha256: rawSha256 },
+      document: { width: 32, height: 24, frameRate: 12 },
       media: [],
     },
     originalSourceSha256: originalSourceSha256 ?? rawSha256,
@@ -454,6 +559,26 @@ describe('F1-02 Main part preview service', () => {
     }
     expect(response.partPreviews).toHaveLength(2);
     const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(response.partPreviews.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      sourceKind: part.sourceKind,
+      sourceSymbolId: part.sourceSymbolId,
+      sourceAddress: part.sourceAddress,
+      adapterIdentity: part.adapterIdentity,
+      sourceDefinitionFrameCount: part.sourceDefinitionFrameCount,
+      layerName: part.layerName,
+    }))).toEqual(plan?.units.map((unit) => ({
+      unitId: unit.unitId,
+      occurrenceId: unit.occurrenceId,
+      sourceKind: unit.sourceKind,
+      sourceSymbolId: unit.sourceSymbolId,
+      sourceAddress: unit.sourceAddress,
+      adapterIdentity: unit.adapterIdentity,
+      sourceDefinitionFrameCount: unit.sourceDefinitionFrameCount,
+      layerName: unit.layer.name,
+    })));
+    expect(new Set(response.partPreviews.map((part) => part.sourceAddress)).size).toBe(2);
     expect(plan?.units.map((unit) => unit.selectedEffectiveChildFrameIndex)).toEqual([0, 8]);
     expect(plan?.units.map((unit) => unit.sourceFrame.effectiveChildFrameIndex)).toEqual([0, 8]);
     expect(response.poseIdentity).toBe(plan?.poseIdentity);
@@ -466,6 +591,399 @@ describe('F1-02 Main part preview service', () => {
     expect(calls[2]?.svg).toContain('fill="#120008"');
     expect(calls[2]?.svg).not.toContain('fill="#120000"');
     expect(calls[3]?.svg.match(/<image /gu)).toHaveLength(2);
+    previewService.close();
+  });
+
+  it('admits a fresh one-frame Graphic through batch, commit, root scope and toolbar, and upgrades its legacy occurrence on reimport (#1092 A)', async () => {
+    const archive = await JSZip.loadAsync(await buildOneFrameGroupedGraphicFla());
+    const documentXml = await archive.file('DOMDocument.xml')!.async('string');
+    // Keep the imported instance within the editor's supported placement scale.
+    archive.file('DOMDocument.xml', documentXml.replace('width="32" height="24"', 'width="320" height="240"'));
+    const sourceBytes = await archive.generateAsync({ type: 'uint8array' });
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-issue1092-single-'));
+    const projectRoot = path.join(parent, 'single.pandastage');
+    try {
+      const response = await previewService.preview({ ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } });
+      if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') throw new Error('Expected fresh Graphic preview');
+      const unit = previewService.getPlan(response.planId, SESSION_ID, 1)!.units[0]!;
+      expect(unit.sourceDefinitionFrameCount).toBe(1);
+      const plan = { sessionId: SESSION_ID, planId: response.planId, generation: 1, poseIdentity: response.poseIdentity, unitId: unit.unitId };
+      const built = await previewService.buildGraphicDefinitionFrameBatch(plan);
+      if (!built.ok) throw new Error(built.message);
+      expect(built.batch.frames).toHaveLength(1);
+      expect(built.batch.structure?.frames).toHaveLength(1);
+      expect(built.batch.fallbacks).toHaveLength(3);
+      const colors = ['#222222', '#f03a55', '#2555aa'];
+      for (const fallback of built.batch.fallbacks!) {
+        expect(colors.filter((color) => fallback.svg.includes(color))).toHaveLength(1);
+      }
+      expect(colors.every((color) => built.batch.frames[0]!.svg.includes(color))).toBe(true);
+
+      const current = { project: undefined as unknown as Project, revision: 0, openInstanceId: 1 };
+      const projectService = new ProjectService({ onProjectSaved: (_root, project, revision) => {
+        current.project = project;
+        if (revision !== undefined) current.revision = revision;
+      } });
+      const created = await projectService.create(projectRoot, { name: 'Fresh single-frame Graphic' });
+      const shotId = randomUUID();
+      const project = ProjectSchema.parse({ ...created.project, shots: [{
+        id: shotId, name: 'Shot', durationMs: 5000,
+        defaultSubtitleStyleId: created.project.subtitleStyles[0]!.id,
+        dialogues: [], audioClips: [], timelineEvents: [], layers: [], backgroundLayerId: null,
+      }] });
+      await projectService.save(projectRoot, project, 0);
+      const commit = new FlaGraphicInstanceCommitService({ projectService, partPreviewService: previewService, getCurrentProjectSnapshot: () => current });
+      const commitRequest = (baseRevision: number) => ({
+        format: 'fla-graphic-instance-commit', version: 1, requestId: randomUUID(),
+        projectRoot, projectId: current.project.id, baseRevision, openInstanceId: 1,
+        shotId, startTimeMs: 0, plan,
+      });
+      const imported = await commit.commit(commitRequest(0));
+      if (!imported.ok) throw new Error(imported.error.message);
+      const targetFor = (saved: Project) => resolveFlaGraphicEditTarget({
+        project: saved, projectRoot, projectInstanceId: 1,
+        shot: saved.shots[0]!, layerId: imported.layerId,
+      });
+      const reopened = await projectService.open(projectRoot);
+      const target = targetFor(reopened.project);
+      expect(target?.animation.kind).toBe('fla-graphic');
+      expect(target?.animation.frames).toHaveLength(1);
+      expect(getFlaGraphicScopeNodes(target!.frame, [], target!.animation.structure).length).toBeGreaterThan(0);
+      expect(renderToStaticMarkup(createElement(CanvasToolbar, {
+        mode: 'fit', point: null, transform: calculateViewportTransform({ width: 1200, height: 700 }, 'fit'),
+        flaGraphicEditAvailable: Boolean(target),
+      }))).toContain('编辑元件');
+      const opaqueShapes = reconstructFlaGraphicStructure(target!.animation.structure!).filter(({ node }) => node.type === 'opaque');
+      expect(opaqueShapes).toHaveLength(3);
+      for (const { node } of opaqueShapes) {
+        if (node.type !== 'opaque') throw new Error('Expected opaque Shape');
+        expect(node.fallbackScope).toBe('subtree');
+        expect(node.fallbackAssetId).not.toBe(target!.animation.frames[0]!.assetId);
+        const asset = reopened.project.assets.find((item) => item.id === node.fallbackAssetId)!;
+        const svg = await readFile(path.join(projectRoot, asset.relativePath), 'utf8');
+        expect(colors.filter((color) => svg.includes(color))).toHaveLength(1);
+        const references = scanAssetReferences(reopened.project, asset.id);
+        expect(references.some((reference) => reference.kind === 'animation-structure')).toBe(true);
+        expect(references.every((reference) => AssetReferenceSchema.safeParse(reference).success)).toBe(true);
+        expect(selectAssetLibraryEntries(reopened.project, 'all').some((entry) => entry.asset.id === asset.id)).toBe(false);
+        const canvasImages = new AssetCanvasImageService({ getCurrentProjectSnapshot: () => ({ project: reopened.project }) });
+        expect((await canvasImages.read({ projectRoot, assetId: asset.id, sha256: asset.sha256 })).ok).toBe(true);
+      }
+      const unbound = structuredClone(reopened.project);
+      const unboundDefinition = unbound.animations[0]!;
+      if ('kind' in unboundDefinition && unboundDefinition.kind === 'fla-graphic') delete unboundDefinition.structure;
+      const unboundImages = new AssetCanvasImageService({ getCurrentProjectSnapshot: () => ({ project: unbound }) });
+      const unboundAsset = unbound.assets.find((asset) => asset.kind === 'image' && asset.mimeType === 'image/svg+xml' && !asset.flaGraphicFrame)!;
+      expect((await unboundImages.read({ projectRoot, assetId: unboundAsset.id, sha256: unboundAsset.sha256 })).ok).toBe(false);
+      const visual = evaluateFlaGraphicVisual({ definition: target!.animation, frameOrdinal: 0, mode: 'definition' })!;
+      expect(visual.resourceAssetIds).not.toContain(target!.animation.frames[0]!.assetId);
+      const ready = new Set(visual.resourceAssetIds);
+      const canvasModel = buildEditorTemporalCanvasModel({
+        project: reopened.project, shot: reopened.project.shots[0]!, currentTimeMs: 0,
+        readyAssetIds: ready, previousVisuals: new Map(),
+        readyAssetSourceKeys: new Map(reopened.project.assets.filter((asset) => ready.has(asset.id)).map((asset) => [asset.id, asset.sha256!])),
+      });
+      expect(canvasModel.targetReadyLayerIds.has(imported.layerId)).toBe(true);
+      // Tight isolated artwork can have a non-zero SVG origin (including its
+      // renderer-owned antialias margin); preserve that origin in local space.
+      const firstShape = visual.layers![0]!.nodes[0]!;
+      if (firstShape.source.type !== 'opaque') throw new Error('Expected Shape');
+      expect(firstShape.source.fallbackViewBox!.x).not.toBe(0);
+      expect(firstShape.localTransform.tx).toBe(firstShape.source.fallbackViewBox!.x);
+
+      // Existing reimport upgrades the same Definition/Layer; no single-frame
+      // exception button, extra migration or project-wide scan is needed.
+      const legacy = structuredClone(imported.project);
+      const definition = legacy.animations.find((item) => item.id === imported.animationId)!;
+      if (!('kind' in definition) || definition.kind !== 'fla-graphic') throw new Error('Expected Graphic');
+      delete definition.structure;
+      await projectService.save(projectRoot, legacy, 2);
+      expect(targetFor(legacy)).toBeNull();
+      const buildBatch = previewService.buildGraphicDefinitionFrameBatch.bind(previewService);
+      vi.spyOn(previewService, 'buildGraphicDefinitionFrameBatch').mockImplementationOnce(async (identity) => {
+        const result = await buildBatch(identity);
+        if (!result.ok) return result;
+        return { ...result, batch: { ...result.batch, frames: result.batch.frames.map((frame) => {
+          const svg = frame.svg.replace('<svg ', '<svg  ');
+          return { ...frame, svg, sha256: createHash('sha256').update(svg).digest('hex'), byteLength: Buffer.byteLength(svg) };
+        }) } };
+      });
+      const upgraded = await commit.commit(commitRequest(2));
+      if (!upgraded.ok) throw new Error(upgraded.error.message);
+      expect(upgraded.animationId).toBe(imported.animationId);
+      expect(upgraded.layerId).toBe(imported.layerId);
+      expect(upgraded.project.shots[0]!.layers).toHaveLength(1);
+      expect(targetFor((await projectService.open(projectRoot)).project)).not.toBeNull();
+
+      // Upgrade the real legacy frame-crop representation without replacing
+      // user-authored shared transforms, timelines, or instance-local edits.
+      const oldCropProject = structuredClone(upgraded.project);
+      const oldDefinition = oldCropProject.animations[0]!;
+      if (!('kind' in oldDefinition) || oldDefinition.kind !== 'fla-graphic') throw new Error('Expected Graphic');
+      for (const { node } of reconstructFlaGraphicStructure(oldDefinition.structure!)) {
+        if (node.type !== 'opaque') continue;
+        node.fallbackScope = 'frame-crop';
+        node.fallbackAssetId = oldDefinition.frames[0]!.assetId;
+        node.fallbackViewBox = { x: 12, y: 17, width: 20, height: 20 };
+      }
+      const group = oldDefinition.structure!.frames[0]!.layers[0]!.nodes.find((node) => node.type === 'group')!;
+      group.localTransform = { ...group.localTransform, tx: 27 };
+      const timeline = { tracks: [{ trackId: `addr:${group.sourceAddress}`, keyframes: [{ timeMs: 0, easing: 'linear' as const,
+        transform: { tx: 27, ty: 10, rotationDeg: 90, scaleX: 2, scaleY: 2 },
+      }] }] };
+      oldDefinition.structure!.timeline = timeline;
+      const overrides = { '0': { [JSON.stringify([group.id])]: { a: 1, b: 0, c: 0, d: 1, tx: 70, ty: -20 } } };
+      oldCropProject.shots[0]!.layers[0]!.flaGraphicInstanceTransformOverrides = overrides;
+      await projectService.save(projectRoot, oldCropProject, 4);
+      const refreshed = await commit.commit(commitRequest(4));
+      if (!refreshed.ok) throw new Error(refreshed.error.message);
+      expect(refreshed.animationId).toBe(imported.animationId);
+      expect(refreshed.layerId).toBe(imported.layerId);
+      expect(refreshed.project.assets).toHaveLength(oldCropProject.assets.length);
+      const refreshedTarget = targetFor((await projectService.open(projectRoot)).project)!;
+      expect(refreshedTarget.animation.structure?.timeline).toEqual(timeline);
+      expect(refreshedTarget.frame.layers[0]!.nodes.find((node) => node.id === group.id)?.localTransform.tx).toBe(27);
+      expect(refreshedTarget.layer.flaGraphicInstanceTransformOverrides).toEqual(overrides);
+      expect(reconstructFlaGraphicStructure(refreshedTarget.animation.structure!).filter(({ node }) => node.type === 'opaque').every(({ node }) => node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackAssetId !== oldDefinition.frames[0]!.assetId)).toBe(true);
+    } finally {
+      previewService.close();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('retains a selected Scene Graphic instance and renders every bounded Definition frame', async () => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Scene Graphic instance preview');
+    }
+    expect(response.partPreviews.map((part) => part.graphicInstanceImportable)).toEqual([true, true]);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const secondUnit = plan?.units[1];
+    expect(secondUnit?.sourceFrame.firstFrame).toBe('8');
+    if (!plan || !secondUnit) throw new Error('Expected a held Graphic occurrence plan');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: secondUnit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.batch.frames).toHaveLength(9);
+    expect(result.batch.unit.occurrenceId).toBe(secondUnit.occurrenceId);
+    expect(result.batch.frames.map((frame) => frame.sourceFrameIndex)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    expect(result.batch.frames.every((frame) =>
+      createHash('sha256').update(frame.svg).digest('hex') === frame.sha256,
+    )).toBe(true);
+    previewService.close();
+  });
+
+  it('keeps one real XFL Group and its source-addressed direct vector children interactive before full-frame baking', async () => {
+    const sourceBytes = await buildOneFrameGroupedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Graphic instance');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    const editPreview = result.batch.groupEditPreview;
+    expect(editPreview).toBeDefined();
+    if (!editPreview) throw new Error('Expected a transient Group edit preview');
+    expect(editPreview.source.outerOccurrenceId).toBe(unit.occurrenceId);
+    expect(editPreview.source.outerSourceAddress).toBe(unit.sourceAddress);
+    expect(editPreview.children).toHaveLength(2);
+    expect(editPreview.children.map((child) => child.kind)).toEqual(['shape', 'shape']);
+    expect(editPreview.children[0]?.sourceAddress).not.toBe(editPreview.children[1]?.sourceAddress);
+    expect(editPreview.children[0]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: 2, ty: 3 });
+    expect(editPreview.children[1]?.localTransform).toEqual({ a: 1, b: 0, c: 0, d: 1, tx: -4, ty: 1 });
+    expect(editPreview.children[0]?.artwork.svg).toContain('#f03a55');
+    expect(editPreview.children[0]?.artwork.svg).not.toContain('#2555aa');
+    expect(editPreview.children[1]?.artwork.svg).toContain('#2555aa');
+    expect(editPreview.children[1]?.artwork.svg).not.toContain('#f03a55');
+    expect(editPreview.background?.artwork.svg).toContain('#222222');
+    expect(editPreview.background?.artwork.svg).not.toContain('#f03a55');
+    expect(editPreview.background?.artwork.svg).not.toContain('#2555aa');
+    previewService.close();
+  });
+
+  it('selects the topmost eligible Group among multiple Groups and preserves sibling Symbol painter order', async () => {
+    const sourceBytes = await buildMultiGroupWithSymbolGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error(`Expected a source-addressed Graphic instance: ${JSON.stringify(response)}`);
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    const editPreview = result.batch.groupEditPreview;
+    expect(editPreview).toBeDefined();
+    if (!editPreview) throw new Error('Expected a transient multi-Group edit preview');
+    expect(editPreview.children).toHaveLength(2);
+    expect(editPreview.group.sourceAddress).toBe(editPreview.children[0]?.parentGroupSourceAddress);
+    expect(editPreview.children[0]?.artwork.svg).toContain('#f03a55');
+    expect(editPreview.children[0]?.artwork.svg).not.toContain('#19a45b');
+    expect(editPreview.children[1]?.artwork.svg).toContain('#2555aa');
+    expect(editPreview.background?.artwork.svg).toContain('#222222');
+    expect(editPreview.background?.artwork.svg).toContain('#19a45b');
+    expect(editPreview.background?.artwork.svg).toContain('#873bb5');
+    expect(editPreview.background?.artwork.svg).not.toContain('#e8b72a');
+    expect(editPreview.foreground?.artwork.svg).toContain('#e8b72a');
+    expect(editPreview.foreground?.artwork.svg).not.toContain('#f03a55');
+    const backgroundSvg = editPreview.background?.artwork.svg ?? '';
+    expect(backgroundSvg.indexOf('#222222')).toBeLessThan(backgroundSvg.indexOf('#19a45b'));
+    expect(backgroundSvg.indexOf('#19a45b')).toBeLessThan(backgroundSvg.indexOf('#873bb5'));
+    previewService.close();
+  });
+
+  it('keeps the Group edit preview fail-closed when the selected Group layer owns a frame filter', async () => {
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false,
+      await buildOneFrameGroupedGraphicFla());
+    const filteredDisplaySource = {
+      ...data.displaySource,
+      graphicSymbols: data.displaySource.graphicSymbols.map((symbol) =>
+        symbol.sourceLibraryItemName === 'MyGraphic'
+          ? {
+            ...symbol,
+            frameContext: {
+              ...symbol.frameContext,
+              layers: symbol.frameContext.layers.map((layer, index) => index === 0 && layer
+                ? {
+                  ...layer,
+                  frameFilter: {
+                    kind: 'blur' as const,
+                    blurX: 2,
+                    blurY: 2,
+                    quality: 'low' as const,
+                    enabled: true as const,
+                  },
+                }
+                : layer),
+            },
+          }
+          : symbol),
+    };
+    data.renderSession.prepareDisplaySourceForPartPreview.mockResolvedValue({
+      ok: true,
+      source: filteredDisplaySource,
+      xmlByteLength: 1,
+      cacheHit: false,
+    });
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Graphic instance');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[0];
+    if (!unit) throw new Error('Expected one source Graphic instance');
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.batch.groupEditPreview).toBeUndefined();
+    previewService.close();
+  });
+
+  it.each([
+    ['omitted lastFrame with nonzero loop firstFrame', null, 'loop', '8', true],
+    ['explicit terminal frame', '8', 'loop', '8', true],
+    ['truncated loop range', '4', 'loop', '1', false],
+    ['wrapped loop range', '1', 'loop', '8', false],
+    ['nonzero firstFrame single-frame playback', '7', 'single frame', '8', true],
+  ] as const)('classifies %s at preview and Main frame-batch boundaries', async (_label, lastFrame, playbackMode, firstFrame, importable) => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla(lastFrame, playbackMode, firstFrame);
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a source-addressed Scene Graphic instance preview');
+    }
+    expect(response.partPreviews.map((part) => part.graphicInstanceImportable)).toEqual([true, importable]);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    const unit = plan?.units[1];
+    if (!plan || !unit) throw new Error('Expected a held Graphic occurrence plan');
+
+    const result = await previewService.buildGraphicDefinitionFrameBatch({
+      sessionId: SESSION_ID,
+      planId: response.planId,
+      generation: 1,
+      poseIdentity: response.poseIdentity,
+      unitId: unit.unitId,
+    });
+    expect(result.ok).toBe(importable);
+    if (importable) {
+      if (!result.ok) throw new Error(result.message);
+      expect(result.batch.frames).toHaveLength(9);
+    } else if (result.ok) {
+      throw new Error('A restricted Graphic range must fail closed before frame rendering.');
+    } else {
+      expect(result.code).toBe('UNSUPPORTED_SOURCE');
+    }
     previewService.close();
   });
 
