@@ -1,12 +1,14 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import * as graphicEvaluator from '../../src/domain/evaluate-fla-graphic';
 import {
   CharacterService,
   CharacterSchema,
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  adaptiveCharacterSourceAnchor,
   buildEditorStageRenderModel,
   characterPartPlacementForReplacement,
   characterPartSourceBounds,
@@ -962,6 +964,99 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
       500,
     );
     expect(static0.parts[1]!.flaGraphic).toBe(static500.parts[1]!.flaGraphic);
+  });
+
+  it('keeps the Definition canvas pivot when Frame 0 is a cropped fallback (#1104)', () => {
+    const { project: base, characterId, bodyPartId, headPartId } = projectWithMixedAdaptiveParts();
+    const graphic = base.animations.find((a) => a.id === GRAPHIC_DEF_ID) as FlaGraphicDefinition;
+    const frameDurationMs = 1_000 / 24;
+    const croppedGraphic: FlaGraphicDefinition = {
+      ...graphic,
+      source: { ...graphic.source, endFrameIndex: 1 },
+      durationMs: frameDurationMs * 2,
+      frames: [
+        {
+          ...graphic.frames[0]!,
+          sourceViewport: { x: 30, y: 20, width: 100, height: 80 },
+          offset: { x: 30, y: 20 },
+        },
+        { ...graphic.frames[0]!, ordinal: 1, sourceFrameIndex: 1, startMs: frameDurationMs },
+      ],
+      structure: {
+        ...graphic.structure!,
+        frames: [{ ordinal: 0, layers: [] }, { ...graphic.structure!.frames[0]!, ordinal: 1 }],
+      },
+    };
+    // Persisted structure frames must be contiguous from zero. Simulate missing
+    // Frame 0 at the evaluator boundary while retaining a schema-valid save/reopen.
+    const evaluate = graphicEvaluator.evaluateFlaGraphicVisual;
+    const spy = vi.spyOn(graphicEvaluator, 'evaluateFlaGraphicVisual').mockImplementation((input) => evaluate({
+      ...input,
+      definition: input.definition.id === graphic.id ? {
+        ...input.definition,
+        structure: {
+          ...input.definition.structure!,
+          frames: input.definition.structure!.frames.filter((frame) => frame.ordinal !== 0),
+        },
+      } : input.definition,
+    }));
+    onTestFinished(() => spy.mockRestore());
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) => asset.id === GRAPHIC_FRAME_ASSET_ID
+        ? { ...asset, width: 200, height: 160 }
+        : asset),
+      animations: base.animations.map((a) => a.id === graphic.id ? croppedGraphic : a),
+      characters: base.characters.map((character) => character.id === characterId && character.mode === 'adaptive-parts'
+        ? {
+            ...character,
+            sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 10, ty: 20 },
+            parts: character.parts.map((part) => {
+              // Keep the PNG inside the Graphic so the full canvas determines the source center.
+              const restTransform = part.partId === bodyPartId
+                ? { a: 0.05, b: 0, c: 0, d: 0.05, tx: 180, ty: 280 }
+                : { a: 2, b: 0, c: 0, d: 1.5, tx: 100, ty: 200 };
+              return { ...part, restTransform, sourceRestTransform: restTransform };
+            }),
+          }
+        : character),
+    });
+    const character = project.characters.find((c) => c.id === characterId)!;
+    if (character.mode !== 'adaptive-parts') throw new Error('expected adaptive-parts');
+    // Definition canvas 160x140 -> source bounds [110,220,320,210], center (270,325).
+    expect(adaptiveCharacterSourceAnchor(project, character)).toEqual({ x: 270, y: 325 });
+    const withLayer = new LayerService().createFromAdaptiveCharacter(
+      project, IDS.shot, characterId, { x: 960, y: 540 },
+    ).project;
+    const sample = (current: Project, timeMs: number) => {
+      const shot = current.shots.find((s) => s.id === IDS.shot)!;
+      return buildEditorStageRenderModel(current, shot, evaluateShotAtTime(shot, timeMs, current))
+        .layers.at(-1)!.visual.parts;
+    };
+    const fallback = sample(withLayer, 0);
+    const structured = sample(withLayer, 60);
+    const looped = sample(withLayer, 90);
+    const headFallback = fallback[1]!;
+    expect(headFallback.source).toEqual({
+      kind: 'adaptive-part-fla-graphic', characterPartId: headPartId, animationId: graphic.id,
+    });
+    expect(headFallback.assetId).toBe(GRAPHIC_FRAME_ASSET_ID);
+    expect(headFallback.flaGraphic).toBeUndefined();
+    expect(headFallback.localRect).toEqual({ x: 0, y: 0, width: 200, height: 160 });
+    // 200x160 image -> 100x80 at (30,20), then Part/root transforms minus the full-canvas center.
+    expect(headFallback.imageTransform).toEqual({ a: 1, b: 0, c: 0, d: 0.75, tx: -100, ty: -75 });
+    expect(structured[1]!.flaGraphic?.frameOrdinal).toBe(1);
+    expect(structured[1]!.imageTransform).toEqual({ a: 2, b: 0, c: 0, d: 1.5, tx: -160, ty: -105 });
+    expect(looped).toEqual(fallback);
+    for (const parts of [fallback, structured, looped]) {
+      expect(parts.map((part) => part.drawOrder)).toEqual([0, 1]);
+      expect(parts[0]!.assetId).toBe(IDS.assetChar);
+      expect(parts[0]!.imageTransform).toEqual({ a: 0.05, b: 0, c: 0, d: 0.05, tx: -80, ty: -25 });
+    }
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(withLayer)));
+    for (const timeMs of [0, 60, 90]) {
+      expect(sample(reopened, timeMs)).toEqual(sample(withLayer, timeMs));
+    }
   });
 
   it('falls back seamlessly to evaluated frame image when a Graphic CharacterPart frame lacks structureFrame (#1103)', () => {

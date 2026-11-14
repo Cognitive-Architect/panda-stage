@@ -20,6 +20,7 @@ import {
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
 import { resolveImageAsset } from './canvasLayers';
+import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 
 export type LayerVisualKind =
   | 'ordinary-image'
@@ -741,15 +742,37 @@ function adaptivePartVisuals(
   });
 }
 
+function adaptiveCharacterSourceBounds(
+  project: Project,
+  character: AdaptivePartsCharacter,
+  parts: readonly LayerVisualPart[],
+): VisualLocalRect {
+  // Source geometry is independent of frame-local fallback viewport/offset.
+  // Preserve PNG bounds while measuring Graphics against their full Definition canvas.
+  return visualBounds(parts.map((visual, index) => {
+    const part = character.parts[index]!;
+    if (resolveCharacterPartVisualSource(part).kind !== 'fla-graphic') return visual;
+    const bounds = characterPartSourceBounds(part, project.animations);
+    if (!bounds) {
+      throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
+    }
+    return {
+      ...visual,
+      localRect: bounds,
+      imageTransform: composeAffine(character.sourceRootTransform, part.restTransform),
+    };
+  }), null, true);
+}
+
 /** Returns the source-stage visual center used by a center-anchored Shot Layer. */
 export function adaptiveCharacterSourceAnchor(
   project: Project,
   character: AdaptivePartsCharacter,
 ): VisualPoint {
-  const bounds = visualBounds(
+  const bounds = adaptiveCharacterSourceBounds(
+    project,
+    character,
     adaptivePartVisuals(project, character, character.id, 0),
-    null,
-    true,
   );
   return {
     x: bounds.x + bounds.width / 2,
@@ -1031,7 +1054,7 @@ export function resolveLayerVisualParts(
     // on the Layer, preserving the imported pose and owner transforms.
     // Visibility controls pixels and output bounds, but it must not move the
     // Character's source pivot or the remaining Parts in existing Shots.
-    const sourceBounds = visualBounds(sourcePoseParts, null, true);
+    const sourceBounds = adaptiveCharacterSourceBounds(project, sourcePoseCharacter, sourcePoseParts);
     const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
     const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
     const parts = sourceParts.map((part) => ({
