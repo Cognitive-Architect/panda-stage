@@ -262,7 +262,12 @@ function buildFormalStageRenderModel(
   }
 
   const layers = evaluatedShot.layers.map((layer) => {
-    const visual = resolveLayerVisualParts(project, shot, layer);
+    const visual = resolveLayerVisualParts(
+      project,
+      shot,
+      layer,
+      evaluatedShot.timeMs,
+    );
     const primaryPart = visual.parts[0];
     if (!primaryPart) {
       throw new StageAssetError(

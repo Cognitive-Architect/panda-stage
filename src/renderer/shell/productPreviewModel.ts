@@ -456,7 +456,12 @@ export function applyProductPreviewMouthFallback(
 ): EvaluatedShot {
   let changed = false;
   const layers = evaluatedShot.layers.map((layer) => {
-    const visual = resolveLayerVisualParts(project, shot, layer);
+    const visual = resolveLayerVisualParts(
+      project,
+      shot,
+      layer,
+      evaluatedShot.timeMs,
+    );
     const activeFace = visual.activeFace;
     if (
       activeFace?.source !== 'mouth' ||

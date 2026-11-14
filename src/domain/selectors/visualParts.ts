@@ -1,7 +1,9 @@
-import type {
-  EvaluatedHeadGroupTransform,
-  EvaluatedLayer,
-  EvaluatedShot,
+import {
+  hasFlaGraphicTemporalPlayback,
+  resolveAnimationPlaybackFrameState,
+  type EvaluatedHeadGroupTransform,
+  type EvaluatedLayer,
+  type EvaluatedShot,
 } from '../evaluate-shot-at-time';
 import {
   isFlaGraphicDefinition,
@@ -579,6 +581,8 @@ function adaptivePartVisuals(
   character: AdaptivePartsCharacter,
   ownerLayerId: string,
   ownerZIndex: number,
+  layerStartTimeMs = 0,
+  timeMs?: number,
 ): LayerVisualPart[] {
   return character.parts.map((part): LayerVisualPart => {
     const visualSource = resolveCharacterPartVisualSource(part);
@@ -597,11 +601,25 @@ function adaptivePartVisuals(
           `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
         );
       }
-      const frameOrdinal = definition.frames[0]?.ordinal ?? 0;
+      const temporalPlayback =
+        timeMs !== undefined && hasFlaGraphicTemporalPlayback(definition);
+      const playbackState = temporalPlayback
+        ? resolveAnimationPlaybackFrameState(
+            definition,
+            layerStartTimeMs,
+            0,
+            { mode: 'loop', endBehavior: 'hold' },
+            timeMs,
+          )
+        : null;
+      const frameOrdinal = playbackState
+        ? playbackState.frame.ordinal
+        : (definition.frames[0]?.ordinal ?? 0);
       const flaGraphic = evaluateFlaGraphicVisual({
         definition,
         frameOrdinal,
         mode: 'instance',
+        ...(playbackState ? { internalTimeMs: playbackState.internalTimeMs } : {}),
         instanceTransformOverrides: visualSource.instanceTransformOverrides,
       });
       if (!flaGraphic) {
@@ -753,6 +771,7 @@ export function resolveLayerVisualParts(
   project: Project,
   shot: { layers: readonly Layer[] },
   evaluated: EvaluatedLayer,
+  timeMs = 0,
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -947,6 +966,8 @@ export function resolveLayerVisualParts(
       character,
       layer.id,
       evaluated.zIndex,
+      layer.startTimeMs ?? 0,
+      timeMs,
     );
     // Keep the visual pivot tied to the trusted source pose. If it followed
     // the edited bounds, moving an edge Part would recenter every other Part
@@ -983,18 +1004,48 @@ export function resolveLayerVisualParts(
         ty: part.imageTransform!.ty - sourceCenterY,
       },
     }));
+    const validImageAssetIds = new Set(
+      project.assets
+        .filter((candidate) => candidate.kind === 'image')
+        .map((candidate) => candidate.id),
+    );
     const requiredAssetIds = new Set<string>();
+    const candidateAssetIds = new Set<string>();
     for (const part of parts) {
       if (part.assetId) {
         requiredAssetIds.add(part.assetId);
       }
       if (part.flaGraphic) {
         for (const assetId of part.flaGraphic.resourceAssetIds) {
-          const resource = project.assets.find(
-            (candidate) => candidate.id === assetId && candidate.kind === 'image',
-          );
-          if (resource) {
-            requiredAssetIds.add(resource.id);
+          if (validImageAssetIds.has(assetId)) {
+            requiredAssetIds.add(assetId);
+          }
+        }
+      }
+    }
+    for (const part of character.parts) {
+      const visualSource = resolveCharacterPartVisualSource(part);
+      if (visualSource.kind !== 'fla-graphic') continue;
+      const definition = project.animations.find(
+        (candidate): candidate is FlaGraphicDefinition =>
+          isFlaGraphicDefinition(candidate) &&
+          candidate.id === visualSource.animationId,
+      );
+      if (!definition || definition.frames.length <= 1) continue;
+      for (const frame of definition.frames) {
+        const evaluatedFrame = evaluateFlaGraphicVisual({
+          definition,
+          frameOrdinal: frame.ordinal,
+          mode: 'instance',
+          instanceTransformOverrides: visualSource.instanceTransformOverrides,
+        });
+        if (!evaluatedFrame) continue;
+        for (const assetId of evaluatedFrame.resourceAssetIds) {
+          if (
+            validImageAssetIds.has(assetId) &&
+            !requiredAssetIds.has(assetId)
+          ) {
+            candidateAssetIds.add(assetId);
           }
         }
       }
@@ -1010,7 +1061,10 @@ export function resolveLayerVisualParts(
           assetId,
           reason: 'current-layer' as const,
         })),
-        candidates: [],
+        candidates: [...candidateAssetIds].map((assetId) => ({
+          assetId,
+          reason: 'fla-graphic-resource' as const,
+        })),
         fallback: [],
       },
     );
@@ -1173,6 +1227,6 @@ export function resolveShotVisualParts(
   evaluated: EvaluatedShot,
 ): LayerVisualParts[] {
   return evaluated.layers.map((layer) =>
-    resolveLayerVisualParts(project, shot, layer),
+    resolveLayerVisualParts(project, shot, layer, evaluated.timeMs),
   );
 }

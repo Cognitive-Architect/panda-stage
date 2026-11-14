@@ -129,7 +129,6 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
                         : {
                             kind: 'fla-graphic',
                             animationId: visualSource.animationId,
-                            nodePath: visualSource.nodePath ?? null,
                             instanceTransformOverrides:
                               visualSource.instanceTransformOverrides ?? null,
                           },

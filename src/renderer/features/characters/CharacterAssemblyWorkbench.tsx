@@ -857,7 +857,7 @@ function AdaptivePartsAssemblyWorkbench({
     if (!animationId) return;
     const definition = structuredGraphicById.get(animationId);
     if (!definition) {
-      setMessage('\u672a\u627e\u5230\u53ef\u7528\u7684\u7ed3\u6784\u5316 FLA \u56fe\u5f62\u3002');
+      setMessage('\u672a\u627e\u5230\u53ef\u7528\u7684\u7ed3\u6784\u5316 FLA \u5143\u4ef6\u3002');
       return;
     }
     const current = activeHandle()?.getSnapshot()?.draft;
@@ -1657,10 +1657,13 @@ function AdaptivePartsAssemblyWorkbench({
           })}
         </div>
         {selectedPart && structuredGraphics.length > 0 ? (
-          <div className="adaptive-parts-source-picker">
-            <label htmlFor="adaptive-parts-graphic-select">{'\u66ff\u6362\u56fe\u5f62'}</label>
+          <div
+            className="adaptive-parts-source-picker"
+            data-source-kind={selectedPartVisualSource?.kind ?? 'image'}
+          >
+            <label htmlFor="adaptive-parts-graphic-select">{'\u66ff\u6362\u5143\u4ef6'}</label>
             <select
-              aria-label={'\u9009\u62e9\u5df2\u5bfc\u5165\u7684 FLA \u56fe\u5f62\u6765\u6e90'}
+              aria-label={'\u9009\u62e9\u5df2\u5bfc\u5165\u7684 FLA \u5143\u4ef6\u6765\u6e90'}
               data-testid="adaptive-parts-graphic-select"
               id="adaptive-parts-graphic-select"
               value={
@@ -1670,10 +1673,13 @@ function AdaptivePartsAssemblyWorkbench({
               }
               onChange={(event) => replacePartWithGraphic(selectedPart.partId, event.target.value)}
             >
-              <option value="">
+              <option
+                disabled={selectedPartVisualSource?.kind === 'fla-graphic'}
+                value=""
+              >
                 {selectedPartVisualSource?.kind === 'image'
                   ? '\u5f53\u524d\u4f4d\u56fe'
-                  : '\u9009\u62e9\u5df2\u5bfc\u5165\u56fe\u5f62'}
+                  : '\u9009\u62e9\u5df2\u5bfc\u5165\u5143\u4ef6'}
               </option>
               {structuredGraphics.map((graphic) => (
                 <option key={graphic.id} value={graphic.id}>

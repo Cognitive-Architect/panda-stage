@@ -122,9 +122,10 @@ function resolveVisual(
   project: Project,
   shot: Shot,
   evaluated: EvaluatedLayer,
+  timeMs = 0,
 ): LayerVisualParts | null {
   try {
-    return resolveLayerVisualParts(project, shot, evaluated);
+    return resolveLayerVisualParts(project, shot, evaluated, timeMs);
   } catch {
     // Invalid/missing Project references are represented by the existing
     // Canvas missing state. They must not produce a half visual.
@@ -258,7 +259,12 @@ export function resolveEditorTemporalAssetResolution(
   const targetReadyLayerIds = new Set<string>();
 
   const layers = evaluatedShot.layers.map((layer) => {
-    const currentVisual = resolveVisual(project, shot, layer);
+    const currentVisual = resolveVisual(
+      project,
+      shot,
+      layer,
+      evaluatedShot.timeMs,
+    );
     const currentReady = isCompleteVisualReady(
       project,
       currentVisual,
@@ -287,7 +293,12 @@ export function resolveEditorTemporalAssetResolution(
       missingAssetIds,
     );
     if (fallbackLayer) {
-      const fallbackVisual = resolveVisual(project, shot, fallbackLayer);
+      const fallbackVisual = resolveVisual(
+        project,
+        shot,
+        fallbackLayer,
+        evaluatedShot.timeMs,
+      );
       if (
         fallbackVisual &&
         isCompleteVisualReady(

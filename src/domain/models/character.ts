@@ -262,7 +262,6 @@ export const CharacterPartFlaGraphicVisualSourceSchema = z
   .object({
     kind: z.literal('fla-graphic'),
     animationId: IdSchema,
-    nodePath: z.array(z.string().trim().min(1).max(1_000)).min(1).optional(),
     instanceTransformOverrides:
       FlaGraphicInstanceTransformOverridesSchema.optional(),
   })
@@ -644,9 +643,6 @@ export function cloneCharacterPartVisualSource(
   return {
     kind: 'fla-graphic',
     animationId: visualSource.animationId,
-    ...(visualSource.nodePath
-      ? { nodePath: [...visualSource.nodePath] }
-      : {}),
     ...(visualSource.instanceTransformOverrides
       ? {
           instanceTransformOverrides: cloneFlaGraphicOverrides(

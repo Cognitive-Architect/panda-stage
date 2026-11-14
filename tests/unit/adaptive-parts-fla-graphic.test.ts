@@ -7,6 +7,7 @@ import {
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  buildEditorStageRenderModel,
   characterPartPlacementForReplacement,
   characterPartSourceBounds,
   characterPartTransformFromStaticAdjustment,
@@ -15,16 +16,21 @@ import {
   migrateProject,
   resolveCharacterPartVisualSource,
   resolveLayerVisualParts,
+  resolveShotVisualParts,
   scanAssetReferences,
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
-import { visualAssetIds } from '../../src/renderer/features/canvas/temporalVisualContinuity';
+import {
+  resolveEditorTemporalAssetResolution,
+  visualAssetIds,
+} from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { buildAdaptivePartsAssemblyPreviewVisual } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { shotThumbnailFingerprint } from '../../src/renderer/features/shots/shotThumbnail';
+import { createStageCompositeCacheSignature } from '../../src/renderer/stage/compositeCacheSignature';
 import { assetCategory, selectAssetLibraryEntries } from '../../src/renderer/stores/assetLibrarySelectors';
 import type { AdaptivePartsAssemblySnapshot } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { adaptivePartsFixture, adaptivePartsSourceRootTransform } from '../helpers/adaptivePartsFixtures';
@@ -261,6 +267,22 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
       ],
     });
     expect(withFakeMapping.success).toBe(false);
+
+    const withUnimplementedNodePath = CharacterSchema.safeParse({
+      ...character,
+      parts: [
+        bodyPart,
+        {
+          ...headPart,
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: GRAPHIC_DEF_ID,
+            nodePath: ['bmp-ear'],
+          },
+        },
+      ],
+    });
+    expect(withUnimplementedNodePath.success).toBe(false);
 
     // Rejects unknown or unstructured fla-graphic definitions.
     const service = new CharacterService();
@@ -616,8 +638,329 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
       }),
     );
     expect(markup).toContain('data-testid="adaptive-parts-graphic-select"');
+    expect(markup).toContain('data-source-kind="fla-graphic"');
+    expect(markup).toContain('替换元件');
+    expect(markup).toContain('选择已导入的 FLA 元件来源');
     expect(markup).toContain('头部-愣住-静');
+    expect(markup).not.toContain('替换图形');
+    expect(markup).not.toContain('选择已导入的 FLA 图形来源');
     // Unstructured graphic definitions must NOT be offered as Graphic Part targets.
     expect(markup).not.toContain('无结构静态序列');
+  });
+
+  it('projects shot time onto multi-frame and internal-timeline Graphic CharacterParts while keeping static parts invariant', () => {
+    const frameDurationMs = 1_000 / 24;
+    const frame1AssetId = '92000000-0000-4000-8000-000000000011';
+    const frame1BitmapAssetId = '92000000-0000-4000-8000-000000000012';
+    const nestedGraphicId = '91000000-0000-4000-8000-000000000011';
+    const nestedFrameAssetId = '92000000-0000-4000-8000-000000000013';
+
+    const { project: baseMixed, characterId, headPartId } = projectWithMixedAdaptiveParts();
+    const baseHeadGraphic = baseMixed.animations.find((a) => a.id === GRAPHIC_DEF_ID) as FlaGraphicDefinition;
+    const multiFrameGraphic: FlaGraphicDefinition = {
+      ...baseHeadGraphic,
+      source: {
+        ...baseHeadGraphic.source,
+        endFrameIndex: 1,
+      },
+      durationMs: frameDurationMs * 2,
+      frames: [
+        baseHeadGraphic.frames[0]!,
+        {
+          ordinal: 1,
+          sourceFrameIndex: 1,
+          assetId: frame1AssetId,
+          sha256: 'b'.repeat(64),
+          sourceViewport: { x: 0, y: 0, width: 160, height: 140 },
+          offset: { x: 0, y: 0 },
+          startMs: frameDurationMs,
+          durationMs: frameDurationMs,
+          createdBySequenceImport: false,
+        },
+      ],
+      structure: {
+        ...baseHeadGraphic.structure!,
+        frames: [
+          baseHeadGraphic.structure!.frames[0]!,
+          {
+            ordinal: 1,
+            layers: [
+              {
+                name: 'Head',
+                nodes: [
+                  {
+                    id: 'bmp-ear-f1',
+                    type: 'bitmap',
+                    drawOrder: 0,
+                    bitmapRef: 'Ear Bitmap F1',
+                    assetId: frame1BitmapAssetId,
+                    localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 34, ty: 22 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const nestedTimelineGraphic: FlaGraphicDefinition = {
+      kind: 'fla-graphic',
+      id: nestedGraphicId,
+      name: '头部-眨眼-单帧内时间轴',
+      source: {
+        basename: '原始人动作.fla',
+        sha256: 'c'.repeat(64),
+        renderTargetId: 'target-head-blink',
+        targetKind: 'graphic-symbol',
+        targetName: 'LIBRARY/头部文件夹/头部-眨眼.xml',
+        startFrameIndex: 0,
+        endFrameIndex: 0,
+        sourceFps: 24,
+        canvas: { width: 160, height: 140 },
+        anchor: { x: 0, y: 0 },
+        documentCanvas: { width: 1920, height: 1080 },
+      },
+      durationMs: frameDurationMs,
+      frames: [
+        {
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: nestedFrameAssetId,
+          sha256: 'a'.repeat(64),
+          sourceViewport: { x: 0, y: 0, width: 160, height: 140 },
+          offset: { x: 0, y: 0 },
+          startMs: 0,
+          durationMs: frameDurationMs,
+          createdBySequenceImport: false,
+        },
+      ],
+      structure: {
+        version: 1,
+        symbolDefinitions: {
+          'sym-eye': {
+            symbolRef: 'EyeClip',
+            sourceFrameCount: 24,
+            children: [
+              {
+                id: 'eye-bmp',
+                sourceAddress: 'EyeClip/eye-bmp',
+                type: 'bitmap',
+                drawOrder: 0,
+                bitmapRef: 'Eye Bitmap',
+                assetId: GRAPHIC_BITMAP_ASSET_ID,
+                localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+              },
+            ],
+            timeline: {
+              tracks: [
+                {
+                  trackId: 'addr:EyeClip/eye-bmp',
+                  keyframes: [
+                    {
+                      timeMs: 0,
+                      transform: {
+                        tx: 0,
+                        ty: 0,
+                        rotationDeg: 0,
+                        scaleX: 1,
+                        scaleY: 1,
+                      },
+                      easing: 'linear',
+                    },
+                    {
+                      timeMs: 500,
+                      transform: {
+                        tx: 20,
+                        ty: 0,
+                        rotationDeg: 0,
+                        scaleX: 1,
+                        scaleY: 1,
+                      },
+                      easing: 'linear',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        frames: [
+          {
+            ordinal: 0,
+            layers: [
+              {
+                name: 'EyeLayer',
+                nodes: [
+                  {
+                    id: 'inst-eye',
+                    type: 'symbol',
+                    drawOrder: 0,
+                    symbolRef: 'EyeClip',
+                    nestedDefinitionId: 'sym-eye',
+                    localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 10, ty: 10 },
+                    playbackMode: 'loop',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const withTemporalAssets: Project = ProjectSchema.parse({
+      ...baseMixed,
+      assets: [
+        ...baseMixed.assets,
+        {
+          ...makeImageAsset(frame1AssetId, 'Head Frame 1', 160, 140, 'image/svg+xml'),
+          flaGraphicFrame: { definitionId: GRAPHIC_DEF_ID, ordinal: 1 },
+        },
+        makeImageAsset(frame1BitmapAssetId, 'Ear Bitmap F1', 64, 48),
+        {
+          ...makeImageAsset(nestedFrameAssetId, 'Nested Frame 0', 160, 140, 'image/svg+xml'),
+          flaGraphicFrame: { definitionId: nestedGraphicId, ordinal: 0 },
+        },
+      ],
+      animations: [
+        multiFrameGraphic,
+        nestedTimelineGraphic,
+        ...baseMixed.animations.filter((a) => a.id !== GRAPHIC_DEF_ID),
+      ],
+    });
+    const withLayer = new LayerService().createFromAdaptiveCharacter(
+      withTemporalAssets,
+      IDS.shot,
+      characterId,
+      { x: 960, y: 540 },
+    ).project;
+    const shot = withLayer.shots.find((s) => s.id === IDS.shot)!;
+    const layerId = shot.layers.at(-1)!.id;
+
+    // 1. Preload & Export Preparation discover Frame 1 resources even when t=0 starts on Frame 0.
+    const runtimeAssets = listShotRuntimeImageAssets(withLayer, shot);
+    expect(runtimeAssets.some((a) => a.id === frame1BitmapAssetId)).toBe(true);
+    const exportMedia = collectExportPreparationMedia(withLayer);
+    expect(exportMedia.some((entry) => entry.asset.id === frame1BitmapAssetId)).toBe(true);
+
+    // 2. Multi-frame Graphic advances from frameOrdinal 0 at t=0 -> 1 at t=60ms -> wraps to 0 at t=90ms.
+    const eval0 = evaluateShotAtTime(shot, 0, withLayer);
+    const eval60 = evaluateShotAtTime(shot, 60, withLayer);
+    const eval90 = evaluateShotAtTime(shot, 90, withLayer);
+
+    const stage0 = buildEditorStageRenderModel(withLayer, shot, eval0);
+    const stage60 = buildEditorStageRenderModel(withLayer, shot, eval60);
+    const stage90 = buildEditorStageRenderModel(withLayer, shot, eval90);
+    const assetUrls = Object.fromEntries(withLayer.assets.map((a) => [a.id, `asset://${a.id}`]));
+    const formal0 = buildStageRenderModel(withLayer, eval0, assetUrls);
+    const formal60 = buildStageRenderModel(withLayer, eval60, assetUrls);
+
+    const headAt0 = stage0.layers.at(-1)!.visual.parts[1]!;
+    const headAt60 = stage60.layers.at(-1)!.visual.parts[1]!;
+    const headAt90 = stage90.layers.at(-1)!.visual.parts[1]!;
+    const formalHeadAt60 = formal60.layers.at(-1)!.parts[1]!;
+
+    expect(headAt0.flaGraphic!.frameOrdinal).toBe(0);
+    expect(headAt0.flaGraphic!.layers![0]!.nodes[0]!.worldTransform.tx).toBe(12);
+    expect(headAt60.flaGraphic!.frameOrdinal).toBe(1);
+    expect(headAt60.flaGraphic!.layers![0]!.nodes[0]!.source.type === 'bitmap' && headAt60.flaGraphic!.layers![0]!.nodes[0]!.source.assetId).toBe(frame1BitmapAssetId);
+    expect(headAt60.flaGraphic!.layers![0]!.nodes[0]!.worldTransform.tx).toBe(34);
+    expect(headAt90.flaGraphic!.frameOrdinal).toBe(0);
+    // Formal Stage and Product Preview agree identically at t=60ms.
+    expect(formalHeadAt60.flaGraphic?.frameOrdinal).toBe(1);
+    expect(resolveShotVisualParts(withLayer, shot, eval60).at(-1)!.parts[1]!.flaGraphic!.frameOrdinal).toBe(1);
+
+    // Character layer center pivot remains stable across animated frames.
+    expect(stage0.layers.at(-1)!.visual.parts[0]!.imageTransform).toEqual(
+      stage60.layers.at(-1)!.visual.parts[0]!.imageTransform,
+    );
+
+    // Temporal continuity & Stage composite cache signature react to frame changes.
+    const readyAssetIds = new Set(withLayer.assets.map((a) => a.id));
+    const readySourceKeys = new Map(withLayer.assets.map((a) => [a.id, a.sha256!]));
+    const temporal60 = resolveEditorTemporalAssetResolution(
+      withLayer,
+      shot,
+      eval60,
+      readyAssetIds,
+      new Map(),
+      readySourceKeys,
+    );
+    expect(temporal60.visualsByLayer.get(layerId)?.parts[1]?.flaGraphic?.frameOrdinal).toBe(1);
+
+    const sig0 = createStageCompositeCacheSignature({
+      ownerLayerId: layerId,
+      composite: true,
+      complete: true,
+      visualBounds: stage0.layers.at(-1)!.visual.combinedLocalBounds!,
+      headGroup: null,
+      orderedParts: formal0.layers.at(-1)!.parts,
+      images: new Map(),
+    });
+    const sig60 = createStageCompositeCacheSignature({
+      ownerLayerId: layerId,
+      composite: true,
+      complete: true,
+      visualBounds: stage60.layers.at(-1)!.visual.combinedLocalBounds!,
+      headGroup: null,
+      orderedParts: formal60.layers.at(-1)!.parts,
+      images: new Map(),
+    });
+    expect(sig0).not.toBe(sig60);
+
+    // 3. Single-external-frame Graphic with internal nested symbol timeline advances across t=0 -> t=250ms.
+    const nestedCharDef = new CharacterService().getAdaptivePartsDefinition(withLayer, characterId);
+    const withNestedHead = new CharacterService().applyAdaptivePartsDefinition(withLayer, characterId, {
+      ...nestedCharDef,
+      parts: nestedCharDef.parts.map((part) =>
+        part.partId === headPartId
+          ? {
+              ...part,
+              visualSource: { kind: 'fla-graphic', animationId: nestedGraphicId },
+            }
+          : part,
+      ),
+    });
+    const nestedShot = withNestedHead.shots.find((s) => s.id === IDS.shot)!;
+    const nested0 = resolveLayerVisualParts(
+      withNestedHead,
+      nestedShot,
+      evaluateShotAtTime(nestedShot, 0, withNestedHead).layers.at(-1)!,
+      0,
+    );
+    const nested250 = resolveLayerVisualParts(
+      withNestedHead,
+      nestedShot,
+      evaluateShotAtTime(nestedShot, 250, withNestedHead).layers.at(-1)!,
+      250,
+    );
+    const eyeTx0 = nested0.parts[1]!.flaGraphic!.layers![0]!.nodes[0]!.children[0]!.worldTransform.tx;
+    const eyeTx250 = nested250.parts[1]!.flaGraphic!.layers![0]!.nodes[0]!.children[0]!.worldTransform.tx;
+    expect(eyeTx0).toBe(10);
+    expect(eyeTx250).toBeGreaterThan(eyeTx0);
+
+    // 4. Static single-frame Graphic stays pinned and reuses exact cached visual identity across timestamps.
+    const staticShot = baseMixed.shots.find((s) => s.id === IDS.shot)!;
+    const withStaticLayer = new LayerService().createFromAdaptiveCharacter(
+      baseMixed,
+      staticShot.id,
+      characterId,
+      { x: 960, y: 540 },
+    ).project;
+    const activeStaticShot = withStaticLayer.shots.find((s) => s.id === IDS.shot)!;
+    const static0 = resolveLayerVisualParts(
+      withStaticLayer,
+      activeStaticShot,
+      evaluateShotAtTime(activeStaticShot, 0, withStaticLayer).layers.at(-1)!,
+      0,
+    );
+    const static500 = resolveLayerVisualParts(
+      withStaticLayer,
+      activeStaticShot,
+      evaluateShotAtTime(activeStaticShot, 500, withStaticLayer).layers.at(-1)!,
+      500,
+    );
+    expect(static0.parts[1]!.flaGraphic).toBe(static500.parts[1]!.flaGraphic);
   });
 });
