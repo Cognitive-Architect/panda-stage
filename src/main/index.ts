@@ -715,6 +715,10 @@ async function initialize(): Promise<void> {
   flaGraphicInstanceCommitService = new FlaGraphicInstanceCommitService({
     projectService,
     partPreviewService: flaPartPreviewService,
+    onRecoveryRequired: (sessionId) => {
+      flaImportService.cancel({ sessionId });
+      flaSnapshotSession.cancel({ format: 'fla-static-snapshot-cancel', version: 1, sessionId });
+    },
     onProjectRollback: (projectRoot, previous, failedProject) => {
       autosaveService?.restoreAfterFailedSave({
         projectRoot,

@@ -228,6 +228,28 @@ afterEach(async () => {
 });
 
 describe('FLA Graphic instance commit', () => {
+  it('blocks a rollback-failed session even with a new generation, before any further writes (#1107)', async () => {
+    const hash = new HashService();
+    const h = await harness({
+      hashBytes: (bytes: Uint8Array) => hash.hashBytes(bytes),
+      hashFile: async () => ({ algorithm: 'sha256', hex: 'f'.repeat(64), bytes: 0 }),
+    } as HashService);
+    const write = ProjectFileSystemService.prototype.writeProjectFileAtomically;
+    const writes = vi.spyOn(ProjectFileSystemService.prototype, 'writeProjectFileAtomically')
+      .mockImplementationOnce(write).mockRejectedValueOnce(new Error('rollback disk failure'));
+    const request = commitRequest(h, 0);
+    const result = await h.service.commit(request);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected incomplete rollback');
+    expect(result.error.code).toBe('ROLLBACK_FAILED');
+    const renders = vi.mocked(h.partPreviewService.buildGraphicDefinitionFrameBatch).mock.calls.length;
+    const repeated = await h.service.commit({ ...request, plan: { ...request.plan, generation: 2 } });
+    expect(repeated.ok).toBe(false);
+    if (repeated.ok) throw new Error('Recovery-failed session must not commit again');
+    expect(repeated.error.code).toBe('ROLLBACK_FAILED');
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(h.partPreviewService.buildGraphicDefinitionFrameBatch).toHaveBeenCalledTimes(renders);
+  });
   it.each([
     { dirty: false, hasShot: false },
     { dirty: true, hasShot: false },

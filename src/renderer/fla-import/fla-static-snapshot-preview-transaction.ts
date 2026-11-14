@@ -15,8 +15,10 @@ export type FlaStaticSnapshotPreviewTransactionClient = Pick<
 
 export interface FlaStaticSnapshotPreviewTransactionOptions {
   shouldRun?: () => boolean;
-  onRequestStart?: () => void;
-  onRequestSettled?: () => void;
+  onRequestStart?: (requestId: string) => void;
+  onRequestSettled?: (requestId: string) => void;
+  /** One fresh attempt for a still-needed preview superseded by another raster consumer. */
+  retryCancelled?: boolean | (() => boolean);
   profileLabel?: string;
   candidateIndex?: number;
 }
@@ -84,7 +86,8 @@ export function runFlaStaticSnapshotPreviewTransaction<T = FlaStaticSnapshotPrev
       });
       return { skipped: true };
     }
-    options.onRequestStart?.();
+    let activeRequest = request;
+    options.onRequestStart?.(activeRequest.requestId);
 
     let response: FlaStaticSnapshotPreviewResponse | undefined;
     let value: T | undefined;
@@ -94,7 +97,18 @@ export function runFlaStaticSnapshotPreviewTransaction<T = FlaStaticSnapshotPrev
     let previewSettled = false;
 
     try {
-      response = await client.preview(request);
+      response = await client.preview(activeRequest);
+      const retryCancelled = typeof options.retryCancelled === 'function' ? options.retryCancelled() : options.retryCancelled;
+      if (!response.ok && response.error.code === 'RENDER_CANCELLED' && retryCancelled &&
+          (!options.shouldRun || options.shouldRun())) {
+        await client.cancel({ format: 'fla-static-snapshot-cancel', version: 1, requestId: activeRequest.requestId });
+        options.onRequestSettled?.(activeRequest.requestId);
+        if (!options.shouldRun || options.shouldRun()) {
+          activeRequest = { ...request, requestId: crypto.randomUUID() };
+          options.onRequestStart?.(activeRequest.requestId);
+          response = await client.preview(activeRequest);
+        }
+      }
       previewSettled = true;
       finishIssue762Profile('ui.preview.main-roundtrip', previewStartedAt, {
         ...profileDetails,
@@ -122,7 +136,7 @@ export function runFlaStaticSnapshotPreviewTransaction<T = FlaStaticSnapshotPrev
       await client.cancel({
         format: 'fla-static-snapshot-cancel',
         version: 1,
-        requestId: request.requestId,
+        requestId: activeRequest.requestId,
       });
       finishIssue762Profile('ui.preview.cancel-cleanup', cancelStartedAt, profileDetails);
     } catch (error) {
@@ -132,7 +146,7 @@ export function runFlaStaticSnapshotPreviewTransaction<T = FlaStaticSnapshotPrev
       });
       cleanupError = toError(error);
     } finally {
-      options.onRequestSettled?.();
+      options.onRequestSettled?.(activeRequest.requestId);
     }
 
     finishIssue762Profile('ui.preview.transaction-total', transactionStartedAt, {
