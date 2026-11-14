@@ -3,6 +3,8 @@ import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
+import { isFlaGraphicDefinition } from '../models/animation';
+import { resolveCharacterPartVisualSource } from '../models/character';
 import type { ProjectData } from '../models/project';
 
 function addIssue(
@@ -179,20 +181,62 @@ export function validateProjectReferences(
   project.characters.forEach((character, characterIndex) => {
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
-        const partAsset = assets.get(part.assetId);
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (visualSource.kind === 'fla-graphic') {
+          const definition = animations.get(visualSource.animationId);
+          if (!definition || !isFlaGraphicDefinition(definition)) {
+            addIssue(
+              context,
+              [
+                'characters',
+                characterIndex,
+                'parts',
+                partIndex,
+                'visualSource',
+                'animationId',
+              ],
+              `Part references unknown or non-FLA Graphic definition: ${visualSource.animationId}`,
+            );
+            return;
+          }
+          if (!definition.structure) {
+            addIssue(
+              context,
+              [
+                'characters',
+                characterIndex,
+                'parts',
+                partIndex,
+                'visualSource',
+                'animationId',
+              ],
+              `Part requires a structured FLA Graphic definition: ${visualSource.animationId}`,
+            );
+          }
+          return;
+        }
+        const partAsset = assets.get(visualSource.assetId);
         if (!partAsset || partAsset.kind !== 'image') {
           addIssue(
             context,
-            ['characters', characterIndex, 'parts', partIndex, 'assetId'],
-            `Part references unknown or non-image asset: ${part.assetId}`,
+            [
+              'characters',
+              characterIndex,
+              'parts',
+              partIndex,
+              part.visualSource ? 'visualSource' : 'assetId',
+            ],
+            `Part references unknown or non-image asset: ${visualSource.assetId}`,
           );
           return;
         }
         const expectedWidth = Math.round(
-          part.imageMapping.crop.width * part.imageMapping.exportScale,
+          visualSource.imageMapping.crop.width *
+            visualSource.imageMapping.exportScale,
         );
         const expectedHeight = Math.round(
-          part.imageMapping.crop.height * part.imageMapping.exportScale,
+          visualSource.imageMapping.crop.height *
+            visualSource.imageMapping.exportScale,
         );
         if (
           partAsset.width !== expectedWidth ||
@@ -200,7 +244,13 @@ export function validateProjectReferences(
         ) {
           addIssue(
             context,
-            ['characters', characterIndex, 'parts', partIndex, 'imageMapping'],
+            [
+              'characters',
+              characterIndex,
+              'parts',
+              partIndex,
+              part.visualSource ? 'visualSource' : 'imageMapping',
+            ],
             `Part crop mapping resolves to ${expectedWidth}×${expectedHeight}, but asset ${partAsset.id} is ${partAsset.width}×${partAsset.height}.`,
           );
         }

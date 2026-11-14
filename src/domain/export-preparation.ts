@@ -1,6 +1,7 @@
 import type { Project } from './models/project';
 import type { Asset } from './models/asset';
 import type { FlaGraphicDefinition } from './models/animation';
+import { resolveCharacterPartVisualSource } from './models/character';
 import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
@@ -198,7 +199,12 @@ function addShotVisualAssets(
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     for (const evaluatedLayer of evaluatedShot.layers) {
       if (!evaluatedLayer.visible) continue;
-      const visual = resolveLayerVisualParts(project, shot, evaluatedLayer);
+      const visual = resolveLayerVisualParts(
+        project,
+        shot,
+        evaluatedLayer,
+        timeMs,
+      );
       for (const resource of [
         ...visual.resources.required,
         ...visual.resources.fallback,
@@ -282,7 +288,7 @@ function addFlaGraphicAnimationMedia(
   for (const layer of shot.layers) {
     const layerStartTimeMs = layer.startTimeMs;
     if (
-      layer.source.kind === 'animation' &&
+      (layer.source.kind === 'animation' || layer.source.kind === 'character') &&
       layerStartTimeMs !== undefined &&
       Number.isFinite(layerStartTimeMs) &&
       layerStartTimeMs >= 0 &&
@@ -296,8 +302,21 @@ function addFlaGraphicAnimationMedia(
     for (const evaluatedLayer of evaluatedShot.layers) {
       if (!evaluatedLayer.visible) continue;
       const layer = shot.layers.find((candidate) => candidate.id === evaluatedLayer.id);
-      if (layer?.source.kind === 'animation') {
-        activeAnimationIds.add(layer.source.animationId);
+      const layerSource = layer?.source;
+      if (layerSource?.kind === 'animation') {
+        activeAnimationIds.add(layerSource.animationId);
+      } else if (layerSource?.kind === 'character') {
+        const character = project.characters.find(
+          (candidate) => candidate.id === layerSource.characterId,
+        );
+        if (character?.mode === 'adaptive-parts') {
+          for (const part of character.parts) {
+            const visualSource = resolveCharacterPartVisualSource(part);
+            if (visualSource.kind === 'fla-graphic') {
+              activeAnimationIds.add(visualSource.animationId);
+            }
+          }
+        }
       }
     }
   }

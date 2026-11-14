@@ -1,5 +1,15 @@
-import type { Layer, Project, Shot, TimelineEvent } from './models';
-import { collectFlaGraphicTimelineDurationMs } from './models/flaGraphicTimeline';
+import type {
+  FlaGraphicDefinition,
+  FlaGraphicStructureNode,
+  Layer,
+  Project,
+  Shot,
+  TimelineEvent,
+} from './models';
+import {
+  collectFlaGraphicTimelineDurationMs,
+  type FlaGraphicInternalTimeline,
+} from './models/flaGraphicTimeline';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
@@ -113,23 +123,37 @@ function resolveLayerVisualState(
   };
 }
 
-function resolveAnimationFrame(
-  project: Project,
-  animationId: string,
+export interface AnimationPlaybackFrameState<TFrame> {
+  readonly frame: TFrame;
+  readonly sourceFrameIndex: number;
+  readonly internalTimeMs: number;
+  readonly elapsedMs: number;
+  readonly completedOnce: boolean;
+}
+
+/**
+ * Shared FLA Graphic / Sequence playback frame & internal clock resolver.
+ * Projects a Shot-level elapsed timeline onto frame selection and continuous
+ * `internalTimeMs` so Animation layers and Graphic CharacterParts share one rule.
+ */
+export function resolveAnimationPlaybackFrameState<
+  TFrame extends { readonly ordinal: number },
+>(
+  animation: {
+    readonly frames: readonly TFrame[];
+    readonly source: { readonly sourceFps: number };
+    readonly kind?: string;
+    readonly structure?: {
+      readonly timeline?: FlaGraphicInternalTimeline;
+    };
+  },
   startTimeMs: number,
   firstFrameIndex: number,
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
-): ResolvedLayerVisualState {
-  const animation = project.animations.find(
-    (candidate) => candidate.id === animationId,
-  );
-  if (!animation || animation.frames.length === 0) {
-    return {
-      assetId: null,
-      currentExpressionId: null,
-      animationVisible: false,
-    };
+): AnimationPlaybackFrameState<TFrame> | null {
+  if (animation.frames.length === 0) {
+    return null;
   }
   const elapsedMs = timeMs - startTimeMs;
   const elapsedSourceFrames = Math.floor(
@@ -150,9 +174,7 @@ function resolveAnimationFrame(
   if (playback.mode !== 'single-frame') {
     if (playback.mode === 'loop') {
       const timelineDurationMs =
-        'kind' in animation &&
-        animation.kind === 'fla-graphic' &&
-        animation.structure
+        animation.kind === 'fla-graphic' && animation.structure
           ? collectFlaGraphicTimelineDurationMs(animation.structure.timeline)
           : 0;
       const loopDurationMs =
@@ -171,12 +193,97 @@ function resolveAnimationFrame(
   }
   const frame = animation.frames[sourceFrameIndex];
   if (!frame) {
+    return null;
+  }
+  return {
+    frame,
+    sourceFrameIndex,
+    internalTimeMs,
+    elapsedMs,
+    completedOnce,
+  };
+}
+
+/**
+ * Returns true when an FLA Graphic Definition carries temporal motion across
+ * external frames, root/nested timelines, or multi-frame nested symbol instances.
+ * Static single-frame Graphics stay pinned at frame 0 / resting clock.
+ */
+export function hasFlaGraphicTemporalPlayback(
+  definition: FlaGraphicDefinition,
+): boolean {
+  if (definition.frames.length > 1) return true;
+  if (!definition.structure) return false;
+  if (
+    collectFlaGraphicTimelineDurationMs(
+      definition.structure.timeline,
+      definition.structure,
+    ) > 0
+  ) {
+    return true;
+  }
+  const visitedSymbolDefs = new Set<string>();
+  const hasAnimatedNestedSymbol = (
+    nodes: readonly FlaGraphicStructureNode[],
+  ): boolean => {
+    for (const node of nodes) {
+      if (node.type === 'symbol') {
+        const nestedDefId = node.nestedDefinitionId;
+        const nestedDef = nestedDefId
+          ? definition.structure?.symbolDefinitions?.[nestedDefId]
+          : undefined;
+        if (nestedDef) {
+          if ((nestedDef.sourceFrameCount ?? 1) > 1) return true;
+          if (nestedDefId && !visitedSymbolDefs.has(nestedDefId)) {
+            visitedSymbolDefs.add(nestedDefId);
+            if (hasAnimatedNestedSymbol(nestedDef.children)) return true;
+          }
+        }
+        if (node.children && hasAnimatedNestedSymbol(node.children)) return true;
+      } else if (node.type === 'group' && hasAnimatedNestedSymbol(node.children)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return definition.structure.frames.some((frame) =>
+    frame.layers.some((layer) => hasAnimatedNestedSymbol(layer.nodes)),
+  );
+}
+
+function resolveAnimationFrame(
+  project: Project,
+  animationId: string,
+  startTimeMs: number,
+  firstFrameIndex: number,
+  playback: NonNullable<Layer['animationPlayback']>,
+  timeMs: number,
+): ResolvedLayerVisualState {
+  const animation = project.animations.find(
+    (candidate) => candidate.id === animationId,
+  );
+  if (!animation || animation.frames.length === 0) {
     return {
       assetId: null,
       currentExpressionId: null,
       animationVisible: false,
     };
   }
+  const state = resolveAnimationPlaybackFrameState(
+    animation,
+    startTimeMs,
+    firstFrameIndex,
+    playback,
+    timeMs,
+  );
+  if (!state) {
+    return {
+      assetId: null,
+      currentExpressionId: null,
+      animationVisible: false,
+    };
+  }
+  const { frame, internalTimeMs, elapsedMs, completedOnce } = state;
   return {
     assetId: frame.assetId,
     currentExpressionId: null,

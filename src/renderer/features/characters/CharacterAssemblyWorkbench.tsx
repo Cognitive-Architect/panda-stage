@@ -14,10 +14,16 @@ import {
   DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   DEFAULT_BODY_PLACEMENT,
   calculateViewportTransform,
+  characterPartPlacementForReplacement,
+  characterPartSourceBounds,
   characterPartTransformFromStaticAdjustment,
+  evaluateFlaGraphicVisual,
+  isFlaGraphicDefinition,
+  resolveCharacterPartVisualSource,
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterPartStaticAdjustment,
+  type FlaGraphicDefinition,
   type LayerVisualPart,
   type BodyPlacement,
   type CharacterHead,
@@ -44,6 +50,7 @@ import {
   type CanvasImageAssetSource,
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
+import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import { VisibleBoundsThumbnail } from './VisibleBoundsThumbnail';
@@ -658,6 +665,24 @@ function AdaptivePartsAssemblyRow({
   );
 }
 
+function adaptiveCharacterPartIdOf(part: LayerVisualPart): string | null {
+  return part.source.kind === 'adaptive-part' ||
+    part.source.kind === 'adaptive-part-fla-graphic'
+    ? part.source.characterPartId
+    : null;
+}
+
+function renderAdaptivePartsAssemblyGraphicDataUrl(
+  rendered: ReturnType<typeof renderFlaGraphicCanvas>,
+): string | null {
+  if (!rendered) return null;
+  try {
+    return rendered.canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
 function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
@@ -700,18 +725,49 @@ function AdaptivePartsAssemblyWorkbench({
     Record<string, Partial<Record<AdaptiveAdjustmentField, number>>>
   >({});
   const [message, setMessage] = useState('');
+  const structuredGraphics = useMemo(
+    () =>
+      project.animations.filter(
+        (animation): animation is FlaGraphicDefinition =>
+          isFlaGraphicDefinition(animation) && Boolean(animation.structure),
+      ),
+    [project.animations],
+  );
+  const structuredGraphicById = useMemo(
+    () => new Map(structuredGraphics.map((graphic) => [graphic.id, graphic] as const)),
+    [structuredGraphics],
+  );
   const visual = useMemo(
     () => buildAdaptivePartsAssemblyPreviewVisual(project, session),
     [project, session],
   );
   const imageAssets = useMemo(() => {
-    const ids = new Set(session.draft.parts.map((part) => part.assetId));
+    const ids = new Set<string>();
+    for (const part of session.draft.parts) {
+      const visualSource = resolveCharacterPartVisualSource(part);
+      if (visualSource.kind === 'image') {
+        ids.add(visualSource.assetId);
+      } else {
+        const definition = structuredGraphicById.get(visualSource.animationId);
+        if (definition) {
+          const evaluatedGraphic = evaluateFlaGraphicVisual({
+            definition,
+            frameOrdinal: definition.frames[0]?.ordinal ?? 0,
+            mode: 'instance',
+            instanceTransformOverrides: visualSource.instanceTransformOverrides,
+          });
+          for (const assetId of evaluatedGraphic?.resourceAssetIds ?? []) {
+            ids.add(assetId);
+          }
+        }
+      }
+    }
     return project.assets.flatMap((asset): CanvasImageAssetSource[] =>
       asset.kind === 'image' && ids.has(asset.id)
         ? [{ id: asset.id, ...(asset.sha256 ? { sha256: asset.sha256 } : {}) }]
         : [],
     );
-  }, [project.assets, session.draft.parts]);
+  }, [project.assets, session.draft.parts, structuredGraphicById]);
   const contextKey = `${project.id}\u0000${projectRoot}`;
   const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
   useEffect(() => {
@@ -775,12 +831,14 @@ function AdaptivePartsAssemblyWorkbench({
     if (!current) return { ok: false };
     const part = current.parts.find((candidate) => candidate.partId === partId);
     if (!part) return { ok: false };
+    const bounds = characterPartSourceBounds(part, project.animations);
+    if (!bounds) return { ok: false };
     try {
       const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
       const restTransform = characterPartTransformFromStaticAdjustment(
         current.sourceRootTransform,
         sourceRestTransform,
-        part.imageMapping,
+        bounds,
         adjustment,
       );
       return updatePart(partId, (current) => ({
@@ -794,20 +852,98 @@ function AdaptivePartsAssemblyWorkbench({
       setMessage(message);
       return { ok: false, message };
     }
-  };  const selectedPart = session.draft.parts.find(
+  };
+  const replacePartWithGraphic = (partId: string, animationId: string): void => {
+    if (!animationId) return;
+    const definition = structuredGraphicById.get(animationId);
+    if (!definition) {
+      setMessage('\u672a\u627e\u5230\u53ef\u7528\u7684\u7ed3\u6784\u5316 FLA \u5143\u4ef6\u3002');
+      return;
+    }
+    const current = activeHandle()?.getSnapshot()?.draft;
+    const existingPart = current?.parts.find((candidate) => candidate.partId === partId);
+    if (!current || !existingPart) return;
+    const oldBounds = characterPartSourceBounds(existingPart, project.animations);
+    if (!oldBounds) return;
+    const replacementPlacement = characterPartPlacementForReplacement({
+      sourceRootTransform: current.sourceRootTransform,
+      oldRestTransform: existingPart.restTransform,
+      oldBounds,
+      newBounds: {
+        x: 0,
+        y: 0,
+        width: definition.source.canvas.width,
+        height: definition.source.canvas.height,
+      },
+    });
+    const result = updatePart(partId, (candidate) => {
+      const nextPart: typeof candidate = {
+        ...candidate,
+        visualSource: {
+          kind: 'fla-graphic',
+          animationId: definition.id,
+        },
+        sourceRestTransform: replacementPlacement.sourceRestTransform,
+        restTransform: replacementPlacement.restTransform,
+        staticAdjustment: replacementPlacement.staticAdjustment,
+      };
+      delete nextPart.assetId;
+      delete nextPart.imageMapping;
+      return nextPart;
+    });
+    if (result.ok) {
+      setNumericDrafts((drafts) => {
+        if (!(partId in drafts)) return drafts;
+        const next = { ...drafts };
+        delete next[partId];
+        return next;
+      });
+      delete numericInitialValuesRef.current[partId];
+      setMessage('');
+    }
+  };
+  const selectedPart = session.draft.parts.find(
     (part) => part.partId === session.selectedPartId,
   ) ?? null;
+  const selectedPartVisualSource = selectedPart
+    ? resolveCharacterPartVisualSource(selectedPart)
+    : null;
   const selectedAdjustment = selectedPart
     ? adjustmentOf(selectedPart.partId)
     : null;
   const selectedCanvasPart = (visual?.parts ?? []).find((part) =>
-    part.source.kind === 'adaptive-part' &&
-    part.source.characterPartId === session.selectedPartId &&
+    adaptiveCharacterPartIdOf(part) === session.selectedPartId &&
     part.visible !== false,
   ) ?? null;
-  const selectedCanvasImage = selectedCanvasPart
-    ? imageState.images.get(selectedCanvasPart.assetId)
-    : null;
+  const graphicPartRasters = useMemo(() => {
+    const result = new Map<
+      string,
+      {
+        readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+        readonly dataUrl: string;
+        readonly canvasWidth: number;
+      }
+    >();
+    for (const part of visual?.parts ?? []) {
+      const characterPartId = adaptiveCharacterPartIdOf(part);
+      if (!characterPartId || !part.flaGraphic) continue;
+      const rendered = renderFlaGraphicCanvas(part.flaGraphic, imageState.images);
+      const dataUrl = renderAdaptivePartsAssemblyGraphicDataUrl(rendered);
+      if (rendered && dataUrl) {
+        result.set(characterPartId, {
+          rect: rendered.rect,
+          dataUrl,
+          canvasWidth: part.flaGraphic.canvas.width,
+        });
+      }
+    }
+    return result;
+  }, [visual?.parts, imageState.images]);
+  const selectedCanvasReady = selectedCanvasPart
+    ? selectedCanvasPart.flaGraphic
+      ? graphicPartRasters.has(session.selectedPartId ?? '')
+      : Boolean(selectedCanvasPart.assetId && imageState.images.get(selectedCanvasPart.assetId))
+    : false;
   const selectedCanvasTransform = selectedCanvasPart?.imageTransform;
   const selectedCanvasMatrix = selectedCanvasTransform
     ? `matrix(${selectedCanvasTransform.a}, ${selectedCanvasTransform.b}, ${selectedCanvasTransform.c}, ${selectedCanvasTransform.d}, ${project.width / 2 + selectedCanvasTransform.tx}, ${project.height / 2 + selectedCanvasTransform.ty})`
@@ -1232,8 +1368,8 @@ function AdaptivePartsAssemblyWorkbench({
   const setAdjustmentRef = useRef(setAdjustment);
   setAdjustmentRef.current = setAdjustment;
   const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
-    if (part.source.kind !== 'adaptive-part') return;
-    const partId = part.source.characterPartId;
+    const partId = adaptiveCharacterPartIdOf(part);
+    if (!partId) return;
     const handle = activeHandle();
     if (!handle?.selectPart(partId)) return;
     event.preventDefault();
@@ -1249,8 +1385,8 @@ function AdaptivePartsAssemblyWorkbench({
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   };
   const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
-    if (part.source.kind !== 'adaptive-part') return;
-    const partId = part.source.characterPartId;
+    const partId = adaptiveCharacterPartIdOf(part);
+    if (!partId) return;
     const handle = activeHandle();
     if (!handle?.selectPart(partId)) return;
     event.preventDefault();
@@ -1450,19 +1586,66 @@ function AdaptivePartsAssemblyWorkbench({
         <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part) => {
-            const matchingAssetParts = session.draft.parts.filter((candidate) => candidate.assetId === part.assetId).length;
-            const baseName = part.displayName ?? assetNames.get(part.assetId) ?? `Part ${part.drawOrder + 1}`;
+            const visualSource = resolveCharacterPartVisualSource(part);
+            const matchingAssetParts = session.draft.parts.filter((candidate) => {
+              const candidateSource = resolveCharacterPartVisualSource(candidate);
+              if (visualSource.kind === 'image' && candidateSource.kind === 'image') {
+                return candidateSource.assetId === visualSource.assetId;
+              }
+              if (
+                visualSource.kind === 'fla-graphic' &&
+                candidateSource.kind === 'fla-graphic'
+              ) {
+                return candidateSource.animationId === visualSource.animationId;
+              }
+              return false;
+            }).length;
+            const sourceLabel =
+              visualSource.kind === 'image'
+                ? assetNames.get(visualSource.assetId)
+                : structuredGraphicById.get(visualSource.animationId)?.name;
+            const baseName = part.displayName ?? sourceLabel ?? `Part ${part.drawOrder + 1}`;
             const name = matchingAssetParts > 1 && !part.displayName
               ? `${localizeDefaultAdaptivePartName(baseName)} · 零件 ${part.drawOrder + 1}`
               : localizeDefaultAdaptivePartName(baseName);
-            const image = imageState.images.get(part.assetId);
-            const imageMissing = imageState.missing.has(part.assetId);
+            const graphicRaster = graphicPartRasters.get(part.partId);
+            const visualPart = (visual?.parts ?? []).find(
+              (candidate) => adaptiveCharacterPartIdOf(candidate) === part.partId,
+            );
+            const fallbackImageId =
+              visualSource.kind === 'fla-graphic' && !visualPart?.flaGraphic
+                ? visualPart?.assetId
+                : undefined;
+            const effectiveImageId =
+              visualSource.kind === 'image' ? visualSource.assetId : fallbackImageId;
+            const image = effectiveImageId
+              ? imageState.images.get(effectiveImageId)
+              : undefined;
+            const imageMissing =
+              visualSource.kind === 'image'
+                ? imageState.missing.has(visualSource.assetId)
+                : !structuredGraphicById.has(visualSource.animationId) ||
+                  (fallbackImageId
+                    ? imageState.missing.has(fallbackImageId)
+                    : Boolean(
+                        visualPart?.flaGraphic?.resourceAssetIds.some((id) =>
+                          imageState.missing.has(id),
+                        ),
+                      ));
+            const imageCacheKey =
+              visualSource.kind === 'image'
+                ? assetThumbnailKeys.get(visualSource.assetId) ??
+                  `asset:${project.id}:${visualSource.assetId}`
+                : fallbackImageId
+                  ? assetThumbnailKeys.get(fallbackImageId) ??
+                    `asset:${project.id}:${fallbackImageId}`
+                  : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
             return (
               <AdaptivePartsAssemblyRow
                 displayName={name}
                 imageMissing={imageMissing}
-                imageCacheKey={assetThumbnailKeys.get(part.assetId) ?? `asset:${project.id}:${part.assetId}`}
-                imageSrc={image?.src}
+                imageCacheKey={imageCacheKey}
+                imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
                 onMessage={setMessage}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({
@@ -1481,6 +1664,39 @@ function AdaptivePartsAssemblyWorkbench({
             );
           })}
         </div>
+        {selectedPart && structuredGraphics.length > 0 ? (
+          <div
+            className="adaptive-parts-source-picker"
+            data-source-kind={selectedPartVisualSource?.kind ?? 'image'}
+          >
+            <label htmlFor="adaptive-parts-graphic-select">{'\u66ff\u6362\u5143\u4ef6'}</label>
+            <select
+              aria-label={'\u9009\u62e9\u5df2\u5bfc\u5165\u7684 FLA \u5143\u4ef6\u6765\u6e90'}
+              data-testid="adaptive-parts-graphic-select"
+              id="adaptive-parts-graphic-select"
+              value={
+                selectedPartVisualSource?.kind === 'fla-graphic'
+                  ? selectedPartVisualSource.animationId
+                  : ''
+              }
+              onChange={(event) => replacePartWithGraphic(selectedPart.partId, event.target.value)}
+            >
+              <option
+                disabled={selectedPartVisualSource?.kind === 'fla-graphic'}
+                value=""
+              >
+                {selectedPartVisualSource?.kind === 'image'
+                  ? '\u5f53\u524d\u4f4d\u56fe'
+                  : '\u9009\u62e9\u5df2\u5bfc\u5165\u5143\u4ef6'}
+              </option>
+              {structuredGraphics.map((graphic) => (
+                <option key={graphic.id} value={graphic.id}>
+                  {graphic.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </aside>
 
       <div
@@ -1505,12 +1721,25 @@ function AdaptivePartsAssemblyWorkbench({
             .filter((part) => part.visible !== false)
             .sort((left, right) => left.drawOrder - right.drawOrder)
             .map((part) => {
-              const image = imageState.images.get(part.assetId);
+              const partId = adaptiveCharacterPartIdOf(part);
               const imageTransform = part.imageTransform;
-              if (!image || !imageTransform || part.source.kind !== 'adaptive-part') return null;
-              const partId = part.source.characterPartId;
+              if (!partId || !imageTransform) return null;
+              const image = part.assetId ? imageState.images.get(part.assetId) : undefined;
+              const graphicRaster = part.flaGraphic
+                ? graphicPartRasters.get(partId)
+                : undefined;
+              if (part.flaGraphic ? !graphicRaster : !image) return null;
               const selected = session.selectedPartId === partId;
               const sourcePart = session.draft.parts.find((candidate) => candidate.partId === partId);
+              const partSource = sourcePart
+                ? resolveCharacterPartVisualSource(sourcePart)
+                : null;
+              const sourceName =
+                partSource?.kind === 'fla-graphic'
+                  ? structuredGraphicById.get(partSource.animationId)?.name
+                  : part.assetId
+                    ? assetNames.get(part.assetId)
+                    : undefined;
               const matrix = `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
               return (
                 <div
@@ -1529,17 +1758,34 @@ function AdaptivePartsAssemblyWorkbench({
                   onPointerDown={(event) => beginMove(event, part)}
                   role="button"
                   tabIndex={0}
-                  aria-label={`选择并拖动${sourcePart?.displayName ?? assetNames.get(part.assetId) ?? '部件'}`}
+                  aria-label={`选择并拖动${sourcePart?.displayName ?? sourceName ?? '部件'}`}
                 >
-                  <img alt="" draggable={false} src={image.src} />
+                  {part.flaGraphic && graphicRaster ? (
+                    <img
+                      alt=""
+                      draggable={false}
+                      src={graphicRaster.dataUrl}
+                      style={{
+                        height: graphicRaster.rect.height,
+                        left: graphicRaster.rect.x + part.flaGraphic.canvas.width / 2,
+                        maxHeight: 'none',
+                        maxWidth: 'none',
+                        position: 'absolute',
+                        top: graphicRaster.rect.y + part.flaGraphic.canvas.height / 2,
+                        width: graphicRaster.rect.width,
+                      }}
+                    />
+                  ) : (
+                    <img alt="" draggable={false} src={image!.src} />
+                  )}
 
                 </div>
               );
             })}
-          {selectedCanvasPart && selectedCanvasImage && selectedCanvasMatrix ? (
+          {selectedCanvasPart && selectedCanvasReady && selectedCanvasMatrix ? (
             <div
               className="adaptive-parts-assembly-selection-outline"
-              data-part-id={selectedCanvasPart.source.kind === 'adaptive-part' ? selectedCanvasPart.source.characterPartId : undefined}
+              data-part-id={adaptiveCharacterPartIdOf(selectedCanvasPart) ?? undefined}
               data-testid="adaptive-parts-assembly-selection-outline"
               style={{
                 height: selectedCanvasPart.localRect.height,
@@ -1594,8 +1840,24 @@ function AdaptivePartsAssemblyWorkbench({
         ) : selectedPart && selectedAdjustment ? (
           <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
             <div className="adaptive-parts-inspector-heading">
-              <strong title={selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '\u96f6\u4ef6'}>
-                {selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '\u96f6\u4ef6'}
+              <strong
+                title={
+                  selectedPart.displayName ??
+                  (selectedPartVisualSource?.kind === 'fla-graphic'
+                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
+                    : selectedPart.assetId
+                      ? assetNames.get(selectedPart.assetId)
+                      : undefined) ??
+                  '\u96f6\u4ef6'
+                }
+              >
+                {selectedPart.displayName ??
+                  (selectedPartVisualSource?.kind === 'fla-graphic'
+                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
+                    : selectedPart.assetId
+                      ? assetNames.get(selectedPart.assetId)
+                      : undefined) ??
+                  '\u96f6\u4ef6'}
               </strong>
               <button
                 aria-label={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
@@ -2030,13 +2292,13 @@ function CompositeCharacterAssemblyWorkbench({
     }
     return bounds;
   }, [bodyPart?.assetId, facePart?.assetId, headPart?.assetId, imageState.images]);
-  const bodyContentRect = bodyPart
+  const bodyContentRect = bodyPart?.assetId
     ? visibleImageRect(
         bodyPart.localRect,
         imageBoundsByAssetId.get(bodyPart.assetId),
       )
     : null;
-  const faceContentRect = facePart
+  const faceContentRect = facePart?.assetId
     ? visibleImageRect(
         facePart.localRect,
         imageBoundsByAssetId.get(facePart.assetId),
@@ -2859,7 +3121,7 @@ function CompositeCharacterAssemblyWorkbench({
             width: project.width,
           }}
         >
-          {bodyPart && imageState.images.get(bodyPart.assetId) ? (
+          {bodyPart?.assetId && imageState.images.get(bodyPart.assetId) ? (
             <img
               alt=""
               className="character-assembly-part character-assembly-part-body"
@@ -2973,7 +3235,7 @@ function CompositeCharacterAssemblyWorkbench({
                 }}
               />
             ) : null}
-            {facePart && imageState.images.get(facePart.assetId) ? (
+            {facePart?.assetId && imageState.images.get(facePart.assetId) ? (
               <img
                 alt=""
                 className="character-assembly-part character-assembly-part-face"

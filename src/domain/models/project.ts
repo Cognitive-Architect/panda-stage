@@ -25,6 +25,7 @@ import {
   CharacterV10Schema,
   CharacterV11Schema,
   CharacterV14Schema,
+  CharacterV17Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
@@ -84,7 +85,7 @@ export const ProjectV15AdaptiveSchema = z
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
     animations: z.array(AnimationDefinitionSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV17Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV15AdaptiveSchema),
@@ -162,7 +163,14 @@ export const ProjectV16Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(16),
   animations: z.array(AnimationDefinitionSchema),
   assets: z.array(AssetV16Schema),
+  characters: z.array(CharacterV17Schema),
   shots: z.array(ShotV16Schema),
+}).strict();
+
+/** Strict persisted v17 envelope before FLA Graphic CharacterPart visual sources. */
+export const ProjectV17Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(17),
+  characters: z.array(CharacterV17Schema),
 }).strict();
 
 export const ProjectV1Schema = z

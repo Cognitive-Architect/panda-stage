@@ -1055,7 +1055,13 @@ export function EditorShell({
         if (!snapshot || !targetCharacterId) throw new Error('No F1-03 Character is available to read.');
         const character = snapshot.project.characters.find((item) => item.id === targetCharacterId);
         if (!character || character.mode !== 'adaptive-parts') throw new Error('The saved F1-03 Character was not reopened.');
-        const assetIds = [...new Set(character.parts.map((part) => part.assetId))];
+        const assetIds = [
+          ...new Set(
+            character.parts
+              .map((part) => part.assetId)
+              .filter((assetId): assetId is string => Boolean(assetId)),
+          ),
+        ];
         const reads = await Promise.all(assetIds.map(async (assetId) => {
           const asset = snapshot.project.assets.find((item) => item.id === assetId);
           if (!asset || asset.kind !== 'image' || !asset.sha256) throw new Error(`Character image Asset ${assetId} is missing.`);

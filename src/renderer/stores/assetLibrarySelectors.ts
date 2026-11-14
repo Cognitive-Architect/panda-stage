@@ -5,7 +5,10 @@ import type {
   Project,
   ProjectAnimationDefinition,
 } from '../../domain';
-import { reconstructFlaGraphicStructure } from '../../domain';
+import {
+  reconstructFlaGraphicStructure,
+  resolveCharacterPartVisualSource,
+} from '../../domain';
 
 export type AssetLibraryCategory =
   | 'character'
@@ -58,7 +61,10 @@ export function assetCategory(
   const characterAssetIds = new Set(
     project.characters.flatMap((character) =>
       character.mode === 'adaptive-parts'
-        ? character.parts.map((part) => part.assetId)
+        ? character.parts.flatMap((part) => {
+            const visualSource = resolveCharacterPartVisualSource(part);
+            return visualSource.kind === 'image' ? [visualSource.assetId] : [];
+          })
         : [
             character.baseAssetId,
             ...(character.mode === 'composite' ? [character.bodyAssetId] : []),
@@ -94,7 +100,12 @@ export function selectAssetLibraryEntries(
   const separatelyUsedAssetIds = new Set<string>();
   for (const character of project.characters) {
     if (character.mode === 'adaptive-parts') {
-      character.parts.forEach((part) => separatelyUsedAssetIds.add(part.assetId));
+      character.parts.forEach((part) => {
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (visualSource.kind === 'image') {
+          separatelyUsedAssetIds.add(visualSource.assetId);
+        }
+      });
       continue;
     }
     separatelyUsedAssetIds.add(character.baseAssetId);
@@ -190,7 +201,12 @@ export function selectAssetLibraryEntries(
     const isPartAsset = project.characters.some(
       (character) =>
         character.mode === 'adaptive-parts' &&
-        character.parts.some((part) => part.assetId === asset.id),
+        character.parts.some((part) => {
+          const visualSource = resolveCharacterPartVisualSource(part);
+          return (
+            visualSource.kind === 'image' && visualSource.assetId === asset.id
+          );
+        }),
     );
     const isMouthAsset = project.characters.some(
       (character) =>

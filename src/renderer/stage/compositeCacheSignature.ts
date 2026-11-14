@@ -41,6 +41,14 @@ export function createStageCompositeCacheSignature({
       assetWidth: part.asset.width,
       assetHeight: part.asset.height,
       sourceUrl: part.sourceUrl,
+      flaGraphic: part.flaGraphic
+        ? {
+            mode: part.flaGraphic.mode,
+            frameOrdinal: part.flaGraphic.frameOrdinal,
+            layers: part.flaGraphic.layers,
+            resourceAssetIds: part.flaGraphic.resourceAssetIds,
+          }
+        : null,
       render: part.render,
       imageReady: images.has(part.id),
     })),

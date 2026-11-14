@@ -17,6 +17,7 @@ import {
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
   ProjectV16Schema,
+  ProjectV17Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -51,6 +52,7 @@ export type DetectedSchemaVersion =
   | 14
   | 15
   | 16
+  | 17
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -58,7 +60,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -91,6 +93,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 14 ||
     version === 15 ||
     version === 16 ||
+    version === 17 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -369,6 +372,14 @@ export function migrateProject(input: unknown): Project {
       const version16 = ProjectV16Schema.parse(input);
       project = ProjectSchema.parse({
         ...version16,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      break;
+    }
+    case 17: {
+      const version17 = ProjectV17Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version17,
         schemaVersion: PROJECT_SCHEMA_VERSION,
       });
       break;

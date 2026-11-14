@@ -485,7 +485,7 @@ describe('C3 Adaptive Parts assembly session', () => {
     const restTransform = characterPartTransformFromStaticAdjustment(
       definition.sourceRootTransform,
       sourceRestTransform,
-      part.imageMapping,
+      part.imageMapping!,
       adjustment,
     );
     expect(reopened.session.setDraft({
