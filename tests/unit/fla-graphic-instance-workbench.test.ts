@@ -9,6 +9,8 @@ import {
   type EditableFlaGraphicInstancePreview,
 } from '../../src/renderer/features/fla-import/fla-graphic-instance-import';
 import { FlaGraphicInstanceWorkbench } from '../../src/renderer/fla-import/FlaGraphicInstanceWorkbench';
+import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { buildProject } from './domain/testProject';
 
 const SESSION_ID = '00000000-0000-4000-8000-000000001072';
 const PLAN_ID = '00000000-0000-4000-8000-000000001073';
@@ -174,6 +176,8 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     await act(async () => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    editorProjectStore.clear();
     if (priorPandaStageDescriptor) {
       Object.defineProperty(window, 'pandaStage', priorPandaStageDescriptor);
     } else {
@@ -326,6 +330,118 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(onImportGraphicInstance.mock.calls[1]).toEqual(onImportGraphicInstance.mock.calls[0]);
     expect(container.querySelector('[data-testid="fla-graphic-instance-selected-preview"]')?.getAttribute('src')).toBe(previewUrl);
     expect(partPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a completed import once in a floating status and dismisses it after three seconds (#1108)', async () => {
+    const pending = deferred<void>();
+    const onImportComplete = vi.fn();
+    await renderWorkbench({ onImportGraphicInstance: () => pending.promise, onImportComplete });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    vi.useFakeTimers();
+    await act(async () => pending.resolve());
+    const notice = document.querySelector('[data-testid="fla-graphic-instance-success"]');
+    expect(notice?.textContent).toBe('已导入元件');
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.parentElement).toBe(document.body);
+    expect(notice?.querySelector('button')).toBeNull();
+    expect(container.querySelector('.fla-c03-import-footer')?.textContent).not.toContain('已导入元件');
+    expect(onImportComplete).toHaveBeenCalledOnce();
+    await act(async () => vi.advanceTimersByTime(2_999));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+  });
+
+  it('inherits hover/focus pause and resumes only when both have left the confirmation', async () => {
+    await renderWorkbench({ onImportGraphicInstance: async () => undefined });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    vi.useFakeTimers();
+    await act(async () => click('fla-graphic-instance-import'));
+    const notice = document.querySelector<HTMLOutputElement>('[data-testid="fla-graphic-instance-success"]')!;
+    await act(async () => vi.advanceTimersByTime(1_000));
+    await act(async () => {
+      notice.dispatchEvent(new Event('pointerover', { bubbles: true }));
+      notice.focus();
+    });
+    await act(async () => vi.advanceTimersByTime(4_000));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => notice.dispatchEvent(new Event('pointerout', { bubbles: true })));
+    await act(async () => vi.advanceTimersByTime(4_000));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => notice.blur());
+    await act(async () => vi.advanceTimersByTime(1_999));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+  });
+
+  it.each([
+    { dirty: false, hasShot: true },
+    { dirty: true, hasShot: false },
+  ])('confirms success for dirty=$dirty hasShot=$hasShot without persisting feedback', async ({ dirty, hasShot }) => {
+    const project = buildProject();
+    editorProjectStore.open('D:\\acceptance\\issue1108.pandastage', { ...project, shots: hasShot ? project.shots : [] });
+    if (dirty) editorProjectStore.updateProject({ ...editorProjectStore.getSnapshot()!.project, name: 'Unsaved edits' });
+    const before = editorProjectStore.getSnapshot();
+    const onImportGraphicInstance = vi.fn(async () => {
+      expect(editorProjectStore.getSnapshot()?.dirty).toBe(dirty);
+      expect(Boolean(editorProjectStore.getSnapshot()?.project.shots.length)).toBe(hasShot);
+    });
+    await renderWorkbench({ onImportGraphicInstance });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onImportGraphicInstance).toHaveBeenCalledOnce();
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')?.textContent).toBe('已导入元件');
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+  });
+
+  it('replaces the confirmation for repeated successful reuse and clears it before a later failure', async () => {
+    const onImportComplete = vi.fn();
+    const onImportGraphicInstance = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new FlaGraphicImportError('ASSET_COMMIT_FAILED', 'Disk full'));
+    await renderWorkbench({ onImportGraphicInstance, onImportComplete });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    vi.useFakeTimers();
+    await act(async () => click('fla-graphic-instance-import'));
+    await act(async () => vi.advanceTimersByTime(2_000));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    expect(onImportComplete).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTime(2_999));
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent).toContain('导入失败');
+    expect(onImportComplete).toHaveBeenCalledTimes(2);
+    expect(partPreview).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    'ASSET_COMMIT_FAILED', 'ROLLBACK_FAILED', 'STALE_PROJECT_REVISION', 'STALE_PLAN',
+    'PROJECT_NOT_TRACKED', 'UNSUPPORTED_SOURCE',
+  ] as const)('does not confirm an unsuccessful %s import', async (code) => {
+    const onImportComplete = vi.fn();
+    await renderWorkbench({
+      onImportGraphicInstance: async () => { throw new FlaGraphicImportError(code, 'Rejected commit'); },
+      onImportComplete,
+    });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    expect(onImportComplete).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).not.toBeNull();
+  });
+
+  it('does not confirm a cancelled operation', async () => {
+    await renderWorkbench({ onImportGraphicInstance: async () => { throw new Error('Import cancelled'); } });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
   });
 
   it('keeps rollback recovery persistent without reset or another commit, and directs Project reopen (#1107)', async () => {
