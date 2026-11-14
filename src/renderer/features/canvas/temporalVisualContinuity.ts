@@ -71,11 +71,21 @@ export function visualAssetIds(
   evaluated: EvaluatedLayer,
 ): string[] {
   if (visual.flaGraphic?.structureFrame) return [...visual.flaGraphic.resourceAssetIds];
-  return visual.parts.map((part) =>
-    part.slot === 'face' || part.slot === 'single'
-      ? evaluated.assetId || part.assetId
-      : part.assetId,
-  );
+  const ids: string[] = [];
+  for (const part of visual.parts) {
+    if (part.flaGraphic) {
+      ids.push(...part.flaGraphic.resourceAssetIds);
+      continue;
+    }
+    const resolved =
+      part.slot === 'face' || part.slot === 'single'
+        ? evaluated.assetId || part.assetId
+        : part.assetId;
+    if (resolved) {
+      ids.push(resolved);
+    }
+  }
+  return [...new Set(ids)];
 }
 
 function isCompleteVisualReady(

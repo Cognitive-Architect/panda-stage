@@ -260,7 +260,7 @@ export function CharacterTalkingHeadMotionPreview({
     >
       <div className="character-talking-head-preview-viewport">
         <div className="character-talking-head-preview-stage" style={stageStyle}>
-          {bodyPart
+          {bodyPart?.assetId
             ? renderPart(bodyPart.assetId, bodyPart.localRect, 'character-assembly-part-body')
             : null}
           <div
@@ -268,14 +268,16 @@ export function CharacterTalkingHeadMotionPreview({
             data-testid="character-talking-head-preview-group"
             style={headMotionStyle}
           >
-            {renderPart(
-              visual.headPart.assetId,
-              visual.headPart.localRect,
-              'character-assembly-part-head',
-              visual.headPart.rotationDeg,
-              visual.headPart.flipX,
-            )}
-            {facePart
+            {visual.headPart.assetId
+              ? renderPart(
+                  visual.headPart.assetId,
+                  visual.headPart.localRect,
+                  'character-assembly-part-head',
+                  visual.headPart.rotationDeg,
+                  visual.headPart.flipX,
+                )
+              : null}
+            {facePart?.assetId
               ? renderPart(
                   facePart.assetId,
                   facePart.localRect,

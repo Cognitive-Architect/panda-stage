@@ -1,5 +1,6 @@
 import {
   buildEditorStageRenderModel,
+  resolveCharacterPartVisualSource,
   resolveImageAsset,
   type Project,
   type Shot,
@@ -85,7 +86,12 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
         layer.source.kind === 'asset'
           ? [layer.source.assetId]
           : character?.mode === 'adaptive-parts'
-            ? character.parts.map((part) => part.assetId)
+            ? character.parts.flatMap((part) => {
+                const visualSource = resolveCharacterPartVisualSource(part);
+                return visualSource.kind === 'image'
+                  ? [visualSource.assetId]
+                  : [];
+              })
             : character?.mode === 'composite'
             ? [character.bodyAssetId, expression?.assetId].filter(
                 (assetId): assetId is string => Boolean(assetId),
@@ -113,14 +119,26 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
           character?.mode === 'adaptive-parts'
             ? {
                 sourceRootTransform: character.sourceRootTransform,
-                parts: character.parts.map((part) => ({
-                  partId: part.partId,
-                  assetId: part.assetId,
-                  restTransform: part.restTransform,
-                  imageMapping: part.imageMapping,
-                  drawOrder: part.drawOrder,
-                  visible: part.visible,
-                })),
+                parts: character.parts.map((part) => {
+                  const visualSource = resolveCharacterPartVisualSource(part);
+                  return {
+                    partId: part.partId,
+                    visualSource:
+                      visualSource.kind === 'image'
+                        ? { kind: 'image', assetId: visualSource.assetId }
+                        : {
+                            kind: 'fla-graphic',
+                            animationId: visualSource.animationId,
+                            nodePath: visualSource.nodePath ?? null,
+                            instanceTransformOverrides:
+                              visualSource.instanceTransformOverrides ?? null,
+                          },
+                    restTransform: part.restTransform,
+                    imageMapping: part.imageMapping ?? null,
+                    drawOrder: part.drawOrder,
+                    visible: part.visible,
+                  };
+                }),
               }
             : null,
         owner: {
@@ -163,7 +181,17 @@ export function shotThumbnailFingerprint(
         parts: visual.parts.map((part) => ({
           partId: part.partId,
           slot: part.slot,
-          asset: assetContentFingerprint(project, part.assetId),
+          asset: part.assetId ? assetContentFingerprint(project, part.assetId) : null,
+          flaGraphic: part.flaGraphic
+            ? {
+                mode: part.flaGraphic.mode,
+                frameOrdinal: part.flaGraphic.frameOrdinal,
+                layers: part.flaGraphic.layers,
+                resources: part.flaGraphic.resourceAssetIds.map((assetId) =>
+                  assetContentFingerprint(project, assetId),
+                ),
+              }
+            : null,
           localRect: part.localRect,
           imageTransform: part.imageTransform ?? null,
           visible: part.visible ?? true,
@@ -359,25 +387,31 @@ export async function createShotThumbnailDataUrl(
   );
   const legacyAssetIds = new Set(
     model.layers.flatMap(({ visual }) =>
-      visual.flaGraphic ? [] : visual.parts.map((part) => part.assetId),
+      visual.flaGraphic
+        ? []
+        : visual.parts.flatMap((part) => (part.assetId ? [part.assetId] : [])),
     ),
   );
   const assetsById = new Map(
     model.layers.flatMap(({ visual }) =>
-      visual.parts.map((part) => {
+      visual.parts.flatMap((part) => {
+        if (!part.assetId) return [];
         const asset = resolveImageAsset(input.project, part.assetId);
         if (!asset) {
           throw new ShotThumbnailSourceError(
             `Unable to resolve the thumbnail asset for visual part “${part.partId}”.`,
           );
         }
-        return [asset.id, asset] as const;
+        return [[asset.id, asset] as const];
       }),
     ),
   );
   const structuredAssetsById = new Map(
     model.layers.flatMap(({ visual }) =>
-      (visual.flaGraphic?.resourceAssetIds ?? []).flatMap((assetId) => {
+      [
+        ...(visual.flaGraphic?.resourceAssetIds ?? []),
+        ...visual.parts.flatMap((part) => part.flaGraphic?.resourceAssetIds ?? []),
+      ].flatMap((assetId) => {
         if (assetsById.has(assetId)) return [];
         const asset = resolveImageAsset(input.project, assetId);
         return asset ? [[asset.id, asset] as const] : [];
@@ -494,8 +528,13 @@ export async function createShotThumbnailDataUrl(
       }
       for (const part of [...visual.parts].sort((left, right) => left.drawOrder - right.drawOrder)) {
         if (part.visible === false) continue;
-        const image = images.get(part.assetId);
-        if (!image) {
+        const partStructuredCanvas = part.flaGraphic
+          ? renderFlaGraphicCanvas(part.flaGraphic, images)
+          : null;
+        const image = part.assetId ? images.get(part.assetId) : undefined;
+        if (part.flaGraphic) {
+          if (!partStructuredCanvas) continue;
+        } else if (!image) {
           throw new ShotThumbnailSourceError(
             `Unable to resolve the thumbnail for visual part “${part.partId}”.`,
           );
@@ -512,12 +551,32 @@ export async function createShotThumbnailDataUrl(
             transform.tx,
             transform.ty,
           );
-          target.drawImage(image, 0, 0, width, height);
+          if (part.flaGraphic && partStructuredCanvas) {
+            target.drawImage(
+              partStructuredCanvas.canvas,
+              partStructuredCanvas.rect.x + part.flaGraphic.canvas.width / 2,
+              partStructuredCanvas.rect.y + part.flaGraphic.canvas.height / 2,
+              partStructuredCanvas.rect.width,
+              partStructuredCanvas.rect.height,
+            );
+          } else if (image) {
+            target.drawImage(image, 0, 0, width, height);
+          }
         } else {
           target.translate(x + width / 2, y + height / 2);
           target.rotate((part.rotationDeg * Math.PI) / 180);
           target.scale(part.flipX ? -1 : 1, 1);
-          target.drawImage(image, -width / 2, -height / 2, width, height);
+          if (part.flaGraphic && partStructuredCanvas) {
+            target.drawImage(
+              partStructuredCanvas.canvas,
+              partStructuredCanvas.rect.x,
+              partStructuredCanvas.rect.y,
+              partStructuredCanvas.rect.width,
+              partStructuredCanvas.rect.height,
+            );
+          } else if (image) {
+            target.drawImage(image, -width / 2, -height / 2, width, height);
+          }
         }
         target.restore();
       }

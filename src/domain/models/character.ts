@@ -4,6 +4,7 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
 
 export const CharacterExpressionSchema = z
   .object({
@@ -249,83 +250,200 @@ export const CharacterPartImageMappingSchema = z
     }
   });
 
-export const CharacterPartSchema = z
+export const CharacterPartImageVisualSourceSchema = z
   .object({
-    partId: IdSchema,
+    kind: z.literal('image'),
     assetId: IdSchema,
-    source: CharacterPartSourceSchema,
-    /** Full 2D affine transform from source-image coordinates to Character-local coordinates. */
-    restTransform: CharacterPartTransformSchema,
-    /** Immutable source-pose transform. Optional only for legacy v15 records. */
-    sourceRestTransform: CharacterPartTransformSchema.optional(),
-    /** Static authoring controls relative to sourceRestTransform. */
-    staticAdjustment: CharacterPartStaticAdjustmentSchema.optional(),
     imageMapping: CharacterPartImageMappingSchema,
-    /** Unique integer order, lower values behind higher values. */
-    drawOrder: z.number().int().nonnegative().max(1_000_000),
-    visible: z.boolean(),
-    displayName: NameSchema.optional(),
   })
   .strict();
 
+export const CharacterPartFlaGraphicVisualSourceSchema = z
+  .object({
+    kind: z.literal('fla-graphic'),
+    animationId: IdSchema,
+    nodePath: z.array(z.string().trim().min(1).max(1_000)).min(1).optional(),
+    instanceTransformOverrides:
+      FlaGraphicInstanceTransformOverridesSchema.optional(),
+  })
+  .strict();
+
+export const CharacterPartVisualSourceSchema = z.discriminatedUnion('kind', [
+  CharacterPartImageVisualSourceSchema,
+  CharacterPartFlaGraphicVisualSourceSchema,
+]);
+
+const CharacterPartBaseShape = {
+  partId: IdSchema,
+  source: CharacterPartSourceSchema,
+  /** Full 2D affine transform from source-local coordinates to Character-local coordinates. */
+  restTransform: CharacterPartTransformSchema,
+  /** Immutable source-pose transform. Optional only for legacy v15 records. */
+  sourceRestTransform: CharacterPartTransformSchema.optional(),
+  /** Static authoring controls relative to sourceRestTransform. */
+  staticAdjustment: CharacterPartStaticAdjustmentSchema.optional(),
+  /** Unique integer order, lower values behind higher values. */
+  drawOrder: z.number().int().nonnegative().max(1_000_000),
+  visible: z.boolean(),
+  displayName: NameSchema.optional(),
+};
+
+/** Historical v15-v17 image-only Part shape. */
+export const CharacterPartV17Schema = z
+  .object({
+    ...CharacterPartBaseShape,
+    assetId: IdSchema,
+    imageMapping: CharacterPartImageMappingSchema,
+  })
+  .strict();
+
+function validateCharacterPartVisualSource(
+  part: {
+    assetId?: string;
+    imageMapping?: z.infer<typeof CharacterPartImageMappingSchema>;
+    visualSource?: z.infer<typeof CharacterPartVisualSourceSchema>;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (part.visualSource?.kind === 'fla-graphic') {
+    if (part.assetId !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['assetId'],
+        message: 'FLA Graphic parts must not specify a bitmap assetId.',
+      });
+    }
+    if (part.imageMapping !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['imageMapping'],
+        message: 'FLA Graphic parts must not specify an imageMapping.',
+      });
+    }
+    return;
+  }
+
+  if (part.visualSource?.kind === 'image') {
+    if (part.assetId !== undefined && part.assetId !== part.visualSource.assetId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['assetId'],
+        message: 'Part assetId must match visualSource.assetId.',
+      });
+    }
+    if (
+      part.imageMapping !== undefined &&
+      JSON.stringify(part.imageMapping) !==
+        JSON.stringify(part.visualSource.imageMapping)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['imageMapping'],
+        message: 'Part imageMapping must match visualSource.imageMapping.',
+      });
+    }
+    return;
+  }
+
+  if (part.assetId === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['assetId'],
+      message: 'Image parts require assetId or an explicit visualSource.',
+    });
+  }
+  if (part.imageMapping === undefined) {
+    context.addIssue({
+      code: 'custom',
+      path: ['imageMapping'],
+      message: 'Image parts require imageMapping or an explicit visualSource.',
+    });
+  }
+}
+
+export const CharacterPartSchema = z
+  .object({
+    ...CharacterPartBaseShape,
+    assetId: IdSchema.optional(),
+    imageMapping: CharacterPartImageMappingSchema.optional(),
+    visualSource: CharacterPartVisualSourceSchema.optional(),
+  })
+  .strict()
+  .superRefine(validateCharacterPartVisualSource);
+
+const AdaptivePartsCharacterBaseShape = {
+  ...CharacterIdentityShape,
+  mode: z.literal('adaptive-parts'),
+  /** Source container transform; C2 applies it separately from Part-local transforms. */
+  sourceRootTransform: CharacterPartTransformSchema.default({
+    a: 1,
+    b: 0,
+    c: 0,
+    d: 1,
+    tx: 0,
+    ty: 0,
+  }),
+};
+
+function validateAdaptivePartsUniqueness(
+  character: {
+    parts: readonly {
+      partId: string;
+      drawOrder: number;
+      source: { sourceId: string };
+    }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const partIds = new Set<string>();
+  const drawOrders = new Set<number>();
+  const sourceIds = new Set<string>();
+
+  character.parts.forEach((part, index) => {
+    if (partIds.has(part.partId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parts', index, 'partId'],
+        message: `Duplicate Part identity: ${part.partId}`,
+      });
+    }
+    partIds.add(part.partId);
+
+    if (drawOrders.has(part.drawOrder)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parts', index, 'drawOrder'],
+        message: `Duplicate Part draw order: ${part.drawOrder}`,
+      });
+    }
+    if (part.drawOrder !== index) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parts', index, 'drawOrder'],
+        message:
+          'Parts must be stored in contiguous bottom-to-top draw order.',
+      });
+    }
+    drawOrders.add(part.drawOrder);
+
+    if (sourceIds.has(part.source.sourceId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['parts', index, 'source', 'sourceId'],
+        message: `Source instance is already used by another Part: ${part.source.sourceId}`,
+      });
+    }
+    sourceIds.add(part.source.sourceId);
+  });
+}
+
 export const AdaptivePartsCharacterSchema = z
   .object({
-    ...CharacterIdentityShape,
-    mode: z.literal('adaptive-parts'),
-    /** Source container transform; C2 applies it separately from Part-local transforms. */
-    sourceRootTransform: CharacterPartTransformSchema.default({
-      a: 1,
-      b: 0,
-      c: 0,
-      d: 1,
-      tx: 0,
-      ty: 0,
-    }),
+    ...AdaptivePartsCharacterBaseShape,
     parts: z.array(CharacterPartSchema).min(1),
   })
   .strict()
-  .superRefine((character, context) => {
-    const partIds = new Set<string>();
-    const drawOrders = new Set<number>();
-    const sourceIds = new Set<string>();
-
-    character.parts.forEach((part, index) => {
-      if (partIds.has(part.partId)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['parts', index, 'partId'],
-          message: `Duplicate Part identity: ${part.partId}`,
-        });
-      }
-      partIds.add(part.partId);
-
-      if (drawOrders.has(part.drawOrder)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['parts', index, 'drawOrder'],
-          message: `Duplicate Part draw order: ${part.drawOrder}`,
-        });
-      }
-      if (part.drawOrder !== index) {
-        context.addIssue({
-          code: 'custom',
-          path: ['parts', index, 'drawOrder'],
-          message:
-            'Parts must be stored in contiguous bottom-to-top draw order.',
-        });
-      }
-      drawOrders.add(part.drawOrder);
-
-      if (sourceIds.has(part.source.sourceId)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['parts', index, 'source', 'sourceId'],
-          message: `Source instance is already used by another Part: ${part.source.sourceId}`,
-        });
-      }
-      sourceIds.add(part.source.sourceId);
-    });
-  });
+  .superRefine(validateAdaptivePartsUniqueness);
 
 const CompositeCharacterV11Schema = z
   .object({
@@ -394,6 +512,21 @@ export const CharacterV11Schema = z.discriminatedUnion('mode', [
   CompositeCharacterV11Schema,
 ]);
 
+export const AdaptivePartsCharacterV17Schema = z
+  .object({
+    ...AdaptivePartsCharacterBaseShape,
+    parts: z.array(CharacterPartV17Schema).min(1),
+  })
+  .strict()
+  .superRefine(validateAdaptivePartsUniqueness);
+
+/** Strict persisted Character shape accepted by Project schema v15-v17. */
+export const CharacterV17Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema,
+  CompositeCharacterSchema,
+  AdaptivePartsCharacterV17Schema,
+]);
+
 /**
  * Current Character data is explicit about whether its face assets represent
  * a complete image or a reusable face placed over a shared body. Body/face
@@ -444,8 +577,111 @@ export type CharacterPartTransform = z.infer<
 export type CharacterPartImageMapping = z.infer<
   typeof CharacterPartImageMappingSchema
 >;
+export type CharacterPartImageVisualSource = z.infer<
+  typeof CharacterPartImageVisualSourceSchema
+>;
+export type CharacterPartFlaGraphicVisualSource = z.infer<
+  typeof CharacterPartFlaGraphicVisualSourceSchema
+>;
+export type CharacterPartVisualSource = z.infer<
+  typeof CharacterPartVisualSourceSchema
+>;
 export type CharacterPart = z.infer<typeof CharacterPartSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
+
+/**
+ * Resolves the canonical visual source for a `CharacterPart`. Legacy parts
+ * without `visualSource` map cleanly to `{ kind: 'image', assetId, imageMapping }`.
+ */
+export function resolveCharacterPartVisualSource(
+  part: Pick<CharacterPart, 'partId' | 'assetId' | 'imageMapping' | 'visualSource'>,
+): CharacterPartVisualSource {
+  if (part.visualSource) {
+    return part.visualSource;
+  }
+  if (part.assetId !== undefined && part.imageMapping !== undefined) {
+    return {
+      kind: 'image',
+      assetId: part.assetId,
+      imageMapping: part.imageMapping,
+    };
+  }
+  throw new Error(
+    `CharacterPart ${part.partId} has neither valid image fields nor visualSource.`,
+  );
+}
+
+function cloneFlaGraphicOverrides(
+  overrides: z.infer<typeof FlaGraphicInstanceTransformOverridesSchema>,
+): z.infer<typeof FlaGraphicInstanceTransformOverridesSchema> {
+  return Object.fromEntries(
+    Object.entries(overrides).map(([frameKey, frameMap]) => [
+      frameKey,
+      Object.fromEntries(
+        Object.entries(frameMap).map(([pathKey, matrix]) => [
+          pathKey,
+          { ...matrix },
+        ]),
+      ),
+    ]),
+  );
+}
+
+/** Deep-clones a `CharacterPartVisualSource` so draft/session edits remain isolated. */
+export function cloneCharacterPartVisualSource(
+  visualSource: CharacterPartVisualSource,
+): CharacterPartVisualSource {
+  if (visualSource.kind === 'image') {
+    return {
+      kind: 'image',
+      assetId: visualSource.assetId,
+      imageMapping: {
+        ...visualSource.imageMapping,
+        crop: { ...visualSource.imageMapping.crop },
+      },
+    };
+  }
+  return {
+    kind: 'fla-graphic',
+    animationId: visualSource.animationId,
+    ...(visualSource.nodePath
+      ? { nodePath: [...visualSource.nodePath] }
+      : {}),
+    ...(visualSource.instanceTransformOverrides
+      ? {
+          instanceTransformOverrides: cloneFlaGraphicOverrides(
+            visualSource.instanceTransformOverrides,
+          ),
+        }
+      : {}),
+  };
+}
+
+/** Deep-clones a `CharacterPart` across image and structured FLA Graphic visual sources. */
+export function cloneCharacterPart(part: CharacterPart): CharacterPart {
+  return {
+    ...part,
+    source: { ...part.source },
+    restTransform: { ...part.restTransform },
+    ...(part.sourceRestTransform
+      ? { sourceRestTransform: { ...part.sourceRestTransform } }
+      : {}),
+    ...(part.staticAdjustment
+      ? { staticAdjustment: { ...part.staticAdjustment } }
+      : {}),
+    ...(part.imageMapping
+      ? {
+          imageMapping: {
+            ...part.imageMapping,
+            crop: { ...part.imageMapping.crop },
+          },
+        }
+      : {}),
+    ...(part.visualSource
+      ? { visualSource: cloneCharacterPartVisualSource(part.visualSource) }
+      : {}),
+  };
+}
 export type ExpressionCharacter = Extract<
   Character,
   { mode: 'single-image' | 'composite' }

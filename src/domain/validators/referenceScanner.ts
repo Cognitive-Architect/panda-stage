@@ -1,3 +1,4 @@
+import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
 
@@ -79,10 +80,13 @@ export function scanAssetReferences(
   project.characters.forEach((character, characterIndex) => {
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
-        if (part.assetId !== assetId) return;
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (visualSource.kind !== 'image' || visualSource.assetId !== assetId) {
+          return;
+        }
         references.push({
           kind: 'character-part',
-          path: `characters[${characterIndex}].parts[${partIndex}].assetId`,
+          path: `characters[${characterIndex}].parts[${partIndex}].${part.visualSource ? 'visualSource.assetId' : 'assetId'}`,
           label:
             `Character "${character.name}" Part ` +
             `${part.displayName ?? part.partId}`,

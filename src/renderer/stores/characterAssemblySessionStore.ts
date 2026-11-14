@@ -1,6 +1,7 @@
 import {
   CharacterServiceError,
   DEFAULT_BODY_PLACEMENT,
+  cloneCharacterPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterExpressionDraft,
   type CharacterHead,
@@ -411,21 +412,7 @@ function cloneAdaptivePartsDefinition(
 ): AdaptivePartsCharacterDefinition {
   return {
     sourceRootTransform: { ...definition.sourceRootTransform },
-    parts: definition.parts.map((part) => ({
-      ...part,
-      source: { ...part.source },
-      restTransform: { ...part.restTransform },
-      ...(part.sourceRestTransform
-        ? { sourceRestTransform: { ...part.sourceRestTransform } }
-        : {}),
-      ...(part.staticAdjustment
-        ? { staticAdjustment: { ...part.staticAdjustment } }
-        : {}),
-      imageMapping: {
-        ...part.imageMapping,
-        crop: { ...part.imageMapping.crop },
-      },
-    })),
+    parts: definition.parts.map(cloneCharacterPart),
   };
 }
 

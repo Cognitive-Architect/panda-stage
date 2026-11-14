@@ -3,13 +3,15 @@ import type {
   EvaluatedLayer,
   EvaluatedShot,
 } from '../evaluate-shot-at-time';
-import type {
-  CharacterPartTransform,
-  FacePlacement,
-  FlaGraphicDefinition,
-  ImageAsset,
-  Layer,
-  Project,
+import {
+  isFlaGraphicDefinition,
+  resolveCharacterPartVisualSource,
+  type CharacterPartTransform,
+  type FacePlacement,
+  type FlaGraphicDefinition,
+  type ImageAsset,
+  type Layer,
+  type Project,
 } from '../models';
 import {
   evaluateFlaGraphicVisual,
@@ -98,7 +100,12 @@ export type VisualPartSource =
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
   | { kind: 'character-mouth'; assetId: string }
-  | { kind: 'adaptive-part'; characterPartId: string; assetId: string };
+  | { kind: 'adaptive-part'; characterPartId: string; assetId: string }
+  | {
+      kind: 'adaptive-part-fla-graphic';
+      characterPartId: string;
+      animationId: string;
+    };
 
 export interface LayerVisualPart {
   /** Stable runtime identity; never persisted as a Project Layer. */
@@ -106,7 +113,9 @@ export interface LayerVisualPart {
   ownerLayerId: string;
   slot: VisualPartSlot;
   source: VisualPartSource;
-  assetId: string;
+  assetId?: string;
+  /** Per-part structured FLA Graphic visual when sourced from an FLA Graphic Definition. */
+  flaGraphic?: EvaluatedFlaGraphicVisual;
   localRect: VisualLocalRect;
   /** Static rotation about this part's center, before the shared Head Group. */
   rotationDeg: number;
@@ -572,8 +581,65 @@ function adaptivePartVisuals(
   ownerZIndex: number,
 ): LayerVisualPart[] {
   return character.parts.map((part): LayerVisualPart => {
-    const asset = imageAsset(project, part.assetId, ownerLayerId);
-    const mapping = part.imageMapping;
+    const visualSource = resolveCharacterPartVisualSource(part);
+    if (visualSource.kind === 'fla-graphic') {
+      const definition = project.animations.find(
+        (candidate) =>
+          isFlaGraphicDefinition(candidate) &&
+          candidate.id === visualSource.animationId,
+      );
+      if (
+        !definition ||
+        !isFlaGraphicDefinition(definition) ||
+        !definition.structure
+      ) {
+        throw new Error(
+          `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
+        );
+      }
+      const frameOrdinal = definition.frames[0]?.ordinal ?? 0;
+      const flaGraphic = evaluateFlaGraphicVisual({
+        definition,
+        frameOrdinal,
+        mode: 'instance',
+        instanceTransformOverrides: visualSource.instanceTransformOverrides,
+      });
+      if (!flaGraphic) {
+        throw new Error(
+          `Adaptive Part ${part.partId} cannot resolve frame ${frameOrdinal} of FLA Graphic ${definition.id}.`,
+        );
+      }
+      const imageTransform = composeAffine(
+        character.sourceRootTransform,
+        part.restTransform,
+      );
+      return {
+        partId: `${ownerLayerId}:${part.partId}`,
+        ownerLayerId,
+        slot: 'adaptive-part',
+        source: {
+          kind: 'adaptive-part-fla-graphic',
+          characterPartId: part.partId,
+          animationId: definition.id,
+        },
+        flaGraphic,
+        localRect: {
+          x: 0,
+          y: 0,
+          width: flaGraphic.canvas.width,
+          height: flaGraphic.canvas.height,
+        },
+        rotationDeg: 0,
+        flipX: false,
+        imageTransform,
+        visible: part.visible,
+        drawOrder: part.drawOrder,
+        ownerZIndex,
+      };
+    }
+
+    const asset = imageAsset(project, visualSource.assetId, ownerLayerId);
+    const mapping = visualSource.imageMapping;
     const expectedWidth = Math.round(mapping.crop.width * mapping.exportScale);
     const expectedHeight = Math.round(mapping.crop.height * mapping.exportScale);
     if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
@@ -917,6 +983,22 @@ export function resolveLayerVisualParts(
         ty: part.imageTransform!.ty - sourceCenterY,
       },
     }));
+    const requiredAssetIds = new Set<string>();
+    for (const part of parts) {
+      if (part.assetId) {
+        requiredAssetIds.add(part.assetId);
+      }
+      if (part.flaGraphic) {
+        for (const assetId of part.flaGraphic.resourceAssetIds) {
+          const resource = project.assets.find(
+            (candidate) => candidate.id === assetId && candidate.kind === 'image',
+          );
+          if (resource) {
+            requiredAssetIds.add(resource.id);
+          }
+        }
+      }
+    }
     return baseResult(
       evaluated,
       'adaptive-parts-character',
@@ -924,9 +1006,10 @@ export function resolveLayerVisualParts(
       parts,
       null,
       {
-        required: [...new Set(parts.map((part) => part.assetId))].map(
-          (assetId) => ({ assetId, reason: 'current-layer' as const }),
-        ),
+        required: [...requiredAssetIds].map((assetId) => ({
+          assetId,
+          reason: 'current-layer' as const,
+        })),
         candidates: [],
         fallback: [],
       },

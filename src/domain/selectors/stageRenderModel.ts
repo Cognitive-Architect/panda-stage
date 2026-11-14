@@ -67,13 +67,16 @@ export function buildEditorStageRenderModel(
       // existing stage contract. Canvas rendering uses `visual.parts`, so a
       // composite Character is never reduced to this one asset.
       const primaryPart = visual.parts[0];
-      const asset = primaryPart
+      const asset = primaryPart?.assetId
         ? resolveImageAsset(project, primaryPart.assetId)
         : baseAsset;
       const compatibilityAsset =
         asset ??
         compatibilityImageAsset(
-          primaryPart?.assetId ?? evaluated.assetId ?? `${layer.id}:missing`,
+          primaryPart?.assetId ??
+            primaryPart?.partId ??
+            evaluated.assetId ??
+            `${layer.id}:missing`,
           primaryPart?.localRect.width ?? baseAsset?.width ?? 1,
           primaryPart?.localRect.height ?? baseAsset?.height ?? 1,
         );

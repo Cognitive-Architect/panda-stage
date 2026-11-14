@@ -1,6 +1,7 @@
 import {
   resolveLayerVisualParts,
   visualPartRenderTransform,
+  type EvaluatedFlaGraphicVisual,
   type EvaluatedLayer,
   type EvaluatedShot,
   type LayerVisualPart,
@@ -50,6 +51,7 @@ export interface StageRenderPart {
   readonly drawOrder: number;
   readonly asset: RenderModelAsset;
   readonly sourceUrl: string;
+  readonly flaGraphic?: EvaluatedFlaGraphicVisual;
   /** Local geometry; the owning logical Layer owns the root transform. */
   readonly render: StageLayerRenderInstruction;
 }
@@ -133,7 +135,7 @@ function localPartRender(
   const transform = visualPartRenderTransform(part);
   return {
     id: part.partId,
-    assetId: part.assetId,
+    assetId: part.assetId ?? part.partId,
     isBackground: false,
     listening: false,
     x: transform.x,
@@ -268,7 +270,18 @@ function buildFormalStageRenderModel(
         `Stage layer ${layer.id} has no renderable visual part.`,
       );
     }
-    const primaryAsset = imageAsset(project, primaryPart.assetId, layer.id);
+    const syntheticGraphicAsset = (part: LayerVisualPart): RenderModelAsset => ({
+      id: part.partId,
+      kind: 'image',
+      name: part.partId,
+      relativePath: '',
+      mimeType: 'image/png',
+      width: part.localRect.width,
+      height: part.localRect.height,
+    });
+    const primaryAsset = primaryPart.assetId
+      ? imageAsset(project, primaryPart.assetId, layer.id)
+      : syntheticGraphicAsset(primaryPart);
     const render = buildStageLayerRenderInstruction(
       {
         id: layer.id,
@@ -290,29 +303,49 @@ function buildFormalStageRenderModel(
     );
 
     const parts: StageRenderPart[] = visual.parts.map((part): StageRenderPart => {
-      const asset = imageAsset(project, part.assetId, layer.id);
-      const sourceUrl = sourceUrlFor(assetUrls, asset, layer.id);
       const isBackground =
         evaluatedShot.backgroundLayerId === layer.id &&
         part.slot === 'single';
+      const partRender = isBackground
+        ? render
+        : localPartRender(
+            part,
+            visual.ownerTransform.visible && part.visible !== false,
+          );
+      if (part.flaGraphic && !part.assetId) {
+        return {
+          id: part.partId,
+          slot: part.slot,
+          drawOrder: part.drawOrder,
+          asset: syntheticGraphicAsset(part),
+          sourceUrl: '',
+          flaGraphic: part.flaGraphic,
+          render: partRender,
+        };
+      }
+      const asset = imageAsset(project, part.assetId!, layer.id);
+      const sourceUrl = sourceUrlFor(assetUrls, asset, layer.id);
       return {
         id: part.partId,
         slot: part.slot,
         drawOrder: part.drawOrder,
         asset,
         sourceUrl,
-        render: isBackground
-          ? render
-          : localPartRender(
-              part,
-              visual.ownerTransform.visible && part.visible !== false,
-            ),
+        ...(part.flaGraphic ? { flaGraphic: part.flaGraphic } : {}),
+        render: partRender,
       };
     });
-    const resourceAssetIds = visual.flaGraphic
-      ? [...new Set(visual.resources.required.map((resource) => resource.assetId))]
-          .filter((assetId) => !visual.parts.some((part) => part.assetId === assetId))
-      : [];
+    const hasPartGraphic = visual.parts.some((part) => Boolean(part.flaGraphic));
+    const resourceAssetIds =
+      visual.flaGraphic || hasPartGraphic
+        ? [...new Set(visual.resources.required.map((resource) => resource.assetId))]
+            .filter(
+              (assetId) =>
+                !visual.parts.some(
+                  (part) => !part.flaGraphic && part.assetId === assetId,
+                ),
+            )
+        : [];
     const resources: StageRenderResource[] = resourceAssetIds.map((assetId) => {
       const asset = imageAsset(project, assetId, layer.id);
       return {
@@ -325,7 +358,8 @@ function buildFormalStageRenderModel(
     return {
       ...layer,
       asset: primaryAsset,
-      sourceUrl: parts[0]!.sourceUrl,
+      sourceUrl:
+        parts.find((candidate) => candidate.sourceUrl.length > 0)?.sourceUrl ?? '',
       render,
       parts,
       visual,
