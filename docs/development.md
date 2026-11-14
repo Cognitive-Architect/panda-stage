@@ -42,9 +42,9 @@ temporary-write, sync, close, and same-directory rename protocol.
 
 ## Verification
 
-CI subsystem ownership, fast Draft deltas, Ready candidate Full proof,
-post-merge provenance, and the manifest-first registration procedure are documented in
-[FAST/FULL/VERIFY CI routing](ci-routing.md).
+Core checks, optional subsystem regression, manual Full CI, and the policy
+for known unrelated failures are documented in
+[Core / subsystem / Full CI](ci-routing.md).
 
 Run the complete Day 12 checks:
 
