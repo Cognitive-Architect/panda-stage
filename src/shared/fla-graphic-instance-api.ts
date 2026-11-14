@@ -70,8 +70,8 @@ export const FlaGraphicInstanceCommitRequestSchema = z.object({
   projectId: z.uuid(),
   baseRevision: z.number().int().nonnegative(),
   openInstanceId: z.number().int().positive(),
-  shotId: z.uuid(),
-  startTimeMs: z.number().finite().nonnegative(),
+  shotId: z.uuid().optional(),
+  startTimeMs: z.number().finite().nonnegative().default(0),
   plan: z.object({
     sessionId: z.uuid(),
     planId: z.uuid(),
@@ -108,7 +108,7 @@ export const FlaGraphicInstanceCommitResponseSchema = z.discriminatedUnion('ok',
     savedRevision: z.number().int().nonnegative(),
     projectChanged: z.boolean(),
     animationId: z.uuid(),
-    layerId: z.uuid(),
+    layerId: z.uuid().nullable(),
     groupEditPreview: FlaGraphicGroupEditPreviewSchema.optional(),
   }).strict().refine(
     (result) => result.project.id === result.projectId &&

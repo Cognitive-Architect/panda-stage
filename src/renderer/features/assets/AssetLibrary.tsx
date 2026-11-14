@@ -14,7 +14,6 @@ import {
 import type { ImageAssetAuthorMetadata } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
-import { shotStore } from '../../stores/shotStore';
 import {
   ASSET_LIBRARY_CATEGORIES,
   ASSET_LIBRARY_FILTERS,
@@ -93,23 +92,11 @@ export function AssetLibrary({
     editorProjectStore.getSnapshot,
     editorProjectStore.getSnapshot,
   );
-  const currentShotId = useSyncExternalStore(
-    shotStore.subscribe,
-    shotStore.getCurrentShotId,
-    shotStore.getCurrentShotId,
-  );
-  const currentShotExists = Boolean(
-    liveSnapshot?.project.shots.some((shot) => shot.id === currentShotId),
-  );
   const graphicImportDisabledReason = !onImportGraphicInstance
     ? 'Graphic 导入暂不可用。'
     : !liveSnapshot
       ? '请先打开项目。'
-      : liveSnapshot.dirty
-        ? '请先保存项目。'
-        : !currentShotExists
-          ? '请先选择镜头。'
-          : null;
+      : null;
   const resolvedPresentation =
     presentation ?? (hideHeading ? 'portrait' : 'default');
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
@@ -199,6 +186,15 @@ export function AssetLibrary({
     setFlaInspection(null);
     void flaInspectionLifecycle.current?.cancel();
   }, []);
+
+  const projectIdentity = JSON.stringify([
+    liveSnapshot?.projectRoot, liveSnapshot?.project.id, editorProjectStore.getProjectInstanceId(),
+  ]);
+  const previousProjectIdentity = useRef(projectIdentity);
+  useEffect(() => {
+    if (previousProjectIdentity.current !== projectIdentity) closeFlaReview();
+    previousProjectIdentity.current = projectIdentity;
+  }, [closeFlaReview, projectIdentity]);
 
   useEffect(() => {
     if (

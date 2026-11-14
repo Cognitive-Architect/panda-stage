@@ -254,7 +254,7 @@ describe('FLA review session import locks', () => {
     vi.restoreAllMocks();
   });
 
-  it('blocks close, Escape, tab switching, and ordinary import during Graphic submit; failure unlocks and success closes', async () => {
+  it('blocks close, Escape, tab switching, and ordinary import during Graphic submit; failure and success retain the session', async () => {
     const never = new Promise<never>(() => undefined);
     const runner = vi.fn(async () => never);
     await renderSession(runner);
@@ -287,7 +287,9 @@ describe('FLA review session import locks', () => {
     expect(staticStub.graphicAcceptedStarts).toBe(2);
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => button('fla-test-graphic-success').click());
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(button('fla-review-cancel').disabled).toBe(false);
+    expect(button('fla-review-graphic-tab').getAttribute('aria-selected')).toBe('true');
   });
 
   it('blocks Graphic entry and acquisition during ordinary import, then releases both locks', async () => {

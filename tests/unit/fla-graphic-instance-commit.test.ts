@@ -15,6 +15,7 @@ import {
 import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
 import { HashService } from '../../src/main/services/HashService';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
 import type {
   FlaGraphicBatchBitmap,
   FlaGraphicDefinitionFrameBatch,
@@ -118,6 +119,7 @@ interface Harness {
   service: FlaGraphicInstanceCommitService;
   batchStructure: { current: FlaGraphicStructure | undefined };
   batchBitmaps: { current: readonly FlaGraphicBatchBitmap[] | undefined };
+  partPreviewService: FlaPartPreviewService;
 }
 
 async function harness(
@@ -167,6 +169,7 @@ async function harness(
     ...(batchBitmaps.current ? { bitmaps: batchBitmaps.current } : {}),
   });
   const partPreviewService = {
+    getPreparedBatchMetadata: vi.fn(() => ({ identity: { poseIdentity: 'c'.repeat(64) } })),
     buildGraphicDefinitionFrameBatch: vi.fn(async (identity: { unitId: string }) => ({
       ok: true as const,
       batch: withStructure(identity.unitId === SECOND_UNIT_ID
@@ -188,9 +191,13 @@ async function harness(
     projectService,
     partPreviewService,
     getCurrentProjectSnapshot: (root) => root === projectRoot ? current : null,
+    onProjectRollback: (_root, previous) => {
+      current.project = previous.project;
+      current.revision = previous.revision;
+    },
     ...(hashService ? { hashService } : {}),
   });
-  return { projectRoot, projectService, current, service, batchStructure, batchBitmaps };
+  return { projectRoot, projectService, current, service, batchStructure, batchBitmaps, partPreviewService };
 }
 
 function commitRequest(h: Harness, baseRevision: number, unitId = 'part-0123456789abcdef') {
@@ -203,7 +210,7 @@ function commitRequest(h: Harness, baseRevision: number, unitId = 'part-01234567
     projectId: h.current.project.id,
     baseRevision,
     openInstanceId: OPEN_INSTANCE_ID,
-    shotId: shot.id,
+    ...(shot ? { shotId: shot.id } : {}),
     startTimeMs: 0,
     plan: {
       sessionId: '28000000-0000-4000-8000-000000000101',
@@ -216,10 +223,135 @@ function commitRequest(h: Harness, baseRevision: number, unitId = 'part-01234567
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe('FLA Graphic instance commit', () => {
+  it.each([
+    { dirty: false, hasShot: false },
+    { dirty: true, hasShot: false },
+    { dirty: false, hasShot: true },
+    { dirty: true, hasShot: true },
+  ])('imports and reopens dirty=$dirty hasShot=$hasShot without a separate save (#1105)', async ({ dirty, hasShot }) => {
+    const h = await harness();
+    if (!hasShot) {
+      h.current.project = ProjectSchema.parse({ ...h.current.project, shots: [] });
+      await h.projectService.save(h.projectRoot, h.current.project, 0);
+    }
+    if (dirty) {
+      h.current.project = ProjectSchema.parse({ ...h.current.project, name: 'Unsaved project title' });
+      h.current.revision += 1;
+    }
+    const saves = vi.spyOn(ProjectFileSystemService.prototype, 'writeProjectFileAtomically');
+    const result = await h.service.commit(commitRequest(h, h.current.revision));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(saves).toHaveBeenCalledTimes(1);
+    expect(result.project.animations).toHaveLength(1);
+    expect(result.project.assets.filter((a) => a.kind === 'image' && a.flaGraphicFrame)).toHaveLength(2);
+    expect(result.layerId === null).toBe(!hasShot);
+    expect(result.project.shots.flatMap((s) => s.layers)).toHaveLength(hasShot ? 1 : 0);
+    expect(result.project.name).toBe(dirty ? 'Unsaved project title' : 'FLA Graphic Test');
+    const reopened = await h.projectService.open(h.projectRoot);
+    expect(reopened.project).toEqual(result.project);
+    // Definition-only reuse does not add files or require a Shot on the next click.
+    if (!hasShot) {
+      const files = await readdir(path.join(h.projectRoot, 'assets'));
+      const repeated = await h.service.commit(commitRequest(h, result.savedRevision));
+      expect(repeated.ok && repeated.projectChanged).toBe(false);
+      expect(repeated.ok && repeated.layerId).toBe(null);
+      expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual(files);
+    }
+  });
+
+  it('rejects a stale editor revision, then uses the latest snapshot with the same preview plan', async () => {
+    const h = await harness();
+    const request = commitRequest(h, 0);
+    h.current.project = ProjectSchema.parse({ ...h.current.project, name: 'Newer edit' });
+    h.current.revision = 1;
+    const stale = await h.service.commit(request);
+    expect(stale.ok).toBe(false);
+    if (stale.ok) throw new Error('Expected stale revision rejection');
+    expect(stale.error.code).toBe('STALE_PROJECT_REVISION');
+    const result = await h.service.commit({ ...request, baseRevision: 1 });
+    expect(result.ok && result.project.name).toBe('Newer edit');
+    expect((await h.projectService.open(h.projectRoot)).project.name).toBe('Newer edit');
+  });
+
+  it('keeps dirty work and rolls back staged resources on save failure, then retries the same plan', async () => {
+    const h = await harness();
+    h.current.project = ProjectSchema.parse({ ...h.current.project, name: 'Keep unsaved work', shots: [] });
+    h.current.revision = 1;
+    const dirtyProject = structuredClone(h.current.project);
+    const disk = (await h.projectService.open(h.projectRoot)).project;
+    const files = await readdir(path.join(h.projectRoot, 'assets'));
+    vi.spyOn(ProjectFileSystemService.prototype, 'writeProjectFileAtomically').mockRejectedValueOnce(new Error('disk full'));
+    const result = await h.service.commit(commitRequest(h, 1));
+    expect(result.ok).toBe(false);
+    expect(h.current.project).toEqual(dirtyProject);
+    expect((await h.projectService.open(h.projectRoot)).project).toEqual(disk);
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual(files);
+    const retried = await h.service.commit(commitRequest(h, 1));
+    expect(retried.ok && retried.project.name).toBe('Keep unsaved work');
+    expect(retried.ok && retried.layerId).toBe(null);
+  });
+
+  it('preserves unsaved edits and supports retry after a post-save validation rollback', async () => {
+    const hash = new HashService();
+    const hashFile = vi.fn().mockResolvedValueOnce({ algorithm: 'sha256', hex: 'f'.repeat(64), bytes: 0 })
+      .mockImplementation((filePath: string) => hash.hashFile(filePath));
+    const h = await harness({ hashBytes: (bytes: Uint8Array) => hash.hashBytes(bytes), hashFile } as unknown as HashService);
+    h.current.project = ProjectSchema.parse({ ...h.current.project, name: 'Unsaved after rollback', shots: [] });
+    h.current.revision = 1;
+    const dirty = structuredClone(h.current.project);
+    const disk = (await h.projectService.open(h.projectRoot)).project;
+    const files = await readdir(path.join(h.projectRoot, 'assets'));
+    const result = await h.service.commit(commitRequest(h, 1));
+    expect(result.ok).toBe(false);
+    expect(h.current.project).toEqual(dirty);
+    expect(h.current.revision).toBe(1);
+    expect((await h.projectService.open(h.projectRoot)).project).toEqual(disk);
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual(files);
+    const retry = await h.service.commit(commitRequest(h, 1));
+    expect(retry.ok && retry.project.name).toBe('Unsaved after rollback');
+  });
+
+  it('refuses a different open instance or invalid plan without writing resources', async () => {
+    const h = await harness();
+    const request = commitRequest(h, 0);
+    const files = await readdir(path.join(h.projectRoot, 'assets'));
+    h.current.openInstanceId += 1;
+    const wrongSession = await h.service.commit(request);
+    expect(wrongSession.ok).toBe(false);
+    if (wrongSession.ok) throw new Error('Expected session rejection');
+    expect(wrongSession.error.code).toBe('STALE_PROJECT_REVISION');
+    h.current.openInstanceId = OPEN_INSTANCE_ID;
+    vi.spyOn(h.partPreviewService, 'buildGraphicDefinitionFrameBatch').mockResolvedValueOnce({
+      ok: false, code: 'STALE_PLAN', message: 'Source or preview plan changed. Prepare preview again.',
+    });
+    const stalePlan = await h.service.commit(request);
+    expect(stalePlan.ok).toBe(false);
+    if (stalePlan.ok) throw new Error('Expected plan rejection');
+    expect(stalePlan.error.code).toBe('STALE_PLAN');
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual(files);
+  });
+
+  it('rolls back resources if the source/plan expires at the atomic save boundary', async () => {
+    const h = await harness();
+    const baseline = (await h.projectService.open(h.projectRoot)).project;
+    const files = await readdir(path.join(h.projectRoot, 'assets'));
+    vi.spyOn(h.partPreviewService, 'getPreparedBatchMetadata')
+      .mockReturnValueOnce({ identity: { poseIdentity: 'c'.repeat(64) } } as ReturnType<FlaPartPreviewService['getPreparedBatchMetadata']>)
+      .mockReturnValue(null);
+    const result = await h.service.commit(commitRequest(h, 0));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected expired plan rejection');
+    expect(result.error.code).toBe('STALE_PLAN');
+    expect((await h.projectService.open(h.projectRoot)).project).toEqual(baseline);
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual(files);
+  });
+
   it('saves one editable reusable Definition and layer, then reuses the same occurrence', async () => {
     const h = await harness();
     const first = await h.service.commit(commitRequest(h, 0));
@@ -249,7 +381,7 @@ describe('FLA Graphic instance commit', () => {
     const transformed = new LayerService().updateTransform(
       reopened.project,
       reopened.project.shots[0]!.id,
-      first.layerId,
+      first.layerId!,
       { x: 1_000, y: 600, scale: 1.25, rotationDeg: 15, opacity: 0.9, flipX: false },
     );
     expect(transformed.shots[0]!.layers.at(-1)).toMatchObject({
@@ -305,7 +437,7 @@ describe('FLA Graphic instance commit', () => {
     const manuallyReordered = layerService.reorder(
       interleaved.project,
       shot.id,
-      second.layerId,
+      second.layerId!,
       'back',
     );
     await h.projectService.save(h.projectRoot, manuallyReordered, 2);
@@ -439,7 +571,7 @@ describe('FLA Graphic structured Definition (E1)', () => {
     const edited = new LayerService().updateFlaGraphicInstanceTransform(
       reopened.project,
       reopened.project.shots[0]!.id,
-      first.layerId,
+      first.layerId!,
       0,
       ['g-outer', 'sym-1', 'bmp-1'],
       { a: 1, b: 0, c: 0, d: 1, tx: 17, ty: -9 },

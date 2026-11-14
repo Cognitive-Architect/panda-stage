@@ -715,6 +715,15 @@ async function initialize(): Promise<void> {
   flaGraphicInstanceCommitService = new FlaGraphicInstanceCommitService({
     projectService,
     partPreviewService: flaPartPreviewService,
+    onProjectRollback: (projectRoot, previous, failedProject) => {
+      autosaveService?.restoreAfterFailedSave({
+        projectRoot,
+        project: previous.project,
+        revision: previous.revision,
+        dirty: previous.dirty ?? true,
+        ...(previous.openInstanceId == null ? {} : { openInstanceId: previous.openInstanceId }),
+      }, failedProject);
+    },
     getCurrentProjectSnapshot: (projectRoot) => {
       const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
       return snapshot
@@ -722,6 +731,7 @@ async function initialize(): Promise<void> {
             project: snapshot.project,
             revision: snapshot.revision,
             openInstanceId: snapshot.openInstanceId ?? null,
+            dirty: snapshot.dirty,
           }
         : null;
     },
