@@ -1609,35 +1609,43 @@ function AdaptivePartsAssemblyWorkbench({
               ? `${localizeDefaultAdaptivePartName(baseName)} · 零件 ${part.drawOrder + 1}`
               : localizeDefaultAdaptivePartName(baseName);
             const graphicRaster = graphicPartRasters.get(part.partId);
-            const image =
-              visualSource.kind === 'image'
-                ? imageState.images.get(visualSource.assetId)
-                : undefined;
             const visualPart = (visual?.parts ?? []).find(
               (candidate) => adaptiveCharacterPartIdOf(candidate) === part.partId,
             );
+            const fallbackImageId =
+              visualSource.kind === 'fla-graphic' && !visualPart?.flaGraphic
+                ? visualPart?.assetId
+                : undefined;
+            const effectiveImageId =
+              visualSource.kind === 'image' ? visualSource.assetId : fallbackImageId;
+            const image = effectiveImageId
+              ? imageState.images.get(effectiveImageId)
+              : undefined;
             const imageMissing =
               visualSource.kind === 'image'
                 ? imageState.missing.has(visualSource.assetId)
                 : !structuredGraphicById.has(visualSource.animationId) ||
-                  Boolean(
-                    visualPart?.flaGraphic?.resourceAssetIds.some((id) =>
-                      imageState.missing.has(id),
-                    ),
-                  );
+                  (fallbackImageId
+                    ? imageState.missing.has(fallbackImageId)
+                    : Boolean(
+                        visualPart?.flaGraphic?.resourceAssetIds.some((id) =>
+                          imageState.missing.has(id),
+                        ),
+                      ));
             const imageCacheKey =
               visualSource.kind === 'image'
                 ? assetThumbnailKeys.get(visualSource.assetId) ??
                   `asset:${project.id}:${visualSource.assetId}`
-                : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
+                : fallbackImageId
+                  ? assetThumbnailKeys.get(fallbackImageId) ??
+                    `asset:${project.id}:${fallbackImageId}`
+                  : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
             return (
               <AdaptivePartsAssemblyRow
                 displayName={name}
                 imageMissing={imageMissing}
                 imageCacheKey={imageCacheKey}
-                imageSrc={
-                  visualSource.kind === 'image' ? image?.src : graphicRaster?.dataUrl
-                }
+                imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
                 onMessage={setMessage}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({

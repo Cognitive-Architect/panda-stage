@@ -627,6 +627,44 @@ function adaptivePartVisuals(
           `Adaptive Part ${part.partId} cannot resolve frame ${frameOrdinal} of FLA Graphic ${definition.id}.`,
         );
       }
+      if (!flaGraphic.structureFrame) {
+        const fallbackAsset = imageAsset(project, flaGraphic.frameAssetId, ownerLayerId);
+        const frameToCanvas = {
+          a: fallbackAsset.width > 0 ? flaGraphic.frameViewport.width / fallbackAsset.width : 1,
+          b: 0,
+          c: 0,
+          d: fallbackAsset.height > 0 ? flaGraphic.frameViewport.height / fallbackAsset.height : 1,
+          tx: flaGraphic.frameOffset.x,
+          ty: flaGraphic.frameOffset.y,
+        };
+        const imageTransform = composeAffine(
+          character.sourceRootTransform,
+          composeAffine(part.restTransform, frameToCanvas),
+        );
+        return {
+          partId: `${ownerLayerId}:${part.partId}`,
+          ownerLayerId,
+          slot: 'adaptive-part',
+          source: {
+            kind: 'adaptive-part-fla-graphic',
+            characterPartId: part.partId,
+            animationId: definition.id,
+          },
+          assetId: fallbackAsset.id,
+          localRect: {
+            x: 0,
+            y: 0,
+            width: fallbackAsset.width,
+            height: fallbackAsset.height,
+          },
+          rotationDeg: 0,
+          flipX: false,
+          imageTransform,
+          visible: part.visible,
+          drawOrder: part.drawOrder,
+          ownerZIndex,
+        };
+      }
       const imageTransform = composeAffine(
         character.sourceRootTransform,
         part.restTransform,
