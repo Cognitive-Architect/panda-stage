@@ -43,11 +43,13 @@ import {
   isGraphicPlaybackRangeRepresentable,
 } from './FlaPartPreviewService';
 import { ProjectService, ProjectServiceError, type ProjectTransaction } from './ProjectService';
+import { AtomicWriteCommitRejectedError } from './ProjectFileSystemService';
 
 export interface FlaGraphicInstanceProjectSnapshot {
   readonly project: Project;
   readonly revision: number;
   readonly openInstanceId?: number | null;
+  readonly dirty?: boolean;
 }
 
 export interface FlaGraphicInstanceCommitServiceOptions {
@@ -59,6 +61,10 @@ export interface FlaGraphicInstanceCommitServiceOptions {
   readonly layerService?: LayerService;
   readonly createId?: () => string;
   readonly now?: () => Date;
+  readonly onProjectRollback?: (
+    projectRoot: string, previous: FlaGraphicInstanceProjectSnapshot, failedProject: Project,
+  ) => void;
+  readonly onRecoveryRequired?: (sessionId: string) => void;
 }
 
 interface PendingFrameFile {
@@ -356,7 +362,7 @@ function sameStructure(left: unknown, right: unknown): boolean {
 function existingDefinition(
   project: Project,
   batch: FlaGraphicDefinitionFrameBatch,
-  shotId: string,
+  shotId: string | undefined,
 ): { definition: FlaGraphicDefinition; upgrade: boolean } | null {
   const occurrence = project.shots.find((shot) => shot.id === shotId)?.layers.find((layer) =>
     layer.source.kind === 'animation' &&
@@ -453,7 +459,10 @@ export class FlaGraphicInstanceCommitService {
   private readonly layerService: LayerService;
   private readonly createId: () => string;
   private readonly now: () => Date;
+  private readonly onProjectRollback: FlaGraphicInstanceCommitServiceOptions['onProjectRollback'];
   private readonly activeSessions = new Set<string>();
+  private readonly recoverySessions = new Set<string>();
+  private readonly onRecoveryRequired: FlaGraphicInstanceCommitServiceOptions['onRecoveryRequired'];
 
   constructor(options: FlaGraphicInstanceCommitServiceOptions) {
     this.projectService = options.projectService;
@@ -464,6 +473,8 @@ export class FlaGraphicInstanceCommitService {
     this.layerService = options.layerService ?? new LayerService();
     this.createId = options.createId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
+    this.onProjectRollback = options.onProjectRollback;
+    this.onRecoveryRequired = options.onRecoveryRequired;
   }
 
   async commit(rawRequest: unknown): Promise<FlaGraphicInstanceCommitResponse> {
@@ -476,6 +487,9 @@ export class FlaGraphicInstanceCommitService {
         '(unknown project)',
         'Invalid FLA Graphic instance import request.',
       );
+    }
+    if (this.recoverySessions.has(request.plan.sessionId)) {
+      return this.failure('ROLLBACK_FAILED', request.projectRoot, 'This import session requires Project recovery. Reopen the Project before importing again.', request);
     }
     if (this.activeSessions.has(request.plan.sessionId)) {
       return this.failure('COMMIT_BUSY', request.projectRoot, 'This FLA instance import is already being committed.', request);
@@ -492,7 +506,7 @@ export class FlaGraphicInstanceCommitService {
         );
       }
       const shot = current.project.shots.find((candidate) => candidate.id === request.shotId);
-      if (!shot || request.startTimeMs > shot.durationMs) {
+      if (request.shotId && (!shot || request.startTimeMs > shot.durationMs)) {
         return this.failure('SHOT_NOT_FOUND', request.projectRoot, 'The selected Shot is unavailable.', request);
       }
       const rendered = await this.partPreviewService.buildGraphicDefinitionFrameBatch({
@@ -514,6 +528,7 @@ export class FlaGraphicInstanceCommitService {
           request,
         );
       }
+      this.assertCurrentPlan(request);
       return await this.projectService.transact(
         request.projectRoot,
         async (transaction) => this.commitInTransaction(transaction, request, rendered.batch),
@@ -549,9 +564,8 @@ export class FlaGraphicInstanceCommitService {
     if (!current) {
       return this.failure('PROJECT_NOT_TRACKED', transaction.projectRoot, 'The project is no longer open in the Main Process.', request);
     }
-    if (transaction.existingDocument.project.id !== current.project.id ||
-        JSON.stringify(transaction.existingDocument.project) !== JSON.stringify(current.project)) {
-      return this.failure('STALE_PROJECT_REVISION', transaction.projectRoot, 'The saved Project does not match the current editor snapshot. Refresh and retry.', request, {
+    if (transaction.existingDocument.project.id !== current.project.id) {
+      return this.failure('STALE_PROJECT_REVISION', transaction.projectRoot, 'The saved Project has a different identity. Reopen the intended project and retry.', request, {
         currentProject: current.project,
         currentRevision: current.revision,
         openInstanceId: current.openInstanceId ?? undefined,
@@ -568,7 +582,7 @@ export class FlaGraphicInstanceCommitService {
       return this.failure('FRAME_RENDER_FAILED', transaction.projectRoot, 'A generated SVG frame failed content validation.', request);
     }
     const previousShot = current.project.shots.find((candidate) => candidate.id === request.shotId);
-    if (!previousShot || request.startTimeMs > previousShot.durationMs) {
+    if (request.shotId && (!previousShot || request.startTimeMs > previousShot.durationMs)) {
       return this.failure('SHOT_NOT_FOUND', transaction.projectRoot, 'The selected Shot is unavailable.', request);
     }
     const reusedMatch = existingDefinition(current.project, batch, request.shotId);
@@ -576,6 +590,7 @@ export class FlaGraphicInstanceCommitService {
     const upgradeStructure = reusedMatch?.upgrade ?? false;
     const pendingFiles: PendingFrameFile[] = [];
     let projectSaved = false;
+    let committedProject: Project | null = null;
     try {
       const definitionId = reused?.id ?? this.createId();
       const assets: ImageAsset[] = [];
@@ -764,13 +779,13 @@ export class FlaGraphicInstanceCommitService {
       });
       const playback = instancePlayback(batch);
       const transform = placementTransform(batch, definition);
-      if (!playback || !transform) {
+      if (request.shotId && (!playback || !transform)) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         return residualPaths.length
           ? this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance was rejected and staged files need recovery.', request)
           : this.failure('TRANSFORM_UNSUPPORTED', transaction.projectRoot, 'The Graphic instance transform or playback mode is outside the supported range.', request);
       }
-      const existingLayer = previousShot.layers.find((layer) => {
+      const existingLayer = previousShot?.layers.find((layer) => {
         if (layer.source.kind !== 'animation') return false;
         const occurrence = layer.source.flaOccurrence;
         if (!occurrence) return false;
@@ -781,10 +796,20 @@ export class FlaGraphicInstanceCommitService {
           animation?.source.sha256 === batch.source.rawSha256 &&
           occurrence.sourceAddress === batch.unit.sourceAddress;
       });
-      if (existingLayer && !upgradeStructure) {
+      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
+        }
+        // A reused Definition/occurrence still commits any unsaved editor work.
+        if (JSON.stringify(transaction.existingDocument.project) !== JSON.stringify(current.project)) {
+          await transaction.save(current.project, current.revision, () => {
+            const latest = this.assertCurrentSnapshot(request);
+            if (!latest || JSON.stringify(latest.project) !== JSON.stringify(current.project)) {
+              throw new ProjectServiceError('PROJECT_SAVE_STALE_REVISION', transaction.projectRoot, 'The Project changed while the reused Graphic was being saved.');
+            }
+            this.assertCurrentPlan(request);
+          });
         }
         return this.success(
           request,
@@ -792,22 +817,22 @@ export class FlaGraphicInstanceCommitService {
           current.revision,
           current.revision,
           false,
-          existingLayer.source.kind === 'animation' ? existingLayer.source.animationId : definition.id,
-          existingLayer.id,
+          existingLayer?.source.kind === 'animation' ? existingLayer.source.animationId : definition.id,
+          existingLayer?.id ?? null,
           batch.groupEditPreview,
         );
       }
       // An already-imported occurrence only needs a Project save when its
       // SVG-only Definition is being upgraded with the captured structure.
-      const created = existingLayer
-        ? { project: baseProject, layer: existingLayer }
+      const created = existingLayer || !request.shotId
+        ? { project: baseProject, layer: existingLayer ?? null }
         : this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
-        position: transform.position,
+        position: transform!.position,
         startTimeMs: request.startTimeMs,
-        firstFrameIndex: playback.firstFrameIndex,
-        playback: playback.playback,
-        transform: transform.transform,
+        firstFrameIndex: playback!.firstFrameIndex,
+        playback: playback!.playback,
+        transform: transform!.transform,
         flaOccurrence: {
           occurrenceId: batch.unit.occurrenceId,
           sourceAddress: batch.unit.sourceAddress!,
@@ -821,11 +846,13 @@ export class FlaGraphicInstanceCommitService {
       });
       const savedDocument = await transaction.save(nextProject, current.revision + 1, () => {
         const latest = this.assertCurrentSnapshot(request);
-        if (!latest || latest.revision !== current.revision || latest.project.id !== current.project.id) {
+        if (!latest || JSON.stringify(latest.project) !== JSON.stringify(current.project)) {
           throw new ProjectServiceError('PROJECT_SAVE_STALE_REVISION', transaction.projectRoot, 'The Project changed while the Graphic instance was being saved.');
         }
+        this.assertCurrentPlan(request);
       });
       projectSaved = true;
+      committedProject = savedDocument.project;
       for (const asset of assets) {
         const savedAsset = savedDocument.project.assets.find((candidate) => candidate.id === asset.id);
         if (!savedAsset || savedAsset.kind !== 'image' || savedAsset.sha256 !== asset.sha256 ||
@@ -842,13 +869,17 @@ export class FlaGraphicInstanceCommitService {
         current.revision + 1,
         true,
         definition.id,
-        created.layer.id,
+        created.layer?.id ?? null,
         batch.groupEditPreview,
       );
     } catch (error) {
       if (projectSaved) {
         try {
           await transaction.save(transaction.existingDocument.project, current.revision);
+          this.onProjectRollback?.(transaction.projectRoot, {
+            ...current,
+            dirty: current.dirty ?? JSON.stringify(current.project) !== JSON.stringify(transaction.existingDocument.project),
+          }, committedProject!);
         } catch {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The FLA Graphic import failed and the Project could not be rolled back safely.', request, {
             currentProject: this.currentSnapshot(transaction.projectRoot)?.project,
@@ -857,13 +888,27 @@ export class FlaGraphicInstanceCommitService {
         }
       }
       const residualPaths = await this.rollbackFiles(transaction.projectRoot, pendingFiles);
+      const cause = error instanceof AtomicWriteCommitRejectedError ? error.cause : error;
       return this.failure(
-        residualPaths.length ? 'ROLLBACK_FAILED' : 'ASSET_COMMIT_FAILED',
+        residualPaths.length ? 'ROLLBACK_FAILED' : cause instanceof FlaGraphicInstanceCommitError
+          ? cause.code : cause instanceof ProjectServiceError && cause.code === 'PROJECT_SAVE_STALE_REVISION'
+            ? 'STALE_PROJECT_REVISION' : 'ASSET_COMMIT_FAILED',
         transaction.projectRoot,
         residualPaths.length
           ? 'The FLA Graphic import failed and left files that need recovery.'
           : error instanceof Error ? error.message.slice(0, 1_000) : 'The FLA Graphic import failed.',
         request,
+      );
+    }
+  }
+
+  private assertCurrentPlan(request: FlaGraphicInstanceCommitRequest): void {
+    const metadata = this.partPreviewService.getPreparedBatchMetadata(
+      request.plan.planId, request.plan.sessionId, request.plan.generation,
+    );
+    if (!metadata || metadata.identity.poseIdentity !== request.plan.poseIdentity) {
+      throw new FlaGraphicInstanceCommitError(
+        'STALE_PLAN', request.projectRoot, 'The FLA source or preview plan changed. Reset the preview and retry.',
       );
     }
   }
@@ -892,6 +937,7 @@ export class FlaGraphicInstanceCommitService {
       project: ProjectSchema.parse(snapshot.project),
       revision: snapshot.revision,
       openInstanceId: snapshot.openInstanceId ?? null,
+      ...(snapshot.dirty === undefined ? {} : { dirty: snapshot.dirty }),
     } : null;
   }
 
@@ -902,7 +948,7 @@ export class FlaGraphicInstanceCommitService {
     savedRevision: number,
     projectChanged: boolean,
     animationId: string,
-    layerId: string,
+    layerId: string | null,
     groupEditPreview?: FlaGraphicGroupEditPreview,
   ): FlaGraphicInstanceCommitResponse {
     return FlaGraphicInstanceCommitResponseSchema.parse({
@@ -933,6 +979,10 @@ export class FlaGraphicInstanceCommitService {
       openInstanceId?: number;
     } = {},
   ): FlaGraphicInstanceCommitResponse {
+    if (code === 'ROLLBACK_FAILED' && request && !this.recoverySessions.has(request.plan.sessionId)) {
+      this.recoverySessions.add(request.plan.sessionId);
+      this.onRecoveryRequired?.(request.plan.sessionId);
+    }
     return FlaGraphicInstanceCommitResponseSchema.parse({
       ok: false,
       error: {

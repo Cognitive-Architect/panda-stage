@@ -27,6 +27,7 @@ import {
   startIssue762Profile,
 } from '../../shared/issue762-performance-profile';
 import {
+  FlaStaticSnapshotRasterizerError,
   type FlaStaticSnapshotRasterizeInput,
   type FlaStaticSnapshotRasterizeOutput,
   type FlaStaticSnapshotRasterizer,
@@ -87,7 +88,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
 
   async rasterize(input: FlaStaticSnapshotRasterizeInput): Promise<FlaStaticSnapshotRasterizeOutput> {
     if (this.disposed) {
-      throw new Error('Snapshot rasterizer closed');
+      throw new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterizer closed');
     }
     const requestId = input.requestId;
     const wasWarm = Boolean(this.getWindow() && this.ready);
@@ -108,6 +109,9 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       coldStart: !wasWarm,
       outcome: 'ready',
     });
+    if (this.window !== window || window.isDestroyed() || this.activeRequestId !== requestId) {
+      throw new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded');
+    }
     const payload = { requestId, svg: input.svg };
     const sentAt = startIssue762Profile();
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
@@ -118,7 +122,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
         wallTimer: setTimeout(() => {
           finishIssue762Profile('fla.preview.sandbox-render-timeout', sentAt, { requestId });
           this.pending.delete(requestId);
-          reject(new Error('Snapshot rasterization timed out'));
+          reject(new FlaStaticSnapshotRasterizerError('RENDER_TIMEOUT', 'Snapshot rasterization timed out'));
         }, this.timing.rasterizeWallTimeMs),
       });
     });
@@ -177,7 +181,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       typeof payload.width !== 'number' ||
       typeof payload.height !== 'number'
     ) {
-      pending.reject(new Error('Snapshot rasterizer returned an invalid result'));
+      pending.reject(new FlaStaticSnapshotRasterizerError('RENDER_FAILED', 'Snapshot rasterizer returned an invalid result'));
       return;
     }
     const sandboxProfile = payload.profile &&
@@ -245,7 +249,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       requestId,
       outcome: 'error',
     });
-    pending.reject(new Error(payload.message ?? 'Snapshot rasterization failed'));
+    pending.reject(new FlaStaticSnapshotRasterizerError('RENDER_FAILED', payload.message ?? 'Snapshot rasterization failed'));
   }
 
   /**
@@ -265,7 +269,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       const { rejectStartup } = this.owner;
       this.owner = null;
       this.destroyWindow();
-      rejectStartup(new Error('Snapshot rasterization cancelled'));
+      rejectStartup(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization cancelled'));
       return true;
     }
     const pending = this.pending.get(requestId);
@@ -276,7 +280,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     // Physical stop: terminate the hidden renderer rather than leaving the
     // canvas to finish a result we will discard.
     this.destroyWindow();
-    pending.reject(new Error('Snapshot rasterization cancelled'));
+    pending.reject(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization cancelled'));
     return true;
   }
 
@@ -291,9 +295,9 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (this.owner) {
       const { rejectStartup } = this.owner;
       this.owner = null;
-      rejectStartup(new Error('Snapshot rasterizer closed'));
+      rejectStartup(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterizer closed'));
     }
-    this.settlePendingError(new Error('Snapshot rasterizer closed'));
+    this.settlePendingError(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterizer closed'));
     this.destroyWindow();
   }
 
@@ -303,9 +307,9 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     // the new request owns a fresh sandboxed renderer. The old request is
     // settled as superseded via its owner/pending entry.
     if (this.activeRequestId && this.activeRequestId !== requestId) {
-      this.teardownActive(new Error('Snapshot rasterization superseded'));
+      this.teardownActive(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded'));
     } else if (this.owner && this.owner.requestId !== requestId) {
-      this.teardownActive(new Error('Snapshot rasterization superseded'));
+      this.teardownActive(new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded'));
     }
 
     const existing = this.getWindow();
@@ -351,6 +355,7 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.on('render-process-gone', () => {
+      if (this.window !== window) return;
       // C: when the snapshot renderer process/window dies, settle all
       // affected pending raster requests immediately instead of making
       // callers wait for the full wall-clock timeout.
@@ -368,13 +373,14 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     // supersede / close can settle it before READY via this resolver, which
     // rejects the await below. Clearing the owner after READY handoff is
     // done by markReady/ed/Error or the post-READY cancel path.
+    let startupError: Error | null = null;
     const readyPromise = new Promise<void>((resolve, reject) => {
-      this.owner = { requestId, rejectStartup: reject };
+      this.owner = { requestId, rejectStartup: (error) => { startupError = error; reject(error); } };
       this.readyResolve = resolve;
       this.readyTimer = setTimeout(() => {
         this.owner = null;
         this.readyTimer = null;
-        reject(new Error('Snapshot renderer ready handshake timed out'));
+        reject(new FlaStaticSnapshotRasterizerError('RENDER_TIMEOUT', 'Snapshot renderer ready handshake timed out'));
       }, this.timing.readyTimeoutMs);
     });
     // Hard sink: close()/cancel() may settle this promise synchronously.
@@ -393,17 +399,22 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       // the handshake forever.
       if (this.disposed) throw new Error('Snapshot rasterizer closed');
       await readyPromise;
+      if (this.window !== window || window.isDestroyed() ||
+          (this.owner && this.owner.requestId !== requestId) ||
+          (this.activeRequestId && this.activeRequestId !== requestId)) {
+        throw new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded');
+      }
       // Handoff complete: the post-READY cancel path uses `pending`.
-      this.owner = null;
+      if (this.owner?.requestId === requestId) this.owner = null;
       this.activeRequestId = requestId;
       return window;
     } catch (error) {
-      this.owner = null;
+      if (this.owner?.requestId === requestId) this.owner = null;
       // Only reclaim the window this ensureWindow() actually created, so a
       // competing request that has since taken over `this.window` is not
       // torn down by this failure path (cold-start supersede race).
       if (this.window === window) this.destroyWindow();
-      throw error instanceof Error ? error : new Error(String(error));
+      throw startupError ?? (error instanceof Error ? error : new Error(String(error)));
     }
   }
 

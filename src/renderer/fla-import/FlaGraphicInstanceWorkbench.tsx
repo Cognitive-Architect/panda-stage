@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ImageOff, Info, RotateCcw } from 'lucide-react';
 import type { AnimationImportIR } from '../../shared/fla-import-api';
 import type { FlaPartPreviewResponse } from '../../shared/fla-part-preview-api';
 import type { FlaRenderTarget } from '../../shared/fla-static-snapshot-api';
-import { IconButton } from '../ui';
+import { FlaPreviewFailure } from './FlaPreviewFailure';
 import {
   createFlaGraphicInstanceWorkbenchCandidates,
+  FlaGraphicImportError,
   type EditableFlaGraphicInstancePreview,
   type ImportFlaGraphicInstance,
 } from '../features/fla-import/fla-graphic-instance-import';
@@ -24,9 +24,10 @@ interface FlaGraphicInstanceWorkbenchProps {
   onRequestReimport?(): void;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onImportingChange?(importing: boolean): boolean | void;
+  onRecoveryRequired?(): void;
 }
 
-type PreviewFailureKind = 'preview' | 'session-expired' | 'no-main' | 'import';
+type PreviewFailureKind = 'preview' | 'session-expired' | 'no-main' | 'import' | 'recovery';
 
 interface PreviewFailure {
   kind: PreviewFailureKind;
@@ -66,8 +67,11 @@ export function FlaGraphicInstanceWorkbench({
   onRequestReimport,
   onImportGraphicInstance,
   onImportingChange,
+  onRecoveryRequired,
 }: FlaGraphicInstanceWorkbenchProps): React.JSX.Element {
   const [preview, setPreview] = useState<EditableFlaGraphicInstancePreview | null>(null);
+  const [previewContext, setPreviewContext] = useState<string | null>(null);
+  const context = JSON.stringify([sessionId, source.sha256, targetRenderTargetId]);
   const [selectedIdentityKey, setSelectedIdentityKey] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [previewUrls, setPreviewUrls] = useState<Readonly<Record<string, string>>>({});
@@ -77,6 +81,7 @@ export function FlaGraphicInstanceWorkbench({
   const [emptyGraphicList, setEmptyGraphicList] = useState(false);
   const [importing, setImporting] = useState(false);
   const [planInvalidated, setPlanInvalidated] = useState(false);
+  const importingRef = useRef(false);
   const generationBySessionRef = useRef(new Map<string, number>());
   const flowGenerationRef = useRef(0);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
@@ -99,9 +104,9 @@ export function FlaGraphicInstanceWorkbench({
     candidate.identityKey === selectedIdentityKey,
   ) ?? null;
   const canCommit = Boolean(
-    enabled && sessionId && preview && targetRenderTargetId && selectedCandidate?.selectable &&
+    enabled && sessionId && preview && previewContext === context && targetRenderTargetId && selectedCandidate?.selectable &&
     !importDisabledReason && onImportGraphicInstance && !importing && !importLocked && !planInvalidated &&
-    !previewFailure,
+    (!previewFailure || previewFailure.kind === 'import'),
   );
 
   const cancelRequest = useCallback(async (request: ActiveRequest | null): Promise<void> => {
@@ -205,6 +210,7 @@ export function FlaGraphicInstanceWorkbench({
           setSelectedIdentityKey(candidateToFocus?.identityKey ?? null);
         }
         setPreview(validatedPreview);
+        setPreviewContext(context);
         heldPlanRef.current = request;
         const graphicCount = validatedPreview.partPreviews.filter((part) =>
           part.sourceKind === 'graphic-symbol-occurrence',
@@ -245,7 +251,7 @@ export function FlaGraphicInstanceWorkbench({
         setPreviewLoading(false);
       }
     }
-  }, [cancelRequest, importing, importLocked, releaseHeldPlan, selectedCandidate, sessionId, source, targetRenderTargetId]);
+  }, [cancelRequest, context, importing, importLocked, releaseHeldPlan, selectedCandidate, sessionId, source, targetRenderTargetId]);
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
@@ -258,10 +264,10 @@ export function FlaGraphicInstanceWorkbench({
       setStatusMessage('');
       return;
     }
-    if (preview?.sessionId === sessionId) return;
+    if (preview?.sessionId === sessionId && previewContext === context) return;
     if (preparingPreviewRef.current) return;
     void preparePreview();
-  }, [enabled, preparePreview, preview?.sessionId, sessionId, targetLookupPending, targetRenderTargetId]);
+  }, [context, enabled, preparePreview, preview?.sessionId, previewContext, sessionId, targetLookupPending, targetRenderTargetId]);
 
   useEffect(() => {
     if (!preview) return undefined;
@@ -294,24 +300,33 @@ export function FlaGraphicInstanceWorkbench({
   }, [cancelRequest, releaseHeldPlan]);
 
   const importSelected = async (): Promise<void> => {
-    if (!canCommit || !preview || !selectedCandidate || !onImportGraphicInstance) return;
+    if (importingRef.current || !canCommit || !preview || !selectedCandidate || !onImportGraphicInstance) return;
     if (onImportingChange?.(true) === false) return;
+    importingRef.current = true;
     let imported = false;
     setImporting(true);
+    setPreviewFailure(null);
     setStatusMessage('正在导入元件…');
     try {
       await onImportGraphicInstance(preview, selectedCandidate.operation.unitId);
       imported = true;
+      setStatusMessage('');
     } catch (error) {
-      setPlanInvalidated(true);
-      setPreviewFailure({ kind: 'import', details: diagnosticText(error) });
-      setStatusMessage('导入失败');
+      const recoveryRequired = error instanceof FlaGraphicImportError && error.code === 'ROLLBACK_FAILED';
+      setPlanInvalidated(error instanceof FlaGraphicImportError &&
+        (error.code === 'STALE_PLAN' || error.code === 'PROJECT_NOT_TRACKED' ||
+          error.code === 'UNSUPPORTED_SOURCE' || error.code === 'ROLLBACK_FAILED'));
+      setPreviewFailure({ kind: recoveryRequired ? 'recovery' : 'import', details: diagnosticText(error) });
+      setStatusMessage('');
+      if (recoveryRequired) onRecoveryRequired?.();
     } finally {
       setImporting(false);
+      importingRef.current = false;
       onImportingChange?.(false);
     }
     if (imported) onImportComplete?.();
   };
+
 
   const onFocusCandidate = (candidate: FlaWorkbenchCandidate): void => {
     if (candidate.kind !== 'graphic' || importing || importLocked || planInvalidated) return;
@@ -331,12 +346,7 @@ export function FlaGraphicInstanceWorkbench({
     : previewFailure || emptyGraphicList || previewLoading || isTargetLoading
       ? ''
       : importDisabledReason || selectedCandidate?.displayLabel || '选择一个元件查看预览';
-  const previewEmptyContent = previewFailure ? (
-    <div className="fla-c03-preview-placeholder fla-graphic-preview-failure" data-testid="fla-graphic-instance-preview-failure" role="alert">
-      <ImageOff aria-hidden="true" size={22} />
-      <strong>{previewFailure.kind === 'session-expired' ? 'FLA 会话已失效' : '预览加载失败'}</strong>
-    </div>
-  ) : previewLoading || isTargetLoading ? (
+  const previewEmptyContent = previewLoading || isTargetLoading ? (
     <div className="fla-c03-preview-placeholder" data-testid="fla-graphic-instance-preview-loading" role="status">
       <strong>正在加载预览…</strong>
     </div>
@@ -349,42 +359,23 @@ export function FlaGraphicInstanceWorkbench({
       <strong>选择一个元件查看预览</strong>
     </div>
   );
-  const previewFailureDetails = previewFailure ? (
-    <details className="fla-c03-preview-diagnostics" data-testid="fla-graphic-instance-error-details">
-      <summary>
-        <Info aria-hidden="true" size={14} />
-        <span>详细信息</span>
-        <ChevronDown aria-hidden="true" className="fla-c03-preview-diagnostics-chevron" size={14} />
-      </summary>
-      <pre>{previewFailure.details}</pre>
-    </details>
+  const requiresReimport = previewFailure?.kind === 'session-expired' || previewFailure?.kind === 'no-main';
+  const failure = previewFailure ? (
+    <FlaPreviewFailure
+      details={previewFailure.details}
+      heading={previewFailure.kind === 'recovery' ? '导入未能安全恢复' :
+        previewFailure.kind === 'session-expired' ? 'FLA 会话已失效' :
+          previewFailure.kind === 'import' ? '导入失败' : '预览加载失败'}
+      guidance={previewFailure.kind === 'recovery'
+        ? '请关闭此导入并重新打开当前项目；如出现恢复提示，请先处理恢复后再导入。' : undefined}
+      onRetry={previewFailure.kind === 'recovery' || (previewFailure.kind === 'import' && !planInvalidated)
+        ? undefined : requiresReimport ? onRequestReimport : () => void preparePreview(true)}
+      retryDisabled={previewLoading || importing || importLocked}
+      retryLabel={requiresReimport ? '重新导入 FLA' : '请重试'}
+      retryTestId={requiresReimport ? 'fla-graphic-instance-reimport' : undefined}
+      testIdPrefix="fla-graphic-instance"
+    />
   ) : undefined;
-  const retryAction = previewFailure ? (
-    previewFailure.kind === 'session-expired' || previewFailure.kind === 'no-main' ? (
-      <button
-        className="fla-c03-graphic-reimport"
-        data-testid="fla-graphic-instance-reimport"
-        disabled={!onRequestReimport || importing || importLocked}
-        onClick={onRequestReimport}
-        type="button"
-      >
-        重新导入 FLA
-      </button>
-    ) : (
-      <div className="fla-c03-graphic-retry">
-        <span>请重试</span>
-        <IconButton
-          aria-label="重置预览"
-          className="fla-c03-graphic-reset"
-          data-testid="fla-graphic-instance-reset-preview"
-          disabled={previewLoading || importing || importLocked || !sessionId || !targetRenderTargetId}
-          icon={<RotateCcw size={16} />}
-          onClick={() => void preparePreview(true)}
-          title="重置预览"
-        />
-      </div>
-    )
-  ) : null;
 
   return (
     <FlaUnifiedWorkbench
@@ -418,11 +409,10 @@ export function FlaGraphicInstanceWorkbench({
       graphicKindLabel="元件"
       previewSectionLabel="元件预览"
       previewEmptyContent={previewEmptyContent}
-      previewAuxiliary={previewFailureDetails}
+      previewOverride={failure}
       testIdPrefix="fla-graphic-instance"
       workbenchClassName="fla-graphic-instance-workbench"
       contentClassName="fla-graphic-instance-workbench-content"
-      footerAuxiliary={retryAction}
       snapshotPreview={null}
       sequencePreview={null}
       onSearchTextChange={setSearchText}

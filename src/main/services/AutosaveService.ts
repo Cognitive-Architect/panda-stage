@@ -277,6 +277,24 @@ export class AutosaveService {
     );
   }
 
+  /** Called only after a coordinated transaction has restored its previous disk document. */
+  restoreAfterFailedSave(rawRequest: AutosaveTrackRequest, failedProject: Project): void {
+    const request = this.parseRequest(rawRequest);
+    const session = this.sessions.get(path.resolve(request.projectRoot));
+    if (!session || session.project.id !== request.project.id ||
+        session.openInstanceId !== (request.openInstanceId ?? null) ||
+        session.revision !== request.revision + 1 ||
+        !projectsEqual(session.project, failedProject)) {
+      throw new Error('The Project changed after the failed save; its autosave snapshot cannot be restored.');
+    }
+    session.project = request.project;
+    session.revision = request.revision;
+    session.dirty = request.dirty;
+    session.lastSavedRevision = Math.min(
+      session.lastSavedRevision, request.dirty ? request.revision - 1 : request.revision,
+    );
+  }
+
   private parseRequest(
     rawRequest: AutosaveTrackRequest,
   ): AutosaveTrackRequest {

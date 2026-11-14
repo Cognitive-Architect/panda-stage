@@ -21,6 +21,7 @@ const staticStub = vi.hoisted(() => ({
   runner: null as unknown,
   graphicAcceptedStarts: 0,
   graphicImportingCallback: null as unknown,
+  graphicRecoveryCallback: null as unknown,
 }));
 
 vi.mock('../../src/renderer/fla-import/FlaStaticSnapshotReview', async () => {
@@ -88,6 +89,7 @@ vi.mock('../../src/renderer/fla-import/FlaGraphicInstanceWorkbench', async () =>
       const onImportingChange = props.onImportingChange as ((importing: boolean) => boolean | void) | undefined;
       const onImportComplete = props.onImportComplete as (() => void) | undefined;
       staticStub.graphicImportingCallback = onImportingChange;
+      staticStub.graphicRecoveryCallback = props.onRecoveryRequired;
       const enabled = props.enabled === true && props.importLocked !== true;
       if (busy) {
         return createElement('div', null,
@@ -233,6 +235,23 @@ async function renderSession(runner: FlaUnifiedImportRunner): Promise<void> {
 }
 
 describe('FLA review session import locks', () => {
+  it('blocks both import routes after recovery failure but leaves the close/reopen path available (#1107)', async () => {
+    const runner: FlaUnifiedImportRunner = vi.fn();
+    await renderSession(runner);
+    await act(async () => button('fla-review-graphic-tab').click());
+    await act(async () => button('fla-test-graphic-submit').click());
+    await act(async () => {
+      (staticStub.graphicRecoveryCallback as () => void)();
+      button('fla-test-graphic-fail').click();
+    });
+    expect(button('fla-test-graphic-submit').disabled).toBe(true);
+    expect(button('fla-test-ordinary-import').disabled).toBe(true);
+    expect((staticStub.graphicImportingCallback as (busy: boolean) => boolean)(true)).toBe(false);
+    expect(button('fla-review-cancel').disabled).toBe(false);
+    await act(async () => button('fla-review-cancel').click());
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(runner).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
@@ -254,7 +273,7 @@ describe('FLA review session import locks', () => {
     vi.restoreAllMocks();
   });
 
-  it('blocks close, Escape, tab switching, and ordinary import during Graphic submit; failure unlocks and success closes', async () => {
+  it('blocks close, Escape, tab switching, and ordinary import during Graphic submit; failure and success retain the session', async () => {
     const never = new Promise<never>(() => undefined);
     const runner = vi.fn(async () => never);
     await renderSession(runner);
@@ -287,7 +306,9 @@ describe('FLA review session import locks', () => {
     expect(staticStub.graphicAcceptedStarts).toBe(2);
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => button('fla-test-graphic-success').click());
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(button('fla-review-cancel').disabled).toBe(false);
+    expect(button('fla-review-graphic-tab').getAttribute('aria-selected')).toBe('true');
   });
 
   it('blocks Graphic entry and acquisition during ordinary import, then releases both locks', async () => {

@@ -100,7 +100,7 @@ describe('Issue #775 C03 preserves the Stage D render contracts', () => {
     expect(snapshot).toContain('focusedCandidateIdentityKeyRef.current = effectiveFocusedCandidateIdentityKey');
     expect(snapshot).toContain('focusedPreview?.key === effectiveFocusedCandidateIdentityKey');
     expect(snapshot).toContain('data-focused={focused ?');
-    expect(snapshot).toContain('当前筛选无可预览素材');
+    expect(snapshot).toContain('无可预览内容');
     expect(snapshot).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
     expect(snapshot).toContain('candidate?.checked ?? false');
   });

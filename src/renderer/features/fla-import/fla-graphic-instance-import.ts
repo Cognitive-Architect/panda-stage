@@ -2,6 +2,14 @@ import type { FlaPartPreviewResponse } from '../../../shared/fla-part-preview-ap
 import type { AnimationImportIR } from '../../../shared/fla-import-api';
 import type { FlaRenderTarget } from '../../../shared/fla-static-snapshot-api';
 import type { FlaWorkbenchCandidate } from '../../fla-import/fla-workbench-candidates';
+import type { FlaGraphicInstanceCommitErrorCode } from '../../../shared/fla-graphic-instance-api';
+
+export class FlaGraphicImportError extends Error {
+  constructor(readonly code: FlaGraphicInstanceCommitErrorCode, message: string) {
+    super(message);
+    this.name = 'FlaGraphicImportError';
+  }
+}
 
 export type EditableFlaGraphicInstancePreview = Extract<
   FlaPartPreviewResponse,

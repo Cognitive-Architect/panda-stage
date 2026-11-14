@@ -198,6 +198,8 @@ describe('FlaStaticSnapshotWindowManager — physical cancellation (Corrective C
     expect(windowB).not.toBe(windowA);
     makeReady(windowB, mgr);
     await flush();
+    windowA.webContents.emit('render-process-gone');
+    expect(windowB.isDestroyed()).toBe(false);
     mgr.markResult(windowB.webContents.id, {
       requestId: REQUEST_B,
       png: Array.from(new Uint8Array([7])),
@@ -213,6 +215,22 @@ describe('FlaStaticSnapshotWindowManager — physical cancellation (Corrective C
 
 describe('FlaStaticSnapshotWindowManager — bounded concurrency (Corrective E)', () => {
   afterEach(reset);
+
+  it('keeps superseded startup cancellation distinct and preserves the newer startup owner (#1107)', async () => {
+    let rejectOldLoad!: (error: Error) => void;
+    const oldLoad = new Promise<void>((_resolve, reject) => { rejectOldLoad = reject; });
+    const loading = vi.spyOn(FakeBrowserWindow.prototype, 'loadFile')
+      .mockImplementationOnce(() => oldLoad).mockResolvedValue(undefined);
+    const mgr = manager();
+    try {
+      const old = mgr.rasterize({ requestId: REQUEST_A, svg: SVG, width: 8, height: 8, pixelCount: 64 }).catch((error: unknown) => error);
+      const latest = mgr.rasterize({ requestId: REQUEST_B, svg: SVG, width: 8, height: 8, pixelCount: 64 }).catch((error: unknown) => error);
+      rejectOldLoad(new Error('ERR_ABORTED during old load'));
+      expect(await old).toMatchObject({ code: 'RENDER_CANCELLED', message: 'Snapshot rasterization superseded' });
+      expect(mgr.cancel(REQUEST_B)).toBe(true);
+      expect(await latest).toMatchObject({ code: 'RENDER_CANCELLED' });
+    } finally { mgr.close(); loading.mockRestore(); }
+  });
 
   it('terminates the prior in-flight job before starting a new one', async () => {
     const mgr = manager();
@@ -238,6 +256,7 @@ describe('FlaStaticSnapshotWindowManager — bounded concurrency (Corrective E)'
     expect(out.width).toBe(8);
     // A's promise is rejected as superseded.
     await expect(promiseA).rejects.toThrow(/superseded/i);
+    await expect(promiseA).rejects.toMatchObject({ code: 'RENDER_CANCELLED' });
     mgr.close();
   });
 });
