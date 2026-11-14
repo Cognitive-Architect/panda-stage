@@ -35,7 +35,7 @@ describe('RH-07 verification routing manifest', () => {
   it('evolves the RH-04/RH-05 ledger without creating a separate routing file', () => {
     expect(manifest.manifestVersion).toBe(2);
     expect(manifest.routing).toBeTruthy();
-    expect((manifest.routing as { schemaVersion?: number }).schemaVersion).toBe(2);
+    expect((manifest.routing as { schemaVersion?: number }).schemaVersion).toBe(3);
   });
 });
 

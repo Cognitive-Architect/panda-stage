@@ -1,8 +1,8 @@
 {
   "manifestVersion": 2,
-  "generatedFor": "issue-209 / RH-04 gate inventory; issue-225 / RH-05 CI routing",
+  "generatedFor": "issue-209 gate inventory; issue-1094 optional subsystem routing",
   "generatedFrom": "main@8024a701a97b1ddacf18758eb55ac06a6e2b98c9",
-  "description": "Machine-readable ledger of every top-level `verify:*` package script plus the RH-05 source/test/verifier ownership and CI routing contract.",
+  "description": "Ledger of every top-level verify:* script and the optional path-to-subsystem mapping used by Core CI. Full suites are manual only.",
   "statusVocabulary": [
     "active",
     "superseded",
@@ -23,8 +23,8 @@
     "unknown"
   ],
   "routing": {
-    "schemaVersion": 2,
-    "description": "RH-07 source/test/verifier ownership and FAST/FULL routing truth. Workflow control flow is generic; subsystem registration belongs here.",
+    "schemaVersion": 3,
+    "description": "CI-LEAN-01: optional path-to-subsystem mapping; unmapped paths run Core only.",
     "docsPatterns": [
       "README.md",
       "AGENTS.md",
@@ -40,464 +40,6 @@
       "history",
       "editor",
       "timeline"
-    ],
-    "unmatchedPolicy": {
-      "draft": "unknown",
-      "delivery": "full"
-    },
-    "fullRiskRoutes": [
-      {
-        "id": "ci-build-infrastructure",
-        "sourcePatterns": [
-          ".github/**",
-          "package.json",
-          "pnpm-lock.yaml",
-          "npm-shrinkwrap.json",
-          "yarn.lock",
-          "tsconfig*.json",
-          "*.config.js",
-          "*.config.cjs",
-          "*.config.mjs",
-          "*.config.ts",
-          "public/probe/**",
-          "demo-project/**",
-          "scripts/css-split-manifest.json",
-          "scripts/css-split-boundary.cjs",
-          "scripts/**"
-        ],
-        "testPatterns": [
-          "tests/contract/ci-routing.test.ts",
-          "tests/contract/ci-provenance.test.ts",
-          "tests/contract/verification-manifest.test.ts",
-          "tests/contract/css-split-boundary.test.ts"
-        ],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "ci",
-        "notes": "CI mechanics, build configuration, shared fixtures, and non-verifier scripts remain conservative Full risk."
-      },
-      {
-        "id": "issue742-research-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-742/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Only the isolated Issue #742 minimal Animate/Panda experiment assets and receipts are registered here. They are research evidence, not production behavior; keep other Issue evidence paths fail-closed. Draft changes use the existing CI policy self-tests."
-      },
-      {
-        "id": "issue743-research-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-743/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #743 real authored-close minimization receipts and Animate captures are isolated research evidence. Draft changes use the existing CI policy self-tests; neighboring Issue evidence remains fail-closed."
-      },
-      {
-        "id": "issue744-research-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-744/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #744 endpoint provenance and topology evidence are isolated research results. Draft changes use the existing CI policy self-tests; neighboring Issue evidence remains fail-closed."
-      },
-      {
-        "id": "issue745-open-fill-fix-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-745/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #745 Open-Fill decoder fix receipts and character contact-sheet evidence only. Draft evidence changes use CI policy self-tests; production decoder changes independently retain focused/full checks. Neighboring Issue evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue746-full-character-visual-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-746/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #746 full-character visual evidence and source-root receipts only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue747-horizontal-stroke-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-747/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #747 horizontal SolidStroke evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue748-radial-stroke-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-748/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #748 frozen Male radial-gradient stroke receipts and isolated/blocked visual evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue749-linear-stroke-contract-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-749/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #749 bounded Male linear-gradient stroke contract evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Other unregistered Issue evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue751-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-751/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #751 V1 acceptance evidence only; production behavior continues to match existing subsystem routes. Draft changes use existing CI policy self-tests; unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue752-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-752/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #752 V1 static-character acceptance evidence only; production behavior continues to match existing subsystem routes. Draft evidence changes use existing CI policy self-tests; unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue754-current-head-rebaseline-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-754/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #754 current-head rebaseline README, receipt, and review screenshots only. Draft evidence uses existing CI policy self-tests; Ready delivery retains base-to-HEAD Full regression. Other evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue757-bluehair-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-757-bluehair/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-rendering-research",
-        "notes": "Issue #757 blue-haired source comparison and product preview evidence only; production renderer changes continue through their existing focused routes. Unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue767-u1-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-767-u1/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #767 U1 unified-workbench screenshots and bounded Electron receipt only; Draft evidence changes use existing CI policy self-tests, while production changes remain on their subsystem routes. Unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue767-u2-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-767-u2/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #767 U2 candidate-directory screenshots and bounded real-source Electron receipts only. Draft evidence changes use existing CI policy self-tests; production changes remain on their subsystem routes. Unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue767-u3-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-767-u3/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #767 U3 Windows Electron receipts and screenshots only. Draft evidence changes use existing CI policy self-tests; production changes remain on their subsystem routes. Unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue775-c03-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-775-c03/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #775 C03 bounded Windows Electron receipts and screenshots only; evidence is not owner human acceptance. Draft evidence changes use existing CI policy self-tests; production changes remain on their subsystem routes."
-      },
-      {
-        "id": "issue778-c03-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-778-c03/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #778 C03 bounded Windows Electron receipts, normal/narrow screenshots, and read-only S2 trace only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and evidence is not owner human acceptance or parent #775 Gate C acceptance."
-      },
-      {
-        "id": "issue780-c03-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-780-g001-g006/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #780 G001-G006 bounded Windows Electron C03 screenshots and acceptance receipts only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue781-g007-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-781-g007/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #781 G007 before/after Windows Electron screenshots and bounded real-FLA receipts only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue782-g008-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-782-g008/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #782 G008 playback/navigation screenshots and bounded real-FLA Electron receipts only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue783-g009-acceptance-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-783-g009/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "fla-import",
-        "notes": "Issue #783 G009 before/after Windows Electron screenshots, bounded real-FLA layout receipts, and the combined G008 regression evidence only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
-      },
-      {
-        "id": "issue835-day18-assets-evidence",
-        "sourcePatterns": [
-          "docs/evidence/issue-835-day18/**"
-        ],
-        "testPatterns": [],
-        "verifierPatterns": [],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "ci-selftest",
-        "incrementalEligible": false,
-        "owner": "assets",
-        "notes": "Issue #835 Day18 asset-library acceptance evidence only. The exact issue directory is registered; other unregistered evidence paths remain fail-closed. When combined with the assets feature route on this Draft PR, CI selects focused policy and subsystem checks."
-      },
-      {
-        "id": "cross-process-core",
-        "sourcePatterns": [
-          "src/main/**",
-          "src/preload/**",
-          "src/domain/**",
-          "src/history/**",
-          "src/shared/**",
-          "src/renderer/stores/**",
-          "src/renderer/features/fla-import/**",
-          "src/renderer/App.tsx",
-          "src/renderer/global.d.ts"
-        ],
-        "testPatterns": [
-          "tests/unit/domain/**",
-          "tests/unit/position-authoring-session.test.ts",
-          "tests/unit/selection-store.test.ts",
-          "tests/unit/position-project-service.test.ts",
-          "tests/unit/speaker-focus-camera.test.ts",
-          "tests/unit/migrations/**",
-          "tests/integration/schema-*.test.ts",
-          "tests/integration/project-create-at-lifecycle.test.ts",
-          "tests/integration/position-project-lifecycle.test.ts",
-          "tests/integration/position-authoring-session.test.ts",
-          "tests/integration/background-identity-lifecycle.test.ts",
-          "tests/integration/bfm-s01-character-lifecycle.test.ts",
-          "tests/integration/bfm-s02-character-lifecycle.test.ts",
-          "tests/integration/layer-placement-lifecycle.test.ts",
-          "tests/integration/layer-transform-lifecycle.test.ts",
-          "tests/integration/project-lifecycle.test.ts",
-          "tests/integration/day14-lifecycle.test.ts",
-          "tests/contract/fixtures/ci-routing/core/**",
-          "tests/unit/ipc-contracts.test.ts",
-          "tests/unit/project-api-contracts.test.ts",
-          "tests/unit/bfm-s01-character-schema.test.ts",
-          "tests/unit/bfm-s02-character-commands.test.ts",
-          "tests/unit/models/project-v1.test.ts",
-          "tests/unit/production-resources.test.ts",
-          "tests/integration/dialogue-audio-*.test.ts",
-          "tests/integration/project-subtitle-background-migration.test.ts",
-          "tests/unit/application-menu-policy.test.ts",
-          "tests/unit/standalone-audio.test.ts",
-          "tests/unit/autosave-service.test.ts",
-          "tests/unit/hidden-window-manager.test.ts",
-          "tests/unit/project-asset-path.test.ts",
-          "tests/unit/unsaved-close-controller.test.ts",
-          "tests/unit/models/audio-clip-source-range.test.ts",
-          "tests/integration/standalone-audio-persistence.test.ts",
-          "tests/integration/animation-persistence.test.ts",
-          "tests/helpers/adaptivePartsFixtures.ts",
-          "tests/helpers/characterAssertions.ts",
-          "tests/integration/adaptive-parts-lifecycle.test.ts",
-          "tests/integration/history-lifecycle.test.ts",
-          "tests/unit/adaptive-parts-character.test.ts",
-          "tests/unit/day23-layer-controls.test.ts",
-          "tests/unit/layer-service.test.ts",
-          "tests/unit/layer-stores.test.ts",
-          "tests/unit/reference-scanner.test.ts",
-          "tests/unit/create-character-from-prepared-parts.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue257-slice3*",
-          "scripts/verify-issue657-audio-foundation.cjs"
-        ],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "focused",
-        "incrementalEligible": false,
-        "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain here without broad test globs; other unregistered test paths stay fail-closed. Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
-      },
-      {
-        "id": "release-export-core",
-        "sourcePatterns": [
-          "build/**",
-          "resources/**",
-          "docs/test-receipts/issue848-o1-r4-comparison.json",
-          "docs/test-receipts/issue849-o2-comparison.json",
-          "docs/test-receipts/issue851-o2-f01-comparison.json",
-          "docs/test-receipts/issue856-o5-30s-comparison.json"
-        ],
-        "testPatterns": [
-          "tests/unit/export-*.test.ts",
-          "tests/unit/formal-export-stage-label.test.ts",
-          "tests/unit/formal-output-name-series.test.ts",
-          "tests/unit/issue851-memory-trend.test.ts",
-          "tests/unit/png-encode-core.test.ts",
-          "tests/unit/worker-png-encoder.test.ts",
-          "tests/unit/ffmpeg-*.test.ts",
-          "tests/unit/file-system-service.test.ts"
-        ],
-        "verifierPatterns": [
-          "scripts/verify-issue816-dl01.cjs",
-          "scripts/verify-issue819-dl02.cjs",
-          "scripts/verify-issue823-dl03.cjs",
-          "scripts/verify-issue827-dl04.cjs",
-          "scripts/verify-issue832-dl05.cjs",
-          "scripts/verify-issue834-dl05-followup.cjs",
-          "scripts/verify-issue836-dl06-r0.cjs",
-          "scripts/verify-issue848-o1.cjs",
-          "scripts/verify-issue849-o2.cjs",
-          "scripts/verify-issue660-export-audio-mix.cjs",
-          "scripts/verify-day09.cjs"
-        ],
-        "suites": [],
-        "riskPolicy": "full",
-        "draftPolicy": "focused",
-        "incrementalEligible": false,
-        "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. Exact O1/O2 performance verifier scripts and comparison receipts, plus the explicit formal-output-series and PNG-worker export tests, are registered here because they validate release export behavior. The exact legacy Day09 export probe path remains registered; verifier ownership does not use a broad catch-all pattern."
-      }
     ],
     "routes": [
       {
@@ -524,10 +66,7 @@
         "suites": [
           "project"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "project",
-        "notes": "Project Center, welcome/first-run, and renderer recovery UI use the project suite; persisted recovery core remains Full."
+        "owner": "project"
       },
       {
         "id": "assets",
@@ -553,10 +92,7 @@
           "assets",
           "character"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "assets",
-        "notes": "Renderer asset library changes exercise asset and character consumers."
+        "owner": "assets"
       },
       {
         "id": "fla-import",
@@ -642,10 +178,7 @@
         "suites": [
           "assets"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "fla-import",
-        "notes": "FLA compatibility review owns read-only renderer presentation; Main/Preload/shared boundary changes remain on the cross-process Full-risk route. V1.5-B0/B1 evidence files (tests/helpers/fla-structural-probe.ts, tests/integration/fla-b0-structural-probe.test.ts, tests/unit/fla-derive-structure-summary.test.ts, tests/integration/fla-b1-structural-fields.test.ts) and the V1.5-D corpus harness (tests/helpers/fla-corpus-probe.cjs, tests/helpers/fla-corpus-probe.d.ts, docs/research/fla-corpus-manifest.json, tests/unit/fla-corpus-probe.test.ts, tests/integration/fla-corpus-collector.test.ts) are read-only structural-probe/contract/corpus artifacts owned by this subsystem, not production behavior. The 3 narrow exact-match D-corrective paths (tests/helpers/fla-corpus-probe.cjs, tests/helpers/fla-corpus-probe.d.ts, docs/research/fla-corpus-manifest.json) are intentionally registered here without broad catch-all patterns (tests/helpers/**, docs/**, scripts/**) so the unknown-path fail-closed contract remains intact for any future D/E path. The 3 narrow exact-match V2-R0 evidence paths (docs/evidence/issue-284-r0/r0-extract.json, docs/evidence/issue-284-r0/r0-render-sword.png, docs/evidence/issue-284-r0/r0-render-sword.svg) are intentionally registered here for the same reason: even though docs/evidence/issue-284-r0/r0-render-sword.{png,svg} are git rm-d in the V2-R0 corrective (PR #285) and the visual bytes now live LOCAL_ONLY at D:\\PandaStage-Acceptance\\fla-v2-r0\\ per Issue #286 evidence-hygiene rule, the PR diff still contains them as deleted paths and the classifier must route them; no docs/**, docs/evidence/**, or **/evidence/** catch-all is added. The repo-side copy of r0-extract.json is metadata only (no visual bytes) and is owned by the same fla-import subsystem because it is the read-only evidence artifact for the V2-R0 spike. The V2-R1 static snapshot renderer preview UI (src/renderer/fla-import/FlaStaticSnapshotReview.tsx, src/renderer/fla-import/fla-static-snapshot-render.ts, src/renderer/features/assets/applyFlaStaticSnapshotCommitResponse.ts) is read-only renderer presentation covered by the existing src/renderer/fla-import/** and src/renderer/features/assets/** patterns. The 2 narrow exact-match V2-R1 renderer entry paths (fla-static-snapshot.html, src/renderer/fla-static-snapshot-renderer.ts) and the 3 narrow exact-match V2-R1 unit-test paths (tests/unit/fla-static-snapshot-render-session.test.ts, tests/unit/fla-static-snapshot-commit.test.ts, tests/unit/fla-static-snapshot-api.test.ts) are intentionally registered here without broad catch-all patterns (src/renderer/*.ts, tests/unit/fla-static-snapshot*.test.ts catch-all) so the unknown-path fail-closed contract remains intact for any future R2+ path. The Main/Preload/shared IPC boundary changes for V2-R1 (src/main/services/fla-static-snapshot-*.ts, src/main/ipc/register-fla-static-snapshot-ipc-handlers.ts, src/preload/fla-static-snapshot.ts, src/shared/fla-static-snapshot-api.ts, src/shared/ipc/channels.ts) remain on the cross-process-core Full-risk route, not here. The exact Issue #697/#737/#739 evidence and Issue #702/#703/#732 census paths are read-only FLA research artifacts routed through this existing assets regression suite; no docs-wide catch-all is added."
+        "owner": "fla-import"
       },
       {
         "id": "characters",
@@ -669,10 +202,7 @@
         "suites": [
           "character"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "character",
-        "notes": "Character renderer ownership and verifier route."
+        "owner": "character"
       },
       {
         "id": "shots",
@@ -690,10 +220,7 @@
         "suites": [
           "shot"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "shot",
-        "notes": "Shot renderer ownership and verifier route."
+        "owner": "shot"
       },
       {
         "id": "canvas",
@@ -724,13 +251,13 @@
           "tests/unit/feedback-hygiene.test.ts",
           "tests/unit/domain/evaluate-shot-at-time.test.ts",
           "tests/unit/domain/migrations/project-migration.test.ts",
-      "tests/unit/animation-playback-controls.test.ts",
-      "tests/unit/issue915-animation-properties.test.ts",
+          "tests/unit/animation-playback-controls.test.ts",
+          "tests/unit/issue915-animation-properties.test.ts",
           "tests/unit/export-preparation.test.ts",
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
-      "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+          "tests/integration/animation-persistence.test.ts",
+          "tests/integration/ap03-animation-image-prewarm.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
@@ -751,10 +278,7 @@
           "canvas",
           "history"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "canvas",
-    "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
+        "owner": "canvas"
       },
       {
         "id": "history-controls",
@@ -773,10 +297,7 @@
           "history",
           "canvas"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "history",
-        "notes": "Renderer history controls exercise history and canvas interactions; history core remains Full."
+        "owner": "history"
       },
       {
         "id": "timeline",
@@ -799,10 +320,7 @@
         "suites": [
           "timeline"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "timeline",
-        "notes": "Timeline renderer capability, including durable preview/playback UI extension points, uses the timeline suite."
+        "owner": "timeline"
       },
       {
         "id": "dialogue",
@@ -821,10 +339,7 @@
           "editor",
           "timeline"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "dialogue",
-        "notes": "Dialogue authoring is renderer-owned and jointly covered by editor and timeline suites; formal DialogueService changes remain Full."
+        "owner": "dialogue"
       },
       {
         "id": "subtitles",
@@ -839,10 +354,7 @@
           "canvas",
           "timeline"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "subtitles",
-        "notes": "Subtitle renderer changes exercise visual canvas output and timeline timing."
+        "owner": "subtitles"
       },
       {
         "id": "editor-shell",
@@ -961,10 +473,7 @@
           "editor",
           "timeline"
         ],
-        "riskPolicy": "targeted",
-        "incrementalEligible": true,
-        "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted. Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "owner": "editor"
       }
     ]
   },
