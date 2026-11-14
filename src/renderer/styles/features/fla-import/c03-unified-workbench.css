@@ -21,6 +21,17 @@
   overflow: hidden;
 }
 
+.fla-graphic-instance-success {
+  z-index: 1010;
+  top: auto;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  left: 50%;
+  right: auto;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  transform: translateX(-50%);
+}
+
 .fla-c03-workbench-content[data-importing='true'] {
   grid-template-rows: minmax(0, 1fr);
 }

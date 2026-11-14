@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useImportFeedbackDismiss } from '../features/assets/useImportFeedbackDismiss';
 import type { AnimationImportIR } from '../../shared/fla-import-api';
 import type { FlaPartPreviewResponse } from '../../shared/fla-part-preview-api';
 import type { FlaRenderTarget } from '../../shared/fla-static-snapshot-api';
@@ -80,6 +82,12 @@ export function FlaGraphicInstanceWorkbench({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [emptyGraphicList, setEmptyGraphicList] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [successNoticeId, setSuccessNoticeId] = useState<number | null>(null);
+  const successNoticeIdRef = useRef(0);
+  const dismissSuccessNotice = useCallback((id: number) => {
+    setSuccessNoticeId((current) => current === id ? null : current);
+  }, []);
+  const successNoticeHandlers = useImportFeedbackDismiss(successNoticeId, 3_000, dismissSuccessNotice);
   const [planInvalidated, setPlanInvalidated] = useState(false);
   const importingRef = useRef(false);
   const generationBySessionRef = useRef(new Map<string, number>());
@@ -303,6 +311,7 @@ export function FlaGraphicInstanceWorkbench({
     if (importingRef.current || !canCommit || !preview || !selectedCandidate || !onImportGraphicInstance) return;
     if (onImportingChange?.(true) === false) return;
     importingRef.current = true;
+    setSuccessNoticeId(null);
     let imported = false;
     setImporting(true);
     setPreviewFailure(null);
@@ -324,7 +333,10 @@ export function FlaGraphicInstanceWorkbench({
       importingRef.current = false;
       onImportingChange?.(false);
     }
-    if (imported) onImportComplete?.();
+    if (imported) {
+      setSuccessNoticeId(++successNoticeIdRef.current);
+      onImportComplete?.();
+    }
   };
 
 
@@ -378,6 +390,7 @@ export function FlaGraphicInstanceWorkbench({
   ) : undefined;
 
   return (
+    <>
     <FlaUnifiedWorkbench
       candidates={candidates}
       allCandidates={candidates}
@@ -428,5 +441,20 @@ export function FlaGraphicInstanceWorkbench({
       onImportFocused={() => void importSelected()}
       onStopAfterCurrent={() => undefined}
     />
+    {enabled && successNoticeId !== null ? createPortal(
+      <output
+        key={successNoticeId}
+        aria-live="polite"
+        className="asset-import-feedback asset-import-feedback-success fla-graphic-instance-success"
+        data-testid="fla-graphic-instance-success"
+        role="status"
+        tabIndex={0}
+        {...successNoticeHandlers}
+      >
+        <span className="asset-import-feedback-summary">已导入元件</span>
+      </output>,
+      document.body,
+    ) : null}
+    </>
   );
 }
