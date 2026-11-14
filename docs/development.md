@@ -42,9 +42,9 @@ temporary-write, sync, close, and same-directory rename protocol.
 
 ## Verification
 
-Core checks, optional subsystem regression, manual Full CI, and the policy
-for known unrelated failures are documented in
-[Core / subsystem / Full CI](ci-routing.md).
+Core CI, retained manual diagnostics, and the policy for known unrelated
+failures are documented in [Core CI](ci-routing.md). Historical Day/M1
+commands below are local diagnostics, not additional merge gates.
 
 Run the complete Day 12 checks:
 
@@ -178,9 +178,8 @@ formal-file replacement, directory movement, recent-project relocation,
 relative asset portability, and save/cancel/discard close outcomes. It writes
 machine-readable evidence and an operation log under `docs/evidence/m1/`.
 
-GitHub Actions must run both unit and integration suites. The workflow also
-runs `verify:m1` on `main`, `chore/**`, `feat/**`, and `fix/**` pushes and on
-pull requests, so a branch can obtain CI evidence without requiring a PR.
+GitHub Actions runs both unit and integration suites for code PRs and `main`
+pushes. `verify:m1` is a manual filesystem diagnostic; it is not run by CI.
 
 ## Secure asset import development
 
