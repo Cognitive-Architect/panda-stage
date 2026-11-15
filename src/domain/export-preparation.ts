@@ -9,6 +9,7 @@ import {
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
+import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
 import { resolveCharacterFaceSource } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
@@ -514,15 +515,14 @@ export function evaluateExportPreparationSupport(
         backgroundSource?.kind === 'asset'
           ? project.assets.find((asset) => asset.id === backgroundSource.assetId)
           : undefined;
-      if (
-        !background ||
-        backgroundSource?.kind !== 'asset' ||
-        backgroundAsset?.kind !== 'image'
-      ) {
+      const backgroundDimensions = background
+        ? resolveBackgroundVisualDimensions(project, background)
+        : null;
+      if (!background || !backgroundDimensions) {
         issues.push({
           code: 'INVALID_PROJECT',
           location,
-          problem: '镜头引用的背景图层或背景图像素材无效。',
+          problem: '镜头引用的背景图层或背景视觉源无效。',
           nextStep: '修复镜头的背景图层引用后重新检查。',
         });
       } else if (!background.visible) {
@@ -533,7 +533,10 @@ export function evaluateExportPreparationSupport(
             '显示镜头的图像背景后重新检查。',
           ),
         );
-      } else if (!isSupportedFormalImageAsset(backgroundAsset)) {
+      } else if (
+        backgroundAsset?.kind === 'image' &&
+        !isSupportedFormalImageAsset(backgroundAsset)
+      ) {
         issues.push(
           issue(
             location,

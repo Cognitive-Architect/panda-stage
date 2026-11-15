@@ -1,9 +1,83 @@
-import type {
-  ImageAsset,
-  Layer,
-  Project,
-  Shot,
+import {
+  isFlaGraphicDefinition,
+  type ImageAsset,
+  type Layer,
+  type Project,
+  type Shot,
 } from '../models';
+import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
+
+export interface BackgroundVisualDimensions {
+  width: number;
+  height: number;
+}
+
+export function resolveBackgroundSourceDimensions(
+  project: Pick<Project, 'assets'> & Partial<Pick<Project, 'animations'>>,
+  layer: Pick<Layer, 'source'> & Partial<Pick<Layer, 'animationFirstFrame'>>,
+): BackgroundVisualDimensions | null {
+  if (layer.source.kind === 'asset') {
+    const assetId = layer.source.assetId;
+    const asset = project.assets.find((candidate) => candidate.id === assetId);
+    if (!asset || asset.kind !== 'image') {
+      return null;
+    }
+    return {
+      width: asset.width,
+      height: asset.height,
+    };
+  }
+
+  if (layer.source.kind === 'animation') {
+    const animationId = layer.source.animationId;
+    const animation = project.animations?.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!animation || !isFlaGraphicDefinition(animation)) {
+      return null;
+    }
+    const frameIndex = Math.max(
+      0,
+      Math.min(layer.animationFirstFrame ?? 0, animation.frames.length - 1),
+    );
+    const frameOrdinal =
+      animation.frames[frameIndex]?.ordinal ?? animation.frames[0]?.ordinal;
+    if (frameOrdinal === undefined) {
+      return null;
+    }
+    const evaluated = evaluateFlaGraphicVisual({
+      definition: animation,
+      frameOrdinal,
+      mode: 'definition',
+    });
+    if (!evaluated) {
+      return null;
+    }
+    return {
+      width: evaluated.canvas.width,
+      height: evaluated.canvas.height,
+    };
+  }
+
+  return null;
+}
+
+export function resolveBackgroundVisualDimensions(
+  project: Pick<Project, 'assets'> & Partial<Pick<Project, 'animations'>>,
+  layer: Pick<Layer, 'source'> & Partial<Pick<Layer, 'animationFirstFrame'>>,
+): BackgroundVisualDimensions | null {
+  const dimensions = resolveBackgroundSourceDimensions(project, layer);
+  if (
+    !dimensions ||
+    !Number.isFinite(dimensions.width) ||
+    !Number.isFinite(dimensions.height) ||
+    dimensions.width <= 0 ||
+    dimensions.height <= 0
+  ) {
+    return null;
+  }
+  return dimensions;
+}
 
 export function isShotBackgroundLayer(
   shot: Shot,

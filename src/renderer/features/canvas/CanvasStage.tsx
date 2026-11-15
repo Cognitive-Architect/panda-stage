@@ -877,10 +877,19 @@ export function CanvasStage({
   const incompleteVisualLayers = stageModel?.layers.filter(
     (stageLayer) => !isStageLayerVisualReady(stageLayer),
   ) ?? [];
+  const backgroundUsesStructuredVisual = Boolean(
+    backgroundLayer?.visual?.kind === 'fla-graphic' &&
+      backgroundLayer.visual.flaGraphic?.structureFrame,
+  );
+  const backgroundVisualReady = backgroundLayer
+    ? backgroundUsesStructuredVisual
+      ? isStageLayerVisualReady(backgroundLayer)
+      : Boolean(backgroundAsset && backgroundImage)
+    : false;
   const missingBackground =
     Boolean(shot) &&
     !empty &&
-    (!backgroundLayer || !backgroundAsset || !backgroundImage);
+    !backgroundVisualReady;
   const missingNonBackgroundVisual = incompleteVisualLayers.some(
     (stageLayer) => !stageLayer.render.isBackground,
   );

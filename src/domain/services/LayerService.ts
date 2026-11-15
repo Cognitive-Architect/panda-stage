@@ -38,6 +38,7 @@ import {
   type FlaGraphicTransformEasing,
 } from '../models/flaGraphicTimeline';
 import type { AssetDropPayload } from '../assetDropPayload';
+import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
 
 export type LayerServiceErrorCode =
@@ -416,16 +417,12 @@ export class LayerService {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
-    const assetId =
-      layer.source.kind === 'asset' ? layer.source.assetId : undefined;
-    const asset = assetId
-      ? project.assets.find((candidate) => candidate.id === assetId)
-      : undefined;
+    const dimensions = resolveBackgroundSourceDimensions(project, layer);
 
-    if (!asset || asset.kind !== 'image') {
+    if (!dimensions) {
       throw new LayerServiceError(
         'BACKGROUND_LAYER_INVALID',
-        '只有直接引用图片素材的图层才能设为镜头背景。',
+        '只有可渲染的图片或元件图层才能设为镜头背景。',
       );
     }
     if (shot.backgroundLayerId === layer.id) {
@@ -447,7 +444,7 @@ export class LayerService {
       .filter((candidate) => candidate.id !== layer.id)
       .sort((left, right) => left.zIndex - right.zIndex);
     const layers = [
-      this.coverLayer(layer, asset.width, asset.height, true),
+      this.coverLayer(layer, dimensions.width, dimensions.height, true),
       ...orderedContent.map((candidate, index) => ({
         ...candidate,
         zIndex: index + 1,
@@ -470,24 +467,18 @@ export class LayerService {
       shot.backgroundLayerId,
     );
     const background = shot.layers[backgroundIndex]!;
-    const assetId =
-      background.source.kind === 'asset'
-        ? background.source.assetId
-        : undefined;
-    const asset = assetId
-      ? project.assets.find((candidate) => candidate.id === assetId)
-      : undefined;
-    if (!asset || asset.kind !== 'image') {
+    const dimensions = resolveBackgroundSourceDimensions(project, background);
+    if (!dimensions) {
       throw new LayerServiceError(
         'BACKGROUND_LAYER_INVALID',
-        '当前正式背景没有可用的直接图片源，无法填满画布。',
+        '当前正式背景没有可用的视觉源，无法填满画布。',
       );
     }
 
     const filledBackground = this.coverLayer(
       background,
-      asset.width,
-      asset.height,
+      dimensions.width,
+      dimensions.height,
       background.locked,
     );
     const orderedContent = shot.layers
