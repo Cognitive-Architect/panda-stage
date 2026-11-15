@@ -8,6 +8,7 @@ import {
   type Shot,
 } from '../../../domain';
 import { thumbnailStateFromResponse } from '../assets/AssetCard';
+import { GraphicFacePreview } from '../characters/GraphicFacePicker';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { expressionAuthoringStore } from './expressionAuthoringStore';
@@ -112,7 +113,9 @@ export function ExpressionAtTimeControl({
             onClick={() => apply(expression.id)}
             type="button"
           >
-            {thumbnails[expression.assetId] ? (
+            {expression.visualSource ? (
+              <GraphicFacePreview source={expression.visualSource} label={expression.name} />
+            ) : expression.assetId && thumbnails[expression.assetId] ? (
               <img alt="" src={thumbnails[expression.assetId]} />
             ) : (
               <span aria-hidden="true" className="expression-at-time-placeholder">表情</span>

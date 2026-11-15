@@ -70,7 +70,7 @@ describe('Issue #498 New Dialogue redundant chrome distillation', () => {
         selectedCharacterId: character.id,
         showDefaultExpression: false,
         thumbnails: {
-          [defaultExpression.assetId]: { status: 'ready', dataUrl },
+          [defaultExpression.assetId!]: { status: 'ready', dataUrl },
         },
       }),
     );

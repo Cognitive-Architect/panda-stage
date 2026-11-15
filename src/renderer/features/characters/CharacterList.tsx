@@ -338,7 +338,7 @@ export function CharacterList({
           ) : (
             characters.map((character) => {
               const defaultExpression = getCharacterDefaultExpression(character);
-              const thumbnail = defaultExpression
+              const thumbnail = defaultExpression?.assetId
                 ? thumbnails[defaultExpression.assetId]
                 : undefined;
               const selected = selectedCharacterId === character.id;

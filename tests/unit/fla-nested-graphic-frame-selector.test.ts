@@ -427,14 +427,99 @@ describe('nested Graphic authored-frame selection', () => {
     expect(selectedInstance?.playbackMode).toBeUndefined();
   });
 
-  it('fails closed for missing playback mode with a multi-frame Graphic', () => {
-    const parent = frame(0,
+  it('defaults omitted playbackMode with a multi-frame Graphic to loop while preserving absent provenance', () => {
+    const omittedParent = frame(0,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic">${matrix()}</DOMSymbolInstance>`,
+      8);
+    const explicitLoopParent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
+      8);
+    const omittedSource = adapt(omittedParent, emptyFrames(6));
+    const explicitSource = adapt(explicitLoopParent, emptyFrames(6));
+
+    const omittedFrames: number[] = [];
+    const explicitFrames: number[] = [];
+    for (let parentFrameIndex = 0; parentFrameIndex < 8; parentFrameIndex += 1) {
+      const omittedPrepared = prepareFlaNestedGraphicFrameSelections(
+        omittedSource,
+        graphicRoot(omittedSource, 'parent', parentFrameIndex),
+      );
+      const explicitPrepared = prepareFlaNestedGraphicFrameSelections(
+        explicitSource,
+        graphicRoot(explicitSource, 'parent', parentFrameIndex),
+      );
+      expect(omittedPrepared.ok).toBe(true);
+      expect(explicitPrepared.ok).toBe(true);
+      if (!omittedPrepared.ok || !explicitPrepared.ok) return;
+
+      const omittedSelection = omittedPrepared.selections[0];
+      const explicitSelection = explicitPrepared.selections[0];
+      expect(omittedSelection).toBeDefined();
+      expect(explicitSelection).toBeDefined();
+      if (!omittedSelection || !explicitSelection) return;
+      expect(omittedSelection).toMatchObject({
+        firstFrameWasExplicit: false,
+        effectiveFirstFrame: 0,
+        childFrameCount: 6,
+        selectedChildFrameIndex: explicitSelection.selectedChildFrameIndex,
+        selectionRule: 'loop-parent-timeline',
+      });
+      expect(omittedSelection).not.toHaveProperty('playbackMode');
+      expect(omittedSelection).not.toHaveProperty('selectionBasis');
+      expect(omittedSelection.firstFrame).toBeUndefined();
+
+      const selectedInstance = omittedPrepared.resolverInput.root.frameContext.layers
+        .flatMap((layer) => layer.elements)
+        .find((element) => element.kind === 'symbol');
+      expect(selectedInstance?.playbackMode).toBeUndefined();
+
+      omittedFrames.push(omittedSelection.selectedChildFrameIndex);
+      explicitFrames.push(explicitSelection.selectedChildFrameIndex);
+    }
+
+    expect(omittedFrames).toEqual([0, 1, 2, 3, 4, 5, 0, 1]);
+    expect(explicitFrames).toEqual(omittedFrames);
+  });
+
+  it('applies authored firstFrame when playbackMode is omitted on a multi-frame Graphic', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" firstFrame="2">${matrix()}</DOMSymbolInstance>`,
+      6);
+    const source = adapt(parent, emptyFrames(6));
+
+    const selectedFrames: number[] = [];
+    for (let parentFrameIndex = 0; parentFrameIndex < 6; parentFrameIndex += 1) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(
+        source,
+        graphicRoot(source, 'parent', parentFrameIndex),
+      );
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+
+      const selection = prepared.selections[0];
+      expect(selection).toBeDefined();
+      if (!selection) return;
+      expect(selection).toMatchObject({
+        firstFrame: '2',
+        firstFrameWasExplicit: true,
+        effectiveFirstFrame: 2,
+        childFrameCount: 6,
+        selectionRule: 'loop-parent-timeline',
+      });
+      expect(selection).not.toHaveProperty('playbackMode');
+      selectedFrames.push(selection.selectedChildFrameIndex);
+    }
+
+    expect(selectedFrames).toEqual([2, 3, 4, 5, 0, 1]);
+  });
+
+  it('still fails closed when explicit playbackMode is empty string', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="">${matrix()}</DOMSymbolInstance>`,
       4);
-    const source = adapt(parent, emptyFrames(4));
+    const source = adapt(parent, emptyFrames(6));
     const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
-    expect(result).toMatchObject({ ok: false, code: 'UNKNOWN_PLAYBACK_DEFAULT' });
-    if (!result.ok) expect(result.message).toContain('childFrameCount=4');
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
   });
 
   it('fails closed when the child Graphic has no valid frame range', () => {

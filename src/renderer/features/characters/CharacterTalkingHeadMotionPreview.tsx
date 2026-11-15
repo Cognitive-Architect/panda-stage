@@ -8,6 +8,7 @@ import {
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblySnapshot } from '../../stores/characterAssemblySessionStore';
 import { buildCharacterAssemblyPreviewVisual } from './characterAssemblyPreview';
+import { GraphicFacePreview } from './GraphicFacePicker';
 
 type HeadedCompositeCharacter = Extract<Character, { mode: 'composite' }> & {
   head: NonNullable<Extract<Character, { mode: 'composite' }>['head']>;
@@ -158,8 +159,10 @@ export function CharacterTalkingHeadMotionPreview({
         expressionAssets: character.expressions.map((expression) => ({
           expressionId: expression.id,
           assetId: expression.assetId,
+          ...(expression.visualSource ? { visualSource: expression.visualSource } : {}),
         })),
         mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+        ...(character.mouthOpenVisualSource ? { mouthOpenVisualSource: character.mouthOpenVisualSource } : {}),
       },
     }),
     [character, project.id],
@@ -176,6 +179,8 @@ export function CharacterTalkingHeadMotionPreview({
 
   const bodyPart = visual.parts.find((part) => part.slot === 'body');
   const facePart = visual.parts.find((part) => part.slot === 'face');
+  const faceSource = facePart?.source.kind === 'character-face-fla-graphic' ? facePart.source : null;
+  const faceCanvas = faceSource ? project.animations.find(candidate => candidate.id === faceSource.animationId)?.source.canvas : null;
   const headBounds = transformVisualRectByPart(
     visual.headPart.localRect,
     visual.headPart,
@@ -277,7 +282,7 @@ export function CharacterTalkingHeadMotionPreview({
                   visual.headPart.flipX,
                 )
               : null}
-            {facePart?.assetId
+            {faceSource && faceCanvas ? <div className="character-assembly-part character-assembly-graphic-face" style={{ left: centerX + character.facePlacement.offsetX - faceCanvas.width * character.facePlacement.scale / 2, top: centerY + character.facePlacement.offsetY - faceCanvas.height * character.facePlacement.scale / 2, width: faceCanvas.width * character.facePlacement.scale, height: faceCanvas.height * character.facePlacement.scale, transform: `rotate(${character.facePlacement.rotationDeg}deg) scaleX(${character.facePlacement.flipX ? -1 : 1})`, transformOrigin: 'center' }}><GraphicFacePreview source={{ kind: 'fla-graphic', animationId: faceSource.animationId, firstFrame: faceSource.firstFrame }} /></div> : facePart?.assetId
               ? renderPart(
                   facePart.assetId,
                   facePart.localRect,

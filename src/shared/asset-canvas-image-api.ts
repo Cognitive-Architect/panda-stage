@@ -68,10 +68,12 @@ export const AssetCanvasImageReadResponseSchema = z.union([
             'ASSET_CANVAS_IMAGE_PROJECT_NOT_TRACKED',
             'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
             'ASSET_CANVAS_IMAGE_HASH_MISMATCH',
+            'ASSET_CANVAS_IMAGE_SOURCE_MISSING',
             'ASSET_CANVAS_IMAGE_READ_FAILED',
           ]),
           message: z.string().trim().min(1).max(1_000),
           assetId: z.string().trim().min(1).max(200),
+          relativePath: z.string().trim().min(1).max(32_767).optional(),
         })
         .strict(),
     })

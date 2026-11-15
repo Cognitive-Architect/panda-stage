@@ -13,6 +13,8 @@ import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { CharacterTalkingHeadMotionPreview } from './CharacterTalkingHeadMotionPreview';
 import { ExpressionEditor } from './ExpressionEditor';
+import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
+import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
 import {
   ImageAssetPicker,
   ImageAssetPickerSelectedSurface,
@@ -300,6 +302,9 @@ export interface CharacterEditorProps {
   onAddExpression: (name: string, assetId: string) => void;
   onRenameExpression: (expressionId: string, name: string) => void;
   onSetExpressionAsset: (expressionId: string, assetId: string) => void;
+  onSetExpressionSource?: (expressionId: string, source: CharacterFaceSource) => void;
+  onAddGraphicExpression?: (name: string, source: CharacterFaceGraphicSource) => void;
+  onSetMouthSource?: (source: CharacterFaceSource | null) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
@@ -312,6 +317,7 @@ export interface CharacterEditorProps {
   onSelectAssemblyEditTarget?: (target: CharacterAssemblyEditTarget) => void;
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
+  onSetAssemblyMouthSource?: (source: CharacterFaceSource | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
   onSetTalkingHeadMotionIntensityPercent?: (intensityPercent: number) => void;
   hasCurrentShot?: boolean;
@@ -337,6 +343,9 @@ export function CharacterEditor({
   onAddExpression,
   onRenameExpression,
   onSetExpressionAsset,
+  onSetExpressionSource,
+  onAddGraphicExpression,
+  onSetMouthSource,
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
@@ -349,6 +358,7 @@ export function CharacterEditor({
   onSelectAssemblyEditTarget = () => undefined,
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
+  onSetAssemblyMouthSource,
   onSetDefaultTransform,
   onSetTalkingHeadMotionIntensityPercent = () => undefined,
   hasCurrentShot = false,
@@ -538,10 +548,10 @@ export function CharacterEditor({
   const defaultExpressionAsset = defaultExpression
     ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
     : undefined;
-  const defaultThumbnail = defaultExpression
+  const defaultThumbnail = defaultExpression?.assetId
     ? thumbnails[defaultExpression.assetId]
     : undefined;
-  const defaultAssetResolved = Boolean(defaultExpressionAsset);
+  const defaultAssetResolved = Boolean(defaultExpressionAsset || defaultExpression?.visualSource);
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
@@ -549,9 +559,9 @@ export function CharacterEditor({
   );
   const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
   const formalDefaultAssetAvailable = Boolean(
-    formalDefaultExpression && imageAssets.some(
+    formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
       (asset) => asset.id === formalDefaultExpression.assetId,
-    ),
+    )),
   );
   const placementUnavailableReason = disabled
     ? '请先打开项目'
@@ -835,11 +845,11 @@ export function CharacterEditor({
                 (defaultAssetResolved ? 'loading' : 'missing')
               }
             >
-              {defaultThumbnail?.status === 'ready' && defaultExpression ? (
+              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : defaultThumbnail?.status === 'ready' && defaultExpression ? (
                 <img
                   alt={`${character.name} 默认表情`}
                   onError={() =>
-                    onThumbnailError(defaultExpression.assetId)
+                    onThumbnailError(defaultExpression.assetId ?? '')
                   }
                   src={defaultThumbnail.dataUrl}
                 />
@@ -929,7 +939,7 @@ export function CharacterEditor({
                     aria-expanded={expressionAddOpen}
                     className="character-detail-add-expression-trigger"
                     data-testid="expression-add-trigger"
-                    disabled={disabled || imageAssets.length === 0}
+                    disabled={disabled || (imageAssets.length === 0 && !project?.animations.some(animation => 'kind' in animation && animation.kind === 'fla-graphic'))}
                     onClick={() =>
                       setExpressionAddOpen((isOpen) => !isOpen)
                     }
@@ -978,6 +988,7 @@ export function CharacterEditor({
               </button>
             </span>
           </label>
+          <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-picker" disabled={disabled}>
           <ImageAssetPicker
             assets={imageAssets}
             emptyOption={{
@@ -993,6 +1004,7 @@ export function CharacterEditor({
             thumbnails={thumbnails}
             disabled={disabled}
           />
+          </GraphicFacePicker>
           <label>
             默认缩放
             <input
@@ -1063,11 +1075,15 @@ export function CharacterEditor({
                     className="character-expression-summary-preview"
                     expression={expression}
                     onThumbnailError={onThumbnailError}
-                    thumbnail={thumbnails[expression.assetId]}
+                    thumbnail={expression.assetId ? thumbnails[expression.assetId] : undefined}
                   />
                   <span className="character-expression-summary-copy">
                     <strong>{expression.name}</strong>
-                    <span>{asset?.name ?? expression.assetId}</span>
+                    <span>
+                      {expression.visualSource
+                        ? `第 ${expression.visualSource.firstFrame + 1} 帧`
+                        : (asset?.name ?? expression.assetId)}
+                    </span>
                   </span>
                   {expression.id === character.defaultExpressionId ? (
                     <em>默认表情</em>
@@ -1231,7 +1247,7 @@ export function CharacterEditor({
                         <small>
                           {defaultExpressionAsset
                             ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                            : '素材不可用'}
+                            : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
                         </small>
                       </span>
                     </button>
@@ -1248,6 +1264,7 @@ export function CharacterEditor({
                   </ImageAssetPickerSelectedSurface>
                 ) : null}
               </div>
+              <GraphicFacePicker source={assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
               <ImageAssetPicker
                 assets={imageAssets}
                 emptyOption={{
@@ -1270,6 +1287,7 @@ export function CharacterEditor({
                   ) : undefined
                 }
               />
+              </GraphicFacePicker>
             </section>
           ) : null}
           <section
@@ -1290,6 +1308,8 @@ export function CharacterEditor({
               onRemove={onRemoveExpression}
               onRename={onRenameExpression}
               onSetAsset={onSetExpressionAsset}
+              onSetSource={onSetExpressionSource}
+              onAddGraphic={onAddGraphicExpression}
               onSetDefault={onSetDefaultExpression}
               onThumbnailError={onThumbnailError}
               compactDetailWorkspace
@@ -1404,9 +1424,10 @@ export function CharacterEditor({
             {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
-                className={`character-mouth-state${character.mouthOpenAssetId ? ' is-configured' : ''}`}
-                data-mouth-configured={Boolean(character.mouthOpenAssetId)}
+                className={`character-mouth-state${character.mouthOpenAssetId || character.mouthOpenVisualSource ? ' is-configured' : ''}`}
+                data-mouth-configured={Boolean(character.mouthOpenAssetId || character.mouthOpenVisualSource)}
               >
+                <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
                 <ImageAssetPicker
                   assets={imageAssets}
                   emptyActionLabel="选择图片"
@@ -1434,6 +1455,7 @@ export function CharacterEditor({
                     ) : undefined
                   }
                 />
+                </GraphicFacePicker>
               </div>
             </section>
             ) : null}
@@ -1472,6 +1494,8 @@ export function CharacterEditor({
           onRemove={onRemoveExpression}
           onRename={onRenameExpression}
           onSetAsset={onSetExpressionAsset}
+          onSetSource={onSetExpressionSource}
+          onAddGraphic={onAddGraphicExpression}
           onSetDefault={onSetDefaultExpression}
           onThumbnailError={onThumbnailError}
           presentation={presentation}

@@ -566,7 +566,7 @@ export function ProductPreviewOverlay({
           failure.assetId === rule.sourceAssetId,
       ),
     )
-    .map((rule) => rule.fallbackAssetId);
+    .flatMap((rule) => rule.fallbackAssetIds ?? [rule.fallbackAssetId]);
   const imageScope = {
     ...imagePlan,
     requiredAssetIds: [

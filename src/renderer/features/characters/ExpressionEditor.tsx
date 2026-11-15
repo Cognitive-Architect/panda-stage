@@ -4,9 +4,12 @@ import type {
   CharacterDimensionWarning,
   ExpressionCharacter,
   ImageAsset,
+  CharacterFaceSource,
+  CharacterFaceGraphicSource,
 } from '../../../domain';
-import type { ThumbnailState } from '../assets/AssetCard';
+import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCard';
 import { ImageAssetPicker } from './ImageAssetPicker';
+import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
@@ -27,6 +30,8 @@ export interface ExpressionEditorProps {
   onAdd: (name: string, assetId: string) => void;
   onRename: (expressionId: string, name: string) => void;
   onSetAsset: (expressionId: string, assetId: string) => void;
+  onSetSource?: (expressionId: string, source: CharacterFaceSource) => void;
+  onAddGraphic?: (name: string, source: CharacterFaceGraphicSource) => void;
   onRemove: (expressionId: string) => void;
   onSetDefault: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
@@ -72,6 +77,9 @@ function ExpressionThumbnail({
         thumbnail?.status === 'missing' ? thumbnail.reason : undefined
       }
       data-thumbnail-status={status}
+      data-thumbnail-error-code={thumbnail?.status === 'missing' ? thumbnail.errorCode : undefined}
+      data-thumbnail-failure-layer={thumbnail?.status === 'missing' ? thumbnail.failureLayer : undefined}
+      title={thumbnailDiagnosticTitle(thumbnail)}
     >
       {thumbnail?.status === 'ready' ? (
         <img
@@ -158,12 +166,15 @@ function LegacyExpressionEditor({
   onAdd,
   onRename,
   onSetAsset,
+  onSetSource,
+  onAddGraphic,
   onRemove,
   onSetDefault,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [newAssetId, setNewAssetId] = useState(imageAssets[0]?.id ?? '');
+  const [newGraphic, setNewGraphic] = useState<CharacterFaceGraphicSource>();
 
   return (
     <section className="expression-editor" aria-label="表情管理">
@@ -195,6 +206,7 @@ function LegacyExpressionEditor({
                     }}
                   />
                 </label>
+                <GraphicFacePicker source={expression.visualSource} onChange={source => onSetSource?.(expression.id, source)} testId={`expression-asset-picker-${expression.id}`} disabled={disabled}>
                 <ImageAssetPicker
                   assets={imageAssets}
                   label="图片素材"
@@ -203,11 +215,12 @@ function LegacyExpressionEditor({
                   }}
                   onThumbnailError={onThumbnailError}
                   searchAndPaginate
-                  selectedAssetId={expression.assetId}
+                  selectedAssetId={expression.assetId ?? null}
                   testId={`expression-asset-picker-${expression.id}`}
                   thumbnails={thumbnails}
                   disabled={disabled}
                 />
+                </GraphicFacePicker>
               </div>
               <div className="expression-actions">
                 {isDefault ? (
@@ -242,8 +255,9 @@ function LegacyExpressionEditor({
         className="expression-add-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!newName.trim() || !newAssetId) return;
-          onAdd(newName, newAssetId);
+          if (!newName.trim() || (!newAssetId && !newGraphic)) return;
+          if (newGraphic) onAddGraphic?.(newName, newGraphic);
+          else onAdd(newName, newAssetId);
           setNewName('');
         }}
       >
@@ -257,18 +271,20 @@ function LegacyExpressionEditor({
             value={newName}
           />
         </label>
+        <GraphicFacePicker source={newGraphic} onChange={source => { if (source.kind === 'fla-graphic') setNewGraphic(source); }} onClear={() => setNewGraphic(undefined)} testId="expression-add-asset-picker" disabled={disabled}>
         <ImageAssetPicker
           assets={imageAssets}
           label="图片素材"
-          onChange={(assetId) => setNewAssetId(assetId ?? '')}
+          onChange={(assetId) => { setNewGraphic(undefined); setNewAssetId(assetId ?? ''); }}
           onThumbnailError={onThumbnailError}
           selectedAssetId={newAssetId || null}
           testId="expression-add-asset-picker"
           thumbnails={thumbnails}
           disabled={disabled}
         />
+        </GraphicFacePicker>
         <button
-          disabled={disabled || !newName.trim() || !newAssetId}
+          disabled={disabled || !newName.trim() || (!newAssetId && !newGraphic)}
           type="submit"
         >
           添加表情
@@ -305,12 +321,15 @@ function LandscapeExpressionEditor({
   onAdd,
   onRename,
   onSetAsset,
+  onSetSource,
+  onAddGraphic,
   onRemove,
   onSetDefault,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
   const [newName, setNewName] = useState('');
   const [newAssetId, setNewAssetId] = useState(imageAssets[0]?.id ?? '');
+  const [newGraphic, setNewGraphic] = useState<CharacterFaceGraphicSource>();
   const [editingExpressionId, setEditingExpressionId] = useState<string | null>(
     null,
   );
@@ -321,6 +340,7 @@ function LandscapeExpressionEditor({
       return;
     }
     setNewAssetId(imageAssets[0]?.id ?? '');
+    setNewGraphic(undefined);
   }, [imageAssets, newAssetId]);
 
   useEffect(() => {
@@ -360,6 +380,7 @@ function LandscapeExpressionEditor({
     onAddOpenChange(false);
     setNewName('');
     setNewAssetId(imageAssets[0]?.id ?? '');
+    setNewGraphic(undefined);
   };
 
   const expressionWarnings = (expressionId: string): CharacterDimensionWarning[] =>
@@ -388,7 +409,7 @@ function LandscapeExpressionEditor({
             aria-expanded={isAddOpen}
             className="expression-add-trigger"
             data-testid="expression-add-trigger"
-            disabled={disabled || imageAssets.length === 0}
+            disabled={disabled}
             onClick={() => {
               if (!isAddOpen) cancelExpressionEdit();
               onAddOpenChange(!isAddOpen);
@@ -405,8 +426,9 @@ function LandscapeExpressionEditor({
           data-testid="expression-add-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!newName.trim() || !newAssetId) return;
-            onAdd(newName.trim(), newAssetId);
+            if (!newName.trim() || (!newAssetId && !newGraphic)) return;
+            if (newGraphic) onAddGraphic?.(newName.trim(), newGraphic);
+            else onAdd(newName.trim(), newAssetId);
             cancelAdd();
           }}
         >
@@ -422,16 +444,18 @@ function LandscapeExpressionEditor({
               value={newName}
             />
           </label>
+          <GraphicFacePicker source={newGraphic} onChange={source => { if (source.kind === 'fla-graphic') setNewGraphic(source); }} onClear={() => setNewGraphic(undefined)} testId="expression-add-asset-picker" disabled={disabled}>
           <ImageAssetPicker
             assets={imageAssets}
             label="素材"
-            onChange={(assetId) => setNewAssetId(assetId ?? '')}
+            onChange={(assetId) => { setNewGraphic(undefined); setNewAssetId(assetId ?? ''); }}
             onThumbnailError={onThumbnailError}
             selectedAssetId={newAssetId || null}
             testId="expression-add-asset-picker"
             thumbnails={thumbnails}
             disabled={disabled}
           />
+          </GraphicFacePicker>
           <div className="expression-form-actions">
             <button
               data-testid="expression-add-cancel"
@@ -442,7 +466,7 @@ function LandscapeExpressionEditor({
             </button>
             <button
               data-testid="expression-add-submit"
-              disabled={disabled || !newName.trim() || !newAssetId}
+              disabled={disabled || !newName.trim() || (!newAssetId && !newGraphic)}
               type="submit"
             >
               添加表情
@@ -469,6 +493,7 @@ function LandscapeExpressionEditor({
             />
           </label>
           <div className="expression-current-asset">
+            <GraphicFacePicker key={editingExpression.id} source={editingExpression.visualSource} onChange={source => onSetSource?.(editingExpression.id, source)} testId={`expression-asset-picker-${editingExpression.id}`} disabled={disabled}>
             <ImageAssetPicker
               assets={imageAssets}
               label="图片"
@@ -478,11 +503,12 @@ function LandscapeExpressionEditor({
               onThumbnailError={onThumbnailError}
               presentation="inline"
               searchAndPaginate
-              selectedAssetId={editingExpression.assetId}
+              selectedAssetId={editingExpression.assetId ?? null}
               testId={`expression-asset-picker-${editingExpression.id}`}
               thumbnails={thumbnails}
               disabled={disabled}
             />
+            </GraphicFacePicker>
           </div>
           {expressionWarnings(editingExpression.id).map((warning) => (
             <ExpressionWarning
@@ -518,7 +544,7 @@ function LandscapeExpressionEditor({
           const asset = imageAssets.find(
             (candidate) => candidate.id === expression.assetId,
           );
-          const thumbnail = thumbnails[expression.assetId];
+          const thumbnail = expression.assetId ? thumbnails[expression.assetId] : undefined;
           const isDefault =
             expression.id === character.defaultExpressionId;
           const isEditing = editingExpressionId === expression.id;
@@ -532,14 +558,14 @@ function LandscapeExpressionEditor({
               key={expression.id}
             >
               <div className="expression-card-main">
-                <ExpressionThumbnail
-                  assetId={expression.assetId}
+                {expression.visualSource ? <div className="expression-card-preview"><GraphicFacePreview source={expression.visualSource} label={expression.name} /></div> : <ExpressionThumbnail
+                  assetId={expression.assetId ?? ''}
                   assetAvailable={Boolean(asset)}
                   className="expression-card-preview"
                   expressionName={expression.name}
                   onThumbnailError={onThumbnailError}
                   thumbnail={thumbnail}
-                />
+                />}
                 <div className="expression-card-copy">
                   <div className="expression-card-title-row">
                     <strong>{expression.name}</strong>
@@ -554,7 +580,7 @@ function LandscapeExpressionEditor({
                     ) : null}
                   </div>
                   <span className="expression-card-asset">
-                    {expressionAssetLabel(asset, expression.assetId)}
+                    {expression.visualSource ? `第 ${expression.visualSource.firstFrame + 1} 帧` : expressionAssetLabel(asset, expression.assetId ?? '')}
                   </span>
                 </div>
               </div>

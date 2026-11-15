@@ -9,6 +9,7 @@ import {
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
+import { resolveCharacterFaceSource } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -238,7 +239,7 @@ function addShotVisualAssets(
     if (
       !character ||
       character.mode === 'adaptive-parts' ||
-      !character.mouthOpenAssetId
+      (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
       shot.layers
@@ -257,6 +258,14 @@ function addShotVisualAssets(
       characterLayerIds,
     );
     if (!visibleDuringMouthOpen) continue;
+    if (character.mouthOpenVisualSource) {
+      const resolved = resolveCharacterFaceSource(project, character.mouthOpenVisualSource);
+      for (const assetId of resolved.flaGraphic?.resourceAssetIds ?? []) {
+        const asset = project.assets.find(candidate => candidate.id === assetId);
+        if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage);
+      }
+      continue;
+    }
     const mouthAsset = project.assets.find(
       (asset) =>
         asset.id === character.mouthOpenAssetId && asset.kind === 'image',

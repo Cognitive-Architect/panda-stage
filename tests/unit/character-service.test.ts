@@ -512,7 +512,7 @@ describe('CharacterService', () => {
       'shot-layer-expression',
       'timeline-expression-event',
     ]);
-    expect(scanAssetReferences(replaced, oldAssetId)).toEqual([]);
+    expect(scanAssetReferences(replaced, oldAssetId!)).toEqual([]);
     expect(
       characterService.dimensionWarnings(replaced, character.id),
     ).toEqual([

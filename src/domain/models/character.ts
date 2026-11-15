@@ -6,7 +6,7 @@ import {
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
 
-export const CharacterExpressionSchema = z
+export const CharacterExpressionV19Schema = z
   .object({
     id: IdSchema,
     name: NameSchema,
@@ -19,7 +19,7 @@ const CharacterBaseShape = {
   name: NameSchema,
   baseAssetId: IdSchema,
   defaultVoiceProfileId: IdSchema,
-  expressions: z.array(CharacterExpressionSchema).min(1),
+  expressions: z.array(CharacterExpressionV19Schema).min(1),
   defaultExpressionId: IdSchema,
   mouthOpenAssetId: IdSchema.optional(),
   defaultScale: FiniteNumberSchema.min(0.1).max(10),
@@ -532,11 +532,57 @@ export const CharacterV17Schema = z.discriminatedUnion('mode', [
  * assembly is intentionally a later section; this schema only owns the
  * persisted configuration and its references.
  */
-export const CharacterSchema = z.discriminatedUnion('mode', [
+export const CharacterV19Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema,
   CompositeCharacterSchema,
   AdaptivePartsCharacterSchema,
 ]);
+
+/** A Graphic face is always a frozen instance, never a raster-cache identity. */
+export const CharacterFaceGraphicSourceSchema = z.object({
+  kind: z.literal('fla-graphic'),
+  animationId: IdSchema,
+  firstFrame: z.number().int().nonnegative(),
+}).strict();
+
+export const CharacterExpressionSchema = CharacterExpressionV19Schema.extend({
+  assetId: IdSchema.optional(),
+  visualSource: CharacterFaceGraphicSourceSchema.optional(),
+}).superRefine((expression, context) => {
+  if (Boolean(expression.assetId) === Boolean(expression.visualSource)) {
+    context.addIssue({ code: 'custom', path: ['visualSource'], message: 'Expression requires exactly one image or Graphic source.' });
+  }
+});
+
+const CurrentFaceShape = {
+  baseAssetId: IdSchema.optional(),
+  expressions: z.array(CharacterExpressionSchema).min(1),
+  mouthOpenVisualSource: CharacterFaceGraphicSourceSchema.optional(),
+};
+
+export const CharacterSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend(CurrentFaceShape),
+  CompositeCharacterSchema.extend(CurrentFaceShape),
+  AdaptivePartsCharacterSchema,
+]).superRefine((character, context) => {
+  if (character.mode === 'adaptive-parts') return;
+  if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
+  }
+});
+
+export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
+export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
+
+export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
+  if (expression.visualSource) return expression.visualSource;
+  if (expression.assetId) return { kind: 'image', assetId: expression.assetId };
+  throw new Error(`Expression ${expression.id} has no visual source.`);
+}
+
+export function resolveMouthVisualSource(character: ExpressionCharacter): CharacterFaceSource | null {
+  return character.mouthOpenVisualSource ?? (character.mouthOpenAssetId ? { kind: 'image', assetId: character.mouthOpenAssetId } : null);
+}
 
 /** Strict persisted Character shape accepted by Project schema v14. */
 export const CharacterV14Schema = z.discriminatedUnion('mode', [

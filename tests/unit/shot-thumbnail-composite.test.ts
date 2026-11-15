@@ -306,7 +306,7 @@ function makeAdaptivePartsProject(): Project {
   const project = new CharacterService().createAdaptiveParts(base, {
     name: 'Synthetic Adaptive Character',
     sourceRootTransform: adaptivePartsSourceRootTransform(),
-    parts: adaptivePartsFixture(sourceCharacter.expressions[0]!.assetId),
+    parts: adaptivePartsFixture(sourceCharacter.expressions[0]!.assetId!),
   });
   const character = project.characters.at(-1)!;
   if (character.mode !== 'adaptive-parts') {
@@ -879,7 +879,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
     const [main, composite] = canvases;
     const faceAssetId = asExpressionCharacter(project.characters[0]!).expressions[0]!.assetId;
     expect(composite!.context.draws.map(({ image }) => (image as FakeImage).src)).toEqual(
-      [readyThumbnail(IDS.body).dataUrl, readyThumbnail(faceAssetId).dataUrl],
+      [readyThumbnail(IDS.body).dataUrl, readyThumbnail(faceAssetId!).dataUrl],
     );
     expect(composite!.context.draws.map(({ alpha }) => alpha)).toEqual([1, 1]);
     expect(main!.context.draws.at(-1)).toMatchObject({ image: composite, alpha: 0.5 });

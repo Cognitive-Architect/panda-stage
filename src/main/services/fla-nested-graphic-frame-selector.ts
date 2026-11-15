@@ -132,25 +132,21 @@ function selectAuthoredChildFrame(
   if (!Number.isSafeInteger(childFrameCount) || childFrameCount <= 0) {
     return failure('UNSUPPORTED_TIMING', 'Nested Graphic child timeline has no valid frame range', sourceAddress);
   }
-  const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
-  // #726: the one-frame case is invariant across playback modes. Keep the source
-  // mode absent; a multiframe child still needs an explicit playback contract.
-  if (mode === undefined) {
-    if (childFrameCount === 1) {
-      return {
-        ok: true,
-        frameIndex: 0,
-        selectionRule: 'mode-invariant-single-frame',
-        selectionBasis: 'mode-invariant-single-frame',
-        effectiveFirstFrame: 0,
-      };
-    }
-    return failure(
-      'UNKNOWN_PLAYBACK_DEFAULT',
-      `UNKNOWN_PLAYBACK_DEFAULT: missing Graphic playback mode with childFrameCount=${childFrameCount}`,
-      sourceAddress,
-    );
+  const authoredMode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
+  // #726: the one-frame case is invariant across playback modes while keeping
+  // source mode absent. #1114: multiframe instances without an authored `loop`
+  // attribute use Adobe Animate's default `'loop'` evaluation semantics without
+  // fabricating `playbackMode` onto the preserved raw provenance.
+  if (authoredMode === undefined && childFrameCount === 1) {
+    return {
+      ok: true,
+      frameIndex: 0,
+      selectionRule: 'mode-invariant-single-frame',
+      selectionBasis: 'mode-invariant-single-frame',
+      effectiveFirstFrame: 0,
+    };
   }
+  const mode = authoredMode ?? 'loop';
   if (!Number.isSafeInteger(parentFrameIndex) || !Number.isSafeInteger(parentSpanStart) ||
       parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < parentSpanStart) {
     return failure(

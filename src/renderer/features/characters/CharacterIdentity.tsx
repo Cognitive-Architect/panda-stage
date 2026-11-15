@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { GraphicFacePreview } from './GraphicFacePicker';
 import type {
   Character,
   CharacterExpression,
   ExpressionCharacter,
   ImageAsset,
+  Project,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import {
   thumbnailStateFromResponse,
+  thumbnailStateAfterDecodeError,
   type ThumbnailState,
 } from '../assets/AssetCard';
 import {
@@ -55,6 +59,7 @@ function thumbnailLabel(
 export function useProjectImageThumbnails(
   projectRoot: string | null,
   imageAssets: readonly ImageAsset[],
+  project: Project | null = null,
 ): {
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   onThumbnailError: (assetId: string) => void;
@@ -62,6 +67,7 @@ export function useProjectImageThumbnails(
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const svgThumbnails = useGraphicSvgThumbnails(projectRoot, project, imageAssets);
 
   useEffect(() => {
     let active = true;
@@ -78,6 +84,7 @@ export function useProjectImageThumbnails(
     }
 
     for (const asset of imageAssets) {
+      if (svgThumbnails.assetIds.has(asset.id)) continue;
       void window.pandaStage.assets
         .readThumbnail({
           projectRoot,
@@ -103,16 +110,22 @@ export function useProjectImageThumbnails(
     return () => {
       active = false;
     };
-  }, [imageAssets, projectRoot]);
+  }, [imageAssets, projectRoot, svgThumbnails.assetIds]);
 
   const onThumbnailError = useCallback((assetId: string): void => {
-    setThumbnails((current) => ({
+    if (svgThumbnails.assetIds.has(assetId)) {
+      svgThumbnails.onThumbnailError(assetId);
+      return;
+    }
+    setThumbnails((current) => current[assetId] ? ({
       ...current,
-      [assetId]: { status: 'missing', reason: 'error' },
-    }));
-  }, []);
+      [assetId]: thumbnailStateAfterDecodeError(
+        current[assetId], imageAssets.find((asset) => asset.id === assetId)?.relativePath,
+      ),
+    }) : current);
+  }, [imageAssets, svgThumbnails.assetIds, svgThumbnails.onThumbnailError]);
 
-  return { onThumbnailError, thumbnails };
+  return { onThumbnailError, thumbnails: { ...thumbnails, ...svgThumbnails.thumbnails } };
 }
 
 /** Load only the image assets that can act as a Character avatar. */
@@ -127,7 +140,7 @@ export function useCharacterAvatarThumbnails(
     const ids = new Set<string>();
     for (const character of characters) {
       const expression = getCharacterDefaultExpression(character);
-      if (expression) ids.add(expression.assetId);
+      if (expression?.assetId) ids.add(expression.assetId);
     }
     return ids;
   }, [characters]);
@@ -143,6 +156,7 @@ export function useCharacterAvatarThumbnails(
   return useProjectImageThumbnails(
     snapshot?.projectRoot ?? null,
     avatarAssets,
+    snapshot?.project ?? null,
   );
 }
 
@@ -181,12 +195,12 @@ export function CharacterAvatar({
       data-character-avatar="true"
       data-thumbnail-status={status}
     >
-      {thumbnail?.status === 'ready' && defaultExpression ? (
+      {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : thumbnail?.status === 'ready' && defaultExpression ? (
         <img
           alt={`${character.name} 默认表情`}
           decoding="async"
           loading="lazy"
-          onError={() => onThumbnailError(defaultExpression.assetId)}
+          onError={() => onThumbnailError(defaultExpression.assetId ?? '')}
           src={thumbnail.dataUrl}
         />
       ) : (
@@ -478,12 +492,12 @@ export function CharacterExpressionThumbnail({
         .join(' ')}
       data-thumbnail-status={status}
     >
-      {thumbnail?.status === 'ready' ? (
+      {expression.visualSource ? <GraphicFacePreview source={expression.visualSource} label={expression.name} /> : thumbnail?.status === 'ready' ? (
         <img
           alt={`${expression.name} 表情缩略图`}
           decoding="async"
           loading="lazy"
-          onError={() => onThumbnailError(expression.assetId)}
+          onError={() => onThumbnailError(expression.assetId ?? '')}
           src={thumbnail.dataUrl}
         />
       ) : (

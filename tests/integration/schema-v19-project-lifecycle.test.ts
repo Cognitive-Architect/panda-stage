@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DialogueService } from '../../src/domain';
+import { DialogueService, PROJECT_SCHEMA_VERSION } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { ProjectOperationResponseSchema } from '../../src/shared/project-api';
 import historicalV18 from '../fixtures/project-v18-character-dialogue.json';
@@ -25,7 +25,7 @@ describe('v19 file lifecycle (#1111)', () => {
     const opened = await service.open(root);
     expect(opened.sourceVersion).toBe(18);
     expect(opened.migrated).toBe(true);
-    expect(opened.project).toEqual({ ...historicalV18, schemaVersion: 19 });
+    expect(opened.project).toEqual({ ...historicalV18, schemaVersion: PROJECT_SCHEMA_VERSION });
     expect(ProjectOperationResponseSchema.safeParse({ ok: true, value: opened }).success).toBe(true);
     expect(await readFile(file, 'utf8')).toBe(serialized);
     await service.save(root, opened.project, 1);
@@ -39,7 +39,7 @@ describe('v19 file lifecycle (#1111)', () => {
     });
     await service.save(root, project, 2);
     const reopened = await new ProjectService().open(root);
-    expect(reopened.sourceVersion).toBe(19);
+    expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(reopened.migrated).toBe(false);
     expect(reopened.project).toEqual(project);
     const narrator = reopened.project.shots[0]!.dialogues[1]!;

@@ -1,6 +1,7 @@
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
+import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -116,6 +117,9 @@ export function scanAssetReferences(
       });
     }
     character.expressions.forEach((expression, expressionIndex) => {
+      if (expression.visualSource && resolveCharacterFaceSource(project, expression.visualSource).flaGraphic?.resourceAssetIds.includes(assetId)) {
+        references.push({ kind: 'character-expression', path: `characters[${characterIndex}].expressions[${expressionIndex}].visualSource`, label: `角色“${character.name}”的表情“${expression.name}”` });
+      }
       if (expression.assetId !== assetId) return;
       references.push({
         kind: 'character-expression',
@@ -131,6 +135,9 @@ export function scanAssetReferences(
         path: `characters[${characterIndex}].mouthOpenAssetId`,
         label: `角色“${character.name}”的张嘴图片`,
       });
+    }
+    if (character.mouthOpenVisualSource && resolveCharacterFaceSource(project, character.mouthOpenVisualSource).flaGraphic?.resourceAssetIds.includes(assetId)) {
+      references.push({ kind: 'character-mouth', path: `characters[${characterIndex}].mouthOpenVisualSource`, label: `角色“${character.name}”的张嘴状态` });
     }
   });
 

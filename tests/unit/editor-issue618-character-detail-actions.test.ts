@@ -197,7 +197,7 @@ describe('Issue #618 Character Detail actions', () => {
     expect(expressionEditor).toContain('data-testid="expression-add-cancel"');
     expect(expressionEditor).toContain("setNewName('');");
     expect(expressionEditor).toContain('setNewAssetId(imageAssets[0]?.id ?? \'\');');
-    expect(expressionEditor).toContain('disabled={disabled || !newName.trim() || !newAssetId}');
+    expect(expressionEditor).toContain('disabled={disabled || !newName.trim() || (!newAssetId && !newGraphic)}');
   });
 
   it('keeps the standalone Expression workspace add control and scopes final styling', () => {

@@ -36,9 +36,11 @@ import {
 } from '../../stores/characterAssemblySessionStore';
 import {
   thumbnailStateFromResponse,
+  thumbnailStateAfterDecodeError,
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
+import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import { CharacterList } from './CharacterList';
 import {
   FlaCharacterImportFlow,
@@ -265,9 +267,9 @@ export function placeCharacterInCurrentShot({
       const expression = liveCharacter.expressions.find(
         (candidate) => candidate.id === liveCharacter.defaultExpressionId,
       );
-      if (!expression || !live.snapshot.project.assets.some(
+      if (!expression || (!expression.visualSource && !live.snapshot.project.assets.some(
         (asset) => asset.kind === 'image' && asset.id === expression.assetId,
-      )) {
+      ))) {
         reportStatus('默认表情素材不可用，请先设置默认表情。');
         return false;
       }
@@ -372,12 +374,13 @@ export function CharacterManager({
       ) ?? []),
     [project],
   );
+  const svgThumbnails = useGraphicSvgThumbnails(snapshot?.projectRoot ?? null, project, imageAssets);
   const thumbnails = useMemo(() => {
     if (!project || !snapshot) return {};
-    return visibleCharacterThumbnails(
+    return { ...visibleCharacterThumbnails(
       thumbnailEntries, project.id, snapshot.projectRoot, imageAssets,
-    );
-  }, [imageAssets, project, snapshot, thumbnailEntries]);
+    ), ...svgThumbnails.thumbnails };
+  }, [imageAssets, project, snapshot, thumbnailEntries, svgThumbnails.thumbnails]);
   const selectedCharacter =
     expressionCharacters.find(
       (character) => character.id === selectedCharacterId,
@@ -453,6 +456,7 @@ export function CharacterManager({
       return;
     }
     for (const asset of imageAssets) {
+      if (svgThumbnails.assetIds.has(asset.id)) continue;
       const resourceKey = next[asset.id]!.resourceKey;
       if (next[asset.id]!.state.status !== 'loading') continue;
       if (thumbnailReadsInFlight.current.has(resourceKey)) continue;
@@ -475,7 +479,7 @@ export function CharacterManager({
         })
         .finally(() => thumbnailReadsInFlight.current.delete(resourceKey));
     }
-  }, [imageAssets, snapshot, thumbnailEntries]);
+  }, [imageAssets, snapshot, thumbnailEntries, svgThumbnails.assetIds]);
 
   const reportError = (error: unknown): void => {
     if (error instanceof CharacterServiceError) {
@@ -489,6 +493,10 @@ export function CharacterManager({
   };
 
   const markThumbnailError = (assetId: string): void => {
+    if (svgThumbnails.assetIds.has(assetId)) {
+      svgThumbnails.onThumbnailError(assetId);
+      return;
+    }
     if (!project || !snapshot) return;
     const asset = imageAssets.find((candidate) => candidate.id === assetId);
     if (!asset) return;
@@ -496,7 +504,7 @@ export function CharacterManager({
       project.id, snapshot.projectRoot, asset,
     );
     setThumbnailEntries((current) => current[assetId]?.resourceKey === resourceKey
-      ? { ...current, [assetId]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+      ? { ...current, [assetId]: { resourceKey, state: thumbnailStateAfterDecodeError(current[assetId]!.state, asset.relativePath) } }
       : current);
   };
 
@@ -526,7 +534,7 @@ export function CharacterManager({
       if (!createdCharacter || createdCharacter.mode === 'adaptive-parts') return;
       showBindingReminder(
         next,
-        createdCharacter.expressions.map((expression) => expression.assetId),
+        createdCharacter.expressions.flatMap((expression) => expression.assetId ? [expression.assetId] : []),
       );
       setSelectedCharacterId(createdCharacter.id);
       onViewChange('detail');
@@ -1071,6 +1079,15 @@ export function CharacterManager({
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
+          onSetExpressionSource={(expressionId, source) => {
+            if (selectedCharacter) mutate(() => characterStore.setExpressionVisualSource(selectedCharacter.id, expressionId, source));
+          }}
+          onAddGraphicExpression={(name, source) => {
+            if (selectedCharacter) mutate(() => characterStore.addExpression(selectedCharacter.id, { name, visualSource: source }));
+          }}
+          onSetMouthSource={(source) => {
+            if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
+          }}
           onSetDefaultTransform={(scale, flipX) => {
             if (!selectedCharacter) return;
             mutate(
@@ -1157,6 +1174,7 @@ export function CharacterManager({
           onSetAssemblyMouthAsset={(assetId) =>
             updateAssembly({ mouthOpenAssetId: assetId })
           }
+          onSetAssemblyMouthSource={source => updateAssembly(source?.kind === 'fla-graphic' ? { mouthOpenVisualSource: source, mouthOpenAssetId: null } : { mouthOpenAssetId: source?.assetId ?? null, mouthOpenVisualSource: null })}
           onThumbnailError={markThumbnailError}
           presentation={presentation}
           thumbnails={thumbnails}

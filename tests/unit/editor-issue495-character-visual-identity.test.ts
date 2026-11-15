@@ -26,7 +26,7 @@ function fixture() {
   const imageAssets = project.assets.filter((asset) => asset.kind === 'image');
   const defaultExpression = getCharacterDefaultExpression(character)!;
   const thumbnails = {
-    [defaultExpression.assetId]: { status: 'ready' as const, dataUrl },
+    [defaultExpression.assetId!]: { status: 'ready' as const, dataUrl },
   };
   return { character, defaultExpression, imageAssets, thumbnails };
 }

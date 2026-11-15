@@ -4,6 +4,7 @@ import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 
 export interface ResolveProjectAssetPathOptions {
   preservePermissionErrors?: boolean;
+  preserveMissingErrors?: boolean;
 }
 
 export async function resolveProjectAssetPath(
@@ -24,6 +25,8 @@ export async function resolveProjectAssetPath(
       ? realAssetPath
       : null;
   } catch (error) {
+    if (options.preserveMissingErrors && error instanceof Error && 'code' in error &&
+        (error.code === 'ENOENT' || error.code === 'ENOTDIR')) throw error;
     if (
       options.preservePermissionErrors &&
       filesystemPermissionErrorCode(error)

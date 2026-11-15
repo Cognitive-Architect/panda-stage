@@ -81,7 +81,7 @@ describe('Issue #505 R6.2 A09 batch recognition review', () => {
         onSelect: () => undefined,
         selectedCharacterId: null,
         showDefaultExpression: false,
-        thumbnails: { [expression.assetId]: { dataUrl, status: 'ready' } },
+        thumbnails: { [expression.assetId!]: { dataUrl, status: 'ready' } },
       }),
     );
 

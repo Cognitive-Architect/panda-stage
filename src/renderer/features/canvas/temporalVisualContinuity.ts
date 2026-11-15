@@ -197,7 +197,7 @@ function hasRequiredHardFailure(
       : null;
   return visual.resources.required.some(
     ({ assetId }) =>
-      missingAssetIds.has(assetId) && assetId !== activeMouthId,
+      missingAssetIds.has(assetId) && assetId !== activeMouthId && !visual.activeFace?.mouthResourceAssetIds?.includes(assetId),
   );
 }
 
@@ -207,7 +207,7 @@ function hasMouthHardFailure(
 ): boolean {
   return Boolean(
     visual?.activeFace?.source === 'mouth' &&
-      missingAssetIds.has(visual.activeFace.assetId),
+      (missingAssetIds.has(visual.activeFace.assetId) || visual.activeFace.mouthResourceAssetIds?.some(id => missingAssetIds.has(id))),
   );
 }
 
@@ -218,16 +218,17 @@ function mouthExpressionFallback(
 ): EvaluatedLayer | null {
   const fallbackAssetId = visual?.activeFace?.fallbackAssetId;
   if (
-    !fallbackAssetId ||
+    (!fallbackAssetId && !visual?.activeFace?.fallbackVisualSource) ||
     visual?.activeFace?.source !== 'mouth' ||
-    (missingAssetIds && !missingAssetIds.has(visual.activeFace.assetId))
+    (missingAssetIds && !hasMouthHardFailure(visual, missingAssetIds))
   ) {
     return null;
   }
   return {
     ...evaluated,
-    assetId: fallbackAssetId,
+    assetId: fallbackAssetId ?? '',
     mouthOverrideAssetId: null,
+    ...(evaluated.mouthOpen === undefined ? {} : { mouthOpen: false }),
   };
 }
 
