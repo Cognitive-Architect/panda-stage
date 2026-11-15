@@ -229,8 +229,8 @@ export class ProjectService {
     try {
       const sourceVersion = detectSchemaVersion(input);
       // Single authoritative pipeline for every persisted project schema.
-      // Current input is validated and receives the narrow compatibility
-      // normalization owned by migrateProject; legacy input is migrated there.
+      // Current input is validated unchanged; historical normalization and
+      // explicit version upgrades are owned by migrateProject.
       const project = migrateProject(input);
       const document = this.document(
         projectRoot,

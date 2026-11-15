@@ -50,7 +50,7 @@ function validateUniqueNames(
 }
 
 export function validateProjectReferences(
-  project: ProjectData,
+  project: Omit<ProjectData, 'schemaVersion'>,
   context: z.RefinementCtx,
 ): void {
   validateUniqueIds(project.assets, ['assets'], context);

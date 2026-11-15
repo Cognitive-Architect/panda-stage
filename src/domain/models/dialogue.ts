@@ -145,6 +145,17 @@ export type NarratorDialogue = Dialogue & {
   speakerType: typeof DIALOGUE_SPEAKER_NARRATOR;
 };
 
+/** Exact v6-v18 character-only shape; no speakerType was persisted. */
+export const DialogueV18Schema = z
+  .object({
+    ...dialogueBaseShape,
+    characterId: IdSchema,
+    voiceProfileId: IdSchema,
+    audioClipId: IdSchema.optional(),
+  })
+  .strict()
+  .superRefine(refineDialogueDuration);
+
 /**
  * Historical v5 Dialogue schema. At v5 `audioClipId` was mandatory because the
  * only dialogue path was audio-backed, and every speaker was a Character. Kept
