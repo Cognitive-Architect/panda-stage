@@ -743,7 +743,7 @@ export function StageRenderer({
             }
             const image = imageState.images.get(primaryPart.id);
             if (!image && !layer.visual) return null;
-            if (render.isBackground || !layer.visual) {
+            if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
                 <KonvaImage

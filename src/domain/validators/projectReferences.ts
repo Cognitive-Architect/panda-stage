@@ -408,12 +408,28 @@ export function validateProjectReferences(
           ['shots', shotIndex, 'backgroundLayerId'],
           `Shot references unknown background layer: ${shot.backgroundLayerId}`,
         );
-      } else if (background.source.kind !== 'asset') {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'backgroundLayerId'],
-          'Shot background layer must directly reference an image asset.',
-        );
+      } else {
+        const backgroundAsset =
+          background.source.kind === 'asset'
+            ? assets.get(background.source.assetId)
+            : undefined;
+        const backgroundAnimation =
+          background.source.kind === 'animation'
+            ? animations.get(background.source.animationId)
+            : undefined;
+        const validAssetBackground =
+          background.source.kind === 'asset' &&
+          (!backgroundAsset || backgroundAsset.kind === 'image');
+        const validGraphicBackground =
+          background.source.kind === 'animation' &&
+          (!backgroundAnimation || isFlaGraphicDefinition(backgroundAnimation));
+        if (!validAssetBackground && !validGraphicBackground) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'backgroundLayerId'],
+            'Shot background layer must reference an image asset or FLA Graphic definition.',
+          );
+        }
       }
     }
     const audioClips = new Map(

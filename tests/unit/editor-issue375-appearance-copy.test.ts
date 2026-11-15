@@ -43,7 +43,7 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
       getLandscapeBackgroundGuidance(
         model('empty', { backgroundLayer: null }),
       ),
-    ).toBe('请先选择图片对象。');
+    ).toBe('请先选择可设为背景的对象。');
     expect(getLandscapeBackgroundGuidance(model('invalid'))).toBe(
       '当前选择不可用，请重新选择。',
     );
@@ -51,7 +51,7 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
       '图层已锁定，解锁后可设为背景。',
     );
     expect(getLandscapeBackgroundGuidance(model('unsupported'))).toBe(
-      '此对象不能设为背景，请选择图片对象。',
+      '此对象不能设为背景。',
     );
     expect(
       getLandscapeBackgroundGuidance(

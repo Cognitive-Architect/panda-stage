@@ -1,5 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import type { Layer } from '../../../domain';
+import {
+  resolveBackgroundSourceDimensions,
+  type Layer,
+} from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
@@ -148,7 +151,7 @@ export function getLayerBackgroundControlModel(
       canSet: false,
       message: backgroundLayer
         ? '当前已有正式背景，请在此选择以管理锁定和变换。'
-        : '请先在画布中选择普通图片图层。',
+        : '请先在画布中选择可设为背景的对象。',
     };
   }
 
@@ -181,24 +184,22 @@ export function getLayerBackgroundControlModel(
       message: '请先解锁图层，再将其设为正式背景。',
     };
   }
-  const assetId =
-    layer.source.kind === 'asset' ? layer.source.assetId : undefined;
-  const asset = assetId
-    ? snapshot?.project.assets.find((candidate) => candidate.id === assetId)
-    : undefined;
-  if (!asset || asset.kind !== 'image') {
+  const dimensions = snapshot
+    ? resolveBackgroundSourceDimensions(snapshot.project, layer)
+    : null;
+  if (!dimensions) {
     return {
       ...management,
       state: 'unsupported',
       canSet: false,
-      message: '只有直接引用图片素材的图层才能设为正式背景。',
+      message: '当前对象不能设为正式背景。',
     };
   }
   return {
     ...management,
     state: 'available',
     canSet: true,
-    message: '将此直接图片图层设为正式背景后，会应用 Cover 填充几何。',
+    message: '将此图层设为正式背景后，会应用 Cover 填充几何。',
   };
 }
 
@@ -217,11 +218,8 @@ export function shouldShowLayerBackgroundControls(
   );
   if (!layer) return true;
   if (shot.backgroundLayerId === layer.id) return true;
-  if (layer.source.kind !== 'asset') return false;
-  const assetId = layer.source.assetId;
-  return snapshot?.project.assets.some(
-    (asset) => asset.id === assetId && asset.kind === 'image',
-  ) ?? false;
+  if (!snapshot) return false;
+  return resolveBackgroundSourceDimensions(snapshot.project, layer) !== null;
 }
 
 /**
@@ -240,7 +238,7 @@ export function getLandscapeBackgroundGuidance(
     case 'empty':
       return model.backgroundLayer
         ? '请先选择背景图层。'
-        : '请先选择图片对象。';
+        : '请先选择可设为背景的对象。';
     case 'invalid':
       return '当前选择不可用，请重新选择。';
     case 'background':
@@ -250,7 +248,7 @@ export function getLandscapeBackgroundGuidance(
     case 'locked':
       return '图层已锁定，解锁后可设为背景。';
     case 'unsupported':
-      return '此对象不能设为背景，请选择图片对象。';
+      return '此对象不能设为背景。';
     case 'available':
       return '';
   }

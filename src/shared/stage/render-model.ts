@@ -291,8 +291,8 @@ function buildFormalStageRenderModel(
       {
         id: layer.id,
         assetId: primaryAsset.id,
-        assetWidth: primaryAsset.width!,
-        assetHeight: primaryAsset.height!,
+        assetWidth: visual.flaGraphic?.canvas.width ?? primaryAsset.width!,
+        assetHeight: visual.flaGraphic?.canvas.height ?? primaryAsset.height!,
         x: layer.x,
         y: layer.y,
         scaleX: layer.scaleX,
@@ -310,7 +310,8 @@ function buildFormalStageRenderModel(
     const parts: StageRenderPart[] = visual.parts.map((part): StageRenderPart => {
       const isBackground =
         evaluatedShot.backgroundLayerId === layer.id &&
-        part.slot === 'single';
+        part.slot === 'single' &&
+        visual.kind === 'ordinary-image';
       const partRender = isBackground
         ? render
         : localPartRender(
