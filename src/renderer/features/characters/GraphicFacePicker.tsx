@@ -8,7 +8,7 @@ import './graphic-face-picker.css';
 
 /** Uses the same structured renderer and decoded-image cache contract as Stage. */
 export function GraphicFacePreview({ source, label = '表情预览' }: { source: CharacterFaceGraphicSource; label?: string }): React.JSX.Element {
-  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
   const [images, setImages] = useState(EMPTY_CANVAS_IMAGE_STATE);
@@ -48,8 +48,9 @@ export function GraphicFacePreview({ source, label = '表情预览' }: { source:
     }
   }, [resolved, images]);
   const missing = images.missing.size > 0;
-  const width = Math.min(1024, resolved?.width ?? 240);
-  const height = resolved ? Math.max(1, Math.round(width * resolved.height / resolved.width)) : 180;
+  const thumbnailScale = resolved ? Math.min(1, 480 / resolved.width, 360 / resolved.height) : 1;
+  const width = resolved ? Math.max(1, Math.round(resolved.width * thumbnailScale)) : 240;
+  const height = resolved ? Math.max(1, Math.round(resolved.height * thumbnailScale)) : 180;
   return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
@@ -61,19 +62,20 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   testId: string;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [open, setOpen] = useState(false);
+  const [showImages, setShowImages] = useState(false);
   const [page, setPage] = useState(0);
   const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
   return <div className="graphic-face-picker" data-testid={`${testId}-visual-source`}>
     {source && definition ? <div className="graphic-face-selected">
       <GraphicFacePreview source={source} />
-      <button type="button" disabled={disabled} onClick={() => setOpen(!open)}>{definition.name} · {source.firstFrame + 1}</button>
+      <button type="button" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>{definition.name} · {source.firstFrame + 1}</button>
       {onClear ? <button type="button" disabled={disabled} onClick={onClear}>清除</button> : null}
     </div> : null}
-    {children}
-    {onChange && definitions.length ? <button type="button" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>选择元件</button> : null}
+    {source && !showImages ? <button type="button" disabled={disabled} onClick={() => setShowImages(true)}>更换图片</button> : children}
+    {onChange && definitions.length && !source ? <button type="button" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>选择元件</button> : null}
     {open && onChange ? <div className="graphic-face-options">
       <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
       {definition ? <>

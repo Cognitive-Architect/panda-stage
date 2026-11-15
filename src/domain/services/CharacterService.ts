@@ -465,12 +465,12 @@ export class CharacterService {
       expressionAssets:
         update.expressionAssets ?? current.expressionAssets,
       mouthOpenAssetId:
-        update.mouthOpenAssetId === undefined
+        update.mouthOpenVisualSource ? null : update.mouthOpenAssetId === undefined
           ? current.mouthOpenAssetId
           : update.mouthOpenAssetId,
-      mouthOpenVisualSource: update.mouthOpenAssetId !== undefined
-        ? undefined
-        : update.mouthOpenVisualSource === undefined ? current.mouthOpenVisualSource : update.mouthOpenVisualSource ?? undefined,
+      mouthOpenVisualSource: update.mouthOpenVisualSource !== undefined
+        ? update.mouthOpenVisualSource ?? undefined
+        : update.mouthOpenAssetId !== undefined ? undefined : current.mouthOpenVisualSource,
       head:
         update.head === undefined
           ? current.head

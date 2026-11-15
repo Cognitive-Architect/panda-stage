@@ -138,7 +138,9 @@ export interface LayerVisualPart {
 }
 
 export interface ActiveCharacterFace {
-  visualSource: CharacterFaceSource;
+  visualSource?: CharacterFaceSource;
+  fallbackVisualSource?: CharacterFaceSource;
+  mouthResourceAssetIds?: readonly string[];
   currentExpressionId: string;
   currentExpressionAssetId: string;
   source: 'expression' | 'mouth';
@@ -548,7 +550,7 @@ function resolveCharacterFace(
   character: Extract<Project['characters'][number], { mode: 'single-image' | 'composite' }>,
   evaluated: EvaluatedLayer,
   fallbackExpressionId: string,
-): { face: ActiveCharacterFace; asset: ReturnType<typeof resolveCharacterFaceSource>; fallback: ReturnType<typeof resolveCharacterFaceSource> | null } {
+): { face: ActiveCharacterFace; visualSource: CharacterFaceSource; asset: ReturnType<typeof resolveCharacterFaceSource>; fallback: ReturnType<typeof resolveCharacterFaceSource> | null } {
   const currentExpressionId =
     evaluated.currentExpressionId ?? fallbackExpressionId;
   const expression =
@@ -565,16 +567,19 @@ function resolveCharacterFace(
   }
   const expressionSource = resolveExpressionVisualSource(expression);
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
-  const mouthSource = evaluated.mouthOverrideAssetId
+  const requestedMouth = evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
     : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null;
+  const mouthSource = requestedMouth?.kind === 'image' && !resolveImageAsset(project, requestedMouth.assetId) ? null : requestedMouth;
   const mouthAsset = mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null;
   const activeAsset = mouthAsset ?? expressionAsset;
   const source = mouthAsset ? 'mouth' : 'expression';
   return {
     face: {
       currentExpressionId: expression.id,
-      visualSource: mouthSource ?? expressionSource,
+      ...((mouthSource ?? expressionSource).kind === 'fla-graphic' ? { visualSource: mouthSource ?? expressionSource } : {}),
+      ...(mouthAsset?.flaGraphic ? { mouthResourceAssetIds: mouthAsset.flaGraphic.resourceAssetIds } : {}),
+      ...(mouthSource && expressionSource.kind === 'fla-graphic' ? { fallbackVisualSource: expressionSource } : {}),
       currentExpressionAssetId: expressionAsset.assetId ?? '',
       source,
       assetId: activeAsset.assetId ?? '',
@@ -582,6 +587,7 @@ function resolveCharacterFace(
       fallbackAssetId: mouthAsset ? expressionAsset.assetId ?? null : null,
     },
     asset: activeAsset,
+    visualSource: mouthSource ?? expressionSource,
     fallback: mouthAsset ? expressionAsset : null,
   };
 }
@@ -592,10 +598,10 @@ function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCha
   const rect = centeredRect(asset, placement.offsetX, placement.offsetY, placement.scale);
   const part: LayerVisualPart = {
     partId: `${evaluated.id}:${slot}`, ownerLayerId: evaluated.id, slot,
-    source: face.visualSource.kind === 'fla-graphic'
-      ? { kind: 'character-face-fla-graphic', animationId: face.visualSource.animationId, firstFrame: face.visualSource.firstFrame }
-      : face.source === 'mouth' ? { kind: 'character-mouth', assetId: face.visualSource.assetId }
-      : { kind: 'character-expression', expressionId: face.currentExpressionId, assetId: face.visualSource.assetId },
+    source: resolved.visualSource.kind === 'fla-graphic'
+      ? { kind: 'character-face-fla-graphic', animationId: resolved.visualSource.animationId, firstFrame: resolved.visualSource.firstFrame }
+      : face.source === 'mouth' ? { kind: 'character-mouth', assetId: resolved.visualSource.assetId }
+      : { kind: 'character-expression', expressionId: face.currentExpressionId, assetId: resolved.visualSource.assetId },
     ...(asset.assetId ? { assetId: asset.assetId } : {}),
     ...(graphic?.structureFrame ? { flaGraphic: graphic } : {}),
     localRect: rect, rotationDeg: placement.rotationDeg, flipX: placement.flipX,
@@ -1184,6 +1190,11 @@ export function resolveLayerVisualParts(
   );
   const requiredAssetIds = new Set<string>();
   const fallbackAssetIds = new Set<string>();
+
+  if (character.mode === 'composite') {
+    requiredAssetIds.add(character.bodyAssetId);
+    if (character.head) requiredAssetIds.add(character.head.assetId);
+  }
 
   for (const assetId of resolved.asset.flaGraphic?.resourceAssetIds ?? (resolved.asset.assetId ? [resolved.asset.assetId] : [])) {
     if (resolveImageAsset(project, assetId)) requiredAssetIds.add(assetId);

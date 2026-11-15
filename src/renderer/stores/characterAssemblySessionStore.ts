@@ -542,7 +542,7 @@ function mergeDefinition(
       ? update.expressionAssets.map((expression) => ({ ...expression }))
       : current.expressionAssets.map((expression) => ({ ...expression })),
     mouthOpenAssetId:
-      update.mouthOpenAssetId === undefined
+      update.mouthOpenVisualSource ? null : update.mouthOpenAssetId === undefined
         ? current.mouthOpenAssetId
         : update.mouthOpenAssetId,
     mouthOpenVisualSource: update.mouthOpenVisualSource !== undefined

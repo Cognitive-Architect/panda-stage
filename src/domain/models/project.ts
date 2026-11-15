@@ -34,6 +34,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV19Schema,
   ShotV18Schema,
   ShotV14Schema,
   ShotV16Schema,
@@ -187,7 +188,7 @@ export const ProjectV18Schema = ProjectDataSchema.extend({
 export const ProjectV19Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(19),
   characters: z.array(CharacterV19Schema),
-  shots: z.array(ShotSchema),
+  shots: z.array(ShotV19Schema),
 }).strict().superRefine(validateProjectReferences);
 
 export const ProjectV1Schema = z

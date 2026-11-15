@@ -551,7 +551,7 @@ export function CharacterEditor({
   const defaultThumbnail = defaultExpression?.assetId
     ? thumbnails[defaultExpression.assetId]
     : undefined;
-  const defaultAssetResolved = Boolean(defaultExpressionAsset);
+  const defaultAssetResolved = Boolean(defaultExpressionAsset || defaultExpression?.visualSource);
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
@@ -559,9 +559,9 @@ export function CharacterEditor({
   );
   const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
   const formalDefaultAssetAvailable = Boolean(
-    formalDefaultExpression && imageAssets.some(
+    formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
       (asset) => asset.id === formalDefaultExpression.assetId,
-    ),
+    )),
   );
   const placementUnavailableReason = disabled
     ? '请先打开项目'
@@ -939,7 +939,7 @@ export function CharacterEditor({
                     aria-expanded={expressionAddOpen}
                     className="character-detail-add-expression-trigger"
                     data-testid="expression-add-trigger"
-                    disabled={disabled || imageAssets.length === 0}
+                    disabled={disabled || (imageAssets.length === 0 && !project?.animations.some(animation => 'kind' in animation && animation.kind === 'fla-graphic'))}
                     onClick={() =>
                       setExpressionAddOpen((isOpen) => !isOpen)
                     }
@@ -1243,7 +1243,7 @@ export function CharacterEditor({
                         <small>
                           {defaultExpressionAsset
                             ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                            : '素材不可用'}
+                            : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
                         </small>
                       </span>
                     </button>

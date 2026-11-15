@@ -42,8 +42,17 @@ export const ShotSchema = z
   })
   .strict();
 
+/** v19 has the same Shot fields as v20; freeze its reader independently. */
+export const ShotV19Schema = z.object({
+  ...ShotBaseShape,
+  dialogues: z.array(DialogueSchema),
+  audioClips: z.array(AudioClipSchema),
+  layers: z.array(LayerSchema),
+  backgroundLayerId: IdSchema.nullable(),
+}).strict();
+
 /** Exact pre-narrator v18 Shot, also used by earlier frozen Shot contracts. */
-export const ShotV18Schema = ShotSchema.extend({
+export const ShotV18Schema = ShotV19Schema.extend({
   dialogues: z.array(DialogueV18Schema),
 }).strict();
 

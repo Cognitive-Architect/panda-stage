@@ -143,7 +143,7 @@ describe('Issue #511 R7 V1 legacy Character layer reminder', () => {
 
     expect(manager).toContain('countLegacyCharacterImageLayers');
     expect(manager).toContain('CHARACTER_BINDING_REMINDER_DURATION_MS = 5_500');
-    expect(manager).toContain('createdCharacter.expressions.map');
+    expect(manager).toContain('createdCharacter.expressions.flatMap');
     expect(manager).toContain('data-testid="character-binding-reminder"');
     expect(manager).toContain('aria-live="polite"');
     expect(inspector).toContain('isLegacyCharacterImageLayer');

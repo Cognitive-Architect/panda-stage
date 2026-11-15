@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CharacterService, LayerService, ProjectSchema, ProjectV19Schema, migrateProject, evaluateShotAtTime, resolveShotVisualParts, scanAssetReferences, type Project } from '../../src/domain';
+import { CharacterService, DialogueService, LayerService, ProjectSchema, ProjectV19Schema, migrateProject, evaluateShotAtTime, projectShotDialogueVisual, resolveShotVisualParts, scanAssetReferences, type Project } from '../../src/domain';
+import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
+import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
+import { applyProductPreviewMouthFallback, buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
 import { resolveCharacterFaceSource } from '../../src/domain/selectors/characterFaceSource';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { buildCharacterAssemblyPreviewVisual } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -75,6 +78,10 @@ describe('Graphic expressions and mouth single-frame selection (#1112)', () => {
     expect(draft.mouthOpenVisualSource).toEqual(faceSource(3));
     const preview = buildCharacterAssemblyPreviewVisual(project, { kind: 'edit', characterId: IDS.character, draft } as Parameters<typeof buildCharacterAssemblyPreviewVisual>[1], { kind: 'mouth' });
     expect(preview?.parts.find(part => part.slot === 'face')?.flaGraphic?.frameOrdinal).toBe(3);
+    project = service.setMouthOpenAsset(project, IDS.character, IDS.assetChar);
+    project = service.applyCompositeUpdate(project, IDS.character, { mouthOpenVisualSource: faceSource(2) });
+    expect(project.characters[0]).not.toHaveProperty('mouthOpenAssetId');
+    expect(project.characters[0]).toHaveProperty('mouthOpenVisualSource', faceSource(2));
   });
   it('upgrades genuine v19 images without injecting or rewriting face/audio/narrator data', () => {
     const historical = { ...structuredClone(historicalV18), schemaVersion: 19 };
@@ -95,5 +102,35 @@ describe('Graphic expressions and mouth single-frame selection (#1112)', () => {
     expect(editor.getSnapshot()?.project.characters[0]).toHaveProperty('baseAssetId', IDS.assetChar);
     expect(editor.redo()).toBe(true);
     expect(editor.getSnapshot()?.project.characters[0]).toHaveProperty('expressions.0.visualSource', faceSource(1));
+  });
+  it('shares audio-bound Graphic mouth projection, expression timeline, export dependencies and failure recovery', () => {
+    const audioId = 'a0000000-0000-4000-8000-000000001112';
+    let project = graphicProject();
+    project = ProjectSchema.parse({ ...project, assets: [...project.assets, { id: audioId, kind: 'audio', name: 'tone', relativePath: 'assets/tone.wav', mimeType: 'audio/wav', durationMs: 3000 }], shots: project.shots.map(shot => ({ ...shot, timelineEvents: [{ id: 'b0000000-0000-4000-8000-000000001112', layerId: IDS.layerChar, type: 'expression', expressionId: IDS.expressionAngry, startMs: 500, endMs: 500 }] })) });
+    const dialogue = new DialogueService();
+    project = dialogue.create(project, { shotId: IDS.shot, characterId: IDS.character, text: 'Graphic mouth', pointTimeMs: 0 });
+    const dialogueId = project.shots[0]!.dialogues[0]!.id;
+    project = dialogue.setTiming(project, { shotId: IDS.shot, dialogueId, startMs: 0, endMs: 3000 });
+    project = dialogue.bindAudio(project, { shotId: IDS.shot, dialogueId, assetId: audioId });
+    const shot = project.shots[0]!;
+    const evaluated = (time: number) => projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, time, project));
+    const faceAt = (time: number) => resolveShotVisualParts(project, shot, evaluated(time)).find(layer => layer.ownerLayerId === IDS.layerChar)!.parts[0]!;
+    expect(faceAt(0).flaGraphic?.frameOrdinal).toBe(3);
+    expect(faceAt(200).flaGraphic?.frameOrdinal).toBe(0);
+    expect(faceAt(600).flaGraphic?.frameOrdinal).toBe(1);
+    expect(faceAt(640).flaGraphic?.frameOrdinal).toBe(3);
+    const media = new Set(collectExportPreparationMedia(project).map(entry => entry.asset.id));
+    expect(media.has(IDS.assetChar)).toBe(true);
+    expect(media.has(IDS.assetChar2)).toBe(true);
+    expect(media.has(audioId)).toBe(true);
+    // The mouth uses the second bitmap, while the expression can still load.
+    const continuity = resolveEditorTemporalAssetResolution(project, shot, evaluated(0), new Set([IDS.assetBg, IDS.assetChar]), new Map(), undefined, new Set([IDS.assetChar2]));
+    expect(continuity.visualsByLayer.get(IDS.layerChar)?.parts[0]?.flaGraphic?.frameOrdinal).toBe(0);
+    const plan = buildProductPreviewImagePlan(project, shot, evaluated(0));
+    expect(plan.mouthFallbacks.some(rule => rule.sourceAssetId === IDS.assetChar2 && rule.fallbackAssetIds?.includes(IDS.assetChar))).toBe(true);
+    const degraded = applyProductPreviewMouthFallback(project, shot, evaluated(0), new Set([IDS.assetChar2]));
+    expect(resolveShotVisualParts(project, shot, degraded).find(layer => layer.ownerLayerId === IDS.layerChar)?.parts[0]?.flaGraphic?.frameOrdinal).toBe(0);
+    expect(scanAssetReferences(project, IDS.assetChar2).some(reference => reference.kind === 'character-mouth')).toBe(true);
+    expect(() => ProjectSchema.parse({ ...project, animations: [] })).toThrow();
   });
 });

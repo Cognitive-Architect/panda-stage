@@ -172,7 +172,7 @@ export function projectShotMouth(
       return layer;
     }
     if (
-      layer.mouthOpen &&
+      (speakingCharacter.mouthOpenVisualSource ? layer.mouthOpen : layer.assetId === mouthAsset?.id) &&
       layer.mouthOverrideAssetId === (mouthAsset?.id ?? null)
     ) {
       return layer;
@@ -182,7 +182,7 @@ export function projectShotMouth(
       ...layer,
       assetId: mouthAsset?.id ?? layer.assetId,
       mouthOverrideAssetId: mouthAsset?.id ?? null,
-      mouthOpen: true,
+      ...(speakingCharacter.mouthOpenVisualSource ? { mouthOpen: true } : {}),
     };
   });
 

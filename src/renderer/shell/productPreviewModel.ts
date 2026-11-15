@@ -97,6 +97,7 @@ export interface ProductPreviewMouthFallback {
   partId: string;
   sourceAssetId: string;
   fallbackAssetId: string;
+  fallbackAssetIds?: string[];
 }
 
 /**
@@ -337,19 +338,22 @@ export function buildProductPreviewImagePlan(
     );
     const activeMouthPart = visual.parts.find(
       (part) =>
-        part.slot === 'face' &&
-        part.assetId === visual.activeFace?.assetId,
+        (part.slot === 'face' || part.slot === 'single') &&
+        (part.assetId === visual.activeFace?.assetId || Boolean(part.flaGraphic)),
     );
     if (
       visual.activeFace?.source === 'mouth' &&
-      visual.activeFace.fallbackAssetId &&
+      (visual.activeFace.fallbackAssetId || visual.activeFace.fallbackVisualSource) &&
       activeMouthPart
     ) {
-      mouthFallbacks.push({
-        partId: activeMouthPart.partId,
-        sourceAssetId: visual.activeFace.assetId,
-        fallbackAssetId: visual.activeFace.fallbackAssetId,
-      });
+      for (const assetId of visual.activeFace.mouthResourceAssetIds ?? [visual.activeFace.assetId]) {
+        mouthFallbacks.push({
+          partId: activeMouthPart.flaGraphic ? `${visual.ownerLayerId}:fla-graphic-resource:${assetId}` : activeMouthPart.partId,
+          sourceAssetId: assetId,
+          fallbackAssetId: visual.activeFace.fallbackAssetId ?? '',
+          ...(visual.activeFace.fallbackVisualSource ? { fallbackAssetIds: visual.resources.fallback.map(resource => resource.assetId) } : {}),
+        });
+      }
     }
   }
 
@@ -465,16 +469,17 @@ export function applyProductPreviewMouthFallback(
     const activeFace = visual.activeFace;
     if (
       activeFace?.source !== 'mouth' ||
-      !failedMouthAssetIds.has(activeFace.assetId) ||
-      !activeFace.fallbackAssetId
+      (!failedMouthAssetIds.has(activeFace.assetId) && !activeFace.mouthResourceAssetIds?.some(id => failedMouthAssetIds.has(id))) ||
+      (!activeFace.fallbackAssetId && !activeFace.fallbackVisualSource)
     ) {
       return layer;
     }
     changed = true;
     return {
       ...layer,
-      assetId: activeFace.fallbackAssetId,
+      assetId: activeFace.fallbackAssetId ?? '',
       mouthOverrideAssetId: null,
+      ...(layer.mouthOpen === undefined ? {} : { mouthOpen: false }),
     };
   });
   return changed ? { ...evaluatedShot, layers } : evaluatedShot;
