@@ -7,6 +7,7 @@ import {
 import {
   isLegacyCharacterImageLayer,
   type Asset,
+  type CharacterFaceGraphicSource,
   type Layer,
 } from '../../domain';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
@@ -26,6 +27,7 @@ import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStruct
 import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
+import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
@@ -62,6 +64,7 @@ export interface RightInspectorSelection {
 export interface RightInspectorLayerSummary {
   asset: Asset | null;
   typeLabel: string;
+  graphicSource?: CharacterFaceGraphicSource;
 }
 
 function getPortraitLayerTypeLabel(typeLabel: string): string {
@@ -128,6 +131,13 @@ export function getRightInspectorLayerSummary(
   const asset =
     snapshot.project.assets.find((candidate) => candidate.id === assetId) ??
     null;
+  if (expression?.visualSource) {
+    return {
+      asset,
+      typeLabel: '角色图层',
+      graphicSource: expression.visualSource,
+    };
+  }
   return { asset, typeLabel: '角色图层' };
 }
 
@@ -519,7 +529,9 @@ export function RightInspector({
           data-testid="right-inspector-selection-summary"
         >
           {structuredSelection.target ? null : <div className="right-inspector-selection-thumbnail">
-            {selectionThumbnail?.status === 'ready' ? (
+            {layerSummary.graphicSource ? (
+              <GraphicFacePreview source={layerSummary.graphicSource} label={selection.layer.name} />
+            ) : selectionThumbnail?.status === 'ready' ? (
               <img alt="" src={selectionThumbnail.dataUrl} />
             ) : (
               <span aria-hidden="true">

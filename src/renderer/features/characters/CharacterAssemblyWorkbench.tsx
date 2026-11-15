@@ -2238,6 +2238,7 @@ function CompositeCharacterAssemblyWorkbench({
     const assetIds = new Set([
       session.draft.bodyAssetId,
       previewFaceAssetId,
+      ...(facePart?.assetId ? [facePart.assetId] : []),
       ...(head ? [head.assetId] : []),
       ...(savedSourceProject && selectedLayoutReuseSource
         ? [
@@ -2261,6 +2262,7 @@ function CompositeCharacterAssemblyWorkbench({
     }
     return [...assetsById.values()];
   }, [
+    facePart?.assetId,
     head,
     previewFaceAssetId,
     project.assets,
@@ -2301,11 +2303,23 @@ function CompositeCharacterAssemblyWorkbench({
         imageBoundsByAssetId.get(bodyPart.assetId),
       )
     : null;
-  const faceContentRect = facePart?.assetId
-    ? visibleImageRect(
-        facePart.localRect,
-        imageBoundsByAssetId.get(facePart.assetId),
-      )
+  const faceContentRect = facePart
+    ? facePart.imageTransform
+      ? transformVisualRectByPart(
+          facePart.assetId
+            ? visibleImageRect(
+                facePart.localRect,
+                imageBoundsByAssetId.get(facePart.assetId),
+              )
+            : facePart.localRect,
+          facePart,
+        )
+      : facePart.assetId
+        ? visibleImageRect(
+            facePart.localRect,
+            imageBoundsByAssetId.get(facePart.assetId),
+          )
+        : null
     : null;
   const assemblyVisibleBounds = useMemo(
     () => calculateAssemblyVisibleBounds(visual, imageBoundsByAssetId),
@@ -3032,10 +3046,12 @@ function CompositeCharacterAssemblyWorkbench({
       }
     : null;
   const faceHandleRect = facePart
-    ? transformVisualRectByPart(
-        faceContentRect ?? facePart.localRect,
-        facePart,
-      )
+    ? facePart.imageTransform
+      ? faceContentRect ?? transformVisualRectByPart(facePart.localRect, facePart)
+      : transformVisualRectByPart(
+          faceContentRect ?? facePart.localRect,
+          facePart,
+        )
     : null;
   const faceHandlePoint = faceHandleRect
     ? {

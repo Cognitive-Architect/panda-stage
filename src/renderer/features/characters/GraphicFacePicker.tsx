@@ -66,6 +66,12 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   const [open, setOpen] = useState(false);
   const [showImages, setShowImages] = useState(false);
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    setOpen(false);
+    setShowImages(false);
+    setPage(0);
+  }, [testId]);
+  useEffect(() => { setShowImages(false); }, [source?.animationId, source?.firstFrame]);
   const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
   return <div className="graphic-face-picker" data-testid={`${testId}-visual-source`}>
@@ -77,12 +83,12 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
     {source && !showImages ? <button type="button" disabled={disabled} onClick={() => setShowImages(true)}>更换图片</button> : children}
     {onChange && definitions.length && !source ? <button type="button" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>选择元件</button> : null}
     {open && onChange ? <div className="graphic-face-options">
-      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
+      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
       {definition ? <>
         <div className="graphic-face-frames" aria-label="选择表情帧">{definition.frames.slice(page * 12, page * 12 + 12).map((frame, index) => {
           const firstFrame = page * 12 + index;
           const selected = { kind: 'fla-graphic' as const, animationId: definition.id, firstFrame };
-          return <button type="button" key={frame.ordinal} disabled={disabled} aria-label={`第 ${firstFrame + 1} 帧`} aria-pressed={source?.firstFrame === firstFrame} data-testid={`${testId}-frame-${firstFrame}`} onClick={() => onChange(selected)}><GraphicFacePreview source={selected} label={`第 ${firstFrame + 1} 帧`} /><span>{firstFrame + 1}</span></button>;
+          return <button type="button" key={frame.ordinal} disabled={disabled} aria-label={`第 ${firstFrame + 1} 帧`} aria-pressed={source?.firstFrame === firstFrame} data-testid={`${testId}-frame-${firstFrame}`} onClick={() => { setShowImages(false); onChange(selected); }}><GraphicFacePreview source={selected} label={`第 ${firstFrame + 1} 帧`} /><span>{firstFrame + 1}</span></button>;
         })}</div>
         {definition.frames.length > 12 ? <div><button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button><button type="button" disabled={(page + 1) * 12 >= definition.frames.length} onClick={() => setPage(page + 1)}>下一页</button></div> : null}
       </> : null}

@@ -377,6 +377,7 @@ function LandscapeExpressionEditor({
     onAddOpenChange(false);
     setNewName('');
     setNewAssetId(imageAssets[0]?.id ?? '');
+    setNewGraphic(undefined);
   };
 
   const expressionWarnings = (expressionId: string): CharacterDimensionWarning[] =>
@@ -489,7 +490,7 @@ function LandscapeExpressionEditor({
             />
           </label>
           <div className="expression-current-asset">
-            <GraphicFacePicker source={editingExpression.visualSource} onChange={source => onSetSource?.(editingExpression.id, source)} testId={`expression-asset-picker-${editingExpression.id}`} disabled={disabled}>
+            <GraphicFacePicker key={editingExpression.id} source={editingExpression.visualSource} onChange={source => onSetSource?.(editingExpression.id, source)} testId={`expression-asset-picker-${editingExpression.id}`} disabled={disabled}>
             <ImageAssetPicker
               assets={imageAssets}
               label="图片"

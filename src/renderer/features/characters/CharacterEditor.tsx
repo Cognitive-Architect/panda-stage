@@ -1079,7 +1079,11 @@ export function CharacterEditor({
                   />
                   <span className="character-expression-summary-copy">
                     <strong>{expression.name}</strong>
-                    <span>{asset?.name ?? expression.assetId}</span>
+                    <span>
+                      {expression.visualSource
+                        ? `第 ${expression.visualSource.firstFrame + 1} 帧`
+                        : (asset?.name ?? expression.assetId)}
+                    </span>
                   </span>
                   {expression.id === character.defaultExpressionId ? (
                     <em>默认表情</em>
@@ -1420,8 +1424,8 @@ export function CharacterEditor({
             {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
-                className={`character-mouth-state${character.mouthOpenAssetId ? ' is-configured' : ''}`}
-                data-mouth-configured={Boolean(character.mouthOpenAssetId)}
+                className={`character-mouth-state${character.mouthOpenAssetId || character.mouthOpenVisualSource ? ' is-configured' : ''}`}
+                data-mouth-configured={Boolean(character.mouthOpenAssetId || character.mouthOpenVisualSource)}
               >
                 <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
                 <ImageAssetPicker
