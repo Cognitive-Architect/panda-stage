@@ -6,6 +6,7 @@ import type {
   AssetLibraryCategory,
 } from '../../stores/assetLibrarySelectors';
 import type { AssetThumbnailReadResponse } from '../../../shared/asset-thumbnail-api';
+import type { AssetCanvasImageReadResponse } from '../../../shared/asset-canvas-image-api';
 import { Image, ImageOff, Music2 } from 'lucide-react';
 import { DecorativeIcon } from '../../ui';
 import { writeAssetDropPayload } from './AssetDropPayload';
@@ -16,7 +17,7 @@ import {
 import { imageAssetUsageLabel } from './assetUsage';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
-type BackendThumbnailErrorCode = Extract<AssetThumbnailReadResponse, { ok: false }>['error']['code'];
+type BackendThumbnailErrorCode = Extract<AssetThumbnailReadResponse | AssetCanvasImageReadResponse, { ok: false }>['error']['code'];
 
 export type ThumbnailState =
   | { status: 'loading' }
@@ -67,7 +68,7 @@ export function thumbnailStateFromResponse(
   };
 }
 
-/** An img error is only a decode failure after Main supplied ready PNG bytes. */
+/** An img error is only a decode failure after Main supplied ready image bytes. */
 export function thumbnailStateAfterDecodeError(
   current: ThumbnailState,
   relativePath?: string,

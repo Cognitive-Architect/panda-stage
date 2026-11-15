@@ -5,8 +5,10 @@ import type {
   CharacterExpression,
   ExpressionCharacter,
   ImageAsset,
+  Project,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import {
   thumbnailStateFromResponse,
   thumbnailStateAfterDecodeError,
@@ -57,6 +59,7 @@ function thumbnailLabel(
 export function useProjectImageThumbnails(
   projectRoot: string | null,
   imageAssets: readonly ImageAsset[],
+  project: Project | null = null,
 ): {
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   onThumbnailError: (assetId: string) => void;
@@ -64,6 +67,7 @@ export function useProjectImageThumbnails(
   const [thumbnails, setThumbnails] = useState<
     Record<string, ThumbnailState>
   >({});
+  const svgThumbnails = useGraphicSvgThumbnails(projectRoot, project, imageAssets);
 
   useEffect(() => {
     let active = true;
@@ -80,6 +84,7 @@ export function useProjectImageThumbnails(
     }
 
     for (const asset of imageAssets) {
+      if (svgThumbnails.assetIds.has(asset.id)) continue;
       void window.pandaStage.assets
         .readThumbnail({
           projectRoot,
@@ -105,18 +110,22 @@ export function useProjectImageThumbnails(
     return () => {
       active = false;
     };
-  }, [imageAssets, projectRoot]);
+  }, [imageAssets, projectRoot, svgThumbnails.assetIds]);
 
   const onThumbnailError = useCallback((assetId: string): void => {
+    if (svgThumbnails.assetIds.has(assetId)) {
+      svgThumbnails.onThumbnailError(assetId);
+      return;
+    }
     setThumbnails((current) => current[assetId] ? ({
       ...current,
       [assetId]: thumbnailStateAfterDecodeError(
         current[assetId], imageAssets.find((asset) => asset.id === assetId)?.relativePath,
       ),
     }) : current);
-  }, [imageAssets]);
+  }, [imageAssets, svgThumbnails.assetIds, svgThumbnails.onThumbnailError]);
 
-  return { onThumbnailError, thumbnails };
+  return { onThumbnailError, thumbnails: { ...thumbnails, ...svgThumbnails.thumbnails } };
 }
 
 /** Load only the image assets that can act as a Character avatar. */
@@ -147,6 +156,7 @@ export function useCharacterAvatarThumbnails(
   return useProjectImageThumbnails(
     snapshot?.projectRoot ?? null,
     avatarAssets,
+    snapshot?.project ?? null,
   );
 }
 

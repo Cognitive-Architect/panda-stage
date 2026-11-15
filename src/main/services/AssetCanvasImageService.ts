@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import {
   ProjectSchema,
-  reconstructFlaGraphicStructure,
   type Project,
 } from '../../domain';
+import { isGeneratedFlaSvgAsset } from '../../domain/selectors/isGeneratedFlaSvgAsset';
 import {
   AssetCanvasImageReadRequestSchema,
   CANVAS_IMAGE_MAX_BYTES,
@@ -148,19 +148,10 @@ export class AssetCanvasImageService {
     }
 
     const mimeType = asset.mimeType;
-    const generatedFlaSvg =
-      asset.kind === 'image' &&
-      mimeType === 'image/svg+xml' &&
-      (Boolean(asset.flaGraphicFrame) || project.animations.some((animation) =>
-        'kind' in animation && animation.kind === 'fla-graphic' && animation.structure &&
-        reconstructFlaGraphicStructure(animation.structure).some(({ node }) =>
-          node.type === 'opaque' && node.opaqueKind === 'shape' &&
-          node.fallbackScope === 'subtree' && node.fallbackAssetId === asset.id,
-        ),
-      ));
+    const generatedFlaSvg = isGeneratedFlaSvgAsset(project, asset);
     if (
       asset.kind !== 'image' ||
-      (mimeType !== 'image/png' && mimeType !== 'image/jpeg' && !generatedFlaSvg)
+      (mimeType !== 'image/png' && mimeType !== 'image/jpeg' && (mimeType !== 'image/svg+xml' || !generatedFlaSvg))
     ) {
       return this.failure(
         'ASSET_CANVAS_IMAGE_READ_FAILED',
@@ -174,15 +165,19 @@ export class AssetCanvasImageService {
       sourcePath = await this.resolveAssetPath(
         request.projectRoot,
         asset.relativePath,
+        generatedFlaSvg,
       );
     } catch (error) {
       const permissionCode = filesystemPermissionErrorCode(error);
       return this.failure(
-        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        generatedFlaSvg && isMissingPathError(error)
+          ? 'ASSET_CANVAS_IMAGE_SOURCE_MISSING'
+          : 'ASSET_CANVAS_IMAGE_READ_FAILED',
         request.assetId,
         permissionCode
           ? `Unable to read the original canvas image (${permissionCode}).`
           : 'The asset source is missing or outside the project assets directory.',
+        generatedFlaSvg ? asset.relativePath : undefined,
       );
     }
     if (!sourcePath) {
@@ -190,6 +185,7 @@ export class AssetCanvasImageService {
         'ASSET_CANVAS_IMAGE_READ_FAILED',
         request.assetId,
         'The asset source is missing or outside the project assets directory.',
+        generatedFlaSvg ? asset.relativePath : undefined,
       );
     }
 
@@ -241,6 +237,7 @@ export class AssetCanvasImageService {
           'ASSET_CANVAS_IMAGE_HASH_MISMATCH',
           request.assetId,
           'The source file hash does not match the project asset.',
+          generatedFlaSvg ? asset.relativePath : undefined,
         );
       }
 
@@ -262,6 +259,7 @@ export class AssetCanvasImageService {
         permissionCode
           ? `Unable to read the original canvas image (${permissionCode}).`
           : `Unable to read the original canvas image: ${this.errorText(error)}`,
+        generatedFlaSvg ? asset.relativePath : undefined,
       );
     }
   }
@@ -269,9 +267,11 @@ export class AssetCanvasImageService {
   private async resolveAssetPath(
     projectRoot: string,
     relativePath: string,
+    generatedFlaSvg: boolean,
   ): Promise<string | null> {
     return resolveProjectAssetPath(projectRoot, relativePath, {
       preservePermissionErrors: true,
+      preserveMissingErrors: generatedFlaSvg,
     });
   }
 
@@ -311,9 +311,11 @@ export class AssetCanvasImageService {
       | 'ASSET_CANVAS_IMAGE_PROJECT_NOT_TRACKED'
       | 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND'
       | 'ASSET_CANVAS_IMAGE_HASH_MISMATCH'
+      | 'ASSET_CANVAS_IMAGE_SOURCE_MISSING'
       | 'ASSET_CANVAS_IMAGE_READ_FAILED',
     assetId: string,
     message: string,
+    relativePath?: string,
   ): AssetCanvasImageReadResponse {
     return {
       ok: false,
@@ -321,7 +323,13 @@ export class AssetCanvasImageService {
         code,
         message: this.errorText(message).slice(0, 1_000),
         assetId: this.errorText(assetId).slice(0, 200),
+        ...(relativePath ? { relativePath } : {}),
       },
     };
   }
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    (error.code === 'ENOENT' || error.code === 'ENOTDIR');
 }
