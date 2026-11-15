@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -48,7 +48,8 @@ describe('Issue #1116 internal SVG reuses the Canvas Image owner', () => {
     await expect(input.service.read(input.request)).resolves.toMatchObject({ ok: false, error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED', relativePath: input.asset.relativePath, message: expect.stringContaining('Panda-generated SVG') } });
   });
   it('accepts internal references and embedded PNGs under the existing validator', async () => {
-    const input = await setup(true, '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70"><defs><path id="shape" d="M0 0H20V20H0Z"/></defs><use href="#shape"/><image href="data:image/png;base64,iVBORw0KGgo="/></svg>');
+    const png = await readFile(path.resolve('tests/fixtures/assets/熊猫 图片.png'));
+    const input = await setup(true, `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70"><defs><path id="shape" d="M0 0H20V20H0Z"/></defs><use href="#shape"/><image width="16" height="12" href="data:image/png;base64,${png.toString('base64')}"/></svg>`);
     await expect(input.service.read(input.request)).resolves.toMatchObject({ ok: true, mimeType: 'image/svg+xml' });
   });
   it('requires formal ownership and SVG MIME; names alone grant no access', async () => {
