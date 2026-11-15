@@ -606,7 +606,7 @@ describe('formal animation persistence', () => {
     const stageAssetId = (timeMs: number): string =>
       models.get(timeMs)!.stageModel.layers.find(
         (layer) => layer.layer.id === animationLayer.id,
-      )!.visual.parts[0]!.assetId;
+      )!.visual.parts[0]!.assetId!;
     expect([stageAssetId(0), stageAssetId(40), stageAssetId(80)]).toEqual(frameAssetIds);
     expect(stageAssetId(3_000)).toBe(frameAssetIds[2]);
     expect(stageAssetId(40)).toBe(frameAssetIds[1]);

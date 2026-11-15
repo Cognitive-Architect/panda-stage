@@ -1,21 +1,26 @@
-import type {
-  EvaluatedHeadGroupTransform,
-  EvaluatedLayer,
-  EvaluatedShot,
+import {
+  hasFlaGraphicTemporalPlayback,
+  resolveAnimationPlaybackFrameState,
+  type EvaluatedHeadGroupTransform,
+  type EvaluatedLayer,
+  type EvaluatedShot,
 } from '../evaluate-shot-at-time';
-import type {
-  CharacterPartTransform,
-  FacePlacement,
-  FlaGraphicDefinition,
-  ImageAsset,
-  Layer,
-  Project,
+import {
+  isFlaGraphicDefinition,
+  resolveCharacterPartVisualSource,
+  type CharacterPartTransform,
+  type FacePlacement,
+  type FlaGraphicDefinition,
+  type ImageAsset,
+  type Layer,
+  type Project,
 } from '../models';
 import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
 import { resolveImageAsset } from './canvasLayers';
+import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 
 export type LayerVisualKind =
   | 'ordinary-image'
@@ -98,7 +103,12 @@ export type VisualPartSource =
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
   | { kind: 'character-mouth'; assetId: string }
-  | { kind: 'adaptive-part'; characterPartId: string; assetId: string };
+  | { kind: 'adaptive-part'; characterPartId: string; assetId: string }
+  | {
+      kind: 'adaptive-part-fla-graphic';
+      characterPartId: string;
+      animationId: string;
+    };
 
 export interface LayerVisualPart {
   /** Stable runtime identity; never persisted as a Project Layer. */
@@ -106,7 +116,9 @@ export interface LayerVisualPart {
   ownerLayerId: string;
   slot: VisualPartSlot;
   source: VisualPartSource;
-  assetId: string;
+  assetId?: string;
+  /** Per-part structured FLA Graphic visual when sourced from an FLA Graphic Definition. */
+  flaGraphic?: EvaluatedFlaGraphicVisual;
   localRect: VisualLocalRect;
   /** Static rotation about this part's center, before the shared Head Group. */
   rotationDeg: number;
@@ -570,10 +582,121 @@ function adaptivePartVisuals(
   character: AdaptivePartsCharacter,
   ownerLayerId: string,
   ownerZIndex: number,
+  layerStartTimeMs = 0,
+  timeMs?: number,
 ): LayerVisualPart[] {
   return character.parts.map((part): LayerVisualPart => {
-    const asset = imageAsset(project, part.assetId, ownerLayerId);
-    const mapping = part.imageMapping;
+    const visualSource = resolveCharacterPartVisualSource(part);
+    if (visualSource.kind === 'fla-graphic') {
+      const definition = project.animations.find(
+        (candidate) =>
+          isFlaGraphicDefinition(candidate) &&
+          candidate.id === visualSource.animationId,
+      );
+      if (
+        !definition ||
+        !isFlaGraphicDefinition(definition) ||
+        !definition.structure
+      ) {
+        throw new Error(
+          `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
+        );
+      }
+      const temporalPlayback =
+        timeMs !== undefined && hasFlaGraphicTemporalPlayback(definition);
+      const playbackState = temporalPlayback
+        ? resolveAnimationPlaybackFrameState(
+            definition,
+            layerStartTimeMs,
+            0,
+            { mode: 'loop', endBehavior: 'hold' },
+            timeMs,
+          )
+        : null;
+      const frameOrdinal = playbackState
+        ? playbackState.frame.ordinal
+        : (definition.frames[0]?.ordinal ?? 0);
+      const flaGraphic = evaluateFlaGraphicVisual({
+        definition,
+        frameOrdinal,
+        mode: 'instance',
+        ...(playbackState ? { internalTimeMs: playbackState.internalTimeMs } : {}),
+        instanceTransformOverrides: visualSource.instanceTransformOverrides,
+      });
+      if (!flaGraphic) {
+        throw new Error(
+          `Adaptive Part ${part.partId} cannot resolve frame ${frameOrdinal} of FLA Graphic ${definition.id}.`,
+        );
+      }
+      if (!flaGraphic.structureFrame) {
+        const fallbackAsset = imageAsset(project, flaGraphic.frameAssetId, ownerLayerId);
+        const frameToCanvas = {
+          a: fallbackAsset.width > 0 ? flaGraphic.frameViewport.width / fallbackAsset.width : 1,
+          b: 0,
+          c: 0,
+          d: fallbackAsset.height > 0 ? flaGraphic.frameViewport.height / fallbackAsset.height : 1,
+          tx: flaGraphic.frameOffset.x,
+          ty: flaGraphic.frameOffset.y,
+        };
+        const imageTransform = composeAffine(
+          character.sourceRootTransform,
+          composeAffine(part.restTransform, frameToCanvas),
+        );
+        return {
+          partId: `${ownerLayerId}:${part.partId}`,
+          ownerLayerId,
+          slot: 'adaptive-part',
+          source: {
+            kind: 'adaptive-part-fla-graphic',
+            characterPartId: part.partId,
+            animationId: definition.id,
+          },
+          assetId: fallbackAsset.id,
+          localRect: {
+            x: 0,
+            y: 0,
+            width: fallbackAsset.width,
+            height: fallbackAsset.height,
+          },
+          rotationDeg: 0,
+          flipX: false,
+          imageTransform,
+          visible: part.visible,
+          drawOrder: part.drawOrder,
+          ownerZIndex,
+        };
+      }
+      const imageTransform = composeAffine(
+        character.sourceRootTransform,
+        part.restTransform,
+      );
+      return {
+        partId: `${ownerLayerId}:${part.partId}`,
+        ownerLayerId,
+        slot: 'adaptive-part',
+        source: {
+          kind: 'adaptive-part-fla-graphic',
+          characterPartId: part.partId,
+          animationId: definition.id,
+        },
+        flaGraphic,
+        localRect: {
+          x: 0,
+          y: 0,
+          width: flaGraphic.canvas.width,
+          height: flaGraphic.canvas.height,
+        },
+        rotationDeg: 0,
+        flipX: false,
+        imageTransform,
+        visible: part.visible,
+        drawOrder: part.drawOrder,
+        ownerZIndex,
+      };
+    }
+
+    const asset = imageAsset(project, visualSource.assetId, ownerLayerId);
+    const mapping = visualSource.imageMapping;
     const expectedWidth = Math.round(mapping.crop.width * mapping.exportScale);
     const expectedHeight = Math.round(mapping.crop.height * mapping.exportScale);
     if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
@@ -619,15 +742,37 @@ function adaptivePartVisuals(
   });
 }
 
+function adaptiveCharacterSourceBounds(
+  project: Project,
+  character: AdaptivePartsCharacter,
+  parts: readonly LayerVisualPart[],
+): VisualLocalRect {
+  // Source geometry is independent of frame-local fallback viewport/offset.
+  // Preserve PNG bounds while measuring Graphics against their full Definition canvas.
+  return visualBounds(parts.map((visual, index) => {
+    const part = character.parts[index]!;
+    if (resolveCharacterPartVisualSource(part).kind !== 'fla-graphic') return visual;
+    const bounds = characterPartSourceBounds(part, project.animations);
+    if (!bounds) {
+      throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
+    }
+    return {
+      ...visual,
+      localRect: bounds,
+      imageTransform: composeAffine(character.sourceRootTransform, part.restTransform),
+    };
+  }), null, true);
+}
+
 /** Returns the source-stage visual center used by a center-anchored Shot Layer. */
 export function adaptiveCharacterSourceAnchor(
   project: Project,
   character: AdaptivePartsCharacter,
 ): VisualPoint {
-  const bounds = visualBounds(
+  const bounds = adaptiveCharacterSourceBounds(
+    project,
+    character,
     adaptivePartVisuals(project, character, character.id, 0),
-    null,
-    true,
   );
   return {
     x: bounds.x + bounds.width / 2,
@@ -687,6 +832,7 @@ export function resolveLayerVisualParts(
   project: Project,
   shot: { layers: readonly Layer[] },
   evaluated: EvaluatedLayer,
+  timeMs = 0,
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -881,6 +1027,8 @@ export function resolveLayerVisualParts(
       character,
       layer.id,
       evaluated.zIndex,
+      layer.startTimeMs ?? 0,
+      timeMs,
     );
     // Keep the visual pivot tied to the trusted source pose. If it followed
     // the edited bounds, moving an edge Part would recenter every other Part
@@ -906,7 +1054,7 @@ export function resolveLayerVisualParts(
     // on the Layer, preserving the imported pose and owner transforms.
     // Visibility controls pixels and output bounds, but it must not move the
     // Character's source pivot or the remaining Parts in existing Shots.
-    const sourceBounds = visualBounds(sourcePoseParts, null, true);
+    const sourceBounds = adaptiveCharacterSourceBounds(project, sourcePoseCharacter, sourcePoseParts);
     const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
     const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
     const parts = sourceParts.map((part) => ({
@@ -917,6 +1065,52 @@ export function resolveLayerVisualParts(
         ty: part.imageTransform!.ty - sourceCenterY,
       },
     }));
+    const validImageAssetIds = new Set(
+      project.assets
+        .filter((candidate) => candidate.kind === 'image')
+        .map((candidate) => candidate.id),
+    );
+    const requiredAssetIds = new Set<string>();
+    const candidateAssetIds = new Set<string>();
+    for (const part of parts) {
+      if (part.assetId) {
+        requiredAssetIds.add(part.assetId);
+      }
+      if (part.flaGraphic) {
+        for (const assetId of part.flaGraphic.resourceAssetIds) {
+          if (validImageAssetIds.has(assetId)) {
+            requiredAssetIds.add(assetId);
+          }
+        }
+      }
+    }
+    for (const part of character.parts) {
+      const visualSource = resolveCharacterPartVisualSource(part);
+      if (visualSource.kind !== 'fla-graphic') continue;
+      const definition = project.animations.find(
+        (candidate): candidate is FlaGraphicDefinition =>
+          isFlaGraphicDefinition(candidate) &&
+          candidate.id === visualSource.animationId,
+      );
+      if (!definition || definition.frames.length <= 1) continue;
+      for (const frame of definition.frames) {
+        const evaluatedFrame = evaluateFlaGraphicVisual({
+          definition,
+          frameOrdinal: frame.ordinal,
+          mode: 'instance',
+          instanceTransformOverrides: visualSource.instanceTransformOverrides,
+        });
+        if (!evaluatedFrame) continue;
+        for (const assetId of evaluatedFrame.resourceAssetIds) {
+          if (
+            validImageAssetIds.has(assetId) &&
+            !requiredAssetIds.has(assetId)
+          ) {
+            candidateAssetIds.add(assetId);
+          }
+        }
+      }
+    }
     return baseResult(
       evaluated,
       'adaptive-parts-character',
@@ -924,10 +1118,14 @@ export function resolveLayerVisualParts(
       parts,
       null,
       {
-        required: [...new Set(parts.map((part) => part.assetId))].map(
-          (assetId) => ({ assetId, reason: 'current-layer' as const }),
-        ),
-        candidates: [],
+        required: [...requiredAssetIds].map((assetId) => ({
+          assetId,
+          reason: 'current-layer' as const,
+        })),
+        candidates: [...candidateAssetIds].map((assetId) => ({
+          assetId,
+          reason: 'fla-graphic-resource' as const,
+        })),
         fallback: [],
       },
     );
@@ -1090,6 +1288,6 @@ export function resolveShotVisualParts(
   evaluated: EvaluatedShot,
 ): LayerVisualParts[] {
   return evaluated.layers.map((layer) =>
-    resolveLayerVisualParts(project, shot, layer),
+    resolveLayerVisualParts(project, shot, layer, evaluated.timeMs),
   );
 }

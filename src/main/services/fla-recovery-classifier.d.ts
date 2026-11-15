@@ -34,6 +34,7 @@ export interface FlaRecoveryMeasurements {
   recordContinuity: boolean;
   localHeaderOffsets: number[];
   localOnlyRecordCount: number;
+  localOnlyRecordBytes: number;
   exactDuplicateLocalRecordCount: number;
   encryptedEntryCount: number;
   compressionMethods: number[];

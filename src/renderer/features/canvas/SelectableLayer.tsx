@@ -122,25 +122,43 @@ export function SelectableLayer({
   const firstPart = visualParts[0];
   const imageForPart = (
     part: (typeof visualParts)[number],
-  ): HTMLImageElement | undefined =>
-    (visualSourceKeys
-      ? imagesByResourceKey?.get(
-          visualSourceKeys.get(part.assetId)
-            ? canvasImageResourceKey(
-                part.assetId,
-                visualSourceKeys.get(part.assetId)!,
-              )
-            : '',
-        )
-      : undefined) ??
-    images?.get(part.assetId) ??
-    (part === firstPart && part.assetId === render.assetId ? image : undefined);
-  const resolvedPartImages = visualParts.map((part) => ({
-    part,
-    image: imageForPart(part),
-  }));
+  ): HTMLImageElement | undefined => {
+    const assetId = part.assetId;
+    if (!assetId) return undefined;
+    return (
+      (visualSourceKeys
+        ? imagesByResourceKey?.get(
+            visualSourceKeys.get(assetId)
+              ? canvasImageResourceKey(
+                  assetId,
+                  visualSourceKeys.get(assetId)!,
+                )
+              : '',
+          )
+        : undefined) ??
+      images?.get(assetId) ??
+      (part === firstPart && assetId === render.assetId ? image : undefined)
+    );
+  };
+  const resolvedPartImages = visualParts.map((part) => {
+    const flaGraphicCanvas =
+      part.flaGraphic && images
+        ? renderFlaGraphicCanvas(part.flaGraphic, images)
+        : null;
+    return {
+      part,
+      image: imageForPart(part),
+      flaGraphicCanvas,
+    };
+  });
   const completeVisualReady = resolvedPartImages.every(
-    ({ image: partImage }) => Boolean(partImage),
+    ({ part, image: partImage, flaGraphicCanvas }) =>
+      part.flaGraphic
+        ? Boolean(flaGraphicCanvas) ||
+          part.flaGraphic.resourceAssetIds.every(
+            (assetId) => !visual?.resources.required.some((r) => r.assetId === assetId) || images?.has(assetId),
+          )
+        : Boolean(partImage),
   );
   const compositeVisual =
     visual?.kind === 'composite-character' ||
@@ -177,18 +195,42 @@ export function SelectableLayer({
   const renderPart = ({
     part,
     image: partImage,
-  }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
-    <KonvaImage
-      height={part.localRect.height}
-      image={partImage}
-      key={part.partId}
-      listening={canSelect}
-      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-      onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-      {...visualPartRenderTransform(part)}
-      width={part.localRect.width}
-    />
-  );
+    flaGraphicCanvas,
+  }: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+    if (part.flaGraphic) {
+      if (!flaGraphicCanvas) return null;
+      return (
+        <Group
+          key={part.partId}
+          listening={canSelect}
+          onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+          onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+          {...visualPartRenderTransform(part)}
+        >
+          <KonvaImage
+            height={flaGraphicCanvas.rect.height}
+            image={flaGraphicCanvas.canvas}
+            listening={canSelect}
+            width={flaGraphicCanvas.rect.width}
+            x={flaGraphicCanvas.rect.x + part.flaGraphic.canvas.width / 2}
+            y={flaGraphicCanvas.rect.y + part.flaGraphic.canvas.height / 2}
+          />
+        </Group>
+      );
+    }
+    return (
+      <KonvaImage
+        height={part.localRect.height}
+        image={partImage}
+        key={part.partId}
+        listening={canSelect}
+        onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+        onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+        {...visualPartRenderTransform(part)}
+        width={part.localRect.width}
+      />
+    );
+  };
   const renderHitArea = ({
     part,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element => (

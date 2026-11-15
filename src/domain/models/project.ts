@@ -25,6 +25,7 @@ import {
   CharacterV10Schema,
   CharacterV11Schema,
   CharacterV14Schema,
+  CharacterV17Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
@@ -32,6 +33,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV18Schema,
   ShotV14Schema,
   ShotV16Schema,
   ShotV15AdaptiveSchema,
@@ -84,7 +86,7 @@ export const ProjectV15AdaptiveSchema = z
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
     animations: z.array(AnimationDefinitionSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV17Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV15AdaptiveSchema),
@@ -162,8 +164,22 @@ export const ProjectV16Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(16),
   animations: z.array(AnimationDefinitionSchema),
   assets: z.array(AssetV16Schema),
+  characters: z.array(CharacterV17Schema),
   shots: z.array(ShotV16Schema),
 }).strict();
+
+/** Strict persisted v17 envelope before FLA Graphic CharacterPart visual sources. */
+export const ProjectV17Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(17),
+  characters: z.array(CharacterV17Schema),
+  shots: z.array(ShotV18Schema),
+}).strict();
+
+/** True v18: Graphic CharacterParts are supported, narrator Dialogue is not. */
+export const ProjectV18Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(18),
+  shots: z.array(ShotV18Schema),
+}).strict().superRefine(validateProjectReferences);
 
 export const ProjectV1Schema = z
   .object({
@@ -529,7 +545,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v16 -> v17) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v18 -> v19) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

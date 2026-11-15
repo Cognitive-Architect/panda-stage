@@ -901,7 +901,7 @@ describe('BFM-S03 unified visual-parts resolver', () => {
             restTransform: characterPartTransformFromStaticAdjustment(
               initialCharacter.sourceRootTransform,
               part.sourceRestTransform!,
-              part.imageMapping,
+              part.imageMapping!,
               adjustment,
             ),
           }

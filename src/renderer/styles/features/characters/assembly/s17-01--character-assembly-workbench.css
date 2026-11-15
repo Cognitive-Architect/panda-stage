@@ -31,6 +31,11 @@
   accent-color: var(--ui-color-selected-border);
 }
 
+/* Issue #1031 / CHAR-UNI-01 F01: the single Create entry exposes three ways. */
+.character-create-mode-switch[data-creation-mode-count='3'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* Issues #612/#613: compact the landscape Create surface without changing
    either creation flow or the shared Character Assembly workbench. */
 .character-list-create[data-character-list-presentation='landscape'] {
@@ -1196,6 +1201,33 @@
   overflow-x: hidden;
   overflow-y: auto;
   padding: 2px 3px 2px 0;
+}
+
+.adaptive-parts-source-picker {
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--ui-space-1);
+  padding-top: var(--ui-space-2);
+  border-top: 1px solid var(--ui-color-border);
+}
+
+.adaptive-parts-source-picker label {
+  color: var(--ui-color-text-secondary);
+  font-size: var(--ui-font-size-caption);
+  font-weight: 600;
+}
+
+.adaptive-parts-source-picker select {
+  width: 100%;
+  min-width: 0;
+  height: var(--ui-touch-button);
+  padding: 0 var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-raised);
+  color: var(--ui-color-text-primary);
+  font: inherit;
+  font-size: var(--ui-font-size-caption);
 }
 
 .adaptive-parts-assembly-row {

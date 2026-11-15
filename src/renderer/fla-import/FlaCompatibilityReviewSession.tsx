@@ -98,6 +98,8 @@ export function FlaCompatibilityReviewSession({
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
   const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic'>('assets');
   const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
+  const [recoveryRequired, setRecoveryRequired] = useState(false);
+  const recoveryRequiredRef = useRef(false);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [snapshotWorkInProgress, setSnapshotWorkInProgress] = useState(false);
   const [sequenceWorkInProgress, setSequenceWorkInProgress] = useState(false);
@@ -237,13 +239,13 @@ export function FlaCompatibilityReviewSession({
     : focusedCandidate?.kind === 'snapshot' && focusedCandidate.operation.target.frameCount > 1
       ? visibleSequenceCandidates.find((candidate) => candidate.provenance.renderTargetId === focusedRenderTargetId) ?? null
       : null;
-  const showSnapshotPreview = Boolean(focusedSnapshotCandidate?.selectable &&
+  const showSnapshotPreview = Boolean(focusedSnapshotCandidate &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable) &&
     !(focusedCandidate?.kind === 'sequence' && (!focusedCandidate.supported || focusedCandidate.blank || focusedCandidate.preview.status === 'error')));
   const showSequencePreview = Boolean(focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.preview.status === 'error'));
   const showGeneratedSequencePreview = focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable;
-  const selectionLocked = unifiedImportRunning || graphicInstanceImporting;
+  const selectionLocked = unifiedImportRunning || graphicInstanceImporting || recoveryRequired;
   const newEligibleCandidates = useMemo(() => {
     return newSelectableFlaUnifiedCandidates(unifiedCandidates, searchText);
   }, [searchText, unifiedCandidates]);
@@ -492,6 +494,7 @@ export function FlaCompatibilityReviewSession({
   const canImportItems = useCallback((items: readonly FlaUnifiedImportItem[]): boolean => {
     if (
       !snapshot ||
+      recoveryRequired || recoveryRequiredRef.current ||
       items.length === 0 ||
       unifiedImportRunning ||
       graphicInstanceImporting ||
@@ -504,7 +507,7 @@ export function FlaCompatibilityReviewSession({
     return items.every((item) => item.kind === 'raster' ||
       (item.kind === 'snapshot' && snapshotImportRunnerRef.current !== null) ||
       (item.kind === 'sequence' && sequenceImportRunnerRef.current !== null));
-  }, [graphicInstanceImporting, importRunnerRevision, renderTerminalState, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
+  }, [graphicInstanceImporting, importRunnerRevision, recoveryRequired, renderTerminalState, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
   const canImportSelected = canImportItems(selectedUnifiedItems);
   const focusedSingleCandidate = !multiSelectMode && focusedCandidate?.selectable &&
     (focusedCandidate.kind === 'raster' ||
@@ -611,7 +614,7 @@ export function FlaCompatibilityReviewSession({
 
   const updateGraphicImporting = useCallback((importing: boolean): boolean => {
     if (importing) {
-      if (unifiedImportRunningRef.current || graphicImportRunningRef.current) return false;
+      if (recoveryRequiredRef.current || unifiedImportRunningRef.current || graphicImportRunningRef.current) return false;
       graphicImportRunningRef.current = true;
     } else {
       graphicImportRunningRef.current = false;
@@ -687,6 +690,7 @@ export function FlaCompatibilityReviewSession({
     unifiedImportRunningRef.current || graphicImportRunningRef.current || renderTerminalState !== 'active';
   const snapshotPreview = (
     <FlaStaticSnapshotReview
+      active={reviewRoute === 'assets'}
       key={sessionId + ':' + ir.source.sha256 + ':snapshot'}
       checkedCandidateKeys={checkedCandidateKeys}
       importLocked={selectionLocked}
@@ -857,10 +861,10 @@ export function FlaCompatibilityReviewSession({
             enabled={reviewRoute === 'graphic' && !unifiedImportRunning}
             importLocked={selectionLocked}
             importDisabledReason={graphicImportDisabledReason}
-            onImportComplete={closeSession}
             onRequestReimport={closeSession}
             onImportGraphicInstance={onImportGraphicInstance}
             onImportingChange={updateGraphicImporting}
+            onRecoveryRequired={() => { recoveryRequiredRef.current = true; setRecoveryRequired(true); }}
             sessionId={sessionId}
             source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
             targetLookupPending={catalogProgress.phase === 'loading' || catalogProgress.phase === 'scanning'}

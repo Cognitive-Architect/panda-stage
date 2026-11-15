@@ -85,6 +85,7 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
 
     draft.clear();
     expect(draft.getSnapshot()).toEqual({
+      singleSpeakerType: 'character',
       singleCharacterId: '',
       singleText: '',
       batchRaw: '',

@@ -859,10 +859,10 @@ export function CanvasStage({
       stageLayer.layer.id,
     );
     const firstPart = stageLayer.visual.parts[0];
-    const sourceKey = firstPart
+    const sourceKey = firstPart?.assetId
       ? sourceKeys?.get(firstPart.assetId)
       : undefined;
-    if (!firstPart || !sourceKey) return imageForAsset(stageLayer.asset);
+    if (!firstPart?.assetId || !sourceKey) return imageForAsset(stageLayer.asset);
     return imageState.imagesByResourceKey.get(
       canvasImageResourceKey(firstPart.assetId, sourceKey),
     );

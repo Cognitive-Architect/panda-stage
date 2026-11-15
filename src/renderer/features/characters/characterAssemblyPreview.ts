@@ -4,6 +4,9 @@ import {
   calculateViewportTransform,
   DEFAULT_BODY_PLACEMENT,
   DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
+  cloneCharacterPart,
+  isFlaGraphicDefinition,
+  resolveCharacterPartVisualSource,
   resolveLayerVisualParts,
   transformVisualRectByPart,
   type Character,
@@ -178,7 +181,7 @@ export function calculateAssemblyVisibleBounds(
     transformVisualRectByPart(
       visibleImageRect(
         part.localRect,
-        imageBoundsByAssetId.get(part.assetId),
+        part.assetId ? imageBoundsByAssetId.get(part.assetId) : undefined,
       ),
       part,
     ),
@@ -189,7 +192,7 @@ export function calculateAssemblyVisibleBounds(
       transformVisualRectByPart(
         visibleImageRect(
           part.localRect,
-          imageBoundsByAssetId.get(part.assetId),
+          part.assetId ? imageBoundsByAssetId.get(part.assetId) : undefined,
         ),
         part,
       ),
@@ -705,25 +708,29 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
       candidate.id === session.characterId && candidate.mode === 'adaptive-parts',
   );
   if (!existing || session.draft.parts.length === 0) return null;
-  if (session.draft.parts.some((part) =>
-    !project.assets.some((asset) => asset.kind === 'image' && asset.id === part.assetId),
-  )) return null;
+  if (
+    session.draft.parts.some((part) => {
+      const visualSource = resolveCharacterPartVisualSource(part);
+      if (visualSource.kind === 'image') {
+        return !project.assets.some(
+          (asset) => asset.kind === 'image' && asset.id === visualSource.assetId,
+        );
+      }
+      return !project.animations.some(
+        (animation) =>
+          isFlaGraphicDefinition(animation) &&
+          animation.id === visualSource.animationId &&
+          Boolean(animation.structure),
+      );
+    })
+  ) {
+    return null;
+  }
 
   const character: AdaptivePartsCharacter = {
     ...existing,
     sourceRootTransform: { ...session.draft.sourceRootTransform },
-    parts: session.draft.parts.map((part) => ({
-      ...part,
-      source: { ...part.source },
-      restTransform: { ...part.restTransform },
-      ...(part.sourceRestTransform
-        ? { sourceRestTransform: { ...part.sourceRestTransform } }
-        : {}),
-      ...(part.staticAdjustment
-        ? { staticAdjustment: { ...part.staticAdjustment } }
-        : {}),
-      imageMapping: { ...part.imageMapping, crop: { ...part.imageMapping.crop } },
-    })),
+    parts: session.draft.parts.map(cloneCharacterPart),
   };
   const previewProject: Project = {
     ...project,
@@ -754,7 +761,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
   };
   const evaluated: EvaluatedLayer = {
     id: layer.id,
-    assetId: character.parts[0]!.assetId,
+    assetId: character.parts[0]!.assetId ?? character.parts[0]!.partId,
     currentExpressionId: character.defaultVoiceProfileId,
     mouthOverrideAssetId: null,
     anchor: layer.anchor,

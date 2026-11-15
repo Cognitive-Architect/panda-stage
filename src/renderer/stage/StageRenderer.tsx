@@ -154,13 +154,15 @@ function buildStagePartSources(
   projectId: string,
 ): StageImageLayerSource[] {
   return layers.flatMap((layer) => [
-    ...layer.parts.map(({ id, asset, sourceUrl }) => ({
-      id,
-      assetId: asset.id,
-      projectId,
-      sha256: asset.sha256,
-      sourceUrl,
-    })),
+    ...layer.parts
+      .filter((part) => !part.flaGraphic && part.sourceUrl.length > 0)
+      .map(({ id, asset, sourceUrl }) => ({
+        id,
+        assetId: asset.id,
+        projectId,
+        sha256: asset.sha256,
+        sourceUrl,
+      })),
     ...(layer.resources ?? []).map(({ id, asset, sourceUrl }) => ({
       id,
       assetId: asset.id,
@@ -230,10 +232,10 @@ function StagePartImages({
       left.render.zIndex - right.render.zIndex ||
       left.drawOrder - right.drawOrder,
   );
-  const complete = orderedParts.every((part) => images.has(part.id));
   const structuredImages = useMemo(() => {
     const result = new Map<string, HTMLImageElement>();
     for (const part of parts) {
+      if (part.flaGraphic) continue;
       const image = images.get(part.id);
       if (image) result.set(part.asset.id, image);
     }
@@ -243,6 +245,32 @@ function StagePartImages({
     }
     return result;
   }, [images, parts, resources]);
+  const resourceAssetIdSet = useMemo(
+    () => new Set(resources.map((resource) => resource.asset.id)),
+    [resources],
+  );
+  const partStructuredCanvases = useMemo(() => {
+    const result = new Map<
+      string,
+      NonNullable<ReturnType<typeof renderFlaGraphicCanvas>>
+    >();
+    for (const part of orderedParts) {
+      if (!part.flaGraphic) continue;
+      const rendered = renderFlaGraphicCanvas(part.flaGraphic, structuredImages);
+      if (rendered) {
+        result.set(part.id, rendered);
+      }
+    }
+    return result;
+  }, [orderedParts, structuredImages]);
+  const complete = orderedParts.every((part) => {
+    if (!part.flaGraphic) {
+      return images.has(part.id);
+    }
+    return part.flaGraphic.resourceAssetIds.every(
+      (assetId) => !resourceAssetIdSet.has(assetId) || structuredImages.has(assetId),
+    );
+  });
   const structuredCanvas = useMemo(
     () => structuredVisual
       ? renderFlaGraphicCanvas(structuredVisual, structuredImages)
@@ -323,9 +351,39 @@ function StagePartImages({
   ]);
 
   const renderPart = (part: StageRenderPart): React.JSX.Element | null => {
-    const image = images.get(part.id);
     const render = part.render;
-    if (!image || !render.visible) return null;
+    if (!render.visible) return null;
+    if (part.flaGraphic) {
+      const partCanvas = partStructuredCanvases.get(part.id);
+      if (!partCanvas) return null;
+      return (
+        <Group
+          key={part.id}
+          listening={false}
+          opacity={1}
+          offsetX={render.offsetX}
+          offsetY={render.offsetY}
+          rotation={render.rotationDeg}
+          skewX={render.skewX ?? 0}
+          skewY={render.skewY ?? 0}
+          scaleX={render.scaleX}
+          scaleY={render.scaleY}
+          x={render.x}
+          y={render.y}
+        >
+          <KonvaImage
+            image={partCanvas.canvas}
+            x={partCanvas.rect.x + part.flaGraphic.canvas.width / 2}
+            y={partCanvas.rect.y + part.flaGraphic.canvas.height / 2}
+            width={partCanvas.rect.width}
+            height={partCanvas.rect.height}
+            listening={false}
+          />
+        </Group>
+      );
+    }
+    const image = images.get(part.id);
+    if (!image) return null;
     return (
       <KonvaImage
         height={render.height}

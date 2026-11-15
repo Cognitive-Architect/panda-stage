@@ -8,6 +8,9 @@ import {
   FacePlacementSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
+  cloneCharacterPart,
+  isFlaGraphicDefinition,
+  resolveCharacterPartVisualSource,
   type Character,
   type CharacterExpression,
   type CharacterHead,
@@ -865,18 +868,31 @@ export class CharacterService {
         );
       }
       const part = partResult.data;
-      const asset = this.imageAsset(project, part.assetId);
-      const expectedWidth = Math.round(
-        part.imageMapping.crop.width * part.imageMapping.exportScale,
-      );
-      const expectedHeight = Math.round(
-        part.imageMapping.crop.height * part.imageMapping.exportScale,
-      );
-      if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
-        throw new CharacterServiceError(
-          'INVALID_ADAPTIVE_PARTS_DEFINITION',
-          `Adaptive Part ${part.partId} crop mapping expects ${expectedWidth}×${expectedHeight}, but asset ${asset.id} is ${asset.width}×${asset.height}.`,
+      const visualSource = resolveCharacterPartVisualSource(part);
+      if (visualSource.kind === 'image') {
+        const asset = this.imageAsset(project, visualSource.assetId);
+        const expectedWidth = Math.round(
+          visualSource.imageMapping.crop.width * visualSource.imageMapping.exportScale,
         );
+        const expectedHeight = Math.round(
+          visualSource.imageMapping.crop.height * visualSource.imageMapping.exportScale,
+        );
+        if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
+          throw new CharacterServiceError(
+            'INVALID_ADAPTIVE_PARTS_DEFINITION',
+            `Adaptive Part ${part.partId} crop mapping expects ${expectedWidth}×${expectedHeight}, but asset ${asset.id} is ${asset.width}×${asset.height}.`,
+          );
+        }
+      } else {
+        const definition = project.animations.find(
+          (candidate) => candidate.id === visualSource.animationId,
+        );
+        if (!definition || !isFlaGraphicDefinition(definition) || !definition.structure) {
+          throw new CharacterServiceError(
+            'INVALID_ADAPTIVE_PARTS_DEFINITION',
+            `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
+          );
+        }
       }
       return {
         ...part,
@@ -889,21 +905,7 @@ export class CharacterService {
   }
 
   private clonePart(part: CharacterPart): CharacterPart {
-    return {
-      ...part,
-      source: { ...part.source },
-      restTransform: { ...part.restTransform },
-      ...(part.sourceRestTransform
-        ? { sourceRestTransform: { ...part.sourceRestTransform } }
-        : {}),
-      ...(part.staticAdjustment
-        ? { staticAdjustment: { ...part.staticAdjustment } }
-        : {}),
-      imageMapping: {
-        ...part.imageMapping,
-        crop: { ...part.imageMapping.crop },
-      },
-    };
+    return cloneCharacterPart(part);
   }
 
   private definitionOf(

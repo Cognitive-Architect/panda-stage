@@ -163,23 +163,90 @@ function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
   );
 }
 
+function rejectExternalXmlMarkup(markup: string, entryName: string): void {
+  // Namespace identifiers are names, not resource fetches. Keep the existing
+  // policy on actual markup attributes and processing instructions.
+  const policyMarkup = markup.replace(/\s+xmlns(?::[A-Za-z_][A-Za-z0-9_.-]*)?\s*=\s*(?:"[^"]*"|'[^']*')/gu, '');
+  const lower = policyMarkup.toLocaleLowerCase('en-US');
+  if (
+    lower.includes('<!doctype') ||
+    lower.includes('<!entity') ||
+    lower.includes(' system ') ||
+    lower.includes(' public ') ||
+    lower.includes('xinclude') ||
+    lower.includes('http://') ||
+    lower.includes('https://') ||
+    lower.includes('file:')
+  ) {
+    fail('MALFORMED_XFL', `External XML resources are not permitted: ${entryName}`);
+  }
+}
+
+function decodeXmlCharacterReferences(value: string): string {
+  return value.replace(/&#(?:x([0-9a-f]+)|(\d+));/giu, (reference, hexadecimal: string | undefined, decimal: string | undefined) => {
+    const codePoint = Number.parseInt(hexadecimal ?? decimal ?? '', hexadecimal ? 16 : 10);
+    const isXmlCharacter =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+      (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+      (codePoint >= 0x10000 && codePoint <= 0x10ffff);
+    return isXmlCharacter ? String.fromCodePoint(codePoint) : reference;
+  });
+}
+
 function enforceXmlDepth(text: string, entryName: string): void {
   let depth = 0;
   let rootCount = 0;
   const stack: string[] = [];
-  const tokenPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?([A-Za-z_][A-Za-z0-9_.:-]*)(?:\s[^<>]*?)?\/?\s*>/gu;
+  const namespaceFrames: Array<Array<{ prefix: string; previousValue?: string }>> = [];
+  const namespaces = new Map<string, string>();
+  const tokenPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<!DOCTYPE\b|<!ENTITY\b|<\?[\s\S]*?\?>|<\/?([A-Za-z_][A-Za-z0-9_.:-]*)(?:\s+(?:"[^"]*"|'[^']*'|[^"'<>])*)?\s*\/?>/giu;
+
   for (const match of text.matchAll(tokenPattern)) {
     const token = match[0];
     if (token.startsWith('<!--') || token.startsWith('<![CDATA[')) continue;
+    if (/^<!DOCTYPE\b/iu.test(token) || /^<!ENTITY\b/iu.test(token)) {
+      fail('MALFORMED_XFL', `XML declarations are not permitted: ${entryName}`);
+    }
+    if (token.startsWith('<?')) {
+      rejectExternalXmlMarkup(token, entryName);
+      continue;
+    }
+
     const tagName = match[1];
-    if (!tagName) fail('MALFORMED_XFL', `XML tag is malformed: ${entryName}`);
+    if (!tagName) continue;
+    rejectExternalXmlMarkup(token, entryName);
+
     if (token.startsWith('</')) {
       depth -= 1;
       if (depth < 0 || stack.pop() !== tagName) {
         fail('MALFORMED_XFL', `XML closing tag is malformed: ${entryName}`);
       }
+      const namespaceChanges = namespaceFrames.pop() ?? [];
+      for (const change of namespaceChanges) {
+        if (change.previousValue === undefined) namespaces.delete(change.prefix);
+        else namespaces.set(change.prefix, change.previousValue);
+      }
       continue;
     }
+
+    const namespaceChanges: Array<{ prefix: string; previousValue?: string }> = [];
+    const namespacePattern = /\sxmlns(?::([A-Za-z_][A-Za-z0-9_.-]*))?\s*=\s*(["'])([\s\S]*?)\2/gu;
+    for (const namespaceMatch of token.matchAll(namespacePattern)) {
+      const prefix = namespaceMatch[1] ?? '';
+      namespaceChanges.push({ prefix, previousValue: namespaces.get(prefix) });
+      namespaces.set(prefix, decodeXmlCharacterReferences(namespaceMatch[3] ?? ''));
+    }
+
+    const separator = tagName.indexOf(':');
+    const prefix = separator === -1 ? '' : tagName.slice(0, separator);
+    const localName = separator === -1 ? tagName : tagName.slice(separator + 1);
+    if (localName === 'include' && namespaces.get(prefix) === 'http://www.w3.org/2001/XInclude') {
+      fail('MALFORMED_XFL', `XInclude is not permitted: ${entryName}`);
+    }
+
     if (depth === 0) {
       rootCount += 1;
       if (rootCount > 1) fail('MALFORMED_XFL', `XML has multiple roots: ${entryName}`);
@@ -187,16 +254,22 @@ function enforceXmlDepth(text: string, entryName: string): void {
     if (!token.endsWith('/>')) {
       depth += 1;
       stack.push(tagName);
+      namespaceFrames.push(namespaceChanges);
       if (depth > FLA_IMPORT_LIMITS.maxRecursionDepth) {
         fail('XML_LIMIT_EXCEEDED', `XML nesting depth exceeds the limit: ${entryName}`);
       }
+    } else {
+      for (const change of namespaceChanges) {
+        if (change.previousValue === undefined) namespaces.delete(change.prefix);
+        else namespaces.set(change.prefix, change.previousValue);
+      }
     }
   }
+
   if (depth !== 0 || stack.length !== 0 || rootCount !== 1) {
     fail('MALFORMED_XFL', `XML document is not balanced: ${entryName}`);
   }
 }
-
 function inspectXml(bytes: Uint8Array, entry: FlaArchiveEntry): boolean {
   if (!entry.isXml) return false;
   if (entry.uncompressedSize > FLA_IMPORT_LIMITS.maxXmlBytes) {
@@ -215,23 +288,6 @@ function inspectXml(bytes: Uint8Array, entry: FlaArchiveEntry): boolean {
     return false;
   }
   enforceXmlDepth(text, entry.name);
-  // XML namespace declarations commonly contain http:// URLs; they are
-  // identifiers, not fetches.  Remove those attributes before applying the
-  // external-resource policy.
-  const policyText = text.replace(/\s+xmlns(?::[A-Za-z_][A-Za-z0-9_.-]*)?\s*=\s*(?:"[^"]*"|'[^']*')/gu, '');
-  const lower = policyText.toLocaleLowerCase('en-US');
-  if (
-    lower.includes('<!doctype') ||
-    lower.includes('<!entity') ||
-    lower.includes(' system ') ||
-    lower.includes(' public ') ||
-    lower.includes('xinclude') ||
-    lower.includes('http://') ||
-    lower.includes('https://') ||
-    lower.includes('file:')
-  ) {
-    fail('MALFORMED_XFL', `External XML resources are not permitted: ${entry.name}`);
-  }
 
   return /<script(?:\s|>)/iu.test(text) || /actionscript|doabc/iu.test(text);
 }

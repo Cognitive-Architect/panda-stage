@@ -17,6 +17,8 @@ import {
   ProjectV15AdaptiveSchema,
   ProjectV15AnimationSchema,
   ProjectV16Schema,
+  ProjectV17Schema,
+  ProjectV18Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -51,6 +53,8 @@ export type DetectedSchemaVersion =
   | 14
   | 15
   | 16
+  | 17
+  | 18
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -58,7 +62,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -91,6 +95,8 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 14 ||
     version === 15 ||
     version === 16 ||
+    version === 17 ||
+    version === 18 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -288,12 +294,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v15) is routed here by version and resolved to
- * the current v16 project. The formal v1-v7
+ * Every persisted envelope (v0-v18) is routed here by version and resolved to
+ * the current v19 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v16 shape. A narrow compatibility normalization then
+ * validate the resolved current shape. For pre-v18 projects, a narrow normalization
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -373,11 +379,24 @@ export function migrateProject(input: unknown): Project {
       });
       break;
     }
-    case PROJECT_SCHEMA_VERSION:
-      // Current v17 envelope: validate it, then apply only the narrow
-      // historical-default compatibility normalization without mutating input.
-      project = ProjectSchema.parse(input);
+    case 17: {
+      const version17 = ProjectV17Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version17,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
       break;
+    }
+    case 18:
+      // Envelope-only upgrade: no speaker defaults, styling or content rewrite.
+      return ProjectSchema.parse({
+        ...ProjectV18Schema.parse(input),
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+    case PROJECT_SCHEMA_VERSION:
+      // Current projects are validated without an implicit compatibility rewrite.
+      project = ProjectSchema.parse(input);
+      return project;
     case 10: {
       const version10 = ProjectV10Schema.parse(input);
       project = migrateImageAuthorMetadata({

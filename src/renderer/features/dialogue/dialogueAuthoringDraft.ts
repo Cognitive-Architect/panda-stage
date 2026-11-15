@@ -2,12 +2,15 @@ type Listener = () => void;
 
 export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
 
+export type DialogueDraftSpeakerType = 'character' | 'narrator';
+
 export interface DialogueDraftIdentity {
   projectRoot: string;
   shotId: string | null;
 }
 
 export interface DialogueAuthoringDraftSnapshot {
+  singleSpeakerType: DialogueDraftSpeakerType;
   singleCharacterId: string;
   singleText: string;
   batchRaw: string;
@@ -23,16 +26,18 @@ export function validateSingleDialogueDraft(
   draft: Pick<
     DialogueAuthoringDraftSnapshot,
     'singleCharacterId' | 'singleText'
-  >,
+  > & { singleSpeakerType?: DialogueDraftSpeakerType },
   characterIds: readonly string[],
 ): SingleDialogueDraftErrors {
   const text = draft.singleText.trim();
   const speaker =
-    draft.singleCharacterId === ''
-      ? '请选择角色。'
-      : !characterIds.includes(draft.singleCharacterId)
-        ? '所选角色已不存在，请重新选择。'
-        : null;
+    draft.singleSpeakerType === 'narrator'
+      ? null
+      : draft.singleCharacterId === ''
+        ? '请选择角色。'
+        : !characterIds.includes(draft.singleCharacterId)
+          ? '所选角色已不存在，请重新选择。'
+          : null;
   const textError =
     text.length === 0
       ? '请输入台词内容。'
@@ -43,6 +48,7 @@ export function validateSingleDialogueDraft(
 }
 
 const EMPTY_DRAFT: DialogueAuthoringDraftSnapshot = {
+  singleSpeakerType: 'character',
   singleCharacterId: '',
   singleText: '',
   batchRaw: '',
@@ -97,7 +103,24 @@ export class DialogueAuthoringDraft {
   }
 
   setSingleCharacterId(value: string): void {
-    this.set({ ...this.snapshot, singleCharacterId: value });
+    this.set({
+      ...this.snapshot,
+      singleCharacterId: value,
+      singleSpeakerType: value === '' ? 'character' : this.snapshot.singleSpeakerType,
+    });
+  }
+
+  /**
+   * Switch the single-add speaker between a real Character and narration.
+   * Narration clears the Character draft field so a stale character can never be
+   * committed together with `speakerType: 'narrator'`.
+   */
+  setSingleSpeakerType(value: DialogueDraftSpeakerType): void {
+    this.set({
+      ...this.snapshot,
+      singleSpeakerType: value,
+      singleCharacterId: value === 'narrator' ? '' : this.snapshot.singleCharacterId,
+    });
   }
 
   setSingleText(value: string): void {

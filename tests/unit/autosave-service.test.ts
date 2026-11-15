@@ -25,6 +25,27 @@ describe('AutosaveService', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it('restores dirty work after a coordinated failed save and keeps recovery active (#1105)', async () => {
+    const writeRecovery = vi.fn().mockResolvedValue({});
+    const service = new AutosaveService({ recoveryService: recoveryService(writeRecovery) });
+    const disk = project('Saved');
+    const dirty = project('Unsaved edits');
+    const failed = project('Unsaved edits plus failed Graphic');
+    const base = { projectRoot: PROJECT_ROOT, project: dirty, dirty: true, revision: 1, openInstanceId: 42 };
+    service.track({ ...base, project: disk, dirty: false, revision: 0 });
+    service.update(base);
+    service.markFormalSaved(PROJECT_ROOT, failed, 2);
+    service.markFormalSaved(PROJECT_ROOT, disk, 1);
+    service.restoreAfterFailedSave(base, failed);
+    expect(service.getProjectSnapshot(PROJECT_ROOT)).toEqual(base);
+    await service.tick(PROJECT_ROOT);
+    expect(writeRecovery).toHaveBeenCalledOnce();
+    service.update({ ...base, project: project('Newer edit'), revision: 2 });
+    expect(() => service.restoreAfterFailedSave(base, failed)).toThrow('cannot be restored');
+    expect(service.getProjectSnapshot(PROJECT_ROOT)?.project.name).toBe('Newer edit');
+    await service.stop(PROJECT_ROOT);
+  });
+
   it('writes once after 30 seconds only when a newer dirty revision exists', async () => {
     const writeRecovery = vi.fn().mockResolvedValue({});
     const service = new AutosaveService({

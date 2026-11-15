@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FlaRenderTarget } from '../../src/shared/fla-static-snapshot-api';
 import {
   createFlaGraphicInstanceWorkbenchCandidates,
+  FlaGraphicImportError,
   type EditableFlaGraphicInstancePreview,
 } from '../../src/renderer/features/fla-import/fla-graphic-instance-import';
 import { FlaGraphicInstanceWorkbench } from '../../src/renderer/fla-import/FlaGraphicInstanceWorkbench';
+import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { buildProject } from './domain/testProject';
 
 const SESSION_ID = '00000000-0000-4000-8000-000000001072';
 const PLAN_ID = '00000000-0000-4000-8000-000000001073';
@@ -173,6 +176,8 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     await act(async () => root.unmount());
     container.remove();
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    editorProjectStore.clear();
     if (priorPandaStageDescriptor) {
       Object.defineProperty(window, 'pandaStage', priorPandaStageDescriptor);
     } else {
@@ -279,7 +284,7 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(container.querySelector('[data-testid="fla-graphic-instance-import"]')).not.toBeNull();
   });
 
-  it('commits only the focused occurrence through the existing import callback and returns to the stage', async () => {
+  it('commits the focused occurrence and retains its preview and selection', async () => {
     const receivedImports: Array<[EditableFlaGraphicInstancePreview, string]> = [];
     const onImportGraphicInstance = vi.fn(async (
       preview: EditableFlaGraphicInstancePreview,
@@ -298,6 +303,170 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(importCall[0].planId).toBe(PLAN_ID);
     expect(importCall[1]).toBe('part-graphic2');
     expect(onImportComplete).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-selected-preview"]')).not.toBeNull();
+    expect(partPreview).toHaveBeenCalledTimes(1);
+    expect(partPreviewCancel).not.toHaveBeenCalled();
+  });
+
+  it('blocks repeated clicks and retries a save failure without preparing the preview again', async () => {
+    const pending = deferred<void>();
+    const onImportGraphicInstance = vi.fn()
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValueOnce(undefined);
+    await renderWorkbench({ onImportGraphicInstance });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic2'));
+    const previewUrl = container.querySelector('[data-testid="fla-graphic-instance-selected-preview"]')?.getAttribute('src');
+    await act(async () => {
+      click('fla-graphic-instance-import');
+      click('fla-graphic-instance-import');
+    });
+    expect(onImportGraphicInstance).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-testid="fla-c03-import-overlay"]')).not.toBeNull();
+    await act(async () => pending.reject(new FlaGraphicImportError('ASSET_COMMIT_FAILED', 'Disk full; retry after freeing space.')));
+    expect(container.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-import"]')?.disabled).toBe(false);
+    expect(partPreviewCancel).not.toHaveBeenCalled();
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onImportGraphicInstance).toHaveBeenCalledTimes(2);
+    expect(onImportGraphicInstance.mock.calls[1]).toEqual(onImportGraphicInstance.mock.calls[0]);
+    expect(container.querySelector('[data-testid="fla-graphic-instance-selected-preview"]')?.getAttribute('src')).toBe(previewUrl);
+    expect(partPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a completed import once in a floating status and dismisses it after three seconds (#1108)', async () => {
+    const pending = deferred<void>();
+    const onImportComplete = vi.fn();
+    await renderWorkbench({ onImportGraphicInstance: () => pending.promise, onImportComplete });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    vi.useFakeTimers();
+    await act(async () => pending.resolve());
+    const notice = document.querySelector('[data-testid="fla-graphic-instance-success"]');
+    expect(notice?.textContent).toBe('已导入元件');
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.parentElement).toBe(document.body);
+    expect(notice?.querySelector('button')).toBeNull();
+    expect(container.querySelector('.fla-c03-import-footer')?.textContent).not.toContain('已导入元件');
+    expect(onImportComplete).toHaveBeenCalledOnce();
+    await act(async () => vi.advanceTimersByTime(2_999));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+  });
+
+  it('inherits hover/focus pause and resumes only when both have left the confirmation', async () => {
+    await renderWorkbench({ onImportGraphicInstance: async () => undefined });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    vi.useFakeTimers();
+    await act(async () => click('fla-graphic-instance-import'));
+    const notice = document.querySelector<HTMLOutputElement>('[data-testid="fla-graphic-instance-success"]')!;
+    await act(async () => vi.advanceTimersByTime(1_000));
+    await act(async () => {
+      notice.dispatchEvent(new Event('pointerover', { bubbles: true }));
+      notice.focus();
+    });
+    await act(async () => vi.advanceTimersByTime(4_000));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => notice.dispatchEvent(new Event('pointerout', { bubbles: true })));
+    await act(async () => vi.advanceTimersByTime(4_000));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => notice.blur());
+    await act(async () => vi.advanceTimersByTime(1_999));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBe(notice);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+  });
+
+  it.each([
+    { dirty: false, hasShot: true },
+    { dirty: true, hasShot: false },
+  ])('confirms success for dirty=$dirty hasShot=$hasShot without persisting feedback', async ({ dirty, hasShot }) => {
+    const project = buildProject();
+    editorProjectStore.open('D:\\acceptance\\issue1108.pandastage', { ...project, shots: hasShot ? project.shots : [] });
+    if (dirty) editorProjectStore.updateProject({ ...editorProjectStore.getSnapshot()!.project, name: 'Unsaved edits' });
+    const before = editorProjectStore.getSnapshot();
+    const onImportGraphicInstance = vi.fn(async () => {
+      expect(editorProjectStore.getSnapshot()?.dirty).toBe(dirty);
+      expect(Boolean(editorProjectStore.getSnapshot()?.project.shots.length)).toBe(hasShot);
+    });
+    await renderWorkbench({ onImportGraphicInstance });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onImportGraphicInstance).toHaveBeenCalledOnce();
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')?.textContent).toBe('已导入元件');
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+  });
+
+  it('replaces the confirmation for repeated successful reuse and clears it before a later failure', async () => {
+    const onImportComplete = vi.fn();
+    const onImportGraphicInstance = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new FlaGraphicImportError('ASSET_COMMIT_FAILED', 'Disk full'));
+    await renderWorkbench({ onImportGraphicInstance, onImportComplete });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    vi.useFakeTimers();
+    await act(async () => click('fla-graphic-instance-import'));
+    await act(async () => vi.advanceTimersByTime(2_000));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    expect(onImportComplete).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTime(2_999));
+    expect(document.querySelectorAll('[data-testid="fla-graphic-instance-success"]')).toHaveLength(1);
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent).toContain('导入失败');
+    expect(onImportComplete).toHaveBeenCalledTimes(2);
+    expect(partPreview).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    'ASSET_COMMIT_FAILED', 'ROLLBACK_FAILED', 'STALE_PROJECT_REVISION', 'STALE_PLAN',
+    'PROJECT_NOT_TRACKED', 'UNSUPPORTED_SOURCE',
+  ] as const)('does not confirm an unsuccessful %s import', async (code) => {
+    const onImportComplete = vi.fn();
+    await renderWorkbench({
+      onImportGraphicInstance: async () => { throw new FlaGraphicImportError(code, 'Rejected commit'); },
+      onImportComplete,
+    });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+    expect(onImportComplete).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).not.toBeNull();
+  });
+
+  it('does not confirm a cancelled operation', async () => {
+    await renderWorkbench({ onImportGraphicInstance: async () => { throw new Error('Import cancelled'); } });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(document.querySelector('[data-testid="fla-graphic-instance-success"]')).toBeNull();
+  });
+
+  it('keeps rollback recovery persistent without reset or another commit, and directs Project reopen (#1107)', async () => {
+    const onImportGraphicInstance = vi.fn(async () => {
+      throw new FlaGraphicImportError('ROLLBACK_FAILED', 'Project rollback left residual files');
+    });
+    const onRecoveryRequired = vi.fn();
+    await renderWorkbench({ onImportGraphicInstance, onRecoveryRequired });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onRecoveryRequired).toHaveBeenCalledOnce();
+    const failure = container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]');
+    expect(failure?.textContent).toContain('导入未能安全恢复');
+    expect(failure?.textContent).toContain('重新打开当前项目');
+    expect(failure?.textContent).not.toContain('请重试');
+    expect(failure?.querySelector('button')).toBeNull();
+    expect(failure?.querySelector('details')?.open).toBe(false);
+    expect(failure?.querySelector('pre')?.textContent).toContain('residual files');
+    await act(async () => {
+      click('fla-graphic-instance-candidate-part-graphic2');
+      click('fla-graphic-instance-import');
+    });
+    expect(onImportGraphicInstance).toHaveBeenCalledOnce();
+    expect(partPreview).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).toBe(failure);
   });
 
   it('separates loading, an empty Graphic result, and a failed preview with collapsed diagnostics', async () => {
@@ -343,12 +512,16 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     visibleCopy.querySelector('details')?.remove();
     expect(visibleCopy.textContent).not.toContain('ERR_FAILED (-2)');
     expect(visibleCopy.textContent).not.toContain('Snapshot rasterization failed');
-    expect(container.querySelector('.fla-c03-graphic-retry span')?.textContent).toBe('请重试');
+    const retry = container.querySelector('[data-testid="fla-graphic-instance-reset-preview"]');
+    expect(retry?.textContent).toBe('请重试');
+    expect(retry?.querySelector('svg')).not.toBeNull();
+    expect(retry?.closest('.fla-preview-failure-body')?.querySelector('strong')?.textContent).toBe('预览加载失败');
+    expect(retry?.closest('.fla-c03-import-footer')).toBeNull();
     expect([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('重试预览')))
       .toBe(false);
     expect(container.textContent).not.toContain('请稍后重试');
     expect(container.querySelector('[data-testid="fla-graphic-instance-reset-preview"]')?.getAttribute('aria-label'))
-      .toBe('重置预览');
+      .toBe('请重试');
     expect(container.querySelectorAll('[data-testid="fla-graphic-instance-reset-preview"]')).toHaveLength(1);
     expect(container.querySelector('[data-testid="fla-graphic-instance-import"]')?.hasAttribute('disabled'))
       .toBe(true);
@@ -392,12 +565,12 @@ describe('FLA Graphic occurrence candidate workbench', () => {
 
   it('releases a failed import plan before resetting and routes an expired session to FLA reimport', async () => {
     const onImportGraphicInstance = vi.fn(async () => {
-      throw new Error('Snapshot rasterization failed');
+      throw new FlaGraphicImportError('STALE_PLAN', 'Snapshot rasterization failed');
     });
     await renderWorkbench({ onImportGraphicInstance });
     await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
     await act(async () => click('fla-graphic-instance-import'));
-    expect(container.querySelector('[data-testid="fla-graphic-instance-summary"]')?.textContent)
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent)
       .toContain('导入失败');
     expect(container.querySelector('[data-testid="fla-graphic-instance-error-details"]')?.textContent)
       .toContain('Snapshot rasterization failed');

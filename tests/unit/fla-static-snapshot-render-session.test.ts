@@ -10,9 +10,10 @@
 
 import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   FlaStaticSnapshotRenderSession,
+  FlaStaticSnapshotRasterizerError,
   type FlaStaticSnapshotRasterizer,
   type FlaStaticSnapshotSource,
   type FlaStaticSnapshotSourceLookup,
@@ -192,6 +193,29 @@ function firstTarget(entries: ReadonlyArray<{ target: FlaRenderTarget }>): FlaRe
 }
 
 describe('FlaStaticSnapshotRenderSession', () => {
+  it.each(['RENDER_CANCELLED', 'RENDER_TIMEOUT', 'RENDER_FAILED', 'RENDERER_CRASH'] as const)(
+    'keeps %s distinct at the real rasterizer/session boundary (#1107)', async (code) => {
+      const fla = await buildMinimalFla();
+      const rasterizer = resolvingRasterizer();
+      vi.spyOn(rasterizer, 'rasterize').mockRejectedValueOnce(new FlaStaticSnapshotRasterizerError(code, 'raster lifecycle detail'));
+      const session = new FlaStaticSnapshotRenderSession({ rasterizer, sourceLookup: sourceLookup(fla) });
+      try {
+        const catalog = await session.catalog(SESSION_ID);
+        if (!catalog.ok) throw new Error('Expected catalog');
+        const request = { format: 'fla-static-snapshot-preview' as const, version: 1 as const,
+          requestId: PREVIEW_A, sessionId: SESSION_ID, target: firstTarget(catalog.entries) };
+        const failure = await session.preview(request);
+        expect(failure.ok).toBe(false);
+        if (failure.ok) throw new Error('Expected lifecycle failure');
+        expect(failure.error.code).toBe(code);
+        expect(failure.error.message).toContain('raster lifecycle detail');
+        expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+        const latest = await session.preview({ ...request, requestId: PREVIEW_B });
+        expect(latest.ok).toBe(true);
+        expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_B)).toBe(true);
+      } finally { session.close(); }
+    },
+  );
   it('discovers renderable targets from a zero-raster FLA', async () => {
     const session = new FlaStaticSnapshotRenderSession({
       rasterizer: resolvingRasterizer(),

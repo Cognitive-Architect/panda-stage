@@ -462,7 +462,7 @@ describe('S07 composite assembly preview', () => {
     ]);
     const bounds = calculateAssemblyVisibleBounds(visual, alphaBounds);
     const expectedRects = visual!.parts.map((part) => {
-      const imageBounds = alphaBounds.get(part.assetId)!;
+      const imageBounds = alphaBounds.get(part.assetId!)!;
       const visible = {
         x: part.localRect.x + part.localRect.width * imageBounds.x,
         y: part.localRect.y + part.localRect.height * imageBounds.y,

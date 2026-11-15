@@ -237,7 +237,7 @@ describe('Adaptive Parts Character C1 model', () => {
     );
 
     const outOfBoundsCrop = structuredClone(valid);
-    outOfBoundsCrop[0]!.imageMapping.crop.width = 641;
+    outOfBoundsCrop[0]!.imageMapping!.crop.width = 641;
     expectDefinitionError(() =>
       service.applyAdaptivePartsDefinition(
         project,

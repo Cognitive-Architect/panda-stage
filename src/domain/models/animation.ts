@@ -187,3 +187,10 @@ export type AnimationFrame = z.infer<typeof AnimationFrameSchema>;
 export type AnimationDefinition = z.infer<typeof AnimationDefinitionSchema>;
 export type FlaGraphicDefinition = z.infer<typeof FlaGraphicDefinitionSchema>;
 export type ProjectAnimationDefinition = z.infer<typeof ProjectAnimationDefinitionSchema>;
+
+/** Type guard distinguishing reusable structured FLA Graphic Definitions from standard frame animations. */
+export function isFlaGraphicDefinition(
+  definition: ProjectAnimationDefinition,
+): definition is FlaGraphicDefinition {
+  return 'kind' in definition && definition.kind === 'fla-graphic';
+}

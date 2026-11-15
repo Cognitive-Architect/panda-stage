@@ -35,7 +35,7 @@ const DEFAULT_C2_BUDGETS = Object.freeze({
   maxExpandedArchiveBytes: 1024 * 1024 * 1024,
   maxSingleEntryBytes: 64 * 1024 * 1024,
   maxCentralDirectoryBytes: 64 * 1024 * 1024,
-  maxExactDuplicateLocalRecords: 1,
+  maxExactDuplicateLocalRecords: 2,
   supportedCompressionMethods: Object.freeze([0, 8]),
 });
 
@@ -187,6 +187,7 @@ function emptyMeasurements(byteLength) {
     recordContinuity: false,
     localHeaderOffsets: [],
     localOnlyRecordCount: 0,
+    localOnlyRecordBytes: 0,
     exactDuplicateLocalRecordCount: 0,
     encryptedEntryCount: 0,
     compressionMethods: [],
@@ -229,13 +230,14 @@ function readCentralRecord(bytes, cursor, eocdOffset, budgets) {
   }
   const flags = readUint16(bytes, cursor + 8);
   const compressionMethod = readUint16(bytes, cursor + 10);
+  const crc32 = readUint32(bytes, cursor + 16);
   const compressedSize = readUint32(bytes, cursor + 20);
   const uncompressedSize = readUint32(bytes, cursor + 24);
   const nameLength = readUint16(bytes, cursor + 28);
   const extraLength = readUint16(bytes, cursor + 30);
   const commentLength = readUint16(bytes, cursor + 32);
   const localHeaderOffset = readUint32(bytes, cursor + 42);
-  if ([flags, compressionMethod, compressedSize, uncompressedSize, nameLength, extraLength, commentLength, localHeaderOffset].some((value) => value === null)) {
+  if ([flags, compressionMethod, crc32, compressedSize, uncompressedSize, nameLength, extraLength, commentLength, localHeaderOffset].some((value) => value === null)) {
     return { ok: false, reason: 'CENTRAL_RECORD_FIELDS_TRUNCATED' };
   }
   if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) {
@@ -266,6 +268,7 @@ function readCentralRecord(bytes, cursor, eocdOffset, budgets) {
     cursor,
     flags,
     compressionMethod,
+    crc32,
     compressedSize,
     uncompressedSize,
     name: decoded.value,
@@ -284,11 +287,12 @@ function readLocalRecord(bytes, offset, limit, budgets) {
   }
   const flags = readUint16(bytes, offset + 6);
   const compressionMethod = readUint16(bytes, offset + 8);
+  const crc32 = readUint32(bytes, offset + 14);
   const compressedSize = readUint32(bytes, offset + 18);
   const uncompressedSize = readUint32(bytes, offset + 22);
   const nameLength = readUint16(bytes, offset + 26);
   const extraLength = readUint16(bytes, offset + 28);
-  if ([flags, compressionMethod, compressedSize, uncompressedSize, nameLength, extraLength].some((value) => value === null)) {
+  if ([flags, compressionMethod, crc32, compressedSize, uncompressedSize, nameLength, extraLength].some((value) => value === null)) {
     return { ok: false, reason: 'LOCAL_HEADER_FIELDS_TRUNCATED' };
   }
   if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff) {
@@ -321,6 +325,7 @@ function readLocalRecord(bytes, offset, limit, budgets) {
     dataOffset,
     flags,
     compressionMethod,
+    crc32,
     compressedSize,
     uncompressedSize,
     name: decoded.value,
@@ -342,6 +347,7 @@ function exactDuplicateMatches(local, central, bytes) {
     local.normalizedName === central.normalizedName &&
     local.flags === central.flags &&
     local.compressionMethod === central.compressionMethod &&
+    local.crc32 === central.crc32 &&
     local.compressedSize === central.compressedSize &&
     local.uncompressedSize === central.uncompressedSize &&
     local.name === central.name &&
@@ -356,7 +362,13 @@ function parseLocalOnlyGap(bytes, start, end, centralByName, budgets) {
     const local = readLocalRecord(bytes, cursor, end, budgets);
     if (!local.ok) return { ok: false, reason: 'UNACCOUNTED_LOCAL_REGION', detail: local.reason };
     const central = centralByName.get(local.normalizedName);
-    if (!central || !exactDuplicateMatches(local, central, bytes)) {
+    if (!central) {
+      return { ok: false, reason: 'CONFLICTING_LOCAL_ONLY_PAYLOAD', detail: local.name };
+    }
+    if (local.crc32 !== central.crc32) {
+      return { ok: false, reason: 'LOCAL_CENTRAL_CRC_MISMATCH', detail: local.name };
+    }
+    if (!exactDuplicateMatches(local, central, bytes)) {
       return { ok: false, reason: 'CONFLICTING_LOCAL_ONLY_PAYLOAD', detail: local.name };
     }
     records.push({ ...local, exactDuplicate: true });
@@ -367,9 +379,9 @@ function parseLocalOnlyGap(bytes, start, end, centralByName, budgets) {
 
 /**
  * Classify a classic ZIP/XFL byte sequence without decompression.
- * The only recovery mismatch admitted by this evidence stage is the observed
- * +54 EOCD central-directory-size over-declaration. +54 is necessary, never
- * sufficient: every structural precondition below must also pass.
+ * Recovery admits the established +54 EOCD size over-declaration and the
+ * measured two-duplicate size signature. Neither is sufficient alone: every
+ * structural precondition below must also pass.
  */
 function classifyForFlaRecovery(input, customBudgets = {}) {
   const bytes = Buffer.from(input || []);
@@ -478,6 +490,7 @@ function classifyForFlaRecovery(input, customBudgets = {}) {
     if (local.compressedSize !== central.compressedSize || local.uncompressedSize !== central.uncompressedSize) {
       return reject(result, 'LOCAL_CENTRAL_SIZE_MISMATCH');
     }
+    if (local.crc32 !== central.crc32) return reject(result, 'LOCAL_CENTRAL_CRC_MISMATCH');
     if (local.end > centralStart) return reject(result, 'LOCAL_ENTRY_OVERLAPS_CENTRAL_DIRECTORY');
     central.dataOffset = local.dataOffset;
     central.dataEnd = local.end;
@@ -516,24 +529,35 @@ function classifyForFlaRecovery(input, customBudgets = {}) {
     return reject(result, 'EXACT_DUPLICATE_LOCAL_RECORD_BUDGET_EXCEEDED');
   }
   m.localOnlyRecordCount = orphanRecords.length;
+  m.localOnlyRecordBytes = orphanRecords.reduce((total, record) => total + record.end - record.offset, 0);
   m.exactDuplicateLocalRecordCount = orphanRecords.length;
   result.preconditions.noHiddenPayload = true;
   if (m.localOnlyRecordCount > 0) {
     result.preconditions.noHiddenPayload = orphanRecords.every((record) => record.exactDuplicate);
   }
 
+  if (m.centralDirectoryDeltaBytes === 0 && m.localOnlyRecordCount > 1) {
+    return reject(result, 'EXACT_DUPLICATE_LOCAL_RECORD_BUDGET_EXCEEDED');
+  }
   if (m.centralDirectoryDeltaBytes === 0) {
     result.preconditions.onlyDeclarationMetadataInconsistent = true;
     return finish(result, STATES.STRICT_VALID, 'STRICT_PATH_VALID');
   }
   if (m.centralDirectoryDeltaBytes < 0) return reject(result, 'RECOVERY_DECLARATION_UNDERRUN_UNSUPPORTED');
-  if (m.centralDirectoryDeltaBytes !== 54) return reject(result, 'RECOVERY_DELTA_NOT_SUPPORTED');
+  const establishedPlus54 = m.centralDirectoryDeltaBytes === 54 && m.localOnlyRecordCount <= 1;
+  const measuredDuplicateSizeSignature =
+    m.localOnlyRecordCount === 2 &&
+    m.centralDirectoryDeltaBytes === m.localOnlyRecordBytes - 2;
+  if (!establishedPlus54 && !measuredDuplicateSizeSignature) {
+    return reject(result, 'RECOVERY_DELTA_NOT_SUPPORTED');
+  }
   result.preconditions.onlyDeclarationMetadataInconsistent = true;
   return finish(
     result,
     STATES.RECOVERY_CANDIDATE,
     'RECOVERY_EOCD_SIZE_DECLARATION_ONLY',
     'RECOVERY_BOUNDARY_RECONSTRUCTED',
+    measuredDuplicateSizeSignature ? 'RECOVERY_DUPLICATE_LOCAL_SIZE_SIGNATURE' : null,
     m.localOnlyRecordCount > 0 ? 'EXACT_DUPLICATE_LOCAL_RECORD_PROVEN' : null,
   );
 }

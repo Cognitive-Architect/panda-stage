@@ -18,6 +18,7 @@ import {
   type AssetImportFeedback,
 } from './assetImportFeedback';
 import { useAssetDrop } from './useAssetDrop';
+import { useImportFeedbackDismiss } from './useImportFeedbackDismiss';
 
 export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
@@ -68,22 +69,10 @@ export function AssetImportPanel({
     useState<VisibleAssetImportFeedback | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const requestId = useRef(0);
-  const feedbackTimer = useRef<number | null>(null);
   const progressTimer = useRef<number | null>(null);
-  const dismissDeadline = useRef(0);
-  const remainingDismissMs = useRef(0);
-  const pointerInside = useRef(false);
-  const focusInside = useRef(false);
   const projectIdentity = useRef(
     `${snapshot?.projectRoot ?? ''}\u0000${snapshot?.project.id ?? ''}`,
   );
-
-  const clearFeedbackTimer = useCallback((): void => {
-    if (feedbackTimer.current !== null) {
-      window.clearTimeout(feedbackTimer.current);
-      feedbackTimer.current = null;
-    }
-  }, []);
 
   const clearProgressTimer = useCallback((): void => {
     if (progressTimer.current !== null) {
@@ -93,13 +82,10 @@ export function AssetImportPanel({
   }, []);
 
   const clearFeedback = useCallback((): void => {
-    clearFeedbackTimer();
     clearProgressTimer();
-    pointerInside.current = false;
-    focusInside.current = false;
     setFeedback(null);
     setDetailsOpen(false);
-  }, [clearFeedbackTimer, clearProgressTimer]);
+  }, [clearProgressTimer]);
 
   const beginImport = useCallback((): ActiveImport | null => {
     const current = editorProjectStore.getSnapshot();
@@ -130,13 +116,12 @@ export function AssetImportPanel({
     ): void => {
       if (!isCurrentImport(request)) return;
       clearProgressTimer();
-      clearFeedbackTimer();
       setDetailsOpen(false);
       setFeedback(
         nextFeedback ? { ...nextFeedback, id: request.id } : null,
       );
     },
-    [clearFeedbackTimer, clearProgressTimer, isCurrentImport],
+    [clearProgressTimer, isCurrentImport],
   );
 
   const showError = useCallback(
@@ -151,54 +136,15 @@ export function AssetImportPanel({
     [showFeedback],
   );
 
-  const pauseDismissTimer = useCallback((): void => {
-    if (feedbackTimer.current === null) return;
-    window.clearTimeout(feedbackTimer.current);
-    feedbackTimer.current = null;
-    remainingDismissMs.current = Math.max(
-      0,
-      dismissDeadline.current - Date.now(),
-    );
+  const dismissFeedback = useCallback((id: number): void => {
+    setFeedback((current) => current?.id === id ? null : current);
+    setDetailsOpen(false);
   }, []);
-
-  const resumeDismissTimer = useCallback((): void => {
-    if (
-      pointerInside.current ||
-      focusInside.current ||
-      !feedback ||
-      feedback.dismissAfterMs === null ||
-      feedbackTimer.current !== null
-    ) {
-      return;
-    }
-    const id = feedback.id;
-    const delay = remainingDismissMs.current;
-    dismissDeadline.current = Date.now() + delay;
-    feedbackTimer.current = window.setTimeout(() => {
-      feedbackTimer.current = null;
-      setFeedback((current) =>
-        current?.id === id ? null : current,
-      );
-      setDetailsOpen(false);
-    }, delay);
-  }, [feedback]);
-
-  useEffect(() => {
-    if (!feedback || feedback.dismissAfterMs === null) return;
-    remainingDismissMs.current = feedback.dismissAfterMs;
-    if (!pointerInside.current && !focusInside.current) {
-      dismissDeadline.current = Date.now() + remainingDismissMs.current;
-      const id = feedback.id;
-      feedbackTimer.current = window.setTimeout(() => {
-        feedbackTimer.current = null;
-        setFeedback((current) =>
-          current?.id === id ? null : current,
-        );
-        setDetailsOpen(false);
-      }, remainingDismissMs.current);
-    }
-    return clearFeedbackTimer;
-  }, [clearFeedbackTimer, feedback?.dismissAfterMs, feedback?.id]);
+  const feedbackDismissHandlers = useImportFeedbackDismiss(
+    feedback?.id ?? null,
+    feedback?.dismissAfterMs ?? null,
+    dismissFeedback,
+  );
 
   useEffect(() => {
     const nextIdentity =
@@ -207,18 +153,15 @@ export function AssetImportPanel({
     projectIdentity.current = nextIdentity;
     requestId.current += 1;
     setBusy(false);
-    pointerInside.current = false;
-    focusInside.current = false;
     clearFeedback();
   }, [clearFeedback, snapshot?.project.id, snapshot?.projectRoot]);
 
   useEffect(() => {
     return () => {
       requestId.current += 1;
-      clearFeedbackTimer();
       clearProgressTimer();
     };
-  }, [clearFeedbackTimer, clearProgressTimer]);
+  }, [clearProgressTimer]);
 
   const applyResponse = useCallback(
     async (
@@ -369,24 +312,7 @@ export function AssetImportPanel({
             className={`asset-import-feedback asset-import-feedback-${feedback.kind}${compact ? ' asset-import-feedback-compact' : ''}`}
             data-testid="asset-import-feedback"
             data-feedback-kind={feedback.kind}
-            onBlurCapture={(event) => {
-              const next = event.relatedTarget;
-              if (next instanceof Node && event.currentTarget.contains(next)) return;
-              focusInside.current = false;
-              resumeDismissTimer();
-            }}
-            onFocusCapture={() => {
-              focusInside.current = true;
-              pauseDismissTimer();
-            }}
-            onPointerEnter={() => {
-              pointerInside.current = true;
-              pauseDismissTimer();
-            }}
-            onPointerLeave={() => {
-              pointerInside.current = false;
-              resumeDismissTimer();
-            }}
+            {...feedbackDismissHandlers}
             role={
               feedback.kind === 'warning' || feedback.kind === 'error'
                 ? 'alert'

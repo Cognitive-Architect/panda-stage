@@ -3,10 +3,10 @@
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 
+/* Issue #1031 / CHAR-UNI-01 F02: only the adaptive-parts workbench owns the
+   whole surface. Composite creation is edited from the left Create form, so
+   kind='create' must keep that panel visible while the canvas previews. */
 .editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='adaptive-parts']
-  .resource-activity-dock[data-active-activity='characters']
-  .resource-activity-surface,
-.editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='create']
   .resource-activity-dock[data-active-activity='characters']
   .resource-activity-surface {
   visibility: hidden;

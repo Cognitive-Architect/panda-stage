@@ -82,6 +82,39 @@ function patchDeclaredCentralSize(bytes: Uint8Array, delta: number): Uint8Array 
   return copy;
 }
 
+function makeTwoDuplicateLocalRecordsZip(xml = '<DOMDocument/>'): {
+  bytes: Uint8Array;
+  localRecordBytes: number;
+  centralOffset: number;
+} {
+  const base = Buffer.from(makeZip(xml));
+  const eocdOffset = base.byteLength - 22;
+  const centralOffset = readUInt32(base, eocdOffset + 16);
+  const localRecord = base.subarray(0, centralOffset);
+  const centralDirectory = base.subarray(centralOffset, eocdOffset);
+  const eocd = Buffer.from(base.subarray(eocdOffset));
+  const combined = Buffer.concat([
+    localRecord,
+    localRecord,
+    localRecord,
+    centralDirectory,
+    eocd,
+  ]);
+  const combinedEocdOffset = combined.byteLength - 22;
+  const combinedCentralOffset = localRecord.byteLength * 3;
+  writeUInt32(
+    combined,
+    combinedEocdOffset + 12,
+    centralDirectory.byteLength + (2 * localRecord.byteLength) - 2,
+  );
+  writeUInt32(combined, combinedEocdOffset + 16, combinedCentralOffset);
+  return {
+    bytes: Uint8Array.from(combined),
+    localRecordBytes: localRecord.byteLength,
+    centralOffset: combinedCentralOffset,
+  };
+}
+
 function sourceHash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -183,6 +216,101 @@ describe('FLA C3 production recovery entry path', () => {
       : [];
     expect(changedOffsets).toEqual([before.length - 10]);
     expect(changedOffsets.every((offset) => offset >= before.length - 10 && offset < before.length - 6)).toBe(true);
+  });
+
+  it('recovers two exact duplicate local records only for the measured size signature', async () => {
+    const original = makeTwoDuplicateLocalRecordsZip().bytes;
+    const before = Uint8Array.from(original);
+    const beforeHash = sourceHash(before);
+    const { service, inspect } = makeHarness();
+    const response = await withSource(original, async (sourcePath) => {
+      const result = await service.inspectSource(sourcePath, crypto.randomUUID());
+      expect(sourceHash(await readFile(sourcePath))).toBe(beforeHash);
+      return result;
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.ok && response.trace).toMatchObject({
+      ingestMode: 'compatibility-recovered',
+      recoveryApplied: true,
+      originalStrictResult: 'reject',
+      classifierState: 'RECOVERY_CANDIDATE',
+      recoveryAttempted: true,
+      postNormalizationStrictResult: 'pass',
+      parserResult: 'success',
+      recoveryReasonCode: 'RECOVERY_EOCD_SIZE_DECLARATION_ONLY',
+    });
+    expect(response.ok && response.trace?.classifierReasonCodes).toContain(
+      'RECOVERY_DUPLICATE_LOCAL_SIZE_SIGNATURE',
+    );
+    expect(response.ok && response.trace?.classifierReasonCodes).toContain(
+      'EXACT_DUPLICATE_LOCAL_RECORD_PROVEN',
+    );
+    expect(inspect).toHaveBeenCalledTimes(1);
+    const request = inspect.mock.calls[0]?.[0];
+    expect(request).toBeDefined();
+    expect(request?.source.bytes).not.toEqual(before);
+    expect(request && sourceHash(request.source.bytes)).not.toBe(beforeHash);
+  });
+
+  it('rejects a duplicate local record whose CRC differs from the central entry', async () => {
+    const { bytes, localRecordBytes } = makeTwoDuplicateLocalRecordsZip();
+    bytes[localRecordBytes + 14] = (bytes[localRecordBytes + 14] ?? 0) ^ 1;
+    const { service, inspect } = makeHarness();
+    const response = await withSource(bytes, (sourcePath) =>
+      service.inspectSource(sourcePath, crypto.randomUUID()),
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.ok ? null : response.trace).toMatchObject({
+      classifierState: 'REJECT',
+      parserResult: 'not-run',
+    });
+    expect(response.ok ? [] : response.trace?.classifierReasonCodes).toContain(
+      'LOCAL_CENTRAL_CRC_MISMATCH',
+    );
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it('rejects a referenced local record whose CRC differs from the central entry', async () => {
+    const { bytes, centralOffset } = makeTwoDuplicateLocalRecordsZip();
+    bytes[centralOffset + 16] = (bytes[centralOffset + 16] ?? 0) ^ 1;
+    const { service, inspect } = makeHarness();
+    const response = await withSource(bytes, (sourcePath) =>
+      service.inspectSource(sourcePath, crypto.randomUUID()),
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.ok ? null : response.trace).toMatchObject({
+      classifierState: 'REJECT',
+      parserResult: 'not-run',
+    });
+    expect(response.ok ? [] : response.trace?.classifierReasonCodes).toContain(
+      'LOCAL_CENTRAL_CRC_MISMATCH',
+    );
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it('rejects a two-duplicate archive when its size delta is one byte off the measured signature', async () => {
+    const { bytes } = makeTwoDuplicateLocalRecordsZip();
+    const eocdOffset = bytes.byteLength - 22;
+    const actualDelta = readUInt32(bytes, eocdOffset + 12) -
+      (eocdOffset - readUInt32(bytes, eocdOffset + 16));
+    const original = patchDeclaredCentralSize(bytes, actualDelta + 1);
+    const { service, inspect } = makeHarness();
+    const response = await withSource(original, (sourcePath) =>
+      service.inspectSource(sourcePath, crypto.randomUUID()),
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.ok ? null : response.trace).toMatchObject({
+      classifierState: 'REJECT',
+      parserResult: 'not-run',
+    });
+    expect(response.ok ? [] : response.trace?.classifierReasonCodes).toContain(
+      'RECOVERY_DELTA_NOT_SUPPORTED',
+    );
+    expect(inspect).not.toHaveBeenCalled();
   });
 
   it('stops before the parser when post-normalization strict validation fails', async () => {

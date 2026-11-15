@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { SHOT_MIN_DURATION_MS } from '../constants';
 import { AudioClipSchema, AudioClipV7Schema } from './audio';
 import { IdSchema, NameSchema } from './common';
-import { DialogueSchema } from './dialogue';
+import { DialogueSchema, DialogueV18Schema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
@@ -19,7 +19,7 @@ const ShotBaseShape = {
   name: NameSchema,
   durationMs: z.number().int().min(SHOT_MIN_DURATION_MS),
   defaultSubtitleStyleId: IdSchema,
-  dialogues: z.array(DialogueSchema),
+  dialogues: z.array(DialogueV18Schema),
   audioClips: z.array(AudioClipV7Schema),
   timelineEvents: z.array(TimelineEventSchema).default([]),
 };
@@ -34,6 +34,7 @@ export const ShotV2Schema = z
 export const ShotSchema = z
   .object({
     ...ShotBaseShape,
+    dialogues: z.array(DialogueSchema),
     audioClips: z.array(AudioClipSchema),
     layers: z.array(LayerSchema),
     /** The only layer rendered with the background cover contract. */
@@ -41,8 +42,13 @@ export const ShotSchema = z
   })
   .strict();
 
+/** Exact pre-narrator v18 Shot, also used by earlier frozen Shot contracts. */
+export const ShotV18Schema = ShotSchema.extend({
+  dialogues: z.array(DialogueV18Schema),
+}).strict();
+
 /** Exact persisted v16 shot contract before Graphic instance layer fields. */
-export const ShotV16Schema = ShotSchema.extend({
+export const ShotV16Schema = ShotV18Schema.extend({
   layers: z.array(LayerV16Schema),
 });
 

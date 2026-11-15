@@ -64,7 +64,7 @@ import type {
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
-import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
+import { FlaGraphicImportError, type ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -539,8 +539,8 @@ export function EditorShell({
       const openInstanceId = editorProjectStore.getProjectInstanceId();
       const shotId = shotStore.getCurrentShotId();
       const shot = snapshot?.project.shots.find((candidate) => candidate.id === shotId);
-      if (!snapshot || openInstanceId === null || !shot) {
-        throw new Error('先打开项目并选择一个镜头。');
+      if (!snapshot || openInstanceId === null) {
+        throw new Error('请先打开项目。');
       }
       if (!preview.sessionId || !preview.generation || !preview.planId || !preview.poseIdentity) {
         throw new Error('FLA 对象预览已失效，请重新准备。');
@@ -556,7 +556,7 @@ export function EditorShell({
         if (sync && !sync.ok) throw new Error(sync.error.message);
         session.assertNoControllerTransition();
         if (editorProjectStore.getSnapshot() !== snapshot) {
-          throw new Error('项目状态已变化，请重新准备 FLA 对象。');
+          throw new Error('项目状态已更新，请重试导入。');
         }
         const response = await window.pandaStage.fla.commitGraphicInstance({
           format: 'fla-graphic-instance-commit',
@@ -566,8 +566,8 @@ export function EditorShell({
           projectId: snapshot.project.id,
           baseRevision: snapshot.revision,
           openInstanceId,
-          shotId: shot.id,
-          startTimeMs: Math.min(timelineUiStore.getSnapshot().currentTimeMs, shot.durationMs),
+          ...(shot ? { shotId: shot.id } : {}),
+          startTimeMs: shot ? Math.min(timelineUiStore.getSnapshot().currentTimeMs, shot.durationMs) : 0,
           plan: {
             sessionId: preview.sessionId,
             planId: preview.planId,
@@ -576,7 +576,7 @@ export function EditorShell({
             unitId,
           },
         });
-        if (!response.ok) throw new Error(response.error.message);
+        if (!response.ok) throw new FlaGraphicImportError(response.error.code, response.error.message);
         if (
           response.projectRoot !== lease.projectRoot ||
           response.projectId !== lease.projectId ||
@@ -592,8 +592,10 @@ export function EditorShell({
             response.savedRevision,
             '导入 FLA 对象',
           );
+        } else {
+          editorProjectStore.markSaved(response.project, response.savedRevision);
         }
-        if (shotStore.getCurrentShotId() === shot.id) {
+        if (shot && response.layerId && shotStore.getCurrentShotId() === shot.id) {
           selectionStore.select(response.layerId);
         }
       } finally {
@@ -790,8 +792,9 @@ export function EditorShell({
   const assemblyKind = activeAssemblySession
     ? activeAssemblySession.kind ?? 'composite'
     : 'none';
-  const assemblyHidesResourceDrawer =
-    assemblyKind === 'adaptive-parts' || assemblyKind === 'create';
+  // Issue #1031 F02: composite creation is authored from the left Create form,
+  // so only the adaptive-parts workbench may take the resource slot away.
+  const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';
   const legacyCompositeAssemblyActive =
     assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(
@@ -1055,7 +1058,13 @@ export function EditorShell({
         if (!snapshot || !targetCharacterId) throw new Error('No F1-03 Character is available to read.');
         const character = snapshot.project.characters.find((item) => item.id === targetCharacterId);
         if (!character || character.mode !== 'adaptive-parts') throw new Error('The saved F1-03 Character was not reopened.');
-        const assetIds = [...new Set(character.parts.map((part) => part.assetId))];
+        const assetIds = [
+          ...new Set(
+            character.parts
+              .map((part) => part.assetId)
+              .filter((assetId): assetId is string => Boolean(assetId)),
+          ),
+        ];
         const reads = await Promise.all(assetIds.map(async (assetId) => {
           const asset = snapshot.project.assets.find((item) => item.id === assetId);
           if (!asset || asset.kind !== 'image' || !asset.sha256) throw new Error(`Character image Asset ${assetId} is missing.`);

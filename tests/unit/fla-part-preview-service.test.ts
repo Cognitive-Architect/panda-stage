@@ -685,7 +685,7 @@ describe('F1-02 Main part preview service', () => {
         readyAssetIds: ready, previousVisuals: new Map(),
         readyAssetSourceKeys: new Map(reopened.project.assets.filter((asset) => ready.has(asset.id)).map((asset) => [asset.id, asset.sha256!])),
       });
-      expect(canvasModel.targetReadyLayerIds.has(imported.layerId)).toBe(true);
+      expect(canvasModel.targetReadyLayerIds.has(imported.layerId!)).toBe(true);
       // Tight isolated artwork can have a non-zero SVG origin (including its
       // renderer-owned antialias margin); preserve that origin in local space.
       const firstShape = visual.layers![0]!.nodes[0]!;

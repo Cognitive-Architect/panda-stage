@@ -10,6 +10,7 @@ import {
 } from '../../shared/issue762-performance-profile';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
+import { FlaPreviewFailure } from './FlaPreviewFailure';
 import type { FlaStageGTerminalState } from './FlaStageGTerminal';
 import { flaStaticSnapshotClient, type FlaStaticSnapshotCatalogClient } from './fla-static-snapshot-render';
 import {
@@ -49,6 +50,7 @@ interface FlaStaticSnapshotStageFacts {
 }
 
 interface FlaStaticSnapshotReviewProps {
+  active?: boolean;
   sessionId: string;
   source: { basename: string; sha256: string };
   stage?: FlaStaticSnapshotStageFacts;
@@ -104,6 +106,7 @@ type FocusedSnapshotPreview =
   | { key: string; status: 'error'; message: string };
 
 export function FlaStaticSnapshotReview({
+  active = true,
   sessionId,
   source,
   stage,
@@ -133,6 +136,10 @@ export function FlaStaticSnapshotReview({
   const [candidateFilter, setCandidateFilter] = useState<FlaStaticSnapshotCandidateFilter>('all');
   const [scanProgress, setScanProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const [previewRetry, setPreviewRetry] = useState(0);
+  const retryIdentityRef = useRef<string | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const previewUrlsRef = useRef(new Set<string>());
   const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
   const focusedCandidateIdentityKeyRef = useRef<string | null>(null);
@@ -396,7 +403,7 @@ export function FlaStaticSnapshotReview({
             continue;
           }
 
-          const requestId = crypto.randomUUID();
+          let requestId: string = crypto.randomUUID();
           scanRequestId = requestId;
           const outcome = await runFlaStaticSnapshotPreviewTransaction(
             flaStaticSnapshotClient,
@@ -413,13 +420,15 @@ export function FlaStaticSnapshotReview({
             flaStaticSnapshotPreviewQueue,
             undefined,
             {
-              shouldRun: () => !disposed,
+              shouldRun: () => !disposed && activeRef.current,
+              retryCancelled: () => activeRef.current && focusedCandidateIdentityKeyRef.current === flaWorkbenchSnapshotIdentityKey(candidateContext, entry),
               profileLabel: 'candidate-scan',
               candidateIndex: index,
-              onRequestStart: () => {
+              onRequestStart: (activeRequestId) => {
+                requestId = activeRequestId;
                 activePreviewRequestIdRef.current = requestId;
               },
-              onRequestSettled: () => {
+              onRequestSettled: (requestId) => {
                 if (activePreviewRequestIdRef.current === requestId) {
                   activePreviewRequestIdRef.current = null;
                 }
@@ -427,7 +436,12 @@ export function FlaStaticSnapshotReview({
               },
             },
           );
-          if (disposed || outcome.skipped) return;
+          if (disposed) return;
+          if (outcome.skipped || (!outcome.response?.ok && outcome.response?.error.code === 'RENDER_CANCELLED' &&
+              (!activeRef.current || focusedCandidateIdentityKeyRef.current !== flaWorkbenchSnapshotIdentityKey(candidateContext, entry)))) {
+            setCandidatePreviewAndProgress(index, entry, { status: 'checking' });
+            continue;
+          }
           if (outcome.cleanupError) {
             const previewFailure = outcome.operationError?.message;
             throw new Error(
@@ -530,16 +544,19 @@ export function FlaStaticSnapshotReview({
   }, [candidateContext, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
+    if (!active) return;
     const candidateId = effectiveFocusedCandidateKey;
     const identityKey = effectiveFocusedCandidateIdentityKey;
     const entry = focusedEntry;
     const status = focusedStatus;
+    const explicitRetry = Boolean(identityKey && retryIdentityRef.current === identityKey);
+    const needsFreshPreview = explicitRetry || (phase === 'ready' && status?.status === 'checking');
     const canRequest = Boolean(
-      candidateId && identityKey && entry && status?.status === 'supported' && status.sha256 &&
+      candidateId && identityKey && entry && ((status?.status === 'supported' && status.sha256) || needsFreshPreview) &&
       (phase === 'scanning' || phase === 'ready'),
     );
 
-    if (!canRequest || !candidateId || !identityKey || !entry || !status?.sha256) {
+    if (!canRequest || !candidateId || !identityKey || !entry) {
       if (
         phase !== 'scanning' && phase !== 'ready' ||
         focusedPreviewUrlRef.current && focusedPreviewUrlRef.current.key !== identityKey
@@ -548,10 +565,11 @@ export function FlaStaticSnapshotReview({
       }
       return;
     }
-    if (focusedPreviewUrlRef.current?.key === identityKey) return;
+    if (!explicitRetry && focusedPreviewUrlRef.current?.key === identityKey) return;
+    if (explicitRetry) retryIdentityRef.current = null;
 
     let disposed = false;
-    const requestId = crypto.randomUUID();
+    let requestId: string = crypto.randomUUID();
     updateFocusedPreview({ key: identityKey, status: 'loading' });
 
     void (async () => {
@@ -571,11 +589,13 @@ export function FlaStaticSnapshotReview({
         undefined,
         {
           shouldRun: () => !disposed && focusedCandidateIdentityKeyRef.current === identityKey,
+          retryCancelled: true,
           profileLabel: 'focused-preview',
-          onRequestStart: () => {
+          onRequestStart: (activeRequestId) => {
+            requestId = activeRequestId;
             activePreviewRequestIdRef.current = requestId;
           },
-          onRequestSettled: () => {
+          onRequestSettled: (requestId) => {
             if (activePreviewRequestIdRef.current === requestId) {
               activePreviewRequestIdRef.current = null;
             }
@@ -585,12 +605,12 @@ export function FlaStaticSnapshotReview({
       if (disposed || outcome.skipped || focusedCandidateIdentityKeyRef.current !== identityKey) return;
 
       const failureMessage = outcome.cleanupError
-        ? '清晰预览的资源清理失败。为避免错误导入，此项暂不可导入。'
+        ? outcome.cleanupError.message
         : outcome.operationError
-          ? '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。'
+          ? outcome.operationError.message
           : !outcome.response?.ok || !outcome.response.bytes
-            ? '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。'
-            : outcome.response.sha256 !== status.sha256
+            ? outcome.response?.ok ? '预览没有返回图像。' : outcome.response?.error.message ?? '预览失败。'
+            : !needsFreshPreview && outcome.response.sha256 !== status?.sha256
               ? '候选图像已变化。请重新检查后再导入。'
               : null;
       if (failureMessage) {
@@ -600,6 +620,17 @@ export function FlaStaticSnapshotReview({
 
       const response = outcome.response;
       if (!response?.ok) return;
+      if (needsFreshPreview) {
+        const thumbnail = await createCandidateThumbnailUrl(response.bytes);
+        if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) {
+          URL.revokeObjectURL(thumbnail);
+          return;
+        }
+        previewUrlsRef.current.add(thumbnail);
+        setPreviews((current) => ({ ...current, [candidateId]: {
+          status: 'supported', previewUrl: thumbnail, sha256: response.sha256,
+        } }));
+      }
       const url = createCandidateFullSizeUrl(response.bytes);
       if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) {
         URL.revokeObjectURL(url);
@@ -612,12 +643,12 @@ export function FlaStaticSnapshotReview({
         width: response.width,
         height: response.height,
       });
-    })().catch(() => {
+    })().catch((error: unknown) => {
       if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) return;
       markFocusedPreviewUnavailable(
         candidateId,
         identityKey,
-        '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。',
+        error instanceof Error ? error.message : String(error),
       );
     });
 
@@ -631,7 +662,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
+  }, [active, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, previewRetry, sessionId, updateFocusedPreview]);
 
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
     if (phase !== 'ready' || importLocked) return;
@@ -1002,7 +1033,18 @@ export function FlaStaticSnapshotReview({
             </output>
           </header>
           <div className="fla-snapshot-preview-stage" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-area">
-            {focusedPreviewForEntry?.status === 'ready' ? (
+            {focusedPreviewForEntry?.status !== 'loading' && (focusedPreviewForEntry?.status === 'error' || focusedStatus?.status === 'error') ? (
+              <FlaPreviewFailure
+                details={focusedPreviewForEntry?.status === 'error' ? focusedPreviewForEntry.message : focusedStatus?.reason ?? '预览失败。'}
+                onRetry={() => {
+                  if (!effectiveFocusedCandidateIdentityKey || importLocked) return;
+                  retryIdentityRef.current = effectiveFocusedCandidateIdentityKey;
+                  setPreviewRetry((current) => current + 1);
+                }}
+                retryDisabled={importLocked || phase !== 'ready'}
+                testIdPrefix="fla-snapshot"
+              />
+            ) : focusedPreviewForEntry?.status === 'ready' ? (
               <img
                 alt={focusedEntry ? flaStaticSnapshotCandidateLabel(focusedEntry) : 'FLA 候选预览'}
                 data-preview-height={focusedPreviewForEntry.height}
@@ -1031,9 +1073,9 @@ export function FlaStaticSnapshotReview({
                 src={focusedPreviewForEntry.url}
               />
             ) : (
-              <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder" role={focusedPreviewForEntry?.status === 'error' ? 'alert' : undefined}>
-                <strong>{focusedPreviewForEntry?.status === 'error' ? '清晰预览暂不可用' : !effectiveFocusedCandidateKey ? '当前筛选无可预览素材' : focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览…' : phase === 'scanning' ? '正在生成候选预览…' : '选择一个候选查看'}</strong>
-                <span>{focusedPreviewForEntry?.status === 'error' ? focusedPreviewForEntry.message : focusedStatus?.status === 'unsupported' ? boundedUnsupportedReason(focusedStatus.reason) : !effectiveFocusedCandidateKey ? '请选择可预览素材，或调整筛选条件和搜索内容。' : '只有成功生成并显示的预览才能加入导入选择。'}</span>
+              <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder" role="status">
+                <strong>{!effectiveFocusedCandidateKey ? '无可预览内容' : focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : focusedPreviewForEntry?.status === 'loading' || focusedStatus?.status === 'supported' || phase === 'scanning' ? '正在加载预览…' : '选择一个候选查看'}</strong>
+                {focusedStatus?.status === 'unsupported' ? <span>{boundedUnsupportedReason(focusedStatus.reason)}</span> : null}
               </div>
             )}
           </div>
