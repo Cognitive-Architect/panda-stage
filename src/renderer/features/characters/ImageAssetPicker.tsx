@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import type { ImageAsset } from '../../../domain';
-import type { ThumbnailState } from '../assets/AssetCard';
+import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCard';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
@@ -80,6 +80,9 @@ function AssetThumbnail({
         thumbnail?.status === 'missing' ? thumbnail.reason : undefined
       }
       data-thumbnail-status={status}
+      data-thumbnail-error-code={thumbnail?.status === 'missing' ? thumbnail.errorCode : undefined}
+      data-thumbnail-failure-layer={thumbnail?.status === 'missing' ? thumbnail.failureLayer : undefined}
+      title={thumbnailDiagnosticTitle(thumbnail)}
     >
       {asset && thumbnail?.status === 'ready' ? (
         <img

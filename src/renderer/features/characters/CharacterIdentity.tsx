@@ -9,6 +9,7 @@ import type {
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import {
   thumbnailStateFromResponse,
+  thumbnailStateAfterDecodeError,
   type ThumbnailState,
 } from '../assets/AssetCard';
 import {
@@ -107,11 +108,13 @@ export function useProjectImageThumbnails(
   }, [imageAssets, projectRoot]);
 
   const onThumbnailError = useCallback((assetId: string): void => {
-    setThumbnails((current) => ({
+    setThumbnails((current) => current[assetId] ? ({
       ...current,
-      [assetId]: { status: 'missing', reason: 'error' },
-    }));
-  }, []);
+      [assetId]: thumbnailStateAfterDecodeError(
+        current[assetId], imageAssets.find((asset) => asset.id === assetId)?.relativePath,
+      ),
+    }) : current);
+  }, [imageAssets]);
 
   return { onThumbnailError, thumbnails };
 }

@@ -7,7 +7,7 @@ import type {
   CharacterFaceSource,
   CharacterFaceGraphicSource,
 } from '../../../domain';
-import type { ThumbnailState } from '../assets/AssetCard';
+import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCard';
 import { ImageAssetPicker } from './ImageAssetPicker';
 import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
 import {
@@ -77,6 +77,9 @@ function ExpressionThumbnail({
         thumbnail?.status === 'missing' ? thumbnail.reason : undefined
       }
       data-thumbnail-status={status}
+      data-thumbnail-error-code={thumbnail?.status === 'missing' ? thumbnail.errorCode : undefined}
+      data-thumbnail-failure-layer={thumbnail?.status === 'missing' ? thumbnail.failureLayer : undefined}
+      title={thumbnailDiagnosticTitle(thumbnail)}
     >
       {thumbnail?.status === 'ready' ? (
         <img

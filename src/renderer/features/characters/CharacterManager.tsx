@@ -36,6 +36,7 @@ import {
 } from '../../stores/characterAssemblySessionStore';
 import {
   thumbnailStateFromResponse,
+  thumbnailStateAfterDecodeError,
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
@@ -496,7 +497,7 @@ export function CharacterManager({
       project.id, snapshot.projectRoot, asset,
     );
     setThumbnailEntries((current) => current[assetId]?.resourceKey === resourceKey
-      ? { ...current, [assetId]: { resourceKey, state: { status: 'missing', reason: 'error' } } }
+      ? { ...current, [assetId]: { resourceKey, state: thumbnailStateAfterDecodeError(current[assetId]!.state, asset.relativePath) } }
       : current);
   };
 

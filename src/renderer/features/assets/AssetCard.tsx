@@ -16,12 +16,15 @@ import {
 import { imageAssetUsageLabel } from './assetUsage';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
+type BackendThumbnailErrorCode = Extract<AssetThumbnailReadResponse, { ok: false }>['error']['code'];
 
 export type ThumbnailState =
   | { status: 'loading' }
   | {
       status: 'missing';
       reason?: ThumbnailMissingReason;
+      errorCode?: BackendThumbnailErrorCode | 'RENDERER_THUMBNAIL_DECODE_FAILED';
+      failureLayer?: 'backend' | 'renderer-decode';
       message?: string;
       relativePath?: string;
     }
@@ -56,10 +59,34 @@ export function thumbnailStateFromResponse(
         ? 'source'
         : 'error',
     message: response.error.message,
+    errorCode: response.error.code,
+    failureLayer: 'backend',
     ...(response.error.relativePath
       ? { relativePath: response.error.relativePath }
       : {}),
   };
+}
+
+/** An img error is only a decode failure after Main supplied ready PNG bytes. */
+export function thumbnailStateAfterDecodeError(
+  current: ThumbnailState,
+  relativePath?: string,
+): ThumbnailState {
+  if (current.status !== 'ready') return current;
+  return {
+    status: 'missing',
+    reason: 'error',
+    failureLayer: 'renderer-decode',
+    errorCode: 'RENDERER_THUMBNAIL_DECODE_FAILED',
+    message: 'Main returned a ready thumbnail, but Renderer <img> could not decode it.',
+    ...(relativePath ? { relativePath } : {}),
+  };
+}
+
+export function thumbnailDiagnosticTitle(thumbnail?: ThumbnailState): string | undefined {
+  if (thumbnail?.status !== 'missing') return undefined;
+  return [thumbnail.failureLayer, thumbnail.errorCode, thumbnail.message, thumbnail.relativePath]
+    .filter(Boolean).join('\n') || undefined;
 }
 
 export interface AssetCardProps {
