@@ -78,6 +78,43 @@ function setupManualAdjacency(): Fixture & { dialogueId: string } {
 }
 
 describe('DialogueStore', () => {
+  it('keeps narrator creation and speaker conversion on the existing Undo/Redo history (#1109)', () => {
+    const { editor, store, dialogueSelection } = setup(500);
+    const id = store.createNarrator('Narration');
+    const narration = editor.getSnapshot()!.project.shots[0]!.dialogues[0]!;
+    expect(narration).toMatchObject({ id, speakerType: 'narrator', startMs: 500, endMs: 500 });
+    expect(narration.characterId).toBeUndefined();
+    expect(narration.voiceProfileId).toBeUndefined();
+    expect(dialogueSelection.getSelectedDialogueId()).toBe(id);
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    editor.undo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues).toHaveLength(0);
+    editor.redo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toEqual(narration);
+    store.update(id, { characterId: IDS.character });
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.speakerType).toBeUndefined();
+    editor.undo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]).toEqual(narration);
+    editor.redo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues[0]!.characterId).toBe(IDS.character);
+  });
+
+  it('commits a mixed narrator/character paste as one reversible command (#1109)', () => {
+    const { editor, store } = setup(0);
+    store.createMany([
+      { speakerType: 'narrator', text: 'Opening' },
+      { characterId: IDS.character, text: 'Character' },
+      { speakerType: 'narrator', text: 'Closing' },
+    ]);
+    const lines = editor.getSnapshot()!.project.shots[0]!.dialogues;
+    expect(lines.map((line) => line.speakerType ?? 'character')).toEqual(['narrator', 'character', 'narrator']);
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    editor.undo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues).toHaveLength(0);
+    editor.redo();
+    expect(editor.getSnapshot()!.project.shots[0]!.dialogues).toEqual(lines);
+  });
+
   it('creates a dialogue at the captured playhead time and selects it', () => {
     const { editor, store, dialogueSelection } = setup(800);
     const id = store.create(IDS.character, '你好，世界');
