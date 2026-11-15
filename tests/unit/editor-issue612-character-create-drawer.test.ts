@@ -117,7 +117,7 @@ describe('Issue #613 compact landscape Create Character polish', () => {
     expect(characterList).toContain("compactLandscapeCreate ? '身体' : '身体图片'");
     expect(characterList).toContain('testId="character-create-head-picker"');
     expect(characterList).toContain('searchAndPaginate');
-    expect(characterList).toContain('next.head = compositeDraft.head');
+    expect(characterList).toContain('next.head = activeCompositeDraft.head');
     expect(characterList).toContain('delete next.head;');
     expect(characterList).toContain('emptyOption={{ label: \'不添加头部\', optional: true }}');
     expect(characterList.indexOf('testId="character-create-body-picker"')).toBeLessThan(

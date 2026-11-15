@@ -205,7 +205,9 @@ describe('Issue #614 Character Detail polish', () => {
     expect(readOrderedStylesheetSource()).toContain(
       '.character-expression-workspace .expression-add-trigger {\n  min-width: 88px;',
     );
-    expect(characterList.match(/name: '表情1'/gu)).toHaveLength(2);
+    // Issue #1031 F03: composite drafts no longer pre-create an expression from
+    // the first asset; 表情1 is still the name used when the user picks a face.
+    expect(characterList.match(/name: '表情1'/gu)).toHaveLength(1);
     expect(characterList).not.toContain("name: '默认表情'");
 
     const migrated = migrateProject(exampleProject);
