@@ -20,6 +20,7 @@ import {
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
+  CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
   CharacterV10Schema,
@@ -178,7 +179,15 @@ export const ProjectV17Schema = ProjectDataSchema.extend({
 /** True v18: Graphic CharacterParts are supported, narrator Dialogue is not. */
 export const ProjectV18Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(18),
+  characters: z.array(CharacterV19Schema),
   shots: z.array(ShotV18Schema),
+}).strict().superRefine(validateProjectReferences);
+
+/** Frozen true v19 contract, before Graphic Expression/Mouth sources. */
+export const ProjectV19Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(19),
+  characters: z.array(CharacterV19Schema),
+  shots: z.array(ShotSchema),
 }).strict().superRefine(validateProjectReferences);
 
 export const ProjectV1Schema = z

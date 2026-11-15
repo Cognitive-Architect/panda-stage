@@ -13,7 +13,7 @@ function characterExpressionAssetIds(project: Project): Set<string> {
     project.characters.flatMap((character) =>
       character.mode === 'adaptive-parts'
         ? []
-        : character.expressions.map((expression) => expression.assetId),
+        : character.expressions.flatMap((expression) => expression.assetId ? [expression.assetId] : []),
     ),
   );
 }

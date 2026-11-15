@@ -26,6 +26,7 @@ export interface EvaluatedLayer {
   currentExpressionId?: string | null;
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
+  mouthOpen?: boolean;
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
     animationId: string;
@@ -433,7 +434,7 @@ export function evaluateShotAtTime(
                 event.expressionId,
                 layer.source.expressionId,
               );
-              if (resolved.assetId) {
+              if (resolved.currentExpressionId) {
                 assetId = resolved.assetId;
                 currentExpressionId = resolved.currentExpressionId;
               }

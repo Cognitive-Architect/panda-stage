@@ -12,7 +12,7 @@ const CharacterExpressionDropPayloadSchema = z
   .object({
     version: z.literal(2),
     type: z.literal('character-expression'),
-    assetId: z.uuid(),
+    assetId: z.uuid().optional(),
     characterId: z.uuid(),
     expressionId: z.uuid(),
   })

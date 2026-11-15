@@ -375,8 +375,10 @@ function cloneDefinition(
     expressionAssets: definition.expressionAssets.map((expression) => ({
       expressionId: expression.expressionId,
       assetId: expression.assetId,
+      ...(expression.visualSource ? { visualSource: { ...expression.visualSource } } : {}),
     })),
     mouthOpenAssetId: definition.mouthOpenAssetId,
+    ...(definition.mouthOpenVisualSource ? { mouthOpenVisualSource: { ...definition.mouthOpenVisualSource } } : {}),
   };
 }
 
@@ -500,6 +502,7 @@ function definitionsEqual(
     left.facePlacement.flipX !== right.facePlacement.flipX ||
     !sameHead(left.head, right.head) ||
     left.mouthOpenAssetId !== right.mouthOpenAssetId ||
+    JSON.stringify(left.mouthOpenVisualSource) !== JSON.stringify(right.mouthOpenVisualSource) ||
     left.expressionAssets.length !== right.expressionAssets.length
   ) {
     return false;
@@ -514,7 +517,7 @@ function definitionsEqual(
         (leftExpression, rightExpression) =>
           leftExpression.expressionId.localeCompare(
             rightExpression.expressionId,
-          ) || leftExpression.assetId.localeCompare(rightExpression.assetId),
+          ) || (leftExpression.assetId ?? '').localeCompare(rightExpression.assetId ?? ''),
       );
 
   return (
@@ -542,6 +545,9 @@ function mergeDefinition(
       update.mouthOpenAssetId === undefined
         ? current.mouthOpenAssetId
         : update.mouthOpenAssetId,
+    mouthOpenVisualSource: update.mouthOpenVisualSource !== undefined
+      ? update.mouthOpenVisualSource ?? undefined
+      : update.mouthOpenAssetId !== undefined ? undefined : current.mouthOpenVisualSource,
     ...(update.head === undefined
       ? current.head
         ? { head: cloneHead(current.head) }

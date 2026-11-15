@@ -11,6 +11,9 @@ import {
   cloneCharacterPart,
   isFlaGraphicDefinition,
   resolveCharacterPartVisualSource,
+  resolveExpressionVisualSource,
+  type CharacterFaceSource,
+  type CharacterFaceGraphicSource,
   type Character,
   type CharacterExpression,
   type CharacterHead,
@@ -23,6 +26,7 @@ import {
   type ImageAsset,
   type Project,
 } from '../models';
+import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 import {
   scanCharacterReferences,
   scanExpressionReferences,
@@ -66,7 +70,8 @@ export class CharacterServiceError extends Error {
 
 export interface CharacterExpressionDraft {
   name: string;
-  assetId: string;
+  assetId?: string;
+  visualSource?: CharacterFaceGraphicSource;
 }
 
 export interface CreateCharacterInput {
@@ -96,7 +101,8 @@ export interface CreateAdaptivePartsCharacterInput {
 
 export interface CharacterExpressionAssetUpdate {
   expressionId: string;
-  assetId: string;
+  assetId?: string;
+  visualSource?: CharacterFaceGraphicSource;
 }
 
 /** The complete persisted definition owned by a composite Character. */
@@ -107,6 +113,7 @@ export interface CompositeCharacterDefinition {
   head?: CharacterHead;
   expressionAssets: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId: string | null;
+  mouthOpenVisualSource?: CharacterFaceGraphicSource;
 }
 
 /** Narrow fields that a single assembly Apply may change. */
@@ -117,6 +124,7 @@ export interface CompositeCharacterUpdate {
   head?: CharacterHead | null;
   expressionAssets?: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId?: string | null;
+  mouthOpenVisualSource?: CharacterFaceGraphicSource | null;
 }
 
 /** Complete static, Character-local definition consumed by the later C2 renderer. */
@@ -191,7 +199,7 @@ export class CharacterService {
     const expressions = input.expressions.map((draft) => ({
       id: this.createId(),
       name: draft.name.trim(),
-      assetId: this.imageAsset(project, draft.assetId).id,
+      ...this.faceFields(project, draft),
     }));
     const defaultIndex = input.defaultExpressionIndex ?? 0;
     const defaultExpression = expressions[defaultIndex];
@@ -431,6 +439,11 @@ export class CharacterService {
       expressions,
       baseAssetId: defaultExpression.assetId,
     };
+    delete next.mouthOpenVisualSource;
+    if (definition.mouthOpenVisualSource) {
+      this.faceFields(project, { visualSource: definition.mouthOpenVisualSource });
+      next.mouthOpenVisualSource = { ...definition.mouthOpenVisualSource };
+    }
     if (mouthOpenAssetId) next.mouthOpenAssetId = mouthOpenAssetId;
     else delete next.mouthOpenAssetId;
     if (head) next.head = head;
@@ -455,6 +468,9 @@ export class CharacterService {
         update.mouthOpenAssetId === undefined
           ? current.mouthOpenAssetId
           : update.mouthOpenAssetId,
+      mouthOpenVisualSource: update.mouthOpenAssetId !== undefined
+        ? undefined
+        : update.mouthOpenVisualSource === undefined ? current.mouthOpenVisualSource : update.mouthOpenVisualSource ?? undefined,
       head:
         update.head === undefined
           ? current.head
@@ -558,7 +574,7 @@ export class CharacterService {
     const expression: CharacterExpression = {
       id: this.createId(),
       name: draft.name.trim(),
-      assetId: this.imageAsset(project, draft.assetId).id,
+      ...this.faceFields(project, draft),
     };
     return this.replaceCharacter(project, {
       ...character,
@@ -589,20 +605,23 @@ export class CharacterService {
     expressionId: string,
     assetId: string,
   ): Project {
+    return this.setExpressionVisualSource(project, characterId, expressionId, { kind: 'image', assetId });
+  }
+
+  setExpressionVisualSource(project: Project, characterId: string, expressionId: string, source: CharacterFaceSource): Project {
     const character = this.expressionCharacter(project, characterId);
     const expression = this.expression(character, expressionId);
-    const imageAssetId = this.imageAsset(project, assetId).id;
-    if (expression.assetId === imageAssetId) return project;
+    const fields = this.faceFields(project, source.kind === 'image' ? source : { visualSource: source });
     const expressions = character.expressions.map((candidate) =>
       candidate.id === expression.id
-        ? { ...candidate, assetId: imageAssetId }
+        ? { id: candidate.id, name: candidate.name, ...fields }
         : candidate,
     );
     return this.replaceCharacter(project, {
       ...character,
       expressions,
       ...(character.defaultExpressionId === expression.id
-        ? { baseAssetId: imageAssetId }
+        ? { baseAssetId: fields.assetId }
         : {}),
     });
   }
@@ -666,18 +685,18 @@ export class CharacterService {
     characterId: string,
     assetId: string | null,
   ): Project {
+    return this.setMouthOpenVisualSource(project, characterId, assetId ? { kind: 'image', assetId } : null);
+  }
+
+  setMouthOpenVisualSource(project: Project, characterId: string, source: CharacterFaceSource | null): Project {
     const character = this.expressionCharacter(project, characterId);
-    const mouthOpenAssetId = assetId
-      ? this.imageAsset(project, assetId).id
-      : undefined;
-    if ((character.mouthOpenAssetId ?? undefined) === mouthOpenAssetId) {
-      return project;
-    }
     const next = { ...character };
-    if (mouthOpenAssetId) {
-      next.mouthOpenAssetId = mouthOpenAssetId;
-    } else {
-      delete next.mouthOpenAssetId;
+    delete next.mouthOpenAssetId;
+    delete next.mouthOpenVisualSource;
+    if (source) {
+      const fields = this.faceFields(project, source.kind === 'image' ? source : { visualSource: source });
+      if (fields.assetId) next.mouthOpenAssetId = fields.assetId;
+      if (fields.visualSource) next.mouthOpenVisualSource = fields.visualSource;
     }
     return this.replaceCharacter(project, next);
   }
@@ -735,13 +754,14 @@ export class CharacterService {
       character,
       character.defaultExpressionId,
     );
+    if (!defaultExpression.assetId) return [];
     const baseline = this.imageAsset(project, defaultExpression.assetId);
     const candidates = [
       ...character.expressions
-        .filter((expression) => expression.id !== defaultExpression.id)
+        .filter((expression) => expression.id !== defaultExpression.id && expression.assetId)
         .map((expression) => ({
           expressionId: expression.id,
-          assetId: expression.assetId,
+          assetId: expression.assetId!,
           label: `表情“${expression.name}”`,
         })),
       ...(character.mouthOpenAssetId
@@ -787,11 +807,11 @@ export class CharacterService {
       character,
       expressionId ?? character.defaultExpressionId,
     );
-    const asset = this.imageAsset(project, expression.assetId);
+    const asset = resolveCharacterFaceSource(project, resolveExpressionVisualSource(expression));
     return {
       characterId,
       expressionId: expression.id,
-      assetId: asset.id,
+      assetId: asset.assetId ?? '',
       center: { ...center },
       width: asset.width,
       height: asset.height,
@@ -919,8 +939,10 @@ export class CharacterService {
       expressionAssets: character.expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,
+        ...(expression.visualSource ? { visualSource: { ...expression.visualSource } } : {}),
       })),
       mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+      ...(character.mouthOpenVisualSource ? { mouthOpenVisualSource: { ...character.mouthOpenVisualSource } } : {}),
     };
   }
 
@@ -981,7 +1003,7 @@ export class CharacterService {
         'A composite Character update must provide exactly one asset for every Expression.',
       );
     }
-    const byExpressionId = new Map<string, string>();
+    const byExpressionId = new Map<string, Pick<CharacterExpression, 'assetId' | 'visualSource'>>();
     for (const update of updates) {
       if (byExpressionId.has(update.expressionId)) {
         throw new CharacterServiceError(
@@ -992,7 +1014,7 @@ export class CharacterService {
       const expression = this.expression(character, update.expressionId);
       byExpressionId.set(
         expression.id,
-        this.imageAsset(project, update.assetId).id,
+        this.faceFields(project, update),
       );
     }
     if (
@@ -1006,8 +1028,9 @@ export class CharacterService {
       );
     }
     return character.expressions.map((expression) => ({
-      ...expression,
-      assetId: byExpressionId.get(expression.id)!,
+      id: expression.id,
+      name: expression.name,
+      ...byExpressionId.get(expression.id)!,
     }));
   }
 
@@ -1028,6 +1051,7 @@ export class CharacterService {
       current.facePlacement.flipX === next.facePlacement.flipX &&
       JSON.stringify(current.head ?? null) ===
         JSON.stringify(next.head ?? null) &&
+      JSON.stringify(current.mouthOpenVisualSource) === JSON.stringify(next.mouthOpenVisualSource) &&
       current.baseAssetId === next.baseAssetId &&
       (current.mouthOpenAssetId ?? null) ===
         (next.mouthOpenAssetId ?? null) &&
@@ -1036,7 +1060,8 @@ export class CharacterService {
         (expression, index) =>
           expression.id === next.expressions[index]!.id &&
           expression.name === next.expressions[index]!.name &&
-          expression.assetId === next.expressions[index]!.assetId,
+          expression.assetId === next.expressions[index]!.assetId &&
+          JSON.stringify(expression.visualSource) === JSON.stringify(next.expressions[index]!.visualSource),
       )
     );
   }
@@ -1045,6 +1070,10 @@ export class CharacterService {
     project: Project,
     replacement: Character,
   ): Project {
+    if (replacement.mode !== 'adaptive-parts' && replacement.baseAssetId === undefined) {
+      replacement = { ...replacement };
+      delete replacement.baseAssetId;
+    }
     const current = project.characters.find(
       (character) => character.id === replacement.id,
     );
@@ -1105,6 +1134,15 @@ export class CharacterService {
       );
     }
     return asset;
+  }
+
+  private faceFields(project: Project, source: { assetId?: string; visualSource?: CharacterFaceGraphicSource }): Pick<CharacterExpression, 'assetId' | 'visualSource'> {
+    if (source.visualSource && !source.assetId) {
+      resolveCharacterFaceSource(project, source.visualSource);
+      return { visualSource: { ...source.visualSource } };
+    }
+    if (source.assetId && !source.visualSource) return { assetId: this.imageAsset(project, source.assetId).id };
+    throw new CharacterServiceError('IMAGE_ASSET_REQUIRED', 'Expression requires exactly one image or Graphic source.');
   }
 
   private assertUniqueExpressionNames(

@@ -66,6 +66,14 @@ export function validateProjectReferences(
   const animations = new Map(
     project.animations.map((animation) => [animation.id, animation]),
   );
+  function validateFaceGraphic(source: { animationId: string; firstFrame: number }, path: PropertyKey[]): void {
+    const definition = animations.get(source.animationId);
+    if (!definition || !isFlaGraphicDefinition(definition)) {
+      addIssue(context, [...path, 'animationId'], `Unknown FLA Graphic Definition: ${source.animationId}`);
+    } else if (source.firstFrame >= definition.frames.length || !definition.frames[source.firstFrame]) {
+      addIssue(context, [...path, 'firstFrame'], 'Graphic firstFrame is outside the Definition frame range.');
+    }
+  }
   const characters = new Map(
     project.characters.map((character) => [character.id, character]),
   );
@@ -267,8 +275,9 @@ export function validateProjectReferences(
         ['characters', characterIndex, 'expressions'],
         context,
       );
-      const baseAsset = assets.get(character.baseAssetId);
-      if (!baseAsset || baseAsset.kind !== 'image') {
+      const baseAsset = character.baseAssetId ? assets.get(character.baseAssetId) : undefined;
+      const defaultGraphic = character.expressions.find((expression) => expression.id === character.defaultExpressionId)?.visualSource;
+      if (!defaultGraphic && (!baseAsset || baseAsset.kind !== 'image')) {
         addIssue(
           context,
           ['characters', characterIndex, 'baseAssetId'],
@@ -276,7 +285,11 @@ export function validateProjectReferences(
         );
       }
       character.expressions.forEach((expression, expressionIndex) => {
-        const expressionAsset = assets.get(expression.assetId);
+        if (expression.visualSource) {
+          validateFaceGraphic(expression.visualSource, ['characters', characterIndex, 'expressions', expressionIndex, 'visualSource']);
+          return;
+        }
+        const expressionAsset = expression.assetId ? assets.get(expression.assetId) : undefined;
         if (!expressionAsset || expressionAsset.kind !== 'image') {
           addIssue(
             context,
@@ -316,6 +329,9 @@ export function validateProjectReferences(
             `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
           );
         }
+      }
+      if (character.mouthOpenVisualSource) {
+        validateFaceGraphic(character.mouthOpenVisualSource, ['characters', characterIndex, 'mouthOpenVisualSource']);
       }
       if (character.mode === 'composite') {
         const bodyAsset = assets.get(character.bodyAssetId);

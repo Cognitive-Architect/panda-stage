@@ -9,12 +9,12 @@ import historicalV18 from '../fixtures/project-v18-character-dialogue.json';
 describe('v18 -> v19 narrator version boundary (#1111)', () => {
   it('upgrades only the envelope and leaves legacy speaker/audio/timing/style data intact', () => {
     const before = structuredClone(historicalV18);
-    expect(PROJECT_SCHEMA_VERSION).toBe(19);
+    expect(PROJECT_SCHEMA_VERSION).toBe(20);
     expect(detectSchemaVersion(before)).toBe(18);
     expect(ProjectV18Schema.safeParse(before).success).toBe(true);
     expect(ProjectSchema.safeParse(before).success).toBe(false);
     const migrated = migrateProject(before);
-    expect(migrated).toEqual({ ...before, schemaVersion: 19 });
+    expect(migrated).toEqual({ ...before, schemaVersion: PROJECT_SCHEMA_VERSION });
     expect(migrated.shots[0]!.dialogues[0]!.speakerType).toBeUndefined();
     expect(migrated.subtitleStyles[0]!.backgroundColor).toBe('#0a1411c7');
     expect(migrateProject(migrated)).toEqual(migrated);
@@ -36,7 +36,7 @@ describe('v18 -> v19 narrator version boundary (#1111)', () => {
     const payload = { ...input, schemaVersion, shots: [{ ...input.shots[0]!, dialogues: [narrator] }] };
     expect(DialogueV18Schema.safeParse(narrator).success).toBe(false);
     expect(() => migrateProject(payload)).toThrow();
-    expect(ProjectSchema.safeParse({ ...payload, schemaVersion: 19 }).success).toBe(true);
+    expect(ProjectSchema.safeParse({ ...payload, schemaVersion: PROJECT_SCHEMA_VERSION }).success).toBe(true);
   });
 
   it('keeps historical v18 reference and strict-field validation', () => {
@@ -48,6 +48,6 @@ describe('v18 -> v19 narrator version boundary (#1111)', () => {
   });
 
   it('rejects a future envelope before interpreting dialogue contents', () => {
-    expect(() => migrateProject({ schemaVersion: 20 })).toThrow(UnsupportedSchemaVersionError);
+    expect(() => migrateProject({ schemaVersion: PROJECT_SCHEMA_VERSION + 1 })).toThrow(UnsupportedSchemaVersionError);
   });
 });

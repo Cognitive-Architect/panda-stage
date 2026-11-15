@@ -251,7 +251,7 @@ describe('LayerService', () => {
       project.shots[0]!.id,
       {
         version: 2,
-        assetId: expression.assetId,
+        assetId: expression.assetId!,
         type: 'character-expression',
         characterId: character.id,
         expressionId: expression.id,
@@ -680,7 +680,7 @@ describe('LayerService', () => {
       service().createFromAsset(project, project.shots[0]!.id, {
         version: 2,
         type: 'asset-image',
-        assetId: expression.assetId,
+        assetId: expression.assetId!,
         position: { x: 100, y: 200 },
       }),
     ).toThrow(

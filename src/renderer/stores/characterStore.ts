@@ -11,6 +11,7 @@ import {
   type CreateCompositeCharacterInput,
   type FacePlacement,
   type Project,
+  type CharacterFaceSource,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -311,6 +312,14 @@ export class CharacterStore {
         ),
       'Change expression image',
     );
+  }
+
+  setExpressionVisualSource(characterId: string, expressionId: string, source: CharacterFaceSource): Project {
+    return this.apply(project => this.service.setExpressionVisualSource(project, characterId, expressionId, source), 'Change expression source');
+  }
+
+  setMouthOpenVisualSource(characterId: string, source: CharacterFaceSource | null): Project {
+    return this.apply(project => this.service.setMouthOpenVisualSource(project, characterId, source), 'Change mouth source');
   }
 
   removeExpression(

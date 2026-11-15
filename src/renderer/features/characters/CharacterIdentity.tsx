@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { GraphicFacePreview } from './GraphicFacePicker';
 import type {
   Character,
   CharacterExpression,
@@ -127,7 +128,7 @@ export function useCharacterAvatarThumbnails(
     const ids = new Set<string>();
     for (const character of characters) {
       const expression = getCharacterDefaultExpression(character);
-      if (expression) ids.add(expression.assetId);
+      if (expression?.assetId) ids.add(expression.assetId);
     }
     return ids;
   }, [characters]);
@@ -181,12 +182,12 @@ export function CharacterAvatar({
       data-character-avatar="true"
       data-thumbnail-status={status}
     >
-      {thumbnail?.status === 'ready' && defaultExpression ? (
+      {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : thumbnail?.status === 'ready' && defaultExpression ? (
         <img
           alt={`${character.name} 默认表情`}
           decoding="async"
           loading="lazy"
-          onError={() => onThumbnailError(defaultExpression.assetId)}
+          onError={() => onThumbnailError(defaultExpression.assetId ?? '')}
           src={thumbnail.dataUrl}
         />
       ) : (
@@ -478,12 +479,12 @@ export function CharacterExpressionThumbnail({
         .join(' ')}
       data-thumbnail-status={status}
     >
-      {thumbnail?.status === 'ready' ? (
+      {expression.visualSource ? <GraphicFacePreview source={expression.visualSource} label={expression.name} /> : thumbnail?.status === 'ready' ? (
         <img
           alt={`${expression.name} 表情缩略图`}
           decoding="async"
           loading="lazy"
-          onError={() => onThumbnailError(expression.assetId)}
+          onError={() => onThumbnailError(expression.assetId ?? '')}
           src={thumbnail.dataUrl}
         />
       ) : (

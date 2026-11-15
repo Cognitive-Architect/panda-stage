@@ -10,6 +10,7 @@ import {
   resolveLayerVisualParts,
   transformVisualRectByPart,
   type Character,
+  type CharacterFaceGraphicSource,
   type AdaptivePartsCharacter,
   type CharacterHead,
   type EvaluatedLayer,
@@ -367,7 +368,8 @@ export function isAdaptivePartsAssemblySnapshot(
 export interface AssemblyPreviewExpression {
   id: string;
   name: string;
-  assetId: string;
+  assetId?: string;
+  visualSource?: CharacterFaceGraphicSource;
 }
 
 export function isCharacterAssemblyPending(
@@ -403,8 +405,10 @@ export function isCharacterAssemblyPending(
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
       assetId: expression.assetId,
+      ...(expression.visualSource ? { visualSource: expression.visualSource } : {}),
     })),
     mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+    ...(character.mouthOpenVisualSource ? { mouthOpenVisualSource: character.mouthOpenVisualSource } : {}),
   };
   return JSON.stringify(current) !== JSON.stringify(session.draft);
 }
@@ -452,6 +456,7 @@ export function getAssemblyPreviewExpressions(
       id: `assembly-create-expression-${index}`,
       name: expression.name,
       assetId: expression.assetId,
+      ...(expression.visualSource ? { visualSource: expression.visualSource } : {}),
     }));
   }
   if (isAdaptivePartsAssemblySnapshot(session)) return [];
@@ -463,13 +468,13 @@ export function getAssemblyPreviewExpressions(
   const assets = new Map(
     session.draft.expressionAssets.map((expression) => [
       expression.expressionId,
-      expression.assetId,
+      expression,
     ]),
   );
   return character.expressions.map((expression) => ({
     id: expression.id,
     name: expression.name,
-    assetId: assets.get(expression.id) ?? expression.assetId,
+    ...(assets.get(expression.id) ?? expression),
   }));
 }
 
@@ -527,12 +532,14 @@ function previewCharacter(
   const assets = new Map(
     session.draft.expressionAssets.map((expression) => [
       expression.expressionId,
-      expression.assetId,
+      expression,
     ]),
   );
   const expressions = existing.expressions.map((expression) => ({
-    ...expression,
-    assetId: assets.get(expression.id) ?? expression.assetId,
+    id: expression.id,
+    name: expression.name,
+    assetId: assets.get(expression.id)?.assetId,
+    visualSource: assets.get(expression.id)?.visualSource,
   }));
   const defaultExpression =
     expressions.find(
@@ -541,6 +548,7 @@ function previewCharacter(
   if (!defaultExpression) return null;
   const baseCharacter = { ...existing };
   delete baseCharacter.mouthOpenAssetId;
+  delete baseCharacter.mouthOpenVisualSource;
   delete baseCharacter.head;
   return {
     ...baseCharacter,
@@ -561,6 +569,7 @@ function previewCharacter(
     ...(session.draft.mouthOpenAssetId
       ? { mouthOpenAssetId: session.draft.mouthOpenAssetId }
       : {}),
+    ...(session.draft.mouthOpenVisualSource ? { mouthOpenVisualSource: session.draft.mouthOpenVisualSource } : {}),
   };
 }
 
@@ -613,7 +622,7 @@ export function buildCharacterAssemblyPreviewVisual(
   const mouthAssetId =
     selection.kind === 'mouth' ? character.mouthOpenAssetId : undefined;
   const activeAssetId = mouthAssetId ?? expression.assetId;
-  const requiredAssets = [character.bodyAssetId, activeAssetId];
+  const requiredAssets = [character.bodyAssetId, ...(activeAssetId ? [activeAssetId] : [])];
   if (
     requiredAssets.some(
       (assetId) =>
@@ -659,9 +668,10 @@ export function buildCharacterAssemblyPreviewVisual(
   };
   const evaluated: EvaluatedLayer = {
     id: layer.id,
-    assetId: activeAssetId,
+    assetId: activeAssetId ?? '',
     currentExpressionId: expression.id,
     mouthOverrideAssetId: mouthAssetId ?? null,
+    mouthOpen: selection.kind === 'mouth',
     anchor: layer.anchor,
     x: layer.x,
     y: layer.y,

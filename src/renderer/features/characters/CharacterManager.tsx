@@ -265,9 +265,9 @@ export function placeCharacterInCurrentShot({
       const expression = liveCharacter.expressions.find(
         (candidate) => candidate.id === liveCharacter.defaultExpressionId,
       );
-      if (!expression || !live.snapshot.project.assets.some(
+      if (!expression || (!expression.visualSource && !live.snapshot.project.assets.some(
         (asset) => asset.kind === 'image' && asset.id === expression.assetId,
-      )) {
+      ))) {
         reportStatus('默认表情素材不可用，请先设置默认表情。');
         return false;
       }
@@ -526,7 +526,7 @@ export function CharacterManager({
       if (!createdCharacter || createdCharacter.mode === 'adaptive-parts') return;
       showBindingReminder(
         next,
-        createdCharacter.expressions.map((expression) => expression.assetId),
+        createdCharacter.expressions.flatMap((expression) => expression.assetId ? [expression.assetId] : []),
       );
       setSelectedCharacterId(createdCharacter.id);
       onViewChange('detail');
@@ -1071,6 +1071,15 @@ export function CharacterManager({
             );
             if (next) showBindingReminder(next, [assetId]);
           }}
+          onSetExpressionSource={(expressionId, source) => {
+            if (selectedCharacter) mutate(() => characterStore.setExpressionVisualSource(selectedCharacter.id, expressionId, source));
+          }}
+          onAddGraphicExpression={(name, source) => {
+            if (selectedCharacter) mutate(() => characterStore.addExpression(selectedCharacter.id, { name, visualSource: source }));
+          }}
+          onSetMouthSource={(source) => {
+            if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
+          }}
           onSetDefaultTransform={(scale, flipX) => {
             if (!selectedCharacter) return;
             mutate(
@@ -1157,6 +1166,7 @@ export function CharacterManager({
           onSetAssemblyMouthAsset={(assetId) =>
             updateAssembly({ mouthOpenAssetId: assetId })
           }
+          onSetAssemblyMouthSource={source => updateAssembly(source?.kind === 'fla-graphic' ? { mouthOpenVisualSource: source, mouthOpenAssetId: null } : { mouthOpenAssetId: source?.assetId ?? null, mouthOpenVisualSource: null })}
           onThumbnailError={markThumbnailError}
           presentation={presentation}
           thumbnails={thumbnails}

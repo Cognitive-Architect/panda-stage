@@ -214,6 +214,13 @@ export class LayerService {
         startTimeMs: input.startTimeMs,
       });
     }
+    if (input.type === 'character-expression') {
+      const character = project.characters.find(candidate => candidate.id === input.characterId);
+      const expression = character && character.mode !== 'adaptive-parts' ? character.expressions.find(candidate => candidate.id === input.expressionId) : undefined;
+      if (expression?.visualSource && !input.assetId && character) {
+        return this.appendLayer(project, shot, character.name, { kind: 'character', characterId: character.id, expressionId: expression.id }, position, character.defaultScale, character.defaultFlipX);
+      }
+    }
     const asset = project.assets.find(
       (candidate) => candidate.id === input.assetId,
     );

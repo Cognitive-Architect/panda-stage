@@ -152,13 +152,13 @@ export function projectShotMouth(
   if (
     !speakingCharacter ||
     speakingCharacter.mode === 'adaptive-parts' ||
-    !speakingCharacter.mouthOpenAssetId
+    (!speakingCharacter.mouthOpenAssetId && !speakingCharacter.mouthOpenVisualSource)
   ) return evaluatedShot;
 
   const mouthAsset = project.assets.find(
     (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
   );
-  if (mouthAsset?.kind !== 'image') return evaluatedShot;
+  if (!speakingCharacter.mouthOpenVisualSource && mouthAsset?.kind !== 'image') return evaluatedShot;
 
   let changed = false;
   const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
@@ -172,16 +172,17 @@ export function projectShotMouth(
       return layer;
     }
     if (
-      layer.assetId === mouthAsset.id &&
-      layer.mouthOverrideAssetId === mouthAsset.id
+      layer.mouthOpen &&
+      layer.mouthOverrideAssetId === (mouthAsset?.id ?? null)
     ) {
       return layer;
     }
     changed = true;
     return {
       ...layer,
-      assetId: mouthAsset.id,
-      mouthOverrideAssetId: mouthAsset.id,
+      assetId: mouthAsset?.id ?? layer.assetId,
+      mouthOverrideAssetId: mouthAsset?.id ?? null,
+      mouthOpen: true,
     };
   });
 

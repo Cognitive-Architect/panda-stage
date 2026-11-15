@@ -108,13 +108,13 @@ export function selectAssetLibraryEntries(
       });
       continue;
     }
-    separatelyUsedAssetIds.add(character.baseAssetId);
+    if (character.baseAssetId) separatelyUsedAssetIds.add(character.baseAssetId);
     if (character.mode === 'composite') {
       separatelyUsedAssetIds.add(character.bodyAssetId);
       if (character.head) separatelyUsedAssetIds.add(character.head.assetId);
     }
     for (const expression of character.expressions) {
-      separatelyUsedAssetIds.add(expression.assetId);
+      if (expression.assetId) separatelyUsedAssetIds.add(expression.assetId);
     }
     if (character.mouthOpenAssetId) {
       separatelyUsedAssetIds.add(character.mouthOpenAssetId);

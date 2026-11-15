@@ -8,6 +8,9 @@ import {
 import {
   isFlaGraphicDefinition,
   resolveCharacterPartVisualSource,
+  resolveExpressionVisualSource,
+  resolveMouthVisualSource,
+  type CharacterFaceSource,
   type CharacterPartTransform,
   type FacePlacement,
   type FlaGraphicDefinition,
@@ -21,6 +24,7 @@ import {
 } from '../evaluate-fla-graphic';
 import { resolveImageAsset } from './canvasLayers';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
+import { resolveCharacterFaceSource } from './characterFaceSource';
 
 export type LayerVisualKind =
   | 'ordinary-image'
@@ -97,6 +101,7 @@ export interface VisualPartRenderTransform {
 }
 
 export type VisualPartSource =
+  | { kind: 'character-face-fla-graphic'; animationId: string; firstFrame: number }
   | { kind: 'asset'; assetId: string }
   | { kind: 'animation-frame'; animationId: string; assetId: string }
   | { kind: 'character-body'; assetId: string }
@@ -133,6 +138,7 @@ export interface LayerVisualPart {
 }
 
 export interface ActiveCharacterFace {
+  visualSource: CharacterFaceSource;
   currentExpressionId: string;
   currentExpressionAssetId: string;
   source: 'expression' | 'mouth';
@@ -200,7 +206,7 @@ function imageAsset(
 }
 
 function centeredRect(
-  asset: ImageAsset,
+  asset: Pick<ImageAsset, 'width' | 'height'>,
   centerX = 0,
   centerY = 0,
   scale = 1,
@@ -507,12 +513,16 @@ function characterResources(
   }
 
   for (const expression of character.expressions) {
-    if (!resolveImageAsset(project, expression.assetId)) continue;
-    if (
-      !requiredAssetIds.has(expression.assetId) &&
-      !fallbackAssetIds.has(expression.assetId)
-    ) {
-      addResource(candidates, expression.assetId, 'alternate-expression');
+    const resolved = resolveCharacterFaceSource(project, resolveExpressionVisualSource(expression));
+    for (const assetId of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
+      if (!requiredAssetIds.has(assetId) && !fallbackAssetIds.has(assetId) && resolveImageAsset(project, assetId)) addResource(candidates, assetId, 'alternate-expression');
+    }
+  }
+  const mouth = resolveMouthVisualSource(character);
+  if (mouth?.kind === 'fla-graphic') {
+    const resolved = resolveCharacterFaceSource(project, mouth);
+    for (const assetId of resolved.flaGraphic?.resourceAssetIds ?? []) {
+      if (!requiredAssetIds.has(assetId) && !fallbackAssetIds.has(assetId) && resolveImageAsset(project, assetId)) addResource(candidates, assetId, 'mouth-override');
     }
   }
   if (character.mouthOpenAssetId) {
@@ -538,7 +548,7 @@ function resolveCharacterFace(
   character: Extract<Project['characters'][number], { mode: 'single-image' | 'composite' }>,
   evaluated: EvaluatedLayer,
   fallbackExpressionId: string,
-): { face: ActiveCharacterFace; asset: ImageAsset } {
+): { face: ActiveCharacterFace; asset: ReturnType<typeof resolveCharacterFaceSource>; fallback: ReturnType<typeof resolveCharacterFaceSource> | null } {
   const currentExpressionId =
     evaluated.currentExpressionId ?? fallbackExpressionId;
   const expression =
@@ -553,23 +563,59 @@ function resolveCharacterFace(
       `Cannot resolve current Expression for Character ${character.id}.`,
     );
   }
-  const expressionAsset = imageAsset(project, expression.assetId, evaluated.id);
-  const mouthAsset = evaluated.mouthOverrideAssetId
-    ? resolveImageAsset(project, evaluated.mouthOverrideAssetId)
-    : null;
+  const expressionSource = resolveExpressionVisualSource(expression);
+  const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
+  const mouthSource = evaluated.mouthOverrideAssetId
+    ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
+    : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null;
+  const mouthAsset = mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null;
   const activeAsset = mouthAsset ?? expressionAsset;
   const source = mouthAsset ? 'mouth' : 'expression';
   return {
     face: {
       currentExpressionId: expression.id,
-      currentExpressionAssetId: expressionAsset.id,
+      visualSource: mouthSource ?? expressionSource,
+      currentExpressionAssetId: expressionAsset.assetId ?? '',
       source,
-      assetId: activeAsset.id,
+      assetId: activeAsset.assetId ?? '',
       configuredMouthAssetId: character.mouthOpenAssetId ?? null,
-      fallbackAssetId: mouthAsset ? expressionAsset.id : null,
+      fallbackAssetId: mouthAsset ? expressionAsset.assetId ?? null : null,
     },
     asset: activeAsset,
+    fallback: mouthAsset ? expressionAsset : null,
   };
+}
+
+function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCharacterFace>, evaluated: EvaluatedLayer, slot: 'single' | 'face', placement: FacePlacement, drawOrder: number): LayerVisualPart {
+  const { asset, face } = resolved;
+  const graphic = asset.flaGraphic;
+  const rect = centeredRect(asset, placement.offsetX, placement.offsetY, placement.scale);
+  const part: LayerVisualPart = {
+    partId: `${evaluated.id}:${slot}`, ownerLayerId: evaluated.id, slot,
+    source: face.visualSource.kind === 'fla-graphic'
+      ? { kind: 'character-face-fla-graphic', animationId: face.visualSource.animationId, firstFrame: face.visualSource.firstFrame }
+      : face.source === 'mouth' ? { kind: 'character-mouth', assetId: face.visualSource.assetId }
+      : { kind: 'character-expression', expressionId: face.currentExpressionId, assetId: face.visualSource.assetId },
+    ...(asset.assetId ? { assetId: asset.assetId } : {}),
+    ...(graphic?.structureFrame ? { flaGraphic: graphic } : {}),
+    localRect: rect, rotationDeg: placement.rotationDeg, flipX: placement.flipX,
+    drawOrder, ownerZIndex: evaluated.zIndex,
+  };
+  if (graphic) {
+    // Center/rotate/mirror the full source canvas; cropped fallback pixels do
+    // not redefine the face pivot. Structure uses exactly the same affine.
+    const angle = placement.rotationDeg * Math.PI / 180;
+    const sx = placement.scale * (placement.flipX ? -1 : 1), sy = placement.scale;
+    const matrix = { a: Math.cos(angle) * sx, b: Math.sin(angle) * sx, c: -Math.sin(angle) * sy, d: Math.cos(angle) * sy, tx: placement.offsetX, ty: placement.offsetY };
+    const fallback = graphic.structureFrame ? null : imageAsset(project, graphic.frameAssetId, evaluated.id);
+    const pixelToCanvas = fallback
+      ? { a: graphic.frameViewport.width / fallback.width, b: 0, c: 0, d: graphic.frameViewport.height / fallback.height, tx: graphic.frameOffset.x - asset.width / 2, ty: graphic.frameOffset.y - asset.height / 2 }
+      : { a: 1, b: 0, c: 0, d: 1, tx: -asset.width / 2, ty: -asset.height / 2 };
+    part.imageTransform = composeAffine(matrix, pixelToCanvas);
+    part.localRect = { x: 0, y: 0, width: fallback?.width ?? asset.width, height: fallback?.height ?? asset.height };
+    part.rotationDeg = 0; part.flipX = false;
+  }
+  return part;
 }
 
 type AdaptivePartsCharacter = Extract<
@@ -1139,30 +1185,20 @@ export function resolveLayerVisualParts(
   const requiredAssetIds = new Set<string>();
   const fallbackAssetIds = new Set<string>();
 
+  for (const assetId of resolved.asset.flaGraphic?.resourceAssetIds ?? (resolved.asset.assetId ? [resolved.asset.assetId] : [])) {
+    if (resolveImageAsset(project, assetId)) requiredAssetIds.add(assetId);
+  }
+  if (resolved.fallback) {
+    for (const assetId of resolved.fallback.flaGraphic?.resourceAssetIds ?? (resolved.fallback.assetId ? [resolved.fallback.assetId] : [])) {
+      if (resolveImageAsset(project, assetId)) fallbackAssetIds.add(assetId);
+    }
+  }
+
   if (character.mode === 'single-image') {
-    requiredAssetIds.add(resolved.face.assetId);
     if (resolved.face.fallbackAssetId) {
       fallbackAssetIds.add(resolved.face.fallbackAssetId);
     }
-    const part: LayerVisualPart = {
-      partId: `${layer.id}:single`,
-      ownerLayerId: layer.id,
-      slot: 'single',
-      source:
-        resolved.face.source === 'mouth'
-          ? { kind: 'character-mouth', assetId: resolved.asset.id }
-          : {
-              kind: 'character-expression',
-              expressionId: resolved.face.currentExpressionId,
-              assetId: resolved.asset.id,
-            },
-      assetId: resolved.asset.id,
-      localRect: centeredRect(resolved.asset),
-      rotationDeg: 0,
-      flipX: false,
-      drawOrder: 0,
-      ownerZIndex: evaluated.zIndex,
-    };
+    const part = faceVisualPart(project, resolved, evaluated, 'single', { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, flipX: false }, 0);
     return baseResult(
       evaluated,
       'single-image-character',
@@ -1186,7 +1222,6 @@ export function resolveLayerVisualParts(
     ? imageAsset(project, character.head.assetId, layer.id)
     : null;
   if (headAsset) requiredAssetIds.add(headAsset.id);
-  requiredAssetIds.add(resolved.face.assetId);
   if (resolved.face.fallbackAssetId) {
     fallbackAssetIds.add(resolved.face.fallbackAssetId);
   }
@@ -1207,30 +1242,7 @@ export function resolveLayerVisualParts(
     drawOrder: 0,
     ownerZIndex: evaluated.zIndex,
   };
-  const facePart: LayerVisualPart = {
-    partId: `${layer.id}:face`,
-    ownerLayerId: layer.id,
-    slot: 'face',
-    source:
-      resolved.face.source === 'mouth'
-        ? { kind: 'character-mouth', assetId: resolved.asset.id }
-        : {
-            kind: 'character-expression',
-            expressionId: resolved.face.currentExpressionId,
-            assetId: resolved.asset.id,
-          },
-    assetId: resolved.asset.id,
-    localRect: centeredRect(
-      resolved.asset,
-      character.facePlacement.offsetX,
-      character.facePlacement.offsetY,
-      character.facePlacement.scale,
-    ),
-    rotationDeg: character.facePlacement.rotationDeg,
-    flipX: character.facePlacement.flipX,
-    drawOrder: headAsset ? 2 : 1,
-    ownerZIndex: evaluated.zIndex,
-  };
+  const facePart = faceVisualPart(project, resolved, evaluated, 'face', character.facePlacement, headAsset ? 2 : 1);
   const headPart: LayerVisualPart | null =
     headAsset && character.head
       ? {

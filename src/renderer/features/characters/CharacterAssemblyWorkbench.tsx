@@ -51,6 +51,7 @@ import {
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
+import { GraphicFacePreview } from './GraphicFacePicker';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import { VisibleBoundsThumbnail } from './VisibleBoundsThumbnail';
@@ -2199,7 +2200,7 @@ function CompositeCharacterAssemblyWorkbench({
   );
   const hasMouth = isCharacterCreationSnapshot(session)
     ? Boolean(session.draft.mouthOpenAssetId)
-    : Boolean(session.draft.mouthOpenAssetId);
+    : Boolean(session.draft.mouthOpenAssetId || session.draft.mouthOpenVisualSource);
   const faceSelection: AssemblyFaceSelection =
     selectedFace === '$mouth' && hasMouth
       ? { kind: 'mouth' }
@@ -2224,6 +2225,8 @@ function CompositeCharacterAssemblyWorkbench({
     [faceSelection, project, session],
   );
   const facePart = visual?.parts.find((part) => part.slot === 'face') ?? null;
+  const faceGraphicSource = facePart?.source.kind === 'character-face-fla-graphic' ? facePart.source : null;
+  const faceGraphicCanvas = faceGraphicSource ? project.animations.find(candidate => candidate.id === faceGraphicSource.animationId)?.source.canvas : null;
   const bodyPart = visual?.parts.find((part) => part.slot === 'body') ?? null;
   const headPart = visual?.headPart ?? null;
   const faceRect = facePart?.localRect;
@@ -3235,7 +3238,11 @@ function CompositeCharacterAssemblyWorkbench({
                 }}
               />
             ) : null}
-            {facePart?.assetId && imageState.images.get(facePart.assetId) ? (
+            {faceGraphicSource && faceGraphicCanvas ? (
+              <div className="character-assembly-part character-assembly-graphic-face" style={{ left: left + session.draft.facePlacement.offsetX - faceGraphicCanvas.width * session.draft.facePlacement.scale / 2, top: top + session.draft.facePlacement.offsetY - faceGraphicCanvas.height * session.draft.facePlacement.scale / 2, width: faceGraphicCanvas.width * session.draft.facePlacement.scale, height: faceGraphicCanvas.height * session.draft.facePlacement.scale, transform: `rotate(${session.draft.facePlacement.rotationDeg}deg) scaleX(${session.draft.facePlacement.flipX ? -1 : 1})`, transformOrigin: 'center' }}>
+                <GraphicFacePreview source={{ kind: 'fla-graphic', animationId: faceGraphicSource.animationId, firstFrame: faceGraphicSource.firstFrame }} />
+              </div>
+            ) : facePart?.assetId && imageState.images.get(facePart.assetId) ? (
               <img
                 alt=""
                 className="character-assembly-part character-assembly-part-face"
