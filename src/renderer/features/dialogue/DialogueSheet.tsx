@@ -30,6 +30,11 @@ import {
 import { DialogueBatchPaste } from './DialogueBatchPaste';
 import { DialogueInspector } from './DialogueInspector';
 import {
+  NarratorSpeakerOption,
+  NarratorSpeakerRow,
+} from './DialogueSpeakerControl';
+import { dialogueSpeakerName } from './dialogueSpeaker';
+import {
   CharacterIdentityPicker,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
@@ -391,10 +396,14 @@ export function DialogueSheet({
     setSingleTouched({ speaker: true, text: true });
     if (!canAdd) return;
     try {
-      dialogueStore.create(
-        draftState.singleCharacterId,
-        draftState.singleText.trim(),
-      );
+      if (draftState.singleSpeakerType === 'narrator') {
+        dialogueStore.createNarrator(draftState.singleText.trim());
+      } else {
+        dialogueStore.create(
+          draftState.singleCharacterId,
+          draftState.singleText.trim(),
+        );
+      }
       draft.clear();
       dialogueSelectionStore.clear();
       setAuthoringMode('none');
@@ -603,8 +612,8 @@ export function DialogueSheet({
     pendingTrayPointerRef.current = null;
   };
 
-  const characterName = (id: string): string =>
-    characters.find((candidate) => candidate.id === id)?.name ?? id;
+  const speakerName = (dialogue: Dialogue): string =>
+    dialogueSpeakerName(dialogue, characters);
 
   const selectedDialogueState: DialogueSelectionState =
     !rightWorkspace && selectedTimedDialogue
@@ -669,7 +678,7 @@ export function DialogueSheet({
                 已安排字幕
               </span>
               <strong data-testid="dialogue-timed-task-identity">
-                {characterName(selectedTimedDialogue.characterId)}
+                {speakerName(selectedTimedDialogue)}
               </strong>
               <span
                 className="dialogue-timed-status-chip"
@@ -879,50 +888,74 @@ export function DialogueSheet({
                 <div className="dialogue-authoring-field dialogue-authoring-speaker-field">
                   {rightWorkspace ? null : (
                     <label htmlFor="dialogue-add-speaker">
-                      角色（说话人）
+                      {draftState.singleSpeakerType === 'narrator'
+                        ? '说话人'
+                        : '角色（说话人）'}
                     </label>
                   )}
-                  <CharacterIdentityPicker
-                    ariaDescribedBy={
-                      singleTouched.speaker && singleErrors.speaker
-                        ? 'dialogue-add-speaker-error'
-                        : undefined
-                    }
-                    ariaInvalid={Boolean(
-                      singleTouched.speaker && singleErrors.speaker,
-                    )}
-                    ariaLabel={rightWorkspace ? '说话角色' : '角色（说话人）'}
-                    characters={characters}
-                    defaultOpen
-                    data-testid="dialogue-add-speaker"
-                    disabled={!snapshot}
-                    emptySummaryDescription={
-                      rightWorkspace ? null : '从项目角色中选择说话人'
-                    }
-                    emptySummaryLabel={
-                      rightWorkspace ? '请绑定角色' : '选择现有角色'
-                    }
-                    id="dialogue-add-speaker"
-                    onClear={() => {
-                      setSingleSubmitError(null);
-                      draft.setSingleCharacterId('');
-                    }}
-                    onSelect={(characterId) => {
-                      setSingleSubmitError(null);
-                      draft.setSingleCharacterId(characterId);
-                      setSingleTouched((current) => ({
-                        ...current,
-                        speaker: true,
-                      }));
-                    }}
-                    onThumbnailError={onCharacterThumbnailError}
-                    selectedCharacterId={draftState.singleCharacterId || null}
-                    selectedLabel={
-                      rightWorkspace ? '当前绑定' : '当前说话人'
-                    }
-                    showDefaultExpression={!rightWorkspace}
-                    thumbnails={characterThumbnails}
-                  />
+                  {draftState.singleSpeakerType === 'narrator' ? (
+                    <NarratorSpeakerRow
+                      onSelectCharacter={() =>
+                        draft.setSingleSpeakerType('character')
+                      }
+                      testId="dialogue-add-speaker-narrator"
+                    />
+                  ) : (
+                    <>
+                      <CharacterIdentityPicker
+                        ariaDescribedBy={
+                          singleTouched.speaker && singleErrors.speaker
+                            ? 'dialogue-add-speaker-error'
+                            : undefined
+                        }
+                        ariaInvalid={Boolean(
+                          singleTouched.speaker && singleErrors.speaker,
+                        )}
+                        ariaLabel={
+                          rightWorkspace ? '说话角色' : '角色（说话人）'
+                        }
+                        characters={characters}
+                        defaultOpen
+                        data-testid="dialogue-add-speaker"
+                        disabled={!snapshot}
+                        emptySummaryDescription={
+                          rightWorkspace ? null : '从项目角色中选择说话人'
+                        }
+                        emptySummaryLabel={
+                          rightWorkspace ? '请绑定角色' : '选择现有角色'
+                        }
+                        id="dialogue-add-speaker"
+                        onClear={() => {
+                          setSingleSubmitError(null);
+                          draft.setSingleCharacterId('');
+                        }}
+                        onSelect={(characterId) => {
+                          setSingleSubmitError(null);
+                          draft.setSingleCharacterId(characterId);
+                          setSingleTouched((current) => ({
+                            ...current,
+                            speaker: true,
+                          }));
+                        }}
+                        onThumbnailError={onCharacterThumbnailError}
+                        selectedCharacterId={
+                          draftState.singleCharacterId || null
+                        }
+                        selectedLabel={
+                          rightWorkspace ? '当前绑定' : '当前说话人'
+                        }
+                        showDefaultExpression={!rightWorkspace}
+                        thumbnails={characterThumbnails}
+                      />
+                      <NarratorSpeakerOption
+                        onSelect={() => {
+                          setSingleSubmitError(null);
+                          draft.setSingleSpeakerType('narrator');
+                        }}
+                        testId="dialogue-add-narrator"
+                      />
+                    </>
+                  )}
                   {singleTouched.speaker && singleErrors.speaker ? (
                     <p
                       className="dialogue-authoring-error"
@@ -1187,7 +1220,7 @@ export function DialogueSheet({
                     </div>
                   ) : (
                     <button
-                      aria-label={`选择字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                      aria-label={`选择字幕：${speakerName(dialogue)}：${dialogue.text}`}
                       aria-pressed={selected}
                       type="button"
                       className="dialogue-untimed-select dialogue-pending-card-select"
@@ -1196,7 +1229,7 @@ export function DialogueSheet({
                       onClick={() => handleSelectDialogue(dialogue.id)}
                     >
                       <span className="dialogue-untimed-speaker">
-                        {characterName(dialogue.characterId)}
+                        {speakerName(dialogue)}
                       </span>
                       <span className="dialogue-untimed-text">
                         {dialogue.text}
@@ -1253,7 +1286,7 @@ export function DialogueSheet({
                       </div>
                       <div className="dialogue-untimed-action-buttons">
                         <button
-                          aria-label={`删除字幕：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          aria-label={`删除字幕：${speakerName(dialogue)}：${dialogue.text}`}
                           className="dialogue-delete dialogue-untimed-delete"
                           data-dialogue-id={dialogue.id}
                           data-testid="dialogue-untimed-delete"
@@ -1265,7 +1298,7 @@ export function DialogueSheet({
                         <button
                           type="button"
                           className="dialogue-untimed-arrange"
-                          aria-label={`自动加入：${characterName(dialogue.characterId)}：${dialogue.text}`}
+                          aria-label={`自动加入：${speakerName(dialogue)}：${dialogue.text}`}
                           data-dialogue-id={dialogue.id}
                           data-testid="dialogue-untimed-arrange"
                           onClick={() => handleArrange(dialogue.id)}

@@ -8,12 +8,13 @@ import {
   getCharacterDefaultExpression,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
-import { CirclePlus } from 'lucide-react';
+import { CirclePlus, Mic } from 'lucide-react';
 import {
   parseDialoguePaste,
   resolveDialoguePaste,
   type ParsedDialogueLine,
 } from './parseDialoguePaste';
+import { NARRATOR_SPEAKER_NAME } from './dialogueSpeaker';
 import type { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
 
 function exceptionHeading(line: ParsedDialogueLine): string {
@@ -33,6 +34,9 @@ function exceptionDetail(line: ParsedDialogueLine): string | null {
 }
 
 function mappingIssueCopy(line: ParsedDialogueLine): string {
+  if (line.reason === 'narrator-name-conflict') {
+    return '“旁白”与项目角色同名，请选择角色';
+  }
   if (line.status === 'ambiguous') {
     return `“${line.speaker ?? '未识别角色'}”对应多个角色，请确认`;
   }
@@ -104,7 +108,7 @@ export function DialogueBatchPaste({
     >
       <section className="dialogue-batch-input-section">
         <label id="dialogue-batch-format-hint" htmlFor="dialogue-batch-input">
-          每行一条，格式：角色：台词
+          每行一条，格式：角色：台词 或 旁白：台词
         </label>
         <textarea
           aria-describedby="dialogue-batch-format-hint"
@@ -112,7 +116,7 @@ export function DialogueBatchPaste({
           className="dialogue-batch-input"
           data-testid="dialogue-batch-input"
           id="dialogue-batch-input"
-          placeholder={'Panda：你好呀\n角色B：这是第二行台词'}
+          placeholder={'Panda：你好呀\n旁白：十年前……'}
           rows={7}
           value={draftState.batchRaw}
           onChange={(event) => {
@@ -157,13 +161,14 @@ export function DialogueBatchPaste({
               const resolved = resolution.resolvedLines[index];
               const needsMapping =
                 line.status === 'unknown' || line.status === 'ambiguous';
-              const resolvedCharacter = resolved
+              const resolvedNarration = resolved?.speakerType === 'narrator';
+              const resolvedCharacter = resolved?.characterId
                 ? characters.find(
                     (candidate) => candidate.id === resolved.characterId,
                   )
                 : undefined;
               const resolvedRow =
-                resolved && resolvedCharacter
+                resolved && (resolvedNarration || resolvedCharacter)
                   ? { character: resolvedCharacter, line: resolved }
                   : null;
               return (
@@ -182,19 +187,30 @@ export function DialogueBatchPaste({
                       >
                         ✓
                       </span>
-                      <CharacterAvatar
-                        character={resolvedRow.character}
-                        className="dialogue-batch-row-avatar"
-                        onThumbnailError={onCharacterThumbnailError}
-                        thumbnail={
-                          characterThumbnails[
-                            getCharacterDefaultExpression(resolvedRow.character)
-                              ?.assetId ?? ''
-                          ]
-                        }
-                      />
+                      {resolvedRow.character ? (
+                        <CharacterAvatar
+                          character={resolvedRow.character}
+                          className="dialogue-batch-row-avatar"
+                          onThumbnailError={onCharacterThumbnailError}
+                          thumbnail={
+                            characterThumbnails[
+                              getCharacterDefaultExpression(resolvedRow.character)
+                                ?.assetId ?? ''
+                            ]
+                          }
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="dialogue-batch-row-avatar dialogue-batch-row-avatar-narrator"
+                        >
+                          <Mic size={16} strokeWidth={1.8} />
+                        </span>
+                      )}
                       <div className="dialogue-batch-row-copy">
-                        <strong>{resolvedRow.character.name}</strong>
+                        <strong>
+                          {resolvedRow.character?.name ?? NARRATOR_SPEAKER_NAME}
+                        </strong>
                         <span>{resolvedRow.line.text}</span>
                       </div>
                     </div>

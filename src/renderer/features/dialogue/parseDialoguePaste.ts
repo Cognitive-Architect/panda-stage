@@ -4,12 +4,14 @@ import type { Character } from '../../../domain/models';
  * Status of a single pasted line after deterministic parsing.
  *
  * - `valid`       — has a separator, non-empty speaker + text, and the speaker
- *                   matched exactly one existing character.
+ *                   matched exactly one existing character (or the fixed
+ *                   narration keyword `旁白`).
  * - `malformed`   — no separator (e.g. a line without `:` / `：`).
  * - `invalid`     — separator present but the speaker or text is empty after trim.
  * - `unknown`     — parsed but the speaker matched no existing character.
  * - `ambiguous`   — the speaker matched more than one character (not possible
- *                   under the current unique-name schema, but handled defensively).
+ *                   under the current unique-name schema, but handled defensively),
+ *                   or the narration keyword collides with a real Character name.
  */
 export type DialogueLineStatus =
   | 'valid'
@@ -17,6 +19,11 @@ export type DialogueLineStatus =
   | 'invalid'
   | 'unknown'
   | 'ambiguous';
+
+export type DialogueLineReason =
+  | 'empty-speaker'
+  | 'empty-text'
+  | 'narrator-name-conflict';
 
 export interface ParsedDialogueLine {
   /** 1-based line number within the raw input. */
@@ -28,10 +35,12 @@ export interface ParsedDialogueLine {
   speaker?: string;
   /** Parsed dialogue text (present unless `malformed` / empty-text). */
   text?: string;
-  /** Resolved character id; present only for `valid` lines. */
+  /** Resolved character id; present only for `valid` Character lines. */
   characterId?: string;
-  /** Why a line is `invalid`. */
-  reason?: 'empty-speaker' | 'empty-text';
+  /** Present only for `valid` narration lines (speaker written as 旁白). */
+  speakerType?: 'narrator';
+  /** Why a line is `invalid` or needs explicit disambiguation. */
+  reason?: DialogueLineReason;
 }
 
 export interface ParseDialoguePasteResult {
@@ -43,7 +52,8 @@ export interface ParseDialoguePasteResult {
 }
 
 export interface ResolvedDialogueLine {
-  characterId: string;
+  characterId?: string;
+  speakerType?: 'narrator';
   text: string;
 }
 
@@ -57,6 +67,9 @@ export interface DialogueBatchResolution {
 
 const FULL_WIDTH_COLON = '：';
 const ASCII_COLON = ':';
+
+/** The one fixed narration keyword accepted by batch authoring. */
+export const NARRATOR_PASTE_KEYWORD = '旁白';
 
 function findFirstSeparator(line: string): number {
   const full = line.indexOf(FULL_WIDTH_COLON);
@@ -77,6 +90,10 @@ function normalizedName(name: string): string {
  * so colons inside the dialogue text are preserved. Speaker matching is strictly
  * deterministic: a `trim + locale-lowercase` exact match against existing
  * `Character.name`. No fuzzy / AI / similarity guessing is performed.
+ *
+ * `旁白：台词` is the one reserved narration spelling. If the project also has a
+ * real Character named `旁白`, the line is NOT silently turned into narration:
+ * it is reported as `ambiguous` and needs an explicit decision.
  *
  * This function performs matching only; it never creates characters. Unknown
  * speakers are surfaced for explicit manual mapping by the caller.
@@ -136,6 +153,29 @@ export function parseDialoguePaste(
     const matches = characters.filter(
       (character) => normalizedName(character.name) === key,
     );
+    if (key === normalizedName(NARRATOR_PASTE_KEYWORD)) {
+      if (matches.length > 0) {
+        lines.push({
+          lineNumber: index + 1,
+          raw: trimmed,
+          status: 'ambiguous',
+          speaker,
+          text,
+          reason: 'narrator-name-conflict',
+        });
+        return;
+      }
+      lines.push({
+        lineNumber: index + 1,
+        raw: trimmed,
+        status: 'valid',
+        speaker,
+        text,
+        speakerType: 'narrator',
+      });
+      validCount += 1;
+      return;
+    }
     if (matches.length === 0) {
       lines.push({
         lineNumber: index + 1,
@@ -197,7 +237,9 @@ export function resolveDialoguePaste(
   const characterIds = new Set(characters.map((character) => character.id));
   const resolvedLines = result.lines.map((line): ResolvedDialogueLine | null => {
     if (line.status === 'valid') {
-      return { characterId: line.characterId!, text: line.text! };
+      return line.speakerType === 'narrator'
+        ? { speakerType: 'narrator', text: line.text! }
+        : { characterId: line.characterId!, text: line.text! };
     }
     if (line.status !== 'unknown' && line.status !== 'ambiguous') return null;
     const mappedCharacterId = mapping[line.lineNumber];
