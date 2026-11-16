@@ -99,7 +99,8 @@ export function SelectableLayer({
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const canTransform = canMove && !flaGraphicEditProjection && !characterMotion;
+  const editingPart = Boolean(characterMotion?.selectedPartId);
+  const canTransform = canMove && !flaGraphicEditProjection && !editingPart;
 
   const legacyBounds = {
     x: -render.offsetX,
@@ -177,8 +178,13 @@ export function SelectableLayer({
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
     if (!visualNode) return;
     visualNode.clearCache();
+    if (characterMotion) {
+      // Refresh per-Part hit targets after all children have committed, including
+      // on an unselected Layer. Avoid retaining the previous composite hit map.
+      queueMicrotask(() => visualNode.getLayer()?.drawHit());
+      return;
+    }
     if (
-      characterMotion ||
       !compositeVisual ||
       !completeVisualReady ||
       visualBounds.width <= 0 ||
@@ -201,14 +207,20 @@ export function SelectableLayer({
     image: partImage,
     flaGraphicCanvas,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+    const select = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      event.cancelBubble = true;
+      if (characterMotion && (part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic')) {
+        characterMotion.select(part.source.characterPartId);
+      } else onSelect(layer.id);
+    };
     if (part.flaGraphic) {
       if (!flaGraphicCanvas) return null;
       return (
         <Group
           key={part.partId}
           listening={canSelect}
-          onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-          onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+          onClick={select}
+          onTap={select}
           {...visualPartRenderTransform(part)}
         >
           <KonvaImage
@@ -228,8 +240,8 @@ export function SelectableLayer({
         image={partImage}
         key={part.partId}
         listening={canSelect}
-        onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-        onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+        onClick={select}
+        onTap={select}
         {...visualPartRenderTransform(part)}
         width={part.localRect.width}
       />
@@ -469,7 +481,7 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady && !flaGraphicEditProjection && !characterMotion ? (
+        {selected && completeVisualReady && !flaGraphicEditProjection && !editingPart ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}

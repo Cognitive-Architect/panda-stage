@@ -2,8 +2,14 @@
 .project-canvas[data-with-heading='true']:has(> .character-motion-controls) { grid-template-rows: auto auto minmax(0, 1fr); }
 .project-canvas > [role='alert'] { position: absolute; top: 40px; left: 12px; z-index: 10; background: var(--ui-color-surface-overlay); color: var(--ui-color-text-primary); }
 .character-motion-controls { display: flex; align-items: center; gap: 8px; padding: 4px 12px; }
-.character-motion-controls select { max-width: 220px; }
-.character-motion-controls output { color: var(--ui-color-selected-border); }
+.character-motion-controls select { max-width: 220px; min-height: 32px; color: var(--ui-color-text-primary); background: var(--ui-color-surface-work); border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); padding: var(--ui-space-1) var(--ui-space-2); }
+.character-motion-controls button[aria-pressed='true'] { border-color: var(--ui-color-selected-border); background: var(--ui-color-selected-surface); }
+.character-part-transform { padding: var(--ui-space-3); }
+.character-part-transform h3 { margin: 0 0 var(--ui-space-3); font: var(--ui-font-section-heading); }
+.character-part-transform form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-3) var(--ui-space-2); }
+.character-part-transform input { width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; color: var(--ui-color-text-primary); background: var(--ui-color-surface-work); border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); padding: var(--ui-space-2); font: inherit; }
+.character-part-transform input:focus-visible, .character-motion-controls select:focus-visible { outline: 2px solid var(--ui-color-focus-ring); outline-offset: 2px; }
+.character-part-transform [role='alert'] { color: var(--ui-color-text-primary); }
 .character-motion-lane { min-height: 30px; display: flex; }
 .character-motion-lane .timeline-lane-label { flex: 0 0 var(--timeline-lane-label-width, 82px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .character-motion-keys { position: relative; flex: 1; }

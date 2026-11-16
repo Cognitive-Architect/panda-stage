@@ -49,7 +49,10 @@ describe('Character Motion pointer gestures (#979 adaptation)', () => {
           pivot: () => point, select: vi.fn(), begin: () => new CharacterMotionGesture(editor, input, () => true), error: error => { throw new Error(error); } },
         owner: owner as never, children: createElement('span'),
       })));
-      const name = `character-motion-${kind}`;
+      const name = kind === 'move' ? 'character-motion-part' : `character-motion-${kind}`;
+      expect(nodes.has('character-motion-move')).toBe(false);
+      expect(nodes.get('character-motion-pivot')!.listening).toBe(false);
+      expect([...nodes.keys()].filter(name => /^character-motion-scale(?:-\d+)?$/.test(name))).toHaveLength(4);
       // Real Konva can emit dragend synchronously from stopDrag().
       node.stopDrag.mockImplementation(() => call(name, 'onDragEnd'));
       pointer = kind === 'rotate' ? { x: 100, y: 30 } : kind === 'scale' ? { x: 170, y: 100 } : { x: 100, y: 100 };

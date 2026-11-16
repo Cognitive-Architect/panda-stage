@@ -22,6 +22,9 @@ import {
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
+import { characterMotionParts } from '../features/canvas/characterMotionContext';
+import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
 import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
 import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
@@ -358,6 +361,8 @@ export function RightInspector({
     dialogueSelectionStore.getSelectedDialogueId,
   );
   const landscapePresentation = shellMode === 'landscape';
+  const selectedPartId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
+  const motionUi = useTimelineUi();
   const compactPresentation = compact === true || landscapePresentation;
   const compactSections = compactPresentation;
   const dialogueMode = Boolean(
@@ -392,6 +397,7 @@ export function RightInspector({
   const currentShot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
+  const motionPart = snapshot ? characterMotionParts(snapshot.project, selection.layer ?? undefined).find(p => p.partId === selectedPartId) : undefined;
   const layerSummary = getRightInspectorLayerSummary(
     snapshot,
     selection.layer,
@@ -600,7 +606,16 @@ export function RightInspector({
     />
   );
 
-  const inspectorBody = (
+  const inspectorBody = motionPart && currentShot && selection.layer && snapshot ? (
+    <>
+      {inspectorHeading}
+      <section className="right-inspector-selection" data-testid="right-inspector-part-context">
+        <strong>{selection.layer.name} › {motionPart.name}</strong>
+      </section>
+      <CharacterPartTransformPanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), snapshot.revision, currentShot.id, selection.layer.id, motionPart.partId, motionUi.currentTimeMs, motionUi.characterMotionAutoKey])}
+        input={{ shotId: currentShot.id, layerId: selection.layer.id, partId: motionPart.partId, timeMs: motionUi.currentTimeMs, autoKey: motionUi.characterMotionAutoKey }} locked={selection.layer.locked} />
+    </>
+  ) : (
     <>
       {inspectorHeading}
       <FlaGraphicInspectorPreview />

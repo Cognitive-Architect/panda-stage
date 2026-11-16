@@ -12,7 +12,7 @@ import type Konva from 'konva';
 import { CharacterMotionControls } from './CharacterMotionControls';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
-import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime } from '../../../domain';
+import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime, type Layer } from '../../../domain';
 import {
   Layer as KonvaLayer,
   Rect,
@@ -960,12 +960,12 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
-  const motionLayer = selectedStageLayer?.layer;
-  const motionSource = motionLayer?.source;
-  const motionCharacter = motionSource?.kind === 'character' ? snapshot?.project.characters.find(c => c.id === motionSource.characterId) : null;
   const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedMotionPartId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
-  const motionCanvas: CharacterMotionCanvas | undefined = snapshot && shot && motionLayer && motionCharacter?.mode === 'adaptive-parts' && selectedMotionPartId && !positionAuthoringSession ? {
-    selectedPartId: selectedMotionPartId, contextKey: motionContextKey,
+  const motionCanvasForLayer = (motionLayer: Layer): CharacterMotionCanvas | undefined => {
+    const source = motionLayer.source;
+    const character = source.kind === 'character' ? snapshot?.project.characters.find(c => c.id === source.characterId) : null;
+    return snapshot && shot && character?.mode === 'adaptive-parts' && !positionAuthoringSession ? {
+    selectedPartId: selectedLayerId === motionLayer.id ? selectedMotionPartId : null, contextKey: motionContextKey,
     enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
     pivot: (partId) => {
       const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
@@ -974,7 +974,7 @@ export function CanvasStage({
       const matrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs));
       return { x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx, y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty };
     },
-    select: selectionStore.selectCharacterPart,
+    select: partId => { selectionStore.select(motionLayer.id); selectionStore.selectCharacterPart(partId); },
     error: setMotionError,
     begin: (partId) => {
       setMotionError('');
@@ -983,6 +983,7 @@ export function CanvasStage({
         timelineUiStore.getSnapshot().currentTimeMs === timelineUi.currentTimeMs && timelineUiStore.getSnapshot().characterMotionAutoKey === timelineUi.characterMotionAutoKey);
     },
   } : undefined;
+  };
   const selectedStructuredNodeReady = Boolean(
     selectedFlaGraphicTarget &&
       selectedFlaGraphicNode &&
@@ -1017,7 +1018,7 @@ export function CanvasStage({
   const structuredTransformerVisible = Boolean(
     flaGraphicEditActive && selectedStructuredNodeCanTransform,
   );
-  const layerTransformerVisible = !motionCanvas && !flaGraphicEditActive && isTransformerOverlayVisible({
+  const layerTransformerVisible = !selectedMotionPartId && !flaGraphicEditActive && isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
         selectedStageLayer.render.visible &&
@@ -1264,7 +1265,7 @@ export function CanvasStage({
                             : undefined;
                         return (
                           <SelectableLayer
-                            characterMotion={selectedLayerId === layer.id ? motionCanvas : undefined}
+                            characterMotion={motionCanvasForLayer(layer)}
                             directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
