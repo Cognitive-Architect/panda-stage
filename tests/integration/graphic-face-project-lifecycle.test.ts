@@ -22,12 +22,12 @@ describe('v20 Graphic face file lifecycle (#1112)', () => {
       const opened = await service.open(root);
       expect(opened.sourceVersion).toBe(19);
       expect(opened.migrated).toBe(true);
-      expect(opened.project).toEqual({ ...historicalV19, schemaVersion: 20 });
+      expect(opened.project).toEqual({ ...historicalV19, schemaVersion: 21 });
       expect(ProjectOperationResponseSchema.safeParse({ ok: true, value: opened }).success).toBe(true);
       await service.save(root, opened.project, 1);
       const reopened = await new ProjectService().open(root);
       expect(reopened.project).toEqual(opened.project);
-      expect(reopened.sourceVersion).toBe(20);
+      expect(reopened.sourceVersion).toBe(21);
       expect(reopened.migrated).toBe(false);
       expect(migrateProject(JSON.parse(await readFile(file, 'utf8')))).toEqual(opened.project);
     } finally { await rm(parent, { recursive: true, force: true }); }

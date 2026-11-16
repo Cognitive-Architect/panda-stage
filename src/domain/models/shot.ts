@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV20Schema,
   LayerV14Schema,
   LayerV16Schema,
   LayerV15AdaptiveSchema,
@@ -31,23 +32,38 @@ export const ShotV2Schema = z
   })
   .strict();
 
-export const ShotSchema = z
+/** Frozen v20 Shot reader. */
+export const ShotV20Schema = z
   .object({
     ...ShotBaseShape,
     dialogues: z.array(DialogueSchema),
     audioClips: z.array(AudioClipSchema),
-    layers: z.array(LayerSchema),
+    layers: z.array(LayerV20Schema),
     /** The only layer rendered with the background cover contract. */
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();
+
+export const ShotSchema = ShotV20Schema.extend({
+  layers: z.array(LayerSchema),
+}).superRefine((shot, context) => {
+  shot.layers.forEach((layer, layerIndex) => {
+    layer.animationClip?.tracks.forEach((track, trackIndex) => {
+      track.keys.forEach((key, keyIndex) => {
+        if (key.timeMs > shot.durationMs) {
+          context.addIssue({ code: 'custom', path: ['layers', layerIndex, 'animationClip', 'tracks', trackIndex, 'keys', keyIndex, 'timeMs'], message: 'Animation key must be within the owning Shot duration.' });
+        }
+      });
+    });
+  });
+});
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({
   ...ShotBaseShape,
   dialogues: z.array(DialogueSchema),
   audioClips: z.array(AudioClipSchema),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV20Schema),
   backgroundLayerId: IdSchema.nullable(),
 }).strict();
 
