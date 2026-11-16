@@ -131,6 +131,7 @@ export function TimelineDock({
   const draggingRef = useRef(false);
   const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
   const {
     drag: pendingDrag,
     registerDropTarget,
@@ -295,6 +296,11 @@ export function TimelineDock({
         >
           <SkipBack aria-hidden="true" focusable="false" size={18} />
         </button>
+        <div
+          className="character-motion-toolbar-host"
+          data-testid="character-motion-toolbar-host"
+          ref={setMotionToolbarHost}
+        />
         {selectedAudioClip && ui.expanded && !productPreviewOpen ? (
           <StandaloneAudioControls
             key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`}
@@ -416,6 +422,8 @@ export function TimelineDock({
                       pixelsPerMs={pixelsPerMs}
                       currentTimeMs={ui.currentTimeMs}
                       trackWidth={trackWidth}
+                      toolbarHost={motionToolbarHost}
+                      productPreviewOpen={productPreviewOpen}
                     />
                   ) : null}
                   <div

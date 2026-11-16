@@ -7,6 +7,9 @@ import {
   CharacterService,
   LayerService,
   ProjectSchema,
+  characterCompositeKeyEasing,
+  characterCompositeKeyTimes,
+  characterMotionValues,
   type FlaGraphicDefinition,
 } from '../../src/domain';
 import { CharacterMotionPart } from '../../src/renderer/features/canvas/CharacterMotionPart';
@@ -430,6 +433,184 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
     } finally {
       unsubscribeSelection();
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it('supports key selection, prev/next navigation, delete, drag retime, copy/paste pose, easing, and single-command History (#1130)', async () => {
+    const fixture = multiPartMixedFixture();
+    const { rightHandId, headId } = fixture;
+    editorProjectStore.open('D:/test-v1-02-key-edit', fixture.project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(fixture.layerId);
+    selectionStore.selectCharacterPart(rightHandId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(0, 3000);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const dispatchPointer = (target: EventTarget, type: string, clientX: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerType', { configurable: true, value: 'mouse' });
+      Object.defineProperty(event, 'pointerId', { configurable: true, value: 9 });
+      Object.defineProperty(event, 'button', { configurable: true, value: 0 });
+      Object.defineProperty(event, 'clientX', { configurable: true, value: clientX });
+      target.dispatchEvent(event);
+    };
+
+    const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(3000);
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId: fixture.layerId })));
+
+      // Initially no key selected: next jumps to 0ms, then 500ms; prev returns to 0ms.
+      const prevBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-prev-key"]')!;
+      const nextBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-next-key"]')!;
+      const copyBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-copy-pose"]')!;
+      const pasteBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-paste-pose"]')!;
+      const deleteBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-delete-key"]')!;
+      const easingSelect = () => host.querySelector<HTMLSelectElement>('[data-testid="character-motion-easing"]');
+      const keyAt = (partId: string, timeMs: number) =>
+        host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${partId}"] button[data-time-ms="${timeMs}"]`)!;
+
+      expect(copyBtn().disabled).toBe(true);
+      expect(deleteBtn().disabled).toBe(true);
+      expect(easingSelect()).toBeNull();
+
+      // Click 500ms key -> selected state + seeks + easing visible (since wait: 500ms is last key of rightHand!).
+      await act(async () => keyAt(rightHandId, 500).click());
+      expect(keyAt(rightHandId, 500).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(rightHandId, 500).getAttribute('aria-pressed')).toBe('true');
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+      expect(easingSelect()).toBeNull(); // last key has no outgoing interval
+      expect(deleteBtn().disabled).toBe(false);
+      expect(copyBtn().disabled).toBe(false);
+
+      // Copy pose at 500ms, seek to 1500ms, paste pose -> atomically writes 5 channels with 1 History command.
+      await act(async () => copyBtn().click());
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+      await act(async () => timelineUiStore.seek(1500, 3000));
+      expect(pasteBtn().disabled).toBe(false);
+      await act(async () => pasteBtn().click());
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      const afterPaste = editorProjectStore.getSnapshot()!.project;
+      const layerAfterPaste = afterPaste.shots[0]!.layers.find((l) => l.id === fixture.layerId)!;
+      expect(characterCompositeKeyTimes(layerAfterPaste, rightHandId)).toEqual([0, 500, 1500]);
+      expect(characterMotionValues(afterPaste, { shotId: IDS.shot, layerId: fixture.layerId, partId: rightHandId, timeMs: 1500, autoKey: true })).toEqual({
+        'transform.offsetX': 0,
+        'transform.offsetY': 0,
+        'transform.rotationDeg': 30,
+        'transform.scaleX': 1,
+        'transform.scaleY': 1,
+      });
+
+      // Prev key jumps back to 500ms; now 500ms has a next key (1500ms), so easing selector appears!
+      await act(async () => prevBtn().click());
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+      expect(keyAt(rightHandId, 500).getAttribute('data-selected')).toBe('true');
+      expect(easingSelect()).not.toBeNull();
+      await act(async () => {
+        easingSelect()!.value = 'ease-in-out';
+        easingSelect()!.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+      expect(
+        characterCompositeKeyEasing(
+          editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!,
+          rightHandId,
+          500,
+        ),
+      ).toBe('ease-in-out');
+
+      // Drag 500ms key to 1000ms (pixelsPerMs = ~0.97 -> compute exact deltaPx from two adjacent keys' left styles).
+      const key500 = keyAt(rightHandId, 500);
+      const pxPerMs = Number.parseFloat(keyAt(rightHandId, 1500).style.left) / 1500;
+      const beforeDrag = editorProjectStore.getSnapshot()!.project;
+      await act(async () => dispatchPointer(key500, 'pointerdown', 500 * pxPerMs));
+      await act(async () => dispatchPointer(key500, 'pointermove', 750 * pxPerMs));
+      expect(host.querySelector('.character-motion-key-time-bubble')).not.toBeNull();
+      expect(editorProjectStore.getSnapshot()!.project).toBe(beforeDrag);
+      await act(async () => dispatchPointer(key500, 'pointermove', 1000 * pxPerMs));
+      await act(async () => dispatchPointer(key500, 'pointerup', 1000 * pxPerMs));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(3);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1000);
+      expect(
+        characterCompositeKeyTimes(
+          editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!,
+          rightHandId,
+        ),
+      ).toEqual([0, 1000, 1500]);
+
+      // Undo/Redo restores drag atomically.
+      await act(async () => editorProjectStore.undo());
+      expect(editorProjectStore.getSnapshot()!.project).toEqual(beforeDrag);
+      await act(async () => editorProjectStore.redo());
+      expect(
+        characterCompositeKeyTimes(
+          editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!,
+          rightHandId,
+        ),
+      ).toEqual([0, 1000, 1500]);
+
+      // Next key jumps to 1500ms; Delete removes 1500ms only.
+      await act(async () => nextBtn().click());
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1500);
+      await act(async () => deleteBtn().click());
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(4);
+      expect(
+        characterCompositeKeyTimes(
+          editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!,
+          rightHandId,
+        ),
+      ).toEqual([0, 1000]);
+
+      // 0ms key can be selected and copied, never deleted or dragged.
+      await act(async () => keyAt(rightHandId, 0).click());
+      expect(keyAt(rightHandId, 0).getAttribute('data-selected')).toBe('true');
+      expect(deleteBtn().disabled).toBe(true);
+      expect(copyBtn().disabled).toBe(false);
+      await act(async () => dispatchPointer(keyAt(rightHandId, 0), 'pointerdown', 0));
+      await act(async () => dispatchPointer(keyAt(rightHandId, 0), 'pointermove', 250 * pxPerMs));
+      expect(host.querySelector('.character-motion-key-time-bubble')).toBeNull();
+      await act(async () => dispatchPointer(keyAt(rightHandId, 0), 'pointerup', 250 * pxPerMs));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(4);
+
+      // Graphic Part ("头") supports the same selection / copy-paste / easing / delete flow.
+      await act(async () => keyAt(headId, 750).click());
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(headId);
+      await act(async () => copyBtn().click());
+      await act(async () => timelineUiStore.seek(1250, 3000));
+      await act(async () => pasteBtn().click());
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(5);
+      expect(
+        characterCompositeKeyTimes(
+          editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!,
+          headId,
+        ),
+      ).toEqual([0, 750, 1250]);
+
+      // Escape cancels an in-progress drag without modifying Project or History.
+      const head750 = keyAt(headId, 750);
+      const beforeEscape = editorProjectStore.getSnapshot()!.project;
+      await act(async () => dispatchPointer(head750, 'pointerdown', 750 * pxPerMs));
+      await act(async () => dispatchPointer(head750, 'pointermove', 500 * pxPerMs));
+      expect(host.querySelector('.character-motion-key-time-bubble')).not.toBeNull();
+      await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+      expect(host.querySelector('.character-motion-key-time-bubble')).toBeNull();
+      await act(async () => dispatchPointer(head750, 'pointerup', 500 * pxPerMs));
+      expect(editorProjectStore.getSnapshot()!.project).toBe(beforeEscape);
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(5);
+
+      // Stale context / locked layer safely rejects without mutating Project.
+      await act(async () => keyAt(headId, 1250).click());
+      await act(async () => copyBtn().click());
+      const lockedProject = structuredClone(editorProjectStore.getSnapshot()!.project);
+      lockedProject.shots[0]!.layers.find((l) => l.id === fixture.layerId)!.locked = true;
+      await act(async () => editorProjectStore.open('D:/test-v1-02-locked', lockedProject));
+      expect(host.querySelector('[data-testid="character-motion-toolbar"]')).toBeNull();
+    } finally {
+      clientWidthSpy.mockRestore();
       await act(async () => root.unmount());
       host.remove();
     }
