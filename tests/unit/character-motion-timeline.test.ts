@@ -10,6 +10,7 @@ import {
   characterCompositeKeyEasing,
   characterCompositeKeyTimes,
   characterMotionValues,
+  hasCompositeKeyOutgoingInterval,
   type FlaGraphicDefinition,
 } from '../../src/domain';
 import { CharacterMotionPart } from '../../src/renderer/features/canvas/CharacterMotionPart';
@@ -609,6 +610,109 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       lockedProject.shots[0]!.layers.find((l) => l.id === fixture.layerId)!.locked = true;
       await act(async () => editorProjectStore.open('D:/test-v1-02-locked', lockedProject));
       expect(host.querySelector('[data-testid="character-motion-toolbar"]')).toBeNull();
+    } finally {
+      clientWidthSpy.mockRestore();
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it('hides easing selector when no real outgoing interval exists and updates only sparse outgoing keys (#1136)', async () => {
+    const base = multiPartMixedFixture();
+    const { rightHandId, layerId } = base;
+    const service = new CharacterMotionService();
+    const baseTarget = { shotId: IDS.shot, layerId, partId: rightHandId };
+    const layerOf = (project: typeof base.project) => project.shots[0]!.layers.find((l) => l.id === layerId)!;
+    const trackOf = (project: typeof base.project, property: 'transform.rotationDeg' | 'transform.offsetX' | 'transform.offsetY' | 'transform.scaleX' | 'transform.scaleY') =>
+      layerOf(project).animationClip!.tracks.find((t) => t.target.partId === rightHandId && t.property === property);
+
+    // Case C: rightHand has rotationDeg [0, 500] (terminal at 500) and offsetX [0, 1000] (later composite key, no key at 500).
+    const caseCProject = service.apply(base.project, { ...baseTarget, timeMs: 1000, autoKey: true }, {
+      'transform.offsetX': 60,
+    });
+    expect(characterCompositeKeyTimes(layerOf(caseCProject), rightHandId)).toEqual([0, 500, 1000]);
+    expect(hasCompositeKeyOutgoingInterval(layerOf(caseCProject), rightHandId, 500)).toBe(false);
+
+    editorProjectStore.open('D:/test-v1-02-fix-01-case-c', caseCProject);
+    shotStore.select(IDS.shot);
+    selectionStore.select(layerId);
+    selectionStore.selectCharacterPart(rightHandId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(0, 3000);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(3000);
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId })));
+      const easingSelect = () => host.querySelector<HTMLSelectElement>('[data-testid="character-motion-easing"]');
+      const keyAt = (timeMs: number) =>
+        host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${rightHandId}"] button[data-time-ms="${timeMs}"]`)!;
+
+      await act(async () => keyAt(500).click());
+      expect(keyAt(500).getAttribute('data-selected')).toBe('true');
+      expect(easingSelect()).toBeNull();
+      expect(editorProjectStore.getSnapshot()!.dirty).toBe(false);
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+
+      // Case A + Case B: add offsetX@500 (making 0->500->1000 real outgoing) + spanning scaleX [0, 1500].
+      let sparseProject = service.apply(caseCProject, { ...baseTarget, timeMs: 500, autoKey: true }, {
+        'transform.offsetX': 25,
+      });
+      sparseProject = service.apply(sparseProject, { ...baseTarget, timeMs: 1500, autoKey: true }, {
+        'transform.scaleX': 1.4,
+      });
+      sparseProject = structuredClone(sparseProject);
+      trackOf(sparseProject, 'transform.rotationDeg')!.keys.find((k) => k.timeMs === 500)!.interpolationToNext = 'step';
+
+      await act(async () => {
+        editorProjectStore.open('D:/test-v1-02-fix-01-sparse', sparseProject);
+        shotStore.select(IDS.shot);
+        selectionStore.select(layerId);
+        selectionStore.selectCharacterPart(rightHandId);
+      });
+      await act(async () => keyAt(500).click());
+      expect(easingSelect()).not.toBeNull();
+      expect(easingSelect()!.value).toBe('linear');
+
+      // Change easing to ease-in -> updates only offsetX@500, leaves terminal rotationDeg@500 and spanning scaleX untouched.
+      await act(async () => {
+        easingSelect()!.value = 'ease-in';
+        easingSelect()!.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      const afterEdit = editorProjectStore.getSnapshot()!.project;
+      expect(trackOf(afterEdit, 'transform.offsetX')!.keys.find((k) => k.timeMs === 500)?.interpolationToNext).toBe('ease-in');
+      expect(trackOf(afterEdit, 'transform.rotationDeg')!.keys.find((k) => k.timeMs === 500)?.interpolationToNext).toBe('step');
+      expect(trackOf(afterEdit, 'transform.scaleX')!.keys.map((k) => k.timeMs)).toEqual([0, 1500]);
+      expect(trackOf(afterEdit, 'transform.offsetY')).toBeUndefined();
+      expect(trackOf(afterEdit, 'transform.scaleY')).toBeUndefined();
+
+      // Re-selecting current easing is a no-op with 0 additional History.
+      await act(async () => {
+        easingSelect()!.value = 'ease-in';
+        easingSelect()!.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+
+      // Mixed outgoing intervals (offsetX='ease-in', offsetY='step') display 混合补间 (value="").
+      let mixedProject = service.apply(afterEdit, { ...baseTarget, timeMs: 500, autoKey: true }, { 'transform.offsetY': 15 });
+      mixedProject = service.apply(mixedProject, { ...baseTarget, timeMs: 1000, autoKey: true }, { 'transform.offsetY': 45 });
+      mixedProject = structuredClone(mixedProject);
+      trackOf(mixedProject, 'transform.offsetY')!.keys.find((k) => k.timeMs === 500)!.interpolationToNext = 'step';
+      await act(async () => {
+        editorProjectStore.open('D:/test-v1-02-fix-01-mixed', mixedProject);
+        shotStore.select(IDS.shot);
+        selectionStore.select(layerId);
+        selectionStore.selectCharacterPart(rightHandId);
+      });
+      await act(async () => keyAt(500).click());
+      expect(hasCompositeKeyOutgoingInterval(layerOf(mixedProject), rightHandId, 500)).toBe(true);
+      expect(characterCompositeKeyEasing(layerOf(mixedProject), rightHandId, 500)).toBeNull();
+      expect(easingSelect()).not.toBeNull();
+      expect(easingSelect()!.value).toBe('');
+      expect(easingSelect()!.options[0]?.textContent).toBe('混合补间');
     } finally {
       clientWidthSpy.mockRestore();
       await act(async () => root.unmount());

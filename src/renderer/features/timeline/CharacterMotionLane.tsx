@@ -20,6 +20,7 @@ import {
   CharacterMotionService,
   characterMotionValues,
   hasAuthoredCharacterPartMotion,
+  hasCompositeKeyOutgoingInterval,
   isValidFrameTime,
   lastValidFrameTime,
   type AnimationInterpolation,
@@ -261,7 +262,6 @@ export function CharacterMotionLane({
       : null;
   const selectedKeyIndex =
     selectedKeyTime === null ? -1 : activePartTimes.indexOf(selectedKeyTime);
-  const nextKeyTime = selectedKeyIndex >= 0 ? activePartTimes[selectedKeyIndex + 1] : undefined;
   const previousKeyTime =
     selectedKeyIndex >= 0
       ? activePartTimes[selectedKeyIndex - 1]
@@ -270,8 +270,13 @@ export function CharacterMotionLane({
     selectedKeyIndex >= 0
       ? activePartTimes[selectedKeyIndex + 1]
       : activePartTimes.find((time) => time > currentTimeMs);
+  const hasOutgoingInterval = Boolean(
+    activePart &&
+      selectedKeyTime !== null &&
+      hasCompositeKeyOutgoingInterval(layer, activePart.partId, selectedKeyTime),
+  );
   const selectedEasing =
-    activePart && selectedKeyTime !== null && nextKeyTime !== undefined
+    hasOutgoingInterval && activePart && selectedKeyTime !== null
       ? characterCompositeKeyEasing(layer, activePart.partId, selectedKeyTime)
       : null;
   const clipboardMatches = clipboard?.scope === scopeKey;
@@ -390,7 +395,7 @@ export function CharacterMotionLane({
   };
 
   const setEasing = (interpolationToNext: AnimationInterpolation): void => {
-    if (!activePart || selectedKeyTime === null || nextKeyTime === undefined) return;
+    if (!activePart || selectedKeyTime === null || !hasOutgoingInterval) return;
     if (
       !snapshot ||
       !isCurrentCharacterMotionContext({
@@ -514,7 +519,7 @@ export function CharacterMotionLane({
                     title="删除关键帧"
                     variant="secondary"
                   />
-                  {selectedKeyTime !== null && nextKeyTime !== undefined ? (
+                  {hasOutgoingInterval ? (
                     <select
                       aria-label="到下个关键帧的补间"
                       className="character-motion-key-easing"

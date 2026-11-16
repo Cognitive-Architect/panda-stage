@@ -5,6 +5,7 @@ import {
   characterCompositeKeyTimes,
   characterMotionValues,
   evaluateShotAtTime,
+  hasCompositeKeyOutgoingInterval,
   type AnimationInterpolation,
   type AnimationProperty,
 } from '../../../src/domain';
@@ -77,7 +78,7 @@ describe('Character Motion Property Track facade', () => {
   });
 
   it.each(['imagePartId', 'graphicPartId'] as const)(
-    'deletes, retimes without half-moves, pastes 5-channel pose, and sets all 5 easings on %s',
+    'deletes, retimes without half-moves, pastes 5-channel pose, and edits sparse outgoing easings on %s',
     (partField) => {
       const data = characterPartAnimationFixture();
       const partId = data[partField];
@@ -124,7 +125,7 @@ describe('Character Motion Property Track facade', () => {
       )!;
       expect(retimedRotTrack.keys.map((k) => k.timeMs)).toEqual([0, 750]);
 
-      // Set all 5 easings and verify evaluator reads the updated interpolation.
+      // Set real outgoing easings at 750ms (offsetX only) without mutating terminal rotationDeg@750 or materializing scale tracks.
       for (const easing of ['linear', 'ease-in', 'ease-out', 'ease-in-out', 'step'] as AnimationInterpolation[]) {
         const eased = service.setCompositeKeyEasing(retimed, {
           ...baseTarget,
@@ -138,13 +139,24 @@ describe('Character Motion Property Track facade', () => {
         timeMs: 750,
         interpolationToNext: 'step',
       });
+      const stepLayer = layerOf(stepEased);
+      const stepRotTrack = stepLayer.animationClip!.tracks.find(
+        (t) => t.target.partId === partId && t.property === 'transform.rotationDeg',
+      )!;
+      expect(stepRotTrack.keys.find((k) => k.timeMs === 750)?.interpolationToNext).toBe('linear');
+      for (const prop of ['transform.scaleX', 'transform.scaleY'] as const) {
+        const scaleTrack = stepLayer.animationClip!.tracks.find(
+          (t) => t.target.partId === partId && t.property === prop,
+        )!;
+        expect(scaleTrack.keys.some((k) => k.timeMs === 750)).toBe(false);
+      }
       const heldLayer = evaluateShotAtTime(stepEased.shots[0]!, 875, stepEased).layers.find(
         (l) => l.id === data.layerId,
       )!;
       expect(heldLayer.animationValues?.find((v) => v.target.partId === partId && v.property === 'transform.offsetX')?.value).toBe(30);
       expect(() =>
         service.setCompositeKeyEasing(stepEased, { ...baseTarget, timeMs: 1500, interpolationToNext: 'linear' }),
-      ).toThrow(/最后一个关键帧/);
+      ).toThrow(/没有可修改的补间区间/);
 
       // Copy pose at 750ms (reads evaluated values across all 5 channels) and paste atomically at 2000ms.
       const copiedPose = characterMotionValues(stepEased, { ...baseTarget, timeMs: 750, autoKey: true });
@@ -182,6 +194,86 @@ describe('Character Motion Property Track facade', () => {
           .filter((t) => t.target.partId === partId)
           .every((t) => !t.keys.some((k) => k.timeMs === 750)),
       ).toBe(true);
+    },
+  );
+
+  it.each(['imagePartId', 'graphicPartId'] as const)(
+    'treats only tracks with a key at timeMs and a next key as outgoing easing intervals on %s',
+    (partField) => {
+      const data = characterPartAnimationFixture();
+      const partId = data[partField];
+      const baseTarget = { shotId: IDS.shot, layerId: data.layerId, partId };
+      const layerOf = (p: typeof data.project) => p.shots[0]!.layers.find((l) => l.id === data.layerId)!;
+      const trackOf = (p: typeof data.project, property: AnimationProperty) =>
+        layerOf(p).animationClip!.tracks.find((t) => t.target.partId === partId && t.property === property);
+
+      // Case A + Case B:
+      // - rotationDeg: 0 -> 500 (terminal key at 500ms with pre-existing 'step')
+      // - offsetX: 0 -> 500 -> 1000 (real outgoing interval at 500ms)
+      // - scaleX: 0 -> 1500 (spans across 500ms with no key at 500ms)
+      let project = service.apply(data.project, { ...baseTarget, timeMs: 500, autoKey: true }, {
+        'transform.rotationDeg': 30,
+        'transform.offsetX': 20,
+      });
+      project = service.apply(project, { ...baseTarget, timeMs: 1000, autoKey: true }, {
+        'transform.offsetX': 60,
+      });
+      project = service.apply(project, { ...baseTarget, timeMs: 1500, autoKey: true }, {
+        'transform.scaleX': 1.5,
+      });
+      // Simulate a terminal rotationDeg@500 key carrying a non-linear interpolationToNext.
+      const withTerminalStep = structuredClone(project);
+      trackOf(withTerminalStep, 'transform.rotationDeg')!.keys.find((k) => k.timeMs === 500)!.interpolationToNext =
+        'step';
+
+      expect(hasCompositeKeyOutgoingInterval(layerOf(withTerminalStep), partId, 500)).toBe(true);
+      expect(characterCompositeKeyEasing(layerOf(withTerminalStep), partId, 500)).toBe('linear');
+
+      const updated = service.setCompositeKeyEasing(withTerminalStep, {
+        ...baseTarget,
+        timeMs: 500,
+        interpolationToNext: 'ease-in-out',
+      });
+      expect(trackOf(updated, 'transform.offsetX')!.keys.find((k) => k.timeMs === 500)?.interpolationToNext).toBe(
+        'ease-in-out',
+      );
+      expect(trackOf(updated, 'transform.rotationDeg')!.keys.find((k) => k.timeMs === 500)?.interpolationToNext).toBe(
+        'step',
+      );
+      expect(trackOf(updated, 'transform.scaleX')!.keys.map((k) => k.timeMs)).toEqual([0, 1500]);
+      expect(trackOf(updated, 'transform.offsetY')).toBeUndefined();
+      expect(trackOf(updated, 'transform.scaleY')).toBeUndefined();
+
+      // No-op when real outgoing intervals already equal the requested interpolation.
+      const noop = service.setCompositeKeyEasing(updated, {
+        ...baseTarget,
+        timeMs: 500,
+        interpolationToNext: 'ease-in-out',
+      });
+      expect(noop).toBe(updated);
+
+      // Mixed outgoing intervals (offsetX='ease-in-out', offsetY='step') aggregate to null.
+      let mixed = service.apply(updated, { ...baseTarget, timeMs: 500, autoKey: true }, { 'transform.offsetY': 10 });
+      mixed = service.apply(mixed, { ...baseTarget, timeMs: 1000, autoKey: true }, { 'transform.offsetY': 40 });
+      trackOf(mixed, 'transform.offsetY')!.keys.find((k) => k.timeMs === 500)!.interpolationToNext = 'step';
+      expect(hasCompositeKeyOutgoingInterval(layerOf(mixed), partId, 500)).toBe(true);
+      expect(characterCompositeKeyEasing(layerOf(mixed), partId, 500)).toBeNull();
+
+      // Case C: Composite Key exists at 500ms only on terminal rotationDeg (0 -> 500), while offsetX has 0 -> 1000.
+      let caseC = service.apply(data.project, { ...baseTarget, timeMs: 500, autoKey: true }, {
+        'transform.rotationDeg': 25,
+      });
+      caseC = service.apply(caseC, { ...baseTarget, timeMs: 1000, autoKey: true }, {
+        'transform.offsetX': 50,
+      });
+      const snapshotBefore = structuredClone(caseC);
+      expect(characterCompositeKeyTimes(layerOf(caseC), partId)).toEqual([0, 500, 1000]);
+      expect(hasCompositeKeyOutgoingInterval(layerOf(caseC), partId, 500)).toBe(false);
+      expect(characterCompositeKeyEasing(layerOf(caseC), partId, 500)).toBeNull();
+      expect(() =>
+        service.setCompositeKeyEasing(caseC, { ...baseTarget, timeMs: 500, interpolationToNext: 'ease-in' }),
+      ).toThrow(/没有可修改的补间区间/);
+      expect(caseC).toEqual(snapshotBefore);
     },
   );
 });

@@ -86,15 +86,44 @@ export function hasAuthoredCharacterPartMotion(
   );
 }
 
-/** Shared outgoing interpolation at a Composite Key time, or null if property tracks differ. */
+function outgoingPropertyKeysAtTime(
+  layer: Project['shots'][number]['layers'][number] | undefined,
+  partId: string,
+  timeMs: number,
+) {
+  const entries: Array<{ trackIndex: number; keyIndex: number; interpolationToNext: AnimationInterpolation }> = [];
+  const tracks = layer?.animationClip?.tracks ?? [];
+  for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
+    const track = tracks[trackIndex]!;
+    if (track.target.partId !== partId) continue;
+    const keyIndex = track.keys.findIndex((key) => key.timeMs === timeMs);
+    if (keyIndex >= 0 && keyIndex < track.keys.length - 1) {
+      entries.push({
+        trackIndex,
+        keyIndex,
+        interpolationToNext: track.keys[keyIndex]!.interpolationToNext,
+      });
+    }
+  }
+  return entries;
+}
+
+/** True when at least one Property Track has a real outgoing interval starting at `timeMs`. */
+export function hasCompositeKeyOutgoingInterval(
+  layer: Project['shots'][number]['layers'][number] | undefined,
+  partId: string,
+  timeMs: number,
+): boolean {
+  return outgoingPropertyKeysAtTime(layer, partId, timeMs).length > 0;
+}
+
+/** Shared outgoing interpolation across real outgoing Property intervals at `timeMs`, or null if none or mixed. */
 export function characterCompositeKeyEasing(
   layer: Project['shots'][number]['layers'][number] | undefined,
   partId: string,
   timeMs: number,
 ): AnimationInterpolation | null {
-  const easings = (layer?.animationClip?.tracks ?? [])
-    .filter((track) => track.target.partId === partId)
-    .flatMap((track) => track.keys.filter((key) => key.timeMs === timeMs).map((key) => key.interpolationToNext));
+  const easings = outgoingPropertyKeysAtTime(layer, partId, timeMs).map((entry) => entry.interpolationToNext);
   if (easings.length === 0) return null;
   const first = easings[0]!;
   return easings.every((entry) => entry === first) ? first : null;
@@ -294,7 +323,7 @@ export class CharacterMotionService {
     return replaceLayerAnimationClip(project, shot.id, layer.id, clip);
   }
 
-  /** Set outgoing interpolation on all Property Keys for this Part at `timeMs`. */
+  /** Set outgoing interpolation only on Property Keys at `timeMs` that actually have a next key. */
   setCompositeKeyEasing(
     project: Project,
     input: CharacterMotionKeyTargetInput & { timeMs: number; interpolationToNext: AnimationInterpolation },
@@ -304,23 +333,23 @@ export class CharacterMotionService {
     const easing = AnimationInterpolationSchema.parse(input.interpolationToNext);
     const clip = layer.animationClip;
     const compositeTimes = characterCompositeKeyTimes(layer, input.partId);
-    const keyIndex = compositeTimes.indexOf(input.timeMs);
-    if (!clip || keyIndex < 0) throw new Error('找不到要修改补间的动作关键帧。');
-    if (keyIndex === compositeTimes.length - 1) {
-      throw new Error('最后一个关键帧没有到下一帧的补间区间。');
+    if (!clip || !compositeTimes.includes(input.timeMs)) throw new Error('找不到要修改补间的动作关键帧。');
+    const outgoing = outgoingPropertyKeysAtTime(layer, input.partId, input.timeMs);
+    if (outgoing.length === 0) {
+      throw new Error('当前关键帧没有可修改的补间区间。');
     }
 
+    const outgoingByTrack = new Map(outgoing.map((entry) => [entry.trackIndex, entry.keyIndex]));
     let changed = false;
-    const nextTracks = clip.tracks.map((track) => {
-      if (track.target.partId !== input.partId) return track;
-      let trackChanged = false;
-      const keys = track.keys.map((key) => {
-        if (key.timeMs !== input.timeMs || key.interpolationToNext === easing) return key;
-        trackChanged = true;
-        changed = true;
-        return { ...key, interpolationToNext: easing };
-      });
-      return trackChanged ? AnimationTrackSchema.parse({ ...track, keys }) : track;
+    const nextTracks = clip.tracks.map((track, trackIndex) => {
+      const targetKeyIndex = outgoingByTrack.get(trackIndex);
+      if (targetKeyIndex === undefined) return track;
+      if (track.keys[targetKeyIndex]!.interpolationToNext === easing) return track;
+      changed = true;
+      const keys = track.keys.map((key, keyIndex) =>
+        keyIndex === targetKeyIndex ? { ...key, interpolationToNext: easing } : key,
+      );
+      return AnimationTrackSchema.parse({ ...track, keys });
     });
     if (!changed) return project;
     return replaceLayerAnimationClip(project, shot.id, layer.id, { ...clip, tracks: nextTracks });
