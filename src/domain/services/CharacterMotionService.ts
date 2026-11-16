@@ -12,7 +12,7 @@ import {
 import { ProjectSchema, type Project } from '../models/project';
 import { CharacterService } from './CharacterService';
 import { characterPartSourceBounds, characterPartTransformFromStaticAdjustment } from '../geometry/characterPartLayout';
-import { isValidFrameTime, lastValidFrameTime } from '../timeline/frame-grid';
+import { isValidFrameTime, lastValidFrameTime, frameTimeMs, TIMELINE_FPS } from '../timeline/frame-grid';
 
 export const NEUTRAL_CHARACTER_MOTION = {
   'transform.offsetX': 0, 'transform.offsetY': 0, 'transform.rotationDeg': 0,
@@ -31,6 +31,24 @@ export interface CharacterMotionInput {
 }
 export interface CharacterMotionKeyTargetInput {
   shotId: string; layerId: string; partId: string;
+}
+export interface CharacterMotionBatchRetimeMove {
+  fromTimeMs: number;
+  toTimeMs: number;
+}
+export interface CharacterMotionBatchRetimePlan {
+  changed: boolean;
+  moves: readonly CharacterMotionBatchRetimeMove[];
+}
+export type CharacterMotionBatchRetimeInput = CharacterMotionKeyTargetInput & {
+  fromTimesMs: readonly number[];
+} & (
+  | { deltaMs: number; deltaFrames?: never }
+  | { deltaFrames: number; deltaMs?: never }
+);
+
+function compositeKeyFrameIndex(timeMs: number): number {
+  return Math.round((timeMs * TIMELINE_FPS) / 1_000);
 }
 
 function context(project: Project, input: CharacterMotionInput) {
@@ -219,6 +237,36 @@ export class CharacterMotionService {
     return replaceLayerAnimationClip(project, shot.id, layer.id, nextClip);
   }
 
+  /** Atomically apply validated Composite Key time remappings across this Part's sparse tracks. */
+  private applyCompositeKeyMoves(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    partId: string,
+    clip: AnimationClipV0,
+    moves: readonly CharacterMotionBatchRetimeMove[],
+  ): Project {
+    const moveMap = new Map(moves.map((move) => [move.fromTimeMs, move.toTimeMs]));
+    const nextClip: AnimationClipV0 = {
+      ...clip,
+      tracks: clip.tracks.map((track) => {
+        if (track.target.partId !== partId || !track.keys.some((key) => moveMap.has(key.timeMs))) {
+          return track;
+        }
+        return AnimationTrackSchema.parse({
+          ...track,
+          keys: track.keys
+            .map((key) => {
+              const targetTimeMs = moveMap.get(key.timeMs);
+              return targetTimeMs === undefined ? key : { ...key, timeMs: targetTimeMs };
+            })
+            .sort((left, right) => left.timeMs - right.timeMs),
+        });
+      }),
+    };
+    return replaceLayerAnimationClip(project, shotId, layerId, nextClip);
+  }
+
   /** Atomically move all Property Keys for this Part at `fromTimeMs` to `toTimeMs`. */
   retimeCompositeKey(
     project: Project,
@@ -252,21 +300,112 @@ export class CharacterMotionService {
       throw new Error('动作关键帧不能越过相邻关键帧。');
     }
 
-    const nextClip: AnimationClipV0 = {
-      ...clip,
-      tracks: clip.tracks.map((track) => {
-        if (track.target.partId !== input.partId || !track.keys.some((key) => key.timeMs === input.fromTimeMs)) {
-          return track;
+    return this.applyCompositeKeyMoves(project, shot.id, layer.id, input.partId, clip, [
+      { fromTimeMs: input.fromTimeMs, toTimeMs: input.toTimeMs },
+    ]);
+  }
+
+  /** Plan an atomic multi-key shift on one Part, rejecting the whole batch on any invalid candidate. */
+  planCompositeKeysRetime(
+    project: Project,
+    input: CharacterMotionBatchRetimeInput,
+  ): CharacterMotionBatchRetimePlan {
+    const { shot, layer } = requireEditableClipContext(project, input);
+    if (input.fromTimesMs.length === 0) {
+      throw new Error('请先选择要移动的动作关键帧。');
+    }
+    if (new Set(input.fromTimesMs).size !== input.fromTimesMs.length) {
+      throw new Error('存在重复的源动作关键帧时间。');
+    }
+
+    const sortedFromTimes = [...input.fromTimesMs].sort((left, right) => left - right);
+    const clip = layer.animationClip;
+    const compositeTimes = characterCompositeKeyTimes(layer, input.partId);
+    for (const fromTimeMs of sortedFromTimes) {
+      if (!isValidFrameTime(fromTimeMs)) throw new Error('源关键帧时间必须在项目帧网格上。');
+      if (fromTimeMs === 0) throw new Error('0 秒基础姿势关键帧不可移动。');
+      if (!clip || !compositeTimes.includes(fromTimeMs)) {
+        throw new Error('找不到要移动的动作关键帧。');
+      }
+    }
+
+    const useFrames = 'deltaFrames' in input && input.deltaFrames !== undefined;
+    if (useFrames) {
+      if (!Number.isInteger(input.deltaFrames)) {
+        throw new Error('批量移动帧偏移必须是整数。');
+      }
+      if (input.deltaFrames === 0) {
+        return {
+          changed: false,
+          moves: sortedFromTimes.map((timeMs) => ({ fromTimeMs: timeMs, toTimeMs: timeMs })),
+        };
+      }
+    } else {
+      if (!Number.isInteger(input.deltaMs)) {
+        throw new Error('批量移动时间偏移必须是整数毫秒。');
+      }
+      if (input.deltaMs === 0) {
+        return {
+          changed: false,
+          moves: sortedFromTimes.map((timeMs) => ({ fromTimeMs: timeMs, toTimeMs: timeMs })),
+        };
+      }
+    }
+
+    const maxFrameTime = lastValidFrameTime(shot.durationMs);
+    const selectedSet = new Set(sortedFromTimes);
+    const unselectedCompositeTimes = compositeTimes.filter((timeMs) => !selectedSet.has(timeMs));
+    const unselectedTrackTimes = new Set(
+      clip!.tracks
+        .filter((track) => track.target.partId === input.partId)
+        .flatMap((track) => track.keys.map((key) => key.timeMs))
+        .filter((timeMs) => !selectedSet.has(timeMs)),
+    );
+    const plannedTargetSet = new Set<number>();
+    const moves: CharacterMotionBatchRetimeMove[] = [];
+
+    for (const fromTimeMs of sortedFromTimes) {
+      let toTimeMs: number;
+      if (useFrames) {
+        const targetFrameIndex = compositeKeyFrameIndex(fromTimeMs) + input.deltaFrames!;
+        if (targetFrameIndex === 0) throw new Error('关键帧不能移动到 0 秒基础姿势位置。');
+        if (targetFrameIndex < 0) throw new Error('目标时间必须在项目帧网格上。');
+        toTimeMs = frameTimeMs(targetFrameIndex);
+      } else {
+        toTimeMs = fromTimeMs + input.deltaMs!;
+      }
+
+      if (toTimeMs === 0) throw new Error('关键帧不能移动到 0 秒基础姿势位置。');
+      if (!isValidFrameTime(toTimeMs)) throw new Error('目标时间必须在项目帧网格上。');
+      if (toTimeMs > maxFrameTime) throw new Error('目标时间不能超出镜头时长。');
+      if (plannedTargetSet.has(toTimeMs)) {
+        throw new Error('批量移动后关键帧时间发生重叠。');
+      }
+      if (unselectedCompositeTimes.includes(toTimeMs) || unselectedTrackTimes.has(toTimeMs)) {
+        throw new Error('目标时间已存在动作关键帧。');
+      }
+      for (const unselectedTimeMs of unselectedCompositeTimes) {
+        if (
+          (fromTimeMs < unselectedTimeMs && toTimeMs >= unselectedTimeMs) ||
+          (fromTimeMs > unselectedTimeMs && toTimeMs <= unselectedTimeMs)
+        ) {
+          throw new Error('动作关键帧不能越过未选中的相邻关键帧。');
         }
-        return AnimationTrackSchema.parse({
-          ...track,
-          keys: track.keys
-            .map((key) => (key.timeMs === input.fromTimeMs ? { ...key, timeMs: input.toTimeMs } : key))
-            .sort((left, right) => left.timeMs - right.timeMs),
-        });
-      }),
-    };
-    return replaceLayerAnimationClip(project, shot.id, layer.id, nextClip);
+      }
+
+      plannedTargetSet.add(toTimeMs);
+      moves.push({ fromTimeMs, toTimeMs });
+    }
+
+    return { changed: true, moves };
+  }
+
+  /** Atomically shift multiple selected Composite Keys on the same Part once with full-batch validation. */
+  retimeCompositeKeys(project: Project, input: CharacterMotionBatchRetimeInput): Project {
+    const plan = this.planCompositeKeysRetime(project, input);
+    if (!plan.changed) return project;
+    const { shot, layer } = requireEditableClipContext(project, input);
+    return this.applyCompositeKeyMoves(project, shot.id, layer.id, input.partId, layer.animationClip!, plan.moves);
   }
 
   /** Atomically write/update all 5 transform Property Tracks at `targetTimeMs` from a copied pose. */

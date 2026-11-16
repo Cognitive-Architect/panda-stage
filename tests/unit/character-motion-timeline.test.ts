@@ -15,6 +15,7 @@ import {
 } from '../../src/domain';
 import { CharacterMotionPart } from '../../src/renderer/features/canvas/CharacterMotionPart';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
+import { previewCharacterMotionKeyGroupShift } from '../../src/renderer/features/timeline/characterMotionKeyGesture';
 import { PendingDialoguePlacementProvider } from '../../src/renderer/features/timeline/PendingDialoguePlacement';
 import { TimelineDock } from '../../src/renderer/features/timeline/TimelineDock';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
@@ -713,6 +714,147 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       expect(easingSelect()).not.toBeNull();
       expect(easingSelect()!.value).toBe('');
       expect(easingSelect()!.options[0]?.textContent).toBe('混合补间');
+    } finally {
+      clientWidthSpy.mockRestore();
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it('supports Shift multi-key selection and atomic group drag retime on a single Part (#1131)', async () => {
+    // Direct gesture math check: keeps frame spacing on 24fps and clamps against unselected neighbors.
+    const clampedGroup = previewCharacterMotionKeyGroupShift({
+      fromTimesMs: [500, 1000, 1500],
+      anchorTimeMs: 1000,
+      unselectedTimesMs: [0, 2000],
+      deltaPx: 800,
+      pixelsPerMs: 1,
+      durationMs: 3000,
+    });
+    expect([...clampedGroup.previewTimesByOrigin.values()]).toEqual([958, 1458, 1958]);
+
+    const fineGroup = previewCharacterMotionKeyGroupShift({
+      fromTimesMs: [42, 83],
+      anchorTimeMs: 42,
+      unselectedTimesMs: [0],
+      deltaPx: 42,
+      pixelsPerMs: 1,
+      durationMs: 3000,
+    });
+    expect(fineGroup.deltaFrames).toBe(1);
+    expect([...fineGroup.previewTimesByOrigin.values()]).toEqual([83, 125]);
+
+    const base = multiPartMixedFixture();
+    const { rightHandId, headId, layerId } = base;
+    const service = new CharacterMotionService();
+    const target = { shotId: IDS.shot, layerId, partId: rightHandId };
+    let project = service.apply(base.project, { ...target, timeMs: 500, autoKey: true }, { 'transform.offsetX': 10 });
+    project = service.apply(project, { ...target, timeMs: 1000, autoKey: true }, { 'transform.offsetX': 40 });
+    project = service.apply(project, { ...target, timeMs: 1500, autoKey: true }, { 'transform.offsetX': 80 });
+    project = service.setCompositeKeyEasing(project, { ...target, timeMs: 500, interpolationToNext: 'ease-in-out' });
+
+    editorProjectStore.open('D:/test-v1-03-multi-key', project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(layerId);
+    selectionStore.selectCharacterPart(rightHandId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(0, 3000);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const dispatchPointer = (targetEl: EventTarget, type: string, clientX: number, shiftKey = false) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerType', { configurable: true, value: 'mouse' });
+      Object.defineProperty(event, 'pointerId', { configurable: true, value: 11 });
+      Object.defineProperty(event, 'button', { configurable: true, value: 0 });
+      Object.defineProperty(event, 'clientX', { configurable: true, value: clientX });
+      Object.defineProperty(event, 'shiftKey', { configurable: true, value: shiftKey });
+      targetEl.dispatchEvent(event);
+    };
+    const clickKey = (el: HTMLElement, shiftKey = false) => {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey });
+      el.dispatchEvent(event);
+    };
+
+    const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(3000);
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId })));
+      const laneContent = host.querySelector<HTMLElement>('.character-motion-keys')!;
+      const pxPerMs = Number.parseFloat(laneContent.style.width) / 3000;
+      expect(pxPerMs).toBeGreaterThan(0);
+
+      const copyBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-copy-pose"]')!;
+      const deleteBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-delete-key"]')!;
+      const easingSelect = () => host.querySelector<HTMLSelectElement>('[data-testid="character-motion-easing"]');
+      const keyAt = (partId: string, timeMs: number) =>
+        host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${partId}"] button[data-time-ms="${timeMs}"]`)!;
+
+      // Click 500ms -> single selection; Shift+click 1000ms and 1500ms -> 3 selected keys on same Part.
+      await act(async () => clickKey(keyAt(rightHandId, 500), false));
+      await act(async () => clickKey(keyAt(rightHandId, 1000), true));
+      await act(async () => clickKey(keyAt(rightHandId, 1500), true));
+      for (const time of [500, 1000, 1500]) {
+        expect(keyAt(rightHandId, time).getAttribute('data-selected')).toBe('true');
+        expect(keyAt(rightHandId, time).getAttribute('aria-pressed')).toBe('true');
+      }
+      // Single-key actions disable/hide during multi-key selection.
+      expect(copyBtn().disabled).toBe(true);
+      expect(deleteBtn().disabled).toBe(true);
+      expect(easingSelect()).toBeNull();
+
+      // Drag middle selected key (1000ms) right by +250ms -> live preview moves all 3 keys together, commits ONE History.
+      const beforeDrag = editorProjectStore.getSnapshot()!.project;
+      const anchorEl = keyAt(rightHandId, 1000);
+      await act(async () => dispatchPointer(anchorEl, 'pointerdown', 0));
+      await act(async () => dispatchPointer(anchorEl, 'pointermove', 250 * pxPerMs));
+      for (const time of [500, 1000, 1500]) {
+        const el = keyAt(rightHandId, time);
+        expect(el.getAttribute('data-dragging')).toBe('true');
+        expect(Number.parseFloat(el.style.left)).toBeCloseTo((time + 250) * pxPerMs, 3);
+      }
+      expect(host.querySelectorAll('.character-motion-key-time-bubble')).toHaveLength(1);
+      await act(async () => dispatchPointer(anchorEl, 'pointerup', 250 * pxPerMs));
+
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      const afterDrag = editorProjectStore.getSnapshot()!.project;
+      const layerAfterDrag = afterDrag.shots[0]!.layers.find((l) => l.id === layerId)!;
+      expect(characterCompositeKeyTimes(layerAfterDrag, rightHandId)).toEqual([0, 750, 1250, 1750]);
+      expect(characterCompositeKeyEasing(layerAfterDrag, rightHandId, 750)).toBe('ease-in-out');
+      for (const time of [750, 1250, 1750]) {
+        expect(keyAt(rightHandId, time).getAttribute('data-selected')).toBe('true');
+      }
+
+      // Drag release without net frame shift = no-op, zero new History.
+      const stayEl = keyAt(rightHandId, 1250);
+      await act(async () => dispatchPointer(stayEl, 'pointerdown', 0));
+      await act(async () => dispatchPointer(stayEl, 'pointermove', 4));
+      await act(async () => dispatchPointer(stayEl, 'pointerup', 0));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+
+      // Selecting [0, 750] and dragging blocks moving 0ms with alert and zero Project/History change.
+      await act(async () => clickKey(keyAt(rightHandId, 750), false));
+      await act(async () => clickKey(keyAt(rightHandId, 0), true));
+      expect(keyAt(rightHandId, 0).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(rightHandId, 750).getAttribute('data-selected')).toBe('true');
+      const blockedEl = keyAt(rightHandId, 750);
+      await act(async () => dispatchPointer(blockedEl, 'pointerdown', 0));
+      await act(async () => dispatchPointer(blockedEl, 'pointermove', 125 * pxPerMs));
+      await act(async () => dispatchPointer(blockedEl, 'pointerup', 125 * pxPerMs));
+      expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/0 秒/);
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      expect(editorProjectStore.getSnapshot()!.project).toEqual(afterDrag);
+
+      // Undo / Redo reverts and reapplies entire group atomically.
+      await act(async () => editorProjectStore.undo());
+      expect(editorProjectStore.getSnapshot()!.project).toEqual(beforeDrag);
+      await act(async () => editorProjectStore.redo());
+      expect(editorProjectStore.getSnapshot()!.project).toEqual(afterDrag);
+
+      // Shift+clicking another Part's key switches Part instead of cross-Part multi-select.
+      await act(async () => clickKey(keyAt(headId, 750), true));
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(headId);
+      expect(keyAt(headId, 750).getAttribute('data-selected')).toBe('true');
     } finally {
       clientWidthSpy.mockRestore();
       await act(async () => root.unmount());

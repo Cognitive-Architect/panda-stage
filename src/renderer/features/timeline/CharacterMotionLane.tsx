@@ -33,7 +33,7 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { IconButton } from '../../ui/Button';
 import { characterMotionParts } from '../canvas/characterMotionContext';
-import { previewCharacterMotionKeyTime } from './characterMotionKeyGesture';
+import { previewCharacterMotionKeyGroupShift } from './characterMotionKeyGesture';
 import { PositionLaneErrorNotice } from './PositionLane';
 import { formatTimecode } from './timeGeometry';
 import { timelineUiStore } from './timelineUiStore';
@@ -55,10 +55,22 @@ interface PoseClipboard {
   pose: CharacterMotionValues;
 }
 
+interface KeyGroupDragPreview {
+  partId: string;
+  anchorTimeMs: number;
+  previewTimesByOrigin: ReadonlyMap<number, number>;
+}
+
 interface KeyDragSession {
   pointerId: number;
   startX: number;
-  previewTimeMs: number;
+  fromTimesMs: readonly number[];
+  unselectedTimesMs: readonly number[];
+  anchorTimeMs: number;
+  deltaFrames: number;
+  anchorPreviewTimeMs: number;
+  previewTimesByOrigin: ReadonlyMap<number, number>;
+  blockedBase: boolean;
   moved: boolean;
   snapshot: EditorProjectSnapshot;
   instanceId: number | null;
@@ -78,8 +90,18 @@ function isCurrentCharacterMotionContext(input: {
   partId: string;
   requireSelectedPart?: boolean;
   keyTimeMs?: number;
+  keyTimesMs?: readonly number[];
 }): input is typeof input & { snapshot: EditorProjectSnapshot } {
-  const { snapshot, instanceId, shotId, layerId, partId, requireSelectedPart = true, keyTimeMs } = input;
+  const {
+    snapshot,
+    instanceId,
+    shotId,
+    layerId,
+    partId,
+    requireSelectedPart = true,
+    keyTimeMs,
+    keyTimesMs,
+  } = input;
   if (
     !snapshot ||
     editorProjectStore.getSnapshot() !== snapshot ||
@@ -94,8 +116,10 @@ function isCurrentCharacterMotionContext(input: {
   const layer = shot?.layers.find((candidate) => candidate.id === layerId);
   if (!layer || layer.locked || layer.source.kind !== 'character') return false;
   if (!characterMotionParts(snapshot.project, layer).some((part) => part.partId === partId)) return false;
-  if (keyTimeMs === undefined) return true;
-  return characterCompositeKeyTimes(layer, partId).includes(keyTimeMs);
+  const timesToCheck = keyTimesMs ?? (keyTimeMs === undefined ? null : [keyTimeMs]);
+  if (!timesToCheck) return true;
+  const currentTimes = characterCompositeKeyTimes(layer, partId);
+  return timesToCheck.every((candidate) => currentTimes.includes(candidate));
 }
 
 /** Scroll only the enclosing vertical lane viewport so horizontal ruler scroll stays intact. */
@@ -133,7 +157,8 @@ export function CharacterMotionLane({
     () => timelineUiStore.getSnapshot().characterMotionRevealNonce,
   );
   const [groupExpanded, setGroupExpanded] = useState(true);
-  const [selectedKey, setSelectedKey] = useState<{ partId: string; timeMs: number } | null>(null);
+  const [selectedKey, setSelectedKey] = useState<{ partId: string; timesMs: number[] } | null>(null);
+  const [dragPreview, setDragPreview] = useState<KeyGroupDragPreview | null>(null);
   const [clipboard, setClipboard] = useState<PoseClipboard | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsPosition, setActionsPosition] = useState<{ left: number; top: number } | null>(null);
@@ -162,6 +187,7 @@ export function CharacterMotionLane({
 
   useEffect(() => {
     setSelectedKey((current) => (current?.partId === partId ? current : null));
+    setDragPreview(null);
     setClipboard(null);
     setActionsOpen(false);
     setError(null);
@@ -254,30 +280,32 @@ export function CharacterMotionLane({
   const activePartTimes = activePart
     ? characterCompositeKeyTimes(layer, activePart.partId).filter((time) => time <= shot.durationMs)
     : [];
-  const selectedKeyTime =
-    activePart &&
-    selectedKey?.partId === activePart.partId &&
-    activePartTimes.includes(selectedKey.timeMs)
-      ? selectedKey.timeMs
-      : null;
-  const selectedKeyIndex =
-    selectedKeyTime === null ? -1 : activePartTimes.indexOf(selectedKeyTime);
+  const selectedKeyTimes =
+    activePart && selectedKey?.partId === activePart.partId
+      ? selectedKey.timesMs
+          .filter((time) => activePartTimes.includes(time))
+          .sort((left, right) => left - right)
+      : [];
+  const singleSelectedKeyTime =
+    selectedKeyTimes.length === 1 ? selectedKeyTimes[0]! : null;
+  const previousAnchor = selectedKeyTimes[0];
+  const followingAnchor = selectedKeyTimes[selectedKeyTimes.length - 1];
   const previousKeyTime =
-    selectedKeyIndex >= 0
-      ? activePartTimes[selectedKeyIndex - 1]
+    previousAnchor !== undefined
+      ? [...activePartTimes].reverse().find((time) => time < previousAnchor)
       : [...activePartTimes].reverse().find((time) => time < currentTimeMs);
   const followingKeyTime =
-    selectedKeyIndex >= 0
-      ? activePartTimes[selectedKeyIndex + 1]
+    followingAnchor !== undefined
+      ? activePartTimes.find((time) => time > followingAnchor)
       : activePartTimes.find((time) => time > currentTimeMs);
   const hasOutgoingInterval = Boolean(
     activePart &&
-      selectedKeyTime !== null &&
-      hasCompositeKeyOutgoingInterval(layer, activePart.partId, selectedKeyTime),
+      singleSelectedKeyTime !== null &&
+      hasCompositeKeyOutgoingInterval(layer, activePart.partId, singleSelectedKeyTime),
   );
   const selectedEasing =
-    hasOutgoingInterval && activePart && selectedKeyTime !== null
-      ? characterCompositeKeyEasing(layer, activePart.partId, selectedKeyTime)
+    hasOutgoingInterval && activePart && singleSelectedKeyTime !== null
+      ? characterCompositeKeyEasing(layer, activePart.partId, singleSelectedKeyTime)
       : null;
   const clipboardMatches = clipboard?.scope === scopeKey;
   const validPasteTime =
@@ -296,31 +324,50 @@ export function CharacterMotionLane({
     selectionStore.selectCharacterPart(targetPartId);
   };
 
-  const activateKey = (targetPartId: string, timeMs: number): void => {
+  const activateKey = (targetPartId: string, timeMs: number, shiftKey = false): void => {
     setError(null);
     selectPart(targetPartId);
-    setSelectedKey({ partId: targetPartId, timeMs });
-    timelineUiStore.seek(timeMs, shot.durationMs);
+    if (!shiftKey) {
+      setSelectedKey({ partId: targetPartId, timesMs: [timeMs] });
+      timelineUiStore.seek(timeMs, shot.durationMs);
+      return;
+    }
+    setSelectedKey((current) => {
+      if (!current || current.partId !== targetPartId) {
+        return { partId: targetPartId, timesMs: [timeMs] };
+      }
+      const nextTimes = current.timesMs.includes(timeMs)
+        ? current.timesMs.filter((candidate) => candidate !== timeMs)
+        : [...current.timesMs, timeMs].sort((left, right) => left - right);
+      return nextTimes.length > 0 ? { partId: targetPartId, timesMs: nextTimes } : null;
+    });
   };
 
-  const retimeSelectedKey = (targetPartId: string, timeMs: number): void => {
+  const retimeSelectedKeys = (
+    targetPartId: string,
+    nextTimesMs: readonly number[],
+    anchorTimeMs: number,
+  ): void => {
     setError(null);
-    setSelectedKey({ partId: targetPartId, timeMs });
-    timelineUiStore.seek(timeMs, shot.durationMs);
+    setSelectedKey({
+      partId: targetPartId,
+      timesMs: [...nextTimesMs].sort((left, right) => left - right),
+    });
+    timelineUiStore.seek(anchorTimeMs, shot.durationMs);
   };
 
   const copySelectedPose = (): void => {
-    if (!activePart || selectedKeyTime === null) return;
+    if (!activePart || singleSelectedKeyTime === null) return;
     try {
       setError(null);
       const pose = characterMotionValues(project, {
         shotId: shot.id,
         layerId: layer.id,
         partId: activePart.partId,
-        timeMs: selectedKeyTime,
+        timeMs: singleSelectedKeyTime,
         autoKey: true,
       });
-      setClipboard({ scope: scopeKey, sourceTimeMs: selectedKeyTime, pose });
+      setClipboard({ scope: scopeKey, sourceTimeMs: singleSelectedKeyTime, pose });
     } catch (operationError) {
       setError(errorText(operationError));
     }
@@ -357,14 +404,14 @@ export function CharacterMotionLane({
       if (next !== snapshot.project) {
         editorProjectStore.updateProject(next, '粘贴部件姿势');
       }
-      setSelectedKey({ partId: activePart.partId, timeMs: currentTimeMs });
+      setSelectedKey({ partId: activePart.partId, timesMs: [currentTimeMs] });
     } catch (operationError) {
       setError(errorText(operationError));
     }
   };
 
   const deleteSelectedKey = (): void => {
-    if (!activePart || selectedKeyTime === null || selectedKeyTime === 0) return;
+    if (!activePart || singleSelectedKeyTime === null || singleSelectedKeyTime === 0) return;
     if (
       !snapshot ||
       !isCurrentCharacterMotionContext({
@@ -373,7 +420,7 @@ export function CharacterMotionLane({
         shotId: shot.id,
         layerId: layer.id,
         partId: activePart.partId,
-        keyTimeMs: selectedKeyTime,
+        keyTimeMs: singleSelectedKeyTime,
       })
     ) {
       reportStale();
@@ -385,7 +432,7 @@ export function CharacterMotionLane({
         shotId: shot.id,
         layerId: layer.id,
         partId: activePart.partId,
-        timeMs: selectedKeyTime,
+        timeMs: singleSelectedKeyTime,
       });
       editorProjectStore.updateProject(next, '删除动作关键帧');
       setSelectedKey(null);
@@ -395,7 +442,7 @@ export function CharacterMotionLane({
   };
 
   const setEasing = (interpolationToNext: AnimationInterpolation): void => {
-    if (!activePart || selectedKeyTime === null || !hasOutgoingInterval) return;
+    if (!activePart || singleSelectedKeyTime === null || !hasOutgoingInterval) return;
     if (
       !snapshot ||
       !isCurrentCharacterMotionContext({
@@ -404,7 +451,7 @@ export function CharacterMotionLane({
         shotId: shot.id,
         layerId: layer.id,
         partId: activePart.partId,
-        keyTimeMs: selectedKeyTime,
+        keyTimeMs: singleSelectedKeyTime,
       })
     ) {
       reportStale();
@@ -416,7 +463,7 @@ export function CharacterMotionLane({
         shotId: shot.id,
         layerId: layer.id,
         partId: activePart.partId,
-        timeMs: selectedKeyTime,
+        timeMs: singleSelectedKeyTime,
         interpolationToNext,
       });
       if (next !== snapshot.project) {
@@ -491,7 +538,7 @@ export function CharacterMotionLane({
                     aria-label="复制姿势"
                     className="character-motion-key-text-control"
                     data-testid="character-motion-copy-pose"
-                    disabled={selectedKeyTime === null}
+                    disabled={singleSelectedKeyTime === null}
                     onClick={copySelectedPose}
                     title="复制姿势"
                     type="button"
@@ -513,7 +560,7 @@ export function CharacterMotionLane({
                     aria-label="删除动作关键帧"
                     className="character-motion-key-control"
                     data-testid="character-motion-delete-key"
-                    disabled={selectedKeyTime === null || selectedKeyTime === 0}
+                    disabled={singleSelectedKeyTime === null || singleSelectedKeyTime === 0}
                     icon={<Trash2 aria-hidden="true" size={13} />}
                     onClick={deleteSelectedKey}
                     title="删除关键帧"
@@ -612,8 +659,15 @@ export function CharacterMotionLane({
             const times = characterCompositeKeyTimes(layer, part.partId).filter(
               (time) => time <= shot.durationMs,
             );
-            const spanStart = times.length > 1 ? times[0]! : null;
-            const spanEnd = times.length > 1 ? times[times.length - 1]! : null;
+            const activeDragPreview = dragPreview?.partId === part.partId ? dragPreview : null;
+            const previewedTimes = activeDragPreview
+              ? times
+                  .map((time) => activeDragPreview.previewTimesByOrigin.get(time) ?? time)
+                  .sort((left, right) => left - right)
+              : times;
+            const spanStart = previewedTimes.length > 1 ? previewedTimes[0]! : null;
+            const spanEnd =
+              previewedTimes.length > 1 ? previewedTimes[previewedTimes.length - 1]! : null;
             return (
               <div
                 key={part.partId}
@@ -666,26 +720,29 @@ export function CharacterMotionLane({
                       }}
                     />
                   ) : null}
-                  {times.map((time, index) => (
+                  {times.map((time) => (
                     <CharacterMotionKeyMarker
                       key={time}
+                      allPartTimes={times}
                       current={time === currentTimeMs}
+                      dragPreviewTimeMs={activeDragPreview?.previewTimesByOrigin.get(time) ?? null}
                       durationMs={shot.durationMs}
                       editable={!layer.locked && !productPreviewOpen && time !== 0}
                       instanceId={instanceId}
                       layerId={layer.id}
-                      nextTimeMs={times[index + 1] ?? null}
                       partId={part.partId}
                       partName={part.name}
                       pixelsPerMs={pixelsPerMs}
-                      previousTimeMs={times[index - 1] ?? null}
-                      selected={selected && selectedKeyTime === time}
+                      selected={selected && selectedKeyTimes.includes(time)}
+                      selectedTimesMs={selected ? selectedKeyTimes : []}
                       shotId={shot.id}
+                      showDragBubble={activeDragPreview?.anchorTimeMs === time}
                       snapshot={snapshot}
                       timeMs={time}
                       onActivate={activateKey}
+                      onDragPreview={setDragPreview}
                       onError={setError}
-                      onRetime={retimeSelectedKey}
+                      onRetime={retimeSelectedKeys}
                       onSelectPart={selectPart}
                     />
                   ))}
@@ -702,54 +759,60 @@ export function CharacterMotionLane({
 }
 
 interface CharacterMotionKeyMarkerProps {
+  allPartTimes: readonly number[];
   current: boolean;
+  dragPreviewTimeMs: number | null;
   durationMs: number;
   editable: boolean;
   instanceId: number | null;
   layerId: string;
-  nextTimeMs: number | null;
   partId: string;
   partName: string;
   pixelsPerMs: number;
-  previousTimeMs: number | null;
   selected: boolean;
+  selectedTimesMs: readonly number[];
   shotId: string;
+  showDragBubble: boolean;
   snapshot: EditorProjectSnapshot | null;
   timeMs: number;
-  onActivate(partId: string, timeMs: number): void;
+  onActivate(partId: string, timeMs: number, shiftKey?: boolean): void;
+  onDragPreview(preview: KeyGroupDragPreview | null): void;
   onError(message: string): void;
-  onRetime(partId: string, timeMs: number): void;
+  onRetime(partId: string, nextTimesMs: readonly number[], anchorTimeMs: number): void;
   onSelectPart(partId: string): void;
 }
 
 function CharacterMotionKeyMarker({
+  allPartTimes,
   current,
+  dragPreviewTimeMs,
   durationMs,
   editable,
   instanceId,
   layerId,
-  nextTimeMs,
   partId,
   partName,
   pixelsPerMs,
-  previousTimeMs,
   selected,
+  selectedTimesMs,
   shotId,
+  showDragBubble,
   snapshot,
   timeMs,
   onActivate,
+  onDragPreview,
   onError,
   onRetime,
   onSelectPart,
 }: CharacterMotionKeyMarkerProps): React.JSX.Element {
   const dragRef = useRef<KeyDragSession | null>(null);
   const suppressClickRef = useRef(false);
-  const [previewTimeMs, setPreviewTimeMs] = useState<number | null>(null);
-  const displayTime = previewTimeMs ?? timeMs;
+  const displayTime = dragPreviewTimeMs ?? timeMs;
 
   const cancelDrag = (): void => {
+    if (!dragRef.current) return;
     dragRef.current = null;
-    setPreviewTimeMs(null);
+    onDragPreview(null);
   };
 
   useEffect(() => {
@@ -783,7 +846,11 @@ function CharacterMotionKeyMarker({
     event.stopPropagation();
     if (event.button !== 0) return;
     onSelectPart(partId);
-    if (!editable || previousTimeMs === null) return;
+    if (event.shiftKey) return;
+    const dragGroup =
+      selected && selectedTimesMs.includes(timeMs) ? selectedTimesMs : [timeMs];
+    if (timeMs === 0 || !editable) return;
+    const blockedBase = dragGroup.includes(0);
     if (
       !snapshot ||
       !isCurrentCharacterMotionContext({
@@ -793,16 +860,24 @@ function CharacterMotionKeyMarker({
         layerId,
         partId,
         requireSelectedPart: false,
-        keyTimeMs: timeMs,
+        keyTimesMs: dragGroup,
       })
     ) {
       onError('动作关键帧已变化，请重新选择后再操作。');
       return;
     }
+    const unselectedTimesMs = allPartTimes.filter((candidate) => !dragGroup.includes(candidate));
+    const initialMap = new Map(dragGroup.map((candidate) => [candidate, candidate]));
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
-      previewTimeMs: timeMs,
+      fromTimesMs: dragGroup,
+      unselectedTimesMs,
+      anchorTimeMs: timeMs,
+      deltaFrames: 0,
+      anchorPreviewTimeMs: timeMs,
+      previewTimesByOrigin: initialMap,
+      blockedBase,
       moved: false,
       snapshot,
       instanceId,
@@ -813,19 +888,27 @@ function CharacterMotionKeyMarker({
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
     const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || previousTimeMs === null) return;
+    if (!drag || drag.pointerId !== event.pointerId) return;
     const deltaPx = event.clientX - drag.startX;
     if (!drag.moved && Math.abs(deltaPx) < 3) return;
     drag.moved = true;
-    drag.previewTimeMs = previewCharacterMotionKeyTime({
-      fromTimeMs: timeMs,
+    if (drag.blockedBase) return;
+    const preview = previewCharacterMotionKeyGroupShift({
+      fromTimesMs: drag.fromTimesMs,
+      anchorTimeMs: drag.anchorTimeMs,
+      unselectedTimesMs: drag.unselectedTimesMs,
       deltaPx,
       pixelsPerMs,
-      previousTimeMs,
-      nextTimeMs,
       durationMs,
     });
-    setPreviewTimeMs(drag.previewTimeMs);
+    drag.deltaFrames = preview.deltaFrames;
+    drag.anchorPreviewTimeMs = preview.anchorPreviewTimeMs;
+    drag.previewTimesByOrigin = preview.previewTimesByOrigin;
+    onDragPreview({
+      partId,
+      anchorTimeMs: drag.anchorTimeMs,
+      previewTimesByOrigin: preview.previewTimesByOrigin,
+    });
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -836,12 +919,16 @@ function CharacterMotionKeyMarker({
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    setPreviewTimeMs(null);
+    onDragPreview(null);
     if (!drag.moved) return;
     suppressClickRef.current = true;
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
+    if (drag.blockedBase) {
+      onError('0 秒基础姿势关键帧不可移动，请取消选中后再移动其他关键帧。');
+      return;
+    }
     if (
       !isCurrentCharacterMotionContext({
         snapshot: drag.snapshot,
@@ -849,25 +936,42 @@ function CharacterMotionKeyMarker({
         shotId,
         layerId,
         partId,
-        keyTimeMs: timeMs,
+        keyTimesMs: drag.fromTimesMs,
       })
     ) {
       onError('动作关键帧已变化，请重新选择后再操作。');
       return;
     }
-    if (drag.previewTimeMs === timeMs) return;
+    if (drag.deltaFrames === 0) return;
     try {
-      const next = motionService.retimeCompositeKey(drag.snapshot.project, {
+      if (drag.fromTimesMs.length === 1) {
+        const next = motionService.retimeCompositeKey(drag.snapshot.project, {
+          shotId,
+          layerId,
+          partId,
+          fromTimeMs: drag.fromTimesMs[0]!,
+          toTimeMs: drag.anchorPreviewTimeMs,
+        });
+        if (next !== drag.snapshot.project) {
+          editorProjectStore.updateProject(next, '调整动作关键帧时间');
+        }
+        onRetime(partId, [drag.anchorPreviewTimeMs], drag.anchorPreviewTimeMs);
+        return;
+      }
+      const next = motionService.retimeCompositeKeys(drag.snapshot.project, {
         shotId,
         layerId,
         partId,
-        fromTimeMs: timeMs,
-        toTimeMs: drag.previewTimeMs,
+        fromTimesMs: drag.fromTimesMs,
+        deltaFrames: drag.deltaFrames,
       });
       if (next !== drag.snapshot.project) {
-        editorProjectStore.updateProject(next, '调整动作关键帧时间');
+        editorProjectStore.updateProject(next, '批量调整动作关键帧时间');
       }
-      onRetime(partId, drag.previewTimeMs);
+      const movedTimes = drag.fromTimesMs.map(
+        (origin) => drag.previewTimesByOrigin.get(origin) ?? origin,
+      );
+      onRetime(partId, movedTimes, drag.anchorPreviewTimeMs);
     } catch (operationError) {
       onError(errorText(operationError));
     }
@@ -886,7 +990,7 @@ function CharacterMotionKeyMarker({
         data-part-id={partId}
         data-selected={selected ? 'true' : 'false'}
         data-current={current ? 'true' : 'false'}
-        data-dragging={previewTimeMs === null ? 'false' : 'true'}
+        data-dragging={dragPreviewTimeMs === null ? 'false' : 'true'}
         aria-label={`${partName} 动作关键帧 ${timeMs}ms`}
         aria-pressed={selected}
         aria-current={current ? 'true' : undefined}
@@ -904,18 +1008,18 @@ function CharacterMotionKeyMarker({
             suppressClickRef.current = false;
             return;
           }
-          onActivate(partId, timeMs);
+          onActivate(partId, timeMs, event.shiftKey);
         }}
       >
         ◆
       </button>
-      {previewTimeMs !== null ? (
+      {showDragBubble && dragPreviewTimeMs !== null ? (
         <span
           aria-hidden="true"
           className="character-motion-key-time-bubble"
           style={{ left: displayTime * pixelsPerMs }}
         >
-          {formatTimecode(previewTimeMs)}
+          {formatTimecode(dragPreviewTimeMs)}
         </span>
       ) : null}
     </>

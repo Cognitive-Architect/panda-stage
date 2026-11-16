@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CharacterMotionService,
+  LayerService,
   characterCompositeKeyEasing,
   characterCompositeKeyTimes,
   characterMotionValues,
@@ -274,6 +275,122 @@ describe('Character Motion Property Track facade', () => {
         service.setCompositeKeyEasing(caseC, { ...baseTarget, timeMs: 500, interpolationToNext: 'ease-in' }),
       ).toThrow(/没有可修改的补间区间/);
       expect(caseC).toEqual(snapshotBefore);
+    },
+  );
+
+  it.each(['imagePartId', 'graphicPartId'] as const)(
+    'plans and atomically shifts multiple Composite Keys on %s preserving spacing, values, easings, sparse tracks, and isolation (#1131)',
+    (partField) => {
+      const data = characterPartAnimationFixture();
+      const placed = new LayerService().createFromAdaptiveCharacter(
+        data.project,
+        IDS.shot,
+        data.characterId,
+        { x: 500, y: 500 },
+      );
+      const partId = data[partField];
+      const baseTarget = { shotId: IDS.shot, layerId: data.layerId, partId };
+      const layerOf = (project: typeof data.project, layerId = data.layerId) =>
+        project.shots[0]!.layers.find((l) => l.id === layerId)!;
+      const trackOf = (project: typeof data.project, property: AnimationProperty) =>
+        layerOf(project).animationClip!.tracks.find((t) => t.target.partId === partId && t.property === property);
+
+      // Author sparse keys at [0, 500, 1000, 1500, 2500] within a 3000ms Shot.
+      let project = service.apply(placed.project, { ...baseTarget, timeMs: 500, autoKey: true }, {
+        'transform.offsetX': 20,
+        'transform.rotationDeg': 30,
+      });
+      project = service.apply(project, { ...baseTarget, timeMs: 1000, autoKey: true }, {
+        'transform.offsetX': 50,
+      });
+      project = service.apply(project, { ...baseTarget, timeMs: 1500, autoKey: true }, {
+        'transform.rotationDeg': 60,
+        'transform.offsetX': 90,
+      });
+      project = service.apply(project, { ...baseTarget, timeMs: 2500, autoKey: true }, {
+        'transform.offsetX': 120,
+      });
+      project = service.setCompositeKeyEasing(project, {
+        ...baseTarget,
+        timeMs: 500,
+        interpolationToNext: 'ease-in-out',
+      });
+      project = service.setCompositeKeyEasing(project, {
+        ...baseTarget,
+        timeMs: 1000,
+        interpolationToNext: 'step',
+      });
+
+      const snapshotBefore = structuredClone(project);
+      expect(characterCompositeKeyTimes(layerOf(project), partId)).toEqual([0, 500, 1000, 1500, 2500]);
+
+      // Shift [500, 1000, 1500] by +250ms -> [750, 1250, 1750], preserving spacing, values, easings, sparse tracks.
+      const shiftedForward = service.retimeCompositeKeys(project, {
+        ...baseTarget,
+        fromTimesMs: [1500, 500, 1000],
+        deltaMs: 250,
+      });
+      expect(characterCompositeKeyTimes(layerOf(shiftedForward), partId)).toEqual([0, 750, 1250, 1750, 2500]);
+      expect(trackOf(shiftedForward, 'transform.offsetX')!.keys.map((k) => [k.timeMs, k.value, k.interpolationToNext])).toEqual([
+        [0, 0, 'linear'],
+        [750, 20, 'ease-in-out'],
+        [1250, 50, 'step'],
+        [1750, 90, 'linear'],
+        [2500, 120, 'linear'],
+      ]);
+      expect(trackOf(shiftedForward, 'transform.rotationDeg')!.keys.map((k) => [k.timeMs, k.value, k.interpolationToNext])).toEqual([
+        [0, 0, 'linear'],
+        [750, 30, 'ease-in-out'],
+        [1750, 60, 'linear'],
+      ]);
+      // Unauthored scale/offsetY tracks remain absent (no sparse materialization).
+      expect(trackOf(shiftedForward, 'transform.offsetY')).toBeUndefined();
+      expect(trackOf(shiftedForward, 'transform.scaleX')).toBeUndefined();
+      expect(trackOf(shiftedForward, 'transform.scaleY')).toBeUndefined();
+      // Second instance sharing the same Character Definition stays completely untouched.
+      expect(layerOf(shiftedForward, placed.layer.id)).toEqual(layerOf(snapshotBefore, placed.layer.id));
+      expect(shiftedForward.characters).toEqual(snapshotBefore.characters);
+
+      // Shift backward -125ms -> [625, 1125, 1625].
+      const shiftedBack = service.retimeCompositeKeys(shiftedForward, {
+        ...baseTarget,
+        fromTimesMs: [750, 1250, 1750],
+        deltaMs: -125,
+      });
+      expect(characterCompositeKeyTimes(layerOf(shiftedBack), partId)).toEqual([0, 625, 1125, 1625, 2500]);
+
+      // Frame-based shift preserves 24fps grid & exact frame spacing even at odd-ms adjacent frames [42, 83].
+      let fineProject = service.apply(data.project, { ...baseTarget, timeMs: 42, autoKey: true }, { 'transform.offsetX': 5 });
+      fineProject = service.apply(fineProject, { ...baseTarget, timeMs: 83, autoKey: true }, { 'transform.offsetX': 10 });
+      const shiftedOneFrame = service.retimeCompositeKeys(fineProject, {
+        ...baseTarget,
+        fromTimesMs: [42, 83],
+        deltaFrames: 1,
+      });
+      expect(characterCompositeKeyTimes(layerOf(shiftedOneFrame), partId)).toEqual([0, 83, 125]);
+
+      // No-op returns exact identical project reference.
+      expect(service.planCompositeKeysRetime(project, { ...baseTarget, fromTimesMs: [500, 1000], deltaMs: 0 }).changed).toBe(false);
+      expect(service.retimeCompositeKeys(project, { ...baseTarget, fromTimesMs: [500, 1000], deltaMs: 0 })).toBe(project);
+      expect(service.retimeCompositeKeys(project, { ...baseTarget, fromTimesMs: [500, 1000], deltaFrames: 0 })).toBe(project);
+
+      // Whole-batch atomic rejections: any single invalid candidate rejects the whole batch with Project untouched.
+      const rejectingInputs = [
+        { fromTimesMs: [], deltaMs: 250, match: /选择/ },
+        { fromTimesMs: [500, 500], deltaMs: 250, match: /重复/ },
+        { fromTimesMs: [0, 500], deltaMs: 250, match: /0 秒/ },
+        { fromTimesMs: [500, 1000], deltaMs: -500, match: /0 秒/ },
+        { fromTimesMs: [500, 1000], deltaMs: 100, match: /帧网格/ },
+        { fromTimesMs: [500, 1000], deltaMs: 500, match: /目标时间已存在动作关键帧/ },
+        { fromTimesMs: [500, 1500], deltaMs: 500, match: /目标时间已存在动作关键帧/ },
+        { fromTimesMs: [500, 1000], deltaMs: 1500, match: /越过/ },
+        { fromTimesMs: [1500, 2500], deltaMs: 750, match: /镜头时长/ },
+        { fromTimesMs: [500, 750], deltaMs: 250, match: /找不到/ },
+      ] as const;
+      for (const bad of rejectingInputs) {
+        expect(() => service.retimeCompositeKeys(project, { ...baseTarget, ...bad })).toThrow(bad.match);
+      }
+      expect(project).toEqual(snapshotBefore);
     },
   );
 });
