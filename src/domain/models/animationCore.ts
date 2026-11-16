@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { CharacterPartTransformSchema, CharacterPartVisualSourceSchema } from './character';
 import { isValidFrameTime } from '../timeline/frame-grid';
+import { CHARACTER_PART_MIN_SCALE, CHARACTER_PART_MAX_SCALE } from '../constants';
 
 export const AnimationTargetRefSchema = z.object({
   kind: z.literal('character-part'),
@@ -33,6 +34,16 @@ export const AnimationTrackSchema = z.object({
   property: AnimationPropertySchema,
   keys: z.array(AnimationKeySchema).min(1),
 }).strict().superRefine((track, context) => {
+  if (track.property === 'transform.scaleX' || track.property === 'transform.scaleY') {
+    track.keys.forEach((key, index) => {
+      if (key.value < CHARACTER_PART_MIN_SCALE || key.value > CHARACTER_PART_MAX_SCALE) {
+        context.addIssue({
+          code: 'custom', path: ['keys', index, 'value'],
+          message: `Animation scale must be between ${CHARACTER_PART_MIN_SCALE} and ${CHARACTER_PART_MAX_SCALE}.`,
+        });
+      }
+    });
+  }
   // Ported from #979: the base key may change value, but cannot disappear/retime.
   if (track.keys[0]?.timeMs !== 0) {
     context.addIssue({ code: 'custom', path: ['keys', 0, 'timeMs'], message: 'Every track requires a protected 0 ms key.' });

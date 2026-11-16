@@ -69,7 +69,10 @@ describe('Animation Core V0 persisted contract', () => {
     expect(AnimationClipV0Schema.safeParse({ ...clip, tracks: [...clip.tracks, ...clip.tracks] }).success).toBe(false);
     expect(AnimationClipV0Schema.safeParse({ ...clip, targetBases: [...clip.targetBases, ...clip.targetBases] }).success).toBe(false);
     expect(AnimationClipV0Schema.safeParse({ ...clip, targetBases: [] }).success).toBe(false);
-    expect(AnimationClipV0Schema.safeParse({ ...clip, tracks: [...clip.tracks, { ...clip.tracks[0], property: 'transform.scaleX' }] }).success).toBe(true);
+    expect(AnimationClipV0Schema.safeParse({ ...clip, tracks: [...clip.tracks, {
+      ...clip.tracks[0], property: 'transform.scaleX',
+      keys: clip.tracks[0]!.keys.map(key => ({ ...key, value: 1 })),
+    }] }).success).toBe(true);
   });
   it.each([[], [500], [0, 0], [0, 1000, 500]])('rejects missing base or unsorted/duplicate keys %j', (...times) => {
     const { clip } = animationCoreFixture();
