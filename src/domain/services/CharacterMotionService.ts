@@ -49,6 +49,25 @@ export function characterCompositeKeyTimes(layer: Project['shots'][number]['laye
   return [...new Set(layer.animationClip?.tracks.filter(t => t.target.partId === partId).flatMap(t => t.keys.map(k => k.timeMs)) ?? [])].sort((a, b) => a - b);
 }
 
+/** True when this Part has authored animation beyond a neutral 0 ms key. */
+export function hasAuthoredCharacterPartMotion(
+  layer: Project['shots'][number]['layers'][number] | undefined,
+  partId: string,
+): boolean {
+  return Boolean(
+    layer?.animationClip?.tracks.some(
+      (track) =>
+        track.target.partId === partId &&
+        (track.keys.length > 1 ||
+          track.keys.some(
+            (key) =>
+              key.value !== NEUTRAL_CHARACTER_MOTION[track.property] ||
+              key.interpolationToNext !== 'linear',
+          )),
+    ),
+  );
+}
+
 /** Thin Property Track facade, adapted from #979 set-key semantics. */
 export class CharacterMotionService {
   apply(project: Project, input: CharacterMotionInput, changes: Partial<CharacterMotionValues>): Project {

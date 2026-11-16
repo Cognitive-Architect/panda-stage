@@ -104,7 +104,7 @@ it.each((['image', 'graphic'] as const).flatMap(source => [true, false].map(auto
     expect(element.querySelector(`label[for="${selector.id}"]`)!.textContent).toBe('部位');
     expect(selector.title).toBe(name);
     expect(element.querySelector('.character-motion-controls button svg')).not.toBeNull();
-    expect(element.querySelector('.timeline-lane-label')!.textContent).toBe(name);
+    expect(element.querySelector('.character-motion-lane .timeline-lane-label')!.textContent).toBe(name);
     expect(element.querySelector('select')!.selectedOptions[0]!.textContent).toBe(name);
     expect(element.querySelector('[data-testid="layer-transform-rotation"]')).toBeNull();
     expect(editorProjectStore.getSnapshot()!.revision).toBe(0);

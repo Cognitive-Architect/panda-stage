@@ -389,7 +389,6 @@ export function TimelineDock({
                       project={snapshot.project}
                     />
                   ) : null}
-                  {shot && snapshot ? <CharacterMotionLane project={snapshot.project} shot={shot} layerId={selectedLayerId} pixelsPerMs={pixelsPerMs} currentTimeMs={ui.currentTimeMs} /> : null}
                   {positionLane && shot ? (
                     <PositionLane
                       productPreviewOpen={productPreviewOpen}
@@ -409,6 +408,16 @@ export function TimelineDock({
                     onPointerUp={mediaPointerEnd}
                     onPointerCancel={mediaPointerEnd}
                   >
+                  {shot && snapshot ? (
+                    <CharacterMotionLane
+                      project={snapshot.project}
+                      shot={shot}
+                      layerId={selectedLayerId}
+                      pixelsPerMs={pixelsPerMs}
+                      currentTimeMs={ui.currentTimeMs}
+                      trackWidth={trackWidth}
+                    />
+                  ) : null}
                   <div
                     className="timeline-lane timeline-subtitle-lane"
                     data-testid="timeline-subtitle-track"
