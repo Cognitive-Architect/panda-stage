@@ -34,6 +34,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV20Schema,
   ShotV19Schema,
   ShotV18Schema,
   ShotV14Schema,
@@ -189,6 +190,12 @@ export const ProjectV19Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(19),
   characters: z.array(CharacterV19Schema),
   shots: z.array(ShotV19Schema),
+}).strict().superRefine(validateProjectReferences);
+
+/** Frozen v20 envelope: original fields and reference validation, no Core data. */
+export const ProjectV20Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(20),
+  shots: z.array(ShotV20Schema),
 }).strict().superRefine(validateProjectReferences);
 
 export const ProjectV1Schema = z
@@ -559,7 +566,18 @@ export function migrateFormalProject(input: unknown): unknown {
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,
-);
+).superRefine((project, context) => {
+  project.shots.forEach((shot, shotIndex) => {
+    shot.layers.forEach((layer, layerIndex) => {
+      if (!layer.animationClip || layer.source.kind !== 'character') return;
+      const characterId = layer.source.characterId;
+      const character = project.characters.find((entry) => entry.id === characterId);
+      if (character?.mode !== 'adaptive-parts') {
+        context.addIssue({ code: 'custom', path: ['shots', shotIndex, 'layers', layerIndex, 'animationClip'], message: 'Animation Core V0 requires an Adaptive Parts Character.' });
+      }
+    });
+  });
+});
 
 export type ProjectData = z.infer<typeof ProjectDataSchema>;
 export type Project = z.infer<typeof ProjectSchema>;

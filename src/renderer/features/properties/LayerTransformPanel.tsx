@@ -15,7 +15,7 @@ import {
   type LayerTransformInput,
   type Point,
 } from '../../../domain';
-import { Check, FlipHorizontal2, Info, RotateCcw } from 'lucide-react';
+import { Check, FlipHorizontal2, RotateCcw } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import {
@@ -403,8 +403,8 @@ export function useLayerTransformController({
           compact
             ? ''
             : layer.locked
-              ? 'Formal background is locked; unlock it before editing.'
-              : 'Formal background is editable; lock it again when finished.',
+              ? '背景已锁定。'
+              : '',
         );
       }
     } else if (!preserveCommitErrorRef.current) {
@@ -724,7 +724,7 @@ export function useLayerTransformController({
       const result =
         revisionAfter === revisionBefore ? 'noop' : 'committed';
       setStatus(
-        reason === 'opacity'
+        isBackgroundLayer || reason === 'opacity'
           ? ''
           : result === 'noop'
           ? '属性值未变化，未新增历史。'
@@ -1353,27 +1353,16 @@ function LayerTransformPanelView({
           {compact ? '请在画布中选择一个对象。' : '未选择普通图层。'}
         </p>
       )}
-      {(layer || !compact) &&
-      !(layer?.source.kind === 'animation' && !layer.locked) ? (
+      {(layer || !compact) && !(compact && layer && !isBackgroundLayer && !layer.locked) &&
+      !(layer?.source.kind === 'animation' && !layer.locked) && !(isBackgroundLayer && !layer?.locked) ? (
         temporalInspection ? null : (
           <p data-testid="layer-transform-guidance">
             {isBackgroundLayer
-              ? layer?.locked
-                ? '正式背景已锁定，请先解锁后再编辑。'
-                : '正式背景可编辑，完成后请重新锁定。'
+              ? '背景已锁定。'
               : layer?.locked
                 ? '请先解锁图层，再修改变换。'
                 : layer
-                  ? compact
-                    ? (
-                        <span className="layer-transform-guidance-inline">
-                          <DecorativeIcon icon={Info} size={14} />
-                          <span>
-                            X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。
-                          </span>
-                        </span>
-                      )
-                    : 'X/Y 表示视觉中心，缩放保持等比。'
+                  ? 'X/Y 表示视觉中心，缩放保持等比。'
                   : '请在画布中选择图层以编辑变换。'}
           </p>
         )

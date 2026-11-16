@@ -199,11 +199,11 @@ describe('Issue #915 animation Properties', () => {
     });
   });
 
-  it('hides routine transform guidance only for editable animation and keeps lock feedback', async () => {
+  it('hides compact routine transform guidance and keeps lock feedback', async () => {
     expect(
       container.querySelector('[data-testid="layer-transform-guidance"]')
         ?.textContent,
-    ).toContain('X / Y 为对象视觉中心');
+    ).toBeUndefined();
 
     await act(async () => selectionStore.select(IDS.animationLayer));
     expect(

@@ -11,3 +11,5 @@ export * from './project';
 export * from './shot';
 export * from './subtitle';
 export * from './timeline-event';
+
+export * from './animationCore';

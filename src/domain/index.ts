@@ -21,3 +21,7 @@ export type {
   EvaluatedLayer,
   EvaluatedShot,
 } from './evaluate-shot-at-time';
+
+export * from './evaluate-animation-core';
+export * from './character-part-animation';
+export * from './services/CharacterMotionService';

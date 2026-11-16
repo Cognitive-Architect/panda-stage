@@ -86,7 +86,7 @@ describe('Graphic expressions and mouth single-frame selection (#1112)', () => {
   it('upgrades genuine v19 images without injecting or rewriting face/audio/narrator data', () => {
     const historical = { ...structuredClone(historicalV18), schemaVersion: 19 };
     expect(ProjectV19Schema.safeParse(historical).success).toBe(true);
-    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: 20 });
+    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: 21 });
     expect(() => migrateProject({ ...graphicProject(), schemaVersion: 19 })).toThrow();
   });
   it('routes Graphic source edits through existing project history', () => {

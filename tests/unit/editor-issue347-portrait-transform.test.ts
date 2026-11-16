@@ -77,7 +77,7 @@ describe('Issue #347 portrait Properties Transform refinement', () => {
     expect(issue347Styles).not.toContain("data-editor-shell-layout='landscape'");
   });
 
-  it('gives Transform actions a single primary and keeps the helper lightweight', () => {
+  it('gives Transform actions a single primary without permanent helper copy', () => {
     const transform = source(
       'src/renderer/features/properties/LayerTransformPanel.tsx',
     );
@@ -88,14 +88,14 @@ describe('Issue #347 portrait Properties Transform refinement', () => {
       styles.indexOf('/* Issue #368:'),
     );
 
-    for (const icon of ['FlipHorizontal2', 'RotateCcw', 'Check', 'Info']) {
+    for (const icon of ['FlipHorizontal2', 'RotateCcw', 'Check']) {
       expect(transform).toContain(icon);
     }
     expect(transform).toContain('layer-transform-toggle-action');
     expect(transform).toContain('layer-transform-reset-action');
     expect(transform).toContain('layer-transform-primary-action');
     expect(transform).toContain('aria-pressed={compact ? layer.flipX : undefined}');
-    expect(transform).toContain(
+    expect(transform).not.toContain(
       'X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。',
     );
     expect(issue347Styles).toContain(

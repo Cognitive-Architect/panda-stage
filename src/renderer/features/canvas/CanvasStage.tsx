@@ -9,6 +9,9 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type Konva from 'konva';
+import { CharacterMotionGesture } from './characterMotionGesture';
+import type { CharacterMotionCanvas } from './CharacterMotionPart';
+import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime, type Layer } from '../../../domain';
 import {
   Layer as KonvaLayer,
   Rect,
@@ -266,6 +269,8 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const selectedMotionPartId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
+  const [motionError, setMotionError] = useState('');
   const opacityPreview = useOpacityPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
@@ -954,6 +959,30 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedMotionPartId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
+  const motionCanvasForLayer = (motionLayer: Layer): CharacterMotionCanvas | undefined => {
+    const source = motionLayer.source;
+    const character = source.kind === 'character' ? snapshot?.project.characters.find(c => c.id === source.characterId) : null;
+    return snapshot && shot && character?.mode === 'adaptive-parts' && !positionAuthoringSession ? {
+    selectedPartId: selectedLayerId === motionLayer.id ? selectedMotionPartId : null, contextKey: motionContextKey,
+    enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
+    pivot: (partId) => {
+      const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
+      const basis = clip.targetBases.find(b => b.target.partId === partId)!;
+      if (!basis) return { x: 0, y: 0 };
+      const matrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs));
+      return { x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx, y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty };
+    },
+    select: partId => { selectionStore.select(motionLayer.id); selectionStore.selectCharacterPart(partId); },
+    error: setMotionError,
+    begin: (partId) => {
+      setMotionError('');
+      return new CharacterMotionGesture(editorProjectStore, { shotId: shot.id, layerId: motionLayer.id, partId, timeMs: timelineUi.currentTimeMs, autoKey: timelineUi.characterMotionAutoKey }, () =>
+        shotStore.getCurrentShotId() === shot.id && selectionStore.getSelectedLayerId() === motionLayer.id && selectionStore.getSelectedCharacterPartId() === partId &&
+        timelineUiStore.getSnapshot().currentTimeMs === timelineUi.currentTimeMs && timelineUiStore.getSnapshot().characterMotionAutoKey === timelineUi.characterMotionAutoKey);
+    },
+  } : undefined;
+  };
   const selectedStructuredNodeReady = Boolean(
     selectedFlaGraphicTarget &&
       selectedFlaGraphicNode &&
@@ -988,7 +1017,7 @@ export function CanvasStage({
   const structuredTransformerVisible = Boolean(
     flaGraphicEditActive && selectedStructuredNodeCanTransform,
   );
-  const layerTransformerVisible = !flaGraphicEditActive && isTransformerOverlayVisible({
+  const layerTransformerVisible = !selectedMotionPartId && !flaGraphicEditActive && isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
         selectedStageLayer.render.visible &&
@@ -1022,6 +1051,7 @@ export function CanvasStage({
           <span>{shot ? shot.name : '未选择镜头'}</span>
         </div>
       ) : null}
+      {motionError ? <div role="alert">{motionError}</div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
         dropInteractionDisabled={temporalInspection}
@@ -1233,6 +1263,7 @@ export function CanvasStage({
                             : undefined;
                         return (
                           <SelectableLayer
+                            characterMotion={motionCanvasForLayer(layer)}
                             directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}

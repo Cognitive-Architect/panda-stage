@@ -172,8 +172,8 @@ export function getLayerBackgroundControlModel(
       state: 'background',
       canSet: false,
       message: layer.locked
-        ? '已选择正式背景且已锁定，请在下方解锁后编辑。'
-        : '已选择正式背景，可编辑变换；完成后请重新锁定。',
+        ? '背景已锁定。'
+        : '',
     };
   }
   if (layer.locked) {
@@ -181,7 +181,7 @@ export function getLayerBackgroundControlModel(
       ...management,
       state: 'locked',
       canSet: false,
-      message: '请先解锁图层，再将其设为正式背景。',
+      message: '请先解锁图层。',
     };
   }
   const dimensions = snapshot
@@ -192,14 +192,14 @@ export function getLayerBackgroundControlModel(
       ...management,
       state: 'unsupported',
       canSet: false,
-      message: '当前对象不能设为正式背景。',
+      message: '此对象不能设为背景。',
     };
   }
   return {
     ...management,
     state: 'available',
     canSet: true,
-    message: '将此图层设为正式背景后，会应用 Cover 填充几何。',
+    message: '',
   };
 }
 
@@ -243,10 +243,10 @@ export function getLandscapeBackgroundGuidance(
       return '当前选择不可用，请重新选择。';
     case 'background':
       return model.backgroundLayer?.locked
-        ? '当前背景已锁定，解锁后可编辑。'
-        : '已选择当前背景，可编辑变换。完成后请重新锁定。';
+        ? '背景已锁定。'
+        : '';
     case 'locked':
-      return '图层已锁定，解锁后可设为背景。';
+      return '请先解锁图层。';
     case 'unsupported':
       return '此对象不能设为背景。';
     case 'available':
@@ -301,14 +301,7 @@ export function LayerBackgroundControl({
     if (!model.canSelect) return;
     try {
       selectionStore.selectBackground();
-      setStatus(
-        statusCopy(
-          model.backgroundLayer?.locked
-            ? '已选择当前背景，当前背景已锁定。'
-            : '已选择当前背景。',
-          '已选择正式背景，可进行显式管理。',
-        ),
-      );
+      setStatus('');
     } catch (error) {
       setStatus(
         error instanceof Error
@@ -327,9 +320,7 @@ export function LayerBackgroundControl({
       );
       if (nextShot?.backgroundLayerId === selectedLayerId) {
         selectionStore.selectBackground();
-        setStatus(
-          statusCopy('已设为背景，并已锁定。', '该图层已设为正式背景，并默认锁定。'),
-        );
+        setStatus('');
       }
     } catch (error) {
       setStatus(
@@ -344,12 +335,7 @@ export function LayerBackgroundControl({
     if (!model.canClear) return;
     try {
       layerStore.clearBackground();
-      setStatus(
-        statusCopy(
-          '已清除当前背景。',
-          '已清除正式背景标识；该图层仍保留为普通图层。',
-        ),
-      );
+      setStatus('');
     } catch (error) {
       setStatus(
         error instanceof Error
@@ -363,9 +349,7 @@ export function LayerBackgroundControl({
     if (!model.canFill) return;
     try {
       layerStore.fillBackground();
-      setStatus(
-        statusCopy('已填充画布。', '已使用持久化的 Cover 几何修复背景。'),
-      );
+      setStatus('');
     } catch (error) {
       setStatus(
         error instanceof Error
@@ -576,9 +560,9 @@ export function LayerBackgroundControl({
                   </span>
                 </button>
               </div>
-              <p data-testid="layer-background-guidance">
+              {status || model.message ? <p data-testid="layer-background-guidance">
                 {status || model.message}
-              </p>
+              </p> : null}
             </div>
           ) : null}
         </>
@@ -630,7 +614,7 @@ export function LayerBackgroundControl({
               填充画布
             </button>
           </div>
-          <p data-testid="layer-background-guidance">{status || model.message}</p>
+          {status || model.message ? <p data-testid="layer-background-guidance">{status || model.message}</p> : null}
         </>
       )}
     </section>

@@ -1,4 +1,5 @@
 import Konva from 'konva';
+import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
 import {
   Group,
   Image as KonvaImage,
@@ -30,6 +31,7 @@ interface Point {
 }
 
 export interface SelectableLayerProps {
+  characterMotion?: CharacterMotionCanvas;
   /** Compatibility primary image for ordinary/legacy callers. */
   image?: HTMLImageElement;
   /** The complete visual resolved by the domain visual-parts contract. */
@@ -73,6 +75,7 @@ function stopAndSelect(
 }
 
 export function SelectableLayer({
+  characterMotion,
   image,
   images,
   imagesByResourceKey,
@@ -96,7 +99,8 @@ export function SelectableLayer({
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const canTransform = canMove && !flaGraphicEditProjection;
+  const editingPart = Boolean(characterMotion?.selectedPartId);
+  const canTransform = canMove && !flaGraphicEditProjection && !editingPart;
 
   const legacyBounds = {
     x: -render.offsetX,
@@ -174,6 +178,12 @@ export function SelectableLayer({
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
     if (!visualNode) return;
     visualNode.clearCache();
+    if (characterMotion) {
+      // Refresh per-Part hit targets after all children have committed, including
+      // on an unselected Layer. Avoid retaining the previous composite hit map.
+      queueMicrotask(() => visualNode.getLayer()?.drawHit());
+      return;
+    }
     if (
       !compositeVisual ||
       !completeVisualReady ||
@@ -197,14 +207,20 @@ export function SelectableLayer({
     image: partImage,
     flaGraphicCanvas,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+    const select = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+      event.cancelBubble = true;
+      if (characterMotion && (part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic')) {
+        characterMotion.select(part.source.characterPartId);
+      } else onSelect(layer.id);
+    };
     if (part.flaGraphic) {
       if (!flaGraphicCanvas) return null;
       return (
         <Group
           key={part.partId}
           listening={canSelect}
-          onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-          onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+          onClick={select}
+          onTap={select}
           {...visualPartRenderTransform(part)}
         >
           <KonvaImage
@@ -224,13 +240,16 @@ export function SelectableLayer({
         image={partImage}
         key={part.partId}
         listening={canSelect}
-        onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-        onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+        onClick={select}
+        onTap={select}
         {...visualPartRenderTransform(part)}
         width={part.localRect.width}
       />
     );
   };
+  const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => characterMotion
+    ? <CharacterMotionPart key={entry.part.partId + characterMotion.contextKey} part={entry.part} motion={characterMotion} owner={nodeRef}>{renderPart(entry)}</CharacterMotionPart>
+    : renderPart(entry);
   const renderHitArea = ({
     part,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
@@ -259,7 +278,7 @@ export function SelectableLayer({
           <>
             {visiblePartImages
               .filter(({ part }) => !headPartIds.has(part.partId))
-              .map(renderPart)}
+              .map(renderMotionPart)}
             <Group
               key={headGroup.id}
               listening={canSelect}
@@ -268,13 +287,13 @@ export function SelectableLayer({
             >
               {visiblePartImages
                 .filter(({ part }) => headPartIds.has(part.partId))
-                .map(renderPart)}
+                .map(renderMotionPart)}
             </Group>
           </>
         )
       : visiblePartImages.length === 1
-        ? renderPart(visiblePartImages[0]!)
-        : visiblePartImages.map(renderPart)
+        ? renderMotionPart(visiblePartImages[0]!)
+        : visiblePartImages.map(renderMotionPart)
     : null;
   const renderedHitAreas =
     compositeVisual && completeVisualReady
@@ -447,7 +466,7 @@ export function SelectableLayer({
         ) : (
           renderedParts
         )}
-        {!flaGraphicEditProjection ? renderedHitAreas : null}
+        {!flaGraphicEditProjection && !characterMotion ? renderedHitAreas : null}
         {!flaGraphicEditProjection && animationVisual ? (
           <Rect
             fill="#000000"
@@ -462,7 +481,7 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady && !flaGraphicEditProjection ? (
+        {selected && completeVisualReady && !flaGraphicEditProjection && !editingPart ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}

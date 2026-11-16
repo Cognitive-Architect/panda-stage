@@ -103,6 +103,15 @@ export class ShotService {
       layers: source.layers.map((layer) => ({
         ...layer,
         id: layerIds.get(layer.id)!,
+        ...(layer.animationClip ? { animationClip: {
+          ...layer.animationClip,
+          targetBases: layer.animationClip.targetBases.map(basis => ({
+            ...basis, target: { ...basis.target, layerId: layerIds.get(layer.id)! },
+          })),
+          tracks: layer.animationClip.tracks.map(track => ({
+            ...track, target: { ...track.target, layerId: layerIds.get(layer.id)! },
+          })),
+        } } : {}),
       })),
       backgroundLayerId:
         source.backgroundLayerId === null

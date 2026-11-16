@@ -74,6 +74,10 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
           : undefined;
       return {
         id: layer.id,
+        ...(layer.animationClip ? {
+          animationValues: evaluatedAtZero.get(layer.id)?.animationValues,
+          animationTimeMs: 0,
+        } : {}),
         assetId: animationAtZero?.assetId ?? asset?.id ?? '',
         ...(animationAtZero?.animationFrame
           ? { animationFrame: animationAtZero.animationFrame }

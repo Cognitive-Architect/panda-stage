@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnimationClipV0Schema } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
@@ -221,7 +222,8 @@ export const LayerV15AdaptiveSchema = z
 /** Backward-compatible name for the PR branch's historical v15 contract. */
 export const LayerV15Schema = LayerV15AnimationSchema;
 
-export const LayerSchema = z
+/** Frozen v20 Layer reader, before Animation Core. */
+export const LayerV20Schema = z
   .object({
     ...LayerV15AnimationShape,
     source: LayerSourceSchema,
@@ -236,6 +238,22 @@ export const LayerSchema = z
   .superRefine((layer, context) => {
     validateAnimationLayerFields(layer, context, true);
   });
+
+export const LayerSchema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipV0Schema.optional(),
+}).superRefine((layer, context) => {
+  if (!layer.animationClip) return;
+  if (layer.source.kind !== 'character') {
+    context.addIssue({ code: 'custom', path: ['animationClip'], message: 'Only Character layers may contain an animation clip.' });
+  }
+  for (const collection of ['targetBases', 'tracks'] as const) {
+    layer.animationClip[collection].forEach((entry, index) => {
+      if (entry.target.layerId !== layer.id) {
+        context.addIssue({ code: 'custom', path: ['animationClip', collection, index, 'target', 'layerId'], message: 'Animation target must belong to its owning Layer.' });
+      }
+    });
+  }
+});
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z
