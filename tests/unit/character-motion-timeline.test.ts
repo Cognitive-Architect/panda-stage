@@ -17,7 +17,10 @@ import {
 } from '../../src/domain';
 import { CharacterMotionPart } from '../../src/renderer/features/canvas/CharacterMotionPart';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
-import { previewCharacterMotionKeyGroupShift } from '../../src/renderer/features/timeline/characterMotionKeyGesture';
+import {
+  previewCharacterMotionKeyGroupShift,
+  resolveNearestCharacterMotionKey,
+} from '../../src/renderer/features/timeline/characterMotionKeyGesture';
 import { PendingDialoguePlacementProvider } from '../../src/renderer/features/timeline/PendingDialoguePlacement';
 import { TimelineDock } from '../../src/renderer/features/timeline/TimelineDock';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
@@ -892,7 +895,7 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
     }
   });
 
-  it('gives Cloud Touch 44px hit targets for keys, overview markers, and group toggle without inflating glyphs or desktop layout (#1137)', () => {
+  it('keeps Key/Overview sibling DOM compact on Cloud Touch while keeping 44px group toggle (#1137 / #1138)', () => {
     const css = readFileSync(
       path.resolve('src/renderer/styles/features/canvas/character-motion.css'),
       'utf8',
@@ -904,12 +907,259 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
     // Overview glyph dot & focus ring stay restrained and crisp.
     expect(css).toMatch(/\.character-motion-overview-marker > span\s*\{[\s\S]*?width:\s*7px;[\s\S]*?height:\s*7px;/u);
     expect(css).toMatch(/\.character-motion-group-toggle:focus-visible\s*\{[\s\S]*?outline:\s*2px solid/u);
-    // Cloud Touch landscape expands group toggle, Composite Key, and overview marker hit boxes to >= 44x44px.
+    // Cloud Touch landscape keeps standalone group toggle at 44x44px, and must NOT widen Key/Overview DOM siblings to 44px.
     expect(css).toMatch(
       /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-group-toggle\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-width:\s*44px;[\s\S]*?height:\s*44px;[\s\S]*?min-height:\s*44px;/u,
     );
-    expect(css).toMatch(
-      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-keys button,\s*\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-overview-marker\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-width:\s*44px;[\s\S]*?height:\s*44px;[\s\S]*?min-height:\s*44px;/u,
+    expect(css).not.toMatch(
+      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-keys button[\s\S]*?width:\s*44px;/u,
     );
+    expect(css).not.toMatch(
+      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-overview-marker[\s\S]*?width:\s*44px;/u,
+    );
+  });
+
+  it('resolves dense touch hits (<44px apart) to a unique nearest owner without sibling stealing or desktop snapping (#1138)', async () => {
+    // Pure resolver contract: <44px center spacing, overlap nearest-hit, deterministic tie-break, +/-22px cutoff.
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 100,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBe(100);
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 114,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBe(114);
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 105,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBe(100);
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 109,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBe(114);
+    // Exact midpoint tie breaks deterministically to earlier timestamp regardless of input order.
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 107,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [114, 100],
+      }),
+    ).toBe(100);
+    // Reach within +/-22px hits; beyond 22px returns null.
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 135,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBe(114);
+    expect(
+      resolveNearestCharacterMotionKey({
+        pointerX: 137,
+        trackLeft: 0,
+        pixelsPerMs: 1,
+        timesMs: [100, 114],
+      }),
+    ).toBeNull();
+
+    const base = multiPartMixedFixture();
+    const { rightHandId, layerId } = base;
+    const service = new CharacterMotionService();
+    const target = { shotId: IDS.shot, layerId, partId: rightHandId };
+    // Dense frames: 500ms & 542ms + isolated key at 1000ms.
+    let project = service.apply(base.project, { ...target, timeMs: 542, autoKey: true }, { 'transform.rotationDeg': 60 });
+    project = service.apply(project, { ...target, timeMs: 1000, autoKey: true }, { 'transform.rotationDeg': 90 });
+
+    editorProjectStore.open('D:/test-v1-polish-dense-touch', project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(layerId);
+    selectionStore.selectCharacterPart(rightHandId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(0, 3000);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const dispatchPointer = (
+      targetEl: EventTarget,
+      type: string,
+      pointerType: 'touch' | 'mouse',
+      clientX: number,
+      shiftKey = false,
+    ) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerType', { configurable: true, value: pointerType });
+      Object.defineProperty(event, 'pointerId', { configurable: true, value: 21 });
+      Object.defineProperty(event, 'button', { configurable: true, value: 0 });
+      Object.defineProperty(event, 'clientX', { configurable: true, value: clientX });
+      Object.defineProperty(event, 'shiftKey', { configurable: true, value: shiftKey });
+      targetEl.dispatchEvent(event);
+    };
+    const clickEl = (el: HTMLElement, shiftKey = false) => {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey, detail: 1 }));
+    };
+
+    // Mock clientWidth=900 (~0.27-0.30 px/ms on 3000ms Shot) so 500ms & 542ms sit ~12px (<44px) apart.
+    const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId })));
+      const lane = host.querySelector<HTMLElement>(
+        `[data-testid="character-motion-part-lane"][data-part-id="${rightHandId}"] .character-motion-keys`,
+      )!;
+      const overviewLane = host.querySelector<HTMLElement>('.character-motion-overview-keys')!;
+      const pxPerMs = Number.parseFloat(lane.style.width) / 3000;
+      const center500 = 500 * pxPerMs;
+      const center542 = 542 * pxPerMs;
+      const center1000 = 1000 * pxPerMs;
+      expect(center542 - center500).toBeGreaterThan(0);
+      expect(center542 - center500).toBeLessThan(20);
+
+      const keyAt = (timeMs: number) =>
+        host.querySelector<HTMLButtonElement>(
+          `[data-testid="character-motion-part-lane"][data-part-id="${rightHandId}"] button[data-time-ms="${timeMs}"]`,
+        )!;
+      const overviewAt = (timeMs: number) =>
+        host.querySelector<HTMLButtonElement>(
+          `[data-testid="character-motion-overview-marker"][data-time-ms="${timeMs}"]`,
+        )!;
+
+      // Even when sibling keyB (542ms) is the DOM target at center500, touch resolves unique owner Key A (500ms).
+      await act(async () => {
+        dispatchPointer(keyAt(542), 'pointerdown', 'touch', center500);
+        dispatchPointer(keyAt(542), 'pointerup', 'touch', center500);
+        clickEl(keyAt(542), false);
+      });
+      expect(keyAt(500).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(542).getAttribute('data-selected')).toBe('false');
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+
+      // Touch closer to 542ms selects 542ms cleanly.
+      const closerToB = (center500 + center542) / 2 + 2;
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', closerToB);
+        dispatchPointer(lane, 'pointerup', 'touch', closerToB);
+      });
+      expect(keyAt(542).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(500).getAttribute('data-selected')).toBe('false');
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(542);
+
+      // Shift+touch near 500ms adds 500ms to multi-selection ([500, 542]).
+      await act(async () => {
+        dispatchPointer(keyAt(542), 'pointerdown', 'touch', center500, true);
+        dispatchPointer(keyAt(542), 'pointerup', 'touch', center500, true);
+        clickEl(keyAt(542), true);
+      });
+      expect(keyAt(500).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(542).getAttribute('data-selected')).toBe('true');
+
+      // Touch within +/-22px wide reach (center1000 + 18px) selects isolated 1000ms key.
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', center1000 + 18);
+        dispatchPointer(lane, 'pointerup', 'touch', center1000 + 18);
+      });
+      expect(keyAt(1000).getAttribute('data-selected')).toBe('true');
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1000);
+
+      // Touch on blank lane far from any key does NOT seek (preserves #1135).
+      const blankX = 2200 * pxPerMs;
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', blankX);
+        dispatchPointer(lane, 'pointerup', 'touch', blankX);
+        clickEl(lane);
+      });
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1000);
+
+      // Desktop mouse 18px away from 1000ms on blank lane does NOT snap to 1000ms.
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'mouse', center1000 + 18);
+        dispatchPointer(lane, 'pointerup', 'mouse', center1000 + 18);
+        clickEl(lane);
+      });
+      expect(keyAt(1000).getAttribute('data-selected')).toBe('false');
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1000);
+
+      // Touch drag starting at 542ms keeps unique owner 542ms even when moving far right, committing once cleanly.
+      await act(async () => dispatchPointer(lane, 'pointerdown', 'touch', center542));
+      await act(async () => dispatchPointer(lane, 'pointermove', 'touch', center542 + 250 * pxPerMs));
+      expect(keyAt(542).getAttribute('data-dragging')).toBe('true');
+      expect(keyAt(500).getAttribute('data-dragging')).toBe('false');
+      await act(async () => dispatchPointer(lane, 'pointerup', 'touch', center542 + 250 * pxPerMs));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      const layerAfterDrag = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find((l) => l.id === layerId)!;
+      expect(characterCompositeKeyTimes(layerAfterDrag, rightHandId)).toEqual([0, 500, 792, 1000]);
+
+      // Overview markers: touch at center500 dispatched on sibling overview500 or overview542 resolves unique 500ms!
+      await act(async () => {
+        dispatchPointer(overviewAt(500), 'pointerdown', 'touch', center500);
+        dispatchPointer(overviewAt(500), 'pointerup', 'touch', center500);
+        clickEl(overviewAt(500), false);
+      });
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+      await act(async () => {
+        dispatchPointer(overviewLane, 'pointerdown', 'touch', 792 * pxPerMs + 10);
+        dispatchPointer(overviewLane, 'pointerup', 'touch', 792 * pxPerMs + 10);
+      });
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(792);
+
+      // Touch Shift-selects [500, 792] and group-drags together (1 more History); then [0, 625] blocks at drag-start.
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', center500, false);
+        dispatchPointer(lane, 'pointerup', 'touch', center500, false);
+      });
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', 792 * pxPerMs, true);
+        dispatchPointer(lane, 'pointerup', 'touch', 792 * pxPerMs, true);
+      });
+      await act(async () => dispatchPointer(lane, 'pointerdown', 'touch', center500));
+      await act(async () => dispatchPointer(lane, 'pointermove', 'touch', center500 + 125 * pxPerMs));
+      expect(keyAt(500).getAttribute('data-dragging')).toBe('true');
+      expect(keyAt(792).getAttribute('data-dragging')).toBe('true');
+      await act(async () => dispatchPointer(lane, 'pointerup', 'touch', center500 + 125 * pxPerMs));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+      const afterTouchBatch = editorProjectStore.getSnapshot()!.project;
+      expect(
+        characterCompositeKeyTimes(
+          afterTouchBatch.shots[0]!.layers.find((l) => l.id === layerId)!,
+          rightHandId,
+        ),
+      ).toEqual([0, 625, 917, 1000]);
+
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', 625 * pxPerMs, false);
+        dispatchPointer(lane, 'pointerup', 'touch', 625 * pxPerMs, false);
+      });
+      await act(async () => {
+        dispatchPointer(lane, 'pointerdown', 'touch', 0, true);
+        dispatchPointer(lane, 'pointerup', 'touch', 0, true);
+      });
+      await act(async () => dispatchPointer(lane, 'pointerdown', 'touch', 625 * pxPerMs));
+      await act(async () => dispatchPointer(lane, 'pointermove', 'touch', 625 * pxPerMs + 40));
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe('基础姿势不能批量移动');
+      expect(keyAt(625).getAttribute('data-dragging')).toBe('false');
+      await act(async () => dispatchPointer(lane, 'pointerup', 'touch', 625 * pxPerMs + 40));
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+    } finally {
+      clientWidthSpy.mockRestore();
+      await act(async () => root.unmount());
+      host.remove();
+    }
   });
 });

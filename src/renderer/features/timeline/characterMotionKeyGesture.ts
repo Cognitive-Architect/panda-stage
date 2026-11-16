@@ -4,10 +4,61 @@ import {
   TIMELINE_FPS,
 } from '../../../domain/timeline/frame-grid';
 
+export const CHARACTER_MOTION_TOUCH_HIT_RADIUS_PX = 22;
+
 export interface CharacterMotionKeyGroupPreview {
   deltaFrames: number;
   anchorPreviewTimeMs: number;
   previewTimesByOrigin: ReadonlyMap<number, number>;
+}
+
+/**
+ * Resolve the single closest key within the touch hit radius (`±22px`), independent of DOM stacking order.
+ * Ties break deterministically toward the earlier timestamp.
+ */
+export function resolveNearestCharacterMotionKey(input: {
+  pointerX: number;
+  trackLeft: number;
+  pixelsPerMs: number;
+  timesMs: readonly number[];
+  hitRadiusPx?: number;
+}): number | null {
+  const {
+    pointerX,
+    trackLeft,
+    pixelsPerMs,
+    timesMs,
+    hitRadiusPx = CHARACTER_MOTION_TOUCH_HIT_RADIUS_PX,
+  } = input;
+  if (
+    !Number.isFinite(pointerX) ||
+    !Number.isFinite(trackLeft) ||
+    !Number.isFinite(pixelsPerMs) ||
+    pixelsPerMs <= 0 ||
+    !Number.isFinite(hitRadiusPx) ||
+    hitRadiusPx <= 0 ||
+    timesMs.length === 0
+  ) {
+    return null;
+  }
+
+  const localX = pointerX - trackLeft;
+  const sortedTimes = [...timesMs].sort((left, right) => left - right);
+  let bestTime: number | null = null;
+  let bestDistance = Infinity;
+  for (const timeMs of sortedTimes) {
+    const distance = Math.abs(localX - timeMs * pixelsPerMs);
+    if (distance > hitRadiusPx) continue;
+    if (
+      bestTime === null ||
+      distance < bestDistance - 1e-6 ||
+      (Math.abs(distance - bestDistance) <= 1e-6 && timeMs < bestTime)
+    ) {
+      bestTime = timeMs;
+      bestDistance = distance;
+    }
+  }
+  return bestTime;
 }
 
 function frameIndex(timeMs: number): number {

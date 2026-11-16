@@ -33,7 +33,10 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { IconButton } from '../../ui/Button';
 import { characterMotionParts } from '../canvas/characterMotionContext';
-import { previewCharacterMotionKeyGroupShift } from './characterMotionKeyGesture';
+import {
+  previewCharacterMotionKeyGroupShift,
+  resolveNearestCharacterMotionKey,
+} from './characterMotionKeyGesture';
 import { PositionLaneErrorNotice } from './PositionLane';
 import { formatTimecode } from './timeGeometry';
 import { timelineUiStore } from './timelineUiStore';
@@ -70,13 +73,181 @@ interface KeyDragSession {
   deltaFrames: number;
   anchorPreviewTimeMs: number;
   previewTimesByOrigin: ReadonlyMap<number, number>;
-  blockedBase: boolean;
   moved: boolean;
   snapshot: EditorProjectSnapshot;
   instanceId: number | null;
 }
 
+type TouchKeySession =
+  | {
+      kind: 'tap';
+      pointerId: number;
+      partId: string;
+      ownerTimeMs: number;
+      shiftKey: boolean;
+    }
+  | {
+      kind: 'blocked-base';
+      pointerId: number;
+      partId: string;
+      ownerTimeMs: number;
+      startX: number;
+    }
+  | {
+      kind: 'drag';
+      pointerId: number;
+      partId: string;
+      ownerTimeMs: number;
+      drag: KeyDragSession;
+    };
+
 const motionService = new CharacterMotionService();
+
+function prepareKeyDragSession(input: {
+  pointerId: number;
+  startX: number;
+  partId: string;
+  anchorTimeMs: number;
+  selectedTimesForPart: readonly number[];
+  allPartTimes: readonly number[];
+  snapshot: EditorProjectSnapshot | null;
+  instanceId: number | null;
+  shotId: string;
+  layerId: string;
+}):
+  | { kind: 'blocked-base'; pointerId: number; startX: number; ownerTimeMs: number }
+  | { kind: 'drag'; session: KeyDragSession }
+  | { kind: 'stale' }
+  | { kind: 'ignore' } {
+  const dragGroup = input.selectedTimesForPart.includes(input.anchorTimeMs)
+    ? input.selectedTimesForPart
+    : [input.anchorTimeMs];
+  if (dragGroup.length > 1 && dragGroup.includes(0)) {
+    return {
+      kind: 'blocked-base',
+      pointerId: input.pointerId,
+      startX: input.startX,
+      ownerTimeMs: input.anchorTimeMs,
+    };
+  }
+  if (input.anchorTimeMs === 0) {
+    return { kind: 'ignore' };
+  }
+  if (
+    !input.snapshot ||
+    !isCurrentCharacterMotionContext({
+      snapshot: input.snapshot,
+      instanceId: input.instanceId,
+      shotId: input.shotId,
+      layerId: input.layerId,
+      partId: input.partId,
+      requireSelectedPart: false,
+      keyTimesMs: dragGroup,
+    })
+  ) {
+    return { kind: 'stale' };
+  }
+  return {
+    kind: 'drag',
+    session: {
+      pointerId: input.pointerId,
+      startX: input.startX,
+      fromTimesMs: dragGroup,
+      unselectedTimesMs: input.allPartTimes.filter((candidate) => !dragGroup.includes(candidate)),
+      anchorTimeMs: input.anchorTimeMs,
+      deltaFrames: 0,
+      anchorPreviewTimeMs: input.anchorTimeMs,
+      previewTimesByOrigin: new Map(dragGroup.map((candidate) => [candidate, candidate])),
+      moved: false,
+      snapshot: input.snapshot,
+      instanceId: input.instanceId,
+    },
+  };
+}
+
+function stepKeyDragSession(
+  drag: KeyDragSession,
+  clientX: number,
+  pixelsPerMs: number,
+  durationMs: number,
+  partId: string,
+): KeyGroupDragPreview | null {
+  const deltaPx = clientX - drag.startX;
+  if (!drag.moved && Math.abs(deltaPx) < 3) return null;
+  drag.moved = true;
+  const preview = previewCharacterMotionKeyGroupShift({
+    fromTimesMs: drag.fromTimesMs,
+    anchorTimeMs: drag.anchorTimeMs,
+    unselectedTimesMs: drag.unselectedTimesMs,
+    deltaPx,
+    pixelsPerMs,
+    durationMs,
+  });
+  drag.deltaFrames = preview.deltaFrames;
+  drag.anchorPreviewTimeMs = preview.anchorPreviewTimeMs;
+  drag.previewTimesByOrigin = preview.previewTimesByOrigin;
+  return {
+    partId,
+    anchorTimeMs: drag.anchorTimeMs,
+    previewTimesByOrigin: preview.previewTimesByOrigin,
+  };
+}
+
+function commitKeyDragSession(
+  drag: KeyDragSession,
+  shotId: string,
+  layerId: string,
+  partId: string,
+  onRetime: (partId: string, nextTimesMs: readonly number[], anchorTimeMs: number) => void,
+  onError: (message: string) => void,
+): void {
+  if (
+    !isCurrentCharacterMotionContext({
+      snapshot: drag.snapshot,
+      instanceId: drag.instanceId,
+      shotId,
+      layerId,
+      partId,
+      keyTimesMs: drag.fromTimesMs,
+    })
+  ) {
+    onError('动作关键帧已变化，请重新选择后再操作。');
+    return;
+  }
+  if (drag.deltaFrames === 0) return;
+  try {
+    if (drag.fromTimesMs.length === 1) {
+      const next = motionService.retimeCompositeKey(drag.snapshot.project, {
+        shotId,
+        layerId,
+        partId,
+        fromTimeMs: drag.fromTimesMs[0]!,
+        toTimeMs: drag.anchorPreviewTimeMs,
+      });
+      if (next !== drag.snapshot.project) {
+        editorProjectStore.updateProject(next, '调整动作关键帧时间');
+      }
+      onRetime(partId, [drag.anchorPreviewTimeMs], drag.anchorPreviewTimeMs);
+      return;
+    }
+    const next = motionService.retimeCompositeKeys(drag.snapshot.project, {
+      shotId,
+      layerId,
+      partId,
+      fromTimesMs: drag.fromTimesMs,
+      deltaFrames: drag.deltaFrames,
+    });
+    if (next !== drag.snapshot.project) {
+      editorProjectStore.updateProject(next, '批量调整动作关键帧时间');
+    }
+    const movedTimes = drag.fromTimesMs.map(
+      (origin) => drag.previewTimesByOrigin.get(origin) ?? origin,
+    );
+    onRetime(partId, movedTimes, drag.anchorPreviewTimeMs);
+  } catch (operationError) {
+    onError(errorText(operationError));
+  }
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : '动作关键帧操作失败，请重试。';
@@ -169,6 +340,10 @@ export function CharacterMotionLane({
   const lastFocusedKeyRef = useRef<string | null>(null);
   const prevPartIdRef = useRef(partId);
   const prevRevealNonceRef = useRef(revealNonce);
+  const touchKeySessionRef = useRef<TouchKeySession | null>(null);
+  const suppressTouchClickPartRef = useRef<string | null>(null);
+  const overviewTouchSessionRef = useRef<{ pointerId: number; ownerTimeMs: number } | null>(null);
+  const suppressOverviewClickRef = useRef(false);
   const layer = shot.layers.find((candidate) => candidate.id === layerId);
   const allParts = characterMotionParts(project, layer);
 
@@ -190,6 +365,10 @@ export function CharacterMotionLane({
     setSelectedKey((current) => (current?.partId === partId ? current : null));
     setDragPreview(null);
     setProtectedCuePartId(null);
+    touchKeySessionRef.current = null;
+    suppressTouchClickPartRef.current = null;
+    overviewTouchSessionRef.current = null;
+    suppressOverviewClickRef.current = false;
     setClipboard(null);
     setActionsOpen(false);
     setError(null);
@@ -651,6 +830,52 @@ export function CharacterMotionLane({
         <div
           className="timeline-lane-content character-motion-overview-keys"
           style={{ width: `${trackWidth}px` }}
+          onPointerDownCapture={(event) => {
+            if (event.pointerType !== 'touch' || event.button !== 0) return;
+            const nearestTime = resolveNearestCharacterMotionKey({
+              pointerX: event.clientX,
+              trackLeft: event.currentTarget.getBoundingClientRect().left,
+              pixelsPerMs,
+              timesMs: overviewTimes,
+            });
+            if (nearestTime === null) return;
+            event.stopPropagation();
+            if (overviewTouchSessionRef.current) return;
+            overviewTouchSessionRef.current = {
+              pointerId: event.pointerId,
+              ownerTimeMs: nearestTime,
+            };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerUpCapture={(event) => {
+            const session = overviewTouchSessionRef.current;
+            if (!session || session.pointerId !== event.pointerId) return;
+            event.stopPropagation();
+            overviewTouchSessionRef.current = null;
+            if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+            suppressOverviewClickRef.current = true;
+            window.setTimeout(() => {
+              suppressOverviewClickRef.current = false;
+            }, 0);
+            timelineUiStore.seek(session.ownerTimeMs, shot.durationMs);
+          }}
+          onPointerCancelCapture={(event) => {
+            if (overviewTouchSessionRef.current?.pointerId === event.pointerId) {
+              overviewTouchSessionRef.current = null;
+            }
+          }}
+          onLostPointerCapture={(event) => {
+            if (overviewTouchSessionRef.current?.pointerId === event.pointerId) {
+              overviewTouchSessionRef.current = null;
+            }
+          }}
+          onClickCapture={(event) => {
+            if (!suppressOverviewClickRef.current) return;
+            event.stopPropagation();
+            suppressOverviewClickRef.current = false;
+          }}
         >
           {overviewTimes.map((time) => (
             <button
@@ -729,6 +954,197 @@ export function CharacterMotionLane({
                 <div
                   className="timeline-lane-content character-motion-keys"
                   style={{ width: `${trackWidth}px` }}
+                  onPointerDownCapture={(event) => {
+                    if (event.pointerType !== 'touch' || event.button !== 0) return;
+                    const nearestTime = resolveNearestCharacterMotionKey({
+                      pointerX: event.clientX,
+                      trackLeft: event.currentTarget.getBoundingClientRect().left,
+                      pixelsPerMs,
+                      timesMs: times,
+                    });
+                    if (nearestTime === null) return;
+                    event.stopPropagation();
+                    if (touchKeySessionRef.current) return;
+                    selectPart(part.partId);
+                    event.currentTarget.setPointerCapture?.(event.pointerId);
+                    if (event.shiftKey || layer.locked || productPreviewOpen) {
+                      touchKeySessionRef.current = {
+                        kind: 'tap',
+                        pointerId: event.pointerId,
+                        partId: part.partId,
+                        ownerTimeMs: nearestTime,
+                        shiftKey: event.shiftKey,
+                      };
+                      return;
+                    }
+                    const activeSelected =
+                      selectedKey?.partId === part.partId ? selectedKeyTimes : [];
+                    const prepared = prepareKeyDragSession({
+                      pointerId: event.pointerId,
+                      startX: event.clientX,
+                      partId: part.partId,
+                      anchorTimeMs: nearestTime,
+                      selectedTimesForPart: activeSelected,
+                      allPartTimes: times,
+                      snapshot,
+                      instanceId,
+                      shotId: shot.id,
+                      layerId: layer.id,
+                    });
+                    if (prepared.kind === 'stale') {
+                      setError('动作关键帧已变化，请重新选择后再操作。');
+                      return;
+                    }
+                    if (prepared.kind === 'ignore') {
+                      touchKeySessionRef.current = {
+                        kind: 'tap',
+                        pointerId: event.pointerId,
+                        partId: part.partId,
+                        ownerTimeMs: nearestTime,
+                        shiftKey: false,
+                      };
+                      return;
+                    }
+                    if (prepared.kind === 'blocked-base') {
+                      touchKeySessionRef.current = {
+                        kind: 'blocked-base',
+                        pointerId: event.pointerId,
+                        partId: part.partId,
+                        ownerTimeMs: nearestTime,
+                        startX: event.clientX,
+                      };
+                      return;
+                    }
+                    touchKeySessionRef.current = {
+                      kind: 'drag',
+                      pointerId: event.pointerId,
+                      partId: part.partId,
+                      ownerTimeMs: nearestTime,
+                      drag: prepared.session,
+                    };
+                  }}
+                  onPointerMoveCapture={(event) => {
+                    const session = touchKeySessionRef.current;
+                    if (
+                      !session ||
+                      session.partId !== part.partId ||
+                      session.pointerId !== event.pointerId
+                    ) {
+                      return;
+                    }
+                    event.stopPropagation();
+                    if (session.kind === 'tap') return;
+                    if (session.kind === 'blocked-base') {
+                      if (Math.abs(event.clientX - session.startX) >= 3) {
+                        touchKeySessionRef.current = null;
+                        suppressTouchClickPartRef.current = part.partId;
+                        setError('基础姿势不能批量移动');
+                        setProtectedCuePartId(part.partId);
+                      }
+                      return;
+                    }
+                    if (
+                      layer.locked ||
+                      productPreviewOpen ||
+                      session.drag.snapshot !== snapshot
+                    ) {
+                      touchKeySessionRef.current = null;
+                      setDragPreview(null);
+                      return;
+                    }
+                    const nextPreview = stepKeyDragSession(
+                      session.drag,
+                      event.clientX,
+                      pixelsPerMs,
+                      shot.durationMs,
+                      part.partId,
+                    );
+                    if (nextPreview) setDragPreview(nextPreview);
+                  }}
+                  onPointerUpCapture={(event) => {
+                    if (suppressTouchClickPartRef.current === part.partId) {
+                      event.stopPropagation();
+                      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                        event.currentTarget.releasePointerCapture(event.pointerId);
+                      }
+                      window.setTimeout(() => {
+                        if (suppressTouchClickPartRef.current === part.partId) {
+                          suppressTouchClickPartRef.current = null;
+                        }
+                      }, 0);
+                      return;
+                    }
+                    const session = touchKeySessionRef.current;
+                    if (
+                      !session ||
+                      session.partId !== part.partId ||
+                      session.pointerId !== event.pointerId
+                    ) {
+                      return;
+                    }
+                    event.stopPropagation();
+                    touchKeySessionRef.current = null;
+                    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                    }
+                    suppressTouchClickPartRef.current = part.partId;
+                    window.setTimeout(() => {
+                      if (suppressTouchClickPartRef.current === part.partId) {
+                        suppressTouchClickPartRef.current = null;
+                      }
+                    }, 0);
+                    if (session.kind === 'tap' || session.kind === 'blocked-base') {
+                      activateKey(
+                        part.partId,
+                        session.ownerTimeMs,
+                        session.kind === 'tap' ? session.shiftKey : false,
+                      );
+                      return;
+                    }
+                    setDragPreview(null);
+                    if (!session.drag.moved) {
+                      activateKey(part.partId, session.ownerTimeMs, false);
+                      return;
+                    }
+                    commitKeyDragSession(
+                      session.drag,
+                      shot.id,
+                      layer.id,
+                      part.partId,
+                      retimeSelectedKeys,
+                      setError,
+                    );
+                  }}
+                  onPointerCancelCapture={(event) => {
+                    if (
+                      touchKeySessionRef.current?.partId === part.partId &&
+                      touchKeySessionRef.current.pointerId === event.pointerId
+                    ) {
+                      touchKeySessionRef.current = null;
+                      setDragPreview(null);
+                    }
+                    if (suppressTouchClickPartRef.current === part.partId) {
+                      window.setTimeout(() => {
+                        if (suppressTouchClickPartRef.current === part.partId) {
+                          suppressTouchClickPartRef.current = null;
+                        }
+                      }, 0);
+                    }
+                  }}
+                  onLostPointerCapture={(event) => {
+                    if (
+                      touchKeySessionRef.current?.partId === part.partId &&
+                      touchKeySessionRef.current.pointerId === event.pointerId
+                    ) {
+                      touchKeySessionRef.current = null;
+                      setDragPreview(null);
+                    }
+                  }}
+                  onClickCapture={(event) => {
+                    if (suppressTouchClickPartRef.current !== part.partId) return;
+                    event.stopPropagation();
+                    suppressTouchClickPartRef.current = null;
+                  }}
                 >
                   {spanStart !== null && spanEnd !== null ? (
                     <span
@@ -875,13 +1291,27 @@ function CharacterMotionKeyMarker({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.pointerType === 'touch') return;
     onSelectPart(partId);
     if (event.shiftKey || !editable) return;
-    const dragGroup =
-      selected && selectedTimesMs.includes(timeMs) ? selectedTimesMs : [timeMs];
-    const blockedBase = dragGroup.length > 1 && dragGroup.includes(0);
-    if (blockedBase) {
+    const prepared = prepareKeyDragSession({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      partId,
+      anchorTimeMs: timeMs,
+      selectedTimesForPart: selected ? selectedTimesMs : [],
+      allPartTimes,
+      snapshot,
+      instanceId,
+      shotId,
+      layerId,
+    });
+    if (prepared.kind === 'stale') {
+      onError('动作关键帧已变化，请重新选择后再操作。');
+      return;
+    }
+    if (prepared.kind === 'ignore') return;
+    if (prepared.kind === 'blocked-base') {
       blockedBaseAttemptRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -889,38 +1319,7 @@ function CharacterMotionKeyMarker({
       event.currentTarget.setPointerCapture?.(event.pointerId);
       return;
     }
-    if (timeMs === 0) return;
-    if (
-      !snapshot ||
-      !isCurrentCharacterMotionContext({
-        snapshot,
-        instanceId,
-        shotId,
-        layerId,
-        partId,
-        requireSelectedPart: false,
-        keyTimesMs: dragGroup,
-      })
-    ) {
-      onError('动作关键帧已变化，请重新选择后再操作。');
-      return;
-    }
-    const unselectedTimesMs = allPartTimes.filter((candidate) => !dragGroup.includes(candidate));
-    const initialMap = new Map(dragGroup.map((candidate) => [candidate, candidate]));
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      fromTimesMs: dragGroup,
-      unselectedTimesMs,
-      anchorTimeMs: timeMs,
-      deltaFrames: 0,
-      anchorPreviewTimeMs: timeMs,
-      previewTimesByOrigin: initialMap,
-      blockedBase: false,
-      moved: false,
-      snapshot,
-      instanceId,
-    };
+    dragRef.current = prepared.session;
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -937,25 +1336,14 @@ function CharacterMotionKeyMarker({
     }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const deltaPx = event.clientX - drag.startX;
-    if (!drag.moved && Math.abs(deltaPx) < 3) return;
-    drag.moved = true;
-    const preview = previewCharacterMotionKeyGroupShift({
-      fromTimesMs: drag.fromTimesMs,
-      anchorTimeMs: drag.anchorTimeMs,
-      unselectedTimesMs: drag.unselectedTimesMs,
-      deltaPx,
+    const nextPreview = stepKeyDragSession(
+      drag,
+      event.clientX,
       pixelsPerMs,
       durationMs,
-    });
-    drag.deltaFrames = preview.deltaFrames;
-    drag.anchorPreviewTimeMs = preview.anchorPreviewTimeMs;
-    drag.previewTimesByOrigin = preview.previewTimesByOrigin;
-    onDragPreview({
       partId,
-      anchorTimeMs: drag.anchorTimeMs,
-      previewTimesByOrigin: preview.previewTimesByOrigin,
-    });
+    );
+    if (nextPreview) onDragPreview(nextPreview);
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -989,52 +1377,7 @@ function CharacterMotionKeyMarker({
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
-    if (
-      !isCurrentCharacterMotionContext({
-        snapshot: drag.snapshot,
-        instanceId: drag.instanceId,
-        shotId,
-        layerId,
-        partId,
-        keyTimesMs: drag.fromTimesMs,
-      })
-    ) {
-      onError('动作关键帧已变化，请重新选择后再操作。');
-      return;
-    }
-    if (drag.deltaFrames === 0) return;
-    try {
-      if (drag.fromTimesMs.length === 1) {
-        const next = motionService.retimeCompositeKey(drag.snapshot.project, {
-          shotId,
-          layerId,
-          partId,
-          fromTimeMs: drag.fromTimesMs[0]!,
-          toTimeMs: drag.anchorPreviewTimeMs,
-        });
-        if (next !== drag.snapshot.project) {
-          editorProjectStore.updateProject(next, '调整动作关键帧时间');
-        }
-        onRetime(partId, [drag.anchorPreviewTimeMs], drag.anchorPreviewTimeMs);
-        return;
-      }
-      const next = motionService.retimeCompositeKeys(drag.snapshot.project, {
-        shotId,
-        layerId,
-        partId,
-        fromTimesMs: drag.fromTimesMs,
-        deltaFrames: drag.deltaFrames,
-      });
-      if (next !== drag.snapshot.project) {
-        editorProjectStore.updateProject(next, '批量调整动作关键帧时间');
-      }
-      const movedTimes = drag.fromTimesMs.map(
-        (origin) => drag.previewTimesByOrigin.get(origin) ?? origin,
-      );
-      onRetime(partId, movedTimes, drag.anchorPreviewTimeMs);
-    } catch (operationError) {
-      onError(errorText(operationError));
-    }
+    commitKeyDragSession(drag, shotId, layerId, partId, onRetime, onError);
   };
 
   const handleCancel = (event: ReactPointerEvent<HTMLButtonElement>): void => {

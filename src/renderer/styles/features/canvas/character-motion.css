@@ -446,12 +446,4 @@
   margin-right: -16px;
 }
 
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .character-motion-keys button,
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
-  .character-motion-overview-marker {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-}
+/* Issue #1138: keep Key / Overview marker sibling DOM boxes compact so adjacent dense keys never steal clicks; horizontal ~44px (±22px) touch reach uses nearest-hit unique owner routing on the lane container. */
