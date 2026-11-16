@@ -2,7 +2,9 @@
 import { act, createElement, Fragment, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { RightInspector, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
+import { RightInspector, getRightInspectorLayerSummary, getRightInspectorSelection, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
+import { LayerBackgroundControl, type LayerBackgroundControlProps } from '../../src/renderer/features/properties/LayerBackgroundControl';
+import { LayerTransformPanel, type LayerTransformPanelProps } from '../../src/renderer/features/properties/LayerTransformPanel';
 import { CharacterMotionLane } from '../../src/renderer/features/timeline/CharacterMotionLane';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -17,6 +19,57 @@ afterEach(() => { selectionStore.clear(); editorProjectStore.clear(); timelineUi
 function props(node: Element) {
   return (node as unknown as Record<string, Record<string, (event: unknown) => void>>)[Object.keys(node).find(k => k.startsWith('__reactProps$'))!]!;
 }
+it('reuses existing Image/Graphic asset thumbnails and keeps the frozen Part source after library edits', () => {
+  const data = characterPartAnimationFixture();
+  editorProjectStore.open('D:/test-motion-thumbnail', data.project);
+  const snapshot = editorProjectStore.getSnapshot()!;
+  const layer = snapshot.project.shots[0]!.layers.find(candidate => candidate.id === data.layerId)!;
+  expect(getRightInspectorLayerSummary(snapshot, layer, data.imagePartId).asset?.id).toBe(IDS.assetChar);
+  const graphicAssetId = snapshot.project.animations[0]!.frames[0]!.assetId;
+  expect(getRightInspectorLayerSummary(snapshot, layer, data.graphicPartId).asset?.id).toBe(graphicAssetId);
+  new CharacterMotionGesture(editorProjectStore, { shotId: IDS.shot, layerId: data.layerId, partId: data.imagePartId, timeMs: 500, autoKey: true }, () => true).commit({ 'transform.rotationDeg': 90 });
+  const frozen = structuredClone(editorProjectStore.getSnapshot()!);
+  const character = frozen.project.characters.find(candidate => candidate.id === data.characterId)!;
+  if (character.mode === 'adaptive-parts') character.parts = [];
+  const frozenLayer = frozen.project.shots[0]!.layers.find(candidate => candidate.id === data.layerId)!;
+  expect(getRightInspectorLayerSummary(frozen, frozenLayer, data.imagePartId).asset?.id).toBe(IDS.assetChar);
+});
+
+it.each([{ compact: true, presentation: 'landscape' as const }, { compact: true, presentation: 'portrait' as const }, { compact: false }])('keeps normal background quiet and preserves failure/locked feedback (%j)', async options => {
+  const data = characterPartAnimationFixture();
+  editorProjectStore.open('D:/test-background-feedback', data.project);
+  shotStore.select(IDS.shot); selectionStore.selectBackground(); timelineUiStore.seek(0, 3000);
+  const element = document.createElement('div'); document.body.append(element);
+  const root = createRoot(element);
+  const render = () => root.render(createElement(Fragment, null,
+    createElement<LayerBackgroundControlProps>(LayerBackgroundControl, options),
+    createElement<LayerTransformPanelProps>(LayerTransformPanel, { compact: options.compact, backgroundLayerSelected: true }),
+  ));
+  try {
+    await act(async () => render());
+    expect(getRightInspectorSelection(editorProjectStore.getSnapshot(), IDS.shot, IDS.layerBg).message).toBe('');
+    expect(element.querySelector('[data-testid="layer-background-guidance"]')).toBeNull();
+    expect(element.querySelector('[data-testid="layer-transform-guidance"]')).toBeNull();
+    expect(element.querySelector('[data-testid="layer-transform-status"]')!.textContent).toBe('');
+    await act(async () => element.querySelector<HTMLButtonElement>('[data-testid="select-current-shot-background"]')!.click());
+    expect(element.querySelector('[data-testid="layer-background-guidance"]')).toBeNull();
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+    const failure = vi.spyOn(selectionStore, 'selectBackground').mockImplementationOnce(() => { throw new Error('选择背景失败，请重试。'); });
+    await act(async () => element.querySelector<HTMLButtonElement>('[data-testid="select-current-shot-background"]')!.click());
+    expect(element.querySelector('[data-testid="layer-background-guidance"]')!.textContent).toBe('选择背景失败，请重试。');
+    failure.mockRestore();
+    await act(async () => element.querySelector<HTMLButtonElement>('[data-testid="select-current-shot-background"]')!.click());
+    expect(element.querySelector('[data-testid="layer-background-guidance"]')).toBeNull();
+    await act(async () => {
+      const project = structuredClone(editorProjectStore.getSnapshot()!.project);
+      project.shots[0]!.layers.find(layer => layer.id === IDS.layerBg)!.locked = true;
+      editorProjectStore.open('D:/test-background-feedback-locked', project);
+      shotStore.select(IDS.shot); selectionStore.selectBackground();
+    });
+    expect(element.querySelector('[data-testid="layer-background-guidance"]')!.textContent).toBe('背景已锁定。');
+    expect(element.querySelector('[data-testid="layer-transform-guidance"]')!.textContent).toBe('背景已锁定。');
+  } finally { vi.restoreAllMocks(); await act(async () => root.unmount()); element.remove(); }
+});
 function Harness() {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot)!;
   const ui = useSyncExternalStore(timelineUiStore.subscribe, timelineUiStore.getSnapshot);
@@ -42,7 +95,15 @@ it.each((['image', 'graphic'] as const).flatMap(source => [true, false].map(auto
   const { data, element, root } = await mount(source, autoKey);
   try {
     const name = source === 'image' ? '右手' : '配件';
-    expect(element.querySelector('[data-testid="right-inspector-part-context"]')!.textContent).toContain(`› ${name}`);
+    const identity = element.querySelector('[data-testid="right-inspector-part-context"]')!;
+    expect(identity.querySelector('strong')!.textContent).toBe(name);
+    expect(identity.querySelector('.character-part-identity-copy > span')!.textContent).toBe(data.project.shots[0]!.layers.find(layer => layer.id === data.layerId)!.name);
+    expect(identity.classList.contains('right-inspector-selection')).toBe(false);
+    expect(identity.querySelector('svg')).not.toBeNull();
+    const selector = element.querySelector('select')!;
+    expect(element.querySelector(`label[for="${selector.id}"]`)!.textContent).toBe('部位');
+    expect(selector.title).toBe(name);
+    expect(element.querySelector('.character-motion-controls button svg')).not.toBeNull();
     expect(element.querySelector('.timeline-lane-label')!.textContent).toBe(name);
     expect(element.querySelector('select')!.selectedOptions[0]!.textContent).toBe(name);
     expect(element.querySelector('[data-testid="layer-transform-rotation"]')).toBeNull();
@@ -125,7 +186,7 @@ it.each([true, false])('commits steppers, Apply and Reset once through the same 
   try {
     expect(element.querySelectorAll('.character-motion-controls')).toHaveLength(1);
     expect(element.querySelector('.character-motion-controls')!.closest('[data-testid="character-motion-inspector-section"]')).not.toBeNull();
-    expect(element.querySelectorAll('summary').item(0).textContent).toBe('动作关键帧');
+    expect(element.querySelectorAll('summary').item(0).textContent).toBe('动作');
     const x = input('位置 X');
     await act(async () => { x.focus(); props(x).onChange!({ target: { value: '12' } }); });
     const scaleUp = button('放大缩放');

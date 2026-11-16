@@ -403,8 +403,8 @@ export function useLayerTransformController({
           compact
             ? ''
             : layer.locked
-              ? 'Formal background is locked; unlock it before editing.'
-              : 'Formal background is editable; lock it again when finished.',
+              ? '背景已锁定。'
+              : '',
         );
       }
     } else if (!preserveCommitErrorRef.current) {
@@ -724,7 +724,7 @@ export function useLayerTransformController({
       const result =
         revisionAfter === revisionBefore ? 'noop' : 'committed';
       setStatus(
-        reason === 'opacity'
+        isBackgroundLayer || reason === 'opacity'
           ? ''
           : result === 'noop'
           ? '属性值未变化，未新增历史。'
@@ -1354,13 +1354,11 @@ function LayerTransformPanelView({
         </p>
       )}
       {(layer || !compact) && !(compact && layer && !isBackgroundLayer && !layer.locked) &&
-      !(layer?.source.kind === 'animation' && !layer.locked) ? (
+      !(layer?.source.kind === 'animation' && !layer.locked) && !(isBackgroundLayer && !layer?.locked) ? (
         temporalInspection ? null : (
           <p data-testid="layer-transform-guidance">
             {isBackgroundLayer
-              ? layer?.locked
-                ? '正式背景已锁定，请先解锁后再编辑。'
-                : '正式背景可编辑，完成后请重新锁定。'
+              ? '背景已锁定。'
               : layer?.locked
                 ? '请先解锁图层，再修改变换。'
                 : layer

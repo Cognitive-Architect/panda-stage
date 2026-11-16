@@ -47,12 +47,18 @@ Object.defineProperty(window, 'pandaStage', { value: { assets: { readCanvasImage
 }), readThumbnail: async () => ({ ok: false, error: { code: 'NOT_FOUND', message: 'No harness thumbnail' } }) } } });
 editorProjectStore.open('D:/PandaStage-Acceptance/issue1126', fixture.project);
 shotStore.select(IDS.shot); selectionStore.select(fixture.layerId);
-createRoot(document.getElementById('root')!).render(<PendingDialoguePlacementProvider><div style={{ height: 850, display: 'grid', gridTemplateRows: '650px 190px', gridTemplateColumns: 'minmax(0, 1fr) 280px' }}>
+createRoot(document.getElementById('root')!).render(<PendingDialoguePlacementProvider><div className="editor-shell" data-editor-device-mode="cloud-touch" data-editor-shell-layout="landscape" style={{ height: 850, display: 'grid', gridTemplateRows: '650px 190px', gridTemplateColumns: 'minmax(0, 1fr) 280px' }}>
   <CanvasStage showHeading={false} /><RightInspector embedded shellMode="landscape" /><div style={{ gridColumn: '1 / -1' }}><TimelineDock /></div>
 </div></PendingDialoguePlacementProvider>);
 Object.assign(window, { motionAcceptance: {
   fixture,
   clearSelection: () => selectionStore.clear(),
+  background: (locked: boolean) => {
+    const project = structuredClone(fixture.project);
+    project.shots[0]!.layers.find(layer => layer.id === IDS.layerBg)!.locked = locked;
+    editorProjectStore.open('D:/PandaStage-Acceptance/issue1128-background', project);
+    shotStore.select(IDS.shot); selectionStore.selectBackground(); timelineUiStore.seek(0, 3000);
+  },
   reset: () => {
     editorProjectStore.open('D:/PandaStage-Acceptance/issue1128', fixture.project);
     shotStore.select(IDS.shot); selectionStore.select(fixture.layerId);

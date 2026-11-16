@@ -32,6 +32,7 @@ function model(
 describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => {
   it('silences normal available state while preserving contextual constrained copy', () => {
     expect(getLandscapeBackgroundGuidance(model('available'))).toBe('');
+    expect(getLandscapeBackgroundGuidance(model('background'))).toBe('');
     expect(
       getLandscapeBackgroundGuidance(model('available'), '操作失败，请重试。'),
     ).toBe('操作失败，请重试。');
@@ -48,7 +49,7 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
       '当前选择不可用，请重新选择。',
     );
     expect(getLandscapeBackgroundGuidance(model('locked'))).toBe(
-      '图层已锁定，解锁后可设为背景。',
+      '请先解锁图层。',
     );
     expect(getLandscapeBackgroundGuidance(model('unsupported'))).toBe(
       '此对象不能设为背景。',
@@ -63,7 +64,7 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
           } as LayerBackgroundControlModel['backgroundLayer'],
         }),
       ),
-    ).toBe('当前背景已锁定，解锁后可编辑。');
+    ).toBe('背景已锁定。');
     expect(
       getLandscapeBackgroundGuidance(
         model('background', {
@@ -116,6 +117,6 @@ describe('Issue #375 Cloud Touch landscape Appearance copy distillation', () => 
     expect(background).toContain('layerStore.fillBackground()');
     expect(background).toContain("if (presentation === 'landscape') setStatus('');");
     expect(background).toContain('为当前镜头选择或更换正式背景。');
-    expect(background).toContain('Cover 几何');
+    expect(background).toContain('此对象不能设为背景。');
   });
 });

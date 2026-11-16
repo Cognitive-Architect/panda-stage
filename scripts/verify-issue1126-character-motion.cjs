@@ -86,6 +86,26 @@ async function inspectorButton(label) {
     const context = await page(`({part:motionAcceptance.inspect().selectedPartId,top:document.querySelector('select[aria-label="人物动作部件"]').selectedOptions[0].textContent,lane:document.querySelector('.character-motion-lane .timeline-lane-label').textContent,inspector:document.querySelector('[data-testid="right-inspector-part-context"]').textContent,layerFields:Boolean(document.querySelector('[data-testid="layer-transform-rotation"]')),isolatedDiamond:Boolean(document.querySelector('[data-testid="character-motion-key-state"]'))})`);
     assert.equal(context.top,expectedName);assert.equal(context.lane,expectedName);assert(context.inspector.includes(expectedName));
     assert.equal(context.layerFields,false);assert.equal(context.isolatedDiamond,false);
+    const polish = await page(`(() => {
+      const identity=document.querySelector('[data-testid="right-inspector-part-context"]');
+      const thumbnail=identity.querySelector('.character-part-identity-thumbnail').getBoundingClientRect();
+      const controls=document.querySelector('.character-motion-controls'), selector=controls.querySelector('select');
+      const label=controls.querySelector('label'), transformLabel=document.querySelector('.character-part-transform .layer-transform-control-label');
+      const actions=document.querySelector('.character-part-transform .layer-transform-action-row'), style=getComputedStyle(actions);
+      return {card:identity.classList.contains('right-inspector-selection'),name:identity.querySelector('strong').textContent,
+        thumbnailWidth:thumbnail.width,thumbnailHeight:thumbnail.height,icon:Boolean(identity.querySelector('svg')),
+        summary:controls.previousElementSibling.textContent,label:label.textContent,labelFor:label.htmlFor===selector.id,
+        labelX:label.getBoundingClientRect().x,transformLabelX:transformLabel.getBoundingClientRect().x,
+        selectorWidth:selector.getBoundingClientRect().width,title:selector.title,ellipsis:getComputedStyle(selector).textOverflow,
+        plus:Boolean(controls.querySelector('button svg.lucide-plus')),divider:style.borderTopWidth,padding:style.paddingTop,
+        overflow:controls.scrollWidth>controls.clientWidth};
+    })()`);
+    assert.equal(polish.card,false);assert.equal(polish.name,expectedName);assert(polish.icon);
+    assert(polish.thumbnailWidth>=36 && polish.thumbnailWidth<=44 && polish.thumbnailHeight===40);
+    assert.equal(polish.summary,'动作');assert.equal(polish.label,'部位');assert(polish.labelFor);
+    assert(Math.abs(polish.labelX-polish.transformLabelX)<1);assert(polish.selectorWidth<=96);
+    assert.equal(polish.title,expectedName);assert.equal(polish.ellipsis,'ellipsis');assert(polish.plus);
+    assert.equal(polish.divider,'0px');assert.equal(polish.padding,'0px');assert.equal(polish.overflow,false);
     assert.equal((await page('motionAcceptance.inspect()')).history.undoCount,0,'Selection is read-only');
     await page('motionAcceptance.seek(500)');
     assert.equal(await page(`document.querySelector('.character-motion-controls button').textContent`),'自动关键帧');
@@ -131,7 +151,7 @@ async function inspectorButton(label) {
     await page(`(() => {const select=document.querySelector('select[aria-label="人物动作部件"]');select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await wait(`Boolean(document.querySelector('[data-testid="layer-transform-rotation"]'))`);
     assert.equal(await page('motionAcceptance.handle("rotate")'),null,'Returning to Layer hides Part handles');
-    uxResults.push({source,context,viewportBefore,viewportAfter,inspectorUndoCount:after.history.undoCount,stepperAndReset:'PASS',uniformScale:scales.map(t=>t.keys.at(-1).value),off:'PASS'});
+    uxResults.push({source,context,polish,viewportBefore,viewportAfter,inspectorUndoCount:after.history.undoCount,stepperAndReset:'PASS',uniformScale:scales.map(t=>t.keys.at(-1).value),off:'PASS'});
   }
   if(issue1128) await page('motionAcceptance.reset()');
   await page(`(() => { const select = document.querySelector('select[aria-label="人物动作部件"]'); select.value = motionAcceptance.fixture.graphicPartId; select.dispatchEvent(new Event('change', {bubbles:true})); motionAcceptance.seek(500); })()`);
@@ -184,6 +204,21 @@ async function inspectorButton(label) {
   assert.deepEqual(off.project.shots, imageBaseline.project.shots, 'Auto-Key OFF does not change Clip/Tracks/Keys');
   assert.notDeepEqual(off.project.characters, imageBaseline.project.characters, 'Auto-Key OFF uses static Character editing');
   results.push({ kind: 'single-image-move', undoCount: image.history.undoCount }, { kind: 'auto-key-off', undoCount: off.history.undoCount });
+  if(issue1128) {
+    await page('motionAcceptance.background(false)');
+    await page('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert(await page(`parseFloat(getComputedStyle(document.querySelector('.layer-transform-action-row')).borderTopWidth)>0`),'Ordinary Layer divider is preserved at the current Windows display scale');
+    assert.equal(await page(`document.querySelector('[data-testid="right-inspector-selection-message"]')`),null);
+    assert.equal(await page(`document.querySelector('[data-testid="layer-transform-guidance"]')`),null);
+    assert.equal(await page(`document.querySelector('[data-testid="layer-background-guidance"]')`),null);
+    await page(`document.querySelector('[data-testid="select-current-shot-background"]').click()`);
+    assert.equal(await page(`document.querySelector('[data-testid="layer-background-guidance"]')`),null);
+    await fs.writeFile(path.join(evidenceRoot,'background-normal.png'),(await window.webContents.capturePage()).toPNG());
+    await page('motionAcceptance.background(true)');
+    await page('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert.equal(await page(`document.querySelector('[data-testid="layer-transform-guidance"]').textContent`),'背景已锁定。');
+    results.push({kind:'background-feedback',normal:'QUIET',selectedSuccess:'QUIET',locked:'PRESERVED'});
+  }
   errors.push(...await page('window.motionErrors'));
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(evidenceRoot, 'result.json'), JSON.stringify({ status: 'PASS', results, layer, errors }, null, 2));

@@ -6,6 +6,7 @@ import {
 } from 'react';
 import {
   isLegacyCharacterImageLayer,
+  resolveCharacterPartVisualSource,
   type Asset,
   type CharacterFaceGraphicSource,
   type Layer,
@@ -92,6 +93,7 @@ function getPortraitLayerTypeLabel(typeLabel: string): string {
 export function getRightInspectorLayerSummary(
   snapshot: EditorProjectSnapshot | null,
   layer: Layer | null,
+  partId?: string | null,
 ): RightInspectorLayerSummary {
   if (!layer || !snapshot) {
     return { asset: null, typeLabel: '图层' };
@@ -128,6 +130,18 @@ export function getRightInspectorLayerSummary(
     ) ?? null;
   const expressionCharacter =
     character && character.mode !== 'adaptive-parts' ? character : null;
+  if (character?.mode === 'adaptive-parts' && partId) {
+    const part = character.parts.find(candidate => candidate.partId === partId);
+    const visualSource = layer.animationClip?.targetBases.find(basis => basis.target.partId === partId)?.visualSource
+      ?? (part ? resolveCharacterPartVisualSource(part) : undefined);
+    const assetId = visualSource?.kind === 'image' ? visualSource.assetId
+      : visualSource?.kind === 'fla-graphic' ? snapshot.project.animations.find(animation => animation.id === visualSource.animationId)?.frames[0]?.assetId
+        : undefined;
+    return {
+      asset: snapshot.project.assets.find(candidate => candidate.id === assetId) ?? null,
+      typeLabel: '角色图层',
+    };
+  }
   const expression = expressionCharacter?.expressions.find(
     (candidate) => candidate.id === source.expressionId,
   );
@@ -304,8 +318,8 @@ export function getRightInspectorSelection(
       state: 'background',
       layer,
       message: layer.locked
-        ? '已选择正式背景且已锁定，请在下方解锁后编辑。'
-        : '已选择正式背景，可编辑变换；完成后请重新锁定。',
+        ? '背景已锁定。'
+        : '',
     };
   }
 
@@ -402,6 +416,7 @@ export function RightInspector({
   const layerSummary = getRightInspectorLayerSummary(
     snapshot,
     selection.layer,
+    selectedPartId,
   );
   const structuredSelection = useStructuredGraphicSelection();
   const selectionTypeLabel = compact
@@ -566,7 +581,7 @@ export function RightInspector({
           </span>
         </>
       )}
-      {selection.layer && !structuredSelection.target ? (
+      {selection.layer && !structuredSelection.target && selection.message ? (
         <span
           className="right-inspector-selection-message"
           data-testid="right-inspector-selection-message"
@@ -611,8 +626,14 @@ export function RightInspector({
   const inspectorBody = motionPart && currentShot && selection.layer && snapshot ? (
     <>
       {inspectorHeading}
-      <section className="right-inspector-selection" data-testid="right-inspector-part-context">
-        <strong>{selection.layer.name} › {motionPart.name}</strong>
+      <section className="character-part-identity" data-testid="right-inspector-part-context">
+        <div className="character-part-identity-thumbnail" aria-hidden="true">
+          {selectionThumbnail?.status === 'ready' ? <img alt="" src={selectionThumbnail.dataUrl} /> : <DecorativeIcon icon={Layers3} size={24} />}
+        </div>
+        <div className="character-part-identity-copy">
+          <strong title={motionPart.name}>{motionPart.name}</strong>
+          <span title={selection.layer.name}>{selection.layer.name}</span>
+        </div>
       </section>
       {motionSection}
       <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>

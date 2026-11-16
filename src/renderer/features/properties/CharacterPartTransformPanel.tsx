@@ -102,7 +102,7 @@ export function CharacterPartTransformPanel({ input, locked, revision }: { input
             <button type="button" data-character-motion-action disabled={disabled} aria-label={increase} onPointerDown={actionPointerDown} onClick={() => step(key, 1)}>+</button>
           </div>
         </div>)}
-      <div className="layer-transform-action-row" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+      <div className="layer-transform-action-row" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', borderTop: 0, paddingTop: 0 }}>
         <Button type="button" data-character-motion-action variant="secondary" disabled={disabled} onPointerDown={actionPointerDown} onClick={() => commit({}, true)}>
           <span className="ui-icon-label"><DecorativeIcon icon={RotateCcw} size={16} /><span>重置变换</span></span>
         </Button>

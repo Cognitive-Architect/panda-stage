@@ -3,7 +3,7 @@
 2026-11-16；基线 `c5f813b`，继续提交到 [Draft 母 PR #1123](https://github.com/Cognitive-Architect/panda-stage/pull/1123)。
 **实现及自动化已就绪，OWNER 的 60 秒盲操作复验待本人回填。**
 
-以下第一轮记录对应 `ccc7074`；当前信息架构以文末“第二轮 §12.5”及 Issue 的 OWNER 最新裁决为准。
+以下第一轮记录对应 `ccc7074`；当前 UI 以文末“第三轮 §12.6”及 Issue 的 OWNER 最新裁决为准。
 
 ## 实现与边界
 
@@ -77,3 +77,22 @@ Focused Electron 仍使用上文同一命令；第二轮 PASS 目录：
 本轮独立 OWNER 项目为 `D:/PandaStage-Acceptance/issue1128-round2/OWNER.pandastage`，窗口标题 `Panda Stage（V0 UX Round 2）`。
 保留旧验收项目与窗口状态；本轮只给任务：选 Part → 自动关键帧 → 500ms → 移动/旋转/缩放 → Undo。
 OWNER 第二轮盲验与当前 push 的自动 lean Core CI 结果待回填；未手动 Full CI / verify:project。
+
+## 第三轮 §12.6：身份、动作行、分隔线与背景反馈
+
+基线 `416cf53`。本轮仅落实 OWNER 的四处最终 polish，未改变 Animation Core、选择 owner 或 authoring facade。
+
+- Part 大身份卡改成无边框的 40px thumbnail + 对象行，部位名为主、实例名为次。现有 `getRightInspectorLayerSummary` 将 Image 或 Graphic 的已有帧素材交给同一个 `useRightInspectorThumbnail`；已存在 Clip 时优先冻结 source，缺图使用现有 Layers3 图标。没有新缩略图生成或缓存系统。
+- 标题为“动作”；新增关联 selector 的“部位”label，与 Part Transform 的 44px label 列对齐。selector 最大 96px，窄列可收缩，长名 ellipsis + 完整 title。按钮使用现有 DecorativeIcon/Lucide Plus，保留 toggle/aria-pressed/selected 状态。
+- 删除 Part action row 的本地 divider；在其现有局部 inline variant 中关闭共享样式的 borderTop/paddingTop，以 form 的 12px gap 分隔。普通 Layer 的 shared divider 未变。
+- 背景选中且可编辑时，identity、Transform、Appearance 不再渲染说明段落。选择/设为/清除/填充背景的成功由当前对象和按钮状态表达；不常驻成功文字。背景 Transform 成功也保持静默。异常路径继续显示，锁定提示收为“背景已锁定。”；未重做背景管理逻辑。
+
+继续使用上文已有验证命令。本地 typecheck、lint、build、diff check PASS；433 files / 3585 unit PASS；51 files / 231 integration PASS +1 环境 skip。新增 unit 覆盖冻结缩略图来源，以及桌面/横屏/竖屏背景正常态、重复选择成功、失败保留和 locked 反馈。旧 copy 断言仅按本票变更更新。
+
+Focused Electron 最终 PASS：`D:/PandaStage-Acceptance/issue1128/2026-11-16T07-48-20.829Z`。
+
+沿用生产 Canvas / RightInspector / Timeline / stores 和 mock 图片 reader；增加 Cloud Touch landscape 样式上下文，实际检查 40px identity、label 对齐、selector 收缩/ellipsis/title、Plus、Part border 为 0、普通 Layer divider 非零、无横向溢出、背景正常及成功静默、锁定反馈保留。保留 Image/Graphic 直接选中、500ms authoring、stepper/Reset/Apply、一步 History、Seek、Undo/Redo 与 OFF 回归。截图和 result.json 同目录；没有新建 diff gate。Windows 显示缩放会将普通 1px 边框量化为 0.666667 CSS px，验收检查实际边框存在，不要求固定量化值。
+
+新独立真实 Main/Preload OWNER 项目：`D:/PandaStage-Acceptance/issue1128-round3/OWNER.pandastage`，已打开窗口 `Panda Stage（V0 UX Round 3）`。旧项目保持原样。OWNER 最终视觉/操作结果与本轮 push 的自动 lean Core CI 尚待回填，自动化不代签真人 PASS；#1123 保持 Draft。
+
+#1127 的素材定位补充：用户再次确认默认下载目录的素材包；现有 `素材包.zip` 包含“原始人动作.fla”，此前未检出 BitmapFill。真实含 bitmap fill 的替代 FLA 及诊断已记录在 [V0-04 receipt](issue1127-animation-v0.md#d真实-bitmap-fill-诊断尚未产品验收)。数据层诊断不代表 D 的产品局部 fallback 已验收，本轮不补 renderer。
