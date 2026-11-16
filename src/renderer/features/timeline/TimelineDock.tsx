@@ -1,3 +1,4 @@
+import { CharacterMotionLane } from './CharacterMotionLane';
 import {
   useLayoutEffect,
   useRef,
@@ -388,6 +389,7 @@ export function TimelineDock({
                       project={snapshot.project}
                     />
                   ) : null}
+                  {shot && snapshot ? <CharacterMotionLane project={snapshot.project} shot={shot} layerId={selectedLayerId} pixelsPerMs={pixelsPerMs} currentTimeMs={ui.currentTimeMs} /> : null}
                   {positionLane && shot ? (
                     <PositionLane
                       productPreviewOpen={productPreviewOpen}

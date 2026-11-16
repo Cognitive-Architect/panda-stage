@@ -1,0 +1,11 @@
+.project-canvas:has(> .character-motion-controls) { position: relative; grid-template-rows: auto minmax(0, 1fr); }
+.project-canvas[data-with-heading='true']:has(> .character-motion-controls) { grid-template-rows: auto auto minmax(0, 1fr); }
+.project-canvas > [role='alert'] { position: absolute; top: 40px; left: 12px; z-index: 10; background: var(--ui-color-surface-overlay); color: var(--ui-color-text-primary); }
+.character-motion-controls { display: flex; align-items: center; gap: 8px; padding: 4px 12px; }
+.character-motion-controls select { max-width: 220px; }
+.character-motion-controls output { color: var(--ui-color-selected-border); }
+.character-motion-lane { min-height: 30px; display: flex; }
+.character-motion-lane .timeline-lane-label { flex: 0 0 var(--timeline-lane-label-width, 82px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.character-motion-keys { position: relative; flex: 1; }
+.character-motion-keys button { position: absolute; transform: translateX(-50%); border: 0; background: transparent; padding: 3px; color: inherit; }
+.character-motion-keys button[aria-current] { color: var(--ui-color-selected-border); }

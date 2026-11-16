@@ -19,6 +19,14 @@ interface SelectionContext {
 }
 
 export class LayerSelectionStore {
+  private selectedCharacterPartId: string | null = null;
+  readonly getSelectedCharacterPartId = (): string | null => this.selectedCharacterPartId;
+  readonly selectCharacterPart = (partId: string | null): void => {
+    if (partId && !this.characterPartExists(partId)) throw new Error('找不到当前角色部件。');
+    if (partId === this.selectedCharacterPartId) return;
+    this.selectedCharacterPartId = partId;
+    for (const listener of this.listeners) listener();
+  };
   private structuredEditScope: FlaGraphicEditScopeState | null = null;
   private selectedStructuredNodePath: readonly string[] | null = null;
   private selectedLayerId: string | null = null;
@@ -117,6 +125,15 @@ export class LayerSelectionStore {
     return this.currentContext()?.shot ?? null;
   }
 
+  private characterPartExists(partId: string): boolean {
+    const layer = this.currentShotValue()?.layers.find(l => l.id === this.selectedLayerId);
+    if (!layer || layer.source.kind !== 'character') return false;
+    if (layer.animationClip) return layer.animationClip.targetBases.some(b => b.target.partId === partId);
+    const characterId = layer.source.characterId;
+    const character = this.editorStore.getSnapshot()?.project.characters.find(c => c.id === characterId);
+    return character?.mode === 'adaptive-parts' && character.parts.some(p => p.partId === partId);
+  }
+
   private currentContext(): (SelectionContext & { shot: Shot }) | null {
     const snapshot = this.editorStore.getSnapshot();
     const shotId = this.currentShot.getCurrentShotId();
@@ -147,10 +164,13 @@ export class LayerSelectionStore {
     ) {
       this.setSelectedLayerId(null, null);
     } else if (context.projectInstanceId !== this.selectedContext.projectInstanceId) {
+      this.selectedCharacterPartId = null;
       this.selectedContext = context;
       this.structuredEditScope = null;
       this.selectedStructuredNodePath = null;
       for (const listener of this.listeners) listener();
+    } else if (this.selectedCharacterPartId && !this.characterPartExists(this.selectedCharacterPartId)) {
+      this.selectCharacterPart(null);
     }
   }
 
@@ -160,6 +180,7 @@ export class LayerSelectionStore {
   ): void {
     if (layerId === this.selectedLayerId) return;
     this.selectedLayerId = layerId;
+    this.selectedCharacterPartId = null;
     this.selectedContext = context;
     this.structuredEditScope = null;
     this.selectedStructuredNodePath = null;

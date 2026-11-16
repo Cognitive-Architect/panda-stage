@@ -125,6 +125,7 @@ export interface FlaGraphicInternalTimelineContext {
 }
 
 export interface TimelineUiState {
+  characterMotionAutoKey: boolean;
   /** Current playhead position in real milliseconds. UI-only, never persisted. */
   currentTimeMs: number;
   /** Horizontal scale multiplier (1 = fit duration to viewport width). */
@@ -144,6 +145,7 @@ export interface TimelineUiState {
 }
 
 const INITIAL_STATE: TimelineUiState = {
+  characterMotionAutoKey: false,
   currentTimeMs: 0,
   zoom: 1,
   scrollPx: 0,
@@ -163,6 +165,7 @@ const INITIAL_STATE: TimelineUiState = {
  * write to the project snapshot, dirty flag, revision or History.
  */
 export class TimelineUiStore {
+  setCharacterMotionAutoKey(enabled: boolean): void { this.patch({ characterMotionAutoKey: enabled }); }
   private state: TimelineUiState = { ...INITIAL_STATE };
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeShot: () => void;

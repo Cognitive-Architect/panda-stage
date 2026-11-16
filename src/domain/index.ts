@@ -24,3 +24,4 @@ export type {
 
 export * from './evaluate-animation-core';
 export * from './character-part-animation';
+export * from './services/CharacterMotionService';
