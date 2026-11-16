@@ -9,7 +9,6 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type Konva from 'konva';
-import { CharacterMotionControls } from './CharacterMotionControls';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime, type Layer } from '../../../domain';
@@ -1052,7 +1051,6 @@ export function CanvasStage({
           <span>{shot ? shot.name : '未选择镜头'}</span>
         </div>
       ) : null}
-      {snapshot && shot ? <CharacterMotionControls project={snapshot.project} shot={shot} layerId={selectedLayerId} /> : null}
       {motionError ? <div role="alert">{motionError}</div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}

@@ -3,7 +3,6 @@ import { act, createElement, Fragment, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { RightInspector, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
-import { CharacterMotionControls } from '../../src/renderer/features/canvas/CharacterMotionControls';
 import { CharacterMotionLane } from '../../src/renderer/features/timeline/CharacterMotionLane';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -23,7 +22,6 @@ function Harness() {
   const ui = useSyncExternalStore(timelineUiStore.subscribe, timelineUiStore.getSnapshot);
   const layerId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedLayerId);
   return createElement(Fragment, null,
-    createElement(CharacterMotionControls, { project: snapshot.project, shot: snapshot.project.shots[0]!, layerId }),
     createElement(CharacterMotionLane, { project: snapshot.project, shot: snapshot.project.shots[0]!, layerId, currentTimeMs: ui.currentTimeMs, pixelsPerMs: 1 }),
     createElement<RightInspectorProps>(RightInspector, { embedded: true, shellMode: 'landscape' }),
   );
@@ -117,5 +115,66 @@ it('commits uniform scale once on Enter and keeps frozen targets usable after Li
     expect(element.querySelector<HTMLInputElement>('[aria-label="缩放 %"]')!.value).toBe('125');
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(history);
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find(l => l.id === data.layerId)!.animationClip).toEqual(clip);
+  } finally { await act(async () => root.unmount()); element.remove(); }
+});
+it.each([true, false])('commits steppers, Apply and Reset once through the same facade (autoKey=%s)', async autoKey => {
+  const { data, element, root } = await mount('graphic', autoKey);
+  const panel = () => element.querySelector('[data-testid="character-part-transform-panel"]')!;
+  const button = (label: string) => [...panel().querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === label || b.getAttribute('aria-label') === label)!;
+  const input = (label: string) => panel().querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+  try {
+    expect(element.querySelectorAll('.character-motion-controls')).toHaveLength(1);
+    expect(element.querySelector('.character-motion-controls')!.closest('[data-testid="character-motion-inspector-section"]')).not.toBeNull();
+    expect(element.querySelectorAll('summary').item(0).textContent).toBe('动作关键帧');
+    const x = input('位置 X');
+    await act(async () => { x.focus(); props(x).onChange!({ target: { value: '12' } }); });
+    const scaleUp = button('放大缩放');
+    await act(async () => { props(x).onBlur!({ relatedTarget: scaleUp }); scaleUp.click(); });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+    expect(input('位置 X')).toBe(x); // Field commits retain keyboard focus across revisions.
+    expect(input('缩放 %').value).toBe('110');
+    await act(async () => button('增加旋转角度').click());
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+    expect(input('旋转 °').value).toBe('15');
+    await act(async () => button('缩小缩放').click());
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(3);
+    expect(input('缩放 %').value).toBe('100');
+    const y = input('位置 Y');
+    await act(async () => { y.focus(); props(y).onChange!({ target: { value: '24' } }); });
+    await act(async () => { button('应用变换').click(); y.blur(); });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(4);
+    const committed = editorProjectStore.getSnapshot()!.project;
+    await act(async () => { x.focus(); props(x).onChange!({ target: { value: '80' } }); });
+    await act(async () => button('重置变换').click());
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(5);
+    expect(['位置 X', '位置 Y', '缩放 %', '旋转 °'].map(label => input(label).value)).toEqual(['0', '0', '100', '0']);
+    const reset = editorProjectStore.getSnapshot()!.project;
+    if (!autoKey) expect(reset.shots).toEqual(data.project.shots);
+    await act(async () => editorProjectStore.undo());
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(committed);
+    await act(async () => editorProjectStore.redo());
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(reset);
+    expect(panel().querySelectorAll('input')).toHaveLength(4);
+    expect(panel().textContent).not.toMatch(/水平翻转|不透明度|离开输入框|位置为相对/);
+  } finally { await act(async () => root.unmount()); element.remove(); }
+});
+it('submits a field on blur and clamps scale steppers without duplicate or out-of-range commands', async () => {
+  const { element, root } = await mount('image', true);
+  const scale = () => element.querySelector<HTMLInputElement>('[aria-label="缩放 %"]')!;
+  const change = async (value: string) => {
+    const field = scale();
+    await act(async () => { field.focus(); props(field).onChange!({ target: { value } }); field.blur(); });
+  };
+  try {
+    await change('5');
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+    await act(async () => element.querySelector<HTMLButtonElement>('[aria-label="缩小缩放"]')!.click());
+    expect(scale().value).toBe('5');
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+    await change('2000');
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+    await act(async () => element.querySelector<HTMLButtonElement>('[aria-label="放大缩放"]')!.click());
+    expect(scale().value).toBe('2000');
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
   } finally { await act(async () => root.unmount()); element.remove(); }
 });

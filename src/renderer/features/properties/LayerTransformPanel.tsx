@@ -15,7 +15,7 @@ import {
   type LayerTransformInput,
   type Point,
 } from '../../../domain';
-import { Check, FlipHorizontal2, Info, RotateCcw } from 'lucide-react';
+import { Check, FlipHorizontal2, RotateCcw } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import {
@@ -1353,7 +1353,7 @@ function LayerTransformPanelView({
           {compact ? '请在画布中选择一个对象。' : '未选择普通图层。'}
         </p>
       )}
-      {(layer || !compact) &&
+      {(layer || !compact) && !(compact && layer && !isBackgroundLayer && !layer.locked) &&
       !(layer?.source.kind === 'animation' && !layer.locked) ? (
         temporalInspection ? null : (
           <p data-testid="layer-transform-guidance">
@@ -1364,16 +1364,7 @@ function LayerTransformPanelView({
               : layer?.locked
                 ? '请先解锁图层，再修改变换。'
                 : layer
-                  ? compact
-                    ? (
-                        <span className="layer-transform-guidance-inline">
-                          <DecorativeIcon icon={Info} size={14} />
-                          <span>
-                            X / Y 为对象视觉中心；离开输入框或点击“应用变换”即可保存。
-                          </span>
-                        </span>
-                      )
-                    : 'X/Y 表示视觉中心，缩放保持等比。'
+                  ? 'X/Y 表示视觉中心，缩放保持等比。'
                   : '请在画布中选择图层以编辑变换。'}
           </p>
         )

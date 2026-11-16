@@ -23,6 +23,7 @@ import { LayerBackgroundControl } from '../features/properties/LayerBackgroundCo
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
+import { CharacterMotionInspectorSection } from '../features/properties/CharacterMotionInspectorSection';
 import { characterMotionParts } from '../features/canvas/characterMotionContext';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
@@ -606,20 +607,26 @@ export function RightInspector({
     />
   );
 
+  const motionSection = snapshot && currentShot ? <CharacterMotionInspectorSection project={snapshot.project} shot={currentShot} layerId={selectedLayerId} /> : null;
   const inspectorBody = motionPart && currentShot && selection.layer && snapshot ? (
     <>
       {inspectorHeading}
       <section className="right-inspector-selection" data-testid="right-inspector-part-context">
         <strong>{selection.layer.name} › {motionPart.name}</strong>
       </section>
-      <CharacterPartTransformPanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), snapshot.revision, currentShot.id, selection.layer.id, motionPart.partId, motionUi.currentTimeMs, motionUi.characterMotionAutoKey])}
-        input={{ shotId: currentShot.id, layerId: selection.layer.id, partId: motionPart.partId, timeMs: motionUi.currentTimeMs, autoKey: motionUi.characterMotionAutoKey }} locked={selection.layer.locked} />
+      {motionSection}
+      <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>
+        <summary>变换</summary>
+        <CharacterPartTransformPanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, motionPart.partId, motionUi.currentTimeMs, motionUi.characterMotionAutoKey])}
+          revision={snapshot.revision} input={{ shotId: currentShot.id, layerId: selection.layer.id, partId: motionPart.partId, timeMs: motionUi.currentTimeMs, autoKey: motionUi.characterMotionAutoKey }} locked={selection.layer.locked} />
+      </details>
     </>
   ) : (
     <>
       {inspectorHeading}
       <FlaGraphicInspectorPreview />
       {inspectorSelection}
+      {motionSection}
       <FlaGraphicStructureTree />
       {snapshot && currentShot && selection.layer?.source.kind === 'character' ? (
         <ExpressionAtTimeControl

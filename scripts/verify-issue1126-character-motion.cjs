@@ -33,13 +33,21 @@ async function drag(kind, dx, dy) {
   window.webContents.sendInputEvent({ type: 'mouseUp', x: x + dx, y: y + dy, button: 'left', clickCount: 1 });
   await delay(150);
 }
-async function inspectorEdit(label, value) {
+async function inspectorEdit(label, value, submit = true) {
   await page(`(() => { const input = document.querySelector('[data-testid="character-part-transform-panel"] input[aria-label="${label}"]'); input.focus(); input.select(); })()`);
   window.webContents.sendInputEvent({type:'keyDown',keyCode:'A',modifiers:['control']});
   window.webContents.sendInputEvent({type:'keyUp',keyCode:'A',modifiers:['control']});
   window.webContents.insertText(value); await delay(80);
-  window.webContents.sendInputEvent({type:'keyDown',keyCode:'Return'});
-  window.webContents.sendInputEvent({type:'keyUp',keyCode:'Return'}); await delay(150);
+  if(submit) {
+    window.webContents.sendInputEvent({type:'keyDown',keyCode:'Return'});
+    window.webContents.sendInputEvent({type:'keyUp',keyCode:'Return'}); await delay(150);
+  }
+}
+async function inspectorButton(label) {
+  const point=await page(`(() => {const b=[...document.querySelectorAll('[data-testid="character-part-transform-panel"] button')].find(b=>b.textContent==='${label}'||b.getAttribute('aria-label')==='${label}');const r=b.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};})()`);
+  window.webContents.sendInputEvent({type:'mouseMove',...point});
+  window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...point});
+  window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...point}); await delay(150);
 }
 (async () => {
   await app.whenReady(); await fs.mkdir(evidenceRoot, { recursive: true });
@@ -60,6 +68,7 @@ async function inspectorEdit(label, value) {
   const uxResults = [];
   if (issue1128) for (const source of ['image','graphic']) {
     await page('motionAcceptance.reset(); motionAcceptance.clearSelection()'); await paintReady();
+    const viewportBefore = await page(`document.querySelector('[data-testid="project-canvas-viewport"]').getBoundingClientRect().height`);
     const point = await page(`motionAcceptance.partPoint('${source}')`);
     console.log('direct selection',source,JSON.stringify(point));
     assert(point, `${source} has a direct Canvas hit target`);
@@ -68,6 +77,11 @@ async function inspectorEdit(label, value) {
     window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,x,y});
     window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x,y});
     await wait(`Boolean(document.querySelector('[data-testid="character-part-transform-panel"]'))`);
+    assert.equal(await page(`document.querySelectorAll('.project-canvas .character-motion-controls').length`),0,'Canvas has no Motion toolbar');
+    assert.equal(await page(`document.querySelectorAll('.character-motion-controls').length`),1,'A single Inspector owner');
+    assert(await page(`Boolean(document.querySelector('.character-motion-controls').closest('.right-inspector'))`));
+    const viewportAfter = await page(`document.querySelector('[data-testid="project-canvas-viewport"]').getBoundingClientRect().height`);
+    assert(Math.abs(viewportBefore-viewportAfter)<1,'Part selection consumes no Canvas height');
     const expectedName = source==='image'?'右手':'配件';
     const context = await page(`({part:motionAcceptance.inspect().selectedPartId,top:document.querySelector('select[aria-label="人物动作部件"]').selectedOptions[0].textContent,lane:document.querySelector('.character-motion-lane .timeline-lane-label').textContent,inspector:document.querySelector('[data-testid="right-inspector-part-context"]').textContent,layerFields:Boolean(document.querySelector('[data-testid="layer-transform-rotation"]')),isolatedDiamond:Boolean(document.querySelector('[data-testid="character-motion-key-state"]'))})`);
     assert.equal(context.top,expectedName);assert.equal(context.lane,expectedName);assert(context.inspector.includes(expectedName));
@@ -85,6 +99,24 @@ async function inspectorEdit(label, value) {
     assert.equal(layer.animationClip.tracks[0].keys.at(-1).value,90);
     await page('motionAcceptance.undo()');assert.deepEqual((await page('motionAcceptance.inspect()')).project,before.project);
     await page('motionAcceptance.redo()');assert.deepEqual((await page('motionAcceptance.inspect()')).project,after.project);
+    await inspectorEdit('位置 X','12',false);
+    const beforeStep=await page('motionAcceptance.inspect()');
+    await inspectorButton('放大缩放');
+    const scaleStep=await page('motionAcceptance.inspect()');
+    assert.equal(scaleStep.history.undoCount,beforeStep.history.undoCount+1,'Pending input + stepper is one command');
+    assert.equal(await page(`document.querySelector('input[aria-label="缩放 %"]').value`),'110');
+    assert.equal(await page(`document.querySelector('input[aria-label="位置 X"]').value`),'12');
+    await inspectorButton('减少旋转角度');
+    const rotateStep=await page('motionAcceptance.inspect()');
+    assert.equal(rotateStep.history.undoCount,scaleStep.history.undoCount+1);
+    assert.equal(await page(`document.querySelector('input[aria-label="旋转 °"]').value`),'75');
+    await inspectorButton('应用变换');
+    assert.equal((await page('motionAcceptance.inspect()')).history.undoCount,rotateStep.history.undoCount,'Apply does not duplicate an already committed draft');
+    await inspectorButton('重置变换');
+    const reset=await page('motionAcceptance.inspect()');
+    assert.equal(reset.history.undoCount,rotateStep.history.undoCount+1,'Reset is one facade command');
+    assert.equal(await page(`document.querySelector('input[aria-label="旋转 °"]').value`),'0');
+    await page('motionAcceptance.undo()');assert.deepEqual((await page('motionAcceptance.inspect()')).project,rotateStep.project);
     await inspectorEdit('缩放 %','125');
     const scaled=await page('motionAcceptance.inspect()');
     const scales=scaled.project.shots[0].layers.find(l=>l.animationClip).animationClip.tracks.filter(t=>t.property.startsWith('transform.scale'));
@@ -99,7 +131,7 @@ async function inspectorEdit(label, value) {
     await page(`(() => {const select=document.querySelector('select[aria-label="人物动作部件"]');select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await wait(`Boolean(document.querySelector('[data-testid="layer-transform-rotation"]'))`);
     assert.equal(await page('motionAcceptance.handle("rotate")'),null,'Returning to Layer hides Part handles');
-    uxResults.push({source,context,inspectorUndoCount:after.history.undoCount,uniformScale:scales.map(t=>t.keys.at(-1).value),off:'PASS'});
+    uxResults.push({source,context,viewportBefore,viewportAfter,inspectorUndoCount:after.history.undoCount,stepperAndReset:'PASS',uniformScale:scales.map(t=>t.keys.at(-1).value),off:'PASS'});
   }
   if(issue1128) await page('motionAcceptance.reset()');
   await page(`(() => { const select = document.querySelector('select[aria-label="人物动作部件"]'); select.value = motionAcceptance.fixture.graphicPartId; select.dispatchEvent(new Event('change', {bubbles:true})); motionAcceptance.seek(500); })()`);

@@ -3,6 +3,8 @@
 2026-11-16；基线 `c5f813b`，继续提交到 [Draft 母 PR #1123](https://github.com/Cognitive-Architect/panda-stage/pull/1123)。
 **实现及自动化已就绪，OWNER 的 60 秒盲操作复验待本人回填。**
 
+以下第一轮记录对应 `ccc7074`；当前信息架构以文末“第二轮 §12.5”及 Issue 的 OWNER 最新裁决为准。
+
 ## 实现与边界
 
 - 所有可选 Adaptive Parts Layer 提供既有 Part hit target；Canvas 点击直接选择 Layer + Part，不依赖先开下拉。切换选择、时间、项目和 undo 后继续使用现有 selectionStore。
@@ -52,3 +54,26 @@ pnpm exec electron scripts/verify-issue1126-character-motion.cjs --issue1128
 OWNER 回填 `PASS` 或 `FAIL + 卡住的动作`；自动化不能代签“无需指导”的真人体验。
 
 待该结果及 Core CI 回填后更新 #1128 DoD。#1123 保持 Draft，不 Ready / Merge，不自行关闭待接受 Issue。
+
+## 第二轮 §12.5：Inspector 单一归属与成熟 Transform pattern
+
+基线 `ccc7074`；OWNER 第二轮裁决覆盖旧顶部方案。
+
+- Canvas 不再渲染 Part selector / 自动关键帧，也删除了对应的额外 grid 行规则。没有悬浮工具条或空占位。
+- 控件薄迁移为 [CharacterMotionInspectorSection](../../src/renderer/features/properties/CharacterMotionInspectorSection.tsx)，仅由 RightInspector 承载；“动作关键帧”和“变换”使用同级 details/summary。角色整体模式也保留此备用 selector。
+- Part Transform 沿用成熟 compact 的 control row、X/Y 双列、scale/rotation stepper、unit suffix 与 action row；增量分别为 10% 和 15°，缩放范围仍取 CharacterPart 的已有常量。只提供“重置变换 / 应用变换”，没有 flip/opacity。
+- 所有动作仍使用 CharacterMotionGesture → CharacterMotionService。stepper 可合并当前 pending input 后只提交一条命令；Enter、字段 blur、应用不会重复写同一草稿；重置按当前时间/Auto-Key 提交 neutral values，不清除/重建 Clip。revision 刷新仅重读 UI draft，保留字段 DOM 与键盘焦点。
+- 只删除指定的 compact Layer 常驻说明及唯一使用的 Info 图标；锁定/背景保护提示和错误路径保留。Part 不新增替代教程。
+
+本地检查：typecheck、lint、build、diff check PASS；433 files / 3581 unit PASS；51 files / 231 integration PASS +1 环境 skip。
+为说明删除做的两个旧测试修正均直接对应本票：改验说明缺席，并保留锁定反馈断言。没有扩展历史 verifier 链。
+
+Focused Electron 仍使用上文同一命令；第二轮 PASS 目录：
+
+`D:/PandaStage-Acceptance/issue1128/2026-11-16T06-39-16.129Z`
+
+新增实际鼠标/键盘证据：Canvas 内控件数为 0、Inspector 单一 owner、选 Part 前后 viewport 高度差小于 1px；pending X + scale step 一条 History，rotation step、Apply 去重、Reset/Undo、uniform scale 与 OFF 同路。保留 Image/Graphic move/rotate/scale、上下文与回到 Layer 的全部既有回归。
+
+本轮独立 OWNER 项目为 `D:/PandaStage-Acceptance/issue1128-round2/OWNER.pandastage`，窗口标题 `Panda Stage（V0 UX Round 2）`。
+保留旧验收项目与窗口状态；本轮只给任务：选 Part → 自动关键帧 → 500ms → 移动/旋转/缩放 → Undo。
+OWNER 第二轮盲验与当前 push 的自动 lean Core CI 结果待回填；未手动 Full CI / verify:project。

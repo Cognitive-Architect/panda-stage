@@ -2,7 +2,7 @@
 import { act, createElement, Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it } from 'vitest';
-import { CharacterMotionControls } from '../../src/renderer/features/canvas/CharacterMotionControls';
+import { CharacterMotionInspectorSection } from '../../src/renderer/features/properties/CharacterMotionInspectorSection';
 import { CharacterMotionLane } from '../../src/renderer/features/timeline/CharacterMotionLane';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -21,7 +21,7 @@ it('selects a Part, uses Chinese Auto-Key and Timeline key state, seeks markers 
   const render = () => {
     const project = editorProjectStore.getSnapshot()!.project;
     root.render(createElement(Fragment, null,
-      createElement(CharacterMotionControls, { project, shot: project.shots[0]!, layerId: data.layerId }),
+      createElement(CharacterMotionInspectorSection, { project, shot: project.shots[0]!, layerId: data.layerId }),
       createElement(CharacterMotionLane, { project, shot: project.shots[0]!, layerId: data.layerId, currentTimeMs: timelineUiStore.getSnapshot().currentTimeMs, pixelsPerMs: 0.2 }),
     ));
   };
