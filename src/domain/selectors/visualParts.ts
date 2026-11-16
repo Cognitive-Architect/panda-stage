@@ -12,6 +12,7 @@ import {
   resolveMouthVisualSource,
   type CharacterFaceSource,
   type CharacterPartTransform,
+  type CharacterPart,
   type FacePlacement,
   type FlaGraphicDefinition,
   type ImageAsset,
@@ -24,6 +25,7 @@ import {
 } from '../evaluate-fla-graphic';
 import { resolveImageAsset } from './canvasLayers';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
+import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
 import { resolveCharacterFaceSource } from './characterFaceSource';
 
 export type LayerVisualKind =
@@ -629,9 +631,14 @@ type AdaptivePartsCharacter = Extract<
   { mode: 'adaptive-parts' }
 >;
 
+type AdaptivePartVisualDefinition = {
+  sourceRootTransform: CharacterPartTransform;
+  parts: readonly Pick<CharacterPart, 'partId' | 'visualSource' | 'assetId' | 'imageMapping' | 'restTransform' | 'visible' | 'drawOrder'>[];
+};
+
 function adaptivePartVisuals(
   project: Project,
-  character: AdaptivePartsCharacter,
+  character: AdaptivePartVisualDefinition,
   ownerLayerId: string,
   ownerZIndex: number,
   layerStartTimeMs = 0,
@@ -1074,49 +1081,69 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
   }
   if (character.mode === 'adaptive-parts') {
-    const sourceParts = adaptivePartVisuals(
-      project,
-      character,
-      layer.id,
-      evaluated.zIndex,
-      layer.startTimeMs ?? 0,
-      timeMs,
-    );
-    // Keep the visual pivot tied to the trusted source pose. If it followed
-    // the edited bounds, moving an edge Part would recenter every other Part
-    // and make the selected Part lag behind the pointer. C3 persists this
-    // baseline; legacy Parts without one retain their current behavior until
-    // the assembly draft captures and applies it.
-    const sourcePoseCharacter: AdaptivePartsCharacter = {
-      ...character,
-      parts: character.parts.map((part) => ({
+    const clip = layer.animationClip;
+    let parts: LayerVisualPart[];
+    let visualDefinition: AdaptivePartVisualDefinition = character;
+    if (clip) {
+      const values = evaluated.animationValues;
+      if (!values || values.length !== clip.tracks.length || clip.tracks.some(track =>
+        !values.some(value => value.target.kind === track.target.kind &&
+          value.target.layerId === track.target.layerId && value.target.partId === track.target.partId && value.property === track.property),
+      )) throw new Error('Animation Clip requires complete Shot-time evaluation.');
+      visualDefinition = {
+        sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+        parts: clip.targetBases.map(basis => ({
+          partId: basis.target.partId, visualSource: basis.visualSource,
+          restTransform: composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values),
+          visible: basis.visible, drawOrder: basis.drawOrder,
+        })),
+      };
+      parts = adaptivePartVisuals(project, visualDefinition, layer.id, evaluated.zIndex, layer.startTimeMs ?? 0, evaluated.animationTimeMs ?? timeMs);
+    } else {
+      const sourceParts = adaptivePartVisuals(
+        project,
+        character,
+        layer.id,
+        evaluated.zIndex,
+        layer.startTimeMs ?? 0,
+        timeMs,
+      );
+      // Keep the visual pivot tied to the trusted source pose. If it followed
+      // the edited bounds, moving an edge Part would recenter every other Part
+      // and make the selected Part lag behind the pointer. C3 persists this
+      // baseline; legacy Parts without one retain their current behavior until
+      // the assembly draft captures and applies it.
+      const sourcePoseCharacter: AdaptivePartsCharacter = {
+        ...character,
+        parts: character.parts.map((part) => ({
+          ...part,
+          restTransform: part.sourceRestTransform ?? part.restTransform,
+        })),
+      };
+      const sourcePoseParts = adaptivePartVisuals(
+        project,
+        sourcePoseCharacter,
+        layer.id,
+        evaluated.zIndex,
+      );
+      // Adaptive source coordinates may be absolute to the imported stage. The
+      // persisted Layer is center anchored, so express the current Parts around
+      // the stable source-pose bounds center. Placement stores that same center
+      // on the Layer, preserving the imported pose and owner transforms.
+      // Visibility controls pixels and output bounds, but it must not move the
+      // Character's source pivot or the remaining Parts in existing Shots.
+      const sourceBounds = adaptiveCharacterSourceBounds(project, sourcePoseCharacter, sourcePoseParts);
+      const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
+      const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
+      parts = sourceParts.map((part) => ({
         ...part,
-        restTransform: part.sourceRestTransform ?? part.restTransform,
-      })),
-    };
-    const sourcePoseParts = adaptivePartVisuals(
-      project,
-      sourcePoseCharacter,
-      layer.id,
-      evaluated.zIndex,
-    );
-    // Adaptive source coordinates may be absolute to the imported stage. The
-    // persisted Layer is center anchored, so express the current Parts around
-    // the stable source-pose bounds center. Placement stores that same center
-    // on the Layer, preserving the imported pose and owner transforms.
-    // Visibility controls pixels and output bounds, but it must not move the
-    // Character's source pivot or the remaining Parts in existing Shots.
-    const sourceBounds = adaptiveCharacterSourceBounds(project, sourcePoseCharacter, sourcePoseParts);
-    const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
-    const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
-    const parts = sourceParts.map((part) => ({
-      ...part,
-      imageTransform: {
-        ...part.imageTransform!,
-        tx: part.imageTransform!.tx - sourceCenterX,
-        ty: part.imageTransform!.ty - sourceCenterY,
-      },
-    }));
+        imageTransform: {
+          ...part.imageTransform!,
+          tx: part.imageTransform!.tx - sourceCenterX,
+          ty: part.imageTransform!.ty - sourceCenterY,
+        },
+      }));
+    }
     const validImageAssetIds = new Set(
       project.assets
         .filter((candidate) => candidate.kind === 'image')
@@ -1136,7 +1163,7 @@ export function resolveLayerVisualParts(
         }
       }
     }
-    for (const part of character.parts) {
+    for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
       if (visualSource.kind !== 'fla-graphic') continue;
       const definition = project.animations.find(

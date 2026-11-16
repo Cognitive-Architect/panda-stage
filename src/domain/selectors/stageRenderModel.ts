@@ -8,7 +8,7 @@ import type {
   Project,
   Shot,
 } from '../models';
-import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
+import { evaluateShotAtTime, type EvaluatedLayer, type EvaluatedShot } from '../evaluate-shot-at-time';
 import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
 import {
   resolveLayerVisualParts,
@@ -38,6 +38,9 @@ export function buildEditorStageRenderModel(
   evaluatedShot?: EvaluatedShot,
   visualOverrides?: ReadonlyMap<string, LayerVisualParts | null>,
 ): EditorStageRenderModel {
+  if (!evaluatedShot && shot.layers.some(layer => layer.animationClip)) {
+    evaluatedShot = evaluateShotAtTime(shot, 0, project);
+  }
   const evaluatedById = new Map(
     evaluatedShot?.layers.map((layer) => [layer.id, layer]) ?? [],
   );

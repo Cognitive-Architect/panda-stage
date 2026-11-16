@@ -11,6 +11,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
+import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -20,6 +21,10 @@ import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
  * the active expression's asset).
  */
 export interface EvaluatedLayer {
+  /** Transient Animation Core values at the same absolute Shot time. */
+  animationValues?: EvaluatedAnimationValue[];
+  /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
+  animationTimeMs?: number;
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -454,6 +459,7 @@ export function evaluateShotAtTime(
 
       return {
         id: layer.id,
+        ...(layer.animationClip ? { animationValues: evaluateAnimationClipAtTime(layer.animationClip, timeMs), animationTimeMs: timeMs } : {}),
         assetId: assetId ?? '',
         currentExpressionId,
         mouthOverrideAssetId: null,

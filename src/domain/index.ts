@@ -23,3 +23,4 @@ export type {
 } from './evaluate-shot-at-time';
 
 export * from './evaluate-animation-core';
+export * from './character-part-animation';
