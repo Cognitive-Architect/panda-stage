@@ -45,9 +45,15 @@ export function CharacterMotionLane({
   trackWidth = shot.durationMs * pixelsPerMs,
 }: CharacterMotionLaneProps): React.JSX.Element | null {
   const partId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
+  const revealNonce = useSyncExternalStore(
+    timelineUiStore.subscribe,
+    () => timelineUiStore.getSnapshot().characterMotionRevealNonce,
+  );
   const [groupExpanded, setGroupExpanded] = useState(true);
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const lastFocusedKeyRef = useRef<string | null>(null);
+  const prevPartIdRef = useRef(partId);
+  const prevRevealNonceRef = useRef(revealNonce);
   const layer = shot.layers.find((candidate) => candidate.id === layerId);
   const allParts = characterMotionParts(project, layer);
 
@@ -56,20 +62,29 @@ export function CharacterMotionLane({
     lastFocusedKeyRef.current = null;
   }, [shot.id, layer?.id]);
 
-  useEffect(() => {
-    if (partId) setGroupExpanded(true);
-  }, [partId]);
-
   useLayoutEffect(() => {
-    if (!partId || !layer || !groupExpanded) {
+    const partChanged = partId !== prevPartIdRef.current;
+    const revealed = revealNonce !== prevRevealNonceRef.current;
+    prevPartIdRef.current = partId;
+    prevRevealNonceRef.current = revealNonce;
+    if (!partId || !layer) {
+      lastFocusedKeyRef.current = null;
+      return;
+    }
+    if ((partChanged || revealed) && !groupExpanded) {
+      lastFocusedKeyRef.current = null;
+      setGroupExpanded(true);
+      return;
+    }
+    if (!groupExpanded) {
       lastFocusedKeyRef.current = null;
       return;
     }
     const focusKey = `${shot.id}:${layer.id}:${partId}`;
-    if (lastFocusedKeyRef.current === focusKey) return;
+    if (!revealed && lastFocusedKeyRef.current === focusKey) return;
     lastFocusedKeyRef.current = focusKey;
     focusSelectedPartRow(selectedRowRef.current);
-  }, [groupExpanded, layer, partId, shot.id]);
+  }, [groupExpanded, layer, partId, revealNonce, shot.id]);
 
   if (!layer || allParts.length === 0) return null;
 
@@ -177,7 +192,14 @@ export function CharacterMotionLane({
                 data-part-id={part.partId}
                 data-selected-part={selected ? 'true' : 'false'}
                 data-testid="character-motion-part-lane"
-                onPointerDown={() => selectPart(part.partId)}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  selectPart(part.partId);
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  selectPart(part.partId);
+                }}
               >
                 <span className="timeline-lane-label" title={part.name}>
                   <button

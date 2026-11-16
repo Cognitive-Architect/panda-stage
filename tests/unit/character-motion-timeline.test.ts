@@ -122,6 +122,7 @@ function CanvasMotionStub({ layerId }: { layerId: string }) {
             select: (id) => {
               selectionStore.select(layerId);
               selectionStore.selectCharacterPart(id);
+              timelineUiStore.revealCharacterMotionPart();
             },
             begin: (id) =>
               new CharacterMotionGesture(
@@ -276,6 +277,159 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       expect(mediaLanes.scrollTop).toBe(112);
       expect(timelineUiStore.getSnapshot().scrollPx).toBe(180);
     } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it('selects without seeking when clicking Part label or blank lane (mouse & touch), while keeping key/overview/ruler seek intact (#1135)', async () => {
+    const fixture = multiPartMixedFixture();
+    const { rightHandId, leftHandId, headId } = fixture;
+    editorProjectStore.open('D:/test-v1-01-fix01-seek', fixture.project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(fixture.layerId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(250, 3000);
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const dispatchPointer = (target: EventTarget, type: string, pointerType: 'mouse' | 'touch', clientX: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'pointerType', { configurable: true, value: pointerType });
+      Object.defineProperty(event, 'pointerId', { configurable: true, value: 1 });
+      Object.defineProperty(event, 'button', { configurable: true, value: 0 });
+      Object.defineProperty(event, 'clientX', { configurable: true, value: clientX });
+      target.dispatchEvent(event);
+    };
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId: fixture.layerId })));
+
+      const rulerScroll = host.querySelector<HTMLElement>('[data-testid="timeline-ruler-scroll"]')!;
+      const rulerTrack = host.querySelector<HTMLElement>('[data-testid="timeline-ruler-track"]')!;
+      Object.defineProperty(rulerScroll, 'clientWidth', { configurable: true, value: 1000 });
+      Object.defineProperty(rulerTrack, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => new DOMRect(0, 0, 1000, 120),
+      });
+
+      // Mouse pointerdown + click on Part label selects without changing playhead (250ms).
+      const rightLabel = host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${rightHandId}"] .character-motion-part-select`)!;
+      await act(async () => {
+        dispatchPointer(rightLabel, 'pointerdown', 'mouse', 50);
+        dispatchPointer(rightLabel, 'pointerup', 'mouse', 50);
+        rightLabel.click();
+      });
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(rightHandId);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(250);
+
+      // Mouse pointerdown + click on blank Part lane selects "左手" without bubbling to ruler seek.
+      const leftBlankLane = host.querySelector<HTMLElement>(`[data-testid="character-motion-part-lane"][data-part-id="${leftHandId}"] .character-motion-keys`)!;
+      await act(async () => {
+        dispatchPointer(leftBlankLane, 'pointerdown', 'mouse', 600);
+        dispatchPointer(leftBlankLane, 'pointerup', 'mouse', 600);
+        leftBlankLane.click();
+      });
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(leftHandId);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(250);
+
+      // Touch pointerdown + click on blank Part lane selects "头" without seeking.
+      const headBlankLane = host.querySelector<HTMLElement>(`[data-testid="character-motion-part-lane"][data-part-id="${headId}"] .character-motion-keys`)!;
+      await act(async () => {
+        dispatchPointer(headBlankLane, 'pointerdown', 'touch', 750);
+        dispatchPointer(headBlankLane, 'pointerup', 'touch', 750);
+        headBlankLane.click();
+      });
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(headId);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(250);
+
+      // Clicking overview marker seeks without changing selected Part ("头").
+      const overview500 = host.querySelector<HTMLButtonElement>('[data-testid="character-motion-overview-marker"][data-time-ms="500"]')!;
+      await act(async () => overview500.click());
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(headId);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+
+      // Clicking Composite Key still selects Part + seeks to key time.
+      const leftKey1000 = host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${leftHandId}"] button[data-time-ms="1000"]`)!;
+      await act(async () => leftKey1000.click());
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(leftHandId);
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1000);
+
+      // Clicking the ruler itself still seeks normally.
+      const ruler = host.querySelector<HTMLElement>('[data-testid="timeline-ruler"]')!;
+      await act(async () => {
+        dispatchPointer(ruler, 'pointerdown', 'mouse', 0);
+        dispatchPointer(ruler, 'pointerup', 'mouse', 0);
+      });
+      expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(0);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
+  it('re-expands and reveals the same already-selected Part when clicked again on Canvas (#1135)', async () => {
+    const fixture = multiPartMixedFixture();
+    const { rightHandId, leftHandId } = fixture;
+    editorProjectStore.open('D:/test-v1-01-fix01-reveal', fixture.project);
+    shotStore.select(IDS.shot);
+    selectionStore.select(fixture.layerId);
+    selectionStore.selectCharacterPart(rightHandId);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.setScrollPx(160);
+    const initialRevision = editorProjectStore.getSnapshot()!.revision;
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const selectionListener = vi.fn();
+    const unsubscribeSelection = selectionStore.subscribe(selectionListener);
+    try {
+      await act(async () => root.render(createElement(EditorTriadHarness, { layerId: fixture.layerId })));
+      const mediaLanes = host.querySelector<HTMLElement>('.timeline-media-lanes')!;
+      Object.defineProperty(mediaLanes, 'clientHeight', { configurable: true, value: 40 });
+      Object.defineProperty(mediaLanes, 'offsetTop', { configurable: true, value: 0 });
+      mediaLanes.scrollTop = 90;
+
+      // Collapse the "人物动作" group while "右手" is already selected.
+      const toggle = host.querySelector<HTMLButtonElement>('[data-testid="character-motion-group-toggle"]')!;
+      await act(async () => toggle.click());
+      expect(host.querySelectorAll('[data-testid="character-motion-part-lane"]')).toHaveLength(0);
+      expect(host.querySelector('[data-testid="character-motion-overview-lane"]')?.getAttribute('data-expanded')).toBe('false');
+
+      selectionListener.mockClear();
+
+      // Re-click the ALREADY-SELECTED "右手" on Canvas: no fake selection change, group re-expands and scrolls row into view.
+      await act(async () => konvaState.partClicks.get(rightHandId)!());
+      expect(selectionListener).not.toHaveBeenCalled();
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(rightHandId);
+      expect(host.querySelector('[data-testid="character-motion-overview-lane"]')?.getAttribute('data-expanded')).toBe('true');
+      const rightRow = host.querySelector<HTMLElement>(`[data-testid="character-motion-part-lane"][data-part-id="${rightHandId}"]`)!;
+      expect(rightRow).not.toBeNull();
+      expect(rightRow.getAttribute('data-selected-part')).toBe('true');
+      expect(timelineUiStore.getSnapshot().scrollPx).toBe(160);
+
+      // Even while expanded, if the user scrolled away, re-clicking the same Part scrolls it back into view.
+      Object.defineProperty(rightRow, 'offsetTop', { configurable: true, value: 38 });
+      Object.defineProperty(rightRow, 'offsetHeight', { configurable: true, value: 38 });
+      mediaLanes.scrollTop = 100;
+      await act(async () => konvaState.partClicks.get(rightHandId)!());
+      expect(mediaLanes.scrollTop).toBe(38);
+      expect(selectionListener).not.toHaveBeenCalled();
+
+      // Collapse again and click a different Part ("左手"): still expands and focuses "左手".
+      await act(async () => toggle.click());
+      expect(host.querySelectorAll('[data-testid="character-motion-part-lane"]')).toHaveLength(0);
+      await act(async () => konvaState.partClicks.get(leftHandId)!());
+      expect(selectionStore.getSelectedCharacterPartId()).toBe(leftHandId);
+      expect(host.querySelector(`[data-testid="character-motion-part-lane"][data-part-id="${leftHandId}"]`)?.getAttribute('data-selected-part')).toBe('true');
+
+      // Zero revision, dirty, or History pollution.
+      expect(editorProjectStore.getSnapshot()!.revision).toBe(initialRevision);
+      expect(editorProjectStore.getSnapshot()!.dirty).toBe(false);
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+    } finally {
+      unsubscribeSelection();
       await act(async () => root.unmount());
       host.remove();
     }

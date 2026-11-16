@@ -973,7 +973,11 @@ export function CanvasStage({
       const matrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs));
       return { x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx, y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty };
     },
-    select: partId => { selectionStore.select(motionLayer.id); selectionStore.selectCharacterPart(partId); },
+    select: partId => {
+      selectionStore.select(motionLayer.id);
+      selectionStore.selectCharacterPart(partId);
+      timelineUiStore.revealCharacterMotionPart();
+    },
     error: setMotionError,
     begin: (partId) => {
       setMotionError('');

@@ -126,6 +126,8 @@ export interface FlaGraphicInternalTimelineContext {
 
 export interface TimelineUiState {
   characterMotionAutoKey: boolean;
+  /** Transient reveal signal for focusing the current Part lane on Canvas re-click. */
+  characterMotionRevealNonce: number;
   /** Current playhead position in real milliseconds. UI-only, never persisted. */
   currentTimeMs: number;
   /** Horizontal scale multiplier (1 = fit duration to viewport width). */
@@ -146,6 +148,7 @@ export interface TimelineUiState {
 
 const INITIAL_STATE: TimelineUiState = {
   characterMotionAutoKey: false,
+  characterMotionRevealNonce: 0,
   currentTimeMs: 0,
   zoom: 1,
   scrollPx: 0,
@@ -166,6 +169,7 @@ const INITIAL_STATE: TimelineUiState = {
  */
 export class TimelineUiStore {
   setCharacterMotionAutoKey(enabled: boolean): void { this.patch({ characterMotionAutoKey: enabled }); }
+  revealCharacterMotionPart(): void { this.patch({ characterMotionRevealNonce: this.state.characterMotionRevealNonce + 1 }); }
   private state: TimelineUiState = { ...INITIAL_STATE };
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeShot: () => void;
