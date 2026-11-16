@@ -159,6 +159,7 @@ export function CharacterMotionLane({
   const [groupExpanded, setGroupExpanded] = useState(true);
   const [selectedKey, setSelectedKey] = useState<{ partId: string; timesMs: number[] } | null>(null);
   const [dragPreview, setDragPreview] = useState<KeyGroupDragPreview | null>(null);
+  const [protectedCuePartId, setProtectedCuePartId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<PoseClipboard | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsPosition, setActionsPosition] = useState<{ left: number; top: number } | null>(null);
@@ -188,10 +189,17 @@ export function CharacterMotionLane({
   useEffect(() => {
     setSelectedKey((current) => (current?.partId === partId ? current : null));
     setDragPreview(null);
+    setProtectedCuePartId(null);
     setClipboard(null);
     setActionsOpen(false);
     setError(null);
   }, [instanceId, project.id, snapshot?.projectRoot, shot.id, layer?.id, partId]);
+
+  useEffect(() => {
+    if (!protectedCuePartId) return undefined;
+    const timer = window.setTimeout(() => setProtectedCuePartId(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [protectedCuePartId]);
 
   useEffect(() => {
     if (!actionsOpen) {
@@ -514,6 +522,18 @@ export function CharacterMotionLane({
                 title="下一个关键帧"
                 variant="secondary"
               />
+              {selectedKeyTimes.length >= 2 ? (
+                <span
+                  aria-live="polite"
+                  className="character-motion-selection-count"
+                  data-testid="character-motion-selection-count"
+                  role="status"
+                  title={`已选择 ${selectedKeyTimes.length} 个关键帧 · 拖动任意一个可整体移动`}
+                >
+                  <span aria-hidden="true">◈</span>
+                  <span>已选 {selectedKeyTimes.length} 个关键帧</span>
+                </span>
+              ) : null}
               <details
                 className="character-motion-key-overflow"
                 data-testid="character-motion-key-actions"
@@ -727,12 +747,13 @@ export function CharacterMotionLane({
                       current={time === currentTimeMs}
                       dragPreviewTimeMs={activeDragPreview?.previewTimesByOrigin.get(time) ?? null}
                       durationMs={shot.durationMs}
-                      editable={!layer.locked && !productPreviewOpen && time !== 0}
+                      editable={!layer.locked && !productPreviewOpen}
                       instanceId={instanceId}
                       layerId={layer.id}
                       partId={part.partId}
                       partName={part.name}
                       pixelsPerMs={pixelsPerMs}
+                      protectedCue={time === 0 && protectedCuePartId === part.partId}
                       selected={selected && selectedKeyTimes.includes(time)}
                       selectedTimesMs={selected ? selectedKeyTimes : []}
                       shotId={shot.id}
@@ -740,6 +761,10 @@ export function CharacterMotionLane({
                       snapshot={snapshot}
                       timeMs={time}
                       onActivate={activateKey}
+                      onBlockedBaseDrag={(targetPartId) => {
+                        setError('基础姿势不能批量移动');
+                        setProtectedCuePartId(targetPartId);
+                      }}
                       onDragPreview={setDragPreview}
                       onError={setError}
                       onRetime={retimeSelectedKeys}
@@ -769,6 +794,7 @@ interface CharacterMotionKeyMarkerProps {
   partId: string;
   partName: string;
   pixelsPerMs: number;
+  protectedCue: boolean;
   selected: boolean;
   selectedTimesMs: readonly number[];
   shotId: string;
@@ -776,6 +802,7 @@ interface CharacterMotionKeyMarkerProps {
   snapshot: EditorProjectSnapshot | null;
   timeMs: number;
   onActivate(partId: string, timeMs: number, shiftKey?: boolean): void;
+  onBlockedBaseDrag(partId: string): void;
   onDragPreview(preview: KeyGroupDragPreview | null): void;
   onError(message: string): void;
   onRetime(partId: string, nextTimesMs: readonly number[], anchorTimeMs: number): void;
@@ -793,6 +820,7 @@ function CharacterMotionKeyMarker({
   partId,
   partName,
   pixelsPerMs,
+  protectedCue,
   selected,
   selectedTimesMs,
   shotId,
@@ -800,16 +828,19 @@ function CharacterMotionKeyMarker({
   snapshot,
   timeMs,
   onActivate,
+  onBlockedBaseDrag,
   onDragPreview,
   onError,
   onRetime,
   onSelectPart,
 }: CharacterMotionKeyMarkerProps): React.JSX.Element {
   const dragRef = useRef<KeyDragSession | null>(null);
+  const blockedBaseAttemptRef = useRef<{ pointerId: number; startX: number } | null>(null);
   const suppressClickRef = useRef(false);
   const displayTime = dragPreviewTimeMs ?? timeMs;
 
   const cancelDrag = (): void => {
+    blockedBaseAttemptRef.current = null;
     if (!dragRef.current) return;
     dragRef.current = null;
     onDragPreview(null);
@@ -831,12 +862,12 @@ function CharacterMotionKeyMarker({
   useEffect(() => {
     const drag = dragRef.current;
     if (
-      drag &&
-      (drag.snapshot !== snapshot ||
-        drag.instanceId !== instanceId ||
-        !editable ||
-        shotStore.getCurrentShotId() !== shotId ||
-        selectionStore.getSelectedLayerId() !== layerId)
+      !editable ||
+      (drag &&
+        (drag.snapshot !== snapshot ||
+          drag.instanceId !== instanceId ||
+          shotStore.getCurrentShotId() !== shotId ||
+          selectionStore.getSelectedLayerId() !== layerId))
     ) {
       cancelDrag();
     }
@@ -846,11 +877,19 @@ function CharacterMotionKeyMarker({
     event.stopPropagation();
     if (event.button !== 0) return;
     onSelectPart(partId);
-    if (event.shiftKey) return;
+    if (event.shiftKey || !editable) return;
     const dragGroup =
       selected && selectedTimesMs.includes(timeMs) ? selectedTimesMs : [timeMs];
-    if (timeMs === 0 || !editable) return;
-    const blockedBase = dragGroup.includes(0);
+    const blockedBase = dragGroup.length > 1 && dragGroup.includes(0);
+    if (blockedBase) {
+      blockedBaseAttemptRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      return;
+    }
+    if (timeMs === 0) return;
     if (
       !snapshot ||
       !isCurrentCharacterMotionContext({
@@ -877,7 +916,7 @@ function CharacterMotionKeyMarker({
       deltaFrames: 0,
       anchorPreviewTimeMs: timeMs,
       previewTimesByOrigin: initialMap,
-      blockedBase,
+      blockedBase: false,
       moved: false,
       snapshot,
       instanceId,
@@ -887,12 +926,20 @@ function CharacterMotionKeyMarker({
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
+    const blockedAttempt = blockedBaseAttemptRef.current;
+    if (blockedAttempt && blockedAttempt.pointerId === event.pointerId) {
+      if (Math.abs(event.clientX - blockedAttempt.startX) >= 3) {
+        blockedBaseAttemptRef.current = null;
+        suppressClickRef.current = true;
+        onBlockedBaseDrag(partId);
+      }
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const deltaPx = event.clientX - drag.startX;
     if (!drag.moved && Math.abs(deltaPx) < 3) return;
     drag.moved = true;
-    if (drag.blockedBase) return;
     const preview = previewCharacterMotionKeyGroupShift({
       fromTimesMs: drag.fromTimesMs,
       anchorTimeMs: drag.anchorTimeMs,
@@ -913,6 +960,23 @@ function CharacterMotionKeyMarker({
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
+    const blockedAttempt = blockedBaseAttemptRef.current;
+    if (blockedAttempt && blockedAttempt.pointerId === event.pointerId) {
+      blockedBaseAttemptRef.current = null;
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+    if (suppressClickRef.current) {
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
@@ -925,10 +989,6 @@ function CharacterMotionKeyMarker({
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
-    if (drag.blockedBase) {
-      onError('0 秒基础姿势关键帧不可移动，请取消选中后再移动其他关键帧。');
-      return;
-    }
     if (
       !isCurrentCharacterMotionContext({
         snapshot: drag.snapshot,
@@ -979,6 +1039,14 @@ function CharacterMotionKeyMarker({
 
   const handleCancel = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
+    if (blockedBaseAttemptRef.current?.pointerId === event.pointerId) {
+      blockedBaseAttemptRef.current = null;
+    }
+    if (suppressClickRef.current) {
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+    }
     if (dragRef.current?.pointerId === event.pointerId) cancelDrag();
   };
 
@@ -991,11 +1059,12 @@ function CharacterMotionKeyMarker({
         data-selected={selected ? 'true' : 'false'}
         data-current={current ? 'true' : 'false'}
         data-dragging={dragPreviewTimeMs === null ? 'false' : 'true'}
+        data-protected={protectedCue ? 'true' : undefined}
         aria-label={`${partName} 动作关键帧 ${timeMs}ms`}
         aria-pressed={selected}
         aria-current={current ? 'true' : undefined}
         style={{ left: displayTime * pixelsPerMs }}
-        title={`${formatTimecode(timeMs)}${timeMs === 0 ? ' · 基础姿势' : ''}`}
+        title={`${formatTimecode(timeMs)}${timeMs === 0 ? ' · 基础姿势' : ''} · Shift 多选`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

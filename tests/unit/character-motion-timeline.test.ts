@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { act, createElement, Fragment, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -773,7 +775,7 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       targetEl.dispatchEvent(event);
     };
     const clickKey = (el: HTMLElement, shiftKey = false) => {
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey });
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey, detail: 1 });
       el.dispatchEvent(event);
     };
 
@@ -787,17 +789,32 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       const copyBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-copy-pose"]')!;
       const deleteBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-delete-key"]')!;
       const easingSelect = () => host.querySelector<HTMLSelectElement>('[data-testid="character-motion-easing"]');
+      const selectionCount = () => host.querySelector<HTMLElement>('[data-testid="character-motion-selection-count"]');
       const keyAt = (partId: string, timeMs: number) =>
         host.querySelector<HTMLButtonElement>(`[data-testid="character-motion-part-lane"][data-part-id="${partId}"] button[data-time-ms="${timeMs}"]`)!;
 
-      // Click 500ms -> single selection; Shift+click 1000ms and 1500ms -> 3 selected keys on same Part.
+      // UX-01: tooltips expose Shift multi-select discovery; single selection hides multi-count noise.
+      expect(keyAt(rightHandId, 500).title).toContain('Shift 多选');
+      expect(keyAt(rightHandId, 0).title).toContain('Shift 多选');
+      expect(selectionCount()).toBeNull();
+
+      // Click 500ms -> single selection; Shift+click 1000ms and 1500ms -> live count updates from null -> 2 -> 3.
       await act(async () => clickKey(keyAt(rightHandId, 500), false));
+      expect(selectionCount()).toBeNull();
       await act(async () => clickKey(keyAt(rightHandId, 1000), true));
+      expect(selectionCount()?.textContent).toContain('已选 2 个关键帧');
       await act(async () => clickKey(keyAt(rightHandId, 1500), true));
+      expect(selectionCount()?.textContent).toContain('已选 3 个关键帧');
+      expect(selectionCount()?.title).toBe('已选择 3 个关键帧 · 拖动任意一个可整体移动');
       for (const time of [500, 1000, 1500]) {
         expect(keyAt(rightHandId, time).getAttribute('data-selected')).toBe('true');
         expect(keyAt(rightHandId, time).getAttribute('aria-pressed')).toBe('true');
       }
+      // Shift+click removes 1500ms -> count drops to 2; Shift+click restores -> back to 3.
+      await act(async () => clickKey(keyAt(rightHandId, 1500), true));
+      expect(selectionCount()?.textContent).toContain('已选 2 个关键帧');
+      await act(async () => clickKey(keyAt(rightHandId, 1500), true));
+      expect(selectionCount()?.textContent).toContain('已选 3 个关键帧');
       // Single-key actions disable/hide during multi-key selection.
       expect(copyBtn().disabled).toBe(true);
       expect(deleteBtn().disabled).toBe(true);
@@ -832,16 +849,28 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       await act(async () => dispatchPointer(stayEl, 'pointerup', 0));
       expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
 
-      // Selecting [0, 750] and dragging blocks moving 0ms with alert and zero Project/History change.
+      // UX-03: Selecting [0, 750] and starting drag blocks IMMEDIATELY on drag-start (before pointerup),
+      // emits no drag preview, preserves selection across pointerup+click, and shows short protected feedback.
       await act(async () => clickKey(keyAt(rightHandId, 750), false));
       await act(async () => clickKey(keyAt(rightHandId, 0), true));
       expect(keyAt(rightHandId, 0).getAttribute('data-selected')).toBe('true');
       expect(keyAt(rightHandId, 750).getAttribute('data-selected')).toBe('true');
+      expect(selectionCount()?.textContent).toContain('已选 2 个关键帧');
       const blockedEl = keyAt(rightHandId, 750);
       await act(async () => dispatchPointer(blockedEl, 'pointerdown', 0));
       await act(async () => dispatchPointer(blockedEl, 'pointermove', 125 * pxPerMs));
-      await act(async () => dispatchPointer(blockedEl, 'pointerup', 125 * pxPerMs));
-      expect(host.querySelector('[role="alert"]')?.textContent).toMatch(/0 秒/);
+      // Immediately rejected BEFORE pointerup!
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe('基础姿势不能批量移动');
+      expect(keyAt(rightHandId, 750).getAttribute('data-dragging')).toBe('false');
+      expect(keyAt(rightHandId, 0).getAttribute('data-protected')).toBe('true');
+      expect(host.querySelector('.character-motion-key-time-bubble')).toBeNull();
+      await act(async () => {
+        dispatchPointer(blockedEl, 'pointerup', 125 * pxPerMs);
+        clickKey(blockedEl, false);
+      });
+      // Selection [0, 750] is preserved and Project/History stay untouched.
+      expect(keyAt(rightHandId, 0).getAttribute('data-selected')).toBe('true');
+      expect(keyAt(rightHandId, 750).getAttribute('data-selected')).toBe('true');
       expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
       expect(editorProjectStore.getSnapshot()!.project).toEqual(afterDrag);
 
@@ -851,14 +880,36 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       await act(async () => editorProjectStore.redo());
       expect(editorProjectStore.getSnapshot()!.project).toEqual(afterDrag);
 
-      // Shift+clicking another Part's key switches Part instead of cross-Part multi-select.
+      // Shift+clicking another Part's key switches Part and clears prior multi-selection feedback immediately.
       await act(async () => clickKey(keyAt(headId, 750), true));
       expect(selectionStore.getSelectedCharacterPartId()).toBe(headId);
       expect(keyAt(headId, 750).getAttribute('data-selected')).toBe('true');
+      expect(selectionCount()).toBeNull();
     } finally {
       clientWidthSpy.mockRestore();
       await act(async () => root.unmount());
       host.remove();
     }
+  });
+
+  it('gives Cloud Touch 44px hit targets for keys, overview markers, and group toggle without inflating glyphs or desktop layout (#1137)', () => {
+    const css = readFileSync(
+      path.resolve('src/renderer/styles/features/canvas/character-motion.css'),
+      'utf8',
+    );
+    // Desktop compact sizing stays intact.
+    expect(css).toMatch(/\.character-motion-keys button\s*\{[\s\S]*?width:\s*28px;[\s\S]*?height:\s*28px;/u);
+    expect(css).toMatch(/\.character-motion-overview-marker\s*\{[\s\S]*?width:\s*28px;[\s\S]*?height:\s*28px;/u);
+    expect(css).toMatch(/\.character-motion-group-toggle\s*\{[\s\S]*?width:\s*20px;[\s\S]*?height:\s*28px;/u);
+    // Overview glyph dot & focus ring stay restrained and crisp.
+    expect(css).toMatch(/\.character-motion-overview-marker > span\s*\{[\s\S]*?width:\s*7px;[\s\S]*?height:\s*7px;/u);
+    expect(css).toMatch(/\.character-motion-group-toggle:focus-visible\s*\{[\s\S]*?outline:\s*2px solid/u);
+    // Cloud Touch landscape expands group toggle, Composite Key, and overview marker hit boxes to >= 44x44px.
+    expect(css).toMatch(
+      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-group-toggle\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-width:\s*44px;[\s\S]*?height:\s*44px;[\s\S]*?min-height:\s*44px;/u,
+    );
+    expect(css).toMatch(
+      /\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-keys button,\s*\.editor-shell\[data-editor-device-mode='cloud-touch'\]\[data-editor-shell-layout='landscape'\]\s+\.character-motion-overview-marker\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-width:\s*44px;[\s\S]*?height:\s*44px;[\s\S]*?min-height:\s*44px;/u,
+    );
   });
 });
