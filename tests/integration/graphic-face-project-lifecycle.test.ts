@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CharacterService, ProjectV19Schema, migrateProject } from '../../src/domain';
+import { CharacterService, PROJECT_SCHEMA_VERSION, ProjectV19Schema, migrateProject } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { ProjectOperationResponseSchema } from '../../src/shared/project-api';
 import historicalV19 from '../fixtures/project-v19-image-face.json';
@@ -22,12 +22,12 @@ describe('v20 Graphic face file lifecycle (#1112)', () => {
       const opened = await service.open(root);
       expect(opened.sourceVersion).toBe(19);
       expect(opened.migrated).toBe(true);
-      expect(opened.project).toEqual({ ...historicalV19, schemaVersion: 21 });
+      expect(opened.project).toEqual({ ...historicalV19, schemaVersion: PROJECT_SCHEMA_VERSION });
       expect(ProjectOperationResponseSchema.safeParse({ ok: true, value: opened }).success).toBe(true);
       await service.save(root, opened.project, 1);
       const reopened = await new ProjectService().open(root);
       expect(reopened.project).toEqual(opened.project);
-      expect(reopened.sourceVersion).toBe(21);
+      expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
       expect(reopened.migrated).toBe(false);
       expect(migrateProject(JSON.parse(await readFile(file, 'utf8')))).toEqual(opened.project);
     } finally { await rm(parent, { recursive: true, force: true }); }

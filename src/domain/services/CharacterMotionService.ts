@@ -1,6 +1,10 @@
 import { createCharacterPartAnimationClip } from '../character-part-animation';
-import { evaluateAnimationTrackAtTime } from '../evaluate-animation-core';
-import { AnimationTrackSchema, type AnimationProperty } from '../models/animationCore';
+import {
+  compositeKeyTimesForTarget,
+  evaluateTargetMotionValues,
+  upsertTargetKeyValues,
+} from '../animation-track-ops';
+import { type AnimationProperty } from '../models/animationCore';
 import { ProjectSchema, type Project } from '../models/project';
 import { CharacterService } from './CharacterService';
 import { characterPartSourceBounds, characterPartTransformFromStaticAdjustment } from '../geometry/characterPartLayout';
@@ -37,16 +41,22 @@ export function characterMotionValues(project: Project, input: CharacterMotionIn
       'transform.scaleX': adjustment?.scale ?? 1, 'transform.scaleY': adjustment?.scale ?? 1,
     };
   }
-  const values = { ...NEUTRAL_CHARACTER_MOTION };
-  for (const track of layer.animationClip?.tracks ?? []) {
-    if (track.target.partId === input.partId) values[track.property] = evaluateAnimationTrackAtTime(track, input.timeMs);
-  }
-  return values;
+  const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+  return evaluateTargetMotionValues(
+    clip?.tracks ?? [],
+    { kind: 'character-part', layerId: layer.id, partId: input.partId },
+    input.timeMs,
+  );
 }
 
 /** UI aggregation only: no Composite Key data is ever persisted. */
 export function characterCompositeKeyTimes(layer: Project['shots'][number]['layers'][number], partId: string): number[] {
-  return [...new Set(layer.animationClip?.tracks.filter(t => t.target.partId === partId).flatMap(t => t.keys.map(k => k.timeMs)) ?? [])].sort((a, b) => a - b);
+  const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+  return compositeKeyTimesForTarget(clip?.tracks ?? [], {
+    kind: 'character-part',
+    layerId: layer.id,
+    partId,
+  });
 }
 
 /** Thin Property Track facade, adapted from #979 set-key semantics. */
@@ -79,14 +89,7 @@ export class CharacterMotionService {
     const clip = createCharacterPartAnimationClip(project, shot.id, layer.id);
     const basis = clip.targetBases.find(b => b.target.partId === input.partId);
     if (!basis || !basis.visible) throw new Error('无法编辑此动画部件。');
-    for (const property of properties) {
-      const existing = clip.tracks.find(t => t.target.partId === input.partId && t.property === property);
-      const keys = existing?.keys ?? [{ timeMs: 0, value: NEUTRAL_CHARACTER_MOTION[property], interpolationToNext: 'linear' as const }];
-      const atTime = keys.find(k => k.timeMs === input.timeMs);
-      const nextKey = { timeMs: input.timeMs, value: changes[property]!, interpolationToNext: atTime?.interpolationToNext ?? 'linear' as const };
-      const track = AnimationTrackSchema.parse({ target: basis.target, property, keys: [...keys.filter(k => k.timeMs !== input.timeMs), nextKey].sort((a, b) => a.timeMs - b.timeMs) });
-      clip.tracks = [...clip.tracks.filter(t => !(t.target.partId === input.partId && t.property === property)), track];
-    }
+    clip.tracks = upsertTargetKeyValues(clip.tracks, basis.target, input.timeMs, changes);
     return ProjectSchema.parse({ ...project, shots: project.shots.map(s => s.id === shot.id ? {
       ...s, layers: s.layers.map(l => l.id === layer.id ? { ...l, animationClip: clip } : l),
     } : s) });

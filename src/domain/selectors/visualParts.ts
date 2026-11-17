@@ -26,6 +26,7 @@ import {
 import { resolveImageAsset } from './canvasLayers';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
+import { sameAnimationTarget } from '../models/animationCore';
 import { resolveCharacterFaceSource } from './characterFaceSource';
 
 export type LayerVisualKind =
@@ -1081,14 +1082,13 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
   }
   if (character.mode === 'adaptive-parts') {
-    const clip = layer.animationClip;
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
     let parts: LayerVisualPart[];
     let visualDefinition: AdaptivePartVisualDefinition = character;
     if (clip) {
       const values = evaluated.animationValues;
       if (!values || values.length !== clip.tracks.length || clip.tracks.some(track =>
-        !values.some(value => value.target.kind === track.target.kind &&
-          value.target.layerId === track.target.layerId && value.target.partId === track.target.partId && value.property === track.property),
+        !values.some(value => sameAnimationTarget(value.target, track.target) && value.property === track.property),
       )) throw new Error('Animation Clip requires complete Shot-time evaluation.');
       visualDefinition = {
         sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },

@@ -25,6 +25,7 @@ describe('Character Motion Property Track facade', () => {
     }
     const again = service.apply(next, input, Object.fromEntries(properties.map(p => [p, 3])));
     const updated = again.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1 || updated.version !== 1) throw new Error('fixture');
     expect(updated.targetBases).toEqual(clip.targetBases);
     expect(updated.fixedCharacterCenter).toEqual(clip.fixedCharacterCenter);
     expect(updated.tracks.every(t => t.keys.length === 2 && t.keys[1]!.value === 3)).toBe(true);

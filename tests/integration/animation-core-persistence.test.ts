@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { evaluateAnimationClipAtTime } from '../../src/domain';
+import { PROJECT_SCHEMA_VERSION, evaluateAnimationClipAtTime } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { ProjectOperationResponseSchema } from '../../src/shared/project-api';
 import { animationCoreFixture } from '../helpers/animationCoreFixture';
@@ -26,7 +26,7 @@ describe('Animation Core v21 file persistence', () => {
       const opened = await new ProjectService().open(root);
       expect(opened.sourceVersion).toBe(20);
       expect(opened.migrated).toBe(true);
-      expect(opened.project).toEqual({ ...historical, schemaVersion: 21 });
+      expect(opened.project).toEqual({ ...historical, schemaVersion: PROJECT_SCHEMA_VERSION });
       expect(ProjectOperationResponseSchema.safeParse({ ok: true, value: opened }).success).toBe(true);
       const target = { ...clip.targetBases[0]!.target, partId: '71000000-0000-4000-8000-000000000002' };
       clip.targetBases.push({ ...clip.targetBases[0]!, target, drawOrder: 1,
@@ -42,13 +42,13 @@ describe('Animation Core v21 file persistence', () => {
       const expected = [0, 250, 500, 900, 1000, 2000].map(time => evaluateAnimationClipAtTime(clip, time));
       await new ProjectService().save(root, opened.project, 1);
       const reopened = await new ProjectService().open(root);
-      expect(reopened.sourceVersion).toBe(21);
+      expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
       expect(reopened.migrated).toBe(false);
       expect(reopened.project).toEqual(opened.project);
       const persisted = reopened.project.shots[0]!.layers.find(l => l.id === layerId)!.animationClip!;
       expect(persisted).toEqual(clip);
       expect([0, 250, 500, 900, 1000, 2000].map(time => evaluateAnimationClipAtTime(persisted, time))).toEqual(expected);
-      expect(JSON.parse(await readFile(file, 'utf8')).schemaVersion).toBe(21);
+      expect(JSON.parse(await readFile(file, 'utf8')).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

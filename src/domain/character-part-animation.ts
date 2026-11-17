@@ -1,8 +1,8 @@
 import { multiplyAffineMatrices } from '../shared/affine-matrix';
 import { characterPartSourceBounds } from './geometry/characterPartLayout';
 import {
-  AnimationClipV0Schema, TargetLocalPivotSchema,
-  type AnimationClipV0, type AnimationTargetRef, type CharacterPartTargetBasis,
+  AnimationClipV0Schema, TargetLocalPivotSchema, sameAnimationTarget,
+  type AnimationClipV0, type CharacterPartTargetBasis, type CharacterPartTargetRef,
   type TargetLocalPivot,
 } from './models/animationCore';
 import { resolveCharacterPartVisualSource, type CharacterPartTransform } from './models/character';
@@ -15,8 +15,8 @@ function point(matrix: CharacterPartTransform, x: number, y: number) {
   return { x: matrix.a * x + matrix.c * y + matrix.tx, y: matrix.b * x + matrix.d * y + matrix.ty };
 }
 
-function sameTarget(left: AnimationTargetRef, right: AnimationTargetRef): boolean {
-  return left.kind === right.kind && left.layerId === right.layerId && left.partId === right.partId;
+function sameTarget(left: CharacterPartTargetRef, right: { kind: string; layerId: string; partId?: string }): boolean {
+  return right.kind === 'character-part' && sameAnimationTarget(left, right as CharacterPartTargetRef);
 }
 
 /** Capture source geometry once, never a rendered frame's bounds or bitmap. */
@@ -27,7 +27,10 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
   const character = project.characters.find(entry => entry.id === characterId);
   if (!character || character.mode !== 'adaptive-parts') throw new Error('Animation requires an Adaptive Parts Character.');
   // Re-entering animation must not silently recapture Library changes.
-  if (layer.animationClip) return structuredClone(layer.animationClip);
+  if (layer.animationClip) {
+    if (layer.animationClip.version !== 1) throw new Error('Character Layer requires a Character Animation Clip v1.');
+    return structuredClone(layer.animationClip);
+  }
   const sourcePosePoints: { x: number; y: number }[] = [];
   const targetBases = character.parts.map((part): CharacterPartTargetBasis => {
     const bounds = characterPartSourceBounds(part, project.animations);
@@ -54,7 +57,7 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
 }
 
 /** Resolve only the frozen instance identity, never current Library Part membership. */
-export function resolveCharacterPartAnimationBasis(clip: AnimationClipV0, target: AnimationTargetRef): CharacterPartTargetBasis {
+export function resolveCharacterPartAnimationBasis(clip: AnimationClipV0, target: CharacterPartTargetRef): CharacterPartTargetBasis {
   const basis = clip.targetBases.find(entry => sameTarget(entry.target, target));
   if (!basis) throw new Error(`Unknown animation target ${target.layerId}/${target.partId}.`);
   return basis;
@@ -62,7 +65,7 @@ export function resolveCharacterPartAnimationBasis(clip: AnimationClipV0, target
 
 /** Explicit calibration is permitted only while this target has no non-neutral keys. */
 export function recalibrateCharacterPartAnimationPivot(
-  clip: AnimationClipV0, target: AnimationTargetRef, pivot: TargetLocalPivot,
+  clip: AnimationClipV0, target: CharacterPartTargetRef, pivot: TargetLocalPivot,
 ): AnimationClipV0 {
   resolveCharacterPartAnimationBasis(clip, target);
   const authored = clip.tracks.some(track => sameTarget(track.target, target) && track.keys.some(key =>
@@ -85,7 +88,7 @@ export function composeAnimatedCharacterPartTransform(
 ): CharacterPartTransform {
   let offsetX = 0, offsetY = 0, rotationDeg = 0, scaleX = 1, scaleY = 1;
   for (const entry of values) {
-    if (!sameTarget(entry.target, basis.target)) continue;
+    if (!sameAnimationTarget(entry.target, basis.target)) continue;
     switch (entry.property) {
       case 'transform.offsetX': offsetX = entry.value; break;
       case 'transform.offsetY': offsetY = entry.value; break;

@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV21Schema,
   LayerV20Schema,
   LayerV14Schema,
   LayerV16Schema,
@@ -44,19 +45,33 @@ export const ShotV20Schema = z
   })
   .strict();
 
-export const ShotSchema = ShotV20Schema.extend({
-  layers: z.array(LayerSchema),
-}).superRefine((shot, context) => {
+function validateShotClipKeyTimes(
+  shot: { durationMs: number; layers: readonly { animationClip?: { tracks: readonly { keys: readonly { timeMs: number }[] }[] } }[] },
+  context: z.RefinementCtx,
+): void {
   shot.layers.forEach((layer, layerIndex) => {
     layer.animationClip?.tracks.forEach((track, trackIndex) => {
       track.keys.forEach((key, keyIndex) => {
         if (key.timeMs > shot.durationMs) {
-          context.addIssue({ code: 'custom', path: ['layers', layerIndex, 'animationClip', 'tracks', trackIndex, 'keys', keyIndex, 'timeMs'], message: 'Animation key must be within the owning Shot duration.' });
+          context.addIssue({
+            code: 'custom',
+            path: ['layers', layerIndex, 'animationClip', 'tracks', trackIndex, 'keys', keyIndex, 'timeMs'],
+            message: 'Animation key must be within the owning Shot duration.',
+          });
         }
       });
     });
   });
-});
+}
+
+/** Frozen v21 Shot reader: preserves Character Clip v1 bounds checks. */
+export const ShotV21Schema = ShotV20Schema.extend({
+  layers: z.array(LayerV21Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotSchema = ShotV20Schema.extend({
+  layers: z.array(LayerSchema),
+}).superRefine(validateShotClipKeyTimes);
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

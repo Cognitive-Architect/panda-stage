@@ -27,6 +27,7 @@ describe.each(['transform.scaleX', 'transform.scaleY'] as const)('%s persisted c
     clip.tracks[0]!.keys.forEach(key => { key.value = value; });
     const parsed = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
     const persisted = parsed.shots[0]!.layers.find(layer => layer.id === layerId)!.animationClip!;
+    if (persisted.version !== 1) throw new Error('fixture');
     for (const timeMs of [0, 500, 1000]) {
       const values = evaluateAnimationClipAtTime(persisted, timeMs);
       const matrix = composeAnimatedCharacterPartTransform(persisted.targetBases[0]!, persisted.fixedCharacterCenter, values);
