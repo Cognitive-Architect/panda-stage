@@ -147,18 +147,6 @@
   font-size: 24px;
 }
 
-.canvas-background-warning {
-  top: auto;
-  bottom: 24px;
-  transform: translateX(-50%);
-  color: #f8e7bd;
-  font-size: 18px;
-}
-
-.canvas-background-warning strong {
-  font-size: 22px;
-}
-
 .canvas-empty-state-overlay {
   position: absolute;
   z-index: 3;

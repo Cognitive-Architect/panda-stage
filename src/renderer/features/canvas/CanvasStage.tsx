@@ -913,7 +913,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(backgroundLayer)
       : Boolean(backgroundAsset && backgroundImage)
     : false;
-  const missingBackground = Boolean(
+  const missingBackground = Boolean(shot) && Boolean(
     backgroundLayer?.render.visible && !backgroundVisualReady &&
     (temporalCanvasModel?.visualStatusByLayer.get(backgroundLayer.layer.id) === 'required-failed' ||
       backgroundLayer.visual.resources.required.some(({ assetId }) => imageState.missing.has(assetId))),
@@ -1573,7 +1573,7 @@ export function CanvasStage({
             ) : null}
             {missingBackground ? (
               <div
-                className="canvas-stage-message canvas-stage-pending canvas-stage-warning canvas-background-warning"
+                className="canvas-stage-message canvas-stage-warning canvas-stage-pending"
                 data-testid="canvas-background-warning"
                 role="alert"
               >
