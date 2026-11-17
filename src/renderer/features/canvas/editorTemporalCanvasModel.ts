@@ -88,12 +88,27 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
             : null,
         mouthOverrideAssetId: null,
         anchor: layer.anchor,
-        x: layer.x,
-        y: layer.y,
-        scaleX: layer.scaleX,
-        scaleY: layer.scaleY,
+        x:
+          layer.animationClip?.version === 2 && animationAtZero
+            ? animationAtZero.x
+            : layer.x,
+        y:
+          layer.animationClip?.version === 2 && animationAtZero
+            ? animationAtZero.y
+            : layer.y,
+        scaleX:
+          layer.animationClip?.version === 2 && animationAtZero
+            ? animationAtZero.scaleX
+            : layer.scaleX,
+        scaleY:
+          layer.animationClip?.version === 2 && animationAtZero
+            ? animationAtZero.scaleY
+            : layer.scaleY,
         flipX: layer.flipX,
-        rotationDeg: layer.rotationDeg,
+        rotationDeg:
+          layer.animationClip?.version === 2 && animationAtZero
+            ? animationAtZero.rotationDeg
+            : layer.rotationDeg,
         opacity: layer.opacity,
         visible: animationAtZero?.visible ?? layer.visible,
         zIndex: layer.zIndex,
