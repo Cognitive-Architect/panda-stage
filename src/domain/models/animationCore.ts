@@ -39,37 +39,61 @@ export const AnimationKeySchema = z.object({
   interpolationToNext: AnimationInterpolationSchema,
 }).strict();
 
-function createAnimationTrackSchema<TTarget extends z.ZodTypeAny>(targetSchema: TTarget) {
-  return z.object({
-    target: targetSchema,
-    property: AnimationPropertySchema,
-    keys: z.array(AnimationKeySchema).min(1),
-  }).strict().superRefine((track, context) => {
-    if (track.property === 'transform.scaleX' || track.property === 'transform.scaleY') {
-      track.keys.forEach((key, index) => {
-        if (key.value < CHARACTER_PART_MIN_SCALE || key.value > CHARACTER_PART_MAX_SCALE) {
+function validateAnimationTrack(
+  track: {
+    target: { kind: string; layerId: string };
+    property: z.infer<typeof AnimationPropertySchema>;
+    keys: readonly z.infer<typeof AnimationKeySchema>[];
+  },
+  context: z.RefinementCtx,
+): void {
+  if (track.property === 'transform.scaleX' || track.property === 'transform.scaleY') {
+    track.keys.forEach((key, index) => {
+      if (track.target.kind === 'layer') {
+        if (key.value <= 0) {
           context.addIssue({
-            code: 'custom', path: ['keys', index, 'value'],
-            message: `Animation scale must be between ${CHARACTER_PART_MIN_SCALE} and ${CHARACTER_PART_MAX_SCALE}.`,
+            code: 'custom',
+            path: ['keys', index, 'value'],
+            message: 'Layer animation scale multiplier must be a positive finite number.',
           });
         }
-      });
-    }
-    // Ported from #979: the base key may change value, but cannot disappear/retime.
-    if (track.keys[0]?.timeMs !== 0) {
-      context.addIssue({ code: 'custom', path: ['keys', 0, 'timeMs'], message: 'Every track requires a protected 0 ms key.' });
-    }
-    for (let index = 1; index < track.keys.length; index += 1) {
-      if (track.keys[index]!.timeMs <= track.keys[index - 1]!.timeMs) {
-        context.addIssue({ code: 'custom', path: ['keys', index, 'timeMs'], message: 'Animation keys must be strictly ascending and unique.' });
+      } else if (key.value < CHARACTER_PART_MIN_SCALE || key.value > CHARACTER_PART_MAX_SCALE) {
+        context.addIssue({
+          code: 'custom',
+          path: ['keys', index, 'value'],
+          message: `Animation scale must be between ${CHARACTER_PART_MIN_SCALE} and ${CHARACTER_PART_MAX_SCALE}.`,
+        });
       }
+    });
+  }
+  // Ported from #979: the base key may change value, but cannot disappear/retime.
+  if (track.keys[0]?.timeMs !== 0) {
+    context.addIssue({ code: 'custom', path: ['keys', 0, 'timeMs'], message: 'Every track requires a protected 0 ms key.' });
+  }
+  for (let index = 1; index < track.keys.length; index += 1) {
+    if (track.keys[index]!.timeMs <= track.keys[index - 1]!.timeMs) {
+      context.addIssue({ code: 'custom', path: ['keys', index, 'timeMs'], message: 'Animation keys must be strictly ascending and unique.' });
     }
-  });
+  }
 }
 
-export const AnimationTrackSchema = createAnimationTrackSchema(AnimationTargetRefSchema);
-export const CharacterPartAnimationTrackSchema = createAnimationTrackSchema(CharacterPartTargetRefSchema);
-export const LayerAnimationTrackSchema = createAnimationTrackSchema(LayerTargetRefSchema);
+export const AnimationTrackSchema = z.object({
+  target: AnimationTargetRefSchema,
+  property: AnimationPropertySchema,
+  keys: z.array(AnimationKeySchema).min(1),
+}).strict().superRefine(validateAnimationTrack);
+
+export const CharacterPartAnimationTrackSchema = z.object({
+  target: CharacterPartTargetRefSchema,
+  property: AnimationPropertySchema,
+  keys: z.array(AnimationKeySchema).min(1),
+}).strict().superRefine(validateAnimationTrack);
+
+export const LayerAnimationTrackSchema = z.object({
+  target: LayerTargetRefSchema,
+  property: AnimationPropertySchema,
+  keys: z.array(AnimationKeySchema).min(1),
+}).strict().superRefine(validateAnimationTrack);
 
 export const TargetLocalPivotSchema = z.object({
   space: z.literal('target-local'),

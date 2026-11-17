@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   AnimationClipSchema,
   AnimationTargetRefSchema,
+  AnimationTrackSchema,
   LayerAnimationClipSchema,
+  LayerAnimationTrackSchema,
   LayerMotionService,
   LayerSchema,
   LayerService,
@@ -596,5 +598,203 @@ describe('LayerMotionService Character=0 authoring, pivot & ownership (#1140)', 
     expect(() =>
       service.applyKeys(locked, { shotId, layerId, timeMs: 500 }, { 'transform.offsetX': 1 }),
     ).toThrow(/锁定/);
+  });
+});
+
+describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
+  it('separates Layer v2 positive finite multipliers from Character v1 0.05..20 bounds at Track Schema level', () => {
+    const { project, layerId } = zeroCharacterGraphicProject();
+    const layerTarget = { kind: 'layer' as const, layerId };
+    for (const multiplier of [0.0025, 0.05, 1, 20, 400]) {
+      const candidate = {
+        target: layerTarget,
+        property: 'transform.scaleX' as const,
+        keys: [
+          { timeMs: 0, value: 1, interpolationToNext: 'linear' as const },
+          { timeMs: 500, value: multiplier, interpolationToNext: 'linear' as const },
+        ],
+      };
+      expect(LayerAnimationTrackSchema.parse(candidate)).toEqual(candidate);
+      expect(AnimationTrackSchema.parse(candidate)).toEqual(candidate);
+    }
+    for (const invalid of [0, -1, NaN, Infinity, -Infinity]) {
+      expect(
+        LayerAnimationTrackSchema.safeParse({
+          target: layerTarget,
+          property: 'transform.scaleX',
+          keys: [{ timeMs: 0, value: invalid, interpolationToNext: 'linear' }],
+        }).success,
+      ).toBe(false);
+    }
+
+    // Character v1 Track schema keeps the historical 0.05..20 contract unchanged.
+    const charClip = animationCoreFixture().clip;
+    const partTarget = charClip.targetBases[0]!.target;
+    for (const illegalCharScale of [0.0025, 0.049, 20.001, 400]) {
+      expect(
+        AnimationTrackSchema.safeParse({
+          target: partTarget,
+          property: 'transform.scaleX',
+          keys: [{ timeMs: 0, value: illegalCharScale, interpolationToNext: 'linear' }],
+        }).success,
+      ).toBe(false);
+    }
+    expect(project.characters).toHaveLength(0);
+  });
+
+  it('allows base=20 -> final=0.05 (multiplier=0.0025) and base=0.05 -> final=20 (multiplier=400)', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const base20 = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === layerId ? { ...l, scaleX: 20, scaleY: 20 } : l)),
+      })),
+    });
+
+    const shrunk = service.applyTransform(
+      base20,
+      { shotId, layerId, timeMs: 500, autoKey: true },
+      { scaleX: 0.05 },
+    );
+    const clip = shrunk.shots[0]!.layers.find((l) => l.id === layerId)!.animationClip!;
+    expect(clip.version).toBe(2);
+    const key500 = clip.tracks[0]!.keys.find((k) => k.timeMs === 500)!;
+    expect(key500.value).toBeCloseTo(0.0025, 10);
+    const evShrunk = evaluateShotAtTime(shrunk.shots[0]!, 500, shrunk).layers.find(
+      (l) => l.id === layerId,
+    )!;
+    expect(evShrunk.scaleX).toBeCloseTo(0.05, 10);
+    expect(evShrunk.scaleY).toBe(20);
+
+    // Non-exact ratio base (0.7 -> 0.05) succeeds cleanly despite IEEE-754 rounding.
+    const base07 = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === layerId ? { ...l, scaleX: 0.7 } : l)),
+      })),
+    });
+    const toMin = service.applyTransform(
+      base07,
+      { shotId, layerId, timeMs: 500, autoKey: true },
+      { scaleX: 0.05 },
+    );
+    expect(
+      evaluateShotAtTime(toMin.shots[0]!, 500, toMin).layers.find((l) => l.id === layerId)!.scaleX,
+    ).toBeCloseTo(0.05, 10);
+
+    // Inverse extreme: base=0.05 -> final=20 via multiplier=400.
+    const baseMin = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === layerId ? { ...l, scaleX: 0.05 } : l)),
+      })),
+    });
+    const grown = service.applyTransform(
+      baseMin,
+      { shotId, layerId, timeMs: 500, autoKey: true },
+      { scaleX: 20 },
+    );
+    const grownKey = grown.shots[0]!.layers.find((l) => l.id === layerId)!.animationClip!.tracks[0]!.keys.find(
+      (k) => k.timeMs === 500,
+    )!;
+    expect(grownKey.value).toBeCloseTo(400, 10);
+    expect(
+      evaluateShotAtTime(grown.shots[0]!, 500, grown).layers.find((l) => l.id === layerId)!.scaleX,
+    ).toBeCloseTo(20, 10);
+  });
+
+  it('rejects out-of-bounds final scale at both applyTransform and applyKeys (e.g. base 20 x rel 20 = 400)', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const base20 = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === layerId ? { ...l, scaleX: 20, scaleY: 1 } : l)),
+      })),
+    });
+    const snapshot = structuredClone(base20);
+
+    // Direct applyKeys with base=20 * multiplier=20 -> final=400 must be rejected.
+    expect(() =>
+      service.applyKeys(base20, { shotId, layerId, timeMs: 500 }, { 'transform.scaleX': 20 }),
+    ).toThrow(/超出合法范围/);
+    expect(base20).toEqual(snapshot);
+
+    // Direct applyKeys with base=20 * multiplier=0.002 -> final=0.04 (< 0.05) must be rejected.
+    expect(() =>
+      service.applyKeys(base20, { shotId, layerId, timeMs: 500 }, { 'transform.scaleX': 0.002 }),
+    ).toThrow(/超出合法范围/);
+    expect(base20).toEqual(snapshot);
+
+    // Auto-Key applyTransform targeting >20 or <0.05 must be rejected.
+    expect(() =>
+      service.applyTransform(base20, { shotId, layerId, timeMs: 500, autoKey: true }, { scaleX: 400 }),
+    ).toThrow(/图层缩放/);
+    expect(() =>
+      service.applyTransform(base20, { shotId, layerId, timeMs: 500, autoKey: true }, { scaleX: 0.049 }),
+    ).toThrow(/图层缩放/);
+    expect(base20).toEqual(snapshot);
+
+    // Low-level applyKeys allows multiplier=0.0025 directly when final=0.05 is valid,
+    // and Auto-Key OFF rejects lowering static scale when an existing key would drop below 0.05!
+    const validMin = service.applyKeys(
+      base20,
+      { shotId, layerId, timeMs: 500 },
+      { 'transform.scaleX': 0.0025 },
+    );
+    expect(
+      evaluateShotAtTime(validMin.shots[0]!, 500, validMin).layers.find((l) => l.id === layerId)!.scaleX,
+    ).toBeCloseTo(0.05, 10);
+
+    const validSnap = structuredClone(validMin);
+    expect(() =>
+      service.applyTransform(
+        validMin,
+        { shotId, layerId, timeMs: 0, autoKey: false },
+        { scaleX: 1 },
+      ),
+    ).toThrow(/超出合法范围/);
+    expect(validMin).toEqual(validSnap);
+  });
+
+  it('validates Layer v2 scale multipliers against pre-track legacy ScaleEvent values', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    // Static scaleX=20, but ScaleEvent sets pre-track scale at 500ms to 1 (and up to 5 at 1000ms).
+    const scaleEvent: TimelineEvent = {
+      id: randomUUID(),
+      type: 'scale',
+      layerId,
+      startMs: 0,
+      endMs: 1_000,
+      from: { x: 1, y: 1 },
+      to: { x: 5, y: 5 },
+      easing: 'linear',
+    };
+    const withScaleEvent = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        timelineEvents: [scaleEvent],
+        layers: s.layers.map((l) => (l.id === layerId ? { ...l, scaleX: 20, scaleY: 20 } : l)),
+      })),
+    });
+
+    // At 500ms, ScaleEvent evaluates to pre-track scale=3; multiplier=0.02 gives 0.06 (>= 0.05)!
+    const validAt500 = service.applyKeys(
+      withScaleEvent,
+      { shotId, layerId, timeMs: 500 },
+      { 'transform.scaleX': 0.02 },
+    );
+    expect(
+      evaluateShotAtTime(validAt500.shots[0]!, 500, validAt500).layers.find((l) => l.id === layerId)!.scaleX,
+    ).toBeCloseTo(0.06, 10);
+
+    // At 1000ms, ScaleEvent evaluates to pre-track scale=5; multiplier=5 gives final=25 (> 20) -> REJECT!
+    expect(() =>
+      service.applyKeys(validAt500, { shotId, layerId, timeMs: 1_000 }, { 'transform.scaleX': 5 }),
+    ).toThrow(/超出合法范围/);
   });
 });

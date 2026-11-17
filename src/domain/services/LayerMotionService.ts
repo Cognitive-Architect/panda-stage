@@ -19,7 +19,10 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
 } from '../constants';
-import { evaluateLayerPreTrackState } from '../evaluate-shot-at-time';
+import {
+  assertLayerClipFinalScalesInBounds,
+  evaluateLayerPreTrackState,
+} from '../evaluate-shot-at-time';
 import {
   createLayerAnimationClip,
   evaluateLayerRelativeMotionValues,
@@ -133,9 +136,16 @@ function assertValidFrame(shot: Shot, timeMs: number): void {
   }
 }
 
-function validateScaleValue(value: number): number {
+function validateDisplayScale(value: number): number {
   if (!Number.isFinite(value) || value < LAYER_MIN_SCALE || value > LAYER_MAX_SCALE) {
     throw new Error(`图层缩放必须是 ${LAYER_MIN_SCALE}–${LAYER_MAX_SCALE} 之间的有限数字。`);
+  }
+  return value;
+}
+
+function validateScaleMultiplier(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error('图层关键帧缩放倍率必须是大于 0 的有限数字。');
   }
   return value;
 }
@@ -148,7 +158,7 @@ function validateMotionPatch(changes: Partial<LayerMotionValues>): void {
       throw new Error('关键帧数值必须是有限数字。');
     }
     if (property === 'transform.scaleX' || property === 'transform.scaleY') {
-      validateScaleValue(value);
+      validateScaleMultiplier(value);
     }
   }
 }
@@ -221,7 +231,20 @@ export class LayerMotionService {
       (property) =>
         changes[property] !== undefined && changes[property] !== current[property],
     );
-    if (!hasDiff) return project;
+    if (!hasDiff) {
+      if (existingClip) {
+        assertLayerClipFinalScalesInBounds(shot, layer, project, [input.timeMs]);
+      } else {
+        const preTrack = evaluateLayerPreTrackState(shot, layer, input.timeMs, project);
+        if (changes['transform.scaleX'] !== undefined) {
+          validateDisplayScale(preTrack.scaleX * changes['transform.scaleX']);
+        }
+        if (changes['transform.scaleY'] !== undefined) {
+          validateDisplayScale(preTrack.scaleY * changes['transform.scaleY']);
+        }
+      }
+      return project;
+    }
 
     const clip = existingClip
       ? structuredClone(existingClip)
@@ -232,7 +255,7 @@ export class LayerMotionService {
       input.timeMs,
       changes,
     );
-    return this.commitLayerClip(project, shot.id, layer.id, clip);
+    return this.commitLayerClip(project, shot.id, layer.id, clip, [input.timeMs]);
   }
 
   /**
@@ -261,7 +284,7 @@ export class LayerMotionService {
         throw new Error('图层变换数值必须是有限数字。');
       }
       if (key === 'scaleX' || key === 'scaleY') {
-        validateScaleValue(value);
+        validateDisplayScale(value);
       }
     }
 
@@ -299,11 +322,11 @@ export class LayerMotionService {
           : currentRel['transform.rotationDeg'];
       const nextRelScaleX =
         patch.scaleX !== undefined
-          ? validateScaleValue(patch.scaleX / prePose.scaleX)
+          ? validateScaleMultiplier(patch.scaleX / prePose.scaleX)
           : currentRel['transform.scaleX'];
       const nextRelScaleY =
         patch.scaleY !== undefined
-          ? validateScaleValue(patch.scaleY / prePose.scaleY)
+          ? validateScaleMultiplier(patch.scaleY / prePose.scaleY)
           : currentRel['transform.scaleY'];
 
       if (patch.rotationDeg !== undefined) {
@@ -360,11 +383,11 @@ export class LayerMotionService {
 
     const nextStaticScaleX =
       patch.scaleX !== undefined
-        ? validateScaleValue(patch.scaleX / currentRel['transform.scaleX'])
+        ? validateDisplayScale(patch.scaleX / currentRel['transform.scaleX'])
         : layer.scaleX;
     const nextStaticScaleY =
       patch.scaleY !== undefined
-        ? validateScaleValue(patch.scaleY / currentRel['transform.scaleY'])
+        ? validateDisplayScale(patch.scaleY / currentRel['transform.scaleY'])
         : layer.scaleY;
     const nextStaticRotationDeg =
       patch.rotationDeg !== undefined
@@ -543,10 +566,16 @@ export class LayerMotionService {
       input.fromTimeMs,
       input.toTimeMs,
     );
-    return this.commitLayerClip(project, shot.id, layer.id, {
-      ...existing,
-      tracks: nextTracks,
-    });
+    return this.commitLayerClip(
+      project,
+      shot.id,
+      layer.id,
+      {
+        ...existing,
+        tracks: nextTracks,
+      },
+      [input.toTimeMs],
+    );
   }
 
   recalibratePivot(
@@ -573,8 +602,9 @@ export class LayerMotionService {
     shotId: string,
     layerId: string,
     clip: LayerAnimationClip,
+    extraCheckTimesMs: readonly number[] = [],
   ): Project {
-    return ProjectSchema.parse({
+    const nextProject = ProjectSchema.parse({
       ...project,
       shots: project.shots.map((shot) =>
         shot.id === shotId
@@ -587,5 +617,14 @@ export class LayerMotionService {
           : shot,
       ),
     });
+    const nextShot = nextProject.shots.find((shot) => shot.id === shotId)!;
+    const nextLayer = nextShot.layers.find((layer) => layer.id === layerId)!;
+    assertLayerClipFinalScalesInBounds(
+      nextShot,
+      nextLayer,
+      nextProject,
+      extraCheckTimesMs,
+    );
+    return nextProject;
   }
 }

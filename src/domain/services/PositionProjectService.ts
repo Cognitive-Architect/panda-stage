@@ -15,6 +15,7 @@ import {
   type PositionHoldInput,
   type PositionKeyInput,
 } from '../position-chain';
+import { assertLayerClipFinalScalesInBounds } from '../evaluate-shot-at-time';
 import {
   syncLayerAnimationClipBasis,
 } from '../layer-animation';
@@ -249,6 +250,12 @@ export class PositionProjectService {
           }
         : baseMergedLayer;
     const layerChanged = JSON.stringify(nextLayer) !== JSON.stringify(layer);
+    if (
+      nextLayer.animationClip?.version === 2 &&
+      (layer.scaleX !== nextLayer.scaleX || layer.scaleY !== nextLayer.scaleY)
+    ) {
+      assertLayerClipFinalScalesInBounds(shot, nextLayer, project);
+    }
     let timelineEvents = shot.timelineEvents;
     if (positionChanged && recognition.status === 'editable') {
       const baseUpdate = bindPositionBase(recognition.chain, {

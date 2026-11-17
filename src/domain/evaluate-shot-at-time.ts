@@ -10,10 +10,12 @@ import {
   collectFlaGraphicTimelineDurationMs,
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
+import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
   composeAnimatedLayerTransform,
+  evaluateLayerRelativeMotionValues,
   resolveLayerAnimationBasis,
   type LayerBasePose,
 } from './layer-animation';
@@ -506,6 +508,61 @@ export function evaluateLayerPreTrackState(
     animationVisible,
     animationFrame: initialVisual.animationFrame,
   };
+}
+
+const FINAL_SCALE_TOLERANCE = 1e-12;
+
+/**
+ * Enforce that a Layer Clip v2's composed final scaleX/scaleY stay within
+ * `LAYER_MIN_SCALE..LAYER_MAX_SCALE` across authored timestamps and legacy
+ * ScaleEvent boundaries. Used at authoring boundaries, never to silently clamp.
+ */
+export function assertLayerClipFinalScalesInBounds(
+  shot: Shot,
+  layer: Layer,
+  project: Project,
+  extraTimesMs: readonly number[] = [],
+): void {
+  const clip = layer.animationClip;
+  if (!clip || clip.version !== 2) return;
+  const events = shot.timelineEvents.filter((event) => event.layerId === layer.id);
+  const checkTimes = new Set<number>([0]);
+  for (const timeMs of extraTimesMs) {
+    if (Number.isFinite(timeMs)) {
+      checkTimes.add(Math.max(0, Math.min(Math.round(timeMs), shot.durationMs)));
+    }
+  }
+  for (const track of clip.tracks) {
+    if (track.property !== 'transform.scaleX' && track.property !== 'transform.scaleY') continue;
+    for (const key of track.keys) {
+      checkTimes.add(Math.max(0, Math.min(Math.round(key.timeMs), shot.durationMs)));
+    }
+  }
+  for (const event of events) {
+    if (event.type !== 'scale') continue;
+    checkTimes.add(Math.max(0, Math.min(Math.round(event.startMs), shot.durationMs)));
+    checkTimes.add(Math.max(0, Math.min(Math.round(event.endMs), shot.durationMs)));
+  }
+
+  for (const timeMs of checkTimes) {
+    const preTrack = evaluateLayerPreTrackState(shot, layer, timeMs, project, events);
+    const relative = evaluateLayerRelativeMotionValues(clip, layer.id, timeMs);
+    for (const [axis, preScale, multiplier] of [
+      ['scaleX', preTrack.scaleX, relative['transform.scaleX']],
+      ['scaleY', preTrack.scaleY, relative['transform.scaleY']],
+    ] as const) {
+      const finalScale = preScale * multiplier;
+      if (
+        !Number.isFinite(finalScale) ||
+        finalScale < LAYER_MIN_SCALE - FINAL_SCALE_TOLERANCE ||
+        finalScale > LAYER_MAX_SCALE + FINAL_SCALE_TOLERANCE
+      ) {
+        throw new Error(
+          `图层最终显示缩放 ${axis}=${finalScale} 超出合法范围（${LAYER_MIN_SCALE}–${LAYER_MAX_SCALE}）。`,
+        );
+      }
+    }
+  }
 }
 
 /**

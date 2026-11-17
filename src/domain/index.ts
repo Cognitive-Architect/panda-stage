@@ -15,6 +15,7 @@ export * from './evaluate-layer-motion';
 export * from './evaluate-fla-graphic';
 export * from './resolve-speaker-focus-camera';
 export {
+  assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
   evaluateShotAtTime,
 } from './evaluate-shot-at-time';
