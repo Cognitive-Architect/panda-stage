@@ -30,6 +30,14 @@ interface Point {
   readonly y: number;
 }
 
+export interface AxisTransformInput {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  rotationDeg: number;
+}
+
 export interface SelectableLayerProps {
   characterMotion?: CharacterMotionCanvas;
   /** Compatibility primary image for ordinary/legacy callers. */
@@ -55,6 +63,11 @@ export interface SelectableLayerProps {
   onCommitTransform: (
     layerId: string,
     transform: LayerTransformInput,
+  ) => void;
+  /** Optional axis-preserving transform callback for independent Layer Motion targets. */
+  onCommitAxisTransform?: (
+    layerId: string,
+    transform: AxisTransformInput,
   ) => void;
   /** A scoped Position-only capability; never writes Project data directly. */
   positionAuthoringSession?: PositionAuthoringSessionHandle | null;
@@ -89,6 +102,7 @@ export function SelectableLayer({
   onSelect,
   onCommitPosition,
   onCommitTransform,
+  onCommitAxisTransform,
   positionAuthoringSession = null,
   positionAuthoringShakeOffset = null,
   flaGraphicEditProjection = null,
@@ -416,18 +430,32 @@ export function SelectableLayer({
           resetNode(node);
           return;
         }
-        const scale = Math.abs(node.scaleX());
-        node.scaleX(layer.flipX ? -scale : scale);
-        node.scaleY(scale);
+        const scaleX = Math.abs(node.scaleX());
+        const scaleY = Math.abs(node.scaleY());
         try {
-          onCommitTransform(layer.id, {
-            x: node.x(),
-            y: node.y(),
-            scale,
-            rotationDeg: node.rotation(),
-            opacity: layer.opacity,
-            flipX: layer.flipX,
-          });
+          if (onCommitAxisTransform) {
+            node.scaleX(layer.flipX ? -scaleX : scaleX);
+            node.scaleY(scaleY);
+            onCommitAxisTransform(layer.id, {
+              x: node.x(),
+              y: node.y(),
+              scaleX,
+              scaleY,
+              rotationDeg: node.rotation(),
+            });
+          } else {
+            const scale = scaleX;
+            node.scaleX(layer.flipX ? -scale : scale);
+            node.scaleY(scale);
+            onCommitTransform(layer.id, {
+              x: node.x(),
+              y: node.y(),
+              scale,
+              rotationDeg: node.rotation(),
+              opacity: layer.opacity,
+              flipX: layer.flipX,
+            });
+          }
         } catch (error) {
           resetNode(node);
           onError(

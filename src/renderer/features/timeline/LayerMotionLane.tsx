@@ -4,9 +4,11 @@ import {
   hasLayerCompositeKeyOutgoingInterval,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
+  layerCompositePoseSnapshot,
   LayerMotionService,
   TIMELINE_FPS,
   type Layer,
+  type LayerMotionValues,
   type Shot,
 } from '../../../domain';
 import {
@@ -29,7 +31,7 @@ export interface LayerMotionLaneProps {
 
 interface LayerPoseClipboard {
   scopeKey: string;
-  fromTimeMs: number;
+  pose: Partial<LayerMotionValues>;
 }
 
 const layerMotionService = new LayerMotionService();
@@ -71,11 +73,7 @@ export function LayerMotionLane({
   if (!supported || !layer) return null;
 
   const timesMs = layerCompositeKeyTimes(layer);
-  const hasClipboard = Boolean(
-    clipboard &&
-      clipboard.scopeKey === scopeKey &&
-      timesMs.includes(clipboard.fromTimeMs),
-  );
+  const hasClipboard = Boolean(clipboard && clipboard.scopeKey === scopeKey);
 
   return (
     <MotionKeyLaneControl
@@ -90,7 +88,11 @@ export function LayerMotionLane({
       laneTestId="layer-motion-lane"
       layer={layer}
       onCopyPose={(timeMs) => {
-        setClipboard({ scopeKey, fromTimeMs: timeMs });
+        const pose = layerCompositePoseSnapshot(layer, timeMs);
+        if (!pose) {
+          throw new Error(`找不到位于 ${timeMs} ms 的可复制关键帧。`);
+        }
+        setClipboard({ scopeKey, pose });
       }}
       onDeleteKey={(timeMs) => {
         const next = layerMotionService.deleteKey(snapshot.project, {
@@ -102,12 +104,11 @@ export function LayerMotionLane({
       }}
       onPastePose={(targetTimeMs) => {
         if (!clipboard || clipboard.scopeKey !== scopeKey) return;
-        const next = layerMotionService.pasteKeys(snapshot.project, {
-          shotId: shot.id,
-          layerId: layer.id,
-          fromTimeMs: clipboard.fromTimeMs,
-          toTimeMs: targetTimeMs,
-        });
+        const next = layerMotionService.pastePoseSnapshot(
+          snapshot.project,
+          { shotId: shot.id, layerId: layer.id, timeMs: targetTimeMs },
+          clipboard.pose,
+        );
         commitMotionProject(next, '粘贴对象姿势');
       }}
       onRetimeKeys={(fromTimesMs, deltaFrames) => {

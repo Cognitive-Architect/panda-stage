@@ -14,6 +14,7 @@ import {
   type Project,
 } from '../../src/domain';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import {
   LayerTransformPanel,
   useLayerTransformController,
@@ -544,5 +545,243 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
       });
     });
     expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(thirdTimeMs);
+  });
+
+  it('freezes Copy/Paste pose snapshot on sparse properties across source edit, retime, delete, and scope switch (#1145)', async () => {
+    const { project, graphicLayerId, secondGraphicLayerId } = createStandaloneGraphicProject({
+      secondGraphic: true,
+    });
+    const motion = new LayerMotionService();
+    // Sparse tracks ONLY: transform.offsetX & transform.rotationDeg (no offsetY/scaleX/scaleY).
+    const seeded = motion.applyKeys(
+      project,
+      { shotId: IDS.shot, layerId: graphicLayerId, timeMs: 500 },
+      { 'transform.offsetX': 120, 'transform.rotationDeg': 30 },
+    );
+    editorProjectStore.open('D:/test-1145-clipboard', seeded);
+    shotStore.select(IDS.shot);
+    selectionStore.select(graphicLayerId);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+
+    await act(async () => root.render(createElement(TimelineHarness)));
+    const markers = () =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="layer-motion-lane"] button[data-time-ms]'));
+
+    // Copy at 500ms.
+    await act(async () => markers()[1]!.click());
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="layer-motion-copy-pose"]')!.click();
+    });
+
+    // Mutate source key at 500ms, retime 500ms -> 750ms, then delete 750ms completely!
+    await act(async () => {
+      const m1 = motion.applyKeys(
+        editorProjectStore.getSnapshot()!.project,
+        { shotId: IDS.shot, layerId: graphicLayerId, timeMs: 500 },
+        { 'transform.offsetX': 480, 'transform.rotationDeg': 90 },
+      );
+      const m2 = motion.retimeKey(m1, {
+        shotId: IDS.shot,
+        layerId: graphicLayerId,
+        fromTimeMs: 500,
+        toTimeMs: 750,
+      });
+      const m3 = motion.deleteKey(m2, {
+        shotId: IDS.shot,
+        layerId: graphicLayerId,
+        timeMs: 750,
+      });
+      editorProjectStore.updateProject(m3, 'Mutate/retime/delete copied key');
+    });
+
+    // Paste at 1500ms -> STILL writes frozen snapshot (120, 30) and keeps sparse tracks (1 History).
+    const undoBeforePaste = editorProjectStore.history.getSnapshot().undoCount;
+    await act(async () => timelineUiStore.seek(1_500, 3_000));
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="layer-motion-paste-pose"]')!.click();
+    });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoBeforePaste + 1);
+    const pastedProject = editorProjectStore.getSnapshot()!.project;
+    const pastedLayer = pastedProject.shots[0]!.layers.find((l) => l.id === graphicLayerId)!;
+    const clip = pastedLayer.animationClip;
+    expect(clip?.version).toBe(2);
+    // Missing sparse properties (offsetY, scaleX, scaleY) must NOT be materialized.
+    if (clip?.version === 2) {
+      expect(clip.tracks.map((t) => t.property).sort()).toEqual([
+        'transform.offsetX',
+        'transform.rotationDeg',
+      ]);
+    }
+    expect(
+      layerMotionValues(pastedProject, {
+        shotId: IDS.shot,
+        layerId: graphicLayerId,
+        timeMs: 1_500,
+      }),
+    ).toMatchObject({
+      'transform.offsetX': 120,
+      'transform.rotationDeg': 30,
+      'transform.scaleX': 1,
+      'transform.scaleY': 1,
+    });
+
+    // Switching selected Layer clears clipboard isolation cleanly.
+    await act(async () => selectionStore.select(secondGraphicLayerId!));
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="layer-motion-paste-pose"]')?.disabled,
+    ).toBe(true);
+  });
+
+  it('preserves non-uniform scale (2, 1) across SelectableLayer rotate-only gestures while keeping scale gestures working (#1145)', () => {
+    const { project, graphicLayerId } = createStandaloneGraphicProject();
+    const nonUniformProject: Project = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shotCandidate) => ({
+        ...shotCandidate,
+        layers: shotCandidate.layers.map((layerCandidate) =>
+          layerCandidate.id === graphicLayerId
+            ? { ...layerCandidate, scaleX: 2, scaleY: 1 }
+            : layerCandidate,
+        ),
+      })),
+    });
+    editorProjectStore.open('D:/test-1145-nonuniform', nonUniformProject);
+    shotStore.select(IDS.shot);
+    selectionStore.select(graphicLayerId);
+    timelineUiStore.seek(500, 3_000);
+
+    const shot = editorProjectStore.getSnapshot()!.project.shots[0]!;
+    const layer = shot.layers.find((l) => l.id === graphicLayerId)!;
+    const temporalModel = buildEditorTemporalCanvasModel({
+      project: editorProjectStore.getSnapshot()!.project,
+      shot,
+      currentTimeMs: 500,
+      readyAssetIds: new Set(nonUniformProject.assets.map((a) => a.id)),
+      previousVisuals: new Map(),
+    });
+    const stageLayer = temporalModel.stageModel.layers.find((l) => l.layer.id === graphicLayerId)!;
+    const axisCommits: Array<{
+      x: number;
+      y: number;
+      scaleX: number;
+      scaleY: number;
+      rotationDeg: number;
+    }> = [];
+
+    const element = SelectableLayer({
+      layer,
+      nodeRef: { current: null },
+      render: stageLayer.render,
+      selected: true,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onCommitAxisTransform: (_id, next) => {
+        axisCommits.push(next);
+        const current = editorProjectStore.getSnapshot()!.project;
+        const evalLayer = evaluateShotAtTime(
+          current.shots[0]!,
+          timelineUiStore.getSnapshot().currentTimeMs,
+          current,
+        ).layers.find((l) => l.id === graphicLayerId)!;
+        const patch: {
+          x?: number;
+          y?: number;
+          scaleX?: number;
+          scaleY?: number;
+          rotationDeg?: number;
+        } = {};
+        if (Math.abs(next.x - evalLayer.x) > 1e-5) patch.x = next.x;
+        if (Math.abs(next.y - evalLayer.y) > 1e-5) patch.y = next.y;
+        if (Math.abs(next.scaleX - evalLayer.scaleX) > 1e-5) patch.scaleX = next.scaleX;
+        if (Math.abs(next.scaleY - evalLayer.scaleY) > 1e-5) patch.scaleY = next.scaleY;
+        if (Math.abs(next.rotationDeg - evalLayer.rotationDeg) > 1e-5) {
+          patch.rotationDeg = next.rotationDeg;
+        }
+        if (Object.keys(patch).length > 0) {
+          layerStore.applyMotionTransform(
+            graphicLayerId,
+            timelineUiStore.getSnapshot().currentTimeMs,
+            timelineUiStore.getSnapshot().layerMotionAutoKey,
+            patch,
+          );
+        }
+      },
+      onError: vi.fn(),
+    });
+
+    let scaleX = 2;
+    let scaleY = 1;
+    let rotation = 0;
+    const targetNode = {
+      x: () => stageLayer.render.x,
+      y: () => stageLayer.render.y,
+      scaleX: (val?: number) => {
+        if (val !== undefined) scaleX = val;
+        return scaleX;
+      },
+      scaleY: (val?: number) => {
+        if (val !== undefined) scaleY = val;
+        return scaleY;
+      },
+      rotation: () => rotation,
+      position: vi.fn(),
+      scale: vi.fn(),
+    };
+    const handlers = element.props as {
+      onTransformEnd: (event: { target: typeof targetNode }) => void;
+    };
+
+    // 1. Rotate-only with Auto-Key OFF: scaleY must stay 1 (never overwritten with 2), static/Basis untouched.
+    timelineUiStore.setLayerMotionAutoKey(false);
+    rotation = 45;
+    handlers.onTransformEnd({ target: targetNode });
+    expect(scaleX).toBe(2);
+    expect(scaleY).toBe(1);
+    expect(axisCommits[0]).toMatchObject({ scaleX: 2, scaleY: 1, rotationDeg: 45 });
+    const afterRotateOff = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find(
+      (l) => l.id === graphicLayerId,
+    )!;
+    expect(afterRotateOff.scaleX).toBe(2);
+    expect(afterRotateOff.scaleY).toBe(1);
+    expect(afterRotateOff.rotationDeg).toBe(45);
+    expect(afterRotateOff.animationClip).toBeUndefined();
+
+    // 2. Rotate-only with Auto-Key ON: creates ONLY rotation track, keeps scaleX=2/scaleY=1 with zero scale keys!
+    timelineUiStore.setLayerMotionAutoKey(true);
+    rotation = 90;
+    handlers.onTransformEnd({ target: targetNode });
+    expect(scaleX).toBe(2);
+    expect(scaleY).toBe(1);
+    const afterRotateOnProj = editorProjectStore.getSnapshot()!.project;
+    const afterRotateOn = afterRotateOnProj.shots[0]!.layers.find(
+      (l) => l.id === graphicLayerId,
+    )!;
+    expect(afterRotateOn.scaleX).toBe(2);
+    expect(afterRotateOn.scaleY).toBe(1);
+    if (afterRotateOn.animationClip?.version === 2) {
+      expect(afterRotateOn.animationClip.tracks.map((t) => t.property)).toEqual([
+        'transform.rotationDeg',
+      ]);
+    }
+    const evalAfterRotateOn = evaluateShotAtTime(
+      afterRotateOnProj.shots[0]!,
+      500,
+      afterRotateOnProj,
+    ).layers.find((l) => l.id === graphicLayerId)!;
+    expect(evalAfterRotateOn).toMatchObject({ scaleX: 2, scaleY: 1, rotationDeg: 90 });
+
+    // 3. Real scale gesture (e.g. 1.5x keepRatio -> scaleX=3, scaleY=1.5): writes both scales accurately & keeps 1 History.
+    const undoBeforeScale = editorProjectStore.history.getSnapshot().undoCount;
+    scaleX = 3;
+    scaleY = 1.5;
+    handlers.onTransformEnd({ target: targetNode });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoBeforeScale + 1);
+    const evalAfterScale = evaluateShotAtTime(
+      editorProjectStore.getSnapshot()!.project.shots[0]!,
+      500,
+      editorProjectStore.getSnapshot()!.project,
+    ).layers.find((l) => l.id === graphicLayerId)!;
+    expect(evalAfterScale).toMatchObject({ scaleX: 3, scaleY: 1.5, rotationDeg: 90 });
   });
 });

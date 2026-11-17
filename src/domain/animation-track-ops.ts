@@ -315,6 +315,43 @@ export function setTargetKeyEasing<TTrack extends AnimationTrack>(
   });
 }
 
+/** Read ONLY actually authored key values at `timeMs` without materializing missing sparse properties. */
+export function readTargetAuthoredKeyValues<TTrack extends AnimationTrack>(
+  tracks: readonly TTrack[],
+  target: TTrack['target'],
+  timeMs: number,
+): Partial<AnimationMotionValues> | null {
+  const authored: Partial<AnimationMotionValues> = {};
+  let found = false;
+  for (const track of targetTracks(tracks, target)) {
+    const key = track.keys.find((candidate) => candidate.timeMs === timeMs);
+    if (key) {
+      authored[track.property] = key.value;
+      found = true;
+    }
+  }
+  return found ? authored : null;
+}
+
+/** Write a previously snapshotted sparse key map onto `toTimeMs` for `target`. */
+export function pasteTargetKeySnapshotAtTime<TTrack extends AnimationTrack>(
+  tracks: readonly TTrack[],
+  target: TTrack['target'],
+  shotDurationMs: number,
+  toTimeMs: number,
+  pose: Partial<AnimationMotionValues>,
+): TTrack[] {
+  if (!isValidFrameTime(toTimeMs) || toTimeMs < 0 || toTimeMs > shotDurationMs) {
+    throw new Error('请选择镜头内的有效帧。');
+  }
+  if (Object.keys(pose).length === 0) {
+    throw new Error('剪贴板中没有可粘贴的关键帧姿势。');
+  }
+  return upsertTargetKeyValues(tracks, target, toTimeMs, pose, {
+    forceWrite: true,
+  });
+}
+
 /** Copy authored key values from `fromTimeMs` onto `toTimeMs` for `target`. */
 export function pasteTargetKeysAtTime<TTrack extends AnimationTrack>(
   tracks: readonly TTrack[],
@@ -323,22 +360,15 @@ export function pasteTargetKeysAtTime<TTrack extends AnimationTrack>(
   fromTimeMs: number,
   toTimeMs: number,
 ): TTrack[] {
-  if (!isValidFrameTime(toTimeMs) || toTimeMs < 0 || toTimeMs > shotDurationMs) {
-    throw new Error('请选择镜头内的有效帧。');
-  }
-  const authoredAtSource: Partial<AnimationMotionValues> = {};
-  let found = false;
-  for (const track of targetTracks(tracks, target)) {
-    const key = track.keys.find((candidate) => candidate.timeMs === fromTimeMs);
-    if (key) {
-      authoredAtSource[track.property] = key.value;
-      found = true;
-    }
-  }
-  if (!found) {
+  const authoredAtSource = readTargetAuthoredKeyValues(tracks, target, fromTimeMs);
+  if (!authoredAtSource) {
     throw new Error(`找不到位于 ${fromTimeMs} ms 的可粘贴关键帧。`);
   }
-  return upsertTargetKeyValues(tracks, target, toTimeMs, authoredAtSource, {
-    forceWrite: true,
-  });
+  return pasteTargetKeySnapshotAtTime(
+    tracks,
+    target,
+    shotDurationMs,
+    toTimeMs,
+    authoredAtSource,
+  );
 }

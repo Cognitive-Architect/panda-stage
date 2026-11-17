@@ -4,7 +4,9 @@ import {
   hasTargetOutgoingInterval,
   NEUTRAL_ANIMATION_MOTION,
   pasteTargetKeysAtTime,
+  pasteTargetKeySnapshotAtTime,
   planTargetKeysRetime,
+  readTargetAuthoredKeyValues,
   retimeTargetKeys,
   setTargetKeyEasing,
   targetCompositeKeyEasing,
@@ -201,6 +203,16 @@ export function layerCompositeKeyEasing(
   const clip = clipV2(layer);
   if (!clip) return null;
   return targetCompositeKeyEasing(clip.tracks, layerTargetRef(layer.id), timeMs);
+}
+
+/** Freeze ONLY the actually authored sparse properties at `timeMs` for clipboard copy. */
+export function layerCompositePoseSnapshot(
+  layer: Layer,
+  timeMs: number,
+): Partial<LayerMotionValues> | null {
+  const clip = clipV2(layer);
+  if (!clip) return null;
+  return readTargetAuthoredKeyValues(clip.tracks, layerTargetRef(layer.id), timeMs);
 }
 
 /** Thin Domain service for Character-free FLA Graphic Layer animation tracks and basis edits. */
@@ -575,6 +587,41 @@ export class LayerMotionService {
         tracks: nextTracks,
       },
       [input.toTimeMs],
+    );
+  }
+
+  /** Paste a frozen sparse pose snapshot captured at Copy time onto `input.timeMs`. */
+  pastePoseSnapshot(
+    project: Project,
+    input: LayerKeyTimeInput,
+    pose: Partial<LayerMotionValues>,
+  ): Project {
+    const { shot, layer } = assertMutableLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    assertValidFrame(shot, input.timeMs);
+    validateMotionPatch(pose);
+    const clip = clipV2(layer)
+      ? structuredClone(clipV2(layer)!)
+      : createLayerAnimationClip(project, shot.id, layer.id);
+    const nextTracks = pasteTargetKeySnapshotAtTime(
+      clip.tracks,
+      layerTargetRef(layer.id),
+      shot.durationMs,
+      input.timeMs,
+      pose,
+    );
+    return this.commitLayerClip(
+      project,
+      shot.id,
+      layer.id,
+      {
+        ...clip,
+        tracks: nextTracks,
+      },
+      [input.timeMs],
     );
   }
 

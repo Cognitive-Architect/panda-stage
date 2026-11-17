@@ -1360,6 +1360,102 @@ export function CanvasStage({
                                      : result.error.message,
                                );
                              }}
+                            onCommitAxisTransform={
+                              isSupportedLayerMotionLayer(
+                                snapshot?.project,
+                                shot,
+                                layer,
+                              )
+                                ? (layerId, transform) => {
+                                    if (!canCommitCanvasEdit(stageLayer)) {
+                                      throw new Error(
+                                        rejectTemporalCanvasEdit(
+                                          layer.source.kind === 'animation',
+                                        ),
+                                      );
+                                    }
+                                    const current = editorProjectStore.getSnapshot();
+                                    const currentShot = current?.project.shots.find(
+                                      (candidate) => candidate.id === shot?.id,
+                                    );
+                                    const currentLayer = currentShot?.layers.find(
+                                      (candidate) => candidate.id === layerId,
+                                    );
+                                    if (
+                                      !current ||
+                                      !currentShot ||
+                                      !currentLayer ||
+                                      !isSupportedLayerMotionLayer(
+                                        current.project,
+                                        currentShot,
+                                        currentLayer,
+                                      )
+                                    ) {
+                                      throw new Error(
+                                        rejectTemporalCanvasEdit(
+                                          layer.source.kind === 'animation',
+                                        ),
+                                      );
+                                    }
+                                    const liveUi = timelineUiStore.getSnapshot();
+                                    const currentEvaluated = evaluateShotAtTime(
+                                      currentShot,
+                                      liveUi.currentTimeMs,
+                                      current.project,
+                                    ).layers.find((candidate) => candidate.id === layerId);
+                                    const patch: {
+                                      x?: number;
+                                      y?: number;
+                                      scaleX?: number;
+                                      scaleY?: number;
+                                      rotationDeg?: number;
+                                    } = {};
+                                    if (
+                                      !currentEvaluated ||
+                                      Math.abs(transform.x - currentEvaluated.x) > 1e-5
+                                    ) {
+                                      patch.x = transform.x;
+                                    }
+                                    if (
+                                      !currentEvaluated ||
+                                      Math.abs(transform.y - currentEvaluated.y) > 1e-5
+                                    ) {
+                                      patch.y = transform.y;
+                                    }
+                                    if (
+                                      !currentEvaluated ||
+                                      Math.abs(transform.scaleX - currentEvaluated.scaleX) > 1e-5
+                                    ) {
+                                      patch.scaleX = transform.scaleX;
+                                    }
+                                    if (
+                                      !currentEvaluated ||
+                                      Math.abs(transform.scaleY - currentEvaluated.scaleY) > 1e-5
+                                    ) {
+                                      patch.scaleY = transform.scaleY;
+                                    }
+                                    if (
+                                      !currentEvaluated ||
+                                      Math.abs(
+                                        transform.rotationDeg - currentEvaluated.rotationDeg,
+                                      ) > 1e-5
+                                    ) {
+                                      patch.rotationDeg = transform.rotationDeg;
+                                    }
+                                    if (Object.keys(patch).length > 0) {
+                                      layerStore.applyMotionTransform(
+                                        layerId,
+                                        liveUi.currentTimeMs,
+                                        liveUi.layerMotionAutoKey,
+                                        patch,
+                                      );
+                                    }
+                                    setInteractionStatus(
+                                      `图层变换已提交：缩放 ${transform.scaleX.toFixed(3)}×${transform.scaleY.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
+                                    );
+                                  }
+                                : undefined
+                            }
                             onCommitTransform={(layerId, transform) => {
                               if (!canCommitCanvasEdit(stageLayer)) {
                                 throw new Error(
@@ -1368,75 +1464,7 @@ export function CanvasStage({
                                   ),
                                 );
                               }
-                              const current = editorProjectStore.getSnapshot();
-                              const currentShot = current?.project.shots.find(
-                                (candidate) => candidate.id === shot?.id,
-                              );
-                              const currentLayer = currentShot?.layers.find(
-                                (candidate) => candidate.id === layerId,
-                              );
-                              if (
-                                current &&
-                                currentShot &&
-                                currentLayer &&
-                                isSupportedLayerMotionLayer(
-                                  current.project,
-                                  currentShot,
-                                  currentLayer,
-                                )
-                              ) {
-                                const liveUi = timelineUiStore.getSnapshot();
-                                const currentEvaluated = evaluateShotAtTime(
-                                  currentShot,
-                                  liveUi.currentTimeMs,
-                                  current.project,
-                                ).layers.find((candidate) => candidate.id === layerId);
-                                const patch: {
-                                  x?: number;
-                                  y?: number;
-                                  scaleX?: number;
-                                  scaleY?: number;
-                                  rotationDeg?: number;
-                                } = {};
-                                if (
-                                  !currentEvaluated ||
-                                  Math.abs(transform.x - currentEvaluated.x) > 1e-6
-                                ) {
-                                  patch.x = transform.x;
-                                }
-                                if (
-                                  !currentEvaluated ||
-                                  Math.abs(transform.y - currentEvaluated.y) > 1e-6
-                                ) {
-                                  patch.y = transform.y;
-                                }
-                                if (
-                                  !currentEvaluated ||
-                                  Math.abs(transform.scale - currentEvaluated.scaleX) > 1e-6 ||
-                                  Math.abs(transform.scale - currentEvaluated.scaleY) > 1e-6
-                                ) {
-                                  patch.scaleX = transform.scale;
-                                  patch.scaleY = transform.scale;
-                                }
-                                if (
-                                  !currentEvaluated ||
-                                  Math.abs(
-                                    transform.rotationDeg - currentEvaluated.rotationDeg,
-                                  ) > 1e-6
-                                ) {
-                                  patch.rotationDeg = transform.rotationDeg;
-                                }
-                                if (Object.keys(patch).length > 0) {
-                                  layerStore.applyMotionTransform(
-                                    layerId,
-                                    liveUi.currentTimeMs,
-                                    liveUi.layerMotionAutoKey,
-                                    patch,
-                                  );
-                                }
-                              } else {
-                                layerStore.updateTransform(layerId, transform);
-                              }
+                              layerStore.updateTransform(layerId, transform);
                               setInteractionStatus(
                                 `图层变换已提交：缩放 ${transform.scale.toFixed(3)}，旋转 ${transform.rotationDeg.toFixed(1)}°。`,
                               );
@@ -1512,7 +1540,7 @@ export function CanvasStage({
                         : selectedStageLayer.render.scaleX}
                       scaleY={structuredTransformerVisible
                         ? selectedStructuredNodeScales?.scaleY
-                        : undefined}
+                        : Math.abs(selectedStageLayer.render.scaleY)}
                       selected
                     />
                   ) : null}
