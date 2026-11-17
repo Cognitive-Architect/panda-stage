@@ -797,4 +797,77 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
       service.applyKeys(validAt500, { shotId, layerId, timeMs: 1_000 }, { 'transform.scaleX': 5 }),
     ).toThrow(/超出合法范围/);
   });
+
+  it('rejects intermediate frame-grid final-scale overflow between legal endpoints (ScaleEvent x Scale Track #1143)', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    // 0ms..1000ms: ScaleEvent 0.05 -> 20, Layer Track 400 -> 0.0025.
+    // Endpoints are both legal (0ms=20, 1000ms=0.05), but midpoint ~500ms hits ~2005!
+    const extremeRamp: TimelineEvent = {
+      id: randomUUID(),
+      type: 'scale',
+      layerId,
+      startMs: 0,
+      endMs: 1_000,
+      from: { x: 0.05, y: 1 },
+      to: { x: 20, y: 1 },
+      easing: 'linear',
+    };
+    const baseExtreme = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        timelineEvents: [extremeRamp],
+      })),
+    });
+
+    // Step 1: key 1000ms to 0.0025 (0ms stays neutral 1 => [0.05..5.025..0.05], valid everywhere).
+    const atEnd = service.applyKeys(
+      baseExtreme,
+      { shotId, layerId, timeMs: 1_000 },
+      { 'transform.scaleX': 0.0025 },
+    );
+    const snapshotBefore = structuredClone(atEnd);
+    // Step 2: raise 0ms to 400. Endpoints are both legal (0ms=20, 1000ms=0.05),
+    // yet intermediate 24fps frames exceed 20 (~2005 at 500ms) -> REJECT!
+    expect(() =>
+      service.applyKeys(
+        atEnd,
+        { shotId, layerId, timeMs: 0 },
+        { 'transform.scaleX': 400 },
+      ),
+    ).toThrow(/超出合法范围/);
+    expect(atEnd).toEqual(snapshotBefore);
+
+    // Legal overlapping interval stays accepted and evaluates accurately on every frame.
+    const gentleRamp: TimelineEvent = {
+      id: randomUUID(),
+      type: 'scale',
+      layerId,
+      startMs: 0,
+      endMs: 1_000,
+      from: { x: 0.5, y: 1 },
+      to: { x: 2, y: 1 },
+      easing: 'linear',
+    };
+    const baseGentle = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => ({
+        ...s,
+        timelineEvents: [gentleRamp],
+      })),
+    });
+    const gentle0 = service.applyKeys(
+      baseGentle,
+      { shotId, layerId, timeMs: 0 },
+      { 'transform.scaleX': 2 },
+    );
+    const gentle1000 = service.applyKeys(
+      gentle0,
+      { shotId, layerId, timeMs: 1_000 },
+      { 'transform.scaleX': 0.5 },
+    );
+    expect(
+      evaluateShotAtTime(gentle1000.shots[0]!, 500, gentle1000).layers.find((l) => l.id === layerId)!.scaleX,
+    ).toBeCloseTo(1.5625, 10);
+  });
 });

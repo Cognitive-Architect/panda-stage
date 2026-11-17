@@ -11,6 +11,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
+import { TIMELINE_FPS, frameTimeMs } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -526,22 +527,63 @@ export function assertLayerClipFinalScalesInBounds(
   const clip = layer.animationClip;
   if (!clip || clip.version !== 2) return;
   const events = shot.timelineEvents.filter((event) => event.layerId === layer.id);
+  const scaleTracks = clip.tracks.filter(
+    (track) =>
+      track.property === 'transform.scaleX' || track.property === 'transform.scaleY',
+  );
+  if (scaleTracks.length === 0) return;
+
   const checkTimes = new Set<number>([0]);
   for (const timeMs of extraTimesMs) {
     if (Number.isFinite(timeMs)) {
       checkTimes.add(Math.max(0, Math.min(Math.round(timeMs), shot.durationMs)));
     }
   }
-  for (const track of clip.tracks) {
-    if (track.property !== 'transform.scaleX' && track.property !== 'transform.scaleY') continue;
+  for (const track of scaleTracks) {
     for (const key of track.keys) {
       checkTimes.add(Math.max(0, Math.min(Math.round(key.timeMs), shot.durationMs)));
     }
   }
-  for (const event of events) {
-    if (event.type !== 'scale') continue;
+  const scaleEvents = events.filter(
+    (event): event is Extract<TimelineEvent, { type: 'scale' }> =>
+      event.type === 'scale',
+  );
+  for (const event of scaleEvents) {
     checkTimes.add(Math.max(0, Math.min(Math.round(event.startMs), shot.durationMs)));
     checkTimes.add(Math.max(0, Math.min(Math.round(event.endMs), shot.durationMs)));
+
+    if (event.from.x === event.to.x && event.from.y === event.to.y) continue;
+    const eventStart = Math.max(0, Math.round(event.startMs));
+    const eventEnd = Math.min(shot.durationMs, Math.round(event.endMs));
+    if (eventStart >= eventEnd) continue;
+
+    for (const track of scaleTracks) {
+      for (let index = 0; index < track.keys.length - 1; index += 1) {
+        const fromKey = track.keys[index]!;
+        const toKey = track.keys[index + 1]!;
+        if (fromKey.value === toKey.value || fromKey.interpolationToNext === 'step') {
+          continue;
+        }
+        const overlapStart = Math.max(eventStart, fromKey.timeMs);
+        const overlapEnd = Math.min(eventEnd, toKey.timeMs);
+        if (overlapStart >= overlapEnd) continue;
+
+        const startFrame = Math.max(
+          0,
+          Math.floor((overlapStart * TIMELINE_FPS) / 1_000) - 1,
+        );
+        const endFrame = Math.max(
+          0,
+          Math.ceil((overlapEnd * TIMELINE_FPS) / 1_000) + 1,
+        );
+        for (let frameIndex = startFrame; frameIndex <= endFrame; frameIndex += 1) {
+          const frameMs = frameTimeMs(frameIndex, TIMELINE_FPS);
+          if (frameMs >= overlapStart && frameMs <= overlapEnd) {
+            checkTimes.add(frameMs);
+          }
+        }
+      }
+    }
   }
 
   for (const timeMs of checkTimes) {
