@@ -1,5 +1,5 @@
 import type {
-  AnimationClipV0, AnimationInterpolation, AnimationProperty,
+  AnimationClip, AnimationInterpolation, AnimationProperty,
   AnimationTargetRef, AnimationTrack,
 } from './models/animationCore';
 
@@ -43,7 +43,7 @@ export function evaluateAnimationTrackAtTime(track: AnimationTrack, requestedTim
   return track.keys.at(-1)!.value;
 }
 
-export function evaluateAnimationClipAtTime(clip: AnimationClipV0, timeMs: number): EvaluatedAnimationValue[] {
+export function evaluateAnimationClipAtTime(clip: AnimationClip, timeMs: number): EvaluatedAnimationValue[] {
   return clip.tracks.map((track) => ({
     target: { ...track.target },
     property: track.property,

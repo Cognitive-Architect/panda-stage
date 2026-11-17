@@ -100,7 +100,7 @@ function CanvasMotionStub({ layerId }: { layerId: string }) {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot)!;
   const selectedPartId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
   const layer = snapshot.project.shots[0]!.layers.find((candidate) => candidate.id === layerId)!;
-  const bases = layer.animationClip?.targetBases ?? [];
+  const bases = layer.animationClip?.version === 1 ? layer.animationClip.targetBases : [];
   return createElement(
     'div',
     { 'data-testid': 'canvas-stub' },
@@ -630,7 +630,7 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
     const baseTarget = { shotId: IDS.shot, layerId, partId: rightHandId };
     const layerOf = (project: typeof base.project) => project.shots[0]!.layers.find((l) => l.id === layerId)!;
     const trackOf = (project: typeof base.project, property: 'transform.rotationDeg' | 'transform.offsetX' | 'transform.offsetY' | 'transform.scaleX' | 'transform.scaleY') =>
-      layerOf(project).animationClip!.tracks.find((t) => t.target.partId === rightHandId && t.property === property);
+      layerOf(project).animationClip!.tracks.find((t) => t.target.kind === 'character-part' && t.target.partId === rightHandId && t.property === property);
 
     // Case C: rightHand has rotationDeg [0, 500] (terminal at 500) and offsetX [0, 1000] (later composite key, no key at 500).
     const caseCProject = service.apply(base.project, { ...baseTarget, timeMs: 1000, autoKey: true }, {

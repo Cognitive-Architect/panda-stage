@@ -15,6 +15,10 @@ import {
   type PositionHoldInput,
   type PositionKeyInput,
 } from '../position-chain';
+import { assertLayerClipFinalScalesInBounds } from '../evaluate-shot-at-time';
+import {
+  syncLayerAnimationClipBasis,
+} from '../layer-animation';
 import {
   ProjectSchema,
   type Layer,
@@ -227,8 +231,31 @@ export class PositionProjectService {
     const { shot, layer } = this.context(project, shotId, layerId);
     const recognition = recognizePositionChain({ shot, layer });
     const positionChanged = layer.x !== patch.x || layer.y !== patch.y;
-    const nextLayer: Layer = { ...layer, ...patch };
+    const baseMergedLayer: Layer = { ...layer, ...patch };
+    const nextLayer: Layer =
+      baseMergedLayer.animationClip?.version === 2
+        ? {
+            ...baseMergedLayer,
+            animationClip: syncLayerAnimationClipBasis(
+              baseMergedLayer.animationClip,
+              layer.id,
+              {
+                x: baseMergedLayer.x,
+                y: baseMergedLayer.y,
+                scaleX: baseMergedLayer.scaleX,
+                scaleY: baseMergedLayer.scaleY,
+                rotationDeg: baseMergedLayer.rotationDeg,
+              },
+            ),
+          }
+        : baseMergedLayer;
     const layerChanged = JSON.stringify(nextLayer) !== JSON.stringify(layer);
+    if (
+      nextLayer.animationClip?.version === 2 &&
+      (layer.scaleX !== nextLayer.scaleX || layer.scaleY !== nextLayer.scaleY)
+    ) {
+      assertLayerClipFinalScalesInBounds(shot, nextLayer, project);
+    }
     let timelineEvents = shot.timelineEvents;
     if (positionChanged && recognition.status === 'editable') {
       const baseUpdate = bindPositionBase(recognition.chain, {

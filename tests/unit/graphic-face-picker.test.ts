@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CharacterService, DialogueService, LayerService, ProjectSchema, ProjectV19Schema, migrateProject, evaluateShotAtTime, projectShotDialogueVisual, resolveShotVisualParts, scanAssetReferences, type Project } from '../../src/domain';
+import { CharacterService, DialogueService, LayerService, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV19Schema, migrateProject, evaluateShotAtTime, projectShotDialogueVisual, resolveShotVisualParts, scanAssetReferences, type Project } from '../../src/domain';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { applyProductPreviewMouthFallback, buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
@@ -86,7 +86,7 @@ describe('Graphic expressions and mouth single-frame selection (#1112)', () => {
   it('upgrades genuine v19 images without injecting or rewriting face/audio/narrator data', () => {
     const historical = { ...structuredClone(historicalV18), schemaVersion: 19 };
     expect(ProjectV19Schema.safeParse(historical).success).toBe(true);
-    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: 21 });
+    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: PROJECT_SCHEMA_VERSION });
     expect(() => migrateProject({ ...graphicProject(), schemaVersion: 19 })).toThrow();
   });
   it('routes Graphic source edits through existing project history', () => {

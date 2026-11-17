@@ -10,9 +10,9 @@ import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
-  it('parses v21 and preserves the full container through JSON', () => {
+  it('parses v22 and preserves the full container through JSON', () => {
     const { project, clip } = animationCoreFixture();
-    expect(PROJECT_SCHEMA_VERSION).toBe(21);
+    expect(PROJECT_SCHEMA_VERSION).toBe(22);
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(project)))).toEqual(project);
     expect(AnimationClipV0Schema.parse(clip)).toEqual(clip);
     expect(clip.tracks[0]).not.toHaveProperty('id');
@@ -47,9 +47,12 @@ describe('Animation Core V0 persisted contract', () => {
     layer.animationClip![collection][0]!.target.layerId = IDS.layerAsset;
     expect(LayerSchema.safeParse(layer).success).toBe(false);
   });
-  it.each(['camera', 'layer', 'prop'])('rejects target kind %s', kind => {
+  it.each(['camera', 'layer', 'prop'])('rejects invalid target kind %s with character-part shape', kind => {
     const { clip } = animationCoreFixture();
     expect(AnimationTargetRefSchema.safeParse({ ...clip.tracks[0]!.target, kind }).success).toBe(false);
+  });
+  it('accepts layer target without partId', () => {
+    expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerChar })).toEqual({ kind: 'layer', layerId: IDS.layerChar });
   });
   it('retains UUID identity constraints and disallows extra IDs', () => {
     const { clip } = animationCoreFixture();
@@ -105,7 +108,7 @@ describe('v20 -> v21 migration', () => {
     const historical = { ...project, schemaVersion: 20 };
     const before = structuredClone(historical);
     expect(ProjectV20Schema.parse(historical)).toEqual(historical);
-    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: 21 });
+    expect(migrateProject(historical)).toEqual({ ...historical, schemaVersion: PROJECT_SCHEMA_VERSION });
     expect(historical).toEqual(before);
     expect(migrateProject(migrateProject(historical))).toEqual(migrateProject(historical));
   });
@@ -144,7 +147,9 @@ describe('pure absolute-time numeric evaluation (#979 port)', () => {
     expect(evaluateAnimationClipAtTime(clip, 900)).toEqual(first);
     expect(first).toEqual([{ target: track.target, property: track.property, value: 243 }]);
     expect(clip).toEqual(before);
-    first[0]!.target.partId = IDS.layerChar;
+    if (first[0]!.target.kind === 'character-part') {
+      first[0]!.target.partId = IDS.layerChar;
+    }
     expect(clip).toEqual(before);
   });
   it('holds single-key tracks and returns one result per track', () => {

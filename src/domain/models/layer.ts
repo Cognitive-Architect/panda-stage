@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AnimationClipV0Schema } from './animationCore';
+import { AnimationClipSchema, AnimationClipV0Schema } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
@@ -239,7 +239,8 @@ export const LayerV20Schema = z
     validateAnimationLayerFields(layer, context, true);
   });
 
-export const LayerSchema = LayerV20Schema.safeExtend({
+/** Frozen v21 Layer reader: accepts only Character Clip v1 on Character layers. */
+export const LayerV21Schema = LayerV20Schema.safeExtend({
   animationClip: AnimationClipV0Schema.optional(),
 }).superRefine((layer, context) => {
   if (!layer.animationClip) return;
@@ -248,6 +249,40 @@ export const LayerSchema = LayerV20Schema.safeExtend({
   }
   for (const collection of ['targetBases', 'tracks'] as const) {
     layer.animationClip[collection].forEach((entry, index) => {
+      if (entry.target.layerId !== layer.id) {
+        context.addIssue({ code: 'custom', path: ['animationClip', collection, index, 'target', 'layerId'], message: 'Animation target must belong to its owning Layer.' });
+      }
+    });
+  }
+});
+
+export const LayerSchema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipSchema.optional(),
+}).superRefine((layer, context) => {
+  const clip = layer.animationClip;
+  if (!clip) return;
+  if (clip.version === 1) {
+    if (layer.source.kind !== 'character') {
+      context.addIssue({ code: 'custom', path: ['animationClip'], message: 'Only Character layers may contain a Character animation clip.' });
+    }
+  } else {
+    if (layer.source.kind !== 'animation') {
+      context.addIssue({ code: 'custom', path: ['animationClip'], message: 'Layer animation clips require an animation Layer.' });
+    }
+    if (clip.targetBases.length !== 1) {
+      context.addIssue({ code: 'custom', path: ['animationClip', 'targetBases'], message: 'Layer animation clip requires exactly one Layer target basis.' });
+    }
+    if (layer.source.kind === 'animation') {
+      const animationId = layer.source.animationId;
+      clip.targetBases.forEach((basis, index) => {
+        if (basis.animationId !== animationId) {
+          context.addIssue({ code: 'custom', path: ['animationClip', 'targetBases', index, 'animationId'], message: 'Layer animation basis must match its owning Layer animation Definition.' });
+        }
+      });
+    }
+  }
+  for (const collection of ['targetBases', 'tracks'] as const) {
+    clip[collection].forEach((entry, index) => {
       if (entry.target.layerId !== layer.id) {
         context.addIssue({ code: 'custom', path: ['animationClip', collection, index, 'target', 'layerId'], message: 'Animation target must belong to its owning Layer.' });
       }

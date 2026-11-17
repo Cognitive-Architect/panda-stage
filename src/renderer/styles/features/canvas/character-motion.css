@@ -447,3 +447,49 @@
 }
 
 /* Issue #1138: keep Key / Overview marker sibling DOM boxes compact so adjacent dense keys never steal clicks; horizontal ~44px (±22px) touch reach uses nearest-hit unique owner routing on the lane container. */
+
+.layer-motion-autokey-row > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-1);
+  min-height: 44px;
+  padding: var(--ui-space-2);
+  font-size: 12px;
+}
+.layer-motion-autokey-row > button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.timeline-dock .timeline-media-lanes > .layer-motion-lane {
+  flex: 0 0 38px;
+  min-height: 38px;
+  height: 38px;
+  grid-template-columns: var(--timeline-lane-label-width, 82px) max-content;
+}
+
+.timeline-dock .timeline-media-lanes > .layer-motion-lane .timeline-lane-label {
+  position: relative;
+  left: auto;
+  transform: translateX(var(--timeline-scroll-px, 0px));
+  padding-inline: 7px;
+  color: #b7c7bd;
+  font-weight: 500;
+}
+
+.layer-motion-lane .timeline-lane-label .timeline-lane-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock[data-has-position-lane] .timeline-media-lanes > .layer-motion-lane,
+.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='landscape']
+  .timeline-dock .timeline-media-lanes > .layer-motion-lane {
+  flex: 0 0 48px;
+  min-height: 48px;
+  height: 48px;
+}

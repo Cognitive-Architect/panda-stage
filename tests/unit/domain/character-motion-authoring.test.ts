@@ -35,6 +35,7 @@ describe('Character Motion Property Track facade', () => {
     }
     const again = service.apply(next, input, Object.fromEntries(properties.map(p => [p, 3])));
     const updated = again.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1 || updated.version !== 1) throw new Error('fixture');
     expect(updated.targetBases).toEqual(clip.targetBases);
     expect(updated.fixedCharacterCenter).toEqual(clip.fixedCharacterCenter);
     expect(updated.tracks.every(t => t.keys.length === 2 && t.keys[1]!.value === 3)).toBe(true);
@@ -122,7 +123,7 @@ describe('Character Motion Property Track facade', () => {
       const retimed = service.retimeCompositeKey(project, { ...baseTarget, fromTimeMs: 500, toTimeMs: 750 });
       expect(characterCompositeKeyTimes(layerOf(retimed), partId)).toEqual([0, 750, 1000, 1500]);
       const retimedRotTrack = layerOf(retimed).animationClip!.tracks.find(
-        (t) => t.target.partId === partId && t.property === 'transform.rotationDeg',
+        (t) => t.target.kind === 'character-part' && t.target.partId === partId && t.property === 'transform.rotationDeg',
       )!;
       expect(retimedRotTrack.keys.map((k) => k.timeMs)).toEqual([0, 750]);
 
@@ -142,19 +143,19 @@ describe('Character Motion Property Track facade', () => {
       });
       const stepLayer = layerOf(stepEased);
       const stepRotTrack = stepLayer.animationClip!.tracks.find(
-        (t) => t.target.partId === partId && t.property === 'transform.rotationDeg',
+        (t) => t.target.kind === 'character-part' && t.target.partId === partId && t.property === 'transform.rotationDeg',
       )!;
       expect(stepRotTrack.keys.find((k) => k.timeMs === 750)?.interpolationToNext).toBe('linear');
       for (const prop of ['transform.scaleX', 'transform.scaleY'] as const) {
         const scaleTrack = stepLayer.animationClip!.tracks.find(
-          (t) => t.target.partId === partId && t.property === prop,
+          (t) => t.target.kind === 'character-part' && t.target.partId === partId && t.property === prop,
         )!;
         expect(scaleTrack.keys.some((k) => k.timeMs === 750)).toBe(false);
       }
       const heldLayer = evaluateShotAtTime(stepEased.shots[0]!, 875, stepEased).layers.find(
         (l) => l.id === data.layerId,
       )!;
-      expect(heldLayer.animationValues?.find((v) => v.target.partId === partId && v.property === 'transform.offsetX')?.value).toBe(30);
+      expect(heldLayer.animationValues?.find((v) => v.target.kind === 'character-part' && v.target.partId === partId && v.property === 'transform.offsetX')?.value).toBe(30);
       expect(() =>
         service.setCompositeKeyEasing(stepEased, { ...baseTarget, timeMs: 1500, interpolationToNext: 'linear' }),
       ).toThrow(/没有可修改的补间区间/);
@@ -173,7 +174,7 @@ describe('Character Motion Property Track facade', () => {
         targetTimeMs: 2000,
         pose: copiedPose,
       });
-      const pastedTracks = layerOf(pasted).animationClip!.tracks.filter((t) => t.target.partId === partId);
+      const pastedTracks = layerOf(pasted).animationClip!.tracks.filter((t) => t.target.kind === 'character-part' && t.target.partId === partId);
       expect(pastedTracks).toHaveLength(5);
       expect(characterMotionValues(pasted, { ...baseTarget, timeMs: 2000, autoKey: true })).toEqual(copiedPose);
       expect(JSON.stringify(pasted)).not.toMatch(/compositeKeys|poseKeys|poseAnimation/);
@@ -192,7 +193,7 @@ describe('Character Motion Property Track facade', () => {
       expect(characterCompositeKeyTimes(layerOf(deleted), partId)).toEqual([0, 1000, 1500, 2000]);
       expect(
         layerOf(deleted).animationClip!.tracks
-          .filter((t) => t.target.partId === partId)
+          .filter((t) => t.target.kind === 'character-part' && t.target.partId === partId)
           .every((t) => !t.keys.some((k) => k.timeMs === 750)),
       ).toBe(true);
     },
@@ -206,7 +207,7 @@ describe('Character Motion Property Track facade', () => {
       const baseTarget = { shotId: IDS.shot, layerId: data.layerId, partId };
       const layerOf = (p: typeof data.project) => p.shots[0]!.layers.find((l) => l.id === data.layerId)!;
       const trackOf = (p: typeof data.project, property: AnimationProperty) =>
-        layerOf(p).animationClip!.tracks.find((t) => t.target.partId === partId && t.property === property);
+        layerOf(p).animationClip!.tracks.find((t) => t.target.kind === 'character-part' && t.target.partId === partId && t.property === property);
 
       // Case A + Case B:
       // - rotationDeg: 0 -> 500 (terminal key at 500ms with pre-existing 'step')
@@ -293,7 +294,7 @@ describe('Character Motion Property Track facade', () => {
       const layerOf = (project: typeof data.project, layerId = data.layerId) =>
         project.shots[0]!.layers.find((l) => l.id === layerId)!;
       const trackOf = (project: typeof data.project, property: AnimationProperty) =>
-        layerOf(project).animationClip!.tracks.find((t) => t.target.partId === partId && t.property === property);
+        layerOf(project).animationClip!.tracks.find((t) => t.target.kind === 'character-part' && t.target.partId === partId && t.property === property);
 
       // Author sparse keys at [0, 500, 1000, 1500, 2500] within a 3000ms Shot.
       let project = service.apply(placed.project, { ...baseTarget, timeMs: 500, autoKey: true }, {

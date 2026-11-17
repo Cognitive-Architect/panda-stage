@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from 'react';
 import {
+  evaluateShotAtTime,
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
   PROJECT_HEIGHT,
@@ -15,7 +16,7 @@ import {
   type LayerTransformInput,
   type Point,
 } from '../../../domain';
-import { Check, FlipHorizontal2, RotateCcw } from 'lucide-react';
+import { Check, FlipHorizontal2, Plus, RotateCcw } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import {
@@ -32,8 +33,10 @@ import { Button, DecorativeIcon } from '../../ui';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { FlaGraphicChildTransform } from './FlaGraphicChildTransform';
 import {
+  isLayerMotionTransformEditableAtTime,
   isLayerTransformEditableAtTime,
   isAnimationBaseTransformEditableAtTime,
+  isSupportedLayerMotionLayer,
   runLayerTransformMutation,
   TEMPORAL_TRANSFORM_STATUS,
 } from './layerTransformTemporalGuard';
@@ -92,6 +95,8 @@ export interface LayerTransformController {
   status: string;
   temporalInspection: boolean;
   animationBaseTransformEditable?: boolean;
+  supportedLayerMotion?: boolean;
+  layerMotionAutoKey?: boolean;
   positionAuthoringActive?: boolean;
   positionAuthoringAvailable?: boolean;
   positionHoldAvailable?: boolean;
@@ -256,17 +261,44 @@ export function useLayerTransformController({
   const layer =
     shot?.layers.find((candidate) => candidate.id === selectedLayerId) ?? null;
   const animationLayer = layer?.source.kind === 'animation';
+  const supportedLayerMotion = Boolean(
+    snapshot &&
+      shot &&
+      layer &&
+      isSupportedLayerMotionLayer(snapshot.project, shot, layer),
+  );
+  const layerMotionAutoKey = timelineUi.layerMotionAutoKey;
+  const evaluatedMotionLayer =
+    supportedLayerMotion && snapshot && shot && layer
+      ? evaluateShotAtTime(shot, timelineUi.currentTimeMs, snapshot.project)
+          .layers.find((candidate) => candidate.id === layer.id) ?? null
+      : null;
+  const displayLayerX = evaluatedMotionLayer ? evaluatedMotionLayer.x : layer?.x;
+  const displayLayerY = evaluatedMotionLayer ? evaluatedMotionLayer.y : layer?.y;
+  const displayLayerScale = evaluatedMotionLayer
+    ? evaluatedMotionLayer.scaleX
+    : layer?.scaleX;
+  const displayLayerRotation = evaluatedMotionLayer
+    ? evaluatedMotionLayer.rotationDeg
+    : layer?.rotationDeg;
   const animationBaseTransformEditable = Boolean(
     animationLayer &&
       snapshot &&
       shot &&
       layer &&
-      isAnimationBaseTransformEditableAtTime(
-        snapshot.project,
-        shot.id,
-        layer.id,
-        timelineUi.currentTimeMs,
-      ),
+      (supportedLayerMotion
+        ? isLayerMotionTransformEditableAtTime(
+            snapshot.project,
+            shot.id,
+            layer.id,
+            timelineUi.currentTimeMs,
+          )
+        : isAnimationBaseTransformEditableAtTime(
+            snapshot.project,
+            shot.id,
+            layer.id,
+            timelineUi.currentTimeMs,
+          )),
   );
   const isBackgroundLayer =
     Boolean(backgroundLayerSelected) ||
@@ -289,7 +321,7 @@ export function useLayerTransformController({
     !positionAuthoringActive &&
     positionEntry.canHold;
   const positionMain = animationLayer && layer
-    ? { x: layer.x, y: layer.y }
+    ? { x: displayLayerX ?? layer.x, y: displayLayerY ?? layer.y }
     : temporalInspection
     ? positionAuthoringActive
       ? positionAuthoringSnapshot?.draft ?? null
@@ -324,12 +356,23 @@ export function useLayerTransformController({
     positionAuthoringSessionStore.getActiveSessionHandle();
   const positionX = positionMain?.x;
   const positionY = positionMain?.y;
-  const basePositionDraft = layer
+  const staticBasePositionDraft = layer
     ? {
         x: compact ? formatPositionDisplay(layer.x) : String(layer.x),
         y: compact ? formatPositionDisplay(layer.y) : String(layer.y),
       }
     : null;
+  const basePositionDraft =
+    evaluatedMotionLayer
+      ? {
+          x: compact
+            ? formatPositionDisplay(evaluatedMotionLayer.x)
+            : String(evaluatedMotionLayer.x),
+          y: compact
+            ? formatPositionDisplay(evaluatedMotionLayer.y)
+            : String(evaluatedMotionLayer.y),
+        }
+      : staticBasePositionDraft;
   const basePositionX = basePositionDraft?.x;
   const basePositionY = basePositionDraft?.y;
 
@@ -354,13 +397,15 @@ export function useLayerTransformController({
                 : temporalInspection && positionY !== undefined
                   ? formatPositionDisplay(positionY)
                   : basePositionY ?? '',
-            scale: String(layer.scaleX),
-            rotationDeg: String(layer.rotationDeg),
+            scale: String(displayLayerScale ?? layer.scaleX),
+            rotationDeg: String(displayLayerRotation ?? layer.rotationDeg),
             opacity: String(layer.opacity),
           }
         : EMPTY_DRAFT,
     );
-    setScalePercentDraft(layer ? formatScalePercent(layer.scaleX) : '');
+    setScalePercentDraft(
+      layer ? formatScalePercent(displayLayerScale ?? layer.scaleX) : '',
+    );
     scalePercentEditedRef.current = false;
     if (temporalInspection || (animationLayer && !animationBaseTransformEditable)) {
       const fallbackStatus = animationLayer
@@ -415,6 +460,10 @@ export function useLayerTransformController({
     isBackgroundLayer,
     animationBaseTransformEditable,
     animationLayer,
+    displayLayerRotation,
+    displayLayerScale,
+    displayLayerX,
+    displayLayerY,
     layer,
     positionAuthoringActive,
     basePositionX,
@@ -423,6 +472,7 @@ export function useLayerTransformController({
     positionY,
     positionAuthoringAvailable,
     positionHoldAvailable,
+    supportedLayerMotion,
     temporalInspection,
   ]);
 
@@ -501,12 +551,19 @@ export function useLayerTransformController({
         current.revision === snapshot.revision &&
         shotStore.getCurrentShotId() === shotId &&
         selectionStore.getSelectedLayerId() === layer.id &&
-        isAnimationBaseTransformEditableAtTime(
-          current.project,
-          shot.id,
-          layer.id,
-          currentTimeMs,
-        ),
+        (isSupportedLayerMotionLayer(current.project, currentShot, currentLayer)
+          ? isLayerMotionTransformEditableAtTime(
+              current.project,
+              shot.id,
+              layer.id,
+              currentTimeMs,
+            )
+          : isAnimationBaseTransformEditableAtTime(
+              current.project,
+              shot.id,
+              layer.id,
+              currentTimeMs,
+            )),
     );
   };
 
@@ -709,7 +766,59 @@ export function useLayerTransformController({
           const transform = parseLayerTransformDraft(nextDraft, layer.flipX);
           revisionBefore =
             editorProjectStore.getSnapshot()?.revision ?? null;
-          layerStore.updateTransform(layer.id, transform);
+          if (supportedLayerMotion && reason !== 'opacity') {
+            const liveTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+            const autoKey = timelineUiStore.getSnapshot().layerMotionAutoKey;
+            const currentProject = editorProjectStore.getSnapshot()?.project;
+            const currentShot = currentProject?.shots.find((candidate) => candidate.id === shotId);
+            const currentEvaluated = currentProject && currentShot
+              ? evaluateShotAtTime(currentShot, liveTimeMs, currentProject).layers.find(
+                  (candidate) => candidate.id === layer.id,
+                )
+              : undefined;
+            const patch: {
+              x?: number;
+              y?: number;
+              scaleX?: number;
+              scaleY?: number;
+              rotationDeg?: number;
+            } = {};
+            if (!currentEvaluated || Math.abs(transform.x - currentEvaluated.x) > 1e-6) {
+              patch.x = transform.x;
+            }
+            if (!currentEvaluated || Math.abs(transform.y - currentEvaluated.y) > 1e-6) {
+              patch.y = transform.y;
+            }
+            if (!currentEvaluated || Math.abs(transform.scale - currentEvaluated.scaleX) > 1e-6) {
+              patch.scaleX = transform.scale;
+              patch.scaleY = transform.scale;
+            }
+            if (
+              !currentEvaluated ||
+              Math.abs(transform.rotationDeg - currentEvaluated.rotationDeg) > 1e-6
+            ) {
+              patch.rotationDeg = transform.rotationDeg;
+            }
+            if (Object.keys(patch).length > 0) {
+              layerStore.applyMotionTransform(layer.id, liveTimeMs, autoKey, patch);
+            }
+            if (liveTimeMs === 0 && transform.opacity !== layer.opacity) {
+              const latestLayer = editorProjectStore
+                .getSnapshot()
+                ?.project.shots.find((candidate) => candidate.id === shotId)
+                ?.layers.find((candidate) => candidate.id === layer.id) ?? layer;
+              layerStore.updateTransform(layer.id, {
+                x: latestLayer.x,
+                y: latestLayer.y,
+                scale: latestLayer.scaleX,
+                rotationDeg: latestLayer.rotationDeg,
+                opacity: transform.opacity,
+                flipX: latestLayer.flipX,
+              });
+            }
+          } else {
+            layerStore.updateTransform(layer.id, transform);
+          }
           revisionAfter =
             editorProjectStore.getSnapshot()?.revision ?? null;
         },
@@ -751,15 +860,45 @@ export function useLayerTransformController({
         () => timelineUiStore.getSnapshot().currentTimeMs,
         rejectTemporalTransformWrite,
         () => {
-          layerStore.updateTransform(layer.id, {
-            x: PROJECT_WIDTH / 2,
-            y: PROJECT_HEIGHT / 2,
-            scale: 1,
-            rotationDeg: 0,
-            opacity: 1,
-            flipX: false,
-          });
+          if (supportedLayerMotion) {
+            const liveTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+            const autoKey = timelineUiStore.getSnapshot().layerMotionAutoKey;
+            layerStore.applyMotionTransform(layer.id, liveTimeMs, autoKey, {
+              x: PROJECT_WIDTH / 2,
+              y: PROJECT_HEIGHT / 2,
+              scaleX: 1,
+              scaleY: 1,
+              rotationDeg: 0,
+            });
+            if (liveTimeMs === 0 && (layer.opacity !== 1 || layer.flipX)) {
+              const latestLayer = editorProjectStore
+                .getSnapshot()
+                ?.project.shots.find((candidate) => candidate.id === shotId)
+                ?.layers.find((candidate) => candidate.id === layer.id) ?? layer;
+              layerStore.updateTransform(layer.id, {
+                x: latestLayer.x,
+                y: latestLayer.y,
+                scale: latestLayer.scaleX,
+                rotationDeg: latestLayer.rotationDeg,
+                opacity: 1,
+                flipX: false,
+              });
+            }
+          } else {
+            layerStore.updateTransform(layer.id, {
+              x: PROJECT_WIDTH / 2,
+              y: PROJECT_HEIGHT / 2,
+              scale: 1,
+              rotationDeg: 0,
+              opacity: 1,
+              flipX: false,
+            });
+          }
         },
+        (timeMs) =>
+          supportedLayerMotion
+            ? canCommitAnimationBaseTransformAtTime(timeMs)
+            : isLayerTransformEditableAtTime(timeMs),
       );
       if (!didMutate) return;
       setStatus('变换已重置到画布中心与中性状态。');
@@ -918,6 +1057,8 @@ export function useLayerTransformController({
     status,
     temporalInspection,
     animationBaseTransformEditable,
+    supportedLayerMotion,
+    layerMotionAutoKey,
     positionAuthoringActive,
     positionAuthoringAvailable,
     positionHoldAvailable,
@@ -963,6 +1104,8 @@ function LayerTransformPanelView({
     status,
     temporalInspection,
     animationBaseTransformEditable = false,
+    supportedLayerMotion = false,
+    layerMotionAutoKey = false,
     positionAuthoringActive = false,
     positionAuthoringAvailable = false,
     positionHoldAvailable = false,
@@ -1104,6 +1247,32 @@ function LayerTransformPanelView({
     commitPendingDraft('submit');
   };
 
+  const autoKeyControl =
+    layer && supportedLayerMotion ? (
+      <div
+        className="layer-transform-control-row layer-motion-autokey-row"
+        data-testid="layer-motion-controls"
+      >
+        <span className="layer-transform-control-label">关键帧</span>
+        <Button
+          aria-pressed={layerMotionAutoKey}
+          data-testid="layer-motion-auto-key"
+          disabled={layer.locked}
+          onClick={() => timelineUiStore.setLayerMotionAutoKey(!layerMotionAutoKey)}
+          title={
+            layerMotionAutoKey
+              ? '修改变换时记录当前时间关键帧'
+              : '修改基础变换，不新增关键帧'
+          }
+          type="button"
+          variant={layerMotionAutoKey ? 'primary' : 'secondary'}
+        >
+          <DecorativeIcon icon={Plus} size={16} />
+          自动关键帧
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <section
       className="layer-transform-panel"
@@ -1122,6 +1291,7 @@ function LayerTransformPanelView({
           {!compact ? <strong>{layer.name}</strong> : null}
           {compact ? (
             <>
+              {autoKeyControl}
               <div
                 className="layer-transform-control-row layer-transform-position-row"
                 data-testid="layer-transform-position"
@@ -1267,6 +1437,7 @@ function LayerTransformPanelView({
             </>
           ) : (
             <>
+              {autoKeyControl}
               {(
                 [
                   ['x', 'X（中心）'],

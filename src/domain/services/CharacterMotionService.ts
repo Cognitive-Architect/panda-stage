@@ -20,7 +20,7 @@ import {
   type AnimationClipV0,
   type AnimationInterpolation,
   type AnimationProperty,
-  type AnimationTargetRef,
+  type CharacterPartTargetRef,
 } from '../models/animationCore';
 import { ProjectSchema, type Project } from '../models/project';
 import { CharacterService } from './CharacterService';
@@ -80,7 +80,7 @@ const CHARACTER_RETIME_POLICY: TargetRetimePolicy = {
   },
 };
 
-function partTargetRef(layerId: string, partId: string): AnimationTargetRef {
+function partTargetRef(layerId: string, partId: string): CharacterPartTargetRef {
   return { kind: 'character-part', layerId, partId };
 }
 
@@ -107,7 +107,7 @@ export function characterMotionValues(project: Project, input: CharacterMotionIn
     };
   }
   return evaluateTargetMotionValues(
-    layer.animationClip?.tracks ?? [],
+    (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
     partTargetRef(layer.id, input.partId),
     input.timeMs,
   );
@@ -116,7 +116,7 @@ export function characterMotionValues(project: Project, input: CharacterMotionIn
 /** UI aggregation only: no Composite Key data is ever persisted. */
 export function characterCompositeKeyTimes(layer: Project['shots'][number]['layers'][number], partId: string): number[] {
   return compositeKeyTimesForTarget(
-    layer.animationClip?.tracks ?? [],
+    (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
     partTargetRef(layer.id, partId),
   );
 }
@@ -127,7 +127,7 @@ export function hasAuthoredCharacterPartMotion(
   partId: string,
 ): boolean {
   return Boolean(
-    layer?.animationClip?.tracks.some(
+    layer?.animationClip?.version === 1 && layer.animationClip.tracks.some(
       (track) =>
         track.target.partId === partId &&
         (track.keys.length > 1 ||
@@ -148,7 +148,7 @@ export function hasCompositeKeyOutgoingInterval(
 ): boolean {
   if (!layer) return false;
   return hasTargetOutgoingInterval(
-    layer.animationClip?.tracks ?? [],
+    (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
     partTargetRef(layer.id, partId),
     timeMs,
   );
@@ -162,7 +162,7 @@ export function characterCompositeKeyEasing(
 ): AnimationInterpolation | null {
   if (!layer) return null;
   return targetCompositeKeyEasing(
-    layer.animationClip?.tracks ?? [],
+    (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
     partTargetRef(layer.id, partId),
     timeMs,
   );
@@ -237,7 +237,7 @@ export class CharacterMotionService {
     const { shot, layer } = requireEditableClipContext(project, input);
     if (!isValidFrameTime(input.timeMs)) throw new Error('请选择有效帧时间。');
     if (input.timeMs === 0) throw new Error('0 秒基础姿势关键帧不可删除。');
-    const clip = layer.animationClip;
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
     if (!clip) throw new Error('找不到要删除的动作关键帧。');
     const nextTracks = deleteTargetKeyAtTime(
       clip.tracks,
@@ -266,7 +266,7 @@ export class CharacterMotionService {
     if (input.toTimeMs === 0) throw new Error('关键帧不能移动到 0 秒基础姿势位置。');
 
     const target = partTargetRef(layer.id, input.partId);
-    const clip = layer.animationClip;
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
     if (!clip) throw new Error('找不到要移动的动作关键帧。');
     const plan = planTargetKeysRetime(
       clip.tracks,
@@ -289,7 +289,7 @@ export class CharacterMotionService {
   ): CharacterMotionBatchRetimePlan {
     const { shot, layer } = requireEditableClipContext(project, input);
     const plan = planTargetKeysRetime(
-      layer.animationClip?.tracks ?? [],
+      (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
       partTargetRef(layer.id, input.partId),
       shot.durationMs,
       {
@@ -308,7 +308,8 @@ export class CharacterMotionService {
     const plan = this.planCompositeKeysRetime(project, input);
     if (!plan.changed) return project;
     const { shot, layer } = requireEditableClipContext(project, input);
-    const clip = layer.animationClip!;
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+    if (!clip) throw new Error('找不到要移动的动作关键帧。');
     const nextTracks = applyTargetKeyMoves(
       clip.tracks,
       partTargetRef(layer.id, input.partId),
@@ -367,7 +368,7 @@ export class CharacterMotionService {
     const { shot, layer } = requireEditableClipContext(project, input);
     if (!isValidFrameTime(input.timeMs)) throw new Error('请选择有效帧时间。');
     const easing = AnimationInterpolationSchema.parse(input.interpolationToNext);
-    const clip = layer.animationClip;
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
     const compositeTimes = characterCompositeKeyTimes(layer, input.partId);
     if (!clip || !compositeTimes.includes(input.timeMs)) {
       throw new Error('找不到要修改补间的动作关键帧。');

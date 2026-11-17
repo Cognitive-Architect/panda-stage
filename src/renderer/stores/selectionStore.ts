@@ -128,7 +128,7 @@ export class LayerSelectionStore {
   private characterPartExists(partId: string): boolean {
     const layer = this.currentShotValue()?.layers.find(l => l.id === this.selectedLayerId);
     if (!layer || layer.source.kind !== 'character') return false;
-    if (layer.animationClip) return layer.animationClip.targetBases.some(b => b.target.partId === partId);
+    if (layer.animationClip?.version === 1) return layer.animationClip.targetBases.some(b => b.target.partId === partId);
     const characterId = layer.source.characterId;
     const character = this.editorStore.getSnapshot()?.project.characters.find(c => c.id === characterId);
     return character?.mode === 'adaptive-parts' && character.parts.some(p => p.partId === partId);

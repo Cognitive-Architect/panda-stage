@@ -10,8 +10,16 @@ import {
   collectFlaGraphicTimelineDurationMs,
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
-import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
+import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
+import { TIMELINE_FPS, frameTimeMs } from './timeline/frame-grid';
+import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
+import {
+  composeAnimatedLayerTransform,
+  evaluateLayerRelativeMotionValues,
+  resolveLayerAnimationBasis,
+  type LayerBasePose,
+} from './layer-animation';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -338,8 +346,268 @@ function resolveExpressionState(
   };
 }
 
+export interface EvaluatedLayerPreTrackState {
+  readonly basePose: LayerBasePose;
+  readonly motion: EvaluatedLayerMotion;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly rotationDeg: number;
+  readonly opacity: number;
+  readonly flipX: boolean;
+  readonly visible: boolean;
+  readonly controlledByMove: boolean;
+  readonly controlledByScale: boolean;
+  readonly assetId: string | null;
+  readonly currentExpressionId: string | null;
+  readonly animationVisible: boolean;
+  readonly animationFrame?: EvaluatedLayer['animationFrame'];
+}
+
 /**
- * Evaluates a validated shot into a deterministic, serializable snapshot at
+ * Evaluate `Static/Basis -> legacy TimelineEvents -> legacy Shake` before any
+ * Layer Property Track composition. Shared by the Shot evaluator and
+ * LayerMotionService back-solving.
+ */
+export function evaluateLayerPreTrackState(
+  shot: Shot,
+  layer: Layer,
+  requestedTimeMs: number,
+  project: Project,
+  eventsOverride?: readonly TimelineEvent[],
+): EvaluatedLayerPreTrackState {
+  const timeMs = Math.max(
+    0,
+    Math.min(Math.round(requestedTimeMs), shot.durationMs),
+  );
+  const layerBasis =
+    layer.animationClip?.version === 2
+      ? resolveLayerAnimationBasis(layer.animationClip, {
+          kind: 'layer',
+          layerId: layer.id,
+        })
+      : null;
+  const basePose: LayerBasePose = layerBasis
+    ? { ...layerBasis.baseTransform }
+    : {
+        x: layer.x,
+        y: layer.y,
+        scaleX: layer.scaleX,
+        scaleY: layer.scaleY,
+        rotationDeg: layer.rotationDeg,
+      };
+  let scaleX = basePose.scaleX;
+  let scaleY = basePose.scaleY;
+  const rotationDeg = basePose.rotationDeg;
+  let opacity = layer.opacity;
+  let flipX = layer.flipX;
+  let visible = layer.visible;
+  const animationSource =
+    layer.source.kind === 'animation' ? layer.source : null;
+  const initialVisual = animationSource
+    ? resolveAnimationFrame(
+        project,
+        animationSource.animationId,
+        layer.startTimeMs ?? 0,
+        layer.animationFirstFrame ?? 0,
+        layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
+        timeMs,
+      )
+    : resolveLayerVisualState(project, layer);
+  const animationVisible = initialVisual.animationVisible ?? true;
+  let assetId = initialVisual.assetId;
+  let currentExpressionId = initialVisual.currentExpressionId;
+
+  const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
+    (left, right) =>
+      left.startMs - right.startMs || left.id.localeCompare(right.id),
+  );
+
+  const motion = evaluateLayerMotionAtTime(
+    { id: layer.id, x: basePose.x, y: basePose.y },
+    events,
+    timeMs,
+  );
+  let controlledByMove = false;
+  let controlledByScale = false;
+
+  for (const event of events) {
+    if (event.type === 'move') {
+      if (timeMs >= event.startMs) controlledByMove = true;
+      // Position + Shake are resolved by the single formal motion seam above.
+      continue;
+    }
+    if (event.type === 'shake') {
+      continue;
+    }
+    // Future events (timeMs before the event starts) must not participate
+    // in evaluation: skipping them leaves the layer at its base state
+    // (or the state produced by earlier events) instead of overwriting it
+    // with `from`. Events whose start has passed keep contributing — for
+    // timeMs > endMs `rawProgress` resolves to 1, applying the final state.
+    if (timeMs < event.startMs) {
+      continue;
+    }
+    const span = Math.max(1, event.endMs - event.startMs);
+    const rawProgress =
+      timeMs < event.startMs
+        ? 0
+        : timeMs > event.endMs
+          ? 1
+          : (timeMs - event.startMs) / span;
+    const progress = ease(rawProgress, eventEasing(event));
+
+    switch (event.type) {
+      case 'scale': {
+        controlledByScale = true;
+        scaleX = interpolate(event.from.x, event.to.x, progress);
+        scaleY = interpolate(event.from.y, event.to.y, progress);
+        break;
+      }
+      case 'opacity': {
+        opacity = clamp01(interpolate(event.from, event.to, progress));
+        break;
+      }
+      case 'expression': {
+        if (layer.source.kind === 'character') {
+          const resolved = resolveExpressionState(
+            project,
+            layer.source.characterId,
+            event.expressionId,
+            layer.source.expressionId,
+          );
+          if (resolved.currentExpressionId) {
+            assetId = resolved.assetId;
+            currentExpressionId = resolved.currentExpressionId;
+          }
+        }
+        break;
+      }
+      case 'flip': {
+        flipX = event.flipped;
+        break;
+      }
+      case 'visibility': {
+        visible = event.visible;
+        break;
+      }
+    }
+  }
+
+  return {
+    basePose,
+    motion,
+    scaleX,
+    scaleY,
+    rotationDeg,
+    opacity,
+    flipX,
+    visible,
+    controlledByMove,
+    controlledByScale,
+    assetId,
+    currentExpressionId,
+    animationVisible,
+    animationFrame: initialVisual.animationFrame,
+  };
+}
+
+const FINAL_SCALE_TOLERANCE = 1e-12;
+
+/**
+ * Enforce that a Layer Clip v2's composed final scaleX/scaleY stay within
+ * `LAYER_MIN_SCALE..LAYER_MAX_SCALE` across authored timestamps and legacy
+ * ScaleEvent boundaries. Used at authoring boundaries, never to silently clamp.
+ */
+export function assertLayerClipFinalScalesInBounds(
+  shot: Shot,
+  layer: Layer,
+  project: Project,
+  extraTimesMs: readonly number[] = [],
+): void {
+  const clip = layer.animationClip;
+  if (!clip || clip.version !== 2) return;
+  const events = shot.timelineEvents.filter((event) => event.layerId === layer.id);
+  const scaleTracks = clip.tracks.filter(
+    (track) =>
+      track.property === 'transform.scaleX' || track.property === 'transform.scaleY',
+  );
+  if (scaleTracks.length === 0) return;
+
+  const checkTimes = new Set<number>([0]);
+  for (const timeMs of extraTimesMs) {
+    if (Number.isFinite(timeMs)) {
+      checkTimes.add(Math.max(0, Math.min(Math.round(timeMs), shot.durationMs)));
+    }
+  }
+  for (const track of scaleTracks) {
+    for (const key of track.keys) {
+      checkTimes.add(Math.max(0, Math.min(Math.round(key.timeMs), shot.durationMs)));
+    }
+  }
+  const scaleEvents = events.filter(
+    (event): event is Extract<TimelineEvent, { type: 'scale' }> =>
+      event.type === 'scale',
+  );
+  for (const event of scaleEvents) {
+    checkTimes.add(Math.max(0, Math.min(Math.round(event.startMs), shot.durationMs)));
+    checkTimes.add(Math.max(0, Math.min(Math.round(event.endMs), shot.durationMs)));
+
+    if (event.from.x === event.to.x && event.from.y === event.to.y) continue;
+    const eventStart = Math.max(0, Math.round(event.startMs));
+    const eventEnd = Math.min(shot.durationMs, Math.round(event.endMs));
+    if (eventStart >= eventEnd) continue;
+
+    for (const track of scaleTracks) {
+      for (let index = 0; index < track.keys.length - 1; index += 1) {
+        const fromKey = track.keys[index]!;
+        const toKey = track.keys[index + 1]!;
+        if (fromKey.value === toKey.value || fromKey.interpolationToNext === 'step') {
+          continue;
+        }
+        const overlapStart = Math.max(eventStart, fromKey.timeMs);
+        const overlapEnd = Math.min(eventEnd, toKey.timeMs);
+        if (overlapStart >= overlapEnd) continue;
+
+        const startFrame = Math.max(
+          0,
+          Math.floor((overlapStart * TIMELINE_FPS) / 1_000) - 1,
+        );
+        const endFrame = Math.max(
+          0,
+          Math.ceil((overlapEnd * TIMELINE_FPS) / 1_000) + 1,
+        );
+        for (let frameIndex = startFrame; frameIndex <= endFrame; frameIndex += 1) {
+          const frameMs = frameTimeMs(frameIndex, TIMELINE_FPS);
+          if (frameMs >= overlapStart && frameMs <= overlapEnd) {
+            checkTimes.add(frameMs);
+          }
+        }
+      }
+    }
+  }
+
+  for (const timeMs of checkTimes) {
+    const preTrack = evaluateLayerPreTrackState(shot, layer, timeMs, project, events);
+    const relative = evaluateLayerRelativeMotionValues(clip, layer.id, timeMs);
+    for (const [axis, preScale, multiplier] of [
+      ['scaleX', preTrack.scaleX, relative['transform.scaleX']],
+      ['scaleY', preTrack.scaleY, relative['transform.scaleY']],
+    ] as const) {
+      const finalScale = preScale * multiplier;
+      if (
+        !Number.isFinite(finalScale) ||
+        finalScale < LAYER_MIN_SCALE - FINAL_SCALE_TOLERANCE ||
+        finalScale > LAYER_MAX_SCALE + FINAL_SCALE_TOLERANCE
+      ) {
+        throw new Error(
+          `图层最终显示缩放 ${axis}=${finalScale} 超出合法范围（${LAYER_MIN_SCALE}–${LAYER_MAX_SCALE}）。`,
+        );
+      }
+    }
+  }
+}
+
+/**
  * Evaluates a validated shot into a deterministic, serializable snapshot at
  * one exact moment. Time is clamped to `[0, shot.durationMs]`. Supports all
  * seven timeline event kinds; character expression events resolve the active
@@ -366,115 +634,59 @@ export function evaluateShotAtTime(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
-      let scaleX = layer.scaleX;
-      let scaleY = layer.scaleY;
-      const rotationDeg = layer.rotationDeg;
-      let opacity = layer.opacity;
-      let flipX = layer.flipX;
-      let visible = layer.visible;
-      const animationSource =
-        layer.source.kind === 'animation' ? layer.source : null;
-      const initialVisual = animationSource
-        ? resolveAnimationFrame(
-            project,
-            animationSource.animationId,
-            layer.startTimeMs ?? 0,
-            layer.animationFirstFrame ?? 0,
-            layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
-            timeMs,
-          )
-        : resolveLayerVisualState(project, layer);
-      const animationVisible = initialVisual.animationVisible ?? true;
-      let assetId = initialVisual.assetId;
-      let currentExpressionId = initialVisual.currentExpressionId;
-
-      const events = [
-        ...(eventsByLayer.get(layer.id) ?? []),
-      ].sort(
-        (left, right) =>
-          left.startMs - right.startMs || left.id.localeCompare(right.id),
+      const preTrack = evaluateLayerPreTrackState(
+        shot,
+        layer,
+        timeMs,
+        project,
+        eventsByLayer.get(layer.id) ?? [],
       );
-
-      const motion = evaluateLayerMotionAtTime(layer, events, timeMs);
-
-      for (const event of events) {
-        if (event.type === 'move' || event.type === 'shake') {
-          // Position + Shake are resolved by the single formal motion seam
-          // above. Keeping them out of this state loop prevents a later Move
-          // from overwriting a temporary Shake offset.
-          continue;
-        }
-        // Future events (timeMs before the event starts) must not participate
-        // in evaluation: skipping them leaves the layer at its base state
-        // (or the state produced by earlier events) instead of overwriting it
-        // with `from`. Events whose start has passed keep contributing — for
-        // timeMs > endMs `rawProgress` resolves to 1, applying the final state.
-        if (timeMs < event.startMs) {
-          continue;
-        }
-        const span = Math.max(1, event.endMs - event.startMs);
-        const rawProgress =
-          timeMs < event.startMs
-            ? 0
-            : timeMs > event.endMs
-              ? 1
-              : (timeMs - event.startMs) / span;
-        const progress = ease(rawProgress, eventEasing(event));
-
-        switch (event.type) {
-          case 'scale': {
-            scaleX = interpolate(event.from.x, event.to.x, progress);
-            scaleY = interpolate(event.from.y, event.to.y, progress);
-            break;
-          }
-          case 'opacity': {
-            opacity = clamp01(interpolate(event.from, event.to, progress));
-            break;
-          }
-          case 'expression': {
-            if (layer.source.kind === 'character') {
-              const resolved = resolveExpressionState(
-                project,
-                layer.source.characterId,
-                event.expressionId,
-                layer.source.expressionId,
-              );
-              if (resolved.currentExpressionId) {
-                assetId = resolved.assetId;
-                currentExpressionId = resolved.currentExpressionId;
-              }
-            }
-            break;
-          }
-          case 'flip': {
-            flipX = event.flipped;
-            break;
-          }
-          case 'visibility': {
-            visible = event.visible;
-            break;
-          }
-        }
-      }
+      const animationValues = layer.animationClip
+        ? evaluateAnimationClipAtTime(layer.animationClip, timeMs)
+        : undefined;
+      const finalTransform: LayerBasePose =
+        layer.animationClip?.version === 2 && animationValues
+          ? composeAnimatedLayerTransform(
+              resolveLayerAnimationBasis(layer.animationClip, {
+                kind: 'layer',
+                layerId: layer.id,
+              }),
+              {
+                x: preTrack.motion.displayPosition.x,
+                y: preTrack.motion.displayPosition.y,
+                scaleX: preTrack.scaleX,
+                scaleY: preTrack.scaleY,
+                rotationDeg: preTrack.rotationDeg,
+              },
+              preTrack.flipX,
+              animationValues,
+            )
+          : {
+              x: preTrack.motion.displayPosition.x,
+              y: preTrack.motion.displayPosition.y,
+              scaleX: preTrack.scaleX,
+              scaleY: preTrack.scaleY,
+              rotationDeg: preTrack.rotationDeg,
+            };
 
       return {
         id: layer.id,
-        ...(layer.animationClip ? { animationValues: evaluateAnimationClipAtTime(layer.animationClip, timeMs), animationTimeMs: timeMs } : {}),
-        assetId: assetId ?? '',
-        currentExpressionId,
+        ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
+        assetId: preTrack.assetId ?? '',
+        currentExpressionId: preTrack.currentExpressionId,
         mouthOverrideAssetId: null,
-        ...(initialVisual.animationFrame
-          ? { animationFrame: initialVisual.animationFrame }
+        ...(preTrack.animationFrame
+          ? { animationFrame: preTrack.animationFrame }
           : {}),
         anchor: layer.anchor,
-        x: motion.displayPosition.x,
-        y: motion.displayPosition.y,
-        scaleX,
-        scaleY,
-        flipX,
-        rotationDeg,
-        opacity,
-        visible: visible && animationVisible,
+        x: finalTransform.x,
+        y: finalTransform.y,
+        scaleX: finalTransform.scaleX,
+        scaleY: finalTransform.scaleY,
+        flipX: preTrack.flipX,
+        rotationDeg: finalTransform.rotationDeg,
+        opacity: preTrack.opacity,
+        visible: preTrack.visible && preTrack.animationVisible,
         zIndex: layer.zIndex,
       };
     });
