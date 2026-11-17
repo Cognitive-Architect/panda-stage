@@ -23,6 +23,8 @@ import {
   FlaGraphicStructureProjection,
   type FlaGraphicStructureProjectionProps,
 } from './FlaGraphicStructureProjection';
+import { visibleImageRect } from '../characters/characterAssemblyPreview';
+import { measureImageVisibleBounds } from '../characters/measureImageVisibleBounds';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Point {
@@ -220,7 +222,7 @@ export function SelectableLayer({
     part,
     image: partImage,
     flaGraphicCanvas,
-  }: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+  }: (typeof resolvedPartImages)[number], listening = canSelect): React.JSX.Element | null => {
     const select = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       event.cancelBubble = true;
       if (characterMotion && (part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic')) {
@@ -232,7 +234,7 @@ export function SelectableLayer({
       return (
         <Group
           key={part.partId}
-          listening={canSelect}
+          listening={listening}
           onClick={select}
           onTap={select}
           {...visualPartRenderTransform(part)}
@@ -240,7 +242,7 @@ export function SelectableLayer({
           <KonvaImage
             height={flaGraphicCanvas.rect.height}
             image={flaGraphicCanvas.canvas}
-            listening={canSelect}
+            listening={listening}
             width={flaGraphicCanvas.rect.width}
             x={flaGraphicCanvas.rect.x + part.flaGraphic.canvas.width / 2}
             y={flaGraphicCanvas.rect.y + part.flaGraphic.canvas.height / 2}
@@ -253,7 +255,7 @@ export function SelectableLayer({
         height={part.localRect.height}
         image={partImage}
         key={part.partId}
-        listening={canSelect}
+        listening={listening}
         onClick={select}
         onTap={select}
         {...visualPartRenderTransform(part)}
@@ -261,9 +263,31 @@ export function SelectableLayer({
       />
     );
   };
-  const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => characterMotion
-    ? <CharacterMotionPart key={entry.part.partId + characterMotion.contextKey} part={entry.part} motion={characterMotion} owner={nodeRef}>{renderPart(entry)}</CharacterMotionPart>
-    : renderPart(entry);
+  const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => {
+    if (!characterMotion) return renderPart(entry);
+    const { part, image: partImage, flaGraphicCanvas } = entry;
+    const graphic = part.flaGraphic;
+    const visible = flaGraphicCanvas?.visibleRect;
+    const alpha = graphic ? null : measureImageVisibleBounds(partImage);
+    const interactionBounds = graphic
+      ? visible && {
+          ...visible,
+          x: visible.x + graphic.canvas.width / 2,
+          y: visible.y + graphic.canvas.height / 2,
+        }
+      : alpha && visibleImageRect({ x: 0, y: 0, width: part.localRect.width, height: part.localRect.height }, alpha);
+    return (
+      <CharacterMotionPart
+        key={part.partId + characterMotion.contextKey}
+        part={part}
+        interactionBounds={interactionBounds ?? null}
+        motion={characterMotion}
+        owner={nodeRef}
+      >
+        {renderPart(entry, false)}
+      </CharacterMotionPart>
+    );
+  };
   const renderHitArea = ({
     part,
   }: (typeof resolvedPartImages)[number]): React.JSX.Element => (

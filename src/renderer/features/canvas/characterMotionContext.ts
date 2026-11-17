@@ -1,4 +1,5 @@
 import type { Layer, Project } from '../../../domain';
+import { localizeDefaultAdaptivePartName } from '../characters/characterPartDisplayName';
 
 /** One read-only label mapping for Canvas context, Inspector and Timeline. */
 export function characterMotionParts(project: Project, layer: Layer | undefined) {
@@ -10,6 +11,6 @@ export function characterMotionParts(project: Project, layer: Layer | undefined)
   const parts = clip?.targetBases.map(b => ({ partId: b.target.partId, displayName: b.displayName })) ?? character.parts;
   return parts.map((part, index) => ({
     partId: part.partId,
-    name: part.displayName?.trim() && !/^(image|graphic)$/i.test(part.displayName.trim()) ? part.displayName : `部件 ${index + 1}`,
+    name: part.displayName?.trim() ? localizeDefaultAdaptivePartName(part.displayName) : `部件 ${index + 1}`,
   }));
 }

@@ -53,6 +53,7 @@ import {
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { GraphicFacePreview } from './GraphicFacePicker';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
+import { measureImageVisibleBounds } from './measureImageVisibleBounds';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import { VisibleBoundsThumbnail } from './VisibleBoundsThumbnail';
 import {
@@ -60,7 +61,6 @@ import {
   buildAdaptivePartsAssemblyPreviewVisual,
   characterLocalPointerDelta,
   characterPartScaleFromPointerDistance,
-  findVisibleImageBounds,
   getAssemblyPreviewExpressions,
   assemblyBoundsExceedFrame,
   calculateAssemblyFitViewportTransform,
@@ -153,43 +153,6 @@ function layoutReuseFailureMessage(code: CharacterLayoutReuseFailureCode): strin
       return '身体尺寸不同，无法套用。';
     case 'head-structure-mismatch':
       return '头部结构不同，无法套用。';
-  }
-}
-
-function measureImageVisibleBounds(
-  image: HTMLImageElement | null,
-): NormalizedImageBounds | null {
-  if (
-    !image ||
-    !image.complete ||
-    image.naturalWidth < 1 ||
-    image.naturalHeight < 1 ||
-    typeof document === 'undefined'
-  ) {
-    return null;
-  }
-
-  const maxEdge = 256;
-  const sampleScale = Math.min(
-    1,
-    maxEdge / Math.max(image.naturalWidth, image.naturalHeight),
-  );
-  const sampleWidth = Math.max(1, Math.round(image.naturalWidth * sampleScale));
-  const sampleHeight = Math.max(1, Math.round(image.naturalHeight * sampleScale));
-  const canvas = document.createElement('canvas');
-  canvas.width = sampleWidth;
-  canvas.height = sampleHeight;
-  try {
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
-    const pixels = context.getImageData(0, 0, sampleWidth, sampleHeight);
-    return findVisibleImageBounds(pixels.data, sampleWidth, sampleHeight);
-  } catch {
-    return null;
-  } finally {
-    canvas.width = 0;
-    canvas.height = 0;
   }
 }
 

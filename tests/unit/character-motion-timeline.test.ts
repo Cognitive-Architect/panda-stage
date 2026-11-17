@@ -111,6 +111,7 @@ function CanvasMotionStub({ layerId }: { layerId: string }) {
         'div',
         { key: partId, 'data-canvas-part-id': partId, 'data-canvas-selected': String(isSelected) },
         createElement(CharacterMotionPart, {
+          interactionBounds: { x: 0, y: 0, width: 100, height: 100 },
           part: {
             partId,
             ownerLayerId: layerId,

@@ -218,11 +218,13 @@ function isCurrentCanvasAssetReady(
 export interface CanvasStageProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  onCharacterPartSelected?: () => void;
 }
 
 export function CanvasStage({
   showHeading = true,
   showToolbar = true,
+  onCharacterPartSelected,
 }: CanvasStageProps = {}): React.JSX.Element {
   const configureEditorLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
@@ -911,10 +913,11 @@ export function CanvasStage({
       ? isStageLayerVisualReady(backgroundLayer)
       : Boolean(backgroundAsset && backgroundImage)
     : false;
-  const missingBackground =
-    Boolean(shot) &&
-    !empty &&
-    !backgroundVisualReady;
+  const missingBackground = Boolean(
+    backgroundLayer?.render.visible && !backgroundVisualReady &&
+    (temporalCanvasModel?.visualStatusByLayer.get(backgroundLayer.layer.id) === 'required-failed' ||
+      backgroundLayer.visual.resources.required.some(({ assetId }) => imageState.missing.has(assetId))),
+  );
   const missingNonBackgroundVisual = incompleteVisualLayers.some(
     (stageLayer) => !stageLayer.render.isBackground,
   );
@@ -997,6 +1000,7 @@ export function CanvasStage({
       selectionStore.select(motionLayer.id);
       selectionStore.selectCharacterPart(partId);
       timelineUiStore.revealCharacterMotionPart();
+      onCharacterPartSelected?.();
     },
     error: setMotionError,
     begin: (partId) => {
@@ -1569,12 +1573,13 @@ export function CanvasStage({
             ) : null}
             {missingBackground ? (
               <div
-                className="canvas-stage-message canvas-stage-warning"
+                className="canvas-stage-message canvas-stage-pending canvas-stage-warning canvas-background-warning"
                 data-testid="canvas-background-warning"
+                role="alert"
               >
                 <strong>背景预览不可用</strong>
                 <span>
-                  请添加背景图层，或在项目素材库中重新生成缩略图。
+                  请在素材库检查或替换背景素材。
                 </span>
               </div>
             ) : null}

@@ -2,12 +2,15 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { evaluateShotAtTime, resolveLayerVisualParts } from '../../src/domain';
+import { evaluateShotAtTime, resolveLayerVisualParts, transformPointByVisualPart } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { CharacterMotionGesture } from '../../src/renderer/features/canvas/characterMotionGesture';
 import { CharacterMotionPart } from '../../src/renderer/features/canvas/CharacterMotionPart';
 import { characterPartAnimationFixture } from '../helpers/characterPartAnimationFixture';
 import { IDS } from './domain/testProject';
+
+import { measureImageVisibleBounds } from '../../src/renderer/features/characters/measureImageVisibleBounds';
+import { visibleImageRect } from '../../src/renderer/features/characters/characterAssemblyPreview';
 
 const nodes = vi.hoisted(() => new Map<string, Record<string, unknown>>());
 vi.mock('react-konva', async () => {
@@ -17,6 +20,26 @@ vi.mock('react-konva', async () => {
     return element('div', null, props.children as never);
   };
   return { Group: primitive, Rect: primitive, Circle: primitive, Line: primitive };
+});
+
+it('measures the opaque patch of a padded Image Part using the assembly alpha bounds', () => {
+  const pixels = new Uint8ClampedArray(100 * 80 * 4);
+  for (let y = 23; y < 28; y += 1) {
+    for (let x = 41; x < 49; x += 1) pixels[(y * 100 + x) * 4 + 3] = 255;
+  }
+  const getImageData = vi.fn(() => ({ data: pixels }));
+  const context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+    .mockReturnValue({ drawImage: vi.fn(), getImageData } as never);
+  try {
+    const image = { complete: true, naturalWidth: 100, naturalHeight: 80 } as HTMLImageElement;
+    const bounds = measureImageVisibleBounds(image);
+    expect(visibleImageRect({ x: 0, y: 0, width: 200, height: 160 }, bounds))
+      .toEqual({ x: 82, y: 46, width: 16, height: 10 });
+    expect(measureImageVisibleBounds(image)).toBe(bounds);
+    expect(getImageData).toHaveBeenCalledTimes(1);
+  } finally {
+    context.mockRestore();
+  }
 });
 
 describe('Character Motion pointer gestures (#979 adaptation)', () => {
@@ -30,6 +53,8 @@ describe('Character Motion pointer gestures (#979 adaptation)', () => {
     const evaluated = evaluateShotAtTime(before.project.shots[0]!, 500, before.project);
     const visual = resolveLayerVisualParts(before.project, before.project.shots[0]!, evaluated.layers.find(l => l.id === fixture.layerId)!, 500);
     const part = visual.parts[source === 'image' ? 0 : 1]!;
+    const paddedPart = { ...part, localRect: { ...part.localRect, width: 1920, height: 1080 } };
+    const interactionBounds = { x: 840, y: 430, width: 20, height: 10 };
     const point = { x: 100, y: 100 };
     let pointer = { x: 100, y: 100 };
     const owner = { current: { getRelativePointerPosition: () => pointer } };
@@ -45,13 +70,27 @@ describe('Character Motion pointer gestures (#979 adaptation)', () => {
     };
     try {
       await act(async () => root.render(createElement(CharacterMotionPart, {
-        part, motion: { selectedPartId: partId, contextKey: 'same-context', enabled: true,
+        part: paddedPart, interactionBounds, motion: { selectedPartId: partId, contextKey: 'same-context', enabled: true,
           pivot: () => point, select: vi.fn(), begin: () => new CharacterMotionGesture(editor, input, () => true), error: error => { throw new Error(error); } },
         owner: owner as never, children: createElement('span'),
       })));
       const name = kind === 'move' ? 'character-motion-part' : `character-motion-${kind}`;
       expect(nodes.has('character-motion-move')).toBe(false);
-      expect(nodes.get('character-motion-pivot')!.listening).toBe(false);
+      const { x, y, width, height } = interactionBounds;
+      const corners = [[x, y], [x + width, y], [x + width, y + height], [x, y + height]]
+        .map(([x, y]) => transformPointByVisualPart({ x: x!, y: y! }, paddedPart));
+      expect(nodes.get('character-motion-hit')).toMatchObject(interactionBounds);
+      expect(nodes.get('character-motion-selection')!.points).toEqual(corners.flatMap(p => [p.x, p.y]));
+      for (const [index, corner] of corners.entries()) {
+        expect(nodes.get(index ? `character-motion-scale-${index}` : 'character-motion-scale')).toMatchObject(corner);
+      }
+      const top = { x: (corners[0]!.x + corners[1]!.x) / 2, y: (corners[0]!.y + corners[1]!.y) / 2 };
+      const bottom = { x: (corners[2]!.x + corners[3]!.x) / 2, y: (corners[2]!.y + corners[3]!.y) / 2 };
+      const length = Math.hypot(top.x - bottom.x, top.y - bottom.y);
+      const rotate = nodes.get('character-motion-rotate')!;
+      expect(rotate.x).toBeCloseTo(top.x + 28 * (top.x - bottom.x) / length);
+      expect(rotate.y).toBeCloseTo(top.y + 28 * (top.y - bottom.y) / length);
+      expect(nodes.get('character-motion-pivot')).toMatchObject({ points: [96, 100, 104, 100, 100, 100, 100, 96, 100, 104], listening: false });
       expect([...nodes.keys()].filter(name => /^character-motion-scale(?:-\d+)?$/.test(name))).toHaveLength(4);
       // Real Konva can emit dragend synchronously from stopDrag().
       node.stopDrag.mockImplementation(() => call(name, 'onDragEnd'));
@@ -92,7 +131,7 @@ describe('Character Motion pointer gestures (#979 adaptation)', () => {
     const event = { target: node, cancelBubble: false };
     const call = (handler: string) => (nodes.get('character-motion-rotate')![handler] as (event: unknown) => void)(event);
     try {
-      await act(async () => root.render(createElement(CharacterMotionPart, { part,
+      await act(async () => root.render(createElement(CharacterMotionPart, { part, interactionBounds: part.localRect,
         motion: { selectedPartId: fixture.graphicPartId, contextKey: 'fast', enabled: true, pivot: () => ({ x: 0, y: 0 }), select: vi.fn(),
           begin: () => new CharacterMotionGesture(editor, { shotId: IDS.shot, layerId: fixture.layerId, partId: fixture.graphicPartId, timeMs: 500, autoKey: true }, () => true), error: error => { throw new Error(error); } },
         owner: { current: { getRelativePointerPosition: () => pointer } } as never, children: null,

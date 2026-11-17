@@ -19,11 +19,11 @@ type Event = Konva.KonvaEventObject<MouseEvent | TouchEvent>;
 const rotationCursor = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M18 8a7 7 0 1 0 1 7M18 3v6h-6" fill="none" stroke="white" stroke-width="4"/><path d="M18 8a7 7 0 1 0 1 7M18 3v6h-6" fill="none" stroke="#173d26" stroke-width="2"/></svg>')}") 12 12, crosshair`;
 
 /** #979 pointer-angle accumulation and local draft/one-commit gesture, source agnostic. */
-export function CharacterMotionPart({ part, motion, owner, children }: {
-  part: LayerVisualPart; motion: CharacterMotionCanvas; owner: React.RefObject<Konva.Group | null>; children: ReactNode;
+export function CharacterMotionPart({ part, interactionBounds, motion, owner, children }: {
+  part: LayerVisualPart; interactionBounds: LayerVisualPart['localRect'] | null; motion: CharacterMotionCanvas; owner: React.RefObject<Konva.Group | null>; children: ReactNode;
 }) {
   const partId = part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic' ? part.source.characterPartId : '';
-  const selected = partId === motion.selectedPartId;
+  const selected = Boolean(interactionBounds && partId === motion.selectedPartId);
   const pivot = motion.pivot(partId);
   const [draft, setDraft] = useState({ dx: 0, dy: 0, rotation: 0, factor: 1 });
   const pointerDown = useRef<{ x: number; y: number } | null>(null);
@@ -94,8 +94,10 @@ export function CharacterMotionPart({ part, motion, owner, children }: {
     try { g.session.commit(g.changes); } catch (error) { motion.error(error instanceof Error ? error.message : '部件编辑失败。'); }
   };
   const unit = 1 / Math.max(0.01, Math.abs(owner.current?.getAbsoluteScale?.().x ?? 1));
-  const x = part.imageTransform ? 0 : part.localRect.x, y = part.imageTransform ? 0 : part.localRect.y;
-  const corners = [[x, y], [x + part.localRect.width, y], [x + part.localRect.width, y + part.localRect.height], [x, y + part.localRect.height]]
+  const bounds = interactionBounds ?? { x: 0, y: 0, width: 0, height: 0 };
+  const x = bounds.x + (part.imageTransform ? 0 : part.localRect.x);
+  const y = bounds.y + (part.imageTransform ? 0 : part.localRect.y);
+  const corners = [[x, y], [x + bounds.width, y], [x + bounds.width, y + bounds.height], [x, y + bounds.height]]
     .map(([x, y]) => transformPointByVisualPart({ x: x!, y: y! }, part));
   const top = { x: (corners[0]!.x + corners[1]!.x) / 2, y: (corners[0]!.y + corners[1]!.y) / 2 };
   const normal = { x: top.x - (corners[2]!.x + corners[3]!.x) / 2, y: top.y - (corners[2]!.y + corners[3]!.y) / 2 };
@@ -118,8 +120,9 @@ export function CharacterMotionPart({ part, motion, owner, children }: {
         onClick={e => { e.cancelBubble = true; motion.select(partId); }} onTap={e => { e.cancelBubble = true; motion.select(partId); }}
         onDragStart={e => begin('move', e)} onDragMove={move} onDragEnd={finish}>
         {children}
-        <Rect {...visualPartRenderTransform(part)} width={part.localRect.width} height={part.localRect.height}
-          fill="rgba(131,211,154,0.001)" />
+        {interactionBounds && <Group {...visualPartRenderTransform(part)}>
+          <Rect name="character-motion-hit" {...interactionBounds} fill="transparent" />
+        </Group>}
       </Group>
     {selected ? <>
       <Line name="character-motion-selection" points={corners.flatMap(p => [p.x, p.y])} closed stroke="#83d39a" strokeWidth={unit} listening={false} />

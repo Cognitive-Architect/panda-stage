@@ -3,6 +3,7 @@ import { CanvasStage } from '../features/canvas/CanvasStage';
 export interface CanvasWorkspaceProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  onCharacterPartSelected?: () => void;
 }
 
 /**
@@ -15,6 +16,7 @@ export interface CanvasWorkspaceProps {
 export function CanvasWorkspace({
   showHeading = true,
   showToolbar = true,
+  onCharacterPartSelected,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
   return (
     <section
@@ -25,6 +27,7 @@ export function CanvasWorkspace({
       <CanvasStage
         showHeading={showHeading}
         showToolbar={showToolbar}
+        onCharacterPartSelected={onCharacterPartSelected}
       />
     </section>
   );
