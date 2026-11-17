@@ -555,6 +555,7 @@ export class LayerMotionService {
       input.timeMs,
       easing,
     );
+    if (nextTracks === existing.tracks) return project;
     return this.commitLayerClip(project, shot.id, layer.id, {
       ...existing,
       tracks: nextTracks,
@@ -603,8 +604,9 @@ export class LayerMotionService {
     );
     assertValidFrame(shot, input.timeMs);
     validateMotionPatch(pose);
-    const clip = clipV2(layer)
-      ? structuredClone(clipV2(layer)!)
+    const existing = clipV2(layer);
+    const clip = existing
+      ? structuredClone(existing)
       : createLayerAnimationClip(project, shot.id, layer.id);
     const nextTracks = pasteTargetKeySnapshotAtTime(
       clip.tracks,
@@ -613,6 +615,7 @@ export class LayerMotionService {
       input.timeMs,
       pose,
     );
+    if (existing && nextTracks === clip.tracks) return project;
     return this.commitLayerClip(
       project,
       shot.id,

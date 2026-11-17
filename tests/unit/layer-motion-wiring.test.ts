@@ -784,4 +784,86 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     ).layers.find((l) => l.id === graphicLayerId)!;
     expect(evalAfterScale).toMatchObject({ scaleX: 3, scaleY: 1.5, rotationDeg: 90 });
   });
+
+  it('shows 混合补间 in Layer UI when outgoing tracks at 500ms disagree and unifies outgoing tracks on change (#1146)', async () => {
+    const { project, graphicLayerId } = createStandaloneGraphicProject();
+    const motion = new LayerMotionService();
+    let seeded = motion.applyKeys(
+      project,
+      { shotId: IDS.shot, layerId: graphicLayerId, timeMs: 500 },
+      { 'transform.offsetX': 100, 'transform.rotationDeg': 20 },
+    );
+    seeded = motion.applyKeys(
+      seeded,
+      { shotId: IDS.shot, layerId: graphicLayerId, timeMs: 1_000 },
+      { 'transform.offsetX': 200, 'transform.rotationDeg': 60 },
+    );
+    const clip = seeded.shots[0]!.layers.find((l) => l.id === graphicLayerId)!.animationClip!;
+    if (clip.version !== 2) throw new Error('Expected Clip v2.');
+    const mixedProject = ProjectSchema.parse({
+      ...seeded,
+      shots: seeded.shots.map((s) =>
+        s.id === IDS.shot
+          ? {
+              ...s,
+              layers: s.layers.map((l) =>
+                l.id === graphicLayerId
+                  ? {
+                      ...l,
+                      animationClip: {
+                        ...clip,
+                        tracks: clip.tracks.map((track) =>
+                          track.property === 'transform.offsetX'
+                            ? {
+                                ...track,
+                                keys: track.keys.map((k) =>
+                                  k.timeMs === 500
+                                    ? { ...k, interpolationToNext: 'ease-in-out' as const }
+                                    : k,
+                                ),
+                              }
+                            : track,
+                        ),
+                      },
+                    }
+                  : l,
+              ),
+            }
+          : s,
+      ),
+    });
+
+    editorProjectStore.open('D:/test-1146-mixed-easing', mixedProject);
+    shotStore.select(IDS.shot);
+    selectionStore.select(graphicLayerId);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+
+    await act(async () => root.render(createElement(TimelineHarness)));
+    const marker500 = container.querySelector<HTMLButtonElement>(
+      '[data-testid="layer-motion-lane"] button[data-time-ms="500"]',
+    )!;
+    await act(async () => marker500.click());
+
+    const easingSelect = container.querySelector<HTMLSelectElement>(
+      '[data-testid="layer-motion-easing"]',
+    )!;
+    expect(easingSelect).not.toBeNull();
+    expect(easingSelect.value).toBe('');
+    expect(easingSelect.querySelector('option[value=""]')?.textContent).toBe('混合补间');
+
+    const undoBefore = editorProjectStore.history.getSnapshot().undoCount;
+    await act(async () => {
+      easingSelect.value = 'ease-out';
+      easingSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoBefore + 1);
+    expect(
+      layerCompositeKeyEasing(
+        editorProjectStore.getSnapshot()!.project.shots[0]!.layers.find(
+          (l) => l.id === graphicLayerId,
+        )!,
+        500,
+      ),
+    ).toBe('ease-out');
+  });
 });

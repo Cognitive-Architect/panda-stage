@@ -870,4 +870,96 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
       evaluateShotAtTime(gentle1000.shots[0]!, 500, gentle1000).layers.find((l) => l.id === layerId)!.scaleX,
     ).toBeCloseTo(1.5625, 10);
   });
+
+  it('aggregates mixed outgoing easing per real outgoing key and leaves terminal or spanning tracks untouched (#1146)', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const service = new LayerMotionService();
+
+    // Build:
+    // - offsetX:    0 -> 500(ease-in-out) -> 1000 (outgoing at 500)
+    // - rotationDeg:0 -> 500(linear)      -> 1000 (outgoing at 500 -> mixed!)
+    // - scaleX:     0 -> 500 (terminal at 500!)
+    // - offsetY:    0 -> 1500 (spanning 500 without a key at 500!)
+    let authored = service.applyKeys(project, { shotId, layerId, timeMs: 500 }, {
+      'transform.offsetX': 100,
+      'transform.rotationDeg': 30,
+      'transform.scaleX': 1.5,
+    });
+    authored = service.applyKeys(authored, { shotId, layerId, timeMs: 1_000 }, {
+      'transform.offsetX': 220,
+      'transform.rotationDeg': 60,
+    });
+    authored = service.applyKeys(authored, { shotId, layerId, timeMs: 1_500 }, {
+      'transform.offsetY': 90,
+    });
+
+    const layerBefore = authored.shots[0]!.layers.find((l) => l.id === layerId)!;
+    const clipBefore = layerBefore.animationClip!;
+    if (clipBefore.version !== 2) throw new Error('Expected Clip v2.');
+    // Author ease-in-out only on offsetX@500 while rotationDeg@500 stays linear.
+    const mixedProject = ProjectSchema.parse({
+      ...authored,
+      shots: authored.shots.map((s) =>
+        s.id === shotId
+          ? {
+              ...s,
+              layers: s.layers.map((l) =>
+                l.id === layerId
+                  ? {
+                      ...l,
+                      animationClip: {
+                        ...clipBefore,
+                        tracks: clipBefore.tracks.map((track) =>
+                          track.property === 'transform.offsetX'
+                            ? {
+                                ...track,
+                                keys: track.keys.map((k) =>
+                                  k.timeMs === 500
+                                    ? { ...k, interpolationToNext: 'ease-in-out' as const }
+                                    : k,
+                                ),
+                              }
+                            : track,
+                        ),
+                      },
+                    }
+                  : l,
+              ),
+            }
+          : s,
+      ),
+    });
+
+    const mixedLayer = mixedProject.shots[0]!.layers.find((l) => l.id === layerId)!;
+    expect(hasLayerCompositeKeyOutgoingInterval(mixedLayer, 500)).toBe(true);
+    expect(layerCompositeKeyEasing(mixedLayer, 500)).toBeNull();
+    // Terminal key at 1500 has zero outgoing intervals even though other keys existed.
+    expect(hasLayerCompositeKeyOutgoingInterval(mixedLayer, 1_500)).toBe(false);
+    expect(layerCompositeKeyEasing(mixedLayer, 1_500)).toBeNull();
+
+    // Setting easing at 500 to 'ease-out' updates ONLY offsetX@500 and rotationDeg@500.
+    // scaleX@500 is terminal (stays 'linear'); offsetY spans without a 500ms key (stays 'linear' @ 0ms).
+    const unified = service.setKeyEasing(
+      mixedProject,
+      { shotId, layerId, timeMs: 500 },
+      'ease-out',
+    );
+    const unifiedLayer = unified.shots[0]!.layers.find((l) => l.id === layerId)!;
+    expect(layerCompositeKeyEasing(unifiedLayer, 500)).toBe('ease-out');
+    if (unifiedLayer.animationClip?.version === 2) {
+      const byProp = new Map(
+        unifiedLayer.animationClip.tracks.map((t) => [t.property, t.keys]),
+      );
+      expect(byProp.get('transform.offsetX')?.find((k) => k.timeMs === 500)?.interpolationToNext).toBe('ease-out');
+      expect(byProp.get('transform.rotationDeg')?.find((k) => k.timeMs === 500)?.interpolationToNext).toBe('ease-out');
+      expect(byProp.get('transform.scaleX')?.find((k) => k.timeMs === 500)?.interpolationToNext).toBe('linear');
+      expect(byProp.get('transform.offsetY')?.map((k) => k.timeMs)).toEqual([0, 1_500]);
+      expect(byProp.get('transform.offsetY')?.find((k) => k.timeMs === 0)?.interpolationToNext).toBe('linear');
+    }
+
+    // No-op easing update returns exact project identity.
+    expect(service.setKeyEasing(unified, { shotId, layerId, timeMs: 500 }, 'ease-out')).toBe(
+      unified,
+    );
+  });
 });
