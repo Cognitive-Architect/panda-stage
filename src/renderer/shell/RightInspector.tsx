@@ -25,7 +25,7 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
 import { CharacterMotionInspectorSection } from '../features/properties/CharacterMotionInspectorSection';
-import { characterMotionParts } from '../features/canvas/characterMotionContext';
+import { adaptivePartIdForNodeId, resolveCharacterView } from '../features/characters/characterView';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
 import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
@@ -377,7 +377,8 @@ export function RightInspector({
     dialogueSelectionStore.getSelectedDialogueId,
   );
   const landscapePresentation = shellMode === 'landscape';
-  const selectedPartId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
+  const selectedNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
+  const selectedPartId = adaptivePartIdForNodeId(selectedNodeId);
   const motionUi = useTimelineUi();
   const compactPresentation = compact === true || landscapePresentation;
   const compactSections = compactPresentation;
@@ -413,7 +414,10 @@ export function RightInspector({
   const currentShot = snapshot?.project.shots.find(
     (candidate) => candidate.id === currentShotId,
   );
-  const motionPart = snapshot ? characterMotionParts(snapshot.project, selection.layer ?? undefined).find(p => p.partId === selectedPartId) : undefined;
+  const selectedNode = snapshot
+    ? resolveCharacterView(snapshot.project, selection.layer ?? undefined)?.nodes.find((node) => node.id === selectedNodeId)
+    : undefined;
+  const motionPart = selectedNode?.motion === 'character-clip-v1' ? selectedNode : undefined;
   const layerSummary = getRightInspectorLayerSummary(
     snapshot,
     selection.layer,
@@ -659,7 +663,7 @@ export function RightInspector({
           layer={selection.layer}
         />
       ) : null}
-      {landscapeEmptyState ? null : (
+      {landscapeEmptyState || selectedNode?.motion === null ? null : (
         <>
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections

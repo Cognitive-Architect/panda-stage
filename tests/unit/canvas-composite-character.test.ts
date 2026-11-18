@@ -10,6 +10,7 @@ import {
   type Project,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { characterNodeForVisualPart, resolveCharacterView } from '../../src/renderer/features/characters/characterView';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -359,6 +360,43 @@ function selectableComposite(
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  it('routes Body, Head and Face hits to stable nodes and highlights just the selected node', () => {
+    const project = compositeProject({ mouth: false, head: true });
+    const ready = [BODY_ID, HEAD_ID, FACE_NORMAL_ID, FACE_ANGRY_ID];
+    const { model } = selectableComposite(project, 0, ready);
+    const view = resolveCharacterView(project, model.layer, model.visual)!;
+    const replacement = selectableComposite(project, 500, ready).model;
+    const oldFace = model.visual.parts.find((part) => part.slot === 'face')!;
+    const newFace = replacement.visual.parts.find((part) => part.slot === 'face')!;
+    expect(view.visual).toBe(model.visual);
+    expect(view.nodes.map(({ id, motion }) => [id, motion])).toEqual([
+      ['root', 'layer'], ['body', null], ['face', null], ['head', null],
+    ]);
+    expect(oldFace.source).not.toEqual(newFace.source);
+    expect(characterNodeForVisualPart(view, newFace)?.id).toBe('face');
+
+    const onSelect = vi.fn();
+    const element = SelectableLayer({
+      images: imageMap(ready), layer: model.layer, nodeRef: { current: null },
+      render: model.render, selected: true, visual: model.visual,
+      characterView: view, selectedCharacterNodeId: 'face', onSelect,
+      onCommitPosition: vi.fn(), onCommitTransform: vi.fn(), onError: vi.fn(),
+    });
+    const root = element.props as { draggable: boolean; children: React.ReactNode };
+    const hits = childElements(root.children).filter((child) => {
+      const { name } = child.props as { name?: string };
+      return name === 'composite-visual-hit-area' || name === 'character-node-selection';
+    });
+    expect(root.draggable).toBe(false);
+    expect(hits).toHaveLength(3);
+    for (const [index, expected] of ['body', 'head', 'face'].entries()) {
+      const hit = hits[index]!.props as { name: string; onClick(event: { cancelBubble: boolean }): void };
+      hit.onClick({ cancelBubble: false });
+      expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, expected);
+      expect(hit.name === 'character-node-selection').toBe(expected === 'face');
+    }
+  });
+
   it('previews opacity on the one Character root without fading Body and Face separately', () => {
     const project = compositeProject({ mouth: false });
     const { model } = selectableComposite(project, 0, [BODY_ID, FACE_NORMAL_ID]);

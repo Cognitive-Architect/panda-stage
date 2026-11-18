@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
+import { characterNodeForVisualPart, type CharacterNodeId, type CharacterView } from '../characters/characterView';
 import {
   Group,
   Image as KonvaImage,
@@ -42,6 +43,8 @@ export interface AxisTransformInput {
 
 export interface SelectableLayerProps {
   characterMotion?: CharacterMotionCanvas;
+  characterView?: CharacterView | null;
+  selectedCharacterNodeId?: CharacterNodeId | null;
   /** Compatibility primary image for ordinary/legacy callers. */
   image?: HTMLImageElement;
   /** The complete visual resolved by the domain visual-parts contract. */
@@ -57,7 +60,7 @@ export interface SelectableLayerProps {
   render: StageLayerRenderInstruction;
   selected: boolean;
   directEditingEnabled?: boolean;
-  onSelect: (layerId: string) => void;
+  onSelect: (layerId: string, nodeId?: CharacterNodeId) => void;
   onCommitPosition: (
     layerId: string,
     position: { x: number; y: number },
@@ -91,6 +94,8 @@ function stopAndSelect(
 
 export function SelectableLayer({
   characterMotion,
+  characterView,
+  selectedCharacterNodeId,
   image,
   images,
   imagesByResourceKey,
@@ -115,7 +120,8 @@ export function SelectableLayer({
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const editingPart = Boolean(characterMotion?.selectedPartId);
+  const editingPart = Boolean(characterMotion?.selectedPartId ||
+    (characterView && selectedCharacterNodeId && selectedCharacterNodeId !== 'root'));
   const canTransform = canMove && !flaGraphicEditProjection && !editingPart;
 
   const legacyBounds = {
@@ -218,17 +224,23 @@ export function SelectableLayer({
     });
     visualNode.getLayer()?.batchDraw();
   };
+  const selectVisualPart = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>, part: LayerVisualParts['parts'][number]) => {
+    event.cancelBubble = true;
+    const node = characterNodeForVisualPart(characterView, part);
+    if (characterMotion && node?.motion === 'character-clip-v1') {
+      characterMotion.select(node.partId);
+    } else if (node) {
+      onSelect(layer.id, node.id);
+    } else {
+      onSelect(layer.id);
+    }
+  };
   const renderPart = ({
     part,
     image: partImage,
     flaGraphicCanvas,
   }: (typeof resolvedPartImages)[number], listening = canSelect): React.JSX.Element | null => {
-    const select = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-      event.cancelBubble = true;
-      if (characterMotion && (part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic')) {
-        characterMotion.select(part.source.characterPartId);
-      } else onSelect(layer.id);
-    };
+    const select = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => selectVisualPart(event, part);
     if (part.flaGraphic) {
       if (!flaGraphicCanvas) return null;
       return (
@@ -290,20 +302,27 @@ export function SelectableLayer({
   };
   const renderHitArea = ({
     part,
-  }: (typeof resolvedPartImages)[number]): React.JSX.Element => (
-    <Rect
-      fill="#000000"
-      height={part.localRect.height}
-      key={`${part.partId}:hit`}
-      listening={canSelect}
-      name="composite-visual-hit-area"
-      opacity={0}
-      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-      onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-      {...visualPartRenderTransform(part)}
-      width={part.localRect.width}
-    />
-  );
+  }: (typeof resolvedPartImages)[number]): React.JSX.Element => {
+    const node = characterNodeForVisualPart(characterView, part);
+    const selectedNode = Boolean(node && node.id !== 'root' && node.id === selectedCharacterNodeId);
+    return (
+      <Rect
+        fill="transparent"
+        height={part.localRect.height}
+        key={`${part.partId}:hit`}
+        listening={canSelect}
+        name={selectedNode ? 'character-node-selection' : 'composite-visual-hit-area'}
+        stroke={selectedNode ? '#83d39a' : undefined}
+        strokeWidth={1}
+        strokeScaleEnabled={false}
+        hitStrokeWidth={0}
+        onClick={(event) => selectVisualPart(event, part)}
+        onTap={(event) => selectVisualPart(event, part)}
+        {...visualPartRenderTransform(part)}
+        width={part.localRect.width}
+      />
+    );
+  };
   const orderedPartImages = resolvedPartImages.sort(
     (left, right) => left.part.drawOrder - right.part.drawOrder,
   );

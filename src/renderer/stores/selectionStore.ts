@@ -3,6 +3,7 @@ import {
   editorProjectStore,
 } from './EditorProjectStore';
 import type { Shot } from '../../domain';
+import { adaptivePartIdForNodeId, characterPartNodeId, resolveCharacterView, type CharacterNodeId } from '../features/characters/characterView';
 import type { FlaGraphicEditScopeState } from '../features/canvas/flaGraphicEditScope';
 import {
   shotStore,
@@ -19,14 +20,18 @@ interface SelectionContext {
 }
 
 export class LayerSelectionStore {
-  private selectedCharacterPartId: string | null = null;
-  readonly getSelectedCharacterPartId = (): string | null => this.selectedCharacterPartId;
-  readonly selectCharacterPart = (partId: string | null): void => {
-    if (partId && !this.characterPartExists(partId)) throw new Error('找不到当前角色部件。');
-    if (partId === this.selectedCharacterPartId) return;
-    this.selectedCharacterPartId = partId;
+  private selectedCharacterNodeId: CharacterNodeId | null = null;
+  readonly getSelectedCharacterNodeId = (): CharacterNodeId | null => this.selectedCharacterNodeId;
+  readonly selectCharacterNode = (nodeId: CharacterNodeId | null): void => {
+    if (nodeId && !this.characterNodeExists(nodeId)) throw new Error('找不到当前角色部件。');
+    if (nodeId === this.selectedCharacterNodeId) return;
+    this.selectedCharacterNodeId = nodeId;
     for (const listener of this.listeners) listener();
   };
+  readonly getSelectedCharacterPartId = (): string | null =>
+    adaptivePartIdForNodeId(this.selectedCharacterNodeId);
+  readonly selectCharacterPart = (partId: string | null): void =>
+    this.selectCharacterNode(partId ? characterPartNodeId(partId) : null);
   private structuredEditScope: FlaGraphicEditScopeState | null = null;
   private selectedStructuredNodePath: readonly string[] | null = null;
   private selectedLayerId: string | null = null;
@@ -125,13 +130,10 @@ export class LayerSelectionStore {
     return this.currentContext()?.shot ?? null;
   }
 
-  private characterPartExists(partId: string): boolean {
-    const layer = this.currentShotValue()?.layers.find(l => l.id === this.selectedLayerId);
-    if (!layer || layer.source.kind !== 'character') return false;
-    if (layer.animationClip?.version === 1) return layer.animationClip.targetBases.some(b => b.target.partId === partId);
-    const characterId = layer.source.characterId;
-    const character = this.editorStore.getSnapshot()?.project.characters.find(c => c.id === characterId);
-    return character?.mode === 'adaptive-parts' && character.parts.some(p => p.partId === partId);
+  private characterNodeExists(nodeId: CharacterNodeId): boolean {
+    const project = this.editorStore.getSnapshot()?.project;
+    const layer = this.currentShotValue()?.layers.find((entry) => entry.id === this.selectedLayerId);
+    return Boolean(project && resolveCharacterView(project, layer)?.nodes.some((node) => node.id === nodeId));
   }
 
   private currentContext(): (SelectionContext & { shot: Shot }) | null {
@@ -164,13 +166,13 @@ export class LayerSelectionStore {
     ) {
       this.setSelectedLayerId(null, null);
     } else if (context.projectInstanceId !== this.selectedContext.projectInstanceId) {
-      this.selectedCharacterPartId = null;
+      this.selectedCharacterNodeId = this.characterNodeExists('root') ? 'root' : null;
       this.selectedContext = context;
       this.structuredEditScope = null;
       this.selectedStructuredNodePath = null;
       for (const listener of this.listeners) listener();
-    } else if (this.selectedCharacterPartId && !this.characterPartExists(this.selectedCharacterPartId)) {
-      this.selectCharacterPart(null);
+    } else if (this.selectedCharacterNodeId && !this.characterNodeExists(this.selectedCharacterNodeId)) {
+      this.selectCharacterNode(this.characterNodeExists('root') ? 'root' : null);
     }
   }
 
@@ -180,7 +182,7 @@ export class LayerSelectionStore {
   ): void {
     if (layerId === this.selectedLayerId) return;
     this.selectedLayerId = layerId;
-    this.selectedCharacterPartId = null;
+    this.selectedCharacterNodeId = layerId && this.characterNodeExists('root') ? 'root' : null;
     this.selectedContext = context;
     this.structuredEditScope = null;
     this.selectedStructuredNodePath = null;
