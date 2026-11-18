@@ -111,8 +111,15 @@ it.each([
     expect(rows.map((row) => row.dataset.characterNodeId)).toEqual(nodes);
     expect(Array.from(selector.options, (option) => option.value)).toEqual(nodes);
     expect(selector.value).toBe('root');
-    expect(element.querySelector('.character-motion-controls button')).toBeNull();
-    expect(element.querySelector('.character-motion-keys')).toBeNull();
+    const autoKeyButton = element.querySelector<HTMLButtonElement>('.character-motion-controls button');
+    if (mode === 'single-image') {
+      expect(autoKeyButton).toBeNull();
+      expect(element.querySelector('.character-motion-keys')).toBeNull();
+    } else {
+      expect(autoKeyButton).not.toBeNull();
+      expect(autoKeyButton!.disabled).toBe(true);
+      expect(element.querySelector('[data-character-node-id="face"] .character-motion-keys')).not.toBeNull();
+    }
 
     for (const row of rows) {
       const nodeId = row.dataset.characterNodeId;
@@ -120,7 +127,12 @@ it.each([
       expect(selectionStore.getSelectedCharacterNodeId()).toBe(nodeId);
       expect(selector.value).toBe(nodeId);
       expect(row.dataset.selectedPart).toBe('true');
-      if (nodeId !== 'root') {
+      if (mode === 'composite') {
+        expect(element.querySelector<HTMLButtonElement>('.character-motion-controls button')!.disabled).toBe(nodeId !== 'face');
+      }
+      if (nodeId === 'face') {
+        expect(element.querySelector('[data-testid="character-part-transform-panel"]')).not.toBeNull();
+      } else if (nodeId !== 'root') {
         expect(element.querySelector('[data-testid="right-inspector-transform-section"]')).toBeNull();
       }
     }

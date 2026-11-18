@@ -5,12 +5,14 @@ import { describe, expect, it } from 'vitest';
 import {
   animationTargetIdentity,
   CharacterNodeIdSchema,
+  CharacterNodeMotionService,
   CharacterService,
   evaluateShotAtTime,
   LayerV22Schema,
   migrateProject,
   ProjectSchema,
   ProjectV22Schema,
+  resolveLayerVisualParts,
   sameAnimationTarget,
   ShotService,
   ShotV22Schema,
@@ -18,6 +20,7 @@ import {
   type CharacterNodeAnimationClip,
   type CharacterNodeId,
 } from '../../src/domain';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { ProjectOperationResponseSchema } from '../../src/shared/project-api';
 import { faceSource } from '../helpers/graphicFaceProject';
@@ -105,7 +108,7 @@ describe('Character Node Project persistence (#1155)', () => {
     expect(migrateProject(project)).toStrictEqual({ ...project, schemaVersion: 23 });
   });
 
-  it('round-trips a v3 face target through ProjectService and leaves playback unchanged', async () => {
+  it('round-trips a v3 face target through ProjectService and evaluates Composite Face motion', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v23-'));
     try {
       const root = path.join(parent, 'node.pandastage');
@@ -126,8 +129,42 @@ describe('Character Node Project persistence (#1155)', () => {
       const reopenedClip = reopened.project.shots[0]!.layers.find((entry) => entry.id === layer.id)!.animationClip!;
       expect(reopenedClip).toEqual(clip);
       expect(animationTargetIdentity(reopenedClip.tracks[0]!.target)).toBe(animationTargetIdentity(target));
-      expect(evaluateShotAtTime(shot, 500, reopened.project))
-        .toEqual(evaluateShotAtTime(before.shots[0]!, 500, before));
+
+      const beforeAt500 = evaluateShotAtTime(before.shots[0]!, 500, before);
+      const beforeLayerAt500 = beforeAt500.layers.find((entry) => entry.id === layer.id)!;
+      const reopenedAt0 = evaluateShotAtTime(shot, 0, reopened.project);
+      const reopenedAt500 = evaluateShotAtTime(shot, 500, reopened.project);
+      const layerAt0 = reopenedAt0.layers.find((entry) => entry.id === layer.id)!;
+      const layerAt500 = reopenedAt500.layers.find((entry) => entry.id === layer.id)!;
+      expect(layerAt0.faceTransform).toEqual({
+        offsetX: 12,
+        offsetY: -8,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        rotationDeg: 15,
+        flipX: false,
+      });
+      expect(layerAt500.faceTransform).toEqual({
+        offsetX: 62,
+        offsetY: -8,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        rotationDeg: 15,
+        flipX: false,
+      });
+      expect({
+        x: layerAt500.x,
+        y: layerAt500.y,
+        scaleX: layerAt500.scaleX,
+        scaleY: layerAt500.scaleY,
+        rotationDeg: layerAt500.rotationDeg,
+      }).toEqual({
+        x: beforeLayerAt500.x,
+        y: beforeLayerAt500.y,
+        scaleX: beforeLayerAt500.scaleX,
+        scaleY: beforeLayerAt500.scaleY,
+        rotationDeg: beforeLayerAt500.rotationDeg,
+      });
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
@@ -246,5 +283,99 @@ describe('Character Node Project persistence (#1155)', () => {
     expect(layer.id).not.toBe(clip.tracks[0]!.target.layerId);
     expect(copiedClip.targetBases[0]!.target).toEqual({ ...clip.targetBases[0]!.target, layerId: layer.id });
     expect(copiedClip.tracks[0]!.target).toEqual({ ...clip.tracks[0]!.target, layerId: layer.id });
+  });
+
+  it('authors Composite Face motion with Auto-Key OFF/ON + Expression + Easing and keeps Editor/Export parity after reopen (#1158)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v1b-'));
+    try {
+      const root = path.join(parent, 'face-motion.pandastage');
+      await mkdir(root);
+      const { project: baseProject, compositeId, layerId } = mixedProject();
+      const shotId = baseProject.shots[0]!.id;
+      const service = new CharacterNodeMotionService();
+
+      // 1. Auto-Key OFF updates static FacePlacement without Clip v3.
+      let authored = service.apply(
+        baseProject,
+        { shotId, layerId, nodeId: 'face', timeMs: 0, autoKey: false },
+        { 'transform.offsetX': 18, 'transform.offsetY': -12, 'transform.rotationDeg': 10, 'transform.scaleX': 1.25, 'transform.scaleY': 1.25 },
+      );
+      expect(authored.shots[0]!.layers.find((l) => l.id === layerId)!.animationClip).toBeUndefined();
+
+      // 2. Auto-Key ON writes Clip v3 keys at 500ms + Expression switch at 400ms + easing at 0ms.
+      const compositeChar = authored.characters.find((c) => c.id === compositeId)!;
+      if (compositeChar.mode !== 'composite') throw new Error('expected composite');
+      const altExpression = compositeChar.expressions[1]!.id;
+      authored = ProjectSchema.parse({
+        ...authored,
+        shots: authored.shots.map((shot) => ({
+          ...shot,
+          durationMs: 2_000,
+          timelineEvents: [
+            ...shot.timelineEvents,
+            {
+              id: '94000000-0000-4000-8000-000000001158',
+              layerId,
+              type: 'expression' as const,
+              startMs: 400,
+              endMs: 2_000,
+              expressionId: altExpression,
+            },
+          ],
+        })),
+      });
+      authored = service.apply(
+        authored,
+        { shotId, layerId, nodeId: 'face', timeMs: 500, autoKey: true },
+        { 'transform.offsetX': 58, 'transform.rotationDeg': 40, 'transform.scaleX': 1.875, 'transform.scaleY': 1.875 },
+      );
+      authored = service.setCompositeKeyEasing(authored, {
+        shotId,
+        layerId,
+        nodeId: 'face',
+        timeMs: 0,
+        interpolationToNext: 'ease-in-out',
+      });
+
+      const file = path.join(root, 'project.json');
+      await writeFile(file, JSON.stringify(baseProject));
+      const projectService = new ProjectService();
+      await projectService.save(root, authored, 1);
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toStrictEqual(authored);
+
+      for (const sampleMs of [0, 250, 500] as const) {
+        const expectedShot = evaluateShotAtTime(authored.shots[0]!, sampleMs, authored);
+        const actualShot = evaluateShotAtTime(reopened.project.shots[0]!, sampleMs, reopened.project);
+        expect(actualShot).toEqual(expectedShot);
+
+        const exportShot = evaluateExportShotAtTime(reopened.project, reopened.project.shots[0]!, sampleMs);
+        const actualLayer = actualShot.layers.find((entry) => entry.id === layerId)!;
+        const exportLayer = exportShot.layers.find((entry) => entry.id === layerId)!;
+        const actualVisual = resolveLayerVisualParts(reopened.project, reopened.project.shots[0]!, actualLayer, sampleMs);
+        const exportVisual = resolveLayerVisualParts(reopened.project, reopened.project.shots[0]!, exportLayer, sampleMs);
+        expect(actualVisual).toEqual(exportVisual);
+        if (sampleMs === 0) {
+          expect(exportVisual.facePlacement).toEqual({
+            offsetX: 18,
+            offsetY: -12,
+            scale: 1.25,
+            rotationDeg: 10,
+            flipX: false,
+          });
+        } else if (sampleMs === 500) {
+          expect(exportVisual.activeFace?.currentExpressionId).toBe(altExpression);
+          expect(exportVisual.facePlacement).toMatchObject({
+            offsetX: 58,
+            offsetY: -12,
+            rotationDeg: 40,
+            flipX: false,
+          });
+          expect(exportVisual.facePlacement?.scale).toBeCloseTo(1.875, 10);
+        }
+      }
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
   });
 });

@@ -63,7 +63,7 @@ export type CharacterMotionBatchRetimeInput = CharacterMotionKeyTargetInput & {
   | { deltaFrames: number; deltaMs?: never }
 );
 
-const CHARACTER_RETIME_POLICY: TargetRetimePolicy = {
+export const CHARACTER_RETIME_POLICY: TargetRetimePolicy = {
   disallowCrossingUnselected: true,
   messages: {
     emptySelection: '请先选择要移动的动作关键帧。',

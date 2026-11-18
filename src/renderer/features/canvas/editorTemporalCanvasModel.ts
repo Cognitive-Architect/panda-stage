@@ -68,15 +68,19 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
       const asset = resolveLayerImageAsset(project, layer);
+      const evaluatedLayer = evaluatedAtZero.get(layer.id);
       const animationAtZero =
         layer.source.kind === 'animation'
-          ? evaluatedAtZero.get(layer.id)
+          ? evaluatedLayer
           : undefined;
       return {
         id: layer.id,
         ...(layer.animationClip ? {
-          animationValues: evaluatedAtZero.get(layer.id)?.animationValues,
+          animationValues: evaluatedLayer?.animationValues,
           animationTimeMs: 0,
+          ...(evaluatedLayer?.faceTransform
+            ? { faceTransform: evaluatedLayer.faceTransform }
+            : {}),
         } : {}),
         assetId: animationAtZero?.assetId ?? asset?.id ?? '',
         ...(animationAtZero?.animationFrame

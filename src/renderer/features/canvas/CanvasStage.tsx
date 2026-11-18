@@ -11,8 +11,23 @@ import {
 import type Konva from 'konva';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
-import { adaptivePartIdForNodeId, resolveCharacterView, type CharacterView } from '../characters/characterView';
-import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime, type Layer } from '../../../domain';
+import {
+  adaptivePartIdForNodeId,
+  isCharacterNodeMotionEditable,
+  resolveCharacterView,
+  type CharacterView,
+} from '../characters/characterView';
+import {
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
+  characterNodeMotionScaleBounds,
+  composeAnimatedCharacterPartTransform,
+  createCharacterPartAnimationClip,
+  evaluateAnimationClipAtTime,
+  evaluateCompositeFacePoseAtTime,
+  isValidFrameTime,
+  type Layer,
+} from '../../../domain';
 import {
   Layer as KonvaLayer,
   Rect,
@@ -985,32 +1000,123 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
-  const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedMotionPartId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
+  const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedCharacterNodeId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
   const motionCanvasForLayer = (motionLayer: Layer, view: CharacterView | null): CharacterMotionCanvas | undefined => {
-    return snapshot && shot && view?.nodes.some((node) => node.motion === 'character-clip-v1') && !positionAuthoringSession ? {
-    selectedPartId: selectedLayerId === motionLayer.id ? selectedMotionPartId : null, contextKey: motionContextKey,
-    enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
-    pivot: (partId) => {
-      const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
-      const basis = clip.targetBases.find(b => b.target.partId === partId)!;
-      if (!basis) return { x: 0, y: 0 };
-      const matrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs));
-      return { x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx, y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty };
-    },
-    select: partId => {
-      selectionStore.select(motionLayer.id);
-      selectionStore.selectCharacterPart(partId);
-      timelineUiStore.revealCharacterMotionPart();
-      onCharacterPartSelected?.();
-    },
-    error: setMotionError,
-    begin: (partId) => {
-      setMotionError('');
-      return new CharacterMotionGesture(editorProjectStore, { shotId: shot.id, layerId: motionLayer.id, partId, timeMs: timelineUi.currentTimeMs, autoKey: timelineUi.characterMotionAutoKey }, () =>
-        shotStore.getCurrentShotId() === shot.id && selectionStore.getSelectedLayerId() === motionLayer.id && selectionStore.getSelectedCharacterPartId() === partId &&
-        timelineUiStore.getSnapshot().currentTimeMs === timelineUi.currentTimeMs && timelineUiStore.getSnapshot().characterMotionAutoKey === timelineUi.characterMotionAutoKey);
-    },
-  } : undefined;
+    if (!snapshot || !shot || !view?.nodes.some(isCharacterNodeMotionEditable) || positionAuthoringSession) {
+      return undefined;
+    }
+    const selectedOnLayer = selectedLayerId === motionLayer.id;
+    const activeNode = selectedOnLayer
+      ? view.nodes.find((node) => node.id === selectedCharacterNodeId)
+      : undefined;
+    const activeTargetId =
+      activeNode?.motion === 'character-clip-v1'
+        ? activeNode.partId
+        : activeNode?.motion === 'character-clip-v3'
+          ? activeNode.id
+          : null;
+    const nodeForTarget = (targetId: string) =>
+      view.nodes.find((node) =>
+        node.motion === 'character-clip-v1' ? node.partId === targetId : node.id === targetId,
+      );
+    return {
+      selectedPartId: selectedOnLayer ? selectedMotionPartId : null,
+      selectedTargetId: activeTargetId,
+      contextKey: motionContextKey,
+      enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
+      capabilities: (targetId) =>
+        nodeForTarget(targetId)?.capabilities ?? {
+          position: false,
+          rotation: false,
+          uniformScale: false,
+        },
+      scaleBounds: (targetId) => {
+        const node = nodeForTarget(targetId);
+        if (node?.motion === 'character-clip-v3') {
+          return characterNodeMotionScaleBounds(snapshot.project, {
+            shotId: shot.id,
+            layerId: motionLayer.id,
+            nodeId: node.id,
+            autoKey: timelineUi.characterMotionAutoKey,
+          });
+        }
+        return { min: CHARACTER_PART_MIN_SCALE, max: CHARACTER_PART_MAX_SCALE };
+      },
+      pivot: (targetId) => {
+        const node = nodeForTarget(targetId);
+        if (node?.motion === 'character-clip-v3') {
+          const pose = evaluateCompositeFacePoseAtTime(
+            snapshot.project,
+            motionLayer,
+            timelineUi.currentTimeMs,
+          );
+          return pose ? { x: pose.offsetX, y: pose.offsetY } : { x: 0, y: 0 };
+        }
+        const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
+        const basis = clip.targetBases.find((b) => b.target.partId === targetId)!;
+        if (!basis) return { x: 0, y: 0 };
+        const matrix = composeAnimatedCharacterPartTransform(
+          basis,
+          clip.fixedCharacterCenter,
+          evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs),
+        );
+        return {
+          x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx,
+          y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty,
+        };
+      },
+      select: (targetId) => {
+        const node = nodeForTarget(targetId);
+        selectionStore.select(motionLayer.id);
+        if (node?.motion === 'character-clip-v3') {
+          selectionStore.selectCharacterNode(node.id);
+        } else {
+          selectionStore.selectCharacterPart(targetId);
+        }
+        timelineUiStore.revealCharacterMotionPart();
+        onCharacterPartSelected?.();
+      },
+      error: setMotionError,
+      begin: (targetId) => {
+        setMotionError('');
+        const node = nodeForTarget(targetId);
+        if (node?.motion === 'character-clip-v3') {
+          const nodeId = node.id;
+          return new CharacterMotionGesture(
+            editorProjectStore,
+            {
+              shotId: shot.id,
+              layerId: motionLayer.id,
+              nodeId,
+              timeMs: timelineUi.currentTimeMs,
+              autoKey: timelineUi.characterMotionAutoKey,
+            },
+            () =>
+              shotStore.getCurrentShotId() === shot.id &&
+              selectionStore.getSelectedLayerId() === motionLayer.id &&
+              selectionStore.getSelectedCharacterNodeId() === nodeId &&
+              timelineUiStore.getSnapshot().currentTimeMs === timelineUi.currentTimeMs &&
+              timelineUiStore.getSnapshot().characterMotionAutoKey === timelineUi.characterMotionAutoKey,
+          );
+        }
+        return new CharacterMotionGesture(
+          editorProjectStore,
+          {
+            shotId: shot.id,
+            layerId: motionLayer.id,
+            partId: targetId,
+            timeMs: timelineUi.currentTimeMs,
+            autoKey: timelineUi.characterMotionAutoKey,
+          },
+          () =>
+            shotStore.getCurrentShotId() === shot.id &&
+            selectionStore.getSelectedLayerId() === motionLayer.id &&
+            selectionStore.getSelectedCharacterPartId() === targetId &&
+            timelineUiStore.getSnapshot().currentTimeMs === timelineUi.currentTimeMs &&
+            timelineUiStore.getSnapshot().characterMotionAutoKey === timelineUi.characterMotionAutoKey,
+        );
+      },
+    };
   };
   const selectedStructuredNodeReady = Boolean(
     selectedFlaGraphicTarget &&

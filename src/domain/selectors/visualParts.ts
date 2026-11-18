@@ -26,6 +26,10 @@ import {
 import { resolveImageAsset } from './canvasLayers';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
+import {
+  evaluateCompositeFacePoseAtTime,
+  type EvaluatedCharacterNodePose,
+} from '../character-node-animation';
 import { sameAnimationTarget } from '../models/animationCore';
 import { resolveCharacterFaceSource } from './characterFaceSource';
 
@@ -595,10 +599,17 @@ function resolveCharacterFace(
   };
 }
 
-function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCharacterFace>, evaluated: EvaluatedLayer, slot: 'single' | 'face', placement: FacePlacement, drawOrder: number): LayerVisualPart {
+function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCharacterFace>, evaluated: EvaluatedLayer, slot: 'single' | 'face', placement: EvaluatedCharacterNodePose, drawOrder: number): LayerVisualPart {
   const { asset, face } = resolved;
   const graphic = asset.flaGraphic;
-  const rect = centeredRect(asset, placement.offsetX, placement.offsetY, placement.scale);
+  const width = asset.width * placement.scaleX;
+  const height = asset.height * placement.scaleY;
+  const rect = {
+    x: placement.offsetX - width / 2,
+    y: placement.offsetY - height / 2,
+    width,
+    height,
+  };
   const part: LayerVisualPart = {
     partId: `${evaluated.id}:${slot}`, ownerLayerId: evaluated.id, slot,
     source: resolved.visualSource.kind === 'fla-graphic'
@@ -614,7 +625,7 @@ function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCha
     // Center/rotate/mirror the full source canvas; cropped fallback pixels do
     // not redefine the face pivot. Structure uses exactly the same affine.
     const angle = placement.rotationDeg * Math.PI / 180;
-    const sx = placement.scale * (placement.flipX ? -1 : 1), sy = placement.scale;
+    const sx = placement.scaleX * (placement.flipX ? -1 : 1), sy = placement.scaleY;
     const matrix = { a: Math.cos(angle) * sx, b: Math.sin(angle) * sx, c: -Math.sin(angle) * sy, d: Math.cos(angle) * sy, tx: placement.offsetX, ty: placement.offsetY };
     const fallback = graphic.structureFrame ? null : imageAsset(project, graphic.frameAssetId, evaluated.id);
     const pixelToCanvas = fallback
@@ -1236,7 +1247,7 @@ export function resolveLayerVisualParts(
     if (resolved.face.fallbackAssetId) {
       fallbackAssetIds.add(resolved.face.fallbackAssetId);
     }
-    const part = faceVisualPart(project, resolved, evaluated, 'single', { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, flipX: false }, 0);
+    const part = faceVisualPart(project, resolved, evaluated, 'single', { offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, rotationDeg: 0, flipX: false }, 0);
     return baseResult(
       evaluated,
       'single-image-character',
@@ -1280,7 +1291,22 @@ export function resolveLayerVisualParts(
     drawOrder: 0,
     ownerZIndex: evaluated.zIndex,
   };
-  const facePart = faceVisualPart(project, resolved, evaluated, 'face', character.facePlacement, headAsset ? 2 : 1);
+  const facePose: EvaluatedCharacterNodePose =
+    evaluated.faceTransform ??
+    evaluateCompositeFacePoseAtTime(
+      project,
+      layer,
+      evaluated.animationTimeMs ?? 0,
+      evaluated.animationValues,
+    ) ?? {
+      offsetX: character.facePlacement.offsetX,
+      offsetY: character.facePlacement.offsetY,
+      scaleX: character.facePlacement.scale,
+      scaleY: character.facePlacement.scale,
+      rotationDeg: character.facePlacement.rotationDeg,
+      flipX: character.facePlacement.flipX,
+    };
+  const facePart = faceVisualPart(project, resolved, evaluated, 'face', facePose, headAsset ? 2 : 1);
   const headPart: LayerVisualPart | null =
     headAsset && character.head
       ? {
@@ -1316,7 +1342,13 @@ export function resolveLayerVisualParts(
   return baseResult(
     evaluated,
     'composite-character',
-    { ...character.facePlacement },
+    {
+      offsetX: facePose.offsetX,
+      offsetY: facePose.offsetY,
+      scale: facePose.scaleX,
+      rotationDeg: facePose.rotationDeg,
+      flipX: facePose.flipX,
+    },
     parts,
     resolved.face,
     characterResources(

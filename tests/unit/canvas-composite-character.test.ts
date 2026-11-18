@@ -377,7 +377,7 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     const newFace = replacement.visual.parts.find((part) => part.slot === 'face')!;
     expect(view.visual).toBe(model.visual);
     expect(view.nodes.map(({ id, motion }) => [id, motion])).toEqual([
-      ['root', 'layer'], ['body', null], ['face', null], ['head', null],
+      ['root', 'layer'], ['body', null], ['face', 'character-clip-v3'], ['head', null],
     ]);
     expect(oldFace.source).not.toEqual(newFace.source);
     expect(characterNodeForVisualPart(view, newFace)?.id).toBe('face');

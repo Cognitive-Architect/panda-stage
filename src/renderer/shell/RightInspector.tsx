@@ -25,7 +25,12 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
 import { CharacterMotionInspectorSection } from '../features/properties/CharacterMotionInspectorSection';
-import { adaptivePartIdForNodeId, resolveCharacterView } from '../features/characters/characterView';
+import {
+  adaptivePartIdForNodeId,
+  isCharacterNodeMotionEditable,
+  resolveCharacterView,
+  type CharacterNodeId,
+} from '../features/characters/characterView';
 import { VisibleBoundsThumbnail } from '../features/characters/VisibleBoundsThumbnail';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
@@ -96,6 +101,7 @@ export function getRightInspectorLayerSummary(
   snapshot: EditorProjectSnapshot | null,
   layer: Layer | null,
   partId?: string | null,
+  nodeId?: CharacterNodeId | null,
 ): RightInspectorLayerSummary {
   if (!layer || !snapshot) {
     return { asset: null, typeLabel: '图层' };
@@ -158,6 +164,13 @@ export function getRightInspectorLayerSummary(
       asset,
       typeLabel: '角色图层',
       graphicSource: expression.visualSource,
+    };
+  }
+  if (character?.mode === 'composite' && nodeId === 'face') {
+    return {
+      asset,
+      typeLabel: '角色图层',
+      partVisualKind: 'image' as const,
     };
   }
   return { asset, typeLabel: '角色图层' };
@@ -420,11 +433,12 @@ export function RightInspector({
   const selectedNode = snapshot
     ? resolveCharacterView(snapshot.project, selection.layer ?? undefined)?.nodes.find((node) => node.id === selectedNodeId)
     : undefined;
-  const motionPart = selectedNode?.motion === 'character-clip-v1' ? selectedNode : undefined;
+  const motionNode = isCharacterNodeMotionEditable(selectedNode) ? selectedNode : undefined;
   const layerSummary = getRightInspectorLayerSummary(
     snapshot,
     selection.layer,
     selectedPartId,
+    selectedNodeId,
   );
   const structuredSelection = useStructuredGraphicSelection();
   const selectionTypeLabel = compact
@@ -631,37 +645,64 @@ export function RightInspector({
   );
 
   const motionSection = snapshot && currentShot ? <CharacterMotionInspectorSection project={snapshot.project} shot={currentShot} layerId={selectedLayerId} /> : null;
-  const inspectorBody = motionPart && currentShot && selection.layer && snapshot ? (
+  const motionPanelInput = motionNode && currentShot && selection.layer
+    ? motionNode.motion === 'character-clip-v1'
+      ? {
+          shotId: currentShot.id,
+          layerId: selection.layer.id,
+          partId: motionNode.partId,
+          timeMs: motionUi.currentTimeMs,
+          autoKey: motionUi.characterMotionAutoKey,
+        }
+      : {
+          shotId: currentShot.id,
+          layerId: selection.layer.id,
+          nodeId: motionNode.id,
+          timeMs: motionUi.currentTimeMs,
+          autoKey: motionUi.characterMotionAutoKey,
+        }
+    : null;
+  const motionTargetKey = motionNode
+    ? motionNode.motion === 'character-clip-v1'
+      ? motionNode.partId
+      : motionNode.id
+    : null;
+  const showMotionInspector = Boolean(
+    motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot,
+  );
+  const inspectorBody = (
     <>
       {inspectorHeading}
-      <section className="character-part-identity" data-testid="right-inspector-part-context">
-        <div className="character-part-identity-thumbnail" aria-hidden="true">
-          {selectionThumbnail?.status === 'ready' ? (
-            layerSummary.partVisualKind === 'image' ? (
-              <VisibleBoundsThumbnail key={selectionThumbnail.dataUrl} cacheKey={selectionThumbnail.dataUrl} src={selectionThumbnail.dataUrl} alt="" />
-            ) : <img alt="" src={selectionThumbnail.dataUrl} />
-          ) : <DecorativeIcon icon={Layers3} size={24} />}
-        </div>
-        <div className="character-part-identity-copy">
-          <strong title={motionPart.name}>{motionPart.name}</strong>
-          <span title={selection.layer.name}>{selection.layer.name}</span>
-        </div>
-      </section>
+      {showMotionInspector && motionNode && selection.layer ? (
+        <section className="character-part-identity" data-testid="right-inspector-part-context">
+          <div className="character-part-identity-thumbnail" aria-hidden="true">
+            {layerSummary.graphicSource ? (
+              <GraphicFacePreview source={layerSummary.graphicSource} label={motionNode.name} />
+            ) : selectionThumbnail?.status === 'ready' ? (
+              layerSummary.partVisualKind === 'image' ? (
+                <VisibleBoundsThumbnail key={selectionThumbnail.dataUrl} cacheKey={selectionThumbnail.dataUrl} src={selectionThumbnail.dataUrl} alt="" />
+              ) : <img alt="" src={selectionThumbnail.dataUrl} />
+            ) : <DecorativeIcon icon={Layers3} size={24} />}
+          </div>
+          <div className="character-part-identity-copy">
+            <strong title={motionNode.name}>{motionNode.name}</strong>
+            <span title={selection.layer.name}>{selection.layer.name}</span>
+          </div>
+        </section>
+      ) : (
+        <>
+          <FlaGraphicInspectorPreview />
+          {inspectorSelection}
+        </>
+      )}
       {motionSection}
-      <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>
-        <summary>变换</summary>
-        <CharacterPartTransformPanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, motionPart.partId, motionUi.currentTimeMs, motionUi.characterMotionAutoKey])}
-          revision={snapshot.revision} input={{ shotId: currentShot.id, layerId: selection.layer.id, partId: motionPart.partId, timeMs: motionUi.currentTimeMs, autoKey: motionUi.characterMotionAutoKey }} locked={selection.layer.locked} />
-      </details>
-    </>
-  ) : (
-    <>
-      {inspectorHeading}
-      <FlaGraphicInspectorPreview />
-      {inspectorSelection}
-      {motionSection}
-      <FlaGraphicStructureTree />
-      {snapshot && currentShot && selection.layer?.source.kind === 'character' ? (
+      {showMotionInspector && motionNode?.motion === 'character-clip-v1' ? null : (
+        <FlaGraphicStructureTree />
+      )}
+      {snapshot &&
+      currentShot &&
+      selection.layer?.source.kind === 'character' &&
+      motionNode?.motion !== 'character-clip-v1' ? (
         <ExpressionAtTimeControl
           key={`${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
@@ -671,6 +712,18 @@ export function RightInspector({
         />
       ) : null}
       {landscapeEmptyState ? null : (
+        showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (
+          <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>
+            <summary>变换</summary>
+            <CharacterPartTransformPanel
+              key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, motionTargetKey, motionUi.currentTimeMs, motionUi.characterMotionAutoKey])}
+              revision={snapshot.revision}
+              input={motionPanelInput}
+              capabilities={motionNode.capabilities}
+              locked={selection.layer.locked}
+            />
+          </details>
+        ) : (
         selectedNode?.motion === null ? null : <>
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
@@ -714,6 +767,7 @@ export function RightInspector({
             </>
           )}
         </>
+        )
       )}
     </>
   );

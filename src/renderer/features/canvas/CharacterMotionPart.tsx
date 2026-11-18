@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Rect, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
-import { CHARACTER_PART_MIN_SCALE, CHARACTER_PART_MAX_SCALE, transformPointByVisualPart, visualPartRenderTransform, type LayerVisualPart, type CharacterMotionValues } from '../../../domain';
+import {
+  CHARACTER_NODE_MOTION_CAPABILITIES,
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
+  transformPointByVisualPart,
+  visualPartRenderTransform,
+  type CharacterMotionValues,
+  type CharacterNodeTransformCapabilities,
+  type LayerVisualPart,
+} from '../../../domain';
 import type { CharacterMotionGesture } from './characterMotionGesture';
 
 export interface CharacterMotionCanvas {
   selectedPartId: string | null;
+  selectedTargetId?: string | null;
   contextKey: string;
   enabled: boolean;
   pivot(partId: string): { x: number; y: number };
+  scaleBounds?(targetId: string): { min: number; max: number };
+  capabilities?(targetId: string): CharacterNodeTransformCapabilities;
   select(partId: string): void;
   begin(partId: string): CharacterMotionGesture;
   error(message: string): void;
@@ -19,15 +31,40 @@ type Event = Konva.KonvaEventObject<MouseEvent | TouchEvent>;
 const rotationCursor = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M18 8a7 7 0 1 0 1 7M18 3v6h-6" fill="none" stroke="white" stroke-width="4"/><path d="M18 8a7 7 0 1 0 1 7M18 3v6h-6" fill="none" stroke="#173d26" stroke-width="2"/></svg>')}") 12 12, crosshair`;
 
 /** #979 pointer-angle accumulation and local draft/one-commit gesture, source agnostic. */
-export function CharacterMotionPart({ part, interactionBounds, motion, owner, children }: {
-  part: LayerVisualPart; interactionBounds: LayerVisualPart['localRect'] | null; motion: CharacterMotionCanvas; owner: React.RefObject<Konva.Group | null>; children: ReactNode;
+export function CharacterMotionPart({
+  part,
+  targetId,
+  capabilities,
+  interactionBounds,
+  motion,
+  owner,
+  pointerOwner,
+  children,
+}: {
+  part: LayerVisualPart;
+  targetId?: string;
+  capabilities?: CharacterNodeTransformCapabilities;
+  interactionBounds: LayerVisualPart['localRect'] | null;
+  motion: CharacterMotionCanvas;
+  owner: React.RefObject<Konva.Group | null>;
+  pointerOwner?: React.RefObject<Konva.Group | null>;
+  children: ReactNode;
 }) {
-  const partId = part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic' ? part.source.characterPartId : '';
-  const selected = Boolean(interactionBounds && partId === motion.selectedPartId);
+  const partId =
+    targetId ??
+    (part.source.kind === 'adaptive-part' || part.source.kind === 'adaptive-part-fla-graphic'
+      ? part.source.characterPartId
+      : '');
+  const activeSelectedId =
+    motion.selectedTargetId !== undefined ? motion.selectedTargetId : motion.selectedPartId;
+  const selected = Boolean(interactionBounds && partId && partId === activeSelectedId);
+  const caps = capabilities ?? motion.capabilities?.(partId) ?? CHARACTER_NODE_MOTION_CAPABILITIES;
   const pivot = motion.pivot(partId);
   const [draft, setDraft] = useState({ dx: 0, dy: 0, rotation: 0, factor: 1 });
   const pointerDown = useRef<{ x: number; y: number } | null>(null);
-  const capturePointer = (event: Event) => { event.cancelBubble = true; pointerDown.current = owner.current?.getRelativePointerPosition() ?? null; };
+  const relativePointer = () =>
+    (pointerOwner?.current ? pointerOwner.current : owner.current)?.getRelativePointerPosition() ?? null;
+  const capturePointer = (event: Event) => { event.cancelBubble = true; pointerDown.current = relativePointer(); };
   const gesture = useRef<{
     kind: Kind; session: CharacterMotionGesture; node: Konva.Node; start: { x: number; y: number };
     pointer: { x: number; y: number }; angle: number; rotation: number; radius: number; key: string;
@@ -48,7 +85,7 @@ export function CharacterMotionPart({ part, interactionBounds, motion, owner, ch
   }, [motion.contextKey]);
   const begin = (kind: Kind, event: Event) => {
     event.cancelBubble = true;
-    const pointer = pointerDown.current ?? owner.current?.getRelativePointerPosition();
+    const pointer = pointerDown.current ?? relativePointer();
     if (!motion.enabled || !pointer) { event.target.stopDrag(); return; }
     try {
       gesture.current = { kind, session: motion.begin(partId), node: event.target, start: event.target.position(), pointer,
@@ -58,7 +95,7 @@ export function CharacterMotionPart({ part, interactionBounds, motion, owner, ch
   };
   const move = (event: Event) => {
     event.cancelBubble = true;
-    const g = gesture.current, pointer = owner.current?.getRelativePointerPosition();
+    const g = gesture.current, pointer = relativePointer();
     if (!g || !pointer) return;
     if (g.key !== motion.contextKey || !motion.enabled) { cancel(); return; }
     // Konva moves the dragged handle/group itself; the preview wrapper owns
@@ -80,7 +117,10 @@ export function CharacterMotionPart({ part, interactionBounds, motion, owner, ch
       setDraft({ dx: 0, dy: 0, rotation, factor: 1 });
     } else {
       const ratio = Math.hypot(pointer.x - pivot.x, pointer.y - pivot.y) / g.radius;
-      const factor = Math.max(CHARACTER_PART_MIN_SCALE / Math.min(values['transform.scaleX'], values['transform.scaleY']), Math.min(CHARACTER_PART_MAX_SCALE / Math.max(values['transform.scaleX'], values['transform.scaleY']), ratio));
+      const bounds = motion.scaleBounds?.(partId);
+      const minScale = bounds?.min ?? CHARACTER_PART_MIN_SCALE;
+      const maxScale = bounds?.max ?? CHARACTER_PART_MAX_SCALE;
+      const factor = Math.max(minScale / Math.min(values['transform.scaleX'], values['transform.scaleY']), Math.min(maxScale / Math.max(values['transform.scaleX'], values['transform.scaleY']), ratio));
       g.changes = { 'transform.scaleX': values['transform.scaleX'] * factor, 'transform.scaleY': values['transform.scaleY'] * factor };
       setDraft({ dx: 0, dy: 0, rotation: 0, factor });
     }
@@ -114,9 +154,9 @@ export function CharacterMotionPart({ part, interactionBounds, motion, owner, ch
     onMouseLeave: (event: Event) => cursor(event, 'default'),
   });
   return <Group x={pivot.x + draft.dx} y={pivot.y + draft.dy} offsetX={pivot.x} offsetY={pivot.y} rotation={draft.rotation} scaleX={draft.factor} scaleY={draft.factor}>
-      <Group id={`${part.ownerLayerId}:${partId}:body`} name="character-motion-part" draggable={selected && motion.enabled}
+      <Group id={`${part.ownerLayerId}:${partId}:body`} name="character-motion-part" draggable={selected && motion.enabled && caps.position}
         onMouseDown={capturePointer} onTouchStart={capturePointer}
-        onMouseEnter={e => cursor(e, selected ? 'move' : 'pointer')} onMouseLeave={e => cursor(e, 'default')}
+        onMouseEnter={e => cursor(e, selected ? (caps.position ? 'move' : 'default') : 'pointer')} onMouseLeave={e => cursor(e, 'default')}
         onClick={e => { e.cancelBubble = true; motion.select(partId); }} onTap={e => { e.cancelBubble = true; motion.select(partId); }}
         onDragStart={e => begin('move', e)} onDragMove={move} onDragEnd={finish}>
         {children}
@@ -126,13 +166,17 @@ export function CharacterMotionPart({ part, interactionBounds, motion, owner, ch
       </Group>
     {selected ? <>
       <Line name="character-motion-selection" points={corners.flatMap(p => [p.x, p.y])} closed stroke="#83d39a" strokeWidth={unit} listening={false} />
-      <Line points={[top.x, top.y, rotationHandle.x, rotationHandle.y]} stroke="#83d39a" strokeWidth={unit} listening={false} />
-      {corners.map((point, index) => <Rect key={index} name={index === 0 ? 'character-motion-scale' : `character-motion-scale-${index}`}
+      {caps.rotation ? (
+        <Line points={[top.x, top.y, rotationHandle.x, rotationHandle.y]} stroke="#83d39a" strokeWidth={unit} listening={false} />
+      ) : null}
+      {caps.uniformScale ? corners.map((point, index) => <Rect key={index} name={index === 0 ? 'character-motion-scale' : `character-motion-scale-${index}`}
         x={point.x} y={point.y} offsetX={5 * unit} offsetY={5 * unit} width={10 * unit} height={10 * unit}
         fill="#eef6f0" stroke="#83d39a" strokeWidth={unit} hitStrokeWidth={16 * unit}
-        {...handleEvents('scale', index % 2 ? 'nesw-resize' : 'nwse-resize')} />)}
-      <Circle name="character-motion-rotate" {...rotationHandle} radius={6 * unit} fill="#eef6f0" stroke="#83d39a" strokeWidth={unit} hitStrokeWidth={16 * unit}
-        {...handleEvents('rotate', rotationCursor)} />
+        {...handleEvents('scale', index % 2 ? 'nesw-resize' : 'nwse-resize')} />) : null}
+      {caps.rotation ? (
+        <Circle name="character-motion-rotate" {...rotationHandle} radius={6 * unit} fill="#eef6f0" stroke="#83d39a" strokeWidth={unit} hitStrokeWidth={16 * unit}
+          {...handleEvents('rotate', rotationCursor)} />
+      ) : null}
       <Line name="character-motion-pivot" points={[pivot.x - 4 * unit, pivot.y, pivot.x + 4 * unit, pivot.y, pivot.x, pivot.y, pivot.x, pivot.y - 4 * unit, pivot.x, pivot.y + 4 * unit]}
         stroke="#83d39a" strokeWidth={unit} opacity={0.55} listening={false} />
     </> : null}

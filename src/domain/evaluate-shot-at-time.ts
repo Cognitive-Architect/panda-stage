@@ -15,6 +15,10 @@ import { TIMELINE_FPS, frameTimeMs } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
+  evaluateCompositeFacePoseAtTime,
+  type EvaluatedCharacterNodePose,
+} from './character-node-animation';
+import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
   resolveLayerAnimationBasis,
@@ -33,6 +37,8 @@ export interface EvaluatedLayer {
   animationValues?: EvaluatedAnimationValue[];
   /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
   animationTimeMs?: number;
+  /** Transient evaluated Composite Face pose for Character Node Clip v3. */
+  faceTransform?: EvaluatedCharacterNodePose;
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -642,9 +648,14 @@ export function evaluateShotAtTime(
         eventsByLayer.get(layer.id) ?? [],
       );
       const clip = layer.animationClip;
-      const animationValues = clip && clip.version !== 3
+      const animationValues = clip
         ? evaluateAnimationClipAtTime(clip, timeMs)
         : undefined;
+      const faceTransform =
+        clip?.version === 3
+          ? evaluateCompositeFacePoseAtTime(project, layer, timeMs, animationValues) ??
+            undefined
+          : undefined;
       const finalTransform: LayerBasePose =
         layer.animationClip?.version === 2 && animationValues
           ? composeAnimatedLayerTransform(
@@ -673,6 +684,7 @@ export function evaluateShotAtTime(
       return {
         id: layer.id,
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
+        ...(faceTransform ? { faceTransform } : {}),
         assetId: preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
         mouthOverrideAssetId: null,

@@ -1,4 +1,5 @@
 export * from './CharacterService';
+export * from './CharacterNodeMotionService';
 export * from './LayerMotionService';
 export * from './AudioClipService';
 export * from './DialogueService';
