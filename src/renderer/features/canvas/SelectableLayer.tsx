@@ -189,6 +189,7 @@ export function SelectableLayer({
   const compositeVisual =
     visual?.kind === 'composite-character' ||
     visual?.kind === 'adaptive-parts-character';
+  const compositeNodeSelection = visual?.kind === 'composite-character' && Boolean(characterView);
   const animationVisual = visual?.parts.some(
     (part) => part.source.kind === 'animation-frame',
   ) ?? false;
@@ -275,24 +276,30 @@ export function SelectableLayer({
       />
     );
   };
-  const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => {
-    if (!characterMotion) return renderPart(entry);
-    const { part, image: partImage, flaGraphicCanvas } = entry;
+  const interactionBoundsForPart = ({
+    part,
+    image: partImage,
+    flaGraphicCanvas,
+  }: (typeof resolvedPartImages)[number]) => {
     const graphic = part.flaGraphic;
     const visible = flaGraphicCanvas?.visibleRect;
     const alpha = graphic ? null : measureImageVisibleBounds(partImage);
-    const interactionBounds = graphic
+    return graphic
       ? visible && {
           ...visible,
           x: visible.x + graphic.canvas.width / 2,
           y: visible.y + graphic.canvas.height / 2,
         }
       : alpha && visibleImageRect({ x: 0, y: 0, width: part.localRect.width, height: part.localRect.height }, alpha);
+  };
+  const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => {
+    if (!characterMotion) return renderPart(entry, canSelect && !compositeNodeSelection);
+    const { part } = entry;
     return (
       <CharacterMotionPart
         key={part.partId + characterMotion.contextKey}
         part={part}
-        interactionBounds={interactionBounds ?? null}
+        interactionBounds={interactionBoundsForPart(entry) ?? null}
         motion={characterMotion}
         owner={nodeRef}
       >
@@ -300,15 +307,19 @@ export function SelectableLayer({
       </CharacterMotionPart>
     );
   };
-  const renderHitArea = ({
-    part,
-  }: (typeof resolvedPartImages)[number]): React.JSX.Element => {
+  const renderHitArea = (entry: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+    const { part } = entry;
+    const bounds = compositeNodeSelection
+      ? interactionBoundsForPart(entry)
+      : { x: 0, y: 0, width: part.localRect.width, height: part.localRect.height };
+    if (!bounds) return null;
     const node = characterNodeForVisualPart(characterView, part);
     const selectedNode = Boolean(node && node.id !== 'root' && node.id === selectedCharacterNodeId);
+    const transform = visualPartRenderTransform(part);
     return (
       <Rect
         fill="transparent"
-        height={part.localRect.height}
+        height={bounds.height}
         key={`${part.partId}:hit`}
         listening={canSelect}
         name={selectedNode ? 'character-node-selection' : 'composite-visual-hit-area'}
@@ -318,8 +329,10 @@ export function SelectableLayer({
         hitStrokeWidth={0}
         onClick={(event) => selectVisualPart(event, part)}
         onTap={(event) => selectVisualPart(event, part)}
-        {...visualPartRenderTransform(part)}
-        width={part.localRect.width}
+        {...transform}
+        offsetX={transform.offsetX - bounds.x}
+        offsetY={transform.offsetY - bounds.y}
+        width={bounds.width}
       />
     );
   };
@@ -528,7 +541,7 @@ export function SelectableLayer({
           />
         ) : compositeVisual ? (
           <Group
-            listening={canSelect}
+            listening={canSelect && !compositeNodeSelection}
             name="selectable-canvas-visual"
             ref={cacheCompositeVisual}
           >

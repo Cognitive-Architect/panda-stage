@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import {
   evaluateShotAtTime,
@@ -7,10 +7,14 @@ import {
   projectShotMouth,
   ProjectSchema,
   upsertExpressionEventAtTime,
+  visualPartRenderTransform,
   type Project,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import { characterNodeForVisualPart, resolveCharacterView } from '../../src/renderer/features/characters/characterView';
+import * as alphaBounds from '../../src/renderer/features/characters/measureImageVisibleBounds';
+import * as graphicRaster from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -360,7 +364,10 @@ function selectableComposite(
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('routes Body, Head and Face hits to stable nodes and highlights just the selected node', () => {
+    vi.spyOn(alphaBounds, 'measureImageVisibleBounds').mockReturnValue({ x: 0, y: 0, width: 1, height: 1 });
     const project = compositeProject({ mouth: false, head: true });
     const ready = [BODY_ID, HEAD_ID, FACE_NORMAL_ID, FACE_ANGRY_ID];
     const { model } = selectableComposite(project, 0, ready);
@@ -395,6 +402,72 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, expected);
       expect(hit.name === 'character-node-selection').toBe(expected === 'face');
     }
+  });
+
+  it.each(['image', 'graphic'] as const)('uses the visible %s Face for the outline and leaves transparent padding to Body', (source) => {
+    const base = compositeProject({ mouth: false });
+    const graphic = graphicFaceProject();
+    const project = ProjectSchema.parse({
+      ...base,
+      ...(source === 'graphic' ? { animations: graphic.animations, assets: [
+        ...base.assets, ...graphic.assets.filter((asset) => !base.assets.some(({ id }) => id === asset.id)),
+      ] } : {}),
+      characters: base.characters.map((character) => character.mode !== 'composite' ? character : ({
+        ...character,
+        ...(source === 'graphic' ? { baseAssetId: undefined } : {}),
+        facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        expressions: character.expressions.map((expression) => source === 'graphic' && expression.id === IDS.expressionNormal
+          ? { id: expression.id, name: expression.name, visualSource: faceSource(0) }
+          : expression),
+      })),
+    });
+    const { model } = selectableComposite(project, 0, []);
+    const face = model.visual.parts.find(({ slot }) => slot === 'face')!;
+    const images = imageMap([BODY_ID, FACE_NORMAL_ID, IDS.assetChar]);
+    const alpha = vi.spyOn(alphaBounds, 'measureImageVisibleBounds').mockImplementation((image) => image === images.get(FACE_NORMAL_ID)
+      ? { x: 0.75, y: 0.25, width: 0.2, height: 0.5 }
+      : { x: 0, y: 0, width: 1, height: 1 });
+    if (source === 'graphic') {
+      expect(face.flaGraphic?.canvas.width).toBe(200);
+      vi.spyOn(graphicRaster, 'renderFlaGraphicCanvas').mockReturnValue({
+        canvas: {} as HTMLCanvasElement,
+        rect: { x: -100, y: -90, width: 200, height: 180 },
+        visibleRect: { x: 50, y: -25, width: 40, height: 50 },
+      });
+    }
+    const onSelect = vi.fn();
+    const element = SelectableLayer({
+      images, layer: model.layer, nodeRef: { current: null }, render: model.render,
+      selected: true, visual: model.visual,
+      characterView: resolveCharacterView(project, model.layer, model.visual),
+      selectedCharacterNodeId: 'face', onSelect,
+      onCommitPosition: vi.fn(), onCommitTransform: vi.fn(), onError: vi.fn(),
+    });
+    const children = childElements((element.props as { children: React.ReactNode }).children);
+    type Hit = { name: string; x: number; y: number; offsetX: number; offsetY: number;
+      width: number; height: number; listening: boolean; onClick(event: { cancelBubble: boolean }): void };
+    const props = children.map((child) => child.props as Hit);
+    const [bodyHit, faceHit] = props.filter(({ name }) => name === 'composite-visual-hit-area' || name === 'character-node-selection');
+    const faceTransform = visualPartRenderTransform(face);
+    expect(faceHit).toMatchObject({
+      name: 'character-node-selection', ...faceTransform,
+      offsetX: faceTransform.offsetX - 150,
+      offsetY: faceTransform.offsetY - (source === 'graphic' ? 65 : 25),
+      width: 40, height: 50, listening: true,
+    });
+    expect(props.find(({ name }) => name === 'selectable-canvas-visual')?.listening).toBe(false);
+    if (source === 'graphic') expect(alpha).toHaveBeenCalledTimes(1);
+
+    // The centre was inside the original Face canvas. Walk the active hit rectangles
+    // in reverse draw order, as Konva does, to confirm it now goes to Body.
+    const winner = [faceHit!, bodyHit!].find((hit) => {
+      const left = hit.x - hit.offsetX;
+      const top = hit.y - hit.offsetY;
+      return left <= 0 && left + hit.width > 0 && top <= 0 && top + hit.height > 0;
+    });
+    expect(winner).toBe(bodyHit);
+    winner!.onClick({ cancelBubble: false });
+    expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, 'body');
   });
 
   it('previews opacity on the one Character root without fading Body and Face separately', () => {
