@@ -28,7 +28,7 @@ const ShotBaseShape = {
   ...ShotIdentityShape,
   dialogues: z.array(DialogueV18Schema),
   audioClips: z.array(AudioClipV7Schema),
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV22Schema).default([]),
 };
 
 export const ShotV2Schema = z
@@ -85,6 +85,7 @@ export const ShotV22Schema = z.object({
 }).strict().superRefine(validateShotClipKeyTimes);
 
 export const ShotSchema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
 

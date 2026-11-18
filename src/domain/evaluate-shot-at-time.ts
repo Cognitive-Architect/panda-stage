@@ -6,6 +6,7 @@ import type {
   Shot,
   TimelineEvent,
 } from './models';
+import type { MouthCueEvent, MouthCueState } from './models/timeline-event';
 import {
   collectFlaGraphicTimelineDurationMs,
   type FlaGraphicInternalTimeline,
@@ -614,6 +615,69 @@ export function assertLayerClipFinalScalesInBounds(
 }
 
 /**
+ * Deterministic point-state resolver for authored Mouth Cues (`rest | open | none`).
+ * Depends strictly on `shot.timelineEvents`, `layerId`, and `requestedTimeMs`.
+ */
+export function resolveEffectiveMouthCue(
+  shot: Shot,
+  layerId: string,
+  requestedTimeMs: number,
+): MouthCueState | 'none' {
+  const timeMs = Math.max(
+    0,
+    Math.min(Math.round(requestedTimeMs), shot.durationMs),
+  );
+  const effective = shot.timelineEvents
+    .filter(
+      (event): event is MouthCueEvent =>
+        event.type === 'mouth-cue' &&
+        event.layerId === layerId &&
+        event.startMs <= timeMs,
+    )
+    .sort(
+      (left, right) =>
+        left.startMs - right.startMs ||
+        left.endMs - right.endMs ||
+        left.id.localeCompare(right.id),
+    )
+    .at(-1);
+  return effective?.state ?? 'none';
+}
+
+function resolveAuthoredMouthOpenOverride(
+  project: Project,
+  layer: Layer,
+): {
+  assetId?: string;
+  mouthOverrideAssetId: string | null;
+  mouthOpen?: boolean;
+} | null {
+  if (layer.source.kind !== 'character') return null;
+  const characterId = layer.source.characterId;
+  const character = project.characters.find(
+    (candidate) => candidate.id === characterId,
+  );
+  if (
+    !character ||
+    character.mode === 'adaptive-parts' ||
+    (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
+  ) {
+    return null;
+  }
+  const mouthAsset = character.mouthOpenAssetId
+    ? project.assets.find((candidate) => candidate.id === character.mouthOpenAssetId)
+    : undefined;
+  if (!character.mouthOpenVisualSource && mouthAsset?.kind !== 'image') {
+    return null;
+  }
+  return {
+    ...(mouthAsset?.kind === 'image' ? { assetId: mouthAsset.id } : {}),
+    mouthOverrideAssetId: mouthAsset?.id ?? null,
+    ...(character.mouthOpenVisualSource ? { mouthOpen: true } : {}),
+  };
+}
+
+/**
  * Evaluates a validated shot into a deterministic, serializable snapshot at
  * one exact moment. Time is clamped to `[0, shot.durationMs]`. Supports all
  * seven timeline event kinds; character expression events resolve the active
@@ -681,13 +745,23 @@ export function evaluateShotAtTime(
               rotationDeg: preTrack.rotationDeg,
             };
 
+      const mouthCue =
+        layer.source.kind === 'character'
+          ? resolveEffectiveMouthCue(shot, layer.id, timeMs)
+          : 'none';
+      const mouthOpenOverride =
+        mouthCue === 'open'
+          ? resolveAuthoredMouthOpenOverride(project, layer)
+          : null;
+
       return {
         id: layer.id,
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
         ...(faceTransform ? { faceTransform } : {}),
-        assetId: preTrack.assetId ?? '',
+        assetId: mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
-        mouthOverrideAssetId: null,
+        mouthOverrideAssetId: mouthOpenOverride?.mouthOverrideAssetId ?? null,
+        ...(mouthOpenOverride?.mouthOpen ? { mouthOpen: true } : {}),
         ...(preTrack.animationFrame
           ? { animationFrame: preTrack.animationFrame }
           : {}),

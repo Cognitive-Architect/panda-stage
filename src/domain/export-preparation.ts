@@ -141,7 +141,11 @@ function referenceLabelsForShot(
 function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
   const times = new Set<number>([0]);
   for (const event of shot.timelineEvents) {
-    if (event.type === 'expression' || event.type === 'visibility') {
+    if (
+      event.type === 'expression' ||
+      event.type === 'visibility' ||
+      event.type === 'mouth-cue'
+    ) {
       times.add(event.startMs);
     }
   }

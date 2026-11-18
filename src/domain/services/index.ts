@@ -4,6 +4,7 @@ export * from './LayerMotionService';
 export * from './AudioClipService';
 export * from './DialogueService';
 export * from './ExpressionEventService';
+export * from './MouthCueEventService';
 export * from './LayerService';
 export * from './PositionProjectService';
 export * from './ShotService';

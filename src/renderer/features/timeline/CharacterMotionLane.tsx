@@ -15,6 +15,7 @@ import {
   characterNodeCompositeKeyTimes,
   CharacterNodeMotionService,
   characterNodeMotionValues,
+  deleteMouthCueEvent,
   frameTimeMs,
   hasAuthoredCharacterPartMotion,
   hasCharacterNodeCompositeKeyOutgoingInterval,
@@ -26,6 +27,7 @@ import {
   type CharacterMotionValues,
   type CharacterNodeId,
   type Layer,
+  type MouthCueEvent,
   type Project,
   type Shot,
 } from '../../../domain';
@@ -323,6 +325,7 @@ export function CharacterMotionLane({
   const [dragPreview, setDragPreview] = useState<MotionKeyDragPreview | null>(null);
   const [protectedCueTargetId, setProtectedCueTargetId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<PoseClipboard | null>(null);
+  const [selectedMouthCueId, setSelectedMouthCueId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const lastFocusedKeyRef = useRef<string | null>(null);
@@ -364,6 +367,7 @@ export function CharacterMotionLane({
     overviewTouchSessionRef.current = null;
     suppressOverviewClickRef.current = false;
     setClipboard(null);
+    setSelectedMouthCueId(null);
     setError(null);
   }, [instanceId, project.id, snapshot?.projectRoot, shot.id, layer?.id, activeTargetId]);
 
@@ -398,30 +402,153 @@ export function CharacterMotionLane({
   }, [groupExpanded, layer, nodeId, revealNonce, shot.id]);
 
   if (!layer || !view?.nodes.length) return null;
-  if (!laneMode) {
-    return <>{view.nodes.map((node) => {
-      const selected = node.id === nodeId;
-      const select = () => selectionStore.selectCharacterNode(node.id);
-      return (
+
+  const mouthCueEvents = shot.timelineEvents
+    .filter(
+      (event): event is MouthCueEvent =>
+        event.type === 'mouth-cue' &&
+        event.layerId === layer.id &&
+        event.startMs <= shot.durationMs,
+    )
+    .sort((left, right) => left.startMs - right.startMs || left.id.localeCompare(right.id));
+
+  const reportStale = (): void => {
+    setError('动作关键帧或工程状态已变化，请重新选择后再操作。');
+  };
+
+  const deleteMouthCue = (eventId: string): void => {
+    if (!snapshot || editorProjectStore.getSnapshot() !== snapshot) {
+      reportStale();
+      return;
+    }
+    try {
+      setError(null);
+      const next = deleteMouthCueEvent(snapshot.project, shot.id, layer.id, eventId);
+      if (next !== snapshot.project) {
+        editorProjectStore.updateProject(next, '删除角色嘴型');
+      }
+      setSelectedMouthCueId((current) => (current === eventId ? null : current));
+    } catch (operationError) {
+      setError(errorText(operationError));
+    }
+  };
+
+  const mouthCueLane =
+    laneMode !== 'v1' && mouthCueEvents.length > 0 ? (
+      <div
+        aria-label="嘴型关键帧"
+        className="timeline-lane character-motion-lane mouth-cue-lane"
+        data-layer-id={layer.id}
+        data-testid="mouth-cue-lane"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          setSelectedMouthCueId(null);
+        }}
+      >
+        <span className="timeline-lane-label" title="嘴型">
+          <span className="timeline-lane-label-text">嘴型</span>
+        </span>
         <div
-          key={node.id}
-          ref={selected ? selectedRowRef : undefined}
-          className="timeline-lane character-motion-lane"
-          data-testid="character-node-lane"
-          data-character-node-id={node.id}
-          data-selected-part={selected}
-          onPointerDown={(event) => { event.stopPropagation(); select(); }}
-          onClick={(event) => { event.stopPropagation(); select(); }}
+          className="timeline-lane-content mouth-cue-track"
+          style={{ width: `${trackWidth}px` }}
         >
-          <span className="timeline-lane-label">
-            <button className="character-motion-part-select" type="button" aria-pressed={selected}>
-              <span className="timeline-lane-label-text">{node.name}</span>
-            </button>
-          </span>
-          <div className="timeline-lane-content" style={{ width: `${trackWidth}px` }} />
+          {mouthCueEvents.map((cue) => {
+            const cueSelected = selectedMouthCueId === cue.id;
+            const stateLabel = cue.state === 'open' ? '张开' : '闭合';
+            return (
+              <div
+                key={cue.id}
+                className="mouth-cue-marker-group"
+                style={{ left: `${cue.startMs * pixelsPerMs}px` }}
+              >
+                <button
+                  type="button"
+                  aria-current={cue.startMs === currentTimeMs ? 'true' : undefined}
+                  aria-label={`嘴型 ${stateLabel} ${cue.startMs}ms`}
+                  aria-pressed={cueSelected}
+                  className="mouth-cue-timeline-marker"
+                  data-mouth-cue-id={cue.id}
+                  data-mouth-cue-state={cue.state}
+                  data-selected={cueSelected ? 'true' : 'false'}
+                  data-testid="mouth-cue-timeline-marker"
+                  data-time-ms={cue.startMs}
+                  title={`${cue.startMs}ms · 嘴型${stateLabel}`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedMouthCueId(cue.id);
+                    timelineUiStore.seek(cue.startMs, shot.durationMs);
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      !layer.locked &&
+                      !productPreviewOpen &&
+                      (event.key === 'Delete' || event.key === 'Backspace')
+                    ) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      deleteMouthCue(cue.id);
+                    }
+                  }}
+                >
+                  <span aria-hidden="true">{cue.state === 'open' ? '○' : '—'}</span>
+                </button>
+                {cueSelected && !layer.locked && !productPreviewOpen ? (
+                  <button
+                    type="button"
+                    aria-label={`删除 ${cue.startMs}ms 嘴型${stateLabel}`}
+                    className="mouth-cue-timeline-delete"
+                    data-mouth-cue-id={cue.id}
+                    data-testid="mouth-cue-timeline-delete"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deleteMouthCue(cue.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
-      );
-    })}</>;
+      </div>
+    ) : null;
+
+  if (!laneMode) {
+    return (
+      <>
+        {view.nodes.map((node) => {
+          const selected = node.id === nodeId;
+          const select = () => selectionStore.selectCharacterNode(node.id);
+          return (
+            <div
+              key={node.id}
+              ref={selected ? selectedRowRef : undefined}
+              className="timeline-lane character-motion-lane"
+              data-testid="character-node-lane"
+              data-character-node-id={node.id}
+              data-selected-part={selected}
+              onPointerDown={(event) => { event.stopPropagation(); select(); }}
+              onClick={(event) => { event.stopPropagation(); select(); }}
+            >
+              <span className="timeline-lane-label">
+                <button className="character-motion-part-select" type="button" aria-pressed={selected}>
+                  <span className="timeline-lane-label-text">{node.name}</span>
+                </button>
+              </span>
+              <div className="timeline-lane-content" style={{ width: `${trackWidth}px` }} />
+            </div>
+          );
+        })}
+        {mouthCueLane}
+        {error ? (
+          <PositionLaneErrorNotice message={error} onDismiss={() => setError(null)} />
+        ) : null}
+      </>
+    );
   }
 
   const adapter = ADAPTERS[laneMode];
@@ -496,10 +623,6 @@ export function CharacterMotionLane({
     shot.durationMs > 0 &&
     isValidFrameTime(currentTimeMs) &&
     currentTimeMs <= lastValidFrameTime(shot.durationMs);
-
-  const reportStale = (): void => {
-    setError('动作关键帧或工程状态已变化，请重新选择后再操作。');
-  };
 
   const selectTarget = (targetKey: string): void => {
     if (selectionStore.getSelectedLayerId() !== layer.id) {
@@ -812,7 +935,10 @@ export function CharacterMotionLane({
       />
 
       {laneMode === 'v3' ? (
-        view.nodes.map(renderSemanticNodeRow)
+        <>
+          {view.nodes.map(renderSemanticNodeRow)}
+          {mouthCueLane}
+        </>
       ) : (
         <>
           <div

@@ -63,6 +63,8 @@ function propertyOfType(type: TimelineEvent['type']): string {
       return 'flip';
     case 'visibility':
       return 'visibility';
+    case 'mouth-cue':
+      return 'mouth-cue';
   }
 }
 

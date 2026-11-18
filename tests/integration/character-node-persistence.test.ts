@@ -7,19 +7,23 @@ import {
   CharacterNodeIdSchema,
   CharacterNodeMotionService,
   CharacterService,
+  deleteMouthCueEvent,
   evaluateShotAtTime,
   LayerV22Schema,
   migrateProject,
   ProjectSchema,
   ProjectV22Schema,
+  resolveEffectiveMouthCue,
   resolveLayerVisualParts,
   sameAnimationTarget,
   ShotService,
   ShotV22Schema,
   targetTracks,
+  upsertMouthCueEventAtTime,
   type CharacterNodeAnimationClip,
   type CharacterNodeId,
 } from '../../src/domain';
+import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { ProjectOperationResponseSchema } from '../../src/shared/project-api';
@@ -374,6 +378,131 @@ describe('Character Node Project persistence (#1155)', () => {
           expect(exportVisual.facePlacement?.scale).toBeCloseTo(1.875, 10);
         }
       }
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('persists authored Mouth Cues alongside Composite Face v3 Motion through ProjectService with Export parity (#1159)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v1c-'));
+    try {
+      const root = path.join(parent, 'mouth-cue.pandastage');
+      await mkdir(root);
+      const { project: baseProject, compositeId, layerId } = mixedProject();
+      const shotId = baseProject.shots[0]!.id;
+      const mouthAssetId = '10000000-0000-4000-8000-000000001159';
+      const audioAssetId = '10000000-0000-4000-8000-000000001160';
+      const audioClipId = '95000000-0000-4000-8000-000000001159';
+      const dialogueId = '96000000-0000-4000-8000-000000001159';
+
+      const compositeCharacter = baseProject.characters.find((c) => c.id === compositeId)!;
+
+      let authored = ProjectSchema.parse({
+        ...baseProject,
+        assets: [
+          ...baseProject.assets,
+          {
+            id: mouthAssetId,
+            kind: 'image' as const,
+            name: '张嘴',
+            relativePath: 'assets/mouth-open.png',
+            mimeType: 'image/png',
+            width: 120,
+            height: 80,
+            usage: 'character' as const,
+            keywords: [],
+          },
+          {
+            id: audioAssetId,
+            kind: 'audio' as const,
+            name: '对白',
+            relativePath: 'assets/dialogue.wav',
+            mimeType: 'audio/wav',
+            durationMs: 1_000,
+          },
+        ],
+        characters: baseProject.characters.map((character) =>
+          character.id === compositeId && character.mode === 'composite'
+            ? { ...character, mouthOpenAssetId: mouthAssetId }
+            : character,
+        ),
+        shots: baseProject.shots.map((shot) => ({
+          ...shot,
+          durationMs: 2_000,
+          audioClips: [
+            {
+              id: audioClipId,
+              name: '对白',
+              assetId: audioAssetId,
+              role: 'dialogue' as const,
+              startMs: 340,
+              endMs: 1_240,
+              offsetMs: 0,
+              volume: 1,
+            },
+          ],
+          dialogues: [
+            {
+              id: dialogueId,
+              characterId: compositeId,
+              voiceProfileId: compositeCharacter.defaultVoiceProfileId,
+              subtitleStyleId: shot.defaultSubtitleStyleId,
+              audioClipId,
+              text: '持久化测试',
+              startMs: 340,
+              endMs: 1_240,
+            },
+          ],
+        })),
+      });
+
+      authored = new CharacterNodeMotionService().apply(
+        authored,
+        { shotId, layerId, nodeId: 'face', timeMs: 500, autoKey: true },
+        { 'transform.offsetX': 48, 'transform.rotationDeg': 30, 'transform.scaleX': 1.8, 'transform.scaleY': 1.8 },
+      );
+      authored = upsertMouthCueEventAtTime(authored, shotId, layerId, 'open', 500);
+      authored = upsertMouthCueEventAtTime(authored, shotId, layerId, 'rest', 800);
+
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(baseProject));
+      const service = new ProjectService();
+      await service.save(root, authored, 1);
+      const reopened = await service.open(root);
+      expect(reopened.project).toStrictEqual(authored);
+
+      // Reopened v23 project preserves cue & frozen v22 reader still rejects it.
+      expect(() => ProjectV22Schema.parse({ ...reopened.project, schemaVersion: 22 })).toThrow();
+
+      for (const [sampleMs, expectedSource] of [
+        [400, 'mouth'],      // Simple Mouth open fallback (none)
+        [500, 'mouth'],      // authored open > Simple Mouth closed
+        [650, 'mouth'],      // authored open > Simple Mouth closed
+        [800, 'expression'], // authored rest > Simple Mouth open
+        [900, 'expression'], // authored rest holds
+      ] as const) {
+        const formalShot = evaluateShotAtTime(reopened.project.shots[0]!, sampleMs, reopened.project);
+        const exportShot = evaluateExportShotAtTime(reopened.project, reopened.project.shots[0]!, sampleMs, dialogueId);
+        const exportVisual = resolveLayerVisualParts(
+          reopened.project,
+          reopened.project.shots[0]!,
+          exportShot.layers.find((entry) => entry.id === layerId)!,
+          sampleMs,
+        );
+        expect(exportVisual.activeFace?.source).toBe(expectedSource);
+        expect(formalShot.layers.find((entry) => entry.id === layerId)?.faceTransform).toBeDefined();
+        if (sampleMs >= 500) {
+          expect(exportVisual.facePlacement).toMatchObject({ offsetX: 48, rotationDeg: 30 });
+        }
+      }
+
+      // Deleting rest cue after reopen falls back to open, and ExportPreparation packages mouthOpenAssetId.
+      const media = collectExportPreparationMedia(reopened.project);
+      expect(media.some((entry) => entry.asset.id === mouthAssetId)).toBe(true);
+      const restEvent = reopened.project.shots[0]!.timelineEvents.find(
+        (event) => event.type === 'mouth-cue' && event.state === 'rest',
+      )!;
+      const afterDelete = deleteMouthCueEvent(reopened.project, shotId, layerId, restEvent.id);
+      expect(resolveEffectiveMouthCue(afterDelete.shots[0]!, layerId, 900)).toBe('open');
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

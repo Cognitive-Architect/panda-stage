@@ -93,6 +93,26 @@ const VisibilityEventV22Schema = z
   })
   .strict();
 
+export const MouthCueStateSchema = z.enum(['rest', 'open']);
+export type MouthCueState = z.infer<typeof MouthCueStateSchema>;
+
+export const MouthCueEventSchema = z
+  .object({
+    ...TimelineEventBaseShape,
+    type: z.literal('mouth-cue'),
+    state: MouthCueStateSchema,
+  })
+  .strict()
+  .superRefine((event, context) => {
+    if (event.endMs !== event.startMs) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Mouth cue event requires endMs to equal startMs.',
+        path: ['endMs'],
+      });
+    }
+  });
+
 export const TimelineEventV22Schema = z
   .discriminatedUnion('type', [
     MoveEventV22Schema,
@@ -120,7 +140,28 @@ export const ShakeEventSchema = ShakeEventV22Schema;
 export const ExpressionEventSchema = ExpressionEventV22Schema;
 export const FlipEventSchema = FlipEventV22Schema;
 export const VisibilityEventSchema = VisibilityEventV22Schema;
-export const TimelineEventSchema = TimelineEventV22Schema;
+
+/** Current (v23+) Timeline Event union; frozen v22 readers use `TimelineEventV22Schema`. */
+export const TimelineEventSchema = z
+  .discriminatedUnion('type', [
+    MoveEventV22Schema,
+    ScaleEventV22Schema,
+    OpacityEventV22Schema,
+    ShakeEventV22Schema,
+    ExpressionEventV22Schema,
+    FlipEventV22Schema,
+    VisibilityEventV22Schema,
+    MouthCueEventSchema,
+  ])
+  .superRefine((event, context) => {
+    if (event.endMs < event.startMs) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Timeline event endMs must be greater than or equal to startMs.',
+        path: ['endMs'],
+      });
+    }
+  });
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
 export type ScaleEvent = z.infer<typeof ScaleEventSchema>;
@@ -129,4 +170,5 @@ export type ShakeEvent = z.infer<typeof ShakeEventSchema>;
 export type ExpressionEvent = z.infer<typeof ExpressionEventSchema>;
 export type FlipEvent = z.infer<typeof FlipEventSchema>;
 export type VisibilityEvent = z.infer<typeof VisibilityEventSchema>;
+export type MouthCueEvent = z.infer<typeof MouthCueEventSchema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;

@@ -150,7 +150,9 @@ export function buildEditorTemporalCanvasModel({
   // Expression switch that starts there. Only the Face state is projected;
   // Position, scale, opacity and the non-speaking base view stay unchanged.
   const zeroTimeExpressionShot = shot.timelineEvents.some(
-    (event) => event.type === 'expression' && event.startMs === 0,
+    (event) =>
+      (event.type === 'expression' || event.type === 'mouth-cue') &&
+      event.startMs === 0,
   )
     ? (() => {
         const formal = evaluateShotAtTime(shot, 0, project);
@@ -164,6 +166,8 @@ export function buildEditorTemporalCanvasModel({
                   ...layer,
                   assetId: evaluated.assetId,
                   currentExpressionId: evaluated.currentExpressionId,
+                  mouthOverrideAssetId: evaluated.mouthOverrideAssetId ?? null,
+                  ...(evaluated.mouthOpen ? { mouthOpen: true } : {}),
                 }
               : layer;
           }),

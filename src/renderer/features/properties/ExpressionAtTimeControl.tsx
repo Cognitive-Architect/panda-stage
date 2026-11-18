@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
+  characterHasMouthOpenVisual,
   evaluateShotAtTime,
+  resolveEffectiveMouthCue,
   resolveTimelineFrameTime,
-  type Layer,
   type ExpressionEvent,
+  type Layer,
+  type MouthCueEvent,
+  type MouthCueState,
   type Project,
   type Shot,
 } from '../../../domain';
@@ -84,6 +88,15 @@ export function ExpressionAtTimeControl({
 
   if (!character || character.mode === 'adaptive-parts') return null;
 
+  const hasMouthOpenVisual = characterHasMouthOpenVisual(project, character);
+  const effectiveMouthCue = resolveEffectiveMouthCue(shot, layer.id, currentTimeMs);
+  const mouthCueEvents = shot.timelineEvents
+    .filter(
+      (event): event is MouthCueEvent =>
+        event.type === 'mouth-cue' && event.layerId === layer.id,
+    )
+    .sort((left, right) => left.startMs - right.startMs || left.id.localeCompare(right.id));
+
   const apply = (expressionId: string): void => {
     const result = expressionAuthoringStore.setAtCurrentTime(expressionId);
     setError(result.ok ? '' : result.error ?? '无法设置表情切换。');
@@ -91,6 +104,14 @@ export function ExpressionAtTimeControl({
   const remove = (eventId: string): void => {
     const result = expressionAuthoringStore.delete(eventId);
     setError(result.ok ? '' : result.error ?? '无法删除表情切换。');
+  };
+  const applyMouthCue = (state: MouthCueState): void => {
+    const result = expressionAuthoringStore.setMouthCueAtCurrentTime(state);
+    setError(result.ok ? '' : result.error ?? '无法设置嘴型。');
+  };
+  const removeMouthCue = (eventId: string): void => {
+    const result = expressionAuthoringStore.deleteMouthCue(eventId);
+    setError(result.ok ? '' : result.error ?? '无法删除嘴型。');
   };
 
   return (
@@ -154,6 +175,59 @@ export function ExpressionAtTimeControl({
               );
             })}
           </ul>
+        </div>
+      ) : null}
+      {hasMouthOpenVisual ? (
+        <div className="mouth-cue-at-time" data-testid="mouth-cue-at-time">
+          <div className="mouth-cue-at-time-row" role="group" aria-label="嘴型">
+            <span className="mouth-cue-at-time-label">嘴型</span>
+            <div className="mouth-cue-at-time-actions">
+              <button
+                aria-pressed={effectiveMouthCue === 'rest'}
+                className="expression-at-time-choice mouth-cue-choice"
+                data-testid="mouth-cue-rest-button"
+                disabled={layer.locked || !validTime}
+                onClick={() => applyMouthCue('rest')}
+                type="button"
+              >闭合</button>
+              <button
+                aria-pressed={effectiveMouthCue === 'open'}
+                className="expression-at-time-choice mouth-cue-choice"
+                data-testid="mouth-cue-open-button"
+                disabled={layer.locked || !validTime}
+                onClick={() => applyMouthCue('open')}
+                type="button"
+              >张开</button>
+            </div>
+          </div>
+          {mouthCueEvents.length > 0 ? (
+            <ul className="mouth-cue-event-list" aria-label="嘴型切换点">
+              {mouthCueEvents.map((event) => {
+                const label = event.state === 'open' ? '张开' : '闭合';
+                return (
+                  <li key={event.id}>
+                    <button
+                      aria-label={`前往 ${formatTimecode(event.startMs)} 的嘴型${label}`}
+                      className="expression-at-time-seek"
+                      data-current={String(event.startMs === timeMs)}
+                      onClick={() => timelineUiStore.seek(event.startMs, shot.durationMs)}
+                      type="button"
+                    >
+                      <time>{formatTimecode(event.startMs)}</time>
+                      <span>{label}</span>
+                    </button>
+                    <button
+                      aria-label={`删除 ${formatTimecode(event.startMs)} 的嘴型${label}`}
+                      className="expression-at-time-delete"
+                      disabled={layer.locked}
+                      onClick={() => removeMouthCue(event.id)}
+                      type="button"
+                    >删除</button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
         </div>
       ) : null}
       {error ? <p className="expression-at-time-error" role="alert">{error}</p> : null}
