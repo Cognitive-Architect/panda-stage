@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { AnimationClipV22Schema, AnimationClipV0Schema } from './animationCore';
+import {
+  AnimationClipSchema, AnimationClipV22Schema, AnimationClipV0Schema, type AnimationClip,
+} from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
@@ -256,13 +258,13 @@ export const LayerV21Schema = LayerV20Schema.safeExtend({
   }
 });
 
-/** Frozen v22 Layer reader with Character Clip v1 and Layer Clip v2. */
-export const LayerV22Schema = LayerV20Schema.safeExtend({
-  animationClip: AnimationClipV22Schema.optional(),
-}).superRefine((layer, context) => {
+function validateClipOwnership(
+  layer: z.infer<typeof LayerV20Schema> & { animationClip?: AnimationClip },
+  context: z.RefinementCtx,
+): void {
   const clip = layer.animationClip;
   if (!clip) return;
-  if (clip.version === 1) {
+  if (clip.version === 1 || clip.version === 3) {
     if (layer.source.kind !== 'character') {
       context.addIssue({ code: 'custom', path: ['animationClip'], message: 'Only Character layers may contain a Character animation clip.' });
     }
@@ -289,9 +291,16 @@ export const LayerV22Schema = LayerV20Schema.safeExtend({
       }
     });
   }
-});
+}
 
-export const LayerSchema = LayerV22Schema;
+/** Frozen v22 Layer reader with Character Clip v1 and Layer Clip v2. */
+export const LayerV22Schema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipV22Schema.optional(),
+}).superRefine(validateClipOwnership);
+
+export const LayerSchema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipSchema.optional(),
+}).superRefine(validateClipOwnership);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

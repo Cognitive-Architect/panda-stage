@@ -15,9 +15,21 @@ export const CharacterPartTargetRefSchema = z.object({
   partId: IdSchema,
 }).strict();
 
+export const CharacterNodeIdSchema = z.union([
+  z.enum(['root', 'body', 'face', 'head']),
+  z.templateLiteral(['part:', IdSchema]),
+]);
+
+export const CharacterNodeTargetRefSchema = z.object({
+  kind: z.literal('character-node'),
+  layerId: IdSchema,
+  nodeId: CharacterNodeIdSchema,
+}).strict();
+
 export const AnimationTargetRefSchema = z.discriminatedUnion('kind', [
   LayerTargetRefSchema,
   CharacterPartTargetRefSchema,
+  CharacterNodeTargetRefSchema,
 ]);
 
 export const AnimationPropertySchema = z.enum([
@@ -89,6 +101,12 @@ export const CharacterPartAnimationTrackSchema = z.object({
   keys: z.array(AnimationKeySchema).min(1),
 }).strict().superRefine(validateAnimationTrack);
 
+export const CharacterNodeAnimationTrackSchema = z.object({
+  target: CharacterNodeTargetRefSchema,
+  property: AnimationPropertySchema,
+  keys: z.array(AnimationKeySchema).min(1),
+}).strict().superRefine(validateAnimationTrack);
+
 export const LayerAnimationTrackSchema = z.object({
   target: LayerTargetRefSchema,
   property: AnimationPropertySchema,
@@ -130,15 +148,27 @@ export const LayerTargetBasisSchema = z.object({
   pivot: TargetLocalPivotSchema,
 }).strict();
 
+export const CharacterNodeTargetBasisSchema = z.object({
+  target: CharacterNodeTargetRefSchema,
+  baseTransform: LayerTargetBasisSchema.shape.baseTransform,
+  pivot: TargetLocalPivotSchema,
+}).strict();
+
 export function animationTargetIdentity(target: AnimationTargetRef): string {
-  return target.kind === 'layer'
-    ? JSON.stringify([target.kind, target.layerId])
-    : JSON.stringify([target.kind, target.layerId, target.partId]);
+  switch (target.kind) {
+    case 'layer': return JSON.stringify([target.kind, target.layerId]);
+    case 'character-part': return JSON.stringify([target.kind, target.layerId, target.partId]);
+    case 'character-node': return JSON.stringify([target.kind, target.layerId, target.nodeId]);
+  }
 }
 
 export function sameAnimationTarget(left: AnimationTargetRef, right: AnimationTargetRef): boolean {
-  if (left.kind !== right.kind || left.layerId !== right.layerId) return false;
-  return left.kind === 'layer' ? true : left.partId === (right as typeof left).partId;
+  if (left.layerId !== right.layerId) return false;
+  switch (left.kind) {
+    case 'layer': return right.kind === 'layer';
+    case 'character-part': return right.kind === 'character-part' && left.partId === right.partId;
+    case 'character-node': return right.kind === 'character-node' && left.nodeId === right.nodeId;
+  }
 }
 
 function validateUniqueClipTargetsAndTracks(
@@ -189,8 +219,21 @@ export const AnimationClipV22Schema = z.discriminatedUnion('version', [
   LayerAnimationClipSchema,
 ]);
 
-export const AnimationClipSchema = AnimationClipV22Schema;
+export const CharacterNodeAnimationClipSchema = z.object({
+  version: z.literal(3),
+  targetBases: z.array(CharacterNodeTargetBasisSchema),
+  tracks: z.array(CharacterNodeAnimationTrackSchema),
+}).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
+export const AnimationClipSchema = z.discriminatedUnion('version', [
+  ...AnimationClipV22Schema.options,
+  CharacterNodeAnimationClipSchema,
+]);
+
+export type CharacterNodeId = z.infer<typeof CharacterNodeIdSchema>;
+export type CharacterNodeTargetRef = z.infer<typeof CharacterNodeTargetRefSchema>;
+export type CharacterNodeTargetBasis = z.infer<typeof CharacterNodeTargetBasisSchema>;
+export type CharacterNodeAnimationClip = z.infer<typeof CharacterNodeAnimationClipSchema>;
 export type LayerTargetRef = z.infer<typeof LayerTargetRefSchema>;
 export type CharacterPartTargetRef = z.infer<typeof CharacterPartTargetRefSchema>;
 export type AnimationTargetRef = z.infer<typeof AnimationTargetRefSchema>;

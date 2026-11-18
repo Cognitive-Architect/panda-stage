@@ -22,7 +22,7 @@ import { animationCoreFixture } from '../helpers/animationCoreFixture';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from '../unit/domain/testProject';
 
-describe('Layer Target V0 Character=0 tracer bullet E2E & v22 persistence (#1140)', () => {
+describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
   it('runs Graphic Layer -> LayerMotionService -> Clip v2 -> Single History -> Save/Reopen -> Evaluate(500ms) with Character=0', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-layer-v2-'));
     try {
@@ -95,7 +95,7 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & v22 persistence (#1140
 
       const authoredProject = store.getSnapshot()!.project;
       expect(authoredProject.characters).toHaveLength(0);
-      expect(authoredProject.schemaVersion).toBe(22);
+      expect(authoredProject.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
 
       // Save and Reopen via the single formal Main ProjectService seam.
       const projectService = new ProjectService();
@@ -103,7 +103,7 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & v22 persistence (#1140
       await projectService.save(root, authoredProject, 1);
 
       const rawPersisted = JSON.parse(await readFile(path.join(root, 'project.json'), 'utf8'));
-      expect(rawPersisted.schemaVersion).toBe(22);
+      expect(rawPersisted.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
 
       const reopened = await projectService.open(root);
       expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
@@ -163,8 +163,8 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & v22 persistence (#1140
     }
   });
 
-  it('upgrades a persisted v21 Character Clip v1 file on disk cleanly to v22', async () => {
-    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v21-v22-'));
+  it('upgrades a persisted v21 Character Clip v1 file on disk cleanly to the current version', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v21-layer-'));
     try {
       const root = path.join(parent, 'v21.pandastage');
       await mkdir(root);
@@ -175,7 +175,7 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & v22 persistence (#1140
       const opened = await new ProjectService().open(root);
       expect(opened.sourceVersion).toBe(21);
       expect(opened.migrated).toBe(true);
-      expect(opened.project.schemaVersion).toBe(22);
+      expect(opened.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
       expect(opened.project.shots[0]!.layers.find((l) => l.id === layerId)!.animationClip).toEqual(clip);
     } finally {
       await rm(parent, { recursive: true, force: true });

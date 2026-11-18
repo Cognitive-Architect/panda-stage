@@ -4,6 +4,7 @@ import { AudioClipSchema, AudioClipV7Schema } from './audio';
 import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema } from './dialogue';
 import {
+  LayerSchema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -74,7 +75,9 @@ export const ShotV22Schema = ShotV20Schema.extend({
   layers: z.array(LayerV22Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV22Schema;
+export const ShotSchema = ShotV20Schema.extend({
+  layers: z.array(LayerSchema),
+}).superRefine(validateShotClipKeyTimes);
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

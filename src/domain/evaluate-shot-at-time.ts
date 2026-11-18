@@ -641,8 +641,9 @@ export function evaluateShotAtTime(
         project,
         eventsByLayer.get(layer.id) ?? [],
       );
-      const animationValues = layer.animationClip
-        ? evaluateAnimationClipAtTime(layer.animationClip, timeMs)
+      const clip = layer.animationClip;
+      const animationValues = clip && clip.version !== 3
+        ? evaluateAnimationClipAtTime(clip, timeMs)
         : undefined;
       const finalTransform: LayerBasePose =
         layer.animationClip?.version === 2 && animationValues

@@ -1,5 +1,6 @@
 import {
   ProjectSchema,
+  type AnimationClip,
   type Project,
   type Shot,
 } from '../models';
@@ -44,6 +45,18 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
   );
+}
+
+function remapClipLayer(clip: AnimationClip, layerId: string): AnimationClip {
+  const remap = <T extends { target: { layerId: string } }>(entry: T): T => ({
+    ...entry,
+    target: { ...entry.target, layerId },
+  });
+  switch (clip.version) {
+    case 1: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+    case 2: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+    case 3: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+  }
 }
 
 export class ShotService {
@@ -100,35 +113,14 @@ export class ShotService {
       ...source,
       id: this.nextUniqueId(usedIds),
       name: this.copyName(project, source.name),
-      layers: source.layers.map((layer) => ({
-        ...layer,
-        id: layerIds.get(layer.id)!,
-        ...(layer.animationClip ? {
-          animationClip: layer.animationClip.version === 1
-            ? {
-                ...layer.animationClip,
-                targetBases: layer.animationClip.targetBases.map((basis) => ({
-                  ...basis,
-                  target: { ...basis.target, layerId: layerIds.get(layer.id)! },
-                })),
-                tracks: layer.animationClip.tracks.map((track) => ({
-                  ...track,
-                  target: { ...track.target, layerId: layerIds.get(layer.id)! },
-                })),
-              }
-            : {
-                ...layer.animationClip,
-                targetBases: layer.animationClip.targetBases.map((basis) => ({
-                  ...basis,
-                  target: { ...basis.target, layerId: layerIds.get(layer.id)! },
-                })),
-                tracks: layer.animationClip.tracks.map((track) => ({
-                  ...track,
-                  target: { ...track.target, layerId: layerIds.get(layer.id)! },
-                })),
-              },
-        } : {}),
-      })),
+      layers: source.layers.map((layer) => {
+        const layerId = layerIds.get(layer.id)!;
+        return {
+          ...layer,
+          id: layerId,
+          ...(layer.animationClip ? { animationClip: remapClipLayer(layer.animationClip, layerId) } : {}),
+        };
+      }),
       backgroundLayerId:
         source.backgroundLayerId === null
           ? null

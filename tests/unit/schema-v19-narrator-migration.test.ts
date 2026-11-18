@@ -9,7 +9,6 @@ import historicalV18 from '../fixtures/project-v18-character-dialogue.json';
 describe('v18 -> v19 narrator version boundary (#1111)', () => {
   it('upgrades only the envelope and leaves legacy speaker/audio/timing/style data intact', () => {
     const before = structuredClone(historicalV18);
-    expect(PROJECT_SCHEMA_VERSION).toBe(22);
     expect(detectSchemaVersion(before)).toBe(18);
     expect(ProjectV18Schema.safeParse(before).success).toBe(true);
     expect(ProjectSchema.safeParse(before).success).toBe(false);

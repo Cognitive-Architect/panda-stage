@@ -1,6 +1,7 @@
 import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
 import {
   AnimationTrackSchema,
+  sameAnimationTarget,
   type AnimationInterpolation,
   type AnimationProperty,
   type AnimationTrack,
@@ -62,21 +63,12 @@ function frameIndexForTimeMs(timeMs: number): number {
   return Math.round((timeMs * TIMELINE_FPS) / 1_000);
 }
 
-/** Structural target match supporting both standalone Layer and Character Part targets across branches. */
-function sameTrackTarget(
-  left: { readonly kind: string; readonly layerId: string; readonly partId?: string },
-  right: { readonly kind: string; readonly layerId: string; readonly partId?: string },
-): boolean {
-  if (left.kind !== right.kind || left.layerId !== right.layerId) return false;
-  return left.kind === 'character-part' ? left.partId === right.partId : true;
-}
-
 /** Return all tracks belonging strictly to the matching target identity. */
 export function targetTracks<TTrack extends AnimationTrack>(
   tracks: readonly TTrack[],
   target: AnimationTrack['target'],
 ): TTrack[] {
-  return tracks.filter((track) => sameTrackTarget(track.target, target));
+  return tracks.filter((track) => sameAnimationTarget(track.target, target));
 }
 
 /** Evaluate all five relative motion properties for a target at `timeMs`. */
@@ -87,7 +79,7 @@ export function evaluateTargetMotionValues(
 ): AnimationMotionValues {
   const values: AnimationMotionValues = { ...NEUTRAL_ANIMATION_MOTION };
   for (const track of tracks) {
-    if (sameTrackTarget(track.target, target)) {
+    if (sameAnimationTarget(track.target, target)) {
       values[track.property] = evaluateAnimationTrackAtTime(track, timeMs);
     }
   }
@@ -130,7 +122,7 @@ export function targetOutgoingPropertyKeysAtTime<TTrack extends AnimationTrack>(
   }> = [];
   for (let trackIndex = 0; trackIndex < tracks.length; trackIndex += 1) {
     const track = tracks[trackIndex]!;
-    if (!sameTrackTarget(track.target, target)) continue;
+    if (!sameAnimationTarget(track.target, target)) continue;
     const keyIndex = track.keys.findIndex((key) => key.timeMs === timeMs);
     if (keyIndex >= 0 && keyIndex < track.keys.length - 1) {
       entries.push({
@@ -190,7 +182,7 @@ export function upsertTargetKeyValues<TTrack extends AnimationTrack>(
       if (!options.forceWrite) return nextValue !== current[property];
       const existing = tracks.find(
         (track) =>
-          sameTrackTarget(track.target, target) && track.property === property,
+          sameAnimationTarget(track.target, target) && track.property === property,
       );
       const atTime = existing?.keys.find((key) => key.timeMs === timeMs);
       return !existing || !atTime || atTime.value !== nextValue;
@@ -202,7 +194,7 @@ export function upsertTargetKeyValues<TTrack extends AnimationTrack>(
   for (const property of properties) {
     const existing = nextTracks.find(
       (track) =>
-        sameTrackTarget(track.target, target) && track.property === property,
+        sameAnimationTarget(track.target, target) && track.property === property,
     );
     const keys = existing?.keys ?? [
       {
@@ -227,7 +219,7 @@ export function upsertTargetKeyValues<TTrack extends AnimationTrack>(
     nextTracks = [
       ...nextTracks.filter(
         (track) =>
-          !(sameTrackTarget(track.target, target) && track.property === property),
+          !(sameAnimationTarget(track.target, target) && track.property === property),
       ),
       parsedTrack,
     ];
@@ -259,7 +251,7 @@ export function deleteTargetKeyAtTime<TTrack extends AnimationTrack>(
     );
   }
   return tracks.map((track) => {
-    if (!sameTrackTarget(track.target, target)) return track;
+    if (!sameAnimationTarget(track.target, target)) return track;
     if (!track.keys.some((key) => key.timeMs === timeMs)) return track;
     return AnimationTrackSchema.parse({
       ...track,
@@ -412,7 +404,7 @@ export function applyTargetKeyMoves<TTrack extends AnimationTrack>(
   const moveMap = new Map(moves.map((move) => [move.fromTimeMs, move.toTimeMs]));
   let changed = false;
   const nextTracks = tracks.map((track) => {
-    if (!sameTrackTarget(track.target, target)) return track;
+    if (!sameAnimationTarget(track.target, target)) return track;
     if (!track.keys.some((key) => moveMap.has(key.timeMs))) return track;
     changed = true;
     return AnimationTrackSchema.parse({
