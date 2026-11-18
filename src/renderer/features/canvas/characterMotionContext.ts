@@ -11,6 +11,6 @@ export function characterMotionParts(project: Project, layer: Layer | undefined)
   const parts = clip?.targetBases.map(b => ({ partId: b.target.partId, displayName: b.displayName })) ?? character.parts;
   return parts.map((part, index) => ({
     partId: part.partId,
-    name: part.displayName?.trim() ? localizeDefaultAdaptivePartName(part.displayName) : `部件 ${index + 1}`,
+    name: localizeDefaultAdaptivePartName(part.displayName ?? '', index + 1),
   }));
 }
