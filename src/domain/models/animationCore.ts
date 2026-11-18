@@ -183,10 +183,13 @@ export const LayerAnimationClipSchema = z.object({
   tracks: z.array(LayerAnimationTrackSchema),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
-export const AnimationClipSchema = z.discriminatedUnion('version', [
+/** Frozen v22 clip union. */
+export const AnimationClipV22Schema = z.discriminatedUnion('version', [
   AnimationClipV0Schema,
   LayerAnimationClipSchema,
 ]);
+
+export const AnimationClipSchema = AnimationClipV22Schema;
 
 export type LayerTargetRef = z.infer<typeof LayerTargetRefSchema>;
 export type CharacterPartTargetRef = z.infer<typeof CharacterPartTargetRefSchema>;

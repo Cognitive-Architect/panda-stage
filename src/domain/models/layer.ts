@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AnimationClipSchema, AnimationClipV0Schema } from './animationCore';
+import { AnimationClipV22Schema, AnimationClipV0Schema } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
@@ -256,8 +256,9 @@ export const LayerV21Schema = LayerV20Schema.safeExtend({
   }
 });
 
-export const LayerSchema = LayerV20Schema.safeExtend({
-  animationClip: AnimationClipSchema.optional(),
+/** Frozen v22 Layer reader with Character Clip v1 and Layer Clip v2. */
+export const LayerV22Schema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipV22Schema.optional(),
 }).superRefine((layer, context) => {
   const clip = layer.animationClip;
   if (!clip) return;
@@ -289,6 +290,8 @@ export const LayerSchema = LayerV20Schema.safeExtend({
     });
   }
 });
+
+export const LayerSchema = LayerV22Schema;
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

@@ -4,7 +4,7 @@ import { AudioClipSchema, AudioClipV7Schema } from './audio';
 import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema } from './dialogue';
 import {
-  LayerSchema,
+  LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
   LayerV14Schema,
@@ -69,9 +69,12 @@ export const ShotV21Schema = ShotV20Schema.extend({
   layers: z.array(LayerV21Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV20Schema.extend({
-  layers: z.array(LayerSchema),
+/** Frozen v22 Shot reader with full clip key time validation. */
+export const ShotV22Schema = ShotV20Schema.extend({
+  layers: z.array(LayerV22Schema),
 }).superRefine(validateShotClipKeyTimes);
+
+export const ShotSchema = ShotV22Schema;
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

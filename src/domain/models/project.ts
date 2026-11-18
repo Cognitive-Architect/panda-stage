@@ -36,6 +36,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV21Schema,
+  ShotV22Schema,
   ShotV20Schema,
   ShotV19Schema,
   ShotV18Schema,
@@ -598,12 +599,11 @@ export function migrateFormalProject(input: unknown): unknown {
   };
 }
 
-// Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v18 -> v19) is owned exclusively by `migrateProject`
-// in `../migrations`; this schema must never perform legacy migration.
-export const ProjectSchema = ProjectDataSchema.superRefine(
-  validateProjectReferences,
-).superRefine(validateAdaptiveClipOwnership).superRefine((project, context) => {
+/** Frozen v22 envelope with the V0 Character and Layer Motion contracts. */
+export const ProjectV22Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(22),
+  shots: z.array(ShotV22Schema),
+}).superRefine(validateProjectReferences).superRefine(validateAdaptiveClipOwnership).superRefine((project, context) => {
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
       if (!layer.animationClip || layer.animationClip.version !== 2) return;
@@ -627,6 +627,8 @@ export const ProjectSchema = ProjectDataSchema.superRefine(
     });
   });
 });
+
+export const ProjectSchema = ProjectV22Schema;
 
 export type ProjectData = z.infer<typeof ProjectDataSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
