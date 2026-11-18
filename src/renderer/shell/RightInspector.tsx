@@ -663,8 +663,8 @@ export function RightInspector({
           layer={selection.layer}
         />
       ) : null}
-      {landscapeEmptyState || selectedNode?.motion === null ? null : (
-        <>
+      {landscapeEmptyState ? null : (
+        selectedNode?.motion === null ? null : <>
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
