@@ -427,26 +427,28 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     const alpha = vi.spyOn(alphaBounds, 'measureImageVisibleBounds').mockImplementation((image) => image === images.get(FACE_NORMAL_ID)
       ? { x: 0.75, y: 0.25, width: 0.2, height: 0.5 }
       : { x: 0, y: 0, width: 1, height: 1 });
-    if (source === 'graphic') {
+    const raster = source === 'graphic' ? vi.spyOn(graphicRaster, 'renderFlaGraphicCanvas') : null;
+    const frame = { canvas: {} as HTMLCanvasElement, rect: { x: -100, y: -90, width: 200, height: 180 } };
+    if (raster) {
       expect(face.flaGraphic?.canvas.width).toBe(200);
-      vi.spyOn(graphicRaster, 'renderFlaGraphicCanvas').mockReturnValue({
-        canvas: {} as HTMLCanvasElement,
-        rect: { x: -100, y: -90, width: 200, height: 180 },
+      raster.mockReturnValue({
+        ...frame,
         visibleRect: { x: 50, y: -25, width: 40, height: 50 },
       });
     }
     const onSelect = vi.fn();
-    const element = SelectableLayer({
+    const renderNodeCanvas = () => SelectableLayer({
       images, layer: model.layer, nodeRef: { current: null }, render: model.render,
       selected: true, visual: model.visual,
       characterView: resolveCharacterView(project, model.layer, model.visual),
       selectedCharacterNodeId: 'face', onSelect,
       onCommitPosition: vi.fn(), onCommitTransform: vi.fn(), onError: vi.fn(),
     });
-    const children = childElements((element.props as { children: React.ReactNode }).children);
     type Hit = { name: string; x: number; y: number; offsetX: number; offsetY: number;
       width: number; height: number; listening: boolean; onClick(event: { cancelBubble: boolean }): void };
-    const props = children.map((child) => child.props as Hit);
+    const renderProps = () => childElements((renderNodeCanvas().props as { children: React.ReactNode }).children)
+      .map((child) => child.props as Hit);
+    const props = renderProps();
     const [bodyHit, faceHit] = props.filter(({ name }) => name === 'composite-visual-hit-area' || name === 'character-node-selection');
     const faceTransform = visualPartRenderTransform(face);
     expect(faceHit).toMatchObject({
@@ -468,6 +470,20 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     expect(winner).toBe(bodyHit);
     winner!.onClick({ cancelBubble: false });
     expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, 'body');
+
+    if (raster) {
+      raster.mockReturnValue({ ...frame, visibleRect: null });
+    } else {
+      alpha.mockReturnValue(null);
+    }
+    const fallbackProps = renderProps();
+    const fallback = fallbackProps.find(({ name }) => name === 'character-node-selection');
+    expect(fallback).toMatchObject({
+      ...faceTransform, width: face.localRect.width, height: face.localRect.height, listening: true,
+    });
+    expect(fallbackProps.find(({ name }) => name === 'selectable-canvas-visual')?.listening).toBe(false);
+    fallback!.onClick({ cancelBubble: false });
+    expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, 'face');
   });
 
   it('previews opacity on the one Character root without fading Body and Face separately', () => {

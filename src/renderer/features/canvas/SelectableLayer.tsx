@@ -307,12 +307,10 @@ export function SelectableLayer({
       </CharacterMotionPart>
     );
   };
-  const renderHitArea = (entry: (typeof resolvedPartImages)[number]): React.JSX.Element | null => {
+  const renderHitArea = (entry: (typeof resolvedPartImages)[number]): React.JSX.Element => {
     const { part } = entry;
-    const bounds = compositeNodeSelection
-      ? interactionBoundsForPart(entry)
-      : { x: 0, y: 0, width: part.localRect.width, height: part.localRect.height };
-    if (!bounds) return null;
+    const visible = compositeNodeSelection ? interactionBoundsForPart(entry) : null;
+    const bounds = visible ?? { x: 0, y: 0, width: part.localRect.width, height: part.localRect.height };
     const node = characterNodeForVisualPart(characterView, part);
     const selectedNode = Boolean(node && node.id !== 'root' && node.id === selectedCharacterNodeId);
     const transform = visualPartRenderTransform(part);

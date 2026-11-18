@@ -26,6 +26,7 @@ import { LayerTransformPanel } from '../features/properties/LayerTransformPanel'
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
 import { CharacterMotionInspectorSection } from '../features/properties/CharacterMotionInspectorSection';
 import { adaptivePartIdForNodeId, resolveCharacterView } from '../features/characters/characterView';
+import { VisibleBoundsThumbnail } from '../features/characters/VisibleBoundsThumbnail';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
 import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
@@ -70,6 +71,7 @@ export interface RightInspectorLayerSummary {
   asset: Asset | null;
   typeLabel: string;
   graphicSource?: CharacterFaceGraphicSource;
+  partVisualKind?: 'image' | 'fla-graphic';
 }
 
 function getPortraitLayerTypeLabel(typeLabel: string): string {
@@ -141,6 +143,7 @@ export function getRightInspectorLayerSummary(
     return {
       asset: snapshot.project.assets.find(candidate => candidate.id === assetId) ?? null,
       typeLabel: '角色图层',
+      partVisualKind: visualSource?.kind,
     };
   }
   const expression = expressionCharacter?.expressions.find(
@@ -633,7 +636,11 @@ export function RightInspector({
       {inspectorHeading}
       <section className="character-part-identity" data-testid="right-inspector-part-context">
         <div className="character-part-identity-thumbnail" aria-hidden="true">
-          {selectionThumbnail?.status === 'ready' ? <img alt="" src={selectionThumbnail.dataUrl} /> : <DecorativeIcon icon={Layers3} size={24} />}
+          {selectionThumbnail?.status === 'ready' ? (
+            layerSummary.partVisualKind === 'image' ? (
+              <VisibleBoundsThumbnail key={selectionThumbnail.dataUrl} cacheKey={selectionThumbnail.dataUrl} src={selectionThumbnail.dataUrl} alt="" />
+            ) : <img alt="" src={selectionThumbnail.dataUrl} />
+          ) : <DecorativeIcon icon={Layers3} size={24} />}
         </div>
         <div className="character-part-identity-copy">
           <strong title={motionPart.name}>{motionPart.name}</strong>
