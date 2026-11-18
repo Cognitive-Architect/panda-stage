@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
-import { CharacterPartTransformSchema, CharacterPartVisualSourceSchema } from './character';
+import { CharacterPartTransformV22Schema, CharacterPartVisualSourceV22Schema } from './character';
 import { isValidFrameTime } from '../timeline/frame-grid';
 import { CHARACTER_PART_MIN_SCALE, CHARACTER_PART_MAX_SCALE } from '../constants';
 
@@ -121,9 +121,9 @@ export const TargetLocalPivotSchema = z.object({
 
 export const CharacterPartTargetBasisSchema = z.object({
   target: CharacterPartTargetRefSchema,
-  visualSource: CharacterPartVisualSourceSchema,
+  visualSource: CharacterPartVisualSourceV22Schema,
   /** Frozen source-local -> Character-local transform; no runtime composition here. */
-  baseTransform: CharacterPartTransformSchema,
+  baseTransform: CharacterPartTransformV22Schema,
   pivot: TargetLocalPivotSchema,
   drawOrder: z.number().int().nonnegative().max(1_000_000),
   visible: z.boolean(),

@@ -83,6 +83,28 @@ describe('Character Node Project persistence (#1155)', () => {
     }
   });
 
+  it('preserves populated v22 audio and timeline data through migration (#1157)', () => {
+    const project = ProjectV22Schema.parse(v22Input);
+    const audioAssetId = '91000000-0000-4000-8000-000000001157';
+    const audioClipId = '92000000-0000-4000-8000-000000001157';
+    project.assets.push({
+      id: audioAssetId, kind: 'audio', name: 'Dialogue audio',
+      relativePath: 'assets/dialogue.wav', mimeType: 'audio/wav', durationMs: 700,
+    });
+    const shot = project.shots[0]!;
+    shot.audioClips.push({
+      id: audioClipId, name: 'Voice', assetId: audioAssetId, role: 'dialogue',
+      startMs: 250, endMs: 750, offsetMs: 100, volume: 0.75,
+    });
+    shot.dialogues[0]!.audioClipId = audioClipId;
+    shot.timelineEvents.push({
+      id: '93000000-0000-4000-8000-000000001157', layerId: IDS.layerChar,
+      type: 'visibility', startMs: 750, endMs: 1000, visible: false,
+    });
+    expect(ProjectV22Schema.parse(project)).toStrictEqual(project);
+    expect(migrateProject(project)).toStrictEqual({ ...project, schemaVersion: 23 });
+  });
+
   it('round-trips a v3 face target through ProjectService and leaves playback unchanged', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-v23-'));
     try {

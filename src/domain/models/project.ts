@@ -10,10 +10,12 @@ import {
   AnimationDefinitionSchema,
   isFlaGraphicDefinition,
   ProjectAnimationDefinitionSchema,
+  ProjectAnimationDefinitionV22Schema,
 } from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
 import {
   AssetSchema,
+  AssetV22Schema,
   AssetV16Schema,
   AssetV12Schema,
   type AssetV12,
@@ -21,6 +23,7 @@ import {
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
+  CharacterV22Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -30,6 +33,7 @@ import {
   CharacterV17Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
+  VoiceProfileV22Schema,
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
@@ -49,7 +53,7 @@ import {
   ShotV4Schema,
   ShotV7Schema,
 } from './shot';
-import { SubtitleStyleSchema } from './subtitle';
+import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventSchema } from './timeline-event';
 
@@ -114,15 +118,18 @@ const CharacterV1Schema = z
   })
   .strict();
 
-// The v22 data shape is the base for historical readers.
+const ProjectIdentityShape = {
+  id: IdSchema,
+  name: NameSchema,
+  width: z.literal(PROJECT_WIDTH),
+  height: z.literal(PROJECT_HEIGHT),
+  fps: z.literal(PROJECT_FPS),
+};
+
 const ProjectDataSchema = z
   .object({
     schemaVersion: z.literal(22),
-    id: IdSchema,
-    name: NameSchema,
-    width: z.literal(PROJECT_WIDTH),
-    height: z.literal(PROJECT_HEIGHT),
-    fps: z.literal(PROJECT_FPS),
+    ...ProjectIdentityShape,
     assets: z.array(AssetSchema),
     animations: z.array(ProjectAnimationDefinitionSchema),
     characters: z.array(CharacterSchema),
@@ -629,7 +636,18 @@ function validateLayerClipOwnership(
 }
 
 /** Frozen v22 envelope with the V0 Character and Layer Motion contracts. */
-export const ProjectV22Schema = ProjectDataSchema.superRefine(validateProjectReferences)
+export const ProjectV22Schema = z.object({
+  schemaVersion: z.literal(22),
+  ...ProjectIdentityShape,
+  assets: z.array(AssetV22Schema),
+  animations: z.array(ProjectAnimationDefinitionV22Schema),
+  characters: z.array(CharacterV22Schema),
+  voiceProfiles: z.array(VoiceProfileV22Schema),
+  subtitleStyles: z.array(SubtitleStyleV22Schema).min(1),
+  shots: z.array(ShotV22Schema),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+}).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { IdSchema, NameSchema } from './common';
-import { FlaGraphicStructureSchema } from './flaGraphicStructure';
+import { FlaGraphicStructureV1Schema } from './flaGraphicStructure';
 
 export const ANIMATION_MAX_FRAMES = 24;
 export const FLA_GRAPHIC_MAX_FRAMES = 256;
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
-export const AnimationFrameSchema = z
+const AnimationFrameV22Schema = z
   .object({
     ordinal: z.number().int().nonnegative(),
     sourceFrameIndex: z.number().int().nonnegative(),
@@ -69,7 +69,7 @@ function validateAnimationDefinition(
   animation: {
     source: z.infer<typeof AnimationSourceSchema>;
     durationMs: number;
-    frames: z.infer<typeof AnimationFrameSchema>[];
+    frames: z.infer<typeof AnimationFrameV22Schema>[];
   },
   context: z.RefinementCtx,
 ): void {
@@ -140,22 +140,22 @@ function validateAnimationDefinition(
     }
 }
 
-export const AnimationDefinitionSchema = z
+const AnimationDefinitionV22Schema = z
   .object({
     ...AnimationDefinitionShape,
-    frames: z.array(AnimationFrameSchema).min(1).max(ANIMATION_MAX_FRAMES),
+    frames: z.array(AnimationFrameV22Schema).min(1).max(ANIMATION_MAX_FRAMES),
   })
   .strict()
   .superRefine(validateAnimationDefinition);
 
 /** A reusable, vector-frame Definition produced by the bounded FLA adapter. */
-export const FlaGraphicDefinitionSchema = z
+const FlaGraphicDefinitionV22Schema = z
   .object({
     ...AnimationDefinitionShape,
     kind: z.literal('fla-graphic'),
-    frames: z.array(AnimationFrameSchema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
+    frames: z.array(AnimationFrameV22Schema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
     /** Optional so older SVG-only Definitions keep loading unchanged. */
-    structure: FlaGraphicStructureSchema.optional(),
+    structure: FlaGraphicStructureV1Schema.optional(),
   })
   .strict()
   .superRefine((definition, context) => {
@@ -178,10 +178,15 @@ export const FlaGraphicDefinitionSchema = z
     });
   });
 
-export const ProjectAnimationDefinitionSchema = z.union([
-  AnimationDefinitionSchema,
-  FlaGraphicDefinitionSchema,
+export const ProjectAnimationDefinitionV22Schema = z.union([
+  AnimationDefinitionV22Schema,
+  FlaGraphicDefinitionV22Schema,
 ]);
+
+export const AnimationFrameSchema = AnimationFrameV22Schema;
+export const AnimationDefinitionSchema = AnimationDefinitionV22Schema;
+export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionV22Schema;
+export const ProjectAnimationDefinitionSchema = ProjectAnimationDefinitionV22Schema;
 
 export type AnimationFrame = z.infer<typeof AnimationFrameSchema>;
 export type AnimationDefinition = z.infer<typeof AnimationDefinitionSchema>;

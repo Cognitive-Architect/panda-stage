@@ -28,7 +28,7 @@ const ScaleSchema = z
 
 const EasingSchema = z.enum(['linear', 'ease-in-out']);
 
-export const MoveEventSchema = z
+const MoveEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('move'),
@@ -38,7 +38,7 @@ export const MoveEventSchema = z
   })
   .strict();
 
-export const ScaleEventSchema = z
+const ScaleEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('scale'),
@@ -48,7 +48,7 @@ export const ScaleEventSchema = z
   })
   .strict();
 
-export const OpacityEventSchema = z
+const OpacityEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('opacity'),
@@ -58,7 +58,7 @@ export const OpacityEventSchema = z
   })
   .strict();
 
-export const ShakeEventSchema = z
+const ShakeEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('shake'),
@@ -68,7 +68,7 @@ export const ShakeEventSchema = z
   })
   .strict();
 
-export const ExpressionEventSchema = z
+const ExpressionEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('expression'),
@@ -76,7 +76,7 @@ export const ExpressionEventSchema = z
   })
   .strict();
 
-export const FlipEventSchema = z
+const FlipEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('flip'),
@@ -85,7 +85,7 @@ export const FlipEventSchema = z
   })
   .strict();
 
-export const VisibilityEventSchema = z
+const VisibilityEventV22Schema = z
   .object({
     ...TimelineEventBaseShape,
     type: z.literal('visibility'),
@@ -93,15 +93,15 @@ export const VisibilityEventSchema = z
   })
   .strict();
 
-export const TimelineEventSchema = z
+export const TimelineEventV22Schema = z
   .discriminatedUnion('type', [
-    MoveEventSchema,
-    ScaleEventSchema,
-    OpacityEventSchema,
-    ShakeEventSchema,
-    ExpressionEventSchema,
-    FlipEventSchema,
-    VisibilityEventSchema,
+    MoveEventV22Schema,
+    ScaleEventV22Schema,
+    OpacityEventV22Schema,
+    ShakeEventV22Schema,
+    ExpressionEventV22Schema,
+    FlipEventV22Schema,
+    VisibilityEventV22Schema,
   ])
   .superRefine((event, context) => {
     if (event.endMs < event.startMs) {
@@ -112,6 +112,15 @@ export const TimelineEventSchema = z
       });
     }
   });
+
+export const MoveEventSchema = MoveEventV22Schema;
+export const ScaleEventSchema = ScaleEventV22Schema;
+export const OpacityEventSchema = OpacityEventV22Schema;
+export const ShakeEventSchema = ShakeEventV22Schema;
+export const ExpressionEventSchema = ExpressionEventV22Schema;
+export const FlipEventSchema = FlipEventV22Schema;
+export const VisibilityEventSchema = VisibilityEventV22Schema;
+export const TimelineEventSchema = TimelineEventV22Schema;
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
 export type ScaleEvent = z.infer<typeof ScaleEventSchema>;

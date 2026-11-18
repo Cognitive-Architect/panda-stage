@@ -6,7 +6,7 @@ import {
   RelativeProjectPathSchema,
 } from './common';
 
-export const ImageAssetUsageSchema = z.enum([
+const ImageAssetUsageV22Schema = z.enum([
   'uncategorized',
   'background',
   'character',
@@ -14,7 +14,7 @@ export const ImageAssetUsageSchema = z.enum([
   'effect',
 ]);
 
-export const AssetKeywordsSchema = z
+const AssetKeywordsV22Schema = z
   .array(z.string().trim().min(1).max(32))
   .max(8)
   .superRefine((keywords, context) => {
@@ -89,8 +89,8 @@ const ImageAssetV16Shape = {
     kind: z.literal('image'),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
-    usage: ImageAssetUsageSchema,
-    keywords: AssetKeywordsSchema,
+    usage: ImageAssetUsageV22Schema,
+    keywords: AssetKeywordsV22Schema,
     flaSnapshot: z
       .object({
         sourceBasename: z.string().trim().min(1).max(260),
@@ -108,7 +108,7 @@ const ImageAssetV16Shape = {
 /** Exact image asset shape persisted by schema v16, before FLA Graphic frames. */
 export const ImageAssetV16Schema = z.object(ImageAssetV16Shape).strict();
 
-export const ImageAssetSchema = z
+const ImageAssetV22Schema = z
   .object({
     ...ImageAssetV16Shape,
     /** Internal vector frame owned by a reusable FLA Graphic Definition. */
@@ -148,7 +148,7 @@ export const ImageAssetV12Schema = z
   })
   .strict();
 
-export const AudioAssetSchema = z
+const AudioAssetV22Schema = z
   .object({
     ...AssetBaseShape,
     kind: z.literal('audio'),
@@ -170,15 +170,21 @@ export const AssetV12Schema = z.discriminatedUnion('kind', [
   AudioAssetV12Schema,
 ]);
 
-export const AssetSchema = z.discriminatedUnion('kind', [
-  ImageAssetSchema,
-  AudioAssetSchema,
+export const AssetV22Schema = z.discriminatedUnion('kind', [
+  ImageAssetV22Schema,
+  AudioAssetV22Schema,
 ]);
 
 export const AssetV16Schema = z.discriminatedUnion('kind', [
   ImageAssetV16Schema,
-  AudioAssetSchema,
+  AudioAssetV22Schema,
 ]);
+
+export const ImageAssetUsageSchema = ImageAssetUsageV22Schema;
+export const AssetKeywordsSchema = AssetKeywordsV22Schema;
+export const ImageAssetSchema = ImageAssetV22Schema;
+export const AudioAssetSchema = AudioAssetV22Schema;
+export const AssetSchema = AssetV22Schema;
 
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 export type AudioAsset = z.infer<typeof AudioAssetSchema>;
