@@ -4,6 +4,7 @@
 
 // Windows Electron regression for repeated single-image imports in one FLA review.
 const assert = require('node:assert/strict');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { createHash } = require('node:crypto');
 const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
@@ -23,6 +24,7 @@ const projectName = 'Raster Review';
 const dist = join(__dirname, '..', 'dist-electron', 'main');
 const { IPC_CHANNELS } = require(join(dist, '..', 'shared', 'ipc', 'channels.js'));
 const { FlaImportService } = require(join(dist, 'services', 'FlaImportService.js'));
+const { HashService } = require(join(dist, 'services', 'HashService.js'));
 
 app.setPath('userData', join(runRoot, 'profile'));
 delete process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE;
@@ -59,6 +61,18 @@ async function writeSource(filePath, count = 2, includeBroken = false) {
 
 const inspections = [];
 const commits = [];
+const commitHashTrace = new AsyncLocalStorage();
+const hashFile = HashService.prototype.hashFile;
+HashService.prototype.hashFile = function (filePath, ...args) {
+  commitHashTrace.getStore()?.files.push(filePath);
+  return hashFile.call(this, filePath, ...args);
+};
+const hashBytes = HashService.prototype.hashBytes;
+HashService.prototype.hashBytes = function (bytes) {
+  const trace = commitHashTrace.getStore();
+  if (trace) trace.byteCalls += 1;
+  return hashBytes.call(this, bytes);
+};
 const previews = [];
 let holdPreviewFor;
 let releasePreview;
@@ -108,8 +122,9 @@ ipcMain.handle = (channel, handler) => {
   }
   if (channel !== IPC_CHANNELS.FLA_COMMIT_SELECTED) return handle(channel, handler);
   return handle(channel, async (event, request) => {
-    const response = await handler(event, request);
-    commits.push({ request, response });
+    const hashTrace = { files: [], byteCalls: 0 };
+    const response = await commitHashTrace.run(hashTrace, () => handler(event, request));
+    commits.push({ request, response, hashTrace });
     return response;
   });
 };
@@ -198,14 +213,17 @@ async function run() {
     assert.equal(preview?.request.sessionId, sessionId);
     assert.equal(preview?.response.ok, true);
     await click('[data-testid="fla-single-import"]:enabled, [data-testid="fla-c03-import"]:enabled');
-    const { request, response } = await waitFor(() => commits[index], 'raster commit ' + (index + 1));
+    const { request, response, hashTrace } = await waitFor(() => commits[index], 'raster commit ' + (index + 1));
     assert.equal(request.sessionId, sessionId);
     assert.deepEqual(request.selectedMediaIds, [mediaId]);
     assert.equal(response.ok, true, JSON.stringify(response.error));
     assert.equal(response.status, 'completed');
     assert.equal(pngEncodeAttempts, expectedEncodes, 'Commit must reuse the preview bytes');
     const result = response.results[0];
-    const persisted = readFileSync(join(projectRoot, 'assets', result.targetFileName));
+    const targetPath = resolve(projectRoot, result.asset.relativePath);
+    assert.equal(hashTrace.byteCalls, 1);
+    assert.deepEqual(hashTrace.files.map((file) => resolve(file).toLowerCase()), [targetPath.toLowerCase()]);
+    const persisted = readFileSync(targetPath);
     assert.deepEqual(persisted, Buffer.from(preview.response.payload.bytes));
     if (!sample) {
       const expectedBgra = mediaId === chosen[0].slice(rasterPrefix.length)
@@ -291,6 +309,19 @@ async function run() {
   console.log(JSON.stringify({
     status: 'PASS', runRoot, assetIds, mediaCount, encodesBeforeSelection,
     inspectMs: inspection.milliseconds, selectedHydrateCount,
+    hashes: commits.map(({ request, response, hashTrace }) => {
+      const oldPaths = new Set(request.project.assets
+        .filter(({ kind }) => kind === 'image')
+        .map(({ relativePath }) => resolve(request.projectRoot, relativePath).toLowerCase()));
+      const oldAssetHashFileCalls = hashTrace.files
+        .filter((file) => oldPaths.has(resolve(file).toLowerCase())).length;
+      return {
+        status: response.results[0].status,
+        oldAssetHashFileCalls,
+        newMediaHashBytesCalls: hashTrace.byteCalls,
+        newAssetPostSaveHashFileCalls: hashTrace.files.length - oldAssetHashFileCalls,
+      };
+    }),
   }));
 }
 

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
 import {
   access,
@@ -19,7 +19,7 @@ import {
   FlaAssetCommitRequestSchema,
   type FlaAssetCommitRequest,
 } from '../../src/shared/fla-asset-commit-api';
-import { migrateProject, ProjectSchema } from '../../src/domain';
+import { ImageAssetSchema, migrateProject, ProjectSchema } from '../../src/domain';
 import {
   AssetImportFileSystemService,
   type AssetImportFileSystemFaultInjector,
@@ -33,6 +33,7 @@ import {
   type FlaAssetCommitFaultInjector,
   type FlaAssetCommitSession,
 } from '../../src/main/services/FlaAssetCommitService';
+import { HashService } from '../../src/main/services/HashService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 
 const temporaryDirectories: string[] = [];
@@ -188,6 +189,7 @@ interface Harness {
       fileSystem?: AssetImportFileSystemService;
       journal?: FlaAssetCommitJournalService;
       faults?: FlaAssetCommitFaultInjector;
+      hashService?: HashService;
     },
   ) => FlaAssetCommitService;
   current: { project: ReturnType<typeof migrateProject>; revision: number };
@@ -302,6 +304,22 @@ function request(
     selectedCount: selectedMediaIds.length,
     confirmed: true,
   });
+}
+
+async function seedImageAssets(
+  value: Harness,
+  entries: readonly { fileName: string; sha256?: string; bytes?: Uint8Array }[],
+) {
+  const assets = await Promise.all(entries.map(async ({ fileName, sha256, bytes }) => {
+    const relativePath = 'assets/' + fileName;
+    if (bytes) await writeFile(path.join(value.projectRoot, relativePath), bytes);
+    return ImageAssetSchema.parse({
+      id: randomUUID(), name: fileName, relativePath, kind: 'image', mimeType: 'image/png',
+      sha256, width: 2, height: 2, usage: 'uncategorized', keywords: [],
+    });
+  }));
+  await value.projectService.save(value.projectRoot, { ...value.current.project, assets }, 1);
+  return assets;
 }
 
 async function assetEntries(projectRoot: string): Promise<string[]> {
@@ -423,6 +441,94 @@ describe('FLA Slice 3 atomic Asset commit', () => {
     );
   });
 
+  it('hashes no old files for two new imports and only the matched file for a repeat', async () => {
+    const value = await harness();
+    const hashService = new HashService();
+    const hashFile = vi.spyOn(hashService, 'hashFile');
+    const hashBytes = vi.spyOn(hashService, 'hashBytes');
+    const [first, second] = value.ir.media;
+    const entries = Array.from({ length: 32 }, (_, index) => {
+      const bytes = createRgbaPng(2, 2, index + 10);
+      return { fileName: 'old-' + index + '.png', bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
+    });
+    await seedImageAssets(value, [...entries, { fileName: 'legacy.png', bytes: first!.payload.bytes }]);
+    const service = value.createService({ hashService });
+    const added = [];
+    for (const selected of [first!, second!]) {
+      hashFile.mockClear();
+      hashBytes.mockClear();
+      const result = await service.commit(request(value, [selected.id]));
+      added.push(result.results[0]!);
+      expect(result.summary.importedCount).toBe(1);
+      expect(hashBytes).toHaveBeenCalledOnce();
+      expect(hashFile).toHaveBeenCalledExactlyOnceWith(path.resolve(value.projectRoot, result.results[0]!.asset.relativePath));
+    }
+    hashFile.mockClear();
+    hashBytes.mockClear();
+    const repeated = await service.commit(request(value, [first!.id]));
+    expect(repeated.projectChanged).toBe(false);
+    expect(repeated.results[0]?.duplicateOfAssetId).toBe(added[0]!.asset.id);
+    expect(hashBytes).toHaveBeenCalledOnce();
+    expect(hashFile.mock.calls.map(([file]) => path.basename(file))).toEqual([added[0]!.targetFileName]);
+  });
+
+  it('checks same-SHA candidates in project order from the end and reuses a verified hit throughout a batch', async () => {
+    const value = await harness();
+    const selected = value.ir.media[0]!;
+    const sha256 = createHash('sha256').update(selected.payload.bytes).digest('hex');
+    const existing = await seedImageAssets(value, [
+      { fileName: 'valid-earlier.png', sha256, bytes: selected.payload.bytes },
+      { fileName: 'valid-preferred.png', sha256, bytes: selected.payload.bytes },
+      { fileName: 'changed.png', sha256, bytes: createRgbaPng(4, 1, 3) },
+      { fileName: 'unreadable.png', sha256, bytes: selected.payload.bytes },
+      { fileName: 'missing.png', sha256 },
+    ]);
+    const hashService = new HashService();
+    const realHashFile = hashService.hashFile.bind(hashService);
+    const hashFile = vi.spyOn(hashService, 'hashFile').mockImplementation(async (file) => {
+      if (path.basename(file) === 'unreadable.png') throw Object.assign(new Error('Read failed'), { code: 'EACCES' });
+      return realHashFile(file);
+    });
+    const hashBytes = vi.spyOn(hashService, 'hashBytes');
+    const sameBytes = { ...selected, id: 'fla-media-batch-repeat-0001' };
+    const commit = request(value, [selected.id, sameBytes.id]);
+    value.setSession({ sessionId: commit.sessionId, ir: createIr([selected, sameBytes]) });
+    const result = await value.createService({ hashService }).commit(commit);
+    expect(result.projectChanged).toBe(false);
+    expect(result.results.map(({ duplicateOfAssetId }) => duplicateOfAssetId)).toEqual([existing[1]!.id, existing[1]!.id]);
+    expect(hashBytes).toHaveBeenCalledTimes(2);
+    expect(hashFile.mock.calls.map(([file]) => path.basename(file))).toEqual([
+      'unreadable.png', 'changed.png', 'valid-preferred.png',
+    ]);
+  });
+
+  it.each(['missing', 'changed', 'unreadable'])('imports once under a collision name when the only SHA hit is %s', async (failure) => {
+    const value = await harness();
+    const selected = value.ir.media[1]!;
+    const sha256 = createHash('sha256').update(selected.payload.bytes).digest('hex');
+    await seedImageAssets(value, [{
+      fileName: selected.name, sha256,
+      bytes: failure === 'missing' ? undefined : createRgbaPng(4, 1, 3),
+    }]);
+    const hashService = new HashService();
+    const realHashFile = hashService.hashFile.bind(hashService);
+    const hashFile = vi.spyOn(hashService, 'hashFile').mockImplementation(async (file) => {
+      if (failure === 'unreadable' && path.basename(file) === selected.name) throw new Error('Read failed');
+      return realHashFile(file);
+    });
+    const sameBytes = { ...selected, id: 'fla-media-batch-repeat-0002', name: 'z.png' };
+    const commit = request(value, [selected.id, sameBytes.id]);
+    value.setSession({ sessionId: commit.sessionId, ir: createIr([selected, sameBytes]) });
+    const result = await value.createService({ hashService }).commit(commit);
+    const renamed = 'a1-' + sha256.slice(0, 8) + '.png';
+    expect(result.summary).toMatchObject({ importedCount: 1, duplicateCount: 1, renamedCount: 1 });
+    expect(result.results[0]).toMatchObject({ targetFileName: renamed, duplicateOfAssetId: null });
+    expect(result.results[1]?.duplicateOfAssetId).toBe(result.results[0]!.asset.id);
+    expect(hashFile.mock.calls.map(([file]) => path.basename(file))).toEqual(
+      failure === 'missing' ? [renamed] : [selected.name, renamed],
+    );
+  });
+
   it('rejects arbitrary renderer bytes and zero selection before any mutation', async () => {
     const value = await harness();
     const valid = request(value);
@@ -511,6 +617,14 @@ describe('FLA Slice 3 atomic Asset commit', () => {
             afterFlaFinalize: () => { throw new Error('injected finalize postcondition failure'); },
           }),
         }),
+      },
+      {
+        name: 'post-save hash mismatch',
+        createService: (value) => {
+          const hashService = new HashService();
+          vi.spyOn(hashService, 'hashFile').mockResolvedValueOnce({ algorithm: 'sha256', hex: '0'.repeat(64), bytes: 1 });
+          return value.createService({ hashService });
+        },
       },
       {
         name: 'post-save consistency',

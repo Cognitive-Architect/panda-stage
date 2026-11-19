@@ -31,6 +31,7 @@ import {
 import { FlaAssetCommitJournalService, type FlaAssetCommitJournal } from './FlaAssetCommitJournalService';
 import { HashService } from './HashService';
 import { validatePngEncodedImage } from './PngThumbnailValidator';
+import { resolveProjectAssetPath } from './project-asset-path';
 import { ProjectService, ProjectServiceError, type ProjectTransaction } from './ProjectService';
 
 export interface FlaAssetCommitSession {
@@ -422,10 +423,8 @@ export class FlaAssetCommitService {
     }
     selectedMedia.sort(compareMedia);
 
-    const hashToAsset = await this.hashExistingImageAssets(
-      projectRoot,
-      baseProject.assets,
-    );
+    const candidatesByHash = indexImageAssetsByHash(baseProject.assets);
+    const reusableByHash = new Map<string, ImageAsset>();
     const occupiedNames = new Set(
       baseProject.assets.map((asset) =>
         path.basename(asset.relativePath).toLowerCase(),
@@ -467,8 +466,12 @@ export class FlaAssetCommitService {
         );
       }
       const sha256 = this.hashService.hashBytes(bytes).hex;
-      const duplicate = hashToAsset.get(sha256);
-      if (duplicate && duplicate.kind === 'image') {
+      const candidates = candidatesByHash.get(sha256);
+      const duplicate = reusableByHash.get(sha256) ?? (candidates
+        ? await this.findVerifiedDuplicate(projectRoot, sha256, candidates)
+        : undefined);
+      if (duplicate) {
+        reusableByHash.set(sha256, duplicate);
         const targetFileName = path.basename(duplicate.relativePath);
         items.push({
           media,
@@ -526,7 +529,7 @@ export class FlaAssetCommitService {
         renamed: targetFileName !== preferredFileName,
       };
       items.push(item);
-      hashToAsset.set(sha256, asset);
+      reusableByHash.set(sha256, asset);
       occupiedNames.add(targetFileName.toLowerCase());
     }
 
@@ -734,34 +737,23 @@ export class FlaAssetCommitService {
     };
   }
 
-  private async hashExistingImageAssets(
+  private async findVerifiedDuplicate(
     projectRoot: string,
-    assets: readonly Project['assets'][number][],
-  ): Promise<Map<string, ImageAsset>> {
-    const hashToAsset = new Map<string, ImageAsset>();
-    const assetsRoot = path.resolve(projectRoot, 'assets');
-    for (const asset of assets) {
-      if (asset.kind !== 'image') continue;
-      const assetPath = path.resolve(projectRoot, asset.relativePath);
-      const relative = path.relative(assetsRoot, assetPath);
-      if (
-        !relative ||
-        relative === '..' ||
-        relative.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relative)
-      ) {
-        continue;
-      }
+    sha256: string,
+    candidates: readonly ImageAsset[],
+  ): Promise<ImageAsset | undefined> {
+    const checkedPaths = new Set<string>();
+    for (const asset of candidates) {
+      const assetPath = await resolveProjectAssetPath(projectRoot, asset.relativePath);
+      if (!assetPath || checkedPaths.has(assetPath)) continue;
+      checkedPaths.add(assetPath);
       try {
-        hashToAsset.set(
-          (await this.hashService.hashFile(assetPath)).hex,
-          asset,
-        );
+        if ((await this.hashService.hashFile(assetPath)).hex === sha256) return asset;
       } catch {
-        // A broken existing reference cannot safely be treated as a duplicate.
+        // Continue to the next candidate if the file cannot be read.
       }
     }
-    return hashToAsset;
+    return undefined;
   }
 
   private safePreferredFileName(sourceName: string): string {
@@ -816,6 +808,19 @@ export class FlaAssetCommitService {
     }
     return '(unknown project)';
   }
+}
+
+function indexImageAssetsByHash(assets: readonly Project['assets'][number][]): Map<string, ImageAsset[]> {
+  const index = new Map<string, ImageAsset[]>();
+  // Preserve the previous preference for the last matching asset in project order.
+  for (let position = assets.length - 1; position >= 0; position -= 1) {
+    const asset = assets[position];
+    if (asset?.kind !== 'image' || !asset.sha256) continue;
+    const candidates = index.get(asset.sha256);
+    if (candidates) candidates.push(asset);
+    else index.set(asset.sha256, [asset]);
+  }
+  return index;
 }
 
 function compareMedia(
