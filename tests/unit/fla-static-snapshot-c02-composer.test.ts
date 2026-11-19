@@ -203,6 +203,30 @@ describe('P0-C02 composed snapshot SVG', () => {
     }
   });
 
+  it('checks bitmap-fill capability from metadata and requires pixels for rendering', () => {
+    const fixture = c02Fixture();
+    const paint = '<BitmapFill bitmapPath="background.png"/>';
+    const shape = SHAPE_BLOCK.replace('<SolidColor color="#00ff00" alpha="1"/>', paint);
+    const compose = (metadataOnlyBitmaps: boolean) => buildSvgForResolvedDisplayList({
+      displayList: fixture.displayList,
+      renderTargetId: 'c02-metadata-bitmap-fill',
+      stageWidth: 40,
+      stageHeight: 40,
+      shapeBlocks: new Map([['fixture-shape', shape]]),
+      metadataOnlyBitmaps,
+      resolveBitmapMedia: (reference) => {
+        const result = fixture.lookup(reference);
+        if (!result.ok || (!metadataOnlyBitmaps && reference !== 'background.png')) return result;
+        return { ok: true, media: { ...result.media, pngBytes: undefined } };
+      },
+    });
+    const catalog = compose(true);
+    if (!catalog.ok) throw new Error(catalog.message);
+    expect(catalog.composition).toMatchObject({ fillRegionCount: 1, skippedBitmapFillCount: 0 });
+    expect(catalog.svg).not.toContain('data:image/png');
+    expect(compose(false)).toMatchObject({ ok: false, code: 'RENDER_FAILED' });
+  });
+
   it('fails on an invalid PNG or matrix even when the bitmap is used as a fill', () => {
     const fixture = c02Fixture();
     const render = (paint: string, resolveBitmapMedia = fixture.lookup) => buildSvgForResolvedDisplayList({

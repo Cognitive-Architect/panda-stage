@@ -2669,7 +2669,7 @@ export async function prepareFlaStaticSnapshotDisplaySource(
 export async function buildRenderableTargetCatalog(
   bytes: Uint8Array,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
-  options: { readonly includeAuthoredStates?: boolean } = {},
+  options: { readonly includeAuthoredStates?: boolean; readonly metadataOnlyBitmaps?: boolean } = {},
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
   execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<BuildCatalogResult> {
@@ -2728,6 +2728,7 @@ export async function buildRenderableTargetCatalog(
         stageHeight: source.stageHeight,
         shapeBlocks: resolved.shapeBlocks,
         resolveBitmapMedia,
+        metadataOnlyBitmaps: options.metadataOnlyBitmaps,
       });
       finishIssue762Profile('fla.catalog.candidate.svg-capability', compositionStartedAt, {
         ...candidateDetails,
@@ -2998,7 +2999,7 @@ export interface FlaStaticSnapshotBitmapMedia {
   readonly id: string;
   readonly width: number;
   readonly height: number;
-  readonly pngBytes: Uint8Array;
+  readonly pngBytes?: Uint8Array;
 }
 
 export type FlaStaticSnapshotBitmapMediaLookupResult =
@@ -3092,6 +3093,8 @@ export interface BuildComposedSvgInput {
   readonly shapeBlocks: ReadonlyMap<string, string>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+  /** Only the catalog capability check may compose without the actual pixels. */
+  readonly metadataOnlyBitmaps?: boolean;
 }
 
 interface ComposedLeaf {
@@ -3610,6 +3613,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let bitmapInstanceCount = 0;
   let skippedBitmapFillCount = 0;
   const bitmapFillDiagnostics: BuildComposedSvgSuccess['composition']['bitmapFillDiagnostics'][number][] = [];
+  let catalogHasUnknownBitmapDimensions = false;
   let fillStyleCount = 0;
   let strokeStyleCount = 0;
   let styleRunCount = 0;
@@ -3937,6 +3941,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             continue;
           }
           const media = resolution.media;
+          if (input.metadataOnlyBitmaps && !media.pngBytes) {
+            // The catalog can validate fill geometry before the bitmap is decoded.
+            const outline = `<path d="${fill.pathD}" fill="none"/>`;
+            const failure = appendEmittedNode(outline, node.clipPaths);
+            if (failure) return failure;
+            fillRegionCount += 1;
+            continue;
+          }
           const image = registerBitmapImage(media, paint.bitmapPath);
           if (!image.ok) return image;
           const bitmapTransform = matrixToSvgTransform(paint.matrix);
@@ -4038,6 +4050,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       };
     }
     const media = resolution.media;
+    if (input.metadataOnlyBitmaps && !media.pngBytes) {
+      // Keep clip/geometry capability checks active without embedding image data.
+      if (media.width === 0 || media.height === 0) {
+        catalogHasUnknownBitmapDimensions = true;
+      } else if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Graphic bitmap bounds are not finite' };
+      }
+      const appendFailure = appendEmittedNode('<g/>', node.clipPaths);
+      if (appendFailure) return appendFailure;
+      continue;
+    }
     const image = registerBitmapImage(media, node.libraryItemName);
     if (!image.ok) return image;
     if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
@@ -4063,7 +4086,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
     : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
-  if (framingMode === 'content' && !graphicViewport && !blankGraphic) {
+  if (framingMode === 'content' && !graphicViewport && !blankGraphic && !catalogHasUnknownBitmapDimensions) {
     return { ok: false, code: 'RENDER_FAILED', message: 'Graphic has no finite drawable content bounds' };
   }
   // A truly blank Graphic frame has no content bounds to frame. Represent it

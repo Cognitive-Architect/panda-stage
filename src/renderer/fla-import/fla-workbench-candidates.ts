@@ -1,4 +1,4 @@
-import type { AnimationImportIR } from '../../shared/fla-import-api';
+import type { AnimationImportIR, FlaInspectionIR } from '../../shared/fla-import-api';
 import { FLA_FRAME_SEQUENCE_LIMITS } from '../../shared/fla-frame-sequence-api';
 import type {
   FlaRenderableTargetCatalogEntry,
@@ -21,7 +21,7 @@ export interface FlaWorkbenchCandidateContext {
 }
 
 export interface FlaWorkbenchCandidatePreviewInput {
-  status: 'checking' | 'supported' | 'unsupported' | 'blank' | 'error';
+  status: 'checking' | 'unscanned' | 'supported' | 'unsupported' | 'blank' | 'error';
   previewUrl?: string;
   sha256?: string;
   reason?: string;
@@ -157,8 +157,10 @@ export interface FlaWorkbenchCandidateSelection {
 
 export interface CreateFlaWorkbenchCandidatesInput {
   context: FlaWorkbenchCandidateContext;
-  rasterMedia?: readonly AnimationImportIR['media'][number][];
+  rasterMedia?: readonly FlaInspectionIR['media'][number][];
   rasterThumbnailUrls?: Readonly<Record<string, string>>;
+  rasterPreviewPendingId?: string;
+  rasterPreviewFailedId?: string;
   snapshotEntries?: readonly FlaRenderableTargetCatalogEntry[];
   snapshotPreviews?: Readonly<Record<string, FlaWorkbenchCandidatePreviewInput>>;
   sequenceEntries?: readonly FlaRenderableTargetCatalogEntry[];
@@ -196,7 +198,11 @@ export function createFlaWorkbenchCandidates(
       media.id,
     ]);
     const previewUrl = input.rasterThumbnailUrls?.[media.id];
-    const previewStatus: FlaWorkbenchPreviewStatus = previewUrl ? 'verified' : 'checking';
+    const previewStatus: FlaWorkbenchPreviewStatus = previewUrl
+      ? 'verified'
+      : input.rasterPreviewFailedId === id ? 'error'
+      : media.payload || input.rasterPreviewPendingId === id ? 'checking'
+      : 'unscanned';
     const preview = candidatePreview({
       identityKey,
       status: previewStatus,
@@ -553,7 +559,7 @@ function resolveSnapshotPreviewState(
     };
   }
   return {
-    status: 'checking',
+    status: preview?.status === 'unscanned' ? 'unscanned' : 'checking',
     supported: true,
     ...(preview?.reason ? { reason: preview.reason } : {}),
   };

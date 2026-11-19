@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { IconButton } from '../ui';
 
 /**
  * Stage A is a presentation-only waiting state. Inspection and cancellation
@@ -9,20 +11,26 @@ export function FlaStageAInspecting({
 }: {
   onCancel: () => void;
 }): React.JSX.Element {
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const keepFocusInDialog = (event: React.KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Tab') return;
     event.preventDefault();
-    cancelButtonRef.current?.focus();
+    event.currentTarget.querySelector('button')?.focus();
   };
 
   return (
     <section
+      ref={dialogRef}
+      tabIndex={-1}
       aria-busy="true"
-      aria-labelledby="fla-stage-a-title"
+      aria-label="正在准备素材"
       aria-modal="true"
-      className="fla-review-session fla-stage-a-session"
+      className="fla-review-session fla-compact-status"
       data-review-layout="portal"
       data-stage-a-state="inspecting"
       data-testid="fla-review-session"
@@ -30,19 +38,8 @@ export function FlaStageAInspecting({
       onKeyDown={keepFocusInDialog}
       role="dialog"
     >
-      <header
-        className="fla-stage-a-title-wrap"
-        data-testid="fla-review-header"
-      >
-        <h2
-          className="fla-stage-a-title"
-          data-testid="fla-stage-a-headline"
-          id="fla-stage-a-title"
-        >导入素材</h2>
-      </header>
-
       <div
-        className="fla-stage-a-inspection"
+        className="fla-stage-a-inspection fla-compact-status-message"
         data-testid="fla-stage-a-inspection"
       >
         <span
@@ -61,16 +58,15 @@ export function FlaStageAInspecting({
         </p>
       </div>
 
-      <button
-        autoFocus
-        className="fla-stage-a-cancel"
+      <IconButton
+        aria-label="取消导入"
+        className="fla-compact-status-close"
         data-testid="fla-review-cancel"
+        icon={<X size={18} />}
         onClick={onCancel}
-        ref={cancelButtonRef}
         type="button"
-      >
-        取消
-      </button>
+        variant="secondary"
+      />
     </section>
   );
 }

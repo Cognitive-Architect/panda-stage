@@ -130,6 +130,7 @@ describe('FLA commit IPC boundary', () => {
     expect([...electronMocks.handlers.keys()]).toEqual([
       IPC_CHANNELS.FLA_INSPECT_CHOOSE,
       IPC_CHANNELS.FLA_CANCEL,
+      IPC_CHANNELS.FLA_PREVIEW_RASTER,
       IPC_CHANNELS.FLA_COMMIT_SELECTED,
     ]);
     expect(electronMocks.listeners.size).toBe(4);

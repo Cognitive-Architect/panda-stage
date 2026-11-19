@@ -92,6 +92,7 @@ import type {
   FlaCancelResponse,
   FlaInspectionStarted,
   FlaInspectionResponse,
+  FlaRasterPreviewResponse,
   FlaWorkerError,
   FlaWorkerProgress,
   FlaWorkerResult,
@@ -278,6 +279,7 @@ declare global {
       };
       fla: {
         chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;
+        previewRaster: (sessionId: string, mediaId: string) => Promise<FlaRasterPreviewResponse>;
         onInspectionStarted: (
           callback: (event: FlaInspectionStarted) => void,
         ) => () => void;
