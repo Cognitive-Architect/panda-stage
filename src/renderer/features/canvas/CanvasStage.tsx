@@ -11,6 +11,7 @@ import {
 import type Konva from 'konva';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
+import { adaptivePartIdForNodeId, resolveCharacterView, type CharacterView } from '../characters/characterView';
 import { createCharacterPartAnimationClip, composeAnimatedCharacterPartTransform, evaluateAnimationClipAtTime, isValidFrameTime, type Layer } from '../../../domain';
 import {
   Layer as KonvaLayer,
@@ -275,7 +276,9 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
-  const selectedMotionPartId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterPartId);
+  const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
+  const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
+  const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
   const [motionError, setMotionError] = useState('');
   const opacityPreview = useOpacityPreview();
   const layerNodeRefs = useRef(
@@ -983,10 +986,8 @@ export function CanvasStage({
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
   const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedMotionPartId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
-  const motionCanvasForLayer = (motionLayer: Layer): CharacterMotionCanvas | undefined => {
-    const source = motionLayer.source;
-    const character = source.kind === 'character' ? snapshot?.project.characters.find(c => c.id === source.characterId) : null;
-    return snapshot && shot && character?.mode === 'adaptive-parts' && !positionAuthoringSession ? {
+  const motionCanvasForLayer = (motionLayer: Layer, view: CharacterView | null): CharacterMotionCanvas | undefined => {
+    return snapshot && shot && view?.nodes.some((node) => node.motion === 'character-clip-v1') && !positionAuthoringSession ? {
     selectedPartId: selectedLayerId === motionLayer.id ? selectedMotionPartId : null, contextKey: motionContextKey,
     enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
     pivot: (partId) => {
@@ -1045,7 +1046,7 @@ export function CanvasStage({
   const structuredTransformerVisible = Boolean(
     flaGraphicEditActive && selectedStructuredNodeCanTransform,
   );
-  const layerTransformerVisible = !selectedMotionPartId && !flaGraphicEditActive && isTransformerOverlayVisible({
+  const layerTransformerVisible = !characterNodeSelected && !flaGraphicEditActive && isTransformerOverlayVisible({
     selected: Boolean(
       selectedStageLayer &&
         selectedStageLayer.render.visible &&
@@ -1259,6 +1260,9 @@ export function CanvasStage({
                   {stageModel
                     ? stageModel.layers.map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
+                        const characterView = snapshot && !positionAuthoringSession && !render.isBackground
+                          ? resolveCharacterView(snapshot.project, layer, visual)
+                          : null;
                         const image = imageForStageLayer(stageLayer);
                         const editProjection =
                           flaGraphicEditActive &&
@@ -1291,7 +1295,9 @@ export function CanvasStage({
                             : undefined;
                         return (
                           <SelectableLayer
-                            characterMotion={motionCanvasForLayer(layer)}
+                            characterMotion={motionCanvasForLayer(layer, characterView)}
+                            characterView={characterView}
+                            selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
                             directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
@@ -1478,7 +1484,7 @@ export function CanvasStage({
                               );
                             }}
                             onError={setInteractionStatus}
-                            onSelect={(layerId) => {
+                            onSelect={(layerId, nodeId) => {
                               if (flaGraphicEditScope && selectedFlaGraphicTarget?.layerId !== layerId) {
                                 setFlaGraphicEditScope(null);
                                 setSelectedFlaGraphicNodePath(null);
@@ -1487,6 +1493,12 @@ export function CanvasStage({
                                 selectionStore.selectExplicit(layerId);
                               } else {
                                 selectionStore.select(layerId);
+                              }
+                              const target = nodeId ?? characterView?.nodes.find((node) => node.id === 'root')?.id;
+                              if (target) selectionStore.selectCharacterNode(target);
+                              if (nodeId) {
+                                timelineUiStore.revealCharacterMotionPart();
+                                onCharacterPartSelected?.();
                               }
                               setInteractionStatus('已选择图层。');
                             }}

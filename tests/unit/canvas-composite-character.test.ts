@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import {
   evaluateShotAtTime,
@@ -7,9 +7,14 @@ import {
   projectShotMouth,
   ProjectSchema,
   upsertExpressionEventAtTime,
+  visualPartRenderTransform,
   type Project,
 } from '../../src/domain';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
+import { characterNodeForVisualPart, resolveCharacterView } from '../../src/renderer/features/characters/characterView';
+import * as alphaBounds from '../../src/renderer/features/characters/measureImageVisibleBounds';
+import * as graphicRaster from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -359,6 +364,128 @@ function selectableComposite(
 }
 
 describe('BFM-S04 composite Character Editor Canvas', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('routes Body, Head and Face hits to stable nodes and highlights just the selected node', () => {
+    vi.spyOn(alphaBounds, 'measureImageVisibleBounds').mockReturnValue({ x: 0, y: 0, width: 1, height: 1 });
+    const project = compositeProject({ mouth: false, head: true });
+    const ready = [BODY_ID, HEAD_ID, FACE_NORMAL_ID, FACE_ANGRY_ID];
+    const { model } = selectableComposite(project, 0, ready);
+    const view = resolveCharacterView(project, model.layer, model.visual)!;
+    const replacement = selectableComposite(project, 500, ready).model;
+    const oldFace = model.visual.parts.find((part) => part.slot === 'face')!;
+    const newFace = replacement.visual.parts.find((part) => part.slot === 'face')!;
+    expect(view.visual).toBe(model.visual);
+    expect(view.nodes.map(({ id, motion }) => [id, motion])).toEqual([
+      ['root', 'layer'], ['body', null], ['face', null], ['head', null],
+    ]);
+    expect(oldFace.source).not.toEqual(newFace.source);
+    expect(characterNodeForVisualPart(view, newFace)?.id).toBe('face');
+
+    const onSelect = vi.fn();
+    const element = SelectableLayer({
+      images: imageMap(ready), layer: model.layer, nodeRef: { current: null },
+      render: model.render, selected: true, visual: model.visual,
+      characterView: view, selectedCharacterNodeId: 'face', onSelect,
+      onCommitPosition: vi.fn(), onCommitTransform: vi.fn(), onError: vi.fn(),
+    });
+    const root = element.props as { draggable: boolean; children: React.ReactNode };
+    const hits = childElements(root.children).filter((child) => {
+      const { name } = child.props as { name?: string };
+      return name === 'composite-visual-hit-area' || name === 'character-node-selection';
+    });
+    expect(root.draggable).toBe(false);
+    expect(hits).toHaveLength(3);
+    for (const [index, expected] of ['body', 'head', 'face'].entries()) {
+      const hit = hits[index]!.props as { name: string; onClick(event: { cancelBubble: boolean }): void };
+      hit.onClick({ cancelBubble: false });
+      expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, expected);
+      expect(hit.name === 'character-node-selection').toBe(expected === 'face');
+    }
+  });
+
+  it.each(['image', 'graphic'] as const)('uses the visible %s Face for the outline and leaves transparent padding to Body', (source) => {
+    const base = compositeProject({ mouth: false });
+    const graphic = graphicFaceProject();
+    const project = ProjectSchema.parse({
+      ...base,
+      ...(source === 'graphic' ? { animations: graphic.animations, assets: [
+        ...base.assets, ...graphic.assets.filter((asset) => !base.assets.some(({ id }) => id === asset.id)),
+      ] } : {}),
+      characters: base.characters.map((character) => character.mode !== 'composite' ? character : ({
+        ...character,
+        ...(source === 'graphic' ? { baseAssetId: undefined } : {}),
+        facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        expressions: character.expressions.map((expression) => source === 'graphic' && expression.id === IDS.expressionNormal
+          ? { id: expression.id, name: expression.name, visualSource: faceSource(0) }
+          : expression),
+      })),
+    });
+    const { model } = selectableComposite(project, 0, []);
+    const face = model.visual.parts.find(({ slot }) => slot === 'face')!;
+    const images = imageMap([BODY_ID, FACE_NORMAL_ID, IDS.assetChar]);
+    const alpha = vi.spyOn(alphaBounds, 'measureImageVisibleBounds').mockImplementation((image) => image === images.get(FACE_NORMAL_ID)
+      ? { x: 0.75, y: 0.25, width: 0.2, height: 0.5 }
+      : { x: 0, y: 0, width: 1, height: 1 });
+    const raster = source === 'graphic' ? vi.spyOn(graphicRaster, 'renderFlaGraphicCanvas') : null;
+    const frame = { canvas: {} as HTMLCanvasElement, rect: { x: -100, y: -90, width: 200, height: 180 } };
+    if (raster) {
+      expect(face.flaGraphic?.canvas.width).toBe(200);
+      raster.mockReturnValue({
+        ...frame,
+        visibleRect: { x: 50, y: -25, width: 40, height: 50 },
+      });
+    }
+    const onSelect = vi.fn();
+    const renderNodeCanvas = () => SelectableLayer({
+      images, layer: model.layer, nodeRef: { current: null }, render: model.render,
+      selected: true, visual: model.visual,
+      characterView: resolveCharacterView(project, model.layer, model.visual),
+      selectedCharacterNodeId: 'face', onSelect,
+      onCommitPosition: vi.fn(), onCommitTransform: vi.fn(), onError: vi.fn(),
+    });
+    type Hit = { name: string; x: number; y: number; offsetX: number; offsetY: number;
+      width: number; height: number; listening: boolean; onClick(event: { cancelBubble: boolean }): void };
+    const renderProps = () => childElements((renderNodeCanvas().props as { children: React.ReactNode }).children)
+      .map((child) => child.props as Hit);
+    const props = renderProps();
+    const [bodyHit, faceHit] = props.filter(({ name }) => name === 'composite-visual-hit-area' || name === 'character-node-selection');
+    const faceTransform = visualPartRenderTransform(face);
+    expect(faceHit).toMatchObject({
+      name: 'character-node-selection', ...faceTransform,
+      offsetX: faceTransform.offsetX - 150,
+      offsetY: faceTransform.offsetY - (source === 'graphic' ? 65 : 25),
+      width: 40, height: 50, listening: true,
+    });
+    expect(props.find(({ name }) => name === 'selectable-canvas-visual')?.listening).toBe(false);
+    if (source === 'graphic') expect(alpha).toHaveBeenCalledTimes(1);
+
+    // The centre was inside the original Face canvas. Walk the active hit rectangles
+    // in reverse draw order, as Konva does, to confirm it now goes to Body.
+    const winner = [faceHit!, bodyHit!].find((hit) => {
+      const left = hit.x - hit.offsetX;
+      const top = hit.y - hit.offsetY;
+      return left <= 0 && left + hit.width > 0 && top <= 0 && top + hit.height > 0;
+    });
+    expect(winner).toBe(bodyHit);
+    winner!.onClick({ cancelBubble: false });
+    expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, 'body');
+
+    if (raster) {
+      raster.mockReturnValue({ ...frame, visibleRect: null });
+    } else {
+      alpha.mockReturnValue(null);
+    }
+    const fallbackProps = renderProps();
+    const fallback = fallbackProps.find(({ name }) => name === 'character-node-selection');
+    expect(fallback).toMatchObject({
+      ...faceTransform, width: face.localRect.width, height: face.localRect.height, listening: true,
+    });
+    expect(fallbackProps.find(({ name }) => name === 'selectable-canvas-visual')?.listening).toBe(false);
+    fallback!.onClick({ cancelBubble: false });
+    expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar, 'face');
+  });
+
   it('previews opacity on the one Character root without fading Body and Face separately', () => {
     const project = compositeProject({ mouth: false });
     const { model } = selectableComposite(project, 0, [BODY_ID, FACE_NORMAL_ID]);

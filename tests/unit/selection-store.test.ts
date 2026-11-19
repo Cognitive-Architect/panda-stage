@@ -4,8 +4,41 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { ShotStore } from '../../src/renderer/stores/shotStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
+import { characterPartAnimationFixture } from '../helpers/characterPartAnimationFixture';
+import { buildProject, IDS } from './domain/testProject';
 
 describe('LayerSelectionStore project boundary', () => {
+  it('selects a single-image root and keeps the adaptive Part API as an alias for the Node', () => {
+    const editor = new EditorProjectStore();
+    const shots = new ShotStore(editor, new ShotService());
+    const selection = new LayerSelectionStore(editor, shots);
+    try {
+      editor.open('D:/root-selection.pandastage', buildProject());
+      selection.select(IDS.layerChar);
+      expect(selection.getSelectedCharacterNodeId()).toBe('root');
+      expect(selection.getSelectedCharacterPartId()).toBeNull();
+      expect(() => selection.selectCharacterNode('face')).toThrow();
+
+      const fixture = characterPartAnimationFixture();
+      editor.open('D:/part-selection.pandastage', fixture.project);
+      expect(selection.getSelectedCharacterNodeId()).toBeNull();
+      selection.select(fixture.layerId);
+      const before = editor.getSnapshot();
+      selection.selectCharacterPart(fixture.imagePartId);
+      expect(selection.getSelectedCharacterNodeId()).toBe(`part:${fixture.imagePartId}`);
+      selection.selectCharacterNode(`part:${fixture.graphicPartId}`);
+      expect(selection.getSelectedCharacterPartId()).toBe(fixture.graphicPartId);
+      expect(editor.getSnapshot()).toBe(before);
+      expect(editor.history.getSnapshot().undoCount).toBe(0);
+      selection.select(IDS.layerAsset);
+      expect(selection.getSelectedCharacterNodeId()).toBeNull();
+      expect(selection.getSelectedCharacterPartId()).toBeNull();
+    } finally {
+      selection.dispose();
+      shots.dispose();
+    }
+  });
+
   it('shares structured selection without revising the project and clears it with layer/context changes', () => {
     const editor = new EditorProjectStore();
     const shots = new ShotStore(editor, new ShotService());

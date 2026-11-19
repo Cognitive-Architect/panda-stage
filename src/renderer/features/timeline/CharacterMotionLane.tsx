@@ -29,6 +29,7 @@ import {
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { characterMotionParts } from '../canvas/characterMotionContext';
+import { adaptivePartIdForNodeId, resolveCharacterView } from '../characters/characterView';
 import { resolveNearestCharacterMotionKey } from './characterMotionKeyGesture';
 import {
   MotionKeyToolbar,
@@ -135,10 +136,8 @@ export function CharacterMotionLane({
     editorProjectStore.getSnapshot,
   );
   const instanceId = editorProjectStore.getProjectInstanceId();
-  const partId = useSyncExternalStore(
-    selectionStore.subscribe,
-    selectionStore.getSelectedCharacterPartId,
-  );
+  const nodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
+  const partId = adaptivePartIdForNodeId(nodeId);
   const revealNonce = useSyncExternalStore(
     timelineUiStore.subscribe,
     () => timelineUiStore.getSnapshot().characterMotionRevealNonce,
@@ -153,12 +152,13 @@ export function CharacterMotionLane({
   const [error, setError] = useState<string | null>(null);
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const lastFocusedKeyRef = useRef<string | null>(null);
-  const prevPartIdRef = useRef(partId);
+  const prevNodeIdRef = useRef(nodeId);
   const prevRevealNonceRef = useRef(revealNonce);
   const overviewTouchSessionRef = useRef<{ pointerId: number; ownerTimeMs: number } | null>(null);
   const suppressOverviewClickRef = useRef(false);
   const layer = shot.layers.find((candidate) => candidate.id === layerId);
-  const allParts = characterMotionParts(project, layer);
+  const view = resolveCharacterView(project, layer);
+  const allParts = view?.nodes.filter((node) => node.motion === 'character-clip-v1') ?? [];
 
   const scopeKey = JSON.stringify([
     instanceId,
@@ -191,15 +191,15 @@ export function CharacterMotionLane({
   }, [protectedCuePartId]);
 
   useLayoutEffect(() => {
-    const partChanged = partId !== prevPartIdRef.current;
+    const nodeChanged = nodeId !== prevNodeIdRef.current;
     const revealed = revealNonce !== prevRevealNonceRef.current;
-    prevPartIdRef.current = partId;
+    prevNodeIdRef.current = nodeId;
     prevRevealNonceRef.current = revealNonce;
-    if (!partId || !layer) {
+    if (!nodeId || !layer) {
       lastFocusedKeyRef.current = null;
       return;
     }
-    if ((partChanged || revealed) && !groupExpanded) {
+    if ((nodeChanged || revealed) && !groupExpanded) {
       lastFocusedKeyRef.current = null;
       setGroupExpanded(true);
       return;
@@ -208,13 +208,38 @@ export function CharacterMotionLane({
       lastFocusedKeyRef.current = null;
       return;
     }
-    const focusKey = `${shot.id}:${layer.id}:${partId}`;
+    const focusKey = `${shot.id}:${layer.id}:${nodeId}`;
     if (!revealed && lastFocusedKeyRef.current === focusKey) return;
     lastFocusedKeyRef.current = focusKey;
     focusSelectedPartRow(selectedRowRef.current);
-  }, [groupExpanded, layer, partId, revealNonce, shot.id]);
+  }, [groupExpanded, layer, nodeId, revealNonce, shot.id]);
 
-  if (!layer || allParts.length === 0) return null;
+  if (!layer || !view?.nodes.length) return null;
+  if (allParts.length === 0) {
+    return <>{view.nodes.map((node) => {
+      const selected = node.id === nodeId;
+      const select = () => selectionStore.selectCharacterNode(node.id);
+      return (
+        <div
+          key={node.id}
+          ref={selected ? selectedRowRef : undefined}
+          className="timeline-lane character-motion-lane"
+          data-testid="character-node-lane"
+          data-character-node-id={node.id}
+          data-selected-part={selected}
+          onPointerDown={(event) => { event.stopPropagation(); select(); }}
+          onClick={(event) => { event.stopPropagation(); select(); }}
+        >
+          <span className="timeline-lane-label">
+            <button className="character-motion-part-select" type="button" aria-pressed={selected}>
+              <span className="timeline-lane-label-text">{node.name}</span>
+            </button>
+          </span>
+          <div className="timeline-lane-content" style={{ width: `${trackWidth}px` }} />
+        </div>
+      );
+    })}</>;
+  }
 
   const authoredPartIds = new Set(
     allParts

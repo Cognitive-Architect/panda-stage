@@ -101,7 +101,7 @@ async function inspectorButton(label) {
         overflow:controls.scrollWidth>controls.clientWidth};
     })()`);
     assert.equal(polish.card,false);assert.equal(polish.name,expectedName);assert(polish.icon);
-    assert(polish.thumbnailWidth>=36 && polish.thumbnailWidth<=44 && polish.thumbnailHeight===40);
+    assert(polish.thumbnailWidth===54 && polish.thumbnailHeight===54);
     assert.equal(polish.summary,'动作');assert.equal(polish.label,'部位');assert(polish.labelFor);
     assert(Math.abs(polish.labelX-polish.transformLabelX)<1);assert(polish.selectorWidth<=96);
     assert.equal(polish.title,expectedName);assert.equal(polish.ellipsis,'ellipsis');assert(polish.plus);

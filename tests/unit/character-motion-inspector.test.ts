@@ -2,6 +2,7 @@
 import { act, createElement, Fragment, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ProjectSchema } from '../../src/domain';
 import { RightInspector, getRightInspectorLayerSummary, getRightInspectorSelection, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
 import { LayerBackgroundControl, type LayerBackgroundControlProps } from '../../src/renderer/features/properties/LayerBackgroundControl';
 import { LayerTransformPanel, type LayerTransformPanelProps } from '../../src/renderer/features/properties/LayerTransformPanel';
@@ -12,7 +13,7 @@ import { shotStore } from '../../src/renderer/stores/shotStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { characterPartAnimationFixture } from '../helpers/characterPartAnimationFixture';
-import { IDS } from './domain/testProject';
+import { buildProject, IDS } from './domain/testProject';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 afterEach(() => { selectionStore.clear(); editorProjectStore.clear(); timelineUiStore.setCharacterMotionAutoKey(false); });
@@ -79,6 +80,63 @@ function Harness() {
     createElement<RightInspectorProps>(RightInspector, { embedded: true, shellMode: 'landscape' }),
   );
 }
+
+it.each([
+  { mode: 'single-image', head: false, nodes: ['root'] },
+  { mode: 'composite', head: false, nodes: ['root', 'body', 'face'] },
+  { mode: 'composite', head: true, nodes: ['root', 'body', 'face', 'head'] },
+] as const)('shows $mode nodes in Inspector and Timeline (head=$head)', async ({ mode, head, nodes }) => {
+  const base = buildProject();
+  const project = mode === 'single-image' ? base : ProjectSchema.parse({
+    ...base,
+    characters: [{
+      ...base.characters[0], mode, bodyAssetId: IDS.assetChar2,
+      facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      ...(head ? { head: {
+        assetId: IDS.assetChar2, placement: { offsetX: 0, offsetY: 0, scale: 1 }, pivot: { x: 0, y: 0 },
+      } } : {}),
+    }],
+  });
+  editorProjectStore.open('D:/character-node-inspector.pandastage', project);
+  shotStore.select(IDS.shot);
+  selectionStore.select(IDS.layerChar);
+  const before = editorProjectStore.getSnapshot();
+  const element = document.createElement('div');
+  document.body.append(element);
+  const root = createRoot(element);
+  try {
+    await act(async () => root.render(createElement(Harness)));
+    const selector = element.querySelector<HTMLSelectElement>('.character-motion-controls select')!;
+    const rows = Array.from(element.querySelectorAll<HTMLElement>('[data-testid="character-node-lane"]'));
+    expect(rows.map((row) => row.dataset.characterNodeId)).toEqual(nodes);
+    expect(Array.from(selector.options, (option) => option.value)).toEqual(nodes);
+    expect(selector.value).toBe('root');
+    expect(element.querySelector('.character-motion-controls button')).toBeNull();
+    expect(element.querySelector('.character-motion-keys')).toBeNull();
+
+    for (const row of rows) {
+      const nodeId = row.dataset.characterNodeId;
+      await act(async () => row.querySelector('button')!.click());
+      expect(selectionStore.getSelectedCharacterNodeId()).toBe(nodeId);
+      expect(selector.value).toBe(nodeId);
+      expect(row.dataset.selectedPart).toBe('true');
+      if (nodeId !== 'root') {
+        expect(element.querySelector('[data-testid="right-inspector-transform-section"]')).toBeNull();
+      }
+    }
+    await act(async () => {
+      selector.value = 'root';
+      selector.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(rows[0]!.dataset.selectedPart).toBe('true');
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+  }
+});
+
 async function mount(source: 'image' | 'graphic', autoKey: boolean) {
   const data = characterPartAnimationFixture();
   const character = data.project.characters.find(c => c.id === data.characterId)!;
