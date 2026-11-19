@@ -28,4 +28,4 @@ parent transforms. Unit coverage also checks shared image deduplication,
 malformed matrices and PNG dimensions, and local recovery for missing fill
 media. The existing solid, linear, and radial fill tests passed.
 
-OWNER visual acceptance pending.
+**OWNER visual acceptance: PASS.** The owner reviewed and accepted the C-real Graphic and scene previews.
