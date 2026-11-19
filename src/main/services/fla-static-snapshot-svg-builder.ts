@@ -75,7 +75,6 @@ const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
 const MAX_STYLE_ENTRIES_PER_SHAPE = 4_096;
 const MAX_STYLE_ENTRIES_PER_COMPOSITION = 32_768;
 const MAX_STYLE_RUNS_PER_SHAPE = 16_384;
-const MAX_STYLE_RUNS_PER_COMPOSITION = 65_536;
 const MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION = 4 * 1024 * 1024;
 const MAX_GRADIENT_STOPS_PER_STYLE = 256;
 const MAX_GRADIENT_STOPS_PER_COMPOSITION = 16_384;
@@ -2961,6 +2960,15 @@ export interface BuildComposedSvgSuccess extends BuildSvgSuccess {
     readonly fillStyleCount: number;
     readonly strokeStyleCount: number;
     readonly styleRunCount: number;
+    /** Parsed Edge records, summed over composed shape instances. */
+    readonly sourceEdgeCount: number;
+    /** Intermediate segmentation, reported without a composition-wide cap. */
+    readonly rawStyleRunCount: number;
+    /** Distinct fill and stroke style indices with geometry, summed per shape instance. */
+    readonly uniqueEffectiveStyleCount: number;
+    readonly postReconstructionFillCount: number;
+    readonly postReconstructionStrokePathCount: number;
+    readonly svgByteLength: number;
     readonly midEdgeStyleChangeCount: number;
     readonly pathCommandCount: number;
     readonly edgeFillStyle0ReferenceCount: number;
@@ -3539,6 +3547,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let fillStyleCount = 0;
   let strokeStyleCount = 0;
   let styleRunCount = 0;
+  let sourceEdgeCount = 0;
+  let uniqueEffectiveStyleCount = 0;
   let midEdgeStyleChangeCount = 0;
   let edgeFillStyle0ReferenceCount = 0;
   let edgeFillStyle1ReferenceCount = 0;
@@ -3754,6 +3764,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillStyleCount += representation.fillStyles.length;
       strokeStyleCount += representation.strokeStyles.length;
       styleRunCount += representation.styleRuns.length;
+      sourceEdgeCount += shape.edgeStrings.length;
       midEdgeStyleChangeCount += representation.styleChanges.length;
       for (const reference of representation.edgeReferences) {
         if (reference.fillStyle0 !== null) edgeFillStyle0ReferenceCount += 1;
@@ -3765,9 +3776,6 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       styleSourceChars += representation.styleSourceChars;
       if (fillStyleCount + strokeStyleCount > MAX_STYLE_ENTRIES_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-entry budget exceeded' };
-      }
-      if (styleRunCount > MAX_STYLE_RUNS_PER_COMPOSITION) {
-        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-run budget exceeded' };
       }
       if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-source budget exceeded' };
@@ -3811,6 +3819,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         displayList.frameIndex,
       );
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
+      uniqueEffectiveStyleCount += reconstructed.result.fills.length + reconstructedStrokes.result.length;
       const shapeStrokeSegmentCount = reconstructedStrokes.result
         .reduce((total, stroke) => total + stroke.segmentCount, 0);
       if (strokeSegmentCount + shapeStrokeSegmentCount > MAX_STROKE_SEGMENTS_PER_COMPOSITION) {
@@ -3976,6 +3985,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillStyleCount,
       strokeStyleCount,
       styleRunCount,
+      sourceEdgeCount,
+      rawStyleRunCount: styleRunCount,
+      uniqueEffectiveStyleCount,
+      postReconstructionFillCount: fillRegionCount,
+      postReconstructionStrokePathCount: strokePathCount,
+      svgByteLength,
       midEdgeStyleChangeCount,
       pathCommandCount,
       edgeFillStyle0ReferenceCount,

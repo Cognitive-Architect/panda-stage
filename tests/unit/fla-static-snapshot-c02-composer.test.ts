@@ -173,6 +173,50 @@ function c02Fixture(withFrameBlur = false): {
 }
 
 describe('P0-C02 composed snapshot SVG', () => {
+  it('composes shapes whose aggregate raw runs exceed the former limit', () => {
+    const shapeCount = 8;
+    const edgesPerShape = 8_200;
+    const shapeId = 'fragmented-shape';
+    const shapeBlock = SHAPE_BLOCK.replace('</edges>',
+      '<Edge edges="!0 0|20 0"/>'.repeat(edgesPerShape - 1) + '</edges>');
+    const resolved = resolveFlaDisplayList({
+      root: {
+        kind: 'scene',
+        name: 'Fragmented shapes',
+        frameContext: {
+          frameIndex: 0,
+          layers: [{
+            name: 'Shapes',
+            visible: true,
+            elements: Array.from({ length: shapeCount }, () => ({ kind: 'shape', shapeId })),
+          }],
+        },
+      },
+      symbols: new Map(),
+    });
+    if (!resolved.ok) throw new Error(resolved.message);
+
+    const result = buildSvgForResolvedDisplayList({
+      displayList: resolved.displayList,
+      renderTargetId: 'fragmented-shapes',
+      stageWidth: 4,
+      stageHeight: 4,
+      shapeBlocks: new Map([[shapeId, shapeBlock]]),
+      resolveBitmapMedia: () => ({ ok: false, reason: 'missing' }),
+    });
+
+    if (!result.ok) throw new Error(result.message);
+    expect(result.composition).toMatchObject({
+      sourceEdgeCount: 65_600,
+      rawStyleRunCount: 65_600,
+      uniqueEffectiveStyleCount: shapeCount,
+      postReconstructionFillCount: shapeCount,
+      postReconstructionStrokePathCount: 0,
+      fillBoundarySegmentCount: shapeCount * 4,
+      svgByteLength: Buffer.byteLength(result.svg),
+    });
+  });
+
   it('embeds multiple Panda PNGs and supported shapes in caller-supplied painter order with absolute transforms once', () => {
     const fixture = c02Fixture();
     const result = buildSvgForResolvedDisplayList({
