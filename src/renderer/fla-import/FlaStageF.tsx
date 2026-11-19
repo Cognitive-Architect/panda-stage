@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react';
+import { ChevronDown, FileWarning, X } from 'lucide-react';
 import { useEffect, useId } from 'react';
 import type { AnimationImportIR, FlaInspectionResponse } from '../../shared/fla-import-api';
 import type { FlaRenderableTargetCatalogEntry } from '../../shared/fla-static-snapshot-api';
@@ -172,27 +172,31 @@ export function FlaStageF3Blocked({
     <section
       aria-labelledby={titleId}
       aria-modal="true"
-      className="fla-review-session fla-stage-f3-blocked"
+      className="fla-review-session fla-compact-status fla-stage-f3-blocked"
       data-stage-f-severity="blocked"
       data-testid="fla-stage-f3-blocked"
       data-workbench-route="blocked"
       role="dialog"
     >
+      <div className="fla-compact-status-message" role="alert">
+        <FileWarning aria-hidden="true" className="fla-stage-f3-icon" size={18} />
+        <h1 id={titleId}>无法读取素材</h1>
+      </div>
       <IconButton
-        aria-label="返回素材库"
+        aria-label="关闭并返回素材库"
         autoFocus
-        className="fla-stage-f3-return"
+        className="fla-compact-status-close"
         data-testid="fla-stage-f3-return"
-        icon={<ArrowLeft size={20} />}
+        icon={<X size={18} />}
         onClick={onClose}
         type="button"
         variant="secondary"
       />
-      <div role="alert">
-        <h1 id={titleId}>无法读取素材</h1>
-      </div>
       <details data-testid="fla-stage-f3-details">
-        <summary>查看详情</summary>
+        <summary>
+          <ChevronDown aria-hidden="true" size={14} />
+          查看详情
+        </summary>
         <pre>{blockedDiagnosticDetails(response)}</pre>
       </details>
     </section>

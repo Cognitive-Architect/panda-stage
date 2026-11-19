@@ -277,7 +277,7 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
         historical = sourceLines(readFileSync(resolve(root, slice!.targetPath), 'utf8'))
           .slice(startLine - 1, endLine).join('\n') + '\n';
         expect(sha256(target)).toBe(
-          '5e1b7f0f171ca2a4cf2b595b4687b83d0ee5a12967fe1268b9b078fa761e5f71',
+          '41e8ca8620a26cb14aaf74f3e4cc5f834a07ac05d848ff8119bd167f59f3bcb3',
         );
         const originalF3 = historical.indexOf('.fla-review-portal .fla-stage-f3-session');
         expect(originalF3).toBeGreaterThan(0);

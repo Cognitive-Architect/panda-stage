@@ -118,12 +118,14 @@ describe('Issue #402 Stage F presentation contract', () => {
     expect(visible).toContain('role="dialog"');
     expect(visible).toContain('role="alert"');
     expect(visible).toContain('>无法读取素材</h1>');
-    expect(visible).toContain('aria-label="返回素材库"');
+    expect(visible).toContain('aria-label="关闭并返回素材库"');
     expect(visible).toContain('data-ui-size="icon"');
-    expect(visible).toContain('lucide-arrow-left');
+    expect(visible).toContain('lucide-x');
+    expect(visible).toContain('lucide-file-exclamation-point');
+    expect(visible).not.toContain('lucide-arrow-left');
     expect(html.match(/<button\b/gu)).toHaveLength(1);
     expect(visible).not.toMatch(/\u53ea\u8bfb|\u5b89\u5168\u68c0\u67e5|FLA \u5de5\u4f5c\u53f0|MALFORMED_ARCHIVE|EOCD/u);
-    expect(details).toMatch(/^ data-testid="fla-stage-f3-details"><summary>查看详情<\/summary>/u);
+    expect(details).toMatch(/^ data-testid="fla-stage-f3-details"><summary><svg[^>]*lucide-chevron-down[\s\S]*?<\/svg>查看详情<\/summary>/u);
     expect(details).toContain('MALFORMED_ARCHIVE: EOCD mismatch');
     expect(details).toContain('EOCD_INCONSISTENT');
     expect(html).not.toContain('data-testid="fla-snapshot-preview"');
