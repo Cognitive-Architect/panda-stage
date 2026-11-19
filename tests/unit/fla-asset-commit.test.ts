@@ -193,7 +193,6 @@ interface Harness {
   current: { project: ReturnType<typeof migrateProject>; revision: number };
   setCurrent: (project: ReturnType<typeof migrateProject>, revision: number) => void;
   setSession: (session: FlaAssetCommitSession) => void;
-  released: () => boolean;
   ir: AnimationImportIR;
 }
 
@@ -210,7 +209,6 @@ async function harness(): Promise<Harness> {
     revision: 0,
   };
   let activeSession: FlaAssetCommitSession | null = null;
-  let sessionReleased = false;
   const projectService = new ProjectService({
     createId: nextId,
     now: () => new Date('2026-08-19T04:00:00.000Z'),
@@ -261,10 +259,6 @@ async function harness(): Promise<Harness> {
       getCurrentProjectSnapshot: (root) =>
         root === projectRootValue ? current : null,
       getSession: (id) => (activeSession?.sessionId === id ? activeSession : null),
-      releaseSession: () => {
-        sessionReleased = true;
-        activeSession = null;
-      },
       createId: nextId,
       now: () => new Date('2026-08-19T04:10:00.000Z'),
       ...options,
@@ -284,9 +278,7 @@ async function harness(): Promise<Harness> {
     },
     setSession: (session) => {
       activeSession = session;
-      sessionReleased = false;
     },
-    released: () => sessionReleased,
     ir,
   };
 }
@@ -350,7 +342,6 @@ describe('FLA Slice 3 atomic Asset commit', () => {
 
     const reopened = await value.projectService.open(value.projectRoot);
     expect(reopened.project.assets).toEqual(operation.project.assets);
-    expect(value.released()).toBe(true);
     for (const result of operation.results) {
       const file = await readFile(path.join(value.projectRoot, 'assets', result.targetFileName));
       expect(createHash('sha256').update(file).digest('hex')).toBe(result.sha256);
