@@ -1,5 +1,6 @@
 import {
   AdaptivePartsCharacterSchema,
+  AnimationClipV0Schema,
   BodyPlacementSchema,
   CharacterHeadSchema,
   CharacterPartSchema,
@@ -166,6 +167,76 @@ export interface CharacterServiceOptions {
 
 function normalizedName(name: string): string {
   return name.trim().toLocaleLowerCase();
+}
+
+export interface AdaptivePartReferenceSummary {
+  readonly shotCount: number;
+  readonly layerCount: number;
+  readonly animatedLayerCount: number;
+  readonly keyframeCount: number;
+}
+
+export function scanAdaptivePartReferences(
+  project: Project,
+  characterId: string,
+  partId: string,
+): AdaptivePartReferenceSummary {
+  let shotCount = 0;
+  let layerCount = 0;
+  let animatedLayerCount = 0;
+  let keyframeCount = 0;
+
+  for (const shot of project.shots) {
+    let shotMatched = false;
+    for (const layer of shot.layers) {
+      if (layer.source.kind !== 'character' || layer.source.characterId !== characterId) {
+        continue;
+      }
+      shotMatched = true;
+      layerCount += 1;
+      if (layer.animationClip?.version === 1) {
+        let layerKeys = 0;
+        for (const track of layer.animationClip.tracks) {
+          if (track.target.partId === partId) {
+            layerKeys += track.keys.length;
+          }
+        }
+        if (layerKeys > 0) {
+          animatedLayerCount += 1;
+          keyframeCount += layerKeys;
+        }
+      }
+    }
+    if (shotMatched) shotCount += 1;
+  }
+
+  return { shotCount, layerCount, animatedLayerCount, keyframeCount };
+}
+
+export function removeAdaptivePartFromDefinition(
+  definition: AdaptivePartsCharacterDefinition,
+  partId: string,
+): AdaptivePartsCharacterDefinition {
+  if (!definition.parts.some((part) => part.partId === partId)) {
+    return definition;
+  }
+  if (definition.parts.length <= 1) {
+    throw new CharacterServiceError(
+      'INVALID_ADAPTIVE_PARTS_DEFINITION',
+      '角色至少需要保留一个零件。',
+    );
+  }
+  const remaining = [...definition.parts]
+    .filter((part) => part.partId !== partId)
+    .sort((left, right) => left.drawOrder - right.drawOrder)
+    .map((part, drawOrder) => ({
+      ...cloneCharacterPart(part),
+      drawOrder,
+    }));
+  return {
+    sourceRootTransform: { ...definition.sourceRootTransform },
+    parts: remaining,
+  };
 }
 
 export class CharacterService {
@@ -358,7 +429,71 @@ export class CharacterService {
     ) {
       return project;
     }
-    return this.replaceCharacter(project, next);
+    const nextPartIds = new Set(next.parts.map((part) => part.partId));
+    const removedPartIds = new Set(
+      character.parts
+        .map((part) => part.partId)
+        .filter((partId) => !nextPartIds.has(partId)),
+    );
+    if (removedPartIds.size === 0) {
+      return this.replaceCharacter(project, next);
+    }
+
+    const nextDrawOrderByPartId = new Map(
+      next.parts.map((part) => [part.partId, part.drawOrder] as const),
+    );
+    let shotsChanged = false;
+    const shots = project.shots.map((shot) => {
+      let layerChanged = false;
+      const layers = shot.layers.map((layer) => {
+        if (
+          layer.source.kind !== 'character' ||
+          layer.source.characterId !== character.id ||
+          layer.animationClip?.version !== 1
+        ) {
+          return layer;
+        }
+        const clip = layer.animationClip;
+        const hasRemovedTarget =
+          clip.targetBases.some((basis) => removedPartIds.has(basis.target.partId)) ||
+          clip.tracks.some((track) => removedPartIds.has(track.target.partId));
+        if (!hasRemovedTarget) return layer;
+        layerChanged = true;
+        const remainingBases = clip.targetBases
+          .filter((basis) => !removedPartIds.has(basis.target.partId))
+          .sort((left, right) => left.drawOrder - right.drawOrder)
+          .map((basis, index) => ({
+            ...basis,
+            drawOrder: nextDrawOrderByPartId.get(basis.target.partId) ?? index,
+          }));
+        const remainingTracks = clip.tracks.filter(
+          (track) => !removedPartIds.has(track.target.partId),
+        );
+        const prunedClip = AnimationClipV0Schema.parse({
+          ...clip,
+          targetBases: remainingBases,
+          tracks: remainingTracks,
+        });
+        return {
+          ...layer,
+          animationClip: prunedClip,
+        };
+      });
+      if (!layerChanged) return shot;
+      shotsChanged = true;
+      return { ...shot, layers };
+    });
+
+    if (!shotsChanged) {
+      return this.replaceCharacter(project, next);
+    }
+    return this.finish(project, {
+      ...project,
+      characters: project.characters.map((candidate) =>
+        candidate.id === next.id ? next : candidate,
+      ),
+      shots,
+    });
   }
 
   updateAdaptivePartsDefinition(

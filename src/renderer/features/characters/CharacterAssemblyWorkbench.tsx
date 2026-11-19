@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -8,7 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Minus, MoreHorizontal, Plus, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -20,11 +21,14 @@ import {
   characterPartTransformFromStaticAdjustment,
   evaluateFlaGraphicVisual,
   isFlaGraphicDefinition,
+  removeAdaptivePartFromDefinition,
   resolveCharacterPartVisualSource,
+  scanAdaptivePartReferences,
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterPartStaticAdjustment,
   type FlaGraphicDefinition,
+  type ImageAsset,
   type LayerVisualPart,
   type BodyPlacement,
   type CharacterHead,
@@ -429,25 +433,278 @@ function formatAdaptiveAdjustmentInput(
   return String(Number(value.toFixed(1)));
 }
 
+const ADAPTIVE_PART_OVERFLOW_MENU_WIDTH = 160;
+const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 144;
+const ADAPTIVE_PART_OVERFLOW_MENU_GAP = 4;
+const ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
+
+function AdaptivePartsRowOverflowMenu({
+  canRemove,
+  canReplace,
+  canRestore,
+  displayName,
+  onRemove,
+  onReplace,
+  onRestore,
+  onStartRename,
+}: {
+  canRemove: boolean;
+  canReplace: boolean;
+  canRestore: boolean;
+  displayName: string;
+  onRemove: () => void;
+  onReplace: () => void;
+  onRestore: () => void;
+  onStartRename: () => void;
+}): React.JSX.Element {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trigger = triggerRef.current;
+    const popover = popoverRef.current;
+    if (!trigger || !popover) return undefined;
+
+    const isPopoverOpen = (): boolean => {
+      try {
+        return popover.matches(':popover-open');
+      } catch {
+        return false;
+      }
+    };
+
+    const hidePopoverSafely = (): void => {
+      if (isPopoverOpen() && typeof popover.hidePopover === 'function') {
+        popover.hidePopover();
+      }
+    };
+
+    const positionPopover = (force = false): void => {
+      if (!force && !isPopoverOpen()) return;
+      const anchor = trigger.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      if (
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        anchor.bottom <= 0 ||
+        anchor.top >= viewportHeight
+      ) {
+        hidePopoverSafely();
+        return;
+      }
+
+      const computedWidth = Number.parseFloat(getComputedStyle(popover).width);
+      const width = Math.min(
+        Number.isFinite(computedWidth) && computedWidth > 0
+          ? computedWidth
+          : ADAPTIVE_PART_OVERFLOW_MENU_WIDTH,
+        Math.max(0, viewportWidth - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN * 2),
+      );
+      const measuredHeight = popover.scrollHeight || ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT;
+      const height = Math.max(ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT, measuredHeight);
+      const spaceBelow =
+        viewportHeight - anchor.bottom - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const spaceAbove = anchor.top - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const opensAbove =
+        spaceBelow < height + ADAPTIVE_PART_OVERFLOW_MENU_GAP && spaceAbove > spaceBelow;
+      const availableSpace = Math.max(
+        0,
+        (opensAbove ? spaceAbove : spaceBelow) - ADAPTIVE_PART_OVERFLOW_MENU_GAP,
+      );
+      const visibleHeight = Math.min(height, availableSpace);
+      const maxLeft = Math.max(
+        0,
+        viewportWidth - width - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+      );
+      const left = Math.max(
+        ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+        Math.min(anchor.right - width, maxLeft),
+      );
+      const top = opensAbove
+        ? Math.max(
+            ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+            anchor.top - ADAPTIVE_PART_OVERFLOW_MENU_GAP - visibleHeight,
+          )
+        : Math.min(
+            viewportHeight - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN - visibleHeight,
+            anchor.bottom + ADAPTIVE_PART_OVERFLOW_MENU_GAP,
+          );
+
+      popover.style.width = `${width}px`;
+      popover.style.maxHeight = `${availableSpace}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      popover.dataset.placement = opensAbove ? 'above' : 'below';
+    };
+
+    const onBeforeToggle = (event: Event): void => {
+      if ((event as Event & { newState?: string }).newState === 'open') {
+        positionPopover(true);
+      }
+    };
+    const onToggle = (): void => {
+      const nextOpen = isPopoverOpen();
+      setOpen(nextOpen);
+      if (nextOpen) positionPopover(true);
+    };
+    const onViewportMove = (): void => positionPopover();
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (
+        isPopoverOpen() &&
+        target instanceof Node &&
+        !trigger.contains(target) &&
+        !popover.contains(target)
+      ) {
+        hidePopoverSafely();
+      }
+    };
+
+    popover.addEventListener('beforetoggle', onBeforeToggle);
+    popover.addEventListener('toggle', onToggle);
+    document.addEventListener('scroll', onViewportMove, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    window.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('scroll', onViewportMove);
+    return () => {
+      popover.removeEventListener('beforetoggle', onBeforeToggle);
+      popover.removeEventListener('toggle', onToggle);
+      document.removeEventListener('scroll', onViewportMove, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      window.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('scroll', onViewportMove);
+    };
+  }, []);
+
+  const runAction = (action: () => void): void => {
+    const popover = popoverRef.current;
+    if (popover && typeof popover.hidePopover === 'function') {
+      try {
+        if (popover.matches(':popover-open')) popover.hidePopover();
+      } catch {
+        // Ignore in environments without native popover support.
+      }
+    }
+    action();
+  };
+
+  return (
+    <div
+      className="adaptive-parts-row-overflow"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        const popover = popoverRef.current;
+        try {
+          if (popover?.matches(':popover-open')) {
+            event.stopPropagation();
+          }
+        } catch {
+          // Ignore in environments without native popover support.
+        }
+      }}
+    >
+      <button
+        aria-controls={id}
+        aria-expanded={open}
+        aria-label={`${displayName} 更多操作`}
+        className="adaptive-parts-row-action adaptive-parts-row-overflow-trigger"
+        data-testid="adaptive-parts-row-overflow-trigger"
+        popoverTarget={id}
+        popoverTargetAction="toggle"
+        ref={triggerRef}
+        title={`${displayName} 更多操作`}
+        type="button"
+      >
+        <MoreHorizontal aria-hidden="true" size={18} />
+      </button>
+      <div
+        aria-label={`${displayName} 更多操作`}
+        className="adaptive-parts-row-overflow-menu"
+        data-testid="adaptive-parts-row-overflow-menu"
+        id={id}
+        popover="auto"
+        ref={popoverRef}
+        role="group"
+      >
+        <button
+          aria-label={`重命名${displayName}`}
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-rename-button"
+          onClick={() => runAction(onStartRename)}
+          type="button"
+        >
+          重命名
+        </button>
+        <button
+          aria-label={`替换${displayName}素材`}
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-replace-button"
+          disabled={!canReplace}
+          onClick={() => runAction(onReplace)}
+          title={canReplace ? '替换此零件素材' : '当前项目没有可替换的素材'}
+          type="button"
+        >
+          替换素材
+        </button>
+        <button
+          aria-label={`恢复${displayName}原始源姿势`}
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-restore-button"
+          disabled={!canRestore}
+          onClick={() => runAction(onRestore)}
+          title={canRestore ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
+          type="button"
+        >
+          恢复原始姿势
+        </button>
+        <button
+          aria-label={`从角色移除${displayName}`}
+          className="adaptive-parts-overflow-item adaptive-parts-overflow-item-danger"
+          data-testid="adaptive-parts-remove-button"
+          disabled={!canRemove}
+          onClick={() => runAction(onRemove)}
+          title={canRemove ? '从当前角色移除此零件（不删除源素材）' : '角色至少需要保留一个零件'}
+          type="button"
+        >
+          从角色移除
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdaptivePartsAssemblyRow({
+  canRemove,
+  canReplace,
   displayName,
   imageMissing,
   imageCacheKey,
   imageSrc,
   onMessage,
+  onRemove,
   onRename,
+  onReplace,
   onRestore,
   onSelect,
   onToggleVisibility,
   part,
   selected,
 }: {
+  canRemove: boolean;
+  canReplace: boolean;
   displayName: string;
   imageMissing: boolean;
   imageCacheKey: string;
   imageSrc?: string;
   onMessage: (message: string) => void;
+  onRemove: () => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
+  onReplace: () => void;
   onRestore: () => void;
   onSelect: () => void;
   onToggleVisibility: () => void;
@@ -608,27 +865,16 @@ function AdaptivePartsAssemblyRow({
           {visible ? <circle cx="12" cy="12" r="2.7" /> : <path d="M4 4 20 20" />}
         </svg>
       </button>
-      <button
-        aria-label={`重命名${displayName}`}
-        className="adaptive-parts-row-action"
-        data-testid="adaptive-parts-rename-button"
-        onClick={startRename}
-        title={`重命名${displayName}`}
-        type="button"
-      >
-        <Pencil aria-hidden="true" size={18} />
-      </button>
-      <button
-        aria-label={`恢复${displayName}原始源姿势`}
-        className="adaptive-parts-row-action"
-        data-testid="adaptive-parts-restore-button"
-        disabled={!part.sourceRestTransform}
-        onClick={onRestore}
-        title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
-        type="button"
-      >
-        <RotateCcw aria-hidden="true" size={18} />
-      </button>
+      <AdaptivePartsRowOverflowMenu
+        canRemove={canRemove}
+        canReplace={canReplace}
+        canRestore={Boolean(part.sourceRestTransform)}
+        displayName={displayName}
+        onRemove={onRemove}
+        onReplace={onReplace}
+        onRestore={onRestore}
+        onStartRename={startRename}
+      />
     </div>
   );
 }
@@ -695,6 +941,14 @@ function AdaptivePartsAssemblyWorkbench({
     Record<string, Partial<Record<AdaptiveAdjustmentField, number>>>
   >({});
   const [message, setMessage] = useState('');
+  const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
+  const projectImageAssets = useMemo(
+    () =>
+      project.assets.filter(
+        (asset): asset is ImageAsset => asset.kind === 'image',
+      ),
+    [project.assets],
+  );
   const structuredGraphics = useMemo(
     () =>
       project.animations.filter(
@@ -869,6 +1123,102 @@ function AdaptivePartsAssemblyWorkbench({
         return next;
       });
       delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
+      setMessage('');
+    }
+  };
+  const replacePartWithImage = (partId: string, assetId: string): void => {
+    if (!assetId) return;
+    const asset = projectImageAssets.find((candidate) => candidate.id === assetId);
+    if (!asset) {
+      setMessage('未找到可用的图片素材。');
+      return;
+    }
+    const current = activeHandle()?.getSnapshot()?.draft;
+    const existingPart = current?.parts.find((candidate) => candidate.partId === partId);
+    if (!current || !existingPart) return;
+    const oldBounds = characterPartSourceBounds(existingPart, project.animations);
+    if (!oldBounds) return;
+    const replacementPlacement = characterPartPlacementForReplacement({
+      sourceRootTransform: current.sourceRootTransform,
+      oldRestTransform: existingPart.restTransform,
+      oldBounds,
+      newBounds: {
+        x: 0,
+        y: 0,
+        width: asset.width,
+        height: asset.height,
+      },
+    });
+    const result = updatePart(partId, (candidate) => {
+      const nextPart: typeof candidate = {
+        ...candidate,
+        assetId: asset.id,
+        imageMapping: {
+          sourceWidth: asset.width,
+          sourceHeight: asset.height,
+          crop: {
+            x: 0,
+            y: 0,
+            width: asset.width,
+            height: asset.height,
+          },
+          exportScale: 1,
+        },
+        sourceRestTransform: replacementPlacement.sourceRestTransform,
+        restTransform: replacementPlacement.restTransform,
+        staticAdjustment: replacementPlacement.staticAdjustment,
+      };
+      delete nextPart.visualSource;
+      return nextPart;
+    });
+    if (result.ok) {
+      setNumericDrafts((drafts) => {
+        if (!(partId in drafts)) return drafts;
+        const next = { ...drafts };
+        delete next[partId];
+        return next;
+      });
+      delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
+      setMessage('');
+    }
+  };
+  const removePart = (partId: string): void => {
+    const current = activeHandle()?.getSnapshot()?.draft;
+    if (!current) {
+      setMessage(expiredAdaptivePartsDraftMessage);
+      return;
+    }
+    if (current.parts.length <= 1) {
+      setMessage('角色至少需要保留一个零件。');
+      return;
+    }
+    const refs = scanAdaptivePartReferences(project, session.characterId, partId);
+    if (refs.layerCount > 0 || refs.animatedLayerCount > 0) {
+      const scope = refs.keyframeCount > 0
+        ? `此零件当前被 ${refs.shotCount} 个镜头使用，并包含 ${refs.keyframeCount} 个关键帧。`
+        : `此零件当前被 ${refs.shotCount} 个镜头使用。`;
+      if (
+        !window.confirm(
+          `${scope}从角色移除后，应用更改将同步清理相关动画轨道，不会删除源素材。确认移除？`,
+        )
+      ) {
+        return;
+      }
+    }
+    const result = setDefinition((definition) =>
+      removeAdaptivePartFromDefinition(definition, partId),
+    );
+    if (result.ok) {
+      setNumericDrafts((drafts) => {
+        if (!(partId in drafts)) return drafts;
+        const next = { ...drafts };
+        delete next[partId];
+        return next;
+      });
+      delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
       setMessage('');
     }
   };
@@ -1580,16 +1930,23 @@ function AdaptivePartsAssemblyWorkbench({
                   : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
             return (
               <AdaptivePartsAssemblyRow
+                canRemove={rows.length > 1}
+                canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
                 displayName={name}
                 imageMissing={imageMissing}
                 imageCacheKey={imageCacheKey}
                 imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
                 onMessage={setMessage}
+                onRemove={() => removePart(part.partId)}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({
                   ...current,
                   displayName,
                 }))}
+                onReplace={() => {
+                  activeHandle()?.selectPart(part.partId);
+                  setReplacingPartId(part.partId);
+                }}
                 onRestore={() => restorePartToSourcePose(part.partId)}
                 onSelect={() => activeHandle()?.selectPart(part.partId)}
                 onToggleVisibility={() => updatePart(part.partId, (current) => ({
@@ -1602,7 +1959,78 @@ function AdaptivePartsAssemblyWorkbench({
             );
           })}
         </div>
-        {selectedPart && structuredGraphics.length > 0 ? (
+        {replacingPartId && session.draft.parts.some((part) => part.partId === replacingPartId) ? (() => {
+          const targetPart = session.draft.parts.find((part) => part.partId === replacingPartId)!;
+          const targetSource = resolveCharacterPartVisualSource(targetPart);
+          const targetLabel = localizeDefaultAdaptivePartName(
+            targetPart.displayName ??
+              (targetSource.kind === 'image'
+                ? assetNames.get(targetSource.assetId)
+                : structuredGraphicById.get(targetSource.animationId)?.name) ??
+              `Part ${targetPart.drawOrder + 1}`,
+          );
+          return (
+            <div
+              className="adaptive-parts-source-picker adaptive-parts-replace-panel"
+              data-source-kind={targetSource.kind}
+              data-testid="adaptive-parts-replace-panel"
+            >
+              <div className="adaptive-parts-replace-header">
+                <strong>替换素材 · {targetLabel}</strong>
+                <button
+                  aria-label="关闭替换素材"
+                  className="adaptive-parts-replace-close"
+                  data-testid="adaptive-parts-replace-close"
+                  onClick={() => setReplacingPartId(null)}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={14} />
+                </button>
+              </div>
+              {projectImageAssets.length > 0 ? (
+                <label className="adaptive-parts-replace-field">
+                  <span>图片素材</span>
+                  <select
+                    aria-label="选择替换图片素材"
+                    data-testid="adaptive-parts-image-replace-select"
+                    value={targetSource.kind === 'image' ? targetSource.assetId : ''}
+                    onChange={(event) => replacePartWithImage(targetPart.partId, event.target.value)}
+                  >
+                    <option disabled={targetSource.kind === 'image'} value="">
+                      选择图片素材
+                    </option>
+                    {projectImageAssets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {structuredGraphics.length > 0 ? (
+                <label className="adaptive-parts-replace-field">
+                  <span>FLA 元件</span>
+                  <select
+                    aria-label="选择已导入的 FLA 元件来源"
+                    data-testid="adaptive-parts-graphic-select"
+                    id="adaptive-parts-graphic-select"
+                    value={targetSource.kind === 'fla-graphic' ? targetSource.animationId : ''}
+                    onChange={(event) => replacePartWithGraphic(targetPart.partId, event.target.value)}
+                  >
+                    <option disabled={targetSource.kind === 'fla-graphic'} value="">
+                      选择已导入元件
+                    </option>
+                    {structuredGraphics.map((graphic) => (
+                      <option key={graphic.id} value={graphic.id}>
+                        {graphic.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          );
+        })() : selectedPart && structuredGraphics.length > 0 ? (
           <div
             className="adaptive-parts-source-picker"
             data-source-kind={selectedPartVisualSource?.kind ?? 'image'}
