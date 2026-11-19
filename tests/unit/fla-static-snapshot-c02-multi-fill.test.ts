@@ -119,17 +119,26 @@ describe('P2-C02 solid multi-fill reconstruction', () => {
     }
   });
 
-  it('keeps bitmap fills explicitly unsupported after linear-gradient graduation', async () => {
+  it('skips only the missing bitmap fill and records a diagnostic', async () => {
     const rendered = await renderScene(`<DOMShape>
-      <fills><FillStyle index="1"><BitmapFill bitmapPath="bitmap.png"/></FillStyle></fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/></edges>
+      <fills>
+        <FillStyle index="1"><BitmapFill bitmapPath="bitmap.png"/></FillStyle>
+        <FillStyle index="2"><SolidColor color="#ff00cc"/></FillStyle>
+      </fills>
+      <edges>
+        <Edge fillStyle1="1" cubics="!0 0|20 0|20 20|0 20|0 0"/>
+        <Edge fillStyle1="2" cubics="!40 0|60 0|60 20|40 20|40 0"/>
+      </edges>
     </DOMShape>`);
 
-    expect(rendered.ok).toBe(false);
-    if (!rendered.ok) {
-      expect(rendered.code).toBe('TARGET_UNSUPPORTED');
-      expect(rendered.message).toContain('unsupported bitmap fill');
-    }
+    if (!rendered.ok) throw new Error(rendered.message);
+    expect(rendered.composition).toMatchObject({
+      skippedBitmapFillCount: 1,
+      bitmapFillDiagnostics: [{ fillStyleIndex: 1, reason: 'missing' }],
+      fillRegionCount: 1,
+    });
+    expect(rendered.svg).toContain('fill="#ff00cc"');
+    expect(rendered.svg).not.toContain('<image');
   });
 
   it('does not close an open fill boundary by inventing geometry', async () => {
