@@ -439,9 +439,6 @@ export class CharacterService {
       return this.replaceCharacter(project, next);
     }
 
-    const nextDrawOrderByPartId = new Map(
-      next.parts.map((part) => [part.partId, part.drawOrder] as const),
-    );
     let shotsChanged = false;
     const shots = project.shots.map((shot) => {
       let layerChanged = false;
@@ -462,9 +459,9 @@ export class CharacterService {
         const remainingBases = clip.targetBases
           .filter((basis) => !removedPartIds.has(basis.target.partId))
           .sort((left, right) => left.drawOrder - right.drawOrder)
-          .map((basis, index) => ({
+          .map((basis, drawOrder) => ({
             ...basis,
-            drawOrder: nextDrawOrderByPartId.get(basis.target.partId) ?? index,
+            drawOrder,
           }));
         const remainingTracks = clip.tracks.filter(
           (track) => !removedPartIds.has(track.target.partId),

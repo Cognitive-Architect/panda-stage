@@ -401,4 +401,216 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
       PART_IDS[4],
     ]);
   });
+
+  it('preserves each existing Shot Clip v1 frozen relative drawOrder when removing an unrelated Part (#1177)', () => {
+    const base = migrateProject(exampleProject);
+    const imageAssets = base.assets.filter(
+      (asset): asset is ImageAsset => asset.kind === 'image',
+    );
+    const assetA = imageAssets[0]!;
+    const assetB = imageAssets[1] ?? assetA;
+    const partA = PART_IDS[0];
+    const partC = PART_IDS[1];
+    const partB = PART_IDS[2];
+
+    const makePart = (
+      partId: string,
+      displayName: string,
+      drawOrder: number,
+      asset: ImageAsset,
+      tx: number,
+    ) => ({
+      partId,
+      assetId: asset.id,
+      displayName,
+      drawOrder,
+      visible: true,
+      source: { kind: 'manual' as const, sourceId: `manual-${displayName}` },
+      restTransform: { a: 1, b: 0, c: 0, d: 1, tx, ty: 0 },
+      imageMapping: {
+        sourceWidth: asset.width,
+        sourceHeight: asset.height,
+        crop: { x: 0, y: 0, width: asset.width, height: asset.height },
+        exportScale: 1,
+      },
+    });
+
+    // Initial Library order: A(0), C(1), B(2)
+    const createdProject = characterService.createAdaptiveParts(base, {
+      name: 'Frozen Order Panda',
+      sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      parts: [
+        makePart(partA, 'A', 0, assetA, 0),
+        makePart(partC, 'C', 1, assetB, 10),
+        makePart(partB, 'B', 2, assetA, 20),
+      ],
+    });
+    const character = createdProject.characters.find(
+      (candidate): candidate is AdaptivePartsCharacter =>
+        candidate.mode === 'adaptive-parts',
+    )!;
+
+    editorProjectStore.open('F:/tmp/project', createdProject);
+    const shotId = createdProject.shots[0]!.id;
+    shotStore.select(shotId);
+
+    // Place character in Shot and author keys on A, C, and B -> freezes Clip v1 order as A(0), C(1), B(2)
+    const layer = layerStore.createAdaptiveCharacter(character.id, { x: 0, y: 0 });
+    let nextProject = editorProjectStore.getSnapshot()!.project;
+    nextProject = motionService.apply(
+      nextProject,
+      { shotId, layerId: layer.id, partId: partA, timeMs: 500, autoKey: true },
+      { 'transform.offsetX': 15 },
+    );
+    nextProject = motionService.apply(
+      nextProject,
+      { shotId, layerId: layer.id, partId: partC, timeMs: 1000, autoKey: true },
+      { 'transform.offsetX': 30 },
+    );
+    nextProject = motionService.apply(
+      nextProject,
+      { shotId, layerId: layer.id, partId: partB, timeMs: 1500, autoKey: true },
+      { 'transform.offsetY': -25 },
+    );
+    editorProjectStore.updateProject(nextProject, 'Author A/B/C motion');
+
+    // Update Library Definition order to differ from the frozen Shot Clip: B(0), A(1), C(2)
+    const currentDef = characterService.getAdaptivePartsDefinition(
+      editorProjectStore.getSnapshot()!.project,
+      character.id,
+    );
+    const reorderedLib = characterService.applyAdaptivePartsDefinition(
+      editorProjectStore.getSnapshot()!.project,
+      character.id,
+      {
+        sourceRootTransform: currentDef.sourceRootTransform,
+        parts: [
+          { ...currentDef.parts.find((p) => p.partId === partB)!, drawOrder: 0 },
+          { ...currentDef.parts.find((p) => p.partId === partA)!, drawOrder: 1 },
+          { ...currentDef.parts.find((p) => p.partId === partC)!, drawOrder: 2 },
+        ],
+      },
+    );
+    editorProjectStore.updateProject(reorderedLib, 'Reorder library parts');
+
+    const beforeRemovalLayer = editorProjectStore
+      .getSnapshot()!
+      .project.shots[0]!.layers.find((entry) => entry.id === layer.id)!;
+    expect(beforeRemovalLayer.animationClip?.version).toBe(1);
+    const beforeClip =
+      beforeRemovalLayer.animationClip?.version === 1
+        ? beforeRemovalLayer.animationClip
+        : null;
+    expect(beforeClip).not.toBeNull();
+    const beforeBasisA = beforeClip!.targetBases.find((b) => b.target.partId === partA)!;
+    const beforeBasisB = beforeClip!.targetBases.find((b) => b.target.partId === partB)!;
+    expect(beforeClip!.targetBases.map((b) => [b.target.partId, b.drawOrder])).toEqual([
+      [partA, 0],
+      [partC, 1],
+      [partB, 2],
+    ]);
+
+    // Remove C via assembly session and Apply
+    const defBeforeRemove = characterService.getAdaptivePartsDefinition(
+      editorProjectStore.getSnapshot()!.project,
+      character.id,
+    );
+    const defWithoutC = removeAdaptivePartFromDefinition(defBeforeRemove, partC);
+    const afterRemoveProject = characterService.applyAdaptivePartsDefinition(
+      editorProjectStore.getSnapshot()!.project,
+      character.id,
+      defWithoutC,
+    );
+    editorProjectStore.updateProject(afterRemoveProject, 'Apply Adaptive Parts definition');
+
+    // Library Definition keeps its own contiguous order: B(0), A(1)
+    const updatedChar = editorProjectStore
+      .getSnapshot()!
+      .project.characters.find(
+        (candidate): candidate is AdaptivePartsCharacter => candidate.id === character.id,
+      )!;
+    expect(updatedChar.parts.map((p) => [p.partId, p.drawOrder])).toEqual([
+      [partB, 0],
+      [partA, 1],
+    ]);
+
+    // Existing Shot Clip v1 removes C and compacts its OWN frozen relative order: A(0), B(1)
+    const updatedLayer = editorProjectStore
+      .getSnapshot()!
+      .project.shots[0]!.layers.find((entry) => entry.id === layer.id)!;
+    expect(updatedLayer.animationClip?.version).toBe(1);
+    if (updatedLayer.animationClip?.version === 1) {
+      expect(
+        updatedLayer.animationClip.targetBases.map((b) => [b.target.partId, b.drawOrder]),
+      ).toEqual([
+        [partA, 0],
+        [partB, 1],
+      ]);
+      expect(updatedLayer.animationClip.fixedCharacterCenter).toEqual(
+        beforeClip!.fixedCharacterCenter,
+      );
+      expect(
+        updatedLayer.animationClip.tracks.some((t) => t.target.partId === partC),
+      ).toBe(false);
+      expect(
+        updatedLayer.animationClip.tracks.some(
+          (t) => t.target.partId === partA && t.keys.length > 0,
+        ),
+      ).toBe(true);
+      expect(
+        updatedLayer.animationClip.tracks.some(
+          (t) => t.target.partId === partB && t.keys.length > 0,
+        ),
+      ).toBe(true);
+      const afterBasisA = updatedLayer.animationClip.targetBases.find(
+        (b) => b.target.partId === partA,
+      )!;
+      const afterBasisB = updatedLayer.animationClip.targetBases.find(
+        (b) => b.target.partId === partB,
+      )!;
+      expect(afterBasisA.visualSource).toEqual(beforeBasisA.visualSource);
+      expect(afterBasisA.baseTransform).toEqual(beforeBasisA.baseTransform);
+      expect(afterBasisA.pivot).toEqual(beforeBasisA.pivot);
+      expect(afterBasisB.visualSource).toEqual(beforeBasisB.visualSource);
+      expect(afterBasisB.baseTransform).toEqual(beforeBasisB.baseTransform);
+      expect(afterBasisB.pivot).toEqual(beforeBasisB.pivot);
+    }
+
+    // Undo restores C and the original frozen drawOrder A(0), C(1), B(2) + C's track
+    editorProjectStore.undo();
+    const afterUndoLayer = editorProjectStore
+      .getSnapshot()!
+      .project.shots[0]!.layers.find((entry) => entry.id === layer.id)!;
+    if (afterUndoLayer.animationClip?.version === 1) {
+      expect(
+        afterUndoLayer.animationClip.targetBases.map((b) => [b.target.partId, b.drawOrder]),
+      ).toEqual([
+        [partA, 0],
+        [partC, 1],
+        [partB, 2],
+      ]);
+      expect(
+        afterUndoLayer.animationClip.tracks.some(
+          (t) => t.target.partId === partC && t.keys.length > 0,
+        ),
+      ).toBe(true);
+    }
+
+    // Redo re-applies removal cleanly while preserving frozen A(0), B(1)
+    editorProjectStore.redo();
+    const afterRedoLayer = editorProjectStore
+      .getSnapshot()!
+      .project.shots[0]!.layers.find((entry) => entry.id === layer.id)!;
+    if (afterRedoLayer.animationClip?.version === 1) {
+      expect(
+        afterRedoLayer.animationClip.targetBases.map((b) => [b.target.partId, b.drawOrder]),
+      ).toEqual([
+        [partA, 0],
+        [partB, 1],
+      ]);
+      expect(
+        afterRedoLayer.animationClip.tracks.some((t) => t.target.partId === partC),
+      ).toBe(false);
+    }
+  });
 });
