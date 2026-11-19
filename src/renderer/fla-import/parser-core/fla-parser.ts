@@ -67,6 +67,11 @@ export type SkipCheckCallback = () => boolean;
 const DEFAULT_DASH_LENGTH = 4;
 const DEFAULT_DASH_SPACE_LENGTH = 4;
 
+// Ported from lifeart/fla-viewer ParseOptions.structureOnly (b14fa1d).
+export interface ParseOptions {
+  structureOnly?: boolean;
+}
+
 export class FLAParser {
   private zip: JSZip | null = null;
   private symbolCache: Map<string, Symbol> = new Map();
@@ -82,7 +87,7 @@ export class FLAParser {
     }
   }
 
-  async parse(file: File, onProgress?: ProgressCallback, isSkipImagesFix?: SkipCheckCallback): Promise<FLADocument> {
+  async parse(file: File, onProgress?: ProgressCallback, isSkipImagesFix?: SkipCheckCallback, options: ParseOptions = {}): Promise<FLADocument> {
     const progress = onProgress || (() => {});
     const shouldSkipImagesFix = isSkipImagesFix || (() => false);
 
@@ -100,21 +105,7 @@ export class FLAParser {
       return parseBinaryFLA(fullBytes);
     }
 
-    // Try to load ZIP, handling potentially corrupted files
-    progress('Extracting archive...');
-    try {
-      this.zip = await JSZip.loadAsync(file);
-    } catch (e) {
-      // Some FLA files have minor corruption - try to repair by truncating
-      progress('Repairing archive...');
-      const arrayBuffer = await file.arrayBuffer();
-      const repaired = await this.tryRepairZip(arrayBuffer);
-      if (repaired) {
-        this.zip = repaired;
-      } else {
-        throw e;
-      }
-    }
+    await this.openZip(file, progress);
     this.symbolCache.clear();
 
     // Parse main document
@@ -144,15 +135,15 @@ export class FLAParser {
 
     // Parse bitmap items from media section and load images
     progress('Loading images...');
-    const bitmaps = await this.parseBitmaps(root, progress, shouldSkipImagesFix);
+    const bitmaps = await this.parseBitmaps(root, progress, shouldSkipImagesFix, options.structureOnly);
 
     // Parse sound items from media section and load audio
     progress('Loading audio...');
-    const sounds = await this.parseSounds(root);
+    const sounds = await this.parseSounds(root, options.structureOnly);
 
     // Parse video items from media section and load FLV data
     progress('Loading videos...');
-    const videos = await this.parseVideos(root);
+    const videos = await this.parseVideos(root, options.structureOnly);
 
     // Parse main timeline (pass dimensions for camera detection)
     progress('Building timeline...');
@@ -169,6 +160,35 @@ export class FLAParser {
       sounds,
       videos
     };
+  }
+
+  private async openZip(file: File, progress: ProgressCallback): Promise<void> {
+    // Try to load ZIP, handling potentially corrupted files
+    progress('Extracting archive...');
+    try {
+      this.zip = await JSZip.loadAsync(file);
+    } catch (e) {
+      // Some FLA files have minor corruption - try to repair by truncating
+      progress('Repairing archive...');
+      const arrayBuffer = await file.arrayBuffer();
+      const repaired = await this.tryRepairZip(arrayBuffer);
+      if (repaired) {
+        this.zip = repaired;
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  async hydrateBitmap(
+    file: File,
+    bitmap: BitmapItem,
+    progress: ProgressCallback,
+    isCancelled: SkipCheckCallback,
+    allowHrefLeafFallback: boolean,
+  ): Promise<void> {
+    await this.openZip(file, progress);
+    if (!isCancelled()) await this.loadBitmapImage(bitmap, progress, { allowHrefLeafFallback });
   }
 
   private async tryRepairZip(buffer: ArrayBuffer): Promise<JSZip | null> {
@@ -247,7 +267,7 @@ export class FLAParser {
    * Find a file in the ZIP archive, handling path separator differences.
    * Tries multiple path variations and falls back to filename search.
    */
-  private async findFileData(href: string, folder: string = 'LIBRARY'): Promise<ArrayBuffer | null> {
+  private async findFileData(href: string, folder: string = 'LIBRARY', requireUnique = false, allowLeafFallback = true): Promise<ArrayBuffer | null> {
     if (!this.zip) return null;
 
     const normalizedHref = normalizePath(href);
@@ -275,6 +295,20 @@ export class FLAParser {
     // Fallback: search all files for matching filename
     const filename = getFilename(normalizedHref);
     const allFiles = Object.keys(this.zip.files);
+    if (requireUnique) {
+      // Keep path-qualified references intact. For old unqualified entries,
+      // only accept a fallback inside the intended folder with a unique match.
+      const suffix = '/' + normalizedHref;
+      const matches = allFiles.filter((path) => {
+        const normalized = normalizePath(path);
+        return normalized.split('/')[0]?.toLowerCase() === folder.toLowerCase() &&
+          normalized.endsWith(suffix) &&
+          (normalizedHref.includes('/') || allowLeafFallback) &&
+          !this.zip!.files[path]?.dir;
+      });
+      if (matches.length > 1) throw new Error('Ambiguous FLA bitmap reference');
+      return matches.length === 1 ? this.zip.file(matches[0])!.async('arraybuffer') : null;
+    }
     for (const filepath of allFiles) {
       const fileBasename = getFilename(filepath);
       if (fileBasename === filename) {
@@ -1385,7 +1419,7 @@ export class FLAParser {
     return strokes;
   }
 
-  private async parseBitmaps(root: globalThis.Element, progress: ProgressCallback, shouldSkipImagesFix: SkipCheckCallback): Promise<Map<string, BitmapItem>> {
+  private async parseBitmaps(root: globalThis.Element, progress: ProgressCallback, shouldSkipImagesFix: SkipCheckCallback, structureOnly = false): Promise<Map<string, BitmapItem>> {
     const bitmaps = new Map<string, BitmapItem>();
     const bitmapElements = root.querySelectorAll('media > DOMBitmapItem');
 
@@ -1419,6 +1453,8 @@ export class FLAParser {
       bitmapItems.push(bitmapItem);
     }
 
+    if (structureOnly) return bitmaps;
+
     // Load images sequentially with progress updates
     const totalImages = bitmapItems.length;
     for (let i = 0; i < totalImages; i++) {
@@ -1436,13 +1472,13 @@ export class FLAParser {
     return bitmaps;
   }
 
-  private async loadBitmapImage(bitmapItem: BitmapItem, onAlgoProgress?: (algo: string) => void): Promise<void> {
+  private async loadBitmapImage(bitmapItem: BitmapItem, onAlgoProgress?: (algo: string) => void, selected?: { allowHrefLeafFallback: boolean }): Promise<void> {
     let imageData: ArrayBuffer | null = null;
     let sourceRef = bitmapItem.href;
 
     // First try bitmapDataHRef from bin/ folder (preferred for .dat files)
     if (bitmapItem.bitmapDataHRef) {
-      imageData = await this.findFileData(bitmapItem.bitmapDataHRef, 'bin');
+      imageData = await this.findFileData(bitmapItem.bitmapDataHRef, 'bin', Boolean(selected));
       if (imageData) {
         sourceRef = bitmapItem.bitmapDataHRef;
       }
@@ -1450,7 +1486,7 @@ export class FLAParser {
 
     // Fall back to href from LIBRARY/ folder
     if (!imageData) {
-      imageData = await this.findFileData(bitmapItem.href);
+      imageData = await this.findFileData(bitmapItem.href, 'LIBRARY', Boolean(selected), selected?.allowHrefLeafFallback);
     }
 
     if (!imageData) {
@@ -2164,7 +2200,7 @@ export class FLAParser {
 
   private audioContext: AudioContext | null = null;
 
-  private async parseSounds(root: globalThis.Element): Promise<Map<string, SoundItem>> {
+  private async parseSounds(root: globalThis.Element, structureOnly = false): Promise<Map<string, SoundItem>> {
     const sounds = new Map<string, SoundItem>();
     const soundElements = root.querySelectorAll('media > DOMSoundItem');
 
@@ -2202,7 +2238,7 @@ export class FLAParser {
       sounds.set(name, soundItem);
 
       // Load actual audio data from ZIP
-      loadPromises.push(this.loadSoundAudio(soundItem));
+      if (!structureOnly) loadPromises.push(this.loadSoundAudio(soundItem));
     }
 
     // Wait for all sounds to load
@@ -2405,7 +2441,7 @@ export class FLAParser {
     return audioBuffer;
   }
 
-  private async parseVideos(root: globalThis.Element): Promise<Map<string, VideoItem>> {
+  private async parseVideos(root: globalThis.Element, structureOnly = false): Promise<Map<string, VideoItem>> {
     const videos = new Map<string, VideoItem>();
     const videoElements = root.querySelectorAll('media > DOMVideoItem');
     const loadPromises: Promise<void>[] = [];
@@ -2434,7 +2470,7 @@ export class FLAParser {
       videos.set(name, videoItem);
 
       // Load and parse FLV data
-      if (href) {
+      if (href && !structureOnly) {
         loadPromises.push(this.loadVideoFLV(videoItem));
       }
 

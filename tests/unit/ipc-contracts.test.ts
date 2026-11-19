@@ -85,6 +85,7 @@ describe('IPC channel registry', () => {
       'fla:inspect-choose',
       'fla:inspection-started',
       'fla:cancel',
+      'fla:preview-raster',
       'fla:commit-selected',
       'fla:worker-ready',
       'fla:worker-start',

@@ -107,7 +107,7 @@ describe('FLA Slice 2 review model', () => {
     expect(first.filter((item) => item.placed)).toHaveLength(156);
     expect(first.filter((item) => item.libraryOnly)).toHaveLength(2);
     expect(first.find((item) => item.media.name === '笑.jpg')?.name.targetFileName).toBe('笑.png');
-    expect(first[0]?.media.payload.alpha.zeroAlphaPixels).toBeGreaterThan(0);
+    expect(first[0]?.media.payload?.alpha.zeroAlphaPixels).toBeGreaterThan(0);
     expect(first[1]?.media.width).toBe(320);
   });
 

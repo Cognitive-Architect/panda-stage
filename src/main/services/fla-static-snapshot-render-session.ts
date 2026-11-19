@@ -28,7 +28,7 @@
  */
 
 import crypto from 'node:crypto';
-import type { AnimationImportIR } from '../../shared/fla-import-api';
+import type { FlaInspectionIR } from '../../shared/fla-import-api';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
@@ -98,8 +98,9 @@ export interface FlaStaticSnapshotSource {
   sha256: string;
   /** SHA-256 of the selected FLA file before any in-memory recovery. */
   originalSourceSha256?: string;
-  /** Main-owned decoded inspection media; never returned to the Renderer. */
-  media?: AnimationImportIR['media'];
+  /** Main-owned bitmap metadata or legacy decoded inspection media. */
+  media?: FlaInspectionIR['media'];
+  loadMedia?: () => Promise<FlaInspectionIR['media']>;
 }
 
 export interface FlaStaticSnapshotSourceLookup {
@@ -380,7 +381,7 @@ export class FlaStaticSnapshotRenderSession {
       const result = await buildRenderableTargetCatalog(
         source.bytes,
         createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
-        options,
+        { ...options, metadataOnlyBitmaps: Boolean(source.loadMedia) },
         prepared.source,
         execution,
       );
@@ -469,10 +470,22 @@ export class FlaStaticSnapshotRenderSession {
       this.settleActive(active, this.previewError(prepared.code, prepared.message, requestId));
       return active.settledPromise;
     }
+    let media: FlaStaticSnapshotSource['media'];
+    try {
+      media = source.loadMedia ? await source.loadMedia() : source.media;
+    } catch (error) {
+      this.settleActive(active, this.previewError(
+        'RENDER_FAILED',
+        error instanceof Error ? error.message : 'The FLA bitmap data could not be decoded.',
+        requestId,
+      ));
+      return active.settledPromise;
+    }
+    if (active.settled) return active.settledPromise;
     const svgResult = await buildSvgForRenderTarget(
       bytes,
       target,
-      createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+      createFlaStaticSnapshotBitmapMediaLookup(media ?? []),
       prepared.source,
     );
     if (active.settled) return active.settledPromise;

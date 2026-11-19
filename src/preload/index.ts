@@ -124,6 +124,8 @@ import {
   FlaInspectRequestSchema,
   FlaInspectionStartedSchema,
   FlaInspectionResponseSchema,
+  FlaRasterPreviewRequestSchema,
+  FlaRasterPreviewResponseSchema,
   type FlaInspectionStarted,
 } from '../shared/fla-import-api';
 import {
@@ -603,6 +605,11 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaCancelResponseSchema.parse(response);
+    },
+    previewRaster: async (sessionId: string, mediaId: string) => {
+      const request = FlaRasterPreviewRequestSchema.parse({ sessionId, mediaId });
+      const response: unknown = await ipcRenderer.invoke(IPC_CHANNELS.FLA_PREVIEW_RASTER, request);
+      return FlaRasterPreviewResponseSchema.parse(response);
     },
     commitSelected: async (rawRequest: FlaAssetCommitRequest) => {
       const request = FlaAssetCommitRequestSchema.parse(rawRequest);

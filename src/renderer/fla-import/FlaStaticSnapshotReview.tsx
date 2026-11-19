@@ -51,6 +51,7 @@ interface FlaStaticSnapshotStageFacts {
 
 interface FlaStaticSnapshotReviewProps {
   active?: boolean;
+  deferPreviewScan?: boolean;
   sessionId: string;
   source: { basename: string; sha256: string };
   stage?: FlaStaticSnapshotStageFacts;
@@ -107,6 +108,7 @@ type FocusedSnapshotPreview =
 
 export function FlaStaticSnapshotReview({
   active = true,
+  deferPreviewScan = false,
   sessionId,
   source,
   stage,
@@ -359,6 +361,13 @@ export function FlaStaticSnapshotReview({
         setEntries(response.entries);
         setCatalogSummary(response.summary);
         setOmittedCandidateCount(response.omittedCandidateCount);
+        if (deferPreviewScan) {
+          setPreviews(Object.fromEntries(response.entries
+            .filter((entry) => entry.previewSupported && !entry.isBlank)
+            .map((entry) => [flaStaticSnapshotCandidateKey(entry), { status: 'unscanned' }])));
+          setPhase('ready');
+          return;
+        }
         const firstReviewable =
           response.entries.find((entry) =>
             flaStaticSnapshotCandidateRole(entry) === 'scene-referenced-graphic' &&
@@ -541,10 +550,10 @@ export function FlaStaticSnapshotReview({
       if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
       focusedPreviewUrlRef.current = null;
     };
-  }, [candidateContext, onTerminalStateChange, sessionId, updateFocusedPreview]);
+  }, [candidateContext, deferPreviewScan, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || deferPreviewScan) return;
     const candidateId = effectiveFocusedCandidateKey;
     const identityKey = effectiveFocusedCandidateIdentityKey;
     const entry = focusedEntry;
@@ -662,7 +671,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [active, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, previewRetry, sessionId, updateFocusedPreview]);
+  }, [active, deferPreviewScan, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, previewRetry, sessionId, updateFocusedPreview]);
 
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
     if (phase !== 'ready' || importLocked) return;

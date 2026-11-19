@@ -185,16 +185,22 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
   it('presents Stage A as a compact, accessible import-preparation dialog', () => {
     expect(stageA).toContain('aria-busy="true"');
     expect(stageA).toContain('aria-modal="true"');
-    expect(stageA).toContain('aria-labelledby="fla-stage-a-title"');
-    expect(stageA).toContain('id="fla-stage-a-title"');
-    expect(stageA).toContain('>导入素材</h2>');
+    expect(stageA).toContain('aria-label="正在准备素材"');
+    expect(stageA).not.toContain('<h2');
     expect(stageA).toContain('role="status"');
     expect(stageA).toContain('aria-live="polite"');
     expect(stageA).toContain('aria-hidden="true"');
     expect(stageA).toContain('正在准备素材…');
-    expect(stageA).toContain('取消');
+    expect(stageA).toContain('aria-label="取消导入"');
+    expect(stageA).toContain('<IconButton');
+    expect(stageA).toContain('icon={<X size={18} />}');
+    expect(stageA).toContain('ref={dialogRef}');
+    expect(stageA).toContain('tabIndex={-1}');
+    expect(stageA).toContain('dialogRef.current?.focus({ preventScroll: true });');
+    expect(stageA).not.toContain('autoFocus');
+    expect(stageA).toContain('onClick={onCancel}');
     expect(stageA.match(/data-testid="fla-review-cancel"/gu) ?? []).toHaveLength(1);
-    expect(stageA).toContain('cancelButtonRef.current?.focus();');
+    expect(stageA).toContain("event.currentTarget.querySelector('button')?.focus();");
     expect(stageA).not.toContain('FLA 导入工作台');
     expect(stageA).not.toContain('检查中');
     expect(stageA).not.toContain('正在检查 FLA');
@@ -202,13 +208,9 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(stageA).not.toContain('不会修改原文件或当前项目');
     expect(stageA).not.toContain('fla-stage-a-quiet-pane');
     expect(stageA).not.toContain('fla-stage-a-footer');
-    expect(stageAStyles).toContain('width: min(420px, calc(100vw - 24px));');
-    expect(stageAStyles).toContain('position: relative;');
-    expect(stageAStyles).toContain('top: auto;');
-    expect(stageAStyles).toContain('left: auto;');
-    expect(stageAStyles).toContain('transform: none;');
-    expect(stageAStyles).toContain('height: 48px;');
-    expect(stageAStyles).toContain('@media (max-width: 560px)');
+    expect(stageAStyles).toContain('.fla-review-session.fla-compact-status');
+    expect(stageAStyles).toContain('width: min(300px, 100%);');
+    expect(stageAStyles).toContain('grid-template-columns: minmax(0, 1fr) auto;');
     expect(stageAStyles).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation:\s*none;/u,
     );
@@ -221,7 +223,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(session).toContain('[closeSession, ir, phase, sessionId]');
     expect(session).toContain("if (event.key !== 'Escape') return;");
     expect(stageA).toContain("if (event.key !== 'Tab') return;");
-    expect(stageA).toContain('cancelButtonRef.current?.focus();');
+    expect(stageA).toContain("event.currentTarget.querySelector('button')?.focus();");
   });
 
   it('keeps compact toolbar, keyboard-only checkbox focus, and visible primary controls', () => {
