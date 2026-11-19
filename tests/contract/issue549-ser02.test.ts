@@ -8,6 +8,7 @@ const manifest = JSON.parse(
   readFileSync(resolve(root, 'scripts', 'css-split-manifest.json'), 'utf8'),
 ) as {
   rootEntry: { path: string };
+  slices: Array<{ id: string; targetPath: string }>;
   semanticRelocations: Array<{
     id: string;
     sectionIds: string[];
@@ -260,16 +261,33 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
     expect(indexes).toEqual([...indexes].sort((left, right) => left - right));
   });
 
-  it('keeps every SER-02 target byte-exact after Phase 3 begins', () => {
+  it('keeps the historical bytes and each approved runtime stylesheet byte-exact', () => {
     for (const expected of expectedSer02) {
       const relocation = manifest.semanticRelocations.find(({ id }) => id === expected.id);
       expect(relocation).toBeDefined();
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
 
+      let historical = target;
+      if (expected.id === 'G026') {
+        // Issue #1172 changes F3 presentation. Keep the migration receipt
+        // tied to the original slice and pin the reviewed runtime bytes.
+        const slice = manifest.slices.find(({ id }) => id === expected.sourceSlice);
+        expect(slice).toBeDefined();
+        const { startLine, endLine } = relocation!.sourceLocalRange;
+        historical = sourceLines(readFileSync(resolve(root, slice!.targetPath), 'utf8'))
+          .slice(startLine - 1, endLine).join('\n') + '\n';
+        expect(sha256(target)).toBe(
+          '5e1b7f0f171ca2a4cf2b595b4687b83d0ee5a12967fe1268b9b078fa761e5f71',
+        );
+        const originalF3 = historical.indexOf('.fla-review-portal .fla-stage-f3-session');
+        expect(originalF3).toBeGreaterThan(0);
+        expect(target.slice(0, originalF3)).toBe(historical.slice(0, originalF3));
+      }
+
       expect(expectedSer02TargetSha256[expected.id]).toBeDefined();
-      expect(sha256(target)).toBe(expectedSer02TargetSha256[expected.id]);
-      expect(sha256(target)).toBe(relocation!.sourceSha256);
-      expect(Buffer.byteLength(target, 'utf8')).toBe(
+      expect(sha256(historical)).toBe(expectedSer02TargetSha256[expected.id]);
+      expect(sha256(historical)).toBe(relocation!.sourceSha256);
+      expect(Buffer.byteLength(historical, 'utf8')).toBe(
         relocation!.sourceEndByteExclusive - relocation!.sourceStartByte,
       );
     }
