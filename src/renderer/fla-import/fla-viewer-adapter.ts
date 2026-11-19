@@ -13,7 +13,9 @@ import {
   FLA_PARSER_PACKAGE,
   type AnimationImportIR,
   type FlaInspectionIR,
-  type FlaWorkerStartRequest,
+  type FlaWorkerInspectionRequest,
+  type FlaWorkerHydrateRequest,
+  type FlaBitmapMedia,
   type FlaCompatibilityStatus,
   type FlaImportErrorCode,
 } from '../../shared/fla-import-api';
@@ -290,20 +292,50 @@ function unsupportedElement(
   }
 }
 
+function sourceFile(source: FlaAdapterInput): File {
+  const fileBytes = new Uint8Array(source.bytes);
+  return new File([fileBytes], source.basename, { type: 'application/octet-stream' });
+}
+
+export async function hydrateFlaBitmap(
+  request: FlaWorkerHydrateRequest,
+  onProgress: FlaProgressCallback,
+  isCancelled: () => boolean,
+): Promise<FlaBitmapMedia> {
+  const { source, bitmap, allowHrefLeafFallback } = request;
+  const item: BitmapItem = {
+    name: normalizeReference(bitmap.name),
+    href: normalizeReference(bitmap.sourceReference),
+    bitmapDataHRef: bitmap.bitmapDataReference ? normalizeReference(bitmap.bitmapDataReference) : undefined,
+    width: bitmap.width,
+    height: bitmap.height,
+  };
+  ensureNotCancelled(isCancelled);
+  await new FLAParser().hydrateBitmap(sourceFile(source), item, onProgress, isCancelled, allowHrefLeafFallback);
+  ensureNotCancelled(isCancelled);
+  if (!item.imageData) fail('MEDIA_DECODE_FAILED', 'The selected FLA bitmap could not be decoded');
+  onProgress('Encoding bitmap ' + bitmap.id);
+  const encoded = encodeImage(item);
+  return {
+    ...bitmap,
+    width: encoded.width,
+    height: encoded.height,
+    payload: { mimeType: 'image/png', ...encoded },
+  };
+}
+
 export async function adaptFlaDocument(
   source: FlaAdapterInput,
   onProgress: FlaProgressCallback,
   isCancelled: () => boolean,
-  mode?: FlaWorkerStartRequest['mode'],
+  mode?: FlaWorkerInspectionRequest['mode'],
 ): Promise<FlaInspectionIR> {
   const structureOnly = mode === 'structure';
   const parser = new FLAParser();
   let document: FLADocument;
   try {
-    const fileBytes = new ArrayBuffer(source.bytes.byteLength);
-    new Uint8Array(fileBytes).set(source.bytes);
     document = await parser.parse(
-      new File([fileBytes], source.basename, { type: 'application/octet-stream' }),
+      sourceFile(source),
       onProgress,
       isCancelled,
       { structureOnly },

@@ -9,7 +9,12 @@ import {
   FlaWorkerErrorSchema,
   FlaWorkerProgressSchema,
   FlaWorkerResultSchema,
+  FlaInspectionIRSchema,
   type FlaInspectionIR,
+  type FlaBitmapMedia,
+  type FlaWorkerResult,
+  type FlaWorkerInspectionRequest,
+  type FlaWorkerHydrateRequest,
   type FlaImportErrorCode,
   type FlaWorkerStartRequest,
 } from '../../shared/fla-import-api';
@@ -50,7 +55,7 @@ export class FlaParserOperationError extends Error {
 interface ActiveParse {
   sessionId: string;
   mode: FlaWorkerStartRequest['mode'];
-  resolve: (ir: FlaInspectionIR) => void;
+  resolve: (result: FlaWorkerResult) => void;
   reject: (error: FlaParserOperationError) => void;
   wallTimer: NodeJS.Timeout;
   watchdogTimer: NodeJS.Timeout;
@@ -98,7 +103,19 @@ export class FlaParserWindowManager {
     };
   }
 
-  async inspect(request: FlaWorkerStartRequest): Promise<FlaInspectionIR> {
+  async inspect(request: FlaWorkerInspectionRequest): Promise<FlaInspectionIR> {
+    const result = await this.run(request);
+    if ('ir' in result) return result.ir;
+    throw operationError('PARSER_CRASH', 'Expected an FLA inspection result');
+  }
+
+  async hydrate(request: FlaWorkerHydrateRequest): Promise<FlaBitmapMedia> {
+    const result = await this.run(request);
+    if ('media' in result) return result.media;
+    throw operationError('PARSER_CRASH', 'Expected a hydrated FLA bitmap');
+  }
+
+  private async run(request: FlaWorkerStartRequest): Promise<FlaWorkerResult> {
     if (this.active?.settled) {
       // A replacement inspection can arrive during the cancelled parse grace period.
       if (this.active.destroyTimer) clearTimeout(this.active.destroyTimer);
@@ -114,7 +131,7 @@ export class FlaParserWindowManager {
       this.destroyWindow();
       throw operationError('USER_CANCELLED', 'FLA inspection was cancelled');
     }
-    const promise = new Promise<FlaInspectionIR>((resolve, reject) => {
+    const promise = new Promise<FlaWorkerResult>((resolve, reject) => {
       const active: ActiveParse = {
         sessionId: request.sessionId,
         mode: request.mode,
@@ -217,15 +234,21 @@ export class FlaParserWindowManager {
       return;
     }
     if (!active || active.sessionId !== payload.sessionId || active.settled) return;
-    const schema = active.mode === 'structure' ? FlaStructureIRSchema
-      : active.mode === 'raster-compatibility' ? null
-      : AnimationImportIRSchema;
-    const validated = schema?.safeParse(payload.ir);
-    if (validated && !validated.success) {
-      this.rejectActive(active, operationError('PARSER_CRASH', 'FLA parser result failed validation'), true);
+    if ('media' in payload && active.mode === 'hydrate-raster') {
+      this.resolveActive(active, payload);
       return;
     }
-    this.resolveActive(active, validated?.data ?? payload.ir);
+    if ('ir' in payload && active.mode !== 'hydrate-raster') {
+      const schema = active.mode === 'structure' ? FlaStructureIRSchema
+        : active.mode === 'raster-compatibility' ? FlaInspectionIRSchema
+        : AnimationImportIRSchema;
+      const validated = schema.safeParse(payload.ir);
+      if (validated.success) {
+        this.resolveActive(active, { ...payload, ir: validated.data });
+        return;
+      }
+    }
+    this.rejectActive(active, operationError('PARSER_CRASH', 'FLA parser result failed validation'), true);
   }
 
   markError(senderId: number, rawPayload: unknown): void {
@@ -381,13 +404,13 @@ export class FlaParserWindowManager {
     }
   }
 
-  private resolveActive(active: ActiveParse, ir: FlaInspectionIR): void {
+  private resolveActive(active: ActiveParse, result: FlaWorkerResult): void {
     if (active.settled) return;
     active.settled = true;
     clearTimeout(active.wallTimer);
     clearTimeout(active.watchdogTimer);
     this.active = null;
-    active.resolve(ir);
+    active.resolve(result);
     this.destroyWindow();
   }
 

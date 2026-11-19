@@ -1,6 +1,7 @@
 import {
   FlaAdapterError,
   adaptFlaDocument,
+  hydrateFlaBitmap,
 } from './fla-viewer-adapter';
 import type { FlaWorkerStartRequest } from '../../shared/fla-import-api';
 
@@ -27,12 +28,11 @@ function errorCode(error: unknown): FlaAdapterError['code'] {
 async function inspect(request: FlaWorkerStartRequest): Promise<void> {
   const { sessionId, source } = request;
   try {
-    const ir = await adaptFlaDocument(
-      source,
-      (message) => window.pandaStageFlaParser.progress({ sessionId, message }),
-      () => cancelledSessions.has(sessionId),
-      request.mode,
-    );
+    const progress = (message: string) => window.pandaStageFlaParser.progress({ sessionId, message });
+    const isCancelled = () => cancelledSessions.has(sessionId);
+    const result = request.mode === 'hydrate-raster'
+      ? { sessionId, media: await hydrateFlaBitmap(request, progress, isCancelled) }
+      : { sessionId, ir: await adaptFlaDocument(source, progress, isCancelled, request.mode) };
     if (cancelledSessions.has(sessionId)) {
       window.pandaStageFlaParser.error({
         sessionId,
@@ -40,7 +40,7 @@ async function inspect(request: FlaWorkerStartRequest): Promise<void> {
       });
       return;
     }
-    window.pandaStageFlaParser.result({ sessionId, ir });
+    window.pandaStageFlaParser.result(result);
   } catch (error) {
     window.pandaStageFlaParser.error({
       sessionId,

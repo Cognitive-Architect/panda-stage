@@ -10,7 +10,7 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AnimationImportIRSchema,
   type AnimationImportIR,
@@ -346,6 +346,30 @@ describe('FLA Slice 3 atomic Asset commit', () => {
       const file = await readFile(path.join(value.projectRoot, 'assets', result.targetFileName));
       expect(createHash('sha256').update(file).digest('hex')).toBe(result.sha256);
     }
+  });
+
+  it('validates every catalog ID before hydrating only the selected bitmap on direct commit', async () => {
+    const value = await harness();
+    const selected = value.ir.media[0]!;
+    const hydrateMedia = vi.fn(async () => selected);
+    value.setSession({
+      sessionId: request(value).sessionId,
+      ir: {
+        ...value.ir,
+        media: value.ir.media.map(({ payload, ...metadata }) => {
+          void payload;
+          return metadata;
+        }),
+      },
+      hydrateMedia,
+    });
+    await expect(value.service.commit(request(value, [selected.id, 'fla-media-unknown-9999'])))
+      .rejects.toMatchObject({ code: 'INVALID_SELECTION' });
+    expect(hydrateMedia).not.toHaveBeenCalled();
+    const result = await value.service.commit(request(value, [selected.id]));
+    expect(hydrateMedia).toHaveBeenCalledExactlyOnceWith(selected.id);
+    expect(result.results.map(({ mediaId }) => mediaId)).toEqual([selected.id]);
+    expect(result.savedRevision).toBe(1);
   });
 
   it('reuses duplicate bytes and deterministically handles collisions and reserved names', async () => {

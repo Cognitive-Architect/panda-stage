@@ -4,6 +4,7 @@
 
 // Windows Electron regression for repeated single-image imports in one FLA review.
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
@@ -17,7 +18,7 @@ const runRoot = mkdtempSync(join(acceptanceRoot, 'issue-1160-'));
 const sample = process.env.PANDA_STAGE_FLA_PERF_SAMPLE;
 const mediaCount = Number(process.env.PANDA_STAGE_FLA_PERF_MEDIA_COUNT || 2);
 const sourcePath = sample ? resolve(sample) : join(runRoot, 'generated-bitmaps.fla');
-const wantedNames = (process.env.PANDA_STAGE_FLA_PERF_CANDIDATES || '787.png,788.png').split(',');
+const wantedNames = (process.env.PANDA_STAGE_FLA_PERF_CANDIDATES || 'left/icon.png,right/icon.png').split(',');
 const projectName = 'Raster Review';
 const dist = join(__dirname, '..', 'dist-electron', 'main');
 const { IPC_CHANNELS } = require(join(dist, '..', 'shared', 'ipc', 'channels.js'));
@@ -27,15 +28,16 @@ app.setPath('userData', join(runRoot, 'profile'));
 delete process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE;
 delete process.env.VITE_DEV_SERVER_URL;
 
-async function writeSource(filePath, count = 2) {
+async function writeSource(filePath, count = 2, includeBroken = false) {
   const zip = new JSZip();
   const bitmaps = [
-    { name: '787.png', bgra: [20, 60, 230, 255] },
-    { name: '788.png', bgra: [230, 120, 40, 255] },
+    { name: 'left/icon.png', bgra: [20, 60, 230, 255] },
+    { name: 'right/icon.png', bgra: [230, 120, 40, 255] },
   ];
   for (let index = bitmaps.length; index < count; index += 1) {
     bitmaps.push({ name: 'extra/bitmap-' + index + '.png', bgra: [index % 256, 90, 140, 255] });
   }
+  if (includeBroken) bitmaps.push({ name: 'missing/icon.png' }, { name: 'broken.png' });
   const media = bitmaps.map(({ name }) =>
     '<DOMBitmapItem name="' + name + '" href="' + name + '" frameRight="160" frameBottom="160"/>',
   ).join('');
@@ -46,6 +48,8 @@ async function writeSource(filePath, count = 2) {
     '<elements/></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>',
   );
   for (const { name, bgra } of bitmaps) {
+    if (name === 'broken.png') zip.file('LIBRARY/' + name, Uint8Array.of(0, 1, 2));
+    if (!bgra) continue;
     const pixels = Buffer.alloc(8 * 8 * 4, Buffer.from(bgra));
     const image = nativeImage.createFromBitmap(pixels, { width: 8, height: 8, scaleFactor: 1 });
     zip.file('LIBRARY/' + name, image.toPNG());
@@ -55,6 +59,10 @@ async function writeSource(filePath, count = 2) {
 
 const inspections = [];
 const commits = [];
+const previews = [];
+let holdPreviewFor;
+let releasePreview;
+let heldPreviewDelivered = false;
 let pngEncodeAttempts = 0;
 const markWorkerProgress = FlaImportService.prototype.markWorkerProgress;
 FlaImportService.prototype.markWorkerProgress = function (senderId, payload) {
@@ -83,6 +91,18 @@ ipcMain.handle = (channel, handler) => {
     return handle(channel, async (event, request) => {
       const response = await handler(event, request);
       pickerCancelled = response.error?.code === 'USER_CANCELLED';
+      return response;
+    });
+  }
+  if (channel === IPC_CHANNELS.FLA_PREVIEW_RASTER) {
+    return handle(channel, async (event, request) => {
+      const response = await handler(event, request);
+      previews.push({ request, response });
+      if (request.mediaId === holdPreviewFor) {
+        holdPreviewFor = undefined;
+        await new Promise((resolve) => { releasePreview = resolve; });
+        heldPreviewDelivered = true;
+      }
       return response;
     });
   }
@@ -161,38 +181,72 @@ async function run() {
   const encodesBeforeSelection = pngEncodeAttempts;
   assert.equal(encodesBeforeSelection, 0, 'Opening the review started bitmap encoding');
 
-  async function importRaster(candidate, index) {
-    await click('[data-testid="' + candidate + '"]');
+  const projectRoot = join(runRoot, projectName + '.pandastage');
+  const previewMediaId = () => evaluate(() => {
+    const image = document.querySelector('[data-testid="fla-c03-focused-raster-preview"]');
+    return image?.complete && image.naturalWidth > 0 ? image.dataset.previewTargetId : null;
+  });
+  const choose = (candidate) => click('[data-testid="' + candidate + '"]');
+
+  async function importRaster(candidate, index, expectedEncodes) {
     const mediaId = candidate.slice(rasterPrefix.length);
-    await waitFor(() => evaluate((id) => {
-      const image = document.querySelector('[data-testid="fla-c03-focused-raster-preview"]');
-      return image?.dataset.previewTargetId === id && image.complete && image.naturalWidth > 0;
-    }, mediaId), 'focused bitmap preview');
+    const previewCount = previews.length;
+    await choose(candidate);
+    await waitFor(async () => await previewMediaId() === mediaId, 'focused bitmap preview');
+    assert.equal(pngEncodeAttempts, expectedEncodes, 'Expected only selected bitmap encoding');
+    const preview = previews.slice(previewCount).find(({ request }) => request.mediaId === mediaId);
+    assert.equal(preview?.request.sessionId, sessionId);
+    assert.equal(preview?.response.ok, true);
     await click('[data-testid="fla-single-import"]:enabled, [data-testid="fla-c03-import"]:enabled');
     const { request, response } = await waitFor(() => commits[index], 'raster commit ' + (index + 1));
     assert.equal(request.sessionId, sessionId);
-    assert.deepEqual(request.selectedMediaIds, [candidate.slice(rasterPrefix.length)]);
+    assert.deepEqual(request.selectedMediaIds, [mediaId]);
     assert.equal(response.ok, true, JSON.stringify(response.error));
     assert.equal(response.status, 'completed');
+    assert.equal(pngEncodeAttempts, expectedEncodes, 'Commit must reuse the preview bytes');
+    const result = response.results[0];
+    const persisted = readFileSync(join(projectRoot, 'assets', result.targetFileName));
+    assert.deepEqual(persisted, Buffer.from(preview.response.payload.bytes));
+    if (!sample) {
+      const expectedBgra = mediaId === chosen[0].slice(rasterPrefix.length)
+        ? [20, 60, 230, 255] : [230, 120, 40, 255];
+      const firstPixel = nativeImage.createFromBuffer(persisted).toBitmap().subarray(0, 4);
+      assert.deepEqual([...firstPixel], expectedBgra, 'The full source path must select the corresponding pixels');
+    }
+    assert.equal(createHash('sha256').update(persisted).digest('hex'), result.sha256);
     await waitFor(() => exists(closeReview), 'review unlocked after commit');
     return response;
   }
 
-  const first = await importRaster(chosen[0], 0);
-  const second = await importRaster(chosen[1], 1);
+  const first = await importRaster(chosen[0], 0, 1);
+  const second = await importRaster(chosen[1], 1, 2);
   assert.equal(inspections.length, 1);
-  assert.equal(pngEncodeAttempts, mediaCount, 'Compatibility processing should run once per review');
   assert.equal(pickerCalls, 1);
   assert.equal(first.summary.importedCount, 1);
   assert.equal(second.summary.importedCount, 1);
   assert.notEqual(first.results[0].sha256, second.results[0].sha256);
   assert.equal(commits[1].request.baseRevision, first.savedRevision);
 
-  const duplicate = await importRaster(chosen[0], 2);
+  if (!sample) assert.equal(second.summary.renamedCount, 1, 'Same leaf with different bytes must be renamed');
+  const duplicate = await importRaster(chosen[0], 2, 2);
   assert.equal(duplicate.summary.duplicateCount, 1);
   assert.equal(duplicate.results[0].duplicateOfAssetId, first.results[0].asset.id);
   assert.equal(duplicate.projectChanged, false);
   assert.ok(service.getSession(sessionId), 'Duplicate-only commit ended the review session');
+
+  const firstMediaId = chosen[0].slice(rasterPrefix.length);
+  const secondMediaId = chosen[1].slice(rasterPrefix.length);
+  holdPreviewFor = firstMediaId;
+  await choose(chosen[0]);
+  await waitFor(() => releasePreview, 'held first preview response');
+  await choose(chosen[1]);
+  await waitFor(async () => await previewMediaId() === secondMediaId, 'second preview while first is delayed');
+  releasePreview();
+  await waitFor(() => heldPreviewDelivered, 'late preview delivery');
+  await evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.equal(await previewMediaId(), secondMediaId);
+  assert.equal(pngEncodeAttempts, 2);
+  const selectedHydrateCount = pngEncodeAttempts;
 
   await click(closeReview);
   await waitFor(() => !service.getSession(sessionId), 'review close releasing its Main session');
@@ -204,13 +258,26 @@ async function run() {
   assert.deepEqual(project.assets.map(({ id }) => id).sort(), assetIds.sort());
 
   selectedSource = join(runRoot, 'replacement.fla');
-  await writeSource(selectedSource);
+  await writeSource(selectedSource, 2, true);
   await click(openReview);
   const replacement = await waitFor(() => inspections[1], 'replacement FLA inspection');
   assert.equal(replacement.response.ok, true);
   assert.equal(replacement.response.ir.source.basename, 'replacement.fla');
   assert.notEqual(replacement.response.sessionId, sessionId);
   assert.equal(service.getSession(sessionId), null);
+  const replacementMediaId = (name) => replacement.response.ir.media.find((item) => item.name === name).id;
+  for (const name of ['missing/icon.png', 'broken.png']) {
+    const mediaId = replacementMediaId(name);
+    await choose(rasterPrefix + mediaId);
+    const failed = await waitFor(() => previews.find(({ request }) => request.sessionId === replacement.response.sessionId &&
+      request.mediaId === mediaId), 'isolated bitmap failure');
+    assert.equal(failed.response.ok, false);
+    assert.equal(pngEncodeAttempts, 2);
+  }
+  const validReplacement = replacementMediaId('right/icon.png');
+  await choose(rasterPrefix + validReplacement);
+  await waitFor(async () => await previewMediaId() === validReplacement, 'valid bitmap after isolated failures');
+  assert.equal(pngEncodeAttempts, 3);
   await click(closeReview);
   await waitFor(() => !service.getSession(replacement.response.sessionId), 'replacement session released');
   await waitFor(async () => !(await exists(review)), 'replacement review closed');
@@ -223,7 +290,7 @@ async function run() {
   assert.equal(await exists(review), false);
   console.log(JSON.stringify({
     status: 'PASS', runRoot, assetIds, mediaCount, encodesBeforeSelection,
-    inspectMs: inspection.milliseconds, compatibilityEncodeAttempts: pngEncodeAttempts,
+    inspectMs: inspection.milliseconds, selectedHydrateCount,
   }));
 }
 

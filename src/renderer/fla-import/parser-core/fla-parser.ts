@@ -105,21 +105,7 @@ export class FLAParser {
       return parseBinaryFLA(fullBytes);
     }
 
-    // Try to load ZIP, handling potentially corrupted files
-    progress('Extracting archive...');
-    try {
-      this.zip = await JSZip.loadAsync(file);
-    } catch (e) {
-      // Some FLA files have minor corruption - try to repair by truncating
-      progress('Repairing archive...');
-      const arrayBuffer = await file.arrayBuffer();
-      const repaired = await this.tryRepairZip(arrayBuffer);
-      if (repaired) {
-        this.zip = repaired;
-      } else {
-        throw e;
-      }
-    }
+    await this.openZip(file, progress);
     this.symbolCache.clear();
 
     // Parse main document
@@ -174,6 +160,35 @@ export class FLAParser {
       sounds,
       videos
     };
+  }
+
+  private async openZip(file: File, progress: ProgressCallback): Promise<void> {
+    // Try to load ZIP, handling potentially corrupted files
+    progress('Extracting archive...');
+    try {
+      this.zip = await JSZip.loadAsync(file);
+    } catch (e) {
+      // Some FLA files have minor corruption - try to repair by truncating
+      progress('Repairing archive...');
+      const arrayBuffer = await file.arrayBuffer();
+      const repaired = await this.tryRepairZip(arrayBuffer);
+      if (repaired) {
+        this.zip = repaired;
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  async hydrateBitmap(
+    file: File,
+    bitmap: BitmapItem,
+    progress: ProgressCallback,
+    isCancelled: SkipCheckCallback,
+    allowHrefLeafFallback: boolean,
+  ): Promise<void> {
+    await this.openZip(file, progress);
+    if (!isCancelled()) await this.loadBitmapImage(bitmap, progress, { allowHrefLeafFallback });
   }
 
   private async tryRepairZip(buffer: ArrayBuffer): Promise<JSZip | null> {
@@ -252,7 +267,7 @@ export class FLAParser {
    * Find a file in the ZIP archive, handling path separator differences.
    * Tries multiple path variations and falls back to filename search.
    */
-  private async findFileData(href: string, folder: string = 'LIBRARY'): Promise<ArrayBuffer | null> {
+  private async findFileData(href: string, folder: string = 'LIBRARY', requireUnique = false, allowLeafFallback = true): Promise<ArrayBuffer | null> {
     if (!this.zip) return null;
 
     const normalizedHref = normalizePath(href);
@@ -280,6 +295,20 @@ export class FLAParser {
     // Fallback: search all files for matching filename
     const filename = getFilename(normalizedHref);
     const allFiles = Object.keys(this.zip.files);
+    if (requireUnique) {
+      // Keep path-qualified references intact. For old unqualified entries,
+      // only accept a fallback inside the intended folder with a unique match.
+      const suffix = '/' + normalizedHref;
+      const matches = allFiles.filter((path) => {
+        const normalized = normalizePath(path);
+        return normalized.split('/')[0]?.toLowerCase() === folder.toLowerCase() &&
+          normalized.endsWith(suffix) &&
+          (normalizedHref.includes('/') || allowLeafFallback) &&
+          !this.zip!.files[path]?.dir;
+      });
+      if (matches.length > 1) throw new Error('Ambiguous FLA bitmap reference');
+      return matches.length === 1 ? this.zip.file(matches[0])!.async('arraybuffer') : null;
+    }
     for (const filepath of allFiles) {
       const fileBasename = getFilename(filepath);
       if (fileBasename === filename) {
@@ -1443,13 +1472,13 @@ export class FLAParser {
     return bitmaps;
   }
 
-  private async loadBitmapImage(bitmapItem: BitmapItem, onAlgoProgress?: (algo: string) => void): Promise<void> {
+  private async loadBitmapImage(bitmapItem: BitmapItem, onAlgoProgress?: (algo: string) => void, selected?: { allowHrefLeafFallback: boolean }): Promise<void> {
     let imageData: ArrayBuffer | null = null;
     let sourceRef = bitmapItem.href;
 
     // First try bitmapDataHRef from bin/ folder (preferred for .dat files)
     if (bitmapItem.bitmapDataHRef) {
-      imageData = await this.findFileData(bitmapItem.bitmapDataHRef, 'bin');
+      imageData = await this.findFileData(bitmapItem.bitmapDataHRef, 'bin', Boolean(selected));
       if (imageData) {
         sourceRef = bitmapItem.bitmapDataHRef;
       }
@@ -1457,7 +1486,7 @@ export class FLAParser {
 
     // Fall back to href from LIBRARY/ folder
     if (!imageData) {
-      imageData = await this.findFileData(bitmapItem.href);
+      imageData = await this.findFileData(bitmapItem.href, 'LIBRARY', Boolean(selected), selected?.allowHrefLeafFallback);
     }
 
     if (!imageData) {

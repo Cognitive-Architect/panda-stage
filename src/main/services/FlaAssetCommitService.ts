@@ -37,6 +37,7 @@ export interface FlaAssetCommitSession {
   sessionId: string;
   ir: FlaInspectionIR;
   loadMedia?: () => Promise<AnimationImportIR['media']>;
+  hydrateMedia?: (mediaId: string) => Promise<AnimationImportIR['media'][number]>;
   /** SHA-256 of the exact source file before any in-memory recovery. */
   originalSourceSha256?: string;
   /**
@@ -300,7 +301,7 @@ export class FlaAssetCommitService {
       current.revision,
       request,
       ir,
-      session.loadMedia,
+      session.hydrateMedia,
     );
     if (prepared.newItems.length === 0) {
       return this.operation(prepared, current.project, current.revision, false);
@@ -387,7 +388,7 @@ export class FlaAssetCommitService {
     baseRevision: number,
     request: FlaAssetCommitRequest,
     ir: FlaInspectionIR,
-    loadMedia?: FlaAssetCommitSession['loadMedia'],
+    hydrateMedia?: FlaAssetCommitSession['hydrateMedia'],
   ): Promise<PreparedCommit> {
     if (request.selectedMediaIds.length === 0) {
       throw new FlaAssetCommitServiceError(
@@ -396,9 +397,9 @@ export class FlaAssetCommitService {
         'Select at least one raster item before importing.',
       );
     }
-    const mediaIds = new Set(ir.media.map((media) => media.id));
+    const mediaById = new Map(ir.media.map((media) => [media.id, media]));
     for (const mediaId of request.selectedMediaIds) {
-      if (!mediaIds.has(mediaId)) {
+      if (!mediaById.has(mediaId)) {
         throw new FlaAssetCommitServiceError(
           'INVALID_SELECTION',
           projectRoot,
@@ -406,19 +407,19 @@ export class FlaAssetCommitService {
         );
       }
     }
-    const media = loadMedia ? await loadMedia() : ir.media;
-    const mediaById = new Map(media.map((item) => [item.id, item]));
-    const selectedMedia = request.selectedMediaIds.map((mediaId) => {
-      const item = FlaBitmapMediaIRSchema.safeParse(mediaById.get(mediaId));
-      if (!item.success) {
+    const selectedMedia: AnimationImportIR['media'] = [];
+    for (const mediaId of request.selectedMediaIds) {
+      const media = hydrateMedia ? await hydrateMedia(mediaId) : mediaById.get(mediaId);
+      const item = FlaBitmapMediaIRSchema.safeParse(media);
+      if (!item.success || item.data.id !== mediaId) {
         throw new FlaAssetCommitServiceError(
           'ASSET_COMMIT_FAILED',
           projectRoot,
           'A selected FLA bitmap could not be decoded.',
         );
       }
-      return item.data;
-    });
+      selectedMedia.push(item.data);
+    }
     selectedMedia.sort(compareMedia);
 
     const hashToAsset = await this.hashExistingImageAssets(

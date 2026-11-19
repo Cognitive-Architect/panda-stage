@@ -403,10 +403,9 @@ export const FlaRasterSelectionIntentSchema = z
   );
 
 /** Internal worker messages. They still contain only Panda-owned values. */
-export const FlaWorkerStartRequestSchema = z
+const FlaWorkerRequestSchema = z
   .object({
     sessionId: z.uuid(),
-    mode: z.enum(['structure', 'raster-compatibility']).optional(),
     source: z
       .object({
         basename: z.string().trim().min(1).max(260),
@@ -419,6 +418,21 @@ export const FlaWorkerStartRequestSchema = z
   })
   .strict();
 
+const FlaWorkerInspectionRequestSchema = FlaWorkerRequestSchema.extend({
+  mode: z.enum(['structure', 'raster-compatibility']).optional(),
+});
+
+const FlaWorkerHydrateRequestSchema = FlaWorkerRequestSchema.extend({
+  mode: z.literal('hydrate-raster'),
+  bitmap: FlaBitmapMetadataIRSchema,
+  allowHrefLeafFallback: z.boolean(),
+});
+
+export const FlaWorkerStartRequestSchema = z.union([
+  FlaWorkerInspectionRequestSchema,
+  FlaWorkerHydrateRequestSchema,
+]);
+
 export const FlaWorkerProgressSchema = z
   .object({
     sessionId: z.uuid(),
@@ -426,12 +440,13 @@ export const FlaWorkerProgressSchema = z
   })
   .strict();
 
-export const FlaWorkerResultSchema = z
-  .object({
+export const FlaWorkerResultSchema = z.union([
+  z.object({ sessionId: z.uuid(), ir: FlaInspectionIRSchema }).strict(),
+  z.object({
     sessionId: z.uuid(),
-    ir: FlaInspectionIRSchema,
-  })
-  .strict();
+    media: FlaBitmapMediaIRSchema.refine(({ payload }) => payload.bytes.byteLength > 0),
+  }).strict(),
+]);
 
 export const FlaWorkerErrorSchema = z
   .object({
@@ -453,6 +468,9 @@ export type FlaCancelRequest = z.infer<typeof FlaCancelRequestSchema>;
 export type FlaCancelResponse = z.infer<typeof FlaCancelResponseSchema>;
 export type FlaCompatibilityStatus = AnimationImportIR['compatibility'][number]['status'];
 export type FlaRasterSelectionIntent = z.infer<typeof FlaRasterSelectionIntentSchema>;
+export type FlaBitmapMedia = z.infer<typeof FlaBitmapMediaIRSchema>;
+export type FlaWorkerInspectionRequest = z.infer<typeof FlaWorkerInspectionRequestSchema>;
+export type FlaWorkerHydrateRequest = z.infer<typeof FlaWorkerHydrateRequestSchema>;
 export type FlaWorkerStartRequest = z.infer<typeof FlaWorkerStartRequestSchema>;
 export type FlaWorkerProgress = z.infer<typeof FlaWorkerProgressSchema>;
 export type FlaWorkerResult = z.infer<typeof FlaWorkerResultSchema>;
