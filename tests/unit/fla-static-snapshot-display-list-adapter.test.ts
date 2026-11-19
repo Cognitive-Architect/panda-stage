@@ -1453,6 +1453,49 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
   });
 });
 
+describe('Classic Motion endpoint matrices (#1165)', () => {
+  function seekInterior(startMatrix: string, endMatrix: string) {
+    const motionFrame = (index: number, duration: number, transform: string) =>
+      `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="22017">` +
+      '<elements><DOMSymbolInstance libraryItemName="moving-target" symbolType="graphic">' +
+      `${transform}</DOMSymbolInstance></elements></DOMFrame>`;
+    const adapted = adaptFlaXflDisplaySource('<DOMDocument/>', [{
+      name: 'LIBRARY/motion-root.xml',
+      xml: graphic('motion-root', [layer('moving', motionFrame(0, 4, startMatrix) + motionFrame(4, 1, endMatrix))]),
+    }]);
+    if (!adapted.ok) return adapted;
+    const target = descriptor(adapted.source, 'motion-root');
+    return adapted.source.buildGraphicFrameContext(target.timelineXml, target.frameSpanIndex, 2, 'endpoint-matrix');
+  }
+
+  it.each([
+    ['explicit at both endpoints', matrix(4, 8), matrix(20, 12), 12, 10],
+    ['omitted at start', '', matrix(20, 12), 10, 6],
+    ['omitted at end', matrix(4, 8), '', 2, 4],
+    ['omitted at both endpoints', '', '', 0, 0],
+  ] as const)('interpolates with matrices %s', (_label, start, end, tx, ty) => {
+    const selected = seekInterior(start, end);
+    if (!selected.ok) throw new Error(selected.message);
+    expect(selected.value.layers[0]?.elements[0]?.localTransform).toEqual({ a: 1, b: 0, c: -0, d: 1, tx, ty });
+  });
+
+  it.each([
+    '<matrix/>',
+    '<matrix><Matrix tx="NaN"/></matrix>',
+    '<matrix><Matrix tx="Infinity"/></matrix>',
+    '<matrix><Matrix tx=" "/></matrix>',
+    '<matrix><Matrix/><Matrix/></matrix>',
+    '<matrix><Matrix><Matrix3D/></Matrix></matrix>',
+    '<matrix3D><Matrix3D/></matrix3D>',
+  ])('keeps explicit invalid endpoint data fail-closed (%s)', (invalid) => {
+    for (const [start, end] of [[invalid, ''], ['', invalid]]) {
+      expect(seekInterior(start!, end!)).toMatchObject({
+        ok: false, code: 'RENDER_FAILED', message: expect.stringMatching(/Classic Motion structure|Malformed DOMSymbolInstance matrix|Non-finite DOMSymbolInstance matrix/u),
+      });
+    }
+  });
+});
+
 describe('Classic Motion Snap option and Motion Guide handling (#1061)', () => {
   it.each([
     { label: 'true with no guide layer', snap: 'true' },

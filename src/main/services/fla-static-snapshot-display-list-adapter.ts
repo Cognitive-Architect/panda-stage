@@ -1274,15 +1274,21 @@ function classicMotionFramePairRejectionReason(
     const matrices = children.filter((child) => child.name === 'matrix');
     const points = children.filter((child) => child.name === 'transformationPoint');
     const colors = children.filter((child) => child.name === 'color');
-    if (matrices.length !== 1 || points.length > 1 || colors.length > 1 ||
+    if (matrices.length > 1 || points.length > 1 || colors.length > 1 ||
         children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
           !(allowColorTransform && child.name === 'color'))) {
       return false;
     }
-    const matrixValues = getFlaXflDirectChildren(matrices[0]!.xml, 'matrix');
-    if (matrixValues.length !== 1 || matrixValues[0]?.name !== 'Matrix') return false;
-    if (Object.keys(matrixValues[0].attributes).some((name) =>
-      !['a', 'b', 'c', 'd', 'tx', 'ty'].includes(name))) return false;
+    const matrixWrapper = matrices[0];
+    if (matrixWrapper) {
+      const matrixValues = getFlaXflDirectChildren(matrixWrapper.xml, 'matrix');
+      const matrix = matrixValues[0];
+      if (matrixValues.length !== 1 || matrix?.name !== 'Matrix' ||
+          getFlaXflDirectChildren(matrix.xml, 'Matrix').length !== 0 ||
+          Object.entries(matrix.attributes).some(([name, value]) =>
+            !['a', 'b', 'c', 'd', 'tx', 'ty'].includes(name) ||
+            value.trim() === '' || !Number.isFinite(Number(value)))) return false;
+    }
     if (points.length === 1) {
       const pointValues = getFlaXflDirectChildren(points[0]!.xml, 'transformationPoint');
       if (pointValues.length !== 1 || pointValues[0]?.name !== 'Point' ||
@@ -2074,21 +2080,19 @@ function buildGraphicFrameContext(
             startTarget.symbolType !== 'graphic' || endTarget.symbolType !== 'graphic' ||
             startTarget.libraryItemName !== endTarget.libraryItemName ||
             startSourceTarget?.name !== 'DOMSymbolInstance' ||
-            endSourceTarget?.name !== 'DOMSymbolInstance' ||
-            !startTarget.localTransform || !endTarget.localTransform) {
-          return rejectTween(`matching Graphic instances with authored matrices are required at source order ${index}`);
+            endSourceTarget?.name !== 'DOMSymbolInstance') {
+          return rejectTween(`matching Graphic instances are required at source order ${index}`);
         }
         const startPivot = readDirectTransformationPoint(startSourceTarget);
         const endPivot = readDirectTransformationPoint(endSourceTarget);
         if (!startPivot || !endPivot) {
           return rejectTween(`Graphic instance pivot is invalid at source order ${index}`);
         }
-        const localStart = rigStartInverse
-          ? compose(rigStartInverse, startTarget.localTransform)
-          : startTarget.localTransform;
-        const localEnd = rigEndInverse
-          ? compose(rigEndInverse, endTarget.localTransform)
-          : endTarget.localTransform;
+        // Explicit endpoint matrices have already passed structural validation.
+        const startMatrix = startTarget.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+        const endMatrix = endTarget.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+        const localStart = rigStartInverse ? compose(rigStartInverse, startMatrix) : startMatrix;
+        const localEnd = rigEndInverse ? compose(rigEndInverse, endMatrix) : endMatrix;
         const interpolated = interpolateFlaClassicMotionInstanceTransform(
           localStart,
           localEnd,
