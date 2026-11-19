@@ -31,6 +31,7 @@ async function inspect(request: FlaWorkerStartRequest): Promise<void> {
       source,
       (message) => window.pandaStageFlaParser.progress({ sessionId, message }),
       () => cancelledSessions.has(sessionId),
+      request.mode,
     );
     if (cancelledSessions.has(sessionId)) {
       window.pandaStageFlaParser.error({

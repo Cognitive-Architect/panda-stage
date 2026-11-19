@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
-  AnimationImportIRSchema,
+  FlaStructureIRSchema,
+  FlaBitmapMediaIRSchema,
   type FlaDiagnostic,
   type FlaImportErrorCode,
   type FlaCancelResponse,
@@ -9,6 +10,8 @@ import {
   type FlaInspectionTrace,
   type FlaWorkerStartRequest,
   type AnimationImportIR,
+  type FlaInspectionIR,
+  type FlaRasterPreviewResponse,
 } from '../../shared/fla-import-api';
 import {
   flaErrorDiagnostics,
@@ -43,6 +46,15 @@ interface ActiveInspection {
   requestId: string;
   abortController: AbortController;
   stage: 'preflight' | 'parser';
+}
+
+type InspectionSession = Extract<FlaInspectionResponse, { ok: true }> & {
+  workerSource: FlaWorkerStartRequest['source'];
+  mediaLoad?: { operationId: string | null; result: Promise<AnimationImportIR['media']> };
+};
+
+function bitmapSourceKey(media: FlaInspectionIR['media'][number]): string {
+  return JSON.stringify([media.name, media.sourceReference, media.bitmapDataReference]);
 }
 
 function errorResponse(
@@ -99,12 +111,10 @@ function candidateReason(classification: FlaRecoveryClassification): string | un
 
 export class FlaImportService {
   private readonly parserWindowManager: FlaParserWindowManager;
-  private readonly sessions = new Map<
-    string,
-    (FlaInspectionResponse & { ok: true }) & { sourceBytes: Uint8Array }
-  >();
+  private readonly sessions = new Map<string, InspectionSession>();
   private readonly sessionReleasedListeners = new Set<(sessionId: string) => void>();
   private active: ActiveInspection | null = null;
+  private cancelledLoad?: Promise<void>;
 
   constructor(parserWindowManager = new FlaParserWindowManager()) {
     this.parserWindowManager = parserWindowManager;
@@ -216,12 +226,14 @@ export class FlaImportService {
         outcome: 'accepted',
         byteLength: preflight.byteLength,
       });
+      await this.cancelledLoad;
       if (abortController.signal.aborted) {
         return errorResponse('USER_CANCELLED', 'FLA inspection was cancelled', { trace });
       }
       active.stage = 'parser';
       const request: FlaWorkerStartRequest = {
         sessionId,
+        mode: 'structure',
         source: {
           basename: preflight.basename,
           byteLength: preflight.byteLength,
@@ -236,7 +248,7 @@ export class FlaImportService {
         requestId,
         byteLength: preflight.byteLength,
       });
-      const validated = AnimationImportIRSchema.parse(ir);
+      const validated = FlaStructureIRSchema.parse(ir);
       if (
         validated.source.sha256 !== preflight.sha256 ||
         validated.source.byteLength !== preflight.byteLength ||
@@ -256,7 +268,7 @@ export class FlaImportService {
         diagnostics: flaZeroRasterDiagnostic(validated),
         ...(completedTrace ? { trace: completedTrace } : {}),
       };
-      this.sessions.set(sessionId, { ...response, sourceBytes: preflight.bytes });
+      this.sessions.set(sessionId, { ...response, workerSource: request.source });
       while (this.sessions.size > MAX_SESSIONS) {
         const oldest = this.sessions.keys().next().value;
         if (!oldest) break;
@@ -298,23 +310,94 @@ export class FlaImportService {
     return { accepted: false };
   }
 
-  /** Main-only lookup used by Slice 3.  The Renderer receives only the
-   * identifier; the encoded PNG payloads remain in this process-owned session.
-   */
+  /** Read the catalog and retained source without initiating media processing. */
   getSession(sessionId: string): FlaAssetCommitSession | null {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
     return {
       sessionId,
-      ir: session.ir as AnimationImportIR,
+      ir: session.ir,
       originalSourceSha256:
         session.trace?.originalSourceSha256 ?? session.ir.source.sha256,
-      sourceBytes: session.sourceBytes,
+      sourceBytes: session.workerSource.bytes,
+      loadMedia: () => this.loadMedia(session),
     };
   }
 
+  async previewRaster(sessionId: string, mediaId: string): Promise<FlaRasterPreviewResponse> {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.ir.media.some((media) => media.id === mediaId)) {
+      return { ok: false, error: { code: 'MEDIA_DECODE_FAILED', message: 'The bitmap is unavailable in this FLA review.' } };
+    }
+    try {
+      const media = (await this.loadMedia(session)).find((item) => item.id === mediaId);
+      if (media) return { ok: true, payload: media.payload };
+    } catch (error) {
+      if (error instanceof FlaParserOperationError) {
+        return { ok: false, error: { code: error.code, message: error.message } };
+      }
+    }
+    return { ok: false, error: { code: 'MEDIA_DECODE_FAILED', message: 'The selected FLA bitmap could not be decoded.' } };
+  }
+
+  /** PERF-01 compatibility. Reuse the full parser on the first explicit
+   * content request and share that operation within this inspection session.
+   */
+  private async loadMedia(session: InspectionSession): Promise<AnimationImportIR['media']> {
+    const { sessionId, ir: catalog, workerSource } = session;
+    if (this.sessions.get(sessionId) !== session) {
+      throw new FlaParserOperationError('USER_CANCELLED', 'The FLA inspection session ended');
+    }
+    if (catalog.media.length === 0) return [];
+    if (!session.mediaLoad) {
+      const operationId = randomUUID();
+      const result = this.parserWindowManager.inspect({
+        sessionId: operationId,
+        mode: 'raster-compatibility',
+        source: workerSource,
+      }).then((decoded) => {
+        if (decoded.source.sha256 !== workerSource.sha256 ||
+            decoded.source.byteLength !== workerSource.byteLength ||
+            decoded.source.basename !== workerSource.basename) {
+          throw new FlaParserOperationError('PARSER_CRASH', 'FLA parser returned a source identity mismatch');
+        }
+        // The catalog may not know dimensions which the full parser can read.
+        // Keep catalog IDs and pair results only by exact source references.
+        const byReference = new Map(decoded.media.map((media) => [bitmapSourceKey(media), media]));
+        return catalog.media.flatMap((entry) => {
+          const item = byReference.get(bitmapSourceKey(entry));
+          if (!item?.payload) return [];
+          return [FlaBitmapMediaIRSchema.parse({ ...item, id: entry.id })];
+        });
+      });
+      session.mediaLoad = { operationId, result };
+    }
+    const load = session.mediaLoad;
+    try {
+      const media = await load.result;
+      if (this.sessions.get(sessionId) !== session) {
+        throw new FlaParserOperationError('USER_CANCELLED', 'The FLA inspection session ended');
+      }
+      return media;
+    } catch (error) {
+      if (session.mediaLoad === load) delete session.mediaLoad;
+      throw error;
+    } finally {
+      if (session.mediaLoad === load) load.operationId = null;
+    }
+  }
+
   releaseSession(sessionId: string): void {
-    if (!this.sessions.delete(sessionId)) return;
+    const session = this.sessions.get(sessionId);
+    if (!session || !this.sessions.delete(sessionId)) return;
+    if (session.mediaLoad?.operationId) {
+      this.parserWindowManager.cancel(session.mediaLoad.operationId);
+      const cancelled = session.mediaLoad.result.then(() => undefined, () => undefined);
+      this.cancelledLoad = cancelled;
+      void cancelled.then(() => {
+        if (this.cancelledLoad === cancelled) this.cancelledLoad = undefined;
+      });
+    }
     for (const listener of [...this.sessionReleasedListeners]) {
       try {
         listener(sessionId);

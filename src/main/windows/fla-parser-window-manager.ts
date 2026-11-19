@@ -3,11 +3,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {
+  AnimationImportIRSchema,
+  FlaStructureIRSchema,
   FLA_IMPORT_LIMITS,
   FlaWorkerErrorSchema,
   FlaWorkerProgressSchema,
   FlaWorkerResultSchema,
-  type AnimationImportIR,
+  type FlaInspectionIR,
   type FlaImportErrorCode,
   type FlaWorkerStartRequest,
 } from '../../shared/fla-import-api';
@@ -47,7 +49,8 @@ export class FlaParserOperationError extends Error {
 
 interface ActiveParse {
   sessionId: string;
-  resolve: (ir: AnimationImportIR) => void;
+  mode: FlaWorkerStartRequest['mode'];
+  resolve: (ir: FlaInspectionIR) => void;
   reject: (error: FlaParserOperationError) => void;
   wallTimer: NodeJS.Timeout;
   watchdogTimer: NodeJS.Timeout;
@@ -95,7 +98,13 @@ export class FlaParserWindowManager {
     };
   }
 
-  async inspect(request: FlaWorkerStartRequest): Promise<AnimationImportIR> {
+  async inspect(request: FlaWorkerStartRequest): Promise<FlaInspectionIR> {
+    if (this.active?.settled) {
+      // A replacement inspection can arrive during the cancelled parse grace period.
+      if (this.active.destroyTimer) clearTimeout(this.active.destroyTimer);
+      this.active = null;
+      this.destroyWindow();
+    }
     if (this.active) {
       throw operationError('PARSER_CRASH', 'The FLA parser worker is busy');
     }
@@ -105,9 +114,10 @@ export class FlaParserWindowManager {
       this.destroyWindow();
       throw operationError('USER_CANCELLED', 'FLA inspection was cancelled');
     }
-    const promise = new Promise<AnimationImportIR>((resolve, reject) => {
+    const promise = new Promise<FlaInspectionIR>((resolve, reject) => {
       const active: ActiveParse = {
         sessionId: request.sessionId,
+        mode: request.mode,
         resolve,
         reject,
         wallTimer: setTimeout(() => {
@@ -207,7 +217,15 @@ export class FlaParserWindowManager {
       return;
     }
     if (!active || active.sessionId !== payload.sessionId || active.settled) return;
-    this.resolveActive(active, payload.ir);
+    const schema = active.mode === 'structure' ? FlaStructureIRSchema
+      : active.mode === 'raster-compatibility' ? null
+      : AnimationImportIRSchema;
+    const validated = schema?.safeParse(payload.ir);
+    if (validated && !validated.success) {
+      this.rejectActive(active, operationError('PARSER_CRASH', 'FLA parser result failed validation'), true);
+      return;
+    }
+    this.resolveActive(active, validated?.data ?? payload.ir);
   }
 
   markError(senderId: number, rawPayload: unknown): void {
@@ -363,7 +381,7 @@ export class FlaParserWindowManager {
     }
   }
 
-  private resolveActive(active: ActiveParse, ir: AnimationImportIR): void {
+  private resolveActive(active: ActiveParse, ir: FlaInspectionIR): void {
     if (active.settled) return;
     active.settled = true;
     clearTimeout(active.wallTimer);

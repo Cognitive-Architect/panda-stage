@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { FlaWorkerStartRequest, AnimationImportIR } from '../../src/shared/fla-import-api';
+import type { FlaWorkerStartRequest, FlaInspectionIR, AnimationImportIR } from '../../src/shared/fla-import-api';
 import { FlaImportService } from '../../src/main/services/FlaImportService';
 import type { FlaParserWindowManager } from '../../src/main/windows/fla-parser-window-manager';
 import { routeFlaInspection } from '../../src/renderer/fla-import/fla-content-route';
@@ -141,7 +141,7 @@ function parserResult(request: FlaWorkerStartRequest): AnimationImportIR {
 }
 
 function makeHarness() {
-  const inspect = vi.fn(async (request: FlaWorkerStartRequest) => parserResult(request));
+  const inspect = vi.fn(async (request: FlaWorkerStartRequest): Promise<FlaInspectionIR> => parserResult(request));
   const manager = { inspect } as unknown as FlaParserWindowManager;
   return { inspect, service: new FlaImportService(manager) };
 }
@@ -350,5 +350,65 @@ describe('FLA C3 production recovery entry path', () => {
       expect(inspect, fixture.id).not.toHaveBeenCalled();
       expect(routeFlaInspection(response), fixture.id).toBe('blocked');
     }
+  });
+});
+
+describe('FLA raster compatibility on a structure-first inspection session', () => {
+  it('loads only after a valid content request, shares the pass, and preserves full-path identities', async () => {
+    await withSource(makeZip(), async (sourcePath) => {
+      const { inspect, service } = makeHarness();
+      const metadata = ['left', 'right'].map((directory) => ({
+        id: 'fla-media-catalog-' + directory,
+        name: directory + '/icon.png',
+        sourceReference: directory + '/icon.png',
+        bitmapDataReference: null,
+        width: 0,
+        height: 0,
+        sourceFormat: 'png' as const,
+      }));
+      const decoded = [...metadata].reverse().map((entry, index) => ({
+        ...entry,
+        id: 'fla-media-decoded-' + index,
+        width: 8,
+        height: 8,
+        payload: {
+          mimeType: 'image/png' as const,
+          width: 8,
+          height: 8,
+          bytes: Uint8Array.of(index + 1),
+          alpha: { kind: 'opaque' as const, zeroAlphaPixels: 0, partialAlphaPixels: 0 },
+        },
+      }));
+      inspect.mockImplementationOnce(async (request) => ({ ...parserResult(request), media: metadata }));
+      inspect.mockImplementationOnce(async (request) => ({ ...parserResult(request), media: decoded }));
+
+      const response = await service.inspectSource(sourcePath, crypto.randomUUID());
+      if (!response.ok) throw new Error(response.error.message);
+      const { sessionId } = response;
+      expect(inspect).toHaveBeenCalledOnce();
+      expect(inspect.mock.calls[0]?.[0].mode).toBe('structure');
+      expect(response.ir.media).toEqual(metadata);
+      await expect(service.previewRaster(sessionId, 'fla-media-absent')).resolves.toMatchObject({ ok: false });
+      expect(inspect).toHaveBeenCalledOnce();
+
+      const [left, right] = await Promise.all([
+        service.previewRaster(sessionId, metadata[0]!.id),
+        service.previewRaster(sessionId, metadata[1]!.id),
+      ]);
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(inspect.mock.calls[1]?.[0]).toMatchObject({
+        mode: 'raster-compatibility',
+        source: inspect.mock.calls[0]?.[0].source,
+      });
+      expect(left).toMatchObject({ ok: true, payload: { bytes: Uint8Array.of(2) } });
+      expect(right).toMatchObject({ ok: true, payload: { bytes: Uint8Array.of(1) } });
+      await expect(service.getSession(sessionId)?.loadMedia?.()).resolves.toMatchObject([
+        { id: metadata[0]!.id, sourceReference: 'left/icon.png', width: 8 },
+        { id: metadata[1]!.id, sourceReference: 'right/icon.png', width: 8 },
+      ]);
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(service.cancel({ sessionId })).toEqual({ accepted: true });
+      expect(service.getSession(sessionId)).toBeNull();
+    });
   });
 });

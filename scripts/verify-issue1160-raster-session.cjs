@@ -5,7 +5,7 @@
 // Windows Electron regression for repeated single-image imports in one FLA review.
 const assert = require('node:assert/strict');
 const { mkdirSync, mkdtempSync, readFileSync, writeFileSync } = require('node:fs');
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
 const { app, BrowserWindow, dialog, ipcMain, nativeImage } = require('electron');
 const JSZip = require('jszip');
@@ -14,7 +14,10 @@ const acceptanceRoot = process.env.PANDA_STAGE_ACCEPTANCE_ROOT ||
   'D:\\PandaStage-Acceptance';
 mkdirSync(acceptanceRoot, { recursive: true });
 const runRoot = mkdtempSync(join(acceptanceRoot, 'issue-1160-'));
-const sourcePath = join(runRoot, 'two-bitmaps.fla');
+const sample = process.env.PANDA_STAGE_FLA_PERF_SAMPLE;
+const mediaCount = Number(process.env.PANDA_STAGE_FLA_PERF_MEDIA_COUNT || 2);
+const sourcePath = sample ? resolve(sample) : join(runRoot, 'generated-bitmaps.fla');
+const wantedNames = (process.env.PANDA_STAGE_FLA_PERF_CANDIDATES || '787.png,788.png').split(',');
 const projectName = 'Raster Review';
 const dist = join(__dirname, '..', 'dist-electron', 'main');
 const { IPC_CHANNELS } = require(join(dist, '..', 'shared', 'ipc', 'channels.js'));
@@ -24,12 +27,15 @@ app.setPath('userData', join(runRoot, 'profile'));
 delete process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE;
 delete process.env.VITE_DEV_SERVER_URL;
 
-async function writeSource(filePath) {
+async function writeSource(filePath, count = 2) {
   const zip = new JSZip();
   const bitmaps = [
     { name: '787.png', bgra: [20, 60, 230, 255] },
     { name: '788.png', bgra: [230, 120, 40, 255] },
   ];
+  for (let index = bitmaps.length; index < count; index += 1) {
+    bitmaps.push({ name: 'extra/bitmap-' + index + '.png', bgra: [index % 256, 90, 140, 255] });
+  }
   const media = bitmaps.map(({ name }) =>
     '<DOMBitmapItem name="' + name + '" href="' + name + '" frameRight="160" frameBottom="160"/>',
   ).join('');
@@ -49,6 +55,12 @@ async function writeSource(filePath) {
 
 const inspections = [];
 const commits = [];
+let pngEncodeAttempts = 0;
+const markWorkerProgress = FlaImportService.prototype.markWorkerProgress;
+FlaImportService.prototype.markWorkerProgress = function (senderId, payload) {
+  if (payload?.message?.startsWith('Encoding bitmap ')) pngEncodeAttempts += 1;
+  return markWorkerProgress.call(this, senderId, payload);
+};
 let pickerCancelled = false;
 let selectedSource = sourcePath;
 let pickerCalls = 0;
@@ -60,8 +72,9 @@ dialog.showOpenDialog = async () => {
 };
 const inspectSource = FlaImportService.prototype.inspectSource;
 FlaImportService.prototype.inspectSource = async function (...args) {
+  const startedAt = performance.now();
   const response = await inspectSource.apply(this, args);
-  inspections.push({ service: this, response });
+  inspections.push({ service: this, response, milliseconds: Math.round(performance.now() - startedAt) });
   return response;
 };
 const handle = ipcMain.handle.bind(ipcMain);
@@ -92,7 +105,7 @@ async function waitFor(probe, description) {
 }
 
 async function run() {
-  await writeSource(sourcePath);
+  if (!sample) await writeSource(sourcePath, mediaCount);
   require(join(dist, 'index.js'));
   const window = await waitFor(
     () => BrowserWindow.getAllWindows().find((candidate) => candidate.getTitle() === 'Panda Stage'),
@@ -129,15 +142,32 @@ async function run() {
   const inspection = await waitFor(() => inspections[0], 'first FLA inspection');
   assert.equal(inspection.response.ok, true, JSON.stringify(inspection.response.error));
   const { service, response: { sessionId } } = inspection;
+  assert.equal(inspection.response.ir.media.length, mediaCount);
+  assert.ok(inspection.response.ir.media.every((entry) => !entry.payload));
   const candidates = await waitFor(async () => {
     const ids = await evaluate((prefix) =>
       [...document.querySelectorAll('[data-testid^="' + prefix + '"]')].map((button) => button.dataset.testid),
     rasterPrefix);
-    return ids.length === 2 ? ids : null;
-  }, 'two raster candidates');
+    return ids.length === mediaCount ? new Set(ids) : null;
+  }, 'complete raster catalog');
+  const chosen = wantedNames.map((name) => {
+    const matches = inspection.response.ir.media.filter((entry) => entry.name.endsWith(name));
+    assert.equal(matches.length, 1, 'Expected one bitmap matching ' + name);
+    const id = rasterPrefix + matches[0].id;
+    assert.ok(candidates.has(id));
+    return id;
+  });
+  await waitFor(() => exists('[data-testid="fla-c03-catalog-progress"][data-phase="ready"]'), 'catalog ready');
+  const encodesBeforeSelection = pngEncodeAttempts;
+  assert.equal(encodesBeforeSelection, 0, 'Opening the review started bitmap encoding');
 
   async function importRaster(candidate, index) {
     await click('[data-testid="' + candidate + '"]');
+    const mediaId = candidate.slice(rasterPrefix.length);
+    await waitFor(() => evaluate((id) => {
+      const image = document.querySelector('[data-testid="fla-c03-focused-raster-preview"]');
+      return image?.dataset.previewTargetId === id && image.complete && image.naturalWidth > 0;
+    }, mediaId), 'focused bitmap preview');
     await click('[data-testid="fla-single-import"]:enabled, [data-testid="fla-c03-import"]:enabled');
     const { request, response } = await waitFor(() => commits[index], 'raster commit ' + (index + 1));
     assert.equal(request.sessionId, sessionId);
@@ -148,16 +178,17 @@ async function run() {
     return response;
   }
 
-  const first = await importRaster(candidates[0], 0);
-  const second = await importRaster(candidates[1], 1);
+  const first = await importRaster(chosen[0], 0);
+  const second = await importRaster(chosen[1], 1);
   assert.equal(inspections.length, 1);
+  assert.equal(pngEncodeAttempts, mediaCount, 'Compatibility processing should run once per review');
   assert.equal(pickerCalls, 1);
   assert.equal(first.summary.importedCount, 1);
   assert.equal(second.summary.importedCount, 1);
   assert.notEqual(first.results[0].sha256, second.results[0].sha256);
   assert.equal(commits[1].request.baseRevision, first.savedRevision);
 
-  const duplicate = await importRaster(candidates[0], 2);
+  const duplicate = await importRaster(chosen[0], 2);
   assert.equal(duplicate.summary.duplicateCount, 1);
   assert.equal(duplicate.results[0].duplicateOfAssetId, first.results[0].asset.id);
   assert.equal(duplicate.projectChanged, false);
@@ -190,7 +221,10 @@ async function run() {
   assert.equal(inspections.length, 2);
   assert.equal(pickerCalls, 3);
   assert.equal(await exists(review), false);
-  console.log(JSON.stringify({ status: 'PASS', runRoot, assetIds }));
+  console.log(JSON.stringify({
+    status: 'PASS', runRoot, assetIds, mediaCount, encodesBeforeSelection,
+    inspectMs: inspection.milliseconds, compatibilityEncodeAttempts: pngEncodeAttempts,
+  }));
 }
 
 app.whenReady().then(run).then(

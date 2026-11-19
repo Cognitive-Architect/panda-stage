@@ -2612,7 +2612,7 @@ export async function prepareFlaStaticSnapshotDisplaySource(
 export async function buildRenderableTargetCatalog(
   bytes: Uint8Array,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
-  options: { readonly includeAuthoredStates?: boolean } = {},
+  options: { readonly includeAuthoredStates?: boolean; readonly metadataOnlyBitmaps?: boolean } = {},
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
   execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<BuildCatalogResult> {
@@ -2671,6 +2671,7 @@ export async function buildRenderableTargetCatalog(
         stageHeight: source.stageHeight,
         shapeBlocks: resolved.shapeBlocks,
         resolveBitmapMedia,
+        metadataOnlyBitmaps: options.metadataOnlyBitmaps,
       });
       finishIssue762Profile('fla.catalog.candidate.svg-capability', compositionStartedAt, {
         ...candidateDetails,
@@ -2941,7 +2942,7 @@ export interface FlaStaticSnapshotBitmapMedia {
   readonly id: string;
   readonly width: number;
   readonly height: number;
-  readonly pngBytes: Uint8Array;
+  readonly pngBytes?: Uint8Array;
 }
 
 export type FlaStaticSnapshotBitmapMediaLookupResult =
@@ -3020,6 +3021,8 @@ export interface BuildComposedSvgInput {
   readonly shapeBlocks: ReadonlyMap<string, string>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+  /** Only the catalog capability check may compose without the actual pixels. */
+  readonly metadataOnlyBitmaps?: boolean;
 }
 
 interface ComposedLeaf {
@@ -3536,6 +3539,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let pathCommandCount = 0;
   let shapeCount = 0;
   let bitmapInstanceCount = 0;
+  let catalogHasUnknownBitmapDimensions = false;
   let fillStyleCount = 0;
   let strokeStyleCount = 0;
   let styleRunCount = 0;
@@ -3875,6 +3879,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       };
     }
     const media = resolution.media;
+    if (input.metadataOnlyBitmaps && !media.pngBytes) {
+      // Keep clip/geometry capability checks active without embedding image data.
+      if (media.width === 0 || media.height === 0) {
+        catalogHasUnknownBitmapDimensions = true;
+      } else if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Graphic bitmap bounds are not finite' };
+      }
+      const appendFailure = appendEmittedNode('<g/>', node.clipPaths);
+      if (appendFailure) return appendFailure;
+      continue;
+    }
     if (!media.id || !Number.isSafeInteger(media.width) || !Number.isSafeInteger(media.height) ||
         media.width <= 0 || media.height <= 0 || media.width > MAX_OUTPUT_WIDTH ||
         media.height > MAX_OUTPUT_HEIGHT || media.width * media.height > MAX_OUTPUT_PIXELS ||
@@ -3929,7 +3944,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
     : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
-  if (framingMode === 'content' && !graphicViewport && !blankGraphic) {
+  if (framingMode === 'content' && !graphicViewport && !blankGraphic && !catalogHasUnknownBitmapDimensions) {
     return { ok: false, code: 'RENDER_FAILED', message: 'Graphic has no finite drawable content bounds' };
   }
   // A truly blank Graphic frame has no content bounds to frame. Represent it

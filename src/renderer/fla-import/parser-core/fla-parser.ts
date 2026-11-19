@@ -67,6 +67,11 @@ export type SkipCheckCallback = () => boolean;
 const DEFAULT_DASH_LENGTH = 4;
 const DEFAULT_DASH_SPACE_LENGTH = 4;
 
+// Ported from lifeart/fla-viewer ParseOptions.structureOnly (b14fa1d).
+export interface ParseOptions {
+  structureOnly?: boolean;
+}
+
 export class FLAParser {
   private zip: JSZip | null = null;
   private symbolCache: Map<string, Symbol> = new Map();
@@ -82,7 +87,7 @@ export class FLAParser {
     }
   }
 
-  async parse(file: File, onProgress?: ProgressCallback, isSkipImagesFix?: SkipCheckCallback): Promise<FLADocument> {
+  async parse(file: File, onProgress?: ProgressCallback, isSkipImagesFix?: SkipCheckCallback, options: ParseOptions = {}): Promise<FLADocument> {
     const progress = onProgress || (() => {});
     const shouldSkipImagesFix = isSkipImagesFix || (() => false);
 
@@ -144,15 +149,15 @@ export class FLAParser {
 
     // Parse bitmap items from media section and load images
     progress('Loading images...');
-    const bitmaps = await this.parseBitmaps(root, progress, shouldSkipImagesFix);
+    const bitmaps = await this.parseBitmaps(root, progress, shouldSkipImagesFix, options.structureOnly);
 
     // Parse sound items from media section and load audio
     progress('Loading audio...');
-    const sounds = await this.parseSounds(root);
+    const sounds = await this.parseSounds(root, options.structureOnly);
 
     // Parse video items from media section and load FLV data
     progress('Loading videos...');
-    const videos = await this.parseVideos(root);
+    const videos = await this.parseVideos(root, options.structureOnly);
 
     // Parse main timeline (pass dimensions for camera detection)
     progress('Building timeline...');
@@ -1385,7 +1390,7 @@ export class FLAParser {
     return strokes;
   }
 
-  private async parseBitmaps(root: globalThis.Element, progress: ProgressCallback, shouldSkipImagesFix: SkipCheckCallback): Promise<Map<string, BitmapItem>> {
+  private async parseBitmaps(root: globalThis.Element, progress: ProgressCallback, shouldSkipImagesFix: SkipCheckCallback, structureOnly = false): Promise<Map<string, BitmapItem>> {
     const bitmaps = new Map<string, BitmapItem>();
     const bitmapElements = root.querySelectorAll('media > DOMBitmapItem');
 
@@ -1418,6 +1423,8 @@ export class FLAParser {
 
       bitmapItems.push(bitmapItem);
     }
+
+    if (structureOnly) return bitmaps;
 
     // Load images sequentially with progress updates
     const totalImages = bitmapItems.length;
@@ -2164,7 +2171,7 @@ export class FLAParser {
 
   private audioContext: AudioContext | null = null;
 
-  private async parseSounds(root: globalThis.Element): Promise<Map<string, SoundItem>> {
+  private async parseSounds(root: globalThis.Element, structureOnly = false): Promise<Map<string, SoundItem>> {
     const sounds = new Map<string, SoundItem>();
     const soundElements = root.querySelectorAll('media > DOMSoundItem');
 
@@ -2202,7 +2209,7 @@ export class FLAParser {
       sounds.set(name, soundItem);
 
       // Load actual audio data from ZIP
-      loadPromises.push(this.loadSoundAudio(soundItem));
+      if (!structureOnly) loadPromises.push(this.loadSoundAudio(soundItem));
     }
 
     // Wait for all sounds to load
@@ -2405,7 +2412,7 @@ export class FLAParser {
     return audioBuffer;
   }
 
-  private async parseVideos(root: globalThis.Element): Promise<Map<string, VideoItem>> {
+  private async parseVideos(root: globalThis.Element, structureOnly = false): Promise<Map<string, VideoItem>> {
     const videos = new Map<string, VideoItem>();
     const videoElements = root.querySelectorAll('media > DOMVideoItem');
     const loadPromises: Promise<void>[] = [];
@@ -2434,7 +2441,7 @@ export class FLAParser {
       videos.set(name, videoItem);
 
       // Load and parse FLV data
-      if (href) {
+      if (href && !structureOnly) {
         loadPromises.push(this.loadVideoFLV(videoItem));
       }
 

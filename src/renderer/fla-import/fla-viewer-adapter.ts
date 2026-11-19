@@ -12,6 +12,8 @@ import {
   FLA_PARSER_ENTRYPOINT,
   FLA_PARSER_PACKAGE,
   type AnimationImportIR,
+  type FlaInspectionIR,
+  type FlaWorkerStartRequest,
   type FlaCompatibilityStatus,
   type FlaImportErrorCode,
 } from '../../shared/fla-import-api';
@@ -114,6 +116,10 @@ function matrix(value: Matrix): {
   };
 }
 
+function metadataDimension(dimension: number): number {
+  return Number.isFinite(dimension) && dimension > 0 ? Math.round(dimension) : 0;
+}
+
 function sourceFormat(item: BitmapItem): 'png' | 'jpeg' | 'jpg' | 'unknown' {
   const references = [item.href, item.name, item.sourceExternalFilepath ?? ''];
   for (const reference of references) {
@@ -138,13 +144,21 @@ function uniqueBitmapItems(document: FLADocument): BitmapItem[] {
   });
 }
 
-function mediaKeyMap(items: readonly BitmapItem[]): Map<string, BitmapItem> {
-  const result = new Map<string, BitmapItem>();
+function mediaKeyMap(items: readonly BitmapItem[]): Map<string, BitmapItem | null> {
+  const result = new Map<string, BitmapItem | null>();
   for (const item of items) {
     for (const value of [item.name, item.href, item.bitmapDataHRef ?? '']) {
       if (!value) continue;
-      for (const key of referenceKeys(value)) {
-        if (!result.has(key)) result.set(key, item);
+      const [folded, leaf] = referenceKeys(value);
+      const keys = [
+        'exact:' + normalizeReference(value),
+        'folded:' + folded,
+        'leaf:' + (leaf ?? folded),
+      ];
+      for (const key of keys) {
+        const existing = result.get(key);
+        if (existing === undefined) result.set(key, item);
+        else if (existing !== item) result.set(key, null);
       }
     }
   }
@@ -152,12 +166,18 @@ function mediaKeyMap(items: readonly BitmapItem[]): Map<string, BitmapItem> {
 }
 
 function resolveBitmap(
-  keyMap: Map<string, BitmapItem>,
+  keyMap: Map<string, BitmapItem | null>,
   libraryItemName: string,
 ): BitmapItem | undefined {
-  for (const key of referenceKeys(libraryItemName)) {
+  const [folded, leaf] = referenceKeys(libraryItemName);
+  const keys = [
+    'exact:' + normalizeReference(libraryItemName),
+    'folded:' + folded,
+    'leaf:' + (leaf ?? folded),
+  ];
+  for (const key of keys) {
     const value = keyMap.get(key);
-    if (value) return value;
+    if (value !== undefined) return value ?? undefined;
   }
   return undefined;
 }
@@ -274,7 +294,9 @@ export async function adaptFlaDocument(
   source: FlaAdapterInput,
   onProgress: FlaProgressCallback,
   isCancelled: () => boolean,
-): Promise<AnimationImportIR> {
+  mode?: FlaWorkerStartRequest['mode'],
+): Promise<FlaInspectionIR> {
+  const structureOnly = mode === 'structure';
   const parser = new FLAParser();
   let document: FLADocument;
   try {
@@ -284,6 +306,7 @@ export async function adaptFlaDocument(
       new File([fileBytes], source.basename, { type: 'application/octet-stream' }),
       onProgress,
       isCancelled,
+      { structureOnly },
     );
   } catch (error) {
     if (error instanceof FlaAdapterError) throw error;
@@ -297,44 +320,52 @@ export async function adaptFlaDocument(
     fail('MEDIA_LIMIT_EXCEEDED', 'Bitmap media count exceeds the limit');
   }
   const keyMap = mediaKeyMap(bitmapItems);
-  const mediaByItem = new Map<BitmapItem, AnimationImportIR['media'][number]>();
+  const mediaByItem = new Map<BitmapItem, FlaInspectionIR['media'][number]>();
   let totalPixels = 0;
   let totalRgbaBytes = 0;
-  const media: AnimationImportIR['media'] = [];
+  const media: FlaInspectionIR['media'] = [];
 
   for (let index = 0; index < bitmapItems.length; index += 1) {
     ensureNotCancelled(isCancelled);
     const item = bitmapItems[index];
     if (!item) fail('MALFORMED_XFL', 'FLA bitmap list changed during adaptation');
-    onProgress(`Encoding bitmap ${index + 1}/${bitmapItems.length}`);
-    const encoded = encodeImage(item);
-    totalPixels += encoded.width * encoded.height;
-    totalRgbaBytes += encoded.width * encoded.height * 4;
-    if (totalPixels > FLA_IMPORT_LIMITS.maxTotalDecodedPixels || totalRgbaBytes > FLA_IMPORT_LIMITS.maxTotalDecodedRgbaBytes) {
-      fail('MEDIA_LIMIT_EXCEEDED', 'Total decoded bitmap pixels exceed the limit');
+    let encoded: ReturnType<typeof encodeImage> | undefined;
+    if (!structureOnly) {
+      onProgress(`Encoding bitmap ${index + 1}/${bitmapItems.length}`);
+      try {
+        encoded = encodeImage(item);
+      } catch (error) {
+        if (mode !== 'raster-compatibility' || !(error instanceof FlaAdapterError) ||
+            error.code !== 'MEDIA_DECODE_FAILED') throw error;
+      }
     }
-    const irMedia: AnimationImportIR['media'][number] = {
-      id: stableId('fla-media', [item.name, item.href, item.bitmapDataHRef ?? '', String(encoded.width), String(encoded.height)]),
+    const width = encoded?.width ?? metadataDimension(item.width);
+    const height = encoded?.height ?? metadataDimension(item.height);
+    if (encoded) {
+      totalPixels += width * height;
+      totalRgbaBytes += width * height * 4;
+      if (totalPixels > FLA_IMPORT_LIMITS.maxTotalDecodedPixels || totalRgbaBytes > FLA_IMPORT_LIMITS.maxTotalDecodedRgbaBytes) {
+        fail('MEDIA_LIMIT_EXCEEDED', 'Total decoded bitmap pixels exceed the limit');
+      }
+    }
+    const irMedia: FlaInspectionIR['media'][number] = {
+      id: stableId('fla-media', [item.name, item.href, item.bitmapDataHRef ?? '', String(width), String(height)]),
       name: normalizeReference(item.name),
       sourceReference: normalizeReference(item.href),
       bitmapDataReference: item.bitmapDataHRef ? normalizeReference(item.bitmapDataHRef) : null,
       sourceFormat: sourceFormat(item),
-      width: encoded.width,
-      height: encoded.height,
-      payload: {
-        mimeType: 'image/png',
-        width: encoded.width,
-        height: encoded.height,
-        bytes: encoded.bytes,
-        alpha: encoded.alpha,
-      },
+      width,
+      height,
+      ...(encoded ? { payload: { mimeType: 'image/png', ...encoded } } : {}),
     };
     media.push(irMedia);
     mediaByItem.set(item, irMedia);
   }
 
   const compatibility: AnimationImportIR['compatibility'] = [];
-  addCompatibility(compatibility, 'bitmap-media', 'exact', 'Bitmap media is emitted as Panda-owned bounded PNG bytes');
+  addCompatibility(compatibility, 'bitmap-media', 'exact', structureOnly
+    ? 'The bitmap library is listed from the source metadata'
+    : 'Decoded bitmap media is emitted as Panda-owned bounded PNG bytes');
   addCompatibility(compatibility, 'timeline-frame-placement', 'degraded', 'Bitmap placements are inspection-only; V1 does not import timeline semantics');
   if (source.containsActionScript) {
     addCompatibility(compatibility, 'actionscript', 'unsupported', 'ActionScript was detected but is never executed by the parser worker');

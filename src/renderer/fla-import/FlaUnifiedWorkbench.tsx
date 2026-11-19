@@ -302,6 +302,7 @@ export function FlaUnifiedWorkbench({
           <output
             aria-live={progress.phase === 'ready' && progress.omittedCandidateCount === 0 ? undefined : 'polite'}
             className="fla-c03-progress"
+            data-phase={progress.phase}
             data-testid={testId('catalog-progress', 'fla-c03-catalog-progress')}
           >
             {progressMessage ?? (progress.phase === 'scanning'
@@ -693,7 +694,7 @@ function thumbnailPlaceholder(candidate: FlaWorkbenchCandidate): string {
   if (candidate.preview.status === 'blank') return '空白画面';
   if (candidate.preview.status === 'unsupported') return '暂无法预览';
   if (candidate.preview.status === 'error') return '加载失败';
-  return candidate.kind === 'sequence' ? '预览' : '加载中…';
+  return candidate.kind === 'sequence' || candidate.preview.status === 'unscanned' ? '预览' : '加载中…';
 }
 
 function candidateStatus(candidate: FlaWorkbenchCandidate): string {
@@ -704,7 +705,7 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
     case 'checking':
       return candidate.kind === 'sequence' ? '' : '加载中…';
     case 'unscanned':
-      return candidate.kind === 'sequence' ? '' : '加载中…';
+      return '';
     case 'unsupported':
       return '暂无法预览';
     case 'blank':
