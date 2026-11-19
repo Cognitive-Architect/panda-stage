@@ -1,11 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { ImgHTMLAttributes } from 'react';
-import {
-  findVisibleImageBounds,
-  type NormalizedImageBounds,
-} from './characterAssemblyPreview';
+import type { NormalizedImageBounds } from './characterAssemblyPreview';
+import { measureImageVisibleBounds } from './measureImageVisibleBounds';
 
-const MAX_ALPHA_SAMPLE_EDGE = 256;
 const VISIBLE_BOUNDS_CACHE_LIMIT = 256;
 const VISIBLE_CONTENT_PADDING = 0.04;
 
@@ -69,41 +66,6 @@ export function getVisibleBoundsThumbnailTransform(
   };
 }
 
-function measureVisibleImageBounds(
-  image: HTMLImageElement,
-): NormalizedImageBounds | null {
-  if (
-    !image.complete ||
-    image.naturalWidth < 1 ||
-    image.naturalHeight < 1 ||
-    typeof document === 'undefined'
-  ) {
-    return null;
-  }
-
-  const sampleScale = Math.min(
-    1,
-    MAX_ALPHA_SAMPLE_EDGE / Math.max(image.naturalWidth, image.naturalHeight),
-  );
-  const sampleWidth = Math.max(1, Math.round(image.naturalWidth * sampleScale));
-  const sampleHeight = Math.max(1, Math.round(image.naturalHeight * sampleScale));
-  const canvas = document.createElement('canvas');
-  canvas.width = sampleWidth;
-  canvas.height = sampleHeight;
-  try {
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
-    const pixels = context.getImageData(0, 0, sampleWidth, sampleHeight);
-    return findVisibleImageBounds(pixels.data, sampleWidth, sampleHeight);
-  } catch {
-    return null;
-  } finally {
-    canvas.width = 0;
-    canvas.height = 0;
-  }
-}
-
 function cacheVisibleBounds(
   cacheKey: string,
   bounds: NormalizedImageBounds | null,
@@ -134,11 +96,11 @@ function loadVisibleBounds(
       cacheVisibleBounds(cacheKey, bounds);
       resolve(bounds);
     };
-    image.onload = () => finish(measureVisibleImageBounds(image));
+    image.onload = () => finish(measureImageVisibleBounds(image));
     image.onerror = () => finish(null);
     image.src = src;
     if (image.complete && image.naturalWidth > 0) {
-      queueMicrotask(() => finish(measureVisibleImageBounds(image)));
+      queueMicrotask(() => finish(measureImageVisibleBounds(image)));
     }
   }).finally(() => pendingVisibleBounds.delete(cacheKey));
 

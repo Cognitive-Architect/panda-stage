@@ -38,6 +38,7 @@ describe('CharacterPart Animation Basis and pivot lifecycle', () => {
     const project = addTestAnimation(input.project, input.layerId, input.imagePartId, 'transform.rotationDeg', 90);
     const shot = project.shots[0]!;
     const clip = shot.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1) throw new Error('fixture');
     const before = resolveLayerVisualParts(project, shot, evaluateShotAtTime(shot, 500, project).layers.find(l => l.id === input.layerId)!, 500);
     const changed = structuredClone(project);
     const character = changed.characters.find(c => c.id === input.characterId)!;
@@ -60,8 +61,10 @@ describe('CharacterPart Animation Basis and pivot lifecycle', () => {
     const target = clip.targetBases[0]!.target;
     const pivot = { space: 'target-local' as const, x: 150, y: 100 };
     const neutral = addTestAnimation(input.project, input.layerId, input.imagePartId, 'transform.scaleX', 1, 1).shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (neutral.version !== 1) throw new Error('fixture');
     expect(recalibrateCharacterPartAnimationPivot(neutral, target, pivot).targetBases[0]!.pivot).toEqual(pivot);
     const authored = addTestAnimation(input.project, input.layerId, input.imagePartId, 'transform.rotationDeg', 90).shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (authored.version !== 1) throw new Error('fixture');
     expect(() => recalibrateCharacterPartAnimationPivot(authored, target, pivot)).toThrow(/fixed after non-neutral/);
     expect(recalibrateCharacterPartAnimationPivot(authored, authored.targetBases[1]!.target, pivot).targetBases[1]!.pivot).toEqual(pivot);
     expect(recalibrateCharacterPartAnimationPivot({ ...authored, tracks: [] }, target, pivot).targetBases[0]!.pivot).toEqual(pivot);
@@ -79,6 +82,7 @@ describe('CharacterPart animation matrix order', () => {
     project = addTestAnimation(project, input.layerId, input.imagePartId, 'transform.scaleX', 2, 1);
     project = addTestAnimation(project, input.layerId, input.imagePartId, 'transform.scaleY', 3, 1);
     const clip = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1) throw new Error('fixture');
     const basis = clip.targetBases[0]!;
     basis.pivot = { space: 'target-local', x: 150, y: 100 };
     const matrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, evaluateAnimationClipAtTime(clip, 1000));

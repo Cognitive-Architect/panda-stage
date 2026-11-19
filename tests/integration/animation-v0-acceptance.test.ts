@@ -24,7 +24,9 @@ function authoredFixture() {
   });
   project = authoring.apply(project, { shotId: IDS.shot, layerId: fixture.layerId, partId: fixture.imagePartId, timeMs: 500, autoKey: true }, { 'transform.rotationDeg': 270 });
   project = authoring.apply(project, { shotId: IDS.shot, layerId: placed.layer.id, partId: fixture.graphicPartId, timeMs: 500, autoKey: true }, { 'transform.offsetY': -80 });
-  const basis = project.shots[0]!.layers.find(l => l.id === fixture.layerId)!.animationClip!.targetBases[1]!;
+  const clip = project.shots[0]!.layers.find(l => l.id === fixture.layerId)!.animationClip!;
+  if (clip.version !== 1) throw new Error('fixture');
+  const basis = clip.targetBases[1]!;
   if (basis.visualSource.kind !== 'fla-graphic') throw new Error('fixture');
   basis.visualSource.instanceTransformOverrides = { '2': { '["group-2","arm-2","leaf-2"]': { a: 2, b: 0, c: 0, d: 3, tx: 15, ty: 7 } } };
   return { ...fixture, project: ProjectSchema.parse(project), secondLayerId: placed.layer.id };

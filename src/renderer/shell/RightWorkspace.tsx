@@ -1,5 +1,7 @@
 import {
   useEffect,
+  useImperativeHandle,
+  type Ref,
   useRef,
   useState,
 } from 'react';
@@ -35,12 +37,18 @@ export function getNextRightActivity(
   return current === requested ? null : requested;
 }
 
+export interface RightWorkspaceHandle {
+  openPropertiesIfIdle(): void;
+}
+
 export interface RightWorkspaceProps {
+  ref?: Ref<RightWorkspaceHandle>;
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
 }
 
 export function RightWorkspace({
+  ref,
   autoCameraEnabled,
   onAutoCameraChange,
 }: RightWorkspaceProps): React.JSX.Element {
@@ -50,6 +58,10 @@ export function RightWorkspace({
   const triggerRefs = useRef<Partial<Record<RightActivity, HTMLButtonElement>>>({});
   const surfaceRef = useRef<HTMLDivElement>(null);
   const previousActivityRef = useRef<RightActivity | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    openPropertiesIfIdle: () => setActiveActivity((current) => current ?? 'properties'),
+  }), []);
 
   const closeSurface = (): void => setActiveActivity(null);
 

@@ -20,6 +20,7 @@ describe('CharacterPart outer motion through the shared visualParts pipeline', (
     const project = addTestAnimation(input.project, input.layerId, input.graphicPartId, 'transform.rotationDeg', 90);
     const before = structuredClone(project);
     const clip = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1) throw new Error('fixture');
     const center = clip.fixedCharacterCenter;
     const pivot = clip.targetBases[1]!.pivot;
     const matrices = [];
@@ -45,6 +46,7 @@ describe('CharacterPart outer motion through the shared visualParts pipeline', (
     project = addTestAnimation(project, input.layerId, input.graphicPartId, 'transform.scaleX', 2, 1);
     project = addTestAnimation(project, input.layerId, input.graphicPartId, 'transform.scaleY', 0.5, 1);
     const clip = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1) throw new Error('fixture');
     const graphic = visualAt(project, input.layerId, 1000).parts[1]!;
     const leaf = graphic.flaGraphic!.layers![0]!.nodes[0]!.children[0]!.children[0]!;
     const nested = leaf.worldTransform;
@@ -55,7 +57,9 @@ describe('CharacterPart outer motion through the shared visualParts pipeline', (
     expect(final.y).toBeCloseTo(134 - clip.fixedCharacterCenter.y);
     const beforeDefinition = structuredClone(project.animations);
     project = structuredClone(project);
-    const source = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!.targetBases[1]!.visualSource;
+    const clipForSource = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clipForSource.version !== 1) throw new Error('fixture');
+    const source = clipForSource.targetBases[1]!.visualSource;
     if (source.kind !== 'fla-graphic') throw new Error('fixture');
     source.instanceTransformOverrides = { '0': { '["group-0","arm-0","leaf-0"]': { a: 2, b: 0, c: 0, d: 3, tx: 15, ty: 7 } } };
     project = ProjectSchema.parse(project);
@@ -101,6 +105,7 @@ describe('CharacterPart outer motion through the shared visualParts pipeline', (
     (project.animations[0] as FlaGraphicDefinition).structure!.frames = (project.animations[0] as FlaGraphicDefinition).structure!.frames.filter(frame => frame.ordinal === 0);
     project = ProjectSchema.parse(project);
     const clip = project.shots[0]!.layers.find(l => l.id === input.layerId)!.animationClip!;
+    if (clip.version !== 1) throw new Error('fixture');
     for (const [time, ordinal] of [[250, 1], [500, 2]] as const) {
       const part = visualAt(project, input.layerId, time).parts[1]!;
       expect(part.flaGraphic).toBeUndefined();

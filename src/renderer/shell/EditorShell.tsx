@@ -90,7 +90,7 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
-import { RightWorkspace } from './RightWorkspace';
+import { RightWorkspace, type RightWorkspaceHandle } from './RightWorkspace';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -497,6 +497,7 @@ export function EditorShell({
   debugSurface,
   gatePreview,
 }: EditorShellProps): React.JSX.Element {
+  const rightWorkspaceRef = useRef<RightWorkspaceHandle>(null);
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -2772,6 +2773,7 @@ export function EditorShell({
                 <CanvasWorkspace
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                 />
               </div>
               {activeAssemblySession && projectSnapshot ? (
@@ -2813,6 +2815,7 @@ export function EditorShell({
                 />
               ) : (
                 <RightWorkspace
+                  ref={rightWorkspaceRef}
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}

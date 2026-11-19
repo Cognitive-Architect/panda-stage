@@ -11,6 +11,8 @@ export interface FlaGraphicRaster {
   readonly canvas: HTMLCanvasElement;
   /** Placement in the existing owner-local space; the authored anchor stays fixed. */
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** Drawable leaf extent in the same coordinate space, excluding the authored canvas. */
+  readonly visibleRect: FlaGraphicRaster['rect'] | null;
 }
 
 const MAX_RENDER_EDGE = 4_096;
@@ -103,12 +105,17 @@ function renderFlaGraphicCanvasUncached(
   let top = visual.anchor.y;
   let right = left + visual.canvas.width;
   let bottom = top + visual.canvas.height;
-  const includeNodes = (nodes: readonly EvaluatedFlaGraphicNode[]): void => {
+  let contentLeft = Infinity;
+  let contentTop = Infinity;
+  let contentRight = -Infinity;
+  let contentBottom = -Infinity;
+  const includeNodes = (nodes: readonly EvaluatedFlaGraphicNode[], visible = true): void => {
     for (const node of nodes) {
       if (!node.renderable) continue;
       const source = node.source;
+      const drawsVisibleContent = visible && evaluateFlaGraphicNodeCompositePlan(node).opacity > 0;
       if (source.type === 'group' || source.type === 'symbol') {
-        includeNodes(node.children);
+        includeNodes(node.children, drawsVisibleContent);
         continue;
       }
       const image = images.get(source.type === 'bitmap' ? source.assetId ?? '' : source.fallbackAssetId ?? '');
@@ -124,6 +131,12 @@ function renderFlaGraphicCanvasUncached(
         top = Math.min(top, worldY);
         right = Math.max(right, worldX);
         bottom = Math.max(bottom, worldY);
+        if (drawsVisibleContent) {
+          contentLeft = Math.min(contentLeft, worldX);
+          contentTop = Math.min(contentTop, worldY);
+          contentRight = Math.max(contentRight, worldX);
+          contentBottom = Math.max(contentBottom, worldY);
+        }
       }
     }
   };
@@ -162,7 +175,13 @@ function renderFlaGraphicCanvasUncached(
     -scale * left,
     -scale * top,
   ];
-  const raster: FlaGraphicRaster = { canvas, rect: {
+  const visibleRect = contentRight > contentLeft && contentBottom > contentTop ? {
+    x: contentLeft - visual.anchor.x - visual.canvas.width / 2,
+    y: contentTop - visual.anchor.y - visual.canvas.height / 2,
+    width: contentRight - contentLeft,
+    height: contentBottom - contentTop,
+  } : null;
+  const raster: FlaGraphicRaster = { canvas, visibleRect, rect: {
     x: left - visual.anchor.x - visual.canvas.width / 2,
     y: top - visual.anchor.y - visual.canvas.height / 2,
     width: sourceWidth,
@@ -360,7 +379,7 @@ function renderFlaGraphicCanvasUncached(
   if (renderedNodeCount === 0) {
     // A structured frame may intentionally degrade to empty when every node
     // is unsafe; the baked frame must not resurrect unsupported content.
-    return raster;
+    return { ...raster, visibleRect: null };
   }
   return raster;
 }

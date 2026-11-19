@@ -15,13 +15,19 @@ export * from './evaluate-layer-motion';
 export * from './evaluate-fla-graphic';
 export * from './resolve-speaker-focus-camera';
 export {
+  assertLayerClipFinalScalesInBounds,
+  evaluateLayerPreTrackState,
   evaluateShotAtTime,
 } from './evaluate-shot-at-time';
 export type {
   EvaluatedLayer,
+  EvaluatedLayerPreTrackState,
   EvaluatedShot,
 } from './evaluate-shot-at-time';
 
+export * from './animation-track-ops';
 export * from './evaluate-animation-core';
 export * from './character-part-animation';
+export * from './layer-animation';
 export * from './services/CharacterMotionService';
+export * from './services/LayerMotionService';

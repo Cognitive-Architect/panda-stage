@@ -8,6 +8,7 @@ import {
 } from '../constants';
 import {
   AnimationDefinitionSchema,
+  isFlaGraphicDefinition,
   ProjectAnimationDefinitionSchema,
 } from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
@@ -34,6 +35,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV21Schema,
   ShotV20Schema,
   ShotV19Schema,
   ShotV18Schema,
@@ -197,6 +199,41 @@ export const ProjectV20Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(20),
   shots: z.array(ShotV20Schema),
 }).strict().superRefine(validateProjectReferences);
+
+function validateAdaptiveClipOwnership(
+  project: {
+    characters: ProjectData['characters'];
+    shots: readonly {
+      layers: readonly {
+        source: { kind: string; characterId?: string };
+        animationClip?: { version: number };
+      }[];
+    }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  project.shots.forEach((shot, shotIndex) => {
+    shot.layers.forEach((layer, layerIndex) => {
+      if (!layer.animationClip || layer.animationClip.version !== 1 || layer.source.kind !== 'character') {
+        return;
+      }
+      const character = project.characters.find((entry) => entry.id === layer.source.characterId);
+      if (character?.mode !== 'adaptive-parts') {
+        context.addIssue({
+          code: 'custom',
+          path: ['shots', shotIndex, 'layers', layerIndex, 'animationClip'],
+          message: 'Animation Core V0 requires an Adaptive Parts Character.',
+        });
+      }
+    });
+  });
+}
+
+/** Frozen v21 envelope: Character Clip v1 on Adaptive Parts Characters only. */
+export const ProjectV21Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(21),
+  shots: z.array(ShotV21Schema),
+}).strict().superRefine(validateProjectReferences).superRefine(validateAdaptiveClipOwnership);
 
 export const ProjectV1Schema = z
   .object({
@@ -566,14 +603,26 @@ export function migrateFormalProject(input: unknown): unknown {
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,
-).superRefine((project, context) => {
+).superRefine(validateAdaptiveClipOwnership).superRefine((project, context) => {
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
-      if (!layer.animationClip || layer.source.kind !== 'character') return;
-      const characterId = layer.source.characterId;
-      const character = project.characters.find((entry) => entry.id === characterId);
-      if (character?.mode !== 'adaptive-parts') {
-        context.addIssue({ code: 'custom', path: ['shots', shotIndex, 'layers', layerIndex, 'animationClip'], message: 'Animation Core V0 requires an Adaptive Parts Character.' });
+      if (!layer.animationClip || layer.animationClip.version !== 2) return;
+      if (layer.source.kind !== 'animation') {
+        context.addIssue({
+          code: 'custom',
+          path: ['shots', shotIndex, 'layers', layerIndex, 'animationClip'],
+          message: 'Layer animation clip requires an animation Layer.',
+        });
+        return;
+      }
+      const animationId = layer.source.animationId;
+      const definition = project.animations.find((entry) => entry.id === animationId);
+      if (!definition || !isFlaGraphicDefinition(definition)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shots', shotIndex, 'layers', layerIndex, 'animationClip'],
+          message: 'Layer animation clip requires an FLA Graphic Definition.',
+        });
       }
     });
   });

@@ -1,7 +1,56 @@
-import { evaluateShotAtTime, type Project } from '../../../domain';
+import {
+  evaluateShotAtTime,
+  isFlaGraphicDefinition,
+  isValidFrameTime,
+  type Layer,
+  type Project,
+  type Shot,
+} from '../../../domain';
 
 export const TEMPORAL_TRANSFORM_STATUS =
   '时间轴预览中 · 回到 0:00 可调整图层';
+
+/** True when `layer` is a standalone ordinary FLA Graphic Layer eligible for Layer Target Motion. */
+export function isSupportedLayerMotionLayer(
+  project: Project | null | undefined,
+  shot: Shot | null | undefined,
+  layer: Layer | null | undefined,
+): boolean {
+  if (!project || !shot || !layer || shot.backgroundLayerId === layer.id) {
+    return false;
+  }
+  const source = layer.source;
+  if (source.kind !== 'animation') return false;
+  const animation = project.animations.find(
+    (candidate) => candidate.id === source.animationId,
+  );
+  return Boolean(animation && isFlaGraphicDefinition(animation));
+}
+
+/** True when a standalone FLA Graphic Layer can commit a static or keyframed transform at `currentTimeMs`. */
+export function isLayerMotionTransformEditableAtTime(
+  project: Project,
+  shotId: string,
+  layerId: string,
+  currentTimeMs: number,
+): boolean {
+  if (!isValidFrameTime(currentTimeMs) || currentTimeMs < 0) return false;
+  const shot = project.shots.find((candidate) => candidate.id === shotId);
+  const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+  if (
+    !shot ||
+    !layer ||
+    layer.locked ||
+    currentTimeMs > shot.durationMs ||
+    !isSupportedLayerMotionLayer(project, shot, layer)
+  ) {
+    return false;
+  }
+  const evaluated = evaluateShotAtTime(shot, currentTimeMs, project).layers.find(
+    (candidate) => candidate.id === layerId,
+  );
+  return Boolean(evaluated?.visible);
+}
 
 /** Live Scrub keeps ordinary formal Layers editable only at the base playhead. */
 export function isLayerTransformEditableAtTime(currentTimeMs: number): boolean {

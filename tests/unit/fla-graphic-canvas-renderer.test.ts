@@ -146,6 +146,26 @@ describe('shared FLA Graphic Canvas renderer', () => {
     }
   });
 
+  it('reports small drawable bounds separately from the authored Graphic canvas', () => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 1920, height: 1080 }, anchor: { x: 0, y: 0 } },
+      frames: [{ ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        sourceViewport: { x: 0, y: 0, width: 1920, height: 1080 } }],
+      structure: { version: 1, frames: [{ ordinal: 0, layers: [{ name: 'Part', nodes: [{
+        type: 'bitmap', id: 'bitmap', drawOrder: 0, localTransform: matrix(972, 568), bitmapRef: 'part.png', assetId,
+      }] }] }] },
+    });
+    vi.stubGlobal('document', { createElement: () => new FakeCanvas() });
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'definition' })!;
+    const raster = renderFlaGraphicCanvas(visual, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!;
+    expect(raster.rect).toEqual({ x: -960, y: -540, width: 1920, height: 1080 });
+    expect(raster.visibleRect).toEqual({ x: 12, y: 28, width: 8, height: 8 });
+    expect((raster.canvas as unknown as FakeCanvas).context.readCount).toBe(0);
+  });
+
   it('composites a transformed nested mask, applies Symbol RGB transform and opacity, and keeps sibling fallback local', () => {
     const frameAssetId = 'a1000000-0000-4000-8000-000000000001';
     const bitmapAssetId = '10000000-0000-4000-8000-000000000001';

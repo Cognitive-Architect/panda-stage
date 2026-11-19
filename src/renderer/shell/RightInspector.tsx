@@ -132,7 +132,8 @@ export function getRightInspectorLayerSummary(
     character && character.mode !== 'adaptive-parts' ? character : null;
   if (character?.mode === 'adaptive-parts' && partId) {
     const part = character.parts.find(candidate => candidate.partId === partId);
-    const visualSource = layer.animationClip?.targetBases.find(basis => basis.target.partId === partId)?.visualSource
+    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+    const visualSource = clip?.targetBases.find(basis => basis.target.partId === partId)?.visualSource
       ?? (part ? resolveCharacterPartVisualSource(part) : undefined);
     const assetId = visualSource?.kind === 'image' ? visualSource.assetId
       : visualSource?.kind === 'fla-graphic' ? snapshot.project.animations.find(animation => animation.id === visualSource.animationId)?.frames[0]?.assetId

@@ -1,9 +1,11 @@
 import {
+  LayerMotionService,
   LayerService,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaGraphicTransformEasing,
   type Layer,
+  type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
   type Point,
@@ -30,6 +32,8 @@ const noopLayerSelection: LayerSelection = {
 };
 
 export class LayerStore {
+  private readonly motionService = new LayerMotionService();
+
   constructor(
     private readonly editorStore: EditorProjectStore,
     private readonly shotSelection: CurrentShotSelection,
@@ -202,6 +206,27 @@ export class LayerStore {
     );
     if (next !== project) {
       this.editorStore.updateProject(next, 'Transform layer');
+    }
+    return next;
+  }
+
+  applyMotionTransform(
+    layerId: string,
+    timeMs: number,
+    autoKey: boolean,
+    patch: LayerDisplayTransformPatch,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.motionService.applyTransform(
+      project,
+      { shotId, layerId, timeMs, autoKey },
+      patch,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(
+        next,
+        autoKey ? '记录图层动作关键帧' : '修改图层变换',
+      );
     }
     return next;
   }
