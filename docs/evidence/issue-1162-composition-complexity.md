@@ -44,4 +44,5 @@ The compiled fix ran on Windows Electron 43.1.1 using production FLA inspection,
 SVG composition, and sandboxed snapshot rasterization. A-real produced a
 1,920 × 1,080 PNG of 962,528 bytes with 461,798 nontransparent pixels.
 The private PNG and full JSON receipt are in the local acceptance directory.
-Owner visual acceptance of recognizability and missing regions is pending.
+OWNER UAT: PASS. The owner reviewed the A-real PNG and confirmed that the
+structure was recognizable with no large missing regions.
