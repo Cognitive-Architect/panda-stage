@@ -173,6 +173,54 @@ function c02Fixture(withFrameBlur = false): {
 }
 
 describe('P0-C02 composed snapshot SVG', () => {
+  it.each([
+    ['BitmapFill', '', false],
+    ['BitmapFill', ' bitmapIsClipped="true"', true],
+    ['ClippedBitmapFill', '', true],
+  ] as const)('composes %s%s through the shared image registry', (tag, attributes, clipped) => {
+    const fixture = c02Fixture();
+    const paint = `<${tag} bitmapPath="background.png" allowSmoothing="false"${attributes}>` +
+      `<matrix><Matrix a="40" b="10" c="-20" d="30" tx="60" ty="-80"/></matrix></${tag}>`;
+    const result = buildSvgForResolvedDisplayList({
+      displayList: fixture.displayList,
+      renderTargetId: 'c02-bitmap-fill',
+      stageWidth: 40,
+      stageHeight: 40,
+      shapeBlocks: new Map([['fixture-shape', SHAPE_BLOCK.replace('<SolidColor color="#00ff00" alpha="1"/>', paint)]]),
+      resolveBitmapMedia: fixture.lookup,
+    });
+    if (!result.ok) throw new Error(result.message);
+    expect(result.composition).toMatchObject({ bitmapInstanceCount: 2, fillRegionCount: 1, skippedBitmapFillCount: 0 });
+    expect(result.svg.match(/<image\b/gu)).toHaveLength(2);
+    expect(result.svg).toContain('image-rendering="pixelated"');
+    if (clipped) {
+      expect(result.svg).not.toContain('<pattern');
+      expect(result.svg).toContain('<clipPath id="fla-bitmap-clip-');
+      expect(result.svg).toMatch(/<g transform="matrix\(1 0 0 1 0 3\)"><g clip-path="url\(#fla-bitmap-clip-[\da-f]+\)"><use href="#fla-bitmap-[\da-f]+" transform="matrix\(2 0.5 -1 1.5 60 -80\)"/u);
+    } else {
+      expect(result.svg).toMatch(/<pattern[^>]+patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="matrix\(2 0.5 -1 1.5 60 -80\)"/u);
+      expect(result.svg).toMatch(/<path[^>]+transform="matrix\(1 0 0 1 0 3\)" fill="url\(#fla-bitmap-pattern-/u);
+    }
+  });
+
+  it('fails on an invalid PNG or matrix even when the bitmap is used as a fill', () => {
+    const fixture = c02Fixture();
+    const render = (paint: string, resolveBitmapMedia = fixture.lookup) => buildSvgForResolvedDisplayList({
+      displayList: fixture.displayList,
+      renderTargetId: 'c02-invalid-bitmap-fill',
+      stageWidth: 40,
+      stageHeight: 40,
+      shapeBlocks: new Map([['fixture-shape', SHAPE_BLOCK.replace('<SolidColor color="#00ff00" alpha="1"/>', paint)]]),
+      resolveBitmapMedia,
+    });
+    expect(render('<BitmapFill bitmapPath="background.png"><matrix><Matrix tx="Infinity"/></matrix></BitmapFill>'))
+      .toMatchObject({ ok: false, code: 'RENDER_FAILED', message: expect.stringContaining('invalid matrix') });
+    expect(render('<BitmapFill bitmapPath="bad"/>', (name) => name === 'bad'
+      ? { ok: true, media: { id: 'bad', width: 5, height: 4, pngBytes: BLUE_PNG } }
+      : fixture.lookup(name)))
+      .toMatchObject({ ok: false, code: 'RENDER_FAILED', message: expect.stringContaining('not a bounded RGBA PNG') });
+  });
+
   it('composes shapes whose aggregate raw runs exceed the former limit', () => {
     const shapeCount = 8;
     const edgesPerShape = 8_200;
