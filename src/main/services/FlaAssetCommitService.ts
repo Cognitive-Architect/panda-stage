@@ -67,7 +67,6 @@ export interface FlaAssetCommitServiceOptions {
     projectRoot: string,
   ) => FlaAssetCommitProjectSnapshot | null;
   getSession: (sessionId: string) => FlaAssetCommitSession | null;
-  releaseSession: (sessionId: string) => void;
   fileSystem?: AssetImportFileSystemService;
   journal?: FlaAssetCommitJournalService;
   hashService?: HashService;
@@ -146,7 +145,6 @@ export class FlaAssetCommitService {
   private readonly getSession: (
     sessionId: string,
   ) => FlaAssetCommitSession | null;
-  private readonly releaseSession: (sessionId: string) => void;
   private readonly fileSystem: AssetImportFileSystemService;
   private readonly journal: FlaAssetCommitJournalService;
   private readonly hashService: HashService;
@@ -159,7 +157,6 @@ export class FlaAssetCommitService {
     this.projectService = options.projectService;
     this.getCurrentProjectSnapshot = options.getCurrentProjectSnapshot;
     this.getSession = options.getSession;
-    this.releaseSession = options.releaseSession;
     this.fileSystem =
       options.fileSystem ?? new AssetImportFileSystemService();
     this.journal = options.journal ?? new FlaAssetCommitJournalService();
@@ -302,7 +299,6 @@ export class FlaAssetCommitService {
       ir,
     );
     if (prepared.newItems.length === 0) {
-      this.releaseSession(request.sessionId);
       return this.operation(prepared, current.project, current.revision, false);
     }
 
@@ -364,7 +360,6 @@ export class FlaAssetCommitService {
       );
       await this.faults.afterConsistencyCheck?.(savedDocument.project);
       await this.journal.clear(transaction.projectRoot);
-      this.releaseSession(request.sessionId);
       return this.operation(
         prepared,
         savedDocument.project,

@@ -558,7 +558,6 @@ async function initialize(): Promise<void> {
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     getSession: (sessionId) => flaImportService.getSession(sessionId),
-    releaseSession: (sessionId) => flaImportService.releaseSession(sessionId),
   });
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,
