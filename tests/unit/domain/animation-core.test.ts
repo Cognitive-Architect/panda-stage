@@ -10,9 +10,8 @@ import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
-  it('parses v22 and preserves the full container through JSON', () => {
+  it('parses the current Project and preserves the full container through JSON', () => {
     const { project, clip } = animationCoreFixture();
-    expect(PROJECT_SCHEMA_VERSION).toBe(22);
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(project)))).toEqual(project);
     expect(AnimationClipV0Schema.parse(clip)).toEqual(clip);
     expect(clip.tracks[0]).not.toHaveProperty('id');

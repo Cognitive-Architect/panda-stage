@@ -18,6 +18,7 @@ export {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
   evaluateShotAtTime,
+  resolveEffectiveMouthCue,
 } from './evaluate-shot-at-time';
 export type {
   EvaluatedLayer,
@@ -27,6 +28,7 @@ export type {
 
 export * from './animation-track-ops';
 export * from './evaluate-animation-core';
+export * from './character-node-animation';
 export * from './character-part-animation';
 export * from './layer-animation';
 export * from './services/CharacterMotionService';

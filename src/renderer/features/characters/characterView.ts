@@ -1,4 +1,11 @@
-import type { Layer, LayerVisualPart, LayerVisualParts, Project } from '../../../domain';
+import {
+  characterNodeTransformCapabilities,
+  type CharacterNodeTransformCapabilities,
+  type Layer,
+  type LayerVisualPart,
+  type LayerVisualParts,
+  type Project,
+} from '../../../domain';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 
 export type CharacterNodeId = 'root' | 'body' | 'face' | 'head' | `part:${string}`;
@@ -7,11 +14,20 @@ export type AdaptiveCharacterNodeId = Extract<CharacterNodeId, `part:${string}`>
 type CharacterNodeSemantics =
   | { id: 'root'; role: 'root'; writeback: 'layer'; motion: 'layer' }
   | { id: 'body'; role: 'body'; writeback: 'composite-body-placement'; motion: null }
-  | { id: 'face'; role: 'face'; writeback: 'composite-face-placement'; motion: null }
+  | { id: 'face'; role: 'face'; writeback: 'composite-face-placement'; motion: 'character-clip-v3' }
   | { id: 'head'; role: 'head'; writeback: 'composite-head-placement'; motion: null }
   | { id: AdaptiveCharacterNodeId; role: 'part'; partId: string; writeback: 'adaptive-default-pose'; motion: 'character-clip-v1' };
 
-export type CharacterNode = CharacterNodeSemantics & { readonly name: string };
+export type CharacterNode = CharacterNodeSemantics & {
+  readonly name: string;
+  readonly capabilities: CharacterNodeTransformCapabilities;
+};
+
+export function isCharacterNodeMotionEditable(
+  node: CharacterNode | null | undefined,
+): node is Extract<CharacterNode, { motion: 'character-clip-v1' | 'character-clip-v3' }> {
+  return node?.motion === 'character-clip-v1' || node?.motion === 'character-clip-v3';
+}
 
 export interface CharacterView {
   readonly characterId: string;
@@ -48,26 +64,58 @@ export function resolveCharacterView(
         partId: basis.target.partId,
         displayName: basis.displayName,
       })) ?? character.parts;
-      nodes = parts.map(({ partId, displayName }, index) => ({
-        id: characterPartNodeId(partId),
-        partId,
-        name: localizeDefaultAdaptivePartName(displayName ?? '', index + 1),
-        role: 'part',
-        writeback: 'adaptive-default-pose',
-        motion: 'character-clip-v1',
-      }));
+      nodes = parts.map(({ partId, displayName }, index) => {
+        const id = characterPartNodeId(partId);
+        return {
+          id,
+          partId,
+          name: localizeDefaultAdaptivePartName(displayName ?? '', index + 1),
+          role: 'part',
+          writeback: 'adaptive-default-pose',
+          motion: 'character-clip-v1',
+          capabilities: characterNodeTransformCapabilities(character, id),
+        };
+      });
       break;
     }
     case 'single-image':
     case 'composite':
-      nodes = [{ id: 'root', role: 'root', name: '角色整体', writeback: 'layer', motion: 'layer' }];
+      nodes = [{
+        id: 'root',
+        role: 'root',
+        name: '角色整体',
+        writeback: 'layer',
+        motion: 'layer',
+        capabilities: characterNodeTransformCapabilities(character, 'root'),
+      }];
       if (character.mode === 'composite') {
         nodes.push(
-          { id: 'body', role: 'body', name: '身体', writeback: 'composite-body-placement', motion: null },
-          { id: 'face', role: 'face', name: '脸部', writeback: 'composite-face-placement', motion: null },
+          {
+            id: 'body',
+            role: 'body',
+            name: '身体',
+            writeback: 'composite-body-placement',
+            motion: null,
+            capabilities: characterNodeTransformCapabilities(character, 'body'),
+          },
+          {
+            id: 'face',
+            role: 'face',
+            name: '脸部',
+            writeback: 'composite-face-placement',
+            motion: 'character-clip-v3',
+            capabilities: characterNodeTransformCapabilities(character, 'face'),
+          },
         );
         if (character.head) {
-          nodes.push({ id: 'head', role: 'head', name: '头部', writeback: 'composite-head-placement', motion: null });
+          nodes.push({
+            id: 'head',
+            role: 'head',
+            name: '头部',
+            writeback: 'composite-head-placement',
+            motion: null,
+            capabilities: characterNodeTransformCapabilities(character, 'head'),
+          });
         }
       }
       break;

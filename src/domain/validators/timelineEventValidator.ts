@@ -85,6 +85,27 @@ export function validatePresetApplication(
         }
       }
     }
+
+    if (event.type === 'mouth-cue') {
+      if (layer.source.kind !== 'character') {
+        errors.push('嘴型关键帧只能用于角色图层。');
+      } else {
+        const characterId = layer.source.characterId;
+        const character = project.characters.find(
+          (candidate) => candidate.id === characterId,
+        );
+        if (!character) {
+          errors.push('找不到该图层所属的角色。');
+        } else if (character.mode === 'adaptive-parts') {
+          errors.push('当前角色不支持嘴型关键帧。');
+        } else if (
+          !character.mouthOpenAssetId &&
+          !character.mouthOpenVisualSource
+        ) {
+          errors.push('请先为角色配置张嘴视觉。');
+        }
+      }
+    }
   }
 
   return { ok: errors.length === 0, errors };

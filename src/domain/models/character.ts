@@ -4,7 +4,7 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
-import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
+import { FlaGraphicInstanceTransformOverridesV22Schema, type FlaGraphicInstanceTransformOverrides } from './flaGraphicInstanceOverrides';
 
 export const CharacterExpressionV19Schema = z
   .object({
@@ -34,7 +34,7 @@ const CharacterIdentityShape = {
   defaultFlipX: z.boolean(),
 };
 
-export const FacePlacementSchema = z
+const FacePlacementV22Schema = z
   .object({
     offsetX: FiniteNumberSchema,
     offsetY: FiniteNumberSchema,
@@ -45,7 +45,7 @@ export const FacePlacementSchema = z
   .strict();
 
 /** Body translation and uniform scale in Character-local coordinates. */
-export const BodyPlacementSchema = z
+const BodyPlacementV22Schema = z
   .object({
     offsetX: FiniteNumberSchema,
     offsetY: FiniteNumberSchema,
@@ -73,7 +73,7 @@ export const FacePlacementV10Schema = z
   .strict();
 
 /** Head translation, scale, and static transform relative to its Character. */
-export const HeadPlacementSchema = z
+const HeadPlacementV22Schema = z
   .object({
     offsetX: FiniteNumberSchema,
     offsetY: FiniteNumberSchema,
@@ -93,18 +93,18 @@ export const HeadPlacementV10Schema = z
   .strict();
 
 /** Head pivot point expressed in the owning Character's local coordinates. */
-export const HeadPivotSchema = z
+const HeadPivotV22Schema = z
   .object({
     x: FiniteNumberSchema,
     y: FiniteNumberSchema,
   })
   .strict();
 
-export const CharacterHeadSchema = z
+const CharacterHeadV22Schema = z
   .object({
     assetId: IdSchema,
-    placement: HeadPlacementSchema,
-    pivot: HeadPivotSchema,
+    placement: HeadPlacementV22Schema,
+    pivot: HeadPivotV22Schema,
   })
   .strict();
 
@@ -112,11 +112,11 @@ const CharacterHeadV10Schema = z
   .object({
     assetId: IdSchema,
     placement: HeadPlacementV10Schema,
-    pivot: HeadPivotSchema,
+    pivot: HeadPivotV22Schema,
   })
   .strict();
 
-export const TalkingHeadMotionIntensityPercentSchema = z
+const TalkingHeadMotionIntensityPercentV22Schema = z
   .number()
   .int()
   .min(0)
@@ -135,11 +135,11 @@ const CompositeCharacterSchema = z
     ...CharacterBaseShape,
     mode: z.literal('composite'),
     bodyAssetId: IdSchema,
-    bodyPlacement: BodyPlacementSchema.default({ ...DEFAULT_BODY_PLACEMENT }),
-    facePlacement: FacePlacementSchema,
-    head: CharacterHeadSchema.optional(),
+    bodyPlacement: BodyPlacementV22Schema.default({ ...DEFAULT_BODY_PLACEMENT }),
+    facePlacement: FacePlacementV22Schema,
+    head: CharacterHeadV22Schema.optional(),
     talkingHeadMotionIntensityPercent:
-      TalkingHeadMotionIntensityPercentSchema,
+      TalkingHeadMotionIntensityPercentV22Schema,
   })
   .strict();
 
@@ -158,7 +158,7 @@ const NonEmptySourceIdSchema = z
     { message: 'Part source identifiers must not contain absolute paths.' },
   );
 
-export const CharacterPartSourceSchema = z.discriminatedUnion('kind', [
+const CharacterPartSourceV22Schema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('source-instance'),
@@ -175,7 +175,7 @@ export const CharacterPartSourceSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
-export const CharacterPartTransformSchema = z
+export const CharacterPartTransformV22Schema = z
   .object({
     a: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
     b: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
@@ -197,7 +197,7 @@ export const CharacterPartTransformSchema = z
   });
 
 /** User-authored static change relative to an immutable source pose. */
-export const CharacterPartStaticAdjustmentSchema = z
+const CharacterPartStaticAdjustmentV22Schema = z
   .object({
     offsetX: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
     offsetY: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
@@ -224,7 +224,7 @@ const PartCropSchema = z
   })
   .strict();
 
-export const CharacterPartImageMappingSchema = z
+const CharacterPartImageMappingV22Schema = z
   .object({
     sourceWidth: z.number().int().positive(),
     sourceHeight: z.number().int().positive(),
@@ -250,37 +250,37 @@ export const CharacterPartImageMappingSchema = z
     }
   });
 
-export const CharacterPartImageVisualSourceSchema = z
+const CharacterPartImageVisualSourceV22Schema = z
   .object({
     kind: z.literal('image'),
     assetId: IdSchema,
-    imageMapping: CharacterPartImageMappingSchema,
+    imageMapping: CharacterPartImageMappingV22Schema,
   })
   .strict();
 
-export const CharacterPartFlaGraphicVisualSourceSchema = z
+const CharacterPartFlaGraphicVisualSourceV22Schema = z
   .object({
     kind: z.literal('fla-graphic'),
     animationId: IdSchema,
     instanceTransformOverrides:
-      FlaGraphicInstanceTransformOverridesSchema.optional(),
+      FlaGraphicInstanceTransformOverridesV22Schema.optional(),
   })
   .strict();
 
-export const CharacterPartVisualSourceSchema = z.discriminatedUnion('kind', [
-  CharacterPartImageVisualSourceSchema,
-  CharacterPartFlaGraphicVisualSourceSchema,
+export const CharacterPartVisualSourceV22Schema = z.discriminatedUnion('kind', [
+  CharacterPartImageVisualSourceV22Schema,
+  CharacterPartFlaGraphicVisualSourceV22Schema,
 ]);
 
 const CharacterPartBaseShape = {
   partId: IdSchema,
-  source: CharacterPartSourceSchema,
+  source: CharacterPartSourceV22Schema,
   /** Full 2D affine transform from source-local coordinates to Character-local coordinates. */
-  restTransform: CharacterPartTransformSchema,
+  restTransform: CharacterPartTransformV22Schema,
   /** Immutable source-pose transform. Optional only for legacy v15 records. */
-  sourceRestTransform: CharacterPartTransformSchema.optional(),
+  sourceRestTransform: CharacterPartTransformV22Schema.optional(),
   /** Static authoring controls relative to sourceRestTransform. */
-  staticAdjustment: CharacterPartStaticAdjustmentSchema.optional(),
+  staticAdjustment: CharacterPartStaticAdjustmentV22Schema.optional(),
   /** Unique integer order, lower values behind higher values. */
   drawOrder: z.number().int().nonnegative().max(1_000_000),
   visible: z.boolean(),
@@ -292,15 +292,15 @@ export const CharacterPartV17Schema = z
   .object({
     ...CharacterPartBaseShape,
     assetId: IdSchema,
-    imageMapping: CharacterPartImageMappingSchema,
+    imageMapping: CharacterPartImageMappingV22Schema,
   })
   .strict();
 
 function validateCharacterPartVisualSource(
   part: {
     assetId?: string;
-    imageMapping?: z.infer<typeof CharacterPartImageMappingSchema>;
-    visualSource?: z.infer<typeof CharacterPartVisualSourceSchema>;
+    imageMapping?: z.infer<typeof CharacterPartImageMappingV22Schema>;
+    visualSource?: z.infer<typeof CharacterPartVisualSourceV22Schema>;
   },
   context: z.RefinementCtx,
 ): void {
@@ -360,12 +360,12 @@ function validateCharacterPartVisualSource(
   }
 }
 
-export const CharacterPartSchema = z
+const CharacterPartV22Schema = z
   .object({
     ...CharacterPartBaseShape,
     assetId: IdSchema.optional(),
-    imageMapping: CharacterPartImageMappingSchema.optional(),
-    visualSource: CharacterPartVisualSourceSchema.optional(),
+    imageMapping: CharacterPartImageMappingV22Schema.optional(),
+    visualSource: CharacterPartVisualSourceV22Schema.optional(),
   })
   .strict()
   .superRefine(validateCharacterPartVisualSource);
@@ -374,7 +374,7 @@ const AdaptivePartsCharacterBaseShape = {
   ...CharacterIdentityShape,
   mode: z.literal('adaptive-parts'),
   /** Source container transform; C2 applies it separately from Part-local transforms. */
-  sourceRootTransform: CharacterPartTransformSchema.default({
+  sourceRootTransform: CharacterPartTransformV22Schema.default({
     a: 1,
     b: 0,
     c: 0,
@@ -436,10 +436,10 @@ function validateAdaptivePartsUniqueness(
   });
 }
 
-export const AdaptivePartsCharacterSchema = z
+const AdaptivePartsCharacterV22Schema = z
   .object({
     ...AdaptivePartsCharacterBaseShape,
-    parts: z.array(CharacterPartSchema).min(1),
+    parts: z.array(CharacterPartV22Schema).min(1),
   })
   .strict()
   .superRefine(validateAdaptivePartsUniqueness);
@@ -449,10 +449,10 @@ const CompositeCharacterV11Schema = z
     ...CharacterBaseShape,
     mode: z.literal('composite'),
     bodyAssetId: IdSchema,
-    facePlacement: FacePlacementSchema,
-    head: CharacterHeadSchema.optional(),
+    facePlacement: FacePlacementV22Schema,
+    head: CharacterHeadV22Schema.optional(),
     talkingHeadMotionIntensityPercent:
-      TalkingHeadMotionIntensityPercentSchema,
+      TalkingHeadMotionIntensityPercentV22Schema,
   })
   .strict();
 
@@ -483,7 +483,7 @@ const CompositeCharacterV10Schema = z
     facePlacement: FacePlacementV10Schema,
     head: CharacterHeadV10Schema.optional(),
     talkingHeadMotionIntensityPercent:
-      TalkingHeadMotionIntensityPercentSchema,
+      TalkingHeadMotionIntensityPercentV22Schema,
   })
   .strict();
 
@@ -535,35 +535,35 @@ export const CharacterV17Schema = z.discriminatedUnion('mode', [
 export const CharacterV19Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema,
   CompositeCharacterSchema,
-  AdaptivePartsCharacterSchema,
+  AdaptivePartsCharacterV22Schema,
 ]);
 
 /** A Graphic face is always a frozen instance, never a raster-cache identity. */
-export const CharacterFaceGraphicSourceSchema = z.object({
+const CharacterFaceGraphicSourceV22Schema = z.object({
   kind: z.literal('fla-graphic'),
   animationId: IdSchema,
   firstFrame: z.number().int().nonnegative(),
 }).strict();
 
-export const CharacterExpressionSchema = CharacterExpressionV19Schema.extend({
+const CharacterExpressionV22Schema = CharacterExpressionV19Schema.extend({
   assetId: IdSchema.optional(),
-  visualSource: CharacterFaceGraphicSourceSchema.optional(),
+  visualSource: CharacterFaceGraphicSourceV22Schema.optional(),
 }).superRefine((expression, context) => {
   if (Boolean(expression.assetId) === Boolean(expression.visualSource)) {
     context.addIssue({ code: 'custom', path: ['visualSource'], message: 'Expression requires exactly one image or Graphic source.' });
   }
 });
 
-const CurrentFaceShape = {
+const CharacterFaceV22Shape = {
   baseAssetId: IdSchema.optional(),
-  expressions: z.array(CharacterExpressionSchema).min(1),
-  mouthOpenVisualSource: CharacterFaceGraphicSourceSchema.optional(),
+  expressions: z.array(CharacterExpressionV22Schema).min(1),
+  mouthOpenVisualSource: CharacterFaceGraphicSourceV22Schema.optional(),
 };
 
-export const CharacterSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterSchema.extend(CurrentFaceShape),
-  CompositeCharacterSchema.extend(CurrentFaceShape),
-  AdaptivePartsCharacterSchema,
+export const CharacterV22Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend(CharacterFaceV22Shape),
+  CompositeCharacterSchema.extend(CharacterFaceV22Shape),
+  AdaptivePartsCharacterV22Schema,
 ]).superRefine((character, context) => {
   if (character.mode === 'adaptive-parts') return;
   if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
@@ -599,7 +599,7 @@ export const CharacterV6Schema = z
   .object(CharacterBaseShape)
   .strict();
 
-export const VoiceProfileSchema = z
+export const VoiceProfileV22Schema = z
   .object({
     id: IdSchema,
     name: NameSchema,
@@ -609,6 +609,27 @@ export const VoiceProfileSchema = z
     pitch: z.number().finite().min(-1).max(1).default(0),
   })
   .strict();
+
+// New persisted fields belong on the current exports.
+export const FacePlacementSchema = FacePlacementV22Schema;
+export const BodyPlacementSchema = BodyPlacementV22Schema;
+export const HeadPlacementSchema = HeadPlacementV22Schema;
+export const HeadPivotSchema = HeadPivotV22Schema;
+export const CharacterHeadSchema = CharacterHeadV22Schema;
+export const TalkingHeadMotionIntensityPercentSchema = TalkingHeadMotionIntensityPercentV22Schema;
+export const CharacterPartSourceSchema = CharacterPartSourceV22Schema;
+export const CharacterPartTransformSchema = CharacterPartTransformV22Schema;
+export const CharacterPartStaticAdjustmentSchema = CharacterPartStaticAdjustmentV22Schema;
+export const CharacterPartImageMappingSchema = CharacterPartImageMappingV22Schema;
+export const CharacterPartImageVisualSourceSchema = CharacterPartImageVisualSourceV22Schema;
+export const CharacterPartFlaGraphicVisualSourceSchema = CharacterPartFlaGraphicVisualSourceV22Schema;
+export const CharacterPartVisualSourceSchema = CharacterPartVisualSourceV22Schema;
+export const CharacterPartSchema = CharacterPartV22Schema;
+export const AdaptivePartsCharacterSchema = AdaptivePartsCharacterV22Schema;
+export const CharacterFaceGraphicSourceSchema = CharacterFaceGraphicSourceV22Schema;
+export const CharacterExpressionSchema = CharacterExpressionV22Schema;
+export const CharacterSchema = CharacterV22Schema;
+export const VoiceProfileSchema = VoiceProfileV22Schema;
 
 export type CharacterExpression = z.infer<typeof CharacterExpressionSchema>;
 export type FacePlacement = z.infer<typeof FacePlacementSchema>;
@@ -657,8 +678,8 @@ export function resolveCharacterPartVisualSource(
 }
 
 function cloneFlaGraphicOverrides(
-  overrides: z.infer<typeof FlaGraphicInstanceTransformOverridesSchema>,
-): z.infer<typeof FlaGraphicInstanceTransformOverridesSchema> {
+  overrides: FlaGraphicInstanceTransformOverrides,
+): FlaGraphicInstanceTransformOverrides {
   return Object.fromEntries(
     Object.entries(overrides).map(([frameKey, frameMap]) => [
       frameKey,

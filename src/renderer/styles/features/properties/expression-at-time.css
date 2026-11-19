@@ -160,3 +160,53 @@
 .expression-at-time-error {
   color: #f5b5a6;
 }
+
+.mouth-cue-at-time {
+  margin-top: var(--ui-space-3);
+  padding-top: var(--ui-space-3);
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.mouth-cue-at-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+}
+
+.mouth-cue-at-time-label {
+  font: var(--ui-font-secondary);
+  color: var(--ui-color-text-secondary);
+  white-space: nowrap;
+}
+
+.mouth-cue-at-time-actions {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-space-2);
+}
+
+.mouth-cue-choice {
+  justify-content: center;
+  min-height: 36px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.mouth-cue-event-list {
+  margin: var(--ui-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mouth-cue-event-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+}
+
+.mouth-cue-event-list li + li {
+  border-top: 1px solid var(--ui-color-separator);
+}

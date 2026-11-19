@@ -7,7 +7,7 @@ import type {
 
 const FiniteNumberSchema = z.number().finite();
 
-export const FlaGraphicTransformEasingSchema = z.enum([
+const FlaGraphicTransformEasingV1Schema = z.enum([
   'linear',
   'ease',
   'hold',
@@ -17,7 +17,7 @@ export type FlaGraphicTransformEasing = z.infer<
   typeof FlaGraphicTransformEasingSchema
 >;
 
-export const FlaGraphicDecomposedTransformSchema = z
+const FlaGraphicDecomposedTransformV1Schema = z
   .object({
     tx: FiniteNumberSchema,
     ty: FiniteNumberSchema,
@@ -31,11 +31,11 @@ export type FlaGraphicDecomposedTransform = z.infer<
   typeof FlaGraphicDecomposedTransformSchema
 >;
 
-export const FlaGraphicTransformKeyframeSchema = z
+const FlaGraphicTransformKeyframeV1Schema = z
   .object({
     timeMs: z.number().int().nonnegative(),
-    transform: FlaGraphicDecomposedTransformSchema,
-    easing: FlaGraphicTransformEasingSchema.default('linear'),
+    transform: FlaGraphicDecomposedTransformV1Schema,
+    easing: FlaGraphicTransformEasingV1Schema.default('linear'),
   })
   .strict();
 
@@ -43,10 +43,10 @@ export type FlaGraphicTransformKeyframe = z.infer<
   typeof FlaGraphicTransformKeyframeSchema
 >;
 
-export const FlaGraphicTransformTrackSchema = z
+const FlaGraphicTransformTrackV1Schema = z
   .object({
     trackId: z.string().trim().min(1).max(1_024),
-    keyframes: z.array(FlaGraphicTransformKeyframeSchema).min(1).max(2_000),
+    keyframes: z.array(FlaGraphicTransformKeyframeV1Schema).min(1).max(2_000),
   })
   .strict()
   .superRefine((track, context) => {
@@ -70,9 +70,9 @@ export type FlaGraphicTransformTrack = z.infer<
   typeof FlaGraphicTransformTrackSchema
 >;
 
-export const FlaGraphicInternalTimelineSchema = z
+export const FlaGraphicInternalTimelineV1Schema = z
   .object({
-    tracks: z.array(FlaGraphicTransformTrackSchema).max(1_000),
+    tracks: z.array(FlaGraphicTransformTrackV1Schema).max(1_000),
   })
   .strict()
   .superRefine((timeline, context) => {
@@ -92,6 +92,12 @@ export const FlaGraphicInternalTimelineSchema = z
 export type FlaGraphicInternalTimeline = z.infer<
   typeof FlaGraphicInternalTimelineSchema
 >;
+
+export const FlaGraphicTransformEasingSchema = FlaGraphicTransformEasingV1Schema;
+export const FlaGraphicDecomposedTransformSchema = FlaGraphicDecomposedTransformV1Schema;
+export const FlaGraphicTransformKeyframeSchema = FlaGraphicTransformKeyframeV1Schema;
+export const FlaGraphicTransformTrackSchema = FlaGraphicTransformTrackV1Schema;
+export const FlaGraphicInternalTimelineSchema = FlaGraphicInternalTimelineV1Schema;
 
 export function decomposeAffineMatrix(
   matrix: AffineMatrix2D,

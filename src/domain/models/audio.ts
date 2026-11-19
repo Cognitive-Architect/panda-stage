@@ -27,9 +27,12 @@ export const AudioClipV7Schema = z
     }
   });
 
-export const AudioClipRoleSchema = z.enum(['dialogue', 'bgm', 'sfx']);
-export const AudioClipSchema = AudioClipV7Schema.safeExtend({
-  role: AudioClipRoleSchema,
+const AudioClipRoleV22Schema = z.enum(['dialogue', 'bgm', 'sfx']);
+export const AudioClipV22Schema = AudioClipV7Schema.safeExtend({
+  role: AudioClipRoleV22Schema,
 });
+
+export const AudioClipRoleSchema = AudioClipRoleV22Schema;
+export const AudioClipSchema = AudioClipV22Schema;
 
 export type AudioClip = z.infer<typeof AudioClipSchema>;

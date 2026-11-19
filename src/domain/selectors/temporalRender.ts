@@ -4,7 +4,10 @@ import type {
   EvaluatedShot,
 } from '../evaluate-shot-at-time';
 import type { ImageAsset, Project, Shot } from '../models';
-import { evaluateShotAtTime } from '../evaluate-shot-at-time';
+import {
+  evaluateShotAtTime,
+  resolveEffectiveMouthCue,
+} from '../evaluate-shot-at-time';
 import {
   resolveLayerVisualParts,
   type VisualResourceReference,
@@ -114,65 +117,95 @@ export function projectShotMouth(
   evaluatedShot: EvaluatedShot,
   activeDialogueId: string | null,
 ): EvaluatedShot {
-  if (!activeDialogueId) return evaluatedShot;
-
-  const dialogue = shot.dialogues.find(
-    (candidate) => candidate.id === activeDialogueId,
+  const dialogue = activeDialogueId
+    ? shot.dialogues.find((candidate) => candidate.id === activeDialogueId)
+    : undefined;
+  const audioClip = dialogue?.audioClipId
+    ? shot.audioClips.find((candidate) => candidate.id === dialogue.audioClipId)
+    : undefined;
+  const audioAsset = audioClip
+    ? project.assets.find((candidate) => candidate.id === audioClip.assetId)
+    : undefined;
+  const speakingCharacter =
+    dialogue && audioClip && audioAsset?.kind === 'audio'
+      ? project.characters.find((candidate) => candidate.id === dialogue.characterId)
+      : undefined;
+  const dialogueOpenPhase = Boolean(
+    audioClip &&
+      evaluatedShot.timeMs >= audioClip.startMs &&
+      evaluatedShot.timeMs < audioClip.endMs &&
+      (evaluatedShot.timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS <
+        MOUTH_OPEN_MS &&
+      speakingCharacter &&
+      speakingCharacter.mode !== 'adaptive-parts' &&
+      (speakingCharacter.mouthOpenAssetId ||
+        speakingCharacter.mouthOpenVisualSource),
   );
-  if (!dialogue?.audioClipId) return evaluatedShot;
-
-  const audioClip = shot.audioClips.find(
-    (candidate) => candidate.id === dialogue.audioClipId,
+  const hasAnyMouthCue = shot.timelineEvents.some(
+    (event) => event.type === 'mouth-cue',
   );
-  if (
-    !audioClip ||
-    evaluatedShot.timeMs < audioClip.startMs ||
-    evaluatedShot.timeMs >= audioClip.endMs
-  ) {
-    return evaluatedShot;
-  }
-
-  // Closed phases use the exact formal Expression already in evaluatedShot.
-  // Keeping the phase audio-relative makes seeks and dropped frames inert.
-  if (
-    (evaluatedShot.timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS >=
-    MOUTH_OPEN_MS
-  ) {
-    return evaluatedShot;
-  }
-
-  const audioAsset = project.assets.find(
-    (candidate) => candidate.id === audioClip.assetId,
-  );
-  if (audioAsset?.kind !== 'audio') return evaluatedShot;
-
-  const speakingCharacter = project.characters.find(
-    (candidate) => candidate.id === dialogue.characterId,
-  );
-  if (
-    !speakingCharacter ||
-    speakingCharacter.mode === 'adaptive-parts' ||
-    (!speakingCharacter.mouthOpenAssetId && !speakingCharacter.mouthOpenVisualSource)
-  ) return evaluatedShot;
-
-  const mouthAsset = project.assets.find(
-    (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,
-  );
-  if (!speakingCharacter.mouthOpenVisualSource && mouthAsset?.kind !== 'image') return evaluatedShot;
+  if (!dialogueOpenPhase && !hasAnyMouthCue) return evaluatedShot;
 
   let changed = false;
   const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
-    const source = shot.layers.find(
-      (candidate) => candidate.id === layer.id,
-    )?.source;
+    const shotLayer = shot.layers.find((candidate) => candidate.id === layer.id);
+    if (!shotLayer || shotLayer.source.kind !== 'character') return layer;
+
+    const cue = resolveEffectiveMouthCue(shot, layer.id, evaluatedShot.timeMs);
+    const layerCharacterId = shotLayer.source.characterId;
+    const layerCharacter = project.characters.find(
+      (candidate) => candidate.id === layerCharacterId,
+    );
+    if (!layerCharacter || layerCharacter.mode === 'adaptive-parts') {
+      return layer;
+    }
+
+    if (cue === 'rest') {
+      if (layer.mouthOverrideAssetId !== null || layer.mouthOpen) {
+        const exprId =
+          layer.currentExpressionId ?? layerCharacter.defaultExpressionId;
+        const expression = layerCharacter.expressions.find(
+          (candidate) => candidate.id === exprId,
+        );
+        const restored = { ...layer };
+        delete restored.mouthOpen;
+        changed = true;
+        return {
+          ...restored,
+          assetId: expression?.assetId ?? layer.assetId,
+          mouthOverrideAssetId: null,
+        };
+      }
+      return layer;
+    }
+
+    const shouldOpenFromCue = cue === 'open';
+    const shouldOpenFromDialogue =
+      cue === 'none' &&
+      dialogueOpenPhase &&
+      layerCharacterId === dialogue?.characterId;
+    if (!shouldOpenFromCue && !shouldOpenFromDialogue) {
+      return layer;
+    }
+
     if (
-      source?.kind !== 'character' ||
-      source.characterId !== dialogue.characterId
+      !layerCharacter.mouthOpenAssetId &&
+      !layerCharacter.mouthOpenVisualSource
     ) {
       return layer;
     }
+    const mouthAsset = layerCharacter.mouthOpenAssetId
+      ? project.assets.find(
+          (candidate) => candidate.id === layerCharacter.mouthOpenAssetId,
+        )
+      : undefined;
+    if (!layerCharacter.mouthOpenVisualSource && mouthAsset?.kind !== 'image') {
+      return layer;
+    }
     if (
-      (speakingCharacter.mouthOpenVisualSource ? layer.mouthOpen : layer.assetId === mouthAsset?.id) &&
+      (layerCharacter.mouthOpenVisualSource
+        ? layer.mouthOpen
+        : layer.assetId === mouthAsset?.id) &&
       layer.mouthOverrideAssetId === (mouthAsset?.id ?? null)
     ) {
       return layer;
@@ -182,7 +215,7 @@ export function projectShotMouth(
       ...layer,
       assetId: mouthAsset?.id ?? layer.assetId,
       mouthOverrideAssetId: mouthAsset?.id ?? null,
-      ...(speakingCharacter.mouthOpenVisualSource ? { mouthOpen: true } : {}),
+      ...(layerCharacter.mouthOpenVisualSource ? { mouthOpen: true } : {}),
     };
   });
 

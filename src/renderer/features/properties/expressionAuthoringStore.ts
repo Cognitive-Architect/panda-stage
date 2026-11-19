@@ -1,6 +1,9 @@
 import {
   deleteExpressionEvent,
+  deleteMouthCueEvent,
   upsertExpressionEventAtTime,
+  upsertMouthCueEventAtTime,
+  type MouthCueState,
 } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -68,6 +71,50 @@ export class ExpressionAuthoringStore {
         ok: false,
         changed: false,
         error: error instanceof Error ? error.message : '无法删除表情切换。',
+      };
+    }
+  }
+
+  setMouthCueAtCurrentTime(state: MouthCueState): ExpressionAuthoringResult {
+    const context = this.context();
+    if (!context) return { ok: false, changed: false, error: '请先选择镜头中的角色。' };
+    try {
+      const next = upsertMouthCueEventAtTime(
+        context.project,
+        context.shotId,
+        context.layerId,
+        state,
+        timelineUiStore.getSnapshot().currentTimeMs,
+      );
+      if (next === context.project) return { ok: true, changed: false };
+      editorProjectStore.updateProject(next, '设置角色嘴型');
+      return { ok: true, changed: true };
+    } catch (error) {
+      return {
+        ok: false,
+        changed: false,
+        error: error instanceof Error ? error.message : '无法设置嘴型。',
+      };
+    }
+  }
+
+  deleteMouthCue(eventId: string): ExpressionAuthoringResult {
+    const context = this.context();
+    if (!context) return { ok: false, changed: false, error: '请先选择镜头中的角色。' };
+    try {
+      const next = deleteMouthCueEvent(
+        context.project,
+        context.shotId,
+        context.layerId,
+        eventId,
+      );
+      editorProjectStore.updateProject(next, '删除角色嘴型');
+      return { ok: true, changed: true };
+    } catch (error) {
+      return {
+        ok: false,
+        changed: false,
+        error: error instanceof Error ? error.message : '无法删除嘴型。',
       };
     }
   }

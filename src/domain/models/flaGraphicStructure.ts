@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
-import { FlaGraphicInternalTimelineSchema } from './flaGraphicTimeline';
+import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
 
 /**
  * Persisted, source-backed object tree of an FLA Graphic Definition (STRUCT-04-E1).
@@ -21,7 +21,7 @@ const maskPathTextEncoder = new TextEncoder();
 
 const FiniteNumber = z.number().finite();
 
-export const FlaStructureMatrixSchema = z
+export const FlaStructureMatrixV1Schema = z
   .object({
     a: FiniteNumber,
     b: FiniteNumber,
@@ -35,7 +35,7 @@ export const FlaStructureMatrixSchema = z
 const SourceTextSchema = z.string().trim().min(1).max(1_000);
 
 /** One XFL mask dependency: the union of the listed shapes clips the node. */
-export const FlaStructureClipPathSchema = z
+const FlaStructureClipPathV1Schema = z
   .object({
     shapes: z
       .array(
@@ -43,9 +43,9 @@ export const FlaStructureClipPathSchema = z
           .object({
             shapeId: SourceTextSchema,
             /** Mask geometry placement in the Graphic symbol's coordinate space. */
-            worldTransform: FlaStructureMatrixSchema,
+            worldTransform: FlaStructureMatrixV1Schema,
             /** Transform relative to the clipped node's authored parent. */
-            parentLocalTransform: FlaStructureMatrixSchema.optional(),
+            parentLocalTransform: FlaStructureMatrixV1Schema.optional(),
             /** Filled mask contours from the trusted FLA shape resolver. */
             pathData: z
               .array(
@@ -75,8 +75,8 @@ const NodeBase = {
   sourceAddress: SourceTextSchema.optional(),
   /** Index among siblings in authored back-to-front draw order. */
   drawOrder: z.number().int().nonnegative(),
-  localTransform: FlaStructureMatrixSchema,
-  clipPaths: z.array(FlaStructureClipPathSchema).max(64).optional(),
+  localTransform: FlaStructureMatrixV1Schema,
+  clipPaths: z.array(FlaStructureClipPathV1Schema).max(64).optional(),
 };
 
 const RgbTransformSchema = z
@@ -92,8 +92,8 @@ export type FlaGraphicStructureNode =
       id: string;
       sourceAddress?: string;
       drawOrder: number;
-      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
-      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       groupId: string;
       children: FlaGraphicStructureNode[];
     }
@@ -102,8 +102,8 @@ export type FlaGraphicStructureNode =
       id: string;
       sourceAddress?: string;
       drawOrder: number;
-      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
-      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       /** Shared Symbol Definition reference (source library item name). */
       symbolRef: string;
       /** Key into `FlaGraphicStructure.symbolDefinitions` when normalized. */
@@ -124,8 +124,8 @@ export type FlaGraphicStructureNode =
       id: string;
       sourceAddress?: string;
       drawOrder: number;
-      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
-      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       /** Source media library item name; bytes stay in the source/media cache. */
       bitmapRef: string;
       /** Project asset ID fallback if bound, e.g. from generated or existing ImageAssets. */
@@ -138,8 +138,8 @@ export type FlaGraphicStructureNode =
       id: string;
       sourceAddress?: string;
       drawOrder: number;
-      localTransform: z.infer<typeof FlaStructureMatrixSchema>;
-      clipPaths?: z.infer<typeof FlaStructureClipPathSchema>[];
+      localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
+      clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       /** Why this subtree is read-only: its display comes from the frame SVG fallback. */
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
       sourceRef?: string;
@@ -157,14 +157,14 @@ export type FlaGraphicStructureNode =
       };
     };
 
-export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
+const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
   z.discriminatedUnion('type', [
     z
       .object({
         ...NodeBase,
         type: z.literal('group'),
         groupId: SourceTextSchema,
-        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+        children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
       })
       .strict(),
     z
@@ -181,7 +181,7 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
         sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
-        children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
+        children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
       .strict(),
     z
@@ -216,44 +216,44 @@ export const FlaGraphicStructureNodeSchema: z.ZodType<FlaGraphicStructureNode> =
   ]),
 );
 
-export const FlaGraphicStructureLayerSchema = z
+const FlaGraphicStructureLayerV1Schema = z
   .object({
     name: z.string().max(500),
-    nodes: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+    nodes: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
   })
   .strict();
 
 export type FlaGraphicStructureLayer = z.infer<typeof FlaGraphicStructureLayerSchema>;
 
 /** Structure captured for one Definition frame; the shape allows more frames later. */
-export const FlaGraphicStructureFrameSchema = z
+const FlaGraphicStructureFrameV1Schema = z
   .object({
     ordinal: z.number().int().nonnegative(),
-    layers: z.array(FlaGraphicStructureLayerSchema).max(1_000),
+    layers: z.array(FlaGraphicStructureLayerV1Schema).max(1_000),
   })
   .strict();
 
 export type FlaGraphicStructureFrame = z.infer<typeof FlaGraphicStructureFrameSchema>;
 
-export const FlaGraphicNestedSymbolDefinitionSchema = z
+const FlaGraphicNestedSymbolDefinitionV1Schema = z
   .object({
     symbolRef: SourceTextSchema,
     /** Authoritative source timeline span, independent of authored property keys. */
     sourceFrameCount: z.number().int().positive().max(100_000).optional(),
     frameSelectionKey: SourceTextSchema.optional(),
-    children: z.array(FlaGraphicStructureNodeSchema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
-    timeline: FlaGraphicInternalTimelineSchema.optional(),
+    children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES),
+    timeline: FlaGraphicInternalTimelineV1Schema.optional(),
   })
   .strict();
 
 export type FlaGraphicNestedSymbolDefinition = z.infer<typeof FlaGraphicNestedSymbolDefinitionSchema>;
 
-export const FlaGraphicStructureSchema = z
+export const FlaGraphicStructureV1Schema = z
   .object({
     version: z.literal(1),
-    symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionSchema).optional(),
-    frames: z.array(FlaGraphicStructureFrameSchema).min(1).max(256),
-    timeline: FlaGraphicInternalTimelineSchema.optional(),
+    symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionV1Schema).optional(),
+    frames: z.array(FlaGraphicStructureFrameV1Schema).min(1).max(256),
+    timeline: FlaGraphicInternalTimelineV1Schema.optional(),
   })
   .strict()
   .superRefine((structure, context) => {
@@ -320,6 +320,14 @@ export const FlaGraphicStructureSchema = z
   });
 
 export type FlaGraphicStructure = z.infer<typeof FlaGraphicStructureSchema>;
+
+export const FlaStructureMatrixSchema = FlaStructureMatrixV1Schema;
+export const FlaStructureClipPathSchema = FlaStructureClipPathV1Schema;
+export const FlaGraphicStructureNodeSchema = FlaGraphicStructureNodeV1Schema;
+export const FlaGraphicStructureLayerSchema = FlaGraphicStructureLayerV1Schema;
+export const FlaGraphicStructureFrameSchema = FlaGraphicStructureFrameV1Schema;
+export const FlaGraphicNestedSymbolDefinitionSchema = FlaGraphicNestedSymbolDefinitionV1Schema;
+export const FlaGraphicStructureSchema = FlaGraphicStructureV1Schema;
 
 export interface ReconstructedFlaStructureNode {
   readonly node: FlaGraphicStructureNode;

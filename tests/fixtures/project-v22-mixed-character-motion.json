@@ -1,0 +1,981 @@
+{
+  "schemaVersion": 22,
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "测试项目",
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "assets": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "name": "背景",
+      "relativePath": "bg.png",
+      "mimeType": "image/png",
+      "kind": "image",
+      "width": 1920,
+      "height": 1080,
+      "usage": "uncategorized",
+      "keywords": []
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "name": "熊猫",
+      "relativePath": "char.png",
+      "mimeType": "image/png",
+      "kind": "image",
+      "width": 640,
+      "height": 640,
+      "usage": "uncategorized",
+      "keywords": []
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "name": "熊猫2",
+      "relativePath": "char2.png",
+      "mimeType": "image/png",
+      "kind": "image",
+      "width": 640,
+      "height": 640,
+      "usage": "uncategorized",
+      "keywords": []
+    },
+    {
+      "id": "92000000-0000-4000-8000-000000000001",
+      "name": "Face 0",
+      "relativePath": "assets/face-0.svg",
+      "mimeType": "image/svg+xml",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "image",
+      "width": 80,
+      "height": 70,
+      "usage": "character",
+      "keywords": [],
+      "flaGraphicFrame": {
+        "definitionId": "91000000-0000-4000-8000-000000001112",
+        "ordinal": 0
+      }
+    },
+    {
+      "id": "92000000-0000-4000-8000-000000000002",
+      "name": "Face 1",
+      "relativePath": "assets/face-1.svg",
+      "mimeType": "image/svg+xml",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "image",
+      "width": 90,
+      "height": 70,
+      "usage": "character",
+      "keywords": [],
+      "flaGraphicFrame": {
+        "definitionId": "91000000-0000-4000-8000-000000001112",
+        "ordinal": 1
+      }
+    },
+    {
+      "id": "92000000-0000-4000-8000-000000000003",
+      "name": "Face 2",
+      "relativePath": "assets/face-2.svg",
+      "mimeType": "image/svg+xml",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "image",
+      "width": 100,
+      "height": 70,
+      "usage": "character",
+      "keywords": [],
+      "flaGraphicFrame": {
+        "definitionId": "91000000-0000-4000-8000-000000001112",
+        "ordinal": 2
+      }
+    },
+    {
+      "id": "92000000-0000-4000-8000-000000000004",
+      "name": "Face 3",
+      "relativePath": "assets/face-3.svg",
+      "mimeType": "image/svg+xml",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "image",
+      "width": 110,
+      "height": 70,
+      "usage": "character",
+      "keywords": [],
+      "flaGraphicFrame": {
+        "definitionId": "91000000-0000-4000-8000-000000001112",
+        "ordinal": 3
+      }
+    }
+  ],
+  "animations": [
+    {
+      "id": "91000000-0000-4000-8000-000000001112",
+      "name": "Four faces",
+      "source": {
+        "basename": "faces.fla",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "renderTargetId": "faces",
+        "targetKind": "graphic-symbol",
+        "targetName": "faces",
+        "startFrameIndex": 7,
+        "endFrameIndex": 10,
+        "sourceFps": 24,
+        "canvas": {
+          "width": 200,
+          "height": 180
+        },
+        "anchor": {
+          "x": 0,
+          "y": 0
+        },
+        "documentCanvas": {
+          "width": 1920,
+          "height": 1080
+        }
+      },
+      "durationMs": 166.66666666666666,
+      "kind": "fla-graphic",
+      "frames": [
+        {
+          "ordinal": 0,
+          "sourceFrameIndex": 7,
+          "assetId": "92000000-0000-4000-8000-000000000001",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceViewport": {
+            "x": 0,
+            "y": 8,
+            "width": 80,
+            "height": 70
+          },
+          "offset": {
+            "x": 0,
+            "y": 8
+          },
+          "startMs": 0,
+          "durationMs": 41.666666666666664,
+          "createdBySequenceImport": false
+        },
+        {
+          "ordinal": 1,
+          "sourceFrameIndex": 8,
+          "assetId": "92000000-0000-4000-8000-000000000002",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceViewport": {
+            "x": 5,
+            "y": 8,
+            "width": 90,
+            "height": 70
+          },
+          "offset": {
+            "x": 5,
+            "y": 8
+          },
+          "startMs": 41.666666666666664,
+          "durationMs": 41.666666666666664,
+          "createdBySequenceImport": false
+        },
+        {
+          "ordinal": 2,
+          "sourceFrameIndex": 9,
+          "assetId": "92000000-0000-4000-8000-000000000003",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceViewport": {
+            "x": 10,
+            "y": 8,
+            "width": 100,
+            "height": 70
+          },
+          "offset": {
+            "x": 10,
+            "y": 8
+          },
+          "startMs": 83.33333333333333,
+          "durationMs": 41.666666666666664,
+          "createdBySequenceImport": false
+        },
+        {
+          "ordinal": 3,
+          "sourceFrameIndex": 10,
+          "assetId": "92000000-0000-4000-8000-000000000004",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sourceViewport": {
+            "x": 15,
+            "y": 8,
+            "width": 110,
+            "height": 70
+          },
+          "offset": {
+            "x": 15,
+            "y": 8
+          },
+          "startMs": 125,
+          "durationMs": 41.666666666666664,
+          "createdBySequenceImport": false
+        }
+      ],
+      "structure": {
+        "version": 1,
+        "frames": [
+          {
+            "ordinal": 0,
+            "layers": [
+              {
+                "name": "face",
+                "nodes": [
+                  {
+                    "id": "face-0",
+                    "drawOrder": 0,
+                    "localTransform": {
+                      "a": 0.2,
+                      "b": 0,
+                      "c": 0,
+                      "d": 0.2,
+                      "tx": 12,
+                      "ty": 10
+                    },
+                    "type": "bitmap",
+                    "bitmapRef": "face",
+                    "assetId": "10000000-0000-4000-8000-000000000002"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ordinal": 1,
+            "layers": [
+              {
+                "name": "face",
+                "nodes": [
+                  {
+                    "id": "face-1",
+                    "drawOrder": 0,
+                    "localTransform": {
+                      "a": 0.2,
+                      "b": 0,
+                      "c": 0,
+                      "d": 0.2,
+                      "tx": 12,
+                      "ty": 10
+                    },
+                    "type": "bitmap",
+                    "bitmapRef": "face",
+                    "assetId": "10000000-0000-4000-8000-000000000003"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ordinal": 2,
+            "layers": [
+              {
+                "name": "face",
+                "nodes": [
+                  {
+                    "id": "face-2",
+                    "drawOrder": 0,
+                    "localTransform": {
+                      "a": 0.2,
+                      "b": 0,
+                      "c": 0,
+                      "d": 0.2,
+                      "tx": 12,
+                      "ty": 10
+                    },
+                    "type": "bitmap",
+                    "bitmapRef": "face",
+                    "assetId": "10000000-0000-4000-8000-000000000002"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "ordinal": 3,
+            "layers": [
+              {
+                "name": "face",
+                "nodes": [
+                  {
+                    "id": "face-3",
+                    "drawOrder": 0,
+                    "localTransform": {
+                      "a": 0.2,
+                      "b": 0,
+                      "c": 0,
+                      "d": 0.2,
+                      "tx": 12,
+                      "ty": 10
+                    },
+                    "type": "bitmap",
+                    "bitmapRef": "face",
+                    "assetId": "10000000-0000-4000-8000-000000000003"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "characters": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "熊猫",
+      "baseAssetId": "10000000-0000-4000-8000-000000000002",
+      "defaultVoiceProfileId": "30000000-0000-4000-8000-000000000001",
+      "expressions": [
+        {
+          "id": "20000000-0000-4000-8000-000000000002",
+          "name": "正常",
+          "assetId": "10000000-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "20000000-0000-4000-8000-000000000003",
+          "name": "生气",
+          "assetId": "10000000-0000-4000-8000-000000000003"
+        }
+      ],
+      "defaultExpressionId": "20000000-0000-4000-8000-000000000002",
+      "defaultScale": 1,
+      "defaultFlipX": false,
+      "mode": "single-image"
+    },
+    {
+      "id": "e74c7f74-40c6-4a23-89d6-aa7799e7f06a",
+      "name": "Core fixture",
+      "defaultVoiceProfileId": "3b50d32b-93ab-4d11-a814-c96e4481bab5",
+      "defaultScale": 1,
+      "defaultFlipX": false,
+      "mode": "adaptive-parts",
+      "sourceRootTransform": {
+        "a": 1,
+        "b": 0,
+        "c": 0,
+        "d": 1,
+        "tx": 0,
+        "ty": 0
+      },
+      "parts": [
+        {
+          "partId": "71000000-0000-4000-8000-000000000001",
+          "source": {
+            "kind": "source-instance",
+            "sourceId": "com1.instances[4]:com6",
+            "sourcePoseFrame": 0,
+            "effectiveFrame": 0
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 191.1,
+            "ty": 424.75
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 191.1,
+            "ty": 424.75
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 0,
+          "visible": true,
+          "displayName": "com6",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        },
+        {
+          "partId": "71000000-0000-4000-8000-000000000002",
+          "source": {
+            "kind": "source-instance",
+            "sourceId": "com1.instances[3]:com2",
+            "sourcePoseFrame": 0,
+            "effectiveFrame": 0
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 0,
+            "ty": 396.3
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 0,
+            "ty": 396.3
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 1,
+          "visible": true,
+          "displayName": "com2",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        },
+        {
+          "partId": "71000000-0000-4000-8000-000000000003",
+          "source": {
+            "kind": "source-instance",
+            "sourceId": "com1.instances[2]:com5",
+            "sourcePoseFrame": 0,
+            "effectiveFrame": 0
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 167.05,
+            "ty": 665.2
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 167.05,
+            "ty": 665.2
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 2,
+          "visible": true,
+          "displayName": "com5",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        },
+        {
+          "partId": "71000000-0000-4000-8000-000000000004",
+          "source": {
+            "kind": "source-instance",
+            "sourceId": "com1.instances[1]:com4",
+            "sourcePoseFrame": 0,
+            "effectiveFrame": 0
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 151.7,
+            "ty": 191.1
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 151.7,
+            "ty": 191.1
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 3,
+          "visible": true,
+          "displayName": "com4",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        },
+        {
+          "partId": "71000000-0000-4000-8000-000000000005",
+          "source": {
+            "kind": "source-instance",
+            "sourceId": "com1.instances[0]:com3",
+            "sourcePoseFrame": 0,
+            "effectiveFrame": 0
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 230.2,
+            "ty": 669.7
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 230.2,
+            "ty": 669.7
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 4,
+          "visible": true,
+          "displayName": "com3",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        },
+        {
+          "partId": "71000000-0000-4000-8000-000000000006",
+          "source": {
+            "kind": "manual",
+            "sourceId": "manual:fixture:body-arm-composite"
+          },
+          "restTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 320,
+            "ty": 420
+          },
+          "sourceRestTransform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": 320,
+            "ty": 420
+          },
+          "staticAdjustment": {
+            "offsetX": 0,
+            "offsetY": 0,
+            "scale": 1,
+            "rotationDeg": 0
+          },
+          "drawOrder": 5,
+          "visible": true,
+          "displayName": "Body + arm composite",
+          "assetId": "10000000-0000-4000-8000-000000000002",
+          "imageMapping": {
+            "sourceWidth": 640,
+            "sourceHeight": 640,
+            "crop": {
+              "x": 0,
+              "y": 0,
+              "width": 640,
+              "height": 640
+            },
+            "exportScale": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "5cdf31bf-05ae-431f-9a57-33905dc97e91",
+      "name": "Composite with Graphic expressions",
+      "defaultVoiceProfileId": "b8f943b3-b014-4d3c-9e42-8c001137590e",
+      "expressions": [
+        {
+          "id": "628d5962-43eb-4c61-bb46-7122f9879f37",
+          "name": "Graphic",
+          "visualSource": {
+            "kind": "fla-graphic",
+            "animationId": "91000000-0000-4000-8000-000000001112",
+            "firstFrame": 0
+          }
+        },
+        {
+          "id": "d15bfb1c-8edd-4973-b918-c9e4aaf2ca78",
+          "name": "Image",
+          "assetId": "10000000-0000-4000-8000-000000000003"
+        }
+      ],
+      "defaultExpressionId": "628d5962-43eb-4c61-bb46-7122f9879f37",
+      "mouthOpenAssetId": "10000000-0000-4000-8000-000000000002",
+      "defaultScale": 1,
+      "defaultFlipX": false,
+      "mode": "composite",
+      "bodyAssetId": "10000000-0000-4000-8000-000000000003",
+      "bodyPlacement": {
+        "offsetX": 0,
+        "offsetY": 0,
+        "scale": 1
+      },
+      "facePlacement": {
+        "offsetX": 12,
+        "offsetY": -8,
+        "scale": 1.2,
+        "rotationDeg": 15,
+        "flipX": false
+      },
+      "talkingHeadMotionIntensityPercent": 100
+    }
+  ],
+  "voiceProfiles": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "name": "配音",
+      "characterId": "20000000-0000-4000-8000-000000000001",
+      "locale": "zh-CN",
+      "rate": 1,
+      "pitch": 0
+    },
+    {
+      "id": "3b50d32b-93ab-4d11-a814-c96e4481bab5",
+      "name": "Core fixture Default Voice",
+      "characterId": "e74c7f74-40c6-4a23-89d6-aa7799e7f06a",
+      "locale": "zh-CN",
+      "rate": 1,
+      "pitch": 0
+    },
+    {
+      "id": "b8f943b3-b014-4d3c-9e42-8c001137590e",
+      "name": "Composite with Graphic expressions 默认语音",
+      "characterId": "5cdf31bf-05ae-431f-9a57-33905dc97e91",
+      "locale": "zh-CN",
+      "rate": 1,
+      "pitch": 0
+    }
+  ],
+  "subtitleStyles": [
+    {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "name": "字幕",
+      "fontFamily": "Arial",
+      "fontSize": 44,
+      "textColor": "#ffffff",
+      "backgroundColor": "#000000",
+      "position": "bottom",
+      "align": "center",
+      "maxWidth": 1600
+    }
+  ],
+  "shots": [
+    {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "镜头",
+      "durationMs": 3000,
+      "defaultSubtitleStyleId": "40000000-0000-4000-8000-000000000001",
+      "dialogues": [
+        {
+          "id": "91000000-0000-4000-8000-000000001155",
+          "subtitleStyleId": "40000000-0000-4000-8000-000000000001",
+          "startMs": 250,
+          "endMs": 750,
+          "text": "Still the same dialogue.",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "voiceProfileId": "30000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "audioClips": [],
+      "timelineEvents": [],
+      "layers": [
+        {
+          "id": "60000000-0000-4000-8000-000000000001",
+          "name": "背景",
+          "source": {
+            "kind": "asset",
+            "assetId": "10000000-0000-4000-8000-000000000001"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "道具",
+          "source": {
+            "kind": "asset",
+            "assetId": "10000000-0000-4000-8000-000000000001"
+          },
+          "anchor": "center",
+          "x": 500,
+          "y": 600,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "60000000-0000-4000-8000-000000000003",
+          "name": "角色",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 500,
+          "y": 600,
+          "scaleX": 0.5,
+          "scaleY": 0.5,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 2,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "4a379948-a64b-400f-a01b-1195bb6809fb",
+          "name": "Core fixture",
+          "source": {
+            "kind": "character",
+            "characterId": "e74c7f74-40c6-4a23-89d6-aa7799e7f06a"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 3,
+          "locked": false,
+          "flipX": false,
+          "animationClip": {
+            "version": 1,
+            "fixedCharacterCenter": {
+              "x": 320,
+              "y": 320
+            },
+            "targetBases": [
+              {
+                "target": {
+                  "kind": "character-part",
+                  "layerId": "4a379948-a64b-400f-a01b-1195bb6809fb",
+                  "partId": "71000000-0000-4000-8000-000000000001"
+                },
+                "visualSource": {
+                  "kind": "image",
+                  "assetId": "10000000-0000-4000-8000-000000000002",
+                  "imageMapping": {
+                    "sourceWidth": 640,
+                    "sourceHeight": 640,
+                    "crop": {
+                      "x": 0,
+                      "y": 0,
+                      "width": 640,
+                      "height": 640
+                    },
+                    "exportScale": 1
+                  }
+                },
+                "baseTransform": {
+                  "a": 1,
+                  "b": 0,
+                  "c": 0,
+                  "d": 1,
+                  "tx": 0,
+                  "ty": 0
+                },
+                "pivot": {
+                  "space": "target-local",
+                  "x": 320,
+                  "y": 320
+                },
+                "drawOrder": 0,
+                "visible": true,
+                "displayName": "Arm"
+              }
+            ],
+            "tracks": [
+              {
+                "target": {
+                  "kind": "character-part",
+                  "layerId": "4a379948-a64b-400f-a01b-1195bb6809fb",
+                  "partId": "71000000-0000-4000-8000-000000000001"
+                },
+                "property": "transform.rotationDeg",
+                "keys": [
+                  {
+                    "timeMs": 0,
+                    "value": 0,
+                    "interpolationToNext": "linear"
+                  },
+                  {
+                    "timeMs": 1000,
+                    "value": 270,
+                    "interpolationToNext": "linear"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "06abe114-bc54-48f0-a49d-50b3e8add4fe",
+          "name": "Composite with Graphic expressions",
+          "source": {
+            "kind": "character",
+            "characterId": "5cdf31bf-05ae-431f-9a57-33905dc97e91",
+            "expressionId": "628d5962-43eb-4c61-bb46-7122f9879f37"
+          },
+          "anchor": "center",
+          "x": 600,
+          "y": 400,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 4,
+          "locked": false,
+          "flipX": false
+        },
+        {
+          "id": "0aefa355-8e5a-455f-8c9c-d669aeaa908f",
+          "name": "Four faces",
+          "source": {
+            "kind": "animation",
+            "animationId": "91000000-0000-4000-8000-000000001112"
+          },
+          "anchor": "center",
+          "x": 500,
+          "y": 400,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 5,
+          "locked": false,
+          "flipX": false,
+          "startTimeMs": 0,
+          "animationFirstFrame": 0,
+          "animationPlayback": {
+            "mode": "once",
+            "endBehavior": "hold"
+          },
+          "animationClip": {
+            "version": 2,
+            "targetBases": [
+              {
+                "target": {
+                  "kind": "layer",
+                  "layerId": "0aefa355-8e5a-455f-8c9c-d669aeaa908f"
+                },
+                "animationId": "91000000-0000-4000-8000-000000001112",
+                "baseTransform": {
+                  "x": 500,
+                  "y": 400,
+                  "scaleX": 1,
+                  "scaleY": 1,
+                  "rotationDeg": 0
+                },
+                "sourceCanvas": {
+                  "width": 200,
+                  "height": 180
+                },
+                "pivot": {
+                  "space": "target-local",
+                  "x": 100,
+                  "y": 90
+                }
+              }
+            ],
+            "tracks": [
+              {
+                "target": {
+                  "kind": "layer",
+                  "layerId": "0aefa355-8e5a-455f-8c9c-d669aeaa908f"
+                },
+                "property": "transform.offsetX",
+                "keys": [
+                  {
+                    "timeMs": 0,
+                    "value": 0,
+                    "interpolationToNext": "linear"
+                  },
+                  {
+                    "timeMs": 500,
+                    "value": 120,
+                    "interpolationToNext": "linear"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "backgroundLayerId": "60000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-11-18T10:08:49.703Z"
+}

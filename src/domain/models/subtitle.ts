@@ -7,7 +7,7 @@ export const SUBTITLE_STYLE_STROKE_WIDTH_MAX = 32;
 export const DEFAULT_SUBTITLE_STROKE_COLOR = '#000000';
 export const DEFAULT_SUBTITLE_STROKE_WIDTH = 6;
 
-export const SubtitleStyleSchema = z
+export const SubtitleStyleV22Schema = z
   .object({
     id: IdSchema,
     name: NameSchema,
@@ -33,5 +33,7 @@ export const SubtitleStyleSchema = z
     maxWidth: z.number().int().positive().max(1920),
   })
   .strict();
+
+export const SubtitleStyleSchema = SubtitleStyleV22Schema;
 
 export type SubtitleStyle = z.infer<typeof SubtitleStyleSchema>;

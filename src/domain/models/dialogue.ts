@@ -18,10 +18,12 @@ import {
 export const DIALOGUE_SPEAKER_CHARACTER = 'character' as const;
 export const DIALOGUE_SPEAKER_NARRATOR = 'narrator' as const;
 
-export const DialogueSpeakerTypeSchema = z.enum([
+const DialogueSpeakerTypeV22Schema = z.enum([
   DIALOGUE_SPEAKER_CHARACTER,
   DIALOGUE_SPEAKER_NARRATOR,
 ]);
+
+export const DialogueSpeakerTypeSchema = DialogueSpeakerTypeV22Schema;
 
 export type DialogueSpeakerType = z.infer<typeof DialogueSpeakerTypeSchema>;
 
@@ -124,10 +126,10 @@ function refineDialogueSpeaker(
  * the legacy Character dialogue contract (characterId + voiceProfileId are
  * required and still validated by `refineDialogueSpeaker`).
  */
-export const DialogueSchema = z
+export const DialogueV22Schema = z
   .object({
     ...dialogueBaseShape,
-    speakerType: DialogueSpeakerTypeSchema.optional(),
+    speakerType: DialogueSpeakerTypeV22Schema.optional(),
     characterId: IdSchema.optional(),
     voiceProfileId: IdSchema.optional(),
     audioClipId: IdSchema.optional(),
@@ -135,6 +137,8 @@ export const DialogueSchema = z
   .strict()
   .superRefine(refineDialogueSpeaker)
   .superRefine(refineDialogueDuration);
+
+export const DialogueSchema = DialogueV22Schema;
 
 export type Dialogue = z.infer<typeof DialogueSchema>;
 export type CharacterDialogue = Dialogue & {

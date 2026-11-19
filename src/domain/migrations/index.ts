@@ -22,6 +22,7 @@ import {
   ProjectV19Schema,
   ProjectV20Schema,
   ProjectV21Schema,
+  ProjectV22Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -39,6 +40,7 @@ export { LegacyProbeProjectV1Schema, ProjectV0Schema };
 export type { LegacyProbeProjectV1, ProjectV0 };
 
 export type DetectedSchemaVersion =
+  | 22
   | 21
   | 20
   | 19
@@ -68,7 +70,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -106,6 +108,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 19 ||
     version === 20 ||
     version === 21 ||
+    version === 22 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -408,6 +411,8 @@ export function migrateProject(input: unknown): Project {
       return ProjectSchema.parse({ ...ProjectV20Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case 21:
       return ProjectSchema.parse({ ...ProjectV21Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 22:
+      return ProjectSchema.parse({ ...ProjectV22Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case PROJECT_SCHEMA_VERSION:
       // Current projects are validated without an implicit compatibility rewrite.
       project = ProjectSchema.parse(input);

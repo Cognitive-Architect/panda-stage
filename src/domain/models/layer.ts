@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import { AnimationClipSchema, AnimationClipV0Schema } from './animationCore';
+import {
+  AnimationClipSchema, AnimationClipV22Schema, AnimationClipV0Schema, type AnimationClip,
+} from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
-import { FlaGraphicInstanceTransformOverridesSchema } from './flaGraphicInstanceOverrides';
+import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
 
-export const AssetLayerSourceSchema = z
+const AssetLayerSourceV22Schema = z
   .object({
     kind: z.literal('asset'),
     assetId: IdSchema,
@@ -30,7 +32,7 @@ export const CharacterLayerSourceV15Schema = z
 
 /** Source variants accepted by persisted schemas through v14. */
 export const LayerSourceV14Schema = z.discriminatedUnion('kind', [
-  AssetLayerSourceSchema,
+  AssetLayerSourceV22Schema,
   CharacterLayerSourceSchema,
 ]);
 
@@ -41,7 +43,7 @@ export const AnimationLayerSourceV15Schema = z
   })
   .strict();
 
-export const AnimationLayerSourceSchema = z
+const AnimationLayerSourceV22Schema = z
   .object({
     kind: z.literal('animation'),
     animationId: IdSchema,
@@ -67,27 +69,27 @@ export const AnimationLayerSourceV16Schema = z
 
 /** Strict v15 Adaptive Parts source contract from origin/main. */
 export const LayerSourceV15AdaptiveSchema = z.discriminatedUnion('kind', [
-  AssetLayerSourceSchema,
+  AssetLayerSourceV22Schema,
   CharacterLayerSourceV15Schema,
 ]);
 
 /** Strict animation-era v15 source contract from the PR branch. */
 export const LayerSourceV15AnimationSchema = z.discriminatedUnion('kind', [
-  AssetLayerSourceSchema,
+  AssetLayerSourceV22Schema,
   CharacterLayerSourceSchema,
   AnimationLayerSourceV15Schema,
 ]);
 
-/** Current v16 source contract combines Adaptive Parts and animation layers. */
-export const LayerSourceSchema = z.discriminatedUnion('kind', [
-  AssetLayerSourceSchema,
+/** Layer source variants persisted in v22. */
+const LayerSourceV22Schema = z.discriminatedUnion('kind', [
+  AssetLayerSourceV22Schema,
   CharacterLayerSourceV15Schema,
-  AnimationLayerSourceSchema,
+  AnimationLayerSourceV22Schema,
 ]);
 
 /** Exact source variants persisted by schema v16. */
 export const LayerSourceV16Schema = z.discriminatedUnion('kind', [
-  AssetLayerSourceSchema,
+  AssetLayerSourceV22Schema,
   CharacterLayerSourceV15Schema,
   AnimationLayerSourceV16Schema,
 ]);
@@ -99,7 +101,7 @@ export const AnimationPlaybackV16Schema = z
   })
   .strict();
 
-export const AnimationPlaybackSchema = z
+const AnimationPlaybackV22Schema = z
   .object({
     mode: z.enum(['once', 'loop', 'single-frame']),
     endBehavior: z.enum(['hold', 'hide']),
@@ -147,7 +149,7 @@ function validateAnimationLayerFields(
     source: LayerSource;
     startTimeMs?: number;
     animationFirstFrame?: number;
-    animationPlayback?: z.infer<typeof AnimationPlaybackSchema>;
+    animationPlayback?: z.infer<typeof AnimationPlaybackV22Schema>;
   },
   context: z.RefinementCtx,
   requiresPlayback: boolean,
@@ -222,6 +224,11 @@ export const LayerV15AdaptiveSchema = z
 /** Backward-compatible name for the PR branch's historical v15 contract. */
 export const LayerV15Schema = LayerV15AnimationSchema;
 
+export const AssetLayerSourceSchema = AssetLayerSourceV22Schema;
+export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema;
+export const LayerSourceSchema = LayerSourceV22Schema;
+export const AnimationPlaybackSchema = AnimationPlaybackV22Schema;
+
 /** Frozen v20 Layer reader, before Animation Core. */
 export const LayerV20Schema = z
   .object({
@@ -256,12 +263,13 @@ export const LayerV21Schema = LayerV20Schema.safeExtend({
   }
 });
 
-export const LayerSchema = LayerV20Schema.safeExtend({
-  animationClip: AnimationClipSchema.optional(),
-}).superRefine((layer, context) => {
+function validateClipOwnership(
+  layer: z.infer<typeof LayerV20Schema> & { animationClip?: AnimationClip },
+  context: z.RefinementCtx,
+): void {
   const clip = layer.animationClip;
   if (!clip) return;
-  if (clip.version === 1) {
+  if (clip.version === 1 || clip.version === 3) {
     if (layer.source.kind !== 'character') {
       context.addIssue({ code: 'custom', path: ['animationClip'], message: 'Only Character layers may contain a Character animation clip.' });
     }
@@ -288,7 +296,19 @@ export const LayerSchema = LayerV20Schema.safeExtend({
       }
     });
   }
-});
+}
+
+/** Frozen v22 Layer reader with Character Clip v1 and Layer Clip v2. */
+export const LayerV22Schema = LayerV20Schema.safeExtend({
+  source: LayerSourceV22Schema,
+  animationPlayback: AnimationPlaybackV22Schema.optional(),
+  flaGraphicInstanceTransformOverrides: FlaGraphicInstanceTransformOverridesV22Schema.optional(),
+  animationClip: AnimationClipV22Schema.optional(),
+}).superRefine(validateClipOwnership);
+
+export const LayerSchema = LayerV20Schema.safeExtend({
+  animationClip: AnimationClipSchema.optional(),
+}).superRefine(validateClipOwnership);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

@@ -3,7 +3,7 @@ import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
   FLA_GRAPHIC_STRUCTURE_MAX_DEPTH,
   FLA_GRAPHIC_STRUCTURE_MAX_NODES,
-  FlaStructureMatrixSchema,
+  FlaStructureMatrixV1Schema,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -17,10 +17,10 @@ const NodePathKeySchema = z.string().min(3).max(FLA_GRAPHIC_STRUCTURE_MAX_DEPTH 
  * frame ordinal and the inner key is the JSON-encoded complete stable node
  * path; values contain only the node-local matrix.
  */
-export const FlaGraphicInstanceTransformOverridesSchema = z
+export const FlaGraphicInstanceTransformOverridesV22Schema = z
   .record(
     FrameOrdinalKeySchema,
-    z.record(NodePathKeySchema, FlaStructureMatrixSchema),
+    z.record(NodePathKeySchema, FlaStructureMatrixV1Schema),
   )
   .superRefine((overrides, context) => {
     if (Object.keys(overrides).length === 0) {
@@ -63,6 +63,8 @@ export const FlaGraphicInstanceTransformOverridesSchema = z
       });
     }
   });
+
+export const FlaGraphicInstanceTransformOverridesSchema = FlaGraphicInstanceTransformOverridesV22Schema;
 
 export type FlaGraphicInstanceTransformOverrides = z.infer<
   typeof FlaGraphicInstanceTransformOverridesSchema

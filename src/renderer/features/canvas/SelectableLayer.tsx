@@ -1,6 +1,12 @@
+import { Fragment } from 'react';
 import Konva from 'konva';
 import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
-import { characterNodeForVisualPart, type CharacterNodeId, type CharacterView } from '../characters/characterView';
+import {
+  characterNodeForVisualPart,
+  isCharacterNodeMotionEditable,
+  type CharacterNodeId,
+  type CharacterView,
+} from '../characters/characterView';
 import {
   Group,
   Image as KonvaImage,
@@ -116,12 +122,16 @@ export function SelectableLayer({
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
+  const headGroupRef: { current: Konva.Group | null } = { current: null };
   const canSelect = true;
   const positionAuthoringEnabled = positionAuthoringSession !== null;
   const canMove =
     (directEditingEnabled || positionAuthoringEnabled) && !layer.locked;
-  const editingPart = Boolean(characterMotion?.selectedPartId ||
-    (characterView && selectedCharacterNodeId && selectedCharacterNodeId !== 'root'));
+  const editingPart = Boolean(
+    characterMotion?.selectedPartId ||
+      characterMotion?.selectedTargetId ||
+      (characterView && selectedCharacterNodeId && selectedCharacterNodeId !== 'root'),
+  );
   const canTransform = canMove && !flaGraphicEditProjection && !editingPart;
 
   const legacyBounds = {
@@ -230,6 +240,8 @@ export function SelectableLayer({
     const node = characterNodeForVisualPart(characterView, part);
     if (characterMotion && node?.motion === 'character-clip-v1') {
       characterMotion.select(node.partId);
+    } else if (characterMotion && node?.motion === 'character-clip-v3') {
+      characterMotion.select(node.id);
     } else if (node) {
       onSelect(layer.id, node.id);
     } else {
@@ -295,13 +307,39 @@ export function SelectableLayer({
   const renderMotionPart = (entry: (typeof resolvedPartImages)[number]) => {
     if (!characterMotion) return renderPart(entry, canSelect && !compositeNodeSelection);
     const { part } = entry;
+    const node = characterNodeForVisualPart(characterView, part);
+    if (node && !isCharacterNodeMotionEditable(node)) {
+      return (
+        <Fragment key={part.partId}>
+          {renderPart(entry, false)}
+          {renderHitArea(entry)}
+        </Fragment>
+      );
+    }
+    const targetId = node
+      ? node.motion === 'character-clip-v1'
+        ? node.partId
+        : node.id
+      : undefined;
+    const fallbackBounds = {
+      x: 0,
+      y: 0,
+      width: part.localRect.width,
+      height: part.localRect.height,
+    };
     return (
       <CharacterMotionPart
         key={part.partId + characterMotion.contextKey}
         part={part}
-        interactionBounds={interactionBoundsForPart(entry) ?? null}
+        targetId={targetId}
+        capabilities={node?.capabilities}
+        interactionBounds={
+          interactionBoundsForPart(entry) ??
+          (visual?.kind === 'composite-character' ? fallbackBounds : null)
+        }
         motion={characterMotion}
         owner={nodeRef}
+        pointerOwner={headPartIds.has(part.partId) ? headGroupRef : nodeRef}
       >
         {renderPart(entry, false)}
       </CharacterMotionPart>
@@ -351,6 +389,7 @@ export function SelectableLayer({
               key={headGroup.id}
               listening={canSelect}
               name="selectable-canvas-head-group"
+              ref={headGroupRef}
               {...visualHeadGroupRenderTransform(headGroup)}
             >
               {visiblePartImages
@@ -539,7 +578,7 @@ export function SelectableLayer({
           />
         ) : compositeVisual ? (
           <Group
-            listening={canSelect && !compositeNodeSelection}
+            listening={canSelect && (!compositeNodeSelection || Boolean(characterMotion))}
             name="selectable-canvas-visual"
             ref={cacheCompositeVisual}
           >

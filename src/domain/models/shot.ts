@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { SHOT_MIN_DURATION_MS } from '../constants';
-import { AudioClipSchema, AudioClipV7Schema } from './audio';
+import { AudioClipSchema, AudioClipV7Schema, AudioClipV22Schema } from './audio';
 import { IdSchema, NameSchema } from './common';
-import { DialogueSchema, DialogueV18Schema } from './dialogue';
+import { DialogueSchema, DialogueV18Schema, DialogueV22Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
   LayerV14Schema,
@@ -14,16 +15,20 @@ import {
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
-import { TimelineEventSchema } from './timeline-event';
+import { TimelineEventSchema, TimelineEventV22Schema } from './timeline-event';
 
-const ShotBaseShape = {
+const ShotIdentityShape = {
   id: IdSchema,
   name: NameSchema,
   durationMs: z.number().int().min(SHOT_MIN_DURATION_MS),
   defaultSubtitleStyleId: IdSchema,
+};
+
+const ShotBaseShape = {
+  ...ShotIdentityShape,
   dialogues: z.array(DialogueV18Schema),
   audioClips: z.array(AudioClipV7Schema),
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV22Schema).default([]),
 };
 
 export const ShotV2Schema = z
@@ -69,7 +74,18 @@ export const ShotV21Schema = ShotV20Schema.extend({
   layers: z.array(LayerV21Schema),
 }).superRefine(validateShotClipKeyTimes);
 
+/** Frozen v22 Shot reader with full clip key time validation. */
+export const ShotV22Schema = z.object({
+  ...ShotIdentityShape,
+  dialogues: z.array(DialogueV22Schema),
+  audioClips: z.array(AudioClipV22Schema),
+  timelineEvents: z.array(TimelineEventV22Schema).default([]),
+  layers: z.array(LayerV22Schema),
+  backgroundLayerId: IdSchema.nullable(),
+}).strict().superRefine(validateShotClipKeyTimes);
+
 export const ShotSchema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
 

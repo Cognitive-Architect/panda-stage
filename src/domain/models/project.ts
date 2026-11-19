@@ -10,10 +10,12 @@ import {
   AnimationDefinitionSchema,
   isFlaGraphicDefinition,
   ProjectAnimationDefinitionSchema,
+  ProjectAnimationDefinitionV22Schema,
 } from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
 import {
   AssetSchema,
+  AssetV22Schema,
   AssetV16Schema,
   AssetV12Schema,
   type AssetV12,
@@ -21,6 +23,7 @@ import {
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
+  CharacterV22Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -30,12 +33,14 @@ import {
   CharacterV17Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
+  VoiceProfileV22Schema,
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
   ShotV21Schema,
+  ShotV22Schema,
   ShotV20Schema,
   ShotV19Schema,
   ShotV18Schema,
@@ -48,7 +53,7 @@ import {
   ShotV4Schema,
   ShotV7Schema,
 } from './shot';
-import { SubtitleStyleSchema } from './subtitle';
+import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventSchema } from './timeline-event';
 
@@ -113,20 +118,24 @@ const CharacterV1Schema = z
   })
   .strict();
 
+const ProjectIdentityShape = {
+  id: IdSchema,
+  name: NameSchema,
+  width: z.literal(PROJECT_WIDTH),
+  height: z.literal(PROJECT_HEIGHT),
+  fps: z.literal(PROJECT_FPS),
+};
+
 const ProjectDataSchema = z
   .object({
-    schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
-    id: IdSchema,
-    name: NameSchema,
-    width: z.literal(PROJECT_WIDTH),
-    height: z.literal(PROJECT_HEIGHT),
-    fps: z.literal(PROJECT_FPS),
+    schemaVersion: z.literal(22),
+    ...ProjectIdentityShape,
     assets: z.array(AssetSchema),
     animations: z.array(ProjectAnimationDefinitionSchema),
     characters: z.array(CharacterSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
+    shots: z.array(ShotV22Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -598,12 +607,10 @@ export function migrateFormalProject(input: unknown): unknown {
   };
 }
 
-// Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v18 -> v19) is owned exclusively by `migrateProject`
-// in `../migrations`; this schema must never perform legacy migration.
-export const ProjectSchema = ProjectDataSchema.superRefine(
-  validateProjectReferences,
-).superRefine(validateAdaptiveClipOwnership).superRefine((project, context) => {
+function validateLayerClipOwnership(
+  project: Pick<ProjectData, 'animations' | 'shots'>,
+  context: z.RefinementCtx,
+): void {
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
       if (!layer.animationClip || layer.animationClip.version !== 2) return;
@@ -626,7 +633,33 @@ export const ProjectSchema = ProjectDataSchema.superRefine(
       }
     });
   });
+}
+
+/** Frozen v22 envelope with the V0 Character and Layer Motion contracts. */
+export const ProjectV22Schema = z.object({
+  schemaVersion: z.literal(22),
+  ...ProjectIdentityShape,
+  assets: z.array(AssetV22Schema),
+  animations: z.array(ProjectAnimationDefinitionV22Schema),
+  characters: z.array(CharacterV22Schema),
+  voiceProfiles: z.array(VoiceProfileV22Schema),
+  subtitleStyles: z.array(SubtitleStyleV22Schema).min(1),
+  shots: z.array(ShotV22Schema),
+  createdAt: IsoDateTimeSchema,
+  updatedAt: IsoDateTimeSchema,
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  shots: z.array(ShotSchema),
 });
 
-export type ProjectData = z.infer<typeof ProjectDataSchema>;
+// Legacy envelopes are migrated by migrateProject before current validation.
+export const ProjectSchema = CurrentProjectDataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export type ProjectData = z.infer<typeof CurrentProjectDataSchema>;
 export type Project = z.infer<typeof ProjectSchema>;

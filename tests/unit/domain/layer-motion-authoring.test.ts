@@ -99,9 +99,8 @@ function zeroCharacterGraphicProject(nestedTimeline = false): {
   };
 }
 
-describe('Schema v22 + AnimationTargetRef + v21 migration contract (#1140)', () => {
+describe('AnimationTargetRef and v21 migration contract (#1140)', () => {
   it('supports layer targets without partId and prevents mixing v1/v2 targets', () => {
-    expect(PROJECT_SCHEMA_VERSION).toBe(22);
     expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerAsset })).toEqual({
       kind: 'layer',
       layerId: IDS.layerAsset,
@@ -180,11 +179,11 @@ describe('Schema v22 + AnimationTargetRef + v21 migration contract (#1140)', () 
     ).toBe(false);
   });
 
-  it('upgrades v21 Character Clip v1 losslessly to v22 and keeps v21 closed to Layer Clip v2', () => {
-    const v22Character = animationCoreFixture().project;
-    const v21Character = { ...structuredClone(v22Character), schemaVersion: 21 };
+  it('upgrades v21 Character Clip v1 losslessly to the current Project version and keeps v21 closed to Layer Clip v2', () => {
+    const currentCharacter = animationCoreFixture().project;
+    const v21Character = { ...structuredClone(currentCharacter), schemaVersion: 21 };
     expect(ProjectV21Schema.parse(v21Character)).toEqual(v21Character);
-    expect(ProjectV20Schema.safeParse({ ...v22Character, schemaVersion: 20 }).success).toBe(false);
+    expect(ProjectV20Schema.safeParse({ ...currentCharacter, schemaVersion: 20 }).success).toBe(false);
 
     const migrated = migrateProject(v21Character);
     expect(migrated).toEqual({ ...v21Character, schemaVersion: PROJECT_SCHEMA_VERSION });

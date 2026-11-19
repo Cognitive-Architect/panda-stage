@@ -639,29 +639,49 @@ export function validateProjectReferences(
             ],
             'Expression events require a character layer.',
           );
-        } else {
-          const character = characters.get(layer.source.characterId);
-          if (
-            !character ||
-            character.mode === 'adaptive-parts' ||
-            !character.expressions.some(
-              (expression) => expression.id === event.expressionId,
-            )
-          ) {
-            addIssue(
-              context,
-              [
-                'shots',
-                shotIndex,
-                'timelineEvents',
-                eventIndex,
-                'expressionId',
-              ],
-              `Expression event references unknown expression: ${event.expressionId}`,
-            );
+          } else {
+            const characterId = layer.source.characterId;
+            const character = characters.get(characterId);
+            if (
+              !character ||
+              character.mode === 'adaptive-parts' ||
+              !character.expressions.some(
+                (expression) => expression.id === event.expressionId,
+              )
+            ) {
+              addIssue(
+                context,
+                [
+                  'shots',
+                  shotIndex,
+                  'timelineEvents',
+                  eventIndex,
+                  'expressionId',
+                ],
+                `Expression event references unknown expression: ${event.expressionId}`,
+              );
+            }
           }
         }
-      }
-    });
+        if (event.type === 'mouth-cue' && layer) {
+          if (layer.source.kind !== 'character') {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
+              'Mouth cue events require a character layer.',
+            );
+          } else {
+            const characterId = layer.source.characterId;
+            const character = characters.get(characterId);
+            if (!character || character.mode === 'adaptive-parts') {
+              addIssue(
+                context,
+                ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
+                'Mouth cue events require a single-image or composite character.',
+              );
+            }
+          }
+        }
+      });
   });
 }
