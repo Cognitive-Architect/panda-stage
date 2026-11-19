@@ -125,8 +125,8 @@ async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   const acceptanceSource = process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE?.trim();
   if (acceptanceSource && !app.isPackaged) return acceptanceSource;
   const selection = await dialog.showOpenDialog(window, {
-    title: '选择 FLA 文件进行只读检查',
-    buttonLabel: '检查 FLA',
+    title: '选择 FLA 文件',
+    buttonLabel: '打开',
     properties: ['openFile'],
     filters: [{ name: 'Adobe Animate FLA', extensions: ['fla'] }],
   });

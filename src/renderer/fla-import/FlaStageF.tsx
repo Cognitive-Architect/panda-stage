@@ -1,5 +1,8 @@
+import { ArrowLeft } from 'lucide-react';
+import { useEffect, useId } from 'react';
 import type { AnimationImportIR, FlaInspectionResponse } from '../../shared/fla-import-api';
 import type { FlaRenderableTargetCatalogEntry } from '../../shared/fla-static-snapshot-api';
+import { IconButton } from '../ui';
 import { FLA_COMPATIBILITY_LABELS } from './fla-review';
 
 type FlaCompatibilityEntry = AnimationImportIR['compatibility'][number];
@@ -152,75 +155,71 @@ export function FlaStageF3Blocked({
   response: FlaInspectionResponse | null;
   onClose: () => void;
 }): React.JSX.Element {
-  const diagnosticEntry = response?.diagnostics?.find(
-    (entry) => entry.category === 'archive-malformed',
-  ) ?? response?.diagnostics?.[0];
-  const diagnostic = safeBlockedDiagnostic(diagnosticEntry?.category, diagnosticEntry?.userMessage);
-  const canClaimSourceUnchanged = Boolean(response?.trace);
+  const titleId = useId();
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', handleEscape, true);
+    return () => document.removeEventListener('keydown', handleEscape, true);
+  }, [onClose]);
 
   return (
     <section
-      aria-label="FLA 工作台"
+      aria-labelledby={titleId}
       aria-modal="true"
-      className="fla-review-session fla-stage-f3-session"
+      className="fla-review-session fla-stage-f3-blocked"
       data-stage-f-severity="blocked"
       data-testid="fla-stage-f3-blocked"
       data-workbench-route="blocked"
       role="dialog"
     >
-      <header className="fla-review-heading fla-stage-f3-header" data-testid="fla-review-header">
-        <div>
-          <p className="eyebrow">只读安全检查</p>
-          <h2>FLA 工作台</h2>
-          <p>当前文件未进入预览或导入流程</p>
-        </div>
-        <span className="fla-stage-f3-readonly">只读</span>
-      </header>
-      <div className="fla-review-body fla-review-status-body fla-stage-f3-body" data-testid="fla-review-body">
-        <div className="fla-stage-f3-blocked" data-stage-f-severity="blocked" role="alert">
-          <div className="fla-stage-f3-blocked-copy">
-            <span aria-hidden="true" className="fla-stage-f3-icon">!</span>
-            <p className="fla-render-panel-kicker">安全检查已停止</p>
-            <h1>这个 FLA 暂时无法安全处理</h1>
-            <p>文件结构存在 Panda 当前无法安全确认的问题，因此已停止继续读取。</p>
-            <p data-testid="fla-review-diagnostic">{diagnostic}</p>
-            {canClaimSourceUnchanged ? (
-              <p className="fla-stage-f3-source-unchanged" data-testid="fla-stage-f3-source-unchanged">
-                ✓ 原文件没有被修改
-              </p>
-            ) : null}
-            <details data-testid="fla-stage-f3-details">
-              <summary>为什么会这样？</summary>
-              <p>Panda 已停止继续读取当前文件。返回素材库后，你可以重新选择一个文件。</p>
-            </details>
-          </div>
-          <button
-            autoFocus
-            className="fla-stage-f3-return"
-            data-testid="fla-stage-f3-return"
-            onClick={onClose}
-            type="button"
-          >
-            返回素材库
-          </button>
-        </div>
+      <IconButton
+        aria-label="返回素材库"
+        autoFocus
+        className="fla-stage-f3-return"
+        data-testid="fla-stage-f3-return"
+        icon={<ArrowLeft size={20} />}
+        onClick={onClose}
+        type="button"
+        variant="secondary"
+      />
+      <div role="alert">
+        <h1 id={titleId}>无法读取素材</h1>
       </div>
+      <details data-testid="fla-stage-f3-details">
+        <summary>查看详情</summary>
+        <pre>{blockedDiagnosticDetails(response)}</pre>
+      </details>
     </section>
   );
 }
 
-function safeBlockedDiagnostic(
-  category: string | undefined,
-  candidate: string | undefined,
-): string {
-  const fallback = category === 'archive-malformed'
-    ? '此 FLA 文件的结构未通过安全检查，Panda 已停止继续读取。'
-    : category === 'unsupported-or-unknown'
-      ? '此 FLA 包含当前无法安全确认的内容，Panda 已停止继续读取。'
-      : 'Panda 无法确认这个文件的结构，因此已停止继续读取。';
-  if (!candidate) return fallback;
-  if (/MALFORMED_ARCHIVE|EOCD|centralDirectory|lifeart\/fla-viewer|[A-Za-z]:[\\/]|\b[0-9a-f]{64}\b|\bF[123]\b/iu.test(candidate)) {
-    return fallback;
+function blockedDiagnosticDetails(response: FlaInspectionResponse | null): string {
+  const missingReason = '未返回更具体原因';
+  if (!response || response.ok) return missingReason;
+  const { code, message } = response.error;
+  const reason = message.trim();
+  const withCode = reason.startsWith(code + ':') ? reason : code + ': ' + reason;
+  const primary = !reason || reason === code || reason === code + ':'
+    ? code + ': ' + missingReason
+    : withCode;
+  const lines = [primary];
+  const supplementary = [
+    ...(response.diagnostics ?? []).map((entry) => entry.developerNote),
+    ...(response.trace?.classifierReasonCodes ?? []),
+  ];
+  for (const item of supplementary) {
+    const detail = item?.trim();
+    if (detail && !lines.some((line) => line.includes(detail))) lines.push(detail);
   }
-  return candidate;
+
+  return lines.join('\n').replace(
+    /(\bAuthorization\s*:\s*(?:Bearer|Basic)\s+)[^\s,;]+/giu,
+    '$1[已隐藏]',
+  );
 }

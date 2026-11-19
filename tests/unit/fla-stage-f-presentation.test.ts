@@ -109,20 +109,53 @@ describe('Issue #402 Stage F presentation contract', () => {
     );
   });
 
-  it('uses a dedicated F3 blocked composition with one safe exit and no raw internals', () => {
+  it('places the three F3 elements in a dialog and keeps diagnostics in closed details', () => {
     const html = renderToStaticMarkup(
       createElement(FlaStageF3Blocked, { response: blockedResponse, onClose: () => undefined }),
     );
-    expect(html).toContain('data-testid="fla-stage-f3-blocked"');
-    expect(html).toContain('这个 FLA 暂时无法安全处理');
-    expect(html).toContain('原文件没有被修改');
-    expect(html).toContain('data-testid="fla-stage-f3-return"');
-    expect(html.match(/data-testid="fla-stage-f3-return"/gu)).toHaveLength(1);
-    expect(html).not.toContain('MALFORMED_ARCHIVE');
-    expect(html).not.toContain('EOCD');
+    const [visible, details] = html.split('<details');
+    expect(visible).toContain('data-testid="fla-stage-f3-blocked"');
+    expect(visible).toContain('role="dialog"');
+    expect(visible).toContain('role="alert"');
+    expect(visible).toContain('>无法读取素材</h1>');
+    expect(visible).toContain('aria-label="返回素材库"');
+    expect(visible).toContain('data-ui-size="icon"');
+    expect(visible).toContain('lucide-arrow-left');
+    expect(html.match(/<button\b/gu)).toHaveLength(1);
+    expect(visible).not.toMatch(/\u53ea\u8bfb|\u5b89\u5168\u68c0\u67e5|FLA \u5de5\u4f5c\u53f0|MALFORMED_ARCHIVE|EOCD/u);
+    expect(details).toMatch(/^ data-testid="fla-stage-f3-details"><summary>查看详情<\/summary>/u);
+    expect(details).toContain('MALFORMED_ARCHIVE: EOCD mismatch');
+    expect(details).toContain('EOCD_INCONSISTENT');
     expect(html).not.toContain('data-testid="fla-snapshot-preview"');
     expect(html).not.toContain('data-testid="fla-frame-sequence-render"');
-    expect(html).not.toContain('>F3<');
+    expect(html).not.toContain('data-testid="fla-unified-import"');
+  });
+
+  it('keeps genuine parser details and omits duplicate notes and credential values', () => {
+    const message = 'lifeart/fla-viewer: Shape 12 / FillStyle 2 in LIBRARY/Scene.xml';
+    const html = renderToStaticMarkup(createElement(FlaStageF3Blocked, {
+      response: {
+        ...blockedResponse,
+        error: { code: 'PARSER_CRASH', message },
+        diagnostics: [
+          { category: 'archive-malformed', userMessage: 'summary', developerNote: message },
+          { category: 'archive-malformed', userMessage: 'summary', developerNote: 'archive read failed; Authorization: Bearer fixture-secret' },
+        ],
+      },
+      onClose: () => undefined,
+    }));
+    expect(html).toContain('PARSER_CRASH: ' + message);
+    expect(html.split(message)).toHaveLength(2);
+    expect(html).toContain('archive read failed; Authorization: Bearer [已隐藏]');
+    expect(html).not.toContain('fixture-secret');
+  });
+
+  it('retains a code-only response and indicates that details were unavailable', () => {
+    const html = renderToStaticMarkup(createElement(FlaStageF3Blocked, {
+      response: { ok: false, error: { code: 'PARSER_CRASH', message: 'PARSER_CRASH' } },
+      onClose: () => undefined,
+    }));
+    expect(html).toContain('PARSER_CRASH: 未返回更具体原因');
   });
 });
 
