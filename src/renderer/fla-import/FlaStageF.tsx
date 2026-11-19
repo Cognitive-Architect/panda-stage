@@ -1,5 +1,5 @@
 import { ChevronDown, FileWarning, X } from 'lucide-react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { AnimationImportIR, FlaInspectionResponse } from '../../shared/fla-import-api';
 import type { FlaRenderableTargetCatalogEntry } from '../../shared/fla-static-snapshot-api';
 import { IconButton } from '../ui';
@@ -156,6 +156,11 @@ export function FlaStageF3Blocked({
   onClose: () => void;
 }): React.JSX.Element {
   const titleId = useId();
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent): void => {
@@ -170,6 +175,8 @@ export function FlaStageF3Blocked({
 
   return (
     <section
+      ref={dialogRef}
+      tabIndex={-1}
       aria-labelledby={titleId}
       aria-modal="true"
       className="fla-review-session fla-compact-status fla-stage-f3-blocked"
@@ -184,7 +191,6 @@ export function FlaStageF3Blocked({
       </div>
       <IconButton
         aria-label="关闭并返回素材库"
-        autoFocus
         className="fla-compact-status-close"
         data-testid="fla-stage-f3-return"
         icon={<X size={18} />}

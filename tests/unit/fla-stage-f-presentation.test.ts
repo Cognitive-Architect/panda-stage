@@ -116,6 +116,8 @@ describe('Issue #402 Stage F presentation contract', () => {
     const [visible, details] = html.split('<details');
     expect(visible).toContain('data-testid="fla-stage-f3-blocked"');
     expect(visible).toContain('role="dialog"');
+    expect(visible).toContain('tabindex="-1"');
+    expect(visible).not.toContain('autofocus');
     expect(visible).toContain('role="alert"');
     expect(visible).toContain('>无法读取素材</h1>');
     expect(visible).toContain('aria-label="关闭并返回素材库"');

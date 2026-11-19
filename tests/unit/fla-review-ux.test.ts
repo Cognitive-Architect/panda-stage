@@ -194,7 +194,10 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(stageA).toContain('aria-label="取消导入"');
     expect(stageA).toContain('<IconButton');
     expect(stageA).toContain('icon={<X size={18} />}');
-    expect(stageA).toContain('autoFocus');
+    expect(stageA).toContain('ref={dialogRef}');
+    expect(stageA).toContain('tabIndex={-1}');
+    expect(stageA).toContain('dialogRef.current?.focus({ preventScroll: true });');
+    expect(stageA).not.toContain('autoFocus');
     expect(stageA).toContain('onClick={onCancel}');
     expect(stageA.match(/data-testid="fla-review-cancel"/gu) ?? []).toHaveLength(1);
     expect(stageA).toContain("event.currentTarget.querySelector('button')?.focus();");

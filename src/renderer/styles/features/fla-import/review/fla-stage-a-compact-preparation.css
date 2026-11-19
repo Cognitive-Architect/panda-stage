@@ -16,6 +16,11 @@
   text-align: start;
 }
 
+/* The programmatically focused dialog should not draw a frame. */
+.fla-review-portal .fla-review-session.fla-compact-status:focus {
+  outline: none;
+}
+
 .fla-compact-status .fla-compact-status-message {
   display: flex;
   min-width: 0;

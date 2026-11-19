@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { IconButton } from '../ui';
 
 /**
@@ -10,6 +11,12 @@ export function FlaStageAInspecting({
 }: {
   onCancel: () => void;
 }): React.JSX.Element {
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
+
   const keepFocusInDialog = (event: React.KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Tab') return;
     event.preventDefault();
@@ -18,6 +25,8 @@ export function FlaStageAInspecting({
 
   return (
     <section
+      ref={dialogRef}
+      tabIndex={-1}
       aria-busy="true"
       aria-label="正在准备素材"
       aria-modal="true"
@@ -51,7 +60,6 @@ export function FlaStageAInspecting({
 
       <IconButton
         aria-label="取消导入"
-        autoFocus
         className="fla-compact-status-close"
         data-testid="fla-review-cancel"
         icon={<X size={18} />}
