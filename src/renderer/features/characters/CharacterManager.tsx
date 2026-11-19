@@ -138,6 +138,7 @@ export interface CharacterManagerProps {
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  onAdaptivePartsListTargetChange?: (element: HTMLElement | null) => void;
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
@@ -300,6 +301,7 @@ export function CharacterManager({
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
   adaptivePartsActionsRef,
+  onAdaptivePartsListTargetChange,
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
@@ -730,6 +732,7 @@ export function CharacterManager({
       return false;
     }
     setSelectedCharacterId(characterId);
+    onViewChange('detail');
     if (!openAssembly(characterId)) {
       setStatus('角色已保存，可从角色列表打开。');
       return false;
@@ -745,12 +748,14 @@ export function CharacterManager({
     );
     if (!character || character.mode !== 'adaptive-parts') return;
     setSelectedCharacterId(character.id);
+    onViewChange('detail');
     if (openAssembly(character.id)) onCloseFlaCharacterImport();
     else setStatus('角色已保存，可从角色列表打开。');
     setPendingImportedCharacterId(null);
   }, [
     characters,
     onCloseFlaCharacterImport,
+    onViewChange,
     openAssembly,
     pendingImportedCharacterId,
   ]);
@@ -952,11 +957,6 @@ export function CharacterManager({
             onCreate={createCharacter}
             onSelect={(characterId) => {
               if (!selectCharacter(characterId)) return;
-              const character = characters.find((candidate) => candidate.id === characterId);
-              if (character?.mode === 'adaptive-parts') {
-                openAssembly(characterId);
-                return;
-              }
               onViewChange('detail');
             }}
             onThumbnailError={markThumbnailError}
@@ -1011,17 +1011,18 @@ export function CharacterManager({
           }}
           onDeleteCharacter={() => {
             if (
-              !selectedCharacter ||
+              !selectedDisplayCharacter ||
               !window.confirm(
-                `确认删除角色“${selectedCharacter.name}”？被镜头或对白引用时会阻止删除。`,
+                `确认删除角色“${selectedDisplayCharacter.name}”？被镜头或对白引用时会阻止删除。`,
               )
             ) {
               return;
             }
             const next = mutate(
-              () => characterStore.deleteCharacter(selectedCharacter.id),
+              () => characterStore.deleteCharacter(selectedDisplayCharacter.id),
             );
             if (next) {
+              discardAssemblySession();
               setSelectedCharacterId(next.characters[0]?.id ?? null);
               onViewChange('list');
             }
@@ -1037,11 +1038,11 @@ export function CharacterManager({
             );
           }}
           onRenameCharacter={(name) => {
-            if (!selectedCharacter) return;
+            if (!selectedDisplayCharacter) return;
             mutate(
               () =>
                 characterStore.renameCharacter(
-                  selectedCharacter.id,
+                  selectedDisplayCharacter.id,
                   name,
                 ),
             );
@@ -1089,11 +1090,11 @@ export function CharacterManager({
             if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
           }}
           onSetDefaultTransform={(scale, flipX) => {
-            if (!selectedCharacter) return;
+            if (!selectedDisplayCharacter) return;
             mutate(
               () =>
                 characterStore.setDefaultTransform(
-                  selectedCharacter.id,
+                  selectedDisplayCharacter.id,
                   scale,
                   flipX,
                 ),
@@ -1134,6 +1135,7 @@ export function CharacterManager({
           }}
           assemblyDraft={assemblyDraft}
           adaptiveAssemblyActive={adaptiveAssemblyActive}
+          onAdaptivePartsListTargetChange={onAdaptivePartsListTargetChange}
           assemblyEditTarget={
             editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
               ? editAssemblySnapshot.editTarget

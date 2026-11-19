@@ -170,12 +170,13 @@ describe('Issue #639 Character detail placement bridge', () => {
       presentation: 'landscape',
     }));
     expect(markup).toContain('Synthetic Static Parts');
-    expect(markup).toContain('class="character-adaptive-detail-header"');
-    expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
-    expect(markup).not.toContain('data-testid="adaptive-parts-assembly-open"');
+    expect(markup).toContain('data-testid="character-detail-view"');
+    expect(markup).toContain('data-testid="character-detail-back"');
+    expect(markup).toContain('data-testid="character-workspace-switcher"');
     expect(markup).toContain('data-testid="character-detail-place-current-shot"');
+    expect(markup).toContain('data-testid="character-delete-settings"');
     const managerSource = readFileSync('src/renderer/features/characters/CharacterManager.tsx', 'utf8');
-    expect(managerSource).toContain('openAssembly(characterId);');
+    expect(managerSource).toContain("onViewChange('detail');");
   });
 
   it('keeps Adaptive Character placement transforms independent across Shots', () => {

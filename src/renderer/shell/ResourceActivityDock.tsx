@@ -67,6 +67,7 @@ export interface ResourceActivityDockProps {
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  onAdaptivePartsListTargetChange?(element: HTMLElement | null): void;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
@@ -151,6 +152,7 @@ export function ResourceActivityDock({
   activeActivity: requestedActivity,
   onActiveActivityChange,
   adaptivePartsActionsRef,
+  onAdaptivePartsListTargetChange,
   onCreateFlaCharacter,
   onImportGraphicInstance,
   onQueryFlaCharacterCreateStatus,
@@ -763,6 +765,7 @@ export function ResourceActivityDock({
             ) : (
               <CharacterManager
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
+                onAdaptivePartsListTargetChange={onAdaptivePartsListTargetChange}
                 flaCharacterImportAttempt={flaCharacterImportAttempt}
                 hideHeading={landscapePresentation}
                 onCloseFlaCharacterImport={closeFlaCharacterImport}

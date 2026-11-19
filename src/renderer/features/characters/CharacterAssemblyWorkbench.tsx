@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
@@ -95,6 +96,7 @@ interface CharacterAssemblyWorkbenchProps {
   savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  adaptivePartsListTarget?: HTMLElement | null;
 }
 
 interface ActiveDragStart {
@@ -273,11 +275,13 @@ export function CharacterAssemblyWorkbench({
   savedProjectSnapshot,
   session,
   adaptivePartsActionsRef,
+  adaptivePartsListTarget,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
       <AdaptivePartsAssemblyWorkbench
         adaptivePartsActionsRef={adaptivePartsActionsRef}
+        adaptivePartsListTarget={adaptivePartsListTarget}
         projectSnapshot={projectSnapshot}
         session={session}
       />
@@ -651,10 +655,12 @@ function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
   adaptivePartsActionsRef,
+  adaptivePartsListTarget = null,
 }: {
   projectSnapshot: EditorProjectSnapshot;
   session: AdaptivePartsAssemblySnapshot;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  adaptivePartsListTarget?: HTMLElement | null;
 }): React.JSX.Element {
   const { project, projectRoot } = projectSnapshot;
   const currentShotId = useSyncExternalStore(
@@ -1512,40 +1518,8 @@ function AdaptivePartsAssemblyWorkbench({
         {error ? <small className="adaptive-parts-inspector-field-error" id={errorId}>{error}</small> : null}
       </div>
     );
-  };  return (
-    <section
-      aria-label="Adaptive Parts 角色组装工作区"
-      className="character-assembly-workbench adaptive-parts-assembly-workbench"
-      data-character-id={session.characterId}
-      data-project-revision={projectSnapshot.revision}
-      data-project-dirty={projectSnapshot.dirty}
-      data-testid="adaptive-parts-assembly-workbench"
-      ref={workbenchRef}
-    >
-      <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
-        <button
-          aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-          className="adaptive-parts-assembly-back"
-          data-testid="adaptive-parts-back-to-list"
-          onClick={returnToCharacterList}
-          title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-          type="button"
-        >
-          <ArrowLeft aria-hidden="true" size={18} />
-        </button>
-        <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
-        <button
-          className="adaptive-parts-assembly-join-shot"
-          data-testid="adaptive-parts-join-current-shot"
-          disabled={!hasCurrentShot}
-          onClick={joinCurrentShot}
-          title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={16} />
-          <span>{'\u52a0\u5165\u955c\u5934'}</span>
-        </button>
-      </header>
+  };  const hostedInDrawer = Boolean(adaptivePartsListTarget);
+  const partsListPanel = (
       <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
         <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
         <div className="adaptive-parts-assembly-rows">
@@ -1662,6 +1636,48 @@ function AdaptivePartsAssemblyWorkbench({
           </div>
         ) : null}
       </aside>
+  );
+
+  return (
+    <section
+      aria-label="Adaptive Parts 角色组装工作区"
+      className="character-assembly-workbench adaptive-parts-assembly-workbench"
+      data-character-id={session.characterId}
+      data-hosted-in-drawer={hostedInDrawer ? 'true' : undefined}
+      data-project-revision={projectSnapshot.revision}
+      data-project-dirty={projectSnapshot.dirty}
+      data-testid="adaptive-parts-assembly-workbench"
+      ref={workbenchRef}
+    >
+      {!hostedInDrawer ? (
+        <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
+          <button
+            aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+            className="adaptive-parts-assembly-back"
+            data-testid="adaptive-parts-back-to-list"
+            onClick={returnToCharacterList}
+            title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={18} />
+          </button>
+          <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
+          <button
+            className="adaptive-parts-assembly-join-shot"
+            data-testid="adaptive-parts-join-current-shot"
+            disabled={!hasCurrentShot}
+            onClick={joinCurrentShot}
+            title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+            <span>{'\u52a0\u5165\u955c\u5934'}</span>
+          </button>
+        </header>
+      ) : null}
+      {adaptivePartsListTarget
+        ? createPortal(partsListPanel, adaptivePartsListTarget)
+        : partsListPanel}
 
       <div
         aria-label="角色部件画布"

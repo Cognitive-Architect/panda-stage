@@ -1,12 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import type {
-  Character,
-  CharacterDimensionWarning,
-  CompositeCharacterDefinition,
-  ExpressionCharacter,
-  ImageAsset,
-  Project,
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  resolveCharacterPartVisualSource,
+  type Character,
+  type CharacterDimensionWarning,
+  type CompositeCharacterDefinition,
+  type ExpressionCharacter,
+  type ImageAsset,
+  type Project,
 } from '../../../domain';
+import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
 import { Button } from '../../ui/Button';
@@ -310,6 +312,7 @@ export interface CharacterEditorProps {
   onSetMouthOpenAsset: (assetId: string | null) => void;
   assemblyDraft?: CompositeCharacterDefinition | null;
   adaptiveAssemblyActive?: boolean;
+  onAdaptivePartsListTargetChange?: (element: HTMLElement | null) => void;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
@@ -351,6 +354,7 @@ export function CharacterEditor({
   onSetMouthOpenAsset,
   assemblyDraft = null,
   adaptiveAssemblyActive = false,
+  onAdaptivePartsListTargetChange,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
@@ -388,9 +392,24 @@ export function CharacterEditor({
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
     useState<CharacterDetailWorkspace>(
-      assemblyDraft ? 'assembly' : 'expressions',
+      character?.mode === 'adaptive-parts' || assemblyDraft
+        ? 'assembly'
+        : 'expressions',
     );
   const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
+  const initialAdaptiveAutoOpenedRef = useRef(false);
+  const adaptiveListSlotCallbackRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      onAdaptivePartsListTargetChange?.(node);
+    },
+    [onAdaptivePartsListTargetChange],
+  );
+  useEffect(
+    () => () => {
+      onAdaptivePartsListTargetChange?.(null);
+    },
+    [onAdaptivePartsListTargetChange],
+  );
 
   const persistedTalkingHeadMotionIntensityPercent =
     character?.mode === 'composite'
@@ -412,6 +431,7 @@ export function CharacterEditor({
     setName(character.name);
     setRenameOpen(false);
     setExpressionAddOpen(false);
+    initialAdaptiveAutoOpenedRef.current = false;
   }, [character?.id]);
 
   useEffect(() => {
@@ -447,6 +467,7 @@ export function CharacterEditor({
   useEffect(() => {
     const hasAssemblyDraft = Boolean(assemblyDraft);
     if (
+      character?.mode === 'composite' &&
       activeWorkspace === 'assembly' &&
       assemblyDraftWasOpen.current &&
       !hasAssemblyDraft
@@ -454,7 +475,7 @@ export function CharacterEditor({
       setActiveWorkspace('expressions');
     }
     assemblyDraftWasOpen.current = hasAssemblyDraft;
-  }, [activeWorkspace, assemblyDraft]);
+  }, [activeWorkspace, assemblyDraft, character?.mode]);
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
@@ -462,6 +483,28 @@ export function CharacterEditor({
     presentation === 'landscape' && view === 'expression';
   const landscapeCharacterNavigation =
     landscapeDetail || landscapeExpression;
+
+  useEffect(() => {
+    if (
+      !landscapeDetail ||
+      character?.mode !== 'adaptive-parts' ||
+      activeWorkspace !== 'assembly' ||
+      adaptiveAssemblyActive ||
+      disabled ||
+      initialAdaptiveAutoOpenedRef.current
+    ) {
+      return;
+    }
+    initialAdaptiveAutoOpenedRef.current = true;
+    onOpenAssembly();
+  }, [
+    activeWorkspace,
+    adaptiveAssemblyActive,
+    character?.mode,
+    disabled,
+    landscapeDetail,
+    onOpenAssembly,
+  ]);
 
   const adjustScale = (delta: number): void => {
     setScale((current) =>
@@ -489,62 +532,19 @@ export function CharacterEditor({
     );
   }
 
-  if (character.mode === 'adaptive-parts') {
-    const placementUnavailableReason = disabled
-      ? '请先打开项目'
-      : !hasCurrentShot
-        ? '请先选择镜头'
-        : null;
-    return (
-      <div className="character-editor character-editor-empty character-editor-adaptive-detail">
-        {view === 'detail' ? (
-          <header className="character-adaptive-detail-header">
-            <div className="character-adaptive-detail-heading">
-              {!adaptiveAssemblyActive ? (
-                <Button
-                  aria-label="返回角色列表"
-                  className="character-adaptive-detail-back"
-                  data-testid="adaptive-parts-back-to-list"
-                  onClick={onBackToList}
-                  title="返回角色列表"
-                  variant="secondary"
-                >
-                  <span aria-hidden="true">←</span>
-                </Button>
-              ) : null}
-              <strong title={character.name}>{character.name}</strong>
-            </div>
-            <div className="character-detail-identity-actions character-adaptive-detail-actions">
-              <Button
-                aria-label="加入当前镜头"
-                className="character-detail-place-action"
-                data-testid="character-detail-place-current-shot"
-                disabled={placementUnavailableReason !== null}
-                onClick={() => onPlaceInCurrentShot(false)}
-                title={placementUnavailableReason ?? '加入当前镜头'}
-                variant="secondary"
-              >
-                ＋ 加入镜头
-              </Button>
-            </div>
-          </header>
-        ) : (
-          <strong>{character.name}</strong>
-        )}
-      </div>
-    );
-  }
-
+  const isAdaptiveParts = character.mode === 'adaptive-parts';
+  const expressionCharacter: ExpressionCharacter | null =
+    character.mode === 'adaptive-parts' ? null : character;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head
       ? (character as HeadedCompositeCharacter)
       : null;
 
-  const formalDefaultExpression = character.expressions.find(
-    (expression) => expression.id === character.defaultExpressionId,
+  const formalDefaultExpression = expressionCharacter?.expressions.find(
+    (expression) => expression.id === expressionCharacter.defaultExpressionId,
   );
   const defaultExpression =
-    formalDefaultExpression ?? character.expressions[0];
+    formalDefaultExpression ?? expressionCharacter?.expressions[0];
   const defaultExpressionAsset = defaultExpression
     ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
     : undefined;
@@ -552,17 +552,54 @@ export function CharacterEditor({
     ? thumbnails[defaultExpression.assetId]
     : undefined;
   const defaultAssetResolved = Boolean(defaultExpressionAsset || defaultExpression?.visualSource);
+  const adaptivePreviewPart = isAdaptiveParts
+    ? character.parts.find(
+        (part) =>
+          part.visible !== false &&
+          resolveCharacterPartVisualSource(part).kind === 'image',
+      ) ??
+      character.parts.find(
+        (part) => resolveCharacterPartVisualSource(part).kind === 'image',
+      ) ??
+      character.parts[0]
+    : undefined;
+  const adaptivePreviewSource = adaptivePreviewPart
+    ? resolveCharacterPartVisualSource(adaptivePreviewPart)
+    : undefined;
+  const adaptivePreviewAssetId =
+    adaptivePreviewSource?.kind === 'image'
+      ? adaptivePreviewSource.assetId
+      : undefined;
+  const adaptivePreviewAsset = adaptivePreviewAssetId
+    ? imageAssets.find((asset) => asset.id === adaptivePreviewAssetId)
+    : undefined;
+  const avatarThumbnail = isAdaptiveParts
+    ? adaptivePreviewAssetId
+      ? thumbnails[adaptivePreviewAssetId]
+      : undefined
+    : defaultThumbnail;
+  const avatarAssetId = isAdaptiveParts
+    ? adaptivePreviewAssetId
+    : defaultExpression?.assetId;
+  const avatarAssetConfigured = isAdaptiveParts
+    ? character.parts.length > 0
+    : Boolean(defaultExpression);
+  const avatarAssetResolved = isAdaptiveParts
+    ? Boolean(adaptivePreviewAsset || adaptivePreviewSource?.kind === 'fla-graphic')
+    : defaultAssetResolved;
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
     flipX,
   );
   const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
-  const formalDefaultAssetAvailable = Boolean(
-    formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
-      (asset) => asset.id === formalDefaultExpression.assetId,
-    )),
-  );
+  const formalDefaultAssetAvailable = isAdaptiveParts
+    ? true
+    : Boolean(
+        formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
+          (asset) => asset.id === formalDefaultExpression.assetId,
+        )),
+      );
   const placementUnavailableReason = disabled
     ? '请先打开项目'
     : !hasCurrentShot
@@ -574,22 +611,31 @@ export function CharacterEditor({
           : null;
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
+  const singleImageCharacter = character.mode === 'single-image';
+  const hasAssemblyWorkbench = compositeCharacter || isAdaptiveParts;
   const assemblyMouthAssetId = assemblyDraft
     ? assemblyDraft.mouthOpenAssetId ?? null
-    : character.mouthOpenAssetId ?? null;
+    : expressionCharacter?.mouthOpenAssetId ?? null;
 
   const switchDetailWorkspace = (
     nextWorkspace: CharacterDetailWorkspace,
   ): void => {
     if (nextWorkspace === activeWorkspace) return;
     if (
+      hasAssemblyWorkbench &&
       activeWorkspace === 'assembly' &&
       nextWorkspace !== 'assembly' &&
       !onLeaveAssembly()
     ) {
       return;
     }
-    if (nextWorkspace === 'assembly' && !onOpenAssembly()) return;
+    if (
+      hasAssemblyWorkbench &&
+      nextWorkspace === 'assembly' &&
+      !onOpenAssembly()
+    ) {
+      return;
+    }
     if (activeWorkspace === 'expressions') setExpressionAddOpen(false);
     setActiveWorkspace(nextWorkspace);
   };
@@ -841,23 +887,23 @@ export function CharacterEditor({
               className="character-detail-avatar"
               data-preview-fit="contain"
               data-thumbnail-status={
-                defaultThumbnail?.status ??
-                (defaultAssetResolved ? 'loading' : 'missing')
+                avatarThumbnail?.status ??
+                (avatarAssetResolved ? 'loading' : 'missing')
               }
             >
-              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : defaultThumbnail?.status === 'ready' && defaultExpression ? (
+              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : avatarThumbnail?.status === 'ready' && avatarAssetId ? (
                 <img
-                  alt={`${character.name} 默认表情`}
+                  alt={isAdaptiveParts ? `${character.name} 角色预览` : `${character.name} 默认表情`}
                   onError={() =>
-                    onThumbnailError(defaultExpression.assetId ?? '')
+                    onThumbnailError(avatarAssetId)
                   }
-                  src={defaultThumbnail.dataUrl}
+                  src={avatarThumbnail.dataUrl}
                 />
               ) : (
                 <CharacterThumbnailFallback
-                  assetConfigured={Boolean(defaultExpression)}
-                  assetResolved={defaultAssetResolved}
-                  thumbnail={defaultThumbnail}
+                  assetConfigured={avatarAssetConfigured}
+                  assetResolved={avatarAssetResolved}
+                  thumbnail={avatarThumbnail}
                 />
               )}
             </div>
@@ -934,7 +980,7 @@ export function CharacterEditor({
                 )}
               </div>
               <div className="character-detail-identity-actions">
-                {activeWorkspace === 'expressions' ? (
+                {expressionCharacter && activeWorkspace === 'expressions' ? (
                   <button
                     aria-expanded={expressionAddOpen}
                     className="character-detail-add-expression-trigger"
@@ -988,23 +1034,25 @@ export function CharacterEditor({
               </button>
             </span>
           </label>
-          <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-picker" disabled={disabled}>
-          <ImageAssetPicker
-            assets={imageAssets}
-            emptyOption={{
-              description: '安全降级为闭嘴。',
-              label: '未配置',
-              optional: true,
-            }}
-            label="张嘴图"
-            onChange={onSetMouthOpenAsset}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={character.mouthOpenAssetId ?? null}
-            testId="character-detail-mouth-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          </GraphicFacePicker>
+          {expressionCharacter ? (
+            <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-picker" disabled={disabled}>
+            <ImageAssetPicker
+              assets={imageAssets}
+              emptyOption={{
+                description: '安全降级为闭嘴。',
+                label: '未配置',
+                optional: true,
+              }}
+              label="张嘴图"
+              onChange={onSetMouthOpenAsset}
+              onThumbnailError={onThumbnailError}
+              selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
+              testId="character-detail-mouth-picker"
+              thumbnails={thumbnails}
+              disabled={disabled}
+            />
+            </GraphicFacePicker>
+          ) : null}
           <label>
             默认缩放
             <input
@@ -1041,7 +1089,7 @@ export function CharacterEditor({
         </section>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? talkingHeadSettings : null}
-      {view === 'detail' && !landscapeDetail ? (
+      {view === 'detail' && !landscapeDetail && expressionCharacter ? (
         <section
           aria-labelledby="character-expression-summary-heading"
           className="character-expression-summary"
@@ -1060,14 +1108,14 @@ export function CharacterEditor({
             </button>
           </div>
           <ul className="character-expression-summary-list">
-            {character.expressions.map((expression) => {
+            {expressionCharacter.expressions.map((expression) => {
               const asset = imageAssets.find(
                 (candidate) => candidate.id === expression.assetId,
               );
               return (
                 <li
                   data-expression-default={
-                    expression.id === character.defaultExpressionId
+                    expression.id === expressionCharacter.defaultExpressionId
                   }
                   key={expression.id}
                 >
@@ -1085,7 +1133,7 @@ export function CharacterEditor({
                         : (asset?.name ?? expression.assetId)}
                     </span>
                   </span>
-                  {expression.id === character.defaultExpressionId ? (
+                  {expression.id === expressionCharacter.defaultExpressionId ? (
                     <em>默认表情</em>
                   ) : null}
                 </li>
@@ -1094,30 +1142,57 @@ export function CharacterEditor({
           </ul>
         </section>
       ) : null}
+      {view === 'detail' && !landscapeDetail && isAdaptiveParts ? (
+        <section
+          aria-label="角色结构"
+          className="character-expression-summary character-adaptive-structure-summary"
+        >
+          <div className="character-section-heading">
+            <div>
+              <h4>结构 · {character.parts.length}</h4>
+            </div>
+            {!adaptiveAssemblyActive ? (
+              <button
+                data-testid="character-adaptive-structure-edit"
+                disabled={disabled}
+                onClick={() => onOpenAssembly()}
+                type="button"
+              >
+                编辑零件
+              </button>
+            ) : null}
+          </div>
+          {adaptiveAssemblyActive ? (
+            <div
+              className="character-adaptive-structure-slot"
+              data-testid="character-adaptive-structure-slot"
+              ref={adaptiveListSlotCallbackRef}
+            />
+          ) : null}
+        </section>
+      ) : null}
       {landscapeDetail ? (
         <>
           <nav
             aria-label="角色工作区"
             className="character-workspace-switcher"
-            data-workspace-count={compositeCharacter ? 3 : 2}
+            data-workspace-count={3}
             data-testid="character-workspace-switcher"
           >
-            {compositeCharacter ? (
-              <button
-                aria-controls="character-workspace-assembly"
-                aria-pressed={activeWorkspace === 'assembly'}
-                className={
-                  activeWorkspace === 'assembly'
-                    ? 'character-workspace-tab is-active'
-                    : 'character-workspace-tab'
-                }
-                data-testid="character-workspace-assembly-tab"
-                onClick={() => switchDetailWorkspace('assembly')}
-                type="button"
-              >
-                组装
-              </button>
-            ) : null}
+            <button
+              aria-controls="character-workspace-assembly"
+              aria-pressed={activeWorkspace === 'assembly'}
+              className={
+                activeWorkspace === 'assembly'
+                  ? 'character-workspace-tab is-active'
+                  : 'character-workspace-tab'
+              }
+              data-testid="character-workspace-assembly-tab"
+              onClick={() => switchDetailWorkspace('assembly')}
+              type="button"
+            >
+              结构
+            </button>
             <button
               aria-controls="character-workspace-expressions"
               aria-pressed={activeWorkspace === 'expressions'}
@@ -1131,12 +1206,14 @@ export function CharacterEditor({
               type="button"
             >
               <span>表情</span>
-              <span
-                aria-hidden="true"
-                className="character-workspace-tab-count"
-              >
-                {character.expressions.length}
-              </span>
+              {expressionCharacter ? (
+                <span
+                  aria-hidden="true"
+                  className="character-workspace-tab-count"
+                >
+                  {expressionCharacter.expressions.length}
+                </span>
+              ) : null}
             </button>
             <button
               aria-controls="character-workspace-settings"
@@ -1153,170 +1230,271 @@ export function CharacterEditor({
               设置
             </button>
           </nav>
-          {compositeCharacter ? (
-            <section
-              aria-label="角色组装素材"
-              className="character-workspace-panel character-assembly-drawer-panel"
-              data-testid="character-assembly-drawer-panel"
-              data-workspace="assembly"
-              hidden={activeWorkspace !== 'assembly'}
-              id="character-workspace-assembly"
-            >
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyState={{
-                  description: '从项目图片中选择身体。',
-                  label: '请选择图片',
-                }}
-                label="身体"
-                onSelectedAssetActivate={
-                  assemblyDraft?.bodyAssetId
-                    ? () => onSelectAssemblyEditTarget('body')
-                    : undefined
-                }
-                onChange={(assetId) => {
-                  if (assetId) onSetAssemblyBodyAsset(assetId);
-                }}
-                onThumbnailError={onThumbnailError}
-                selectedAssetId={
-                  assemblyDraft?.bodyAssetId ??
-                  (character.mode === 'composite'
-                    ? character.bodyAssetId
-                    : '')
-                }
-                testId="character-assembly-body-picker"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedAssetActive={assemblyEditTarget === 'body'}
-                showEditTargetStatus={false}
-                selectedSurface
-              />
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyOption={{ label: '不添加头部', optional: true }}
-                emptyActionLabel="选择"
-                label="头部"
-                onChange={onSetAssemblyHeadAsset}
-                onThumbnailError={onThumbnailError}
-                onSelectedAssetActivate={
-                  assemblyDraft?.head
-                    ? () => onSelectAssemblyEditTarget('head')
-                    : undefined
-                }
-                searchAndPaginate
-                selectedAssetId={
-                  assemblyDraft
-                    ? assemblyDraft.head?.assetId ?? null
-                    : character.head?.assetId ?? null
-                }
-                showEditTargetStatus={false}
-                showOptionalLabel={false}
-                testId="character-assembly-head-asset"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedAssetActive={assemblyEditTarget === 'head'}
-                selectedSurface
-              />
-              <div
-                className="character-assembly-default-face-summary image-asset-picker"
-                data-testid="character-assembly-default-face-summary"
-              >
-                <div className="image-asset-picker-heading">
-                  <strong>默认脸</strong>
-                </div>
-                {defaultExpression ? (
-                  <ImageAssetPickerSelectedSurface>
-                    <button
-                      aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
-                      aria-pressed={assemblyEditTarget === 'face'}
-                      className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
-                      data-edit-target-selected={String(assemblyEditTarget === 'face')}
-                      data-testid="character-assembly-default-face-select"
-                      disabled={disabled || !assemblyDraft}
-                      onClick={() => onSelectAssemblyEditTarget('face')}
-                      type="button"
-                    >
-                      <CharacterExpressionThumbnail
-                        className="image-asset-picker-selected-thumbnail"
-                        expression={defaultExpression}
-                        onThumbnailError={onThumbnailError}
-                        thumbnail={defaultThumbnail}
-                      />
-                      <span className="image-asset-picker-selected-copy">
-                        <strong>{defaultExpression.name}</strong>
-                        <small>
-                          {defaultExpressionAsset
-                            ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                            : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
-                        </small>
-                      </span>
-                    </button>
-                    <button
-                      aria-label={`管理默认脸：${defaultExpression.name}`}
-                      className="image-asset-picker-selected-action character-assembly-selected-action-button"
-                      data-testid="character-assembly-go-expressions"
-                      disabled={disabled}
-                      onClick={() => switchDetailWorkspace('expressions')}
-                      type="button"
-                    >
-                      管理
-                    </button>
-                  </ImageAssetPickerSelectedSurface>
-                ) : null}
-              </div>
-              <GraphicFacePicker source={assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyOption={{
-                  label: '暂不配置',
-                }}
-                label="张嘴脸"
-                onChange={onSetAssemblyMouthAsset}
-                onThumbnailError={onThumbnailError}
-                selectedAssetId={assemblyMouthAssetId}
-                testId="character-assembly-mouth-picker"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedSurface
-                selectedAction={
-                  assemblyMouthAssetId ? (
-                    <CharacterAssemblyMouthOverflowMenu
-                      disabled={disabled}
-                      onClear={() => onSetAssemblyMouthAsset(null)}
-                    />
-                  ) : undefined
-                }
-              />
-              </GraphicFacePicker>
-            </section>
-          ) : null}
           <section
-            aria-labelledby="character-expression-workspace-heading"
+            aria-label="角色结构"
+            className="character-workspace-panel character-assembly-drawer-panel"
+            data-testid="character-assembly-drawer-panel"
+            data-workspace="assembly"
+            hidden={activeWorkspace !== 'assembly'}
+            id="character-workspace-assembly"
+          >
+            {compositeCharacter ? (
+              <>
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyState={{
+                    description: '从项目图片中选择身体。',
+                    label: '请选择图片',
+                  }}
+                  label="身体"
+                  onSelectedAssetActivate={
+                    assemblyDraft?.bodyAssetId
+                      ? () => onSelectAssemblyEditTarget('body')
+                      : undefined
+                  }
+                  onChange={(assetId) => {
+                    if (assetId) onSetAssemblyBodyAsset(assetId);
+                  }}
+                  onThumbnailError={onThumbnailError}
+                  selectedAssetId={
+                    assemblyDraft?.bodyAssetId ?? character.bodyAssetId
+                  }
+                  testId="character-assembly-body-picker"
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                  selectedAssetActive={assemblyEditTarget === 'body'}
+                  showEditTargetStatus={false}
+                  selectedSurface
+                />
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyOption={{ label: '不添加头部', optional: true }}
+                  emptyActionLabel="选择"
+                  label="头部"
+                  onChange={onSetAssemblyHeadAsset}
+                  onThumbnailError={onThumbnailError}
+                  onSelectedAssetActivate={
+                    assemblyDraft?.head
+                      ? () => onSelectAssemblyEditTarget('head')
+                      : undefined
+                  }
+                  searchAndPaginate
+                  selectedAssetId={
+                    assemblyDraft
+                      ? assemblyDraft.head?.assetId ?? null
+                      : character.head?.assetId ?? null
+                  }
+                  showEditTargetStatus={false}
+                  showOptionalLabel={false}
+                  testId="character-assembly-head-asset"
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                  selectedAssetActive={assemblyEditTarget === 'head'}
+                  selectedSurface
+                />
+                <div
+                  className="character-assembly-default-face-summary image-asset-picker"
+                  data-testid="character-assembly-default-face-summary"
+                >
+                  <div className="image-asset-picker-heading">
+                    <strong>默认脸</strong>
+                  </div>
+                  {defaultExpression ? (
+                    <ImageAssetPickerSelectedSurface>
+                      <button
+                        aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
+                        aria-pressed={assemblyEditTarget === 'face'}
+                        className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
+                        data-edit-target-selected={String(assemblyEditTarget === 'face')}
+                        data-testid="character-assembly-default-face-select"
+                        disabled={disabled || !assemblyDraft}
+                        onClick={() => onSelectAssemblyEditTarget('face')}
+                        type="button"
+                      >
+                        <CharacterExpressionThumbnail
+                          className="image-asset-picker-selected-thumbnail"
+                          expression={defaultExpression}
+                          onThumbnailError={onThumbnailError}
+                          thumbnail={defaultThumbnail}
+                        />
+                        <span className="image-asset-picker-selected-copy">
+                          <strong>{defaultExpression.name}</strong>
+                          <small>
+                            {defaultExpressionAsset
+                              ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                              : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
+                          </small>
+                        </span>
+                      </button>
+                      <button
+                        aria-label={`管理默认脸：${defaultExpression.name}`}
+                        className="image-asset-picker-selected-action character-assembly-selected-action-button"
+                        data-testid="character-assembly-go-expressions"
+                        disabled={disabled}
+                        onClick={() => switchDetailWorkspace('expressions')}
+                        type="button"
+                      >
+                        管理
+                      </button>
+                    </ImageAssetPickerSelectedSurface>
+                  ) : null}
+                </div>
+                <GraphicFacePicker source={assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyOption={{
+                    label: '暂不配置',
+                  }}
+                  label="张嘴脸"
+                  onChange={onSetAssemblyMouthAsset}
+                  onThumbnailError={onThumbnailError}
+                  selectedAssetId={assemblyMouthAssetId}
+                  testId="character-assembly-mouth-picker"
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                  selectedSurface
+                  selectedAction={
+                    assemblyMouthAssetId ? (
+                      <CharacterAssemblyMouthOverflowMenu
+                        disabled={disabled}
+                        onClear={() => onSetAssemblyMouthAsset(null)}
+                      />
+                    ) : undefined
+                  }
+                />
+                </GraphicFacePicker>
+              </>
+            ) : singleImageCharacter && defaultExpression ? (
+              <div
+                className="character-single-structure-panel"
+                data-testid="character-single-structure-panel"
+              >
+                <GraphicFacePicker
+                  source={defaultExpression.visualSource}
+                  onChange={(source) => {
+                    if (source && onSetExpressionSource) {
+                      onSetExpressionSource(defaultExpression.id, source);
+                    }
+                  }}
+                  testId="character-single-structure-image-picker"
+                  disabled={disabled}
+                >
+                  <ImageAssetPicker
+                    assets={imageAssets}
+                    emptyState={{
+                      description: '从项目图片中选择整体图像。',
+                      label: '请选择图片',
+                    }}
+                    label="整体图像"
+                    onChange={(assetId) => {
+                      if (assetId) {
+                        onSetExpressionAsset(defaultExpression.id, assetId);
+                      }
+                    }}
+                    onThumbnailError={onThumbnailError}
+                    selectedAssetId={defaultExpression.assetId ?? null}
+                    testId="character-single-structure-image-picker"
+                    thumbnails={thumbnails}
+                    disabled={disabled}
+                    selectedSurface
+                  />
+                </GraphicFacePicker>
+              </div>
+            ) : isAdaptiveParts ? (
+              adaptiveAssemblyActive ? (
+                <div
+                  className="character-adaptive-structure-slot"
+                  data-testid="character-adaptive-structure-slot"
+                  ref={adaptiveListSlotCallbackRef}
+                />
+              ) : (
+                <div
+                  className="character-adaptive-structure-readonly"
+                  data-testid="character-adaptive-structure-readonly"
+                >
+                  <div className="character-adaptive-structure-readonly-header">
+                    <strong>部件 · {character.parts.length}</strong>
+                    <button
+                      className="character-adaptive-structure-open"
+                      data-testid="character-adaptive-structure-open"
+                      disabled={disabled}
+                      onClick={() => onOpenAssembly()}
+                      type="button"
+                    >
+                      编辑零件
+                    </button>
+                  </div>
+                  <ul className="character-adaptive-structure-readonly-list">
+                    {[...character.parts]
+                      .sort((left, right) => right.drawOrder - left.drawOrder)
+                      .map((part) => {
+                        const partSource = resolveCharacterPartVisualSource(part);
+                        const sourceAsset =
+                          partSource.kind === 'image'
+                            ? imageAssets.find((asset) => asset.id === partSource.assetId)
+                            : undefined;
+                        const label = localizeDefaultAdaptivePartName(
+                          part.displayName ?? sourceAsset?.name ?? `Part ${part.drawOrder + 1}`,
+                        );
+                        return (
+                          <li key={part.partId}>
+                            <button
+                              className="character-adaptive-structure-readonly-row"
+                              disabled={disabled}
+                              onClick={() => onOpenAssembly()}
+                              type="button"
+                            >
+                              <span>{label}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </div>
+              )
+            ) : null}
+          </section>
+          <section
+            aria-labelledby={
+              expressionCharacter
+                ? 'character-expression-workspace-heading'
+                : undefined
+            }
+            aria-label={expressionCharacter ? undefined : '表情'}
             className="character-workspace-panel character-expression-workspace"
             data-testid="character-expression-workspace"
             data-workspace="expressions"
             hidden={activeWorkspace !== 'expressions'}
             id="character-workspace-expressions"
           >
-            <ExpressionEditor
-              character={character}
-              disabled={disabled}
-              imageAssets={imageAssets}
-              isAddOpen={expressionAddOpen}
-              onAdd={onAddExpression}
-              onAddOpenChange={setExpressionAddOpen}
-              onRemove={onRemoveExpression}
-              onRename={onRenameExpression}
-              onSetAsset={onSetExpressionAsset}
-              onSetSource={onSetExpressionSource}
-              onAddGraphic={onAddGraphicExpression}
-              onSetDefault={onSetDefaultExpression}
-              onThumbnailError={onThumbnailError}
-              compactDetailWorkspace
-              presentation="landscape"
-              thumbnails={thumbnails}
-              warnings={warnings}
-            />
+            {expressionCharacter ? (
+              <ExpressionEditor
+                character={expressionCharacter}
+                disabled={disabled}
+                imageAssets={imageAssets}
+                isAddOpen={expressionAddOpen}
+                onAdd={onAddExpression}
+                onAddOpenChange={setExpressionAddOpen}
+                onRemove={onRemoveExpression}
+                onRename={onRenameExpression}
+                onSetAsset={onSetExpressionAsset}
+                onSetSource={onSetExpressionSource}
+                onAddGraphic={onAddGraphicExpression}
+                onSetDefault={onSetDefaultExpression}
+                onThumbnailError={onThumbnailError}
+                compactDetailWorkspace
+                presentation="landscape"
+                thumbnails={thumbnails}
+                warnings={warnings}
+              />
+            ) : (
+              <div
+                className="character-adaptive-expressions-empty"
+                data-testid="character-adaptive-expressions-unavailable"
+              >
+                <p>此角色暂未配置表情。</p>
+              </div>
+            )}
           </section>
           <section
             aria-labelledby="character-settings-workspace-heading"
@@ -1421,13 +1599,13 @@ export function CharacterEditor({
               ) : null}
             </section>
             {talkingHeadSettings}
-            {!compositeCharacter ? (
+            {singleImageCharacter && expressionCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
-                className={`character-mouth-state${character.mouthOpenAssetId || character.mouthOpenVisualSource ? ' is-configured' : ''}`}
-                data-mouth-configured={Boolean(character.mouthOpenAssetId || character.mouthOpenVisualSource)}
+                className={`character-mouth-state${expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource ? ' is-configured' : ''}`}
+                data-mouth-configured={Boolean(expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource)}
               >
-                <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
+                <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
                 <ImageAssetPicker
                   assets={imageAssets}
                   emptyActionLabel="选择图片"
@@ -1438,12 +1616,12 @@ export function CharacterEditor({
                   label="张嘴图"
                   onChange={onSetMouthOpenAsset}
                   onThumbnailError={onThumbnailError}
-                  selectedAssetId={character.mouthOpenAssetId ?? null}
+                  selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
                   testId="character-detail-mouth-visual-picker"
                   thumbnails={thumbnails}
                   disabled={disabled}
                   selectedAction={
-                    character.mouthOpenAssetId ? (
+                    expressionCharacter.mouthOpenAssetId ? (
                       <button
                         className="character-mouth-clear"
                         disabled={disabled}
@@ -1483,9 +1661,9 @@ export function CharacterEditor({
           </section>
         </>
       ) : null}
-      {view === 'full' || view === 'expression' ? (
+      {(view === 'full' || view === 'expression') && expressionCharacter ? (
         <ExpressionEditor
-          character={character}
+          character={expressionCharacter}
           disabled={disabled}
           imageAssets={imageAssets}
           isAddOpen={expressionAddOpen}

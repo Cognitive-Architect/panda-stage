@@ -3,16 +3,9 @@
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 
-/* Issue #1031 / CHAR-UNI-01 F02: only the adaptive-parts workbench owns the
-   whole surface. Composite creation is edited from the left Create form, so
-   kind='create' must keep that panel visible while the canvas previews. */
-.editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='adaptive-parts']
-  .resource-activity-dock[data-active-activity='characters']
-  .resource-activity-surface {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
+/* Issue #1175 / CHAR-UI-UNI: all character modes share the left Character Detail
+   drawer alongside the center preview canvas, so assembly never hides the
+   resource activity surface. */
 
 .editor-workspace-slot-canvas[data-character-assembly-active='true']
   > .character-assembly-canvas-owner {

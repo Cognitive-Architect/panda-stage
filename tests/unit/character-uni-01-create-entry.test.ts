@@ -225,14 +225,14 @@ describe('Issue #1031 F02 – the left Create form is never hidden by kind=creat
       'utf8',
     ).replaceAll('\r\n', '\n');
 
-    expect(assemblySurface).toContain(
+    expect(assemblySurface).not.toContain(
       ".editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='adaptive-parts']",
     );
     expect(assemblySurface).not.toContain(
       "[data-character-assembly-kind='create']\n  .resource-activity-dock",
     );
     expect(shell).toContain(
-      "const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';",
+      'const assemblyHidesResourceDrawer = false;',
     );
   });
 
