@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { FlaWorkerStartRequest, AnimationImportIR } from '../../src/shared/fla-import-api';
+import type { FlaWorkerStartRequest, FlaWorkerHydrateRequest, FlaBitmapMedia, FlaInspectionIR, AnimationImportIR } from '../../src/shared/fla-import-api';
 import { FlaImportService } from '../../src/main/services/FlaImportService';
 import type { FlaParserWindowManager } from '../../src/main/windows/fla-parser-window-manager';
 import { routeFlaInspection } from '../../src/renderer/fla-import/fla-content-route';
@@ -141,9 +141,11 @@ function parserResult(request: FlaWorkerStartRequest): AnimationImportIR {
 }
 
 function makeHarness() {
-  const inspect = vi.fn(async (request: FlaWorkerStartRequest) => parserResult(request));
-  const manager = { inspect } as unknown as FlaParserWindowManager;
-  return { inspect, service: new FlaImportService(manager) };
+  const inspect = vi.fn(async (request: FlaWorkerStartRequest): Promise<FlaInspectionIR> => parserResult(request));
+  const hydrate = vi.fn<(request: FlaWorkerHydrateRequest) => Promise<FlaBitmapMedia>>();
+  const cancel = vi.fn();
+  const manager = { inspect, hydrate, cancel } as unknown as FlaParserWindowManager;
+  return { inspect, hydrate, cancel, service: new FlaImportService(manager) };
 }
 
 async function withSource<T>(bytes: Uint8Array, action: (sourcePath: string) => Promise<T>): Promise<T> {
@@ -350,5 +352,105 @@ describe('FLA C3 production recovery entry path', () => {
       expect(inspect, fixture.id).not.toHaveBeenCalled();
       expect(routeFlaInspection(response), fixture.id).toBe('blocked');
     }
+  });
+});
+
+const selectedBitmapMetadata = ['left', 'right', 'broken'].map((directory) => ({
+  id: 'fla-media-catalog-' + directory,
+  name: directory + '/icon.png',
+  sourceReference: directory + '/icon.png',
+  bitmapDataReference: null,
+  width: 0,
+  height: 0,
+  sourceFormat: 'png' as const,
+}));
+
+function decodedBitmap(bitmap: FlaWorkerHydrateRequest['bitmap'], value: number): FlaBitmapMedia {
+  return {
+    ...bitmap, width: 8, height: 8,
+    payload: {
+      mimeType: 'image/png', width: 8, height: 8, bytes: Uint8Array.of(value),
+      alpha: { kind: 'opaque', zeroAlphaPixels: 0, partialAlphaPixels: 0 },
+    },
+  };
+}
+
+describe('FLA selected bitmap loading', () => {
+  it('shares one selected result between preview and commit and isolates a failed item', async () => {
+    await withSource(makeZip(), async (sourcePath) => {
+      const { inspect, hydrate, service } = makeHarness();
+      const [left, right, broken] = selectedBitmapMetadata;
+      inspect.mockImplementationOnce(async (request) => ({ ...parserResult(request), media: selectedBitmapMetadata }));
+      hydrate.mockImplementation(async ({ bitmap }) => {
+        if (bitmap.id === broken!.id) throw new Error('Invalid bitmap');
+        return decodedBitmap(bitmap, bitmap.id === left!.id ? 1 : 2);
+      });
+      const response = await service.inspectSource(sourcePath, crypto.randomUUID());
+      if (!response.ok) throw new Error(response.error.message);
+      const { sessionId } = response;
+      expect(inspect).toHaveBeenCalledOnce();
+      expect(hydrate).not.toHaveBeenCalled();
+      const session = service.getSession(sessionId);
+      await expect(service.previewRaster(sessionId, 'fla-media-absent')).resolves.toMatchObject({ ok: false });
+      expect(hydrate).not.toHaveBeenCalled();
+
+      const [preview, commit] = await Promise.all([
+        service.previewRaster(sessionId, left!.id),
+        session?.hydrateMedia?.(left!.id),
+      ]);
+      expect(hydrate).toHaveBeenCalledOnce();
+      expect(hydrate.mock.calls[0]?.[0]).toMatchObject({
+        mode: 'hydrate-raster', bitmap: left, allowHrefLeafFallback: false,
+      });
+      expect(preview).toMatchObject({ ok: true, payload: commit?.payload });
+      await expect(service.previewRaster(sessionId, broken!.id)).resolves.toMatchObject({ ok: false });
+      expect(hydrate).toHaveBeenCalledTimes(2);
+      await expect(service.previewRaster(sessionId, right!.id)).resolves.toMatchObject({
+        ok: true, payload: { bytes: Uint8Array.of(2) },
+      });
+      expect(hydrate).toHaveBeenCalledTimes(3);
+      await expect(service.previewRaster(sessionId, broken!.id)).resolves.toMatchObject({ ok: false });
+      expect(hydrate).toHaveBeenCalledTimes(4);
+      await expect(service.previewRaster(sessionId, left!.id)).resolves.toEqual(preview);
+      expect(hydrate).toHaveBeenCalledTimes(4);
+      expect(inspect).toHaveBeenCalledOnce();
+      expect(service.cancel({ sessionId })).toEqual({ accepted: true });
+      expect(service.getSession(sessionId)).toBeNull();
+    });
+  });
+
+  it('cancels the active item, drops queued items and ignores a late result on source replacement', async () => {
+    await withSource(makeZip(), async (sourcePath) => {
+      const { inspect, hydrate, cancel, service } = makeHarness();
+      inspect.mockImplementation(async (request) => ({ ...parserResult(request), media: selectedBitmapMetadata }));
+      const [left, right] = selectedBitmapMetadata;
+      let complete!: () => void;
+      let started!: () => void;
+      const loading = new Promise<void>((resolve) => { started = resolve; });
+      hydrate.mockImplementationOnce(({ bitmap }) => new Promise((resolve) => {
+        complete = () => resolve(decodedBitmap(bitmap, 1));
+        started();
+      }));
+      const first = await service.inspectSource(sourcePath, crypto.randomUUID());
+      if (!first.ok) throw new Error(first.error.message);
+      const preview = service.previewRaster(first.sessionId, left!.id);
+      await loading;
+      const queued = service.previewRaster(first.sessionId, right!.id);
+      expect(service.cancel({ sessionId: first.sessionId })).toEqual({ accepted: true });
+      expect(cancel).toHaveBeenCalledWith(hydrate.mock.calls[0]?.[0].sessionId);
+      const next = service.inspectSource(sourcePath, crypto.randomUUID());
+      complete();
+      await expect(preview).resolves.toMatchObject({ ok: false, error: { code: 'USER_CANCELLED' } });
+      await expect(queued).resolves.toMatchObject({ ok: false, error: { code: 'USER_CANCELLED' } });
+      expect(hydrate).toHaveBeenCalledOnce();
+      const replacement = await next;
+      if (!replacement.ok) throw new Error(replacement.error.message);
+      expect(replacement.sessionId).not.toBe(first.sessionId);
+      hydrate.mockImplementationOnce(async ({ bitmap }) => decodedBitmap(bitmap, 2));
+      await expect(service.previewRaster(replacement.sessionId, left!.id)).resolves.toMatchObject({
+        ok: true, payload: { bytes: Uint8Array.of(2) },
+      });
+      expect(hydrate).toHaveBeenCalledTimes(2);
+    });
   });
 });

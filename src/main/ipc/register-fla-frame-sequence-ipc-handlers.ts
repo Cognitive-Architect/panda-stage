@@ -100,7 +100,8 @@ const defaultBuildFrameSource = async function* buildFrameSource(
   // session bytes. Catalog discovery and R2 rendering are separate calls;
   // the builder must therefore return the same Panda-owned target identity
   // for the selected logical target on both calls.
-  const resolveBitmapMedia = createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []);
+  const media = source.loadMedia ? await source.loadMedia() : source.media;
+  const resolveBitmapMedia = createFlaStaticSnapshotBitmapMediaLookup(media ?? []);
   const prepared = await prepareFlaStaticSnapshotDisplaySource(source.bytes, 'catalog');
   if (!prepared.ok) {
     throw new Error(`R2 display source preparation failed: ${prepared.message}`);

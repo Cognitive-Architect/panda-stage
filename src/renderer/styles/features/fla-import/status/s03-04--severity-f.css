@@ -230,159 +230,56 @@
   color: #bca878;
 }
 
-.fla-review-portal .fla-stage-f3-session {
-  width: min(760px, 100%);
-  height: min(calc(100vh - 32px), 620px);
-  grid-template-rows: auto minmax(0, 1fr);
-  border-color: rgb(213 168 92 / 42%);
-  background: #151d18;
-}
-
-.fla-stage-f3-header {
-  align-items: start;
-}
-
-.fla-stage-f3-header h2,
-.fla-stage-f3-header p {
-  margin: 0;
-}
-
-.fla-stage-f3-header > div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.fla-stage-f3-header > div > p:last-child {
-  color: #87988e;
-  font-size: 10px;
-}
-
-.fla-stage-f3-readonly {
+.fla-stage-f3-blocked .fla-stage-f3-icon {
   flex: none;
-  padding: 4px 7px;
-  border: 1px solid rgb(213 168 92 / 38%);
-  border-radius: 999px;
-  color: #dfbd7c;
-  font-size: 9px;
-  font-weight: 800;
+  color: #bfa87e;
 }
 
-.fla-stage-f3-body {
-  display: grid;
-  padding: 0 2px 4px;
-  overflow-y: auto;
-  place-items: center;
-}
-
-.fla-stage-f3-blocked {
-  display: grid;
-  width: min(560px, 100%);
+.fla-stage-f3-blocked details {
+  grid-column: 1 / -1;
   min-width: 0;
-  padding: 26px;
-  border: 1px solid rgb(213 168 92 / 28%);
-  border-radius: 14px;
-  background: rgb(213 168 92 / 6%);
-  box-shadow: 0 14px 34px rgb(0 0 0 / 18%);
-  gap: 18px;
+  margin: 0 0 var(--ui-space-2) calc(18px + var(--ui-space-2));
 }
 
-.fla-stage-f3-blocked-copy {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-.fla-stage-f3-blocked-copy h1,
-.fla-stage-f3-blocked-copy p {
-  padding: 0;
-  margin: 0;
-}
-
-.fla-stage-f3-blocked-copy h1 {
-  color: #f4e2b2;
-  font-size: 22px;
-  line-height: 1.25;
-}
-
-.fla-stage-f3-blocked-copy > p:not(.fla-render-panel-kicker):not(.fla-stage-f3-source-unchanged) {
-  color: #c8c0a5;
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.fla-stage-f3-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgb(213 168 92 / 60%);
-  border-radius: 50%;
-  background: rgb(213 168 92 / 12%);
-  color: #f0d79c;
-  font-size: 18px;
-  font-weight: 800;
-  place-items: center;
-}
-
-.fla-stage-f3-source-unchanged {
-  color: #a9dcb5;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.fla-stage-f3-blocked-copy details {
-  padding-top: 8px;
-  border-top: 1px solid rgb(255 255 255 / 9%);
-}
-
-.fla-stage-f3-blocked-copy summary {
-  width: max-content;
+.fla-stage-f3-blocked summary {
+  display: flex;
+  width: fit-content;
   max-width: 100%;
-  color: #dfbd7c;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--ui-space-1);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-muted);
+  font: var(--ui-font-secondary);
   cursor: pointer;
-  font-size: 10px;
-  font-weight: 700;
+  list-style: none;
 }
 
-.fla-stage-f3-blocked-copy details p {
-  padding-top: 6px;
-  color: #a9aaa0;
-  font-size: 10px;
-  line-height: 1.45;
+.fla-stage-f3-blocked summary::-webkit-details-marker {
+  display: none;
 }
 
-.fla-stage-f3-return {
-  min-height: 42px;
-  padding: 8px 14px;
-  border: 1px solid rgb(131 211 154 / 50%);
-  border-radius: 8px;
-  background: rgb(45 104 62 / 34%);
-  color: #dff3e3;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
+.fla-stage-f3-blocked summary:hover {
+  color: var(--ui-color-text-secondary);
 }
 
-.fla-stage-f3-return:hover,
-.fla-stage-f3-return:focus-visible {
-  border-color: #83d39a;
-  background: rgb(45 104 62 / 55%);
+.fla-stage-f3-blocked summary:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
 }
 
-@media (max-width: 720px) {
-  .fla-review-portal .fla-stage-f3-session {
-    width: 100%;
-    height: calc(100vh - 20px);
-    max-height: calc(100vh - 20px);
-    padding: 14px;
-  }
-
-  .fla-stage-f3-blocked {
-    padding: 18px;
-  }
-
-  .fla-stage-f3-blocked-copy h1 {
-    font-size: 18px;
-  }
+.fla-stage-f3-blocked details:not([open]) summary svg {
+  transform: rotate(-90deg);
 }
 
+.fla-stage-f3-blocked pre {
+  max-height: min(38dvh, 12rem);
+  margin: var(--ui-space-2) 0 0;
+  overflow: auto;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: text;
+  white-space: pre-wrap;
+}

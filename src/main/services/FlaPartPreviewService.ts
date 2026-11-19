@@ -609,6 +609,7 @@ function toSnapshotSource(
     sha256: sha256.toLowerCase(),
     originalSourceSha256: session.originalSourceSha256?.toLowerCase() ?? sha256.toLowerCase(),
     media: session.ir.media,
+    loadMedia: session.loadMedia,
   };
 }
 
@@ -1260,7 +1261,8 @@ export class FlaPartPreviewService {
       source.bytes,
       `graphic-symbol\u0000${descriptor.sourceLibraryItemName}\u0000${descriptor.userLabel}`,
     );
-    const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []);
+    const media = source.loadMedia ? await source.loadMedia() : source.media;
+    const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(media ?? []);
     const frames: FlaGraphicDefinitionFrameBatch['frames'][number][] = [];
     let totalBytes = 0;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
@@ -1489,12 +1491,14 @@ export class FlaPartPreviewService {
       for (const name of referencedBitmapNames) {
         const lookup = mediaLookup(name);
         if (lookup.ok) {
-          const sha256 = crypto.createHash('sha256').update(Buffer.from(lookup.media.pngBytes)).digest('hex');
+          const bytes = lookup.media.pngBytes;
+          if (!bytes) continue;
+          const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
           batchBitmaps.push({
             libraryItemName: name,
             width: lookup.media.width,
             height: lookup.media.height,
-            pngBytes: lookup.media.pngBytes,
+            pngBytes: bytes,
             sha256,
           });
         }
@@ -1842,7 +1846,9 @@ export class FlaPartPreviewService {
         active.request,
       );
     }
-    const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(sourceIdentity.media ?? []);
+    const media = sourceIdentity.loadMedia ? await sourceIdentity.loadMedia() : sourceIdentity.media;
+    if (active.settled) return active.settledPromise;
+    const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(media ?? []);
     const nativeComposition = buildSvgForResolvedDisplayList({
       displayList: nativeResolved.displayList,
       renderTargetId: active.request.target.renderTargetId,

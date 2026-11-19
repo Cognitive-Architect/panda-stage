@@ -1,6 +1,6 @@
 import {
   FlaRasterSelectionIntentSchema,
-  type AnimationImportIR,
+  type FlaInspectionIR,
   type FlaCompatibilityStatus,
   type FlaRasterSelectionIntent,
 } from '../../shared/fla-import-api';
@@ -36,7 +36,7 @@ export interface ExistingAssetName {
 }
 
 export interface FlaReviewMedia {
-  media: AnimationImportIR['media'][number];
+  media: FlaInspectionIR['media'][number];
   placed: boolean;
   libraryOnly: boolean;
   name: AssetNameAnalysis;
@@ -83,7 +83,7 @@ export function paginateFlaReviewMedia<T>(
 }
 
 export function reviewMedia(
-  ir: AnimationImportIR,
+  ir: FlaInspectionIR,
   existingAssets: readonly ExistingAssetName[] = [],
 ): FlaReviewMedia[] {
   const placedMediaIds = new Set(
@@ -146,7 +146,7 @@ export function reviewMedia(
 }
 
 export function compatibilityCounts(
-  ir: AnimationImportIR,
+  ir: FlaInspectionIR,
 ): Record<FlaCompatibilityStatus, number> {
   const counts = Object.fromEntries(
     FLA_COMPATIBILITY_STATUSES.map((status) => [status, 0]),
@@ -156,8 +156,8 @@ export function compatibilityCounts(
 }
 
 export function compatibilityWarnings(
-  ir: AnimationImportIR,
-): AnimationImportIR['compatibility'] {
+  ir: FlaInspectionIR,
+): FlaInspectionIR['compatibility'] {
   return ir.compatibility.filter((entry) =>
     entry.status === 'degraded' ||
     entry.status === 'unsupported' ||
@@ -166,7 +166,7 @@ export function compatibilityWarnings(
 }
 
 export function createFlaRasterSelectionIntent(
-  ir: AnimationImportIR,
+  ir: FlaInspectionIR,
   sessionId: string,
   selectedMediaIds: ReadonlySet<string>,
 ): FlaRasterSelectionIntent {
@@ -187,7 +187,7 @@ export function createFlaRasterSelectionIntent(
 }
 
 function sourceNameCounts(
-  media: readonly AnimationImportIR['media'][number][],
+  media: readonly FlaInspectionIR['media'][number][],
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const item of media) {

@@ -5,6 +5,8 @@ import {
   FlaInspectRequestSchema,
   FlaInspectionResponseSchema,
   FlaInspectionStartedSchema,
+  FlaRasterPreviewRequestSchema,
+  FlaRasterPreviewResponseSchema,
 } from '../../shared/fla-import-api';
 import {
   FlaAssetCommitResponseSchema,
@@ -153,6 +155,11 @@ export function registerFlaImportIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.FLA_INSPECT_CHOOSE, inspect);
   ipcMain.handle(IPC_CHANNELS.FLA_CANCEL, cancel);
+  ipcMain.handle(IPC_CHANNELS.FLA_PREVIEW_RASTER, async (event, rawRequest: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow());
+    const { sessionId, mediaId } = FlaRasterPreviewRequestSchema.parse(rawRequest);
+    return FlaRasterPreviewResponseSchema.parse(await dependencies.flaImportService.previewRaster(sessionId, mediaId));
+  });
   ipcMain.handle(
     IPC_CHANNELS.FLA_COMMIT_SELECTED,
     async (event, rawRequest: unknown) => {
@@ -180,6 +187,7 @@ export function registerFlaImportIpcHandlers(
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.FLA_INSPECT_CHOOSE);
     ipcMain.removeHandler(IPC_CHANNELS.FLA_CANCEL);
+    ipcMain.removeHandler(IPC_CHANNELS.FLA_PREVIEW_RASTER);
     ipcMain.removeHandler(IPC_CHANNELS.FLA_COMMIT_SELECTED);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_READY, onReady);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);

@@ -4,14 +4,14 @@
  * encoded bytes; parser/runtime objects and filesystem capabilities stay out.
  */
 
-import type { AnimationImportIR } from '../../shared/fla-import-api';
+import type { FlaInspectionIR } from '../../shared/fla-import-api';
 import type {
   FlaStaticSnapshotBitmapMedia,
   FlaStaticSnapshotBitmapMediaLookup,
   FlaStaticSnapshotBitmapMediaLookupResult,
 } from './fla-static-snapshot-svg-builder';
 
-type FlaBitmapMedia = AnimationImportIR['media'][number];
+type FlaBitmapMedia = FlaInspectionIR['media'][number];
 
 type IndexedBitmapMedia = FlaStaticSnapshotBitmapMedia;
 
@@ -76,7 +76,7 @@ export function createFlaStaticSnapshotBitmapMediaLookup(
       id: item.id,
       width: item.width,
       height: item.height,
-      pngBytes: item.payload.bytes,
+      ...(item.payload ? { pngBytes: item.payload.bytes } : {}),
     };
     for (const alias of aliases) {
       addCandidate(exact, alias, indexed);

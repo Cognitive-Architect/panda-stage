@@ -100,6 +100,9 @@ export function FlaCompatibilityReviewSession({
   const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
   const [recoveryRequired, setRecoveryRequired] = useState(false);
   const recoveryRequiredRef = useRef(false);
+  const [snapshotScanRequested, setSnapshotScanRequested] = useState(false);
+  const [rasterPreviewRequest, setRasterPreviewRequest] = useState<{ sessionId: string; mediaId: string } | null>(null);
+  const [rasterPreview, setRasterPreview] = useState<{ mediaId: string; url?: string } | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [snapshotWorkInProgress, setSnapshotWorkInProgress] = useState(false);
   const [sequenceWorkInProgress, setSequenceWorkInProgress] = useState(false);
@@ -158,6 +161,7 @@ export function FlaCompatibilityReviewSession({
   }, [inspection]);
 
   const ir = response?.ok ? response.ir : null;
+  const structureOnly = ir?.media.some((media) => !media.payload) ?? false;
   const checkedCandidateKeys = useMemo(
     () => new Set(checkedCandidates.keys()),
     [checkedCandidates],
@@ -175,7 +179,11 @@ export function FlaCompatibilityReviewSession({
       ? createFlaWorkbenchCandidates({
           context: { sessionId, source: ir.source },
           rasterMedia: reviewItems.map(({ media }) => media),
-          rasterThumbnailUrls: thumbnailUrls,
+          rasterThumbnailUrls: rasterPreview?.url
+            ? { ...thumbnailUrls, [rasterPreview.mediaId]: rasterPreview.url }
+            : thumbnailUrls,
+          rasterPreviewPendingId: rasterPreviewRequest && !rasterPreview ? rasterPreviewRequest.mediaId : undefined,
+          rasterPreviewFailedId: rasterPreview && !rasterPreview.url ? rasterPreview.mediaId : undefined,
           selection: rasterSelection,
         })
           .filter((candidate) => candidate.kind === 'raster')
@@ -184,7 +192,7 @@ export function FlaCompatibilityReviewSession({
             checked: candidate.selectable && checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate)),
           }))
       : [],
-    [checkedCandidateKeys, ir, rasterSelection, reviewItems, sessionId, thumbnailUrls],
+    [checkedCandidateKeys, ir, rasterPreview, rasterPreviewRequest, rasterSelection, reviewItems, sessionId, thumbnailUrls],
   );
   const visibleSequenceCandidates = useMemo(
     () => sequenceCandidates.filter((candidate): candidate is Extract<FlaWorkbenchCandidate, { kind: 'sequence' }> =>
@@ -263,6 +271,7 @@ export function FlaCompatibilityReviewSession({
     const created: Record<string, string> = {};
     if (typeof URL.createObjectURL === 'function') {
       for (const media of ir.media) {
+        if (!media.payload) continue;
         const bytes = media.payload.bytes.slice();
         const blob = new Blob([bytes.buffer as ArrayBuffer], {
           type: media.payload.mimeType,
@@ -275,6 +284,30 @@ export function FlaCompatibilityReviewSession({
       for (const url of Object.values(created)) URL.revokeObjectURL(url);
     };
   }, [ir]);
+
+  useEffect(() => {
+    if (!rasterPreviewRequest || rasterPreviewRequest.sessionId !== sessionId) return;
+    const { mediaId } = rasterPreviewRequest;
+    let disposed = false;
+    let previewUrl: string | undefined;
+    setRasterPreview(null);
+    void (async () => {
+      try {
+        const result = await window.pandaStage.fla.previewRaster(sessionId, mediaId);
+        if (disposed) return;
+        if (!result.ok) throw new Error(result.error.message);
+        const bytes = new Uint8Array(result.payload.bytes);
+        previewUrl = URL.createObjectURL(new Blob([bytes], { type: result.payload.mimeType }));
+        setRasterPreview({ mediaId, url: previewUrl });
+      } catch {
+        if (!disposed) setRasterPreview({ mediaId });
+      }
+    })();
+    return () => {
+      disposed = true;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [rasterPreviewRequest, sessionId]);
 
   const registerImportRunner = useCallback((
     kind: 'snapshot' | 'sequence',
@@ -326,6 +359,9 @@ export function FlaCompatibilityReviewSession({
     setFocusedCandidateIdentityKey(candidate.identityKey);
     if (candidate.kind === 'raster') {
       setRasterSelection((current) => focusFlaWorkbenchCandidate(current, candidate.id));
+      if (structureOnly && sessionId) setRasterPreviewRequest({ sessionId, mediaId: candidate.id });
+    } else if (candidate.kind === 'snapshot') {
+      setSnapshotScanRequested(true);
     }
   };
   const selectCurrentResults = (): void => {
@@ -373,6 +409,9 @@ export function FlaCompatibilityReviewSession({
     setCheckedCandidates(new Map());
     setImportReceipt(null);
     setBulkConfirmationOpen(false);
+    setSnapshotScanRequested(false);
+    setRasterPreviewRequest(null);
+    setRasterPreview(null);
   }, [sessionId, ir?.source.sha256]);
 
   const rasterImportRunner = useCallback<FlaUnifiedImportRunner>(async (
@@ -691,6 +730,7 @@ export function FlaCompatibilityReviewSession({
   const snapshotPreview = (
     <FlaStaticSnapshotReview
       active={reviewRoute === 'assets'}
+      deferPreviewScan={structureOnly && !snapshotScanRequested}
       key={sessionId + ':' + ir.source.sha256 + ':snapshot'}
       checkedCandidateKeys={checkedCandidateKeys}
       importLocked={selectionLocked}
