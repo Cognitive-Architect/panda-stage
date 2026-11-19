@@ -125,8 +125,8 @@ async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   const acceptanceSource = process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE?.trim();
   if (acceptanceSource && !app.isPackaged) return acceptanceSource;
   const selection = await dialog.showOpenDialog(window, {
-    title: '选择 FLA 文件进行只读检查',
-    buttonLabel: '检查 FLA',
+    title: '选择 FLA 文件',
+    buttonLabel: '打开',
     properties: ['openFile'],
     filters: [{ name: 'Adobe Animate FLA', extensions: ['fla'] }],
   });
@@ -558,7 +558,6 @@ async function initialize(): Promise<void> {
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     getSession: (sessionId) => flaImportService.getSession(sessionId),
-    releaseSession: (sessionId) => flaImportService.releaseSession(sessionId),
   });
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,
@@ -587,6 +586,7 @@ async function initialize(): Promise<void> {
           sha256,
           originalSourceSha256: session.originalSourceSha256 ?? sha256,
           media: session.ir.media,
+          loadMedia: session.loadMedia,
         };
       },
     },
@@ -662,6 +662,7 @@ async function initialize(): Promise<void> {
       const catalog = await buildRenderableTargetCatalog(
         session.sourceBytes,
         createFlaStaticSnapshotBitmapMediaLookup(session.ir.media),
+        { metadataOnlyBitmaps: Boolean(session.loadMedia) },
       );
       if (!catalog.ok) return null;
       const target = catalog.entries.find(
@@ -708,7 +709,7 @@ async function initialize(): Promise<void> {
         const { sourceBytes } = session;
         const { basename, sha256 } = session.ir.source;
         if (!sourceBytes || !basename || !sha256) return null;
-        return { bytes: sourceBytes, basename, sha256, media: session.ir.media };
+        return { bytes: sourceBytes, basename, sha256, media: session.ir.media, loadMedia: session.loadMedia };
       },
     },
   });

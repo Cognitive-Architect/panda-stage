@@ -1,5 +1,5 @@
 import type {
-  AnimationImportIR,
+  FlaInspectionIR,
   FlaDiagnostic,
   FlaImportErrorCode,
 } from './fla-import-api';
@@ -65,7 +65,7 @@ export function flaErrorDiagnostics(error: {
  * original `ir` stay unchanged; this only adds an explanatory category derived
  * from the real, already-present `media` evidence.
  */
-export function flaZeroRasterDiagnostic(ir: AnimationImportIR): FlaDiagnostic[] {
+export function flaZeroRasterDiagnostic(ir: FlaInspectionIR): FlaDiagnostic[] {
   if (ir.media.length > 0) return [];
   return [
     {

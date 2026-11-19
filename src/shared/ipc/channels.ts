@@ -51,6 +51,7 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_INSPECT_CHOOSE: 'fla:inspect-choose',
   FLA_INSPECTION_STARTED: 'fla:inspection-started',
   FLA_CANCEL: 'fla:cancel',
+  FLA_PREVIEW_RASTER: 'fla:preview-raster',
   FLA_COMMIT_SELECTED: 'fla:commit-selected',
   FLA_WORKER_READY: 'fla:worker-ready',
   FLA_WORKER_START: 'fla:worker-start',
