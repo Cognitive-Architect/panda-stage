@@ -53,6 +53,8 @@ import {
 } from './fla-display-list-resolver';
 import {
   prepareFlaNestedGraphicFrameSelections,
+  resolveFlaGraphicFirstFrame,
+  resolveFlaGraphicPlaybackMode,
   type FlaNestedGraphicFrameSelection,
 } from './fla-nested-graphic-frame-selector';
 import type {
@@ -421,7 +423,10 @@ function makeCandidateCollection(
     for (let layerIndex = 0; layerIndex < frameContext.layers.length; layerIndex += 1) {
       const layer = frameContext.layers[layerIndex];
       if (!layer || !layer.visible) continue;
-      const masks = contextMaskDependencies(frameContext, contextPath);
+      // Complete Graphic candidates are direct Scene occurrences. A relationship
+      // on their own layer can affect isolation; sibling layers cannot.
+      if (graphicInstances && (layer.maskLayerId || layer.maskedBy)) continue;
+      const masks = graphicInstances ? [] : contextMaskDependencies(frameContext, contextPath);
       for (let elementIndex = 0; elementIndex < layer.elements.length; elementIndex += 1) {
         if (fallbackReason) return;
         visited += 1;
@@ -463,7 +468,7 @@ function makeCandidateCollection(
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
         if (graphicInstances) {
           if (descriptor && element.sourceAddress && definition?.kind === 'graphic' && element.symbolType === 'graphic' &&
-              masks.length === 0 && matrixFacts(worldTransform).invertible &&
+              matrixFacts(worldTransform).invertible &&
               definition.frameContext.layers.some((childLayer) => childLayer?.visible &&
                 childLayer.elements.some((child) => child && child.visible !== false))) {
             append(element, path, worldTransform, contextPath, layer, layerIndex, descriptor, null);
@@ -556,7 +561,12 @@ function pruneFrameContext(
   frameContext: FlaDisplayListFrameContext,
   selected: SourcePathEntry,
   selectedElement: FlaDisplayListElement,
+  graphicInstance: boolean,
 ): FlaDisplayListFrameContext {
+  if (graphicInstance) {
+    // Drop both ends of every unrelated Scene mask relationship.
+    return { ...frameContext, layers: [{ ...selected.layer, elements: [selectedElement] }] };
+  }
   return {
     ...frameContext,
     layers: frameContext.layers.map((layer, index) => {
@@ -572,6 +582,7 @@ function isolateOccurrence(
   sourceSymbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>,
   path: readonly SourcePathEntry[],
   occurrenceId: string,
+  graphicInstance: boolean,
 ): { frameContext: FlaDisplayListFrameContext; symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition> } {
   if (path.length === 0) throw new Error('Part occurrence path is empty');
   const symbols = new Map(sourceSymbols);
@@ -590,7 +601,7 @@ function isolateOccurrence(
       throw new Error(`Part source identity changed at ${pathItem.contextPath}`);
     }
     if (pathIndex === path.length - 1) {
-      return pruneFrameContext(frameContext, pathItem, element);
+      return pruneFrameContext(frameContext, pathItem, element, graphicInstance);
     }
     if (element.kind !== 'symbol' || element.symbolType !== 'graphic') {
       throw new Error('Only source-addressed Graphic ancestors may be traversed');
@@ -604,7 +615,7 @@ function isolateOccurrence(
     const isolatedChild = isolate(definition.frameContext, pathIndex + 1);
     const overlayKey = `f1-02:${occurrenceId}:${overlayIndex++}`;
     symbols.set(overlayKey, { ...definition, frameContext: isolatedChild });
-    return pruneFrameContext(frameContext, pathItem, { ...element, frameSelectionKey: overlayKey });
+    return pruneFrameContext(frameContext, pathItem, { ...element, frameSelectionKey: overlayKey }, graphicInstance);
   };
   return { frameContext: isolate(rootFrameContext, 0), symbols };
 }
@@ -867,15 +878,13 @@ export function isGraphicPlaybackRangeRepresentable(
   if (!Number.isSafeInteger(parsed)) return false;
   if (parsed < 0) return true;
   if (parsed >= frameCount) return false;
-  return playbackMode?.trim().toLocaleLowerCase('en-US') === 'single frame' ||
+  return resolveFlaGraphicPlaybackMode(playbackMode) === 'single frame' ||
     parsed === frameCount - 1;
 }
 
 function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
-  const mode = unit.sourceFrame.playbackMode?.trim().toLocaleLowerCase('en-US');
-  const firstFrame = unit.sourceFrame.firstFrame === null
-    ? 0
-    : Number(unit.sourceFrame.firstFrame);
+  const mode = resolveFlaGraphicPlaybackMode(unit.sourceFrame.playbackMode);
+  const firstFrame = resolveFlaGraphicFirstFrame(unit.sourceFrame.firstFrame);
   const frameCount = unit.sourceDefinitionFrameCount;
   return unit.sourceKind === 'graphic-symbol-occurrence' &&
     unit.sourceSymbolId !== null &&
@@ -888,9 +897,8 @@ function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
     isGraphicPlaybackRangeRepresentable(unit.sourceFrame.lastFrame, frameCount, unit.sourceFrame.playbackMode) &&
     unit.maskDependencies.length === 0 &&
     (mode === 'loop' || mode === 'play once' || mode === 'single frame') &&
-    Number.isSafeInteger(firstFrame) &&
-    firstFrame >= 0 &&
-    firstFrame < (frameCount ?? 0);
+    firstFrame !== null &&
+    firstFrame < frameCount;
 }
 
 export interface FlaPartPreviewServiceOptions {
@@ -1981,6 +1989,7 @@ export class FlaPartPreviewService {
           symbols,
           candidate.isolatePath,
           candidate.unit.occurrenceId,
+          graphicInstances,
         );
         const isolatedFrameContext = nativeFacts.targetKind === 'graphic-symbol'
           ? applyRootTransformToFrameContext(isolated.frameContext, nativeFacts.rootTransform)

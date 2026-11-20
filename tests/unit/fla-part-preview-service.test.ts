@@ -798,6 +798,146 @@ describe('F1-02 Main part preview service', () => {
     }
   });
 
+
+  it.each(['missing-loop', 'unrelated-mask', 'dependent-mask'] as const)(
+    'handles a single source-addressed Graphic with %s',
+    async (scenario) => {
+      const archive = await JSZip.loadAsync(await buildTwoPartFla('parts', false, DEFAULT_SCENE_MATRICES.slice(0, 1)));
+      let documentXml = (await archive.file('DOMDocument.xml')!.async('string'))
+        .replace('width="32" height="24"', 'width="320" height="240"');
+      if (scenario === 'missing-loop') {
+        documentXml = documentXml.replace(' loop="loop" firstFrame="0"', ' firstFrame="1"');
+        const graphicXml = await archive.file('LIBRARY/MyGraphic.xml')!.async('string');
+        archive.file('LIBRARY/MyGraphic.xml', graphicXml.replace('duration="1"', 'duration="2"'));
+      } else {
+        const shape = (color: string) => `<DOMShape>
+          <fills><FillStyle index="1"><SolidColor color="${color}" alpha="1"/></FillStyle></fills>
+          <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+        </DOMShape>`;
+        const layer = (attrs: string, artwork: string) => `<DOMLayer ${attrs}><frames>
+          <DOMFrame index="0" duration="1"><elements>${artwork}</elements></DOMFrame>
+        </frames></DOMLayer>`;
+        const program = layer('name="Mask" layerType="mask"', shape('#111111')) +
+          layer('name="Masked artwork" parentLayerIndex="0"', shape('#2468ab'));
+        documentXml = documentXml.replace('<layers>', '<layers>' + program);
+        if (scenario === 'dependent-mask') {
+          documentXml = documentXml.replace('name="Parts"', 'name="Parts" parentLayerIndex="0"');
+        }
+      }
+      archive.file('DOMDocument.xml', documentXml);
+      const bytes = await archive.generateAsync({ type: 'uint8array' });
+      const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, bytes);
+      const { calls, previewService } = rasterizerFor(data);
+      try {
+        const response = await previewService.preview({
+          ...request(1),
+          purpose: 'graphic-instance',
+          target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+        });
+        if (scenario !== 'missing-loop') {
+          expect(calls[0]?.svg).toContain('<clipPath');
+          expect(calls[0]?.svg).toContain('#2468ab');
+        }
+        if (scenario === 'dependent-mask') {
+          expect(response).toMatchObject({ ok: true, capability: 'WHOLE_IMAGE_ONLY', partPreviews: [] });
+          expect(calls).toHaveLength(1);
+          return;
+        }
+        if (!response.ok || response.capability !== 'GRAPHIC_INSTANCES_READY') {
+          throw new Error(response.ok ? response.capability : response.error.message);
+        }
+        expect(response.partPreviews).toHaveLength(1);
+        expect(calls).toHaveLength(2);
+        const isolated = calls[1]!.svg;
+        expect(isolated).toContain('#f03a55');
+        expect(isolated).not.toContain('#2468ab');
+        expect(isolated).not.toContain('<clipPath');
+        const unit = previewService.getPlan(response.planId, SESSION_ID, 1)!.units[0]!;
+        expect(unit.sourceAddress).toBe(response.partPreviews[0]!.sourceAddress);
+        expect(unit.sourceFrame.playbackMode).toBe(scenario === 'missing-loop' ? null : 'loop');
+        expect(unit.selectedEffectiveChildFrameIndex).toBe(scenario === 'missing-loop' ? 1 : 0);
+        const plan = {
+          sessionId: SESSION_ID, planId: response.planId, generation: 1,
+          poseIdentity: response.poseIdentity, unitId: unit.unitId,
+        };
+        const built = await previewService.buildGraphicDefinitionFrameBatch(plan);
+        if (!built.ok) throw new Error(built.message);
+        expect(built.batch.unit.occurrenceId).toBe(unit.occurrenceId);
+        expect(built.batch.structure?.frames).toHaveLength(1);
+        expect(built.batch.frames).toHaveLength(scenario === 'missing-loop' ? 2 : 1);
+        for (const { svg } of built.batch.frames) {
+          expect(svg).toContain('#f03a55');
+          expect(svg).not.toContain('#2468ab');
+          expect(svg).not.toContain('<clipPath');
+        }
+
+        const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-issue1191-'));
+        try {
+          const root = path.join(parent, 'graphic.pandastage');
+          let current: Project;
+          const projectService = new ProjectService({ onProjectSaved: (_root, project) => { current = project; } });
+          const created = await projectService.create(root, { name: 'Single Graphic' });
+          const shotId = randomUUID();
+          await projectService.save(root, ProjectSchema.parse({ ...created.project, shots: [{
+            id: shotId, name: 'Shot', durationMs: 5000,
+            defaultSubtitleStyleId: created.project.subtitleStyles[0]!.id,
+            dialogues: [], audioClips: [], timelineEvents: [], layers: [], backgroundLayerId: null,
+          }] }), 0);
+          const commit = new FlaGraphicInstanceCommitService({
+            projectService, partPreviewService: previewService,
+            getCurrentProjectSnapshot: () => ({ project: current, revision: 0, openInstanceId: 1 }),
+          });
+          const imported = await commit.commit({
+            format: 'fla-graphic-instance-commit', version: 1, requestId: randomUUID(),
+            projectRoot: root, projectId: created.project.id, baseRevision: 0, openInstanceId: 1,
+            shotId, startTimeMs: 0, plan,
+          });
+          if (!imported.ok) throw new Error(imported.error.message);
+          const reopened = (await projectService.open(root)).project;
+          expect(reopened.shots[0]!.layers[0]).toMatchObject({
+            id: imported.layerId,
+            animationFirstFrame: scenario === 'missing-loop' ? 1 : 0,
+            animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+          });
+        } finally {
+          await rm(parent, { recursive: true, force: true });
+        }
+      } finally {
+        previewService.close();
+      }
+    },
+  );
+
+  it.each([
+    ['unknown mode', 'loop="not-a-mode" firstFrame="0"'],
+    ['empty mode', 'loop="" firstFrame="0"'],
+    ['out-of-range first frame', 'firstFrame="1"'],
+    ['out-of-range last frame', 'firstFrame="0" lastFrame="1"'],
+    ['invalid first frame', 'firstFrame="0e0"'],
+  ])('keeps an invalid Graphic with %s out of the import candidates', async (_label, timing) => {
+    const archive = await JSZip.loadAsync(await buildTwoPartFla('parts', false, DEFAULT_SCENE_MATRICES.slice(0, 1)));
+    const document = await archive.file('DOMDocument.xml')!.async('string');
+    archive.file('DOMDocument.xml', document.replace('loop="loop" firstFrame="0"', timing));
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false,
+      await archive.generateAsync({ type: 'uint8array' }));
+    const { previewService } = rasterizerFor(data);
+    try {
+      const response = await previewService.preview({
+        ...request(1),
+        purpose: 'graphic-instance',
+        target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+      });
+      if (response.ok) {
+        expect(response.capability).toBe('WHOLE_IMAGE_ONLY');
+        expect(response.partPreviews).toHaveLength(0);
+      } else {
+        expect(response.error.code).toBe('UNSUPPORTED_SOURCE');
+      }
+    } finally {
+      previewService.close();
+    }
+  });
+
   it('retains a selected Scene Graphic instance and renders every bounded Definition frame', async () => {
     const sourceBytes = await buildTwoInstanceNestedGraphicFla();
     const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);

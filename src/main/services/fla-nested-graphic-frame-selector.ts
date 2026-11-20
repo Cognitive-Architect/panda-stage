@@ -101,8 +101,13 @@ function failure(
   return { ok: false, code, message, ...(sourceAddress ? { sourceAddress } : {}) };
 }
 
-function parseFrameIndex(value: string | undefined): number | null {
-  if (value === undefined || !/^\d+$/u.test(value.trim())) return null;
+export function resolveFlaGraphicPlaybackMode(value: string | null | undefined): string {
+  return value?.trim().toLocaleLowerCase('en-US') ?? 'loop';
+}
+
+export function resolveFlaGraphicFirstFrame(value: string | null | undefined): number | null {
+  if (value == null) return 0;
+  if (!/^\d+$/u.test(value.trim())) return null;
   const parsed = Number(value.trim());
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
@@ -132,12 +137,11 @@ function selectAuthoredChildFrame(
   if (!Number.isSafeInteger(childFrameCount) || childFrameCount <= 0) {
     return failure('UNSUPPORTED_TIMING', 'Nested Graphic child timeline has no valid frame range', sourceAddress);
   }
-  const authoredMode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
   // #726: the one-frame case is invariant across playback modes while keeping
   // source mode absent. #1114: multiframe instances without an authored `loop`
   // attribute use Adobe Animate's default `'loop'` evaluation semantics without
   // fabricating `playbackMode` onto the preserved raw provenance.
-  if (authoredMode === undefined && childFrameCount === 1) {
+  if (element.playbackMode === undefined && childFrameCount === 1) {
     return {
       ok: true,
       frameIndex: 0,
@@ -146,7 +150,7 @@ function selectAuthoredChildFrame(
       effectiveFirstFrame: 0,
     };
   }
-  const mode = authoredMode ?? 'loop';
+  const mode = resolveFlaGraphicPlaybackMode(element.playbackMode);
   if (!Number.isSafeInteger(parentFrameIndex) || !Number.isSafeInteger(parentSpanStart) ||
       parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < parentSpanStart) {
     return failure(
@@ -166,7 +170,7 @@ function selectAuthoredChildFrame(
       sourceAddress,
     );
   }
-  const authoredFirstFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
+  const authoredFirstFrame = resolveFlaGraphicFirstFrame(element.firstFrame);
   if (authoredFirstFrame === null) {
     return failure('UNSUPPORTED_TIMING', `Graphic firstFrame is invalid: ${element.firstFrame}`, sourceAddress);
   }
