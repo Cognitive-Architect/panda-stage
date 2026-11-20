@@ -8,11 +8,13 @@ import {
   migrateProject,
   type AdaptivePartsCharacter,
   type Character,
+  type FlaGraphicDefinition,
   type ImageAsset,
   type Project,
 } from '../../src/domain';
 import { CharacterFloatHost } from '../../src/renderer/features/characters/characterFloatHost';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
+import { CharacterResourceSwapDialog } from '../../src/renderer/features/characters/CharacterResourceSwapDialog';
 import { CharacterManager, type AdaptiveCharacterManagementAction, type AdaptivePartsAssemblyActionResult, type AdaptivePartsAssemblyActionsRef } from '../../src/renderer/features/characters/CharacterManager';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -346,6 +348,152 @@ describe('Floating single-image and composite detail (#1181)', () => {
     expect(
       characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.bodyAssetId,
     ).toBe(altBodyId);
+  });
+
+  it('guards Enter on search/candidate, paginates 12 items per page, renders Lucide Check, and labels pending selection (#1184)', async () => {
+    const { project, singleCharacter, imageAssets } = buildAdaptiveProject();
+    if (singleCharacter.mode !== 'single-image') throw new Error('Expected single-image');
+    editorProjectStore.open('F:/tmp/project', project);
+    shotStore.select(project.shots[0]!.id);
+    const { button, click, open } = mountFloatingCharacter();
+
+    // 1. P1 Enter regression + footer summary + Lucide Check in live CharacterEditor flow
+    await act(async () => open(singleCharacter.id));
+    const singleBefore = editorProjectStore.getSnapshot()!.project;
+    const altAsset = imageAssets.find((asset) => asset.id !== singleCharacter.expressions[0]!.assetId)!;
+    click(button('character-single-structure-image-picker-selected'));
+    const dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    const summary = dialog.querySelector('.character-swap-summary')!;
+    expect(summary.textContent).toContain('已选择：');
+    expect(summary.textContent).not.toContain('当前：');
+
+    const checkEl = dialog.querySelector('.character-swap-card-check')!;
+    expect(checkEl.textContent).toBe('');
+    expect(checkEl.querySelector('svg')).not.toBeNull();
+
+    // Enter in search input must not confirm or close
+    const searchInput = dialog.querySelector<HTMLInputElement>('[data-testid="character-swap-search"]')!;
+    act(() => {
+      searchInput.focus();
+      searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).not.toBeNull();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(singleBefore);
+
+    // Focus alt candidate -> Enter + button click selects pending without committing
+    const altCard = dialog.querySelector<HTMLButtonElement>(
+      `[data-testid="character-swap-candidate-image-${altAsset.id}"]`,
+    )!;
+    act(() => {
+      altCard.focus();
+      altCard.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      altCard.click();
+    });
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).not.toBeNull();
+    expect(summary.textContent).toContain(`已选择：${altAsset.name}`);
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(singleBefore);
+
+    // Explicit confirm applies the change
+    click(dialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!);
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).toBeNull();
+    const updated = editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === singleCharacter.id);
+    expect(updated?.mode === 'single-image' ? updated.expressions[0]?.assetId : null).toBe(altAsset.id);
+
+    // 2. P2 Pagination (12 per page) for both Image and FLA Graphic candidates + page localization
+    const baseImage = imageAssets[0]!;
+    const manyImages: ImageAsset[] = Array.from({ length: 15 }, (_, index) => ({
+      ...baseImage,
+      id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      name: `Image ${String(index + 1).padStart(2, '0')}`,
+      sha256: 'b'.repeat(64),
+    }));
+    const graphicFrameAssets: ImageAsset[] = Array.from({ length: 14 }, (_, index) => ({
+      id: `92000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'image',
+      name: `Graphic Frame ${index + 1}`,
+      relativePath: `assets/graphic-frame-${index + 1}.svg`,
+      mimeType: 'image/svg+xml',
+      sha256: 'a'.repeat(64),
+      width: 100,
+      height: 100,
+      usage: 'character',
+      keywords: [],
+      flaGraphicFrame: {
+        definitionId: `91000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        ordinal: 0,
+      },
+    }));
+    const manyGraphics: FlaGraphicDefinition[] = Array.from({ length: 14 }, (_, index) => ({
+      id: `91000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'fla-graphic',
+      name: `Graphic ${String(index + 1).padStart(2, '0')}`,
+      source: {
+        basename: 'sample.fla',
+        sha256: 'c'.repeat(64),
+        renderTargetId: `sym-${index + 1}`,
+        targetKind: 'graphic-symbol',
+        targetName: `Symbol${index + 1}`,
+        startFrameIndex: 0,
+        endFrameIndex: 0,
+        sourceFps: 24,
+        canvas: { width: 100, height: 100 },
+        anchor: { x: 0, y: 0 },
+        documentCanvas: { width: 1920, height: 1080 },
+      },
+      durationMs: 1000 / 24,
+      frames: [
+        {
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: graphicFrameAssets[index]!.id,
+          sha256: 'a'.repeat(64),
+          sourceViewport: { x: 0, y: 0, width: 100, height: 100 },
+          offset: { x: 0, y: 0 },
+          startMs: 0,
+          durationMs: 1000 / 24,
+          createdBySequenceImport: false,
+        },
+      ],
+    }));
+
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    editorProjectStore.open('F:/tmp/project', {
+      ...project,
+      assets: [...project.assets, ...manyImages, ...graphicFrameAssets],
+      animations: manyGraphics,
+    });
+    act(() => {
+      root.render(
+        createElement(CharacterResourceSwapDialog, {
+          open: true,
+          title: '更换素材',
+          imageAssets: manyImages,
+          graphicDefinitions: manyGraphics,
+          thumbnails: {},
+          currentValue: { kind: 'image', assetId: manyImages[13]!.id },
+          onCancel,
+          onConfirm,
+        }),
+      );
+    });
+
+    const pagedDialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    // Opens on page 2 where manyImages[13] lives (3 items on page 2, not all 15)
+    expect(pagedDialog.querySelector('[data-testid="character-swap-image-page"]')?.textContent).toBe('2 / 2');
+    expect(pagedDialog.querySelectorAll('[role="option"]')).toHaveLength(3);
+    expect(pagedDialog.querySelector('[data-testid="character-swap-image-prev"]')).not.toBeNull();
+    click(pagedDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-image-prev"]')!);
+    expect(pagedDialog.querySelector('[data-testid="character-swap-image-page"]')?.textContent).toBe('1 / 2');
+    expect(pagedDialog.querySelectorAll('[role="option"]')).toHaveLength(12);
+
+    // Switch to FLA Graphic tab -> renders 12 items on page 1, page 2 has 2 items
+    click(pagedDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-tab-graphic"]')!);
+    expect(pagedDialog.querySelector('[data-testid="character-swap-graphic-page"]')?.textContent).toBe('1 / 2');
+    expect(pagedDialog.querySelectorAll('[role="option"]')).toHaveLength(12);
+    click(pagedDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-graphic-next"]')!);
+    expect(pagedDialog.querySelector('[data-testid="character-swap-graphic-page"]')?.textContent).toBe('2 / 2');
+    expect(pagedDialog.querySelectorAll('[role="option"]')).toHaveLength(2);
   });
 });
 

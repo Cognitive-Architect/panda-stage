@@ -1,10 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, X } from 'lucide-react';
+import { Check, Search, X } from 'lucide-react';
 import type { FlaGraphicDefinition, ImageAsset } from '../../../domain';
 import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCard';
 import { Button } from '../../ui/Button';
 import { GraphicFacePreview } from './GraphicFacePicker';
+import {
+  IMAGE_ASSET_PAGE_SIZE,
+  paginateImageAssetCandidates,
+} from './ImageAssetPicker';
 import { getThumbnailFallbackIconKind, ThumbnailStateIcon } from './ThumbnailStateIcon';
 import './character-resource-swap-dialog.css';
 
@@ -56,6 +60,42 @@ function thumbnailStatusLabel(thumbnail?: ThumbnailState): string {
     if (thumbnail.reason === 'error') return '缩略图加载失败';
   }
   return '缩略图缺失';
+}
+
+function paginateNamedItems<T extends { name: string }>(
+  items: readonly T[],
+  query: string,
+  requestedPage: number,
+  pageSize: number,
+): {
+  items: readonly T[];
+  matchCount: number;
+  page: number;
+  pageCount: number;
+} {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const matches = normalizedQuery
+    ? items.filter((item) => item.name.toLocaleLowerCase().includes(normalizedQuery))
+    : items;
+  const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
+  const page = Number.isFinite(requestedPage)
+    ? Math.min(pageCount, Math.max(1, Math.trunc(requestedPage)))
+    : 1;
+  const start = (page - 1) * pageSize;
+  return {
+    items: matches.slice(start, start + pageSize),
+    matchCount: matches.length,
+    page,
+    pageCount,
+  };
+}
+
+function SwapSelectionCheck(): React.JSX.Element {
+  return (
+    <span aria-hidden="true" className="character-swap-card-check">
+      <Check aria-hidden="true" size={13} strokeWidth={2.75} />
+    </span>
+  );
 }
 
 function DialogImageThumbnail({
@@ -122,6 +162,8 @@ export function CharacterResourceSwapDialog({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'image' | 'fla-graphic'>('image');
   const [pending, setPending] = useState<ResourceSwapValue>(currentValue);
+  const [imagePage, setImagePage] = useState(1);
+  const [graphicPage, setGraphicPage] = useState(1);
   const [framePage, setFramePage] = useState(0);
 
   useEffect(() => {
@@ -130,9 +172,18 @@ export function CharacterResourceSwapDialog({
       setSearchQuery('');
       setPending(currentValue);
       setActiveTab(currentValue.kind === 'fla-graphic' && hasGraphics ? 'fla-graphic' : 'image');
+      if (currentValue.kind === 'image' && currentValue.assetId) {
+        const idx = imageAssets.findIndex((asset) => asset.id === currentValue.assetId);
+        setImagePage(idx >= 0 ? Math.floor(idx / IMAGE_ASSET_PAGE_SIZE) + 1 : 1);
+      } else {
+        setImagePage(1);
+      }
       if (currentValue.kind === 'fla-graphic') {
+        const gIdx = graphicDefinitions.findIndex((def) => def.id === currentValue.animationId);
+        setGraphicPage(gIdx >= 0 ? Math.floor(gIdx / IMAGE_ASSET_PAGE_SIZE) + 1 : 1);
         setFramePage(Math.floor((currentValue.firstFrame ?? 0) / FRAME_PAGE_SIZE));
       } else {
+        setGraphicPage(1);
         setFramePage(0);
       }
       window.requestAnimationFrame(() => {
@@ -140,7 +191,7 @@ export function CharacterResourceSwapDialog({
       });
     }
     wasOpenRef.current = open;
-  }, [currentValue, hasGraphics, open, returnFocusTo]);
+  }, [currentValue, graphicDefinitions, hasGraphics, imageAssets, open, returnFocusTo]);
 
   const restoreFocus = (): void => {
     const target = returnFocusTo ?? triggerRef.current;
@@ -157,20 +208,19 @@ export function CharacterResourceSwapDialog({
   };
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
-  const filteredImages = useMemo(
-    () =>
-      normalizedQuery
-        ? imageAssets.filter((asset) => asset.name.toLocaleLowerCase().includes(normalizedQuery))
-        : imageAssets,
-    [imageAssets, normalizedQuery],
+  const imagePageResult = useMemo(
+    () => paginateImageAssetCandidates(imageAssets, searchQuery, imagePage),
+    [imageAssets, imagePage, searchQuery],
   );
-  const filteredGraphics = useMemo(
-    () =>
-      normalizedQuery
-        ? graphicDefinitions.filter((def) => def.name.toLocaleLowerCase().includes(normalizedQuery))
-        : graphicDefinitions,
-    [graphicDefinitions, normalizedQuery],
+  const graphicPageResult = useMemo(
+    () => paginateNamedItems(graphicDefinitions, searchQuery, graphicPage, IMAGE_ASSET_PAGE_SIZE),
+    [graphicDefinitions, graphicPage, searchQuery],
   );
+  const updateSearchQuery = (nextQuery: string): void => {
+    setSearchQuery(nextQuery);
+    setImagePage(1);
+    setGraphicPage(1);
+  };
 
   const selectedGraphicDef = useMemo(
     () =>
@@ -239,17 +289,6 @@ export function CharacterResourceSwapDialog({
       }
       return;
     }
-
-    if (event.key === 'Enter') {
-      const target = event.target;
-      if (
-        target === searchRef.current ||
-        (target instanceof HTMLElement && target.getAttribute('role') === 'option')
-      ) {
-        event.preventDefault();
-        handleConfirm();
-      }
-    }
   };
 
   const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -274,17 +313,15 @@ export function CharacterResourceSwapDialog({
     }
     if (nextIndex !== currentIndex) {
       event.preventDefault();
-      const nextOption = options[nextIndex];
-      nextOption?.focus();
-      nextOption?.click();
+      options[nextIndex]?.focus();
     }
   };
 
   if (!open) return null;
 
-  const showEmptyOption = Boolean(emptyOption && !normalizedQuery);
-  const isImageEmpty = filteredImages.length === 0 && !showEmptyOption;
-  const isGraphicEmpty = filteredGraphics.length === 0;
+  const showEmptyOption = Boolean(emptyOption && !normalizedQuery && imagePageResult.page === 1);
+  const isImageEmpty = imagePageResult.matchCount === 0 && !showEmptyOption;
+  const isGraphicEmpty = graphicPageResult.matchCount === 0;
   const frameCount = selectedGraphicDef?.frames.length ?? 0;
   const framePageCount = Math.max(1, Math.ceil(frameCount / FRAME_PAGE_SIZE));
   const safeFramePage = Math.min(framePage, framePageCount - 1);
@@ -331,7 +368,7 @@ export function CharacterResourceSwapDialog({
             <input
               aria-label="搜索素材"
               data-testid="character-swap-search"
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              onChange={(event) => updateSearchQuery(event.currentTarget.value)}
               placeholder="搜索素材名称…"
               ref={searchRef}
               type="search"
@@ -342,7 +379,7 @@ export function CharacterResourceSwapDialog({
                 aria-label="清空搜索"
                 className="character-swap-search-clear"
                 onClick={() => {
-                  setSearchQuery('');
+                  updateSearchQuery('');
                   searchRef.current?.focus();
                 }}
                 type="button"
@@ -386,7 +423,7 @@ export function CharacterResourceSwapDialog({
                   <button
                     className="character-swap-empty-clear"
                     onClick={() => {
-                      setSearchQuery('');
+                      updateSearchQuery('');
                       searchRef.current?.focus();
                     }}
                     type="button"
@@ -396,68 +433,91 @@ export function CharacterResourceSwapDialog({
                 ) : null}
               </div>
             ) : (
-              <div
-                aria-label={`${title}候选图片`}
-                className="character-swap-grid"
-                data-testid="character-swap-candidates"
-                onKeyDown={handleGridKeyDown}
-                ref={gridRef}
-                role="listbox"
-              >
-                {showEmptyOption && emptyOption ? (
-                  <button
-                    aria-selected={pending.kind === 'image' && pending.assetId === null}
-                    className="character-swap-card"
-                    data-testid="character-swap-empty-option"
-                    onClick={() => setPending({ kind: 'image', assetId: null })}
-                    role="option"
-                    type="button"
-                  >
-                    <span className="character-swap-card-preview image-asset-picker-neutral-empty-thumbnail">
-                      <ThumbnailStateIcon className="image-asset-picker-thumbnail-icon" kind="empty" size={24} />
-                    </span>
-                    <span className="character-swap-card-copy">
-                      <strong>{emptyOption.label}</strong>
-                      {emptyOption.description ? <small>{emptyOption.description}</small> : null}
-                    </span>
-                    {pending.kind === 'image' && pending.assetId === null ? (
-                      <span aria-hidden="true" className="character-swap-card-check">✓</span>
-                    ) : null}
-                  </button>
-                ) : null}
-                {filteredImages.map((asset) => {
-                  const selected = pending.kind === 'image' && pending.assetId === asset.id;
-                  const disabledReason = getDisabledReason?.(asset);
-                  return (
+              <>
+                <div
+                  aria-label={`${title}候选图片`}
+                  className="character-swap-grid"
+                  data-testid="character-swap-candidates"
+                  onKeyDown={handleGridKeyDown}
+                  ref={gridRef}
+                  role="listbox"
+                >
+                  {showEmptyOption && emptyOption ? (
                     <button
-                      aria-selected={selected}
+                      aria-selected={pending.kind === 'image' && pending.assetId === null}
                       className="character-swap-card"
-                      data-asset-id={asset.id}
-                      data-testid={`character-swap-candidate-image-${asset.id}`}
-                      disabled={Boolean(disabledReason)}
-                      key={asset.id}
-                      onClick={() => setPending({ kind: 'image', assetId: asset.id })}
+                      data-testid="character-swap-empty-option"
+                      onClick={() => setPending({ kind: 'image', assetId: null })}
                       role="option"
-                      title={disabledReason ?? `${asset.name} (${asset.width}×${asset.height})`}
                       type="button"
                     >
-                      <DialogImageThumbnail
-                        asset={asset}
-                        onThumbnailError={onThumbnailError}
-                        thumbnail={thumbnails[asset.id]}
-                      />
-                      <span className="character-swap-card-copy">
-                        <strong>{asset.name}</strong>
-                        <small>{asset.width}×{asset.height}</small>
-                        {disabledReason ? <em>{disabledReason}</em> : null}
+                      <span className="character-swap-card-preview image-asset-picker-neutral-empty-thumbnail">
+                        <ThumbnailStateIcon className="image-asset-picker-thumbnail-icon" kind="empty" size={24} />
                       </span>
-                      {selected ? (
-                        <span aria-hidden="true" className="character-swap-card-check">✓</span>
+                      <span className="character-swap-card-copy">
+                        <strong>{emptyOption.label}</strong>
+                        {emptyOption.description ? <small>{emptyOption.description}</small> : null}
+                      </span>
+                      {pending.kind === 'image' && pending.assetId === null ? (
+                        <SwapSelectionCheck />
                       ) : null}
                     </button>
-                  );
-                })}
-              </div>
+                  ) : null}
+                  {imagePageResult.assets.map((asset) => {
+                    const selected = pending.kind === 'image' && pending.assetId === asset.id;
+                    const disabledReason = getDisabledReason?.(asset);
+                    return (
+                      <button
+                        aria-selected={selected}
+                        className="character-swap-card"
+                        data-asset-id={asset.id}
+                        data-testid={`character-swap-candidate-image-${asset.id}`}
+                        disabled={Boolean(disabledReason)}
+                        key={asset.id}
+                        onClick={() => setPending({ kind: 'image', assetId: asset.id })}
+                        role="option"
+                        title={disabledReason ?? `${asset.name} (${asset.width}×${asset.height})`}
+                        type="button"
+                      >
+                        <DialogImageThumbnail
+                          asset={asset}
+                          onThumbnailError={onThumbnailError}
+                          thumbnail={thumbnails[asset.id]}
+                        />
+                        <span className="character-swap-card-copy">
+                          <strong>{asset.name}</strong>
+                          <small>{asset.width}×{asset.height}</small>
+                          {disabledReason ? <em>{disabledReason}</em> : null}
+                        </span>
+                        {selected ? <SwapSelectionCheck /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {imagePageResult.pageCount > 1 ? (
+                  <div className="character-swap-pagination" data-testid="character-swap-image-pagination">
+                    <button
+                      data-testid="character-swap-image-prev"
+                      disabled={imagePageResult.page <= 1}
+                      onClick={() => setImagePage((p) => Math.max(1, p - 1))}
+                      type="button"
+                    >
+                      ‹ 上一页
+                    </button>
+                    <span data-testid="character-swap-image-page">
+                      {imagePageResult.page} / {imagePageResult.pageCount}
+                    </span>
+                    <button
+                      data-testid="character-swap-image-next"
+                      disabled={imagePageResult.page >= imagePageResult.pageCount}
+                      onClick={() => setImagePage((p) => Math.min(imagePageResult.pageCount, p + 1))}
+                      type="button"
+                    >
+                      下一页 ›
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )
           ) : isGraphicEmpty ? (
             <div className="character-swap-empty" data-testid="character-swap-empty-state">
@@ -466,7 +526,7 @@ export function CharacterResourceSwapDialog({
                 <button
                   className="character-swap-empty-clear"
                   onClick={() => {
-                    setSearchQuery('');
+                    updateSearchQuery('');
                     searchRef.current?.focus();
                   }}
                   type="button"
@@ -485,7 +545,7 @@ export function CharacterResourceSwapDialog({
                 ref={gridRef}
                 role="listbox"
               >
-                {filteredGraphics.map((def) => {
+                {graphicPageResult.items.map((def) => {
                   const selected = pending.kind === 'fla-graphic' && pending.animationId === def.id;
                   return (
                     <button
@@ -516,13 +576,34 @@ export function CharacterResourceSwapDialog({
                         <strong>{def.name}</strong>
                         <small>{def.frames.length} 帧</small>
                       </span>
-                      {selected ? (
-                        <span aria-hidden="true" className="character-swap-card-check">✓</span>
-                      ) : null}
+                      {selected ? <SwapSelectionCheck /> : null}
                     </button>
                   );
                 })}
               </div>
+              {graphicPageResult.pageCount > 1 ? (
+                <div className="character-swap-pagination" data-testid="character-swap-graphic-pagination">
+                  <button
+                    data-testid="character-swap-graphic-prev"
+                    disabled={graphicPageResult.page <= 1}
+                    onClick={() => setGraphicPage((p) => Math.max(1, p - 1))}
+                    type="button"
+                  >
+                    ‹ 上一页
+                  </button>
+                  <span data-testid="character-swap-graphic-page">
+                    {graphicPageResult.page} / {graphicPageResult.pageCount}
+                  </span>
+                  <button
+                    data-testid="character-swap-graphic-next"
+                    disabled={graphicPageResult.page >= graphicPageResult.pageCount}
+                    onClick={() => setGraphicPage((p) => Math.min(graphicPageResult.pageCount, p + 1))}
+                    type="button"
+                  >
+                    下一页 ›
+                  </button>
+                </div>
+              ) : null}
               {graphicSelectionMode === 'frame' && selectedGraphicDef ? (
                 <div className="character-swap-frames-section">
                   <div className="character-swap-frames-header">
@@ -592,7 +673,7 @@ export function CharacterResourceSwapDialog({
 
         <footer className="character-swap-footer">
           <span className="character-swap-summary" title={summaryText}>
-            当前：{summaryText}
+            已选择：{summaryText}
           </span>
           <div className="character-swap-actions">
             <Button data-testid="character-swap-cancel" onClick={handleClose} variant="secondary">

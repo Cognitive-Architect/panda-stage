@@ -7,7 +7,7 @@
   justify-items: start;
   padding: var(--ui-space-4);
   padding-left: clamp(var(--ui-space-4), 4vw, 64px);
-  background: rgb(6 10 8 / 48%);
+  background: rgb(6 10 8 / 26%);
   pointer-events: auto;
 }
 
@@ -353,13 +353,17 @@
   background: var(--ui-color-selected-surface);
 }
 
+.character-swap-pagination,
 .character-swap-frames-pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--ui-space-2);
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
 }
 
+.character-swap-pagination button,
 .character-swap-frames-pagination button,
 .character-swap-empty-clear {
   min-height: 30px;
@@ -373,11 +377,18 @@
   cursor: pointer;
 }
 
+.character-swap-pagination button:hover:not(:disabled),
 .character-swap-frames-pagination button:hover:not(:disabled),
 .character-swap-empty-clear:hover:not(:disabled) {
   border-color: var(--ui-color-selected-border);
   color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-overlay);
+}
+
+.character-swap-pagination button:disabled,
+.character-swap-frames-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .character-swap-empty {
