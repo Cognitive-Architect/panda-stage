@@ -131,7 +131,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     expect(rows).toHaveLength(5);
 
     const firstRow = rows[0]!;
-    for (const id of ['visibility-toggle', 'rename-button', 'restore-button']) {
+    for (const id of ['visibility-toggle', 'edit-button', 'restore-button']) {
       expect(firstRow.querySelector('[data-testid="adaptive-parts-' + id + '"]')).not.toBeNull();
     }
     expect(firstRow.querySelector('[data-testid="adaptive-parts-row-overflow-trigger"]')).toBeNull();

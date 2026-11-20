@@ -431,7 +431,7 @@ function formatAdaptiveAdjustmentInput(
 }
 
 const ADAPTIVE_PART_OVERFLOW_MENU_WIDTH = 160;
-const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 96;
+const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 132;
 const ADAPTIVE_PART_OVERFLOW_MENU_GAP = 4;
 const ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
 
@@ -441,6 +441,7 @@ function AdaptivePartsContextMenu({
   disabled,
   displayName,
   onRemove,
+  onRename,
   onReplace,
 }: {
   canRemove: boolean;
@@ -448,6 +449,7 @@ function AdaptivePartsContextMenu({
   disabled: boolean;
   displayName: string;
   onRemove: () => void;
+  onRename: () => void;
   onReplace: () => void;
 }): React.JSX.Element {
   const id = useId();
@@ -626,6 +628,14 @@ function AdaptivePartsContextMenu({
         role="group"
       >
         <button
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-rename-button"
+          onClick={() => runAction(onRename)}
+          type="button"
+        >
+          重命名
+        </button>
+        <button
           aria-label={`替换${displayName}素材`}
           className="adaptive-parts-overflow-item"
           data-testid="adaptive-parts-replace-button"
@@ -657,40 +667,48 @@ function AdaptivePartsAssemblyRow({
   imageMissing,
   imageCacheKey,
   imageSrc,
+  onEdit,
   onMessage,
+  onRenameEnd,
   onRename,
   onRestore,
   onSelect,
   onToggleVisibility,
   part,
+  renaming,
   selected,
 }: {
   displayName: string;
   imageMissing: boolean;
   imageCacheKey: string;
   imageSrc?: string;
+  onEdit: () => void;
+  onRenameEnd: () => void;
   onMessage: (message: string) => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
   onRestore: () => void;
   onSelect: () => void;
   onToggleVisibility: () => void;
   part: AdaptivePartsCharacterPart;
+  renaming: boolean;
   selected: boolean;
 }): React.JSX.Element {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameFinishedRef = useRef(false);
-  const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(displayName);
   const [renameError, setRenameError] = useState('');
   const visible = part.visible !== false;
 
   useEffect(() => {
     if (!renaming) return;
+    renameFinishedRef.current = false;
+    setRenameValue(displayName);
+    setRenameError('');
     const input = renameInputRef.current;
     if (!input) return;
     input.focus();
     input.select();
-  }, [renaming]);
+  }, [displayName, renaming]);
 
   const finishRename = (): boolean => {
     const completion = resolveAdaptivePartRename(renameValue, displayName, onRename);
@@ -701,18 +719,10 @@ function AdaptivePartsAssemblyRow({
     }
     renameFinishedRef.current = true;
     setRenameError('');
-    setRenaming(false);
+    onRenameEnd();
     onMessage('');
     return true;
   };
-  const startRename = (): void => {
-    renameFinishedRef.current = false;
-    setRenameValue(displayName);
-    setRenameError('');
-    onMessage('');
-    setRenaming(true);
-  };
-
   return (
     <div
       className="adaptive-parts-assembly-row"
@@ -768,7 +778,7 @@ function AdaptivePartsAssemblyRow({
                   renameFinishedRef.current = true;
                   setRenameValue(displayName);
                   setRenameError('');
-                  setRenaming(false);
+                  onRenameEnd();
                   onMessage('');
                 }
               }}
@@ -832,11 +842,11 @@ function AdaptivePartsAssemblyRow({
         </svg>
       </button>
       <button
-        aria-label={`重命名${displayName}`}
+        aria-label={`精调${displayName}`}
         className="adaptive-parts-row-action"
-        data-testid="adaptive-parts-rename-button"
-        onClick={startRename}
-        title={`重命名${displayName}`}
+        data-testid="adaptive-parts-edit-button"
+        onClick={onEdit}
+        title={`精调${displayName}`}
         type="button"
       >
         <Pencil aria-hidden="true" size={18} />
@@ -894,9 +904,12 @@ function AdaptivePartsAssemblyWorkbench({
     (character) => character.id === session.characterId,
   );
   const assemblyCharacterName = assemblyCharacter?.name ?? '角色';
-  const workbenchRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const operationsRef = useRef<HTMLElement>(null);
   const inspectorRef = useRef<HTMLElement>(null);
+  const operationsHandleRef = useRef<HTMLButtonElement>(null);
+  const inspectorHandleRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
   const dragRef = useRef<AdaptivePartPointerDrag | null>(null);
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform({ width: 0, height: 0 }, 'fit', {
@@ -905,13 +918,10 @@ function AdaptivePartsAssemblyWorkbench({
     }),
   );
   const [imageState, setImageState] = useState(EMPTY_CANVAS_IMAGE_STATE);
+  const [operationsOpen, setOperationsOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorPosition, setInspectorPosition] = useState({
-    left: 0,
-    top: 0,
-    width: 44,
-    corner: 'top-right',
-  });
+  const [inspectorContext, setInspectorContext] = useState<'part' | 'character'>('part');
+  const [renamingPartId, setRenamingPartId] = useState<string | null>(null);
   const [numericDrafts, setNumericDrafts] = useState<AdaptiveAdjustmentDrafts>({});
   const numericInitialValuesRef = useRef<
     Record<string, Partial<Record<AdaptiveAdjustmentField, number>>>
@@ -984,19 +994,75 @@ function AdaptivePartsAssemblyWorkbench({
       (state) => setImageState(state),
     );
   }, [contextKey, imageAssets, projectRoot]);
+  const readVisibleBounds = useRef<() => VisualLocalRect | null>(() => null);
+  const refitAfterNarrowCollapse = useRef(false);
+  const fitPreview = useCallback((): void => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const container = { width: viewport.clientWidth, height: viewport.clientHeight };
+    const occlusions = [operationsRef.current, inspectorRef.current].flatMap((panel) => {
+      if (!panel || panel.dataset.expanded !== 'true') return [];
+      const width = panel.offsetWidth + 8;
+      return [{
+        x: panel === operationsRef.current ? 0 : Math.max(0, container.width - width),
+        y: 0,
+        width,
+        height: container.height,
+      }];
+    });
+    const area = largestUnoccludedAssemblyViewportRect(container, occlusions);
+    const logicalFrame = { width: project.width, height: project.height };
+    const visibleBounds = inspectorRef.current?.dataset.expanded === 'true' ? readVisibleBounds.current() : null;
+    if (visibleBounds) {
+      setTransform(calculateAssemblyFitViewportTransform(container, logicalFrame, visibleBounds, area));
+      return;
+    }
+    const next = calculateViewportTransform(area, 'fit', logicalFrame);
+    setTransform({ ...next, container, offsetX: next.offsetX + area.x, offsetY: next.offsetY + area.y });
+  }, [project.height, project.width]);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const update = (): void => setTransform(calculateViewportTransform(
-      { width: viewport.clientWidth, height: viewport.clientHeight },
-      'fit',
-      { width: project.width, height: project.height },
-    ));
-    update();
-    const observer = new ResizeObserver(update);
+    fitPreview();
+    const observer = new ResizeObserver(() => {
+      if (viewport.clientWidth < 720 &&
+          inspectorRef.current?.dataset.expanded === 'true' &&
+          operationsRef.current?.dataset.expanded === 'true') {
+        if (operationsRef.current?.contains(document.activeElement)) inspectorHandleRef.current?.focus();
+        refitAfterNarrowCollapse.current = true;
+        setOperationsOpen(false);
+        return;
+      }
+      fitPreview();
+    });
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [project.height, project.width]);
+  }, [fitPreview]);
+  const previousPanels = useRef({ operationsOpen: true, inspectorOpen: false });
+  useLayoutEffect(() => {
+    const previous = previousPanels.current;
+    previousPanels.current = { operationsOpen, inspectorOpen };
+    if (refitAfterNarrowCollapse.current ||
+        (operationsOpen && !previous.operationsOpen) || (inspectorOpen && !previous.inspectorOpen)) {
+      refitAfterNarrowCollapse.current = false;
+      fitPreview();
+    }
+  }, [fitPreview, inspectorOpen, operationsOpen]);
+
+  const isNarrow = (): boolean => {
+    const width = viewportRef.current?.clientWidth ?? 0;
+    return width > 0 && width < 720;
+  };
+  const openInspector = (context: 'part' | 'character', focus = true): void => {
+    if (isNarrow()) setOperationsOpen(false);
+    setInspectorContext(context);
+    setInspectorOpen(true);
+    if (focus) inspectorHandleRef.current?.focus();
+  };
+  const toggleOperations = (): void => {
+    if (!operationsOpen && isNarrow()) setInspectorOpen(false);
+    setOperationsOpen(!operationsOpen);
+  };
 
   const activeHandle = (): AdaptivePartsAssemblySessionHandle | null => {
     const handle = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle();
@@ -1218,6 +1284,7 @@ function AdaptivePartsAssemblyWorkbench({
         readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
         readonly dataUrl: string;
         readonly canvasWidth: number;
+        readonly visibleRect: VisualLocalRect | null;
       }
     >();
     for (const part of visual?.parts ?? []) {
@@ -1230,11 +1297,38 @@ function AdaptivePartsAssemblyWorkbench({
           rect: rendered.rect,
           dataUrl,
           canvasWidth: part.flaGraphic.canvas.width,
+          visibleRect: rendered.visibleRect,
         });
       }
     }
     return result;
   }, [visual?.parts, imageState.images]);
+  readVisibleBounds.current = () => {
+    if (!visual) return null;
+    const imageBounds = new Map<string, NormalizedImageBounds | null>();
+    const parts = visual.parts.flatMap((part) => {
+      if (part.visible === false) return [];
+      if (part.flaGraphic) {
+        const partId = adaptiveCharacterPartIdOf(part);
+        const bounds = partId ? graphicPartRasters.get(partId)?.visibleRect : null;
+        if (!bounds) return [];
+        return [{
+          ...part,
+          assetId: undefined,
+          localRect: {
+            ...bounds,
+            x: bounds.x + part.flaGraphic.canvas.width / 2,
+            y: bounds.y + part.flaGraphic.canvas.height / 2,
+          },
+        }];
+      }
+      const image = part.assetId ? imageState.images.get(part.assetId) : undefined;
+      if (!image || !part.assetId) return [];
+      imageBounds.set(part.assetId, measureImageVisibleBounds(image));
+      return [part];
+    });
+    return calculateAssemblyVisibleBounds({ ...visual, parts, headPart: null }, imageBounds);
+  };
   const selectedCanvasReady = selectedCanvasPart
     ? selectedCanvasPart.flaGraphic
       ? graphicPartRasters.has(session.selectedPartId ?? '')
@@ -1500,157 +1594,12 @@ function AdaptivePartsAssemblyWorkbench({
     clearNumericDraftsForPart(partId);
     setMessage('');
   };
-  useLayoutEffect(() => {
-    const workbench = workbenchRef.current;
-    const viewport = viewportRef.current;
-    const inspector = inspectorRef.current;
-    if (!workbench || !viewport || !inspector) return undefined;
-    let frame = 0;
-    const placeInspector = (): void => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-      const workbenchBounds = workbench.getBoundingClientRect();
-      const viewportBounds = viewport.getBoundingClientRect();
-      if (viewportBounds.width <= 0 || viewportBounds.height <= 0) return;
-
-      const margin = 8;
-      const listBounds = workbench
-        .querySelector<HTMLElement>('.adaptive-parts-assembly-list')
-        ?.getBoundingClientRect();
-      const preferredWidth = window.innerWidth <= 900
-        ? Math.min(256, Math.max(44, (listBounds?.width ?? viewportBounds.width) - margin * 2))
-        : 256;
-      const width = Math.min(
-        inspectorOpen ? preferredWidth : 44,
-        Math.max(44, viewportBounds.width - margin * 2),
-      );
-      const height = Math.min(
-        Math.max(inspectorOpen ? inspector.scrollHeight : 44, 44),
-        Math.max(44, viewportBounds.height - margin * 2),
-      );
-      const partElements = [
-        ...viewport.querySelectorAll<HTMLElement>(
-          '[data-testid="adaptive-parts-assembly-canvas-part"]',
-        ),
-      ];
-      const selectedElement = session.selectedPartId
-        ? partElements.find((element) => element.dataset.partId === session.selectedPartId)
-        : undefined;
-      const toolbarButton = viewport.querySelector<HTMLButtonElement>(
-        '.adaptive-parts-assembly-canvas-toolbar button',
-      );
-      const obstacles = [
-        ...partElements.map((element) => {
-          const bounds = element.getBoundingClientRect();
-          return {
-            left: bounds.left,
-            right: bounds.right,
-            top: bounds.top,
-            bottom: bounds.bottom,
-            weight: element === selectedElement ? 4 : 1,
-          };
-        }),
-        ...(toolbarButton
-          ? (() => {
-              const bounds = toolbarButton.getBoundingClientRect();
-              return [{
-                left: bounds.left,
-                right: bounds.right,
-                top: bounds.top,
-                bottom: bounds.bottom,
-                weight: 2,
-              }];
-            })()
-          : []),
-      ];
-      const candidates = [
-        {
-          corner: 'top-right',
-          left: viewportBounds.right - width - margin,
-          top: viewportBounds.top + margin,
-        },
-        {
-          corner: 'top-left',
-          left: viewportBounds.left + margin,
-          top: viewportBounds.top + margin,
-        },
-        {
-          corner: 'bottom-right',
-          left: viewportBounds.right - width - margin,
-          top: viewportBounds.bottom - height - margin,
-        },
-        {
-          corner: 'bottom-left',
-          left: viewportBounds.left + margin,
-          top: viewportBounds.bottom - height - margin,
-        },
-        ...(window.innerWidth <= 900 && listBounds
-          ? [{
-              corner: 'list-column',
-              left: listBounds.left + margin,
-              top: viewportBounds.top + margin,
-            }]
-          : []),
-      ];
-      const score = (candidate: (typeof candidates)[number]): number =>
-        obstacles.reduce((total, obstacle) => {
-          const overlapWidth = Math.max(
-            0,
-            Math.min(candidate.left + width, obstacle.right) -
-              Math.max(candidate.left, obstacle.left),
-          );
-          const overlapHeight = Math.max(
-            0,
-            Math.min(candidate.top + height, obstacle.bottom) -
-              Math.max(candidate.top, obstacle.top),
-          );
-          const overlap = overlapWidth * overlapHeight;
-          const obstacleArea = Math.max(
-            1,
-            (obstacle.right - obstacle.left) * (obstacle.bottom - obstacle.top),
-          );
-          return total + overlap / obstacleArea * obstacle.weight;
-        }, 0);
-      const best = candidates.reduce((currentBest, candidate) =>
-        score(candidate) < score(currentBest) ? candidate : currentBest,
-      );
-      const horizontalBounds = best.corner === 'list-column'
-        ? workbenchBounds
-        : viewportBounds;
-      const left = Math.max(
-        horizontalBounds.left + margin,
-        Math.min(best.left, horizontalBounds.right - width - margin),
-      );
-      const top = Math.max(
-        viewportBounds.top + margin,
-        Math.min(best.top, viewportBounds.bottom - height - margin),
-      );
-      setInspectorPosition({
-        left: left - workbenchBounds.left,
-        top: top - workbenchBounds.top,
-        width,
-        corner: best.corner,
-      });
-      });
-    };
-    placeInspector();
-    const observer = new ResizeObserver(placeInspector);
-    observer.observe(viewport);
-    window.addEventListener('resize', placeInspector);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('resize', placeInspector);
-    };
-  }, [
-    inspectorOpen,
-    numericDrafts,
-    project.height,
-    project.width,
-    session.selectedPartId,
-    transform,
-  ]);
-
+  const selectPart = (partId: string, edit = false): boolean => {
+    if (!activeHandle()?.selectPart(partId)) return false;
+    if (edit) openInspector('part');
+    else if (inspectorOpen) setInspectorContext('part');
+    return true;
+  };
   const pointerToLocal = (clientX: number, clientY: number): { x: number; y: number } => {
     const bounds = viewportRef.current?.getBoundingClientRect();
     if (!bounds) return { x: 0, y: 0 };
@@ -1666,8 +1615,7 @@ function AdaptivePartsAssemblyWorkbench({
   const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
-    const handle = activeHandle();
-    if (!handle?.selectPart(partId)) return;
+    if (!selectPart(partId)) return;
     event.preventDefault();
     const point = pointerToLocal(event.clientX, event.clientY);
     dragRef.current = {
@@ -1683,8 +1631,7 @@ function AdaptivePartsAssemblyWorkbench({
   const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
-    const handle = activeHandle();
-    if (!handle?.selectPart(partId)) return;
+    if (!selectPart(partId)) return;
     event.preventDefault();
     event.stopPropagation();
     const center = partPoint(part, part.localRect.width / 2, part.localRect.height / 2);
@@ -1846,7 +1793,32 @@ function AdaptivePartsAssemblyWorkbench({
     );
   };
   const partsListPanel = (
-      <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
+    <aside
+      aria-label="部件列表"
+      className="adaptive-parts-float adaptive-parts-float-operations"
+      data-expanded={operationsOpen}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !operationsOpen) return;
+        event.stopPropagation();
+        setOperationsOpen(false);
+        operationsHandleRef.current?.focus();
+      }}
+      ref={operationsRef}
+    >
+      <button
+        aria-controls={panelId + '-operations'}
+        aria-expanded={operationsOpen}
+        aria-label={operationsOpen ? '收起零件操作' : '展开零件操作'}
+        className="adaptive-parts-float-handle"
+        data-testid="adaptive-parts-operations-toggle"
+        onClick={toggleOperations}
+        ref={operationsHandleRef}
+        title={operationsOpen ? '收起零件操作' : '展开零件操作'}
+        type="button"
+      >
+        <span className="quick-action-drawer-grip" aria-hidden="true" />
+      </button>
+      <div className="adaptive-parts-assembly-list" id={panelId + '-operations'} inert={!operationsOpen}>
         <div className="adaptive-parts-list-heading">
           <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
           <AdaptivePartsContextMenu
@@ -1855,6 +1827,7 @@ function AdaptivePartsAssemblyWorkbench({
             disabled={!selectedPart}
             displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
             onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
+            onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
             onReplace={() => { if (selectedPart) setReplacingPartId(selectedPart.partId); }}
           />
         </div>
@@ -1921,13 +1894,16 @@ function AdaptivePartsAssemblyWorkbench({
                 imageCacheKey={imageCacheKey}
                 imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
+                onEdit={() => selectPart(part.partId, true)}
                 onMessage={setMessage}
+                onRenameEnd={() => setRenamingPartId(null)}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({
                   ...current,
                   displayName,
                 }))}
                 onRestore={() => restorePartToSourcePose(part.partId)}
-                onSelect={() => activeHandle()?.selectPart(part.partId)}
+                onSelect={() => selectPart(part.partId)}
+                renaming={renamingPartId === part.partId}
                 onToggleVisibility={() => updatePart(part.partId, (current) => ({
                   ...current,
                   visible: current.visible === false,
@@ -2010,7 +1986,8 @@ function AdaptivePartsAssemblyWorkbench({
             </div>
           );
         })() : null}
-      </aside>
+      </div>
+    </aside>
   );
 
   return (
@@ -2021,7 +1998,6 @@ function AdaptivePartsAssemblyWorkbench({
       data-project-revision={projectSnapshot.revision}
       data-project-dirty={projectSnapshot.dirty}
       data-testid="adaptive-parts-assembly-workbench"
-      ref={workbenchRef}
     >
       <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
         <button
@@ -2037,11 +2013,18 @@ function AdaptivePartsAssemblyWorkbench({
         <div className="adaptive-parts-assembly-title">
           <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
           {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
-            <AdaptiveCharacterManagement
-              character={assemblyCharacter}
-              onManage={(action) => adaptivePartsActionsRef.current?.manage(action) ??
-                { ok: false, message: '请重新打开角色工作台。' }}
-            />
+            <button
+              aria-controls={panelId + '-properties'}
+              aria-expanded={inspectorOpen && inspectorContext === 'character'}
+              aria-label="角色属性"
+              className="adaptive-parts-row-action adaptive-character-management-trigger"
+              data-testid="adaptive-character-management"
+              onClick={() => openInspector('character')}
+              title="角色属性"
+              type="button"
+            >
+              <MoreHorizontal aria-hidden="true" size={18} />
+            </button>
           ) : null}
         </div>
         <button
@@ -2165,76 +2148,67 @@ function AdaptivePartsAssemblyWorkbench({
           ) : null}
         </div>
         <div className="adaptive-parts-assembly-canvas-toolbar">
-          <button type="button" onClick={() => setTransform(calculateViewportTransform(
-            { width: viewportRef.current?.clientWidth ?? 0, height: viewportRef.current?.clientHeight ?? 0 },
-            'fit',
-            { width: project.width, height: project.height },
-          ))}>查看全貌</button>
+          <button type="button" onClick={fitPreview}>查看全貌</button>
         </div>
       </div>
 
       <aside
-        aria-label="部件检查器"
-        className="adaptive-parts-assembly-inspector"
-        data-position={inspectorPosition.corner}
-        ref={inspectorRef}
-        style={{
-          left: inspectorPosition.left,
-          top: inspectorPosition.top,
-          width: inspectorPosition.width,
+        aria-label="属性"
+        className="adaptive-parts-float adaptive-parts-float-properties"
+        data-expanded={inspectorOpen}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !inspectorOpen) return;
+          event.stopPropagation();
+          setInspectorOpen(false);
+          inspectorHandleRef.current?.focus();
         }}
+        ref={inspectorRef}
       >
-        {!inspectorOpen ? (
-          <button
-            aria-label={'\u7cbe\u8c03\u5f53\u524d\u96f6\u4ef6'}
-            aria-expanded={false}
-            className="adaptive-parts-inspector-toggle"
-            data-testid="adaptive-parts-inspector-toggle"
-            disabled={!selectedPart}
-            onClick={() => setInspectorOpen(true)}
-            type="button"
-          >
-            {'\u7cbe\u8c03'}
-          </button>
-        ) : selectedPart && selectedAdjustment ? (
-          <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
-            <div className="adaptive-parts-inspector-heading">
-              <strong
-                title={
-                  selectedPart.displayName ??
-                  (selectedPartVisualSource?.kind === 'fla-graphic'
-                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
-                    : selectedPart.assetId
-                      ? assetNames.get(selectedPart.assetId)
-                      : undefined) ??
-                  '\u96f6\u4ef6'
-                }
-              >
-                {selectedPart.displayName ??
-                  (selectedPartVisualSource?.kind === 'fla-graphic'
-                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
-                    : selectedPart.assetId
-                      ? assetNames.get(selectedPart.assetId)
-                      : undefined) ??
-                  '\u96f6\u4ef6'}
-              </strong>
-              <button
-                aria-label={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
-                className="adaptive-parts-inspector-close"
-                data-testid="adaptive-parts-inspector-close"
-                onClick={() => setInspectorOpen(false)}
-                title={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
-                type="button"
-              >
-                <X aria-hidden="true" size={18} />
-              </button>
+        <button
+          aria-controls={panelId + '-properties'}
+          aria-expanded={inspectorOpen}
+          aria-label={inspectorOpen ? '收起属性' : '展开属性'}
+          className="adaptive-parts-float-handle"
+          data-testid="adaptive-parts-inspector-toggle"
+          onClick={() => {
+            if (inspectorOpen) setInspectorOpen(false);
+            else openInspector(inspectorContext, false);
+          }}
+          ref={inspectorHandleRef}
+          title={inspectorOpen ? '收起属性' : '展开属性'}
+          type="button"
+        >
+          <span className="quick-action-drawer-grip" aria-hidden="true" />
+        </button>
+        <div className="adaptive-parts-properties-body" id={panelId + '-properties'} inert={!inspectorOpen}>
+          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+            <div hidden={inspectorContext !== 'character'}>
+              <AdaptiveCharacterManagement
+                key={JSON.stringify([assemblyCharacter.id, assemblyCharacter.name, assemblyCharacter.defaultScale, assemblyCharacter.defaultFlipX])}
+                character={assemblyCharacter}
+                onManage={(action) => adaptivePartsActionsRef.current?.manage(action) ??
+                  { ok: false, message: '请重新打开角色工作台。' }}
+              />
             </div>
-            {renderAdaptiveAdjustmentField('offsetX', 'X', 'X \u504f\u79fb', 'adaptive-parts-offset-x')}
-            {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
-            {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
-            {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
-          </div>
-        ) : null}
+          ) : null}
+          {inspectorContext === 'part' && selectedPart && selectedAdjustment ? (
+            <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
+              <div className="adaptive-parts-inspector-heading">
+                <strong>{localizeDefaultAdaptivePartName(
+                  selectedPart.displayName ??
+                    (selectedPartVisualSource?.kind === 'fla-graphic'
+                      ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
+                      : selectedPart.assetId ? assetNames.get(selectedPart.assetId) : undefined) ??
+                    `Part ${selectedPart.drawOrder + 1}`,
+                )}</strong>
+              </div>
+              {renderAdaptiveAdjustmentField('offsetX', 'X', 'X \u504f\u79fb', 'adaptive-parts-offset-x')}
+              {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
+              {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
+              {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
+            </div>
+          ) : inspectorContext === 'part' ? <span>选择零件</span> : null}
+        </div>
       </aside>
 
       <footer className="character-assembly-workbench-footer adaptive-parts-assembly-footer">

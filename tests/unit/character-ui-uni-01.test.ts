@@ -230,18 +230,20 @@ describe('Character Detail and original Adaptive Parts workbench (#1179)', () =>
     expect(onViewChange).toHaveBeenLastCalledWith('list');
   });
 
-  it('renders the parts list, centered identity, and canvas in one workbench', () => {
+  it('keeps both floating panels independent while editing one part draft and switching context', () => {
     const { project, adaptiveCharacter } = buildAdaptiveProject();
     editorProjectStore.open('F:/tmp/project', project);
     const began = characterAssemblySessionStore.beginAdaptiveParts(adaptiveCharacter.id);
     if (!began.ok) throw began.error;
-    act(() => {
+    const actions = { current: null };
+    const renderWorkbench = () => act(() => {
       root.render(createElement(CharacterAssemblyWorkbench, {
         projectSnapshot: editorProjectStore.getSnapshot()!,
-        session: began.snapshot,
-        adaptivePartsActionsRef: { current: null },
+        session: began.session.getSnapshot()!,
+        adaptivePartsActionsRef: actions,
       }));
     });
+    renderWorkbench();
     const workbench = container.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')!;
     expect(workbench.querySelector('.adaptive-parts-assembly-title strong')?.textContent).toBe(adaptiveCharacter.name);
     expect(workbench.querySelector('[data-testid="adaptive-character-management"]')).not.toBeNull();
@@ -251,5 +253,41 @@ describe('Character Detail and original Adaptive Parts workbench (#1179)', () =>
     expect(workbench.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')).toHaveLength(2);
     expect(workbench.querySelector('[data-testid="adaptive-parts-assembly-canvas"]')).not.toBeNull();
     expect(workbench.querySelector('[data-testid="character-workspace-switcher"]')).toBeNull();
+    const button = (id: string, scope: ParentNode = workbench) =>
+      scope.querySelector<HTMLButtonElement>('[data-testid="' + id + '"]')!;
+    const click = (target: HTMLButtonElement) => {
+      act(() => target.click());
+      renderWorkbench();
+    };
+    const left = button('adaptive-parts-operations-toggle');
+    const right = button('adaptive-parts-inspector-toggle');
+    const rows = workbench.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]');
+    expect(left.getAttribute('aria-expanded')).toBe('true');
+    expect(right.getAttribute('aria-expanded')).toBe('false');
+
+    click(button('adaptive-parts-edit-button', rows[0]));
+    expect(right.getAttribute('aria-expanded')).toBe('true');
+    expect(began.session.getSnapshot()?.selectedPartId).toBe(rows[0]?.getAttribute('data-part-id'));
+    const originalDraft = began.session.getSnapshot()?.draft;
+    click(button('adaptive-parts-offset-x-step-up'));
+    const editedDraft = began.session.getSnapshot()?.draft;
+    expect(editedDraft).not.toEqual(originalDraft);
+    click(left);
+    expect(right.getAttribute('aria-expanded')).toBe('true');
+    expect(began.session.getSnapshot()?.draft).toEqual(editedDraft);
+    click(left);
+    click(button('adaptive-parts-assembly-row-select', rows[1]));
+    expect(began.session.getSnapshot()?.selectedPartId).toBe(rows[1]?.getAttribute('data-part-id'));
+    expect(right.getAttribute('aria-expanded')).toBe('true');
+
+    click(button('adaptive-character-management'));
+    expect(workbench.querySelector('[data-testid="adaptive-character-properties"]')?.closest('[hidden]')).toBeNull();
+    expect(workbench.querySelector('[data-testid="adaptive-parts-inspector-fields"]')).toBeNull();
+    expect(began.session.getSnapshot()?.draft).toEqual(editedDraft);
+    act(() => right.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    click(button('adaptive-parts-assembly-row-select', rows[0]));
+    expect(right.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(right);
+    expect(began.session.getSnapshot()?.draft).toEqual(editedDraft);
   });
 });
