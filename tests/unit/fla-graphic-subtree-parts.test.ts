@@ -537,7 +537,8 @@ describe('FLA Graphic independent Subtree CharacterParts (#1192 V2-C)', () => {
       height: 50,
     });
 
-    // Candidate assessment rules: overlap blocked, empty group/unsafe opaque blocked, frame-crop warned cleanly.
+    // Candidate assessment rules: overlap blocked, empty group/unsafe opaque blocked,
+    // and frame-crop with unprovable external filter bounds blocked locally while staying renderable.
     expect(doFlaGraphicNodePathsOverlap(armPath, symbolPath)).toBe(true);
     expect(doFlaGraphicNodePathsOverlap(hairPath, armPath)).toBe(false);
     expect(assessFlaGraphicSubtreeCandidate({ definition, frameOrdinal: 0, nodePath: ['empty-group'] })).toMatchObject({
@@ -552,9 +553,205 @@ describe('FLA Graphic independent Subtree CharacterParts (#1192 V2-C)', () => {
       definition,
       frameOrdinal: 0,
       nodePath: ['frame-crop-node'],
+      assets: project.assets,
     });
-    expect(cropCandidate.extractable).toBe(true);
-    expect(cropCandidate.warning).toBeTruthy();
+    expect(cropCandidate.extractable).toBe(false);
+    expect(cropCandidate.renderable).toBe(true);
+    expect(cropCandidate.reason).toContain('外层组合');
+  });
+
+  it('rejects overlapping frame-crop subtrees in both UI and creation service while allowing enclosing groups and disjoint frame-crops (#1194)', () => {
+    const base = makeRichSubtreeProject({ includeSecondFrame: false });
+    const baseDef = base.definition;
+    // Build a clean two-layer fixture with:
+    // - Layer 0: disjoint left subtree hair ([20..80, 20..80])
+    // - Layer 1: enclosing outer-combo Group wrapping BOTH overlapping sleeve (frame-crop [120..180, 120..180])
+    //   and neighbor ribbon (subtree [140..210, 140..200]) + a cleanly disjoint solo frame-crop ([300..340, 300..340]).
+    const overlapDef = FlaGraphicDefinitionSchema.parse({
+      ...baseDef,
+      structure: {
+        version: 1,
+        frames: [
+          {
+            ordinal: 0,
+            layers: [
+              {
+                name: '图层_背景发',
+                nodes: [
+                  {
+                    type: 'group',
+                    id: 'disjoint-hair',
+                    groupId: '后发',
+                    drawOrder: 0,
+                    localTransform: matrix(20, 20),
+                    children: [
+                      {
+                        type: 'opaque',
+                        id: 'disjoint-hair-shape',
+                        drawOrder: 0,
+                        localTransform: matrix(),
+                        opaqueKind: 'shape',
+                        fallbackAssetId: OPAQUE_HAIR_ASSET_ID,
+                        fallbackScope: 'subtree',
+                        fallbackViewBox: { x: 0, y: 0, width: 60, height: 60 },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                name: '图层_主体',
+                nodes: [
+                  {
+                    type: 'group',
+                    id: 'outer-combo',
+                    groupId: '外层手臂组合',
+                    drawOrder: 0,
+                    localTransform: matrix(0, 0),
+                    children: [
+                      {
+                        type: 'opaque',
+                        id: 'overlapping-sleeve-crop',
+                        drawOrder: 0,
+                        localTransform: matrix(120, 120),
+                        opaqueKind: 'shape',
+                        fallbackAssetId: OPAQUE_CROP_ASSET_ID,
+                        fallbackScope: 'frame-crop',
+                        fallbackViewBox: { x: 120, y: 120, width: 60, height: 60 },
+                      },
+                      {
+                        type: 'opaque',
+                        id: 'neighbor-ribbon-subtree',
+                        drawOrder: 1,
+                        localTransform: matrix(140, 140),
+                        opaqueKind: 'shape',
+                        fallbackAssetId: MASKED_BITMAP_ASSET_ID,
+                        fallbackScope: 'subtree',
+                        fallbackViewBox: { x: 0, y: 0, width: 70, height: 60 },
+                      },
+                    ],
+                  },
+                  {
+                    type: 'opaque',
+                    id: 'disjoint-frame-crop',
+                    drawOrder: 1,
+                    localTransform: matrix(300, 300),
+                    opaqueKind: 'shape',
+                    fallbackAssetId: OPAQUE_CROP_ASSET_ID,
+                    fallbackScope: 'frame-crop',
+                    fallbackViewBox: { x: 300, y: 300, width: 40, height: 40 },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const project = ProjectSchema.parse({
+      ...base.project,
+      animations: [overlapDef],
+    });
+
+    // 1. Overlapping frame-crop node is rejected locally while remaining renderable in Graphic preview.
+    const overlapCropAssessment = assessFlaGraphicSubtreeCandidate({
+      definition: overlapDef,
+      frameOrdinal: 0,
+      nodePath: ['outer-combo', 'overlapping-sleeve-crop'],
+      assets: project.assets,
+    });
+    expect(overlapCropAssessment).toMatchObject({
+      found: true,
+      renderable: true,
+      extractable: false,
+      hasFrameCrop: true,
+    });
+    expect(overlapCropAssessment.reason).toContain('重叠');
+    expect(overlapCropAssessment.reason).toContain('外层组合');
+
+    // Original Graphic still renders all nodes including overlapping frame-crop intact.
+    const fullGraphicVisual = evaluateFlaGraphicVisual({
+      definition: overlapDef,
+      frameOrdinal: 0,
+      mode: 'instance',
+    });
+    expect(fullGraphicVisual?.layers?.[1]?.nodes[0]?.children).toHaveLength(2);
+
+    // 2. Service creation strictly blocks overlapping frame-crop extraction too (no UI bypass).
+    expect(() =>
+      buildAdaptivePartsFromFlaGraphicSubtrees({
+        project,
+        definition: overlapDef,
+        frameOrdinal: 0,
+        selections: [
+          { nodePath: ['disjoint-hair'], label: '后发' },
+          { nodePath: ['outer-combo', 'overlapping-sleeve-crop'], label: '重叠袖子' },
+        ],
+      }),
+    ).toThrow(/重叠/);
+
+    // 3. UI disables staging toggle & displays alternative guidance on overlapping frame-crop,
+    // while allowing enclosing outer Group + disjoint sibling parts.
+    editorProjectStore.open('D:/v2-fix-1194.pandastage', project);
+    shotStore.select(project.shots[0]!.id);
+    selectionStore.select(LAYER_ID);
+    act(() => root.render(createElement(FlaGraphicStructureTree)));
+
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="展开外层手臂组合"]')!.click());
+    const cropRow = container.querySelector<HTMLElement>(
+      '[role="treeitem"][aria-label="形状"]',
+    );
+    expect(cropRow).toBeTruthy();
+    // Click specifically the first shape child (overlapping-sleeve-crop) inside 外层手臂组合.
+    const outerComboItem = container.querySelector<HTMLElement>(
+      '[role="treeitem"][aria-label="外层手臂组合"]',
+    )!;
+    const overlappingCropItem = outerComboItem.parentElement!.querySelectorAll<HTMLElement>(
+      '[role="treeitem"][aria-label="形状"]',
+    )[0]!;
+    act(() => overlappingCropItem.click());
+    const stageBtn = container.querySelector<HTMLButtonElement>('[data-testid="fla-subtree-stage-toggle"]')!;
+    expect(stageBtn.disabled).toBe(true);
+    expect(container.textContent).toContain('外层组合');
+
+    // Enclosing outer Group wraps BOTH overlapping nodes -> clean external isolation -> extractable!
+    const outerAssessment = assessFlaGraphicSubtreeCandidate({
+      definition: overlapDef,
+      frameOrdinal: 0,
+      nodePath: ['outer-combo'],
+      assets: project.assets,
+    });
+    expect(outerAssessment.extractable).toBe(true);
+    expect(outerAssessment.renderable).toBe(true);
+
+    // Disjoint sibling subtree & disjoint non-overlapping frame-crop remain extractable.
+    expect(
+      assessFlaGraphicSubtreeCandidate({
+        definition: overlapDef,
+        frameOrdinal: 0,
+        nodePath: ['disjoint-hair'],
+        assets: project.assets,
+      }).extractable,
+    ).toBe(true);
+    const disjointCropAssessment = assessFlaGraphicSubtreeCandidate({
+      definition: overlapDef,
+      frameOrdinal: 0,
+      nodePath: ['disjoint-frame-crop'],
+      assets: project.assets,
+    });
+    expect(disjointCropAssessment.extractable).toBe(true);
+    expect(disjointCropAssessment.warning).toBeTruthy();
+
+    // Selecting enclosing outer Group + disjoint hair in UI succeeds cleanly.
+    const hairItem = container.querySelector<HTMLElement>('[role="treeitem"][aria-label="后发"]')!;
+    act(() => hairItem.click());
+    expect(stageBtn.disabled).toBe(false);
+    act(() => stageBtn.click());
+    act(() => outerComboItem.click());
+    expect(stageBtn.disabled).toBe(false);
+    act(() => stageBtn.click());
+    const createBtn = container.querySelector<HTMLButtonElement>('[data-testid="fla-subtree-create-character"]')!;
+    expect(createBtn.disabled).toBe(false);
   });
 
   it('pins multi-frame Graphic subtrees to poseFrameOrdinal and never falls back to frame-1 or whole-person artwork', () => {

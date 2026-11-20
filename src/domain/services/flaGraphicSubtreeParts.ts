@@ -240,6 +240,169 @@ function summarizeSubtreeLeaves(root: EvaluatedFlaGraphicNode): {
   };
 }
 
+interface GraphicWorldAabb {
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+function transformedQuadAabb(
+  matrix: EvaluatedFlaGraphicNode['worldTransform'],
+  width: number,
+  height: number,
+): GraphicWorldAabb | null {
+  if (width <= 0 || height <= 0) return null;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const corners: readonly [number, number][] = [
+    [0, 0],
+    [width, 0],
+    [0, height],
+    [width, height],
+  ];
+  for (const [lx, ly] of corners) {
+    const wx = matrix.a * lx + matrix.c * ly + matrix.tx;
+    const wy = matrix.b * lx + matrix.d * ly + matrix.ty;
+    if (!Number.isFinite(wx) || !Number.isFinite(wy)) return null;
+    if (wx < minX) minX = wx;
+    if (wy < minY) minY = wy;
+    if (wx > maxX) maxX = wx;
+    if (wy > maxY) maxY = wy;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function aabbsOverlap(left: GraphicWorldAabb, right: GraphicWorldAabb): boolean {
+  return (
+    left.minX < right.maxX &&
+    left.maxX > right.minX &&
+    left.minY < right.maxY &&
+    left.maxY > right.minY
+  );
+}
+
+/**
+ * A `frame-crop` fallback slices out `fallbackViewBox` from the authored baked
+ * whole frame SVG (`frameAssetId`). Unless every drawable leaf outside
+ * `targetPath` in that authored frame has known bounds strictly disjoint from
+ * each target `frame-crop` box, neighbor pixels leak into the extracted Part.
+ */
+function resolveFrameCropIsolationRejection(input: {
+  readonly definition: FlaGraphicDefinition;
+  readonly frameOrdinal: number;
+  readonly targetPath: readonly string[];
+  readonly assets?: readonly FlaGraphicAssetDimensionLike[];
+}): string | null {
+  const authoredVisual = evaluateFlaGraphicVisual({
+    definition: input.definition,
+    frameOrdinal: input.frameOrdinal,
+    mode: 'definition',
+  });
+  if (!authoredVisual || !authoredVisual.layers) {
+    return '当前帧缺少可用于验证裁切隔离的结构信息，请保持整元件使用。';
+  }
+
+  const assetsById = new Map<string, { width: number; height: number }>();
+  for (const asset of input.assets ?? []) {
+    if (
+      asset.kind === 'image' &&
+      asset.width !== undefined &&
+      asset.height !== undefined &&
+      asset.width > 0 &&
+      asset.height > 0
+    ) {
+      assetsById.set(asset.id, { width: asset.width, height: asset.height });
+    }
+  }
+
+  const targetCropBoxes: GraphicWorldAabb[] = [];
+  const externalBoxes: GraphicWorldAabb[] = [];
+  let externalHasUnknownBounds = false;
+
+  const visit = (node: EvaluatedFlaGraphicNode): void => {
+    if (node.source.type === 'symbol' && (node.source.opacity ?? 1) <= 0) {
+      return;
+    }
+    const insideTarget = isPrefixNodePath(input.targetPath, node.path);
+    if (node.source.type === 'bitmap') {
+      if (insideTarget || !node.source.assetId) return;
+      const dims = assetsById.get(node.source.assetId);
+      if (!dims) {
+        externalHasUnknownBounds = true;
+        return;
+      }
+      const box = transformedQuadAabb(node.worldTransform, dims.width, dims.height);
+      if (!box) {
+        externalHasUnknownBounds = true;
+        return;
+      }
+      externalBoxes.push(box);
+      return;
+    }
+    if (node.source.type === 'opaque') {
+      const vb = node.source.fallbackViewBox;
+      const hasValidBox = Boolean(vb && vb.width > 0 && vb.height > 0);
+      if (insideTarget) {
+        if (node.source.fallbackScope === 'frame-crop' && node.source.fallbackAssetId && hasValidBox) {
+          targetCropBoxes.push({
+            minX: vb!.x,
+            minY: vb!.y,
+            maxX: vb!.x + vb!.width,
+            maxY: vb!.y + vb!.height,
+          });
+        }
+        return;
+      }
+      if (!node.source.fallbackScope || !hasValidBox) {
+        // Unisolated filter/shape outside the target subtree still baked into
+        // `frameAssetId` at unknown coordinates.
+        externalHasUnknownBounds = true;
+        return;
+      }
+      if (node.source.fallbackScope === 'frame-crop') {
+        externalBoxes.push({
+          minX: vb!.x,
+          minY: vb!.y,
+          maxX: vb!.x + vb!.width,
+          maxY: vb!.y + vb!.height,
+        });
+      } else {
+        const box = transformedQuadAabb(node.worldTransform, vb!.width, vb!.height);
+        if (!box) {
+          externalHasUnknownBounds = true;
+          return;
+        }
+        externalBoxes.push(box);
+      }
+      return;
+    }
+    for (const child of node.children) {
+      visit(child);
+    }
+  };
+
+  for (const layer of authoredVisual.layers) {
+    for (const node of layer.nodes) {
+      visit(node);
+    }
+  }
+
+  if (externalHasUnknownBounds) {
+    return '该部位依赖整帧裁切且同帧存在无法确认范围的相邻图形，暂不能单独提取；请改选外层组合或保持整元件使用。';
+  }
+  for (const cropBox of targetCropBoxes) {
+    for (const externalBox of externalBoxes) {
+      if (aabbsOverlap(cropBox, externalBox)) {
+        return '该部位的整帧裁切区域与相邻部位重叠，单独提取会混入周边画面；请改选包含两者的外层组合，或保持整元件使用。';
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Assesses whether `nodePath` in `definition` at `frameOrdinal` can be safely
  * extracted as an independent `AdaptiveParts` `CharacterPart`, returning
@@ -336,6 +499,31 @@ export function assessFlaGraphicSubtreeCandidate(input: {
       hasFrameCrop: leafSummary.hasFrameCrop,
       hasUnrenderableDescendants: leafSummary.hasUnrenderableDescendants,
     };
+  }
+
+  if (leafSummary.hasFrameCrop) {
+    const frameCropRejection = resolveFrameCropIsolationRejection({
+      definition: input.definition,
+      frameOrdinal: input.frameOrdinal,
+      targetPath: input.nodePath,
+      assets: input.assets,
+    });
+    if (frameCropRejection) {
+      return {
+        nodePath: [...input.nodePath],
+        found: true,
+        extractable: false,
+        renderable: true,
+        nodeType: node.source.type,
+        label,
+        drawOrderRank: rank,
+        reason: frameCropRejection,
+        leafCount: leafSummary.leafCount,
+        resourceAssetIds: subtreeVisual.resourceAssetIds,
+        hasFrameCrop: true,
+        hasUnrenderableDescendants: leafSummary.hasUnrenderableDescendants,
+      };
+    }
   }
 
   const warning = leafSummary.hasFrameCrop
