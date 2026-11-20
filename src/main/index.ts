@@ -33,7 +33,10 @@ import {
   UnsavedCloseController,
   createUnsavedCloseDialogOptions,
 } from './services/UnsavedCloseController';
-import { UnsavedCloseGuard } from './windows/unsaved-close-guard';
+import {
+  UnsavedCloseGuard,
+  promptRendererSyncFailureAction,
+} from './windows/unsaved-close-guard';
 import { confirmPendingExportWork } from './windows/export-close-confirmation';
 import { AssetImportService } from './services/AssetImportService';
 import { declaredMimeTypeForPath } from './services/MediaInspectionService';
@@ -179,17 +182,35 @@ async function createApplicationWindows(): Promise<void> {
           ok: false as const,
           error: 'Renderer close synchronizer is unavailable.',
         }),
-      reportRendererSyncFailure: (error) => {
+      reportRendererSyncFailure: async (error) => {
         console.error('Native close autosave synchronization failed.', error);
-        dialog.showErrorBox(
-          '无法安全关闭 Panda Stage',
-          `编辑器状态尚未同步，窗口将保持打开。请重试；若问题持续，请先使用“保存”。\n\n${error}`,
-        );
+        try {
+          return await promptRendererSyncFailureAction(async (options) => {
+            if (!window.isDestroyed() && window.isVisible()) {
+              try {
+                return await dialog.showMessageBox(window, options);
+              } catch {
+                // Fall back to an unparented dialog if the window closes concurrently.
+              }
+            }
+            return dialog.showMessageBox(options);
+          });
+        } catch (dialogError) {
+          console.error(
+            'Failed to show renderer close failure dialog.',
+            dialogError,
+          );
+          return 'continue';
+        }
       },
       closeWindow: () => {
         if (!window.isDestroyed()) window.close();
       },
       quitApplication: () => app.quit(),
+      forceQuitApplication: () => {
+        rendererCloseSynchronizer?.dispose();
+        app.exit(0);
+      },
     });
     unsavedCloseGuard = guard;
     window.on('close', (event) => guard.handleWindowClose(event));
