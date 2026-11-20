@@ -796,7 +796,7 @@ describe('Adaptive Parts assembly header', () => {
 
     expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
     expect(markup).toContain('aria-label="返回角色列表"');
-    expect(markup).toContain('<svg aria-hidden="true"');
+    expect(markup).toMatch(/<svg\b(?=[^>]*\blucide-arrow-left\b)(?=[^>]*\baria-hidden="true")[^>]*>/u);
     expect(markup).toContain('class="adaptive-parts-assembly-join-shot"');
     expect(markup).toContain('加入镜头');
     expect(markup).toContain(`<strong title="${longName}">${longName}</strong>`);
