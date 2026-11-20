@@ -328,7 +328,11 @@ function resolveFrameCropIsolationRejection(input: {
     }
     const insideTarget = isPrefixNodePath(input.targetPath, node.path);
     if (node.source.type === 'bitmap') {
-      if (insideTarget || !node.source.assetId) return;
+      if (insideTarget) return;
+      if (!node.source.assetId) {
+        externalHasUnknownBounds = true;
+        return;
+      }
       const dims = assetsById.get(node.source.assetId);
       if (!dims) {
         externalHasUnknownBounds = true;

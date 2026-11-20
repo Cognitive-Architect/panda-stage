@@ -754,6 +754,154 @@ describe('FLA Graphic independent Subtree CharacterParts (#1192 V2-C)', () => {
     expect(createBtn.disabled).toBe(false);
   });
 
+  it('rejects a frame-crop candidate when the frame contains an external bitmap without assetId (#1195)', () => {
+    const base = makeRichSubtreeProject({ includeSecondFrame: false });
+    const withUnboundBitmapDef = FlaGraphicDefinitionSchema.parse({
+      ...base.definition,
+      structure: {
+        version: 1,
+        frames: [
+          {
+            ordinal: 0,
+            layers: [
+              {
+                name: '图层_混合',
+                nodes: [
+                  {
+                    type: 'group',
+                    id: 'disjoint-hair',
+                    groupId: '后发',
+                    drawOrder: 0,
+                    localTransform: matrix(20, 20),
+                    children: [
+                      {
+                        type: 'opaque',
+                        id: 'disjoint-hair-shape',
+                        drawOrder: 0,
+                        localTransform: matrix(),
+                        opaqueKind: 'shape',
+                        fallbackAssetId: OPAQUE_HAIR_ASSET_ID,
+                        fallbackScope: 'subtree',
+                        fallbackViewBox: { x: 0, y: 0, width: 60, height: 60 },
+                      },
+                    ],
+                  },
+                  {
+                    type: 'opaque',
+                    id: 'disjoint-frame-crop',
+                    drawOrder: 1,
+                    localTransform: matrix(300, 300),
+                    opaqueKind: 'shape',
+                    fallbackAssetId: OPAQUE_CROP_ASSET_ID,
+                    fallbackScope: 'frame-crop',
+                    fallbackViewBox: { x: 300, y: 300, width: 40, height: 40 },
+                  },
+                  {
+                    type: 'bitmap',
+                    id: 'unbound-external-bitmap',
+                    drawOrder: 2,
+                    localTransform: matrix(10, 10),
+                    bitmapRef: 'Library/unbound.png',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const project = ProjectSchema.parse({
+      ...base.project,
+      animations: [withUnboundBitmapDef],
+    });
+
+    // External bitmap without assetId cannot prove disjoint bounds -> frame-crop rejected locally.
+    const rejectedCrop = assessFlaGraphicSubtreeCandidate({
+      definition: withUnboundBitmapDef,
+      frameOrdinal: 0,
+      nodePath: ['disjoint-frame-crop'],
+      assets: project.assets,
+    });
+    expect(rejectedCrop).toMatchObject({
+      found: true,
+      extractable: false,
+      renderable: true,
+      hasFrameCrop: true,
+    });
+    expect(rejectedCrop.reason).toContain('外层组合');
+
+    // Service entry uses the exact same guard (cannot bypass UI).
+    expect(() =>
+      buildAdaptivePartsFromFlaGraphicSubtrees({
+        project,
+        definition: withUnboundBitmapDef,
+        frameOrdinal: 0,
+        selections: [
+          { nodePath: ['disjoint-hair'], label: '后发' },
+          { nodePath: ['disjoint-frame-crop'], label: '裁切块' },
+        ],
+      }),
+    ).toThrow(/无法确认范围/);
+
+    // UI disables staging for the affected frame-crop while keeping sibling subtree extractable.
+    editorProjectStore.open('D:/v2-fix-1195.pandastage', project);
+    shotStore.select(project.shots[0]!.id);
+    selectionStore.select(LAYER_ID);
+    act(() => root.render(createElement(FlaGraphicStructureTree)));
+
+    const cropItem = container.querySelector<HTMLElement>('[role="treeitem"][aria-label="形状"]')!;
+    act(() => cropItem.click());
+    const stageBtn = container.querySelector<HTMLButtonElement>('[data-testid="fla-subtree-stage-toggle"]')!;
+    expect(stageBtn.disabled).toBe(true);
+    expect(container.textContent).toContain('无法确认范围');
+
+    expect(
+      assessFlaGraphicSubtreeCandidate({
+        definition: withUnboundBitmapDef,
+        frameOrdinal: 0,
+        nodePath: ['disjoint-hair'],
+        assets: project.assets,
+      }).extractable,
+    ).toBe(true);
+
+    // Control: when that external bitmap binds a disjoint assetId ([10..90, 10..110]), the disjoint frame-crop [300..340] stays extractable.
+    const withBoundDisjointBitmapDef = FlaGraphicDefinitionSchema.parse({
+      ...withUnboundBitmapDef,
+      structure: {
+        version: 1,
+        frames: [
+          {
+            ordinal: 0,
+            layers: [
+              {
+                name: '图层_混合',
+                nodes: [
+                  ...withUnboundBitmapDef.structure!.frames[0]!.layers[0]!.nodes.slice(0, 2),
+                  {
+                    type: 'bitmap',
+                    id: 'bound-disjoint-bitmap',
+                    drawOrder: 2,
+                    localTransform: matrix(10, 10),
+                    bitmapRef: 'Library/bound.png',
+                    assetId: MASKED_BITMAP_ASSET_ID,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(
+      assessFlaGraphicSubtreeCandidate({
+        definition: withBoundDisjointBitmapDef,
+        frameOrdinal: 0,
+        nodePath: ['disjoint-frame-crop'],
+        assets: project.assets,
+      }),
+    ).toMatchObject({ extractable: true, renderable: true, hasFrameCrop: true });
+  });
+
   it('pins multi-frame Graphic subtrees to poseFrameOrdinal and never falls back to frame-1 or whole-person artwork', () => {
     const { project, definition } = makeRichSubtreeProject({ includeSecondFrame: true });
     const input = buildAdaptivePartsFromFlaGraphicSubtrees({
