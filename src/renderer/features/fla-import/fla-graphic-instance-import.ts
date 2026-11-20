@@ -13,7 +13,7 @@ export class FlaGraphicImportError extends Error {
 
 export type EditableFlaGraphicInstancePreview = Extract<
   FlaPartPreviewResponse,
-  { ok: true; status: 'PREVIEW_READY'; capability: 'EDITABLE_PARTS_READY' }
+  { ok: true; status: 'PREVIEW_READY'; capability: 'GRAPHIC_INSTANCES_READY' | 'EDITABLE_PARTS_READY' }
 > & { sessionId: string; generation: number };
 
 export type ImportFlaGraphicInstance = (

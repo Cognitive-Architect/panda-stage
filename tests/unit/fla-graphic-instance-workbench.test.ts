@@ -469,6 +469,24 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')).toBe(failure);
   });
 
+  it('submits one source-addressed Graphic from the Graphic preview request', async () => {
+    const onImportGraphicInstance = vi.fn(async () => {});
+    replacePartPreview(vi.fn(async () => ({
+      ...readyPreview(),
+      capability: 'GRAPHIC_INSTANCES_READY',
+      partPreviews: [readyPreview().partPreviews[0]],
+      reassembledPreview: null,
+    })));
+    await renderWorkbench({ onImportGraphicInstance });
+    expect(partPreview).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'graphic-instance' }));
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onImportGraphicInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'GRAPHIC_INSTANCES_READY', planId: PLAN_ID }),
+      'part-graphic1',
+    );
+  });
+
   it('separates loading, an empty Graphic result, and a failed preview with collapsed diagnostics', async () => {
     const pending = deferred<EditableFlaGraphicInstancePreview>();
     replacePartPreview(vi.fn(() => pending.promise));

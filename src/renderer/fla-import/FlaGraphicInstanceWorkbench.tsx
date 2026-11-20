@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useImportFeedbackDismiss } from '../features/assets/useImportFeedbackDismiss';
 import type { AnimationImportIR } from '../../shared/fla-import-api';
-import type { FlaPartPreviewResponse } from '../../shared/fla-part-preview-api';
+import { FLA_NO_IMPORTABLE_GRAPHIC, type FlaPartPreviewResponse } from '../../shared/fla-part-preview-api';
 import type { FlaRenderTarget } from '../../shared/fla-static-snapshot-api';
 import { FlaPreviewFailure } from './FlaPreviewFailure';
 import {
@@ -186,6 +186,7 @@ export function FlaGraphicInstanceWorkbench({
         requestId: request.requestId,
         sessionId,
         generation,
+        purpose: 'graphic-instance',
         target: {
           renderTargetId: targetRenderTargetId,
           selectedFrameIndex: 0,
@@ -196,7 +197,7 @@ export function FlaGraphicInstanceWorkbench({
         activeRequestRef.current?.requestId !== request.requestId
       ) return;
       activeRequestRef.current = null;
-      if (response.ok && response.capability === 'EDITABLE_PARTS_READY' &&
+      if (response.ok && response.capability !== 'WHOLE_IMAGE_ONLY' &&
           response.sessionId === sessionId && response.generation === generation) {
         const validatedPreview: EditableFlaGraphicInstancePreview = {
           ...response,
@@ -227,7 +228,7 @@ export function FlaGraphicInstanceWorkbench({
         setStatusMessage('');
         return;
       }
-      if (response.ok && response.capability === 'EDITABLE_PARTS_READY') {
+      if (response.ok && response.capability !== 'WHOLE_IMAGE_ONLY') {
         setPreviewFailure({
           kind: 'preview',
           details: `Preview identity did not match the active request. Response session=${response.sessionId}, generation=${response.generation}; expected session=${sessionId}, generation=${generation}.`,
@@ -236,10 +237,11 @@ export function FlaGraphicInstanceWorkbench({
         return;
       }
       if (response.ok) {
-        setPreviewFailure({
-          kind: 'preview',
-          details: `${response.status}: ${response.reason}`,
-        });
+        if (response.reason === FLA_NO_IMPORTABLE_GRAPHIC) {
+          setEmptyGraphicList(true);
+        } else {
+          setPreviewFailure({ kind: 'preview', details: response.reason });
+        }
         setStatusMessage('');
         return;
       }

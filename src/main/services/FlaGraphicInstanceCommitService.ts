@@ -42,6 +42,7 @@ import {
   FlaPartPreviewService,
   isGraphicPlaybackRangeRepresentable,
 } from './FlaPartPreviewService';
+import { resolveFlaGraphicFirstFrame, resolveFlaGraphicPlaybackMode } from './fla-nested-graphic-frame-selector';
 import { ProjectService, ProjectServiceError, type ProjectTransaction } from './ProjectService';
 import { AtomicWriteCommitRejectedError } from './ProjectFileSystemService';
 
@@ -278,14 +279,9 @@ function instancePlayback(batch: FlaGraphicDefinitionFrameBatch): {
   )) {
     return null;
   }
-  const rawFirstFrame = sourceFrame.firstFrame;
-  const firstFrameIndex = rawFirstFrame === null ? 0 : Number(rawFirstFrame);
-  if (
-    !Number.isSafeInteger(firstFrameIndex) ||
-    firstFrameIndex < 0 ||
-    firstFrameIndex >= batch.target.frameCount
-  ) return null;
-  const mode = sourceFrame.playbackMode?.trim().toLocaleLowerCase('en-US');
+  const firstFrameIndex = resolveFlaGraphicFirstFrame(sourceFrame.firstFrame);
+  if (firstFrameIndex === null || firstFrameIndex >= batch.target.frameCount) return null;
+  const mode = resolveFlaGraphicPlaybackMode(sourceFrame.playbackMode);
   if (mode === 'loop') return { firstFrameIndex, playback: { mode: 'loop', endBehavior: 'hold' } };
   if (mode === 'play once') return { firstFrameIndex, playback: { mode: 'once', endBehavior: 'hold' } };
   if (mode === 'single frame') return { firstFrameIndex, playback: { mode: 'single-frame', endBehavior: 'hold' } };
@@ -903,10 +899,11 @@ export class FlaGraphicInstanceCommitService {
   }
 
   private assertCurrentPlan(request: FlaGraphicInstanceCommitRequest): void {
-    const metadata = this.partPreviewService.getPreparedBatchMetadata(
+    const plan = this.partPreviewService.getPlan(
       request.plan.planId, request.plan.sessionId, request.plan.generation,
     );
-    if (!metadata || metadata.identity.poseIdentity !== request.plan.poseIdentity) {
+    if (!plan || plan.poseIdentity !== request.plan.poseIdentity ||
+        (plan.capability !== 'GRAPHIC_INSTANCES_READY' && plan.capability !== 'EDITABLE_PARTS_READY')) {
       throw new FlaGraphicInstanceCommitError(
         'STALE_PLAN', request.projectRoot, 'The FLA source or preview plan changed. Reset the preview and retry.',
       );

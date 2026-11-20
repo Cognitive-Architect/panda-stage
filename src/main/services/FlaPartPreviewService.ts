@@ -16,6 +16,7 @@ import {
   FlaPartPreviewResponseSchema,
   FlaPartPreviewUnitSchema,
   FLA_PART_PREVIEW_LIMITS,
+  FLA_NO_IMPORTABLE_GRAPHIC,
   type FlaPartPlan,
   type FlaPartPreviewCancelRequest,
   type FlaPartPreviewCancelResponse,
@@ -52,6 +53,8 @@ import {
 } from './fla-display-list-resolver';
 import {
   prepareFlaNestedGraphicFrameSelections,
+  resolveFlaGraphicFirstFrame,
+  resolveFlaGraphicPlaybackMode,
   type FlaNestedGraphicFrameSelection,
 } from './fla-nested-graphic-frame-selector';
 import type {
@@ -264,7 +267,8 @@ function makeCandidateCollection(
   selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection>,
   sourceRawSha256: string,
   target: FlaRenderTarget,
-  rootTransform: FlaDisplayListMatrix = FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+  rootTransform: FlaDisplayListMatrix,
+  graphicInstances: boolean,
 ): CandidateCollection {
   const candidates: PartCandidate[] = [];
   const descriptorsByName = new Map<string, FlaStaticSnapshotDisplaySource['graphicSymbols'][number] | null>();
@@ -401,7 +405,7 @@ function makeCandidateCollection(
       fallbackReason = 'Part source provenance exceeds a bounded Main plan field.';
       return;
     }
-    candidates.push({ unit, isolatePath: path });
+    if (!graphicInstances || canImportGraphicInstance(unit)) candidates.push({ unit, isolatePath: path });
   };
 
   const walk = (
@@ -419,7 +423,10 @@ function makeCandidateCollection(
     for (let layerIndex = 0; layerIndex < frameContext.layers.length; layerIndex += 1) {
       const layer = frameContext.layers[layerIndex];
       if (!layer || !layer.visible) continue;
-      const masks = contextMaskDependencies(frameContext, contextPath);
+      // Complete Graphic candidates are direct Scene occurrences. A relationship
+      // on their own layer can affect isolation; sibling layers cannot.
+      if (graphicInstances && (layer.maskLayerId || layer.maskedBy)) continue;
+      const masks = graphicInstances ? [] : contextMaskDependencies(frameContext, contextPath);
       for (let elementIndex = 0; elementIndex < layer.elements.length; elementIndex += 1) {
         if (fallbackReason) return;
         visited += 1;
@@ -441,6 +448,7 @@ function makeCandidateCollection(
         };
         const path = [...prefixPath, entry];
         if (element.kind !== 'symbol') {
+          if (graphicInstances) continue;
           append(
             element,
             path,
@@ -458,6 +466,15 @@ function makeCandidateCollection(
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
         const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
+        if (graphicInstances) {
+          if (descriptor && element.sourceAddress && definition?.kind === 'graphic' && element.symbolType === 'graphic' &&
+              matrixFacts(worldTransform).invertible &&
+              definition.frameContext.layers.some((childLayer) => childLayer?.visible &&
+                childLayer.elements.some((child) => child && child.visible !== false))) {
+            append(element, path, worldTransform, contextPath, layer, layerIndex, descriptor, null);
+          }
+          continue;
+        }
         if (!definition || definition.kind !== 'graphic' || element.symbolType !== 'graphic') {
           append(
             element,
@@ -544,7 +561,12 @@ function pruneFrameContext(
   frameContext: FlaDisplayListFrameContext,
   selected: SourcePathEntry,
   selectedElement: FlaDisplayListElement,
+  graphicInstance: boolean,
 ): FlaDisplayListFrameContext {
+  if (graphicInstance) {
+    // Drop both ends of every unrelated Scene mask relationship.
+    return { ...frameContext, layers: [{ ...selected.layer, elements: [selectedElement] }] };
+  }
   return {
     ...frameContext,
     layers: frameContext.layers.map((layer, index) => {
@@ -560,6 +582,7 @@ function isolateOccurrence(
   sourceSymbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>,
   path: readonly SourcePathEntry[],
   occurrenceId: string,
+  graphicInstance: boolean,
 ): { frameContext: FlaDisplayListFrameContext; symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition> } {
   if (path.length === 0) throw new Error('Part occurrence path is empty');
   const symbols = new Map(sourceSymbols);
@@ -578,7 +601,7 @@ function isolateOccurrence(
       throw new Error(`Part source identity changed at ${pathItem.contextPath}`);
     }
     if (pathIndex === path.length - 1) {
-      return pruneFrameContext(frameContext, pathItem, element);
+      return pruneFrameContext(frameContext, pathItem, element, graphicInstance);
     }
     if (element.kind !== 'symbol' || element.symbolType !== 'graphic') {
       throw new Error('Only source-addressed Graphic ancestors may be traversed');
@@ -592,7 +615,7 @@ function isolateOccurrence(
     const isolatedChild = isolate(definition.frameContext, pathIndex + 1);
     const overlayKey = `f1-02:${occurrenceId}:${overlayIndex++}`;
     symbols.set(overlayKey, { ...definition, frameContext: isolatedChild });
-    return pruneFrameContext(frameContext, pathItem, { ...element, frameSelectionKey: overlayKey });
+    return pruneFrameContext(frameContext, pathItem, { ...element, frameSelectionKey: overlayKey }, graphicInstance);
   };
   return { frameContext: isolate(rootFrameContext, 0), symbols };
 }
@@ -855,15 +878,13 @@ export function isGraphicPlaybackRangeRepresentable(
   if (!Number.isSafeInteger(parsed)) return false;
   if (parsed < 0) return true;
   if (parsed >= frameCount) return false;
-  return playbackMode?.trim().toLocaleLowerCase('en-US') === 'single frame' ||
+  return resolveFlaGraphicPlaybackMode(playbackMode) === 'single frame' ||
     parsed === frameCount - 1;
 }
 
 function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
-  const mode = unit.sourceFrame.playbackMode?.trim().toLocaleLowerCase('en-US');
-  const firstFrame = unit.sourceFrame.firstFrame === null
-    ? 0
-    : Number(unit.sourceFrame.firstFrame);
+  const mode = resolveFlaGraphicPlaybackMode(unit.sourceFrame.playbackMode);
+  const firstFrame = resolveFlaGraphicFirstFrame(unit.sourceFrame.firstFrame);
   const frameCount = unit.sourceDefinitionFrameCount;
   return unit.sourceKind === 'graphic-symbol-occurrence' &&
     unit.sourceSymbolId !== null &&
@@ -876,9 +897,8 @@ function canImportGraphicInstance(unit: FlaPartPreviewUnit): boolean {
     isGraphicPlaybackRangeRepresentable(unit.sourceFrame.lastFrame, frameCount, unit.sourceFrame.playbackMode) &&
     unit.maskDependencies.length === 0 &&
     (mode === 'loop' || mode === 'play once' || mode === 'single frame') &&
-    Number.isSafeInteger(firstFrame) &&
-    firstFrame >= 0 &&
-    firstFrame < (frameCount ?? 0);
+    firstFrame !== null &&
+    firstFrame < frameCount;
 }
 
 export interface FlaPartPreviewServiceOptions {
@@ -1196,8 +1216,7 @@ export class FlaPartPreviewService {
       held.plan.sessionId !== identity.sessionId ||
       held.plan.generation !== identity.generation ||
       held.plan.poseIdentity !== identity.poseIdentity ||
-      held.plan.capability !== 'EDITABLE_PARTS_READY' ||
-      !held.parts
+      (held.plan.capability !== 'GRAPHIC_INSTANCES_READY' && held.plan.capability !== 'EDITABLE_PARTS_READY')
     ) {
       return { ok: false, code: 'STALE_PLAN', message: 'The FLA Part plan expired or changed. Preview the source again.' };
     }
@@ -1664,6 +1683,9 @@ export class FlaPartPreviewService {
     let frameCount: number;
     let target: FlaRenderTarget;
     let frameResult: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
+    if (active.request.purpose === 'graphic-instance' && (sceneMatch?.index !== 0 || selectedFrameIndex !== 0)) {
+      return this.failure('TARGET_NOT_FOUND', 'Graphic instance import requires Scene 0, frame 1.', active.request);
+    }
     if (sceneMatch) {
       targetKind = 'scene';
       targetName = sceneMatch.name;
@@ -1923,6 +1945,7 @@ export class FlaPartPreviewService {
       });
     }
 
+    const graphicInstances = active.request.purpose === 'graphic-instance';
     const collection = makeCandidateCollection(
       prepared.source,
       frameContext,
@@ -1931,6 +1954,7 @@ export class FlaPartPreviewService {
       (sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256).toLowerCase(),
       target,
       rootTransform,
+      graphicInstances,
     );
     if (collection.fallbackReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, collection.fallbackReason, {
@@ -1940,13 +1964,15 @@ export class FlaPartPreviewService {
         elapsedMs: Date.now() - startedAt,
       });
     }
-    if (collection.candidates.length < 2) {
+    if (collection.candidates.length < (graphicInstances ? 1 : 2)) {
       return this.wholeImageOnly(
         active,
         sourceIdentity,
         nativeFacts,
         nativePreview,
-        'Fewer than two independently addressable visible source parts were found.',
+        graphicInstances
+          ? FLA_NO_IMPORTABLE_GRAPHIC
+          : 'Fewer than two independently addressable visible source parts were found.',
         { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
       );
     }
@@ -1963,6 +1989,7 @@ export class FlaPartPreviewService {
           symbols,
           candidate.isolatePath,
           candidate.unit.occurrenceId,
+          graphicInstances,
         );
         const isolatedFrameContext = nativeFacts.targetKind === 'graphic-symbol'
           ? applyRootTransformToFrameContext(isolated.frameContext, nativeFacts.rootTransform)
@@ -2052,41 +2079,44 @@ export class FlaPartPreviewService {
       await execution.yieldToEventLoop();
     }
 
-    const reassemblySvg = this.makeReassemblySvg(partPreviews, nativeFacts.width, nativeFacts.height);
-    if (Buffer.byteLength(reassemblySvg, 'utf8') > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-      return this.wholeImageOnly(
-        active,
-        sourceIdentity,
-        nativeFacts,
-        nativePreview,
-        'The source-part reassembly SVG exceeds the existing snapshot byte budget.',
-        { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
-      );
-    }
-    let reassembledPreview: FlaPartPreviewPng;
-    try {
-      rasterCount += 1;
-      reassembledPreview = await this.rasterize(
-        active,
-        reassemblySvg,
-        nativeFacts.width,
-        nativeFacts.height,
-        nativeFacts.pixelCount,
-      );
-    } catch (error) {
-      if (active.cancelled || active.settled) {
-        return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview was cancelled', active.request);
+    const capability = graphicInstances ? 'GRAPHIC_INSTANCES_READY' : 'EDITABLE_PARTS_READY';
+    let reassembledPreview: FlaPartPreviewPng | null = null;
+    if (!graphicInstances) {
+      const reassemblySvg = this.makeReassemblySvg(partPreviews, nativeFacts.width, nativeFacts.height);
+      if (Buffer.byteLength(reassemblySvg, 'utf8') > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        return this.wholeImageOnly(
+          active,
+          sourceIdentity,
+          nativeFacts,
+          nativePreview,
+          'The source-part reassembly SVG exceeds the existing snapshot byte budget.',
+          { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
+        );
       }
-      return this.wholeImageOnly(
-        active,
-        sourceIdentity,
-        nativeFacts,
-        nativePreview,
-        `The emitted part PNGs could not be reassembled: ${error instanceof Error ? error.message : String(error)}`,
-        { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
-      );
+      try {
+        rasterCount += 1;
+        reassembledPreview = await this.rasterize(
+          active,
+          reassemblySvg,
+          nativeFacts.width,
+          nativeFacts.height,
+          nativeFacts.pixelCount,
+        );
+      } catch (error) {
+        if (active.cancelled || active.settled) {
+          return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview was cancelled', active.request);
+        }
+        return this.wholeImageOnly(
+          active,
+          sourceIdentity,
+          nativeFacts,
+          nativePreview,
+          `The emitted part PNGs could not be reassembled: ${error instanceof Error ? error.message : String(error)}`,
+          { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
+        );
+      }
     }
-    const totalPngBytes = nativePreview.byteLength + partPngBytes + reassembledPreview.byteLength;
+    const totalPngBytes = nativePreview.byteLength + partPngBytes + (reassembledPreview?.byteLength ?? 0);
     if (totalPngBytes > FLA_PART_PREVIEW_LIMITS.maxTotalPngBytes) {
       return this.wholeImageOnly(
         active,
@@ -2106,14 +2136,14 @@ export class FlaPartPreviewService {
       active,
       sourceIdentity,
       nativeFacts,
-      'EDITABLE_PARTS_READY',
+      capability,
       null,
       units,
     );
     const response = FlaPartPreviewResponseSchema.parse({
       ok: true,
       status: 'PREVIEW_READY',
-      capability: 'EDITABLE_PARTS_READY',
+      capability,
       requestId: active.request.requestId,
       sessionId: active.request.sessionId,
       generation: active.request.generation,
@@ -2139,10 +2169,10 @@ export class FlaPartPreviewService {
         elapsedMs: Math.min(this.wallTimeMs, Date.now() - startedAt),
       },
     });
-    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
-      throw new Error('Editable Part preview response failed its validated capability check');
+    if (!response.ok || response.capability !== capability) {
+      throw new Error('Preview response did not match its validated capability');
     }
-    this.holdResult(plan, response.partPreviews);
+    this.holdResult(plan, response.capability === 'EDITABLE_PARTS_READY' ? response.partPreviews : null);
     return response;
   }
 
@@ -2262,7 +2292,7 @@ export class FlaPartPreviewService {
     active: ActivePartPreview,
     source: FlaStaticSnapshotSource,
     native: NativeRenderFacts,
-    capability: 'EDITABLE_PARTS_READY' | 'WHOLE_IMAGE_ONLY',
+    capability: 'EDITABLE_PARTS_READY' | 'GRAPHIC_INSTANCES_READY' | 'WHOLE_IMAGE_ONLY',
     capabilityReason: string | null,
     units: readonly FlaPartPreviewUnit[],
   ): FlaPartPlan {
