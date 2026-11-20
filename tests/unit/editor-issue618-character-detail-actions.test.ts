@@ -160,9 +160,7 @@ describe('Issue #618 Character Detail actions', () => {
         'data-testid="character-delete-settings"',
       );
 
-      expect(markup).toContain(
-        `data-workspace-count="${composite ? 3 : 2}"`,
-      );
+      expect(markup).toContain('data-workspace-count="3"');
       expect(markup).toContain('data-testid="character-danger-zone"');
       expect(deleteIndex).toBeGreaterThan(settingsStart);
       expect(markup).toContain('aria-labelledby="character-danger-zone-heading"');

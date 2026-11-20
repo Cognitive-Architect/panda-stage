@@ -122,7 +122,7 @@ describe('Issue #614 Character Detail polish', () => {
     const compositeMarkup = detailMarkup({ composite: true });
     const styles = readOrderedStylesheetSource();
 
-    expect(singleImageMarkup).toContain('data-workspace-count="2"');
+    expect(singleImageMarkup).toContain('data-workspace-count="3"');
     expect(compositeMarkup).toContain('data-workspace-count="3"');
     expect(
       compositeMarkup.match(

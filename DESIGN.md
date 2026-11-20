@@ -420,7 +420,14 @@ Muted text 不应成为重要信息的默认样式。
 
 ### 5.3 Accent and semantic states
 
-绿色用于正常的 active / selected / focus 家族。
+绿色用于正常的 active / selected / focus 家族，但**不同状态不等于同一种大面积绿色高亮**：
+
+- **selected（对象选中）**：用于确认当前编辑对象，优先轻背景、细边框或局部标记，不同时堆叠多种高强度强调。
+- **expanded / collapsed（面板开合）**：用面板可见性、手柄位置与图标反馈，不把收纳手柄整体画成 selected surface。
+- **hover（鼠标悬停）**：仅提供轻微、短暂的反馈；对悬浮收纳手柄优先提亮细握柄，不给整个点击热区铺浓绿色底。
+- **focus-visible（键盘焦点）**：提供清楚的独立焦点轮廓，不能用 hover 或 selected 来替代。
+
+状态强度服务操作而非装饰；现有 ImageAssetPicker 的 selected surface 是组件家族规范，不应直接套给无关按钮。
 
 Warning 与 danger 是独立语义，不应与普通强调混用。
 

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Check, Pencil, Play } from 'lucide-react';
 import type {
   Character,
   CharacterDimensionWarning,
   ExpressionCharacter,
+  FlaGraphicDefinition,
   ImageAsset,
   CharacterFaceSource,
   CharacterFaceGraphicSource,
@@ -10,14 +12,25 @@ import type {
 import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCard';
 import { ImageAssetPicker } from './ImageAssetPicker';
 import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
+import type { ResourceSwapValue } from './CharacterResourceSwapDialog';
+import { CharacterCompactObjectRow } from './CharacterCompactObjectRow';
+import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
 } from './ThumbnailStateIcon';
 
+export interface ExpressionResourceSwapRequest {
+  title: string;
+  currentValue: ResourceSwapValue;
+  trigger: HTMLElement | null;
+  onConfirm: (value: ResourceSwapValue) => void;
+}
+
 export interface ExpressionEditorProps {
   character: ExpressionCharacter;
   imageAssets: readonly ImageAsset[];
+  graphicDefinitions?: readonly FlaGraphicDefinition[];
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   warnings: readonly CharacterDimensionWarning[];
   disabled?: boolean;
@@ -32,8 +45,11 @@ export interface ExpressionEditorProps {
   onSetAsset: (expressionId: string, assetId: string) => void;
   onSetSource?: (expressionId: string, source: CharacterFaceSource) => void;
   onAddGraphic?: (name: string, source: CharacterFaceGraphicSource) => void;
+  onRequestResourceSwap?: (request: ExpressionResourceSwapRequest) => void;
   onRemove: (expressionId: string) => void;
   onSetDefault: (expressionId: string) => void;
+  previewExpressionId?: string;
+  onPreview?: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
 }
 
@@ -312,6 +328,7 @@ function LegacyExpressionEditor({
 function LandscapeExpressionEditor({
   character,
   imageAssets,
+  graphicDefinitions = [],
   thumbnails,
   warnings,
   disabled = false,
@@ -323,8 +340,11 @@ function LandscapeExpressionEditor({
   onSetAsset,
   onSetSource,
   onAddGraphic,
+  onRequestResourceSwap,
   onRemove,
   onSetDefault,
+  onPreview,
+  previewExpressionId,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
   const [newName, setNewName] = useState('');
@@ -444,18 +464,54 @@ function LandscapeExpressionEditor({
               value={newName}
             />
           </label>
-          <GraphicFacePicker source={newGraphic} onChange={source => { if (source.kind === 'fla-graphic') setNewGraphic(source); }} onClear={() => setNewGraphic(undefined)} testId="expression-add-asset-picker" disabled={disabled}>
-          <ImageAssetPicker
-            assets={imageAssets}
-            label="素材"
-            onChange={(assetId) => { setNewGraphic(undefined); setNewAssetId(assetId ?? ''); }}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={newAssetId || null}
-            testId="expression-add-asset-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          </GraphicFacePicker>
+          {onRequestResourceSwap ? (
+            <ImageAssetPicker
+              assets={imageAssets}
+              disabled={disabled}
+              label="素材"
+              onChange={(assetId) => { setNewGraphic(undefined); setNewAssetId(assetId ?? ''); }}
+              onRequestReplace={(trigger) => {
+                onRequestResourceSwap({
+                  title: '选择表情素材',
+                  currentValue: newGraphic
+                    ? { kind: 'fla-graphic', animationId: newGraphic.animationId, firstFrame: newGraphic.firstFrame }
+                    : { kind: 'image', assetId: newAssetId || null },
+                  trigger,
+                  onConfirm: (next) => {
+                    if (next.kind === 'fla-graphic') {
+                      setNewGraphic({ kind: 'fla-graphic', animationId: next.animationId, firstFrame: next.firstFrame ?? 0 });
+                    } else {
+                      setNewGraphic(undefined);
+                      setNewAssetId(next.assetId ?? '');
+                    }
+                  },
+                });
+              }}
+              onThumbnailError={onThumbnailError}
+              selectedAssetId={newAssetId || null}
+              selectedOverride={newGraphic ? {
+                label: graphicDefinitions.find((def) => def.id === newGraphic.animationId)?.name ?? 'FLA 元件',
+                metadata: `第 ${newGraphic.firstFrame + 1} 帧`,
+                preview: <GraphicFacePreview source={newGraphic} />,
+              } : undefined}
+              selectedSurface
+              testId="expression-add-asset-picker"
+              thumbnails={thumbnails}
+            />
+          ) : (
+            <GraphicFacePicker source={newGraphic} onChange={source => { if (source.kind === 'fla-graphic') setNewGraphic(source); }} onClear={() => setNewGraphic(undefined)} testId="expression-add-asset-picker" disabled={disabled}>
+            <ImageAssetPicker
+              assets={imageAssets}
+              label="素材"
+              onChange={(assetId) => { setNewGraphic(undefined); setNewAssetId(assetId ?? ''); }}
+              onThumbnailError={onThumbnailError}
+              selectedAssetId={newAssetId || null}
+              testId="expression-add-asset-picker"
+              thumbnails={thumbnails}
+              disabled={disabled}
+            />
+            </GraphicFacePicker>
+          )}
           <div className="expression-form-actions">
             <button
               data-testid="expression-add-cancel"
@@ -493,22 +549,68 @@ function LandscapeExpressionEditor({
             />
           </label>
           <div className="expression-current-asset">
-            <GraphicFacePicker key={editingExpression.id} source={editingExpression.visualSource} onChange={source => onSetSource?.(editingExpression.id, source)} testId={`expression-asset-picker-${editingExpression.id}`} disabled={disabled}>
-            <ImageAssetPicker
-              assets={imageAssets}
-              label="图片"
-              onChange={(assetId) => {
-                if (assetId) onSetAsset(editingExpression.id, assetId);
-              }}
-              onThumbnailError={onThumbnailError}
-              presentation="inline"
-              searchAndPaginate
-              selectedAssetId={editingExpression.assetId ?? null}
-              testId={`expression-asset-picker-${editingExpression.id}`}
-              thumbnails={thumbnails}
-              disabled={disabled}
-            />
-            </GraphicFacePicker>
+            {onRequestResourceSwap ? (
+              <ImageAssetPicker
+                assets={imageAssets}
+                disabled={disabled}
+                label="图片"
+                onChange={(assetId) => {
+                  if (assetId) onSetAsset(editingExpression.id, assetId);
+                }}
+                onRequestReplace={(trigger) => {
+                  onRequestResourceSwap({
+                    title: `更换表情 · ${editingExpression.name}`,
+                    currentValue: editingExpression.visualSource
+                      ? {
+                          kind: 'fla-graphic',
+                          animationId: editingExpression.visualSource.animationId,
+                          firstFrame: editingExpression.visualSource.firstFrame,
+                        }
+                      : { kind: 'image', assetId: editingExpression.assetId ?? null },
+                    trigger,
+                    onConfirm: (next) => {
+                      if (next.kind === 'fla-graphic') {
+                        onSetSource?.(editingExpression.id, {
+                          kind: 'fla-graphic',
+                          animationId: next.animationId,
+                          firstFrame: next.firstFrame ?? 0,
+                        });
+                      } else if (next.assetId) {
+                        onSetAsset(editingExpression.id, next.assetId);
+                      }
+                    },
+                  });
+                }}
+                onThumbnailError={onThumbnailError}
+                presentation="inline"
+                selectedAssetId={editingExpression.assetId ?? null}
+                selectedOverride={editingExpression.visualSource ? {
+                  label: graphicDefinitions.find((def) => def.id === editingExpression.visualSource?.animationId)?.name ?? 'FLA 元件',
+                  metadata: `第 ${editingExpression.visualSource.firstFrame + 1} 帧`,
+                  preview: <GraphicFacePreview label={editingExpression.name} source={editingExpression.visualSource} />,
+                } : undefined}
+                selectedSurface
+                testId={`expression-asset-picker-${editingExpression.id}`}
+                thumbnails={thumbnails}
+              />
+            ) : (
+              <GraphicFacePicker key={editingExpression.id} source={editingExpression.visualSource} onChange={source => onSetSource?.(editingExpression.id, source)} testId={`expression-asset-picker-${editingExpression.id}`} disabled={disabled}>
+              <ImageAssetPicker
+                assets={imageAssets}
+                label="图片"
+                onChange={(assetId) => {
+                  if (assetId) onSetAsset(editingExpression.id, assetId);
+                }}
+                onThumbnailError={onThumbnailError}
+                presentation="inline"
+                searchAndPaginate
+                selectedAssetId={editingExpression.assetId ?? null}
+                testId={`expression-asset-picker-${editingExpression.id}`}
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              </GraphicFacePicker>
+            )}
           </div>
           {expressionWarnings(editingExpression.id).map((warning) => (
             <ExpressionWarning
@@ -549,6 +651,126 @@ function LandscapeExpressionEditor({
             expression.id === character.defaultExpressionId;
           const isEditing = editingExpressionId === expression.id;
           const cardWarnings = expressionWarnings(expression.id);
+          if (onRequestResourceSwap) {
+            const graphicTitle = expression.visualSource
+              ? graphicDefinitions.find(
+                  (def) => def.id === expression.visualSource?.animationId,
+                )?.name ?? 'FLA 元件'
+              : null;
+            const compactSubtitle = expression.visualSource
+              ? `${graphicTitle} · 第 ${expression.visualSource.firstFrame + 1} 帧`
+              : asset?.name ?? '素材不可用';
+            return (
+              <li
+                className={`expression-card expression-compact-item${isDefault ? ' expression-default' : ''}${isEditing ? ' expression-card-editing' : ''}`}
+                data-expression-default={isDefault}
+                data-expression-editing={isEditing}
+                data-expression-id={expression.id}
+                key={expression.id}
+              >
+                <CharacterCompactObjectRow
+                  actions={
+                    <>
+                      {onPreview ? (
+                        <button
+                          aria-label={`预览 ${expression.name}`}
+                          aria-pressed={previewExpressionId === expression.id}
+                          className="character-compact-icon-button"
+                          data-testid={`expression-preview-${expression.id}`}
+                          onClick={() => onPreview(expression.id)}
+                          title={
+                            previewExpressionId === expression.id
+                              ? '停止预览表情'
+                              : '预览表情'
+                          }
+                          type="button"
+                        >
+                          <Play aria-hidden="true" size={15} />
+                        </button>
+                      ) : null}
+                      {!isEditing ? (
+                        <button
+                          aria-label={`编辑 ${expression.name}`}
+                          className="character-compact-icon-button expression-edit-trigger"
+                          data-testid={`expression-edit-${expression.id}`}
+                          disabled={disabled}
+                          onClick={() => startExpressionEdit(expression)}
+                          title="编辑"
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" size={15} />
+                        </button>
+                      ) : null}
+                      <CompactRowOverflowMenu
+                        ariaLabel={`${expression.name} 更多操作`}
+                        disabled={disabled}
+                        items={[
+                          ...(!isDefault
+                            ? [
+                                {
+                                  label: '设为默认',
+                                  testId: `expression-default-${expression.id}`,
+                                  disabled,
+                                  onSelect: () => onSetDefault(expression.id),
+                                },
+                              ]
+                            : []),
+                          {
+                            label: '删除表情',
+                            testId: `expression-delete-${expression.id}`,
+                            disabled: disabled || isDefault,
+                            title: isDefault
+                              ? '请先选择替代表情，再删除默认表情。'
+                              : '删除表情',
+                            danger: true,
+                            onSelect: () => onRemove(expression.id),
+                          },
+                        ]}
+                        menuTestId={`expression-overflow-menu-${expression.id}`}
+                        triggerTestId={`expression-overflow-trigger-${expression.id}`}
+                      />
+                    </>
+                  }
+                  assetState={expression.visualSource || asset ? 'configured' : 'missing'}
+                  badge={
+                    <>
+                      {isDefault ? (
+                        <span className="expression-default-badge" title="默认表情">
+                          <Check aria-hidden="true" size={12} />
+                          默认
+                        </span>
+                      ) : null}
+                      {cardWarnings[0] ? (
+                        <ExpressionWarning compact warning={cardWarnings[0]} />
+                      ) : null}
+                    </>
+                  }
+                  disabled={disabled}
+                  previewing={previewExpressionId === expression.id}
+                  selected={isEditing}
+                  subtitle={compactSubtitle}
+                  thumbnail={
+                    expression.visualSource ? (
+                      <GraphicFacePreview
+                        label={expression.name}
+                        source={expression.visualSource}
+                      />
+                    ) : (
+                      <ExpressionThumbnail
+                        assetId={expression.assetId ?? ''}
+                        assetAvailable={Boolean(asset)}
+                        className="expression-card-preview"
+                        expressionName={expression.name}
+                        onThumbnailError={onThumbnailError}
+                        thumbnail={thumbnail}
+                      />
+                    )
+                  }
+                  title={expression.name}
+                />
+              </li>
+            );
+          }
           return (
             <li
               className={`expression-card${isDefault ? ' expression-default' : ''}${isEditing ? ' expression-card-editing' : ''}`}
@@ -585,6 +807,15 @@ function LandscapeExpressionEditor({
                 </div>
               </div>
               <div className="expression-card-actions">
+                {onPreview ? (
+                  <button
+                    aria-pressed={previewExpressionId === expression.id}
+                    onClick={() => onPreview(expression.id)}
+                    type="button"
+                  >
+                    预览
+                  </button>
+                ) : null}
                 {!isDefault ? (
                   <button
                     className="expression-default-trigger"

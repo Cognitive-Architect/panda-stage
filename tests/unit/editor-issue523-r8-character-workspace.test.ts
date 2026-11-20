@@ -227,8 +227,8 @@ describe('Issue #523 R8 unified Character workspace', () => {
     );
 
     expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
-    expect(markup).toContain('>组装</button>');
-    expect(markup).toContain('aria-label="角色组装素材"');
+    expect(markup).toContain('>结构</button>');
+    expect(markup).toContain('aria-label="角色结构"');
     expect(markup.match(/data-workspace="(?:assembly|expressions|settings)"/gu)).toHaveLength(3);
     expect(markup).toMatch(
       /data-workspace="expressions"[^>]*id="character-workspace-expressions"/u,

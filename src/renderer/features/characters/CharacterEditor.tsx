@@ -1,17 +1,32 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import type {
-  Character,
-  CharacterDimensionWarning,
-  CompositeCharacterDefinition,
-  ExpressionCharacter,
-  ImageAsset,
-  Project,
+import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, Pencil, Play, Plus, RefreshCw, X } from 'lucide-react';
+import { CharacterFloatHost } from './characterFloatHost';
+import { CharacterSingleImagePreview } from './CharacterSingleImagePreview';
+import { CharacterFloatPanel } from './CharacterFloatPanel';
+import './character-float-detail.css';
+import {
+  isFlaGraphicDefinition,
+  type Character,
+  type CharacterDimensionWarning,
+  type CompositeCharacterDefinition,
+  type ExpressionCharacter,
+  type ImageAsset,
+  type Project,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
-import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
+import type { CharacterAssemblyEditTarget, CharacterAssemblySnapshot } from '../../stores/characterAssemblySessionStore';
+import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { CharacterAssemblyWorkbench } from './CharacterAssemblyWorkbench';
 import { Button } from '../../ui/Button';
+import { CharacterCompactObjectRow } from './CharacterCompactObjectRow';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { CharacterTalkingHeadMotionPreview } from './CharacterTalkingHeadMotionPreview';
+import {
+  CharacterResourceSwapDialog,
+  type ResourceSwapValue,
+} from './CharacterResourceSwapDialog';
+import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import { ExpressionEditor } from './ExpressionEditor';
 import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
 import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
@@ -245,6 +260,43 @@ function CharacterAssemblyMouthOverflowMenu({
   );
 }
 
+function CompactRowAssetThumbnail({
+  asset,
+  assetConfigured,
+  label,
+  onThumbnailError,
+  thumbnail,
+}: {
+  asset: ImageAsset | undefined;
+  assetConfigured: boolean;
+  label: string;
+  onThumbnailError?: (assetId: string) => void;
+  thumbnail?: ThumbnailState;
+}): React.JSX.Element {
+  if (asset && thumbnail?.status === 'ready') {
+    return (
+      <img
+        alt=""
+        onError={() => onThumbnailError?.(asset.id)}
+        src={thumbnail.dataUrl}
+      />
+    );
+  }
+  const iconKind = getThumbnailFallbackIconKind(thumbnail, {
+    assetConfigured,
+    assetResolved: Boolean(asset),
+  });
+  return (
+    <span
+      aria-label={`${label}缩略图占位`}
+      className="character-compact-row-thumb-fallback"
+      data-thumbnail-icon={iconKind}
+    >
+      <ThumbnailStateIcon kind={iconKind} size={18} />
+    </span>
+  );
+}
+
 function CharacterThumbnailFallback({
   assetConfigured = true,
   assetResolved = true,
@@ -309,7 +361,6 @@ export interface CharacterEditorProps {
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
   assemblyDraft?: CompositeCharacterDefinition | null;
-  adaptiveAssemblyActive?: boolean;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
@@ -329,6 +380,11 @@ export interface CharacterEditorProps {
   onBackToDetail?: () => void;
   onBackToList?: () => void;
   onCloseDrawer?: () => void;
+  status?: string;
+  floatEnabled?: boolean;
+  projectSnapshot?: EditorProjectSnapshot;
+  assemblySession?: CharacterAssemblySnapshot;
+  assemblyPending?: boolean;
 }
 
 export function CharacterEditor({
@@ -350,7 +406,6 @@ export function CharacterEditor({
   onSetDefaultExpression,
   onSetMouthOpenAsset,
   assemblyDraft = null,
-  adaptiveAssemblyActive = false,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
@@ -370,7 +425,75 @@ export function CharacterEditor({
   onBackToDetail = () => undefined,
   onBackToList = () => undefined,
   onCloseDrawer = () => undefined,
+  status,
+  floatEnabled = true,
+  projectSnapshot,
+  assemblySession,
+  assemblyPending = false,
 }: CharacterEditorProps): React.JSX.Element {
+  const floatHost = useContext(CharacterFloatHost);
+  const floatTarget = floatHost?.target ?? null;
+  const setFloatMode = floatHost?.setMode;
+  const floatMode = floatEnabled && floatTarget && view === 'detail' && character && character.mode !== 'adaptive-parts'
+    ? character.mode : null;
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [floatOperations, setFloatOperations] = useState<'parts' | 'expressions'>('parts');
+  const [floatProperties, setFloatProperties] = useState<'part' | 'character'>('part');
+  const [previewExpressionId, setPreviewExpressionId] = useState<string>();
+  const [previewMouth, setPreviewMouth] = useState(false);
+  const [precisionTarget, setPrecisionTarget] = useState<HTMLDivElement | null>(null);
+  const storeSnapshot = useSyncExternalStore(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+    editorProjectStore.getSnapshot,
+  );
+  const resolvedProject = project ?? projectSnapshot?.project ?? storeSnapshot?.project;
+  const flaGraphicDefinitions = useMemo(
+    () => resolvedProject?.animations.filter(isFlaGraphicDefinition) ?? [],
+    [resolvedProject?.animations],
+  );
+  const [swapDialog, setSwapDialog] = useState<{
+    title: string;
+    currentValue: ResourceSwapValue;
+    emptyOption?: { label: string; description?: string };
+    allowGraphic: boolean;
+    returnFocusTo: HTMLElement | null;
+    onConfirm: (nextValue: ResourceSwapValue) => void;
+  } | null>(null);
+  const openAssemblyRef = useRef(onOpenAssembly);
+  openAssemblyRef.current = onOpenAssembly;
+  useEffect(() => {
+    if (floatMode === 'composite' && !assemblyDraft) openAssemblyRef.current();
+  }, [floatMode, assemblyDraft]);
+  const leftHandle = useRef<HTMLButtonElement>(null);
+  const rightHandle = useRef<HTMLButtonElement>(null);
+  const floatId = useId();
+  useLayoutEffect(() => {
+    if (!floatMode || !setFloatMode) return;
+    setFloatMode(floatMode);
+    return () => setFloatMode(null);
+  }, [floatMode, setFloatMode]);
+  useLayoutEffect(() => {
+    if (!floatMode || !floatTarget || !leftOpen || !rightOpen) return;
+    const observer = new ResizeObserver(() => {
+      if (floatTarget.clientWidth >= 740) return;
+      if (floatTarget.querySelector('.character-float-panel-left')?.contains(document.activeElement)) {
+        rightHandle.current?.focus();
+      }
+      setLeftOpen(false);
+    });
+    observer.observe(floatTarget);
+    return () => observer.disconnect();
+  }, [floatMode, floatTarget, leftOpen, rightOpen]);
+
+  const isNarrowFloat = () => Boolean(floatTarget && floatTarget.clientWidth > 0 && floatTarget.clientWidth < 740);
+  const openProperties = (context: 'part' | 'character'): void => {
+    if (isNarrowFloat()) setLeftOpen(false);
+    setFloatProperties(context);
+    setRightOpen(true);
+    rightHandle.current?.focus();
+  };
   const [name, setName] = useState(character?.name ?? '');
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
@@ -391,7 +514,6 @@ export function CharacterEditor({
       assemblyDraft ? 'assembly' : 'expressions',
     );
   const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
-
   const persistedTalkingHeadMotionIntensityPercent =
     character?.mode === 'composite'
       ? character.talkingHeadMotionIntensityPercent
@@ -404,7 +526,7 @@ export function CharacterEditor({
     !(
       presentation === 'landscape' &&
       view === 'detail' &&
-      activeWorkspace !== 'settings'
+      (floatMode ? !rightOpen || floatProperties !== 'character' : activeWorkspace !== 'settings')
     );
 
   useEffect(() => {
@@ -447,6 +569,7 @@ export function CharacterEditor({
   useEffect(() => {
     const hasAssemblyDraft = Boolean(assemblyDraft);
     if (
+      character?.mode === 'composite' &&
       activeWorkspace === 'assembly' &&
       assemblyDraftWasOpen.current &&
       !hasAssemblyDraft
@@ -454,7 +577,7 @@ export function CharacterEditor({
       setActiveWorkspace('expressions');
     }
     assemblyDraftWasOpen.current = hasAssemblyDraft;
-  }, [activeWorkspace, assemblyDraft]);
+  }, [activeWorkspace, assemblyDraft, character?.mode]);
 
   const landscapeDetail =
     presentation === 'landscape' && view === 'detail';
@@ -469,7 +592,7 @@ export function CharacterEditor({
     );
   };
 
-  if (!character) {
+  if (!character || character.mode === 'adaptive-parts') {
     return (
       <div className="character-editor character-editor-empty">
         <strong>选择一个角色开始编辑</strong>
@@ -489,68 +612,22 @@ export function CharacterEditor({
     );
   }
 
-  if (character.mode === 'adaptive-parts') {
-    const placementUnavailableReason = disabled
-      ? '请先打开项目'
-      : !hasCurrentShot
-        ? '请先选择镜头'
-        : null;
-    return (
-      <div className="character-editor character-editor-empty character-editor-adaptive-detail">
-        {view === 'detail' ? (
-          <header className="character-adaptive-detail-header">
-            <div className="character-adaptive-detail-heading">
-              {!adaptiveAssemblyActive ? (
-                <Button
-                  aria-label="返回角色列表"
-                  className="character-adaptive-detail-back"
-                  data-testid="adaptive-parts-back-to-list"
-                  onClick={onBackToList}
-                  title="返回角色列表"
-                  variant="secondary"
-                >
-                  <span aria-hidden="true">←</span>
-                </Button>
-              ) : null}
-              <strong title={character.name}>{character.name}</strong>
-            </div>
-            <div className="character-detail-identity-actions character-adaptive-detail-actions">
-              <Button
-                aria-label="加入当前镜头"
-                className="character-detail-place-action"
-                data-testid="character-detail-place-current-shot"
-                disabled={placementUnavailableReason !== null}
-                onClick={() => onPlaceInCurrentShot(false)}
-                title={placementUnavailableReason ?? '加入当前镜头'}
-                variant="secondary"
-              >
-                ＋ 加入镜头
-              </Button>
-            </div>
-          </header>
-        ) : (
-          <strong>{character.name}</strong>
-        )}
-      </div>
-    );
-  }
-
+  const expressionCharacter = character;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head
       ? (character as HeadedCompositeCharacter)
       : null;
 
-  const formalDefaultExpression = character.expressions.find(
-    (expression) => expression.id === character.defaultExpressionId,
+  const formalDefaultExpression = expressionCharacter?.expressions.find(
+    (expression) => expression.id === expressionCharacter.defaultExpressionId,
   );
   const defaultExpression =
-    formalDefaultExpression ?? character.expressions[0];
+    formalDefaultExpression ?? expressionCharacter?.expressions[0];
   const defaultExpressionAsset = defaultExpression
     ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
     : undefined;
-  const defaultThumbnail = defaultExpression?.assetId
-    ? thumbnails[defaultExpression.assetId]
-    : undefined;
+  const defaultImageAssetId = defaultExpression?.assetId;
+  const defaultThumbnail = defaultImageAssetId ? thumbnails[defaultImageAssetId] : undefined;
   const defaultAssetResolved = Boolean(defaultExpressionAsset || defaultExpression?.visualSource);
   const hasPendingTransform = isDefaultTransformPending(
     character,
@@ -559,10 +636,10 @@ export function CharacterEditor({
   );
   const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
   const formalDefaultAssetAvailable = Boolean(
-    formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
-      (asset) => asset.id === formalDefaultExpression.assetId,
-    )),
-  );
+        formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
+          (asset) => asset.id === formalDefaultExpression.assetId,
+        )),
+      );
   const placementUnavailableReason = disabled
     ? '请先打开项目'
     : !hasCurrentShot
@@ -574,22 +651,56 @@ export function CharacterEditor({
           : null;
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
+  const singleImageCharacter = character.mode === 'single-image';
+  const hasAssemblyWorkbench = compositeCharacter;
   const assemblyMouthAssetId = assemblyDraft
     ? assemblyDraft.mouthOpenAssetId ?? null
-    : character.mouthOpenAssetId ?? null;
+    : expressionCharacter?.mouthOpenAssetId ?? null;
+
+  const switchFloatOperations = (next: 'parts' | 'expressions'): void => {
+    if (next === floatOperations) return;
+    if (floatMode === 'composite') {
+      if (floatOperations === 'parts' && !onLeaveAssembly()) return;
+      if (floatOperations === 'parts' && !onOpenAssembly()) return;
+    }
+    setFloatOperations(next);
+    setSwapDialog(null);
+    if (next === 'expressions') setFloatProperties('character');
+  };
+  const selectAssemblyObject = (target: CharacterAssemblyEditTarget): void => {
+    onSelectAssemblyEditTarget(target);
+    if (floatMode === 'composite' && rightOpen) setFloatProperties('part');
+  };
+  const showFloatRole = (): void => {
+    if (floatMode === 'composite' && assemblyPending) {
+      if (!onLeaveAssembly() || !onOpenAssembly()) return;
+    }
+    openProperties('character');
+  };
 
   const switchDetailWorkspace = (
     nextWorkspace: CharacterDetailWorkspace,
   ): void => {
+    if (floatMode === 'composite' && nextWorkspace === 'expressions') {
+      switchFloatOperations('expressions');
+      return;
+    }
     if (nextWorkspace === activeWorkspace) return;
     if (
+      hasAssemblyWorkbench &&
       activeWorkspace === 'assembly' &&
       nextWorkspace !== 'assembly' &&
       !onLeaveAssembly()
     ) {
       return;
     }
-    if (nextWorkspace === 'assembly' && !onOpenAssembly()) return;
+    if (
+      hasAssemblyWorkbench &&
+      nextWorkspace === 'assembly' &&
+      !onOpenAssembly()
+    ) {
+      return;
+    }
     if (activeWorkspace === 'expressions') setExpressionAddOpen(false);
     setActiveWorkspace(nextWorkspace);
   };
@@ -731,6 +842,1182 @@ export function CharacterEditor({
     </section>
   ) : null;
 
+  const structureContent = compositeCharacter ? (
+              <>
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyState={{
+                    description: '从项目图片中选择身体。',
+                    label: '请选择图片',
+                  }}
+                  label="身体"
+                  onSelectedAssetActivate={
+                    assemblyDraft?.bodyAssetId
+                      ? () => selectAssemblyObject('body')
+                      : undefined
+                  }
+                  onChange={(assetId) => {
+                    if (assetId) onSetAssemblyBodyAsset(assetId);
+                  }}
+                  onRequestReplace={floatMode ? (trigger) => {
+                    setSwapDialog({
+                      title: '更换身体',
+                      currentValue: { kind: 'image', assetId: assemblyDraft?.bodyAssetId ?? character.bodyAssetId },
+                      allowGraphic: false,
+                      returnFocusTo: trigger,
+                      onConfirm: (next) => {
+                        if (next.kind === 'image' && next.assetId) onSetAssemblyBodyAsset(next.assetId);
+                      },
+                    });
+                  } : undefined}
+                  onThumbnailError={onThumbnailError}
+                  selectedAssetId={
+                    assemblyDraft?.bodyAssetId ?? character.bodyAssetId
+                  }
+                  testId="character-assembly-body-picker"
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                  selectedAssetActive={assemblyEditTarget === 'body'}
+                  showEditTargetStatus={false}
+                  selectedSurface
+                />
+                <ImageAssetPicker
+                  assets={imageAssets}
+                  emptyOption={{ label: '不添加头部', optional: true }}
+                  emptyActionLabel="选择"
+                  label="头部"
+                  onChange={onSetAssemblyHeadAsset}
+                  onRequestReplace={floatMode ? (trigger) => {
+                    const currentHeadId = assemblyDraft
+                      ? assemblyDraft.head?.assetId ?? null
+                      : character.head?.assetId ?? null;
+                    setSwapDialog({
+                      title: '更换头部',
+                      currentValue: { kind: 'image', assetId: currentHeadId },
+                      emptyOption: { label: '不添加头部' },
+                      allowGraphic: false,
+                      returnFocusTo: trigger,
+                      onConfirm: (next) => {
+                        if (next.kind === 'image') onSetAssemblyHeadAsset(next.assetId);
+                      },
+                    });
+                  } : undefined}
+                  onThumbnailError={onThumbnailError}
+                  onSelectedAssetActivate={
+                    assemblyDraft?.head
+                      ? () => selectAssemblyObject('head')
+                      : undefined
+                  }
+                  searchAndPaginate
+                  selectedAssetId={
+                    assemblyDraft
+                      ? assemblyDraft.head?.assetId ?? null
+                      : character.head?.assetId ?? null
+                  }
+                  showEditTargetStatus={false}
+                  showOptionalLabel={false}
+                  testId="character-assembly-head-asset"
+                  thumbnails={thumbnails}
+                  disabled={disabled}
+                  selectedAssetActive={assemblyEditTarget === 'head'}
+                  selectedSurface
+                />
+                <div
+                  className="character-assembly-default-face-summary image-asset-picker"
+                  data-testid="character-assembly-default-face-summary"
+                >
+                  <div className="image-asset-picker-heading">
+                    <strong>默认脸</strong>
+                  </div>
+                  {defaultExpression ? (
+                    <ImageAssetPickerSelectedSurface>
+                      <button
+                        aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
+                        aria-pressed={assemblyEditTarget === 'face'}
+                        className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
+                        data-edit-target-selected={String(assemblyEditTarget === 'face')}
+                        data-testid="character-assembly-default-face-select"
+                        disabled={disabled || !assemblyDraft}
+                        onClick={() => selectAssemblyObject('face')}
+                        title={
+                          defaultExpressionAsset
+                            ? `${defaultExpression.name} · ${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                            : defaultExpression.visualSource
+                              ? `${defaultExpression.name} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`
+                              : `${defaultExpression.name} · 素材不可用`
+                        }
+                        type="button"
+                      >
+                        <CharacterExpressionThumbnail
+                          className="image-asset-picker-selected-thumbnail"
+                          expression={defaultExpression}
+                          onThumbnailError={onThumbnailError}
+                          thumbnail={defaultThumbnail}
+                        />
+                        <span className="image-asset-picker-selected-copy">
+                          <strong>{defaultExpression.name}</strong>
+                          <small>
+                            {defaultExpressionAsset
+                              ? (floatMode ? defaultExpressionAsset.name : `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`)
+                              : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
+                          </small>
+                        </span>
+                      </button>
+                      <button
+                        aria-label={`管理默认脸：${defaultExpression.name}`}
+                        className="image-asset-picker-selected-action character-assembly-selected-action-button"
+                        data-testid="character-assembly-go-expressions"
+                        disabled={disabled}
+                        onClick={() => switchDetailWorkspace('expressions')}
+                        type="button"
+                      >
+                        管理
+                      </button>
+                    </ImageAssetPickerSelectedSurface>
+                  ) : null}
+                </div>
+                {(() => {
+                  const mouthVisualSource = assemblyDraft
+                    ? assemblyDraft.mouthOpenVisualSource
+                    : character.mouthOpenVisualSource;
+                  const mouthGraphicDef = mouthVisualSource
+                    ? flaGraphicDefinitions.find((def) => def.id === mouthVisualSource.animationId)
+                    : undefined;
+                  const mouthPicker = (
+                    <ImageAssetPicker
+                      assets={imageAssets}
+                      emptyOption={{
+                        label: '暂不配置',
+                      }}
+                      label="张嘴脸"
+                      onChange={onSetAssemblyMouthAsset}
+                      onRequestReplace={floatMode ? (trigger) => {
+                        setSwapDialog({
+                          title: '更换张嘴脸',
+                          currentValue: mouthVisualSource
+                            ? { kind: 'fla-graphic', animationId: mouthVisualSource.animationId, firstFrame: mouthVisualSource.firstFrame }
+                            : { kind: 'image', assetId: assemblyMouthAssetId },
+                          emptyOption: { label: '暂不配置' },
+                          allowGraphic: Boolean(onSetAssemblyMouthSource),
+                          returnFocusTo: trigger,
+                          onConfirm: (next) => {
+                            if (next.kind === 'fla-graphic') {
+                              onSetAssemblyMouthSource?.({
+                                kind: 'fla-graphic',
+                                animationId: next.animationId,
+                                firstFrame: next.firstFrame ?? 0,
+                              });
+                            } else {
+                              onSetAssemblyMouthAsset(next.assetId);
+                            }
+                          },
+                        });
+                      } : undefined}
+                      onThumbnailError={onThumbnailError}
+                      selectedAssetId={assemblyMouthAssetId}
+                      selectedOverride={floatMode && mouthVisualSource ? {
+                        label: mouthGraphicDef?.name ?? 'FLA 元件',
+                        metadata: `第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                        preview: <GraphicFacePreview label="张嘴脸" source={mouthVisualSource} />,
+                        tooltip: `${mouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                      } : undefined}
+                      testId="character-assembly-mouth-picker"
+                      thumbnails={thumbnails}
+                      disabled={disabled}
+                      selectedSurface
+                      selectedAction={
+                        assemblyMouthAssetId || (floatMode && mouthVisualSource) ? (
+                          <CharacterAssemblyMouthOverflowMenu
+                            disabled={disabled}
+                            onClear={() => {
+                              if (mouthVisualSource) onSetAssemblyMouthSource?.(null);
+                              else onSetAssemblyMouthAsset(null);
+                            }}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  );
+                  return floatMode ? mouthPicker : (
+                    <GraphicFacePicker source={mouthVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
+                      {mouthPicker}
+                    </GraphicFacePicker>
+                  );
+                })()}
+              </>
+            ) : singleImageCharacter && defaultExpression ? (
+              <div
+                className="character-single-structure-panel"
+                data-testid="character-single-structure-panel"
+              >
+                {(() => {
+                  const overallGraphicDef = defaultExpression.visualSource
+                    ? flaGraphicDefinitions.find((def) => def.id === defaultExpression.visualSource?.animationId)
+                    : undefined;
+                  const singleStructurePicker = (
+                    <ImageAssetPicker
+                      assets={imageAssets}
+                      emptyState={{
+                        description: '从项目图片中选择整体图像。',
+                        label: '请选择图片',
+                      }}
+                      label="整体图像"
+                      onChange={(assetId) => {
+                        if (assetId) {
+                          onSetExpressionAsset(defaultExpression.id, assetId);
+                        }
+                      }}
+                      onRequestReplace={floatMode ? (trigger) => {
+                        setSwapDialog({
+                          title: '更换整体图像',
+                          currentValue: defaultExpression.visualSource
+                            ? {
+                                kind: 'fla-graphic',
+                                animationId: defaultExpression.visualSource.animationId,
+                                firstFrame: defaultExpression.visualSource.firstFrame,
+                              }
+                            : { kind: 'image', assetId: defaultExpression.assetId ?? null },
+                          allowGraphic: Boolean(onSetExpressionSource),
+                          returnFocusTo: trigger,
+                          onConfirm: (next) => {
+                            if (next.kind === 'fla-graphic') {
+                              onSetExpressionSource?.(defaultExpression.id, {
+                                kind: 'fla-graphic',
+                                animationId: next.animationId,
+                                firstFrame: next.firstFrame ?? 0,
+                              });
+                            } else if (next.assetId) {
+                              onSetExpressionAsset(defaultExpression.id, next.assetId);
+                            }
+                          },
+                        });
+                      } : undefined}
+                      onThumbnailError={onThumbnailError}
+                      selectedAssetId={defaultExpression.assetId ?? null}
+                      selectedOverride={floatMode && defaultExpression.visualSource ? {
+                        label: overallGraphicDef?.name ?? 'FLA 元件',
+                        metadata: `第 ${defaultExpression.visualSource.firstFrame + 1} 帧`,
+                        preview: <GraphicFacePreview label="整体图像" source={defaultExpression.visualSource} />,
+                        tooltip: `${overallGraphicDef?.name ?? 'FLA 元件'} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`,
+                      } : undefined}
+                      testId="character-single-structure-image-picker"
+                      thumbnails={thumbnails}
+                      disabled={disabled}
+                      selectedSurface
+                    />
+                  );
+                  return floatMode ? singleStructurePicker : (
+                    <GraphicFacePicker
+                      source={defaultExpression.visualSource}
+                      onChange={(source) => {
+                        if (source && onSetExpressionSource) {
+                          onSetExpressionSource(defaultExpression.id, source);
+                        }
+                      }}
+                      testId="character-single-structure-image-picker"
+                      disabled={disabled}
+                    >
+                      {singleStructurePicker}
+                    </GraphicFacePicker>
+                  );
+                })()}
+              </div>
+            ) : null;
+  const expressionContent = (<ExpressionEditor
+                character={expressionCharacter}
+                disabled={disabled}
+                graphicDefinitions={flaGraphicDefinitions}
+                imageAssets={imageAssets}
+                isAddOpen={expressionAddOpen}
+                onAdd={onAddExpression}
+                onAddOpenChange={setExpressionAddOpen}
+                onRemove={onRemoveExpression}
+                onRename={onRenameExpression}
+                onSetAsset={onSetExpressionAsset}
+                onSetSource={onSetExpressionSource}
+                onAddGraphic={onAddGraphicExpression}
+                onRequestResourceSwap={floatMode ? (request) => {
+                  setSwapDialog({
+                    title: request.title,
+                    currentValue: request.currentValue,
+                    allowGraphic: Boolean(onSetExpressionSource || onAddGraphicExpression),
+                    returnFocusTo: request.trigger,
+                    onConfirm: request.onConfirm,
+                  });
+                } : undefined}
+                onSetDefault={onSetDefaultExpression}
+                onThumbnailError={onThumbnailError}
+                compactDetailWorkspace
+                onPreview={floatMode === 'single-image' ? (id) => {
+                  setPreviewExpressionId(id);
+                  setPreviewMouth(false);
+                } : undefined}
+                previewExpressionId={previewMouth ? undefined : previewExpressionId ?? defaultExpression?.id}
+                presentation="landscape"
+                thumbnails={thumbnails}
+                warnings={warnings}
+              />);
+  const defaultProperties = (<><section
+              className="character-settings-section character-default-presentation"
+              data-default-transform-pending={hasPendingTransform}
+            >
+              <div className="character-section-heading">
+                <div>
+                  <h4 id="character-settings-workspace-heading">
+                    初始角色大小
+                  </h4>
+                </div>
+              </div>
+              <div className="character-default-transform-controls">
+                <div className="character-scale-control-group">
+                  <div
+                    aria-label="初始角色大小"
+                    className="character-scale-stepper"
+                    role="group"
+                  >
+                    <button
+                      aria-label="减小初始角色大小"
+                      disabled={disabled || scale <= 0.1}
+                      onClick={() => adjustScale(-0.1)}
+                      type="button"
+                    >
+                      −
+                    </button>
+                    <output aria-live="polite">{scale.toFixed(1)}×</output>
+                    <button
+                      aria-label="增大初始角色大小"
+                      disabled={disabled || scale >= 10}
+                      onClick={() => adjustScale(0.1)}
+                      type="button"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <button
+                  aria-checked={flipX}
+                  className="character-flip-switch"
+                  disabled={disabled}
+                  onClick={() => setFlipX((current) => !current)}
+                  role="switch"
+                  type="button"
+                >
+                  <span>水平翻转</span>
+                  <span aria-hidden="true" className="character-switch-track">
+                    <span />
+                  </span>
+                </button>
+              </div>
+              {hasPendingTransform ? (
+                <div
+                  aria-live="polite"
+                  className="character-default-pending"
+                  data-testid="character-default-pending"
+                  role="status"
+                >
+                  <div>
+                    <strong>● 有未应用更改</strong>
+                    <span>当前设置尚未应用到角色</span>
+                  </div>
+                  <div className="character-default-action-row">
+                    <button
+                      aria-label="还原未应用的默认表现"
+                      className="character-default-revert"
+                      data-testid="character-default-revert"
+                      disabled={disabled}
+                      onClick={() => {
+                        setScale(character.defaultScale);
+                        setFlipX(character.defaultFlipX);
+                      }}
+                      type="button"
+                    >
+                      还原
+                    </button>
+                    <button
+                      className="character-default-apply"
+                      data-pending="true"
+                      disabled={
+                        disabled ||
+                        !Number.isFinite(scale) ||
+                        scale < 0.1 ||
+                        scale > 10
+                      }
+                      onClick={() => onSetDefaultTransform(scale, flipX)}
+                      type="button"
+                    >
+                      应用
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+            {talkingHeadSettings}</>);
+  const singleMouth = singleImageCharacter && expressionCharacter ? (() => {
+            const mouthVisualSource = expressionCharacter.mouthOpenVisualSource;
+            const mouthGraphicDef = mouthVisualSource
+              ? flaGraphicDefinitions.find((def) => def.id === mouthVisualSource.animationId)
+              : undefined;
+            const mouthPicker = (
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyActionLabel="选择图片"
+                emptyOption={{
+                  description: '设置张嘴图后，可在表情中使用。',
+                  label: '未设置',
+                }}
+                label="张嘴图"
+                onChange={onSetMouthOpenAsset}
+                onRequestReplace={floatMode ? (trigger) => {
+                  setSwapDialog({
+                    title: '更换张嘴图',
+                    currentValue: mouthVisualSource
+                      ? { kind: 'fla-graphic', animationId: mouthVisualSource.animationId, firstFrame: mouthVisualSource.firstFrame }
+                      : { kind: 'image', assetId: expressionCharacter.mouthOpenAssetId ?? null },
+                    emptyOption: { label: '未设置', description: '设置张嘴图后，可在表情中使用。' },
+                    allowGraphic: Boolean(onSetMouthSource),
+                    returnFocusTo: trigger,
+                    onConfirm: (next) => {
+                      if (next.kind === 'fla-graphic') {
+                        onSetMouthSource?.({
+                          kind: 'fla-graphic',
+                          animationId: next.animationId,
+                          firstFrame: next.firstFrame ?? 0,
+                        });
+                      } else {
+                        onSetMouthOpenAsset(next.assetId);
+                      }
+                    },
+                  });
+                } : undefined}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
+                selectedOverride={floatMode && mouthVisualSource ? {
+                  label: mouthGraphicDef?.name ?? 'FLA 元件',
+                  metadata: `第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                  preview: <GraphicFacePreview label="张嘴图" source={mouthVisualSource} />,
+                  tooltip: `${mouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                } : undefined}
+                selectedSurface={Boolean(floatMode)}
+                testId="character-detail-mouth-visual-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+                selectedAction={
+                  expressionCharacter.mouthOpenAssetId || (floatMode && mouthVisualSource) ? (
+                    <button
+                      className="character-mouth-clear"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (mouthVisualSource) onSetMouthSource?.(null);
+                        else onSetMouthOpenAsset(null);
+                      }}
+                      type="button"
+                    >
+                      清除
+                    </button>
+                  ) : undefined
+                }
+              />
+            );
+            return (
+            <section className="character-settings-section character-mouth-setting-visual">
+              <div
+                className={`character-mouth-state${expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource ? ' is-configured' : ''}`}
+                data-mouth-configured={Boolean(expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource)}
+              >
+                {floatMode ? mouthPicker : (
+                  <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
+                    {mouthPicker}
+                  </GraphicFacePicker>
+                )}
+              </div>
+              {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
+                <Button aria-pressed={previewMouth} className="character-float-mouth-preview-button" onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
+              ) : null}
+            </section>
+            );
+          })() : null;
+  const deleteProperties = floatMode ? (
+    <Button className="character-float-delete" data-testid="character-delete-settings" disabled={disabled} onClick={onDeleteCharacter} variant="danger">删除角色</Button>
+  ) : (<section
+              aria-labelledby="character-danger-zone-heading"
+              className="character-settings-section character-danger-zone"
+              data-testid="character-danger-zone"
+            >
+              <div className="character-danger-zone-copy">
+                <h4 id="character-danger-zone-heading">危险操作</h4>
+                <p>
+                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
+                </p>
+              </div>
+              <button
+                className="character-delete-settings-action"
+                data-testid="character-delete-settings"
+                disabled={disabled}
+                onClick={onDeleteCharacter}
+                type="button"
+              >
+                删除角色
+              </button>
+            </section>);
+  if (floatMode && floatTarget) {
+    const shownExpression = character.expressions.find(expression => expression.id === previewExpressionId) ?? defaultExpression;
+    const showMouth = previewMouth && Boolean(character.mouthOpenAssetId || character.mouthOpenVisualSource);
+    const shownSource = showMouth ? character.mouthOpenVisualSource : shownExpression?.visualSource;
+    const shownAssetId = showMouth ? character.mouthOpenAssetId : shownExpression?.assetId;
+    const shownAsset = imageAssets.find(asset => asset.id === shownAssetId);
+    const shownThumbnail = shownAssetId ? thumbnails[shownAssetId] : undefined;
+    const leftId = floatId + '-operations';
+    const rightId = floatId + '-properties';
+
+    const bodyAssetId = compositeCharacter ? (assemblyDraft?.bodyAssetId ?? character.bodyAssetId) : '';
+    const bodyAsset = bodyAssetId ? imageAssets.find((asset) => asset.id === bodyAssetId) : undefined;
+    const headAssetId = compositeCharacter ? (assemblyDraft ? assemblyDraft.head?.assetId ?? null : character.head?.assetId ?? null) : null;
+    const headAsset = headAssetId ? imageAssets.find((asset) => asset.id === headAssetId) : undefined;
+    const hasAssemblyHead = Boolean(assemblyDraft ? assemblyDraft.head : character.mode === 'composite' && character.head);
+    const defaultExpressionGraphicDef = defaultExpression?.visualSource
+      ? flaGraphicDefinitions.find((def) => def.id === defaultExpression.visualSource?.animationId)
+      : undefined;
+
+    const openBodySwap = (trigger: HTMLElement | null): void => {
+      if (!compositeCharacter) return;
+      setSwapDialog({
+        title: '更换身体',
+        currentValue: { kind: 'image', assetId: bodyAssetId },
+        allowGraphic: false,
+        returnFocusTo: trigger,
+        onConfirm: (next) => {
+          if (next.kind === 'image' && next.assetId) onSetAssemblyBodyAsset(next.assetId);
+        },
+      });
+    };
+
+    const openHeadSwap = (trigger: HTMLElement | null): void => {
+      if (!compositeCharacter) return;
+      setSwapDialog({
+        title: '更换头部',
+        currentValue: { kind: 'image', assetId: headAssetId },
+        emptyOption: { label: '不添加头部' },
+        allowGraphic: false,
+        returnFocusTo: trigger,
+        onConfirm: (next) => {
+          if (next.kind === 'image') onSetAssemblyHeadAsset(next.assetId);
+        },
+      });
+    };
+
+    const overallVisualSource = defaultExpression?.visualSource;
+    const overallGraphicDef = overallVisualSource
+      ? flaGraphicDefinitions.find((def) => def.id === overallVisualSource.animationId)
+      : undefined;
+    const openOverallSwap = (trigger: HTMLElement | null): void => {
+      if (!defaultExpression) return;
+      setSwapDialog({
+        title: '更换整体图像',
+        currentValue: overallVisualSource
+          ? {
+              kind: 'fla-graphic',
+              animationId: overallVisualSource.animationId,
+              firstFrame: overallVisualSource.firstFrame,
+            }
+          : { kind: 'image', assetId: defaultExpression.assetId ?? null },
+        allowGraphic: Boolean(onSetExpressionSource),
+        returnFocusTo: trigger,
+        onConfirm: (next) => {
+          if (next.kind === 'fla-graphic') {
+            onSetExpressionSource?.(defaultExpression.id, {
+              kind: 'fla-graphic',
+              animationId: next.animationId,
+              firstFrame: next.firstFrame ?? 0,
+            });
+          } else if (next.assetId) {
+            onSetExpressionAsset(defaultExpression.id, next.assetId);
+          }
+        },
+      });
+    };
+
+    const compositeMouthVisualSource = compositeCharacter
+      ? (assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource)
+      : undefined;
+    const compositeMouthGraphicDef = compositeMouthVisualSource
+      ? flaGraphicDefinitions.find((def) => def.id === compositeMouthVisualSource.animationId)
+      : undefined;
+    const compositeMouthAsset = assemblyMouthAssetId
+      ? imageAssets.find((asset) => asset.id === assemblyMouthAssetId)
+      : undefined;
+    const compositeMouthConfigured = Boolean(assemblyMouthAssetId || compositeMouthVisualSource);
+    const openCompositeMouthSwap = (trigger: HTMLElement | null): void => {
+      setSwapDialog({
+        title: '更换张嘴脸',
+        currentValue: compositeMouthVisualSource
+          ? {
+              kind: 'fla-graphic',
+              animationId: compositeMouthVisualSource.animationId,
+              firstFrame: compositeMouthVisualSource.firstFrame,
+            }
+          : { kind: 'image', assetId: assemblyMouthAssetId },
+        emptyOption: { label: '暂不配置' },
+        allowGraphic: Boolean(onSetAssemblyMouthSource),
+        returnFocusTo: trigger,
+        onConfirm: (next) => {
+          if (next.kind === 'fla-graphic') {
+            onSetAssemblyMouthSource?.({
+              kind: 'fla-graphic',
+              animationId: next.animationId,
+              firstFrame: next.firstFrame ?? 0,
+            });
+          } else {
+            onSetAssemblyMouthAsset(next.assetId);
+          }
+        },
+      });
+    };
+
+    const singleMouthVisualSource = singleImageCharacter ? expressionCharacter.mouthOpenVisualSource : undefined;
+    const singleMouthGraphicDef = singleMouthVisualSource
+      ? flaGraphicDefinitions.find((def) => def.id === singleMouthVisualSource.animationId)
+      : undefined;
+    const singleMouthAssetId = singleImageCharacter ? (expressionCharacter.mouthOpenAssetId ?? null) : null;
+    const singleMouthAsset = singleMouthAssetId
+      ? imageAssets.find((asset) => asset.id === singleMouthAssetId)
+      : undefined;
+    const isSingleMouthConfigured = Boolean(singleMouthAssetId || singleMouthVisualSource);
+    const openSingleMouthSwap = (trigger: HTMLElement | null): void => {
+      setSwapDialog({
+        title: '更换张嘴图',
+        currentValue: singleMouthVisualSource
+          ? {
+              kind: 'fla-graphic',
+              animationId: singleMouthVisualSource.animationId,
+              firstFrame: singleMouthVisualSource.firstFrame,
+            }
+          : { kind: 'image', assetId: singleMouthAssetId },
+        emptyOption: { label: '未设置', description: '设置张嘴图后，可在表情中使用。' },
+        allowGraphic: Boolean(onSetMouthSource),
+        returnFocusTo: trigger,
+        onConfirm: (next) => {
+          if (next.kind === 'fla-graphic') {
+            onSetMouthSource?.({
+              kind: 'fla-graphic',
+              animationId: next.animationId,
+              firstFrame: next.firstFrame ?? 0,
+            });
+          } else {
+            onSetMouthOpenAsset(next.assetId);
+          }
+        },
+      });
+    };
+
+    const floatPartsContent = compositeCharacter ? (
+      <div className="character-compact-list" data-testid="character-assembly-parts-list">
+        <CharacterCompactObjectRow
+          actions={
+            <button
+              aria-label="更换身体"
+              className="character-compact-icon-button"
+              data-testid="character-assembly-body-picker-change-action"
+              disabled={disabled}
+              onClick={(event) => openBodySwap(event.currentTarget)}
+              title="更换身体"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          }
+          assetState={bodyAsset ? 'configured' : bodyAssetId ? 'missing' : 'empty'}
+          disabled={disabled}
+          onSelect={(trigger) =>
+            assemblyDraft?.bodyAssetId ? selectAssemblyObject('body') : openBodySwap(trigger)
+          }
+          rowTestId="character-assembly-body-picker"
+          selectAriaLabel={`身体：${bodyAsset?.name ?? '素材不可用'}，选择为编辑对象`}
+          selectTestId="character-assembly-body-picker-selected"
+          selected={assemblyEditTarget === 'body'}
+          subtitle={bodyAsset?.name ?? '素材不可用'}
+          thumbnail={
+            <CompactRowAssetThumbnail
+              asset={bodyAsset}
+              assetConfigured={Boolean(bodyAssetId)}
+              label="身体"
+              onThumbnailError={onThumbnailError}
+              thumbnail={bodyAssetId ? thumbnails[bodyAssetId] : undefined}
+            />
+          }
+          title="身体"
+          tooltip={bodyAsset ? `${bodyAsset.name} · ${bodyAsset.width}×${bodyAsset.height}` : undefined}
+        />
+        <CharacterCompactObjectRow
+          actions={
+            <button
+              aria-label="更换头部"
+              className="character-compact-icon-button"
+              data-testid="character-assembly-head-asset-change-action"
+              disabled={disabled}
+              onClick={(event) => openHeadSwap(event.currentTarget)}
+              title="更换头部"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          }
+          assetState={headAsset ? 'configured' : headAssetId ? 'missing' : 'empty'}
+          disabled={disabled}
+          onSelect={(trigger) =>
+            hasAssemblyHead ? selectAssemblyObject('head') : openHeadSwap(trigger)
+          }
+          rowTestId="character-assembly-head-asset"
+          selectAriaLabel={
+            hasAssemblyHead
+              ? `头部：${headAsset?.name ?? '素材不可用'}，选择为编辑对象`
+              : '头部：未添加头部，点击选择'
+          }
+          selectTestId="character-assembly-head-asset-selected"
+          selected={hasAssemblyHead ? assemblyEditTarget === 'head' : undefined}
+          subtitle={headAsset ? headAsset.name : headAssetId ? '素材不可用' : '未添加头部'}
+          thumbnail={
+            <CompactRowAssetThumbnail
+              asset={headAsset}
+              assetConfigured={Boolean(headAssetId)}
+              label="头部"
+              onThumbnailError={onThumbnailError}
+              thumbnail={headAssetId ? thumbnails[headAssetId] : undefined}
+            />
+          }
+          title="头部"
+          tooltip={headAsset ? `${headAsset.name} · ${headAsset.width}×${headAsset.height}` : '头部'}
+        />
+        <CharacterCompactObjectRow
+          actions={
+            <button
+              aria-label={defaultExpression ? `管理默认脸：${defaultExpression.name}` : '前往表情管理'}
+              className="character-compact-icon-button"
+              data-testid="character-assembly-go-expressions"
+              disabled={disabled}
+              onClick={() => switchDetailWorkspace('expressions')}
+              title="前往表情管理"
+              type="button"
+            >
+              <Pencil aria-hidden="true" size={16} />
+            </button>
+          }
+          assetState={
+            defaultExpression?.visualSource || defaultExpressionAsset
+              ? 'configured'
+              : defaultExpression?.assetId
+                ? 'missing'
+                : 'empty'
+          }
+          disabled={disabled || !assemblyDraft}
+          onSelect={defaultExpression ? () => selectAssemblyObject('face') : undefined}
+          rowTestId="character-assembly-default-face-summary"
+          selectAriaLabel={
+            defaultExpression
+              ? `默认脸：${defaultExpression.name}，选择为编辑对象`
+              : '默认脸'
+          }
+          selectTestId="character-assembly-default-face-select"
+          selected={assemblyEditTarget === 'face'}
+          subtitle={
+            defaultExpression
+              ? defaultExpressionAsset
+                ? defaultExpressionAsset.name
+                : defaultExpression.visualSource
+                  ? `${defaultExpressionGraphicDef?.name ?? 'FLA 元件'} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`
+                  : '素材不可用'
+              : '未配置'
+          }
+          thumbnail={
+            defaultExpression ? (
+              <CharacterExpressionThumbnail
+                expression={defaultExpression}
+                onThumbnailError={onThumbnailError}
+                thumbnail={defaultThumbnail}
+              />
+            ) : (
+              <CompactRowAssetThumbnail
+                asset={undefined}
+                assetConfigured={false}
+                label="默认脸"
+              />
+            )
+          }
+          title="默认脸"
+          tooltip={
+            defaultExpression
+              ? defaultExpressionAsset
+                ? `${defaultExpression.name} · ${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                : defaultExpression.visualSource
+                  ? `${defaultExpression.name} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`
+                  : `${defaultExpression.name} · 素材不可用`
+              : undefined
+          }
+        />
+      </div>
+    ) : singleImageCharacter && defaultExpression ? (
+      <div className="character-compact-list" data-testid="character-single-structure-panel">
+        <CharacterCompactObjectRow
+          actions={
+            <button
+              aria-label="更换整体图像"
+              className="character-compact-icon-button"
+              data-testid="character-single-structure-image-picker-change-action"
+              disabled={disabled}
+              onClick={(event) => openOverallSwap(event.currentTarget)}
+              title="更换整体图像"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          }
+          assetState={
+            overallVisualSource || defaultExpressionAsset
+              ? 'configured'
+              : defaultExpression.assetId
+                ? 'missing'
+                : 'empty'
+          }
+          disabled={disabled}
+          onSelect={openOverallSwap}
+          rowTestId="character-single-structure-image-picker"
+          selectAriaLabel="更换整体图像"
+          selectTestId="character-single-structure-image-picker-selected"
+          subtitle={
+            overallVisualSource
+              ? `${overallGraphicDef?.name ?? 'FLA 元件'} · 第 ${overallVisualSource.firstFrame + 1} 帧`
+              : defaultExpressionAsset?.name ?? (defaultExpression.assetId ? '素材不可用' : '请选择图片')
+          }
+          thumbnail={
+            overallVisualSource ? (
+              <GraphicFacePreview label="整体图像" source={overallVisualSource} />
+            ) : (
+              <CompactRowAssetThumbnail
+                asset={defaultExpressionAsset}
+                assetConfigured={Boolean(defaultExpression.assetId)}
+                label="整体图像"
+                onThumbnailError={onThumbnailError}
+                thumbnail={defaultThumbnail}
+              />
+            )
+          }
+          title="整体图像"
+          tooltip={
+            overallVisualSource
+              ? `${overallGraphicDef?.name ?? 'FLA 元件'} · 第 ${overallVisualSource.firstFrame + 1} 帧`
+              : defaultExpressionAsset
+                ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                : '整体图像'
+          }
+        />
+      </div>
+    ) : null;
+
+    const floatMouthRow = compositeCharacter ? (
+      <CharacterCompactObjectRow
+        actions={
+          <>
+            <button
+              aria-label="更换张嘴脸"
+              className="character-compact-icon-button"
+              data-testid="character-assembly-mouth-picker-change-action"
+              disabled={disabled}
+              onClick={(event) => openCompositeMouthSwap(event.currentTarget)}
+              title="更换张嘴脸"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+            {compositeMouthConfigured ? (
+              <CompactRowOverflowMenu
+                ariaLabel="张嘴脸更多操作"
+                disabled={disabled}
+                items={[
+                  {
+                    label: '清除',
+                    className: 'character-mouth-clear',
+                    danger: true,
+                    testId: 'character-assembly-mouth-clear',
+                    onSelect: () => {
+                      if (compositeMouthVisualSource) onSetAssemblyMouthSource?.(null);
+                      else onSetAssemblyMouthAsset(null);
+                    },
+                  },
+                ]}
+                menuClassName="character-assembly-mouth-overflow-menu"
+                menuTestId="character-assembly-mouth-overflow-menu"
+                restoreFocusSelector='[data-testid="character-assembly-mouth-picker-selected"]'
+                triggerClassName="character-assembly-mouth-overflow-trigger"
+                triggerTestId="character-assembly-mouth-overflow-trigger"
+              />
+            ) : null}
+          </>
+        }
+        assetState={
+          compositeMouthVisualSource || compositeMouthAsset
+            ? 'configured'
+            : assemblyMouthAssetId
+              ? 'missing'
+              : 'empty'
+        }
+        disabled={disabled}
+        onSelect={openCompositeMouthSwap}
+        rowTestId="character-assembly-mouth-picker"
+        selectAriaLabel="更换张嘴脸"
+        selectTestId="character-assembly-mouth-picker-selected"
+        subtitle={
+          compositeMouthVisualSource
+            ? `${compositeMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${compositeMouthVisualSource.firstFrame + 1} 帧`
+            : compositeMouthAsset?.name ?? (assemblyMouthAssetId ? '素材不可用' : '暂不配置')
+        }
+        thumbnail={
+          compositeMouthVisualSource ? (
+            <GraphicFacePreview label="张嘴脸" source={compositeMouthVisualSource} />
+          ) : (
+            <CompactRowAssetThumbnail
+              asset={compositeMouthAsset}
+              assetConfigured={Boolean(assemblyMouthAssetId)}
+              label="张嘴脸"
+              onThumbnailError={onThumbnailError}
+              thumbnail={assemblyMouthAssetId ? thumbnails[assemblyMouthAssetId] : undefined}
+            />
+          )
+        }
+        title="张嘴脸"
+        tooltip={
+          compositeMouthVisualSource
+            ? `${compositeMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${compositeMouthVisualSource.firstFrame + 1} 帧`
+            : compositeMouthAsset
+              ? `${compositeMouthAsset.name} · ${compositeMouthAsset.width}×${compositeMouthAsset.height}`
+              : '张嘴脸'
+        }
+      />
+    ) : singleImageCharacter ? (
+      <div
+        className={`character-mouth-state${isSingleMouthConfigured ? ' is-configured' : ''}`}
+        data-mouth-configured={isSingleMouthConfigured}
+      >
+        <CharacterCompactObjectRow
+          actions={
+            <>
+              {isSingleMouthConfigured ? (
+                <button
+                  aria-label={previewMouth ? '停止预览张嘴' : '预览张嘴'}
+                  aria-pressed={previewMouth}
+                  className="character-compact-icon-button character-float-mouth-preview-button"
+                  onClick={() => setPreviewMouth(!previewMouth)}
+                  title={previewMouth ? '停止预览张嘴' : '预览张嘴'}
+                  type="button"
+                >
+                  <Play aria-hidden="true" size={16} />
+                </button>
+              ) : null}
+              <button
+                aria-label="更换张嘴图"
+                className="character-compact-icon-button"
+                data-testid="character-detail-mouth-visual-picker-change-action"
+                disabled={disabled}
+                onClick={(event) => openSingleMouthSwap(event.currentTarget)}
+                title="更换张嘴图"
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" size={16} />
+              </button>
+              {isSingleMouthConfigured ? (
+                <CompactRowOverflowMenu
+                  ariaLabel="张嘴图更多操作"
+                  disabled={disabled}
+                  items={[
+                    {
+                      label: '清除',
+                      className: 'character-mouth-clear',
+                      danger: true,
+                      testId: 'character-detail-mouth-clear',
+                      onSelect: () => {
+                        setPreviewMouth(false);
+                        if (singleMouthVisualSource) onSetMouthSource?.(null);
+                        else onSetMouthOpenAsset(null);
+                      },
+                    },
+                  ]}
+                  menuTestId="character-detail-mouth-overflow-menu"
+                  restoreFocusSelector='[data-testid="character-detail-mouth-visual-picker-selected"]'
+                  triggerTestId="character-detail-mouth-overflow-trigger"
+                />
+              ) : null}
+            </>
+          }
+          assetState={
+            singleMouthVisualSource || singleMouthAsset
+              ? 'configured'
+              : singleMouthAssetId
+                ? 'missing'
+                : 'empty'
+          }
+          disabled={disabled}
+          onSelect={openSingleMouthSwap}
+          previewing={previewMouth && isSingleMouthConfigured}
+          rowTestId="character-detail-mouth-visual-picker"
+          selectAriaLabel="更换张嘴图"
+          selectTestId="character-detail-mouth-visual-picker-selected"
+          subtitle={
+            singleMouthVisualSource
+              ? `${singleMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${singleMouthVisualSource.firstFrame + 1} 帧`
+              : singleMouthAsset?.name ?? (singleMouthAssetId ? '素材不可用' : '未设置')
+          }
+          thumbnail={
+            singleMouthVisualSource ? (
+              <GraphicFacePreview label="张嘴图" source={singleMouthVisualSource} />
+            ) : (
+              <CompactRowAssetThumbnail
+                asset={singleMouthAsset}
+                assetConfigured={Boolean(singleMouthAssetId)}
+                label="张嘴图"
+                onThumbnailError={onThumbnailError}
+                thumbnail={singleMouthAssetId ? thumbnails[singleMouthAssetId] : undefined}
+              />
+            )
+          }
+          title="张嘴图"
+          tooltip={
+            singleMouthVisualSource
+              ? `${singleMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${singleMouthVisualSource.firstFrame + 1} 帧`
+              : singleMouthAsset
+                ? `${singleMouthAsset.name} · ${singleMouthAsset.width}×${singleMouthAsset.height}`
+                : '张嘴图'
+          }
+        />
+      </div>
+    ) : null;
+
+    return createPortal(
+      <article className="character-editor character-float-detail" data-testid="character-float-detail" data-mode={floatMode}>
+        <header className="character-float-heading">
+          <Button aria-label="返回角色列表" data-testid="character-detail-back" onClick={onBackToList} variant="secondary">
+            <ArrowLeft aria-hidden="true" size={16} />
+          </Button>
+          <div className="character-float-title">
+            <strong title={character.name}>{character.name}</strong>
+            <Button aria-controls={rightId} aria-expanded={rightOpen && (floatMode === 'single-image' || floatProperties === 'character')} aria-label="角色属性" data-testid="character-float-role-edit" onClick={showFloatRole} variant="secondary">
+              <Pencil size={16} aria-hidden="true" />
+            </Button>
+          </div>
+          <div className="character-float-heading-actions">
+            <Button disabled={placementUnavailableReason !== null} onClick={() => onPlaceInCurrentShot(placementBlockedByTransform)} title={placementUnavailableReason ?? undefined} data-testid="character-detail-place-current-shot" variant="secondary">
+              <Plus aria-hidden="true" size={15} /> 加入镜头
+            </Button>
+            <Button aria-label="关闭角色工作台" data-testid="character-float-close" onClick={onCloseDrawer} variant="secondary">
+              <X size={16} aria-hidden="true" />
+            </Button>
+          </div>
+        </header>
+        <div className={'character-float-canvas character-assembly-preview-viewport' + (floatMode === 'composite' ? ' character-float-composite-canvas' : '')} data-testid="character-float-canvas">
+          {floatMode === 'composite' ? (
+            projectSnapshot && assemblySession ? <CharacterAssemblyWorkbench
+              projectSnapshot={projectSnapshot}
+              session={assemblySession}
+              floatingComposite={{
+                editable: floatOperations === 'parts',
+                leftOpen,
+                propertiesOpen: rightOpen,
+                controlsOpen: rightOpen && floatProperties === 'part',
+                propertyTarget: precisionTarget,
+                onToggleControls: () => {
+                  if (rightOpen && floatProperties === 'part') setRightOpen(false);
+                  else openProperties('part');
+                },
+              }}
+            /> : null
+          ) : shownSource ? (
+            <GraphicFacePreview source={shownSource} label={character.name} />
+          ) : shownAsset && projectSnapshot ? (
+            <CharacterSingleImagePreview asset={shownAsset} projectRoot={projectSnapshot.projectRoot} label={character.name} thumbnail={shownThumbnail} />
+          ) : (
+            <CharacterThumbnailFallback assetConfigured={Boolean(defaultExpression)} assetResolved={defaultAssetResolved} thumbnail={defaultThumbnail} />
+          )}
+        </div>
+        <CharacterFloatPanel
+          side="left" open={leftOpen} id={leftId} handle={leftHandle}
+          onToggle={() => {
+            if (!leftOpen && isNarrowFloat()) setRightOpen(false);
+            setLeftOpen(!leftOpen);
+          }}
+        >
+          <div className="character-float-operations">
+            <nav aria-label="角色操作" className="character-float-left-nav">
+              <Button aria-pressed={floatOperations === 'parts'} onClick={() => switchFloatOperations('parts')} variant="secondary">部件</Button>
+              <Button aria-pressed={floatOperations === 'expressions'} onClick={() => switchFloatOperations('expressions')} variant="secondary">表情</Button>
+            </nav>
+            <div className="character-float-section-stack" hidden={floatOperations !== 'parts'}>
+              {floatPartsContent}
+            </div>
+            <div className="character-float-section-stack" hidden={floatOperations !== 'expressions'}>
+              {floatMouthRow}
+              <div className="character-float-expression-heading">
+                <strong id="character-expression-workspace-heading">表情</strong>
+                <Button aria-expanded={expressionAddOpen} className="character-float-expression-add" onClick={() => setExpressionAddOpen(!expressionAddOpen)} variant="secondary">
+                  <Plus aria-hidden="true" size={14} /> 添加
+                </Button>
+              </div>
+              {expressionContent}
+            </div>
+          </div>
+        </CharacterFloatPanel>
+        <CharacterFloatPanel
+          side="right" open={rightOpen} id={rightId} handle={rightHandle}
+          onToggle={() => {
+            if (rightOpen) setRightOpen(false);
+            else openProperties(floatProperties);
+          }}
+        >
+          {floatMode === 'composite' && floatProperties === 'part' && floatOperations === 'parts' ? (
+            <div ref={setPrecisionTarget} className="character-float-precision" />
+          ) : (
+          <fieldset className="character-float-role-properties" disabled={disabled || assemblyPending}>
+          <legend>角色属性</legend>
+          {floatMode === 'single-image' && (showMouth || previewExpressionId) ? (
+            <output className="character-float-preview-selection">{showMouth ? '张嘴图' : shownExpression?.name}</output>
+          ) : null}
+          <form className="character-float-rename" onSubmit={(event) => {
+            event.preventDefault();
+            if (nextRenameValue) onRenameCharacter(nextRenameValue);
+          }}>
+            <label>角色名称
+              <input maxLength={200} onChange={(event) => setName(event.currentTarget.value)} value={name} />
+            </label>
+            <Button className="character-float-rename-submit" disabled={disabled || !nextRenameValue} type="submit" variant="secondary">重命名</Button>
+          </form>
+          {defaultProperties}
+          <div className="character-float-danger-footer">{deleteProperties}</div>
+          </fieldset>
+          )}
+          {floatProperties === 'character' && assemblyPending ? <p role="status">请先应用或取消组装更改。</p> : null}
+        </CharacterFloatPanel>
+        {status ? <output className="character-float-status" role="status">{status}</output> : null}
+        {swapDialog ? (
+          <CharacterResourceSwapDialog
+            currentValue={swapDialog.currentValue}
+            emptyOption={swapDialog.emptyOption}
+            graphicDefinitions={swapDialog.allowGraphic ? flaGraphicDefinitions : []}
+            graphicSelectionMode="frame"
+            imageAssets={imageAssets}
+            onCancel={() => setSwapDialog(null)}
+            onConfirm={(next) => {
+              const confirmFn = swapDialog.onConfirm;
+              setSwapDialog(null);
+              confirmFn(next);
+            }}
+            onThumbnailError={onThumbnailError}
+            open
+            returnFocusTo={swapDialog.returnFocusTo}
+            thumbnails={thumbnails}
+            title={swapDialog.title}
+          />
+        ) : null}
+      </article>,
+      floatTarget,
+    );
+  }
+
   return (
     <article
       className={`character-editor${view === 'expression' ? ' character-expression-view' : ''}`}
@@ -845,11 +2132,11 @@ export function CharacterEditor({
                 (defaultAssetResolved ? 'loading' : 'missing')
               }
             >
-              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : defaultThumbnail?.status === 'ready' && defaultExpression ? (
+              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : defaultThumbnail?.status === 'ready' && defaultImageAssetId ? (
                 <img
-                  alt={`${character.name} 默认表情`}
+                  alt={character.name + ' 默认表情'}
                   onError={() =>
-                    onThumbnailError(defaultExpression.assetId ?? '')
+                    onThumbnailError(defaultImageAssetId)
                   }
                   src={defaultThumbnail.dataUrl}
                 />
@@ -934,7 +2221,7 @@ export function CharacterEditor({
                 )}
               </div>
               <div className="character-detail-identity-actions">
-                {activeWorkspace === 'expressions' ? (
+                {expressionCharacter && activeWorkspace === 'expressions' ? (
                   <button
                     aria-expanded={expressionAddOpen}
                     className="character-detail-add-expression-trigger"
@@ -988,23 +2275,25 @@ export function CharacterEditor({
               </button>
             </span>
           </label>
-          <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-picker" disabled={disabled}>
-          <ImageAssetPicker
-            assets={imageAssets}
-            emptyOption={{
-              description: '安全降级为闭嘴。',
-              label: '未配置',
-              optional: true,
-            }}
-            label="张嘴图"
-            onChange={onSetMouthOpenAsset}
-            onThumbnailError={onThumbnailError}
-            selectedAssetId={character.mouthOpenAssetId ?? null}
-            testId="character-detail-mouth-picker"
-            thumbnails={thumbnails}
-            disabled={disabled}
-          />
-          </GraphicFacePicker>
+          {expressionCharacter ? (
+            <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-picker" disabled={disabled}>
+            <ImageAssetPicker
+              assets={imageAssets}
+              emptyOption={{
+                description: '安全降级为闭嘴。',
+                label: '未配置',
+                optional: true,
+              }}
+              label="张嘴图"
+              onChange={onSetMouthOpenAsset}
+              onThumbnailError={onThumbnailError}
+              selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
+              testId="character-detail-mouth-picker"
+              thumbnails={thumbnails}
+              disabled={disabled}
+            />
+            </GraphicFacePicker>
+          ) : null}
           <label>
             默认缩放
             <input
@@ -1041,7 +2330,7 @@ export function CharacterEditor({
         </section>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? talkingHeadSettings : null}
-      {view === 'detail' && !landscapeDetail ? (
+      {view === 'detail' && !landscapeDetail && expressionCharacter ? (
         <section
           aria-labelledby="character-expression-summary-heading"
           className="character-expression-summary"
@@ -1060,14 +2349,14 @@ export function CharacterEditor({
             </button>
           </div>
           <ul className="character-expression-summary-list">
-            {character.expressions.map((expression) => {
+            {expressionCharacter.expressions.map((expression) => {
               const asset = imageAssets.find(
                 (candidate) => candidate.id === expression.assetId,
               );
               return (
                 <li
                   data-expression-default={
-                    expression.id === character.defaultExpressionId
+                    expression.id === expressionCharacter.defaultExpressionId
                   }
                   key={expression.id}
                 >
@@ -1085,7 +2374,7 @@ export function CharacterEditor({
                         : (asset?.name ?? expression.assetId)}
                     </span>
                   </span>
-                  {expression.id === character.defaultExpressionId ? (
+                  {expression.id === expressionCharacter.defaultExpressionId ? (
                     <em>默认表情</em>
                   ) : null}
                 </li>
@@ -1099,25 +2388,23 @@ export function CharacterEditor({
           <nav
             aria-label="角色工作区"
             className="character-workspace-switcher"
-            data-workspace-count={compositeCharacter ? 3 : 2}
+            data-workspace-count={3}
             data-testid="character-workspace-switcher"
           >
-            {compositeCharacter ? (
-              <button
-                aria-controls="character-workspace-assembly"
-                aria-pressed={activeWorkspace === 'assembly'}
-                className={
-                  activeWorkspace === 'assembly'
-                    ? 'character-workspace-tab is-active'
-                    : 'character-workspace-tab'
-                }
-                data-testid="character-workspace-assembly-tab"
-                onClick={() => switchDetailWorkspace('assembly')}
-                type="button"
-              >
-                组装
-              </button>
-            ) : null}
+            <button
+              aria-controls="character-workspace-assembly"
+              aria-pressed={activeWorkspace === 'assembly'}
+              className={
+                activeWorkspace === 'assembly'
+                  ? 'character-workspace-tab is-active'
+                  : 'character-workspace-tab'
+              }
+              data-testid="character-workspace-assembly-tab"
+              onClick={() => switchDetailWorkspace('assembly')}
+              type="button"
+            >
+              结构
+            </button>
             <button
               aria-controls="character-workspace-expressions"
               aria-pressed={activeWorkspace === 'expressions'}
@@ -1131,12 +2418,14 @@ export function CharacterEditor({
               type="button"
             >
               <span>表情</span>
-              <span
-                aria-hidden="true"
-                className="character-workspace-tab-count"
-              >
-                {character.expressions.length}
-              </span>
+              {expressionCharacter ? (
+                <span
+                  aria-hidden="true"
+                  className="character-workspace-tab-count"
+                >
+                  {expressionCharacter.expressions.length}
+                </span>
+              ) : null}
             </button>
             <button
               aria-controls="character-workspace-settings"
@@ -1153,170 +2442,30 @@ export function CharacterEditor({
               设置
             </button>
           </nav>
-          {compositeCharacter ? (
-            <section
-              aria-label="角色组装素材"
-              className="character-workspace-panel character-assembly-drawer-panel"
-              data-testid="character-assembly-drawer-panel"
-              data-workspace="assembly"
-              hidden={activeWorkspace !== 'assembly'}
-              id="character-workspace-assembly"
-            >
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyState={{
-                  description: '从项目图片中选择身体。',
-                  label: '请选择图片',
-                }}
-                label="身体"
-                onSelectedAssetActivate={
-                  assemblyDraft?.bodyAssetId
-                    ? () => onSelectAssemblyEditTarget('body')
-                    : undefined
-                }
-                onChange={(assetId) => {
-                  if (assetId) onSetAssemblyBodyAsset(assetId);
-                }}
-                onThumbnailError={onThumbnailError}
-                selectedAssetId={
-                  assemblyDraft?.bodyAssetId ??
-                  (character.mode === 'composite'
-                    ? character.bodyAssetId
-                    : '')
-                }
-                testId="character-assembly-body-picker"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedAssetActive={assemblyEditTarget === 'body'}
-                showEditTargetStatus={false}
-                selectedSurface
-              />
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyOption={{ label: '不添加头部', optional: true }}
-                emptyActionLabel="选择"
-                label="头部"
-                onChange={onSetAssemblyHeadAsset}
-                onThumbnailError={onThumbnailError}
-                onSelectedAssetActivate={
-                  assemblyDraft?.head
-                    ? () => onSelectAssemblyEditTarget('head')
-                    : undefined
-                }
-                searchAndPaginate
-                selectedAssetId={
-                  assemblyDraft
-                    ? assemblyDraft.head?.assetId ?? null
-                    : character.head?.assetId ?? null
-                }
-                showEditTargetStatus={false}
-                showOptionalLabel={false}
-                testId="character-assembly-head-asset"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedAssetActive={assemblyEditTarget === 'head'}
-                selectedSurface
-              />
-              <div
-                className="character-assembly-default-face-summary image-asset-picker"
-                data-testid="character-assembly-default-face-summary"
-              >
-                <div className="image-asset-picker-heading">
-                  <strong>默认脸</strong>
-                </div>
-                {defaultExpression ? (
-                  <ImageAssetPickerSelectedSurface>
-                    <button
-                      aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
-                      aria-pressed={assemblyEditTarget === 'face'}
-                      className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
-                      data-edit-target-selected={String(assemblyEditTarget === 'face')}
-                      data-testid="character-assembly-default-face-select"
-                      disabled={disabled || !assemblyDraft}
-                      onClick={() => onSelectAssemblyEditTarget('face')}
-                      type="button"
-                    >
-                      <CharacterExpressionThumbnail
-                        className="image-asset-picker-selected-thumbnail"
-                        expression={defaultExpression}
-                        onThumbnailError={onThumbnailError}
-                        thumbnail={defaultThumbnail}
-                      />
-                      <span className="image-asset-picker-selected-copy">
-                        <strong>{defaultExpression.name}</strong>
-                        <small>
-                          {defaultExpressionAsset
-                            ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                            : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
-                        </small>
-                      </span>
-                    </button>
-                    <button
-                      aria-label={`管理默认脸：${defaultExpression.name}`}
-                      className="image-asset-picker-selected-action character-assembly-selected-action-button"
-                      data-testid="character-assembly-go-expressions"
-                      disabled={disabled}
-                      onClick={() => switchDetailWorkspace('expressions')}
-                      type="button"
-                    >
-                      管理
-                    </button>
-                  </ImageAssetPickerSelectedSurface>
-                ) : null}
-              </div>
-              <GraphicFacePicker source={assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
-              <ImageAssetPicker
-                assets={imageAssets}
-                emptyOption={{
-                  label: '暂不配置',
-                }}
-                label="张嘴脸"
-                onChange={onSetAssemblyMouthAsset}
-                onThumbnailError={onThumbnailError}
-                selectedAssetId={assemblyMouthAssetId}
-                testId="character-assembly-mouth-picker"
-                thumbnails={thumbnails}
-                disabled={disabled}
-                selectedSurface
-                selectedAction={
-                  assemblyMouthAssetId ? (
-                    <CharacterAssemblyMouthOverflowMenu
-                      disabled={disabled}
-                      onClear={() => onSetAssemblyMouthAsset(null)}
-                    />
-                  ) : undefined
-                }
-              />
-              </GraphicFacePicker>
-            </section>
-          ) : null}
           <section
-            aria-labelledby="character-expression-workspace-heading"
+            aria-label="角色结构"
+            className="character-workspace-panel character-assembly-drawer-panel"
+            data-testid="character-assembly-drawer-panel"
+            data-workspace="assembly"
+            hidden={activeWorkspace !== 'assembly'}
+            id="character-workspace-assembly"
+          >
+            {structureContent}
+          </section>
+          <section
+            aria-labelledby={
+              expressionCharacter
+                ? 'character-expression-workspace-heading'
+                : undefined
+            }
+            aria-label={expressionCharacter ? undefined : '表情'}
             className="character-workspace-panel character-expression-workspace"
             data-testid="character-expression-workspace"
             data-workspace="expressions"
             hidden={activeWorkspace !== 'expressions'}
             id="character-workspace-expressions"
           >
-            <ExpressionEditor
-              character={character}
-              disabled={disabled}
-              imageAssets={imageAssets}
-              isAddOpen={expressionAddOpen}
-              onAdd={onAddExpression}
-              onAddOpenChange={setExpressionAddOpen}
-              onRemove={onRemoveExpression}
-              onRename={onRenameExpression}
-              onSetAsset={onSetExpressionAsset}
-              onSetSource={onSetExpressionSource}
-              onAddGraphic={onAddGraphicExpression}
-              onSetDefault={onSetDefaultExpression}
-              onThumbnailError={onThumbnailError}
-              compactDetailWorkspace
-              presentation="landscape"
-              thumbnails={thumbnails}
-              warnings={warnings}
-            />
+            {expressionContent}
           </section>
           <section
             aria-labelledby="character-settings-workspace-heading"
@@ -1326,166 +2475,15 @@ export function CharacterEditor({
             hidden={activeWorkspace !== 'settings'}
             id="character-workspace-settings"
           >
-            <section
-              className="character-settings-section character-default-presentation"
-              data-default-transform-pending={hasPendingTransform}
-            >
-              <div className="character-section-heading">
-                <div>
-                  <h4 id="character-settings-workspace-heading">
-                    初始角色大小
-                  </h4>
-                </div>
-              </div>
-              <div className="character-default-transform-controls">
-                <div className="character-scale-control-group">
-                  <div
-                    aria-label="初始角色大小"
-                    className="character-scale-stepper"
-                    role="group"
-                  >
-                    <button
-                      aria-label="减小初始角色大小"
-                      disabled={disabled || scale <= 0.1}
-                      onClick={() => adjustScale(-0.1)}
-                      type="button"
-                    >
-                      −
-                    </button>
-                    <output aria-live="polite">{scale.toFixed(1)}×</output>
-                    <button
-                      aria-label="增大初始角色大小"
-                      disabled={disabled || scale >= 10}
-                      onClick={() => adjustScale(0.1)}
-                      type="button"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <button
-                  aria-checked={flipX}
-                  className="character-flip-switch"
-                  disabled={disabled}
-                  onClick={() => setFlipX((current) => !current)}
-                  role="switch"
-                  type="button"
-                >
-                  <span>水平翻转</span>
-                  <span aria-hidden="true" className="character-switch-track">
-                    <span />
-                  </span>
-                </button>
-              </div>
-              {hasPendingTransform ? (
-                <div
-                  aria-live="polite"
-                  className="character-default-pending"
-                  data-testid="character-default-pending"
-                  role="status"
-                >
-                  <div>
-                    <strong>● 有未应用更改</strong>
-                    <span>当前设置尚未应用到角色</span>
-                  </div>
-                  <div className="character-default-action-row">
-                    <button
-                      aria-label="还原未应用的默认表现"
-                      className="character-default-revert"
-                      data-testid="character-default-revert"
-                      disabled={disabled}
-                      onClick={() => {
-                        setScale(character.defaultScale);
-                        setFlipX(character.defaultFlipX);
-                      }}
-                      type="button"
-                    >
-                      还原
-                    </button>
-                    <button
-                      className="character-default-apply"
-                      data-pending="true"
-                      disabled={
-                        disabled ||
-                        !Number.isFinite(scale) ||
-                        scale < 0.1 ||
-                        scale > 10
-                      }
-                      onClick={() => onSetDefaultTransform(scale, flipX)}
-                      type="button"
-                    >
-                      应用
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </section>
-            {talkingHeadSettings}
-            {!compositeCharacter ? (
-            <section className="character-settings-section character-mouth-setting-visual">
-              <div
-                className={`character-mouth-state${character.mouthOpenAssetId || character.mouthOpenVisualSource ? ' is-configured' : ''}`}
-                data-mouth-configured={Boolean(character.mouthOpenAssetId || character.mouthOpenVisualSource)}
-              >
-                <GraphicFacePicker source={character.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
-                <ImageAssetPicker
-                  assets={imageAssets}
-                  emptyActionLabel="选择图片"
-                  emptyOption={{
-                    description: '设置张嘴图后，可在表情中使用。',
-                    label: '未设置',
-                  }}
-                  label="张嘴图"
-                  onChange={onSetMouthOpenAsset}
-                  onThumbnailError={onThumbnailError}
-                  selectedAssetId={character.mouthOpenAssetId ?? null}
-                  testId="character-detail-mouth-visual-picker"
-                  thumbnails={thumbnails}
-                  disabled={disabled}
-                  selectedAction={
-                    character.mouthOpenAssetId ? (
-                      <button
-                        className="character-mouth-clear"
-                        disabled={disabled}
-                        onClick={() => onSetMouthOpenAsset(null)}
-                        type="button"
-                      >
-                        清除
-                      </button>
-                    ) : undefined
-                  }
-                />
-                </GraphicFacePicker>
-              </div>
-            </section>
-            ) : null}
-            <section
-              aria-labelledby="character-danger-zone-heading"
-              className="character-settings-section character-danger-zone"
-              data-testid="character-danger-zone"
-            >
-              <div className="character-danger-zone-copy">
-                <h4 id="character-danger-zone-heading">危险操作</h4>
-                <p>
-                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
-                </p>
-              </div>
-              <button
-                className="character-delete-settings-action"
-                data-testid="character-delete-settings"
-                disabled={disabled}
-                onClick={onDeleteCharacter}
-                type="button"
-              >
-                删除角色
-              </button>
-            </section>
+            {defaultProperties}
+            {singleMouth}
+            {deleteProperties}
           </section>
         </>
       ) : null}
-      {view === 'full' || view === 'expression' ? (
+      {(view === 'full' || view === 'expression') && expressionCharacter ? (
         <ExpressionEditor
-          character={character}
+          character={expressionCharacter}
           disabled={disabled}
           imageAssets={imageAssets}
           isAddOpen={expressionAddOpen}

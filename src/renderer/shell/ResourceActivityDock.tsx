@@ -762,6 +762,7 @@ export function ResourceActivityDock({
               />
             ) : (
               <CharacterManager
+                floatEnabled={drawerOpen}
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 flaCharacterImportAttempt={flaCharacterImportAttempt}
                 hideHeading={landscapePresentation}

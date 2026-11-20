@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -40,6 +41,7 @@ import {
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
+import { CharacterFloatHost } from './characterFloatHost';
 import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import { CharacterList } from './CharacterList';
 import {
@@ -138,6 +140,7 @@ export interface CharacterManagerProps {
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  floatEnabled?: boolean;
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
@@ -172,9 +175,15 @@ export interface AdaptivePartsAssemblyActionResult {
   message?: string;
 }
 
+export type AdaptiveCharacterManagementAction =
+  | { kind: 'rename'; name: string }
+  | { kind: 'transform'; scale: number; flipX: boolean }
+  | { kind: 'delete' };
+
 export interface AdaptivePartsAssemblyActions {
   backToCharacterList: () => boolean;
   joinCurrentShot: () => AdaptivePartsAssemblyActionResult;
+  manage: (action: AdaptiveCharacterManagementAction) => AdaptivePartsAssemblyActionResult;
 }
 
 export interface AdaptivePartsAssemblyActionsRef {
@@ -213,9 +222,9 @@ export function placeCharacterInCurrentShot({
     const initialExpression = character.expressions.find(
       (candidate) => candidate.id === character.defaultExpressionId,
     );
-    if (!initialExpression || !before.project.assets.some(
+    if (!initialExpression || (!initialExpression.visualSource && !before.project.assets.some(
       (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
-    )) {
+    ))) {
       reportStatus('默认表情素材不可用，请先设置默认表情。');
       return false;
     }
@@ -300,6 +309,7 @@ export function CharacterManager({
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
   adaptivePartsActionsRef,
+  floatEnabled,
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
@@ -319,6 +329,7 @@ export function CharacterManager({
   flaCharacterRecoveryBusy = false,
   onStartFlaCharacterImport,
 }: CharacterManagerProps): React.JSX.Element {
+  const floatTarget = useContext(CharacterFloatHost)?.target;
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
     string | null
@@ -481,16 +492,16 @@ export function CharacterManager({
     }
   }, [imageAssets, snapshot, thumbnailEntries, svgThumbnails.assetIds]);
 
-  const reportError = (error: unknown): void => {
+  const describeError = (error: unknown): string => {
     if (error instanceof CharacterServiceError) {
       const locations = error.references
         .map((reference) => reference.label)
         .join('；');
-      setStatus(locations ? `${error.message} ${locations}` : error.message);
-      return;
+      return locations ? `${error.message} ${locations}` : error.message;
     }
-    setStatus(error instanceof Error ? error.message : '角色修改失败。');
+    return error instanceof Error ? error.message : '角色修改失败。';
   };
+  const reportError = (error: unknown): void => setStatus(describeError(error));
 
   const markThumbnailError = (assetId: string): void => {
     if (svgThumbnails.assetIds.has(assetId)) {
@@ -701,6 +712,41 @@ export function CharacterManager({
       return true;
     },
     joinCurrentShot: joinAdaptivePartsCurrentShot,
+    manage: (action) => {
+      const current = editorProjectStore.getSnapshot();
+      const active = characterAssemblySessionStore.getSnapshot();
+      const character = current?.project.characters.find(
+        (candidate) => candidate.id === selectedCharacterIdRef.current,
+      );
+      if (!current || character?.mode !== 'adaptive-parts' ||
+          active?.kind !== 'adaptive-parts' || active.characterId !== character.id) {
+        return { ok: false, message: '请重新打开角色工作台。' };
+      }
+      if (isCharacterAssemblyPending(current.project, active)) {
+        return { ok: false, message: '请先应用或取消零件组装更改。' };
+      }
+      try {
+        switch (action.kind) {
+          case 'rename':
+            characterStore.renameCharacter(character.id, action.name);
+            break;
+          case 'transform':
+            characterStore.setDefaultTransform(character.id, action.scale, action.flipX);
+            break;
+          case 'delete': {
+            if (!window.confirm(`确认删除角色“${character.name}”？`)) return { ok: false };
+            const next = characterStore.deleteCharacter(character.id);
+            setSelectedCharacterId(next.characters[0]?.id ?? null);
+            onViewChange('list');
+            break;
+          }
+        }
+        setStatus('');
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, message: describeError(error) };
+      }
+    },
   };
   const latestAdaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActions | null>(null);
   latestAdaptivePartsActionsRef.current = adaptivePartsActions;
@@ -730,6 +776,7 @@ export function CharacterManager({
       return false;
     }
     setSelectedCharacterId(characterId);
+    onViewChange('list');
     if (!openAssembly(characterId)) {
       setStatus('角色已保存，可从角色列表打开。');
       return false;
@@ -745,12 +792,14 @@ export function CharacterManager({
     );
     if (!character || character.mode !== 'adaptive-parts') return;
     setSelectedCharacterId(character.id);
+    onViewChange('list');
     if (openAssembly(character.id)) onCloseFlaCharacterImport();
     else setStatus('角色已保存，可从角色列表打开。');
     setPendingImportedCharacterId(null);
   }, [
     characters,
     onCloseFlaCharacterImport,
+    onViewChange,
     openAssembly,
     pendingImportedCharacterId,
   ]);
@@ -952,8 +1001,7 @@ export function CharacterManager({
             onCreate={createCharacter}
             onSelect={(characterId) => {
               if (!selectCharacter(characterId)) return;
-              const character = characters.find((candidate) => candidate.id === characterId);
-              if (character?.mode === 'adaptive-parts') {
+              if (characters.find((candidate) => candidate.id === characterId)?.mode === 'adaptive-parts') {
                 openAssembly(characterId);
                 return;
               }
@@ -993,7 +1041,7 @@ export function CharacterManager({
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
-          character={selectedDisplayCharacter}
+          character={selectedCharacter}
           project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
@@ -1011,17 +1059,18 @@ export function CharacterManager({
           }}
           onDeleteCharacter={() => {
             if (
-              !selectedCharacter ||
+              !selectedDisplayCharacter ||
               !window.confirm(
-                `确认删除角色“${selectedCharacter.name}”？被镜头或对白引用时会阻止删除。`,
+                `确认删除角色“${selectedDisplayCharacter.name}”？被镜头或对白引用时会阻止删除。`,
               )
             ) {
               return;
             }
             const next = mutate(
-              () => characterStore.deleteCharacter(selectedCharacter.id),
+              () => characterStore.deleteCharacter(selectedDisplayCharacter.id),
             );
             if (next) {
+              discardAssemblySession();
               setSelectedCharacterId(next.characters[0]?.id ?? null);
               onViewChange('list');
             }
@@ -1037,11 +1086,11 @@ export function CharacterManager({
             );
           }}
           onRenameCharacter={(name) => {
-            if (!selectedCharacter) return;
+            if (!selectedDisplayCharacter) return;
             mutate(
               () =>
                 characterStore.renameCharacter(
-                  selectedCharacter.id,
+                  selectedDisplayCharacter.id,
                   name,
                 ),
             );
@@ -1089,11 +1138,11 @@ export function CharacterManager({
             if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
           }}
           onSetDefaultTransform={(scale, flipX) => {
-            if (!selectedCharacter) return;
+            if (!selectedDisplayCharacter) return;
             mutate(
               () =>
                 characterStore.setDefaultTransform(
-                  selectedCharacter.id,
+                  selectedDisplayCharacter.id,
                   scale,
                   flipX,
                 ),
@@ -1113,15 +1162,19 @@ export function CharacterManager({
               (shot) => shot.id === currentShotId,
             ),
           )}
-          onPlaceInCurrentShot={(defaultTransformPending) =>
-            placeCharacterInCurrentShot({
+          onPlaceInCurrentShot={(defaultTransformPending) => {
+            const placed = placeCharacterInCurrentShot({
               characterId: selectedCharacterId,
               getCurrentCharacterId: () => selectedCharacterIdRef.current,
               defaultTransformPending,
               leaveAssembly,
               reportStatus: setStatus,
-            })
-          }
+            });
+            if (placed && floatEnabled && floatTarget && view === 'detail') {
+              onViewChange('list');
+              onCloseDrawer();
+            }
+          }}
           onSetMouthOpenAsset={(assetId) => {
             if (!selectedCharacter) return;
             mutate(
@@ -1132,8 +1185,12 @@ export function CharacterManager({
                 ),
             );
           }}
+          status={status}
+          floatEnabled={floatEnabled}
+          projectSnapshot={snapshot ?? undefined}
+          assemblySession={editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot) ? editAssemblySnapshot : undefined}
+          assemblyPending={assemblyPending}
           assemblyDraft={assemblyDraft}
-          adaptiveAssemblyActive={adaptiveAssemblyActive}
           assemblyEditTarget={
             editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
               ? editAssemblySnapshot.editTarget

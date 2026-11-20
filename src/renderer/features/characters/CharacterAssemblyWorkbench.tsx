@@ -1,13 +1,15 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react';
-import { ArrowLeft, Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, Eye, EyeOff, Minus, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -19,11 +21,14 @@ import {
   characterPartTransformFromStaticAdjustment,
   evaluateFlaGraphicVisual,
   isFlaGraphicDefinition,
+  removeAdaptivePartFromDefinition,
   resolveCharacterPartVisualSource,
+  scanAdaptivePartReferences,
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterPartStaticAdjustment,
   type FlaGraphicDefinition,
+  type ImageAsset,
   type LayerVisualPart,
   type BodyPlacement,
   type CharacterHead,
@@ -52,6 +57,8 @@ import {
 } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { GraphicFacePreview } from './GraphicFacePicker';
+import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
+import { useProjectImageThumbnails } from './CharacterIdentity';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
 import { measureImageVisibleBounds } from './measureImageVisibleBounds';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
@@ -87,6 +94,7 @@ import {
   type CharacterLayoutReuseImageDimensions,
   type CharacterLayoutReuseTarget,
 } from './characterLayoutReuse';
+import { AdaptiveCharacterManagement } from './AdaptiveCharacterManagement';
 import type { AdaptivePartsAssemblyActionsRef } from './CharacterManager';
 import { shotStore } from '../../stores/shotStore';
 
@@ -95,6 +103,14 @@ interface CharacterAssemblyWorkbenchProps {
   savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  floatingComposite?: {
+    editable: boolean;
+    leftOpen: boolean;
+    propertiesOpen: boolean;
+    controlsOpen: boolean;
+    propertyTarget: HTMLElement | null;
+    onToggleControls: () => void;
+  };
 }
 
 interface ActiveDragStart {
@@ -159,6 +175,7 @@ function layoutReuseFailureMessage(code: CharacterLayoutReuseFailureCode): strin
 function assemblyViewportFitArea(
   viewport: HTMLDivElement,
   fineTunePanel: HTMLDivElement | null,
+  floating = false,
 ): AssemblyViewportRect {
   const container = {
     width: viewport.clientWidth,
@@ -172,6 +189,13 @@ function assemblyViewportFitArea(
   const originX = viewportBounds.left + viewport.clientLeft;
   const originY = viewportBounds.top + viewport.clientTop;
   const occlusions: DOMRect[] = [];
+  if (floating) {
+    const root = viewport.closest('.character-float-detail');
+    for (const panel of root?.querySelectorAll('.character-float-panel[data-expanded="true"]') ?? []) {
+      const bounds = panel.getBoundingClientRect();
+      occlusions.push(new DOMRect(bounds.x - 8, viewportBounds.top, bounds.width + 16, viewportBounds.height));
+    }
+  }
   const dock = document.querySelector<HTMLElement>(
     '[data-testid="resource-activity-dock"]',
   );
@@ -188,7 +212,7 @@ function assemblyViewportFitArea(
   ) {
     occlusions.push(drawer.getBoundingClientRect());
   }
-  if (fineTunePanel) {
+  if (fineTunePanel && !floating) {
     const panelStyle = window.getComputedStyle(fineTunePanel);
     if (
       panelStyle.display !== 'none' &&
@@ -273,6 +297,7 @@ export function CharacterAssemblyWorkbench({
   savedProjectSnapshot,
   session,
   adaptivePartsActionsRef,
+  floatingComposite,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
@@ -285,6 +310,7 @@ export function CharacterAssemblyWorkbench({
   }
   return (
     <CompositeCharacterAssemblyWorkbench
+      floatingComposite={floatingComposite}
       projectSnapshot={projectSnapshot}
       savedProjectSnapshot={savedProjectSnapshot}
       session={session}
@@ -425,45 +451,285 @@ function formatAdaptiveAdjustmentInput(
   return String(Number(value.toFixed(1)));
 }
 
+const ADAPTIVE_PART_OVERFLOW_MENU_WIDTH = 160;
+const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 132;
+const ADAPTIVE_PART_OVERFLOW_MENU_GAP = 4;
+const ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
+
+function AdaptivePartsContextMenu({
+  canRemove,
+  canReplace,
+  disabled,
+  displayName,
+  onRemove,
+  onRename,
+  onReplace,
+}: {
+  canRemove: boolean;
+  canReplace: boolean;
+  disabled: boolean;
+  displayName: string;
+  onRemove: () => void;
+  onRename: () => void;
+  onReplace: () => void;
+}): React.JSX.Element {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trigger = triggerRef.current;
+    const popover = popoverRef.current;
+    if (!trigger || !popover) return undefined;
+
+    const isPopoverOpen = (): boolean => {
+      try {
+        return popover.matches(':popover-open');
+      } catch {
+        return false;
+      }
+    };
+
+    const hidePopoverSafely = (): void => {
+      if (isPopoverOpen() && typeof popover.hidePopover === 'function') {
+        popover.hidePopover();
+      }
+    };
+
+    const positionPopover = (force = false): void => {
+      if (!force && !isPopoverOpen()) return;
+      const anchor = trigger.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      if (
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        anchor.bottom <= 0 ||
+        anchor.top >= viewportHeight
+      ) {
+        hidePopoverSafely();
+        return;
+      }
+
+      const computedWidth = Number.parseFloat(getComputedStyle(popover).width);
+      const width = Math.min(
+        Number.isFinite(computedWidth) && computedWidth > 0
+          ? computedWidth
+          : ADAPTIVE_PART_OVERFLOW_MENU_WIDTH,
+        Math.max(0, viewportWidth - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN * 2),
+      );
+      const measuredHeight = popover.scrollHeight || ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT;
+      const height = Math.max(ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT, measuredHeight);
+      const spaceBelow =
+        viewportHeight - anchor.bottom - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const spaceAbove = anchor.top - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const opensAbove =
+        spaceBelow < height + ADAPTIVE_PART_OVERFLOW_MENU_GAP && spaceAbove > spaceBelow;
+      const availableSpace = Math.max(
+        0,
+        (opensAbove ? spaceAbove : spaceBelow) - ADAPTIVE_PART_OVERFLOW_MENU_GAP,
+      );
+      const visibleHeight = Math.min(height, availableSpace);
+      const maxLeft = Math.max(
+        0,
+        viewportWidth - width - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+      );
+      const left = Math.max(
+        ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+        Math.min(anchor.right - width, maxLeft),
+      );
+      const top = opensAbove
+        ? Math.max(
+            ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN,
+            anchor.top - ADAPTIVE_PART_OVERFLOW_MENU_GAP - visibleHeight,
+          )
+        : Math.min(
+            viewportHeight - ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN - visibleHeight,
+            anchor.bottom + ADAPTIVE_PART_OVERFLOW_MENU_GAP,
+          );
+
+      popover.style.width = `${width}px`;
+      popover.style.maxHeight = `${availableSpace}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      popover.dataset.placement = opensAbove ? 'above' : 'below';
+    };
+
+    const onBeforeToggle = (event: Event): void => {
+      if ((event as Event & { newState?: string }).newState === 'open') {
+        positionPopover(true);
+      }
+    };
+    const onToggle = (): void => {
+      const nextOpen = isPopoverOpen();
+      setOpen(nextOpen);
+      if (nextOpen) positionPopover(true);
+    };
+    const onViewportMove = (): void => positionPopover();
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (
+        isPopoverOpen() &&
+        target instanceof Node &&
+        !trigger.contains(target) &&
+        !popover.contains(target)
+      ) {
+        hidePopoverSafely();
+      }
+    };
+
+    popover.addEventListener('beforetoggle', onBeforeToggle);
+    popover.addEventListener('toggle', onToggle);
+    document.addEventListener('scroll', onViewportMove, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    window.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('scroll', onViewportMove);
+    return () => {
+      popover.removeEventListener('beforetoggle', onBeforeToggle);
+      popover.removeEventListener('toggle', onToggle);
+      document.removeEventListener('scroll', onViewportMove, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      window.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('scroll', onViewportMove);
+    };
+  }, []);
+
+  const runAction = (action: () => void): void => {
+    const popover = popoverRef.current;
+    if (popover && typeof popover.hidePopover === 'function') {
+      try {
+        if (popover.matches(':popover-open')) popover.hidePopover();
+      } catch {
+        // Ignore in environments without native popover support.
+      }
+    }
+    action();
+  };
+
+  return (
+    <div
+      className="adaptive-parts-row-overflow"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        const popover = popoverRef.current;
+        try {
+          if (popover?.matches(':popover-open')) {
+            event.stopPropagation();
+          }
+        } catch {
+          // Ignore in environments without native popover support.
+        }
+      }}
+    >
+      <button
+        aria-controls={id}
+        aria-expanded={open}
+        aria-label={`${displayName} 更多操作`}
+        className="adaptive-parts-row-action adaptive-parts-row-overflow-trigger"
+        data-testid="adaptive-parts-row-overflow-trigger"
+        disabled={disabled}
+        popoverTarget={id}
+        popoverTargetAction="toggle"
+        ref={triggerRef}
+        title={`${displayName} 更多操作`}
+        type="button"
+      >
+        <MoreHorizontal aria-hidden="true" size={18} />
+      </button>
+      <div
+        aria-label={`${displayName} 更多操作`}
+        className="adaptive-parts-row-overflow-menu"
+        data-testid="adaptive-parts-row-overflow-menu"
+        id={id}
+        popover="auto"
+        ref={popoverRef}
+        role="group"
+      >
+        <button
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-rename-button"
+          onClick={() => runAction(onRename)}
+          type="button"
+        >
+          重命名
+        </button>
+        <button
+          aria-label={`替换${displayName}素材`}
+          className="adaptive-parts-overflow-item"
+          data-testid="adaptive-parts-replace-button"
+          disabled={!canReplace}
+          onClick={() => runAction(onReplace)}
+          title={canReplace ? '替换此零件素材' : '当前项目没有可替换的素材'}
+          type="button"
+        >
+          替换素材
+        </button>
+        <button
+          aria-label={`从角色移除${displayName}`}
+          className="adaptive-parts-overflow-item adaptive-parts-overflow-item-danger"
+          data-testid="adaptive-parts-remove-button"
+          disabled={!canRemove}
+          onClick={() => runAction(onRemove)}
+          title={canRemove ? '从当前角色移除此零件（不删除源素材）' : '角色至少需要保留一个零件'}
+          type="button"
+        >
+          从角色移除
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdaptivePartsAssemblyRow({
   displayName,
   imageMissing,
   imageCacheKey,
   imageSrc,
+  onEdit,
   onMessage,
+  onRenameEnd,
   onRename,
   onRestore,
   onSelect,
   onToggleVisibility,
   part,
+  renaming,
   selected,
 }: {
   displayName: string;
   imageMissing: boolean;
   imageCacheKey: string;
   imageSrc?: string;
+  onEdit: () => void;
+  onRenameEnd: () => void;
   onMessage: (message: string) => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
   onRestore: () => void;
   onSelect: () => void;
   onToggleVisibility: () => void;
   part: AdaptivePartsCharacterPart;
+  renaming: boolean;
   selected: boolean;
 }): React.JSX.Element {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameFinishedRef = useRef(false);
-  const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(displayName);
   const [renameError, setRenameError] = useState('');
   const visible = part.visible !== false;
 
   useEffect(() => {
     if (!renaming) return;
+    renameFinishedRef.current = false;
+    setRenameValue(displayName);
+    setRenameError('');
     const input = renameInputRef.current;
     if (!input) return;
     input.focus();
     input.select();
-  }, [renaming]);
+  }, [displayName, renaming]);
 
   const finishRename = (): boolean => {
     const completion = resolveAdaptivePartRename(renameValue, displayName, onRename);
@@ -474,18 +740,10 @@ function AdaptivePartsAssemblyRow({
     }
     renameFinishedRef.current = true;
     setRenameError('');
-    setRenaming(false);
+    onRenameEnd();
     onMessage('');
     return true;
   };
-  const startRename = (): void => {
-    renameFinishedRef.current = false;
-    setRenameValue(displayName);
-    setRenameError('');
-    onMessage('');
-    setRenaming(true);
-  };
-
   return (
     <div
       className="adaptive-parts-assembly-row"
@@ -541,7 +799,7 @@ function AdaptivePartsAssemblyRow({
                   renameFinishedRef.current = true;
                   setRenameValue(displayName);
                   setRenameError('');
-                  setRenaming(false);
+                  onRenameEnd();
                   onMessage('');
                 }
               }}
@@ -599,17 +857,18 @@ function AdaptivePartsAssemblyRow({
         title={`${visible ? '隐藏' : '显示'}${displayName}`}
         type="button"
       >
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" />
-          {visible ? <circle cx="12" cy="12" r="2.7" /> : <path d="M4 4 20 20" />}
-        </svg>
+        {visible ? (
+          <Eye aria-hidden="true" size={18} />
+        ) : (
+          <EyeOff aria-hidden="true" size={18} />
+        )}
       </button>
       <button
-        aria-label={`重命名${displayName}`}
+        aria-label={`精调${displayName}`}
         className="adaptive-parts-row-action"
-        data-testid="adaptive-parts-rename-button"
-        onClick={startRename}
-        title={`重命名${displayName}`}
+        data-testid="adaptive-parts-edit-button"
+        onClick={onEdit}
+        title={`精调${displayName}`}
         type="button"
       >
         <Pencil aria-hidden="true" size={18} />
@@ -647,6 +906,8 @@ function renderAdaptivePartsAssemblyGraphicDataUrl(
   }
 }
 
+const EMPTY_SWAP_IMAGE_ASSETS: readonly ImageAsset[] = [];
+
 function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
@@ -663,12 +924,16 @@ function AdaptivePartsAssemblyWorkbench({
     shotStore.getCurrentShotId,
   );
   const hasCurrentShot = project.shots.some((shot) => shot.id === currentShotId);
-  const assemblyCharacterName = project.characters.find(
+  const assemblyCharacter = project.characters.find(
     (character) => character.id === session.characterId,
-  )?.name ?? '角色';
-  const workbenchRef = useRef<HTMLElement>(null);
+  );
+  const assemblyCharacterName = assemblyCharacter?.name ?? '角色';
   const viewportRef = useRef<HTMLDivElement>(null);
+  const operationsRef = useRef<HTMLElement>(null);
   const inspectorRef = useRef<HTMLElement>(null);
+  const operationsHandleRef = useRef<HTMLButtonElement>(null);
+  const inspectorHandleRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
   const dragRef = useRef<AdaptivePartPointerDrag | null>(null);
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform({ width: 0, height: 0 }, 'fit', {
@@ -677,18 +942,32 @@ function AdaptivePartsAssemblyWorkbench({
     }),
   );
   const [imageState, setImageState] = useState(EMPTY_CANVAS_IMAGE_STATE);
+  const [operationsOpen, setOperationsOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorPosition, setInspectorPosition] = useState({
-    left: 0,
-    top: 0,
-    width: 44,
-    corner: 'top-right',
-  });
+  const [inspectorContext, setInspectorContext] = useState<'part' | 'character'>('part');
+  const [renamingPartId, setRenamingPartId] = useState<string | null>(null);
   const [numericDrafts, setNumericDrafts] = useState<AdaptiveAdjustmentDrafts>({});
   const numericInitialValuesRef = useRef<
     Record<string, Partial<Record<AdaptiveAdjustmentField, number>>>
   >({});
   const [message, setMessage] = useState('');
+  const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
+  const replaceTriggerRef = useRef<HTMLElement | null>(null);
+  const projectImageAssets = useMemo(
+    () =>
+      project.assets.filter(
+        (asset): asset is ImageAsset => asset.kind === 'image',
+      ),
+    [project.assets],
+  );
+  const {
+    thumbnails: adaptiveSwapThumbnails,
+    onThumbnailError: onAdaptiveSwapThumbnailError,
+  } = useProjectImageThumbnails(
+    projectRoot,
+    replacingPartId ? projectImageAssets : EMPTY_SWAP_IMAGE_ASSETS,
+    project,
+  );
   const structuredGraphics = useMemo(
     () =>
       project.animations.filter(
@@ -748,19 +1027,75 @@ function AdaptivePartsAssemblyWorkbench({
       (state) => setImageState(state),
     );
   }, [contextKey, imageAssets, projectRoot]);
+  const readVisibleBounds = useRef<() => VisualLocalRect | null>(() => null);
+  const refitAfterNarrowCollapse = useRef(false);
+  const fitPreview = useCallback((): void => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const container = { width: viewport.clientWidth, height: viewport.clientHeight };
+    const occlusions = [operationsRef.current, inspectorRef.current].flatMap((panel) => {
+      if (!panel || panel.dataset.expanded !== 'true') return [];
+      const width = panel.offsetWidth + 8;
+      return [{
+        x: panel === operationsRef.current ? 0 : Math.max(0, container.width - width),
+        y: 0,
+        width,
+        height: container.height,
+      }];
+    });
+    const area = largestUnoccludedAssemblyViewportRect(container, occlusions);
+    const logicalFrame = { width: project.width, height: project.height };
+    const visibleBounds = inspectorRef.current?.dataset.expanded === 'true' ? readVisibleBounds.current() : null;
+    if (visibleBounds) {
+      setTransform(calculateAssemblyFitViewportTransform(container, logicalFrame, visibleBounds, area));
+      return;
+    }
+    const next = calculateViewportTransform(area, 'fit', logicalFrame);
+    setTransform({ ...next, container, offsetX: next.offsetX + area.x, offsetY: next.offsetY + area.y });
+  }, [project.height, project.width]);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const update = (): void => setTransform(calculateViewportTransform(
-      { width: viewport.clientWidth, height: viewport.clientHeight },
-      'fit',
-      { width: project.width, height: project.height },
-    ));
-    update();
-    const observer = new ResizeObserver(update);
+    fitPreview();
+    const observer = new ResizeObserver(() => {
+      if (viewport.clientWidth < 720 &&
+          inspectorRef.current?.dataset.expanded === 'true' &&
+          operationsRef.current?.dataset.expanded === 'true') {
+        if (operationsRef.current?.contains(document.activeElement)) inspectorHandleRef.current?.focus();
+        refitAfterNarrowCollapse.current = true;
+        setOperationsOpen(false);
+        return;
+      }
+      fitPreview();
+    });
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [project.height, project.width]);
+  }, [fitPreview]);
+  const previousPanels = useRef({ operationsOpen: true, inspectorOpen: false });
+  useLayoutEffect(() => {
+    const previous = previousPanels.current;
+    previousPanels.current = { operationsOpen, inspectorOpen };
+    if (refitAfterNarrowCollapse.current ||
+        (operationsOpen && !previous.operationsOpen) || (inspectorOpen && !previous.inspectorOpen)) {
+      refitAfterNarrowCollapse.current = false;
+      fitPreview();
+    }
+  }, [fitPreview, inspectorOpen, operationsOpen]);
+
+  const isNarrow = (): boolean => {
+    const width = viewportRef.current?.clientWidth ?? 0;
+    return width > 0 && width < 720;
+  };
+  const openInspector = (context: 'part' | 'character', focus = true): void => {
+    if (isNarrow()) setOperationsOpen(false);
+    setInspectorContext(context);
+    setInspectorOpen(true);
+    if (focus) inspectorHandleRef.current?.focus();
+  };
+  const toggleOperations = (): void => {
+    if (!operationsOpen && isNarrow()) setInspectorOpen(false);
+    setOperationsOpen(!operationsOpen);
+  };
 
   const activeHandle = (): AdaptivePartsAssemblySessionHandle | null => {
     const handle = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle();
@@ -863,6 +1198,102 @@ function AdaptivePartsAssemblyWorkbench({
         return next;
       });
       delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
+      setMessage('');
+    }
+  };
+  const replacePartWithImage = (partId: string, assetId: string): void => {
+    if (!assetId) return;
+    const asset = projectImageAssets.find((candidate) => candidate.id === assetId);
+    if (!asset) {
+      setMessage('未找到可用的图片素材。');
+      return;
+    }
+    const current = activeHandle()?.getSnapshot()?.draft;
+    const existingPart = current?.parts.find((candidate) => candidate.partId === partId);
+    if (!current || !existingPart) return;
+    const oldBounds = characterPartSourceBounds(existingPart, project.animations);
+    if (!oldBounds) return;
+    const replacementPlacement = characterPartPlacementForReplacement({
+      sourceRootTransform: current.sourceRootTransform,
+      oldRestTransform: existingPart.restTransform,
+      oldBounds,
+      newBounds: {
+        x: 0,
+        y: 0,
+        width: asset.width,
+        height: asset.height,
+      },
+    });
+    const result = updatePart(partId, (candidate) => {
+      const nextPart: typeof candidate = {
+        ...candidate,
+        assetId: asset.id,
+        imageMapping: {
+          sourceWidth: asset.width,
+          sourceHeight: asset.height,
+          crop: {
+            x: 0,
+            y: 0,
+            width: asset.width,
+            height: asset.height,
+          },
+          exportScale: 1,
+        },
+        sourceRestTransform: replacementPlacement.sourceRestTransform,
+        restTransform: replacementPlacement.restTransform,
+        staticAdjustment: replacementPlacement.staticAdjustment,
+      };
+      delete nextPart.visualSource;
+      return nextPart;
+    });
+    if (result.ok) {
+      setNumericDrafts((drafts) => {
+        if (!(partId in drafts)) return drafts;
+        const next = { ...drafts };
+        delete next[partId];
+        return next;
+      });
+      delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
+      setMessage('');
+    }
+  };
+  const removePart = (partId: string): void => {
+    const current = activeHandle()?.getSnapshot()?.draft;
+    if (!current) {
+      setMessage(expiredAdaptivePartsDraftMessage);
+      return;
+    }
+    if (current.parts.length <= 1) {
+      setMessage('角色至少需要保留一个零件。');
+      return;
+    }
+    const refs = scanAdaptivePartReferences(project, session.characterId, partId);
+    if (refs.layerCount > 0 || refs.animatedLayerCount > 0) {
+      const scope = refs.keyframeCount > 0
+        ? `此零件当前被 ${refs.shotCount} 个镜头使用，并包含 ${refs.keyframeCount} 个关键帧。`
+        : `此零件当前被 ${refs.shotCount} 个镜头使用。`;
+      if (
+        !window.confirm(
+          `${scope}从角色移除后，应用更改将同步清理相关动画轨道，不会删除源素材。确认移除？`,
+        )
+      ) {
+        return;
+      }
+    }
+    const result = setDefinition((definition) =>
+      removeAdaptivePartFromDefinition(definition, partId),
+    );
+    if (result.ok) {
+      setNumericDrafts((drafts) => {
+        if (!(partId in drafts)) return drafts;
+        const next = { ...drafts };
+        delete next[partId];
+        return next;
+      });
+      delete numericInitialValuesRef.current[partId];
+      setReplacingPartId((currentPartId) => (currentPartId === partId ? null : currentPartId));
       setMessage('');
     }
   };
@@ -886,6 +1317,7 @@ function AdaptivePartsAssemblyWorkbench({
         readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
         readonly dataUrl: string;
         readonly canvasWidth: number;
+        readonly visibleRect: VisualLocalRect | null;
       }
     >();
     for (const part of visual?.parts ?? []) {
@@ -898,11 +1330,38 @@ function AdaptivePartsAssemblyWorkbench({
           rect: rendered.rect,
           dataUrl,
           canvasWidth: part.flaGraphic.canvas.width,
+          visibleRect: rendered.visibleRect,
         });
       }
     }
     return result;
   }, [visual?.parts, imageState.images]);
+  readVisibleBounds.current = () => {
+    if (!visual) return null;
+    const imageBounds = new Map<string, NormalizedImageBounds | null>();
+    const parts = visual.parts.flatMap((part) => {
+      if (part.visible === false) return [];
+      if (part.flaGraphic) {
+        const partId = adaptiveCharacterPartIdOf(part);
+        const bounds = partId ? graphicPartRasters.get(partId)?.visibleRect : null;
+        if (!bounds) return [];
+        return [{
+          ...part,
+          assetId: undefined,
+          localRect: {
+            ...bounds,
+            x: bounds.x + part.flaGraphic.canvas.width / 2,
+            y: bounds.y + part.flaGraphic.canvas.height / 2,
+          },
+        }];
+      }
+      const image = part.assetId ? imageState.images.get(part.assetId) : undefined;
+      if (!image || !part.assetId) return [];
+      imageBounds.set(part.assetId, measureImageVisibleBounds(image));
+      return [part];
+    });
+    return calculateAssemblyVisibleBounds({ ...visual, parts, headPart: null }, imageBounds);
+  };
   const selectedCanvasReady = selectedCanvasPart
     ? selectedCanvasPart.flaGraphic
       ? graphicPartRasters.has(session.selectedPartId ?? '')
@@ -1168,157 +1627,12 @@ function AdaptivePartsAssemblyWorkbench({
     clearNumericDraftsForPart(partId);
     setMessage('');
   };
-  useLayoutEffect(() => {
-    const workbench = workbenchRef.current;
-    const viewport = viewportRef.current;
-    const inspector = inspectorRef.current;
-    if (!workbench || !viewport || !inspector) return undefined;
-    let frame = 0;
-    const placeInspector = (): void => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-      const workbenchBounds = workbench.getBoundingClientRect();
-      const viewportBounds = viewport.getBoundingClientRect();
-      if (viewportBounds.width <= 0 || viewportBounds.height <= 0) return;
-
-      const margin = 8;
-      const listBounds = workbench
-        .querySelector<HTMLElement>('.adaptive-parts-assembly-list')
-        ?.getBoundingClientRect();
-      const preferredWidth = window.innerWidth <= 900
-        ? Math.min(256, Math.max(44, (listBounds?.width ?? viewportBounds.width) - margin * 2))
-        : 256;
-      const width = Math.min(
-        inspectorOpen ? preferredWidth : 44,
-        Math.max(44, viewportBounds.width - margin * 2),
-      );
-      const height = Math.min(
-        Math.max(inspectorOpen ? inspector.scrollHeight : 44, 44),
-        Math.max(44, viewportBounds.height - margin * 2),
-      );
-      const partElements = [
-        ...viewport.querySelectorAll<HTMLElement>(
-          '[data-testid="adaptive-parts-assembly-canvas-part"]',
-        ),
-      ];
-      const selectedElement = session.selectedPartId
-        ? partElements.find((element) => element.dataset.partId === session.selectedPartId)
-        : undefined;
-      const toolbarButton = viewport.querySelector<HTMLButtonElement>(
-        '.adaptive-parts-assembly-canvas-toolbar button',
-      );
-      const obstacles = [
-        ...partElements.map((element) => {
-          const bounds = element.getBoundingClientRect();
-          return {
-            left: bounds.left,
-            right: bounds.right,
-            top: bounds.top,
-            bottom: bounds.bottom,
-            weight: element === selectedElement ? 4 : 1,
-          };
-        }),
-        ...(toolbarButton
-          ? (() => {
-              const bounds = toolbarButton.getBoundingClientRect();
-              return [{
-                left: bounds.left,
-                right: bounds.right,
-                top: bounds.top,
-                bottom: bounds.bottom,
-                weight: 2,
-              }];
-            })()
-          : []),
-      ];
-      const candidates = [
-        {
-          corner: 'top-right',
-          left: viewportBounds.right - width - margin,
-          top: viewportBounds.top + margin,
-        },
-        {
-          corner: 'top-left',
-          left: viewportBounds.left + margin,
-          top: viewportBounds.top + margin,
-        },
-        {
-          corner: 'bottom-right',
-          left: viewportBounds.right - width - margin,
-          top: viewportBounds.bottom - height - margin,
-        },
-        {
-          corner: 'bottom-left',
-          left: viewportBounds.left + margin,
-          top: viewportBounds.bottom - height - margin,
-        },
-        ...(window.innerWidth <= 900 && listBounds
-          ? [{
-              corner: 'list-column',
-              left: listBounds.left + margin,
-              top: viewportBounds.top + margin,
-            }]
-          : []),
-      ];
-      const score = (candidate: (typeof candidates)[number]): number =>
-        obstacles.reduce((total, obstacle) => {
-          const overlapWidth = Math.max(
-            0,
-            Math.min(candidate.left + width, obstacle.right) -
-              Math.max(candidate.left, obstacle.left),
-          );
-          const overlapHeight = Math.max(
-            0,
-            Math.min(candidate.top + height, obstacle.bottom) -
-              Math.max(candidate.top, obstacle.top),
-          );
-          const overlap = overlapWidth * overlapHeight;
-          const obstacleArea = Math.max(
-            1,
-            (obstacle.right - obstacle.left) * (obstacle.bottom - obstacle.top),
-          );
-          return total + overlap / obstacleArea * obstacle.weight;
-        }, 0);
-      const best = candidates.reduce((currentBest, candidate) =>
-        score(candidate) < score(currentBest) ? candidate : currentBest,
-      );
-      const horizontalBounds = best.corner === 'list-column'
-        ? workbenchBounds
-        : viewportBounds;
-      const left = Math.max(
-        horizontalBounds.left + margin,
-        Math.min(best.left, horizontalBounds.right - width - margin),
-      );
-      const top = Math.max(
-        viewportBounds.top + margin,
-        Math.min(best.top, viewportBounds.bottom - height - margin),
-      );
-      setInspectorPosition({
-        left: left - workbenchBounds.left,
-        top: top - workbenchBounds.top,
-        width,
-        corner: best.corner,
-      });
-      });
-    };
-    placeInspector();
-    const observer = new ResizeObserver(placeInspector);
-    observer.observe(viewport);
-    window.addEventListener('resize', placeInspector);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener('resize', placeInspector);
-    };
-  }, [
-    inspectorOpen,
-    numericDrafts,
-    project.height,
-    project.width,
-    session.selectedPartId,
-    transform,
-  ]);
-
+  const selectPart = (partId: string, edit = false): boolean => {
+    if (!activeHandle()?.selectPart(partId)) return false;
+    if (edit) openInspector('part');
+    else if (inspectorOpen) setInspectorContext('part');
+    return true;
+  };
   const pointerToLocal = (clientX: number, clientY: number): { x: number; y: number } => {
     const bounds = viewportRef.current?.getBoundingClientRect();
     if (!bounds) return { x: 0, y: 0 };
@@ -1334,8 +1648,7 @@ function AdaptivePartsAssemblyWorkbench({
   const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
-    const handle = activeHandle();
-    if (!handle?.selectPart(partId)) return;
+    if (!selectPart(partId)) return;
     event.preventDefault();
     const point = pointerToLocal(event.clientX, event.clientY);
     dragRef.current = {
@@ -1351,8 +1664,7 @@ function AdaptivePartsAssemblyWorkbench({
   const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
-    const handle = activeHandle();
-    if (!handle?.selectPart(partId)) return;
+    if (!selectPart(partId)) return;
     event.preventDefault();
     event.stopPropagation();
     const center = partPoint(part, part.localRect.width / 2, part.localRect.height / 2);
@@ -1512,42 +1824,53 @@ function AdaptivePartsAssemblyWorkbench({
         {error ? <small className="adaptive-parts-inspector-field-error" id={errorId}>{error}</small> : null}
       </div>
     );
-  };  return (
-    <section
-      aria-label="Adaptive Parts 角色组装工作区"
-      className="character-assembly-workbench adaptive-parts-assembly-workbench"
-      data-character-id={session.characterId}
-      data-project-revision={projectSnapshot.revision}
-      data-project-dirty={projectSnapshot.dirty}
-      data-testid="adaptive-parts-assembly-workbench"
-      ref={workbenchRef}
+  };
+  const partsListPanel = (
+    <aside
+      aria-label="部件列表"
+      className="adaptive-parts-float adaptive-parts-float-operations"
+      data-expanded={operationsOpen}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !operationsOpen) return;
+        event.stopPropagation();
+        setOperationsOpen(false);
+        operationsHandleRef.current?.focus();
+      }}
+      ref={operationsRef}
     >
-      <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
-        <button
-          aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-          className="adaptive-parts-assembly-back"
-          data-testid="adaptive-parts-back-to-list"
-          onClick={returnToCharacterList}
-          title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-          type="button"
-        >
-          <ArrowLeft aria-hidden="true" size={18} />
-        </button>
-        <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
-        <button
-          className="adaptive-parts-assembly-join-shot"
-          data-testid="adaptive-parts-join-current-shot"
-          disabled={!hasCurrentShot}
-          onClick={joinCurrentShot}
-          title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={16} />
-          <span>{'\u52a0\u5165\u955c\u5934'}</span>
-        </button>
-      </header>
-      <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
-        <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+      <button
+        aria-controls={panelId + '-operations'}
+        aria-expanded={operationsOpen}
+        aria-label={operationsOpen ? '收起零件操作' : '展开零件操作'}
+        className="adaptive-parts-float-handle"
+        data-testid="adaptive-parts-operations-toggle"
+        onClick={toggleOperations}
+        ref={operationsHandleRef}
+        title={operationsOpen ? '收起零件操作' : '展开零件操作'}
+        type="button"
+      >
+        <span className="quick-action-drawer-grip" aria-hidden="true" />
+      </button>
+      <div className="adaptive-parts-assembly-list" id={panelId + '-operations'} inert={!operationsOpen}>
+        <div className="adaptive-parts-list-heading">
+          <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+          <AdaptivePartsContextMenu
+            canRemove={rows.length > 1}
+            canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
+            disabled={!selectedPart}
+            displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
+            onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
+            onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
+            onReplace={() => {
+              if (!selectedPart) return;
+              replaceTriggerRef.current =
+                operationsRef.current?.querySelector<HTMLElement>(
+                  '[data-testid="adaptive-parts-row-overflow-trigger"]',
+                ) ?? null;
+              setReplacingPartId(selectedPart.partId);
+            }}
+          />
+        </div>
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part) => {
             const visualSource = resolveCharacterPartVisualSource(part);
@@ -1611,13 +1934,16 @@ function AdaptivePartsAssemblyWorkbench({
                 imageCacheKey={imageCacheKey}
                 imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
+                onEdit={() => selectPart(part.partId, true)}
                 onMessage={setMessage}
+                onRenameEnd={() => setRenamingPartId(null)}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({
                   ...current,
                   displayName,
                 }))}
                 onRestore={() => restorePartToSourcePose(part.partId)}
-                onSelect={() => activeHandle()?.selectPart(part.partId)}
+                onSelect={() => selectPart(part.partId)}
+                renaming={renamingPartId === part.partId}
                 onToggleVisibility={() => updatePart(part.partId, (current) => ({
                   ...current,
                   visible: current.visible === false,
@@ -1628,40 +1954,60 @@ function AdaptivePartsAssemblyWorkbench({
             );
           })}
         </div>
-        {selectedPart && structuredGraphics.length > 0 ? (
-          <div
-            className="adaptive-parts-source-picker"
-            data-source-kind={selectedPartVisualSource?.kind ?? 'image'}
-          >
-            <label htmlFor="adaptive-parts-graphic-select">{'\u66ff\u6362\u5143\u4ef6'}</label>
-            <select
-              aria-label={'\u9009\u62e9\u5df2\u5bfc\u5165\u7684 FLA \u5143\u4ef6\u6765\u6e90'}
-              data-testid="adaptive-parts-graphic-select"
-              id="adaptive-parts-graphic-select"
-              value={
-                selectedPartVisualSource?.kind === 'fla-graphic'
-                  ? selectedPartVisualSource.animationId
-                  : ''
-              }
-              onChange={(event) => replacePartWithGraphic(selectedPart.partId, event.target.value)}
+      </div>
+    </aside>
+  );
+
+  return (
+    <section
+      aria-label="Adaptive Parts 角色组装工作区"
+      className="character-assembly-workbench adaptive-parts-assembly-workbench"
+      data-character-id={session.characterId}
+      data-project-revision={projectSnapshot.revision}
+      data-project-dirty={projectSnapshot.dirty}
+      data-testid="adaptive-parts-assembly-workbench"
+    >
+      <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
+        <button
+          aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          className="adaptive-parts-assembly-back"
+          data-testid="adaptive-parts-back-to-list"
+          onClick={returnToCharacterList}
+          title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" size={18} />
+        </button>
+        <div className="adaptive-parts-assembly-title">
+          <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
+          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+            <button
+              aria-controls={panelId + '-properties'}
+              aria-expanded={inspectorOpen && inspectorContext === 'character'}
+              aria-label="角色属性"
+              className="adaptive-parts-row-action adaptive-character-management-trigger"
+              data-testid="adaptive-character-management"
+              onClick={() => openInspector('character')}
+              title="角色属性"
+              type="button"
             >
-              <option
-                disabled={selectedPartVisualSource?.kind === 'fla-graphic'}
-                value=""
-              >
-                {selectedPartVisualSource?.kind === 'image'
-                  ? '\u5f53\u524d\u4f4d\u56fe'
-                  : '\u9009\u62e9\u5df2\u5bfc\u5165\u5143\u4ef6'}
-              </option>
-              {structuredGraphics.map((graphic) => (
-                <option key={graphic.id} value={graphic.id}>
-                  {graphic.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-      </aside>
+              <MoreHorizontal aria-hidden="true" size={18} />
+            </button>
+          ) : null}
+        </div>
+        <button
+          className="adaptive-parts-assembly-join-shot"
+          data-testid="adaptive-parts-join-current-shot"
+          disabled={!hasCurrentShot}
+          onClick={joinCurrentShot}
+          title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} />
+          <span>{'\u52a0\u5165\u955c\u5934'}</span>
+        </button>
+      </header>
+      {partsListPanel}
 
       <div
         aria-label="角色部件画布"
@@ -1770,76 +2116,67 @@ function AdaptivePartsAssemblyWorkbench({
           ) : null}
         </div>
         <div className="adaptive-parts-assembly-canvas-toolbar">
-          <button type="button" onClick={() => setTransform(calculateViewportTransform(
-            { width: viewportRef.current?.clientWidth ?? 0, height: viewportRef.current?.clientHeight ?? 0 },
-            'fit',
-            { width: project.width, height: project.height },
-          ))}>查看全貌</button>
+          <button type="button" onClick={fitPreview}>查看全貌</button>
         </div>
       </div>
 
       <aside
-        aria-label="部件检查器"
-        className="adaptive-parts-assembly-inspector"
-        data-position={inspectorPosition.corner}
-        ref={inspectorRef}
-        style={{
-          left: inspectorPosition.left,
-          top: inspectorPosition.top,
-          width: inspectorPosition.width,
+        aria-label="属性"
+        className="adaptive-parts-float adaptive-parts-float-properties"
+        data-expanded={inspectorOpen}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !inspectorOpen) return;
+          event.stopPropagation();
+          setInspectorOpen(false);
+          inspectorHandleRef.current?.focus();
         }}
+        ref={inspectorRef}
       >
-        {!inspectorOpen ? (
-          <button
-            aria-label={'\u7cbe\u8c03\u5f53\u524d\u96f6\u4ef6'}
-            aria-expanded={false}
-            className="adaptive-parts-inspector-toggle"
-            data-testid="adaptive-parts-inspector-toggle"
-            disabled={!selectedPart}
-            onClick={() => setInspectorOpen(true)}
-            type="button"
-          >
-            {'\u7cbe\u8c03'}
-          </button>
-        ) : selectedPart && selectedAdjustment ? (
-          <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
-            <div className="adaptive-parts-inspector-heading">
-              <strong
-                title={
-                  selectedPart.displayName ??
-                  (selectedPartVisualSource?.kind === 'fla-graphic'
-                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
-                    : selectedPart.assetId
-                      ? assetNames.get(selectedPart.assetId)
-                      : undefined) ??
-                  '\u96f6\u4ef6'
-                }
-              >
-                {selectedPart.displayName ??
-                  (selectedPartVisualSource?.kind === 'fla-graphic'
-                    ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
-                    : selectedPart.assetId
-                      ? assetNames.get(selectedPart.assetId)
-                      : undefined) ??
-                  '\u96f6\u4ef6'}
-              </strong>
-              <button
-                aria-label={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
-                className="adaptive-parts-inspector-close"
-                data-testid="adaptive-parts-inspector-close"
-                onClick={() => setInspectorOpen(false)}
-                title={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
-                type="button"
-              >
-                <X aria-hidden="true" size={18} />
-              </button>
+        <button
+          aria-controls={panelId + '-properties'}
+          aria-expanded={inspectorOpen}
+          aria-label={inspectorOpen ? '收起属性' : '展开属性'}
+          className="adaptive-parts-float-handle"
+          data-testid="adaptive-parts-inspector-toggle"
+          onClick={() => {
+            if (inspectorOpen) setInspectorOpen(false);
+            else openInspector(inspectorContext, false);
+          }}
+          ref={inspectorHandleRef}
+          title={inspectorOpen ? '收起属性' : '展开属性'}
+          type="button"
+        >
+          <span className="quick-action-drawer-grip" aria-hidden="true" />
+        </button>
+        <div className="adaptive-parts-properties-body" id={panelId + '-properties'} inert={!inspectorOpen}>
+          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+            <div hidden={inspectorContext !== 'character'}>
+              <AdaptiveCharacterManagement
+                key={JSON.stringify([assemblyCharacter.id, assemblyCharacter.name, assemblyCharacter.defaultScale, assemblyCharacter.defaultFlipX])}
+                character={assemblyCharacter}
+                onManage={(action) => adaptivePartsActionsRef.current?.manage(action) ??
+                  { ok: false, message: '请重新打开角色工作台。' }}
+              />
             </div>
-            {renderAdaptiveAdjustmentField('offsetX', 'X', 'X \u504f\u79fb', 'adaptive-parts-offset-x')}
-            {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
-            {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
-            {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
-          </div>
-        ) : null}
+          ) : null}
+          {inspectorContext === 'part' && selectedPart && selectedAdjustment ? (
+            <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
+              <div className="adaptive-parts-inspector-heading">
+                <strong>{localizeDefaultAdaptivePartName(
+                  selectedPart.displayName ??
+                    (selectedPartVisualSource?.kind === 'fla-graphic'
+                      ? structuredGraphicById.get(selectedPartVisualSource.animationId)?.name
+                      : selectedPart.assetId ? assetNames.get(selectedPart.assetId) : undefined) ??
+                    `Part ${selectedPart.drawOrder + 1}`,
+                )}</strong>
+              </div>
+              {renderAdaptiveAdjustmentField('offsetX', 'X', 'X \u504f\u79fb', 'adaptive-parts-offset-x')}
+              {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
+              {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
+              {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
+            </div>
+          ) : inspectorContext === 'part' ? <span>选择零件</span> : null}
+        </div>
       </aside>
 
       <footer className="character-assembly-workbench-footer adaptive-parts-assembly-footer">
@@ -1856,11 +2193,50 @@ function AdaptivePartsAssemblyWorkbench({
           </button>
         </div>
       </footer>
+      {replacingPartId && session.draft.parts.some((part) => part.partId === replacingPartId) ? (() => {
+        const targetPart = session.draft.parts.find((part) => part.partId === replacingPartId)!;
+        const targetSource = resolveCharacterPartVisualSource(targetPart);
+        const targetLabel = localizeDefaultAdaptivePartName(
+          targetPart.displayName ??
+            (targetSource.kind === 'image'
+              ? assetNames.get(targetSource.assetId)
+              : structuredGraphicById.get(targetSource.animationId)?.name) ??
+            `Part ${targetPart.drawOrder + 1}`,
+        );
+        return (
+          <CharacterResourceSwapDialog
+            currentValue={
+              targetSource.kind === 'image'
+                ? { kind: 'image', assetId: targetSource.assetId }
+                : { kind: 'fla-graphic', animationId: targetSource.animationId }
+            }
+            graphicDefinitions={structuredGraphics}
+            graphicSelectionMode="definition"
+            imageAssets={projectImageAssets}
+            onCancel={() => setReplacingPartId(null)}
+            onConfirm={(next) => {
+              if (next.kind === 'image' && next.assetId) {
+                replacePartWithImage(targetPart.partId, next.assetId);
+              } else if (next.kind === 'fla-graphic') {
+                replacePartWithGraphic(targetPart.partId, next.animationId);
+              } else {
+                setReplacingPartId(null);
+              }
+            }}
+            onThumbnailError={onAdaptiveSwapThumbnailError}
+            open
+            returnFocusTo={replaceTriggerRef.current}
+            thumbnails={adaptiveSwapThumbnails}
+            title={`替换素材 · ${targetLabel}`}
+          />
+        );
+      })() : null}
     </section>
   );
 }
 
 function CompositeCharacterAssemblyWorkbench({
+  floatingComposite,
   projectSnapshot,
   savedProjectSnapshot,
   session,
@@ -1952,7 +2328,9 @@ function CompositeCharacterAssemblyWorkbench({
     null,
   );
   const [isEditingNeckPivot, setIsEditingNeckPivot] = useState(false);
-  const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
+  const [legacyFineTuneOpen, setIsFineTuneOpen] = useState(false);
+  const isFineTuneOpen = floatingComposite ? floatingComposite.controlsOpen : legacyFineTuneOpen;
+  const canEditAssembly = floatingComposite?.editable ?? true;
   const [headMotionTestToken, setHeadMotionTestToken] =
     useState<AssemblyHeadMotionTestToken | null>(null);
   const activeEditTarget =
@@ -2007,7 +2385,7 @@ function CompositeCharacterAssemblyWorkbench({
   }, [activeEditTarget, activeRotationDeg, session.sessionId]);
 
   useLayoutEffect(() => {
-    if (!isFineTuneOpen) return;
+    if (!isFineTuneOpen || floatingComposite) return;
     const viewport = viewportRef.current;
     const panel = fineTunePanelRef.current;
     if (!viewport || !panel) return;
@@ -2102,15 +2480,15 @@ function CompositeCharacterAssemblyWorkbench({
       observer.disconnect();
       window.removeEventListener('resize', placePanel);
     };
-  }, [activeEditTarget, head, isFineTuneOpen, transform.offsetX, transform.offsetY, transform.scale]);
+  }, [activeEditTarget, floatingComposite, head, isFineTuneOpen, transform.offsetX, transform.offsetY, transform.scale]);
 
   useEffect(() => {
-    if (!isFineTuneOpen && !isExpressionPreviewOpen) return;
+    if ((!isFineTuneOpen || floatingComposite) && !isExpressionPreviewOpen) return;
 
     const handlePointerDown = (event: PointerEvent): void => {
       if (!(event.target instanceof Node)) return;
       if (
-        isFineTuneOpen &&
+        !floatingComposite && isFineTuneOpen &&
         !fineTunePanelRef.current?.contains(event.target) &&
         !fineTuneTriggerRef.current?.contains(event.target)
       ) {
@@ -2145,7 +2523,7 @@ function CompositeCharacterAssemblyWorkbench({
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isExpressionPreviewOpen, isFineTuneOpen]);
+  }, [floatingComposite, isExpressionPreviewOpen, isFineTuneOpen]);
 
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
@@ -2356,6 +2734,7 @@ function CompositeCharacterAssemblyWorkbench({
     ? visibleImageRect(headPart.localRect, headImageBounds)
     : null;
 
+  const floatingLayout = floatingComposite ? (floatingComposite.leftOpen ? 1 : 0) + (floatingComposite.propertiesOpen ? 2 : 0) : null;
   const getAssemblyCameraTransform = useCallback(
     (mode: 'frame' | 'content', bounds: VisualLocalRect | null) => {
       const viewport = viewportRef.current;
@@ -2371,6 +2750,13 @@ function CompositeCharacterAssemblyWorkbench({
         width: viewport.clientWidth,
         height: viewport.clientHeight,
       };
+      if (floatingLayout !== null && floatingLayout > 0) {
+        const availableArea = assemblyViewportFitArea(viewport, null, true);
+        const focusBounds = bounds ?? latestAssemblyBoundsRef.current;
+        if (focusBounds) return calculateAssemblyFitViewportTransform(container, logicalFrame, focusBounds, availableArea);
+        const fit = calculateViewportTransform(availableArea, 'fit', logicalFrame);
+        return { ...fit, container, offsetX: fit.offsetX + availableArea.x, offsetY: fit.offsetY + availableArea.y };
+      }
       if (mode === 'content' && bounds) {
         return calculateAssemblyFitViewportTransform(
           container,
@@ -2381,7 +2767,7 @@ function CompositeCharacterAssemblyWorkbench({
       }
       return calculateViewportTransform(container, 'fit', logicalFrame);
     },
-    [project.height, project.width],
+    [floatingLayout, project.height, project.width],
   );
 
   const markCameraInteraction = useCallback(() => {
@@ -2440,7 +2826,7 @@ function CompositeCharacterAssemblyWorkbench({
     if (!visual || !assemblyImagesSettled) return;
     autoFitAttemptedForRef.current = cameraSessionKey;
     if (
-      !assemblyBoundsExceedFrame(assemblyVisibleBounds, {
+      floatingLayout === null && !assemblyBoundsExceedFrame(assemblyVisibleBounds, {
         width: project.width,
         height: project.height,
       })
@@ -2455,6 +2841,7 @@ function CompositeCharacterAssemblyWorkbench({
     assemblyImagesSettled,
     assemblyVisibleBounds,
     cameraSessionKey,
+    floatingLayout,
     getAssemblyCameraTransform,
     project.height,
     project.width,
@@ -2607,6 +2994,7 @@ function CompositeCharacterAssemblyWorkbench({
     event: React.PointerEvent<HTMLElement>,
     definition: ActiveDragDefinition,
   ): void => {
+    if (!canEditAssembly) return;
     if (event.button !== 0 || isTestingHeadMotion) return;
     const target = definition.kind === 'scale'
       ? definition.target
@@ -3036,6 +3424,211 @@ function CompositeCharacterAssemblyWorkbench({
         }
       : null;
 
+  const fineTunePanel = canEditAssembly && isFineTuneOpen && !isEditingNeckPivot ? (
+            <div
+              aria-label={`${activeEditTargetLabel}精调`}
+              className="character-assembly-fine-tune-panel"
+              id="character-assembly-fine-tune-panel"
+              data-testid="character-assembly-fine-tune-panel"
+              ref={fineTunePanelRef}
+              role="group"
+            >
+              {floatingComposite ? <strong className="character-float-precision-title">{activeEditTargetLabel}</strong> : null}
+              {activeEditTarget === 'body' ? (
+                <>
+                  <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体左右</span>
+                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
+                    <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体上下</span>
+                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
+                    <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体大小</span>
+                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
+                    <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
+                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : activeEditTarget === 'head' && head ? (
+                <>
+                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部左右</span>
+                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
+                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部上下</span>
+                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
+                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部大小</span>
+                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
+                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div aria-label="左右" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">左右</span>
+                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
+                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="上下" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">上下</span>
+                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
+                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">大小</span>
+                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
+                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              )}
+              {activeEditTarget !== 'body' ? <div
+                aria-label={`${activeEditTargetLabel}角度`}
+                className="character-assembly-control-set character-assembly-angle-control"
+                data-testid="character-assembly-angle-control"
+                role="group"
+              >
+                <span className="character-assembly-control-label">角度</span>
+                <button
+                  aria-label="逆时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-down'
+                    : 'character-assembly-face-rotation-down'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg - (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  −
+                </button>
+                {(() => {
+                  const angleInput = (
+                    <input
+                      aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
+                      aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
+                      data-testid={
+                        activeEditTarget === 'head'
+                          ? 'character-assembly-head-rotation'
+                          : 'character-assembly-face-rotation'
+                      }
+                      disabled={isTestingHeadMotion}
+                      max={180}
+                      min={-180}
+                      onBlur={() => setRotationInput(String(activeRotationDeg))}
+                      onChange={(event) => {
+                        const raw = event.currentTarget.value;
+                        setRotationInput(raw);
+                        const value = parseAssemblyRotationInput(raw);
+                        if (value !== null) {
+                          setTargetRotation(value);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        const step = event.shiftKey ? 10 : 1;
+                        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setTargetRotation(activeRotationDeg - step);
+                        } else if (
+                          event.key === 'ArrowRight' ||
+                          event.key === 'ArrowUp'
+                        ) {
+                          event.preventDefault();
+                          setTargetRotation(activeRotationDeg + step);
+                        }
+                      }}
+                      step={1}
+                      type="number"
+                      value={rotationInput}
+                    />
+                  );
+                  return floatingComposite ? (
+                    <span className="character-float-angle-input-wrap">
+                      {angleInput}
+                      <span aria-hidden="true" className="character-float-angle-unit">°</span>
+                    </span>
+                  ) : angleInput;
+                })()}
+                <button
+                  aria-label="顺时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-up'
+                      : 'character-assembly-face-rotation-up'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg + (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  +
+                </button>
+              </div> : null}
+              {(() => {
+                const flipButton = activeEditTarget !== 'body' ? <button
+                  aria-label={`${activeEditTargetLabel}水平翻转`}
+                  aria-pressed={activeFlipX}
+                  className="character-assembly-flip-toggle"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-flip-x'
+                      : 'character-assembly-face-flip-x'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={toggleTargetFlipX}
+                  type="button"
+                >
+                  {activeFlipX ? '已翻转' : '水平翻转'}
+                </button> : null;
+                const resetButton = (
+                  <button
+                    className="character-assembly-reset"
+                    data-testid="character-assembly-reset"
+                    disabled={isTestingHeadMotion}
+                    onClick={resetPlacement}
+                    type="button"
+                  >
+                    重置
+                  </button>
+                );
+                return floatingComposite ? (
+                  <div className="character-float-precision-actions">
+                    {flipButton}
+                    {resetButton}
+                  </div>
+                ) : (
+                  <>
+                    {flipButton}
+                    {resetButton}
+                  </>
+                );
+              })()}
+            </div>
+  ) : null;
+
   return (
     <section
       aria-label="角色组装工作区"
@@ -3078,6 +3671,8 @@ function CompositeCharacterAssemblyWorkbench({
       data-has-head={Boolean(head)}
       data-preview-face-asset-id={facePart?.assetId ?? ''}
       data-selected-face={selectedFace}
+      data-floating-composite={floatingComposite ? true : undefined}
+      data-editable={canEditAssembly}
       data-session-kind={isCreating ? 'create' : 'edit'}
       data-testid="character-assembly-workbench"
       onKeyDownCapture={(event) => {
@@ -3473,184 +4068,9 @@ function CompositeCharacterAssemblyWorkbench({
             </span>
           ) : null}
         </div>
-          {isFineTuneOpen && !isEditingNeckPivot ? (
-            <div
-              aria-label={`${activeEditTargetLabel}精调`}
-              className="character-assembly-fine-tune-panel"
-              id="character-assembly-fine-tune-panel"
-              data-testid="character-assembly-fine-tune-panel"
-              ref={fineTunePanelRef}
-              role="group"
-            >
-              {activeEditTarget === 'body' ? (
-                <>
-                  <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体左右</span>
-                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
-                    <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体上下</span>
-                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
-                    <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="身体大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体大小</span>
-                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
-                    <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
-                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              ) : activeEditTarget === 'head' && head ? (
-                <>
-                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部左右</span>
-                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
-                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部上下</span>
-                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
-                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部大小</span>
-                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
-                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div aria-label="左右" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">左右</span>
-                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
-                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="上下" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">上下</span>
-                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
-                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">大小</span>
-                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
-                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              )}
-              {activeEditTarget !== 'body' ? <div
-                aria-label={`${activeEditTargetLabel}角度`}
-                className="character-assembly-control-set character-assembly-angle-control"
-                data-testid="character-assembly-angle-control"
-                role="group"
-              >
-                <span className="character-assembly-control-label">角度</span>
-                <button
-                  aria-label="逆时针旋转1度，按住 Shift 旋转10度"
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation-down'
-                    : 'character-assembly-face-rotation-down'
-                  }
-                  disabled={isTestingHeadMotion}
-                  onClick={(event) =>
-                    setTargetRotation(
-                      activeRotationDeg - (event.shiftKey ? 10 : 1),
-                    )
-                  }
-                  type="button"
-                >
-                  −
-                </button>
-                <input
-                  aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
-                  aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation'
-                      : 'character-assembly-face-rotation'
-                  }
-                  disabled={isTestingHeadMotion}
-                  max={180}
-                  min={-180}
-                  onBlur={() => setRotationInput(String(activeRotationDeg))}
-                  onChange={(event) => {
-                    const raw = event.currentTarget.value;
-                    setRotationInput(raw);
-                    const value = parseAssemblyRotationInput(raw);
-                    if (value !== null) {
-                      setTargetRotation(value);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    const step = event.shiftKey ? 10 : 1;
-                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg - step);
-                    } else if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowUp'
-                    ) {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg + step);
-                    }
-                  }}
-                  step={1}
-                  type="number"
-                  value={rotationInput}
-                />
-                <button
-                  aria-label="顺时针旋转1度，按住 Shift 旋转10度"
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation-up'
-                      : 'character-assembly-face-rotation-up'
-                  }
-                  disabled={isTestingHeadMotion}
-                  onClick={(event) =>
-                    setTargetRotation(
-                      activeRotationDeg + (event.shiftKey ? 10 : 1),
-                    )
-                  }
-                  type="button"
-                >
-                  +
-                </button>
-              </div> : null}
-              {activeEditTarget !== 'body' ? <button
-                aria-label={`${activeEditTargetLabel}水平翻转`}
-                aria-pressed={activeFlipX}
-                className="character-assembly-flip-toggle"
-                data-testid={
-                  activeEditTarget === 'head'
-                    ? 'character-assembly-head-flip-x'
-                    : 'character-assembly-face-flip-x'
-                }
-                disabled={isTestingHeadMotion}
-                onClick={toggleTargetFlipX}
-                type="button"
-              >
-                {activeFlipX ? '已翻转' : '水平翻转'}
-              </button> : null}
-              <button
-                className="character-assembly-reset"
-                data-testid="character-assembly-reset"
-                disabled={isTestingHeadMotion}
-                onClick={resetPlacement}
-                type="button"
-              >
-                重置
-              </button>
-            </div>
-          ) : null}
+        {fineTunePanel && (floatingComposite
+          ? floatingComposite.propertyTarget && createPortal(fineTunePanel, floatingComposite.propertyTarget)
+          : fineTunePanel)}
       </div>
 
       <footer className="character-assembly-workbench-footer">
@@ -3659,7 +4079,7 @@ function CompositeCharacterAssemblyWorkbench({
           data-testid="character-assembly-placement-controls"
         >
           <div className="character-assembly-assembly-actions">
-            {head ? (
+            {head && canEditAssembly ? (
               <button
                 aria-pressed={isEditingNeckPivot}
                 className="character-assembly-pivot-mode-toggle"
@@ -3680,7 +4100,7 @@ function CompositeCharacterAssemblyWorkbench({
             >
               查看全貌
             </button>
-            <button
+            {canEditAssembly ? <button
               aria-expanded={isFineTuneOpen}
               aria-controls="character-assembly-fine-tune-panel"
               className="character-assembly-fine-tune-toggle"
@@ -3689,13 +4109,14 @@ function CompositeCharacterAssemblyWorkbench({
               disabled={isEditingNeckPivot || isTestingHeadMotion}
               onClick={() => {
                 setIsExpressionPreviewOpen(false);
-                setIsFineTuneOpen((open) => !open);
+                if (floatingComposite) floatingComposite.onToggleControls();
+                else setIsFineTuneOpen((open) => !open);
               }}
               type="button"
             >
               精调
-            </button>
-            {layoutReuseTarget ? (
+            </button> : null}
+            {canEditAssembly && layoutReuseTarget ? (
               <button
                 aria-expanded={isLayoutReuseOpen}
                 className="character-assembly-layout-reuse-toggle"

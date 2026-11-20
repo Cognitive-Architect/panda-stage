@@ -43,6 +43,15 @@ export interface ImageAssetPickerProps {
   showEditTargetStatus?: boolean;
   /** Keep optionality available to other picker contexts while omitting the badge locally. */
   showOptionalLabel?: boolean;
+  /** Delegate replacement selection to a non-fullscreen floating resource dialog. */
+  onRequestReplace?: (trigger: HTMLElement | null) => void;
+  /** Optional non-image visual summary (e.g., FLA Graphic) displayed in the compact row. */
+  selectedOverride?: {
+    label: string;
+    metadata?: string;
+    preview: ReactNode;
+    tooltip?: string;
+  };
   testId?: string;
 }
 
@@ -218,6 +227,8 @@ export function ImageAssetPicker({
   selectedSurface = false,
   showEditTargetStatus = true,
   showOptionalLabel = true,
+  onRequestReplace,
+  selectedOverride,
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -248,19 +259,28 @@ export function ImageAssetPicker({
     onOpenChange?.(false);
   };
 
-  const selectedLabel = selectedAsset
-    ? selectedAsset.name
-    : selectedAssetId
-      ? '素材不可用'
-      : selectedEmptyState?.label ?? '未选择图片';
-  const selectedMetadata = assetMetadata(
-    selectedAsset,
-    selectedAssetId,
-    selectedEmptyState,
-  );
-  const hasActiveSelection = Boolean(onSelectedAssetActivate && selectedAssetId);
-  const togglePicker = (): void => {
+  const hasSelection = Boolean(selectedAssetId || selectedOverride);
+  const selectedLabel = selectedOverride
+    ? selectedOverride.label
+    : selectedAsset
+      ? selectedAsset.name
+      : selectedAssetId
+        ? '素材不可用'
+        : selectedEmptyState?.label ?? '未选择图片';
+  const selectedMetadata = selectedOverride
+    ? (selectedOverride.metadata ?? '')
+    : assetMetadata(
+        selectedAsset,
+        selectedAssetId,
+        selectedEmptyState,
+      );
+  const hasActiveSelection = Boolean(onSelectedAssetActivate && hasSelection);
+  const togglePicker = (event?: React.MouseEvent<HTMLButtonElement>): void => {
     if (disabled) return;
+    if (onRequestReplace) {
+      onRequestReplace(event?.currentTarget ?? null);
+      return;
+    }
     const nextOpen = !open;
     if (nextOpen) {
       setSearchQuery('');
@@ -272,22 +292,28 @@ export function ImageAssetPicker({
 
   const selectedButton = (
     <button
-      aria-expanded={hasActiveSelection ? undefined : open}
-      aria-haspopup={hasActiveSelection ? undefined : 'listbox'}
+      aria-expanded={hasActiveSelection || onRequestReplace ? undefined : open}
+      aria-haspopup={hasActiveSelection ? undefined : onRequestReplace ? 'dialog' : 'listbox'}
       aria-label={
         hasActiveSelection
           ? `${label}：${selectedLabel}，选择为编辑对象`
           : `${label}：${selectedLabel}`
       }
       aria-pressed={hasActiveSelection ? selectedAssetActive : undefined}
-      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}${hasActiveSelection && !showEditTargetStatus ? ' image-asset-picker-selected--compact-edit-target' : ''}`}
+      className={`image-asset-picker-selected${hasSelection ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}${hasActiveSelection && !showEditTargetStatus ? ' image-asset-picker-selected--compact-edit-target' : ''}`}
+      data-asset-state={selectedOverride ? 'configured' : selectedAsset ? 'configured' : selectedAssetId ? 'missing' : 'empty'}
       data-edit-target-selected={hasActiveSelection ? String(selectedAssetActive) : undefined}
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
       onClick={hasActiveSelection ? onSelectedAssetActivate : togglePicker}
+      title={selectedOverride?.tooltip ?? (selectedMetadata ? `${selectedLabel} · ${selectedMetadata}` : selectedLabel)}
       type="button"
     >
-      {selectedAssetId ? (
+      {selectedOverride ? (
+        <span className="image-asset-picker-selected-thumbnail">
+          {selectedOverride.preview}
+        </span>
+      ) : selectedAssetId ? (
         <AssetThumbnail
           asset={selectedAsset}
           className="image-asset-picker-selected-thumbnail"
@@ -309,7 +335,7 @@ export function ImageAssetPicker({
               : '编辑'
             : open
               ? '收起'
-              : selectedAssetId
+              : hasSelection
                 ? '更换'
                 : emptyActionLabel}
         </span>
@@ -318,8 +344,8 @@ export function ImageAssetPicker({
   );
   const selectedAssetChangeAction = hasActiveSelection ? (
     <button
-      aria-expanded={open}
-      aria-haspopup="listbox"
+      aria-expanded={onRequestReplace ? undefined : open}
+      aria-haspopup={onRequestReplace ? 'dialog' : 'listbox'}
       aria-label={`${label}：更换素材`}
       className="image-asset-picker-selected-action character-assembly-selected-action-button"
       data-testid={testId ? `${testId}-change-action` : undefined}
@@ -330,7 +356,7 @@ export function ImageAssetPicker({
       {open ? '收起' : '更换'}
     </button>
   ) : null;
-  const trailingAction = selectedAction && selectedAssetId
+  const trailingAction = selectedAction && hasSelection
     ? selectedAction
     : selectedAssetChangeAction;
 
@@ -352,7 +378,7 @@ export function ImageAssetPicker({
           {selectedButton}
           {trailingAction}
         </ImageAssetPickerSelectedSurface>
-      ) : selectedAction && selectedAssetId ? (
+      ) : selectedAction && hasSelection ? (
         <div className="image-asset-picker-selected-row">
           {selectedButton}
           {selectedAction}
