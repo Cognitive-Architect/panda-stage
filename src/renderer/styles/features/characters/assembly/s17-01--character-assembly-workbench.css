@@ -1776,16 +1776,23 @@
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
-  transition: background-color 180ms ease;
-}
-
-.adaptive-parts-float-handle:hover {
-  background: var(--ui-color-selected-surface);
 }
 
 .adaptive-parts-float-handle .quick-action-drawer-grip {
   width: 5px;
   height: 32px;
+  border-color: color-mix(in srgb, var(--ui-color-selected-border) 40%, transparent);
+  background: color-mix(in srgb, var(--ui-color-selected-border) 38%, var(--ui-color-surface-work));
+  box-shadow: none;
+}
+
+.adaptive-parts-float-handle:hover .quick-action-drawer-grip {
+  background: color-mix(in srgb, var(--ui-color-selected-border) 65%, var(--ui-color-surface-work));
+}
+
+.adaptive-parts-float-handle:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
 }
 
 .adaptive-parts-float-operations .adaptive-parts-float-handle {
