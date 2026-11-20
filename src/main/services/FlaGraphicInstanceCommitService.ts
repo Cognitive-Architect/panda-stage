@@ -903,10 +903,11 @@ export class FlaGraphicInstanceCommitService {
   }
 
   private assertCurrentPlan(request: FlaGraphicInstanceCommitRequest): void {
-    const metadata = this.partPreviewService.getPreparedBatchMetadata(
+    const plan = this.partPreviewService.getPlan(
       request.plan.planId, request.plan.sessionId, request.plan.generation,
     );
-    if (!metadata || metadata.identity.poseIdentity !== request.plan.poseIdentity) {
+    if (!plan || plan.poseIdentity !== request.plan.poseIdentity ||
+        (plan.capability !== 'GRAPHIC_INSTANCES_READY' && plan.capability !== 'EDITABLE_PARTS_READY')) {
       throw new FlaGraphicInstanceCommitError(
         'STALE_PLAN', request.projectRoot, 'The FLA source or preview plan changed. Reset the preview and retry.',
       );

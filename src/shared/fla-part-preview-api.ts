@@ -10,8 +10,11 @@ export const FLA_PART_PREVIEW_LIMITS = Object.freeze({
   planLifetimeMs: 5 * 60_000,
 });
 
+export const FLA_NO_IMPORTABLE_GRAPHIC = 'No importable source-addressed Graphic instance was found.';
+
 export const FlaPartPreviewCapabilitySchema = z.enum([
   'EDITABLE_PARTS_READY',
+  'GRAPHIC_INSTANCES_READY',
   'WHOLE_IMAGE_ONLY',
   'UNSUPPORTED',
 ]);
@@ -22,6 +25,7 @@ export const FlaPartPreviewRequestSchema = z.object({
   requestId: z.uuid(),
   sessionId: z.uuid(),
   generation: z.number().int().positive().max(2_147_483_647),
+  purpose: z.literal('graphic-instance').optional(),
   target: z.object({
     renderTargetId: FlaRenderTargetIdSchema,
     selectedFrameIndex: z.number().int().nonnegative().max(100_000),
@@ -172,10 +176,19 @@ export const FlaPartPlanSchema = z.object({
   if (plan.capability === 'EDITABLE_PARTS_READY' && plan.units.length < 2) {
     context.addIssue({ code: 'custom', message: 'Editable parts require at least two independent source units' });
   }
-  if (plan.capability === 'EDITABLE_PARTS_READY' && plan.capabilityReason !== null) {
+  const ready = plan.capability === 'EDITABLE_PARTS_READY' || plan.capability === 'GRAPHIC_INSTANCES_READY';
+  if (plan.capability === 'GRAPHIC_INSTANCES_READY' && (
+    plan.target.kind !== 'scene' || plan.target.sceneIndex !== 0 ||
+    plan.target.selectedFrameIndex !== 0 || !plan.units.length ||
+    plan.units.some((unit) => unit.sourceKind !== 'graphic-symbol-occurrence' ||
+      !unit.sourceSymbolId || !unit.sourceAddress || !unit.sourceDefinitionFrameCount)
+  )) {
+    context.addIssue({ code: 'custom', message: 'Graphic import requires source-addressed Scene 0 Graphic instances' });
+  }
+  if (ready && plan.capabilityReason !== null) {
     context.addIssue({ code: 'custom', message: 'Editable parts cannot carry a fallback reason' });
   }
-  if (plan.capability !== 'EDITABLE_PARTS_READY' && !plan.capabilityReason) {
+  if (!ready && !plan.capabilityReason) {
     context.addIssue({ code: 'custom', message: 'Fallback plans require a reason' });
   }
   const occurrenceIds = new Set<string>();
@@ -232,10 +245,9 @@ const FlaPartPreviewBaseResponseSchema = z.object({
   generation: z.number().int().positive().optional(),
 }).strict();
 
-const FlaPartPreviewEditableReadySchema = FlaPartPreviewBaseResponseSchema.extend({
+const FlaPartPreviewCandidateBatchSchema = FlaPartPreviewBaseResponseSchema.extend({
   ok: z.literal(true),
   status: z.literal('PREVIEW_READY'),
-  capability: z.literal('EDITABLE_PARTS_READY'),
   planId: z.uuid(),
   poseIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
   target: z.object({
@@ -262,11 +274,28 @@ const FlaPartPreviewEditableReadySchema = FlaPartPreviewBaseResponseSchema.exten
     drawOrder: z.number().int().nonnegative().max(FLA_PART_PREVIEW_LIMITS.maxParts),
     graphicInstanceImportable: z.boolean().optional(),
     image: FlaPartPreviewPngSchema,
-  }).strict()).min(2).max(FLA_PART_PREVIEW_LIMITS.maxParts),
-  reassembledPreview: FlaPartPreviewPngSchema,
+  }).strict()).max(FLA_PART_PREVIEW_LIMITS.maxParts),
   metrics: FlaPartPreviewMetricsSchema,
-}).strict().superRefine((response, context) => {
-  const total = response.nativePreview.byteLength + response.reassembledPreview.byteLength +
+}).strict();
+
+const FlaPartPreviewCandidateReadySchema = z.union([
+  FlaPartPreviewCandidateBatchSchema.extend({
+    capability: z.literal('EDITABLE_PARTS_READY'),
+    partPreviews: FlaPartPreviewCandidateBatchSchema.shape.partPreviews.min(2),
+    reassembledPreview: FlaPartPreviewPngSchema,
+  }),
+  FlaPartPreviewCandidateBatchSchema.extend({
+    capability: z.literal('GRAPHIC_INSTANCES_READY'),
+    partPreviews: FlaPartPreviewCandidateBatchSchema.shape.partPreviews.min(1).refine(
+      (parts) => parts.every((part) => part.sourceKind === 'graphic-symbol-occurrence' &&
+        part.graphicInstanceImportable === true && Boolean(part.sourceSymbolId &&
+          part.sourceAddress && part.sourceDefinitionFrameCount)),
+      'Graphic candidates must be importable source-addressed occurrences',
+    ),
+    reassembledPreview: z.null(),
+  }),
+]).superRefine((response, context) => {
+  const total = response.nativePreview.byteLength + (response.reassembledPreview?.byteLength ?? 0) +
     response.partPreviews.reduce((sum, part) => sum + part.image.byteLength, 0);
   if (total > FLA_PART_PREVIEW_LIMITS.maxTotalPngBytes) {
     context.addIssue({ code: 'custom', message: 'Batch PNG output exceeds the total byte budget' });
@@ -323,7 +352,7 @@ const FlaPartPreviewFailureSchema = FlaPartPreviewBaseResponseSchema.extend({
 }).strict();
 
 export const FlaPartPreviewResponseSchema = z.union([
-  FlaPartPreviewEditableReadySchema,
+  FlaPartPreviewCandidateReadySchema,
   FlaPartPreviewWholeImageReadySchema,
   FlaPartPreviewUnsupportedSchema,
   FlaPartPreviewFailureSchema,

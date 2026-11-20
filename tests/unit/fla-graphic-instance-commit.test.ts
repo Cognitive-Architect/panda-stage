@@ -169,7 +169,7 @@ async function harness(
     ...(batchBitmaps.current ? { bitmaps: batchBitmaps.current } : {}),
   });
   const partPreviewService = {
-    getPreparedBatchMetadata: vi.fn(() => ({ identity: { poseIdentity: 'c'.repeat(64) } })),
+    getPlan: vi.fn(() => ({ capability: 'GRAPHIC_INSTANCES_READY', poseIdentity: 'c'.repeat(64) })),
     buildGraphicDefinitionFrameBatch: vi.fn(async (identity: { unitId: string }) => ({
       ok: true as const,
       batch: withStructure(identity.unitId === SECOND_UNIT_ID
@@ -363,8 +363,8 @@ describe('FLA Graphic instance commit', () => {
     const h = await harness();
     const baseline = (await h.projectService.open(h.projectRoot)).project;
     const files = await readdir(path.join(h.projectRoot, 'assets'));
-    vi.spyOn(h.partPreviewService, 'getPreparedBatchMetadata')
-      .mockReturnValueOnce({ identity: { poseIdentity: 'c'.repeat(64) } } as ReturnType<FlaPartPreviewService['getPreparedBatchMetadata']>)
+    vi.spyOn(h.partPreviewService, 'getPlan')
+      .mockReturnValueOnce({ capability: 'GRAPHIC_INSTANCES_READY', poseIdentity: 'c'.repeat(64) } as ReturnType<FlaPartPreviewService['getPlan']>)
       .mockReturnValue(null);
     const result = await h.service.commit(commitRequest(h, 0));
     expect(result.ok).toBe(false);

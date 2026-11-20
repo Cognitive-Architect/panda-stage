@@ -15,8 +15,9 @@ import type {
 } from '../../src/main/services/fla-static-snapshot-render-session';
 import { stableRenderTargetId } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import type { FlaImportService } from '../../src/main/services/FlaImportService';
+import { LayerStore } from '../../src/renderer/stores/layerStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
-import { calculateViewportTransform, evaluateFlaGraphicVisual, migrateProject, ProjectSchema, reconstructFlaGraphicStructure, scanAssetReferences, type Project } from '../../src/domain';
+import { calculateViewportTransform, LayerService, evaluateFlaGraphicVisual, migrateProject, ProjectSchema, reconstructFlaGraphicStructure, scanAssetReferences, type Project } from '../../src/domain';
 import { AssetReferenceSchema } from '../../src/shared/asset-delete-api';
 import { selectAssetLibraryEntries } from '../../src/renderer/stores/assetLibrarySelectors';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
@@ -598,18 +599,26 @@ describe('F1-02 Main part preview service', () => {
     const archive = await JSZip.loadAsync(await buildOneFrameGroupedGraphicFla());
     const documentXml = await archive.file('DOMDocument.xml')!.async('string');
     // Keep the imported instance within the editor's supported placement scale.
-    archive.file('DOMDocument.xml', documentXml.replace('width="32" height="24"', 'width="320" height="240"'));
+    archive.file('DOMDocument.xml', documentXml
+      .replace('width="32" height="24"', 'width="320" height="240"')
+      .replace(/<DOMSymbolInstance[^>]*>\s*<matrix><Matrix a="1" d="1" tx="16" ty="0"\/><\/matrix>\s*<\/DOMSymbolInstance>/u, ''));
     const sourceBytes = await archive.generateAsync({ type: 'uint8array' });
     const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
     const { previewService } = rasterizerFor(data);
     const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-issue1092-single-'));
     const projectRoot = path.join(parent, 'single.pandastage');
     try {
-      const response = await previewService.preview({ ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } });
-      if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') throw new Error('Expected fresh Graphic preview');
-      const unit = previewService.getPlan(response.planId, SESSION_ID, 1)!.units[0]!;
+      const targetRequest = { renderTargetId: data.targetId, selectedFrameIndex: 0 };
+      const parts = await previewService.preview({ ...request(1), target: targetRequest });
+      expect(parts).toMatchObject({ ok: true, capability: 'WHOLE_IMAGE_ONLY', partPreviews: [] });
+      const response = await previewService.preview({ ...request(2), purpose: 'graphic-instance', target: targetRequest });
+      if (!response.ok || response.capability !== 'GRAPHIC_INSTANCES_READY') throw new Error('Expected fresh Graphic preview');
+      expect(response.partPreviews).toHaveLength(1);
+      expect(response.reassembledPreview).toBeNull();
+      expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 2)).toBeNull();
+      const unit = previewService.getPlan(response.planId, SESSION_ID, 2)!.units[0]!;
       expect(unit.sourceDefinitionFrameCount).toBe(1);
-      const plan = { sessionId: SESSION_ID, planId: response.planId, generation: 1, poseIdentity: response.poseIdentity, unitId: unit.unitId };
+      const plan = { sessionId: SESSION_ID, planId: response.planId, generation: 2, poseIdentity: response.poseIdentity, unitId: unit.unitId };
       const built = await previewService.buildGraphicDefinitionFrameBatch(plan);
       if (!built.ok) throw new Error(built.message);
       expect(built.batch.frames).toHaveLength(1);
@@ -747,6 +756,42 @@ describe('F1-02 Main part preview service', () => {
       expect(refreshedTarget.frame.layers[0]!.nodes.find((node) => node.id === group.id)?.localTransform.tx).toBe(27);
       expect(refreshedTarget.layer.flaGraphicInstanceTransformOverrides).toEqual(overrides);
       expect(reconstructFlaGraphicStructure(refreshedTarget.animation.structure!).filter(({ node }) => node.type === 'opaque').every(({ node }) => node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackAssetId !== oldDefinition.frames[0]!.assetId)).toBe(true);
+
+      const editingProject = structuredClone(refreshed.project);
+      const instance = editingProject.shots[0]!.layers[0]!;
+      delete instance.flaGraphicInstanceTransformOverrides;
+      const sibling = { ...structuredClone(instance), id: randomUUID() };
+      editingProject.shots[0]!.layers.push(sibling);
+      const editor = new EditorProjectStore();
+      const layerStore = new LayerStore(editor, { getCurrentShotId: () => shotId }, new LayerService());
+      editor.open(projectRoot, editingProject);
+      const groupPath = [group.id];
+      const moved = { ...group.localTransform, tx: group.localTransform.tx + 11 };
+      const overridesFor = () => editor.getSnapshot()!.project.shots[0]!.layers[0]!.flaGraphicInstanceTransformOverrides;
+      layerStore.updateFlaGraphicInstanceTransform(imported.layerId!, 0, groupPath, moved);
+      expect(overridesFor()).toEqual({ '0': { [JSON.stringify(groupPath)]: moved } });
+      expect(editor.undo()).toBe(true);
+      expect(overridesFor()).toBeUndefined();
+      expect(editor.redo()).toBe(true);
+      expect(overridesFor()?.['0']?.[JSON.stringify(groupPath)]).toEqual(moved);
+      expect(editor.getSnapshot()!.project.shots[0]!.layers[1]).toEqual(sibling);
+      await projectService.save(projectRoot, editor.getSnapshot()!.project, current.revision + 1);
+      const editedReopened = (await projectService.open(projectRoot)).project;
+      expect(editedReopened.shots[0]!.layers[0]!.flaGraphicInstanceTransformOverrides).toEqual(overridesFor());
+      expect(editedReopened.shots[0]!.layers[1]!.flaGraphicInstanceTransformOverrides).toBeUndefined();
+      expect(editedReopened.animations).toEqual(refreshed.project.animations);
+      const editOptions = { definition: refreshedTarget.animation, frameOrdinal: 0, mode: 'instance' as const };
+      const originalNodes = evaluateFlaGraphicVisual(editOptions)!.layers![0]!.nodes;
+      const movedNodes = evaluateFlaGraphicVisual({
+        ...editOptions,
+        instanceTransformOverrides: editedReopened.shots[0]!.layers[0]!.flaGraphicInstanceTransformOverrides,
+      })!.layers![0]!.nodes;
+      const editedIndex = originalNodes.findIndex((node) => node.source.id === group.id);
+      expect(editedIndex).toBeGreaterThanOrEqual(0);
+      expect(movedNodes.map((node) => node.source.id)).toEqual(originalNodes.map((node) => node.source.id));
+      expect(movedNodes[editedIndex]!.worldTransform.tx).toBe(moved.tx);
+      expect(movedNodes.filter((_, index) => index !== editedIndex))
+        .toEqual(originalNodes.filter((_, index) => index !== editedIndex));
     } finally {
       previewService.close();
       await rm(parent, { recursive: true, force: true });

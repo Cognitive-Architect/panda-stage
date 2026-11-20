@@ -16,6 +16,7 @@ import {
   FlaPartPreviewResponseSchema,
   FlaPartPreviewUnitSchema,
   FLA_PART_PREVIEW_LIMITS,
+  FLA_NO_IMPORTABLE_GRAPHIC,
   type FlaPartPlan,
   type FlaPartPreviewCancelRequest,
   type FlaPartPreviewCancelResponse,
@@ -264,7 +265,8 @@ function makeCandidateCollection(
   selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection>,
   sourceRawSha256: string,
   target: FlaRenderTarget,
-  rootTransform: FlaDisplayListMatrix = FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+  rootTransform: FlaDisplayListMatrix,
+  graphicInstances: boolean,
 ): CandidateCollection {
   const candidates: PartCandidate[] = [];
   const descriptorsByName = new Map<string, FlaStaticSnapshotDisplaySource['graphicSymbols'][number] | null>();
@@ -401,7 +403,7 @@ function makeCandidateCollection(
       fallbackReason = 'Part source provenance exceeds a bounded Main plan field.';
       return;
     }
-    candidates.push({ unit, isolatePath: path });
+    if (!graphicInstances || canImportGraphicInstance(unit)) candidates.push({ unit, isolatePath: path });
   };
 
   const walk = (
@@ -441,6 +443,7 @@ function makeCandidateCollection(
         };
         const path = [...prefixPath, entry];
         if (element.kind !== 'symbol') {
+          if (graphicInstances) continue;
           append(
             element,
             path,
@@ -458,6 +461,15 @@ function makeCandidateCollection(
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
         const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
+        if (graphicInstances) {
+          if (descriptor && element.sourceAddress && definition?.kind === 'graphic' && element.symbolType === 'graphic' &&
+              masks.length === 0 && matrixFacts(worldTransform).invertible &&
+              definition.frameContext.layers.some((childLayer) => childLayer?.visible &&
+                childLayer.elements.some((child) => child && child.visible !== false))) {
+            append(element, path, worldTransform, contextPath, layer, layerIndex, descriptor, null);
+          }
+          continue;
+        }
         if (!definition || definition.kind !== 'graphic' || element.symbolType !== 'graphic') {
           append(
             element,
@@ -1196,8 +1208,7 @@ export class FlaPartPreviewService {
       held.plan.sessionId !== identity.sessionId ||
       held.plan.generation !== identity.generation ||
       held.plan.poseIdentity !== identity.poseIdentity ||
-      held.plan.capability !== 'EDITABLE_PARTS_READY' ||
-      !held.parts
+      (held.plan.capability !== 'GRAPHIC_INSTANCES_READY' && held.plan.capability !== 'EDITABLE_PARTS_READY')
     ) {
       return { ok: false, code: 'STALE_PLAN', message: 'The FLA Part plan expired or changed. Preview the source again.' };
     }
@@ -1664,6 +1675,9 @@ export class FlaPartPreviewService {
     let frameCount: number;
     let target: FlaRenderTarget;
     let frameResult: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
+    if (active.request.purpose === 'graphic-instance' && (sceneMatch?.index !== 0 || selectedFrameIndex !== 0)) {
+      return this.failure('TARGET_NOT_FOUND', 'Graphic instance import requires Scene 0, frame 1.', active.request);
+    }
     if (sceneMatch) {
       targetKind = 'scene';
       targetName = sceneMatch.name;
@@ -1923,6 +1937,7 @@ export class FlaPartPreviewService {
       });
     }
 
+    const graphicInstances = active.request.purpose === 'graphic-instance';
     const collection = makeCandidateCollection(
       prepared.source,
       frameContext,
@@ -1931,6 +1946,7 @@ export class FlaPartPreviewService {
       (sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256).toLowerCase(),
       target,
       rootTransform,
+      graphicInstances,
     );
     if (collection.fallbackReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, collection.fallbackReason, {
@@ -1940,13 +1956,15 @@ export class FlaPartPreviewService {
         elapsedMs: Date.now() - startedAt,
       });
     }
-    if (collection.candidates.length < 2) {
+    if (collection.candidates.length < (graphicInstances ? 1 : 2)) {
       return this.wholeImageOnly(
         active,
         sourceIdentity,
         nativeFacts,
         nativePreview,
-        'Fewer than two independently addressable visible source parts were found.',
+        graphicInstances
+          ? FLA_NO_IMPORTABLE_GRAPHIC
+          : 'Fewer than two independently addressable visible source parts were found.',
         { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
       );
     }
@@ -2052,41 +2070,44 @@ export class FlaPartPreviewService {
       await execution.yieldToEventLoop();
     }
 
-    const reassemblySvg = this.makeReassemblySvg(partPreviews, nativeFacts.width, nativeFacts.height);
-    if (Buffer.byteLength(reassemblySvg, 'utf8') > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-      return this.wholeImageOnly(
-        active,
-        sourceIdentity,
-        nativeFacts,
-        nativePreview,
-        'The source-part reassembly SVG exceeds the existing snapshot byte budget.',
-        { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
-      );
-    }
-    let reassembledPreview: FlaPartPreviewPng;
-    try {
-      rasterCount += 1;
-      reassembledPreview = await this.rasterize(
-        active,
-        reassemblySvg,
-        nativeFacts.width,
-        nativeFacts.height,
-        nativeFacts.pixelCount,
-      );
-    } catch (error) {
-      if (active.cancelled || active.settled) {
-        return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview was cancelled', active.request);
+    const capability = graphicInstances ? 'GRAPHIC_INSTANCES_READY' : 'EDITABLE_PARTS_READY';
+    let reassembledPreview: FlaPartPreviewPng | null = null;
+    if (!graphicInstances) {
+      const reassemblySvg = this.makeReassemblySvg(partPreviews, nativeFacts.width, nativeFacts.height);
+      if (Buffer.byteLength(reassemblySvg, 'utf8') > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+        return this.wholeImageOnly(
+          active,
+          sourceIdentity,
+          nativeFacts,
+          nativePreview,
+          'The source-part reassembly SVG exceeds the existing snapshot byte budget.',
+          { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
+        );
       }
-      return this.wholeImageOnly(
-        active,
-        sourceIdentity,
-        nativeFacts,
-        nativePreview,
-        `The emitted part PNGs could not be reassembled: ${error instanceof Error ? error.message : String(error)}`,
-        { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
-      );
+      try {
+        rasterCount += 1;
+        reassembledPreview = await this.rasterize(
+          active,
+          reassemblySvg,
+          nativeFacts.width,
+          nativeFacts.height,
+          nativeFacts.pixelCount,
+        );
+      } catch (error) {
+        if (active.cancelled || active.settled) {
+          return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview was cancelled', active.request);
+        }
+        return this.wholeImageOnly(
+          active,
+          sourceIdentity,
+          nativeFacts,
+          nativePreview,
+          `The emitted part PNGs could not be reassembled: ${error instanceof Error ? error.message : String(error)}`,
+          { sourcePreparationCountForRequest, displayListResolveCount, rasterCount, elapsedMs: Date.now() - startedAt },
+        );
+      }
     }
-    const totalPngBytes = nativePreview.byteLength + partPngBytes + reassembledPreview.byteLength;
+    const totalPngBytes = nativePreview.byteLength + partPngBytes + (reassembledPreview?.byteLength ?? 0);
     if (totalPngBytes > FLA_PART_PREVIEW_LIMITS.maxTotalPngBytes) {
       return this.wholeImageOnly(
         active,
@@ -2106,14 +2127,14 @@ export class FlaPartPreviewService {
       active,
       sourceIdentity,
       nativeFacts,
-      'EDITABLE_PARTS_READY',
+      capability,
       null,
       units,
     );
     const response = FlaPartPreviewResponseSchema.parse({
       ok: true,
       status: 'PREVIEW_READY',
-      capability: 'EDITABLE_PARTS_READY',
+      capability,
       requestId: active.request.requestId,
       sessionId: active.request.sessionId,
       generation: active.request.generation,
@@ -2139,10 +2160,10 @@ export class FlaPartPreviewService {
         elapsedMs: Math.min(this.wallTimeMs, Date.now() - startedAt),
       },
     });
-    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
-      throw new Error('Editable Part preview response failed its validated capability check');
+    if (!response.ok || response.capability !== capability) {
+      throw new Error('Preview response did not match its validated capability');
     }
-    this.holdResult(plan, response.partPreviews);
+    this.holdResult(plan, response.capability === 'EDITABLE_PARTS_READY' ? response.partPreviews : null);
     return response;
   }
 
@@ -2262,7 +2283,7 @@ export class FlaPartPreviewService {
     active: ActivePartPreview,
     source: FlaStaticSnapshotSource,
     native: NativeRenderFacts,
-    capability: 'EDITABLE_PARTS_READY' | 'WHOLE_IMAGE_ONLY',
+    capability: 'EDITABLE_PARTS_READY' | 'GRAPHIC_INSTANCES_READY' | 'WHOLE_IMAGE_ONLY',
     capabilityReason: string | null,
     units: readonly FlaPartPreviewUnit[],
   ): FlaPartPlan {
