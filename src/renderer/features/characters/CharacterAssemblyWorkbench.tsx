@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Minus, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Minus, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -857,10 +857,11 @@ function AdaptivePartsAssemblyRow({
         title={`${visible ? '隐藏' : '显示'}${displayName}`}
         type="button"
       >
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M2.5 12s3.2-6 9.5-6 9.5 6 9.5 6-3.2 6-9.5 6-9.5-6-9.5-6Z" />
-          {visible ? <circle cx="12" cy="12" r="2.7" /> : <path d="M4 4 20 20" />}
-        </svg>
+        {visible ? (
+          <Eye aria-hidden="true" size={18} />
+        ) : (
+          <EyeOff aria-hidden="true" size={18} />
+        )}
       </button>
       <button
         aria-label={`精调${displayName}`}

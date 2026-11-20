@@ -242,8 +242,8 @@ describe('Floating single-image and composite detail (#1181)', () => {
       button('character-single-structure-image-picker-selected').getAttribute('title'),
     ).toContain('×');
     expect(
-      button('character-detail-mouth-visual-picker').querySelector('.image-asset-picker-selected-row--surface'),
-    ).not.toBeNull();
+      button('character-detail-mouth-visual-picker').classList.contains('character-compact-row'),
+    ).toBe(true);
     click(button('character-detail-mouth-visual-picker-selected'));
     const mouthDialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
     click(mouthDialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${imageAssets[0]!.id}"]`)!);
@@ -261,8 +261,8 @@ describe('Floating single-image and composite detail (#1181)', () => {
     click(button('character-detail-back'));
     await act(async () => open(compositeCharacter.id));
     expect(
-      target.querySelectorAll('.character-float-operations .image-asset-picker-selected-row--surface').length,
-    ).toBe(4);
+      target.querySelectorAll('[data-testid="character-assembly-parts-list"] > .character-compact-row').length,
+    ).toBe(3);
     const defaultFaceBtn = button('character-assembly-default-face-select');
     expect(defaultFaceBtn.getAttribute('title')).toContain('×');
     expect(defaultFaceBtn.querySelector('small')?.textContent).not.toContain('×');
@@ -494,6 +494,90 @@ describe('Floating single-image and composite detail (#1181)', () => {
     click(pagedDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-graphic-next"]')!);
     expect(pagedDialog.querySelector('[data-testid="character-swap-graphic-page"]')?.textContent).toBe('2 / 2');
     expect(pagedDialog.querySelectorAll('[role="option"]')).toHaveLength(2);
+  });
+
+  it('unifies compact row lists, tabs, overflow actions, and Lucide icons across single-image and composite (#1187)', async () => {
+    const { project, singleCharacter, compositeCharacter, imageAssets } = buildAdaptiveProject();
+    if (singleCharacter.mode !== 'single-image' || compositeCharacter.mode !== 'composite') {
+      throw new Error('Expected single-image and composite fixtures');
+    }
+    const extraExprId = '11111111-1111-4111-8111-111111111119';
+    const richProject = {
+      ...project,
+      characters: project.characters.map((c) => {
+        if (c.id === singleCharacter.id && c.mode === 'single-image') {
+          return {
+            ...c,
+            mouthOpenAssetId: imageAssets[0]!.id,
+            expressions: [
+              ...c.expressions,
+              { id: extraExprId, name: '开心', assetId: imageAssets[1]!.id },
+            ],
+          };
+        }
+        return c;
+      }),
+    };
+    editorProjectStore.open('F:/tmp/project', richProject);
+    shotStore.select(richProject.shots[0]!.id);
+    const { target, button, click, open } = mountFloatingCharacter();
+
+    // 1. Single-image has Parts / Expressions tabs, preserves in-progress edits across tab switch, and renders compact rows
+    await act(async () => open(singleCharacter.id));
+    expect(button('character-detail-back').textContent).toBe('');
+    expect(button('character-detail-back').querySelector('svg')).not.toBeNull();
+    const navButtons = [...target.querySelectorAll<HTMLButtonElement>('.character-float-left-nav button')];
+    expect(navButtons.map((b) => b.textContent)).toEqual(['部件', '表情']);
+    expect(navButtons[0]!.getAttribute('aria-pressed')).toBe('true');
+    expect(button('character-single-structure-image-picker').getAttribute('data-selected')).toBeNull();
+    expect(button('character-single-structure-image-picker-selected').getAttribute('aria-pressed')).toBeNull();
+
+    // Switch to Expressions tab -> Mouth row + compact expression rows with Lucide Check, Play, Pencil, Ellipsis
+    click(navButtons[1]!);
+    expect(navButtons[1]!.getAttribute('aria-pressed')).toBe('true');
+    expect(target.querySelector('.character-float-operations .character-float-mouth-preview-button')).not.toBeNull();
+    expect(button('character-detail-mouth-overflow-trigger').querySelector('svg')).not.toBeNull();
+
+    const defaultExprId = singleCharacter.defaultExpressionId;
+    const defaultBadge = target.querySelector(
+      `[data-expression-id="${defaultExprId}"] .expression-default-badge`,
+    )!;
+    expect(defaultBadge.textContent).not.toContain('✓');
+    expect(defaultBadge.querySelector('svg')).not.toBeNull();
+
+    // Overflow menu contains 设为默认 (on non-default) and 删除表情 (disabled on default)
+    expect(button(`expression-delete-${defaultExprId}`).disabled).toBe(true);
+    expect(button(`expression-default-${extraExprId}`)).not.toBeNull();
+    click(button(`expression-default-${extraExprId}`));
+    expect(
+      editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === singleCharacter.id),
+    ).toMatchObject({ defaultExpressionId: extraExprId });
+
+    // Start editing expression name, switch to Parts and back -> unsaved input stays intact
+    click(button(`expression-edit-${extraExprId}`));
+    const editInput = target.querySelector<HTMLInputElement>('.expression-edit-panel input')!;
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(editInput, '未保存的新名字');
+      editInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click(navButtons[0]!);
+    expect(navButtons[0]!.getAttribute('aria-pressed')).toBe('true');
+    click(navButtons[1]!);
+    expect(target.querySelector<HTMLInputElement>('.expression-edit-panel input')?.value).toBe('未保存的新名字');
+
+    // 2. Composite has exactly 3 compact rows in Parts and moves 张嘴脸 into Expressions tab
+    click(button('character-detail-back'));
+    await act(async () => open(compositeCharacter.id));
+    const partsStack = button('character-assembly-parts-list').closest('.character-float-section-stack')!;
+    expect(partsStack.querySelectorAll('.character-compact-row').length).toBe(3);
+    expect(partsStack.querySelector('[data-testid="character-assembly-mouth-picker"]')).toBeNull();
+    const compositeNav = [...target.querySelectorAll<HTMLButtonElement>('.character-float-left-nav button')];
+    click(compositeNav[1]!);
+    const exprStack = target.querySelector('[data-testid="character-assembly-mouth-picker"]')?.closest('.character-float-section-stack');
+    expect(exprStack).not.toBeNull();
+    expect(exprStack?.getAttribute('hidden')).toBeNull();
+    expect(button('character-assembly-mouth-picker').classList.contains('character-compact-row')).toBe(true);
   });
 });
 

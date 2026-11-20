@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check, Pencil, Play } from 'lucide-react';
 import type {
   Character,
   CharacterDimensionWarning,
@@ -12,6 +13,8 @@ import { thumbnailDiagnosticTitle, type ThumbnailState } from '../assets/AssetCa
 import { ImageAssetPicker } from './ImageAssetPicker';
 import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
 import type { ResourceSwapValue } from './CharacterResourceSwapDialog';
+import { CharacterCompactObjectRow } from './CharacterCompactObjectRow';
+import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
@@ -648,6 +651,126 @@ function LandscapeExpressionEditor({
             expression.id === character.defaultExpressionId;
           const isEditing = editingExpressionId === expression.id;
           const cardWarnings = expressionWarnings(expression.id);
+          if (onRequestResourceSwap) {
+            const graphicTitle = expression.visualSource
+              ? graphicDefinitions.find(
+                  (def) => def.id === expression.visualSource?.animationId,
+                )?.name ?? 'FLA 元件'
+              : null;
+            const compactSubtitle = expression.visualSource
+              ? `${graphicTitle} · 第 ${expression.visualSource.firstFrame + 1} 帧`
+              : asset?.name ?? '素材不可用';
+            return (
+              <li
+                className={`expression-card expression-compact-item${isDefault ? ' expression-default' : ''}${isEditing ? ' expression-card-editing' : ''}`}
+                data-expression-default={isDefault}
+                data-expression-editing={isEditing}
+                data-expression-id={expression.id}
+                key={expression.id}
+              >
+                <CharacterCompactObjectRow
+                  actions={
+                    <>
+                      {onPreview ? (
+                        <button
+                          aria-label={`预览 ${expression.name}`}
+                          aria-pressed={previewExpressionId === expression.id}
+                          className="character-compact-icon-button"
+                          data-testid={`expression-preview-${expression.id}`}
+                          onClick={() => onPreview(expression.id)}
+                          title={
+                            previewExpressionId === expression.id
+                              ? '停止预览表情'
+                              : '预览表情'
+                          }
+                          type="button"
+                        >
+                          <Play aria-hidden="true" size={15} />
+                        </button>
+                      ) : null}
+                      {!isEditing ? (
+                        <button
+                          aria-label={`编辑 ${expression.name}`}
+                          className="character-compact-icon-button expression-edit-trigger"
+                          data-testid={`expression-edit-${expression.id}`}
+                          disabled={disabled}
+                          onClick={() => startExpressionEdit(expression)}
+                          title="编辑"
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" size={15} />
+                        </button>
+                      ) : null}
+                      <CompactRowOverflowMenu
+                        ariaLabel={`${expression.name} 更多操作`}
+                        disabled={disabled}
+                        items={[
+                          ...(!isDefault
+                            ? [
+                                {
+                                  label: '设为默认',
+                                  testId: `expression-default-${expression.id}`,
+                                  disabled,
+                                  onSelect: () => onSetDefault(expression.id),
+                                },
+                              ]
+                            : []),
+                          {
+                            label: '删除表情',
+                            testId: `expression-delete-${expression.id}`,
+                            disabled: disabled || isDefault,
+                            title: isDefault
+                              ? '请先选择替代表情，再删除默认表情。'
+                              : '删除表情',
+                            danger: true,
+                            onSelect: () => onRemove(expression.id),
+                          },
+                        ]}
+                        menuTestId={`expression-overflow-menu-${expression.id}`}
+                        triggerTestId={`expression-overflow-trigger-${expression.id}`}
+                      />
+                    </>
+                  }
+                  assetState={expression.visualSource || asset ? 'configured' : 'missing'}
+                  badge={
+                    <>
+                      {isDefault ? (
+                        <span className="expression-default-badge" title="默认表情">
+                          <Check aria-hidden="true" size={12} />
+                          默认
+                        </span>
+                      ) : null}
+                      {cardWarnings[0] ? (
+                        <ExpressionWarning compact warning={cardWarnings[0]} />
+                      ) : null}
+                    </>
+                  }
+                  disabled={disabled}
+                  previewing={previewExpressionId === expression.id}
+                  selected={isEditing}
+                  subtitle={compactSubtitle}
+                  thumbnail={
+                    expression.visualSource ? (
+                      <GraphicFacePreview
+                        label={expression.name}
+                        source={expression.visualSource}
+                      />
+                    ) : (
+                      <ExpressionThumbnail
+                        assetId={expression.assetId ?? ''}
+                        assetAvailable={Boolean(asset)}
+                        className="expression-card-preview"
+                        expressionName={expression.name}
+                        onThumbnailError={onThumbnailError}
+                        thumbnail={thumbnail}
+                      />
+                    )
+                  }
+                  title={expression.name}
+                />
+              </li>
+            );
+          }
           return (
             <li
               className={`expression-card${isDefault ? ' expression-default' : ''}${isEditing ? ' expression-card-editing' : ''}`}

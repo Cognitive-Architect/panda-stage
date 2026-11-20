@@ -288,7 +288,277 @@
   max-height: calc(100% - 105px);
 }
 
-/* Segmented left nav for composite Parts / Expressions */
+.character-float-section-stack {
+  display: grid;
+  min-width: 0;
+  gap: var(--ui-space-2);
+}
+
+.character-float-section-stack[hidden] {
+  display: none;
+}
+
+/* Unified compact object rows matching Adaptive Parts list visual grammar */
+.character-compact-list {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.character-compact-row {
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 58px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 5px;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: var(--ui-radius-medium);
+  background: transparent;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.character-compact-row:hover {
+  border-color: var(--ui-color-border);
+  background: color-mix(in srgb, var(--ui-color-surface-work) 55%, transparent);
+}
+
+.character-compact-row[data-selected='true'] {
+  border-color: color-mix(in srgb, var(--ui-color-selected-border) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-color-selected-surface) 56%, transparent);
+  box-shadow: inset 3px 0 0 var(--ui-color-selected-border);
+}
+
+.character-compact-row[data-previewing='true'] {
+  border-color: rgb(127 199 148 / 38%);
+  background: color-mix(in srgb, var(--ui-color-selected-surface) 24%, transparent);
+}
+
+.character-compact-row:has(.character-compact-row-main:focus-visible) {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.character-compact-row-main {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: inherit;
+  background: transparent;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+div.character-compact-row-main {
+  cursor: default;
+}
+
+.character-compact-row-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.character-compact-row-main:focus-visible {
+  outline: none;
+}
+
+.character-compact-row-thumb {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: #08100b;
+}
+
+.character-compact-row-thumb img,
+.character-compact-row-thumb canvas,
+.character-compact-row-thumb .expression-card-preview,
+.character-compact-row-thumb .image-asset-picker-selected-thumbnail {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+}
+
+.character-compact-row-thumb-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--ui-color-text-muted);
+}
+
+.character-compact-row-thumb-fallback[data-thumbnail-icon='missing'] {
+  color: var(--ui-color-danger, #e28a7a);
+}
+
+.character-compact-row-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.character-compact-row-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.character-compact-row-title-line > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  font-weight: 600;
+}
+
+.character-compact-row-copy > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-color-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.character-compact-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+
+.character-compact-icon-button {
+  display: grid;
+  box-sizing: border-box;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.character-compact-icon-button:hover:not(:disabled) {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-compact-icon-button:active:not(:disabled) {
+  background: var(--ui-color-action-pressed);
+}
+
+.character-compact-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.character-compact-icon-button:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.character-compact-icon-button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-compact-overflow {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.character-compact-overflow-menu[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  z-index: 40;
+  box-sizing: border-box;
+  width: 136px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 34%);
+}
+
+.character-compact-overflow-menu[popover]:not(:popover-open) {
+  display: none;
+}
+
+.character-compact-overflow-menu[popover]:popover-open {
+  display: grid;
+  gap: 2px;
+}
+
+.character-compact-overflow-item {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  font: var(--ui-font-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.character-compact-overflow-item:hover:not(:disabled) {
+  background: var(--ui-color-surface-work);
+}
+
+.character-compact-overflow-item:disabled {
+  color: var(--ui-color-text-muted);
+  cursor: not-allowed;
+}
+
+.character-compact-overflow-item.is-danger:not(:disabled) {
+  color: #f0b8ae;
+}
+
+.character-compact-overflow-item.is-danger:hover:not(:disabled) {
+  background: rgb(214 113 98 / 16%);
+}
+
+/* Segmented left nav for Parts / Expressions */
 .character-float-left-nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -722,102 +992,34 @@
 }
 
 .character-float-operations .expression-editor-landscape .expression-card-list {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--ui-space-2);
+  gap: 6px;
   padding-bottom: 44px;
 }
 
-.character-float-operations .expression-editor-landscape .expression-card {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: var(--ui-radius-medium);
-  background: var(--ui-color-surface-work);
-}
-
-.character-float-operations .expression-editor-landscape .expression-card.expression-default {
-  border-color: rgb(127 199 148 / 38%);
-  background: color-mix(in srgb, var(--ui-color-selected-surface) 24%, var(--ui-color-surface-work));
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-main {
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-preview {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--ui-radius-small);
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-title-row > strong {
-  font-size: 12px;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-asset {
-  color: var(--ui-color-text-muted);
-  font-size: 10px;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-actions {
-  display: flex;
-  max-width: none;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-actions > button,
-.character-float-operations .expression-editor-landscape .expression-edit-trigger {
+.character-float-operations .expression-editor-landscape .expression-card.expression-compact-item {
+  display: block;
   min-width: 0;
-  min-height: 30px;
-  padding: 3px 8px;
-  border: 1px solid var(--ui-color-border) !important;
-  border-radius: var(--ui-radius-small);
-  color: var(--ui-color-text-secondary) !important;
-  background: transparent !important;
-  font: var(--ui-font-secondary);
-  font-size: 11px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.character-float-operations .expression-default-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid rgb(127 199 148 / 38%);
+  border-radius: var(--ui-radius-pill);
+  color: var(--ui-color-selected-border);
+  background: color-mix(in srgb, var(--ui-color-selected-surface) 38%, transparent);
+  font-size: 10px;
   font-weight: 600;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-actions > button:hover:not(:disabled),
-.character-float-operations .expression-editor-landscape .expression-edit-trigger:hover:not(:disabled) {
-  border-color: rgb(127 199 148 / 50%) !important;
-  color: var(--ui-color-text-primary) !important;
-  background: var(--ui-color-surface-overlay) !important;
-}
-
-.character-float-operations .expression-editor-landscape .expression-card-actions > button[aria-pressed='true'] {
-  border-color: var(--ui-color-selected-border) !important;
-  color: var(--ui-color-text-primary) !important;
-  background: var(--ui-color-selected-surface) !important;
-}
-
-.character-float-operations .expression-editor-landscape .expression-overflow {
-  margin-left: auto;
-}
-
-.character-float-operations .expression-editor-landscape .expression-overflow summary {
-  min-width: 32px;
-  width: 32px;
-  min-height: 30px;
-  height: 30px;
-  border-color: var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  font-size: 16px;
-}
-
-.character-float-operations .expression-editor-landscape .expression-overflow-menu {
-  z-index: 20;
-}
-
-.character-float-operations .expression-editor-landscape .expression-overflow-menu button {
-  min-height: 32px;
-  font: var(--ui-font-secondary);
+  line-height: 1.4;
 }
 
 .character-float-operations .expression-add-form-landscape,

@@ -233,6 +233,22 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     const targetRow = container.querySelector(
       `[data-testid="adaptive-parts-assembly-row"][data-part-id="${PART_IDS[0]}"]`,
     )!;
+    const visBtn = targetRow.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-visibility-toggle"]')!;
+    expect(visBtn.querySelector('svg.lucide-eye')).not.toBeNull();
+    act(() => visBtn.click());
+    renderWorkbench();
+    expect(
+      container
+        .querySelector(`[data-testid="adaptive-parts-assembly-row"][data-part-id="${PART_IDS[0]}"] [data-testid="adaptive-parts-visibility-toggle"] svg.lucide-eye-off`),
+    ).not.toBeNull();
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(
+          `[data-testid="adaptive-parts-assembly-row"][data-part-id="${PART_IDS[0]}"] [data-testid="adaptive-parts-visibility-toggle"]`,
+        )!
+        .click(),
+    );
+    renderWorkbench();
     act(() => targetRow.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-assembly-row-select"]')!.click());
     renderWorkbench();
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-replace-button"]')!.click());
