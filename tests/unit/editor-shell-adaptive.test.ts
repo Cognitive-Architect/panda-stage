@@ -124,7 +124,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(shell).toContain(
       'className="character-assembly-canvas-owner"\n                data-character-assembly-inactive={assemblyActive ? \'true\' : \'false\'}\n                hidden={!portraitCanvasVisible && !assemblyActive}',
     );
-    expect(shell).toContain('inert={assemblyActive || undefined}');
+    expect(shell).toContain('inert={Boolean(characterFloatMode) || assemblyActive || undefined}');
     expect(assemblySurface).toContain(
       ".editor-workspace-slot-canvas[data-character-assembly-active='true']",
     );

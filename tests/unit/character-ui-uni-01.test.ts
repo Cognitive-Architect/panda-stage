@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from 'react';
+import { act, createElement, useState, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -11,6 +11,7 @@ import {
   type ImageAsset,
   type Project,
 } from '../../src/domain';
+import { CharacterFloatHost } from '../../src/renderer/features/characters/characterFloatHost';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { CharacterManager, type AdaptiveCharacterManagementAction, type AdaptivePartsAssemblyActionResult, type AdaptivePartsAssemblyActionsRef } from '../../src/renderer/features/characters/CharacterManager';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
@@ -37,6 +38,7 @@ function buildAdaptiveProject(): {
   const withComposite = service.createComposite(base, {
     name: 'Composite Hero',
     bodyAssetId: bodyAsset.id,
+    head: { assetId: faceAsset.id, placement: { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, flipX: false }, pivot: { x: 0, y: 0 } },
     expressions: [{ name: '默认', assetId: faceAsset.id }],
     facePlacement: {
       offsetX: 0,
@@ -129,6 +131,94 @@ afterEach(() => {
   editorProjectStore.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+function mountFloatingCharacter() {
+  const target = document.createElement('div');
+  container.appendChild(target);
+  const setMode = vi.fn();
+  function Editor() {
+    const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
+    const [view, onViewChange] = useState<'list' | 'create' | 'detail' | 'expression' | 'legacy'>('list');
+    return createElement(CharacterFloatHost.Provider, { value: { target, setMode } },
+      createElement(CharacterManager, { snapshot, view, onViewChange, presentation: 'landscape', floatEnabled: true }),
+    );
+  }
+  act(() => root.render(createElement(Editor)));
+  const button = (id: string, scope: ParentNode = target) =>
+    scope.querySelector<HTMLButtonElement>('[data-testid="' + id + '"]')!;
+  const click = (element: HTMLElement) => act(() => element.click());
+  const open = (id: string) => click(container.querySelector<HTMLButtonElement>('button[data-character-id="' + id + '"]')!);
+  return { target, button, click, open };
+}
+
+describe('Floating single-image and composite detail (#1181)', () => {
+  it('preserves single-image expression and mouth actions while separating definitions from the selected Shot layer', async () => {
+    const { project, singleCharacter, imageAssets } = buildAdaptiveProject();
+    editorProjectStore.open('F:/tmp/project', project);
+    shotStore.select(project.shots[0]!.id);
+    const { target, button, click, open } = mountFloatingCharacter();
+    await act(async () => open(singleCharacter.id));
+    expect(target.querySelector('[data-mode="single-image"]')).not.toBeNull();
+    expect(button('character-float-left-toggle').getAttribute('aria-expanded')).toBe('true');
+    expect(button('character-float-right-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(button('character-single-structure-image-picker')).not.toBeNull();
+    expect(target.querySelector('.expression-card')).not.toBeNull();
+    const mouthId = imageAssets[0]!.id;
+    click(button('character-detail-mouth-visual-picker-selected'));
+    const candidate = button('character-detail-mouth-visual-picker-candidates')
+      .querySelector<HTMLButtonElement>('button[data-asset-id="' + mouthId + '"]')!;
+    click(candidate);
+    const current = editorProjectStore.getSnapshot()!.project;
+    expect(current.characters.find(c => c.id === singleCharacter.id)).toMatchObject({ mouthOpenAssetId: mouthId });
+    click(button('character-float-role-edit'));
+    expect(button('character-float-right-toggle').getAttribute('aria-expanded')).toBe('true');
+    click(button('character-float-left-toggle'));
+    expect(button('character-float-right-toggle').getAttribute('aria-expanded')).toBe('true');
+    expect(editorProjectStore.getSnapshot()?.project.shots).toEqual(project.shots);
+    expect(characterAssemblySessionStore.getSnapshot()).toBeNull();
+  });
+
+  it('moves composite precision to the right and protects the same draft when leaving Parts', async () => {
+    const { project, compositeCharacter } = buildAdaptiveProject();
+    editorProjectStore.open('F:/tmp/project', project);
+    shotStore.select(project.shots[0]!.id);
+    const { target, button, click, open } = mountFloatingCharacter();
+    await act(async () => open(compositeCharacter.id));
+    const precision = () => target.querySelector('.character-float-precision')!;
+    expect(button('character-assembly-preview')).not.toBeNull();
+    click(button('character-assembly-body-picker-selected'));
+    click(button('character-assembly-fine-tune-toggle'));
+    click(button('character-assembly-body-right-step', precision()));
+    click(button('character-assembly-head-asset-selected'));
+    click(button('character-assembly-head-right-step', precision()));
+    click(button('character-assembly-default-face-select'));
+    click(button('character-assembly-right-step', precision()));
+    const draft = characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft;
+    expect(draft.bodyPlacement?.offsetX).toBe(1);
+    expect(draft.head?.placement.offsetX).toBe(1);
+    expect(draft.facePlacement.offsetX).toBe(1);
+    expect(editorProjectStore.getSnapshot()?.project).toEqual(project);
+    click(button('character-assembly-pivot-mode-toggle'));
+    expect(button('character-assembly-head-pivot')).not.toBeNull();
+    click(button('character-assembly-pivot-mode-toggle'));
+    click(button('character-float-right-toggle'));
+    click(button('character-assembly-body-picker-selected'));
+    expect(button('character-float-right-toggle').getAttribute('aria-expanded')).toBe('false');
+
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    const expressions = [...target.querySelectorAll<HTMLButtonElement>('.character-float-left-nav button')][1]!;
+    click(expressions);
+    expect(expressions.getAttribute('aria-pressed')).toBe('false');
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft).toEqual(draft);
+    confirm.mockReturnValue(true);
+    click(expressions);
+    expect(expressions.getAttribute('aria-pressed')).toBe('true');
+    expect(characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.facePlacement.offsetX).toBe(0);
+    expect(editorProjectStore.getSnapshot()!.project.shots).toEqual(project.shots);
+  });
 });
 
 describe('Character Detail and original Adaptive Parts workbench (#1179)', () => {

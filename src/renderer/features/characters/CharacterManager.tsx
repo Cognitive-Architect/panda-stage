@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -40,6 +41,7 @@ import {
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
+import { CharacterFloatHost } from './characterFloatHost';
 import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import { CharacterList } from './CharacterList';
 import {
@@ -138,6 +140,7 @@ export interface CharacterManagerProps {
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  floatEnabled?: boolean;
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
@@ -219,9 +222,9 @@ export function placeCharacterInCurrentShot({
     const initialExpression = character.expressions.find(
       (candidate) => candidate.id === character.defaultExpressionId,
     );
-    if (!initialExpression || !before.project.assets.some(
+    if (!initialExpression || (!initialExpression.visualSource && !before.project.assets.some(
       (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
-    )) {
+    ))) {
       reportStatus('默认表情素材不可用，请先设置默认表情。');
       return false;
     }
@@ -306,6 +309,7 @@ export function CharacterManager({
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
   adaptivePartsActionsRef,
+  floatEnabled,
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
@@ -325,6 +329,7 @@ export function CharacterManager({
   flaCharacterRecoveryBusy = false,
   onStartFlaCharacterImport,
 }: CharacterManagerProps): React.JSX.Element {
+  const floatTarget = useContext(CharacterFloatHost)?.target;
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
     string | null
@@ -1157,15 +1162,19 @@ export function CharacterManager({
               (shot) => shot.id === currentShotId,
             ),
           )}
-          onPlaceInCurrentShot={(defaultTransformPending) =>
-            placeCharacterInCurrentShot({
+          onPlaceInCurrentShot={(defaultTransformPending) => {
+            const placed = placeCharacterInCurrentShot({
               characterId: selectedCharacterId,
               getCurrentCharacterId: () => selectedCharacterIdRef.current,
               defaultTransformPending,
               leaveAssembly,
               reportStatus: setStatus,
-            })
-          }
+            });
+            if (placed && floatEnabled && floatTarget && view === 'detail') {
+              onViewChange('list');
+              onCloseDrawer();
+            }
+          }}
           onSetMouthOpenAsset={(assetId) => {
             if (!selectedCharacter) return;
             mutate(
@@ -1176,6 +1185,11 @@ export function CharacterManager({
                 ),
             );
           }}
+          status={status}
+          floatEnabled={floatEnabled}
+          projectSnapshot={snapshot ?? undefined}
+          assemblySession={editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot) ? editAssemblySnapshot : undefined}
+          assemblyPending={assemblyPending}
           assemblyDraft={assemblyDraft}
           assemblyEditTarget={
             editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)

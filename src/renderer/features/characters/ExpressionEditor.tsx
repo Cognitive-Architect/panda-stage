@@ -34,6 +34,8 @@ export interface ExpressionEditorProps {
   onAddGraphic?: (name: string, source: CharacterFaceGraphicSource) => void;
   onRemove: (expressionId: string) => void;
   onSetDefault: (expressionId: string) => void;
+  previewExpressionId?: string;
+  onPreview?: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
 }
 
@@ -325,6 +327,8 @@ function LandscapeExpressionEditor({
   onAddGraphic,
   onRemove,
   onSetDefault,
+  onPreview,
+  previewExpressionId,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
   const [newName, setNewName] = useState('');
@@ -585,6 +589,15 @@ function LandscapeExpressionEditor({
                 </div>
               </div>
               <div className="expression-card-actions">
+                {onPreview ? (
+                  <button
+                    aria-pressed={previewExpressionId === expression.id}
+                    onClick={() => onPreview(expression.id)}
+                    type="button"
+                  >
+                    预览
+                  </button>
+                ) : null}
                 {!isDefault ? (
                   <button
                     className="expression-default-trigger"

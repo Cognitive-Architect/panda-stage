@@ -91,6 +91,7 @@ import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
 import { RightWorkspace, type RightWorkspaceHandle } from './RightWorkspace';
+import { CharacterFloatHost, type FloatingCharacterMode } from '../features/characters/characterFloatHost';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -497,6 +498,8 @@ export function EditorShell({
   debugSurface,
   gatePreview,
 }: EditorShellProps): React.JSX.Element {
+  const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
+  const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
   const rightWorkspaceRef = useRef<RightWorkspaceHandle>(null);
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -2583,6 +2586,7 @@ export function EditorShell({
       data-editor-page={page}
       data-character-assembly-active={assemblyActive ? 'true' : 'false'}
       data-character-assembly-kind={assemblyKind}
+      data-character-float-mode={characterFloatMode ?? undefined}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
       {!renderProductSurface ? null : page === 'project-center' ? (
@@ -2697,6 +2701,7 @@ export function EditorShell({
               data-workspace-owner="resources"
               hidden={!portraitResourcesSlotVisible}
             >
+              <CharacterFloatHost.Provider value={{ target: characterFloatTarget, setMode: setCharacterFloatMode }}>
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
@@ -2752,6 +2757,7 @@ export function EditorShell({
                 recentRefreshToken={recentRefreshToken}
                 shellMode={layoutMode}
               />
+              </CharacterFloatHost.Provider>
             </div>
             <div
               aria-hidden={!portraitCanvasVisible && !assemblyActive}
@@ -2762,11 +2768,11 @@ export function EditorShell({
               hidden={!portraitCanvasVisible && !assemblyActive}
             >
               <div
-                aria-hidden={assemblyActive || !portraitCanvasVisible}
+                aria-hidden={Boolean(characterFloatMode) || assemblyActive || !portraitCanvasVisible}
                 className="character-assembly-canvas-owner"
                 data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
                 hidden={!portraitCanvasVisible && !assemblyActive}
-                inert={assemblyActive || undefined}
+                inert={Boolean(characterFloatMode) || assemblyActive || undefined}
               >
                 <CanvasWorkspace
                   showHeading={false}
@@ -2774,7 +2780,8 @@ export function EditorShell({
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                 />
               </div>
-              {activeAssemblySession && projectSnapshot ? (
+              <div className="character-float-host" ref={setCharacterFloatTarget} />
+              {activeAssemblySession && projectSnapshot && characterFloatMode !== 'composite' ? (
                 <CharacterAssemblyWorkbench
                   adaptivePartsActionsRef={adaptivePartsActionsRef}
                   projectSnapshot={projectSnapshot}
@@ -2784,13 +2791,13 @@ export function EditorShell({
               ) : null}
             </div>
             <div
-              aria-hidden={!portraitPropertiesVisible || assemblyActive}
+              aria-hidden={!portraitPropertiesVisible || assemblyActive || Boolean(characterFloatMode)}
               className={`editor-workspace-slot editor-workspace-slot-properties${assemblyActive ? ' is-character-assembly-inactive' : ''}`}
               data-active={portraitPropertiesVisible || assemblyActive}
               data-workspace-owner="properties"
               data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
               hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
-              inert={assemblyActive || undefined}
+              inert={Boolean(characterFloatMode) || assemblyActive || undefined}
             >
               {isPortrait ? (
                 <RightInspector
@@ -2827,7 +2834,7 @@ export function EditorShell({
               hidden={
                 isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
               }
-              assemblyInactive={assemblyActive}
+              assemblyInactive={assemblyActive || Boolean(characterFloatMode)}
               presentation={layoutMode}
               resizable={layoutMode === 'landscape'}
               showHistoryControls={false}

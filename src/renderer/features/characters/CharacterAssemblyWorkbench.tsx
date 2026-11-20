@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Minus, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
@@ -100,6 +101,14 @@ interface CharacterAssemblyWorkbenchProps {
   savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  floatingComposite?: {
+    editable: boolean;
+    leftOpen: boolean;
+    propertiesOpen: boolean;
+    controlsOpen: boolean;
+    propertyTarget: HTMLElement | null;
+    onToggleControls: () => void;
+  };
 }
 
 interface ActiveDragStart {
@@ -164,6 +173,7 @@ function layoutReuseFailureMessage(code: CharacterLayoutReuseFailureCode): strin
 function assemblyViewportFitArea(
   viewport: HTMLDivElement,
   fineTunePanel: HTMLDivElement | null,
+  floating = false,
 ): AssemblyViewportRect {
   const container = {
     width: viewport.clientWidth,
@@ -177,6 +187,13 @@ function assemblyViewportFitArea(
   const originX = viewportBounds.left + viewport.clientLeft;
   const originY = viewportBounds.top + viewport.clientTop;
   const occlusions: DOMRect[] = [];
+  if (floating) {
+    const root = viewport.closest('.character-float-detail');
+    for (const panel of root?.querySelectorAll('.character-float-panel[data-expanded="true"]') ?? []) {
+      const bounds = panel.getBoundingClientRect();
+      occlusions.push(new DOMRect(bounds.x - 8, viewportBounds.top, bounds.width + 16, viewportBounds.height));
+    }
+  }
   const dock = document.querySelector<HTMLElement>(
     '[data-testid="resource-activity-dock"]',
   );
@@ -193,7 +210,7 @@ function assemblyViewportFitArea(
   ) {
     occlusions.push(drawer.getBoundingClientRect());
   }
-  if (fineTunePanel) {
+  if (fineTunePanel && !floating) {
     const panelStyle = window.getComputedStyle(fineTunePanel);
     if (
       panelStyle.display !== 'none' &&
@@ -278,6 +295,7 @@ export function CharacterAssemblyWorkbench({
   savedProjectSnapshot,
   session,
   adaptivePartsActionsRef,
+  floatingComposite,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
@@ -290,6 +308,7 @@ export function CharacterAssemblyWorkbench({
   }
   return (
     <CompositeCharacterAssemblyWorkbench
+      floatingComposite={floatingComposite}
       projectSnapshot={projectSnapshot}
       savedProjectSnapshot={savedProjectSnapshot}
       session={session}
@@ -2230,6 +2249,7 @@ function AdaptivePartsAssemblyWorkbench({
 }
 
 function CompositeCharacterAssemblyWorkbench({
+  floatingComposite,
   projectSnapshot,
   savedProjectSnapshot,
   session,
@@ -2321,7 +2341,9 @@ function CompositeCharacterAssemblyWorkbench({
     null,
   );
   const [isEditingNeckPivot, setIsEditingNeckPivot] = useState(false);
-  const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
+  const [legacyFineTuneOpen, setIsFineTuneOpen] = useState(false);
+  const isFineTuneOpen = floatingComposite ? floatingComposite.controlsOpen : legacyFineTuneOpen;
+  const canEditAssembly = floatingComposite?.editable ?? true;
   const [headMotionTestToken, setHeadMotionTestToken] =
     useState<AssemblyHeadMotionTestToken | null>(null);
   const activeEditTarget =
@@ -2376,7 +2398,7 @@ function CompositeCharacterAssemblyWorkbench({
   }, [activeEditTarget, activeRotationDeg, session.sessionId]);
 
   useLayoutEffect(() => {
-    if (!isFineTuneOpen) return;
+    if (!isFineTuneOpen || floatingComposite) return;
     const viewport = viewportRef.current;
     const panel = fineTunePanelRef.current;
     if (!viewport || !panel) return;
@@ -2471,15 +2493,15 @@ function CompositeCharacterAssemblyWorkbench({
       observer.disconnect();
       window.removeEventListener('resize', placePanel);
     };
-  }, [activeEditTarget, head, isFineTuneOpen, transform.offsetX, transform.offsetY, transform.scale]);
+  }, [activeEditTarget, floatingComposite, head, isFineTuneOpen, transform.offsetX, transform.offsetY, transform.scale]);
 
   useEffect(() => {
-    if (!isFineTuneOpen && !isExpressionPreviewOpen) return;
+    if ((!isFineTuneOpen || floatingComposite) && !isExpressionPreviewOpen) return;
 
     const handlePointerDown = (event: PointerEvent): void => {
       if (!(event.target instanceof Node)) return;
       if (
-        isFineTuneOpen &&
+        !floatingComposite && isFineTuneOpen &&
         !fineTunePanelRef.current?.contains(event.target) &&
         !fineTuneTriggerRef.current?.contains(event.target)
       ) {
@@ -2514,7 +2536,7 @@ function CompositeCharacterAssemblyWorkbench({
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isExpressionPreviewOpen, isFineTuneOpen]);
+  }, [floatingComposite, isExpressionPreviewOpen, isFineTuneOpen]);
 
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
@@ -2725,6 +2747,7 @@ function CompositeCharacterAssemblyWorkbench({
     ? visibleImageRect(headPart.localRect, headImageBounds)
     : null;
 
+  const floatingLayout = floatingComposite ? (floatingComposite.leftOpen ? 1 : 0) + (floatingComposite.propertiesOpen ? 2 : 0) : null;
   const getAssemblyCameraTransform = useCallback(
     (mode: 'frame' | 'content', bounds: VisualLocalRect | null) => {
       const viewport = viewportRef.current;
@@ -2740,6 +2763,13 @@ function CompositeCharacterAssemblyWorkbench({
         width: viewport.clientWidth,
         height: viewport.clientHeight,
       };
+      if (floatingLayout !== null && floatingLayout > 0) {
+        const availableArea = assemblyViewportFitArea(viewport, null, true);
+        const focusBounds = bounds ?? latestAssemblyBoundsRef.current;
+        if (focusBounds) return calculateAssemblyFitViewportTransform(container, logicalFrame, focusBounds, availableArea);
+        const fit = calculateViewportTransform(availableArea, 'fit', logicalFrame);
+        return { ...fit, container, offsetX: fit.offsetX + availableArea.x, offsetY: fit.offsetY + availableArea.y };
+      }
       if (mode === 'content' && bounds) {
         return calculateAssemblyFitViewportTransform(
           container,
@@ -2750,7 +2780,7 @@ function CompositeCharacterAssemblyWorkbench({
       }
       return calculateViewportTransform(container, 'fit', logicalFrame);
     },
-    [project.height, project.width],
+    [floatingLayout, project.height, project.width],
   );
 
   const markCameraInteraction = useCallback(() => {
@@ -2809,7 +2839,7 @@ function CompositeCharacterAssemblyWorkbench({
     if (!visual || !assemblyImagesSettled) return;
     autoFitAttemptedForRef.current = cameraSessionKey;
     if (
-      !assemblyBoundsExceedFrame(assemblyVisibleBounds, {
+      floatingLayout === null && !assemblyBoundsExceedFrame(assemblyVisibleBounds, {
         width: project.width,
         height: project.height,
       })
@@ -2824,6 +2854,7 @@ function CompositeCharacterAssemblyWorkbench({
     assemblyImagesSettled,
     assemblyVisibleBounds,
     cameraSessionKey,
+    floatingLayout,
     getAssemblyCameraTransform,
     project.height,
     project.width,
@@ -2976,6 +3007,7 @@ function CompositeCharacterAssemblyWorkbench({
     event: React.PointerEvent<HTMLElement>,
     definition: ActiveDragDefinition,
   ): void => {
+    if (!canEditAssembly) return;
     if (event.button !== 0 || isTestingHeadMotion) return;
     const target = definition.kind === 'scale'
       ? definition.target
@@ -3405,6 +3437,186 @@ function CompositeCharacterAssemblyWorkbench({
         }
       : null;
 
+  const fineTunePanel = canEditAssembly && isFineTuneOpen && !isEditingNeckPivot ? (
+            <div
+              aria-label={`${activeEditTargetLabel}精调`}
+              className="character-assembly-fine-tune-panel"
+              id="character-assembly-fine-tune-panel"
+              data-testid="character-assembly-fine-tune-panel"
+              ref={fineTunePanelRef}
+              role="group"
+            >
+              {floatingComposite ? <strong className="character-float-precision-title">{activeEditTargetLabel}</strong> : null}
+              {activeEditTarget === 'body' ? (
+                <>
+                  <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体左右</span>
+                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
+                    <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体上下</span>
+                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
+                    <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体大小</span>
+                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
+                    <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
+                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : activeEditTarget === 'head' && head ? (
+                <>
+                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部左右</span>
+                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
+                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部上下</span>
+                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
+                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部大小</span>
+                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
+                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div aria-label="左右" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">左右</span>
+                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
+                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="上下" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">上下</span>
+                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
+                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">大小</span>
+                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
+                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              )}
+              {activeEditTarget !== 'body' ? <div
+                aria-label={`${activeEditTargetLabel}角度`}
+                className="character-assembly-control-set character-assembly-angle-control"
+                data-testid="character-assembly-angle-control"
+                role="group"
+              >
+                <span className="character-assembly-control-label">角度</span>
+                <button
+                  aria-label="逆时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-down'
+                    : 'character-assembly-face-rotation-down'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg - (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  −
+                </button>
+                <input
+                  aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
+                  aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation'
+                      : 'character-assembly-face-rotation'
+                  }
+                  disabled={isTestingHeadMotion}
+                  max={180}
+                  min={-180}
+                  onBlur={() => setRotationInput(String(activeRotationDeg))}
+                  onChange={(event) => {
+                    const raw = event.currentTarget.value;
+                    setRotationInput(raw);
+                    const value = parseAssemblyRotationInput(raw);
+                    if (value !== null) {
+                      setTargetRotation(value);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    const step = event.shiftKey ? 10 : 1;
+                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setTargetRotation(activeRotationDeg - step);
+                    } else if (
+                      event.key === 'ArrowRight' ||
+                      event.key === 'ArrowUp'
+                    ) {
+                      event.preventDefault();
+                      setTargetRotation(activeRotationDeg + step);
+                    }
+                  }}
+                  step={1}
+                  type="number"
+                  value={rotationInput}
+                />
+                <button
+                  aria-label="顺时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-up'
+                      : 'character-assembly-face-rotation-up'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg + (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  +
+                </button>
+              </div> : null}
+              {activeEditTarget !== 'body' ? <button
+                aria-label={`${activeEditTargetLabel}水平翻转`}
+                aria-pressed={activeFlipX}
+                className="character-assembly-flip-toggle"
+                data-testid={
+                  activeEditTarget === 'head'
+                    ? 'character-assembly-head-flip-x'
+                    : 'character-assembly-face-flip-x'
+                }
+                disabled={isTestingHeadMotion}
+                onClick={toggleTargetFlipX}
+                type="button"
+              >
+                {activeFlipX ? '已翻转' : '水平翻转'}
+              </button> : null}
+              <button
+                className="character-assembly-reset"
+                data-testid="character-assembly-reset"
+                disabled={isTestingHeadMotion}
+                onClick={resetPlacement}
+                type="button"
+              >
+                重置
+              </button>
+            </div>
+  ) : null;
+
   return (
     <section
       aria-label="角色组装工作区"
@@ -3447,6 +3659,8 @@ function CompositeCharacterAssemblyWorkbench({
       data-has-head={Boolean(head)}
       data-preview-face-asset-id={facePart?.assetId ?? ''}
       data-selected-face={selectedFace}
+      data-floating-composite={floatingComposite ? true : undefined}
+      data-editable={canEditAssembly}
       data-session-kind={isCreating ? 'create' : 'edit'}
       data-testid="character-assembly-workbench"
       onKeyDownCapture={(event) => {
@@ -3842,184 +4056,9 @@ function CompositeCharacterAssemblyWorkbench({
             </span>
           ) : null}
         </div>
-          {isFineTuneOpen && !isEditingNeckPivot ? (
-            <div
-              aria-label={`${activeEditTargetLabel}精调`}
-              className="character-assembly-fine-tune-panel"
-              id="character-assembly-fine-tune-panel"
-              data-testid="character-assembly-fine-tune-panel"
-              ref={fineTunePanelRef}
-              role="group"
-            >
-              {activeEditTarget === 'body' ? (
-                <>
-                  <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体左右</span>
-                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
-                    <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体上下</span>
-                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
-                    <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="身体大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">身体大小</span>
-                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
-                    <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
-                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              ) : activeEditTarget === 'head' && head ? (
-                <>
-                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部左右</span>
-                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
-                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部上下</span>
-                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
-                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部大小</span>
-                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
-                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div aria-label="左右" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">左右</span>
-                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
-                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="上下" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">上下</span>
-                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
-                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">大小</span>
-                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
-                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              )}
-              {activeEditTarget !== 'body' ? <div
-                aria-label={`${activeEditTargetLabel}角度`}
-                className="character-assembly-control-set character-assembly-angle-control"
-                data-testid="character-assembly-angle-control"
-                role="group"
-              >
-                <span className="character-assembly-control-label">角度</span>
-                <button
-                  aria-label="逆时针旋转1度，按住 Shift 旋转10度"
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation-down'
-                    : 'character-assembly-face-rotation-down'
-                  }
-                  disabled={isTestingHeadMotion}
-                  onClick={(event) =>
-                    setTargetRotation(
-                      activeRotationDeg - (event.shiftKey ? 10 : 1),
-                    )
-                  }
-                  type="button"
-                >
-                  −
-                </button>
-                <input
-                  aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
-                  aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation'
-                      : 'character-assembly-face-rotation'
-                  }
-                  disabled={isTestingHeadMotion}
-                  max={180}
-                  min={-180}
-                  onBlur={() => setRotationInput(String(activeRotationDeg))}
-                  onChange={(event) => {
-                    const raw = event.currentTarget.value;
-                    setRotationInput(raw);
-                    const value = parseAssemblyRotationInput(raw);
-                    if (value !== null) {
-                      setTargetRotation(value);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    const step = event.shiftKey ? 10 : 1;
-                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg - step);
-                    } else if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowUp'
-                    ) {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg + step);
-                    }
-                  }}
-                  step={1}
-                  type="number"
-                  value={rotationInput}
-                />
-                <button
-                  aria-label="顺时针旋转1度，按住 Shift 旋转10度"
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation-up'
-                      : 'character-assembly-face-rotation-up'
-                  }
-                  disabled={isTestingHeadMotion}
-                  onClick={(event) =>
-                    setTargetRotation(
-                      activeRotationDeg + (event.shiftKey ? 10 : 1),
-                    )
-                  }
-                  type="button"
-                >
-                  +
-                </button>
-              </div> : null}
-              {activeEditTarget !== 'body' ? <button
-                aria-label={`${activeEditTargetLabel}水平翻转`}
-                aria-pressed={activeFlipX}
-                className="character-assembly-flip-toggle"
-                data-testid={
-                  activeEditTarget === 'head'
-                    ? 'character-assembly-head-flip-x'
-                    : 'character-assembly-face-flip-x'
-                }
-                disabled={isTestingHeadMotion}
-                onClick={toggleTargetFlipX}
-                type="button"
-              >
-                {activeFlipX ? '已翻转' : '水平翻转'}
-              </button> : null}
-              <button
-                className="character-assembly-reset"
-                data-testid="character-assembly-reset"
-                disabled={isTestingHeadMotion}
-                onClick={resetPlacement}
-                type="button"
-              >
-                重置
-              </button>
-            </div>
-          ) : null}
+        {fineTunePanel && (floatingComposite
+          ? floatingComposite.propertyTarget && createPortal(fineTunePanel, floatingComposite.propertyTarget)
+          : fineTunePanel)}
       </div>
 
       <footer className="character-assembly-workbench-footer">
@@ -4028,7 +4067,7 @@ function CompositeCharacterAssemblyWorkbench({
           data-testid="character-assembly-placement-controls"
         >
           <div className="character-assembly-assembly-actions">
-            {head ? (
+            {head && canEditAssembly ? (
               <button
                 aria-pressed={isEditingNeckPivot}
                 className="character-assembly-pivot-mode-toggle"
@@ -4049,7 +4088,7 @@ function CompositeCharacterAssemblyWorkbench({
             >
               查看全貌
             </button>
-            <button
+            {canEditAssembly ? <button
               aria-expanded={isFineTuneOpen}
               aria-controls="character-assembly-fine-tune-panel"
               className="character-assembly-fine-tune-toggle"
@@ -4058,13 +4097,14 @@ function CompositeCharacterAssemblyWorkbench({
               disabled={isEditingNeckPivot || isTestingHeadMotion}
               onClick={() => {
                 setIsExpressionPreviewOpen(false);
-                setIsFineTuneOpen((open) => !open);
+                if (floatingComposite) floatingComposite.onToggleControls();
+                else setIsFineTuneOpen((open) => !open);
               }}
               type="button"
             >
               精调
-            </button>
-            {layoutReuseTarget ? (
+            </button> : null}
+            {canEditAssembly && layoutReuseTarget ? (
               <button
                 aria-expanded={isLayoutReuseOpen}
                 className="character-assembly-layout-reuse-toggle"
