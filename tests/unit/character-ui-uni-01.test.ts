@@ -219,6 +219,61 @@ describe('Floating single-image and composite detail (#1181)', () => {
     expect(characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.facePlacement.offsetX).toBe(0);
     expect(editorProjectStore.getSnapshot()!.project.shots).toEqual(project.shots);
   });
+
+  it('aligns float picker surfaces, mouth preview toggle, and composite precision controls (#1182)', async () => {
+    const { project, singleCharacter, compositeCharacter, imageAssets } = buildAdaptiveProject();
+    editorProjectStore.open('F:/tmp/project', project);
+    shotStore.select(project.shots[0]!.id);
+    const { target, button, click, open } = mountFloatingCharacter();
+
+    await act(async () => open(singleCharacter.id));
+    expect(
+      button('character-single-structure-image-picker-selected').getAttribute('data-asset-state'),
+    ).toBe('configured');
+    expect(
+      button('character-single-structure-image-picker-selected').getAttribute('title'),
+    ).toContain('×');
+    expect(
+      button('character-detail-mouth-visual-picker').querySelector('.image-asset-picker-selected-row--surface'),
+    ).not.toBeNull();
+    click(button('character-detail-mouth-visual-picker-selected'));
+    click(
+      button('character-detail-mouth-visual-picker-candidates').querySelector<HTMLButtonElement>(
+        'button[data-asset-id="' + imageAssets[0]!.id + '"]',
+      )!,
+    );
+    const mouthPreview = target.querySelector<HTMLButtonElement>('.character-float-mouth-preview-button')!;
+    expect(mouthPreview).not.toBeNull();
+    expect(mouthPreview.getAttribute('aria-pressed')).toBe('false');
+    click(mouthPreview);
+    expect(mouthPreview.getAttribute('aria-pressed')).toBe('true');
+    click(button('character-float-role-edit'));
+    expect(
+      target.querySelector('.character-float-danger-footer [data-testid="character-delete-settings"]'),
+    ).not.toBeNull();
+
+    click(button('character-detail-back'));
+    await act(async () => open(compositeCharacter.id));
+    expect(
+      target.querySelectorAll('.character-float-operations .image-asset-picker-selected-row--surface').length,
+    ).toBe(4);
+    const defaultFaceBtn = button('character-assembly-default-face-select');
+    expect(defaultFaceBtn.getAttribute('title')).toContain('×');
+    expect(defaultFaceBtn.querySelector('small')?.textContent).not.toContain('×');
+    click(defaultFaceBtn);
+    click(button('character-assembly-fine-tune-toggle'));
+    const precision = target.querySelector('.character-float-precision')!;
+    expect(precision.querySelector('.character-float-angle-input-wrap .character-float-angle-unit')?.textContent).toBe('°');
+    expect(precision.querySelector('.character-float-precision-actions')).not.toBeNull();
+    click(button('character-assembly-face-rotation-up', precision));
+    expect(
+      characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.facePlacement.rotationDeg,
+    ).toBe(1);
+    click(button('character-assembly-reset', precision));
+    expect(
+      characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.facePlacement.rotationDeg,
+    ).toBe(0);
+  });
 });
 
 describe('Character Detail and original Adaptive Parts workbench (#1179)', () => {

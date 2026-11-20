@@ -3535,43 +3535,53 @@ function CompositeCharacterAssemblyWorkbench({
                 >
                   −
                 </button>
-                <input
-                  aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
-                  aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
-                  data-testid={
-                    activeEditTarget === 'head'
-                      ? 'character-assembly-head-rotation'
-                      : 'character-assembly-face-rotation'
-                  }
-                  disabled={isTestingHeadMotion}
-                  max={180}
-                  min={-180}
-                  onBlur={() => setRotationInput(String(activeRotationDeg))}
-                  onChange={(event) => {
-                    const raw = event.currentTarget.value;
-                    setRotationInput(raw);
-                    const value = parseAssemblyRotationInput(raw);
-                    if (value !== null) {
-                      setTargetRotation(value);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    const step = event.shiftKey ? 10 : 1;
-                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg - step);
-                    } else if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowUp'
-                    ) {
-                      event.preventDefault();
-                      setTargetRotation(activeRotationDeg + step);
-                    }
-                  }}
-                  step={1}
-                  type="number"
-                  value={rotationInput}
-                />
+                {(() => {
+                  const angleInput = (
+                    <input
+                      aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
+                      aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
+                      data-testid={
+                        activeEditTarget === 'head'
+                          ? 'character-assembly-head-rotation'
+                          : 'character-assembly-face-rotation'
+                      }
+                      disabled={isTestingHeadMotion}
+                      max={180}
+                      min={-180}
+                      onBlur={() => setRotationInput(String(activeRotationDeg))}
+                      onChange={(event) => {
+                        const raw = event.currentTarget.value;
+                        setRotationInput(raw);
+                        const value = parseAssemblyRotationInput(raw);
+                        if (value !== null) {
+                          setTargetRotation(value);
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        const step = event.shiftKey ? 10 : 1;
+                        if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setTargetRotation(activeRotationDeg - step);
+                        } else if (
+                          event.key === 'ArrowRight' ||
+                          event.key === 'ArrowUp'
+                        ) {
+                          event.preventDefault();
+                          setTargetRotation(activeRotationDeg + step);
+                        }
+                      }}
+                      step={1}
+                      type="number"
+                      value={rotationInput}
+                    />
+                  );
+                  return floatingComposite ? (
+                    <span className="character-float-angle-input-wrap">
+                      {angleInput}
+                      <span aria-hidden="true" className="character-float-angle-unit">°</span>
+                    </span>
+                  ) : angleInput;
+                })()}
                 <button
                   aria-label="顺时针旋转1度，按住 Shift 旋转10度"
                   data-testid={
@@ -3590,30 +3600,45 @@ function CompositeCharacterAssemblyWorkbench({
                   +
                 </button>
               </div> : null}
-              {activeEditTarget !== 'body' ? <button
-                aria-label={`${activeEditTargetLabel}水平翻转`}
-                aria-pressed={activeFlipX}
-                className="character-assembly-flip-toggle"
-                data-testid={
-                  activeEditTarget === 'head'
-                    ? 'character-assembly-head-flip-x'
-                    : 'character-assembly-face-flip-x'
-                }
-                disabled={isTestingHeadMotion}
-                onClick={toggleTargetFlipX}
-                type="button"
-              >
-                {activeFlipX ? '已翻转' : '水平翻转'}
-              </button> : null}
-              <button
-                className="character-assembly-reset"
-                data-testid="character-assembly-reset"
-                disabled={isTestingHeadMotion}
-                onClick={resetPlacement}
-                type="button"
-              >
-                重置
-              </button>
+              {(() => {
+                const flipButton = activeEditTarget !== 'body' ? <button
+                  aria-label={`${activeEditTargetLabel}水平翻转`}
+                  aria-pressed={activeFlipX}
+                  className="character-assembly-flip-toggle"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-flip-x'
+                      : 'character-assembly-face-flip-x'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={toggleTargetFlipX}
+                  type="button"
+                >
+                  {activeFlipX ? '已翻转' : '水平翻转'}
+                </button> : null;
+                const resetButton = (
+                  <button
+                    className="character-assembly-reset"
+                    data-testid="character-assembly-reset"
+                    disabled={isTestingHeadMotion}
+                    onClick={resetPlacement}
+                    type="button"
+                  >
+                    重置
+                  </button>
+                );
+                return floatingComposite ? (
+                  <div className="character-float-precision-actions">
+                    {flipButton}
+                    {resetButton}
+                  </div>
+                ) : (
+                  <>
+                    {flipButton}
+                    {resetButton}
+                  </>
+                );
+              })()}
             </div>
   ) : null;
 

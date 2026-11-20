@@ -281,10 +281,12 @@ export function ImageAssetPicker({
       }
       aria-pressed={hasActiveSelection ? selectedAssetActive : undefined}
       className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}${hasActiveSelection && !showEditTargetStatus ? ' image-asset-picker-selected--compact-edit-target' : ''}`}
+      data-asset-state={selectedAsset ? 'configured' : selectedAssetId ? 'missing' : 'empty'}
       data-edit-target-selected={hasActiveSelection ? String(selectedAssetActive) : undefined}
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
       onClick={hasActiveSelection ? onSelectedAssetActivate : togglePicker}
+      title={selectedMetadata ? `${selectedLabel} · ${selectedMetadata}` : selectedLabel}
       type="button"
     >
       {selectedAssetId ? (

@@ -849,6 +849,13 @@ export function CharacterEditor({
                         data-testid="character-assembly-default-face-select"
                         disabled={disabled || !assemblyDraft}
                         onClick={() => selectAssemblyObject('face')}
+                        title={
+                          defaultExpressionAsset
+                            ? `${defaultExpression.name} · ${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                            : defaultExpression.visualSource
+                              ? `${defaultExpression.name} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`
+                              : `${defaultExpression.name} · 素材不可用`
+                        }
                         type="button"
                       >
                         <CharacterExpressionThumbnail
@@ -861,7 +868,7 @@ export function CharacterEditor({
                           <strong>{defaultExpression.name}</strong>
                           <small>
                             {defaultExpressionAsset
-                              ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                              ? (floatMode ? defaultExpressionAsset.name : `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`)
                               : defaultExpression.visualSource ? `第 ${defaultExpression.visualSource.firstFrame + 1} 帧` : '素材不可用'}
                           </small>
                         </span>
@@ -1078,6 +1085,7 @@ export function CharacterEditor({
                   onChange={onSetMouthOpenAsset}
                   onThumbnailError={onThumbnailError}
                   selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
+                  selectedSurface={Boolean(floatMode)}
                   testId="character-detail-mouth-visual-picker"
                   thumbnails={thumbnails}
                   disabled={disabled}
@@ -1096,6 +1104,9 @@ export function CharacterEditor({
                 />
                 </GraphicFacePicker>
               </div>
+              {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
+                <Button aria-pressed={previewMouth} className="character-float-mouth-preview-button" onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
+              ) : null}
             </section>
             ) : null;
   const deleteProperties = floatMode ? (
@@ -1188,13 +1199,10 @@ export function CharacterEditor({
             ) : null}
             {floatMode === 'single-image' || floatOperations === 'parts' ? structureContent : null}
             {singleMouth}
-            {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
-              <Button aria-pressed={previewMouth} onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
-            ) : null}
             {floatMode === 'single-image' || floatOperations === 'expressions' ? <>
             <div className="character-float-expression-heading">
               <strong id="character-expression-workspace-heading">表情</strong>
-              <Button aria-expanded={expressionAddOpen} onClick={() => setExpressionAddOpen(!expressionAddOpen)} variant="secondary">＋ 添加</Button>
+              <Button aria-expanded={expressionAddOpen} className="character-float-expression-add" onClick={() => setExpressionAddOpen(!expressionAddOpen)} variant="secondary">＋ 添加</Button>
             </div>
             {expressionContent}
             </> : null}
@@ -1222,10 +1230,10 @@ export function CharacterEditor({
             <label>角色名称
               <input maxLength={200} onChange={(event) => setName(event.currentTarget.value)} value={name} />
             </label>
-            <Button disabled={disabled || !nextRenameValue} type="submit" variant="secondary">重命名</Button>
+            <Button className="character-float-rename-submit" disabled={disabled || !nextRenameValue} type="submit" variant="secondary">重命名</Button>
           </form>
           {defaultProperties}
-          {deleteProperties}
+          <div className="character-float-danger-footer">{deleteProperties}</div>
           </fieldset>
           )}
           {floatProperties === 'character' && assemblyPending ? <p role="status">请先应用或取消组装更改。</p> : null}
