@@ -238,14 +238,39 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     act(() => container.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-replace-button"]')!.click());
     renderWorkbench();
 
-    const imageSelect = container.querySelector<HTMLSelectElement>(
-      '[data-testid="adaptive-parts-image-replace-select"]',
+    const dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(container.querySelector('[data-testid="adaptive-parts-replace-panel"]')).toBeNull();
+
+    // Selecting candidate inside dialog must not mutate draft until confirmed
+    const altBtn = dialog!.querySelector<HTMLButtonElement>(
+      `[data-testid="character-swap-candidate-image-${alternateAsset.id}"]`,
+    )!;
+    act(() => altBtn.click());
+    const snapPending = characterAssemblySessionStore.getSnapshot();
+    if (snapPending?.kind === 'adaptive-parts') {
+      expect(snapPending.draft.parts.find((p) => p.partId === PART_IDS[0])?.assetId).toBe(
+        imageAssets[0]!.id,
+      );
+    }
+
+    // Cancel preserves original asset
+    act(() => dialog!.querySelector<HTMLButtonElement>('[data-testid="character-swap-cancel"]')!.click());
+    renderWorkbench();
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).toBeNull();
+
+    // Re-open and confirm replacement -> updates assetId while preserving partId, visible, drawOrder
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-replace-button"]')!.click());
+    renderWorkbench();
+    const reopenedDialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    act(() =>
+      reopenedDialog
+        .querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${alternateAsset.id}"]`)!
+        .click(),
     );
-    expect(imageSelect).not.toBeNull();
-    act(() => {
-      imageSelect!.value = alternateAsset.id;
-      imageSelect!.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    act(() =>
+      reopenedDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!.click(),
+    );
     renderWorkbench();
 
     const snapAfter = characterAssemblySessionStore.getSnapshot();
@@ -253,6 +278,8 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     if (snapAfter?.kind === 'adaptive-parts') {
       const replaced = snapAfter.draft.parts.find((p) => p.partId === PART_IDS[0]);
       expect(replaced?.assetId).toBe(alternateAsset.id);
+      expect(replaced?.drawOrder).toBe(0);
+      expect(replaced?.visible).toBe(true);
     }
   });
 

@@ -166,9 +166,15 @@ describe('Floating single-image and composite detail (#1181)', () => {
     expect(target.querySelector('.expression-card')).not.toBeNull();
     const mouthId = imageAssets[0]!.id;
     click(button('character-detail-mouth-visual-picker-selected'));
-    const candidate = button('character-detail-mouth-visual-picker-candidates')
-      .querySelector<HTMLButtonElement>('button[data-asset-id="' + mouthId + '"]')!;
-    click(candidate);
+    expect(target.querySelector('[data-testid="character-detail-mouth-visual-picker-candidates"]')).toBeNull();
+    const dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    expect(dialog).not.toBeNull();
+    click(dialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${mouthId}"]`)!);
+    // Selecting a candidate inside the dialog does NOT mutate the character before confirmation
+    expect(
+      editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === singleCharacter.id),
+    ).not.toMatchObject({ mouthOpenAssetId: mouthId });
+    click(dialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!);
     const current = editorProjectStore.getSnapshot()!.project;
     expect(current.characters.find(c => c.id === singleCharacter.id)).toMatchObject({ mouthOpenAssetId: mouthId });
     click(button('character-float-role-edit'));
@@ -237,11 +243,9 @@ describe('Floating single-image and composite detail (#1181)', () => {
       button('character-detail-mouth-visual-picker').querySelector('.image-asset-picker-selected-row--surface'),
     ).not.toBeNull();
     click(button('character-detail-mouth-visual-picker-selected'));
-    click(
-      button('character-detail-mouth-visual-picker-candidates').querySelector<HTMLButtonElement>(
-        'button[data-asset-id="' + imageAssets[0]!.id + '"]',
-      )!,
-    );
+    const mouthDialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    click(mouthDialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${imageAssets[0]!.id}"]`)!);
+    click(mouthDialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!);
     const mouthPreview = target.querySelector<HTMLButtonElement>('.character-float-mouth-preview-button')!;
     expect(mouthPreview).not.toBeNull();
     expect(mouthPreview.getAttribute('aria-pressed')).toBe('false');
@@ -273,6 +277,75 @@ describe('Floating single-image and composite detail (#1181)', () => {
     expect(
       characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.facePlacement.rotationDeg,
     ).toBe(0);
+  });
+
+  it('opens the shared floating resource swap dialog across single-image, composite, and expression slots without mutating on cancel (#1183)', async () => {
+    const { project, singleCharacter, compositeCharacter, imageAssets } = buildAdaptiveProject();
+    if (singleCharacter.mode !== 'single-image' || compositeCharacter.mode !== 'composite') {
+      throw new Error('Expected single-image and composite fixtures');
+    }
+    editorProjectStore.open('F:/tmp/project', project);
+    shotStore.select(project.shots[0]!.id);
+    const { target, button, click, open } = mountFloatingCharacter();
+
+    // 1. Single-image: Esc / Cancel does not mutate, search empty state works, Confirm applies
+    await act(async () => open(singleCharacter.id));
+    const singleBefore = editorProjectStore.getSnapshot()!.project;
+    const altAssetId = imageAssets.find(
+      (asset) => asset.id !== singleCharacter.expressions[0]!.assetId,
+    )!.id;
+    click(button('character-single-structure-image-picker-selected'));
+    let dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    expect(dialog).not.toBeNull();
+    expect(target.querySelector('[data-testid="character-single-structure-image-picker-candidates"]')).toBeNull();
+    const searchInput = dialog.querySelector<HTMLInputElement>('[data-testid="character-swap-search"]')!;
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(searchInput, '___non_existent___');
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(dialog.querySelector('[data-testid="character-swap-empty-state"]')?.textContent).toContain('没有匹配素材');
+    click(dialog.querySelector<HTMLButtonElement>('.character-swap-empty-clear')!);
+    click(dialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${altAssetId}"]`)!);
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(singleBefore);
+    act(() => {
+      dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).toBeNull();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(singleBefore);
+
+    click(button('character-single-structure-image-picker-selected'));
+    dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    click(dialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${altAssetId}"]`)!);
+    click(dialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!);
+    const updatedSingle = editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === singleCharacter.id);
+    expect(updatedSingle?.mode === 'single-image' ? updatedSingle.expressions[0]?.assetId : null).toBe(altAssetId);
+
+    // 2. Expression edit uses the same swap dialog rather than an inline grid
+    const firstExprId = singleCharacter.expressions[0]!.id;
+    click(button(`expression-edit-${firstExprId}`));
+    expect(target.querySelector(`[data-testid="expression-asset-picker-${firstExprId}-candidates"]`)).toBeNull();
+    click(button(`expression-asset-picker-${firstExprId}-selected`));
+    dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    expect(dialog).not.toBeNull();
+    click(dialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-cancel"]')!);
+    expect(document.body.querySelector('[data-testid="character-resource-swap-dialog"]')).toBeNull();
+
+    // 3. Composite Body/Head does not display unsupported FLA tab and writes to assembly draft only on confirm
+    click(button('character-detail-back'));
+    await act(async () => open(compositeCharacter.id));
+    click(button('character-assembly-body-picker-change-action'));
+    dialog = document.body.querySelector('[data-testid="character-resource-swap-dialog"]')!;
+    expect(dialog.querySelector('[data-testid="character-swap-tab-graphic"]')).toBeNull();
+    const altBodyId = imageAssets.find((a) => a.id !== compositeCharacter.bodyAssetId)!.id;
+    click(dialog.querySelector<HTMLButtonElement>(`[data-testid="character-swap-candidate-image-${altBodyId}"]`)!);
+    expect(
+      characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.bodyAssetId,
+    ).toBe(compositeCharacter.bodyAssetId);
+    click(dialog.querySelector<HTMLButtonElement>('[data-testid="character-swap-confirm"]')!);
+    expect(
+      characterAssemblySessionStore.getActiveAssemblySessionHandle()!.getSnapshot()!.draft.bodyAssetId,
+    ).toBe(altBodyId);
   });
 });
 

@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Minus, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Minus, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -57,6 +57,8 @@ import {
 } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { GraphicFacePreview } from './GraphicFacePicker';
+import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
+import { useProjectImageThumbnails } from './CharacterIdentity';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
 import { measureImageVisibleBounds } from './measureImageVisibleBounds';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
@@ -903,6 +905,8 @@ function renderAdaptivePartsAssemblyGraphicDataUrl(
   }
 }
 
+const EMPTY_SWAP_IMAGE_ASSETS: readonly ImageAsset[] = [];
+
 function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
@@ -947,12 +951,21 @@ function AdaptivePartsAssemblyWorkbench({
   >({});
   const [message, setMessage] = useState('');
   const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
+  const replaceTriggerRef = useRef<HTMLElement | null>(null);
   const projectImageAssets = useMemo(
     () =>
       project.assets.filter(
         (asset): asset is ImageAsset => asset.kind === 'image',
       ),
     [project.assets],
+  );
+  const {
+    thumbnails: adaptiveSwapThumbnails,
+    onThumbnailError: onAdaptiveSwapThumbnailError,
+  } = useProjectImageThumbnails(
+    projectRoot,
+    replacingPartId ? projectImageAssets : EMPTY_SWAP_IMAGE_ASSETS,
+    project,
   );
   const structuredGraphics = useMemo(
     () =>
@@ -1847,7 +1860,14 @@ function AdaptivePartsAssemblyWorkbench({
             displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
             onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
             onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
-            onReplace={() => { if (selectedPart) setReplacingPartId(selectedPart.partId); }}
+            onReplace={() => {
+              if (!selectedPart) return;
+              replaceTriggerRef.current =
+                operationsRef.current?.querySelector<HTMLElement>(
+                  '[data-testid="adaptive-parts-row-overflow-trigger"]',
+                ) ?? null;
+              setReplacingPartId(selectedPart.partId);
+            }}
           />
         </div>
         <div className="adaptive-parts-assembly-rows">
@@ -1933,78 +1953,6 @@ function AdaptivePartsAssemblyWorkbench({
             );
           })}
         </div>
-        {replacingPartId && session.draft.parts.some((part) => part.partId === replacingPartId) ? (() => {
-          const targetPart = session.draft.parts.find((part) => part.partId === replacingPartId)!;
-          const targetSource = resolveCharacterPartVisualSource(targetPart);
-          const targetLabel = localizeDefaultAdaptivePartName(
-            targetPart.displayName ??
-              (targetSource.kind === 'image'
-                ? assetNames.get(targetSource.assetId)
-                : structuredGraphicById.get(targetSource.animationId)?.name) ??
-              `Part ${targetPart.drawOrder + 1}`,
-          );
-          return (
-            <div
-              className="adaptive-parts-source-picker adaptive-parts-replace-panel"
-              data-source-kind={targetSource.kind}
-              data-testid="adaptive-parts-replace-panel"
-            >
-              <div className="adaptive-parts-replace-header">
-                <strong>替换素材 · {targetLabel}</strong>
-                <button
-                  aria-label="关闭替换素材"
-                  className="adaptive-parts-replace-close"
-                  data-testid="adaptive-parts-replace-close"
-                  onClick={() => setReplacingPartId(null)}
-                  type="button"
-                >
-                  <X aria-hidden="true" size={14} />
-                </button>
-              </div>
-              {projectImageAssets.length > 0 ? (
-                <label className="adaptive-parts-replace-field">
-                  <span>图片素材</span>
-                  <select
-                    aria-label="选择替换图片素材"
-                    data-testid="adaptive-parts-image-replace-select"
-                    value={targetSource.kind === 'image' ? targetSource.assetId : ''}
-                    onChange={(event) => replacePartWithImage(targetPart.partId, event.target.value)}
-                  >
-                    <option disabled={targetSource.kind === 'image'} value="">
-                      选择图片素材
-                    </option>
-                    {projectImageAssets.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              {structuredGraphics.length > 0 ? (
-                <label className="adaptive-parts-replace-field">
-                  <span>FLA 元件</span>
-                  <select
-                    aria-label="选择已导入的 FLA 元件来源"
-                    data-testid="adaptive-parts-graphic-select"
-                    id="adaptive-parts-graphic-select"
-                    value={targetSource.kind === 'fla-graphic' ? targetSource.animationId : ''}
-                    onChange={(event) => replacePartWithGraphic(targetPart.partId, event.target.value)}
-                  >
-                    <option disabled={targetSource.kind === 'fla-graphic'} value="">
-                      选择已导入元件
-                    </option>
-                    {structuredGraphics.map((graphic) => (
-                      <option key={graphic.id} value={graphic.id}>
-                        {graphic.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-            </div>
-          );
-        })() : null}
       </div>
     </aside>
   );
@@ -2244,6 +2192,44 @@ function AdaptivePartsAssemblyWorkbench({
           </button>
         </div>
       </footer>
+      {replacingPartId && session.draft.parts.some((part) => part.partId === replacingPartId) ? (() => {
+        const targetPart = session.draft.parts.find((part) => part.partId === replacingPartId)!;
+        const targetSource = resolveCharacterPartVisualSource(targetPart);
+        const targetLabel = localizeDefaultAdaptivePartName(
+          targetPart.displayName ??
+            (targetSource.kind === 'image'
+              ? assetNames.get(targetSource.assetId)
+              : structuredGraphicById.get(targetSource.animationId)?.name) ??
+            `Part ${targetPart.drawOrder + 1}`,
+        );
+        return (
+          <CharacterResourceSwapDialog
+            currentValue={
+              targetSource.kind === 'image'
+                ? { kind: 'image', assetId: targetSource.assetId }
+                : { kind: 'fla-graphic', animationId: targetSource.animationId }
+            }
+            graphicDefinitions={structuredGraphics}
+            graphicSelectionMode="definition"
+            imageAssets={projectImageAssets}
+            onCancel={() => setReplacingPartId(null)}
+            onConfirm={(next) => {
+              if (next.kind === 'image' && next.assetId) {
+                replacePartWithImage(targetPart.partId, next.assetId);
+              } else if (next.kind === 'fla-graphic') {
+                replacePartWithGraphic(targetPart.partId, next.animationId);
+              } else {
+                setReplacingPartId(null);
+              }
+            }}
+            onThumbnailError={onAdaptiveSwapThumbnailError}
+            open
+            returnFocusTo={replaceTriggerRef.current}
+            thumbnails={adaptiveSwapThumbnails}
+            title={`替换素材 · ${targetLabel}`}
+          />
+        );
+      })() : null}
     </section>
   );
 }

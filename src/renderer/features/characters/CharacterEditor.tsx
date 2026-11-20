@@ -1,4 +1,4 @@
-import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, X } from 'lucide-react';
 import { CharacterFloatHost } from './characterFloatHost';
@@ -6,6 +6,7 @@ import { CharacterSingleImagePreview } from './CharacterSingleImagePreview';
 import { CharacterFloatPanel } from './CharacterFloatPanel';
 import './character-float-detail.css';
 import {
+  isFlaGraphicDefinition,
   type Character,
   type CharacterDimensionWarning,
   type CompositeCharacterDefinition,
@@ -15,11 +16,15 @@ import {
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblyEditTarget, CharacterAssemblySnapshot } from '../../stores/characterAssemblySessionStore';
-import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { CharacterAssemblyWorkbench } from './CharacterAssemblyWorkbench';
 import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { CharacterTalkingHeadMotionPreview } from './CharacterTalkingHeadMotionPreview';
+import {
+  CharacterResourceSwapDialog,
+  type ResourceSwapValue,
+} from './CharacterResourceSwapDialog';
 import { ExpressionEditor } from './ExpressionEditor';
 import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
 import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
@@ -399,6 +404,24 @@ export function CharacterEditor({
   const [previewExpressionId, setPreviewExpressionId] = useState<string>();
   const [previewMouth, setPreviewMouth] = useState(false);
   const [precisionTarget, setPrecisionTarget] = useState<HTMLDivElement | null>(null);
+  const storeSnapshot = useSyncExternalStore(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+    editorProjectStore.getSnapshot,
+  );
+  const resolvedProject = project ?? projectSnapshot?.project ?? storeSnapshot?.project;
+  const flaGraphicDefinitions = useMemo(
+    () => resolvedProject?.animations.filter(isFlaGraphicDefinition) ?? [],
+    [resolvedProject?.animations],
+  );
+  const [swapDialog, setSwapDialog] = useState<{
+    title: string;
+    currentValue: ResourceSwapValue;
+    emptyOption?: { label: string; description?: string };
+    allowGraphic: boolean;
+    returnFocusTo: HTMLElement | null;
+    onConfirm: (nextValue: ResourceSwapValue) => void;
+  } | null>(null);
   const openAssemblyRef = useRef(onOpenAssembly);
   openAssemblyRef.current = onOpenAssembly;
   useEffect(() => {
@@ -601,6 +624,7 @@ export function CharacterEditor({
     if (floatOperations === 'parts' && !onOpenAssembly()) return;
     setFloatOperations(next);
     setExpressionAddOpen(false);
+    setSwapDialog(null);
     if (next === 'expressions') setFloatProperties('character');
   };
   const selectAssemblyObject = (target: CharacterAssemblyEditTarget): void => {
@@ -795,6 +819,17 @@ export function CharacterEditor({
                   onChange={(assetId) => {
                     if (assetId) onSetAssemblyBodyAsset(assetId);
                   }}
+                  onRequestReplace={floatMode ? (trigger) => {
+                    setSwapDialog({
+                      title: '更换身体',
+                      currentValue: { kind: 'image', assetId: assemblyDraft?.bodyAssetId ?? character.bodyAssetId },
+                      allowGraphic: false,
+                      returnFocusTo: trigger,
+                      onConfirm: (next) => {
+                        if (next.kind === 'image' && next.assetId) onSetAssemblyBodyAsset(next.assetId);
+                      },
+                    });
+                  } : undefined}
                   onThumbnailError={onThumbnailError}
                   selectedAssetId={
                     assemblyDraft?.bodyAssetId ?? character.bodyAssetId
@@ -812,6 +847,21 @@ export function CharacterEditor({
                   emptyActionLabel="选择"
                   label="头部"
                   onChange={onSetAssemblyHeadAsset}
+                  onRequestReplace={floatMode ? (trigger) => {
+                    const currentHeadId = assemblyDraft
+                      ? assemblyDraft.head?.assetId ?? null
+                      : character.head?.assetId ?? null;
+                    setSwapDialog({
+                      title: '更换头部',
+                      currentValue: { kind: 'image', assetId: currentHeadId },
+                      emptyOption: { label: '不添加头部' },
+                      allowGraphic: false,
+                      returnFocusTo: trigger,
+                      onConfirm: (next) => {
+                        if (next.kind === 'image') onSetAssemblyHeadAsset(next.assetId);
+                      },
+                    });
+                  } : undefined}
                   onThumbnailError={onThumbnailError}
                   onSelectedAssetActivate={
                     assemblyDraft?.head
@@ -886,71 +936,157 @@ export function CharacterEditor({
                     </ImageAssetPickerSelectedSurface>
                   ) : null}
                 </div>
-                <GraphicFacePicker source={assemblyDraft ? assemblyDraft.mouthOpenVisualSource : character.mouthOpenVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
-                <ImageAssetPicker
-                  assets={imageAssets}
-                  emptyOption={{
-                    label: '暂不配置',
-                  }}
-                  label="张嘴脸"
-                  onChange={onSetAssemblyMouthAsset}
-                  onThumbnailError={onThumbnailError}
-                  selectedAssetId={assemblyMouthAssetId}
-                  testId="character-assembly-mouth-picker"
-                  thumbnails={thumbnails}
-                  disabled={disabled}
-                  selectedSurface
-                  selectedAction={
-                    assemblyMouthAssetId ? (
-                      <CharacterAssemblyMouthOverflowMenu
-                        disabled={disabled}
-                        onClear={() => onSetAssemblyMouthAsset(null)}
-                      />
-                    ) : undefined
-                  }
-                />
-                </GraphicFacePicker>
+                {(() => {
+                  const mouthVisualSource = assemblyDraft
+                    ? assemblyDraft.mouthOpenVisualSource
+                    : character.mouthOpenVisualSource;
+                  const mouthGraphicDef = mouthVisualSource
+                    ? flaGraphicDefinitions.find((def) => def.id === mouthVisualSource.animationId)
+                    : undefined;
+                  const mouthPicker = (
+                    <ImageAssetPicker
+                      assets={imageAssets}
+                      emptyOption={{
+                        label: '暂不配置',
+                      }}
+                      label="张嘴脸"
+                      onChange={onSetAssemblyMouthAsset}
+                      onRequestReplace={floatMode ? (trigger) => {
+                        setSwapDialog({
+                          title: '更换张嘴脸',
+                          currentValue: mouthVisualSource
+                            ? { kind: 'fla-graphic', animationId: mouthVisualSource.animationId, firstFrame: mouthVisualSource.firstFrame }
+                            : { kind: 'image', assetId: assemblyMouthAssetId },
+                          emptyOption: { label: '暂不配置' },
+                          allowGraphic: Boolean(onSetAssemblyMouthSource),
+                          returnFocusTo: trigger,
+                          onConfirm: (next) => {
+                            if (next.kind === 'fla-graphic') {
+                              onSetAssemblyMouthSource?.({
+                                kind: 'fla-graphic',
+                                animationId: next.animationId,
+                                firstFrame: next.firstFrame ?? 0,
+                              });
+                            } else {
+                              onSetAssemblyMouthAsset(next.assetId);
+                            }
+                          },
+                        });
+                      } : undefined}
+                      onThumbnailError={onThumbnailError}
+                      selectedAssetId={assemblyMouthAssetId}
+                      selectedOverride={floatMode && mouthVisualSource ? {
+                        label: mouthGraphicDef?.name ?? 'FLA 元件',
+                        metadata: `第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                        preview: <GraphicFacePreview label="张嘴脸" source={mouthVisualSource} />,
+                        tooltip: `${mouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                      } : undefined}
+                      testId="character-assembly-mouth-picker"
+                      thumbnails={thumbnails}
+                      disabled={disabled}
+                      selectedSurface
+                      selectedAction={
+                        assemblyMouthAssetId || (floatMode && mouthVisualSource) ? (
+                          <CharacterAssemblyMouthOverflowMenu
+                            disabled={disabled}
+                            onClear={() => {
+                              if (mouthVisualSource) onSetAssemblyMouthSource?.(null);
+                              else onSetAssemblyMouthAsset(null);
+                            }}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  );
+                  return floatMode ? mouthPicker : (
+                    <GraphicFacePicker source={mouthVisualSource} onChange={onSetAssemblyMouthSource} onClear={() => onSetAssemblyMouthSource?.(null)} testId="character-assembly-mouth-picker" disabled={disabled}>
+                      {mouthPicker}
+                    </GraphicFacePicker>
+                  );
+                })()}
               </>
             ) : singleImageCharacter && defaultExpression ? (
               <div
                 className="character-single-structure-panel"
                 data-testid="character-single-structure-panel"
               >
-                <GraphicFacePicker
-                  source={defaultExpression.visualSource}
-                  onChange={(source) => {
-                    if (source && onSetExpressionSource) {
-                      onSetExpressionSource(defaultExpression.id, source);
-                    }
-                  }}
-                  testId="character-single-structure-image-picker"
-                  disabled={disabled}
-                >
-                  <ImageAssetPicker
-                    assets={imageAssets}
-                    emptyState={{
-                      description: '从项目图片中选择整体图像。',
-                      label: '请选择图片',
-                    }}
-                    label="整体图像"
-                    onChange={(assetId) => {
-                      if (assetId) {
-                        onSetExpressionAsset(defaultExpression.id, assetId);
-                      }
-                    }}
-                    onThumbnailError={onThumbnailError}
-                    selectedAssetId={defaultExpression.assetId ?? null}
-                    testId="character-single-structure-image-picker"
-                    thumbnails={thumbnails}
-                    disabled={disabled}
-                    selectedSurface
-                  />
-                </GraphicFacePicker>
+                {(() => {
+                  const overallGraphicDef = defaultExpression.visualSource
+                    ? flaGraphicDefinitions.find((def) => def.id === defaultExpression.visualSource?.animationId)
+                    : undefined;
+                  const singleStructurePicker = (
+                    <ImageAssetPicker
+                      assets={imageAssets}
+                      emptyState={{
+                        description: '从项目图片中选择整体图像。',
+                        label: '请选择图片',
+                      }}
+                      label="整体图像"
+                      onChange={(assetId) => {
+                        if (assetId) {
+                          onSetExpressionAsset(defaultExpression.id, assetId);
+                        }
+                      }}
+                      onRequestReplace={floatMode ? (trigger) => {
+                        setSwapDialog({
+                          title: '更换整体图像',
+                          currentValue: defaultExpression.visualSource
+                            ? {
+                                kind: 'fla-graphic',
+                                animationId: defaultExpression.visualSource.animationId,
+                                firstFrame: defaultExpression.visualSource.firstFrame,
+                              }
+                            : { kind: 'image', assetId: defaultExpression.assetId ?? null },
+                          allowGraphic: Boolean(onSetExpressionSource),
+                          returnFocusTo: trigger,
+                          onConfirm: (next) => {
+                            if (next.kind === 'fla-graphic') {
+                              onSetExpressionSource?.(defaultExpression.id, {
+                                kind: 'fla-graphic',
+                                animationId: next.animationId,
+                                firstFrame: next.firstFrame ?? 0,
+                              });
+                            } else if (next.assetId) {
+                              onSetExpressionAsset(defaultExpression.id, next.assetId);
+                            }
+                          },
+                        });
+                      } : undefined}
+                      onThumbnailError={onThumbnailError}
+                      selectedAssetId={defaultExpression.assetId ?? null}
+                      selectedOverride={floatMode && defaultExpression.visualSource ? {
+                        label: overallGraphicDef?.name ?? 'FLA 元件',
+                        metadata: `第 ${defaultExpression.visualSource.firstFrame + 1} 帧`,
+                        preview: <GraphicFacePreview label="整体图像" source={defaultExpression.visualSource} />,
+                        tooltip: `${overallGraphicDef?.name ?? 'FLA 元件'} · 第 ${defaultExpression.visualSource.firstFrame + 1} 帧`,
+                      } : undefined}
+                      testId="character-single-structure-image-picker"
+                      thumbnails={thumbnails}
+                      disabled={disabled}
+                      selectedSurface
+                    />
+                  );
+                  return floatMode ? singleStructurePicker : (
+                    <GraphicFacePicker
+                      source={defaultExpression.visualSource}
+                      onChange={(source) => {
+                        if (source && onSetExpressionSource) {
+                          onSetExpressionSource(defaultExpression.id, source);
+                        }
+                      }}
+                      testId="character-single-structure-image-picker"
+                      disabled={disabled}
+                    >
+                      {singleStructurePicker}
+                    </GraphicFacePicker>
+                  );
+                })()}
               </div>
             ) : null;
   const expressionContent = (<ExpressionEditor
                 character={expressionCharacter}
                 disabled={disabled}
+                graphicDefinitions={flaGraphicDefinitions}
                 imageAssets={imageAssets}
                 isAddOpen={expressionAddOpen}
                 onAdd={onAddExpression}
@@ -960,6 +1096,15 @@ export function CharacterEditor({
                 onSetAsset={onSetExpressionAsset}
                 onSetSource={onSetExpressionSource}
                 onAddGraphic={onAddGraphicExpression}
+                onRequestResourceSwap={floatMode ? (request) => {
+                  setSwapDialog({
+                    title: request.title,
+                    currentValue: request.currentValue,
+                    allowGraphic: Boolean(onSetExpressionSource || onAddGraphicExpression),
+                    returnFocusTo: request.trigger,
+                    onConfirm: request.onConfirm,
+                  });
+                } : undefined}
                 onSetDefault={onSetDefaultExpression}
                 onThumbnailError={onThumbnailError}
                 compactDetailWorkspace
@@ -1067,48 +1212,90 @@ export function CharacterEditor({
               ) : null}
             </section>
             {talkingHeadSettings}</>);
-  const singleMouth = singleImageCharacter && expressionCharacter ? (
+  const singleMouth = singleImageCharacter && expressionCharacter ? (() => {
+            const mouthVisualSource = expressionCharacter.mouthOpenVisualSource;
+            const mouthGraphicDef = mouthVisualSource
+              ? flaGraphicDefinitions.find((def) => def.id === mouthVisualSource.animationId)
+              : undefined;
+            const mouthPicker = (
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyActionLabel="选择图片"
+                emptyOption={{
+                  description: '设置张嘴图后，可在表情中使用。',
+                  label: '未设置',
+                }}
+                label="张嘴图"
+                onChange={onSetMouthOpenAsset}
+                onRequestReplace={floatMode ? (trigger) => {
+                  setSwapDialog({
+                    title: '更换张嘴图',
+                    currentValue: mouthVisualSource
+                      ? { kind: 'fla-graphic', animationId: mouthVisualSource.animationId, firstFrame: mouthVisualSource.firstFrame }
+                      : { kind: 'image', assetId: expressionCharacter.mouthOpenAssetId ?? null },
+                    emptyOption: { label: '未设置', description: '设置张嘴图后，可在表情中使用。' },
+                    allowGraphic: Boolean(onSetMouthSource),
+                    returnFocusTo: trigger,
+                    onConfirm: (next) => {
+                      if (next.kind === 'fla-graphic') {
+                        onSetMouthSource?.({
+                          kind: 'fla-graphic',
+                          animationId: next.animationId,
+                          firstFrame: next.firstFrame ?? 0,
+                        });
+                      } else {
+                        onSetMouthOpenAsset(next.assetId);
+                      }
+                    },
+                  });
+                } : undefined}
+                onThumbnailError={onThumbnailError}
+                selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
+                selectedOverride={floatMode && mouthVisualSource ? {
+                  label: mouthGraphicDef?.name ?? 'FLA 元件',
+                  metadata: `第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                  preview: <GraphicFacePreview label="张嘴图" source={mouthVisualSource} />,
+                  tooltip: `${mouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${mouthVisualSource.firstFrame + 1} 帧`,
+                } : undefined}
+                selectedSurface={Boolean(floatMode)}
+                testId="character-detail-mouth-visual-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+                selectedAction={
+                  expressionCharacter.mouthOpenAssetId || (floatMode && mouthVisualSource) ? (
+                    <button
+                      className="character-mouth-clear"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (mouthVisualSource) onSetMouthSource?.(null);
+                        else onSetMouthOpenAsset(null);
+                      }}
+                      type="button"
+                    >
+                      清除
+                    </button>
+                  ) : undefined
+                }
+              />
+            );
+            return (
             <section className="character-settings-section character-mouth-setting-visual">
               <div
                 className={`character-mouth-state${expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource ? ' is-configured' : ''}`}
                 data-mouth-configured={Boolean(expressionCharacter.mouthOpenAssetId || expressionCharacter.mouthOpenVisualSource)}
               >
-                <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
-                <ImageAssetPicker
-                  assets={imageAssets}
-                  emptyActionLabel="选择图片"
-                  emptyOption={{
-                    description: '设置张嘴图后，可在表情中使用。',
-                    label: '未设置',
-                  }}
-                  label="张嘴图"
-                  onChange={onSetMouthOpenAsset}
-                  onThumbnailError={onThumbnailError}
-                  selectedAssetId={expressionCharacter.mouthOpenAssetId ?? null}
-                  selectedSurface={Boolean(floatMode)}
-                  testId="character-detail-mouth-visual-picker"
-                  thumbnails={thumbnails}
-                  disabled={disabled}
-                  selectedAction={
-                    expressionCharacter.mouthOpenAssetId ? (
-                      <button
-                        className="character-mouth-clear"
-                        disabled={disabled}
-                        onClick={() => onSetMouthOpenAsset(null)}
-                        type="button"
-                      >
-                        清除
-                      </button>
-                    ) : undefined
-                  }
-                />
-                </GraphicFacePicker>
+                {floatMode ? mouthPicker : (
+                  <GraphicFacePicker source={expressionCharacter.mouthOpenVisualSource} onChange={onSetMouthSource} onClear={() => onSetMouthSource?.(null)} testId="character-detail-mouth-visual-picker" disabled={disabled}>
+                    {mouthPicker}
+                  </GraphicFacePicker>
+                )}
               </div>
               {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
                 <Button aria-pressed={previewMouth} className="character-float-mouth-preview-button" onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
               ) : null}
             </section>
-            ) : null;
+            );
+          })() : null;
   const deleteProperties = floatMode ? (
     <Button className="character-float-delete" data-testid="character-delete-settings" disabled={disabled} onClick={onDeleteCharacter} variant="danger">删除角色</Button>
   ) : (<section
@@ -1239,6 +1426,26 @@ export function CharacterEditor({
           {floatProperties === 'character' && assemblyPending ? <p role="status">请先应用或取消组装更改。</p> : null}
         </CharacterFloatPanel>
         {status ? <output className="character-float-status" role="status">{status}</output> : null}
+        {swapDialog ? (
+          <CharacterResourceSwapDialog
+            currentValue={swapDialog.currentValue}
+            emptyOption={swapDialog.emptyOption}
+            graphicDefinitions={swapDialog.allowGraphic ? flaGraphicDefinitions : []}
+            graphicSelectionMode="frame"
+            imageAssets={imageAssets}
+            onCancel={() => setSwapDialog(null)}
+            onConfirm={(next) => {
+              const confirmFn = swapDialog.onConfirm;
+              setSwapDialog(null);
+              confirmFn(next);
+            }}
+            onThumbnailError={onThumbnailError}
+            open
+            returnFocusTo={swapDialog.returnFocusTo}
+            thumbnails={thumbnails}
+            title={swapDialog.title}
+          />
+        ) : null}
       </article>,
       floatTarget,
     );
