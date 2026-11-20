@@ -140,7 +140,7 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(readOrderedStylesheetSource()).toContain('min-height: var(--ui-touch-icon);');
   });
 
-  it('keeps Adaptive Parts detail placement without a duplicate assembly entry', () => {
+  it('keeps Adaptive Parts actions out of the single-image and composite detail shell', () => {
     const project = new CharacterService().createAdaptiveParts(buildProject(), {
       name: 'Synthetic Static Parts',
       sourceRootTransform: adaptivePartsSourceRootTransform(),
@@ -169,14 +169,9 @@ describe('Issue #639 Character detail placement bridge', () => {
       view: 'detail',
       presentation: 'landscape',
     }));
-    expect(markup).toContain('Synthetic Static Parts');
-    expect(markup).toContain('data-testid="character-detail-view"');
-    expect(markup).toContain('data-testid="character-detail-back"');
-    expect(markup).toContain('data-testid="character-workspace-switcher"');
-    expect(markup).toContain('data-testid="character-detail-place-current-shot"');
-    expect(markup).toContain('data-testid="character-delete-settings"');
-    const managerSource = readFileSync('src/renderer/features/characters/CharacterManager.tsx', 'utf8');
-    expect(managerSource).toContain("onViewChange('detail');");
+    expect(markup).not.toContain('Synthetic Static Parts');
+    expect(markup).not.toContain('data-testid="character-workspace-switcher"');
+    expect(markup).not.toContain('data-testid="character-delete-settings"');
   });
 
   it('keeps Adaptive Character placement transforms independent across Shots', () => {
@@ -811,7 +806,7 @@ describe('Adaptive Parts assembly header', () => {
       'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
       'utf8',
     );
-    expect(styles).toMatch(/\.adaptive-parts-assembly-header > strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/u);
+    expect(styles).toMatch(/\.adaptive-parts-assembly-title > strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/u);
     begun.session.cancel();
   });
 

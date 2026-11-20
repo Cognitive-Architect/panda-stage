@@ -26,7 +26,6 @@ export interface LeftWorkspaceProps {
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
-  onAdaptivePartsListTargetChange?(element: HTMLElement | null): void;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
@@ -64,7 +63,6 @@ export function LeftWorkspace({
   activeActivity,
   onActiveActivityChange,
   adaptivePartsActionsRef,
-  onAdaptivePartsListTargetChange,
   onCreateFlaCharacter,
   onImportGraphicInstance,
   onQueryFlaCharacterCreateStatus,
@@ -103,7 +101,6 @@ export function LeftWorkspace({
       <ResourceActivityDock
         activeActivity={activeActivity}
         adaptivePartsActionsRef={adaptivePartsActionsRef}
-        onAdaptivePartsListTargetChange={onAdaptivePartsListTargetChange}
         auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}
         compact={
           shellMode === undefined ? undefined : shellMode === 'landscape'

@@ -601,7 +601,7 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
     ).toBe(12);
   });
 
-  it('builds CharacterAssembly preview visual and renders structured FLA Graphic selector options in Workbench', () => {
+  it('builds CharacterAssembly preview visual and exposes selected-Part actions in the workbench', () => {
     const { project, characterId, headPartId } = projectWithMixedAdaptiveParts();
     const character = project.characters.find((c) => c.id === characterId)!;
     if (character.mode !== 'adaptive-parts') throw new Error('expected adaptive-parts');
@@ -639,15 +639,9 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
         session,
       }),
     );
-    expect(markup).toContain('data-testid="adaptive-parts-graphic-select"');
-    expect(markup).toContain('data-source-kind="fla-graphic"');
-    expect(markup).toContain('替换元件');
-    expect(markup).toContain('选择已导入的 FLA 元件来源');
-    expect(markup).toContain('头部-愣住-静');
-    expect(markup).not.toContain('替换图形');
-    expect(markup).not.toContain('选择已导入的 FLA 图形来源');
-    // Unstructured graphic definitions must NOT be offered as Graphic Part targets.
-    expect(markup).not.toContain('无结构静态序列');
+    expect(markup).toContain('data-testid="adaptive-parts-row-overflow-trigger"');
+    expect(markup).toContain('data-testid="adaptive-parts-replace-button"');
+    expect(markup).not.toContain('data-testid="adaptive-parts-graphic-select"');
   });
 
   it('projects shot time onto multi-frame and internal-timeline Graphic CharacterParts while keeping static parts invariant', () => {
@@ -1342,7 +1336,7 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
         session: assemblySession,
       }),
     );
-    expect(markup).toContain('data-source-kind="fla-graphic"');
+    expect(markup).toContain('data-testid="adaptive-parts-assembly-row"');
     expect(markup).not.toContain('角色尚未加载或部件无效');
 
     // Original character definition keeps empty overrides isolated from second character instance.

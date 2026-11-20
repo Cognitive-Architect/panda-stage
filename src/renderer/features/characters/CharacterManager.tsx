@@ -138,7 +138,6 @@ export interface CharacterManagerProps {
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
-  onAdaptivePartsListTargetChange?: (element: HTMLElement | null) => void;
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
@@ -173,9 +172,15 @@ export interface AdaptivePartsAssemblyActionResult {
   message?: string;
 }
 
+export type AdaptiveCharacterManagementAction =
+  | { kind: 'rename'; name: string }
+  | { kind: 'transform'; scale: number; flipX: boolean }
+  | { kind: 'delete' };
+
 export interface AdaptivePartsAssemblyActions {
   backToCharacterList: () => boolean;
   joinCurrentShot: () => AdaptivePartsAssemblyActionResult;
+  manage: (action: AdaptiveCharacterManagementAction) => AdaptivePartsAssemblyActionResult;
 }
 
 export interface AdaptivePartsAssemblyActionsRef {
@@ -301,7 +306,6 @@ export function CharacterManager({
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
   adaptivePartsActionsRef,
-  onAdaptivePartsListTargetChange,
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
@@ -483,16 +487,16 @@ export function CharacterManager({
     }
   }, [imageAssets, snapshot, thumbnailEntries, svgThumbnails.assetIds]);
 
-  const reportError = (error: unknown): void => {
+  const describeError = (error: unknown): string => {
     if (error instanceof CharacterServiceError) {
       const locations = error.references
         .map((reference) => reference.label)
         .join('；');
-      setStatus(locations ? `${error.message} ${locations}` : error.message);
-      return;
+      return locations ? `${error.message} ${locations}` : error.message;
     }
-    setStatus(error instanceof Error ? error.message : '角色修改失败。');
+    return error instanceof Error ? error.message : '角色修改失败。';
   };
+  const reportError = (error: unknown): void => setStatus(describeError(error));
 
   const markThumbnailError = (assetId: string): void => {
     if (svgThumbnails.assetIds.has(assetId)) {
@@ -703,6 +707,41 @@ export function CharacterManager({
       return true;
     },
     joinCurrentShot: joinAdaptivePartsCurrentShot,
+    manage: (action) => {
+      const current = editorProjectStore.getSnapshot();
+      const active = characterAssemblySessionStore.getSnapshot();
+      const character = current?.project.characters.find(
+        (candidate) => candidate.id === selectedCharacterIdRef.current,
+      );
+      if (!current || character?.mode !== 'adaptive-parts' ||
+          active?.kind !== 'adaptive-parts' || active.characterId !== character.id) {
+        return { ok: false, message: '请重新打开角色工作台。' };
+      }
+      if (isCharacterAssemblyPending(current.project, active)) {
+        return { ok: false, message: '请先应用或取消零件组装更改。' };
+      }
+      try {
+        switch (action.kind) {
+          case 'rename':
+            characterStore.renameCharacter(character.id, action.name);
+            break;
+          case 'transform':
+            characterStore.setDefaultTransform(character.id, action.scale, action.flipX);
+            break;
+          case 'delete': {
+            if (!window.confirm(`确认删除角色“${character.name}”？`)) return { ok: false };
+            const next = characterStore.deleteCharacter(character.id);
+            setSelectedCharacterId(next.characters[0]?.id ?? null);
+            onViewChange('list');
+            break;
+          }
+        }
+        setStatus('');
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, message: describeError(error) };
+      }
+    },
   };
   const latestAdaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActions | null>(null);
   latestAdaptivePartsActionsRef.current = adaptivePartsActions;
@@ -732,7 +771,7 @@ export function CharacterManager({
       return false;
     }
     setSelectedCharacterId(characterId);
-    onViewChange('detail');
+    onViewChange('list');
     if (!openAssembly(characterId)) {
       setStatus('角色已保存，可从角色列表打开。');
       return false;
@@ -748,7 +787,7 @@ export function CharacterManager({
     );
     if (!character || character.mode !== 'adaptive-parts') return;
     setSelectedCharacterId(character.id);
-    onViewChange('detail');
+    onViewChange('list');
     if (openAssembly(character.id)) onCloseFlaCharacterImport();
     else setStatus('角色已保存，可从角色列表打开。');
     setPendingImportedCharacterId(null);
@@ -957,6 +996,10 @@ export function CharacterManager({
             onCreate={createCharacter}
             onSelect={(characterId) => {
               if (!selectCharacter(characterId)) return;
+              if (characters.find((candidate) => candidate.id === characterId)?.mode === 'adaptive-parts') {
+                openAssembly(characterId);
+                return;
+              }
               onViewChange('detail');
             }}
             onThumbnailError={markThumbnailError}
@@ -993,7 +1036,7 @@ export function CharacterManager({
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
-          character={selectedDisplayCharacter}
+          character={selectedCharacter}
           project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
@@ -1134,8 +1177,6 @@ export function CharacterManager({
             );
           }}
           assemblyDraft={assemblyDraft}
-          adaptiveAssemblyActive={adaptiveAssemblyActive}
-          onAdaptivePartsListTargetChange={onAdaptivePartsListTargetChange}
           assemblyEditTarget={
             editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
               ? editAssemblySnapshot.editTarget

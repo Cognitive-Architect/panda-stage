@@ -8,8 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { createPortal } from 'react-dom';
-import { ArrowLeft, Minus, MoreHorizontal, Plus, X } from 'lucide-react';
+import { ArrowLeft, Minus, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -92,6 +91,7 @@ import {
   type CharacterLayoutReuseImageDimensions,
   type CharacterLayoutReuseTarget,
 } from './characterLayoutReuse';
+import { AdaptiveCharacterManagement } from './AdaptiveCharacterManagement';
 import type { AdaptivePartsAssemblyActionsRef } from './CharacterManager';
 import { shotStore } from '../../stores/shotStore';
 
@@ -100,7 +100,6 @@ interface CharacterAssemblyWorkbenchProps {
   savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
-  adaptivePartsListTarget?: HTMLElement | null;
 }
 
 interface ActiveDragStart {
@@ -279,13 +278,11 @@ export function CharacterAssemblyWorkbench({
   savedProjectSnapshot,
   session,
   adaptivePartsActionsRef,
-  adaptivePartsListTarget,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
       <AdaptivePartsAssemblyWorkbench
         adaptivePartsActionsRef={adaptivePartsActionsRef}
-        adaptivePartsListTarget={adaptivePartsListTarget}
         projectSnapshot={projectSnapshot}
         session={session}
       />
@@ -434,28 +431,24 @@ function formatAdaptiveAdjustmentInput(
 }
 
 const ADAPTIVE_PART_OVERFLOW_MENU_WIDTH = 160;
-const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 144;
+const ADAPTIVE_PART_OVERFLOW_MENU_MIN_HEIGHT = 96;
 const ADAPTIVE_PART_OVERFLOW_MENU_GAP = 4;
 const ADAPTIVE_PART_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
 
-function AdaptivePartsRowOverflowMenu({
+function AdaptivePartsContextMenu({
   canRemove,
   canReplace,
-  canRestore,
+  disabled,
   displayName,
   onRemove,
   onReplace,
-  onRestore,
-  onStartRename,
 }: {
   canRemove: boolean;
   canReplace: boolean;
-  canRestore: boolean;
+  disabled: boolean;
   displayName: string;
   onRemove: () => void;
   onReplace: () => void;
-  onRestore: () => void;
-  onStartRename: () => void;
 }): React.JSX.Element {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -614,6 +607,7 @@ function AdaptivePartsRowOverflowMenu({
         aria-label={`${displayName} 更多操作`}
         className="adaptive-parts-row-action adaptive-parts-row-overflow-trigger"
         data-testid="adaptive-parts-row-overflow-trigger"
+        disabled={disabled}
         popoverTarget={id}
         popoverTargetAction="toggle"
         ref={triggerRef}
@@ -632,15 +626,6 @@ function AdaptivePartsRowOverflowMenu({
         role="group"
       >
         <button
-          aria-label={`重命名${displayName}`}
-          className="adaptive-parts-overflow-item"
-          data-testid="adaptive-parts-rename-button"
-          onClick={() => runAction(onStartRename)}
-          type="button"
-        >
-          重命名
-        </button>
-        <button
           aria-label={`替换${displayName}素材`}
           className="adaptive-parts-overflow-item"
           data-testid="adaptive-parts-replace-button"
@@ -650,17 +635,6 @@ function AdaptivePartsRowOverflowMenu({
           type="button"
         >
           替换素材
-        </button>
-        <button
-          aria-label={`恢复${displayName}原始源姿势`}
-          className="adaptive-parts-overflow-item"
-          data-testid="adaptive-parts-restore-button"
-          disabled={!canRestore}
-          onClick={() => runAction(onRestore)}
-          title={canRestore ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
-          type="button"
-        >
-          恢复原始姿势
         </button>
         <button
           aria-label={`从角色移除${displayName}`}
@@ -679,32 +653,24 @@ function AdaptivePartsRowOverflowMenu({
 }
 
 function AdaptivePartsAssemblyRow({
-  canRemove,
-  canReplace,
   displayName,
   imageMissing,
   imageCacheKey,
   imageSrc,
   onMessage,
-  onRemove,
   onRename,
-  onReplace,
   onRestore,
   onSelect,
   onToggleVisibility,
   part,
   selected,
 }: {
-  canRemove: boolean;
-  canReplace: boolean;
   displayName: string;
   imageMissing: boolean;
   imageCacheKey: string;
   imageSrc?: string;
   onMessage: (message: string) => void;
-  onRemove: () => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
-  onReplace: () => void;
   onRestore: () => void;
   onSelect: () => void;
   onToggleVisibility: () => void;
@@ -865,16 +831,27 @@ function AdaptivePartsAssemblyRow({
           {visible ? <circle cx="12" cy="12" r="2.7" /> : <path d="M4 4 20 20" />}
         </svg>
       </button>
-      <AdaptivePartsRowOverflowMenu
-        canRemove={canRemove}
-        canReplace={canReplace}
-        canRestore={Boolean(part.sourceRestTransform)}
-        displayName={displayName}
-        onRemove={onRemove}
-        onReplace={onReplace}
-        onRestore={onRestore}
-        onStartRename={startRename}
-      />
+      <button
+        aria-label={`重命名${displayName}`}
+        className="adaptive-parts-row-action"
+        data-testid="adaptive-parts-rename-button"
+        onClick={startRename}
+        title={`重命名${displayName}`}
+        type="button"
+      >
+        <Pencil aria-hidden="true" size={18} />
+      </button>
+      <button
+        aria-label={`恢复${displayName}原始源姿势`}
+        className="adaptive-parts-row-action"
+        data-testid="adaptive-parts-restore-button"
+        disabled={!part.sourceRestTransform}
+        onClick={onRestore}
+        title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
+        type="button"
+      >
+        <RotateCcw aria-hidden="true" size={18} />
+      </button>
     </div>
   );
 }
@@ -901,12 +878,10 @@ function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
   adaptivePartsActionsRef,
-  adaptivePartsListTarget = null,
 }: {
   projectSnapshot: EditorProjectSnapshot;
   session: AdaptivePartsAssemblySnapshot;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
-  adaptivePartsListTarget?: HTMLElement | null;
 }): React.JSX.Element {
   const { project, projectRoot } = projectSnapshot;
   const currentShotId = useSyncExternalStore(
@@ -915,9 +890,10 @@ function AdaptivePartsAssemblyWorkbench({
     shotStore.getCurrentShotId,
   );
   const hasCurrentShot = project.shots.some((shot) => shot.id === currentShotId);
-  const assemblyCharacterName = project.characters.find(
+  const assemblyCharacter = project.characters.find(
     (character) => character.id === session.characterId,
-  )?.name ?? '角色';
+  );
+  const assemblyCharacterName = assemblyCharacter?.name ?? '角色';
   const workbenchRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inspectorRef = useRef<HTMLElement>(null);
@@ -1868,10 +1844,20 @@ function AdaptivePartsAssemblyWorkbench({
         {error ? <small className="adaptive-parts-inspector-field-error" id={errorId}>{error}</small> : null}
       </div>
     );
-  };  const hostedInDrawer = Boolean(adaptivePartsListTarget);
+  };
   const partsListPanel = (
       <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
-        <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+        <div className="adaptive-parts-list-heading">
+          <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+          <AdaptivePartsContextMenu
+            canRemove={rows.length > 1}
+            canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
+            disabled={!selectedPart}
+            displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
+            onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
+            onReplace={() => { if (selectedPart) setReplacingPartId(selectedPart.partId); }}
+          />
+        </div>
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part) => {
             const visualSource = resolveCharacterPartVisualSource(part);
@@ -1930,23 +1916,16 @@ function AdaptivePartsAssemblyWorkbench({
                   : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
             return (
               <AdaptivePartsAssemblyRow
-                canRemove={rows.length > 1}
-                canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
                 displayName={name}
                 imageMissing={imageMissing}
                 imageCacheKey={imageCacheKey}
                 imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
                 key={part.partId}
                 onMessage={setMessage}
-                onRemove={() => removePart(part.partId)}
                 onRename={(displayName) => updatePart(part.partId, (current) => ({
                   ...current,
                   displayName,
                 }))}
-                onReplace={() => {
-                  activeHandle()?.selectPart(part.partId);
-                  setReplacingPartId(part.partId);
-                }}
                 onRestore={() => restorePartToSourcePose(part.partId)}
                 onSelect={() => activeHandle()?.selectPart(part.partId)}
                 onToggleVisibility={() => updatePart(part.partId, (current) => ({
@@ -2030,39 +2009,7 @@ function AdaptivePartsAssemblyWorkbench({
               ) : null}
             </div>
           );
-        })() : selectedPart && structuredGraphics.length > 0 ? (
-          <div
-            className="adaptive-parts-source-picker"
-            data-source-kind={selectedPartVisualSource?.kind ?? 'image'}
-          >
-            <label htmlFor="adaptive-parts-graphic-select">{'\u66ff\u6362\u5143\u4ef6'}</label>
-            <select
-              aria-label={'\u9009\u62e9\u5df2\u5bfc\u5165\u7684 FLA \u5143\u4ef6\u6765\u6e90'}
-              data-testid="adaptive-parts-graphic-select"
-              id="adaptive-parts-graphic-select"
-              value={
-                selectedPartVisualSource?.kind === 'fla-graphic'
-                  ? selectedPartVisualSource.animationId
-                  : ''
-              }
-              onChange={(event) => replacePartWithGraphic(selectedPart.partId, event.target.value)}
-            >
-              <option
-                disabled={selectedPartVisualSource?.kind === 'fla-graphic'}
-                value=""
-              >
-                {selectedPartVisualSource?.kind === 'image'
-                  ? '\u5f53\u524d\u4f4d\u56fe'
-                  : '\u9009\u62e9\u5df2\u5bfc\u5165\u5143\u4ef6'}
-              </option>
-              {structuredGraphics.map((graphic) => (
-                <option key={graphic.id} value={graphic.id}>
-                  {graphic.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+        })() : null}
       </aside>
   );
 
@@ -2071,41 +2018,45 @@ function AdaptivePartsAssemblyWorkbench({
       aria-label="Adaptive Parts 角色组装工作区"
       className="character-assembly-workbench adaptive-parts-assembly-workbench"
       data-character-id={session.characterId}
-      data-hosted-in-drawer={hostedInDrawer ? 'true' : undefined}
       data-project-revision={projectSnapshot.revision}
       data-project-dirty={projectSnapshot.dirty}
       data-testid="adaptive-parts-assembly-workbench"
       ref={workbenchRef}
     >
-      {!hostedInDrawer ? (
-        <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
-          <button
-            aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-            className="adaptive-parts-assembly-back"
-            data-testid="adaptive-parts-back-to-list"
-            onClick={returnToCharacterList}
-            title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={18} />
-          </button>
+      <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
+        <button
+          aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          className="adaptive-parts-assembly-back"
+          data-testid="adaptive-parts-back-to-list"
+          onClick={returnToCharacterList}
+          title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" size={18} />
+        </button>
+        <div className="adaptive-parts-assembly-title">
           <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
-          <button
-            className="adaptive-parts-assembly-join-shot"
-            data-testid="adaptive-parts-join-current-shot"
-            disabled={!hasCurrentShot}
-            onClick={joinCurrentShot}
-            title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={16} />
-            <span>{'\u52a0\u5165\u955c\u5934'}</span>
-          </button>
-        </header>
-      ) : null}
-      {adaptivePartsListTarget
-        ? createPortal(partsListPanel, adaptivePartsListTarget)
-        : partsListPanel}
+          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+            <AdaptiveCharacterManagement
+              character={assemblyCharacter}
+              onManage={(action) => adaptivePartsActionsRef.current?.manage(action) ??
+                { ok: false, message: '请重新打开角色工作台。' }}
+            />
+          ) : null}
+        </div>
+        <button
+          className="adaptive-parts-assembly-join-shot"
+          data-testid="adaptive-parts-join-current-shot"
+          disabled={!hasCurrentShot}
+          onClick={joinCurrentShot}
+          title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} />
+          <span>{'\u52a0\u5165\u955c\u5934'}</span>
+        </button>
+      </header>
+      {partsListPanel}
 
       <div
         aria-label="角色部件画布"

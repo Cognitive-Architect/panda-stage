@@ -103,7 +103,7 @@ afterEach(() => {
 });
 
 describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal', () => {
-  it('renders unified Part row (thumbnail + name + visibility + overflow menu) and removes an unreferenced Part without confirmation', () => {
+  it('shows direct row actions and removes the selected unreferenced Part without confirmation', () => {
     const { project, character, imageAssets } = buildFivePartAdaptiveProject();
     editorProjectStore.open('F:/tmp/project', project);
     const began = characterAssemblySessionStore.beginAdaptiveParts(character.id);
@@ -130,21 +130,17 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     const rows = container.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]');
     expect(rows).toHaveLength(5);
 
-    // Every row has visibility toggle + overflow trigger (popover="auto") with 4 actions
     const firstRow = rows[0]!;
-    expect(firstRow.querySelector('[data-testid="adaptive-parts-visibility-toggle"]')).not.toBeNull();
-    expect(firstRow.querySelector('[data-testid="adaptive-parts-row-overflow-trigger"]')).not.toBeNull();
-    const menu = firstRow.querySelector('[data-testid="adaptive-parts-row-overflow-menu"]');
+    for (const id of ['visibility-toggle', 'rename-button', 'restore-button']) {
+      expect(firstRow.querySelector('[data-testid="adaptive-parts-' + id + '"]')).not.toBeNull();
+    }
+    expect(firstRow.querySelector('[data-testid="adaptive-parts-row-overflow-trigger"]')).toBeNull();
+    act(() => firstRow.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-assembly-row-select"]')!.click());
+    renderWorkbench();
+    const menu = container.querySelector('[data-testid="adaptive-parts-row-overflow-menu"]');
     expect(menu?.getAttribute('popover')).toBe('auto');
-    expect(menu?.querySelector('[data-testid="adaptive-parts-rename-button"]')).not.toBeNull();
     expect(menu?.querySelector('[data-testid="adaptive-parts-replace-button"]')).not.toBeNull();
-    expect(menu?.querySelector('[data-testid="adaptive-parts-restore-button"]')).not.toBeNull();
-    expect(menu?.querySelector('[data-testid="adaptive-parts-remove-button"]')).not.toBeNull();
-
-    // Remove the top-most Part (PART_IDS[4], drawOrder 4) — unreferenced so NO confirm dialog
-    const removeButton = firstRow.querySelector<HTMLButtonElement>(
-      '[data-testid="adaptive-parts-remove-button"]',
-    )!;
+    const removeButton = menu!.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-remove-button"]')!;
     expect(removeButton.disabled).toBe(false);
     act(() => {
       removeButton.click();
@@ -237,11 +233,9 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     const targetRow = container.querySelector(
       `[data-testid="adaptive-parts-assembly-row"][data-part-id="${PART_IDS[0]}"]`,
     )!;
-    act(() => {
-      targetRow
-        .querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-replace-button"]')
-        ?.click();
-    });
+    act(() => targetRow.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-assembly-row-select"]')!.click());
+    renderWorkbench();
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-replace-button"]')!.click());
     renderWorkbench();
 
     const imageSelect = container.querySelector<HTMLSelectElement>(
@@ -319,11 +313,9 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
     const targetRow = container.querySelector(
       `[data-testid="adaptive-parts-assembly-row"][data-part-id="${PART_IDS[1]}"]`,
     )!;
-    act(() => {
-      targetRow
-        .querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-remove-button"]')
-        ?.click();
-    });
+    act(() => targetRow.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-assembly-row-select"]')!.click());
+    renderWorkbench();
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-remove-button"]')!.click());
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(confirmSpy.mock.calls[0]?.[0]).toContain('1 个镜头');
     expect(confirmSpy.mock.calls[0]?.[0]).toContain('关键帧');

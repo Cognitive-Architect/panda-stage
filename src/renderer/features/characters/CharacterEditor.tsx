@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
-  resolveCharacterPartVisualSource,
   type Character,
   type CharacterDimensionWarning,
   type CompositeCharacterDefinition,
@@ -8,7 +7,6 @@ import {
   type ImageAsset,
   type Project,
 } from '../../../domain';
-import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
 import { Button } from '../../ui/Button';
@@ -311,8 +309,6 @@ export interface CharacterEditorProps {
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
   assemblyDraft?: CompositeCharacterDefinition | null;
-  adaptiveAssemblyActive?: boolean;
-  onAdaptivePartsListTargetChange?: (element: HTMLElement | null) => void;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
@@ -353,8 +349,6 @@ export function CharacterEditor({
   onSetDefaultExpression,
   onSetMouthOpenAsset,
   assemblyDraft = null,
-  adaptiveAssemblyActive = false,
-  onAdaptivePartsListTargetChange,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
@@ -392,25 +386,9 @@ export function CharacterEditor({
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
     useState<CharacterDetailWorkspace>(
-      character?.mode === 'adaptive-parts' || assemblyDraft
-        ? 'assembly'
-        : 'expressions',
+      assemblyDraft ? 'assembly' : 'expressions',
     );
   const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
-  const initialAdaptiveAutoOpenedRef = useRef(false);
-  const adaptiveListSlotCallbackRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      onAdaptivePartsListTargetChange?.(node);
-    },
-    [onAdaptivePartsListTargetChange],
-  );
-  useEffect(
-    () => () => {
-      onAdaptivePartsListTargetChange?.(null);
-    },
-    [onAdaptivePartsListTargetChange],
-  );
-
   const persistedTalkingHeadMotionIntensityPercent =
     character?.mode === 'composite'
       ? character.talkingHeadMotionIntensityPercent
@@ -431,7 +409,6 @@ export function CharacterEditor({
     setName(character.name);
     setRenameOpen(false);
     setExpressionAddOpen(false);
-    initialAdaptiveAutoOpenedRef.current = false;
   }, [character?.id]);
 
   useEffect(() => {
@@ -484,35 +461,13 @@ export function CharacterEditor({
   const landscapeCharacterNavigation =
     landscapeDetail || landscapeExpression;
 
-  useEffect(() => {
-    if (
-      !landscapeDetail ||
-      character?.mode !== 'adaptive-parts' ||
-      activeWorkspace !== 'assembly' ||
-      adaptiveAssemblyActive ||
-      disabled ||
-      initialAdaptiveAutoOpenedRef.current
-    ) {
-      return;
-    }
-    initialAdaptiveAutoOpenedRef.current = true;
-    onOpenAssembly();
-  }, [
-    activeWorkspace,
-    adaptiveAssemblyActive,
-    character?.mode,
-    disabled,
-    landscapeDetail,
-    onOpenAssembly,
-  ]);
-
   const adjustScale = (delta: number): void => {
     setScale((current) =>
       Math.min(10, Math.max(0.1, Number((current + delta).toFixed(1)))),
     );
   };
 
-  if (!character) {
+  if (!character || character.mode === 'adaptive-parts') {
     return (
       <div className="character-editor character-editor-empty">
         <strong>选择一个角色开始编辑</strong>
@@ -532,9 +487,7 @@ export function CharacterEditor({
     );
   }
 
-  const isAdaptiveParts = character.mode === 'adaptive-parts';
-  const expressionCharacter: ExpressionCharacter | null =
-    character.mode === 'adaptive-parts' ? null : character;
+  const expressionCharacter = character;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head
       ? (character as HeadedCompositeCharacter)
@@ -548,54 +501,16 @@ export function CharacterEditor({
   const defaultExpressionAsset = defaultExpression
     ? imageAssets.find((asset) => asset.id === defaultExpression.assetId)
     : undefined;
-  const defaultThumbnail = defaultExpression?.assetId
-    ? thumbnails[defaultExpression.assetId]
-    : undefined;
+  const defaultImageAssetId = defaultExpression?.assetId;
+  const defaultThumbnail = defaultImageAssetId ? thumbnails[defaultImageAssetId] : undefined;
   const defaultAssetResolved = Boolean(defaultExpressionAsset || defaultExpression?.visualSource);
-  const adaptivePreviewPart = isAdaptiveParts
-    ? character.parts.find(
-        (part) =>
-          part.visible !== false &&
-          resolveCharacterPartVisualSource(part).kind === 'image',
-      ) ??
-      character.parts.find(
-        (part) => resolveCharacterPartVisualSource(part).kind === 'image',
-      ) ??
-      character.parts[0]
-    : undefined;
-  const adaptivePreviewSource = adaptivePreviewPart
-    ? resolveCharacterPartVisualSource(adaptivePreviewPart)
-    : undefined;
-  const adaptivePreviewAssetId =
-    adaptivePreviewSource?.kind === 'image'
-      ? adaptivePreviewSource.assetId
-      : undefined;
-  const adaptivePreviewAsset = adaptivePreviewAssetId
-    ? imageAssets.find((asset) => asset.id === adaptivePreviewAssetId)
-    : undefined;
-  const avatarThumbnail = isAdaptiveParts
-    ? adaptivePreviewAssetId
-      ? thumbnails[adaptivePreviewAssetId]
-      : undefined
-    : defaultThumbnail;
-  const avatarAssetId = isAdaptiveParts
-    ? adaptivePreviewAssetId
-    : defaultExpression?.assetId;
-  const avatarAssetConfigured = isAdaptiveParts
-    ? character.parts.length > 0
-    : Boolean(defaultExpression);
-  const avatarAssetResolved = isAdaptiveParts
-    ? Boolean(adaptivePreviewAsset || adaptivePreviewSource?.kind === 'fla-graphic')
-    : defaultAssetResolved;
   const hasPendingTransform = isDefaultTransformPending(
     character,
     scale,
     flipX,
   );
   const placementBlockedByTransform = hasPendingTransform || !Number.isFinite(scale);
-  const formalDefaultAssetAvailable = isAdaptiveParts
-    ? true
-    : Boolean(
+  const formalDefaultAssetAvailable = Boolean(
         formalDefaultExpression && (formalDefaultExpression.visualSource || imageAssets.some(
           (asset) => asset.id === formalDefaultExpression.assetId,
         )),
@@ -612,7 +527,7 @@ export function CharacterEditor({
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
   const singleImageCharacter = character.mode === 'single-image';
-  const hasAssemblyWorkbench = compositeCharacter || isAdaptiveParts;
+  const hasAssemblyWorkbench = compositeCharacter;
   const assemblyMouthAssetId = assemblyDraft
     ? assemblyDraft.mouthOpenAssetId ?? null
     : expressionCharacter?.mouthOpenAssetId ?? null;
@@ -887,23 +802,23 @@ export function CharacterEditor({
               className="character-detail-avatar"
               data-preview-fit="contain"
               data-thumbnail-status={
-                avatarThumbnail?.status ??
-                (avatarAssetResolved ? 'loading' : 'missing')
+                defaultThumbnail?.status ??
+                (defaultAssetResolved ? 'loading' : 'missing')
               }
             >
-              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : avatarThumbnail?.status === 'ready' && avatarAssetId ? (
+              {defaultExpression?.visualSource ? <GraphicFacePreview source={defaultExpression.visualSource} label={character.name} /> : defaultThumbnail?.status === 'ready' && defaultImageAssetId ? (
                 <img
-                  alt={isAdaptiveParts ? `${character.name} 角色预览` : `${character.name} 默认表情`}
+                  alt={character.name + ' 默认表情'}
                   onError={() =>
-                    onThumbnailError(avatarAssetId)
+                    onThumbnailError(defaultImageAssetId)
                   }
-                  src={avatarThumbnail.dataUrl}
+                  src={defaultThumbnail.dataUrl}
                 />
               ) : (
                 <CharacterThumbnailFallback
-                  assetConfigured={avatarAssetConfigured}
-                  assetResolved={avatarAssetResolved}
-                  thumbnail={avatarThumbnail}
+                  assetConfigured={Boolean(defaultExpression)}
+                  assetResolved={defaultAssetResolved}
+                  thumbnail={defaultThumbnail}
                 />
               )}
             </div>
@@ -1142,35 +1057,6 @@ export function CharacterEditor({
           </ul>
         </section>
       ) : null}
-      {view === 'detail' && !landscapeDetail && isAdaptiveParts ? (
-        <section
-          aria-label="角色结构"
-          className="character-expression-summary character-adaptive-structure-summary"
-        >
-          <div className="character-section-heading">
-            <div>
-              <h4>结构 · {character.parts.length}</h4>
-            </div>
-            {!adaptiveAssemblyActive ? (
-              <button
-                data-testid="character-adaptive-structure-edit"
-                disabled={disabled}
-                onClick={() => onOpenAssembly()}
-                type="button"
-              >
-                编辑零件
-              </button>
-            ) : null}
-          </div>
-          {adaptiveAssemblyActive ? (
-            <div
-              className="character-adaptive-structure-slot"
-              data-testid="character-adaptive-structure-slot"
-              ref={adaptiveListSlotCallbackRef}
-            />
-          ) : null}
-        </section>
-      ) : null}
       {landscapeDetail ? (
         <>
           <nav
@@ -1400,58 +1286,6 @@ export function CharacterEditor({
                   />
                 </GraphicFacePicker>
               </div>
-            ) : isAdaptiveParts ? (
-              adaptiveAssemblyActive ? (
-                <div
-                  className="character-adaptive-structure-slot"
-                  data-testid="character-adaptive-structure-slot"
-                  ref={adaptiveListSlotCallbackRef}
-                />
-              ) : (
-                <div
-                  className="character-adaptive-structure-readonly"
-                  data-testid="character-adaptive-structure-readonly"
-                >
-                  <div className="character-adaptive-structure-readonly-header">
-                    <strong>部件 · {character.parts.length}</strong>
-                    <button
-                      className="character-adaptive-structure-open"
-                      data-testid="character-adaptive-structure-open"
-                      disabled={disabled}
-                      onClick={() => onOpenAssembly()}
-                      type="button"
-                    >
-                      编辑零件
-                    </button>
-                  </div>
-                  <ul className="character-adaptive-structure-readonly-list">
-                    {[...character.parts]
-                      .sort((left, right) => right.drawOrder - left.drawOrder)
-                      .map((part) => {
-                        const partSource = resolveCharacterPartVisualSource(part);
-                        const sourceAsset =
-                          partSource.kind === 'image'
-                            ? imageAssets.find((asset) => asset.id === partSource.assetId)
-                            : undefined;
-                        const label = localizeDefaultAdaptivePartName(
-                          part.displayName ?? sourceAsset?.name ?? `Part ${part.drawOrder + 1}`,
-                        );
-                        return (
-                          <li key={part.partId}>
-                            <button
-                              className="character-adaptive-structure-readonly-row"
-                              disabled={disabled}
-                              onClick={() => onOpenAssembly()}
-                              type="button"
-                            >
-                              <span>{label}</span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                </div>
-              )
             ) : null}
           </section>
           <section
@@ -1467,8 +1301,7 @@ export function CharacterEditor({
             hidden={activeWorkspace !== 'expressions'}
             id="character-workspace-expressions"
           >
-            {expressionCharacter ? (
-              <ExpressionEditor
+            <ExpressionEditor
                 character={expressionCharacter}
                 disabled={disabled}
                 imageAssets={imageAssets}
@@ -1487,14 +1320,6 @@ export function CharacterEditor({
                 thumbnails={thumbnails}
                 warnings={warnings}
               />
-            ) : (
-              <div
-                className="character-adaptive-expressions-empty"
-                data-testid="character-adaptive-expressions-unavailable"
-              >
-                <p>此角色暂未配置表情。</p>
-              </div>
-            )}
           </section>
           <section
             aria-labelledby="character-settings-workspace-heading"

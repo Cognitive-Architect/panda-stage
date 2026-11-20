@@ -12,7 +12,7 @@ import {
   type Project,
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
-import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
+import { CharacterManager, type AdaptiveCharacterManagementAction, type AdaptivePartsAssemblyActionResult, type AdaptivePartsAssemblyActionsRef } from '../../src/renderer/features/characters/CharacterManager';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
@@ -127,16 +127,17 @@ afterEach(() => {
   container.remove();
   characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
   editorProjectStore.clear();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe('Issue #1175 UI-01 – unified Character Detail shell across all 3 modes', () => {
-  it('renders unified header and 3-tab switcher (结构/表情/设置) for single-image, composite, and adaptive-parts', () => {
-    const { project, singleCharacter, compositeCharacter, adaptiveCharacter, imageAssets } =
+describe('Character Detail and original Adaptive Parts workbench (#1179)', () => {
+  it('keeps the detail workspaces for single-image and composite', () => {
+    const { project, singleCharacter, compositeCharacter, imageAssets } =
       buildAdaptiveProject();
     const noop = () => undefined;
 
-    for (const character of [singleCharacter, compositeCharacter, adaptiveCharacter]) {
+    for (const character of [singleCharacter, compositeCharacter]) {
       act(() => {
         root.render(
           createElement(CharacterEditor, {
@@ -175,243 +176,80 @@ describe('Issue #1175 UI-01 – unified Character Detail shell across all 3 mode
     }
   });
 
-  it('shows honest unconfigured Expressions state and real Settings controls for adaptive-parts without fake controls', () => {
-    const { project, adaptiveCharacter, imageAssets } = buildAdaptiveProject();
-    const onOpenAssembly = vi.fn(() => true);
-    const onLeaveAssembly = vi.fn(() => true);
-    const onRenameCharacter = vi.fn();
-    const onDeleteCharacter = vi.fn();
-    const onSetDefaultTransform = vi.fn();
-    const noop = () => undefined;
-
-    act(() => {
-      root.render(
-        createElement(CharacterEditor, {
-          character: adaptiveCharacter,
-          project,
-          imageAssets,
-          thumbnails: {},
-          warnings: [],
-          onRenameCharacter,
-          onDeleteCharacter,
-          onAddExpression: noop,
-          onRenameExpression: noop,
-          onSetExpressionAsset: noop,
-          onRemoveExpression: noop,
-          onSetDefaultExpression: noop,
-          onSetMouthOpenAsset: noop,
-          onSetDefaultTransform,
-          onThumbnailError: noop,
-          onOpenAssembly,
-          onLeaveAssembly,
-          adaptiveAssemblyActive: true,
-          hasCurrentShot: true,
-          presentation: 'landscape',
-          view: 'detail',
-        }),
-      );
-    });
-
-    // Adaptive opens on 结构 tab by default
-    expect(
-      container
-        .querySelector('[data-testid="character-workspace-assembly-tab"]')
-        ?.getAttribute('aria-pressed'),
-    ).toBe('true');
-    expect(
-      container.querySelector('[data-testid="character-adaptive-structure-slot"]'),
-    ).not.toBeNull();
-
-    // Switch to 表情 tab -> leaves assembly and shows concise honest empty state
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-workspace-expressions-tab"]')
-        ?.click();
-    });
-    expect(onLeaveAssembly).toHaveBeenCalledTimes(1);
-    const unavailable = container.querySelector(
-      '[data-testid="character-adaptive-expressions-unavailable"]',
-    );
-    expect(unavailable).not.toBeNull();
-    expect(unavailable?.querySelector('button')).toBeNull();
-
-    // Switch to 设置 tab -> no Talking Head, no Mouth picker, has Delete + Default Transform
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-workspace-settings-tab"]')
-        ?.click();
-    });
-    expect(container.querySelector('[data-testid="character-talking-head-settings"]')).toBeNull();
-    expect(container.querySelector('[data-testid="character-detail-mouth-visual-picker"]')).toBeNull();
-
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-delete-settings"]')
-        ?.click();
-    });
-    expect(onDeleteCharacter).toHaveBeenCalledTimes(1);
-  });
-
-  it('navigates adaptive-parts from CharacterList to unified detail view and supports rename, default transform, and reference-checked delete', () => {
+  it('opens the standalone workbench and preserves role management, dirty drafts, and reference checks', () => {
     const { project, adaptiveCharacter } = buildAdaptiveProject();
     editorProjectStore.open('F:/tmp/project', project);
     shotStore.select(project.shots[0]!.id);
     const onViewChange = vi.fn();
+    const actionsRef: AdaptivePartsAssemblyActionsRef = { current: null };
 
     act(() => {
-      root.render(
-        createElement(CharacterManager, {
-          snapshot: editorProjectStore.getSnapshot(),
-          view: 'list',
-          presentation: 'landscape',
-          onViewChange,
-        }),
-      );
+      root.render(createElement(CharacterManager, {
+        snapshot: editorProjectStore.getSnapshot(),
+        view: 'list',
+        presentation: 'landscape',
+        onViewChange,
+        adaptivePartsActionsRef: actionsRef,
+      }));
     });
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-character-id="' + adaptiveCharacter.id + '"]')!.click();
+    });
+    expect(onViewChange).not.toHaveBeenCalledWith('detail');
+    expect(container.querySelector('[data-testid="character-workspace-switcher"]')).toBeNull();
 
-    // Clicking an adaptive character navigates to unified 'detail' view
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>(
-          `button[data-character-id="${adaptiveCharacter.id}"]`,
-        )
-        ?.click();
-    });
-    expect(onViewChange).toHaveBeenCalledWith('detail');
+    const session = characterAssemblySessionStore.getSnapshot();
+    expect(session).toMatchObject({ characterId: adaptiveCharacter.id, kind: 'adaptive-parts' });
+    const manage = (action: AdaptiveCharacterManagementAction) => {
+      let result: AdaptivePartsAssemblyActionResult | undefined;
+      act(() => { result = actionsRef.current!.manage(action); });
+      return result;
+    };
+    const draft = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()!;
+    const original = draft.getSnapshot()!.draft;
+    act(() => { draft.setDraft({ ...original, parts: original.parts.map(part => ({ ...part, visible: false })) }); });
+    expect(manage({ kind: 'rename', name: 'Pending' })).toMatchObject({ ok: false });
+    expect(draft.getSnapshot()!.draft.parts.every(part => !part.visible)).toBe(true);
+    act(() => { draft.setDraft(original); });
 
-    // Render detail view for the adaptive character
-    act(() => {
-      root.render(
-        createElement(CharacterManager, {
-          snapshot: editorProjectStore.getSnapshot(),
-          view: 'detail',
-          presentation: 'landscape',
-          onViewChange,
-        }),
-      );
-    });
+    expect(manage({ kind: 'rename', name: 'Renamed Adaptive' })).toEqual({ ok: true });
+    expect(manage({ kind: 'transform', scale: 1.25, flipX: true })).toEqual({ ok: true });
+    expect(editorProjectStore.getSnapshot()?.project.characters.find(c => c.id === adaptiveCharacter.id))
+      .toMatchObject({ name: 'Renamed Adaptive', defaultScale: 1.25, defaultFlipX: true });
 
-    // Rename adaptive character through unified inline rename
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-rename-trigger"]')
-        ?.click();
+    act(() => { layerStore.createAdaptiveCharacter(adaptiveCharacter.id, { x: 0, y: 0 }); });
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    expect(manage({ kind: 'delete' })).toMatchObject({
+      ok: false, message: expect.stringContaining('不能删除'),
     });
-    const renameInput = container.querySelector<HTMLInputElement>(
-      '[data-testid="character-inline-rename-input"]',
-    )!;
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        'value',
-      )?.set;
-      setter?.call(renameInput, 'Renamed Adaptive');
-      renameInput.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    act(() => {
-      container
-        .querySelector<HTMLFormElement>('[data-testid="character-inline-rename-form"]')
-        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    expect(
-      editorProjectStore
-        .getSnapshot()
-        ?.project.characters.find((c) => c.id === adaptiveCharacter.id)?.name,
-    ).toBe('Renamed Adaptive');
-
-    // Place adaptive character into current shot -> delete must be blocked by reference check
-    layerStore.createAdaptiveCharacter(adaptiveCharacter.id, { x: 0, y: 0 });
-    window.confirm = vi.fn(() => true);
-    act(() => {
-      root.render(
-        createElement(CharacterManager, {
-          snapshot: editorProjectStore.getSnapshot(),
-          view: 'detail',
-          presentation: 'landscape',
-          onViewChange,
-        }),
-      );
-    });
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-workspace-settings-tab"]')
-        ?.click();
-    });
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-delete-settings"]')
-        ?.click();
-    });
-    expect(
-      editorProjectStore
-        .getSnapshot()
-        ?.project.characters.some((c) => c.id === adaptiveCharacter.id),
-    ).toBe(true);
-    expect(
-      container.querySelector('.character-manager-status')?.textContent,
-    ).toContain('不能删除');
-
-    // Undo layer placement -> delete now succeeds
-    editorProjectStore.undo();
-    act(() => {
-      root.render(
-        createElement(CharacterManager, {
-          snapshot: editorProjectStore.getSnapshot(),
-          view: 'detail',
-          presentation: 'landscape',
-          onViewChange,
-        }),
-      );
-    });
-    act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="character-delete-settings"]')
-        ?.click();
-    });
-    expect(
-      editorProjectStore
-        .getSnapshot()
-        ?.project.characters.some((c) => c.id === adaptiveCharacter.id),
-    ).toBe(false);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    act(() => { editorProjectStore.undo(); });
+    expect(manage({ kind: 'delete' })).toEqual({ ok: true });
+    expect(editorProjectStore.getSnapshot()?.project.characters.some(c => c.id === adaptiveCharacter.id)).toBe(false);
     expect(onViewChange).toHaveBeenLastCalledWith('list');
   });
 
-  it('portals AdaptivePartsAssemblyWorkbench part list into the drawer slot and omits duplicate header', () => {
+  it('renders the parts list, centered identity, and canvas in one workbench', () => {
     const { project, adaptiveCharacter } = buildAdaptiveProject();
     editorProjectStore.open('F:/tmp/project', project);
-    const began = characterAssemblySessionStore.beginAdaptiveParts(
-      adaptiveCharacter.id,
-    );
-    expect(began.ok).toBe(true);
-    if (!began.ok) return;
-
-    const drawerSlot = document.createElement('div');
-    document.body.appendChild(drawerSlot);
-
+    const began = characterAssemblySessionStore.beginAdaptiveParts(adaptiveCharacter.id);
+    if (!began.ok) throw began.error;
     act(() => {
-      root.render(
-        createElement(CharacterAssemblyWorkbench, {
-          projectSnapshot: editorProjectStore.getSnapshot()!,
-          session: began.snapshot,
-          adaptivePartsListTarget: drawerSlot,
-        }),
-      );
+      root.render(createElement(CharacterAssemblyWorkbench, {
+        projectSnapshot: editorProjectStore.getSnapshot()!,
+        session: began.snapshot,
+        adaptivePartsActionsRef: { current: null },
+      }));
     });
-
-    const workbench = container.querySelector(
-      '[data-testid="adaptive-parts-assembly-workbench"]',
-    );
-    expect(workbench?.getAttribute('data-hosted-in-drawer')).toBe('true');
-    expect(
-      container.querySelector('[data-testid="adaptive-parts-assembly-header"]'),
-    ).toBeNull();
-    expect(
-      drawerSlot.querySelector('[data-testid="adaptive-parts-assembly-count"]')?.textContent,
-    ).toContain('2');
-    expect(
-      drawerSlot.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]'),
-    ).toHaveLength(2);
-
-    drawerSlot.remove();
+    const workbench = container.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')!;
+    expect(workbench.querySelector('.adaptive-parts-assembly-title strong')?.textContent).toBe(adaptiveCharacter.name);
+    expect(workbench.querySelector('[data-testid="adaptive-character-management"]')).not.toBeNull();
+    expect(workbench.querySelector('[data-testid="adaptive-parts-back-to-list"]')).not.toBeNull();
+    expect(workbench.querySelector('[data-testid="adaptive-parts-join-current-shot"]')).not.toBeNull();
+    expect(workbench.querySelector('aside[aria-label="部件列表"]')).not.toBeNull();
+    expect(workbench.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')).toHaveLength(2);
+    expect(workbench.querySelector('[data-testid="adaptive-parts-assembly-canvas"]')).not.toBeNull();
+    expect(workbench.querySelector('[data-testid="character-workspace-switcher"]')).toBeNull();
   });
 });

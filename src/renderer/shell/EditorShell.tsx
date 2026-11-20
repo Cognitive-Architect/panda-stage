@@ -661,7 +661,6 @@ export function EditorShell({
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
   const adaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActionsRef['current']>(null);
-  const [adaptivePartsListTarget, setAdaptivePartsListTarget] = useState<HTMLElement | null>(null);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -794,11 +793,9 @@ export function EditorShell({
   const assemblyKind = activeAssemblySession
     ? activeAssemblySession.kind ?? 'composite'
     : 'none';
-  // Issue #1175 / CHAR-UI-UNI: all character modes share the left Character Detail
-  // drawer alongside the center preview canvas, so assembly never hides it.
-  const assemblyHidesResourceDrawer = false;
+  const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';
   const legacyCompositeAssemblyActive =
-    assemblyActive && (assemblyKind === 'composite' || assemblyKind === 'adaptive-parts');
+    assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -2702,7 +2699,6 @@ export function EditorShell({
             >
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
-                onAdaptivePartsListTargetChange={setAdaptivePartsListTarget}
                 onCreateFlaCharacter={createFlaCharacter}
                 onImportGraphicInstance={importFlaGraphicInstance}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
@@ -2781,7 +2777,6 @@ export function EditorShell({
               {activeAssemblySession && projectSnapshot ? (
                 <CharacterAssemblyWorkbench
                   adaptivePartsActionsRef={adaptivePartsActionsRef}
-                  adaptivePartsListTarget={adaptivePartsListTarget}
                   projectSnapshot={projectSnapshot}
                   savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
                   session={activeAssemblySession}
