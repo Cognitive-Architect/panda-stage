@@ -20,10 +20,12 @@ import {
   characterPartSourceBounds,
   characterPartTransformFromStaticAdjustment,
   evaluateFlaGraphicVisual,
+  hasRenderableFlaGraphicSubtree,
   isFlaGraphicDefinition,
   removeAdaptivePartFromDefinition,
   resolveCharacterPartVisualSource,
   scanAdaptivePartReferences,
+  selectFlaGraphicSubtreeVisual,
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterPartStaticAdjustment,
@@ -95,7 +97,12 @@ import {
   type CharacterLayoutReuseTarget,
 } from './characterLayoutReuse';
 import { AdaptiveCharacterManagement } from './AdaptiveCharacterManagement';
-import type { AdaptivePartsAssemblyActionsRef } from './CharacterManager';
+import {
+  placeCharacterInCurrentShot,
+  type AdaptivePartsAssemblyActionResult,
+  type AdaptivePartsAssemblyActionsRef,
+} from './CharacterManager';
+import { characterStore } from '../../stores/characterStore';
 import { shotStore } from '../../stores/shotStore';
 
 interface CharacterAssemblyWorkbenchProps {
@@ -344,6 +351,26 @@ function partPoint(part: LayerVisualPart, x: number, y: number): { x: number; y:
     x: transform.a * x + transform.c * y + transform.tx,
     y: transform.b * x + transform.d * y + transform.ty,
   };
+}
+
+function adaptivePartCanvasCssMatrix(
+  part: Pick<LayerVisualPart, 'localRect' | 'imageTransform'>,
+  stageWidth: number,
+  stageHeight: number,
+): string | null {
+  const transform = part.imageTransform;
+  if (!transform) return null;
+  const tx =
+    stageWidth / 2 +
+    transform.a * part.localRect.x +
+    transform.c * part.localRect.y +
+    transform.tx;
+  const ty =
+    stageHeight / 2 +
+    transform.b * part.localRect.x +
+    transform.d * part.localRect.y +
+    transform.ty;
+  return `matrix(${transform.a}, ${transform.b}, ${transform.c}, ${transform.d}, ${tx}, ${ty})`;
 }
 
 type AdaptivePartsCharacterPart = AdaptivePartsCharacterDefinition['parts'][number];
@@ -995,11 +1022,16 @@ function AdaptivePartsAssemblyWorkbench({
         if (definition) {
           const evaluatedGraphic = evaluateFlaGraphicVisual({
             definition,
-            frameOrdinal: definition.frames[0]?.ordinal ?? 0,
+            frameOrdinal:
+              visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0),
             mode: 'instance',
             instanceTransformOverrides: visualSource.instanceTransformOverrides,
           });
-          for (const assetId of evaluatedGraphic?.resourceAssetIds ?? []) {
+          const resolvedGraphic =
+            evaluatedGraphic && visualSource.nodePath
+              ? selectFlaGraphicSubtreeVisual(evaluatedGraphic, visualSource.nodePath)
+              : evaluatedGraphic;
+          for (const assetId of resolvedGraphic?.resourceAssetIds ?? []) {
             ids.add(assetId);
           }
         }
@@ -1130,7 +1162,7 @@ function AdaptivePartsAssemblyWorkbench({
     if (!current) return { ok: false };
     const part = current.parts.find((candidate) => candidate.partId === partId);
     if (!part) return { ok: false };
-    const bounds = characterPartSourceBounds(part, project.animations);
+    const bounds = characterPartSourceBounds(part, project.animations, project.assets);
     if (!bounds) return { ok: false };
     try {
       const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
@@ -1162,7 +1194,7 @@ function AdaptivePartsAssemblyWorkbench({
     const current = activeHandle()?.getSnapshot()?.draft;
     const existingPart = current?.parts.find((candidate) => candidate.partId === partId);
     if (!current || !existingPart) return;
-    const oldBounds = characterPartSourceBounds(existingPart, project.animations);
+    const oldBounds = characterPartSourceBounds(existingPart, project.animations, project.assets);
     if (!oldBounds) return;
     const replacementPlacement = characterPartPlacementForReplacement({
       sourceRootTransform: current.sourceRootTransform,
@@ -1212,7 +1244,7 @@ function AdaptivePartsAssemblyWorkbench({
     const current = activeHandle()?.getSnapshot()?.draft;
     const existingPart = current?.parts.find((candidate) => candidate.partId === partId);
     if (!current || !existingPart) return;
-    const oldBounds = characterPartSourceBounds(existingPart, project.animations);
+    const oldBounds = characterPartSourceBounds(existingPart, project.animations, project.assets);
     if (!oldBounds) return;
     const replacementPlacement = characterPartPlacementForReplacement({
       sourceRootTransform: current.sourceRootTransform,
@@ -1320,10 +1352,31 @@ function AdaptivePartsAssemblyWorkbench({
         readonly visibleRect: VisualLocalRect | null;
       }
     >();
+    const sourceByPartId = new Map(
+      session.draft.parts.map((draftPart) => [
+        draftPart.partId,
+        resolveCharacterPartVisualSource(draftPart),
+      ]),
+    );
     for (const part of visual?.parts ?? []) {
       const characterPartId = adaptiveCharacterPartIdOf(part);
       if (!characterPartId || !part.flaGraphic) continue;
+      const partSource = sourceByPartId.get(characterPartId);
+      if (
+        partSource?.kind === 'fla-graphic' &&
+        partSource.nodePath &&
+        !hasRenderableFlaGraphicSubtree(part.flaGraphic)
+      ) {
+        continue;
+      }
       const rendered = renderFlaGraphicCanvas(part.flaGraphic, imageState.images);
+      if (
+        partSource?.kind === 'fla-graphic' &&
+        partSource.nodePath &&
+        !rendered?.visibleRect
+      ) {
+        continue;
+      }
       const dataUrl = renderAdaptivePartsAssemblyGraphicDataUrl(rendered);
       if (rendered && dataUrl) {
         result.set(characterPartId, {
@@ -1335,7 +1388,7 @@ function AdaptivePartsAssemblyWorkbench({
       }
     }
     return result;
-  }, [visual?.parts, imageState.images]);
+  }, [visual?.parts, imageState.images, session.draft.parts]);
   readVisibleBounds.current = () => {
     if (!visual) return null;
     const imageBounds = new Map<string, NormalizedImageBounds | null>();
@@ -1367,9 +1420,8 @@ function AdaptivePartsAssemblyWorkbench({
       ? graphicPartRasters.has(session.selectedPartId ?? '')
       : Boolean(selectedCanvasPart.assetId && imageState.images.get(selectedCanvasPart.assetId))
     : false;
-  const selectedCanvasTransform = selectedCanvasPart?.imageTransform;
-  const selectedCanvasMatrix = selectedCanvasTransform
-    ? `matrix(${selectedCanvasTransform.a}, ${selectedCanvasTransform.b}, ${selectedCanvasTransform.c}, ${selectedCanvasTransform.d}, ${project.width / 2 + selectedCanvasTransform.tx}, ${project.height / 2 + selectedCanvasTransform.ty})`
+  const selectedCanvasMatrix = selectedCanvasPart
+    ? adaptivePartCanvasCssMatrix(selectedCanvasPart, project.width, project.height)
     : null;
   const rows = [...session.draft.parts].sort(
     (left, right) => right.drawOrder - left.drawOrder,
@@ -1667,7 +1719,11 @@ function AdaptivePartsAssemblyWorkbench({
     if (!selectPart(partId)) return;
     event.preventDefault();
     event.stopPropagation();
-    const center = partPoint(part, part.localRect.width / 2, part.localRect.height / 2);
+    const center = partPoint(
+      part,
+      part.localRect.x + part.localRect.width / 2,
+      part.localRect.y + part.localRect.height / 2,
+    );
     const point = pointerToLocal(event.clientX, event.clientY);
     dragRef.current = {
       kind: 'scale',
@@ -1737,12 +1793,41 @@ function AdaptivePartsAssemblyWorkbench({
   };
   const returnToCharacterList = (): void => {
     const result = adaptivePartsActionsRef?.current?.backToCharacterList();
-    if (result === undefined) {
-      setMessage('\u8fd4\u56de\u89d2\u8272\u5217\u8868\u64cd\u4f5c\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u89d2\u8272\u3002');
+    if (result !== undefined) return;
+    if (adaptivePartsActionsRef) {
+      if (
+        isCharacterAssemblyPending(project, session) &&
+        !window.confirm('组装更改尚未应用，返回将放弃这些更改。继续吗？')
+      ) {
+        return;
+      }
+      activeHandle()?.cancel();
+      return;
     }
+    setMessage('\u8fd4\u56de\u89d2\u8272\u5217\u8868\u64cd\u4f5c\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u89d2\u8272\u3002');
+  };
+  const fallbackJoinCurrentShot = (): AdaptivePartsAssemblyActionResult => {
+    let joinMessage = '';
+    const joined = placeCharacterInCurrentShot({
+      characterId: session.characterId,
+      getCurrentCharacterId: () => session.characterId,
+      defaultTransformPending: false,
+      leaveAssembly: () =>
+        !isCharacterAssemblyPending(project, session) ||
+        window.confirm('组装更改尚未应用，加入镜头前将放弃这些更改。继续吗？'),
+      reportStatus: (nextMessage) => {
+        joinMessage = nextMessage;
+        setMessage(nextMessage);
+      },
+    });
+    if (!joined) return { ok: false, ...(joinMessage ? { message: joinMessage } : {}) };
+    activeHandle()?.cancel();
+    return { ok: true };
   };
   const joinCurrentShot = (): void => {
-    const joinAction = adaptivePartsActionsRef?.current?.joinCurrentShot;
+    const joinAction =
+      adaptivePartsActionsRef?.current?.joinCurrentShot ??
+      (adaptivePartsActionsRef ? fallbackJoinCurrentShot : undefined);
     if (!joinAction) {
       setMessage('\u52a0\u5165\u955c\u5934\u64cd\u4f5c\u4e0d\u53ef\u7528\uff0c\u8bf7\u8fd4\u56de\u89d2\u8272\u5217\u8868\u540e\u91cd\u8bd5\u3002');
       return;
@@ -1908,10 +1993,17 @@ function AdaptivePartsAssemblyWorkbench({
             const image = effectiveImageId
               ? imageState.images.get(effectiveImageId)
               : undefined;
+            const subtreeMissing = Boolean(
+              visualSource.kind === 'fla-graphic' &&
+                visualSource.nodePath &&
+                (!visualPart?.flaGraphic ||
+                  !hasRenderableFlaGraphicSubtree(visualPart.flaGraphic)),
+            );
             const imageMissing =
               visualSource.kind === 'image'
                 ? imageState.missing.has(visualSource.assetId)
                 : !structuredGraphicById.has(visualSource.animationId) ||
+                  subtreeMissing ||
                   (fallbackImageId
                     ? imageState.missing.has(fallbackImageId)
                     : Boolean(
@@ -1926,7 +2018,7 @@ function AdaptivePartsAssemblyWorkbench({
                 : fallbackImageId
                   ? assetThumbnailKeys.get(fallbackImageId) ??
                     `asset:${project.id}:${fallbackImageId}`
-                  : `fla-graphic:${project.id}:${visualSource.animationId}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
+                  : `fla-graphic:${project.id}:${visualSource.animationId}:${visualSource.poseFrameOrdinal ?? 0}:${JSON.stringify(visualSource.nodePath ?? null)}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
             return (
               <AdaptivePartsAssemblyRow
                 displayName={name}
@@ -2050,7 +2142,9 @@ function AdaptivePartsAssemblyWorkbench({
                   : part.assetId
                     ? assetNames.get(part.assetId)
                     : undefined;
-              const matrix = `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
+              const matrix =
+                adaptivePartCanvasCssMatrix(part, project.width, project.height) ??
+                `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
               return (
                 <div
                   className={`adaptive-parts-assembly-canvas-part${selected ? ' is-selected' : ''}`}
@@ -2077,11 +2171,18 @@ function AdaptivePartsAssemblyWorkbench({
                       src={graphicRaster.dataUrl}
                       style={{
                         height: graphicRaster.rect.height,
-                        left: graphicRaster.rect.x + part.flaGraphic.canvas.width / 2,
+                        left:
+                          graphicRaster.rect.x +
+                          part.flaGraphic.canvas.width / 2 -
+                          part.localRect.x,
                         maxHeight: 'none',
                         maxWidth: 'none',
+                        pointerEvents: 'none',
                         position: 'absolute',
-                        top: graphicRaster.rect.y + part.flaGraphic.canvas.height / 2,
+                        top:
+                          graphicRaster.rect.y +
+                          part.flaGraphic.canvas.height / 2 -
+                          part.localRect.y,
                         width: graphicRaster.rect.width,
                       }}
                     />
@@ -2154,8 +2255,43 @@ function AdaptivePartsAssemblyWorkbench({
               <AdaptiveCharacterManagement
                 key={JSON.stringify([assemblyCharacter.id, assemblyCharacter.name, assemblyCharacter.defaultScale, assemblyCharacter.defaultFlipX])}
                 character={assemblyCharacter}
-                onManage={(action) => adaptivePartsActionsRef.current?.manage(action) ??
-                  { ok: false, message: '请重新打开角色工作台。' }}
+                onManage={(action) => {
+                  if (adaptivePartsActionsRef.current) {
+                    return adaptivePartsActionsRef.current.manage(action);
+                  }
+                  if (isCharacterAssemblyPending(project, session)) {
+                    return { ok: false, message: '请先应用或取消零件组装更改。' };
+                  }
+                  try {
+                    switch (action.kind) {
+                      case 'rename':
+                        characterStore.renameCharacter(assemblyCharacter.id, action.name);
+                        break;
+                      case 'transform':
+                        characterStore.setDefaultTransform(
+                          assemblyCharacter.id,
+                          action.scale,
+                          action.flipX,
+                        );
+                        break;
+                      case 'delete': {
+                        if (!window.confirm(`确认删除角色“${assemblyCharacter.name}”？`)) {
+                          return { ok: false };
+                        }
+                        characterStore.deleteCharacter(assemblyCharacter.id);
+                        activeHandle()?.cancel();
+                        break;
+                      }
+                    }
+                    setMessage('');
+                    return { ok: true };
+                  } catch (error) {
+                    return {
+                      ok: false,
+                      message: error instanceof Error ? error.message : '角色操作失败。',
+                    };
+                  }
+                }}
               />
             </div>
           ) : null}

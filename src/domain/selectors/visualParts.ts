@@ -23,6 +23,7 @@ import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
+import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
 import { resolveImageAsset } from './canvasLayers';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
@@ -667,11 +668,83 @@ function adaptivePartVisuals(
       if (
         !definition ||
         !isFlaGraphicDefinition(definition) ||
-        !definition.structure
+        (!definition.structure && !visualSource.nodePath)
       ) {
         throw new Error(
           `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
         );
+      }
+      if (visualSource.nodePath) {
+        const pinnedFrameOrdinal =
+          visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0);
+        const evaluated = definition.structure
+          ? evaluateFlaGraphicVisual({
+              definition,
+              frameOrdinal: pinnedFrameOrdinal,
+              mode: 'instance',
+              instanceTransformOverrides:
+                visualSource.instanceTransformOverrides,
+            })
+          : null;
+        const baseFrame = definition.frames.find(
+          (candidate) => candidate.ordinal === pinnedFrameOrdinal,
+        ) ?? definition.frames[0];
+        const emptySubtreeVisual: EvaluatedFlaGraphicVisual = {
+          mode: 'instance',
+          frameOrdinal: pinnedFrameOrdinal,
+          frameAssetId: evaluated?.frameAssetId ?? baseFrame?.assetId ?? '',
+          frameOffset: evaluated?.frameOffset ?? baseFrame?.offset ?? { x: 0, y: 0 },
+          frameViewport: evaluated?.frameViewport ?? baseFrame?.sourceViewport ?? {
+            x: 0,
+            y: 0,
+            width: definition.source.canvas.width,
+            height: definition.source.canvas.height,
+          },
+          canvas: definition.source.canvas,
+          anchor: definition.source.anchor,
+          structureFrame: {
+            ordinal: pinnedFrameOrdinal,
+            layers: [],
+          },
+          layers: [],
+          resourceAssetIds: [],
+        };
+        const subtreeVisual =
+          evaluated && evaluated.structureFrame && evaluated.layers
+            ? selectFlaGraphicSubtreeVisual(evaluated, visualSource.nodePath)
+            : emptySubtreeVisual;
+        const tightBounds = characterPartSourceBounds(
+          part,
+          project.animations,
+          project.assets,
+        );
+        const imageTransform = composeAffine(
+          character.sourceRootTransform,
+          part.restTransform,
+        );
+        return {
+          partId: `${ownerLayerId}:${part.partId}`,
+          ownerLayerId,
+          slot: 'adaptive-part',
+          source: {
+            kind: 'adaptive-part-fla-graphic',
+            characterPartId: part.partId,
+            animationId: definition.id,
+          },
+          flaGraphic: subtreeVisual,
+          localRect: tightBounds ?? {
+            x: 0,
+            y: 0,
+            width: definition.source.canvas.width,
+            height: definition.source.canvas.height,
+          },
+          rotationDeg: 0,
+          flipX: false,
+          imageTransform,
+          visible: part.visible,
+          drawOrder: part.drawOrder,
+          ownerZIndex,
+        };
       }
       const temporalPlayback =
         timeMs !== undefined && hasFlaGraphicTemporalPlayback(definition);
@@ -823,7 +896,11 @@ function adaptiveCharacterSourceBounds(
   return visualBounds(parts.map((visual, index) => {
     const part = character.parts[index]!;
     if (resolveCharacterPartVisualSource(part).kind !== 'fla-graphic') return visual;
-    const bounds = characterPartSourceBounds(part, project.animations);
+    const bounds = characterPartSourceBounds(
+      part,
+      project.animations,
+      project.assets,
+    );
     if (!bounds) {
       throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
     }
@@ -1176,7 +1253,7 @@ export function resolveLayerVisualParts(
     }
     for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
-      if (visualSource.kind !== 'fla-graphic') continue;
+      if (visualSource.kind !== 'fla-graphic' || visualSource.nodePath) continue;
       const definition = project.animations.find(
         (candidate): candidate is FlaGraphicDefinition =>
           isFlaGraphicDefinition(candidate) &&

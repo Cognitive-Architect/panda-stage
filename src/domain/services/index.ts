@@ -1,4 +1,5 @@
 export * from './CharacterService';
+export * from './flaGraphicSubtreeParts';
 export * from './CharacterNodeMotionService';
 export * from './LayerMotionService';
 export * from './AudioClipService';

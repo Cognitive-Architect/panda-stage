@@ -730,7 +730,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
         (animation) =>
           isFlaGraphicDefinition(animation) &&
           animation.id === visualSource.animationId &&
-          Boolean(animation.structure),
+          (Boolean(visualSource.nodePath) || Boolean(animation.structure)),
       );
     })
   ) {

@@ -6,6 +6,8 @@ import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from './models/flaGraphicStructure';
+import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
+import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
@@ -297,7 +299,6 @@ function addFlaGraphicAnimationMedia(
   shotIndex: number,
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
 ): void {
-  const activeAnimationIds = new Set<string>();
   const sampleTimes = new Set(shotVisualSampleTimes(shot));
   for (const layer of shot.layers) {
     const layerStartTimeMs = layer.startTimeMs;
@@ -311,6 +312,16 @@ function addFlaGraphicAnimationMedia(
       sampleTimes.add(layerStartTimeMs);
     }
   }
+  const fullAnimationIds = new Set<string>();
+  const resourceIdsByAnimation = new Map<string, Set<string>>();
+  const ensureAnimationResources = (animationId: string): Set<string> => {
+    let bucket = resourceIdsByAnimation.get(animationId);
+    if (!bucket) {
+      bucket = new Set<string>();
+      resourceIdsByAnimation.set(animationId, bucket);
+    }
+    return bucket;
+  };
   for (const timeMs of [...sampleTimes].sort((left, right) => left - right)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     for (const evaluatedLayer of evaluatedShot.layers) {
@@ -318,7 +329,7 @@ function addFlaGraphicAnimationMedia(
       const layer = shot.layers.find((candidate) => candidate.id === evaluatedLayer.id);
       const layerSource = layer?.source;
       if (layerSource?.kind === 'animation') {
-        activeAnimationIds.add(layerSource.animationId);
+        fullAnimationIds.add(layerSource.animationId);
       } else if (layerSource?.kind === 'character') {
         const character = project.characters.find(
           (candidate) => candidate.id === layerSource.characterId,
@@ -327,7 +338,37 @@ function addFlaGraphicAnimationMedia(
           for (const part of character.parts) {
             const visualSource = resolveCharacterPartVisualSource(part);
             if (visualSource.kind === 'fla-graphic') {
-              activeAnimationIds.add(visualSource.animationId);
+              if (!visualSource.nodePath) {
+                fullAnimationIds.add(visualSource.animationId);
+                continue;
+              }
+              const definition = project.animations.find(
+                (candidate) => candidate.id === visualSource.animationId,
+              );
+              if (
+                !definition ||
+                !('kind' in definition) ||
+                definition.kind !== 'fla-graphic'
+              ) {
+                continue;
+              }
+              const flaGraphic = definition as FlaGraphicDefinition;
+              const evaluated = evaluateFlaGraphicVisual({
+                definition: flaGraphic,
+                frameOrdinal: visualSource.poseFrameOrdinal ?? 0,
+                mode: 'instance',
+                instanceTransformOverrides:
+                  visualSource.instanceTransformOverrides,
+              });
+              if (!evaluated) continue;
+              const subtree = selectFlaGraphicSubtreeVisual(
+                evaluated,
+                visualSource.nodePath,
+              );
+              const bucket = ensureAnimationResources(flaGraphic.id);
+              for (const assetId of subtree.resourceAssetIds) {
+                bucket.add(assetId);
+              }
             }
           }
         }
@@ -335,11 +376,11 @@ function addFlaGraphicAnimationMedia(
     }
   }
 
-  for (const animationId of activeAnimationIds) {
+  for (const animationId of fullAnimationIds) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
     if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
     const definition = animation as FlaGraphicDefinition;
-    const resourceIds = new Set<string>();
+    const resourceIds = ensureAnimationResources(definition.id);
     const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
       for (const node of nodes) {
         if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
@@ -368,6 +409,11 @@ function addFlaGraphicAnimationMedia(
         resourceIds.add(frame.assetId);
       }
     }
+  }
+
+  for (const [animationId, resourceIds] of resourceIdsByAnimation) {
+    const animation = project.animations.find((candidate) => candidate.id === animationId);
+    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
     for (const assetId of resourceIds) {
       const asset = project.assets.find(
         (candidate) => candidate.id === assetId && candidate.kind === 'image',

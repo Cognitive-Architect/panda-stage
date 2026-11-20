@@ -15,6 +15,12 @@ import {
   type ProjectAnimationDefinition,
 } from '../models/animation';
 import { FiniteNumberSchema } from '../models/common';
+import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
+import {
+  measureFlaGraphicSubtreeBounds,
+  selectFlaGraphicSubtreeVisual,
+  type FlaGraphicAssetDimensionLike,
+} from '../fla-graphic-subtree';
 
 export const CharacterPartSourceBoundsSchema = z
   .object({
@@ -98,6 +104,7 @@ function resolveSourceBoundsRect(
 export function characterPartSourceBounds(
   part: Pick<CharacterPart, 'partId' | 'assetId' | 'imageMapping' | 'visualSource'>,
   animations: readonly ProjectAnimationDefinition[],
+  assets: readonly FlaGraphicAssetDimensionLike[] = [],
 ): CharacterPartSourceBounds | null {
   const visualSource = resolveCharacterPartVisualSource(part);
   if (visualSource.kind === 'image') {
@@ -114,6 +121,24 @@ export function characterPartSourceBounds(
   );
   if (!definition || !isFlaGraphicDefinition(definition)) {
     return null;
+  }
+  if (visualSource.nodePath && definition.structure) {
+    const evaluated = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: visualSource.poseFrameOrdinal ?? 0,
+      mode: 'instance',
+      instanceTransformOverrides: visualSource.instanceTransformOverrides,
+    });
+    if (evaluated) {
+      const subtreeVisual = selectFlaGraphicSubtreeVisual(
+        evaluated,
+        visualSource.nodePath,
+      );
+      const tightBounds = measureFlaGraphicSubtreeBounds(subtreeVisual, assets);
+      if (tightBounds) {
+        return tightBounds;
+      }
+    }
   }
   return {
     x: 0,

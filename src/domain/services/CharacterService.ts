@@ -1039,7 +1039,11 @@ export class CharacterService {
         const definition = project.animations.find(
           (candidate) => candidate.id === visualSource.animationId,
         );
-        if (!definition || !isFlaGraphicDefinition(definition) || !definition.structure) {
+        if (
+          !definition ||
+          !isFlaGraphicDefinition(definition) ||
+          (!definition.structure && !visualSource.nodePath)
+        ) {
           throw new CharacterServiceError(
             'INVALID_ADAPTIVE_PARTS_DEFINITION',
             `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,

@@ -208,7 +208,7 @@ export function validateProjectReferences(
             );
             return;
           }
-          if (!definition.structure) {
+          if (!definition.structure && !visualSource.nodePath) {
             addIssue(
               context,
               [

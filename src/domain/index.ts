@@ -13,6 +13,7 @@ export * from './actions';
 export * from './timeline/frame-grid';
 export * from './evaluate-layer-motion';
 export * from './evaluate-fla-graphic';
+export * from './fla-graphic-subtree';
 export * from './resolve-speaker-focus-camera';
 export {
   assertLayerClipFinalScalesInBounds,

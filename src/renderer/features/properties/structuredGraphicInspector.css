@@ -23,3 +23,17 @@
 .editor-layout[data-shell-mode] .right-inspector-drawer .right-inspector-section.fla-structure-section { border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .editor-layout .right-inspector-drawer:has(> .fla-structure-section) .right-inspector-selection { border: 0; padding: 0; background: transparent; }
 .editor-layout .right-inspector-drawer:has(> .fla-structure-section) .right-inspector-selection-summary { grid-template-columns: minmax(0, 1fr); }
+.fla-subtree-panel { margin-block-start: 10px; padding-block-start: 10px; border-block-start: 1px solid var(--ui-color-border); display: flex; flex-direction: column; gap: 8px; }
+.fla-subtree-action-row, .fla-subtree-create-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fla-subtree-stage-button, .fla-subtree-create-button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); background: var(--ui-color-surface-work); color: var(--ui-color-text-primary); cursor: pointer; flex-shrink: 0; }
+.fla-subtree-create-button:not(:disabled) { border-color: var(--ui-color-selected-border); background: var(--ui-color-selected-surface); font-weight: 600; }
+.fla-subtree-stage-button:disabled, .fla-subtree-create-button:disabled { opacity: 0.55; cursor: not-allowed; }
+.fla-subtree-selection-name, .fla-subtree-create-hint, .fla-subtree-staged-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-color-text-secondary); font-size: 12px; }
+.fla-subtree-staged-label { color: var(--ui-color-text-primary); font-size: 13px; }
+.fla-subtree-staged-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fla-subtree-staged-item { display: flex; align-items: center; gap: 6px; min-height: 28px; padding-inline: 6px; border-radius: var(--ui-radius-small); background: var(--ui-color-surface-work); }
+.fla-subtree-staged-badge { font-size: 11px; color: var(--ui-color-danger, #c94a4a); flex-shrink: 0; }
+.fla-subtree-remove-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; background: transparent; color: var(--ui-color-text-secondary); border-radius: var(--ui-radius-small); cursor: pointer; flex-shrink: 0; }
+.fla-subtree-remove-button:hover { color: var(--ui-color-text-primary); }
+.fla-subtree-note, .fla-subtree-error { margin: 0; font-size: 12px; line-height: 1.4; color: var(--ui-color-text-secondary); }
+.fla-subtree-error { color: var(--ui-color-danger, #c94a4a); }
