@@ -62,6 +62,7 @@ export interface FlaGraphicLayoutTemplateAssessment {
 
 export type FlaGraphicSavedLayoutSkipReason =
   | 'no-template'
+  | 'multiple-templates'
   | 'locked-by-author-pose'
   | 'missing-source-identity'
   | 'ambiguous-identity'
@@ -493,11 +494,17 @@ function evaluateTemplateCharacter(input: {
       ? findNodeTraceInEvaluated(evaluated.layers, visualSource.nodePath, visualSource.regionRef)
       : null;
     const bounds = characterPartSourceBounds(part, input.animations, input.assets);
+    const sameDefinition = def.id === input.targetDefinition.id;
+    const sameSourceArchive = def.source.sha256 === input.targetDefinition.source.sha256;
+    // Never automatically reuse saved layouts across different FLA archives without verified same-definition or same-SHA provenance.
+    if (!sameDefinition && !sameSourceArchive) {
+      continue;
+    }
     templateParts.push({
       part,
       definition: def,
-      sameDefinition: def.id === input.targetDefinition.id,
-      sameSourceArchive: def.source.sha256 === input.targetDefinition.source.sha256,
+      sameDefinition,
+      sameSourceArchive,
       bounds,
       trace,
     });
@@ -854,13 +861,52 @@ export function resolveFlaGraphicSavedLayoutPlacements(input: {
     return right.assessment.changedPartCount - left.assessment.changedPartCount;
   });
 
-  const selected =
-    (input.preferredTemplateCharacterId
-      ? candidates.find(
-          (item) =>
-            item.assessment.templateCharacterId === input.preferredTemplateCharacterId,
-        )
-      : undefined) ?? candidates[0]!;
+  const selectUnambiguousWinner = (): EvaluatedTemplateCandidate | null => {
+    if (candidates.length === 1) {
+      return candidates[0]!;
+    }
+    const sameDefCandidates = candidates.filter((item) => item.assessment.sameDefinition);
+    if (sameDefCandidates.length === 1) {
+      const winner = sameDefCandidates[0]!;
+      const maxOtherMatched = Math.max(
+        ...candidates
+          .filter((item) => item !== winner)
+          .map((item) => item.assessment.matchedPartCount),
+      );
+      if (winner.assessment.matchedPartCount >= maxOtherMatched) {
+        return winner;
+      }
+    }
+    return null;
+  };
+
+  const selected = input.preferredTemplateCharacterId
+    ? (candidates.find(
+        (item) => item.assessment.templateCharacterId === input.preferredTemplateCharacterId,
+      ) ?? null)
+    : selectUnambiguousWinner();
+
+  if (!selected) {
+    const skippedReasons = new Map<number, FlaGraphicSavedLayoutSkipReason>();
+    input.parts.forEach((_, idx) => {
+      skippedReasons.set(
+        idx,
+        lockedSet.has(idx)
+          ? 'locked-by-author-pose'
+          : input.preferredTemplateCharacterId
+            ? 'no-template'
+            : 'multiple-templates',
+      );
+    });
+    return {
+      totalCandidateCount: unlockedCount,
+      availableTemplates: candidates.map((item) => item.assessment),
+      selectedTemplate: null,
+      matchedCount: 0,
+      placementsByPartIndex: new Map(),
+      skippedReasons,
+    };
+  }
 
   return {
     totalCandidateCount: unlockedCount,

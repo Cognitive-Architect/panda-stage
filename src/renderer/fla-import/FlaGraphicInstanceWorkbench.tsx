@@ -184,6 +184,7 @@ export function FlaGraphicInstanceWorkbench({
     setPreviewLoading(true);
     setEmptyGraphicList(false);
     setPlanInvalidated(false);
+    committedCharacterAnimationIdsRef.current.clear();
     setStatusMessage('正在加载预览…');
     try {
       await Promise.all([cancelRequest(active), releaseHeldPlan(held)]);
@@ -320,8 +321,13 @@ export function FlaGraphicInstanceWorkbench({
     };
   }, [preview]);
 
+  useEffect(() => {
+    committedCharacterAnimationIdsRef.current.clear();
+  }, [sessionId, source?.sha256, context]);
+
   useEffect(() => () => {
     flowGenerationRef.current += 1;
+    committedCharacterAnimationIdsRef.current.clear();
     void cancelRequest(activeRequestRef.current);
     void releaseHeldPlan(heldPlanRef.current);
   }, [cancelRequest, releaseHeldPlan]);
@@ -410,6 +416,7 @@ export function FlaGraphicInstanceWorkbench({
         if (recoveryRequired) onRecoveryRequired?.();
         return;
       }
+      committedCharacterAnimationIdsRef.current.delete(selectedCandidate.identityKey);
       createdResult = result;
       setStatusMessage('');
     } catch (error) {

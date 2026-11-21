@@ -6,6 +6,7 @@ import { act } from 'react';
 import { deflateSync } from 'node:zlib';
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { extractFlaAuthorPoseReferencesFromDefinition } from '../../src/domain/services/flaAuthorPosePlacement';
 import {
   buildAdaptivePartsFromFlaGraphicSubtrees,
   CharacterService,
@@ -19,7 +20,10 @@ import {
   type Project,
 } from '../../src/domain';
 import { buildProject, IDS } from './domain/testProject';
-import { FlaGraphicInstanceCommitResponseSchema } from '../../src/shared/fla-graphic-instance-api';
+import {
+  FlaGraphicInstanceCommitResponseSchema,
+  type FlaGraphicInstanceCommitResponse,
+} from '../../src/shared/fla-graphic-instance-api';
 import { FlaPartPreviewService } from '../../src/main/services/FlaPartPreviewService';
 import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
 import {
@@ -1229,6 +1233,415 @@ describe('FLA Graphic V2-A Author Pose Reuse (#1207)', () => {
       expect(selected.sourceRestTransform).toEqual(IDENTITY);
       expect(selected.restTransform).toEqual(IDENTITY);
       expect(originalSourceRest.tx !== 0 || originalSourceRest.ty !== 0).toBe(true);
+    }
+  });
+
+  it('retains Main authorPoseReferences (sibling-graphic/scene-frame) across create-failure retries (reusedAnimationId) in both entries without cross-project or cross-source leakage', async () => {
+    // Target Graphic itself only has Frame 0 scattered parts; assembled author pose ONLY exists in sibling-graphic / scene-frame references from Main.
+    const fullStructure = makeScatteredAndAssembledStructure();
+    const scatteredOnlyStructure: FlaGraphicStructure = {
+      ...fullStructure,
+      frames: [fullStructure.frames[0]!],
+    };
+    const definition = makeGraphicDefinition(scatteredOnlyStructure, {
+      id: '00000000-0000-4000-8000-000000000802',
+    });
+    const siblingPoseDef = makeGraphicDefinition(fullStructure, {
+      id: '00000000-0000-4000-8000-000000000803',
+    });
+    const extractedSibling = extractFlaAuthorPoseReferencesFromDefinition(siblingPoseDef, 0)[0]!;
+    const authorPoseReferences: NonNullable<
+      Extract<FlaGraphicInstanceCommitResponse, { ok: true }>['authorPoseReferences']
+    > = [
+      {
+        origin: 'sibling-graphic',
+        sourceLabel: 'AssembledPoseSibling',
+        ...(extractedSibling.referenceFrameOrdinal !== undefined
+          ? { referenceFrameOrdinal: extractedSibling.referenceFrameOrdinal }
+          : {}),
+        referenceSymbolRef: 'AssembledPoseSibling',
+        nodes: extractedSibling.nodes.map((node) => ({
+          ...node,
+          ancestorSymbolChain: [...node.ancestorSymbolChain],
+          descendantProvenance: node.descendantProvenance
+            ? [...node.descendantProvenance]
+            : undefined,
+        })),
+      },
+    ];
+
+    const editorStore = editorProjectStore;
+    const baseProject = makeBaseProject();
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    const preview: Extract<
+      FlaPartPreviewResponse,
+      { ok: true; status: 'PREVIEW_READY'; capability: 'GRAPHIC_INSTANCES_READY' }
+    > & { sessionId: string; generation: number } = {
+      ok: true,
+      status: 'PREVIEW_READY',
+      capability: 'GRAPHIC_INSTANCES_READY',
+      requestId: '00000000-0000-4000-8000-000000000862',
+      sessionId: '00000000-0000-4000-8000-000000000860',
+      generation: 1,
+      planId: '00000000-0000-4000-8000-000000000861',
+      poseIdentity: SHA_C,
+      target: {
+        renderTargetId: 'fla-render-target-scene000002',
+        userLabel: '主场景',
+        frameCount: 1,
+        selectedFrameIndex: 0,
+      },
+      stage: { width: 1280, height: 720, pixelCount: 921600 },
+      nativePreview: {
+        width: 200,
+        height: 200,
+        pixelCount: 40000,
+        sha256: SHA_B,
+        byteLength: pngBytes.byteLength,
+        bytes: pngBytes,
+      },
+      partPreviews: [
+        {
+          unitId: 'part-001-graphic0001',
+          occurrenceId: 'occ-22222222222222222222222222222222',
+          sourceKind: 'graphic-symbol-occurrence',
+          sourceSymbolId: 'ScatteredHero',
+          sourceAddress: 'scene/0/0',
+          adapterIdentity: 'ScatteredHero',
+          sourceDefinitionFrameCount: 1,
+          layerName: 'Stage',
+          drawOrder: 0,
+          graphicInstanceImportable: true,
+          image: {
+            width: 200,
+            height: 200,
+            pixelCount: 40000,
+            sha256: SHA_B,
+            byteLength: pngBytes.byteLength,
+            bytes: pngBytes,
+          },
+        },
+      ],
+      reassembledPreview: null,
+      metrics: {
+        preparedSourceCacheHit: false,
+        sourcePreparationCountForRequest: 0,
+        displayListResolveCount: 1,
+        rasterCount: 1,
+        unitCount: 1,
+        totalPngBytes: pngBytes.byteLength,
+        elapsedMs: 1,
+      },
+    };
+    const catalogResponse: FlaRenderableTargetCatalogResponse = {
+      ok: true,
+      sessionId: '00000000-0000-4000-8000-000000000860',
+      omittedCandidateCount: 0,
+      summary: 'ok',
+      entries: [
+        {
+          target: {
+            renderTargetId: 'fla-render-target-scene000002',
+            kind: 'scene',
+            userLabel: '主场景 · 第 1 帧',
+            sourceTimelineIndex: 0,
+            frameCount: 1,
+            selectedFrameIndex: 0,
+            compatibility: ['degraded'],
+          },
+          catalogRole: 'scene',
+          previewSupported: true,
+          isBlank: false,
+        },
+      ],
+    };
+    const inspectionResponse: FlaInspectionResponse = {
+      ok: true,
+      sessionId: '00000000-0000-4000-8000-000000000860',
+      ir: {
+        source: {
+          format: 'fla',
+          basename: 'hero-retry.fla',
+          byteLength: 100,
+          sha256: SHA_A,
+          parser: {
+            package: FLA_PARSER_PACKAGE,
+            entrypoint: FLA_PARSER_ENTRYPOINT,
+            commit: FLA_PARSER_COMMIT,
+          },
+        },
+        document: { width: 1280, height: 720, frameRate: 24, backgroundColor: '#FFFFFF' },
+        media: [],
+        timelines: [],
+        compatibility: [],
+        summary: { placedInstanceCount: 1, libraryOnlyMediaCount: 0 },
+      },
+      diagnostics: [],
+    };
+    const commitGraphicInstance = vi.fn(async () => {
+      const snap = editorStore.getSnapshot()!;
+      return {
+        ok: true as const,
+        status: 'completed' as const,
+        requestId: randomUUID(),
+        projectRoot: snap.projectRoot,
+        projectId: snap.project.id,
+        openInstanceId: editorStore.getProjectInstanceId()!,
+        baseRevision: snap.revision,
+        savedRevision: snap.revision + 1,
+        projectChanged: true,
+        project: {
+          ...snap.project,
+          animations: [definition],
+        },
+        animationId: definition.id,
+        layerId: null,
+        authorPoseReferences,
+      };
+    });
+
+    Object.defineProperty(window, 'pandaStage', {
+      configurable: true,
+      value: {
+        assets: {
+          readThumbnail: vi.fn(async () => ({
+            ok: false,
+            error: { code: 'NOT_FOUND', message: 'not mocked' },
+          })),
+        },
+        fla: {
+          chooseAndInspect: vi.fn(),
+          onInspectionStarted: vi.fn(() => () => undefined),
+          cancel: vi.fn(async () => undefined),
+          staticSnapshotCatalog: vi.fn(async () => catalogResponse),
+          staticSnapshotCancel: vi.fn(async () => ({ accepted: true })),
+          partPreview: vi.fn(async () => preview),
+          partPreviewCancel: vi.fn(async () => ({ accepted: true })),
+          commitGraphicInstance,
+        },
+      },
+    });
+
+    activeContainer = document.createElement('div');
+    document.body.append(activeContainer);
+    activeRoot = createRoot(activeContainer);
+
+    // 1) Entry 1 fail-once -> retry
+    editorStore.open('D:\\Temp\\V2ARetryEntry1', baseProject);
+    let failEntry1Once = true;
+    const flakyCharStore1 = {
+      createAdaptiveParts: (input: Parameters<CharacterStore['createAdaptiveParts']>[0], snap: Parameters<CharacterStore['createAdaptiveParts']>[1]) => {
+        if (failEntry1Once) {
+          failEntry1Once = false;
+          throw new Error('simulated transient create failure (entry 1)');
+        }
+        return singletonCharacterStore.createAdaptiveParts(input, snap);
+      },
+    };
+    const attempt: FlaCharacterImportAttempt = {
+      lifecycle: { cancel: vi.fn(async () => undefined) } as unknown as FlaCharacterImportAttempt['lifecycle'],
+      operation: {
+        requestId: randomUUID(),
+        inspectionStarted: Promise.resolve(),
+        response: Promise.resolve(inspectionResponse),
+      },
+    };
+    function RetryEntry1Host() {
+      const snap = useSyncExternalStore(
+        editorStore.subscribe,
+        editorStore.getSnapshot,
+        editorStore.getSnapshot,
+      );
+      return createElement(CharacterManager, {
+        snapshot: snap,
+        view: 'list',
+        flaCharacterImportAttempt: attempt,
+        onCreateFlaCharacter: vi.fn(),
+        onCreateCharacterFromGraphic: (input) =>
+          createAdaptiveCharacterFromFlaGraphic({
+            ...input,
+            api: { commitGraphicInstance },
+            store: editorStore,
+            characters: flakyCharStore1,
+          }),
+        onQueryFlaCharacterCreateStatus: vi.fn(),
+      });
+    }
+    await act(async () => {
+      activeRoot!.render(createElement(RetryEntry1Host));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-character-import-create"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(commitGraphicInstance).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('simulated transient create failure (entry 1)');
+
+    // Click Retry cleanly (passes reusedAnimationId without calling commitGraphicInstance again)
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-character-import-create"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(commitGraphicInstance).toHaveBeenCalledTimes(1);
+    expect(activeContainer.querySelector('.character-manager-status')?.textContent).toBe('已按参考姿势自动还原 4/4 个零件');
+    const retriedChar1 = editorStore.getSnapshot()!.project.characters.find((c) => c.mode === 'adaptive-parts')!;
+    expect(retriedChar1.mode === 'adaptive-parts' && retriedChar1.parts.every((p) => p.restTransform.tx !== 0 || p.restTransform.ty !== 0)).toBe(true);
+
+    // 2) Entry 2 fail-once -> retry
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+    editorStore.open('D:\\Temp\\V2ARetryEntry2', baseProject);
+    let failEntry2Once = true;
+    const flakyCharStore2 = {
+      createAdaptiveParts: (input: Parameters<CharacterStore['createAdaptiveParts']>[0], snap: Parameters<CharacterStore['createAdaptiveParts']>[1]) => {
+        if (failEntry2Once) {
+          failEntry2Once = false;
+          throw new Error('simulated transient create failure (entry 2)');
+        }
+        return singletonCharacterStore.createAdaptiveParts(input, snap);
+      },
+    };
+    let entry2Created: { characterId: string; notice?: string; nonce: number } | null = null;
+    function RetryEntry2Host() {
+      const snap = useSyncExternalStore(
+        editorStore.subscribe,
+        editorStore.getSnapshot,
+        editorStore.getSnapshot,
+      );
+      if (!entry2Created) {
+        return createElement(FlaGraphicInstanceWorkbench, {
+          enabled: true,
+          sessionId: '00000000-0000-4000-8000-000000000860',
+          source: { basename: 'hero-retry.fla', sha256: SHA_A },
+          targetRenderTargetId: 'fla-render-target-scene000002' as FlaRenderTarget['renderTargetId'],
+          targetLookupPending: false,
+          importDisabledReason: null,
+          onCreateCharacterFromGraphic: (input) =>
+            createAdaptiveCharacterFromFlaGraphic({
+              ...input,
+              api: { commitGraphicInstance },
+              store: editorStore,
+              characters: flakyCharStore2,
+            }),
+          onCharacterCreated: (result) => {
+            entry2Created = {
+              characterId: result.characterId,
+              notice: formatFlaGraphicSkippedSummary(
+                result.partCount,
+                result.skipped,
+                result.warnings,
+                {
+                  autoPlacedCount: result.autoPlacedCount,
+                  authorPosePlacedCount: result.authorPosePlacedCount,
+                  savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+                  availableSavedLayoutCount: result.availableSavedLayoutCount,
+                  autoPlacedOrigin: result.autoPlacedOrigin,
+                },
+              ),
+              nonce: 1,
+            };
+          },
+        });
+      }
+      return createElement(CharacterManager, {
+        snapshot: snap,
+        view: 'list',
+        externalCreatedCharacter: entry2Created,
+      });
+    }
+    await act(async () => {
+      activeRoot!.render(createElement(RetryEntry2Host));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-candidate-part-001-graphic0001"]')!.click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-create-character"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(commitGraphicInstance).toHaveBeenCalledTimes(2);
+    expect(entry2Created).toBeNull();
+
+    // Retry from Entry 2
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-create-character"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(commitGraphicInstance).toHaveBeenCalledTimes(2);
+    expect(entry2Created).not.toBeNull();
+    expect(entry2Created!.notice).toBe('已按参考姿势自动还原 4/4 个零件');
+    const retriedChar2 = editorStore.getSnapshot()!.project.characters.find((c) => c.id === entry2Created!.characterId)!;
+    if (retriedChar1.mode === 'adaptive-parts' && retriedChar2.mode === 'adaptive-parts') {
+      expect(retriedChar2.parts.map((p) => p.restTransform)).toEqual(
+        retriedChar1.parts.map((p) => p.restTransform),
+      );
+      expect(retriedChar2.parts[0]!.restTransform).not.toEqual(IDENTITY);
+    }
+
+    // 3) Reopen project / switch FLA sha256 or preview MUST NOT reuse stale cached authorPoseReferences
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+    editorStore.open('D:\\Temp\\V2ARetryLeakCheck', baseProject);
+    await createAdaptiveCharacterFromFlaGraphic({
+      preview,
+      unitId: 'part-001-graphic0001',
+      characterName: 'FailedSeed',
+      poseFrameOrdinal: 0,
+      api: { commitGraphicInstance },
+      store: editorStore,
+      characters: {
+        createAdaptiveParts: () => {
+          throw new Error('seed failure');
+        },
+      },
+    });
+    // Closing and reopening same project path increments openInstanceId -> must NOT leak cached refs
+    const projectWithDef = editorStore.getSnapshot()!.project;
+    editorStore.clear();
+    editorStore.open('D:\\Temp\\V2ARetryLeakCheck', projectWithDef);
+    const leakedReopenRes = await createAdaptiveCharacterFromFlaGraphic({
+      preview,
+      unitId: 'part-001-graphic0001',
+      characterName: 'AfterReopen',
+      poseFrameOrdinal: 0,
+      reusedAnimationId: definition.id,
+      api: { commitGraphicInstance },
+      store: editorStore,
+      characters: singletonCharacterStore,
+    });
+    expect(leakedReopenRes.ok).toBe(true);
+    if (leakedReopenRes.ok) {
+      expect(leakedReopenRes.autoPlacedCount).toBe(0);
+    }
+
+    // Mismatched preview poseIdentity (different FLA source) also must NOT hit cached refs even in same open project instance
+    editorStore.open('D:\\Temp\\V2ARetryLeakCheck2', baseProject);
+    await createAdaptiveCharacterFromFlaGraphic({
+      preview,
+      unitId: 'part-001-graphic0001',
+      characterName: 'FailedSeed2',
+      poseFrameOrdinal: 0,
+      api: { commitGraphicInstance },
+      store: editorStore,
+      characters: {
+        createAdaptiveParts: () => {
+          throw new Error('seed failure 2');
+        },
+      },
+    });
+    const mismatchedSourceRes = await createAdaptiveCharacterFromFlaGraphic({
+      preview: { ...preview, poseIdentity: SHA_B },
+      unitId: 'part-001-graphic0001',
+      characterName: 'DifferentSourceRetry',
+      poseFrameOrdinal: 0,
+      reusedAnimationId: definition.id,
+      api: { commitGraphicInstance },
+      store: editorStore,
+      characters: singletonCharacterStore,
+    });
+    expect(mismatchedSourceRes.ok).toBe(true);
+    if (mismatchedSourceRes.ok) {
+      expect(mismatchedSourceRes.autoPlacedCount).toBe(0);
     }
   });
 });

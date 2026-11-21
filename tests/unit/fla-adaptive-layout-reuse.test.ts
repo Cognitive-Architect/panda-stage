@@ -490,7 +490,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
     expect(result.parts[3]!.restTransform.tx).not.toBe(0);
   });
 
-  it('rejects same-name different-source, duplicate symbolRefs, extreme size mismatch, missing bounds, and singular template transforms locally', () => {
+  it('rejects cross-FLA different-SHA archives completely, while enforcing same-archive duplicate/name/size/singular guardrails', () => {
     const targetDef = makeGraphicDefinition(GRAPHIC_MAIN_ID, 'TargetVariant', {
       version: 1,
       symbolDefinitions: {
@@ -539,9 +539,9 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
           ],
         },
       ],
-    });
+    }, SHA_A);
 
-    const templateDef = makeGraphicDefinition(GRAPHIC_ALT_ID, 'TemplateSource', {
+    const templateStructure: FlaGraphicStructure = {
       version: 1,
       symbolDefinitions: {
         head_sym: {
@@ -589,7 +589,20 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
           ],
         },
       ],
-    }, SHA_C);
+    };
+
+    const crossFlaTemplateDef = makeGraphicDefinition(
+      GRAPHIC_ALT_ID,
+      'CrossFlaTemplate',
+      templateStructure,
+      SHA_C,
+    );
+    const sameArchiveTemplateDef = makeGraphicDefinition(
+      GRAPHIC_ALT_ID,
+      'SameArchiveTemplate',
+      templateStructure,
+      SHA_A,
+    );
 
     const templateChar: AdaptivePartsCharacter = {
       id: TEMPLATE_CHAR_A_ID,
@@ -674,15 +687,48 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
     };
 
     const base = makeBaseProject();
-    const project: Project = {
+    // 1) Cross-FLA (different source.sha256) MUST reject automatic B matching completely (even for matching symbolRef & bounds).
+    const crossFlaProject: Project = {
       ...base,
-      animations: [targetDef, templateDef],
+      animations: [targetDef, crossFlaTemplateDef],
+      characters: [...base.characters, templateChar],
+    };
+    let crossFlaBRes: FlaGraphicSavedLayoutResolution | null = null;
+    const crossFlaBuilt = buildAdaptivePartsFromFlaGraphicSubtrees({
+      project: crossFlaProject,
+      definition: targetDef,
+      frameOrdinal: 0,
+      selections: [
+        { nodePath: ['t-head'], label: 'Head' },
+        { nodePath: ['t-torso'], label: 'Torso' },
+        { nodePath: ['t-sleeve-l'], label: '未命名 7' },
+        { nodePath: ['t-sleeve-r'], label: '未命名 7' },
+        { nodePath: ['t-hair'], label: 'Hair' },
+        { nodePath: ['t-prop'], label: 'Prop' },
+        { nodePath: ['t-badge'], label: 'Badge' },
+      ],
+      applyAuthorPose: true,
+      applySavedLayoutReuse: true,
+      onSavedLayoutResolved: (r) => {
+        crossFlaBRes = r;
+      },
+    });
+    expect(crossFlaBRes!.matchedCount).toBe(0);
+    expect(crossFlaBRes!.availableTemplates).toEqual([]);
+    for (const part of crossFlaBuilt.parts) {
+      expect(part.restTransform).toEqual(IDENTITY);
+    }
+
+    // 2) Same FLA archive (same source.sha256) allows unique symbolRefs while still rejecting duplicate/name/size/singular cases locally.
+    const sameArchiveProject: Project = {
+      ...base,
+      animations: [targetDef, sameArchiveTemplateDef],
       characters: [...base.characters, templateChar],
     };
 
     let bRes: FlaGraphicSavedLayoutResolution | null = null;
     const built = buildAdaptivePartsFromFlaGraphicSubtrees({
-      project,
+      project: sameArchiveProject,
       definition: targetDef,
       frameOrdinal: 0,
       selections: [
@@ -701,7 +747,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
       },
     });
 
-    expect(bRes!.matchedCount).toBe(2); // ONLY Head + Torso match!
+    expect(bRes!.matchedCount).toBe(2); // ONLY same-SHA Head + Torso match!
     expect(bRes!.skippedReasons.get(2)).toBe('ambiguous-identity');
     expect(bRes!.skippedReasons.get(3)).toBe('ambiguous-identity');
     expect(bRes!.skippedReasons.get(4)).toBe('unmatched'); // Same name 'Hair', different symbolRef hair_a vs hair_b
@@ -717,7 +763,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
     expect(built.parts[6]!.restTransform).toEqual(IDENTITY);
   });
 
-  it('shares identical B placement & notice across 主入口 and 快捷入口 and supports lightweight template switching in CharacterAssemblyWorkbench', async () => {
+  it('auto-applies when a unique template (or unique stronger same-definition winner) exists, while holding multiple equally valid templates for explicit workbench selection and undo/redo', async () => {
     const definition = makeGraphicDefinition(
       GRAPHIC_MAIN_ID,
       'ScatteredNoAuthorPose',
@@ -957,8 +1003,11 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     const entry1Notice = activeContainer.querySelector('.character-manager-status')?.textContent;
-    expect(entry1Notice).toBe('已按已保存布局自动摆放 4/4 个零件');
+    expect(entry1Notice).toBe('检测到 2 个可用已保存布局，未自动选择；可在工作区中选择套用');
     const char1 = editorProjectStore.getSnapshot()!.project.characters.at(-1)!;
+    if (char1.mode === 'adaptive-parts') {
+      expect(char1.parts.every((part) => part.restTransform.tx === 0 && part.restTransform.ty === 0)).toBe(true);
+    }
 
     // Entry 2: 快捷入口
     characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
@@ -996,6 +1045,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
                   autoPlacedCount: result.autoPlacedCount,
                   authorPosePlacedCount: result.authorPosePlacedCount,
                   savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+                  availableSavedLayoutCount: result.availableSavedLayoutCount,
                   autoPlacedOrigin: result.autoPlacedOrigin,
                 },
               ),
@@ -1067,7 +1117,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
     expect(applyBtn).not.toBeNull();
     expect(selectEl!.options).toHaveLength(2);
 
-    // Switch to Template B and apply cleanly, verify Undo/Redo & Apply persistence
+    // Explicitly pick Template B and apply cleanly, verify draft Undo/Redo + Apply + Project Undo/Redo
     await act(async () => {
       selectEl!.value = TEMPLATE_CHAR_B_ID;
       selectEl!.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1081,6 +1131,7 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
       expect(afterTemplateB.draft.parts[0]!.restTransform.tx).toBeCloseTo(300, 4);
       expect(afterTemplateB.draft.parts[0]!.restTransform.ty).toBeCloseTo(120, 4);
     }
+
     // Commit Template B to Project, verify Save/Reopen schema roundtrip, then Undo/Redo in History.
     await act(async () => {
       activeContainer!.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-assembly-apply"]')!.click();
@@ -1091,12 +1142,145 @@ describe('FLA Graphic V2-B Saved Layout / Template Reuse + Joint A->B (#1207)', 
     const updatedChar = persistedAfterApply.characters.find((c) => c.id === char2.id)!;
     expect(updatedChar.mode === 'adaptive-parts' && updatedChar.parts[0]!.restTransform.tx).toBeCloseTo(300, 4);
 
-    // Project Undo reverts Template B back to initial Template A cleanly; Redo restores Template B cleanly.
+    // Project Undo reverts Template B back to initial V1 identity cleanly; Redo restores Template B cleanly.
     editorProjectStore.history.undo();
     const afterProjectUndo = editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === char2.id)!;
-    expect(afterProjectUndo.mode === 'adaptive-parts' && afterProjectUndo.parts[0]!.restTransform.tx).toBeCloseTo(200, 4);
+    expect(afterProjectUndo.mode === 'adaptive-parts' && afterProjectUndo.parts[0]!.restTransform.tx).toBe(0);
     editorProjectStore.history.redo();
     const afterProjectRedo = editorProjectStore.getSnapshot()!.project.characters.find((c) => c.id === char2.id)!;
     expect(afterProjectRedo.mode === 'adaptive-parts' && afterProjectRedo.parts[0]!.restTransform.tx).toBeCloseTo(300, 4);
+
+    // Verify single valid template auto-placement still works when only tplA is present, and unique sameDefinition winner beats sibling.
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+    editorProjectStore.open('D:\\Temp\\V2BSingleTemplate', projectWithoutDef);
+    const singleTemplateResult = await createAdaptiveCharacterFromFlaGraphic({
+      preview,
+      unitId: 'part-001-graphic0001',
+      characterName: 'SingleTemplateHero',
+      poseFrameOrdinal: 0,
+      api: {
+        commitGraphicInstance: vi.fn(async () => {
+          const snap = editorProjectStore.getSnapshot()!;
+          return {
+            ok: true as const,
+            status: 'completed' as const,
+            requestId: randomUUID(),
+            projectRoot: snap.projectRoot,
+            projectId: snap.project.id,
+            openInstanceId: editorProjectStore.getProjectInstanceId()!,
+            baseRevision: snap.revision,
+            savedRevision: snap.revision + 1,
+            projectChanged: true,
+            project: {
+              ...snap.project,
+              animations: [definition],
+              characters: [...snap.project.characters, tplA],
+              voiceProfiles: [
+                ...snap.project.voiceProfiles,
+                makeTemplateVoiceProfile(tplA.id, tplA.defaultVoiceProfileId),
+              ],
+            },
+            animationId: GRAPHIC_MAIN_ID,
+            layerId: null,
+          };
+        }),
+      },
+      store: editorProjectStore,
+      characters: characterStore,
+    });
+    expect(singleTemplateResult.ok).toBe(true);
+    if (singleTemplateResult.ok) {
+      expect(singleTemplateResult.savedLayoutPlacedCount).toBe(4);
+      expect(
+        formatFlaGraphicSkippedSummary(
+          singleTemplateResult.partCount,
+          singleTemplateResult.skipped,
+          singleTemplateResult.warnings,
+          {
+            autoPlacedCount: singleTemplateResult.autoPlacedCount,
+            authorPosePlacedCount: singleTemplateResult.authorPosePlacedCount,
+            savedLayoutPlacedCount: singleTemplateResult.savedLayoutPlacedCount,
+            availableSavedLayoutCount: singleTemplateResult.availableSavedLayoutCount,
+            autoPlacedOrigin: singleTemplateResult.autoPlacedOrigin,
+          },
+        ),
+      ).toBe('已按已保存布局自动摆放 4/4 个零件');
+    }
+
+    // Domain tie-breaking rule: 1 unique sameDefinition template beats a sibling sameSourceArchive template cleanly,
+    // whereas 2 sibling sameSourceArchive templates without sameDefinition remain ambiguous.
+    const siblingDef = makeGraphicDefinition(GRAPHIC_ALT_ID, 'SiblingGraphic', makeScatteredSingleFrameStructure(), SHA_A);
+    const tplSibling = makeSavedTemplateCharacter({
+      id: '31000000-0000-4000-8000-000000000099',
+      name: '同FLA兄弟模板',
+      animationId: GRAPHIC_ALT_ID,
+      headTx: 420,
+      headTy: 160,
+      torsoTx: 300,
+      torsoTy: 230,
+      armLTx: 130,
+      armLTy: 225,
+      armRTx: 110,
+      armRTy: 225,
+    });
+    const tplSibling2 = makeSavedTemplateCharacter({
+      id: '31000000-0000-4000-8000-000000000100',
+      name: '同FLA兄弟模板 B',
+      animationId: GRAPHIC_ALT_ID,
+      headTx: 520,
+      headTy: 160,
+      torsoTx: 400,
+      torsoTy: 230,
+      armLTx: 230,
+      armLTy: 225,
+      armRTx: 210,
+      armRTy: 225,
+    });
+    let strongerWinnerRes: FlaGraphicSavedLayoutResolution | null = null;
+    buildAdaptivePartsFromFlaGraphicSubtrees({
+      project: {
+        ...base,
+        animations: [definition, siblingDef],
+        characters: [...base.characters, tplA, tplSibling],
+      },
+      definition,
+      frameOrdinal: 0,
+      selections: [
+        { nodePath: ['f0-head'], label: 'Head' },
+        { nodePath: ['f0-torso'], label: 'Torso' },
+        { nodePath: ['f0-arm-l'], label: 'Arm L' },
+        { nodePath: ['f0-arm-r'], label: 'Arm R' },
+      ],
+      applySavedLayoutReuse: true,
+      onSavedLayoutResolved: (r) => {
+        strongerWinnerRes = r;
+      },
+    });
+    expect(strongerWinnerRes!.selectedTemplate?.templateCharacterId).toBe(TEMPLATE_CHAR_A_ID);
+    expect(strongerWinnerRes!.matchedCount).toBe(4);
+
+    let tiedSiblingsRes: FlaGraphicSavedLayoutResolution | null = null;
+    buildAdaptivePartsFromFlaGraphicSubtrees({
+      project: {
+        ...base,
+        animations: [definition, siblingDef],
+        characters: [...base.characters, tplSibling, tplSibling2],
+      },
+      definition,
+      frameOrdinal: 0,
+      selections: [
+        { nodePath: ['f0-head'], label: 'Head' },
+        { nodePath: ['f0-torso'], label: 'Torso' },
+        { nodePath: ['f0-arm-l'], label: 'Arm L' },
+        { nodePath: ['f0-arm-r'], label: 'Arm R' },
+      ],
+      applySavedLayoutReuse: true,
+      onSavedLayoutResolved: (r) => {
+        tiedSiblingsRes = r;
+      },
+    });
+    expect(tiedSiblingsRes!.selectedTemplate).toBeNull();
+    expect(tiedSiblingsRes!.matchedCount).toBe(0);
+    expect(tiedSiblingsRes!.availableTemplates).toHaveLength(2);
   });
 });

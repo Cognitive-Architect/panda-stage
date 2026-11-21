@@ -261,6 +261,7 @@ export function ResourceActivityDock({
         autoPlacedCount: result.autoPlacedCount,
         authorPosePlacedCount: result.authorPosePlacedCount,
         savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+        availableSavedLayoutCount: result.availableSavedLayoutCount,
         autoPlacedOrigin: result.autoPlacedOrigin,
       },
     );
