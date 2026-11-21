@@ -259,6 +259,8 @@ export function ResourceActivityDock({
       result.warnings,
       {
         autoPlacedCount: result.autoPlacedCount,
+        authorPosePlacedCount: result.authorPosePlacedCount,
+        savedLayoutPlacedCount: result.savedLayoutPlacedCount,
         autoPlacedOrigin: result.autoPlacedOrigin,
       },
     );

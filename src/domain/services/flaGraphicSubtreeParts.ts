@@ -35,6 +35,10 @@ import {
   type FlaGraphicAuthorPoseReference,
   type FlaGraphicAuthorPoseResolution,
 } from './flaAuthorPosePlacement';
+import {
+  resolveFlaGraphicSavedLayoutPlacements,
+  type FlaGraphicSavedLayoutResolution,
+} from './flaAdaptiveLayoutReuse';
 
 const IDENTITY_TRANSFORM: Readonly<CharacterPartTransform> = {
   a: 1,
@@ -90,7 +94,9 @@ export interface FlaGraphicSubtreeCollectionResult {
 }
 
 export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
-  readonly project: Pick<Project, 'assets' | 'characters'>;
+  readonly project: Pick<Project, 'assets' | 'characters'> & {
+    readonly animations?: Project['animations'];
+  };
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly selections: readonly FlaGraphicSubtreeSelectionInput[];
@@ -103,6 +109,10 @@ export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
   /** Bounded external author pose references extracted from the same FLA (e.g. sibling Graphics / Scene). */
   readonly authorPoseReferences?: readonly FlaGraphicAuthorPoseReference[];
   readonly onAuthorPoseResolved?: (resolution: FlaGraphicAuthorPoseResolution) => void;
+  /** When true, runs V2-B saved-layout reuse ONLY on parts left unmatched by V2-A. */
+  readonly applySavedLayoutReuse?: boolean;
+  readonly preferredTemplateCharacterId?: string;
+  readonly onSavedLayoutResolved?: (resolution: FlaGraphicSavedLayoutResolution) => void;
 }
 
 export function flaGraphicNodePathsEqual(
@@ -1039,6 +1049,7 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
   });
 
   let parts = baseParts;
+  const authorPlacedPartIds = new Set<string>();
   if (input.applyAuthorPose) {
     const intraDefinitionReferences = extractFlaAuthorPoseReferencesFromDefinition(
       input.definition,
@@ -1075,6 +1086,7 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
         .map((part, partIndex) => {
           const placement = resolution.placementsByPartIndex.get(partIndex);
           if (!placement) return part;
+          authorPlacedPartIds.add(part.partId);
           return {
             ...part,
             sourceRestTransform: { ...placement.sourceRestTransform },
@@ -1083,6 +1095,43 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
           };
         })
         .sort((left, right) => left.drawOrder - right.drawOrder);
+    }
+  }
+
+  if (input.applySavedLayoutReuse) {
+    const lockedPartIndices = new Set<number>();
+    parts.forEach((part, index) => {
+      if (authorPlacedPartIds.has(part.partId)) {
+        lockedPartIndices.add(index);
+      }
+    });
+    const layoutResolution = resolveFlaGraphicSavedLayoutPlacements({
+      project: {
+        assets: input.project.assets,
+        animations: input.project.animations ?? [input.definition],
+        characters: input.project.characters,
+      },
+      definition: input.definition,
+      frameOrdinal: input.frameOrdinal,
+      parts,
+      lockedPartIndices,
+      ...(input.preferredTemplateCharacterId
+        ? { preferredTemplateCharacterId: input.preferredTemplateCharacterId }
+        : {}),
+    });
+    input.onSavedLayoutResolved?.(layoutResolution);
+
+    if (layoutResolution.matchedCount > 0) {
+      parts = parts.map((part, partIndex) => {
+        if (authorPlacedPartIds.has(part.partId)) return part;
+        const placement = layoutResolution.placementsByPartIndex.get(partIndex);
+        if (!placement) return part;
+        return {
+          ...part,
+          sourceRestTransform: { ...placement.sourceRestTransform },
+          restTransform: { ...placement.restTransform },
+        };
+      });
     }
   }
 

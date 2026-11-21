@@ -5,6 +5,7 @@ import {
   type FlaGraphicAuthorPoseReference,
   type FlaGraphicAuthorPoseResolution,
   type FlaGraphicDefinition,
+  type FlaGraphicSavedLayoutResolution,
   type FlaGraphicSubtreeCollectionResult,
   type FlaGraphicSubtreeCollectionSkippedItem,
 } from '../../../domain';
@@ -29,6 +30,11 @@ export interface CreateAdaptiveCharacterFromGraphicInput {
   readonly reusedAnimationId?: string;
 }
 
+export type FlaGraphicAutoPlacedOrigin =
+  | 'author-pose'
+  | 'saved-layout'
+  | 'author-pose-and-layout';
+
 export type CreateAdaptiveCharacterFromGraphicResult =
   | {
       readonly ok: true;
@@ -37,7 +43,9 @@ export type CreateAdaptiveCharacterFromGraphicResult =
       readonly characterName: string;
       readonly partCount: number;
       readonly autoPlacedCount: number;
-      readonly autoPlacedOrigin?: 'author-pose' | 'saved-layout' | null;
+      readonly authorPosePlacedCount?: number;
+      readonly savedLayoutPlacedCount?: number;
+      readonly autoPlacedOrigin?: FlaGraphicAutoPlacedOrigin | null;
       readonly autoPlacedReferenceLabel?: string | null;
       readonly skipped: readonly FlaGraphicSubtreeCollectionSkippedItem[];
       readonly warnings: readonly string[];
@@ -73,7 +81,9 @@ export interface CreateAdaptiveCharacterFromGraphicDependencies
 
 export interface FlaGraphicPlacementNoticeMeta {
   readonly autoPlacedCount?: number;
-  readonly autoPlacedOrigin?: 'author-pose' | 'saved-layout' | null;
+  readonly authorPosePlacedCount?: number;
+  readonly savedLayoutPlacedCount?: number;
+  readonly autoPlacedOrigin?: FlaGraphicAutoPlacedOrigin | null;
 }
 
 export function formatFlaGraphicSkippedSummary(
@@ -86,11 +96,15 @@ export function formatFlaGraphicSkippedSummary(
     new Set(warnings.map((warning) => warning.trim()).filter(Boolean)),
   );
   const autoPlacedCount = placement?.autoPlacedCount ?? 0;
+  const authorCount = placement?.authorPosePlacedCount ?? 0;
+  const layoutCount = placement?.savedLayoutPlacedCount ?? 0;
   const placementLead =
     autoPlacedCount > 0
-      ? placement?.autoPlacedOrigin === 'saved-layout'
-        ? `已按已保存布局自动摆放 ${autoPlacedCount}/${partCount} 个零件`
-        : `已按参考姿势自动还原 ${autoPlacedCount}/${partCount} 个零件`
+      ? placement?.autoPlacedOrigin === 'author-pose-and-layout' && authorCount > 0 && layoutCount > 0
+        ? `已按参考姿势还原 ${authorCount}/${partCount} 个零件，并按已保存布局补充摆放 ${layoutCount} 个零件`
+        : placement?.autoPlacedOrigin === 'saved-layout'
+          ? `已按已保存布局自动摆放 ${autoPlacedCount}/${partCount} 个零件`
+          : `已按参考姿势自动还原 ${autoPlacedCount}/${partCount} 个零件`
       : null;
 
   if (skipped.length === 0 && uniqueWarnings.length === 0) {
@@ -289,6 +303,7 @@ export async function createAdaptiveCharacterFromFlaGraphic(
 
   try {
     const authorPoseRef: { current: FlaGraphicAuthorPoseResolution | null } = { current: null };
+    const savedLayoutRef: { current: FlaGraphicSavedLayoutResolution | null } = { current: null };
     const createInput = buildAdaptivePartsFromFlaGraphicSubtrees({
       project: liveSnapshot.project,
       definition,
@@ -302,9 +317,28 @@ export async function createAdaptiveCharacterFromFlaGraphic(
       onAuthorPoseResolved: (resolution) => {
         authorPoseRef.current = resolution;
       },
+      applySavedLayoutReuse: true,
+      onSavedLayoutResolved: (resolution) => {
+        savedLayoutRef.current = resolution;
+      },
     });
-    const autoPlacedCount = authorPoseRef.current?.matchedCount ?? 0;
-    const autoPlacedReferenceLabel = authorPoseRef.current?.matchedReferenceLabel ?? null;
+    const authorPoseCount = authorPoseRef.current?.matchedCount ?? 0;
+    const savedLayoutCount = savedLayoutRef.current?.matchedCount ?? 0;
+    const autoPlacedCount = authorPoseCount + savedLayoutCount;
+    const autoPlacedOrigin: FlaGraphicAutoPlacedOrigin | null =
+      authorPoseCount > 0 && savedLayoutCount > 0
+        ? 'author-pose-and-layout'
+        : authorPoseCount > 0
+          ? 'author-pose'
+          : savedLayoutCount > 0
+            ? 'saved-layout'
+            : null;
+    const autoPlacedReferenceLabel =
+      authorPoseCount > 0
+        ? (authorPoseRef.current?.matchedReferenceLabel ?? null)
+        : savedLayoutCount > 0
+          ? (savedLayoutRef.current?.selectedTemplate?.templateCharacterName ?? null)
+          : null;
     const updatedProject = options.characters.createAdaptiveParts(
       createInput,
       liveSnapshot,
@@ -335,7 +369,9 @@ export async function createAdaptiveCharacterFromFlaGraphic(
       characterName: createdCharacter.name,
       partCount: createdCharacter.parts.length,
       autoPlacedCount,
-      autoPlacedOrigin: autoPlacedCount > 0 ? 'author-pose' : null,
+      authorPosePlacedCount: authorPoseCount,
+      savedLayoutPlacedCount: savedLayoutCount,
+      autoPlacedOrigin,
       autoPlacedReferenceLabel,
       skipped: collection.skipped,
       warnings: collection.warnings,
