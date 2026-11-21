@@ -9,6 +9,9 @@ import {
   type Point,
 } from '../geometry';
 import {
+  isFlaGraphicDefinition,
+  isFlaGraphicEditableSubtreeShapeNode,
+  isFlaGraphicNodeTransformable,
   ProjectSchema,
   type AnimationPlayback,
   type Layer,
@@ -17,8 +20,23 @@ import {
 } from '../models';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
+  cloneFlaEditableShapeRegion,
+  cloneFlaGraphicShapeNodeOverride,
+  cloneFlaGraphicShapeOverrides,
+  decomposeSvgToEditableShapeRegions,
+  findFlaExtractedShapeRegionByPath,
+  moveFlaShapeRegionVertex as moveShapeRegionVertexPure,
+  setFlaShapeRegionSolidFillColor as setShapeRegionSolidFillColorPure,
+  type FlaEditableShapeRegion,
+  type FlaGraphicShapeNodeOverride,
+  type FlaGraphicShapeOverrides,
+  type FlaShapeVertexTarget,
+} from '../fla-shape-vector';
+import {
   cloneFlaGraphicInstanceTransformOverrides,
   findFlaGraphicStructureNodeAtPath,
+  flaGraphicInstanceNodePathKey,
+  getFlaGraphicInstanceTransformOverride,
   pruneFlaGraphicInstanceTransformOverrides,
   setFlaGraphicInstanceTransformOverride,
   updateFlaGraphicStructureAuthoredTransform,
@@ -58,7 +76,16 @@ export type LayerServiceErrorCode =
   | 'BACKGROUND_COVER_INVALID'
   | 'BACKGROUND_LAYER_PROTECTED'
   | 'LAYER_LOCKED'
-  | 'ID_GENERATION_FAILED';
+  | 'ID_GENERATION_FAILED'
+  | 'FLA_GRAPHIC_REQUIRED'
+  | 'SHAPE_SVG_REQUIRED'
+  | 'SHAPE_NO_EDITABLE_REGIONS'
+  | 'SHAPE_NODE_REQUIRED'
+  | 'SHAPE_BITMAP_FILL_UNSUPPORTED'
+  | 'SHAPE_AMBIGUOUS_STROKES'
+  | 'SHAPE_REGION_NOT_FOUND'
+  | 'SHAPE_REGION_REQUIRED'
+  | 'SHAPE_FILL_NOT_SOLID';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -642,17 +669,37 @@ export class LayerService {
       frameOrdinal,
       nodePath,
     );
-    if (!node || node.type === 'opaque') return project;
+    const frameKey = String(frameOrdinal);
+    const extractedMatch =
+      !node
+        ? findFlaExtractedShapeRegionByPath(
+            layer.flaGraphicInstanceShapeOverrides?.[frameKey],
+            nodePath,
+          ) ??
+          findFlaExtractedShapeRegionByPath(
+            definition.flaGraphicSharedShapeOverrides?.[frameKey],
+            nodePath,
+          )
+        : null;
+    const authoredTransform =
+      node && isFlaGraphicNodeTransformable(node)
+        ? node.localTransform
+        : extractedMatch?.entry.localTransform;
+    if (!authoredTransform) return project;
 
     const pruned = pruneFlaGraphicInstanceTransformOverrides(
       layer.flaGraphicInstanceTransformOverrides,
       definition.structure,
+      {
+        instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+        sharedShapeOverrides: definition.flaGraphicSharedShapeOverrides,
+      },
     );
     const nextOverrides = setFlaGraphicInstanceTransformOverride(
       pruned,
       frameOrdinal,
       nodePath,
-      node.localTransform,
+      authoredTransform,
       localTransform,
     );
     if (nextOverrides === layer.flaGraphicInstanceTransformOverrides) {
@@ -687,11 +734,7 @@ export class LayerService {
     );
     if (animationIndex < 0) return project;
     const definition = project.animations[animationIndex]!;
-    if (
-      !('kind' in definition) ||
-      definition.kind !== 'fla-graphic' ||
-      !definition.structure
-    ) {
+    if (!isFlaGraphicDefinition(definition) || !definition.structure) {
       return project;
     }
     const nextStructure = updateFlaGraphicStructureAuthoredTransform(
@@ -700,18 +743,480 @@ export class LayerService {
       nodePath,
       localTransform,
     );
-    if (nextStructure === definition.structure) {
-      return project;
+    if (nextStructure !== definition.structure) {
+      const nextAnimations = [...project.animations];
+      nextAnimations[animationIndex] = {
+        ...definition,
+        structure: nextStructure,
+      };
+      return {
+        ...project,
+        animations: nextAnimations,
+      };
     }
+
+    const frameKey = String(frameOrdinal);
+    const extractedMatch = findFlaExtractedShapeRegionByPath(
+      definition.flaGraphicSharedShapeOverrides?.[frameKey],
+      nodePath,
+    );
+    if (!extractedMatch) return project;
+    const nextShapeOverrides = cloneFlaGraphicShapeOverrides(
+      definition.flaGraphicSharedShapeOverrides,
+    );
+    const ownerOverride = nextShapeOverrides?.[frameKey]?.[extractedMatch.ownerPathKey];
+    const targetEntry = ownerOverride?.extractedRegions[extractedMatch.entryIndex];
+    if (!nextShapeOverrides || !ownerOverride || !targetEntry) return project;
+    targetEntry.localTransform = { ...localTransform };
     const nextAnimations = [...project.animations];
     nextAnimations[animationIndex] = {
       ...definition,
-      structure: nextStructure,
+      flaGraphicSharedShapeOverrides: nextShapeOverrides,
     };
     return {
       ...project,
       animations: nextAnimations,
     };
+  }
+
+  private resolveEditableFlaGraphicContext(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ) {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    if (layer.source.kind !== 'animation') {
+      throw new LayerServiceError('ANIMATION_LAYER_REQUIRED', '当前图层不是 FLA Graphic 动画图层。');
+    }
+    const animationId = layer.source.animationId;
+    const animationIndex = project.animations.findIndex(
+      (candidate) => candidate.id === animationId,
+    );
+    const definition = animationIndex >= 0 ? project.animations[animationIndex] : undefined;
+    if (
+      !definition ||
+      !isFlaGraphicDefinition(definition) ||
+      !definition.structure
+    ) {
+      throw new LayerServiceError('FLA_GRAPHIC_REQUIRED', '当前图层未关联可编辑的结构化 Graphic。');
+    }
+    return { shot, layerIndex, layer, animationIndex, definition };
+  }
+
+  private resolveOrSeedShapeNodeOverride(input: {
+    readonly existingOverride: FlaGraphicShapeNodeOverride | undefined;
+    readonly fallbackViewBox?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+    readonly sourceShapeRef?: string;
+    readonly svgText?: string;
+  }): FlaGraphicShapeNodeOverride {
+    if (input.existingOverride) {
+      return cloneFlaGraphicShapeNodeOverride(input.existingOverride);
+    }
+    if (!input.svgText) {
+      throw new LayerServiceError(
+        'SHAPE_SVG_REQUIRED',
+        '当前 Shape 尚未加载矢量 SVG 资源，请稍后重试。',
+      );
+    }
+    const decomposed = decomposeSvgToEditableShapeRegions(input.svgText, {
+      ...(input.sourceShapeRef ? { sourceShapeRef: input.sourceShapeRef } : {}),
+      ...(input.fallbackViewBox ? { baseViewBox: input.fallbackViewBox } : {}),
+    });
+    if (decomposed.regions.length === 0) {
+      throw new LayerServiceError(
+        'SHAPE_NO_EDITABLE_REGIONS',
+        '当前 Shape 内没有可提取或可编辑的绘制区域。',
+      );
+    }
+    return {
+      baseViewBox: { ...decomposed.viewBox },
+      regions: decomposed.regions.map((region) => ({ ...region })),
+      excludedRegionRefs: [],
+      extractedRegions: [],
+      ...(decomposed.residueStrokes.length > 0
+        ? {
+            residueStrokes: decomposed.residueStrokes.map((s) => ({
+              ...s,
+              commands: s.commands.map((cmd) => ({ ...cmd })),
+            })),
+          }
+        : {}),
+      ...(decomposed.hasUnrenderableResidue ? { hasUnrenderableResidue: true } : {}),
+      ...(decomposed.ambiguousRegionRefs.size > 0
+        ? { ambiguousRegionRefs: [...decomposed.ambiguousRegionRefs] }
+        : {}),
+      ...(decomposed.bitmapFillRegionRefs.size > 0
+        ? { bitmapFillRegionRefs: [...decomposed.bitmapFillRegionRefs] }
+        : {}),
+      ...(decomposed.defsSvg ? { sourceDefsSvg: decomposed.defsSvg } : {}),
+    };
+  }
+
+  private assertShapeOverrideSafeForEdit(
+    nodeOverride: FlaGraphicShapeNodeOverride,
+  ): void {
+    if (
+      nodeOverride.hasUnrenderableResidue ||
+      (nodeOverride.bitmapFillRegionRefs?.length ?? 0) > 0 ||
+      nodeOverride.regions.some((r) => r.fill.kind === 'preserved')
+    ) {
+      throw new LayerServiceError(
+        'SHAPE_BITMAP_FILL_UNSUPPORTED',
+        '当前形状包含位图填充或受保护的复杂绘制残留，暂不支持拆区或内部矢量编辑；请选择更外层组合。',
+      );
+    }
+  }
+
+  private commitShapeOverrides(
+    project: Project,
+    context: ReturnType<LayerService['resolveEditableFlaGraphicContext']>,
+    mode: 'instance' | 'definition',
+    frameKey: string,
+    ownerPathKey: string,
+    nextNodeOverride: FlaGraphicShapeNodeOverride,
+  ): Project {
+    if (mode === 'definition') {
+      const nextShared: FlaGraphicShapeOverrides =
+        cloneFlaGraphicShapeOverrides(
+          context.definition.flaGraphicSharedShapeOverrides,
+        ) ?? {};
+      nextShared[frameKey] = {
+        ...nextShared[frameKey],
+        [ownerPathKey]: nextNodeOverride,
+      };
+      const nextAnimations = [...project.animations];
+      nextAnimations[context.animationIndex] = {
+        ...context.definition,
+        flaGraphicSharedShapeOverrides: nextShared,
+      };
+      return { ...project, animations: nextAnimations };
+    }
+    const nextInstance: FlaGraphicShapeOverrides =
+      cloneFlaGraphicShapeOverrides(context.layer.flaGraphicInstanceShapeOverrides) ?? {};
+    nextInstance[frameKey] = {
+      ...nextInstance[frameKey],
+      [ownerPathKey]: nextNodeOverride,
+    };
+    const layers = [...context.shot.layers];
+    layers[context.layerIndex] = {
+      ...context.layer,
+      flaGraphicInstanceShapeOverrides: nextInstance,
+    };
+    return this.replaceShot(project, { ...context.shot, layers });
+  }
+
+  extractFlaGraphicShapeRegion(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef: string;
+      readonly mode: 'instance' | 'definition';
+      readonly svgText?: string;
+      readonly displayName?: string;
+    },
+  ): {
+    readonly project: Project;
+    readonly extractedNodePath: readonly string[];
+    readonly region: FlaEditableShapeRegion;
+  } {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const node = findFlaGraphicStructureNodeAtPath(
+      context.definition.structure!,
+      input.frameOrdinal,
+      input.nodePath,
+    );
+    if (!node || !isFlaGraphicEditableSubtreeShapeNode(node)) {
+      throw new LayerServiceError(
+        'SHAPE_NODE_REQUIRED',
+        '仅支持在可编辑的独立 Shape 节点内部提取绘制区域。',
+      );
+    }
+    const frameKey = String(input.frameOrdinal);
+    const ownerPathKey = flaGraphicInstanceNodePathKey(input.nodePath);
+    const existingOverride =
+      input.mode === 'instance'
+        ? context.layer.flaGraphicInstanceShapeOverrides?.[frameKey]?.[ownerPathKey] ??
+          context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey]
+        : context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey];
+    const nodeOverride = this.resolveOrSeedShapeNodeOverride({
+      existingOverride,
+      fallbackViewBox: node.fallbackViewBox,
+      sourceShapeRef: node.sourceRef,
+      svgText: input.svgText,
+    });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
+
+    if (nodeOverride.bitmapFillRegionRefs?.includes(input.regionRef)) {
+      throw new LayerServiceError(
+        'SHAPE_BITMAP_FILL_UNSUPPORTED',
+        '当前区域包含位图填充，暂不支持单独提取；请选择更外层组合。',
+      );
+    }
+    if (nodeOverride.ambiguousRegionRefs?.includes(input.regionRef)) {
+      throw new LayerServiceError(
+        'SHAPE_AMBIGUOUS_STROKES',
+        '当前区域的描边与相邻形状共用且无法明确归属，暂不支持单独提取；请选择更外层组合。',
+      );
+    }
+
+    const parentPath = input.nodePath.slice(0, -1);
+    const alreadyExtracted = nodeOverride.extractedRegions.find(
+      (entry) => entry.regionRef === input.regionRef,
+    );
+    if (alreadyExtracted) {
+      return {
+        project,
+        extractedNodePath: [...parentPath, alreadyExtracted.id],
+        region: alreadyExtracted.region,
+      };
+    }
+
+    const region = nodeOverride.regions.find(
+      (candidate) => candidate.regionRef === input.regionRef,
+    );
+    if (!region) {
+      throw new LayerServiceError(
+        'SHAPE_REGION_NOT_FOUND',
+        '未能定位所选绘制区域，请重新点选目标形状后再试。',
+      );
+    }
+    if (region.fill.kind === 'preserved') {
+      throw new LayerServiceError(
+        'SHAPE_BITMAP_FILL_UNSUPPORTED',
+        '当前区域包含位图或受保护填充，暂不支持单独提取；请选择更外层组合。',
+      );
+    }
+
+    const authoredTransform =
+      input.mode === 'instance'
+        ? getFlaGraphicInstanceTransformOverride(
+            context.layer.flaGraphicInstanceTransformOverrides,
+            input.frameOrdinal,
+            input.nodePath,
+          ) ?? node.localTransform
+        : node.localTransform;
+    const entryId = `${node.id}::${region.regionRef}`;
+    const neutralName =
+      input.displayName?.trim() || `区域 ${nodeOverride.extractedRegions.length + 1}`;
+    const entry = {
+      id: entryId,
+      regionRef: region.regionRef,
+      displayName: neutralName.slice(0, 120),
+      region: cloneFlaEditableShapeRegion(region),
+      baseViewBox: { ...region.bounds },
+      localTransform: { ...authoredTransform },
+    };
+    const nextNodeOverride: FlaGraphicShapeNodeOverride = {
+      ...nodeOverride,
+      excludedRegionRefs: nodeOverride.excludedRegionRefs.includes(region.regionRef)
+        ? [...nodeOverride.excludedRegionRefs]
+        : [...nodeOverride.excludedRegionRefs, region.regionRef],
+      extractedRegions: [...nodeOverride.extractedRegions, entry],
+    };
+    return {
+      project: this.commitShapeOverrides(
+        project,
+        context,
+        input.mode,
+        frameKey,
+        ownerPathKey,
+        nextNodeOverride,
+      ),
+      extractedNodePath: [...parentPath, entry.id],
+      region: entry.region,
+    };
+  }
+
+  private mutateFlaGraphicShapeRegion(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef?: string;
+      readonly mode: 'instance' | 'definition';
+      readonly svgText?: string;
+      readonly mutator: (region: FlaEditableShapeRegion) => FlaEditableShapeRegion | null;
+      readonly failReason?: { readonly code: LayerServiceErrorCode; readonly message: string };
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const frameKey = String(input.frameOrdinal);
+    const extractedMatch =
+      (input.mode === 'instance'
+        ? findFlaExtractedShapeRegionByPath(
+            context.layer.flaGraphicInstanceShapeOverrides?.[frameKey],
+            input.nodePath,
+          ) ??
+          findFlaExtractedShapeRegionByPath(
+            context.definition.flaGraphicSharedShapeOverrides?.[frameKey],
+            input.nodePath,
+          )
+        : findFlaExtractedShapeRegionByPath(
+            context.definition.flaGraphicSharedShapeOverrides?.[frameKey],
+            input.nodePath,
+          ));
+
+    if (extractedMatch) {
+      const existingOwner =
+        input.mode === 'instance'
+          ? context.layer.flaGraphicInstanceShapeOverrides?.[frameKey]?.[
+              extractedMatch.ownerPathKey
+            ] ??
+            context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[
+              extractedMatch.ownerPathKey
+            ]
+          : context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[
+              extractedMatch.ownerPathKey
+            ];
+      if (!existingOwner) return project;
+      const clonedOwner = cloneFlaGraphicShapeNodeOverride(existingOwner);
+      const entry = clonedOwner.extractedRegions[extractedMatch.entryIndex];
+      if (!entry) return project;
+      const updated = input.mutator(entry.region);
+      if (!updated) {
+        if (input.failReason) {
+          throw new LayerServiceError(input.failReason.code, input.failReason.message);
+        }
+        return project;
+      }
+      entry.region = updated;
+      return this.commitShapeOverrides(
+        project,
+        context,
+        input.mode,
+        frameKey,
+        extractedMatch.ownerPathKey,
+        clonedOwner,
+      );
+    }
+
+    const node = findFlaGraphicStructureNodeAtPath(
+      context.definition.structure!,
+      input.frameOrdinal,
+      input.nodePath,
+    );
+    if (!node || !isFlaGraphicEditableSubtreeShapeNode(node)) {
+      throw new LayerServiceError(
+        'SHAPE_NODE_REQUIRED',
+        '当前节点不支持内部区域矢量编辑。',
+      );
+    }
+    const ownerPathKey = flaGraphicInstanceNodePathKey(input.nodePath);
+    const existingOverride =
+      input.mode === 'instance'
+        ? context.layer.flaGraphicInstanceShapeOverrides?.[frameKey]?.[ownerPathKey] ??
+          context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey]
+        : context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey];
+    const nodeOverride = this.resolveOrSeedShapeNodeOverride({
+      existingOverride,
+      fallbackViewBox: node.fallbackViewBox,
+      sourceShapeRef: node.sourceRef,
+      svgText: input.svgText,
+    });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
+    const targetRef =
+      input.regionRef ??
+      (nodeOverride.regions.length === 1 ? nodeOverride.regions[0]!.regionRef : undefined);
+    if (!targetRef) {
+      throw new LayerServiceError(
+        'SHAPE_REGION_REQUIRED',
+        '请先点选要编辑的具体绘制区域。',
+      );
+    }
+    const regionIndex = nodeOverride.regions.findIndex(
+      (candidate) => candidate.regionRef === targetRef,
+    );
+    if (regionIndex < 0) {
+      throw new LayerServiceError('SHAPE_REGION_NOT_FOUND', '未找到对应的绘制区域。');
+    }
+    const currentRegion = nodeOverride.regions[regionIndex]!;
+    if (currentRegion.fill.kind === 'preserved') {
+      throw new LayerServiceError(
+        'SHAPE_BITMAP_FILL_UNSUPPORTED',
+        '当前区域包含位图或复杂受保护填充，暂保持只读。',
+      );
+    }
+    const updated = input.mutator(currentRegion);
+    if (!updated) {
+      if (input.failReason) {
+        throw new LayerServiceError(input.failReason.code, input.failReason.message);
+      }
+      return project;
+    }
+    const nextRegions = [...nodeOverride.regions];
+    nextRegions[regionIndex] = updated;
+    return this.commitShapeOverrides(
+      project,
+      context,
+      input.mode,
+      frameKey,
+      ownerPathKey,
+      {
+        ...nodeOverride,
+        regions: nextRegions,
+      },
+    );
+  }
+
+  updateFlaGraphicShapeRegionFillColor(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef?: string;
+      readonly mode: 'instance' | 'definition';
+      readonly color: string;
+      readonly opacity?: number;
+      readonly svgText?: string;
+    },
+  ): Project {
+    return this.mutateFlaGraphicShapeRegion(project, {
+      ...input,
+      mutator: (region) => setShapeRegionSolidFillColorPure(region, input.color, input.opacity),
+      failReason: {
+        code: 'SHAPE_FILL_NOT_SOLID',
+        message: '仅纯色填充区域支持修改填充色，渐变或位图填充暂保持只读。',
+      },
+    });
+  }
+
+  moveFlaGraphicShapeRegionVertex(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef?: string;
+      readonly mode: 'instance' | 'definition';
+      readonly target: FlaShapeVertexTarget;
+      readonly x: number;
+      readonly y: number;
+      readonly svgText?: string;
+    },
+  ): Project {
+    return this.mutateFlaGraphicShapeRegion(project, {
+      ...input,
+      mutator: (region) => moveShapeRegionVertexPure(region, input.target, input.x, input.y),
+    });
   }
 
   private mutateFlaGraphicTimeline(
@@ -734,11 +1239,7 @@ export class LayerService {
     );
     if (animationIndex < 0) return project;
     const definition = project.animations[animationIndex]!;
-    if (
-      !('kind' in definition) ||
-      definition.kind !== 'fla-graphic' ||
-      !definition.structure
-    ) {
+    if (!isFlaGraphicDefinition(definition) || !definition.structure) {
       return project;
     }
     const target = resolveFlaGraphicTimelineTarget(
@@ -1099,6 +1600,13 @@ export class LayerService {
               cloneFlaGraphicInstanceTransformOverrides(
                 layer.flaGraphicInstanceTransformOverrides,
               ),
+          }
+        : {}),
+      ...(layer.flaGraphicInstanceShapeOverrides
+        ? {
+            flaGraphicInstanceShapeOverrides: cloneFlaGraphicShapeOverrides(
+              layer.flaGraphicInstanceShapeOverrides,
+            ),
           }
         : {}),
       id: duplicateId,

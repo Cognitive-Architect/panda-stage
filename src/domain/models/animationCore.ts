@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
-import { CharacterPartTransformV22Schema, CharacterPartVisualSourceV22Schema } from './character';
+import {
+  CharacterPartTransformV22Schema,
+  CharacterPartVisualSourceSchema,
+  CharacterPartVisualSourceV22Schema,
+} from './character';
 import { isValidFrameTime } from '../timeline/frame-grid';
 import { CHARACTER_PART_MIN_SCALE, CHARACTER_PART_MAX_SCALE } from '../constants';
 
@@ -119,9 +123,20 @@ export const TargetLocalPivotSchema = z.object({
   y: FiniteNumberSchema,
 }).strict();
 
-export const CharacterPartTargetBasisSchema = z.object({
+export const CharacterPartTargetBasisV22Schema = z.object({
   target: CharacterPartTargetRefSchema,
   visualSource: CharacterPartVisualSourceV22Schema,
+  /** Frozen source-local -> Character-local transform; no runtime composition here. */
+  baseTransform: CharacterPartTransformV22Schema,
+  pivot: TargetLocalPivotSchema,
+  drawOrder: z.number().int().nonnegative().max(1_000_000),
+  visible: z.boolean(),
+  displayName: NameSchema.optional(),
+}).strict();
+
+export const CharacterPartTargetBasisSchema = z.object({
+  target: CharacterPartTargetRefSchema,
+  visualSource: CharacterPartVisualSourceSchema,
   /** Frozen source-local -> Character-local transform; no runtime composition here. */
   baseTransform: CharacterPartTransformV22Schema,
   pivot: TargetLocalPivotSchema,
@@ -200,6 +215,13 @@ function validateUniqueClipTargetsAndTracks(
   });
 }
 
+export const AnimationClipV0V22Schema = z.object({
+  version: z.literal(1),
+  fixedCharacterCenter: z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict(),
+  targetBases: z.array(CharacterPartTargetBasisV22Schema),
+  tracks: z.array(CharacterPartAnimationTrackSchema),
+}).strict().superRefine(validateUniqueClipTargetsAndTracks);
+
 export const AnimationClipV0Schema = z.object({
   version: z.literal(1),
   fixedCharacterCenter: z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict(),
@@ -215,7 +237,7 @@ export const LayerAnimationClipSchema = z.object({
 
 /** Frozen v22 clip union. */
 export const AnimationClipV22Schema = z.discriminatedUnion('version', [
-  AnimationClipV0Schema,
+  AnimationClipV0V22Schema,
   LayerAnimationClipSchema,
 ]);
 
@@ -226,7 +248,8 @@ export const CharacterNodeAnimationClipSchema = z.object({
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
 export const AnimationClipSchema = z.discriminatedUnion('version', [
-  ...AnimationClipV22Schema.options,
+  AnimationClipV0Schema,
+  LayerAnimationClipSchema,
   CharacterNodeAnimationClipSchema,
 ]);
 

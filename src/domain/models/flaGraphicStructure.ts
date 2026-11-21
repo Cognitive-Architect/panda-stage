@@ -496,3 +496,63 @@ export function sameAuthoredStructure(
     JSON.stringify(canonicalizeFlaGraphicStructure(right))
   );
 }
+
+/**
+ * Whether an `opaque` node is an isolated Shape SVG that can be safely moved,
+ * rotated, and scaled as a whole block without touching sibling/frame-crop nodes.
+ */
+export function isFlaGraphicEditableSubtreeShapeNode(
+  node: FlaGraphicStructureNode,
+): node is Extract<FlaGraphicStructureNode, { type: 'opaque' }> {
+  return (
+    node.type === 'opaque' &&
+    node.opaqueKind === 'shape' &&
+    node.fallbackScope === 'subtree' &&
+    Boolean(node.fallbackAssetId && node.fallbackViewBox)
+  );
+}
+
+/** Whether a Structure node supports whole-block transform edits/overrides. */
+export function isFlaGraphicNodeTransformable(
+  node: FlaGraphicStructureNode,
+): boolean {
+  return node.type !== 'opaque' || isFlaGraphicEditableSubtreeShapeNode(node);
+}
+
+/** Converts an authored Shape local matrix into visual SVG-box local space. */
+export function applyFlaGraphicSubtreeViewBox(
+  node: FlaGraphicStructureNode,
+  matrix: AffineMatrix2D,
+): AffineMatrix2D {
+  if (
+    node.type !== 'opaque' ||
+    node.fallbackScope !== 'subtree' ||
+    !node.fallbackViewBox
+  ) {
+    return matrix;
+  }
+  return multiplyAffineMatrices(matrix, {
+    a: 1,
+    b: 0,
+    c: 0,
+    d: 1,
+    tx: node.fallbackViewBox.x,
+    ty: node.fallbackViewBox.y,
+  });
+}
+
+/** Strips the isolated SVG viewBox origin offset back to authored local space. */
+export function unapplyFlaGraphicSubtreeViewBox(
+  node: FlaGraphicStructureNode,
+  matrix: AffineMatrix2D,
+): AffineMatrix2D {
+  if (!isFlaGraphicEditableSubtreeShapeNode(node)) return matrix;
+  return multiplyAffineMatrices(matrix, {
+    a: 1,
+    b: 0,
+    c: 0,
+    d: 1,
+    tx: -node.fallbackViewBox!.x,
+    ty: -node.fallbackViewBox!.y,
+  });
+}

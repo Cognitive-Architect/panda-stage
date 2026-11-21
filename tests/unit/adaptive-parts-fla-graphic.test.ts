@@ -5,6 +5,7 @@ import * as graphicEvaluator from '../../src/domain/evaluate-fla-graphic';
 import {
   CharacterService,
   CharacterSchema,
+  CharacterV22Schema,
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
@@ -270,7 +271,7 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
     });
     expect(withFakeMapping.success).toBe(false);
 
-    const withUnimplementedNodePath = CharacterSchema.safeParse({
+    const rejectedInV22 = CharacterV22Schema.safeParse({
       ...character,
       parts: [
         bodyPart,
@@ -284,7 +285,40 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
         },
       ],
     });
-    expect(withUnimplementedNodePath.success).toBe(false);
+    expect(rejectedInV22.success).toBe(false);
+
+    const acceptedWithSubtreePath = CharacterSchema.safeParse({
+      ...character,
+      parts: [
+        bodyPart,
+        {
+          ...headPart,
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: GRAPHIC_DEF_ID,
+            nodePath: ['bmp-ear'],
+            poseFrameOrdinal: 0,
+          },
+        },
+      ],
+    });
+    expect(acceptedWithSubtreePath.success).toBe(true);
+
+    const emptyNodePath = CharacterSchema.safeParse({
+      ...character,
+      parts: [
+        bodyPart,
+        {
+          ...headPart,
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: GRAPHIC_DEF_ID,
+            nodePath: [],
+          },
+        },
+      ],
+    });
+    expect(emptyNodePath.success).toBe(false);
 
     // Rejects unknown or unstructured fla-graphic definitions.
     const service = new CharacterService();

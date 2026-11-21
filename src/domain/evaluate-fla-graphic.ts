@@ -5,6 +5,8 @@ import {
 } from '../shared/affine-matrix';
 import { evaluateFlaGraphicFrame } from '../shared/fla-graphic-playback';
 import {
+  applyFlaGraphicSubtreeViewBox,
+  isFlaGraphicNodeTransformable,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -17,9 +19,16 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import {
+  flaGraphicInstanceNodePathKey,
   getFlaGraphicInstanceTransformOverride,
   type FlaGraphicInstanceTransformOverrides,
 } from './models/flaGraphicInstanceOverrides';
+import type {
+  FlaEditableShapeRegion,
+  FlaEditableStroke,
+  FlaGraphicShapeNodeOverride,
+  FlaGraphicShapeOverrides,
+} from './fla-shape-vector';
 
 const identity: AffineMatrix2D = {
   a: 1,
@@ -29,6 +38,9 @@ const identity: AffineMatrix2D = {
   tx: 0,
   ty: 0,
 };
+
+const EMPTY_TRANSFORM_OVERRIDES: FlaGraphicInstanceTransformOverrides = {};
+const EMPTY_SHAPE_OVERRIDES: FlaGraphicShapeOverrides = {};
 
 // Project snapshots and their Definition/Layer data are immutable: identity
 // keys let playback reuse the same evaluated tree while scrubbing a held frame.
@@ -42,7 +54,7 @@ const instanceAuthoredVisualCache = new WeakMap<
 >();
 const instanceOverrideVisualCache = new WeakMap<
   object,
-  WeakMap<FlaGraphicDefinition, Map<string, EvaluatedFlaGraphicVisual>>
+  WeakMap<object, WeakMap<FlaGraphicDefinition, Map<string, EvaluatedFlaGraphicVisual>>>
 >();
 
 export type FlaGraphicEvaluationMode = 'definition' | 'instance';
@@ -58,6 +70,18 @@ export interface EvaluatedFlaGraphicClipPath {
   readonly shapes: readonly EvaluatedFlaGraphicClipShape[];
 }
 
+export interface EvaluatedFlaGraphicVectorVisual {
+  readonly baseViewBox: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly regions: readonly FlaEditableShapeRegion[];
+  readonly residueStrokes?: readonly FlaEditableStroke[];
+  readonly defsSvg?: string;
+}
+
 export interface EvaluatedFlaGraphicNode {
   readonly source: FlaGraphicStructureNode;
   readonly path: readonly string[];
@@ -68,6 +92,11 @@ export interface EvaluatedFlaGraphicNode {
   /** False means this node or subtree degrades locally. */
   readonly renderable: boolean;
   readonly children: readonly EvaluatedFlaGraphicNode[];
+  /** Present when Shape regions were extracted or edited as writable vector data. */
+  readonly vectorVisual?: EvaluatedFlaGraphicVectorVisual;
+  readonly regionRef?: string;
+  readonly extractedFromNodePath?: readonly string[];
+  readonly displayName?: string;
 }
 
 export interface FlaGraphicNodeCompositePlan {
@@ -208,13 +237,36 @@ function collectNodeAssetIds(
   }
 }
 
+function resolveEffectiveShapeNodeOverride(
+  definition: FlaGraphicDefinition,
+  mode: FlaGraphicEvaluationMode,
+  frameOrdinal: number,
+  path: readonly string[],
+  instanceShapeOverrides?: FlaGraphicShapeOverrides,
+): FlaGraphicShapeNodeOverride | undefined {
+  const frameKey = String(frameOrdinal);
+  const pathKey = flaGraphicInstanceNodePathKey(path);
+  if (mode === 'instance') {
+    const instanceEntry = instanceShapeOverrides?.[frameKey]?.[pathKey];
+    if (instanceEntry) return instanceEntry;
+  }
+  return definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[pathKey];
+}
+
 function visualCacheFor(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
 }): Map<string, EvaluatedFlaGraphicVisual> {
-  const { definition, frameOrdinal, mode, instanceTransformOverrides } = input;
+  const {
+    definition,
+    frameOrdinal,
+    mode,
+    instanceTransformOverrides,
+    instanceShapeOverrides,
+  } = input;
   if (mode === 'definition') {
     let cache = definitionVisualCache.get(definition);
     if (!cache) {
@@ -224,8 +276,16 @@ function visualCacheFor(input: {
     return cache;
   }
 
-  const frameOverrides = instanceTransformOverrides?.[String(frameOrdinal)];
-  if (!frameOverrides || Object.keys(frameOverrides).length === 0) {
+  const frameKey = String(frameOrdinal);
+  const frameTransformOverrides = instanceTransformOverrides?.[frameKey];
+  const frameShapeOverrides = instanceShapeOverrides?.[frameKey];
+  const hasTransformOverrides = Boolean(
+    frameTransformOverrides && Object.keys(frameTransformOverrides).length > 0,
+  );
+  const hasShapeOverrides = Boolean(
+    frameShapeOverrides && Object.keys(frameShapeOverrides).length > 0,
+  );
+  if (!hasTransformOverrides && !hasShapeOverrides) {
     let cache = instanceAuthoredVisualCache.get(definition);
     if (!cache) {
       cache = new Map();
@@ -234,10 +294,24 @@ function visualCacheFor(input: {
     return cache;
   }
 
-  let cacheByDefinition = instanceOverrideVisualCache.get(instanceTransformOverrides);
+  const tKey =
+    hasTransformOverrides && instanceTransformOverrides
+      ? instanceTransformOverrides
+      : EMPTY_TRANSFORM_OVERRIDES;
+  const sKey =
+    hasShapeOverrides && instanceShapeOverrides
+      ? instanceShapeOverrides
+      : EMPTY_SHAPE_OVERRIDES;
+
+  let cacheByShape = instanceOverrideVisualCache.get(tKey);
+  if (!cacheByShape) {
+    cacheByShape = new WeakMap();
+    instanceOverrideVisualCache.set(tKey, cacheByShape);
+  }
+  let cacheByDefinition = cacheByShape.get(sKey);
   if (!cacheByDefinition) {
     cacheByDefinition = new WeakMap();
-    instanceOverrideVisualCache.set(instanceTransformOverrides, cacheByDefinition);
+    cacheByShape.set(sKey, cacheByDefinition);
   }
   let cache = cacheByDefinition.get(definition);
   if (!cache) {
@@ -330,6 +404,7 @@ export function evaluateFlaGraphicVisual(input: {
   readonly frameOrdinal: number;
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
   const { definition, frameOrdinal, mode } = input;
@@ -374,6 +449,9 @@ export function evaluateFlaGraphicVisual(input: {
   const overrides = mode === 'instance'
     ? input.instanceTransformOverrides
     : undefined;
+  const instanceShapeOverrides = mode === 'instance'
+    ? input.instanceShapeOverrides
+    : undefined;
   const structure = definition.structure!;
   interface TimelineEvaluationContext {
     readonly ownerKind: 'frame' | 'symbol';
@@ -392,10 +470,10 @@ export function evaluateFlaGraphicVisual(input: {
     nodes
       .slice()
       .sort((left, right) => left.drawOrder - right.drawOrder)
-      .map((node) => {
+      .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
         let authoredLocalTransform = node.localTransform;
-        if (node.type !== 'opaque' && timelineContext.timeline) {
+        if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
           const trackId = resolveFlaGraphicStableNodeIdentity(
             node,
             structure,
@@ -429,20 +507,21 @@ export function evaluateFlaGraphicVisual(input: {
               })
             : null;
           if (localized) authoredLocalTransform = localized;
-        } else if (node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackViewBox) {
-          // The isolated SVG's viewBox can begin away from (0,0). Keep the
-          // authored node matrix and place its tight image at that local origin.
-          authoredLocalTransform = compose(authoredLocalTransform, {
-            ...identity, tx: node.fallbackViewBox.x, ty: node.fallbackViewBox.y,
-          }) ?? authoredLocalTransform;
         }
-        const localTransform = node.type === 'opaque'
-          ? authoredLocalTransform
-          : getFlaGraphicInstanceTransformOverride(
+        const authoredOrOverrideTransform = isFlaGraphicNodeTransformable(node)
+          ? getFlaGraphicInstanceTransformOverride(
               overrides,
               frameOrdinal,
               path,
-            ) ?? authoredLocalTransform;
+            ) ?? authoredLocalTransform
+          : authoredLocalTransform;
+        // The isolated SVG's viewBox can begin away from (0,0). Compose it ONCE
+        // after resolving authored/timeline/override transform so edits stay in
+        // node-local space without double-applying fallbackViewBox.
+        const localTransform = applyFlaGraphicSubtreeViewBox(
+          node,
+          authoredOrOverrideTransform,
+        );
         const worldTransform = compose(parentEffectiveWorld, localTransform);
         const fallbackReady = node.type !== 'opaque' || safeOpaqueFallback(node);
         const clipResult = node.type === 'opaque' && fallbackReady && node.fallbackScope === 'frame-crop'
@@ -499,7 +578,36 @@ export function evaluateFlaGraphicVisual(input: {
             childTimelineContext,
           );
         }
-        return {
+        const shapeNodeOverride =
+          node.type === 'opaque'
+            ? resolveEffectiveShapeNodeOverride(
+                definition,
+                mode,
+                frameOrdinal,
+                path,
+                instanceShapeOverrides,
+              )
+            : undefined;
+        const excludedRegionRefs = shapeNodeOverride
+          ? new Set(shapeNodeOverride.excludedRegionRefs)
+          : null;
+        const remainingRegions = shapeNodeOverride
+          ? shapeNodeOverride.regions.filter(
+              (region) => !excludedRegionRefs?.has(region.regionRef),
+            )
+          : null;
+        const vectorVisual: EvaluatedFlaGraphicVectorVisual | undefined =
+          shapeNodeOverride && remainingRegions
+            ? {
+                baseViewBox: shapeNodeOverride.baseViewBox,
+                regions: remainingRegions,
+                ...(shapeNodeOverride.residueStrokes?.length
+                  ? { residueStrokes: shapeNodeOverride.residueStrokes }
+                  : {}),
+                defsSvg: shapeNodeOverride.sourceDefsSvg,
+              }
+            : undefined;
+        const sourceEvaluated: EvaluatedFlaGraphicNode = {
           source: node,
           path,
           authoredLocalTransform,
@@ -508,7 +616,76 @@ export function evaluateFlaGraphicVisual(input: {
           clipPaths: clipResult.clips,
           renderable,
           children,
+          ...(vectorVisual ? { vectorVisual } : {}),
         };
+        if (!shapeNodeOverride || shapeNodeOverride.extractedRegions.length === 0) {
+          return [sourceEvaluated];
+        }
+        const extractedSiblings: EvaluatedFlaGraphicNode[] =
+          shapeNodeOverride.extractedRegions.map((entry) => {
+            const entryPath = [...parentPath, entry.id];
+            const entryTransform =
+              getFlaGraphicInstanceTransformOverride(
+                overrides,
+                frameOrdinal,
+                entryPath,
+              ) ?? entry.localTransform;
+            const entryLocalTransform =
+              compose(entryTransform, {
+                a: 1,
+                b: 0,
+                c: 0,
+                d: 1,
+                tx: entry.baseViewBox.x,
+                ty: entry.baseViewBox.y,
+              }) ?? entryTransform;
+            const entryWorldTransform = compose(
+              parentEffectiveWorld,
+              entryLocalTransform,
+            );
+            const entrySource: FlaGraphicStructureNode = {
+              id: entry.id,
+              type: 'opaque',
+              drawOrder: node.drawOrder,
+              localTransform: entry.localTransform,
+              opaqueKind: 'shape',
+              fallbackScope: 'subtree',
+              ...(node.type === 'opaque' && node.sourceRef
+                ? { sourceRef: node.sourceRef }
+                : {}),
+              ...(node.type === 'opaque' && node.fallbackAssetId
+                ? { fallbackAssetId: node.fallbackAssetId }
+                : {}),
+              fallbackViewBox: {
+                x: entry.baseViewBox.x,
+                y: entry.baseViewBox.y,
+                width: Math.max(1e-6, entry.baseViewBox.width),
+                height: Math.max(1e-6, entry.baseViewBox.height),
+              },
+              ...(node.type === 'opaque' && node.clipPaths
+                ? { clipPaths: node.clipPaths }
+                : {}),
+            };
+            return {
+              source: entrySource,
+              path: entryPath,
+              authoredLocalTransform: entryTransform,
+              localTransform: entryLocalTransform,
+              worldTransform: entryWorldTransform ?? parentEffectiveWorld,
+              clipPaths: clipResult.clips,
+              renderable: Boolean(entryWorldTransform && clipResult.valid),
+              children: [],
+              vectorVisual: {
+                baseViewBox: entry.baseViewBox,
+                regions: [entry.region],
+                defsSvg: shapeNodeOverride.sourceDefsSvg,
+              },
+              regionRef: entry.regionRef,
+              extractedFromNodePath: path,
+              displayName: entry.displayName,
+            };
+          });
+        return [sourceEvaluated, ...extractedSiblings];
       });
   const frameRootNodes = structureFrame.layers.flatMap((layer) => layer.nodes);
   const rootTimelineContext: TimelineEvaluationContext = {

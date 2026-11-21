@@ -686,10 +686,15 @@ export function CharacterManager({
   };
 
   const joinAdaptivePartsCurrentShot = (): AdaptivePartsAssemblyActionResult => {
+    const activeSession = characterAssemblySessionStore.getSnapshot();
+    const targetCharacterId =
+      activeSession?.kind === 'adaptive-parts'
+        ? activeSession.characterId
+        : selectedCharacterIdRef.current;
     let message = '';
     const joined = placeCharacterInCurrentShot({
-      characterId: selectedCharacterIdRef.current,
-      getCurrentCharacterId: () => selectedCharacterIdRef.current,
+      characterId: targetCharacterId,
+      getCurrentCharacterId: () => targetCharacterId,
       defaultTransformPending: false,
       // Ask before changing the layer store, but keep the editable assembly
       // draft alive until placement has succeeded.
@@ -700,7 +705,7 @@ export function CharacterManager({
       },
     });
     if (!joined) return { ok: false, ...(message ? { message } : {}) };
-    discardAssemblySession(selectedCharacterIdRef.current ?? undefined);
+    discardAssemblySession(targetCharacterId ?? undefined);
     onViewChange('list');
     return { ok: true };
   };
@@ -715,8 +720,12 @@ export function CharacterManager({
     manage: (action) => {
       const current = editorProjectStore.getSnapshot();
       const active = characterAssemblySessionStore.getSnapshot();
+      const targetCharacterId =
+        active?.kind === 'adaptive-parts'
+          ? active.characterId
+          : selectedCharacterIdRef.current;
       const character = current?.project.characters.find(
-        (candidate) => candidate.id === selectedCharacterIdRef.current,
+        (candidate) => candidate.id === targetCharacterId,
       );
       if (!current || character?.mode !== 'adaptive-parts' ||
           active?.kind !== 'adaptive-parts' || active.characterId !== character.id) {

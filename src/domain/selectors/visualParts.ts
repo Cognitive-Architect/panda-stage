@@ -23,8 +23,12 @@ import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
+import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
 import { resolveImageAsset } from './canvasLayers';
-import { characterPartSourceBounds } from '../geometry/characterPartLayout';
+import {
+  characterPartRegionAnchorBounds,
+  characterPartSourceBounds,
+} from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
 import {
   evaluateCompositeFacePoseAtTime,
@@ -667,11 +671,96 @@ function adaptivePartVisuals(
       if (
         !definition ||
         !isFlaGraphicDefinition(definition) ||
-        !definition.structure
+        (!definition.structure && !visualSource.nodePath)
       ) {
         throw new Error(
           `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
         );
+      }
+      if (visualSource.nodePath || visualSource.regionRef || visualSource.regionVector) {
+        const pinnedFrameOrdinal =
+          visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0);
+        const evaluated = definition.structure && visualSource.nodePath
+          ? evaluateFlaGraphicVisual({
+              definition,
+              frameOrdinal: pinnedFrameOrdinal,
+              mode: 'instance',
+              instanceTransformOverrides:
+                visualSource.instanceTransformOverrides,
+            })
+          : null;
+        const baseFrame = definition.frames.find(
+          (candidate) => candidate.ordinal === pinnedFrameOrdinal,
+        ) ?? definition.frames[0];
+        const emptySubtreeVisual: EvaluatedFlaGraphicVisual = {
+          mode: 'instance',
+          frameOrdinal: pinnedFrameOrdinal,
+          frameAssetId: evaluated?.frameAssetId ?? baseFrame?.assetId ?? '',
+          frameOffset: evaluated?.frameOffset ?? baseFrame?.offset ?? { x: 0, y: 0 },
+          frameViewport: evaluated?.frameViewport ?? baseFrame?.sourceViewport ?? {
+            x: 0,
+            y: 0,
+            width: definition.source.canvas.width,
+            height: definition.source.canvas.height,
+          },
+          canvas: definition.source.canvas,
+          anchor: definition.source.anchor,
+          structureFrame: {
+            ordinal: pinnedFrameOrdinal,
+            layers: [],
+          },
+          layers: [],
+          resourceAssetIds: [],
+        };
+        const subtreeVisual =
+          evaluated && evaluated.structureFrame && evaluated.layers && visualSource.nodePath
+            ? selectFlaGraphicSubtreeVisual(
+                evaluated,
+                visualSource.nodePath,
+                visualSource.regionVector || visualSource.regionRef
+                  ? {
+                      ...(visualSource.regionRef
+                        ? { regionRef: visualSource.regionRef }
+                        : {}),
+                      ...(visualSource.regionVector
+                        ? { regionVector: visualSource.regionVector }
+                        : {}),
+                    }
+                  : undefined,
+              )
+            : emptySubtreeVisual;
+        const tightBounds = characterPartSourceBounds(
+          part,
+          project.animations,
+          project.assets,
+        );
+        const imageTransform = composeAffine(
+          character.sourceRootTransform,
+          part.restTransform,
+        );
+        return {
+          partId: `${ownerLayerId}:${part.partId}`,
+          ownerLayerId,
+          slot: 'adaptive-part',
+          source: {
+            kind: 'adaptive-part-fla-graphic',
+            characterPartId: part.partId,
+            animationId: definition.id,
+          },
+          flaGraphic: subtreeVisual,
+          localRect: tightBounds ?? {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          },
+          rotationDeg: 0,
+          flipX: false,
+          imageTransform,
+          visible: part.visible,
+          drawOrder: part.drawOrder,
+          ownerZIndex,
+        };
       }
       const temporalPlayback =
         timeMs !== undefined && hasFlaGraphicTemporalPlayback(definition);
@@ -820,19 +909,37 @@ function adaptiveCharacterSourceBounds(
 ): VisualLocalRect {
   // Source geometry is independent of frame-local fallback viewport/offset.
   // Preserve PNG bounds while measuring Graphics against their full Definition canvas.
-  return visualBounds(parts.map((visual, index) => {
+  // If a scoped subtree/region Part fails closed on render, reuse any persisted
+  // historical regionVector bounds strictly for pivot stability without rendering it.
+  const measuredParts = parts.flatMap((visual, index) => {
     const part = character.parts[index]!;
-    if (resolveCharacterPartVisualSource(part).kind !== 'fla-graphic') return visual;
-    const bounds = characterPartSourceBounds(part, project.animations);
+    const visualSource = resolveCharacterPartVisualSource(part);
+    if (visualSource.kind !== 'fla-graphic') return [visual];
+    let bounds = characterPartSourceBounds(
+      part,
+      project.animations,
+      project.assets,
+    );
     if (!bounds) {
-      throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
+      if (visualSource.regionRef || visualSource.nodePath || visualSource.regionVector) {
+        bounds = characterPartRegionAnchorBounds(part, project.animations);
+        if (!bounds) {
+          return [];
+        }
+      } else {
+        throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
+      }
     }
-    return {
+    return [{
       ...visual,
       localRect: bounds,
       imageTransform: composeAffine(character.sourceRootTransform, part.restTransform),
-    };
-  }), null, true);
+    }];
+  });
+  if (measuredParts.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  return visualBounds(measuredParts, null, true);
 }
 
 /** Returns the source-stage visual center used by a center-anchored Shot Layer. */
@@ -955,6 +1062,7 @@ export function resolveLayerVisualParts(
         frameOrdinal,
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+        instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
       });
       if (!flaGraphic) {
@@ -1176,7 +1284,12 @@ export function resolveLayerVisualParts(
     }
     for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
-      if (visualSource.kind !== 'fla-graphic') continue;
+      if (
+        visualSource.kind !== 'fla-graphic' ||
+        visualSource.nodePath ||
+        visualSource.regionRef ||
+        visualSource.regionVector
+      ) continue;
       const definition = project.animations.find(
         (candidate): candidate is FlaGraphicDefinition =>
           isFlaGraphicDefinition(candidate) &&

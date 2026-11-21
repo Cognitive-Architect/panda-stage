@@ -33,7 +33,7 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
   }
   const sourcePosePoints: { x: number; y: number }[] = [];
   const targetBases = character.parts.map((part): CharacterPartTargetBasis => {
-    const bounds = characterPartSourceBounds(part, project.animations);
+    const bounds = characterPartSourceBounds(part, project.animations, project.assets);
     if (!bounds) throw new Error(`Cannot resolve source bounds for Part ${part.partId}.`);
     const sourcePose = multiplyAffineMatrices(character.sourceRootTransform, part.sourceRestTransform ?? part.restTransform);
     for (const x of [bounds.x, bounds.x + bounds.width]) {

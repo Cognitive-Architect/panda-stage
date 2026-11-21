@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IdSchema, NameSchema } from './common';
+import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicStructureV1Schema } from './flaGraphicStructure';
 
 export const ANIMATION_MAX_FRAMES = 24;
@@ -148,35 +149,41 @@ const AnimationDefinitionV22Schema = z
   .strict()
   .superRefine(validateAnimationDefinition);
 
-/** A reusable, vector-frame Definition produced by the bounded FLA adapter. */
-const FlaGraphicDefinitionV22Schema = z
-  .object({
-    ...AnimationDefinitionShape,
-    kind: z.literal('fla-graphic'),
-    frames: z.array(AnimationFrameV22Schema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
-    /** Optional so older SVG-only Definitions keep loading unchanged. */
-    structure: FlaGraphicStructureV1Schema.optional(),
-  })
-  .strict()
-  .superRefine((definition, context) => {
-    validateAnimationDefinition(definition, context);
-    if (definition.source.targetKind !== 'graphic-symbol') {
+const FlaGraphicDefinitionBaseObject = z.object({
+  ...AnimationDefinitionShape,
+  kind: z.literal('fla-graphic'),
+  frames: z.array(AnimationFrameV22Schema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
+  /** Optional so older SVG-only Definitions keep loading unchanged. */
+  structure: FlaGraphicStructureV1Schema.optional(),
+});
+
+function validateFlaGraphicDefinition(
+  definition: z.infer<typeof FlaGraphicDefinitionBaseObject>,
+  context: z.RefinementCtx,
+): void {
+  validateAnimationDefinition(definition, context);
+  if (definition.source.targetKind !== 'graphic-symbol') {
+    context.addIssue({
+      code: 'custom',
+      path: ['source', 'targetKind'],
+      message: 'FLA Graphic Definitions must reference a Graphic Symbol target.',
+    });
+  }
+  definition.frames.forEach((frame, index) => {
+    if (frame.createdBySequenceImport) {
       context.addIssue({
         code: 'custom',
-        path: ['source', 'targetKind'],
-        message: 'FLA Graphic Definitions must reference a Graphic Symbol target.',
+        path: ['frames', index, 'createdBySequenceImport'],
+        message: 'FLA Graphic vector frames are not sequence-import frames.',
       });
     }
-    definition.frames.forEach((frame, index) => {
-      if (frame.createdBySequenceImport) {
-        context.addIssue({
-          code: 'custom',
-          path: ['frames', index, 'createdBySequenceImport'],
-          message: 'FLA Graphic vector frames are not sequence-import frames.',
-        });
-      }
-    });
   });
+}
+
+/** Frozen v22 FLA Graphic Definition reader before shared Shape vector edits. */
+const FlaGraphicDefinitionV22Schema = FlaGraphicDefinitionBaseObject
+  .strict()
+  .superRefine(validateFlaGraphicDefinition);
 
 export const ProjectAnimationDefinitionV22Schema = z.union([
   AnimationDefinitionV22Schema,
@@ -185,8 +192,16 @@ export const ProjectAnimationDefinitionV22Schema = z.union([
 
 export const AnimationFrameSchema = AnimationFrameV22Schema;
 export const AnimationDefinitionSchema = AnimationDefinitionV22Schema;
-export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionV22Schema;
-export const ProjectAnimationDefinitionSchema = ProjectAnimationDefinitionV22Schema;
+export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionBaseObject
+  .extend({
+    flaGraphicSharedShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
+  })
+  .strict()
+  .superRefine(validateFlaGraphicDefinition);
+export const ProjectAnimationDefinitionSchema = z.union([
+  AnimationDefinitionV22Schema,
+  FlaGraphicDefinitionSchema,
+]);
 
 export type AnimationFrame = z.infer<typeof AnimationFrameSchema>;
 export type AnimationDefinition = z.infer<typeof AnimationDefinitionSchema>;

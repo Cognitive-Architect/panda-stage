@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
+  collectFlaExtractedRegionTransformPaths,
+  type FlaGraphicShapeOverrides,
+} from '../fla-shape-vector';
+import {
   FLA_GRAPHIC_STRUCTURE_MAX_DEPTH,
   FLA_GRAPHIC_STRUCTURE_MAX_NODES,
   FlaStructureMatrixV1Schema,
+  isFlaGraphicNodeTransformable,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -260,7 +265,7 @@ export function updateFlaGraphicStructureAuthoredTransform(
     }
   }
 
-  if (!targetNode || targetNode.type === 'opaque') return structure;
+  if (!targetNode || !isFlaGraphicNodeTransformable(targetNode)) return structure;
   if (matricesEqual(targetNode.localTransform, localTransform)) return structure;
 
   if (ownerKind === 'symbol' && ownerSymbolDefId) {
@@ -382,7 +387,7 @@ function collectTransformablePaths(
     ): void => {
       for (const node of nodes) {
         const path = [...parentPath, node.id];
-        if (node.type !== 'opaque') {
+        if (isFlaGraphicNodeTransformable(node)) {
           validPaths.set(flaGraphicInstanceNodePathKey(path), node.localTransform);
         }
         if (node.type === 'group') {
@@ -402,20 +407,29 @@ function collectTransformablePaths(
 export function pruneFlaGraphicInstanceTransformOverrides(
   overrides: FlaGraphicInstanceTransformOverrides | undefined,
   structure: FlaGraphicStructure,
+  extraShapeOverrides?: {
+    readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+    readonly sharedShapeOverrides?: FlaGraphicShapeOverrides;
+  },
 ): FlaGraphicInstanceTransformOverrides | undefined {
   if (!overrides) return undefined;
   const validPathsByFrame = collectTransformablePaths(structure);
+  const extraValidPathsByFrame = collectFlaExtractedRegionTransformPaths(
+    extraShapeOverrides?.sharedShapeOverrides,
+    extraShapeOverrides?.instanceShapeOverrides,
+  );
   let changed = false;
   const next: FlaGraphicInstanceTransformOverrides = {};
   for (const [frameOrdinal, frameOverrides] of Object.entries(overrides)) {
     const validPaths = validPathsByFrame.get(frameOrdinal);
-    if (!validPaths) {
+    const extraPaths = extraValidPathsByFrame.get(frameOrdinal);
+    if (!validPaths && !extraPaths) {
       changed = true;
       continue;
     }
     const kept: Record<string, AffineMatrix2D> = {};
     for (const [pathKey, matrix] of Object.entries(frameOverrides)) {
-      const authored = validPaths.get(pathKey);
+      const authored = validPaths?.get(pathKey) ?? extraPaths?.get(pathKey);
       if (!authored || matricesEqual(authored, matrix)) {
         changed = true;
         continue;

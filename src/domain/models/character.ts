@@ -4,7 +4,12 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import {
+  cloneFlaEditableShapeRegion,
+  FlaEditableShapeRegionSchema,
+} from '../fla-shape-vector';
 import { FlaGraphicInstanceTransformOverridesV22Schema, type FlaGraphicInstanceTransformOverrides } from './flaGraphicInstanceOverrides';
+import { FLA_GRAPHIC_STRUCTURE_MAX_DEPTH } from './flaGraphicStructure';
 
 export const CharacterExpressionV19Schema = z
   .object({
@@ -272,6 +277,29 @@ export const CharacterPartVisualSourceV22Schema = z.discriminatedUnion('kind', [
   CharacterPartFlaGraphicVisualSourceV22Schema,
 ]);
 
+export const CharacterPartFlaGraphicNodePathSchema = z
+  .array(z.string().trim().min(1).max(1024))
+  .min(1)
+  .max(FLA_GRAPHIC_STRUCTURE_MAX_DEPTH);
+
+const CharacterPartFlaGraphicVisualSourceCurrentSchema = z
+  .object({
+    kind: z.literal('fla-graphic'),
+    animationId: IdSchema,
+    nodePath: CharacterPartFlaGraphicNodePathSchema.optional(),
+    poseFrameOrdinal: z.number().int().nonnegative().optional(),
+    regionRef: z.string().trim().min(1).max(128).optional(),
+    regionVector: FlaEditableShapeRegionSchema.optional(),
+    instanceTransformOverrides:
+      FlaGraphicInstanceTransformOverridesV22Schema.optional(),
+  })
+  .strict();
+
+export const CharacterPartVisualSourceCurrentSchema = z.discriminatedUnion('kind', [
+  CharacterPartImageVisualSourceV22Schema,
+  CharacterPartFlaGraphicVisualSourceCurrentSchema,
+]);
+
 const CharacterPartBaseShape = {
   partId: IdSchema,
   source: CharacterPartSourceV22Schema,
@@ -300,7 +328,7 @@ function validateCharacterPartVisualSource(
   part: {
     assetId?: string;
     imageMapping?: z.infer<typeof CharacterPartImageMappingV22Schema>;
-    visualSource?: z.infer<typeof CharacterPartVisualSourceV22Schema>;
+    visualSource?: z.infer<typeof CharacterPartVisualSourceCurrentSchema>;
   },
   context: z.RefinementCtx,
 ): void {
@@ -366,6 +394,16 @@ const CharacterPartV22Schema = z
     assetId: IdSchema.optional(),
     imageMapping: CharacterPartImageMappingV22Schema.optional(),
     visualSource: CharacterPartVisualSourceV22Schema.optional(),
+  })
+  .strict()
+  .superRefine(validateCharacterPartVisualSource);
+
+const CharacterPartCurrentSchema = z
+  .object({
+    ...CharacterPartBaseShape,
+    assetId: IdSchema.optional(),
+    imageMapping: CharacterPartImageMappingV22Schema.optional(),
+    visualSource: CharacterPartVisualSourceCurrentSchema.optional(),
   })
   .strict()
   .superRefine(validateCharacterPartVisualSource);
@@ -440,6 +478,14 @@ const AdaptivePartsCharacterV22Schema = z
   .object({
     ...AdaptivePartsCharacterBaseShape,
     parts: z.array(CharacterPartV22Schema).min(1),
+  })
+  .strict()
+  .superRefine(validateAdaptivePartsUniqueness);
+
+const AdaptivePartsCharacterCurrentSchema = z
+  .object({
+    ...AdaptivePartsCharacterBaseShape,
+    parts: z.array(CharacterPartCurrentSchema).min(1),
   })
   .strict()
   .superRefine(validateAdaptivePartsUniqueness);
@@ -571,6 +617,17 @@ export const CharacterV22Schema = z.discriminatedUnion('mode', [
   }
 });
 
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend(CharacterFaceV22Shape),
+  CompositeCharacterSchema.extend(CharacterFaceV22Shape),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine((character, context) => {
+  if (character.mode === 'adaptive-parts') return;
+  if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
+  }
+});
+
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 
@@ -622,13 +679,13 @@ export const CharacterPartTransformSchema = CharacterPartTransformV22Schema;
 export const CharacterPartStaticAdjustmentSchema = CharacterPartStaticAdjustmentV22Schema;
 export const CharacterPartImageMappingSchema = CharacterPartImageMappingV22Schema;
 export const CharacterPartImageVisualSourceSchema = CharacterPartImageVisualSourceV22Schema;
-export const CharacterPartFlaGraphicVisualSourceSchema = CharacterPartFlaGraphicVisualSourceV22Schema;
-export const CharacterPartVisualSourceSchema = CharacterPartVisualSourceV22Schema;
-export const CharacterPartSchema = CharacterPartV22Schema;
-export const AdaptivePartsCharacterSchema = AdaptivePartsCharacterV22Schema;
+export const CharacterPartFlaGraphicVisualSourceSchema = CharacterPartFlaGraphicVisualSourceCurrentSchema;
+export const CharacterPartVisualSourceSchema = CharacterPartVisualSourceCurrentSchema;
+export const CharacterPartSchema = CharacterPartCurrentSchema;
+export const AdaptivePartsCharacterSchema = AdaptivePartsCharacterCurrentSchema;
 export const CharacterFaceGraphicSourceSchema = CharacterFaceGraphicSourceV22Schema;
 export const CharacterExpressionSchema = CharacterExpressionV22Schema;
-export const CharacterSchema = CharacterV22Schema;
+export const CharacterSchema = CharacterCurrentSchema;
 export const VoiceProfileSchema = VoiceProfileV22Schema;
 
 export type CharacterExpression = z.infer<typeof CharacterExpressionSchema>;
@@ -710,6 +767,14 @@ export function cloneCharacterPartVisualSource(
   return {
     kind: 'fla-graphic',
     animationId: visualSource.animationId,
+    ...(visualSource.nodePath ? { nodePath: [...visualSource.nodePath] } : {}),
+    ...(visualSource.poseFrameOrdinal !== undefined
+      ? { poseFrameOrdinal: visualSource.poseFrameOrdinal }
+      : {}),
+    ...(visualSource.regionRef ? { regionRef: visualSource.regionRef } : {}),
+    ...(visualSource.regionVector
+      ? { regionVector: cloneFlaEditableShapeRegion(visualSource.regionVector) }
+      : {}),
     ...(visualSource.instanceTransformOverrides
       ? {
           instanceTransformOverrides: cloneFlaGraphicOverrides(

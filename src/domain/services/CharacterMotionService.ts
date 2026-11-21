@@ -215,7 +215,7 @@ export class CharacterMotionService {
         rotationDeg: ((values['transform.rotationDeg'] + 180) % 360 + 360) % 360 - 180,
         scale: values['transform.scaleX'],
       };
-      const bounds = characterPartSourceBounds(part, project.animations);
+      const bounds = characterPartSourceBounds(part, project.animations, project.assets);
       if (!bounds) throw new Error('无法读取部件源尺寸。');
       const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
       return new CharacterService().updateAdaptivePart(project, character.id, part.partId, {

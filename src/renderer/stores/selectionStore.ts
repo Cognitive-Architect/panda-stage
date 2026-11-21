@@ -2,7 +2,7 @@ import {
   EditorProjectStore,
   editorProjectStore,
 } from './EditorProjectStore';
-import type { Shot } from '../../domain';
+import type { FlaShapeVertexTarget, Shot } from '../../domain';
 import { adaptivePartIdForNodeId, characterPartNodeId, resolveCharacterView, type CharacterNodeId } from '../features/characters/characterView';
 import type { FlaGraphicEditScopeState } from '../features/canvas/flaGraphicEditScope';
 import {
@@ -34,6 +34,9 @@ export class LayerSelectionStore {
     this.selectCharacterNode(partId ? characterPartNodeId(partId) : null);
   private structuredEditScope: FlaGraphicEditScopeState | null = null;
   private selectedStructuredNodePath: readonly string[] | null = null;
+  private selectedStructuredRegionRef: string | null = null;
+  private flaShapeVertexEditActive = false;
+  private selectedFlaShapeVertex: FlaShapeVertexTarget | null = null;
   private selectedLayerId: string | null = null;
   private selectedContext: SelectionContext | null = null;
   private readonly listeners = new Set<Listener>();
@@ -60,6 +63,9 @@ export class LayerSelectionStore {
 
   readonly getStructuredEditScope = (): FlaGraphicEditScopeState | null => this.structuredEditScope;
   readonly getSelectedStructuredNodePath = (): readonly string[] | null => this.selectedStructuredNodePath;
+  readonly getSelectedStructuredRegionRef = (): string | null => this.selectedStructuredRegionRef;
+  readonly isFlaShapeVertexEditActive = (): boolean => this.flaShapeVertexEditActive;
+  readonly getSelectedFlaShapeVertex = (): FlaShapeVertexTarget | null => this.selectedFlaShapeVertex;
 
   readonly setStructuredEditScope = (scope: FlaGraphicEditScopeState | null): void => {
     if (this.structuredEditScope === scope) return;
@@ -68,8 +74,43 @@ export class LayerSelectionStore {
   };
 
   readonly setSelectedStructuredNodePath = (path: readonly string[] | null): void => {
-    if (this.selectedStructuredNodePath === path) return;
+    this.setSelectedStructuredNodeSelection(path, null);
+  };
+
+  readonly setSelectedStructuredNodeSelection = (
+    path: readonly string[] | null,
+    regionRef: string | null = null,
+  ): void => {
+    const samePath =
+      this.selectedStructuredNodePath === path ||
+      (this.selectedStructuredNodePath !== null &&
+        path !== null &&
+        this.selectedStructuredNodePath.length === path.length &&
+        this.selectedStructuredNodePath.every((entry, i) => entry === path[i]));
+    if (samePath && this.selectedStructuredRegionRef === regionRef) return;
     this.selectedStructuredNodePath = path;
+    this.selectedStructuredRegionRef = regionRef;
+    this.selectedFlaShapeVertex = null;
+    if (!path) this.flaShapeVertexEditActive = false;
+    for (const listener of this.listeners) listener();
+  };
+
+  readonly setSelectedStructuredRegionRef = (regionRef: string | null): void => {
+    if (this.selectedStructuredRegionRef === regionRef) return;
+    this.selectedStructuredRegionRef = regionRef;
+    this.selectedFlaShapeVertex = null;
+    for (const listener of this.listeners) listener();
+  };
+
+  readonly setFlaShapeVertexEditActive = (active: boolean): void => {
+    if (this.flaShapeVertexEditActive === active) return;
+    this.flaShapeVertexEditActive = active;
+    if (!active) this.selectedFlaShapeVertex = null;
+    for (const listener of this.listeners) listener();
+  };
+
+  readonly setSelectedFlaShapeVertex = (target: FlaShapeVertexTarget | null): void => {
+    this.selectedFlaShapeVertex = target;
     for (const listener of this.listeners) listener();
   };
 
@@ -170,6 +211,9 @@ export class LayerSelectionStore {
       this.selectedContext = context;
       this.structuredEditScope = null;
       this.selectedStructuredNodePath = null;
+      this.selectedStructuredRegionRef = null;
+      this.flaShapeVertexEditActive = false;
+      this.selectedFlaShapeVertex = null;
       for (const listener of this.listeners) listener();
     } else if (this.selectedCharacterNodeId && !this.characterNodeExists(this.selectedCharacterNodeId)) {
       this.selectCharacterNode(this.characterNodeExists('root') ? 'root' : null);
@@ -186,6 +230,9 @@ export class LayerSelectionStore {
     this.selectedContext = context;
     this.structuredEditScope = null;
     this.selectedStructuredNodePath = null;
+    this.selectedStructuredRegionRef = null;
+    this.flaShapeVertexEditActive = false;
+    this.selectedFlaShapeVertex = null;
     for (const listener of this.listeners) listener();
   }
 }

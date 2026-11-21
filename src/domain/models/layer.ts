@@ -1,9 +1,13 @@
 import { z } from 'zod';
 import {
-  AnimationClipSchema, AnimationClipV22Schema, AnimationClipV0Schema, type AnimationClip,
+  AnimationClipSchema,
+  AnimationClipV0V22Schema,
+  AnimationClipV22Schema,
+  type AnimationClip,
 } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
 
 const AssetLayerSourceV22Schema = z
@@ -248,7 +252,7 @@ export const LayerV20Schema = z
 
 /** Frozen v21 Layer reader: accepts only Character Clip v1 on Character layers. */
 export const LayerV21Schema = LayerV20Schema.safeExtend({
-  animationClip: AnimationClipV0Schema.optional(),
+  animationClip: AnimationClipV0V22Schema.optional(),
 }).superRefine((layer, context) => {
   if (!layer.animationClip) return;
   if (layer.source.kind !== 'character') {
@@ -308,6 +312,7 @@ export const LayerV22Schema = LayerV20Schema.safeExtend({
 
 export const LayerSchema = LayerV20Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
+  flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
 }).superRefine(validateClipOwnership);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

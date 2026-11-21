@@ -15,6 +15,17 @@ import {
   type ProjectAnimationDefinition,
 } from '../models/animation';
 import { FiniteNumberSchema } from '../models/common';
+import {
+  evaluateFlaGraphicVisual,
+  type EvaluatedFlaGraphicLayer,
+  type EvaluatedFlaGraphicNode,
+} from '../evaluate-fla-graphic';
+import {
+  measureFlaGraphicSubtreeBounds,
+  selectFlaGraphicSubtreeVisual,
+  type FlaGraphicAssetDimensionLike,
+} from '../fla-graphic-subtree';
+import { unionFlaShapeRegionBounds } from '../fla-shape-vector';
 
 export const CharacterPartSourceBoundsSchema = z
   .object({
@@ -98,6 +109,7 @@ function resolveSourceBoundsRect(
 export function characterPartSourceBounds(
   part: Pick<CharacterPart, 'partId' | 'assetId' | 'imageMapping' | 'visualSource'>,
   animations: readonly ProjectAnimationDefinition[],
+  assets: readonly FlaGraphicAssetDimensionLike[] = [],
 ): CharacterPartSourceBounds | null {
   const visualSource = resolveCharacterPartVisualSource(part);
   if (visualSource.kind === 'image') {
@@ -115,11 +127,237 @@ export function characterPartSourceBounds(
   if (!definition || !isFlaGraphicDefinition(definition)) {
     return null;
   }
+  if (visualSource.nodePath && definition.structure) {
+    const evaluated = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: visualSource.poseFrameOrdinal ?? 0,
+      mode: 'instance',
+      instanceTransformOverrides: visualSource.instanceTransformOverrides,
+    });
+    if (evaluated) {
+      const subtreeVisual = selectFlaGraphicSubtreeVisual(
+        evaluated,
+        visualSource.nodePath,
+        visualSource.regionVector || visualSource.regionRef
+          ? {
+              ...(visualSource.regionRef ? { regionRef: visualSource.regionRef } : {}),
+              ...(visualSource.regionVector
+                ? { regionVector: visualSource.regionVector }
+                : {}),
+            }
+          : undefined,
+      );
+      const tightBounds = measureFlaGraphicSubtreeBounds(subtreeVisual, assets);
+      if (tightBounds) {
+        return tightBounds;
+      }
+    }
+  }
+  if (visualSource.regionRef || visualSource.nodePath || visualSource.regionVector) {
+    return null;
+  }
   return {
     x: 0,
     y: 0,
     width: definition.source.canvas.width,
     height: definition.source.canvas.height,
+  };
+}
+
+function isEvaluatedShapeLeafNode(node: EvaluatedFlaGraphicNode): boolean {
+  return (
+    node.source.type === 'opaque' &&
+    node.source.opaqueKind === 'shape' &&
+    node.children.length === 0
+  );
+}
+
+function findEvaluatedNodeAtPath(
+  layers: readonly EvaluatedFlaGraphicLayer[],
+  nodePath: readonly string[],
+): EvaluatedFlaGraphicNode | undefined {
+  if (nodePath.length === 0) return undefined;
+  const visit = (nodes: readonly EvaluatedFlaGraphicNode[]): EvaluatedFlaGraphicNode | undefined => {
+    for (const node of nodes) {
+      if (
+        node.path.length === nodePath.length &&
+        node.path.every((segment, index) => segment === nodePath[index])
+      ) {
+        return node;
+      }
+      if (
+        node.path.length < nodePath.length &&
+        node.path.every((segment, index) => segment === nodePath[index])
+      ) {
+        const hit = visit(node.children);
+        if (hit) return hit;
+      }
+    }
+    return undefined;
+  };
+  for (const layer of layers) {
+    const hit = visit(layer.nodes);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+function findUniqueEvaluatedShapeBySourceRef(
+  layers: readonly EvaluatedFlaGraphicLayer[],
+  sourceRef: string,
+): EvaluatedFlaGraphicNode | undefined {
+  let matched: EvaluatedFlaGraphicNode | undefined;
+  let ambiguous = false;
+  const visit = (nodes: readonly EvaluatedFlaGraphicNode[]): void => {
+    for (const node of nodes) {
+      if (
+        isEvaluatedShapeLeafNode(node) &&
+        node.source.type === 'opaque' &&
+        node.source.sourceRef === sourceRef
+      ) {
+        if (matched) {
+          ambiguous = true;
+          return;
+        }
+        matched = node;
+      }
+      if (node.children.length > 0) {
+        visit(node.children);
+        if (ambiguous) return;
+      }
+    }
+  };
+  for (const layer of layers) {
+    visit(layer.nodes);
+    if (ambiguous) return undefined;
+  }
+  return matched;
+}
+
+function viewBoxContainsRect(
+  viewBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number } | undefined,
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+): boolean {
+  if (!viewBox) return false;
+  const eps = 1e-3;
+  return (
+    rect.x >= viewBox.x - eps &&
+    rect.y >= viewBox.y - eps &&
+    rect.x + rect.width <= viewBox.x + viewBox.width + eps &&
+    rect.y + rect.height <= viewBox.y + viewBox.height + eps
+  );
+}
+
+/**
+ * Recovers source-pose anchor bounds strictly from a Part's persisted
+ * `regionVector` when formal region selection failed closed. Used only to keep
+ * Character source-pose pivot stable across sibling Parts; never makes the
+ * broken Part renderable.
+ */
+export function characterPartRegionAnchorBounds(
+  part: Pick<CharacterPart, 'partId' | 'assetId' | 'imageMapping' | 'visualSource'>,
+  animations: readonly ProjectAnimationDefinition[],
+): CharacterPartSourceBounds | null {
+  const visualSource = resolveCharacterPartVisualSource(part);
+  if (visualSource.kind !== 'fla-graphic' || !visualSource.regionVector) {
+    return null;
+  }
+  const regionVector = visualSource.regionVector;
+  const regionBounds = unionFlaShapeRegionBounds([regionVector]);
+  if (!regionBounds || regionBounds.width <= 0 || regionBounds.height <= 0) {
+    return null;
+  }
+  const definition = animations.find(
+    (candidate) =>
+      isFlaGraphicDefinition(candidate) && candidate.id === visualSource.animationId,
+  );
+  if (!definition || !isFlaGraphicDefinition(definition)) {
+    return null;
+  }
+  const frameOrdinal =
+    visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0);
+  const evaluated = definition.structure
+    ? evaluateFlaGraphicVisual({
+        definition,
+        frameOrdinal,
+        mode: 'instance',
+        instanceTransformOverrides: visualSource.instanceTransformOverrides,
+      })
+    : null;
+  if (evaluated?.layers) {
+    const pathNode = visualSource.nodePath
+      ? findEvaluatedNodeAtPath(evaluated.layers, visualSource.nodePath)
+      : undefined;
+    const refNode = regionVector.sourceShapeRef
+      ? findUniqueEvaluatedShapeBySourceRef(evaluated.layers, regionVector.sourceShapeRef)
+      : undefined;
+    const pathIsShape = Boolean(pathNode && isEvaluatedShapeLeafNode(pathNode));
+    const pathMatchesRef =
+      pathIsShape &&
+      (!regionVector.sourceShapeRef ||
+        pathNode!.source.type !== 'opaque' ||
+        !pathNode!.source.sourceRef ||
+        pathNode!.source.sourceRef === regionVector.sourceShapeRef);
+    const pathViewBox =
+      pathNode?.vectorVisual?.baseViewBox ??
+      (pathNode?.source.type === 'opaque' ? pathNode.source.fallbackViewBox : undefined);
+    const refViewBox =
+      refNode?.vectorVisual?.baseViewBox ??
+      (refNode?.source.type === 'opaque' ? refNode.source.fallbackViewBox : undefined);
+    const refHasRegion = Boolean(
+      refNode?.vectorVisual?.regions.some(
+        (candidate) => candidate.regionRef === regionVector.regionRef,
+      ),
+    );
+    const preferRefNode = Boolean(
+      refNode &&
+        (!pathIsShape ||
+          refHasRegion ||
+          (viewBoxContainsRect(refViewBox, regionBounds) &&
+            !viewBoxContainsRect(pathViewBox, regionBounds))),
+    );
+    const hostNode = pathMatchesRef ? pathNode : preferRefNode ? refNode : pathNode;
+    if (hostNode) {
+      const baseViewBox =
+        hostNode.vectorVisual?.baseViewBox ??
+        (hostNode.source.type === 'opaque' ? hostNode.source.fallbackViewBox : undefined);
+      const bx = baseViewBox?.x ?? 0;
+      const by = baseViewBox?.y ?? 0;
+      const rx = regionBounds.x - bx;
+      const ry = regionBounds.y - by;
+      const corners = [
+        transformPoint(hostNode.worldTransform, { x: rx, y: ry }),
+        transformPoint(hostNode.worldTransform, { x: rx + regionBounds.width, y: ry }),
+        transformPoint(hostNode.worldTransform, { x: rx, y: ry + regionBounds.height }),
+        transformPoint(hostNode.worldTransform, {
+          x: rx + regionBounds.width,
+          y: ry + regionBounds.height,
+        }),
+      ];
+      if (corners.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))) {
+        const minX = Math.min(...corners.map((point) => point.x));
+        const minY = Math.min(...corners.map((point) => point.y));
+        const maxX = Math.max(...corners.map((point) => point.x));
+        const maxY = Math.max(...corners.map((point) => point.y));
+        const width = maxX - minX;
+        const height = maxY - minY;
+        if (width > 0 && height > 0) {
+          return {
+            x: minX - evaluated.anchor.x,
+            y: minY - evaluated.anchor.y,
+            width,
+            height,
+          };
+        }
+      }
+    }
+  }
+  const anchor = definition.source.anchor;
+  return {
+    x: regionBounds.x - anchor.x,
+    y: regionBounds.y - anchor.y,
+    width: regionBounds.width,
+    height: regionBounds.height,
   };
 }
 

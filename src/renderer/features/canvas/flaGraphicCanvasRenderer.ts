@@ -1,9 +1,238 @@
 import {
+  commandsToSvgPathD,
   evaluateFlaGraphicNodeCompositePlan,
   evaluateOpaqueFrameCropNormalizedRect,
+  unionFlaShapeRegionBounds,
   type EvaluatedFlaGraphicNode,
+  type EvaluatedFlaGraphicVectorVisual,
   type EvaluatedFlaGraphicVisual,
+  type FlaEditableStroke,
+  type FlaVectorPathCommand,
 } from '../../../domain';
+
+interface ParsedSvgGradientStop {
+  readonly offset: number;
+  readonly color: string;
+  readonly opacity: number;
+}
+
+type ParsedSvgGradient =
+  | {
+      readonly kind: 'linear';
+      readonly x1: number;
+      readonly y1: number;
+      readonly x2: number;
+      readonly y2: number;
+      readonly stops: readonly ParsedSvgGradientStop[];
+    }
+  | {
+      readonly kind: 'radial';
+      readonly cx: number;
+      readonly cy: number;
+      readonly r: number;
+      readonly fx: number;
+      readonly fy: number;
+      readonly stops: readonly ParsedSvgGradientStop[];
+    };
+
+const parsedGradientDefsCache = new Map<string, ReadonlyMap<string, ParsedSvgGradient>>();
+
+function readSvgTagAttributes(raw: string): Map<string, string> {
+  const attrs = new Map<string, string>();
+  const attrPattern = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/gu;
+  let match: RegExpExecArray | null;
+  while ((match = attrPattern.exec(raw)) !== null) {
+    attrs.set(match[1]!, match[2] ?? match[3] ?? '');
+  }
+  return attrs;
+}
+
+function parseGradientStops(inner: string): ParsedSvgGradientStop[] {
+  const stops: ParsedSvgGradientStop[] = [];
+  const stopPattern = /<stop\b([^>]*)\/?>/gu;
+  let match: RegExpExecArray | null;
+  while ((match = stopPattern.exec(inner)) !== null) {
+    const attrs = readSvgTagAttributes(match[1]!);
+    const rawOffset = attrs.get('offset') ?? '0';
+    const offset = rawOffset.endsWith('%')
+      ? Math.max(0, Math.min(1, Number.parseFloat(rawOffset) / 100))
+      : Math.max(0, Math.min(1, Number.parseFloat(rawOffset)));
+    if (!Number.isFinite(offset)) continue;
+    stops.push({
+      offset,
+      color: attrs.get('stop-color') ?? '#000000',
+      opacity: Math.max(
+        0,
+        Math.min(1, Number.parseFloat(attrs.get('stop-opacity') ?? '1') || 1),
+      ),
+    });
+  }
+  return stops;
+}
+
+function parseSvgDefsGradients(
+  defsSvg: string | undefined,
+): ReadonlyMap<string, ParsedSvgGradient> {
+  if (!defsSvg) return new Map();
+  const cached = parsedGradientDefsCache.get(defsSvg);
+  if (cached) return cached;
+  const result = new Map<string, ParsedSvgGradient>();
+  const gradPattern = /<(linearGradient|radialGradient)\b([^>]*)>([\s\S]*?)<\/\1>/gu;
+  let match: RegExpExecArray | null;
+  while ((match = gradPattern.exec(defsSvg)) !== null) {
+    const kind = match[1]!;
+    const attrs = readSvgTagAttributes(match[2]!);
+    const id = attrs.get('id');
+    if (!id) continue;
+    const stops = parseGradientStops(match[3]!);
+    if (kind === 'linearGradient') {
+      result.set(id, {
+        kind: 'linear',
+        x1: Number.parseFloat(attrs.get('x1') ?? '0') || 0,
+        y1: Number.parseFloat(attrs.get('y1') ?? '0') || 0,
+        x2: Number.parseFloat(attrs.get('x2') ?? '100') || 0,
+        y2: Number.parseFloat(attrs.get('y2') ?? '0') || 0,
+        stops,
+      });
+    } else {
+      const cx = Number.parseFloat(attrs.get('cx') ?? '0') || 0;
+      const cy = Number.parseFloat(attrs.get('cy') ?? '0') || 0;
+      const r = Number.parseFloat(attrs.get('r') ?? '50') || 50;
+      result.set(id, {
+        kind: 'radial',
+        cx,
+        cy,
+        r: Math.max(1e-3, r),
+        fx: Number.parseFloat(attrs.get('fx') ?? String(cx)) || cx,
+        fy: Number.parseFloat(attrs.get('fy') ?? String(cy)) || cy,
+        stops,
+      });
+    }
+  }
+  if (parsedGradientDefsCache.size > 256) parsedGradientDefsCache.clear();
+  parsedGradientDefsCache.set(defsSvg, result);
+  return result;
+}
+
+function replayVectorCommands(
+  ctx: Pick<
+    CanvasRenderingContext2D,
+    'moveTo' | 'lineTo' | 'quadraticCurveTo' | 'bezierCurveTo' | 'closePath'
+  >,
+  commands: readonly FlaVectorPathCommand[],
+): void {
+  for (const cmd of commands) {
+    switch (cmd.type) {
+      case 'M':
+        ctx.moveTo(cmd.x, cmd.y);
+        break;
+      case 'L':
+        ctx.lineTo(cmd.x, cmd.y);
+        break;
+      case 'Q':
+        ctx.quadraticCurveTo(cmd.cx, cmd.cy, cmd.x, cmd.y);
+        break;
+      case 'C':
+        ctx.bezierCurveTo(cmd.c1x, cmd.c1y, cmd.c2x, cmd.c2y, cmd.x, cmd.y);
+        break;
+      case 'Z':
+        ctx.closePath();
+        break;
+    }
+  }
+}
+
+function resolveRegionCanvasFillStyle(
+  target: CanvasRenderingContext2D,
+  svgPaint: string | undefined,
+  defsSvg: string | undefined,
+): string | CanvasGradient | null {
+  if (!svgPaint || svgPaint === 'none') return null;
+  const gradMatch = svgPaint.match(/^url\(#([^)]+)\)$/u);
+  if (!gradMatch) return svgPaint;
+  const grad = parseSvgDefsGradients(defsSvg).get(gradMatch[1]!);
+  if (!grad || grad.stops.length === 0) return null;
+  const canvasGrad =
+    grad.kind === 'linear'
+      ? target.createLinearGradient(grad.x1, grad.y1, grad.x2, grad.y2)
+      : target.createRadialGradient(grad.fx, grad.fy, 0, grad.cx, grad.cy, grad.r);
+  for (const stop of grad.stops) {
+    canvasGrad.addColorStop(stop.offset, stop.color);
+  }
+  return canvasGrad;
+}
+
+function drawEditableStrokeToContext(
+  target: CanvasRenderingContext2D,
+  stroke: FlaEditableStroke,
+  Path2DConstructor: typeof Path2D | undefined,
+): void {
+  if (stroke.opacity <= 0 || stroke.lineWidth <= 0) return;
+  const strokeD = commandsToSvgPathD(stroke.commands);
+  target.save();
+  target.globalAlpha *= stroke.opacity;
+  target.strokeStyle = stroke.color;
+  target.lineWidth = stroke.lineWidth;
+  target.lineCap = stroke.lineCap;
+  target.lineJoin = stroke.lineJoin;
+  target.miterLimit = stroke.miterLimit;
+  if (Path2DConstructor && strokeD) {
+    target.stroke(new Path2DConstructor(strokeD));
+  } else {
+    target.beginPath();
+    replayVectorCommands(target, stroke.commands);
+    target.stroke();
+  }
+  target.restore();
+}
+
+/** Draws editable `vectorVisual` fill pass first and stroke pass second to match Animate/SVG order. */
+export function drawFlaVectorVisualToContext(
+  target: CanvasRenderingContext2D,
+  vectorVisual: EvaluatedFlaGraphicVectorVisual,
+): void {
+  const Path2DConstructor = globalThis.Path2D;
+  // Pass 1: all fills in region order
+  for (const region of vectorVisual.regions) {
+    const paint =
+      region.fill.kind === 'solid'
+        ? region.fill.color ?? '#000000'
+        : region.fill.svgPaint;
+    if (region.fill.opacity > 0 && paint && paint !== 'none') {
+      const fillStyle =
+        region.fill.kind === 'solid'
+          ? paint
+          : resolveRegionCanvasFillStyle(target, paint, vectorVisual.defsSvg);
+      if (fillStyle) {
+        const fillD = region.contours
+          .map((contour) => commandsToSvgPathD(contour.commands))
+          .join(' ');
+        target.save();
+        target.globalAlpha *= region.fill.opacity;
+        target.fillStyle = fillStyle;
+        if (Path2DConstructor && fillD) {
+          target.fill(new Path2DConstructor(fillD), region.fill.fillRule);
+        } else {
+          target.beginPath();
+          for (const contour of region.contours) {
+            replayVectorCommands(target, contour.commands);
+          }
+          target.fill(region.fill.fillRule);
+        }
+        target.restore();
+      }
+    }
+  }
+  // Pass 2: all strokes on top of fills, then isolated/shared residue strokes
+  for (const region of vectorVisual.regions) {
+    for (const stroke of region.strokes) {
+      drawEditableStrokeToContext(target, stroke, Path2DConstructor);
+    }
+  }
+  for (const residueStroke of vectorVisual.residueStrokes ?? []) {
+    drawEditableStrokeToContext(target, residueStroke, Path2DConstructor);
+  }
+}
 
 export type FlaGraphicImageMap = ReadonlyMap<string, CanvasImageSource>;
 
@@ -118,26 +347,52 @@ function renderFlaGraphicCanvasUncached(
         includeNodes(node.children, drawsVisibleContent);
         continue;
       }
+      const includeCorners = (
+        m: EvaluatedFlaGraphicNode['worldTransform'],
+        corners: readonly [number, number][],
+      ): void => {
+        for (const [x, y] of corners) {
+          const worldX = m.a * x + m.c * y + m.tx;
+          const worldY = m.b * x + m.d * y + m.ty;
+          if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) continue;
+          left = Math.min(left, worldX);
+          top = Math.min(top, worldY);
+          right = Math.max(right, worldX);
+          bottom = Math.max(bottom, worldY);
+          if (drawsVisibleContent) {
+            contentLeft = Math.min(contentLeft, worldX);
+            contentTop = Math.min(contentTop, worldY);
+            contentRight = Math.max(contentRight, worldX);
+            contentBottom = Math.max(contentBottom, worldY);
+          }
+        }
+      };
+      if (node.vectorVisual) {
+        const bounds = unionFlaShapeRegionBounds(
+          node.vectorVisual.regions,
+          node.vectorVisual.residueStrokes,
+        );
+        if (!bounds) continue;
+        const rx = bounds.x - node.vectorVisual.baseViewBox.x;
+        const ry = bounds.y - node.vectorVisual.baseViewBox.y;
+        includeCorners(node.worldTransform, [
+          [rx, ry],
+          [rx + bounds.width, ry],
+          [rx, ry + bounds.height],
+          [rx + bounds.width, ry + bounds.height],
+        ]);
+        continue;
+      }
       const image = images.get(source.type === 'bitmap' ? source.assetId ?? '' : source.fallbackAssetId ?? '');
       if (!image) continue;
       const size = source.type === 'bitmap' ? sourceSize(image) : source.fallbackViewBox;
       if (!size || size.width <= 0 || size.height <= 0) continue;
-      const m = node.worldTransform;
-      for (const [x, y] of [[0, 0], [size.width, 0], [0, size.height], [size.width, size.height]] as const) {
-        const worldX = m.a * x + m.c * y + m.tx;
-        const worldY = m.b * x + m.d * y + m.ty;
-        if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) continue;
-        left = Math.min(left, worldX);
-        top = Math.min(top, worldY);
-        right = Math.max(right, worldX);
-        bottom = Math.max(bottom, worldY);
-        if (drawsVisibleContent) {
-          contentLeft = Math.min(contentLeft, worldX);
-          contentTop = Math.min(contentTop, worldY);
-          contentRight = Math.max(contentRight, worldX);
-          contentBottom = Math.max(contentBottom, worldY);
-        }
-      }
+      includeCorners(node.worldTransform, [
+        [0, 0],
+        [size.width, 0],
+        [0, size.height],
+        [size.width, size.height],
+      ]);
     }
   };
   includeNodes(visual.layers.flatMap((layer) => layer.nodes));
@@ -207,6 +462,24 @@ function renderFlaGraphicCanvasUncached(
     const source = node.source;
     const matrix = affineProduct(rootTransform, node.worldTransform);
     if (!validTransform(matrix)) return false;
+    if (node.vectorVisual) {
+      if (
+        node.vectorVisual.regions.length === 0 &&
+        (node.vectorVisual.residueStrokes?.length ?? 0) === 0
+      ) {
+        return false;
+      }
+      target.save();
+      target.setTransform(...matrix);
+      target.translate(
+        -node.vectorVisual.baseViewBox.x,
+        -node.vectorVisual.baseViewBox.y,
+      );
+      drawFlaVectorVisualToContext(target, node.vectorVisual);
+      target.restore();
+      renderedNodeCount += 1;
+      return true;
+    }
     let image: CanvasImageSource | undefined;
     let destinationWidth: number;
     let destinationHeight: number;
