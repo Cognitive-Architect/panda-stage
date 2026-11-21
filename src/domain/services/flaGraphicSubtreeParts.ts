@@ -1,4 +1,8 @@
 import {
+  multiplyAffineMatrices,
+  type AffineMatrix2D,
+} from '../../shared/affine-matrix';
+import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicNode,
 } from '../evaluate-fla-graphic';
@@ -24,6 +28,17 @@ import {
   type FlaGraphicShapeOverrides,
 } from '../fla-shape-vector';
 import type { CreateAdaptivePartsCharacterInput } from './CharacterService';
+import {
+  extractFlaAuthorPoseReferencesFromDefinition,
+  resolveFlaGraphicAuthorPosePlacements,
+  type FlaGraphicAuthorPosePartCandidate,
+  type FlaGraphicAuthorPoseReference,
+  type FlaGraphicAuthorPoseResolution,
+} from './flaAuthorPosePlacement';
+import {
+  resolveFlaGraphicSavedLayoutPlacements,
+  type FlaGraphicSavedLayoutResolution,
+} from './flaAdaptiveLayoutReuse';
 
 const IDENTITY_TRANSFORM: Readonly<CharacterPartTransform> = {
   a: 1,
@@ -57,8 +72,31 @@ export interface FlaGraphicSubtreeSelectionInput {
   readonly regionVector?: FlaEditableShapeRegion;
 }
 
+export interface CollectFlaGraphicSubtreeSelectionsInput {
+  readonly definition: FlaGraphicDefinition;
+  readonly frameOrdinal: number;
+  readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly assets?: readonly FlaGraphicAssetDimensionLike[];
+}
+
+export interface FlaGraphicSubtreeCollectionSkippedItem {
+  readonly nodePath: readonly string[];
+  readonly label: string;
+  readonly reason: string;
+}
+
+export interface FlaGraphicSubtreeCollectionResult {
+  readonly selections: readonly FlaGraphicSubtreeSelectionInput[];
+  readonly skipped: readonly FlaGraphicSubtreeCollectionSkippedItem[];
+  readonly warnings: readonly string[];
+  readonly candidateCount: number;
+}
+
 export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
-  readonly project: Pick<Project, 'assets' | 'characters'>;
+  readonly project: Pick<Project, 'assets' | 'characters'> & {
+    readonly animations?: Project['animations'];
+  };
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly selections: readonly FlaGraphicSubtreeSelectionInput[];
@@ -66,6 +104,15 @@ export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly characterName?: string;
   readonly createId?: () => string;
+  /** When true, attempts V2-A author reference pose placement before creating Parts. */
+  readonly applyAuthorPose?: boolean;
+  /** Bounded external author pose references extracted from the same FLA (e.g. sibling Graphics / Scene). */
+  readonly authorPoseReferences?: readonly FlaGraphicAuthorPoseReference[];
+  readonly onAuthorPoseResolved?: (resolution: FlaGraphicAuthorPoseResolution) => void;
+  /** When true, runs V2-B saved-layout reuse ONLY on parts left unmatched by V2-A. */
+  readonly applySavedLayoutReuse?: boolean;
+  readonly preferredTemplateCharacterId?: string;
+  readonly onSavedLayoutResolved?: (resolution: FlaGraphicSavedLayoutResolution) => void;
 }
 
 export function flaGraphicNodePathsEqual(
@@ -186,27 +233,56 @@ function sortedChildrenByDrawOrder(
 function findNodeAndRank(
   layers: readonly { readonly nodes: readonly EvaluatedFlaGraphicNode[] }[],
   targetPath: readonly string[],
-): { node: EvaluatedFlaGraphicNode; rank: number } | null {
+): {
+  node: EvaluatedFlaGraphicNode;
+  rank: number;
+  authoredWorldTransform: AffineMatrix2D;
+  ancestorSymbolChain: readonly string[];
+} | null {
   let rankCounter = 0;
-  let found: { node: EvaluatedFlaGraphicNode; rank: number } | null = null;
+  let found: {
+    node: EvaluatedFlaGraphicNode;
+    rank: number;
+    authoredWorldTransform: AffineMatrix2D;
+    ancestorSymbolChain: readonly string[];
+  } | null = null;
 
-  const walk = (nodes: readonly EvaluatedFlaGraphicNode[]): boolean => {
+  const walk = (
+    nodes: readonly EvaluatedFlaGraphicNode[],
+    parentAuthoredWorld: AffineMatrix2D,
+    ancestorSymbolChain: readonly string[],
+  ): boolean => {
     for (const node of sortedChildrenByDrawOrder(nodes)) {
       const currentRank = rankCounter;
       rankCounter += 1;
+      const authoredWorldTransform = multiplyAffineMatrices(
+        parentAuthoredWorld,
+        node.authoredLocalTransform,
+      );
       if (flaGraphicNodePathsEqual(node.path, targetPath)) {
-        found = { node, rank: currentRank };
+        found = {
+          node,
+          rank: currentRank,
+          authoredWorldTransform,
+          ancestorSymbolChain,
+        };
         return true;
       }
-      if (node.children.length > 0 && walk(node.children)) {
-        return true;
+      if (node.children.length > 0) {
+        const nextChain =
+          node.source.type === 'symbol'
+            ? [...ancestorSymbolChain, `symbol:${node.source.symbolRef}`]
+            : ancestorSymbolChain;
+        if (walk(node.children, authoredWorldTransform, nextChain)) {
+          return true;
+        }
       }
     }
     return false;
   };
 
   for (const layer of layers) {
-    if (walk(layer.nodes)) break;
+    if (walk(layer.nodes, IDENTITY_TRANSFORM, [])) break;
   }
   return found;
 }
@@ -611,6 +687,215 @@ function uniqueCharacterName(
   return `${trimmed} (${suffix})`.slice(0, 200);
 }
 
+const GENERATED_NODE_IDENTITY_PATTERN =
+  /^(?:[0-9a-f]{8}-|[0-9a-f]{16,}(?:\.[^.]+)?$|fla-(?:group|node|shape|bitmap|symbol)-|(?:group|node|shape)[-_:]?\d|.*\[\d+\])/i;
+
+function friendlyNodeIdentityTail(value: string | undefined): string | null {
+  const tail = value?.split(/[\\/]/u).pop()?.trim() ?? '';
+  if (!tail || GENERATED_NODE_IDENTITY_PATTERN.test(tail)) return null;
+  return tail;
+}
+
+function readableSubtreePartLabel(
+  node: EvaluatedFlaGraphicNode,
+  partNumber: number,
+): string {
+  const explicit = node.displayName?.trim();
+  if (explicit && !GENERATED_NODE_IDENTITY_PATTERN.test(explicit)) {
+    return explicit;
+  }
+  switch (node.source.type) {
+    case 'symbol':
+      return friendlyNodeIdentityTail(node.source.symbolRef) ?? `零件 ${partNumber}`;
+    case 'group':
+      return friendlyNodeIdentityTail(node.source.groupId) ?? `零件 ${partNumber}`;
+    case 'bitmap': {
+      const bitmapName = friendlyNodeIdentityTail(
+        node.source.sourceBasename ?? node.source.bitmapRef,
+      )?.replace(/\.[^.]+$/u, '');
+      return bitmapName || `零件 ${partNumber}`;
+    }
+    case 'opaque':
+      return `零件 ${partNumber}`;
+  }
+}
+
+function readableSkippedLabel(
+  node: EvaluatedFlaGraphicNode,
+  assessmentLabel: string,
+): string {
+  const explicit = node.displayName?.trim();
+  if (explicit && !GENERATED_NODE_IDENTITY_PATTERN.test(explicit)) {
+    return explicit;
+  }
+  switch (node.source.type) {
+    case 'symbol':
+      return friendlyNodeIdentityTail(node.source.symbolRef) ?? '元件';
+    case 'group':
+      return friendlyNodeIdentityTail(node.source.groupId) ?? '编组';
+    case 'bitmap':
+      return (
+        friendlyNodeIdentityTail(
+          node.source.sourceBasename ?? node.source.bitmapRef,
+        )?.replace(/\.[^.]+$/u, '') || '位图'
+      );
+    case 'opaque':
+      return friendlyNodeIdentityTail(assessmentLabel) ?? (
+        node.source.opaqueKind === 'shape' ? '形状' : '图形节点'
+      );
+  }
+}
+
+function isContainerNode(node: EvaluatedFlaGraphicNode): boolean {
+  return node.source.type === 'group' || node.source.type === 'symbol';
+}
+
+/**
+ * Collects the minimal reasonable set of non-overlapping, independently
+ * renderable subtrees from a saved `FlaGraphicDefinition.structure` frame for
+ * `buildAdaptivePartsFromFlaGraphicSubtrees`, without splitting Shapes into
+ * individual fills/paths.
+ */
+export function collectFlaGraphicSubtreeSelections(
+  input: CollectFlaGraphicSubtreeSelectionsInput,
+): FlaGraphicSubtreeCollectionResult {
+  if (
+    !isFlaGraphicDefinition(input.definition) ||
+    !input.definition.structure ||
+    !Number.isSafeInteger(input.frameOrdinal) ||
+    input.frameOrdinal < 0
+  ) {
+    return {
+      selections: [],
+      skipped: [],
+      warnings: ['当前元件缺少可用于自动拆件的结构信息。'],
+      candidateCount: 0,
+    };
+  }
+
+  const evaluated = evaluateFlaGraphicVisual({
+    definition: input.definition,
+    frameOrdinal: input.frameOrdinal,
+    mode: 'instance',
+    instanceTransformOverrides: input.instanceTransformOverrides,
+    instanceShapeOverrides: input.instanceShapeOverrides,
+  });
+  if (!evaluated || !evaluated.structureFrame || !evaluated.layers) {
+    return {
+      selections: [],
+      skipped: [],
+      warnings: ['当前帧缺少可用于自动拆件的结构层。'],
+      candidateCount: 0,
+    };
+  }
+
+  let roots: EvaluatedFlaGraphicNode[] = evaluated.layers.flatMap((layer) =>
+    sortedChildrenByDrawOrder(layer.nodes),
+  );
+  // Unwrap a single whole-artwork container (up to 2 wrapper layers) when it is
+  // the only top-level item, so a single wrapping Group/Symbol yields its parts.
+  for (let unwrapDepth = 0; unwrapDepth < 2; unwrapDepth += 1) {
+    if (
+      roots.length !== 1 ||
+      !isContainerNode(roots[0]!) ||
+      roots[0]!.children.length === 0
+    ) {
+      break;
+    }
+    roots = sortedChildrenByDrawOrder(roots[0]!.children);
+  }
+
+  const selections: FlaGraphicSubtreeSelectionInput[] = [];
+  const skipped: FlaGraphicSubtreeCollectionSkippedItem[] = [];
+  const warnings = new Set<string>();
+
+  const assessCandidate = (node: EvaluatedFlaGraphicNode) => {
+    const regionVector =
+      node.regionRef && node.vectorVisual?.regions.length === 1
+        ? node.vectorVisual.regions[0]
+        : undefined;
+    const assessment = assessFlaGraphicSubtreeCandidate({
+      definition: input.definition,
+      frameOrdinal: input.frameOrdinal,
+      nodePath: node.path,
+      ...(node.regionRef ? { regionRef: node.regionRef } : {}),
+      ...(regionVector ? { regionVector } : {}),
+      instanceTransformOverrides: input.instanceTransformOverrides,
+      instanceShapeOverrides: input.instanceShapeOverrides,
+      assets: input.assets,
+    });
+    return { assessment, regionVector };
+  };
+
+  const acceptNode = (
+    node: EvaluatedFlaGraphicNode,
+    assessment: FlaGraphicSubtreeCandidateAssessment,
+    regionVector: FlaEditableShapeRegion | undefined,
+  ): boolean => {
+    const candidateSelection: FlaGraphicSubtreeSelectionInput = {
+      nodePath: [...node.path],
+      label: readableSubtreePartLabel(node, selections.length + 1),
+      ...(node.regionRef ? { regionRef: node.regionRef } : {}),
+      ...(regionVector ? { regionVector } : {}),
+    };
+    const overlapsExisting = selections.some((existing) =>
+      doFlaGraphicSubtreeSelectionsOverlap(existing, candidateSelection),
+    );
+    if (overlapsExisting) return false;
+    selections.push(candidateSelection);
+    if (assessment.warning) warnings.add(assessment.warning);
+    return true;
+  };
+
+  const inspectNodes = (
+    nodes: readonly EvaluatedFlaGraphicNode[],
+    allowContainerRescue: boolean,
+  ): { acceptedCount: number; localSkipped: FlaGraphicSubtreeCollectionSkippedItem[] } => {
+    let acceptedCount = 0;
+    const localSkipped: FlaGraphicSubtreeCollectionSkippedItem[] = [];
+    for (const node of nodes) {
+      const { assessment, regionVector } = assessCandidate(node);
+      if (assessment.extractable && assessment.renderable) {
+        if (acceptNode(node, assessment, regionVector)) {
+          acceptedCount += 1;
+        }
+        continue;
+      }
+      if (
+        allowContainerRescue &&
+        isContainerNode(node) &&
+        node.children.length > 0
+      ) {
+        const rescued = inspectNodes(
+          sortedChildrenByDrawOrder(node.children),
+          false,
+        );
+        if (rescued.acceptedCount > 0) {
+          acceptedCount += rescued.acceptedCount;
+          localSkipped.push(...rescued.localSkipped);
+          continue;
+        }
+      }
+      localSkipped.push({
+        nodePath: [...node.path],
+        label: readableSkippedLabel(node, assessment.label),
+        reason: assessment.reason ?? '该节点暂不支持独立提取。',
+      });
+    }
+    return { acceptedCount, localSkipped };
+  };
+
+  const outcome = inspectNodes(roots, true);
+  skipped.push(...outcome.localSkipped);
+
+  return {
+    selections,
+    skipped,
+    warnings: [...warnings],
+    candidateCount: roots.length,
+  };
+}
+
 /**
  * Converts explicitly chosen Graphic subtree nodes from one source frame into a
  * single `CreateAdaptivePartsCharacterInput` sorted back-to-front by authored
@@ -673,8 +958,9 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
 
   const nextId = input.createId ?? (() => crypto.randomUUID());
   const usedDisplayNames = new Map<string, number>();
+  const authorPoseCandidates: FlaGraphicAuthorPosePartCandidate[] = [];
 
-  const parts: CharacterPart[] = assessed.map(({ selection, candidate }, drawOrder) => {
+  const baseParts: CharacterPart[] = assessed.map(({ selection, candidate }, drawOrder) => {
     const partId = nextId();
     const rawLabel = sanitizeDisplayName(
       selection.label ?? candidate.label,
@@ -688,9 +974,10 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
         ? rawLabel
         : sanitizeDisplayName(`${rawLabel.slice(0, 190)} (${seen + 1})`, `零件 ${drawOrder + 1}`);
 
-    const matchedNode = evaluatedForRegionLookup?.layers
-      ? findNodeAndRank(evaluatedForRegionLookup.layers, selection.nodePath)?.node
-      : undefined;
+    const matchedTrace = evaluatedForRegionLookup?.layers
+      ? findNodeAndRank(evaluatedForRegionLookup.layers, selection.nodePath)
+      : null;
+    const matchedNode = matchedTrace?.node;
     const effectiveNodePath =
       matchedNode?.extractedFromNodePath ?? selection.nodePath;
     const resolvedRegionRef =
@@ -700,6 +987,17 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       (matchedNode?.regionRef && matchedNode.vectorVisual?.regions.length === 1
         ? matchedNode.vectorVisual.regions[0]
         : undefined);
+
+    if (matchedTrace) {
+      authorPoseCandidates.push({
+        partIndex: drawOrder,
+        selectionKey: `${flaGraphicNodePathsEqual(effectiveNodePath, selection.nodePath) ? selection.nodePath.join('/') : effectiveNodePath.join('/')}${resolvedRegionRef ? `#${resolvedRegionRef}` : ''}`,
+        node: matchedTrace.node,
+        ancestorSymbolChain: matchedTrace.ancestorSymbolChain,
+        authoredWorldTransform: matchedTrace.authoredWorldTransform,
+        ...(resolvedRegionRef ? { regionRef: resolvedRegionRef } : {}),
+      });
+    }
 
     const baseFilteredOverrides = filterFlaGraphicInstanceOverridesForSubtree(
       input.instanceTransformOverrides,
@@ -749,6 +1047,93 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       displayName,
     };
   });
+
+  let parts = baseParts;
+  const authorPlacedPartIds = new Set<string>();
+  if (input.applyAuthorPose) {
+    const intraDefinitionReferences = extractFlaAuthorPoseReferencesFromDefinition(
+      input.definition,
+      input.frameOrdinal,
+    );
+    const combinedReferences: FlaGraphicAuthorPoseReference[] = [
+      ...intraDefinitionReferences,
+      ...(input.authorPoseReferences ?? []),
+    ];
+    const resolution = resolveFlaGraphicAuthorPosePlacements({
+      sourceParts: authorPoseCandidates,
+      references: combinedReferences,
+      sourceRootTransform: IDENTITY_TRANSFORM,
+      definitionAnchor: input.definition.source.anchor,
+    });
+    input.onAuthorPoseResolved?.(resolution);
+
+    if (resolution.matchedCount > 0) {
+      const matchedEntries = [...resolution.placementsByPartIndex.values()].sort((left, right) => {
+        if (left.referenceDrawOrderRank !== right.referenceDrawOrderRank) {
+          return left.referenceDrawOrderRank - right.referenceDrawOrderRank;
+        }
+        return baseParts[left.partIndex]!.drawOrder - baseParts[right.partIndex]!.drawOrder;
+      });
+      const matchedSlots = matchedEntries
+        .map((entry) => baseParts[entry.partIndex]!.drawOrder)
+        .sort((a, b) => a - b);
+      const assignedDrawOrderByPartIndex = new Map<number, number>();
+      matchedEntries.forEach((entry, slotIndex) => {
+        assignedDrawOrderByPartIndex.set(entry.partIndex, matchedSlots[slotIndex]!);
+      });
+
+      parts = baseParts
+        .map((part, partIndex) => {
+          const placement = resolution.placementsByPartIndex.get(partIndex);
+          if (!placement) return part;
+          authorPlacedPartIds.add(part.partId);
+          return {
+            ...part,
+            sourceRestTransform: { ...placement.sourceRestTransform },
+            restTransform: { ...placement.restTransform },
+            drawOrder: assignedDrawOrderByPartIndex.get(partIndex) ?? part.drawOrder,
+          };
+        })
+        .sort((left, right) => left.drawOrder - right.drawOrder);
+    }
+  }
+
+  if (input.applySavedLayoutReuse) {
+    const lockedPartIndices = new Set<number>();
+    parts.forEach((part, index) => {
+      if (authorPlacedPartIds.has(part.partId)) {
+        lockedPartIndices.add(index);
+      }
+    });
+    const layoutResolution = resolveFlaGraphicSavedLayoutPlacements({
+      project: {
+        assets: input.project.assets,
+        animations: input.project.animations ?? [input.definition],
+        characters: input.project.characters,
+      },
+      definition: input.definition,
+      frameOrdinal: input.frameOrdinal,
+      parts,
+      lockedPartIndices,
+      ...(input.preferredTemplateCharacterId
+        ? { preferredTemplateCharacterId: input.preferredTemplateCharacterId }
+        : {}),
+    });
+    input.onSavedLayoutResolved?.(layoutResolution);
+
+    if (layoutResolution.matchedCount > 0) {
+      parts = parts.map((part, partIndex) => {
+        if (authorPlacedPartIds.has(part.partId)) return part;
+        const placement = layoutResolution.placementsByPartIndex.get(partIndex);
+        if (!placement) return part;
+        return {
+          ...part,
+          sourceRestTransform: { ...placement.sourceRestTransform },
+          restTransform: { ...placement.restTransform },
+        };
+      });
+    }
+  }
 
   const name = uniqueCharacterName(
     input.characterName ?? `${input.definition.name} 拆件`,

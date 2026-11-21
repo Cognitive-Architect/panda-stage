@@ -55,6 +55,10 @@ import {
   type FlaInspectionOperation,
 } from '../../fla-import/fla-inspection-lifecycle';
 import type { ImportFlaGraphicInstance } from '../fla-import/fla-graphic-instance-import';
+import type {
+  CreateAdaptiveCharacterFromGraphic,
+  CreateAdaptiveCharacterFromGraphicResult,
+} from '../fla-import/createAdaptiveCharacterFromGraphic';
 
 export type AssetWorkspaceView = 'browser' | 'details';
 export type AssetLibraryPresentation = 'default' | 'portrait' | 'landscape';
@@ -73,6 +77,10 @@ export interface AssetLibraryProps {
   hideHeading?: boolean;
   showFlaAction?: boolean;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
+  onGraphicCharacterCreated?(
+    result: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }>,
+  ): void;
 }
 
 export function AssetLibrary({
@@ -86,6 +94,8 @@ export function AssetLibrary({
   hideHeading = false,
   showFlaAction = true,
   onImportGraphicInstance,
+  onCreateCharacterFromGraphic,
+  onGraphicCharacterCreated,
 }: AssetLibraryProps): React.JSX.Element {
   const liveSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -908,6 +918,11 @@ export function AssetLibrary({
           inspection={flaInspection}
           onClose={closeFlaReview}
           onImportGraphicInstance={onImportGraphicInstance}
+          onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
+          onGraphicCharacterCreated={(result) => {
+            closeFlaReview();
+            onGraphicCharacterCreated?.(result);
+          }}
           graphicImportDisabledReason={graphicImportDisabledReason}
           snapshot={snapshot}
           onCommit={(response) => {

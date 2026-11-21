@@ -24,6 +24,7 @@ import {
   isFlaGraphicDefinition,
   removeAdaptivePartFromDefinition,
   resolveCharacterPartVisualSource,
+  resolveFlaGraphicSavedLayoutPlacements,
   scanAdaptivePartReferences,
   selectFlaGraphicSubtreeVisual,
   transformVisualRectByPart,
@@ -710,6 +711,23 @@ function AdaptivePartsContextMenu({
   );
 }
 
+function isAutoPlacedFlaSubtreePart(part: AdaptivePartsCharacterPart): boolean {
+  const sourceRest = part.sourceRestTransform;
+  if (!sourceRest) return false;
+  const visualSource = resolveCharacterPartVisualSource(part);
+  if (visualSource.kind !== 'fla-graphic' || !visualSource.nodePath?.length) return false;
+  return (
+    Math.hypot(
+      sourceRest.a - 1,
+      sourceRest.b,
+      sourceRest.c,
+      sourceRest.d - 1,
+      sourceRest.tx,
+      sourceRest.ty,
+    ) > 1e-4
+  );
+}
+
 function AdaptivePartsAssemblyRow({
   displayName,
   imageMissing,
@@ -901,12 +919,22 @@ function AdaptivePartsAssemblyRow({
         <Pencil aria-hidden="true" size={18} />
       </button>
       <button
-        aria-label={`恢复${displayName}原始源姿势`}
+        aria-label={
+          isAutoPlacedFlaSubtreePart(part)
+            ? `恢复${displayName}参考源姿势`
+            : `恢复${displayName}原始源姿势`
+        }
         className="adaptive-parts-row-action"
         data-testid="adaptive-parts-restore-button"
         disabled={!part.sourceRestTransform}
         onClick={onRestore}
-        title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
+        title={
+          part.sourceRestTransform
+            ? isAutoPlacedFlaSubtreePart(part)
+              ? '恢复参考源姿势'
+              : '恢复原始源姿势'
+            : '此零件没有可信的原始位置记录'
+        }
         type="button"
       >
         <RotateCcw aria-hidden="true" size={18} />
@@ -1007,6 +1035,43 @@ function AdaptivePartsAssemblyWorkbench({
     () => new Map(structuredGraphics.map((graphic) => [graphic.id, graphic] as const)),
     [structuredGraphics],
   );
+  const primaryFlaGraphicSource = useMemo(() => {
+    for (const part of session.draft.parts) {
+      const vs = resolveCharacterPartVisualSource(part);
+      if (vs.kind === 'fla-graphic' && vs.nodePath?.length) {
+        const def = structuredGraphicById.get(vs.animationId);
+        if (def) {
+          return {
+            definition: def,
+            frameOrdinal: vs.poseFrameOrdinal ?? (def.frames[0]?.ordinal ?? 0),
+          };
+        }
+      }
+    }
+    return null;
+  }, [session.draft.parts, structuredGraphicById]);
+  const compatibleLayoutTemplates = useMemo(() => {
+    if (!primaryFlaGraphicSource) return [];
+    return resolveFlaGraphicSavedLayoutPlacements({
+      project,
+      definition: primaryFlaGraphicSource.definition,
+      frameOrdinal: primaryFlaGraphicSource.frameOrdinal,
+      parts: session.draft.parts,
+      excludeCharacterId: session.characterId,
+      targetSourceRootTransform: session.draft.sourceRootTransform,
+    }).availableTemplates;
+  }, [
+    primaryFlaGraphicSource,
+    project,
+    session.characterId,
+    session.draft.parts,
+    session.draft.sourceRootTransform,
+  ]);
+  const [selectedLayoutTemplateId, setSelectedLayoutTemplateId] = useState<string>('');
+  const effectiveLayoutTemplateId =
+    compatibleLayoutTemplates.some((item) => item.templateCharacterId === selectedLayoutTemplateId)
+      ? selectedLayoutTemplateId
+      : (compatibleLayoutTemplates[0]?.templateCharacterId ?? '');
   const visual = useMemo(
     () => buildAdaptivePartsAssemblyPreviewVisual(project, session),
     [project, session],
@@ -1694,6 +1759,59 @@ function AdaptivePartsAssemblyWorkbench({
     clearNumericDraftsForPart(partId);
     setMessage('');
   };
+  const restorePartToRawSourceOrigin = (partId: string): void => {
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const result = updatePart(partId, (part) => ({
+      ...part,
+      sourceRestTransform: { ...identity },
+      restTransform: { ...identity },
+      staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+    }));
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return;
+    }
+    clearNumericDraftsForPart(partId);
+    setMessage('');
+  };
+  const applySavedLayoutTemplate = (templateCharacterId: string): void => {
+    if (!primaryFlaGraphicSource || !templateCharacterId) return;
+    const current = activeHandle()?.getSnapshot()?.draft;
+    if (!current) return;
+    const resolved = resolveFlaGraphicSavedLayoutPlacements({
+      project,
+      definition: primaryFlaGraphicSource.definition,
+      frameOrdinal: primaryFlaGraphicSource.frameOrdinal,
+      parts: current.parts,
+      excludeCharacterId: session.characterId,
+      preferredTemplateCharacterId: templateCharacterId,
+      targetSourceRootTransform: current.sourceRootTransform,
+    });
+    if (resolved.matchedCount === 0 || !resolved.selectedTemplate) {
+      setMessage('所选角色没有可安全套用的布局映射。');
+      return;
+    }
+    const result = setDefinition((definition) => ({
+      ...definition,
+      parts: definition.parts.map((part, partIndex) => {
+        const placement = resolved.placementsByPartIndex.get(partIndex);
+        if (!placement) return part;
+        return {
+          ...part,
+          sourceRestTransform: { ...placement.sourceRestTransform },
+          restTransform: { ...placement.restTransform },
+          staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+        };
+      }),
+    }));
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return;
+    }
+    setNumericDrafts({});
+    numericInitialValuesRef.current = {};
+    setMessage('');
+  };
   const selectPart = (partId: string, edit = false): boolean => {
     if (!activeHandle()?.selectPart(partId)) return false;
     if (edit) openInspector('part');
@@ -1971,6 +2089,30 @@ function AdaptivePartsAssemblyWorkbench({
             }}
           />
         </div>
+        {compatibleLayoutTemplates.length > 0 ? (
+          <div className="adaptive-parts-template-reuse-bar" data-testid="adaptive-parts-template-reuse-bar">
+            <select
+              aria-label="布局参考角色"
+              data-testid="adaptive-parts-template-select"
+              onChange={(event) => setSelectedLayoutTemplateId(event.target.value)}
+              value={effectiveLayoutTemplateId}
+            >
+              {compatibleLayoutTemplates.map((candidate) => (
+                <option key={candidate.templateCharacterId} value={candidate.templateCharacterId}>
+                  {candidate.templateCharacterName}（{candidate.matchedPartCount}件）
+                </option>
+              ))}
+            </select>
+            <button
+              className="adaptive-parts-row-menu-button"
+              data-testid="adaptive-parts-template-apply"
+              onClick={() => applySavedLayoutTemplate(effectiveLayoutTemplateId)}
+              type="button"
+            >
+              套用布局
+            </button>
+          </div>
+        ) : null}
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part) => {
             const visualSource = resolveCharacterPartVisualSource(part);
@@ -2325,6 +2467,16 @@ function AdaptivePartsAssemblyWorkbench({
               {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
               {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
               {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
+              {isAutoPlacedFlaSubtreePart(selectedPart) ? (
+                <button
+                  className="adaptive-parts-row-menu-button"
+                  data-testid="adaptive-parts-reset-raw-origin-button"
+                  onClick={() => restorePartToRawSourceOrigin(selectedPart.partId)}
+                  type="button"
+                >
+                  还原 FLA 散件原位
+                </button>
+              ) : null}
             </div>
           ) : inspectorContext === 'part' ? <span>选择零件</span> : null}
         </div>

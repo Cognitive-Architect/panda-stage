@@ -7,6 +7,7 @@ import type {
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type { CreateAdaptiveCharacterFromGraphic } from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type {
   PendingFlaCharacterCreateCredential,
@@ -27,6 +28,7 @@ export interface LeftWorkspaceProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord: PendingFlaCharacterCreateRecord;
@@ -64,6 +66,7 @@ export function LeftWorkspace({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
+  onCreateCharacterFromGraphic,
   onImportGraphicInstance,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord,
@@ -111,6 +114,7 @@ export function LeftWorkspace({
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
+        onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
         onImportGraphicInstance={onImportGraphicInstance}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
         flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}

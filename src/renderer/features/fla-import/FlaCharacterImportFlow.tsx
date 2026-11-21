@@ -54,6 +54,11 @@ import {
   getSelectableCharacterImportCandidateCount,
   getUniqueCharacterImportCandidate,
 } from './fla-character-import-model';
+import {
+  formatFlaGraphicSkippedSummary,
+  type CreateAdaptiveCharacterFromGraphic,
+} from './createAdaptiveCharacterFromGraphic';
+import type { EditableFlaGraphicInstancePreview } from './fla-graphic-instance-import';
 import { FlaCharacterImportPartsControl } from './FlaCharacterImportPartsControl';
 import { VisibleBoundsThumbnail } from '../characters/VisibleBoundsThumbnail';
 import '../../styles/features/fla-import/f1-04--character-import.css';
@@ -157,6 +162,23 @@ function getSuggestedName(basename: string): string {
   return basename.replace(/\.fla$/iu, '').trim().slice(0, 100);
 }
 
+interface GraphicCharacterTarget {
+  readonly unitId: string;
+  readonly label: string;
+  readonly frameCount: number;
+  readonly sha256: string;
+}
+
+function readableGraphicTargetLabel(
+  sourceSymbolId: string | null,
+  layerName: string,
+  fallbackBasename: string,
+): string {
+  const raw = sourceSymbolId ?? layerName;
+  const tail = raw.split(/[\\/]/u).pop()?.trim();
+  return (tail && tail.length > 0 ? tail : getSuggestedName(fallbackBasename) || '元件').slice(0, 100);
+}
+
 function safeCreateErrorMessage(code: FlaCharacterCreateErrorCode | undefined): string {
   switch (code) {
     case 'DUPLICATE_CHARACTER_NAME':
@@ -200,6 +222,7 @@ export interface FlaCharacterImportFlowProps {
   snapshot: EditorProjectSnapshot | null;
   attempt: FlaCharacterImportAttempt;
   onCreateCharacter: CreateFlaCharacter;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
   onQueryCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   onCommittingChange?(committing: boolean): void;
   onRecoveryCredentialChange?(credential: PendingFlaCharacterCreateCredential | null): void;
@@ -207,7 +230,7 @@ export interface FlaCharacterImportFlowProps {
   onSafeExit?(operationId: string): void;
   recoveryAction?: React.JSX.Element | null;
   recoveryBusy?: boolean;
-  onCreatedCharacter: (characterId: string) => boolean;
+  onCreatedCharacter: (characterId: string, notice?: string) => boolean;
   onClose: () => void;
 }
 
@@ -215,6 +238,7 @@ export function FlaCharacterImportFlow({
   snapshot,
   attempt,
   onCreateCharacter,
+  onCreateCharacterFromGraphic,
   onQueryCharacterCreateStatus,
   onCommittingChange,
   onRecoveryCredentialChange,
@@ -248,6 +272,18 @@ export function FlaCharacterImportFlow({
   const sessionIdRef = useRef<string | null>(null);
   const [sourceBasename, setSourceBasename] = useState('');
   const [candidateEntries, setCandidateEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
+  const [graphicTargets, setGraphicTargets] = useState<readonly GraphicCharacterTarget[]>([]);
+  const [activeGraphicTargetId, setActiveGraphicTargetId] = useState<string | null>(null);
+  const [graphicThumbnailUrls, setGraphicThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
+  const graphicThumbnailUrlsRef = useRef(new Map<string, string>());
+  const graphicPreviewRef = useRef<EditableFlaGraphicInstancePreview | null>(null);
+  const graphicPlanHeldRef = useRef(false);
+  const sceneRenderTargetIdRef = useRef<string | null>(null);
+  const committedGraphicAnimationsRef = useRef(new Map<string, string>());
+  const [graphicErrorRetryable, setGraphicErrorRetryable] = useState(false);
+  const onCreateCharacterFromGraphicRef = useRef(onCreateCharacterFromGraphic);
+  onCreateCharacterFromGraphicRef.current = onCreateCharacterFromGraphic;
+  const nameTouchedRef = useRef(false);
   const [omittedCandidateCount, setOmittedCandidateCount] = useState(0);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
@@ -281,7 +317,12 @@ export function FlaCharacterImportFlow({
   const revokeThumbnails = useCallback((clearState = true): void => {
     for (const url of thumbnailUrlsRef.current.values()) URL.revokeObjectURL(url);
     thumbnailUrlsRef.current.clear();
-    if (clearState) setThumbnailUrls({});
+    for (const url of graphicThumbnailUrlsRef.current.values()) URL.revokeObjectURL(url);
+    graphicThumbnailUrlsRef.current.clear();
+    if (clearState) {
+      setThumbnailUrls({});
+      setGraphicThumbnailUrls({});
+    }
   }, []);
 
   const cancelActiveThumbnail = useCallback(async (): Promise<void> => {
@@ -488,6 +529,86 @@ export function FlaCharacterImportFlow({
     })();
   }, []);
 
+  const loadGraphicInstanceTargets = useCallback(async (
+    ownedSessionId: string,
+    sceneTargetId: string,
+    basename: string,
+    expectedFlowGeneration: number,
+  ): Promise<{
+    preview: EditableFlaGraphicInstancePreview | null;
+    targets: GraphicCharacterTarget[];
+    urls: Record<string, string>;
+  }> => {
+    const generation = ++previewGenerationRef.current;
+    const requestId = crypto.randomUUID();
+    activePartRequestRef.current = {
+      requestId,
+      sessionId: ownedSessionId,
+      generation,
+    };
+    try {
+      const response = await window.pandaStage.fla.partPreview({
+        format: 'fla-part-preview',
+        version: 1,
+        requestId,
+        sessionId: ownedSessionId,
+        generation,
+        purpose: 'graphic-instance',
+        target: {
+          renderTargetId: sceneTargetId,
+          selectedFrameIndex: 0,
+        },
+      });
+      if (
+        !mountedRef.current ||
+        flowGenerationRef.current !== expectedFlowGeneration ||
+        sessionIdRef.current !== ownedSessionId ||
+        activePartRequestRef.current?.requestId !== requestId
+      ) {
+        return { preview: null, targets: [], urls: {} };
+      }
+      activePartRequestRef.current = null;
+      if (
+        !response.ok ||
+        response.status !== 'PREVIEW_READY' ||
+        response.capability !== 'GRAPHIC_INSTANCES_READY'
+      ) {
+        return { preview: null, targets: [], urls: {} };
+      }
+      const validatedPreview: EditableFlaGraphicInstancePreview = {
+        ...response,
+        sessionId: ownedSessionId,
+        generation,
+      };
+      const importable = validatedPreview.partPreviews.filter(
+        (part) =>
+          part.sourceKind === 'graphic-symbol-occurrence' &&
+          part.graphicInstanceImportable === true,
+      );
+      const urls: Record<string, string> = {};
+      const targets: GraphicCharacterTarget[] = importable.map((part) => {
+        const url = pngObjectUrl(part.image.bytes);
+        urls[part.unitId] = url;
+        return {
+          unitId: part.unitId,
+          label: readableGraphicTargetLabel(
+            part.sourceSymbolId,
+            part.layerName,
+            basename,
+          ),
+          frameCount: part.sourceDefinitionFrameCount ?? 1,
+          sha256: part.image.sha256,
+        };
+      });
+      return { preview: validatedPreview, targets, urls };
+    } catch {
+      if (activePartRequestRef.current?.requestId === requestId) {
+        activePartRequestRef.current = null;
+      }
+      return { preview: null, targets: [], urls: {} };
+    }
+  }, []);
+
   const replaceSourceFile = useCallback(async (): Promise<void> => {
     if (
       phaseRef.current === 'committing' ||
@@ -499,6 +620,14 @@ export function FlaCharacterImportFlow({
     flowGenerationRef.current += 1;
     setPreview(null);
     setSelectedTargetId(null);
+    setActiveGraphicTargetId(null);
+    setGraphicTargets([]);
+    graphicPreviewRef.current = null;
+    graphicPlanHeldRef.current = false;
+    sceneRenderTargetIdRef.current = null;
+    committedGraphicAnimationsRef.current.clear();
+    setGraphicErrorRetryable(false);
+    nameTouchedRef.current = false;
     setSelectedFrameIndex(0);
     selectedFrameIndexRef.current = 0;
     setOperationOutcome(null);
@@ -545,7 +674,15 @@ export function FlaCharacterImportFlow({
     const generation = ++flowGenerationRef.current;
     sessionIdRef.current = null;
     setCandidateEntries([]);
+    setGraphicTargets([]);
     setSelectedTargetId(null);
+    setActiveGraphicTargetId(null);
+    graphicPreviewRef.current = null;
+    graphicPlanHeldRef.current = false;
+    sceneRenderTargetIdRef.current = null;
+    committedGraphicAnimationsRef.current.clear();
+    setGraphicErrorRetryable(false);
+    nameTouchedRef.current = false;
     setPreview(null);
     setSourceBasename('');
     setName('');
@@ -577,9 +714,54 @@ export function FlaCharacterImportFlow({
             transition('error');
             return;
           }
+          const sceneEntry = catalog.entries.find((entry) => entry.target.kind === 'scene');
+          sceneRenderTargetIdRef.current = sceneEntry?.target.renderTargetId ?? null;
+          let loadedGraphics: GraphicCharacterTarget[] = [];
+          if (sceneEntry && onCreateCharacterFromGraphicRef.current) {
+            const graphicResult = await loadGraphicInstanceTargets(
+              response.sessionId,
+              sceneEntry.target.renderTargetId,
+              response.ir.source.basename,
+              generation,
+            );
+            if (!mountedRef.current || flowGenerationRef.current !== generation) return;
+            if (graphicResult.preview && graphicResult.targets.length > 0) {
+              graphicPreviewRef.current = graphicResult.preview;
+              graphicPlanHeldRef.current = true;
+              for (const url of graphicThumbnailUrlsRef.current.values()) {
+                URL.revokeObjectURL(url);
+              }
+              graphicThumbnailUrlsRef.current.clear();
+              for (const [unitId, url] of Object.entries(graphicResult.urls)) {
+                graphicThumbnailUrlsRef.current.set(unitId, url);
+              }
+              setGraphicThumbnailUrls(graphicResult.urls);
+              loadedGraphics = graphicResult.targets;
+            }
+          }
+          setGraphicTargets(loadedGraphics);
+
           const candidates = getCharacterImportEntries(catalog.entries);
           setCandidateEntries(candidates);
           setOmittedCandidateCount(catalog.omittedCandidateCount);
+
+          if (loadedGraphics.length === 1) {
+            const singleGraphic = loadedGraphics[0]!;
+            setActiveGraphicTargetId(singleGraphic.unitId);
+            setSelectedTargetId(null);
+            if (!nameTouchedRef.current && singleGraphic.label) {
+              setName(singleGraphic.label);
+            }
+            setStatusMessage('已选定 Graphic 元件，将自动拆分为可编辑零件。');
+            transition('preview-ready');
+            return;
+          }
+          if (loadedGraphics.length >= 2) {
+            setStatusMessage('请选择要导入的角色对象。');
+            transition('selecting');
+            return;
+          }
+
           const uniqueCandidate = getUniqueCharacterImportCandidate(candidates);
           if (uniqueCandidate) {
             const entry = uniqueCandidate;
@@ -606,7 +788,7 @@ export function FlaCharacterImportFlow({
       },
     );
     return unsubscribe;
-  }, [inspectionAttempt, prepareTarget, transition]);
+  }, [inspectionAttempt, loadGraphicInstanceTargets, prepareTarget, transition]);
 
   useEffect(() => {
     const baseline = baselineRef.current;
@@ -660,8 +842,73 @@ export function FlaCharacterImportFlow({
   const selectedTarget = candidateEntries.find(
     (entry) => entry.target.renderTargetId === selectedTargetId,
   ) ?? null;
+  const activeGraphicTarget = graphicTargets.find(
+    (target) => target.unitId === activeGraphicTargetId,
+  ) ?? null;
+
+  const chooseGraphicTarget = (target: GraphicCharacterTarget): void => {
+    if (
+      invalidatedRef.current ||
+      phaseRef.current === 'committing' ||
+      pendingCreateOperationRef.current
+    ) return;
+    setSelectedTargetId(null);
+    setPreview(null);
+    setActiveGraphicTargetId(target.unitId);
+    setGraphicErrorRetryable(false);
+    if (!nameTouchedRef.current && target.label) {
+      setName(target.label);
+    }
+    if (graphicPlanHeldRef.current && graphicPreviewRef.current) {
+      setStatusMessage('已选定 Graphic 元件，将自动拆分为可编辑零件。');
+      transition('preview-ready');
+      return;
+    }
+    const ownedSessionId = sessionIdRef.current;
+    const sceneTargetId = sceneRenderTargetIdRef.current;
+    if (!ownedSessionId || !sceneTargetId) {
+      setStatusMessage('FLA 会话已失效，请重新选择文件。');
+      transition('error');
+      return;
+    }
+    const flowGeneration = ++flowGenerationRef.current;
+    transition('preparing');
+    setStatusMessage('正在准备角色…');
+    void (async () => {
+      await Promise.all([cancelActiveThumbnail(), cancelActivePartPreview(), releaseCurrentPlan()]);
+      if (!mountedRef.current || flowGenerationRef.current !== flowGeneration) return;
+      const refreshed = await loadGraphicInstanceTargets(
+        ownedSessionId,
+        sceneTargetId,
+        sourceBasename,
+        flowGeneration,
+      );
+      if (!mountedRef.current || flowGenerationRef.current !== flowGeneration) return;
+      if (!refreshed.preview || !refreshed.targets.some((candidate) => candidate.unitId === target.unitId)) {
+        setStatusMessage('无法准备这个元件，请重试或选择其他对象。');
+        transition('error');
+        return;
+      }
+      graphicPreviewRef.current = refreshed.preview;
+      graphicPlanHeldRef.current = true;
+      for (const url of graphicThumbnailUrlsRef.current.values()) {
+        URL.revokeObjectURL(url);
+      }
+      graphicThumbnailUrlsRef.current.clear();
+      for (const [unitId, url] of Object.entries(refreshed.urls)) {
+        graphicThumbnailUrlsRef.current.set(unitId, url);
+      }
+      setGraphicThumbnailUrls(refreshed.urls);
+      setGraphicTargets(refreshed.targets);
+      setStatusMessage('已选定 Graphic 元件，将自动拆分为可编辑零件。');
+      transition('preview-ready');
+    })();
+  };
 
   const chooseTarget = (entry: FlaRenderableTargetCatalogEntry): void => {
+    setActiveGraphicTargetId(null);
+    graphicPlanHeldRef.current = false;
+    setGraphicErrorRetryable(false);
     const frameIndex = entry.target.selectedFrameIndex ?? 0;
     setStatusMessage('正在准备角色…');
     void prepareTarget(entry, frameIndex, sessionIdRef.current ?? '');
@@ -950,9 +1197,113 @@ export function FlaCharacterImportFlow({
     }
   };
 
+  const createGraphicCharacter = async (): Promise<void> => {
+    const createFromGraphic = onCreateCharacterFromGraphicRef.current;
+    const graphicPreview = graphicPreviewRef.current;
+    if (
+      !createFromGraphic ||
+      !graphicPreview ||
+      !activeGraphicTarget ||
+      (phaseRef.current !== 'preview-ready' && !(phaseRef.current === 'error' && graphicErrorRetryable)) ||
+      !name.trim() ||
+      invalidatedRef.current
+    ) return;
+
+    const baseline = baselineRef.current;
+    const liveSnapshot = editorProjectStore.getSnapshot();
+    const liveOpenInstanceId = editorProjectStore.getProjectInstanceId();
+    const reusedAnimationId = committedGraphicAnimationsRef.current.get(activeGraphicTarget.unitId);
+    const projectIdentityMatches = Boolean(
+      baseline &&
+        liveSnapshot &&
+        liveOpenInstanceId !== null &&
+        liveSnapshot.projectRoot === baseline.projectRoot &&
+        liveSnapshot.project.id === baseline.projectId &&
+        liveOpenInstanceId === baseline.openInstanceId &&
+        (liveSnapshot.revision === baseline.revision || Boolean(reusedAnimationId)),
+    );
+    if (!projectIdentityMatches) {
+      invalidatedRef.current = true;
+      setGraphicErrorRetryable(false);
+      setStatusMessage('工程状态已变化，请返回角色列表后重新准备。');
+      transition('error');
+      return;
+    }
+
+    setGraphicErrorRetryable(false);
+    transition('committing');
+    setStatusMessage('正在保存元件并拆分可编辑零件…');
+    onCommittingChange?.(true);
+    try {
+      const result = await createFromGraphic({
+        preview: graphicPreview,
+        unitId: activeGraphicTarget.unitId,
+        characterName: name.trim(),
+        poseFrameOrdinal: 0,
+        ...(reusedAnimationId ? { reusedAnimationId } : {}),
+      });
+      const updatedSnapshot = editorProjectStore.getSnapshot();
+      const updatedOpenInstanceId = editorProjectStore.getProjectInstanceId();
+      if (updatedSnapshot && updatedOpenInstanceId !== null) {
+        baselineSnapshotRef.current = updatedSnapshot;
+        baselineOpenInstanceIdRef.current = updatedOpenInstanceId;
+        baselineRef.current = {
+          projectRoot: updatedSnapshot.projectRoot,
+          projectId: updatedSnapshot.project.id,
+          revision: updatedSnapshot.revision,
+          openInstanceId: updatedOpenInstanceId,
+        };
+      }
+      if (!result.ok) {
+        if (result.animationId) {
+          committedGraphicAnimationsRef.current.set(
+            activeGraphicTarget.unitId,
+            result.animationId,
+          );
+        }
+        setGraphicErrorRetryable(result.kind === 'character-create-failed');
+        setStatusMessage(result.message);
+        transition('error');
+        return;
+      }
+      committedGraphicAnimationsRef.current.delete(activeGraphicTarget.unitId);
+      const notice = formatFlaGraphicSkippedSummary(
+        result.partCount,
+        result.skipped,
+        result.warnings,
+        {
+          autoPlacedCount: result.autoPlacedCount,
+          authorPosePlacedCount: result.authorPosePlacedCount,
+          savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+          availableSavedLayoutCount: result.availableSavedLayoutCount,
+          autoPlacedOrigin: result.autoPlacedOrigin,
+        },
+      );
+      transition('created');
+      onCommittingChange?.(false);
+      const opened = onCreatedCharacter(result.characterId, notice);
+      void cancelOwnedWork();
+      if (opened) {
+        onCloseRef.current();
+        return;
+      }
+      setStatusMessage(notice ?? '角色已保存，可从角色列表打开。');
+    } catch (error) {
+      setGraphicErrorRetryable(true);
+      setStatusMessage(error instanceof Error ? error.message : '创建角色失败，请重试。');
+      transition('error');
+    } finally {
+      onCommittingChange?.(false);
+    }
+  };
+
   const createCharacter = async (): Promise<void> => {
     if (pendingCreateOperationRef.current) {
       await queryCharacterStatus();
+      return;
+    }
+    if (activeGraphicTarget && onCreateCharacterFromGraphicRef.current) {
+      await createGraphicCharacter();
       return;
     }
     if (
@@ -1044,7 +1395,7 @@ export function FlaCharacterImportFlow({
   if (typeof document === 'undefined') return null;
 
   const visibleTargets = candidateEntries;
-  const multipleTargets = visibleTargets.length > 1;
+  const multipleTargets = graphicTargets.length + visibleTargets.length > 1;
   const editablePreview = preview?.ok &&
     preview.status === 'PREVIEW_READY' &&
     preview.capability === 'EDITABLE_PARTS_READY'
@@ -1053,11 +1404,19 @@ export function FlaCharacterImportFlow({
   const partCount = previewImages?.parts.length ?? editablePreview?.partPreviews.length ?? 0;
   const hasPendingOperation = Boolean(pendingCreateOperationRef.current);
   const pendingCredential = pendingCreateOperationRef.current?.credential ?? null;
-  const canCreate = !hasPendingOperation &&
+  const activeGraphicPreviewUrl = activeGraphicTarget
+    ? graphicThumbnailUrls[activeGraphicTarget.unitId] ?? null
+    : null;
+  const canCreateGraphic = !hasPendingOperation &&
+    Boolean(activeGraphicTarget && onCreateCharacterFromGraphic) &&
+    (phase === 'preview-ready' || (phase === 'error' && graphicErrorRetryable)) &&
+    name.trim().length > 0 &&
+    !invalidatedRef.current;
+  const canCreate = (!hasPendingOperation &&
     phase === 'preview-ready' &&
     Boolean(editablePreview) &&
     name.trim().length > 0 &&
-    !invalidatedRef.current;
+    !invalidatedRef.current) || canCreateGraphic;
   const canQueryStatus = hasPendingOperation && phase !== 'committing' && !recoveryBusy;
   const centerLoading = phase === 'inspecting' || phase === 'preparing';
   const showPreviewStatus =
@@ -1065,7 +1424,9 @@ export function FlaCharacterImportFlow({
       !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction);
   const createLabel = hasPendingOperation
     ? '查询保存结果'
-    : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
+    : (activeGraphicTarget && phase === 'error' && graphicErrorRetryable) ||
+        operationOutcome === 'FAILED' ||
+        operationOutcome === 'NOT_FOUND'
       ? '重新创建角色'
       : '创建角色';
 
@@ -1150,9 +1511,37 @@ export function FlaCharacterImportFlow({
                 </p>
               ) : null}
               <div className="fla-character-import-target-list">
+                {graphicTargets.map((target) => {
+                  const selected = activeGraphicTargetId === target.unitId;
+                  const image = graphicThumbnailUrls[target.unitId];
+                  return (
+                    <button
+                      aria-pressed={selected}
+                      className="fla-character-import-target"
+                      data-candidate-mode="graphic"
+                      data-testid="fla-character-import-target"
+                      disabled={phase === 'committing' || hasPendingOperation}
+                      key={`graphic:${target.unitId}`}
+                      onClick={() => chooseGraphicTarget(target)}
+                      type="button"
+                    >
+                      <span className="fla-character-import-target-thumb">
+                        {image ? <img alt="" loading="lazy" src={image} /> : <span aria-hidden="true">预览</span>}
+                      </span>
+                      <span className="fla-character-import-target-copy">
+                        <strong>{target.label}</strong>
+                        <small>
+                          {target.frameCount > 1
+                            ? 'Graphic 元件 · 可编辑零件（首帧）'
+                            : 'Graphic 元件 · 可编辑零件'}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
                 {visibleTargets.map((entry) => {
                   const targetId = entry.target.renderTargetId;
-                  const selected = targetId === selectedTargetId;
+                  const selected = !activeGraphicTargetId && targetId === selectedTargetId;
                   const enabled = entry.previewSupported && !entry.isBlank;
                   const image = selected && previewImages
                     ? previewImages.source
@@ -1161,6 +1550,7 @@ export function FlaCharacterImportFlow({
                     <button
                       aria-pressed={selected}
                       className="fla-character-import-target"
+                      data-candidate-mode="png"
                       data-testid="fla-character-import-target"
                       disabled={!enabled || phase === 'committing' || hasPendingOperation}
                       key={targetId}
@@ -1175,8 +1565,8 @@ export function FlaCharacterImportFlow({
                       <span className="fla-character-import-target-copy">
                         <strong>{entry.target.userLabel}</strong>
                         <small>{entry.target.kind === 'graphic-symbol'
-                          ? '独立姿势（首帧）'
-                          : enabled ? `${entry.target.frameCount} 个整体姿势` : '暂不可用'}</small>
+                          ? '独立姿势（PNG 零件）'
+                          : enabled ? `${entry.target.frameCount} 个整体姿势（PNG 零件）` : '暂不可用'}</small>
                         {!enabled ? <small>这个对象目前无法安全还原。</small> : null}
                       </span>
                     </button>
@@ -1188,7 +1578,11 @@ export function FlaCharacterImportFlow({
 
           <main className="fla-character-import-preview-area">
             <div className="fla-character-import-preview-toolbar">
-              {selectedTarget && selectedTarget.target.kind === 'scene' && selectedTarget.target.frameCount > 1 ? (
+              {activeGraphicTarget ? (
+                <span className="fla-character-import-pose-control" data-testid="fla-character-import-graphic-badge">
+                  Graphic 元件 · 创建时自动拆分为可编辑零件
+                </span>
+              ) : selectedTarget && selectedTarget.target.kind === 'scene' && selectedTarget.target.frameCount > 1 ? (
                 <label className="fla-character-import-pose-control">
                   <span>整体姿势 · {selectedFrameIndex + 1}/{selectedTarget.target.frameCount}</span>
                   <input
@@ -1226,7 +1620,14 @@ export function FlaCharacterImportFlow({
                   />
                 ) : null}
                 <div className="fla-character-import-preview-canvas" data-testid="fla-character-import-preview">
-                  {previewImages && phase !== 'inspecting' && phase !== 'selecting' && phase !== 'preparing' ? (
+                  {activeGraphicTarget && activeGraphicPreviewUrl && phase !== 'inspecting' && phase !== 'selecting' && phase !== 'preparing' ? (
+                    <img
+                      alt={activeGraphicTarget.label}
+                      className="fla-character-import-reassembled"
+                      data-testid="fla-character-import-graphic-preview"
+                      src={activeGraphicPreviewUrl}
+                    />
+                  ) : previewImages && phase !== 'inspecting' && phase !== 'selecting' && phase !== 'preparing' ? (
                     <img
                       alt={phase === 'whole-image-only' ? 'FLA 原始整图（仅供参考）' : '角色组装预览'}
                       className="fla-character-import-reassembled"
@@ -1309,6 +1710,7 @@ export function FlaCharacterImportFlow({
               maxLength={100}
               onChange={(event) => {
                 if (phaseRef.current !== 'committing' && !pendingCreateOperationRef.current) {
+                  nameTouchedRef.current = true;
                   setName(event.currentTarget.value);
                 }
               }}

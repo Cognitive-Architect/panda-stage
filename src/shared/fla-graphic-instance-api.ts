@@ -12,6 +12,32 @@ const AffineMatrixSchema = z.object({
   ty: z.number().finite(),
 }).strict();
 
+const ShortReferenceTextSchema = z.string().trim().min(1).max(1_000);
+
+export const FlaGraphicAuthorPoseNodeSchema = z.object({
+  kind: z.enum(['group', 'symbol', 'bitmap', 'opaque']),
+  opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']).optional(),
+  sourceAddress: ShortReferenceTextSchema.optional(),
+  symbolRef: ShortReferenceTextSchema.optional(),
+  nestedDefinitionId: ShortReferenceTextSchema.optional(),
+  bitmapRef: ShortReferenceTextSchema.optional(),
+  sourceRef: ShortReferenceTextSchema.optional(),
+  groupId: ShortReferenceTextSchema.optional(),
+  regionRef: z.string().trim().min(1).max(128).optional(),
+  descendantProvenance: z.array(ShortReferenceTextSchema).max(512).optional(),
+  ancestorSymbolChain: z.array(ShortReferenceTextSchema).max(64),
+  authoredWorldTransform: AffineMatrixSchema,
+  drawOrderRank: z.number().int().nonnegative(),
+}).strict();
+
+export const FlaGraphicAuthorPoseReferenceSchema = z.object({
+  origin: z.enum(['definition-frame', 'sibling-graphic', 'scene-frame']),
+  sourceLabel: ShortReferenceTextSchema,
+  referenceFrameOrdinal: z.number().int().nonnegative().optional(),
+  referenceSymbolRef: ShortReferenceTextSchema.optional(),
+  nodes: z.array(FlaGraphicAuthorPoseNodeSchema).max(2_000),
+}).strict();
+
 export const FlaGraphicGroupEditArtworkSchema = z.object({
   svg: z.string().min(1).max(2_000_000),
   viewBox: z.object({
@@ -110,6 +136,7 @@ export const FlaGraphicInstanceCommitResponseSchema = z.discriminatedUnion('ok',
     animationId: z.uuid(),
     layerId: z.uuid().nullable(),
     groupEditPreview: FlaGraphicGroupEditPreviewSchema.optional(),
+    authorPoseReferences: z.array(FlaGraphicAuthorPoseReferenceSchema).max(16).optional(),
   }).strict().refine(
     (result) => result.project.id === result.projectId &&
       (result.projectChanged

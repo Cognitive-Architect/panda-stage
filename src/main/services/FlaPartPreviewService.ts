@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import {
   FLA_GRAPHIC_MAX_FRAMES,
+  type FlaGraphicAuthorPoseNode,
+  type FlaGraphicAuthorPoseReference,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
 } from '../../domain';
@@ -1015,6 +1017,8 @@ export interface FlaGraphicDefinitionFrameBatch {
   readonly bitmaps?: readonly FlaGraphicBatchBitmap[];
   /** Main-only isolated SVG artwork, bound to opaque Shape nodes at commit. */
   readonly fallbacks?: readonly FlaGraphicBatchFallback[];
+  /** Bounded same-FLA author pose references (sibling Graphics / Scene frames). */
+  readonly authorPoseReferences?: readonly FlaGraphicAuthorPoseReference[];
 }
 
 export interface FlaGraphicBatchFallback {
@@ -1063,6 +1067,303 @@ export function flaPreparedPartBatchMetadata(
     })),
     partPngBytes: batch.partPngBytes,
   };
+}
+
+const MAX_CAPTURED_STRUCTURE_FRAMES = 16;
+const MAX_AUTHOR_POSE_SIBLING_SYMBOLS = 32;
+const MAX_AUTHOR_POSE_SCENE_FRAMES = 8;
+const MAX_AUTHOR_POSE_NODES_PER_REF = 2_000;
+const MAX_AUTHOR_POSE_REFS = 8;
+
+function collectDisplayListProvenanceTokens(
+  displayList: FlaResolvedDisplayList,
+): Set<string> {
+  const tokens = new Set<string>();
+  const walk = (nodes: readonly FlaResolvedDisplayNode[]): void => {
+    for (const node of nodes) {
+      if (node.kind === 'shape') {
+        tokens.add(`opaque:shape:${node.shapeId}`);
+      } else if (node.kind === 'bitmap') {
+        tokens.add(`bitmap:${node.libraryItemName}`);
+      } else if (node.opaque) {
+        if (node.opaque.sourceRef) {
+          tokens.add(`opaque:${node.opaque.kind}:${node.opaque.sourceRef}`);
+        }
+      } else if (node.symbolLibraryItemName) {
+        tokens.add(`symbol:${node.symbolLibraryItemName}`);
+      } else {
+        walk(node.children);
+      }
+    }
+  };
+  for (const layer of displayList.layers) walk(layer.children);
+  return tokens;
+}
+
+function collectDisplayNodeDescendantTokens(
+  node: FlaResolvedDisplayNode,
+): { readonly tokens: readonly string[]; readonly hasSourceless: boolean } {
+  if (node.kind === 'bitmap') {
+    return { tokens: [`bitmap:${node.libraryItemName}`], hasSourceless: false };
+  }
+  if (node.kind === 'shape') {
+    return { tokens: [`opaque:shape:${node.shapeId}`], hasSourceless: false };
+  }
+  if (node.opaque) {
+    return node.opaque.sourceRef
+      ? { tokens: [`opaque:${node.opaque.kind}:${node.opaque.sourceRef}`], hasSourceless: false }
+      : { tokens: [], hasSourceless: true };
+  }
+  if (node.symbolLibraryItemName) {
+    return { tokens: [`symbol:${node.symbolLibraryItemName}`], hasSourceless: false };
+  }
+  const tokens: string[] = [];
+  let hasSourceless = false;
+  for (const child of node.children) {
+    const childResult = collectDisplayNodeDescendantTokens(child);
+    tokens.push(...childResult.tokens);
+    if (childResult.hasSourceless) hasSourceless = true;
+  }
+  return { tokens: tokens.sort(), hasSourceless };
+}
+
+function extractAuthorPoseNodesFromDisplayList(
+  displayList: FlaResolvedDisplayList,
+  skipSelfSymbolRef?: string,
+): { readonly nodes: FlaGraphicAuthorPoseNode[]; readonly matchedTokens: Set<string> } {
+  const nodes: FlaGraphicAuthorPoseNode[] = [];
+  const matchedTokens = new Set<string>();
+  let drawOrderRank = 0;
+
+  const visit = (
+    items: readonly FlaResolvedDisplayNode[],
+    ancestorSymbolChain: readonly string[],
+  ): void => {
+    for (const item of items) {
+      if (nodes.length >= MAX_AUTHOR_POSE_NODES_PER_REF) break;
+      const currentRank = drawOrderRank;
+      drawOrderRank += 1;
+
+      if (item.kind === 'shape') {
+        matchedTokens.add(`opaque:shape:${item.shapeId}`);
+        nodes.push({
+          kind: 'opaque',
+          opaqueKind: 'shape',
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          sourceRef: item.shapeId,
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        continue;
+      }
+      if (item.kind === 'bitmap') {
+        matchedTokens.add(`bitmap:${item.libraryItemName}`);
+        nodes.push({
+          kind: 'bitmap',
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          bitmapRef: item.libraryItemName,
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        continue;
+      }
+      if (item.opaque) {
+        if (item.opaque.sourceRef) {
+          matchedTokens.add(`opaque:${item.opaque.kind}:${item.opaque.sourceRef}`);
+        }
+        nodes.push({
+          kind: 'opaque',
+          opaqueKind: item.opaque.kind,
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          ...(item.opaque.sourceRef ? { sourceRef: item.opaque.sourceRef } : {}),
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        continue;
+      }
+      if (item.symbolLibraryItemName) {
+        if (skipSelfSymbolRef && item.symbolLibraryItemName === skipSelfSymbolRef) {
+          // Do not mistake an unmodified placed instance of the target scattered
+          // symbol in Scene for an independent assembled pose.
+          continue;
+        }
+        matchedTokens.add(`symbol:${item.symbolLibraryItemName}`);
+        const nestedDefId = item.symbolInstance?.frameSelectionKey
+          ? `${item.symbolLibraryItemName}::${item.symbolInstance.frameSelectionKey}`
+          : item.symbolLibraryItemName;
+        nodes.push({
+          kind: 'symbol',
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          symbolRef: item.symbolLibraryItemName,
+          nestedDefinitionId: nestedDefId,
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        if (item.children.length > 0) {
+          visit(item.children, [...ancestorSymbolChain, `symbol:${item.symbolLibraryItemName}`]);
+        }
+        continue;
+      }
+      const provenance = collectDisplayNodeDescendantTokens(item);
+      nodes.push({
+        kind: 'group',
+        ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+        groupId: item.groupId,
+        ...(!provenance.hasSourceless && provenance.tokens.length > 0
+          ? { descendantProvenance: provenance.tokens }
+          : {}),
+        ancestorSymbolChain,
+        authoredWorldTransform: { ...item.worldTransform },
+        drawOrderRank: currentRank,
+      });
+      if (item.children.length > 0) {
+        visit(item.children, ancestorSymbolChain);
+      }
+    }
+  };
+
+  for (const layer of displayList.layers) {
+    visit(layer.children, []);
+  }
+  return { nodes, matchedTokens };
+}
+
+function collectBoundedAuthorPoseReferencesFromSource(input: {
+  readonly source: FlaStaticSnapshotDisplaySource;
+  readonly targetDescriptor: FlaStaticSnapshotDisplaySource['graphicSymbols'][number];
+  readonly targetDisplayList: FlaResolvedDisplayList;
+  readonly shouldContinue: () => boolean;
+}): FlaGraphicAuthorPoseReference[] {
+  const targetSymbolName = input.targetDescriptor.sourceLibraryItemName;
+  const targetTokens = collectDisplayListProvenanceTokens(input.targetDisplayList);
+  if (targetTokens.size < 2) return [];
+
+  const scored: Array<{ readonly overlap: number; readonly reference: FlaGraphicAuthorPoseReference }> = [];
+  const considerDisplayList = (
+    displayList: FlaResolvedDisplayList,
+    origin: FlaGraphicAuthorPoseReference['origin'],
+    sourceLabel: string,
+    extra: { readonly referenceFrameOrdinal?: number; readonly referenceSymbolRef?: string },
+  ): void => {
+    const extracted = extractAuthorPoseNodesFromDisplayList(
+      displayList,
+      origin === 'scene-frame' ? targetSymbolName : undefined,
+    );
+    if (extracted.nodes.length < 2) return;
+    let overlap = 0;
+    for (const token of targetTokens) {
+      if (extracted.matchedTokens.has(token)) overlap += 1;
+    }
+    if (overlap < 2) return;
+    scored.push({
+      overlap,
+      reference: {
+        origin,
+        sourceLabel,
+        ...(extra.referenceFrameOrdinal !== undefined ? { referenceFrameOrdinal: extra.referenceFrameOrdinal } : {}),
+        ...(extra.referenceSymbolRef ? { referenceSymbolRef: extra.referenceSymbolRef } : {}),
+        nodes: extracted.nodes,
+      },
+    });
+  };
+
+  if (input.targetDescriptor.frameCount > 1 && input.targetDescriptor.frameSpanIndex) {
+    const maxTargetFrames = Math.min(
+      input.targetDescriptor.frameCount,
+      MAX_CAPTURED_STRUCTURE_FRAMES,
+    );
+    for (let ordinal = 1; ordinal < maxTargetFrames; ordinal += 1) {
+      if (!input.shouldContinue()) break;
+      const frameContextResult = input.source.buildGraphicFrameContext(
+        input.targetDescriptor.timelineXml,
+        input.targetDescriptor.frameSpanIndex,
+        ordinal,
+        `graphic:${targetSymbolName}`,
+      );
+      if (!frameContextResult.ok) break;
+      const resolvedExtra = resolveFlaDisplayList({
+        root: {
+          kind: 'graphic',
+          name: targetSymbolName,
+          frameContext: frameContextResult.value,
+        },
+        symbols: input.source.symbols,
+      }, { tolerant: true });
+      if (!resolvedExtra.ok) break;
+      considerDisplayList(
+        resolvedExtra.displayList,
+        'definition-frame',
+        `${input.targetDescriptor.userLabel || targetSymbolName} 第 ${ordinal + 1} 帧`,
+        {
+          referenceFrameOrdinal: ordinal,
+          referenceSymbolRef: targetSymbolName,
+        },
+      );
+    }
+  }
+
+  let siblingChecks = 0;
+  for (const candidate of input.source.graphicSymbols) {
+    if (siblingChecks >= MAX_AUTHOR_POSE_SIBLING_SYMBOLS || !input.shouldContinue()) break;
+    if (candidate.sourceLibraryItemName === targetSymbolName) continue;
+    siblingChecks += 1;
+    input.source.resetFrameBuildState();
+    const resolved = resolveFlaDisplayList({
+      root: {
+        kind: 'graphic',
+        name: candidate.sourceLibraryItemName,
+        frameContext: candidate.frameContext,
+      },
+      symbols: input.source.symbols,
+    }, { tolerant: true });
+    if (resolved.ok) {
+      considerDisplayList(
+        resolved.displayList,
+        'sibling-graphic',
+        candidate.userLabel || candidate.sourceLibraryItemName,
+        {
+          referenceFrameOrdinal: 0,
+          referenceSymbolRef: candidate.sourceLibraryItemName,
+        },
+      );
+    }
+  }
+
+  const scene0 = input.source.sceneTimelines[0];
+  if (scene0 && input.shouldContinue()) {
+    const maxSceneFrames = Math.min(scene0.frameCount, MAX_AUTHOR_POSE_SCENE_FRAMES);
+    for (let frameIdx = 0; frameIdx < maxSceneFrames; frameIdx += 1) {
+      if (!input.shouldContinue()) break;
+      const frameContextResult =
+        frameIdx === 0
+          ? { ok: true as const, value: scene0.frameContext }
+          : input.source.buildSceneFrameContext(scene0.xml, frameIdx, `scene:${scene0.index}`);
+      if (!frameContextResult.ok) break;
+      const resolvedScene = resolveFlaDisplayList({
+        root: {
+          kind: 'scene',
+          name: scene0.name,
+          frameContext: frameContextResult.value,
+        },
+        symbols: input.source.symbols,
+      }, { tolerant: true });
+      if (resolvedScene.ok) {
+        considerDisplayList(
+          resolvedScene.displayList,
+          'scene-frame',
+          `${scene0.name} 第 ${frameIdx + 1} 帧`,
+          { referenceFrameOrdinal: frameIdx },
+        );
+      }
+    }
+  }
+
+  scored.sort((left, right) => right.overlap - left.overlap);
+  return scored.slice(0, MAX_AUTHOR_POSE_REFS).map((entry) => entry.reference);
 }
 
 interface HeldPartPreviewResult {
@@ -1345,6 +1646,7 @@ export class FlaPartPreviewService {
     let groupEditPreview: FlaGraphicGroupEditPreview | undefined;
     const firstFrame = frames[0];
     let structure: FlaGraphicStructure | undefined;
+    let authorPoseReferences: FlaGraphicAuthorPoseReference[] = [];
     const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
     if (firstFrame && unit.sourceAddress) {
       prepared.source.resetFrameBuildState();
@@ -1460,7 +1762,15 @@ export class FlaPartPreviewService {
           sourceBasename: source.basename,
           clipPathShapePathData,
         });
+
+        authorPoseReferences = collectBoundedAuthorPoseReferencesFromSource({
+          source: prepared.source,
+          targetDescriptor: descriptor,
+          targetDisplayList: resolvedFirstFrameTolerant.displayList,
+          shouldContinue: execution.shouldContinue,
+        });
       }
+      prepared.source.resetFrameBuildState();
       if (frameCount === 1) {
         const resolvedForPreview = resolveFlaDisplayList({
           root: {
@@ -1549,6 +1859,7 @@ export class FlaPartPreviewService {
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
         ...(isolatedFallbacks.size ? { fallbacks: [...isolatedFallbacks.values()] } : {}),
+        ...(authorPoseReferences.length ? { authorPoseReferences } : {}),
       },
     };
   }

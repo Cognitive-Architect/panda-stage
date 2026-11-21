@@ -51,6 +51,7 @@ import {
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../fla-import/FlaCharacterImportFlow';
+import type { CreateAdaptiveCharacterFromGraphic } from '../fla-import/createAdaptiveCharacterFromGraphic';
 import {
   FlaCharacterCreateRecoveryPanel,
   FlaCharacterCreateRecoveryUnavailable,
@@ -144,6 +145,7 @@ export interface CharacterManagerProps {
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
   onQueryPendingFlaCharacterCreateStatus?(
@@ -163,6 +165,12 @@ export interface CharacterManagerProps {
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
+  externalCreatedCharacter?: {
+    readonly characterId: string;
+    readonly notice?: string;
+    readonly nonce: number;
+  } | null;
+  onConsumeExternalCreatedCharacter?: () => void;
   /**
    * Issue #1031 / CHAR-UNI-01 F01: the unified Create entry routes the third
    * creation way into the existing FLA import flow owned by the dock.
@@ -313,6 +321,7 @@ export function CharacterManager({
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
+  onCreateCharacterFromGraphic,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord = { kind: 'none' },
   onQueryPendingFlaCharacterCreateStatus = async () => ({
@@ -327,6 +336,8 @@ export function CharacterManager({
   onFlaCharacterCommitStateChange,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy = false,
+  externalCreatedCharacter = null,
+  onConsumeExternalCreatedCharacter,
   onStartFlaCharacterImport,
 }: CharacterManagerProps): React.JSX.Element {
   const floatTarget = useContext(CharacterFloatHost)?.target;
@@ -775,12 +786,18 @@ export function CharacterManager({
     return true;
   };
 
-  const openCreatedAdaptiveCharacter = (characterId: string): boolean => {
+  const pendingImportedNoticeRef = useRef<string | undefined>(undefined);
+
+  const openCreatedAdaptiveCharacter = (
+    characterId: string,
+    notice?: string,
+  ): boolean => {
     const currentProject = editorProjectStore.getSnapshot()?.project;
     const character = currentProject?.characters.find(
       (candidate) => candidate.id === characterId,
     );
     if (!character || character.mode !== 'adaptive-parts') {
+      pendingImportedNoticeRef.current = notice;
       setPendingImportedCharacterId(characterId);
       return false;
     }
@@ -790,7 +807,7 @@ export function CharacterManager({
       setStatus('角色已保存，可从角色列表打开。');
       return false;
     }
-    setStatus('');
+    setStatus(notice ?? '');
     return true;
   };
 
@@ -800,10 +817,14 @@ export function CharacterManager({
       (candidate) => candidate.id === pendingImportedCharacterId,
     );
     if (!character || character.mode !== 'adaptive-parts') return;
+    const notice = pendingImportedNoticeRef.current;
+    pendingImportedNoticeRef.current = undefined;
     setSelectedCharacterId(character.id);
     onViewChange('list');
-    if (openAssembly(character.id)) onCloseFlaCharacterImport();
-    else setStatus('角色已保存，可从角色列表打开。');
+    if (openAssembly(character.id)) {
+      onCloseFlaCharacterImport();
+      if (notice) setStatus(notice);
+    } else setStatus('角色已保存，可从角色列表打开。');
     setPendingImportedCharacterId(null);
   }, [
     characters,
@@ -812,6 +833,18 @@ export function CharacterManager({
     openAssembly,
     pendingImportedCharacterId,
   ]);
+
+  const consumedExternalNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!externalCreatedCharacter) return;
+    if (consumedExternalNonceRef.current === externalCreatedCharacter.nonce) return;
+    consumedExternalNonceRef.current = externalCreatedCharacter.nonce;
+    openCreatedAdaptiveCharacter(
+      externalCreatedCharacter.characterId,
+      externalCreatedCharacter.notice,
+    );
+    onConsumeExternalCreatedCharacter?.();
+  });
 
   const updateAssembly = (
     update: Parameters<CharacterAssemblySessionHandle['updateDraft']>[0],
@@ -951,6 +984,7 @@ export function CharacterManager({
           onClose={onCloseFlaCharacterImport}
           onCommittingChange={onFlaCharacterCommitStateChange}
           onCreateCharacter={onCreateFlaCharacter}
+          onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
           onQueryCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
           onRecoveryCredentialChange={onFlaCharacterRecoveryCredentialChange}
           onOperationStateChange={onFlaCharacterOperationStateChange}
