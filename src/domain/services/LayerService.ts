@@ -9,6 +9,7 @@ import {
   type Point,
 } from '../geometry';
 import {
+  isFlaGraphicNodeTransformable,
   ProjectSchema,
   type AnimationPlayback,
   type Layer,
@@ -642,7 +643,7 @@ export class LayerService {
       frameOrdinal,
       nodePath,
     );
-    if (!node || node.type === 'opaque') return project;
+    if (!node || !isFlaGraphicNodeTransformable(node)) return project;
 
     const pruned = pruneFlaGraphicInstanceTransformOverrides(
       layer.flaGraphicInstanceTransformOverrides,

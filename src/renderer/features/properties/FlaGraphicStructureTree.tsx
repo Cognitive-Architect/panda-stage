@@ -6,6 +6,8 @@ import {
   doFlaGraphicNodePathsOverlap,
   flaGraphicNodePathsEqual,
   isFlaGraphicDefinition,
+  isFlaGraphicEditableSubtreeShapeNode,
+  isFlaGraphicNodeTransformable,
   type FlaGraphicSubtreeCandidateAssessment,
 } from '../../../domain';
 import { characterAssemblySessionStore } from '../../stores/characterAssemblySessionStore';
@@ -125,8 +127,14 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
             const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next;
           }); }} onDoubleClick={event => event.stopPropagation()}><ChevronRight size={14} style={{ transform: open ? 'rotate(90deg)' : undefined }} /></button>
           : <span className="fla-structure-chevron" />}
-        <DecorativeIcon icon={icon} size={15} /><span className="fla-structure-label">{row.label}</span>
-        {row.type === 'opaque' ? <span title="当前对象只读" aria-label="当前对象只读"><LockKeyhole size={12} /></span> : null}
+        <DecorativeIcon icon={icon} size={15} />
+        <span
+          className="fla-structure-label"
+          title={row.node && isFlaGraphicEditableSubtreeShapeNode(row.node) ? '可整块变换（路径/锚点暂不可编辑）' : undefined}
+        >
+          {row.label}
+        </span>
+        {row.type === 'opaque' && (!row.node || !isFlaGraphicNodeTransformable(row.node)) ? <span title="当前对象只读" aria-label="当前对象只读"><LockKeyhole size={12} /></span> : null}
       </div>
       {row.children.length && open ? <div role="group">{row.children.map(child => renderRow(child, depth + 1))}</div> : null}
     </div>;

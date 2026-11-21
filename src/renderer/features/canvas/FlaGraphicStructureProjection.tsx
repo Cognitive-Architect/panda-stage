@@ -3,6 +3,7 @@ import {
   Group,
   Image as KonvaImage,
   Rect,
+  Shape,
 } from 'react-konva';
 import type {
   EvaluatedFlaGraphicNode,
@@ -14,7 +15,9 @@ import type {
 } from '../../../domain';
 import {
   evaluateFlaGraphicVisual,
+  isFlaGraphicEditableSubtreeShapeNode,
   resolveFlaGraphicInternalAuthoringState,
+  unapplyFlaGraphicSubtreeViewBox,
   updateFlaGraphicStructureAuthoredTransform,
   updateFlaGraphicTimelineKeyframeTransform,
   withFlaGraphicContainerTimeline,
@@ -24,10 +27,17 @@ import {
   type AffineMatrix2D,
 } from '../../../shared/affine-matrix';
 import {
+  flaGraphicNodeCanTransform,
   flaGraphicNodePathKey,
   type FlaGraphicEditMode,
 } from './flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
+import {
+  drawClippedBitmapHitRegion,
+  drawFlaSvgShapeHitRegion,
+  extractFlaSvgTextForAsset,
+  parseFlaSvgShapeHitGeometry,
+} from './flaSvgShapeHit';
 
 interface Bounds {
   readonly x: number;
@@ -118,6 +128,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly definition: FlaGraphicDefinition;
   readonly frame: FlaGraphicStructureFrame;
   readonly images: ReadonlyMap<string, HTMLImageElement>;
+  readonly svgTexts?: ReadonlyMap<string, string>;
   readonly assets: ReadonlyMap<string, Pick<ImageAsset, 'width' | 'height'>>;
   readonly scopePath: readonly string[];
   readonly editMode?: FlaGraphicEditMode;
@@ -249,6 +260,7 @@ export function FlaGraphicStructureProjection({
   definition,
   frame,
   images,
+  svgTexts,
   assets,
   scopePath,
   editMode = 'instance',
@@ -365,7 +377,7 @@ export function FlaGraphicStructureProjection({
     const node = evaluatedNode.source;
     const path = evaluatedNode.path;
     const key = flaGraphicNodePathKey(path);
-    const localMatrix = draftMatrices[key] ?? evaluatedNode.localTransform;
+    const localMatrix = evaluatedNode.localTransform;
     const transform = matrixTransformProps(localMatrix);
     const content = nodeContentBounds(evaluatedNode);
     if (!transform) return null;
@@ -383,7 +395,8 @@ export function FlaGraphicStructureProjection({
             timelineAuthoringActive: true,
           }).canEditTransform
         : true;
-    const transformable = selectable && node.type !== 'opaque' && canEditNodeTransform;
+    const transformable =
+      selectable && flaGraphicNodeCanTransform(node) && canEditNodeTransform;
     const bubbleToSelectionAncestor =
       !isDirectChild && selectionAncestorPath !== null && !layerLocked;
     const selectedPath: readonly string[] | null = selectedNodePathKey ? JSON.parse(selectedNodePathKey) : null;
@@ -420,7 +433,10 @@ export function FlaGraphicStructureProjection({
         onError(localized.message);
         return;
       }
-      onCommitTransform(path, localized.value);
+      onCommitTransform(
+        path,
+        unapplyFlaGraphicSubtreeViewBox(node, localized.value),
+      );
     };
     const handleTransformPreview = (event: Konva.KonvaEventObject<Event>): void => {
       event.cancelBubble = true;
@@ -434,7 +450,12 @@ export function FlaGraphicStructureProjection({
         matrixFromKonva(parentKonvaMatrix),
         matrixFromKonva(absolute),
       );
-      if (localized.ok) onTransformPreview(path, localized.value);
+      if (localized.ok) {
+        onTransformPreview(
+          path,
+          unapplyFlaGraphicSubtreeViewBox(node, localized.value),
+        );
+      }
     };
     const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>): void => {
       event.cancelBubble = true;
@@ -452,6 +473,87 @@ export function FlaGraphicStructureProjection({
       : equalPath(path, selectedPath ? selectedPath.slice(0, -1) : scopePath)
         ? scopeParentNodeRef
         : undefined;
+
+    const isLeafNode = node.type === 'bitmap' || node.type === 'opaque';
+    const shouldMountLeafHit =
+      isLeafNode && Boolean(content) && !layerLocked && (selectable || bubbleToSelectionAncestor);
+    const leafHitElement = (() => {
+      if (!shouldMountLeafHit || !content) return null;
+      const hitName = `fla-structure-hit-${node.id}`;
+      const hitHandlers = selectable
+        ? { onClick: setSelection, onTap: setSelection }
+        : {};
+      if (isFlaGraphicEditableSubtreeShapeNode(node)) {
+        const assetId = node.fallbackAssetId;
+        const svgText = extractFlaSvgTextForAsset(
+          assetId,
+          assetId ? images.get(assetId) : undefined,
+          svgTexts,
+        );
+        if (svgText !== null) {
+          const geometry = parseFlaSvgShapeHitGeometry(svgText);
+          if (geometry.primitives.length === 0) return null;
+          const viewBox = node.fallbackViewBox!;
+          const worldTransform = evaluatedNode.worldTransform;
+          const clipPaths = evaluatedNode.clipPaths;
+          return (
+            <Shape
+              height={content.height}
+              hitFunc={(context, shape) => {
+                drawFlaSvgShapeHitRegion(context, shape, {
+                  viewBox,
+                  geometry,
+                  nodeWorldTransform: worldTransform,
+                  clipPaths,
+                });
+              }}
+              listening
+              name={hitName}
+              width={content.width}
+              x={content.x}
+              y={content.y}
+              {...hitHandlers}
+            />
+          );
+        }
+      }
+      if (node.type === 'bitmap' && evaluatedNode.clipPaths.length > 0) {
+        const worldTransform = evaluatedNode.worldTransform;
+        const clipPaths = evaluatedNode.clipPaths;
+        return (
+          <Shape
+            height={content.height}
+            hitFunc={(context, shape) => {
+              drawClippedBitmapHitRegion(context, shape, {
+                width: content.width,
+                height: content.height,
+                nodeWorldTransform: worldTransform,
+                clipPaths,
+              });
+            }}
+            listening
+            name={hitName}
+            width={content.width}
+            x={content.x}
+            y={content.y}
+            {...hitHandlers}
+          />
+        );
+      }
+      return (
+        <Rect
+          fill="#000000"
+          height={content.height}
+          listening
+          name={hitName}
+          opacity={0}
+          width={content.width}
+          x={content.x}
+          y={content.y}
+          {...hitHandlers}
+        />
+      );
+    })();
 
     return (
       <Group
@@ -478,20 +580,7 @@ export function FlaGraphicStructureProjection({
         opacity={node.type === 'symbol' ? node.opacity ?? 1 : 1}
         ref={wrapperRef}
       >
-        {content && selectable ? (
-          <Rect
-            fill="#000000"
-            height={content.height}
-            listening
-            name={`fla-structure-hit-${node.id}`}
-            opacity={0}
-            onClick={setSelection}
-            onTap={setSelection}
-            width={content.width}
-            x={content.x}
-            y={content.y}
-          />
-        ) : null}
+        {leafHitElement}
         {children}
         {content && selected ? (
           <Rect

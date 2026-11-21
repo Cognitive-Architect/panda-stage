@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Konva from 'konva';
-import { resolveFlaGraphicInternalAuthoringState, type EvaluatedFlaGraphicNode } from '../../../domain';
+import { resolveFlaGraphicInternalAuthoringState, unapplyFlaGraphicSubtreeViewBox, type EvaluatedFlaGraphicNode } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { useTimelineUi } from '../timeline/timelineUiStore';
@@ -23,7 +23,8 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     for (const candidate of nodes) { if (JSON.stringify(candidate.path) === JSON.stringify(path)) return candidate; const child = find(candidate.children); if (child) return child; }
     return undefined;
   };
-  const matrix = find(visual?.layers?.flatMap(layer => layer.nodes) ?? [])?.localTransform ?? node.localTransform;
+  const evaluatedMatrix = find(visual?.layers?.flatMap(layer => layer.nodes) ?? [])?.localTransform;
+  const matrix = evaluatedMatrix ? unapplyFlaGraphicSubtreeViewBox(node, evaluatedMatrix) : node.localTransform;
   const decomposition = new Konva.Transform([matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]).decompose();
   const editable = !target.layer.locked && flaGraphicNodeCanTransform(node) && (!internal || resolveFlaGraphicInternalAuthoringState({
     structure: target.animation.structure, frameOrdinal: scope.frameOrdinal, nodePath: path, internalTimeMs: internalTimeMs ?? 0, timelineAuthoringActive: true,

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
-import type {
-  FlaGraphicStructure,
-  FlaGraphicStructureNode,
+import {
+  isFlaGraphicNodeTransformable,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureNode,
 } from './flaGraphicStructure';
 
 const FiniteNumberSchema = z.number().finite();
@@ -475,7 +476,7 @@ export function resolveFlaGraphicStableNodeIdentity(
   ownerSymbolDefId: string | null,
   containerRootNodes: readonly FlaGraphicStructureNode[],
 ): string | null {
-  if (node.type === 'opaque') return null;
+  if (!isFlaGraphicNodeTransformable(node)) return null;
   const trimmedAddr = node.sourceAddress?.trim();
   if (trimmedAddr) {
     const occurrences = countSourceAddressInNodes(containerRootNodes, trimmedAddr);
@@ -547,7 +548,7 @@ export function resolveFlaGraphicTimelineTarget(
   );
   const trsSafe = isAffineMatrixTrsSafe(targetNode.localTransform);
   const authoringCapability: FlaGraphicTimelineAuthoringCapability =
-    targetNode.type === 'opaque'
+    !isFlaGraphicNodeTransformable(targetNode)
       ? 'readonly-opaque'
       : !trackId
         ? 'readonly-identity'
@@ -633,7 +634,7 @@ export function resolveFlaGraphicInternalAuthoringState(input: {
     };
   }
   if (!timelineAuthoringActive) {
-    const isOpaque = target.targetNode.type === 'opaque';
+    const isOpaque = !isFlaGraphicNodeTransformable(target.targetNode);
     return {
       mode: 'base',
       target,

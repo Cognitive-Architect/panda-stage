@@ -437,7 +437,7 @@ describe('saved Fla Graphic edit scope', () => {
     expect(props.onEnter).toHaveBeenCalledWith(['group-a', 'symbol-b']);
   });
 
-  it('routes Group selection through a transparent bounds hit rect behind nested children', () => {
+  it('routes Group selection through nested leaf hit areas without mounting a Group bounds Rect', () => {
     const definition = makeDefinition();
     const frame = definition.structure!.frames[0]!;
     const projection = FlaGraphicStructureProjection(projectionProps({
@@ -447,10 +447,15 @@ describe('saved Fla Graphic edit scope', () => {
     }));
     const group = namedElement(projection, 'fla-structure-node-group-a');
     const descendantBitmap = namedElement(projection, 'fla-structure-bitmap-bitmap-one');
+    const descendantHit = namedElement(projection, 'fla-structure-hit-bitmap-one');
 
     expect(group?.props.listening).toBe(true);
-    expect(namedElement(projection, 'fla-structure-hit-group-a')).not.toBeNull();
+    expect(group?.props.onClick).toBeTypeOf('function');
+    expect(namedElement(projection, 'fla-structure-hit-group-a')).toBeNull();
     expect(descendantBitmap).toBeNull();
+    expect(descendantHit).not.toBeNull();
+    expect(descendantHit?.props.listening).toBe(true);
+    expect(descendantHit?.props.onClick).toBeUndefined();
     expect(namedElement(projection, 'fla-structure-hit-root-bitmap')).not.toBeNull();
   });
 

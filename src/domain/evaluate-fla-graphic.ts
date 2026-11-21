@@ -5,6 +5,8 @@ import {
 } from '../shared/affine-matrix';
 import { evaluateFlaGraphicFrame } from '../shared/fla-graphic-playback';
 import {
+  applyFlaGraphicSubtreeViewBox,
+  isFlaGraphicNodeTransformable,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -395,7 +397,7 @@ export function evaluateFlaGraphicVisual(input: {
       .map((node) => {
         const path = [...parentPath, node.id];
         let authoredLocalTransform = node.localTransform;
-        if (node.type !== 'opaque' && timelineContext.timeline) {
+        if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
           const trackId = resolveFlaGraphicStableNodeIdentity(
             node,
             structure,
@@ -429,20 +431,21 @@ export function evaluateFlaGraphicVisual(input: {
               })
             : null;
           if (localized) authoredLocalTransform = localized;
-        } else if (node.type === 'opaque' && node.fallbackScope === 'subtree' && node.fallbackViewBox) {
-          // The isolated SVG's viewBox can begin away from (0,0). Keep the
-          // authored node matrix and place its tight image at that local origin.
-          authoredLocalTransform = compose(authoredLocalTransform, {
-            ...identity, tx: node.fallbackViewBox.x, ty: node.fallbackViewBox.y,
-          }) ?? authoredLocalTransform;
         }
-        const localTransform = node.type === 'opaque'
-          ? authoredLocalTransform
-          : getFlaGraphicInstanceTransformOverride(
+        const authoredOrOverrideTransform = isFlaGraphicNodeTransformable(node)
+          ? getFlaGraphicInstanceTransformOverride(
               overrides,
               frameOrdinal,
               path,
-            ) ?? authoredLocalTransform;
+            ) ?? authoredLocalTransform
+          : authoredLocalTransform;
+        // The isolated SVG's viewBox can begin away from (0,0). Compose it ONCE
+        // after resolving authored/timeline/override transform so edits stay in
+        // node-local space without double-applying fallbackViewBox.
+        const localTransform = applyFlaGraphicSubtreeViewBox(
+          node,
+          authoredOrOverrideTransform,
+        );
         const worldTransform = compose(parentEffectiveWorld, localTransform);
         const fallbackReady = node.type !== 'opaque' || safeOpaqueFallback(node);
         const clipResult = node.type === 'opaque' && fallbackReady && node.fallbackScope === 'frame-crop'

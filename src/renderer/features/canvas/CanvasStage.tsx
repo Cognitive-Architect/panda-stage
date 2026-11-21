@@ -1254,7 +1254,8 @@ export function CanvasStage({
               flaGraphicEditMode={flaGraphicEditMode}
               readOnlySelected={Boolean(
                 flaGraphicEditActive &&
-                  ((selectedFlaGraphicNode?.type === 'opaque' &&
+                  ((selectedFlaGraphicNode &&
+                    !flaGraphicNodeCanTransform(selectedFlaGraphicNode) &&
                     selectedStructuredNodeReady) ||
                     (sharedTimelineAuthoringActive &&
                       selectedFlaGraphicNode &&
@@ -1378,6 +1379,7 @@ export function CanvasStage({
                                 definition: selectedFlaGraphicTarget.animation,
                                 frame: selectedFlaGraphicTarget.frame,
                                 images: currentReadyImages,
+                                svgTexts: imageState.svgTexts,
                                 assets: projectImageDimensions,
                                 scopePath: flaGraphicEditPath,
                                 editMode: flaGraphicEditMode,

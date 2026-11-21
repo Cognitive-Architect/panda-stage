@@ -1,4 +1,5 @@
 import {
+  isFlaGraphicNodeTransformable,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -291,7 +292,7 @@ export function flaGraphicNodeCanSelect(
 export function flaGraphicNodeCanTransform(
   node: FlaGraphicStructureNode,
 ): boolean {
-  return node.type !== 'opaque';
+  return isFlaGraphicNodeTransformable(node);
 }
 
 export function flaGraphicNodeHasReadyVisual(
