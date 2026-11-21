@@ -1,9 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
 import { AutosaveService } from '../../src/main/services/AutosaveService';
+import { ProjectService } from '../../src/main/services/ProjectService';
+import { RecoveryService } from '../../src/main/services/RecoveryService';
 import { UnsavedCloseController } from '../../src/main/services/UnsavedCloseController';
-import { UnsavedCloseGuard } from '../../src/main/windows/unsaved-close-guard';
+import { RendererCloseSynchronizer } from '../../src/main/windows/renderer-close-synchronizer';
+import {
+  UnsavedCloseGuard,
+  promptRendererSyncFailureAction,
+} from '../../src/main/windows/unsaved-close-guard';
 import { EditorShellSession } from '../../src/renderer/shell/EditorShell';
 import {
   EditorProjectStore,
@@ -16,6 +25,16 @@ const inertClock = {
   setInterval: () => 1 as unknown as ReturnType<typeof setInterval>,
   clearInterval: () => undefined,
 };
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true }),
+    ),
+  );
+});
 
 describe('autosave/native close boundary', () => {
   it('does not allow a Renderer revision rejected before Main acknowledgement to close natively', async () => {
@@ -143,5 +162,106 @@ describe('autosave/native close boundary', () => {
     expect(reportRendererSyncFailure).not.toHaveBeenCalled();
     expect(closeWindow).not.toHaveBeenCalled();
     await mainAutosave.stopAll();
+  });
+
+  it('allows explicit force quit on Renderer sync timeout without deleting existing recovery or formal files', async () => {
+    const base = process.env.RUNNER_TEMP ?? os.tmpdir();
+    const parent = await mkdtemp(path.join(base, 'panda-close-escape-'));
+    temporaryDirectories.push(parent);
+    const root = path.join(parent, 'escape-test.pandastage');
+
+    const projects = new ProjectService({
+      createId: () => 'c1000000-0000-4000-8000-000000000001',
+    });
+    const created = await projects.create(root, { name: 'Formal Baseline' });
+    const formalBefore = await readFile(
+      path.join(root, 'project.json'),
+      'utf8',
+    );
+    const recovery = new RecoveryService({
+      nowMs: () => 4_102_444_800_000,
+    });
+    const autosave = new AutosaveService({
+      recoveryService: recovery,
+      clock: inertClock,
+    });
+    autosave.track({
+      projectRoot: root,
+      project: { ...created.project, name: 'Autosaved Dirty' },
+      dirty: true,
+      revision: 1,
+    });
+    await autosave.tick(root);
+    const recoveryEntriesBefore = await readdir(path.join(root, 'recovery'));
+    expect(recoveryEntriesBefore.length).toBeGreaterThan(0);
+
+    const send = vi.fn();
+    let requestCounter = 0;
+    const synchronizer = new RendererCloseSynchronizer({
+      getWindow: () => ({
+        isDestroyed: () => false,
+        webContents: { id: 42, send: vi.fn() },
+      }),
+      send,
+      createRequestId: () => `req-${++requestCounter}`,
+      timeoutMs: 25,
+    });
+
+    const controller = new UnsavedCloseController({
+      getDirtyProject: () => autosave.getDirtyProjectSnapshot(),
+      prompt: vi.fn(),
+      save: vi.fn(),
+      discard: vi.fn(),
+      reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
+    });
+    const responses = [0, 1];
+    const showMessageBox = vi.fn(async () => ({
+      response: responses.shift()!,
+    }));
+    const closeWindow = vi.fn();
+    const quitApplication = vi.fn();
+    const forceQuitApplication = vi.fn();
+    const guard = new UnsavedCloseGuard({
+      controller,
+      synchronizeRenderer: () => synchronizer.synchronize(),
+      reportRendererSyncFailure: () =>
+        promptRendererSyncFailureAction(showMessageBox),
+      closeWindow,
+      quitApplication,
+      forceQuitApplication,
+    });
+
+    // 1st attempt: Renderer times out -> user chooses "继续编辑".
+    guard.handleWindowClose({ preventDefault: vi.fn() });
+    await guard.waitForIdle();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(showMessageBox).toHaveBeenCalledTimes(1);
+    expect(forceQuitApplication).not.toHaveBeenCalled();
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(quitApplication).not.toHaveBeenCalled();
+
+    // 2nd explicit attempt: Renderer still hung -> user chooses "强制退出".
+    guard.handleBeforeQuit({ preventDefault: vi.fn() });
+    await guard.waitForIdle();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(showMessageBox).toHaveBeenCalledTimes(2);
+    expect(forceQuitApplication).toHaveBeenCalledOnce();
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(quitApplication).not.toHaveBeenCalled();
+
+    // Existing recovery records and formal project.json must remain intact.
+    expect(await readdir(path.join(root, 'recovery'))).toEqual(
+      recoveryEntriesBefore,
+    );
+    expect(await readFile(path.join(root, 'project.json'), 'utf8')).toBe(
+      formalBefore,
+    );
+    await expect(
+      recovery.detectLatest(root, created.project),
+    ).resolves.not.toBeNull();
+
+    synchronizer.dispose();
+    await autosave.stopAll();
   });
 });
