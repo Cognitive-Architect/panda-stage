@@ -69,10 +69,27 @@ export interface CreateAdaptiveCharacterFromGraphicDependencies
 export function formatFlaGraphicSkippedSummary(
   partCount: number,
   skipped: readonly FlaGraphicSubtreeCollectionSkippedItem[],
+  warnings: readonly string[] = [],
 ): string | undefined {
-  if (skipped.length === 0) return undefined;
-  const firstReason = skipped[0]?.reason ? `（${skipped[0].reason}）` : '';
-  return `已创建 ${partCount} 个可编辑零件，已跳过 ${skipped.length} 个不支持独立提取的节点${firstReason}`;
+  const uniqueWarnings = Array.from(
+    new Set(warnings.map((warning) => warning.trim()).filter(Boolean)),
+  );
+  if (skipped.length === 0 && uniqueWarnings.length === 0) return undefined;
+  if (skipped.length > 0 && uniqueWarnings.length === 0) {
+    const firstReason = skipped[0]?.reason?.trim();
+    const detail = firstReason ? `（${firstReason}）` : '';
+    return `已创建 ${partCount} 个可编辑零件，已跳过 ${skipped.length} 个不支持独立提取的节点${detail}`;
+  }
+  if (skipped.length === 0) {
+    return `角色已创建（${partCount} 个可编辑零件），部分内容存在限制或已跳过：${uniqueWarnings.join('；')}`;
+  }
+  const firstReason = skipped[0]?.reason?.trim();
+  const extraWarnings = uniqueWarnings.filter((warning) => warning !== firstReason);
+  const details = Array.from(
+    new Set([...(firstReason ? [firstReason] : []), ...extraWarnings]),
+  );
+  const suffix = details.length > 0 ? `（${details.join('；')}）` : '';
+  return `角色已创建（${partCount} 个可编辑零件），已跳过 ${skipped.length} 个不支持独立提取的节点${suffix}`;
 }
 
 export async function createAdaptiveCharacterFromFlaGraphic(

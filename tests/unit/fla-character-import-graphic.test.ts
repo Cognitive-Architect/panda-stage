@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from 'react';
+import { act, createElement, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -15,11 +15,16 @@ import {
 } from '../../src/domain';
 import {
   createAdaptiveCharacterFromFlaGraphic,
+  formatFlaGraphicSkippedSummary,
 } from '../../src/renderer/features/fla-import/createAdaptiveCharacterFromGraphic';
 import {
   FlaCharacterImportFlow,
   type FlaCharacterImportAttempt,
 } from '../../src/renderer/features/fla-import/FlaCharacterImportFlow';
+import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
+import { FlaGraphicInstanceWorkbench } from '../../src/renderer/fla-import/FlaGraphicInstanceWorkbench';
+import type { FlaRenderTarget } from '../../src/shared/fla-static-snapshot-api';
+import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { CharacterStore } from '../../src/renderer/stores/characterStore';
@@ -384,6 +389,7 @@ describe('createAdaptiveCharacterFromFlaGraphic & FlaCharacterImportFlow (#1203 
   });
 
   afterEach(async () => {
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
     await act(async () => root.unmount());
     container.remove();
     vi.restoreAllMocks();
@@ -957,5 +963,320 @@ describe('createAdaptiveCharacterFromFlaGraphic & FlaCharacterImportFlow (#1203 
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(onCreateCharacter).toHaveBeenCalledTimes(1);
+  });
+
+  it('formats skipped-only, warnings-only, merged+deduped, and clean summaries (#1206)', () => {
+    expect(formatFlaGraphicSkippedSummary(4, [], [])).toBeUndefined();
+    expect(
+      formatFlaGraphicSkippedSummary(4, [
+        { nodePath: ['bad'], label: '滤镜', reason: '滤镜节点暂不支持独立拆分' },
+      ]),
+    ).toBe('已创建 4 个可编辑零件，已跳过 1 个不支持独立提取的节点（滤镜节点暂不支持独立拆分）');
+
+    expect(
+      formatFlaGraphicSkippedSummary(
+        2,
+        [],
+        ['包含不支持独立提取的子节点，创建零件时会跳过这些子节点。'],
+      ),
+    ).toBe(
+      '角色已创建（2 个可编辑零件），部分内容存在限制或已跳过：包含不支持独立提取的子节点，创建零件时会跳过这些子节点。',
+    );
+
+    expect(
+      formatFlaGraphicSkippedSummary(
+        3,
+        [{ nodePath: ['bad'], label: '滤镜', reason: '原因 A' }],
+        ['原因 A', '原因 B', '原因 B'],
+      ),
+    ).toBe('角色已创建（3 个可编辑零件），已跳过 1 个不支持独立提取的节点（原因 A；原因 B）');
+  });
+
+  it('surfaces mixed-Group descendant warnings identically across both 主入口 and 快捷入口 (#1206)', async () => {
+    const mixedNodes: FlaGraphicStructureNode[] = [
+      {
+        id: 'mixed-group',
+        type: 'group',
+        groupId: '混合部位',
+        drawOrder: 0,
+        localTransform: matrix(10, 10),
+        children: [
+          {
+            id: 'mixed-valid-shape',
+            type: 'opaque',
+            opaqueKind: 'shape',
+            drawOrder: 0,
+            localTransform: matrix(0, 0),
+            fallbackScope: 'subtree',
+            fallbackAssetId: SHAPE_ASSET_ID,
+            fallbackViewBox: { x: 0, y: 0, width: 80, height: 90 },
+          },
+          {
+            id: 'mixed-unrenderable-child',
+            type: 'opaque',
+            opaqueKind: 'filter',
+            drawOrder: 1,
+            localTransform: matrix(0, 0),
+            reason: '滤镜节点暂不支持独立拆分',
+          },
+        ],
+      },
+      makeSubtreeGroupNode('clean-group', '完整部位', 1, 100, 20),
+    ];
+
+    const { project: withMixedGraphic } = makeRichGraphicProject(mixedNodes);
+    const mixedCollection = collectFlaGraphicSubtreeSelections({
+      definition: withMixedGraphic.animations[0] as FlaGraphicDefinition,
+      frameOrdinal: 0,
+      assets: withMixedGraphic.assets,
+    });
+    expect(mixedCollection.selections).toHaveLength(2);
+    expect(mixedCollection.skipped).toEqual([]);
+    expect(mixedCollection.warnings).toEqual([
+      '包含不支持独立提取的子节点，创建零件时会跳过这些子节点。',
+    ]);
+
+    // 1) 主入口「导入角色」: FlaCharacterImportFlow -> CharacterManager.character-manager-status
+    const baseProject = buildProject();
+    editorProjectStore.open('D:\\Temp\\MixedGroupEntry1', baseProject);
+    const sessionId1 = '00000000-0000-4000-8000-000000000601';
+    const preview1 = makeGraphicPreview(sessionId1);
+    const catalogResponse1: FlaRenderableTargetCatalogResponse = {
+      ok: true,
+      sessionId: sessionId1,
+      omittedCandidateCount: 0,
+      summary: 'ok',
+      entries: [
+        {
+          target: {
+            renderTargetId: 'fla-render-target-scene000001',
+            kind: 'scene',
+            userLabel: '主场景 · 第 1 帧',
+            sourceTimelineIndex: 0,
+            frameCount: 1,
+            selectedFrameIndex: 0,
+            compatibility: ['degraded'],
+          },
+          catalogRole: 'scene',
+          previewSupported: true,
+          isBlank: false,
+        },
+      ],
+    };
+    const inspectionResponse1: FlaInspectionResponse = {
+      ok: true,
+      sessionId: sessionId1,
+      ir: {
+        source: {
+          format: 'fla',
+          basename: 'mixed-group.fla',
+          byteLength: 100,
+          sha256: SHA_A,
+          parser: {
+            package: FLA_PARSER_PACKAGE,
+            entrypoint: FLA_PARSER_ENTRYPOINT,
+            commit: FLA_PARSER_COMMIT,
+          },
+        },
+        document: { width: 400, height: 400, frameRate: 24, backgroundColor: '#FFFFFF' },
+        media: [],
+        timelines: [],
+        compatibility: [],
+        summary: { placedInstanceCount: 1, libraryOnlyMediaCount: 0 },
+      },
+      diagnostics: [],
+    };
+    const commitGraphicInstance = vi.fn(async (): Promise<FlaGraphicInstanceCommitResponse> => {
+      const snap = editorProjectStore.getSnapshot()!;
+      return {
+        ok: true,
+        status: 'completed',
+        requestId: '00000000-0000-4000-8000-000000000602',
+        projectRoot: snap.projectRoot,
+        projectId: snap.project.id,
+        openInstanceId: editorProjectStore.getProjectInstanceId()!,
+        baseRevision: snap.revision,
+        savedRevision: snap.revision + 1,
+        projectChanged: true,
+        project: {
+          ...snap.project,
+          assets: withMixedGraphic.assets,
+          animations: withMixedGraphic.animations,
+        },
+        animationId: GRAPHIC_ID,
+        layerId: null,
+      };
+    });
+
+    Object.defineProperty(window, 'pandaStage', {
+      configurable: true,
+      value: {
+        assets: {
+          readThumbnail: vi.fn(async () => ({
+            ok: false,
+            error: { code: 'NOT_FOUND', message: 'not mocked' },
+          })),
+        },
+        fla: {
+          chooseAndInspect: vi.fn(),
+          onInspectionStarted: vi.fn(() => () => undefined),
+          cancel: vi.fn(async () => undefined),
+          staticSnapshotCatalog: vi.fn(async () => catalogResponse1),
+          staticSnapshotCancel: vi.fn(async () => ({ accepted: true })),
+          partPreview: vi.fn(async () => preview1),
+          partPreviewCancel: vi.fn(async () => ({ accepted: true })),
+          commitGraphicInstance,
+        },
+      },
+    });
+    const attempt1: FlaCharacterImportAttempt = {
+      lifecycle: { cancel: vi.fn(async () => undefined) } as unknown as FlaCharacterImportAttempt['lifecycle'],
+      operation: {
+        requestId: '00000000-0000-4000-8000-000000000603',
+        inspectionStarted: Promise.resolve(),
+        response: Promise.resolve(inspectionResponse1),
+      },
+    };
+
+    function CharacterManagerHost() {
+      const snap = useSyncExternalStore(
+        editorProjectStore.subscribe,
+        editorProjectStore.getSnapshot,
+        editorProjectStore.getSnapshot,
+      );
+      return createElement(CharacterManager, {
+        snapshot: snap,
+        view: 'list',
+        flaCharacterImportAttempt: attempt1,
+        onCreateFlaCharacter: vi.fn(),
+        onCreateCharacterFromGraphic: (input) =>
+          createAdaptiveCharacterFromFlaGraphic({
+            ...input,
+            api: { commitGraphicInstance },
+            store: editorProjectStore,
+            characters: characterStore,
+          }),
+        onQueryFlaCharacterCreateStatus: vi.fn(),
+      });
+    }
+
+    await act(async () => {
+      root.render(createElement(CharacterManagerHost));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-character-import-create"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const expectedNotice =
+      '角色已创建（2 个可编辑零件），部分内容存在限制或已跳过：包含不支持独立提取的子节点，创建零件时会跳过这些子节点。';
+    const entry1Statuses = container.querySelectorAll('.character-manager-status');
+    expect(entry1Statuses).toHaveLength(1);
+    expect(entry1Statuses[0]?.textContent).toBe(expectedNotice);
+    expect(characterAssemblySessionStore.getSnapshot()?.kind).toBe('adaptive-parts');
+
+    // 2) 快捷入口「导入 FLA → 创建为角色」: FlaGraphicInstanceWorkbench -> CharacterManager
+    characterAssemblySessionStore.getActiveSessionHandle()?.cancel();
+    await act(async () => root.unmount());
+    container.remove();
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+
+    editorProjectStore.open('D:\\Temp\\MixedGroupEntry2', baseProject);
+    const sessionId2 = '00000000-0000-4000-8000-000000000701';
+    const preview2 = makeGraphicPreview(sessionId2);
+    Object.defineProperty(window, 'pandaStage', {
+      configurable: true,
+      value: {
+        assets: {
+          readThumbnail: vi.fn(async () => ({
+            ok: false,
+            error: { code: 'NOT_FOUND', message: 'not mocked' },
+          })),
+        },
+        fla: {
+          partPreview: vi.fn(async () => preview2),
+          partPreviewCancel: vi.fn(async () => ({ accepted: true })),
+        },
+      },
+    });
+
+    let createdFromWorkbench: {
+      characterId: string;
+      notice?: string;
+      nonce: number;
+    } | null = null;
+    function Entry2Host() {
+      const snap = useSyncExternalStore(
+        editorProjectStore.subscribe,
+        editorProjectStore.getSnapshot,
+        editorProjectStore.getSnapshot,
+      );
+      if (!createdFromWorkbench) {
+        return createElement(FlaGraphicInstanceWorkbench, {
+          enabled: true,
+          sessionId: sessionId2,
+          source: { basename: 'mixed-group.fla', sha256: SHA_A },
+          targetRenderTargetId: 'fla-render-target-scene000001' as FlaRenderTarget['renderTargetId'],
+          targetLookupPending: false,
+          importDisabledReason: null,
+          onCreateCharacterFromGraphic: (input) =>
+            createAdaptiveCharacterFromFlaGraphic({
+              ...input,
+              api: { commitGraphicInstance },
+              store: editorProjectStore,
+              characters: characterStore,
+            }),
+          onCharacterCreated: (result) => {
+            expect(result.skipped).toEqual([]);
+            expect(result.warnings).toEqual([
+              '包含不支持独立提取的子节点，创建零件时会跳过这些子节点。',
+            ]);
+            createdFromWorkbench = {
+              characterId: result.characterId,
+              notice: formatFlaGraphicSkippedSummary(
+                result.partCount,
+                result.skipped,
+                result.warnings,
+              ),
+              nonce: 1,
+            };
+          },
+        });
+      }
+      return createElement(CharacterManager, {
+        snapshot: snap,
+        view: 'list',
+        externalCreatedCharacter: createdFromWorkbench,
+      });
+    }
+
+    await act(async () => {
+      root.render(createElement(Entry2Host));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-candidate-part-001-graphic0001"]')!.click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-create-character"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    // Re-render host once createdFromWorkbench is captured so CharacterManager mounts with it.
+    await act(async () => {
+      root.render(createElement(Entry2Host));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const entry2Statuses = container.querySelectorAll('.character-manager-status');
+    expect(entry2Statuses).toHaveLength(1);
+    expect(entry2Statuses[0]?.textContent).toBe(expectedNotice);
+    const assemblySnap = characterAssemblySessionStore.getSnapshot();
+    expect(assemblySnap?.kind).toBe('adaptive-parts');
+    if (assemblySnap?.kind === 'adaptive-parts') {
+      expect(assemblySnap.characterId).toBe(createdFromWorkbench!.characterId);
+    }
   });
 });

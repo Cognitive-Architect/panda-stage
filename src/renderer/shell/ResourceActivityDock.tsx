@@ -253,7 +253,11 @@ export function ResourceActivityDock({
   const handleGraphicCharacterCreated = (
     result: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }>,
   ): void => {
-    const notice = formatFlaGraphicSkippedSummary(result.partCount, result.skipped);
+    const notice = formatFlaGraphicSkippedSummary(
+      result.partCount,
+      result.skipped,
+      result.warnings,
+    );
     setPendingExternalAdaptiveCharacter({
       characterId: result.characterId,
       ...(notice ? { notice } : {}),

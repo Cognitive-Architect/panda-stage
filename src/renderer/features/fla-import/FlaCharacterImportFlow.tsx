@@ -1266,7 +1266,11 @@ export function FlaCharacterImportFlow({
         transition('error');
         return;
       }
-      const notice = formatFlaGraphicSkippedSummary(result.partCount, result.skipped);
+      const notice = formatFlaGraphicSkippedSummary(
+        result.partCount,
+        result.skipped,
+        result.warnings,
+      );
       transition('created');
       onCommittingChange?.(false);
       const opened = onCreatedCharacter(result.characterId, notice);
