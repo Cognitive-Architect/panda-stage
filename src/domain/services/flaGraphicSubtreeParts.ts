@@ -18,6 +18,11 @@ import {
   type FlaGraphicStructureNode,
   type Project,
 } from '../models';
+import {
+  cloneFlaEditableShapeRegion,
+  type FlaEditableShapeRegion,
+  type FlaGraphicShapeOverrides,
+} from '../fla-shape-vector';
 import type { CreateAdaptivePartsCharacterInput } from './CharacterService';
 
 const IDENTITY_TRANSFORM: Readonly<CharacterPartTransform> = {
@@ -48,6 +53,8 @@ export interface FlaGraphicSubtreeCandidateAssessment {
 export interface FlaGraphicSubtreeSelectionInput {
   readonly nodePath: readonly string[];
   readonly label?: string;
+  readonly regionRef?: string;
+  readonly regionVector?: FlaEditableShapeRegion;
 }
 
 export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
@@ -56,6 +63,7 @@ export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
   readonly frameOrdinal: number;
   readonly selections: readonly FlaGraphicSubtreeSelectionInput[];
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly characterName?: string;
   readonly createId?: () => string;
 }
@@ -69,6 +77,19 @@ export function flaGraphicNodePathsEqual(
     if (left[index] !== right[index]) return false;
   }
   return true;
+}
+
+export function doFlaGraphicSubtreeSelectionsOverlap(
+  left: Pick<FlaGraphicSubtreeSelectionInput, 'nodePath' | 'regionRef'>,
+  right: Pick<FlaGraphicSubtreeSelectionInput, 'nodePath' | 'regionRef'>,
+): boolean {
+  if (flaGraphicNodePathsEqual(left.nodePath, right.nodePath)) {
+    if (left.regionRef && right.regionRef) {
+      return left.regionRef === right.regionRef;
+    }
+    return true;
+  }
+  return doFlaGraphicNodePathsOverlap(left.nodePath, right.nodePath);
 }
 
 function isPrefixNodePath(
@@ -213,7 +234,10 @@ function summarizeSubtreeLeaves(root: EvaluatedFlaGraphicNode): {
     }
     if (node.source.type === 'opaque') {
       leafCount += 1;
-      if (node.renderable && node.source.fallbackAssetId) {
+      const hasRenderableVisual = node.vectorVisual
+        ? node.vectorVisual.regions.length > 0
+        : Boolean(node.source.fallbackAssetId);
+      if (node.renderable && hasRenderableVisual) {
         renderableLeafCount += 1;
         if (node.source.fallbackScope === 'frame-crop') {
           hasFrameCrop = true;
@@ -416,7 +440,10 @@ export function assessFlaGraphicSubtreeCandidate(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly nodePath: readonly string[];
+  readonly regionRef?: string;
+  readonly regionVector?: FlaEditableShapeRegion;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly assets?: readonly FlaGraphicAssetDimensionLike[];
 }): FlaGraphicSubtreeCandidateAssessment {
   const fallbackLabel = input.nodePath.at(-1) ?? '零件';
@@ -446,6 +473,7 @@ export function assessFlaGraphicSubtreeCandidate(input: {
     frameOrdinal: input.frameOrdinal,
     mode: 'instance',
     instanceTransformOverrides: input.instanceTransformOverrides,
+    instanceShapeOverrides: input.instanceShapeOverrides,
   });
   if (!evaluated || !evaluated.structureFrame || !evaluated.layers) {
     return {
@@ -483,12 +511,22 @@ export function assessFlaGraphicSubtreeCandidate(input: {
   }
 
   const { node, rank } = match;
-  const label = defaultLabelForNode(node.source, fallbackLabel);
+  const label = node.displayName?.trim() || defaultLabelForNode(node.source, fallbackLabel);
   const leafSummary = summarizeSubtreeLeaves(node);
-  const subtreeVisual = selectFlaGraphicSubtreeVisual(evaluated, input.nodePath);
+  const subtreeVisual = selectFlaGraphicSubtreeVisual(
+    evaluated,
+    input.nodePath,
+    input.regionVector || input.regionRef
+      ? {
+          ...(input.regionRef ? { regionRef: input.regionRef } : {}),
+          ...(input.regionVector ? { regionVector: input.regionVector } : {}),
+        }
+      : undefined,
+  );
   const tightBounds = measureFlaGraphicSubtreeBounds(subtreeVisual, input.assets);
+  const hasRenderableRegion = Boolean(input.regionVector);
 
-  if (leafSummary.renderableLeafCount === 0 || !tightBounds) {
+  if ((leafSummary.renderableLeafCount === 0 && !hasRenderableRegion) || !tightBounds) {
     return {
       nodePath: [...input.nodePath],
       found: true,
@@ -587,9 +625,9 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
   const assessed = input.selections.map((selection, index) => {
     for (let prior = 0; prior < index; prior += 1) {
       if (
-        doFlaGraphicNodePathsOverlap(
-          input.selections[prior]!.nodePath,
-          selection.nodePath,
+        doFlaGraphicSubtreeSelectionsOverlap(
+          input.selections[prior]!,
+          selection,
         )
       ) {
         throw new Error('Selected Graphic subtrees must not overlap or contain each other.');
@@ -599,7 +637,10 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       definition: input.definition,
       frameOrdinal: input.frameOrdinal,
       nodePath: selection.nodePath,
+      regionRef: selection.regionRef,
+      regionVector: selection.regionVector,
       instanceTransformOverrides: input.instanceTransformOverrides,
+      instanceShapeOverrides: input.instanceShapeOverrides,
       assets: input.project.assets,
     });
     if (!candidate.extractable || !candidate.renderable) {
@@ -612,6 +653,14 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       candidate,
       inputIndex: index,
     };
+  });
+
+  const evaluatedForRegionLookup = evaluateFlaGraphicVisual({
+    definition: input.definition,
+    frameOrdinal: input.frameOrdinal,
+    mode: 'instance',
+    instanceTransformOverrides: input.instanceTransformOverrides,
+    instanceShapeOverrides: input.instanceShapeOverrides,
   });
 
   assessed.sort((left, right) => {
@@ -638,25 +687,57 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
         ? rawLabel
         : sanitizeDisplayName(`${rawLabel.slice(0, 190)} (${seen + 1})`, `零件 ${drawOrder + 1}`);
 
-    const filteredOverrides = filterFlaGraphicInstanceOverridesForSubtree(
+    const matchedNode = evaluatedForRegionLookup?.layers
+      ? findNodeAndRank(evaluatedForRegionLookup.layers, selection.nodePath)?.node
+      : undefined;
+    const effectiveNodePath =
+      matchedNode?.extractedFromNodePath ?? selection.nodePath;
+    const resolvedRegionRef =
+      selection.regionRef ?? matchedNode?.regionRef;
+    const resolvedRegionVector =
+      selection.regionVector ??
+      (matchedNode?.regionRef && matchedNode.vectorVisual?.regions.length === 1
+        ? matchedNode.vectorVisual.regions[0]
+        : undefined);
+
+    const baseFilteredOverrides = filterFlaGraphicInstanceOverridesForSubtree(
       input.instanceTransformOverrides,
       input.frameOrdinal,
-      selection.nodePath,
+      effectiveNodePath,
     );
+    const filteredOverrides = (() => {
+      if (!matchedNode?.extractedFromNodePath) return baseFilteredOverrides;
+      const frameKey = String(input.frameOrdinal);
+      return {
+        ...baseFilteredOverrides,
+        [frameKey]: {
+          ...baseFilteredOverrides?.[frameKey],
+          [flaGraphicInstanceNodePathKey(effectiveNodePath)]: {
+            ...matchedNode.authoredLocalTransform,
+          },
+        },
+      };
+    })();
 
     return {
       partId,
       source: {
         kind: 'source-instance',
-        sourceId: `fla-subtree:${partId}`,
+        sourceId: resolvedRegionRef
+          ? `fla-subtree:${partId}:${resolvedRegionRef}`
+          : `fla-subtree:${partId}`,
         sourcePoseFrame: input.frameOrdinal,
         effectiveFrame: input.frameOrdinal,
       },
       visualSource: {
         kind: 'fla-graphic',
         animationId: input.definition.id,
-        nodePath: [...selection.nodePath],
+        nodePath: [...effectiveNodePath],
         poseFrameOrdinal: input.frameOrdinal,
+        ...(resolvedRegionRef ? { regionRef: resolvedRegionRef } : {}),
+        ...(resolvedRegionVector
+          ? { regionVector: cloneFlaEditableShapeRegion(resolvedRegionVector) }
+          : {}),
         ...(filteredOverrides ? { instanceTransformOverrides: filteredOverrides } : {}),
       },
       sourceRestTransform: { ...IDENTITY_TRANSFORM },

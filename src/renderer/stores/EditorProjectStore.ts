@@ -55,13 +55,15 @@ function reconcileFlaGraphicLayerOverrides(
     let shotChanged = false;
     const layers = shot.layers.map((layer) => {
       const overrides = layer.flaGraphicInstanceTransformOverrides;
-      if (!overrides) return layer;
+      const shapeOverrides = layer.flaGraphicInstanceShapeOverrides;
+      if (!overrides && !shapeOverrides) return layer;
       const prior = previousLayers.get(layer.id);
       if (prior && JSON.stringify(prior.source) !== JSON.stringify(layer.source)) {
         projectChanged = true;
         shotChanged = true;
         const withoutOverrides = { ...layer };
         delete withoutOverrides.flaGraphicInstanceTransformOverrides;
+        delete withoutOverrides.flaGraphicInstanceShapeOverrides;
         return withoutOverrides;
       }
       if (layer.source.kind !== 'animation') return layer;
@@ -71,19 +73,30 @@ function reconcileFlaGraphicLayerOverrides(
         shotChanged = true;
         const withoutOverrides = { ...layer };
         delete withoutOverrides.flaGraphicInstanceTransformOverrides;
+        delete withoutOverrides.flaGraphicInstanceShapeOverrides;
         return withoutOverrides;
       }
+      if (!overrides) return layer;
       const previousDefinition = previousAnimations.get(layer.source.animationId);
       if (
         JSON.stringify(previousDefinition && 'kind' in previousDefinition
           ? previousDefinition.structure
-          : undefined) === JSON.stringify(definition.structure)
+          : undefined) === JSON.stringify(definition.structure) &&
+        JSON.stringify(previousDefinition && 'kind' in previousDefinition
+          ? previousDefinition.flaGraphicSharedShapeOverrides
+          : undefined) === JSON.stringify(definition.flaGraphicSharedShapeOverrides) &&
+        JSON.stringify(prior?.flaGraphicInstanceShapeOverrides) ===
+          JSON.stringify(shapeOverrides)
       ) {
         return layer;
       }
       const pruned = pruneFlaGraphicInstanceTransformOverrides(
         overrides,
         definition.structure,
+        {
+          instanceShapeOverrides: shapeOverrides,
+          sharedShapeOverrides: definition.flaGraphicSharedShapeOverrides,
+        },
       );
       if (pruned === overrides) return layer;
       projectChanged = true;

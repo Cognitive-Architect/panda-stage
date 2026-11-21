@@ -3,7 +3,9 @@ import {
   LayerService,
   type CreateLayerInput,
   type AnimationPlaybackInput,
+  type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
+  type FlaShapeVertexTarget,
   type Layer,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
@@ -269,6 +271,76 @@ export class LayerStore {
     );
     if (next !== project) {
       this.editorStore.updateProject(next, '编辑共享元件');
+    }
+    return next;
+  }
+
+  extractFlaGraphicShapeRegion(input: {
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef: string;
+    readonly mode: 'instance' | 'definition';
+    readonly svgText?: string;
+    readonly displayName?: string;
+  }): {
+    readonly project: Project;
+    readonly extractedNodePath: readonly string[];
+    readonly region: FlaEditableShapeRegion;
+  } {
+    const { project, shotId } = this.context();
+    const result = this.service.extractFlaGraphicShapeRegion(project, {
+      shotId,
+      ...input,
+    });
+    if (result.project !== project) {
+      this.editorStore.updateProject(
+        result.project,
+        input.mode === 'definition' ? '提取共享区域' : '提取独立区域',
+      );
+    }
+    return result;
+  }
+
+  updateFlaGraphicShapeRegionFillColor(input: {
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef?: string;
+    readonly mode: 'instance' | 'definition';
+    readonly color: string;
+    readonly opacity?: number;
+    readonly svgText?: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicShapeRegionFillColor(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '修改区域颜色');
+    }
+    return next;
+  }
+
+  moveFlaGraphicShapeRegionVertex(input: {
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef?: string;
+    readonly mode: 'instance' | 'definition';
+    readonly target: FlaShapeVertexTarget;
+    readonly x: number;
+    readonly y: number;
+    readonly svgText?: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.moveFlaGraphicShapeRegionVertex(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '编辑路径顶点');
     }
     return next;
   }

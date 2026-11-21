@@ -1,4 +1,10 @@
-import { resolveFlaGraphicSymbolChildren, type FlaGraphicStructure, type FlaGraphicStructureFrame, type FlaGraphicStructureNode } from '../../../domain';
+import {
+  resolveFlaGraphicSymbolChildren,
+  type FlaGraphicShapeNodeOverride,
+  type FlaGraphicStructure,
+  type FlaGraphicStructureFrame,
+  type FlaGraphicStructureNode,
+} from '../../../domain';
 
 export interface StructureTreeRow {
   readonly key: string;
@@ -7,6 +13,8 @@ export interface StructureTreeRow {
   readonly path: readonly string[];
   readonly node: FlaGraphicStructureNode | null;
   readonly children: readonly StructureTreeRow[];
+  readonly regionRef?: string;
+  readonly extractedFromPath?: readonly string[];
 }
 
 function friendlyTail(value: string, fallback: string): string {
@@ -50,11 +58,16 @@ export function structureNodeLabel(node: FlaGraphicStructureNode, structure?: Fl
 }
 
 /** UI projection only: occurrence paths remain the editor's authored node paths. */
-export function projectStructureTree(frame: FlaGraphicStructureFrame, structure: FlaGraphicStructure): StructureTreeRow[] {
+export function projectStructureTree(
+  frame: FlaGraphicStructureFrame,
+  structure: FlaGraphicStructure,
+  frameShapeOverrides?: Readonly<Record<string, FlaGraphicShapeNodeOverride>>,
+): StructureTreeRow[] {
   const visit = (nodes: readonly FlaGraphicStructureNode[], parent: readonly string[], depth: number): StructureTreeRow[] => {
     let unnamedGroupCount = 0;
-    return [...nodes].sort((a, b) => a.drawOrder - b.drawOrder).map(node => {
+    return [...nodes].sort((a, b) => a.drawOrder - b.drawOrder).flatMap(node => {
       const path = [...parent, node.id];
+      const pathKey = JSON.stringify(path);
       const children = depth < 64
         ? node.type === 'group' ? node.children
           : node.type === 'symbol' ? resolveFlaGraphicSymbolChildren(node, structure) : []
@@ -62,7 +75,50 @@ export function projectStructureTree(frame: FlaGraphicStructureFrame, structure:
       const label = node.type === 'group'
         ? readableGroupName(node, structure) ?? `未命名 ${++unnamedGroupCount}`
         : structureNodeLabel(node, structure);
-      return { key: JSON.stringify(path), label, type: node.type, path, node, children: visit(children, path, depth + 1) };
+      const baseRow: StructureTreeRow = {
+        key: pathKey,
+        label,
+        type: node.type,
+        path,
+        node,
+        children: visit(children, path, depth + 1),
+      };
+      const shapeOverride = frameShapeOverrides?.[pathKey];
+      if (!shapeOverride || shapeOverride.extractedRegions.length === 0) {
+        return [baseRow];
+      }
+      const extractedRows: StructureTreeRow[] = shapeOverride.extractedRegions.map((entry) => {
+        const entryPath = [...parent, entry.id];
+        const entryNode: FlaGraphicStructureNode = {
+          id: entry.id,
+          type: 'opaque',
+          drawOrder: node.drawOrder,
+          localTransform: entry.localTransform,
+          opaqueKind: 'shape',
+          fallbackScope: 'subtree',
+          ...(node.type === 'opaque' && node.sourceRef ? { sourceRef: node.sourceRef } : {}),
+          ...(node.type === 'opaque' && node.fallbackAssetId
+            ? { fallbackAssetId: node.fallbackAssetId }
+            : {}),
+          fallbackViewBox: {
+            x: entry.baseViewBox.x,
+            y: entry.baseViewBox.y,
+            width: Math.max(1e-6, entry.baseViewBox.width),
+            height: Math.max(1e-6, entry.baseViewBox.height),
+          },
+        };
+        return {
+          key: JSON.stringify(entryPath),
+          label: entry.displayName,
+          type: 'opaque',
+          path: entryPath,
+          node: entryNode,
+          children: [],
+          regionRef: entry.regionRef,
+          extractedFromPath: path,
+        };
+      });
+      return [baseRow, ...extractedRows];
     });
   };
   return frame.layers.map((layer, index) => ({

@@ -13,6 +13,23 @@ export function canvasImageResourceKey(
   return `${assetId}\u0000${sourceKey}`;
 }
 
+const cachedSvgTextByResourceKey = new Map<string, string>();
+const cachedSvgTextByAssetId = new Map<string, string>();
+
+/** Returns decoded SVG markup cached for a loaded `image/svg+xml` Canvas asset. */
+export function getCachedFlaSvgAssetText(
+  assetId: string,
+  sha256?: string,
+): string | undefined {
+  if (sha256) {
+    const exact = cachedSvgTextByResourceKey.get(
+      canvasImageResourceKey(assetId, sha256),
+    );
+    if (exact !== undefined) return exact;
+  }
+  return cachedSvgTextByAssetId.get(assetId);
+}
+
 export interface CanvasImageState {
   images: ReadonlyMap<string, HTMLImageElement>;
   sourceKeys: ReadonlyMap<string, string>;
@@ -328,12 +345,18 @@ export class CanvasImageResourceSession {
           this.failCurrentLoad(resourceKey, assetId, sourceKey, token);
           return;
         }
+        const decodedSvgText =
+          response.mimeType === 'image/svg+xml'
+            ? svgTextDecoder.decode(response.bytes)
+            : undefined;
+        if (decodedSvgText !== undefined) {
+          cachedSvgTextByResourceKey.set(resourceKey, decodedSvgText);
+          cachedSvgTextByAssetId.set(assetId, decodedSvgText);
+        }
         const resource: CanvasImageResource = {
           assetId,
           image,
-          ...(response.mimeType === 'image/svg+xml'
-            ? { svgText: svgTextDecoder.decode(response.bytes) }
-            : {}),
+          ...(decodedSvgText !== undefined ? { svgText: decodedSvgText } : {}),
           objectUrl,
           sourceKey,
           loaded: false,

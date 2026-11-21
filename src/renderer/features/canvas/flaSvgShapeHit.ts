@@ -1,25 +1,19 @@
 import type Konva from 'konva';
-import type { EvaluatedFlaGraphicClipPath } from '../../../domain';
+import {
+  commandsToSvgPathD,
+  parseSvgPathCommands,
+  type EvaluatedFlaGraphicClipPath,
+  type EvaluatedFlaGraphicVectorVisual,
+  type FlaVectorPathCommand,
+} from '../../../domain';
 import {
   localizeAbsoluteLeafMatrix,
   multiplyAffineMatrices,
   type AffineMatrix2D,
 } from '../../../shared/affine-matrix';
 
-export type SvgPathCommand =
-  | { readonly type: 'M'; readonly x: number; readonly y: number }
-  | { readonly type: 'L'; readonly x: number; readonly y: number }
-  | { readonly type: 'Q'; readonly cx: number; readonly cy: number; readonly x: number; readonly y: number }
-  | {
-      readonly type: 'C';
-      readonly c1x: number;
-      readonly c1y: number;
-      readonly c2x: number;
-      readonly c2y: number;
-      readonly x: number;
-      readonly y: number;
-    }
-  | { readonly type: 'Z' };
+export { parseSvgPathCommands };
+export type SvgPathCommand = FlaVectorPathCommand;
 
 export interface FlaSvgHitClipShape {
   readonly d: string;
@@ -162,115 +156,6 @@ function extractClipPathId(raw: string | undefined): string | null {
   if (!raw) return null;
   const match = raw.match(/^url\(#([^)]+)\)$/u);
   return match?.[1] ?? null;
-}
-
-/** Parses standard SVG path commands into absolute `M/L/Q/C/Z` steps. */
-export function parseSvgPathCommands(d: string): readonly SvgPathCommand[] {
-  const tokens = d.match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?/gu);
-  if (!tokens) return [];
-  const commands: SvgPathCommand[] = [];
-  let index = 0;
-  let currentX = 0;
-  let currentY = 0;
-  let subpathStartX = 0;
-  let subpathStartY = 0;
-  let activeCommand = '';
-
-  const nextNumber = (): number | null => {
-    const token = tokens[index];
-    if (token === undefined || /^[a-zA-Z]$/u.test(token)) return null;
-    index += 1;
-    const value = Number(token);
-    return Number.isFinite(value) ? value : null;
-  };
-
-  while (index < tokens.length) {
-    const token = tokens[index]!;
-    if (/^[a-zA-Z]$/u.test(token)) {
-      activeCommand = token;
-      index += 1;
-      if (activeCommand === 'Z' || activeCommand === 'z') {
-        commands.push({ type: 'Z' });
-        currentX = subpathStartX;
-        currentY = subpathStartY;
-        activeCommand = '';
-        continue;
-      }
-    }
-    if (!activeCommand) break;
-    const relative = activeCommand === activeCommand.toLowerCase();
-    const op = activeCommand.toUpperCase();
-    if (op === 'M' || op === 'L') {
-      const x = nextNumber();
-      const y = nextNumber();
-      if (x === null || y === null) break;
-      const absX = relative ? currentX + x : x;
-      const absY = relative ? currentY + y : y;
-      commands.push({ type: op, x: absX, y: absY });
-      currentX = absX;
-      currentY = absY;
-      if (op === 'M') {
-        subpathStartX = absX;
-        subpathStartY = absY;
-        activeCommand = relative ? 'l' : 'L';
-      }
-    } else if (op === 'H') {
-      const x = nextNumber();
-      if (x === null) break;
-      const absX = relative ? currentX + x : x;
-      commands.push({ type: 'L', x: absX, y: currentY });
-      currentX = absX;
-    } else if (op === 'V') {
-      const y = nextNumber();
-      if (y === null) break;
-      const absY = relative ? currentY + y : y;
-      commands.push({ type: 'L', x: currentX, y: absY });
-      currentY = absY;
-    } else if (op === 'Q') {
-      const cx = nextNumber();
-      const cy = nextNumber();
-      const x = nextNumber();
-      const y = nextNumber();
-      if (cx === null || cy === null || x === null || y === null) break;
-      const absCx = relative ? currentX + cx : cx;
-      const absCy = relative ? currentY + cy : cy;
-      const absX = relative ? currentX + x : x;
-      const absY = relative ? currentY + y : y;
-      commands.push({ type: 'Q', cx: absCx, cy: absCy, x: absX, y: absY });
-      currentX = absX;
-      currentY = absY;
-    } else if (op === 'C') {
-      const c1x = nextNumber();
-      const c1y = nextNumber();
-      const c2x = nextNumber();
-      const c2y = nextNumber();
-      const x = nextNumber();
-      const y = nextNumber();
-      if (c1x === null || c1y === null || c2x === null || c2y === null || x === null || y === null) {
-        break;
-      }
-      const absC1x = relative ? currentX + c1x : c1x;
-      const absC1y = relative ? currentY + c1y : c1y;
-      const absC2x = relative ? currentX + c2x : c2x;
-      const absC2y = relative ? currentY + c2y : c2y;
-      const absX = relative ? currentX + x : x;
-      const absY = relative ? currentY + y : y;
-      commands.push({
-        type: 'C',
-        c1x: absC1x,
-        c1y: absC1y,
-        c2x: absC2x,
-        c2y: absC2y,
-        x: absX,
-        y: absY,
-      });
-      currentX = absX;
-      currentY = absY;
-    } else {
-      break;
-    }
-  }
-  return commands;
 }
 
 function combineTransforms(
@@ -622,6 +507,69 @@ export function drawFlaSvgShapeHitRegion(
     context.restore();
   }
 
+  context.restore();
+}
+
+/**
+ * Draws editable `vectorVisual` fill and stroke regions onto Konva's hit canvas
+ * so extracted or vertex-edited shapes stay accurately selectable without bounding boxes.
+ */
+export function drawFlaVectorVisualHitRegion(
+  context: Konva.Context,
+  konvaShape: Konva.Shape,
+  input: {
+    readonly vectorVisual: EvaluatedFlaGraphicVectorVisual;
+    readonly nodeWorldTransform: AffineMatrix2D;
+    readonly clipPaths: readonly EvaluatedFlaGraphicClipPath[];
+  },
+): void {
+  const colorKey = konvaShape.colorKey;
+  if (!colorKey || input.vectorVisual.regions.length === 0) return;
+
+  const absScale = konvaShape.getAbsoluteScale();
+  const minScale = Math.max(0.05, Math.min(Math.abs(absScale.x), Math.abs(absScale.y)));
+  const minHitStrokeWidth = 2 / minScale;
+  const rawContext = context._context;
+
+  context.save();
+  if (!applyEvaluatedNodeClips(context, input.nodeWorldTransform, input.clipPaths)) {
+    context.restore();
+    return;
+  }
+  context.translate(-input.vectorVisual.baseViewBox.x, -input.vectorVisual.baseViewBox.y);
+
+  for (const region of input.vectorVisual.regions) {
+    if (region.fill.opacity > 0 && region.fill.svgPaint !== 'none') {
+      const fillD = region.contours.map((contour) => commandsToSvgPathD(contour.commands)).join(' ');
+      const path2d = fillD ? getCompiledPath2D(fillD) : null;
+      context.setAttr('fillStyle', colorKey);
+      if (path2d && rawContext) {
+        rawContext.fill(path2d, region.fill.fillRule);
+      } else {
+        context.beginPath();
+        for (const contour of region.contours) {
+          replaySvgPathCommands(context, contour.commands);
+        }
+        context.fill(region.fill.fillRule);
+      }
+    }
+    for (const stroke of region.strokes) {
+      const d = commandsToSvgPathD(stroke.commands);
+      const path2d = d ? getCompiledPath2D(d) : null;
+      context.setAttr('strokeStyle', colorKey);
+      context.setAttr('lineWidth', Math.max(stroke.lineWidth, minHitStrokeWidth));
+      context.setAttr('lineCap', stroke.lineCap);
+      context.setAttr('lineJoin', stroke.lineJoin);
+      context.setAttr('miterLimit', stroke.miterLimit);
+      if (path2d && rawContext) {
+        rawContext.stroke(path2d);
+      } else {
+        context.beginPath();
+        replaySvgPathCommands(context, stroke.commands);
+        context.stroke();
+      }
+    }
+  }
   context.restore();
 }
 

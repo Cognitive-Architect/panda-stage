@@ -7,11 +7,16 @@ import { deflateSync } from 'node:zlib';
 import JSZip from 'jszip';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CharacterService,
   FlaGraphicDefinitionSchema,
   LayerService,
   ProjectSchema,
   assessFlaGraphicSubtreeCandidate,
+  buildAdaptivePartsFromFlaGraphicSubtrees,
+  buildSvgFromFlaEditableShapeRegions,
+  characterPartSourceBounds,
   composeAffineMatrix,
+  decomposeSvgToEditableShapeRegions,
   evaluateFlaGraphicVisual,
   evaluateShotAtTime,
   isFlaGraphicDefinition,
@@ -21,6 +26,7 @@ import {
   unapplyFlaGraphicSubtreeViewBox,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
+  type Layer,
   type Project,
 } from '../../src/domain';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
@@ -537,6 +543,366 @@ describe('FLA Shape S1/S2 persistence, Stage/Export parity, and real FLA lifecyc
           assets: reopened.project.assets,
         }).extractable,
       ).toBe(true);
+
+      // S3-A / S3-B spot check on real `唉小师妹唉.fla` (`layer-1-frame-0/20/0` collar Shape):
+      // Decompose isolated SVG, edit/extract clean region, save & reopen cleanly.
+      const collarSource = collarNode.source;
+      if (collarSource.type === 'opaque' && collarSource.fallbackAssetId) {
+        const collarAsset = reopened.project.assets.find(
+          (a) => a.id === collarSource.fallbackAssetId,
+        )!;
+        const collarSvgText = await readFile(
+          path.join(projectRoot, collarAsset.relativePath),
+          'utf8',
+        );
+        const decomposedCollar = decomposeSvgToEditableShapeRegions(collarSvgText, {
+          sourceShapeRef: collarSource.sourceRef,
+          baseViewBox: collarSource.fallbackViewBox,
+        });
+        expect(decomposedCollar.regions.length).toBeGreaterThan(0);
+        const solidRegion = decomposedCollar.regions.find(
+          (r) =>
+            r.fill.kind === 'solid' &&
+            !decomposedCollar.ambiguousRegionRefs.has(r.regionRef),
+        );
+        if (solidRegion) {
+          const afterRealColor = layerService.updateFlaGraphicShapeRegionFillColor(
+            reopened.project,
+            {
+              shotId: IDS.shot,
+              layerId: committedLayerId,
+              frameOrdinal: 0,
+              nodePath: collarPath,
+              regionRef: solidRegion.regionRef,
+              mode: 'instance',
+              color: '#3399aa',
+              svgText: collarSvgText,
+            },
+          );
+          await projectService.save(projectRoot, afterRealColor, 2);
+          const reopenedAfterEdit = await projectService.open(projectRoot);
+          const reopenedLayerAfter = reopenedAfterEdit.project.shots[0]!.layers.find(
+            (l) => l.id === committedLayerId,
+          )!;
+          const evalRealAfter = evaluateFlaGraphicVisual({
+            definition: reopenedDef,
+            frameOrdinal: 0,
+            mode: 'instance',
+            instanceShapeOverrides: reopenedLayerAfter.flaGraphicInstanceShapeOverrides,
+          })!;
+          const editedCollar = evalRealAfter.layers![1]!.nodes[20]!.children[0]!;
+          expect(
+            editedCollar.vectorVisual?.regions.find(
+              (r) => r.regionRef === solidRegion.regionRef,
+            )?.fill.color?.toLowerCase(),
+          ).toBe('#3399aa');
+        }
+      }
     },
   );
+
+  it('persists S3-A extracted regions, S3-B fill/vertex edits, and 2-region Adaptive CharacterParts across save/reopen with Stage/Export parity', async () => {
+    const parentTemp = await mkdtemp(path.join(os.tmpdir(), 'panda-shape-s3-'));
+    tempRoots.push(parentTemp);
+    const projectRoot = path.join(parentTemp, 'ShapeS3.pandastage');
+    const projectService = new ProjectService();
+    const layerService = new LayerService();
+    const created = await projectService.create(projectRoot, { name: 'Shape S3 Lifecycle' });
+
+    await mkdir(path.join(projectRoot, 'assets'), { recursive: true });
+    await writeFile(path.join(projectRoot, 'assets', 'frame-0.svg'), RING_SVG, 'utf8');
+    await writeFile(path.join(projectRoot, 'assets', 'ring-shape.svg'), RING_SVG, 'utf8');
+
+    const groupMatrix = composeAffineMatrix({ tx: 30, ty: 20, rotationDeg: 25, scaleX: 0.5, scaleY: 0.5 });
+    const structure: FlaGraphicStructure = {
+      version: 1,
+      frames: [
+        {
+          ordinal: 0,
+          layers: [
+            {
+              name: '图层_2',
+              nodes: [
+                {
+                  type: 'group',
+                  id: 'group-outfit',
+                  sourceAddress: 'graphic:Shape/layer-0-frame-0/0',
+                  drawOrder: 0,
+                  localTransform: groupMatrix,
+                  groupId: 'outfit',
+                  children: [
+                    {
+                      type: 'opaque',
+                      id: 'shape-ring',
+                      sourceAddress: 'graphic:Shape/layer-0-frame-0/0/0',
+                      drawOrder: 0,
+                      localTransform: IDENTITY,
+                      opaqueKind: 'shape',
+                      sourceRef: 'fla-shape-ring',
+                      fallbackScope: 'subtree',
+                      fallbackAssetId: RING_SHAPE_ASSET_ID,
+                      fallbackViewBox: { x: 40, y: 30, width: 220, height: 180 },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const definition = FlaGraphicDefinitionSchema.parse({
+      id: GRAPHIC_ID,
+      kind: 'fla-graphic',
+      name: 'Shape Graphic',
+      source: {
+        basename: 'shape.fla',
+        sha256: 'a'.repeat(64),
+        renderTargetId: 'shape-target',
+        targetKind: 'graphic-symbol',
+        targetName: 'ShapeTarget',
+        startFrameIndex: 0,
+        endFrameIndex: 0,
+        sourceFps: 24,
+        canvas: { width: 320, height: 260 },
+        anchor: { x: 0, y: 0 },
+        documentCanvas: { width: 1920, height: 1080 },
+      },
+      durationMs: 1_000 / 24,
+      frames: [
+        {
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: FRAME_ASSET_ID,
+          sha256: sha256Hex(RING_SVG),
+          sourceViewport: { x: 0, y: 0, width: 320, height: 260 },
+          offset: { x: 0, y: 0 },
+          startMs: 0,
+          durationMs: 1_000 / 24,
+          createdBySequenceImport: false,
+        },
+      ],
+      structure,
+    });
+    const baseSeed = migrateProject(exampleProject);
+    baseSeed.assets.push(
+      {
+        id: FRAME_ASSET_ID,
+        kind: 'image',
+        name: 'frame-0.svg',
+        relativePath: 'assets/frame-0.svg',
+        mimeType: 'image/svg+xml',
+        width: 320,
+        height: 260,
+        sha256: sha256Hex(RING_SVG),
+        usage: 'prop',
+        keywords: [],
+      },
+      {
+        id: RING_SHAPE_ASSET_ID,
+        kind: 'image',
+        name: 'ring-shape.svg',
+        relativePath: 'assets/ring-shape.svg',
+        mimeType: 'image/svg+xml',
+        width: 220,
+        height: 180,
+        sha256: sha256Hex(RING_SVG),
+        usage: 'prop',
+        keywords: [],
+      },
+    );
+    baseSeed.animations.push(definition);
+    const seedShot = baseSeed.shots[0]!;
+    const templateLayer = seedShot.layers[0]!;
+    seedShot.layers.push(
+      {
+        ...templateLayer,
+        id: LAYER_A_ID,
+        name: '实例A',
+        source: { kind: 'animation', animationId: definition.id },
+        startTimeMs: 0,
+        animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+        zIndex: seedShot.layers.length,
+      },
+      {
+        ...templateLayer,
+        id: LAYER_B_ID,
+        name: '实例B',
+        source: { kind: 'animation', animationId: definition.id },
+        startTimeMs: 0,
+        animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+        zIndex: seedShot.layers.length + 1,
+      },
+    );
+    const baseProject = ProjectSchema.parse({
+      ...baseSeed,
+      id: created.project.id,
+      name: created.project.name,
+      createdAt: created.project.createdAt,
+      updatedAt: created.project.updatedAt,
+    });
+    await projectService.save(projectRoot, baseProject, 1);
+
+    const reopenedSeed = await projectService.open(projectRoot);
+    const ringPath = ['group-outfit', 'shape-ring'];
+    const decomposed = decomposeSvgToEditableShapeRegions(RING_SVG);
+    expect(decomposed.regions).toHaveLength(2);
+    const regA = decomposed.regions[0]!;
+    const regB = decomposed.regions[1]!;
+
+    const extractedRes = layerService.extractFlaGraphicShapeRegion(
+      reopenedSeed.project,
+      {
+        shotId: seedShot.id,
+        layerId: LAYER_A_ID,
+        frameOrdinal: 0,
+        nodePath: ringPath,
+        regionRef: regA.regionRef,
+        mode: 'instance',
+        svgText: RING_SVG,
+        displayName: '区域 A',
+      },
+    );
+    const withColor = layerService.updateFlaGraphicShapeRegionFillColor(
+      extractedRes.project,
+      {
+        shotId: seedShot.id,
+        layerId: LAYER_A_ID,
+        frameOrdinal: 0,
+        nodePath: extractedRes.extractedNodePath,
+        regionRef: regA.regionRef,
+        mode: 'instance',
+        color: '#00aa88',
+      },
+    );
+    const withVertex = layerService.moveFlaGraphicShapeRegionVertex(withColor, {
+      shotId: seedShot.id,
+      layerId: LAYER_A_ID,
+      frameOrdinal: 0,
+      nodePath: extractedRes.extractedNodePath,
+      regionRef: regA.regionRef,
+      mode: 'instance',
+      target: { contourIndex: 0, commandIndex: 0, pointKind: 'anchor' },
+      x: 24,
+      y: 20,
+    });
+
+    const defForParts = withVertex.animations.find(
+      (a): a is FlaGraphicDefinition => a.id === GRAPHIC_ID && isFlaGraphicDefinition(a),
+    )!;
+    const adaptiveInput = buildAdaptivePartsFromFlaGraphicSubtrees({
+      project: withVertex,
+      definition: defForParts,
+      frameOrdinal: 0,
+      selections: [
+        { nodePath: ringPath, label: '局部 1', regionRef: regA.regionRef, regionVector: regA },
+        { nodePath: ringPath, label: '局部 2', regionRef: regB.regionRef, regionVector: regB },
+      ],
+    });
+    const projectWithChar = new CharacterService().createAdaptiveParts(
+      withVertex,
+      adaptiveInput,
+    );
+    const charId = projectWithChar.characters.at(-1)!.id;
+    const charLayerId = randomUUID();
+    const charLayer: Layer = {
+      ...projectWithChar.shots[0]!.layers[0]!,
+      id: charLayerId,
+      name: '双区域角色图层',
+      zIndex: 5,
+      source: { kind: 'character', characterId: charId },
+      animationPlayback: undefined,
+    };
+    const projectWithAll: Project = ProjectSchema.parse({
+      ...projectWithChar,
+      shots: [
+        {
+          ...projectWithChar.shots[0]!,
+          layers: [...projectWithChar.shots[0]!.layers, charLayer],
+        },
+      ],
+    });
+
+    await projectService.save(projectRoot, projectWithAll, 1);
+    const reopened = await projectService.open(projectRoot);
+    const reopenedShot = reopened.project.shots[0]!;
+    const reopenedLayerA = reopenedShot.layers.find((l) => l.id === LAYER_A_ID)!;
+    const reopenedLayerB = reopenedShot.layers.find((l) => l.id === LAYER_B_ID)!;
+    const reopenedDef = reopened.project.animations.find(
+      (a): a is FlaGraphicDefinition => a.id === GRAPHIC_ID && isFlaGraphicDefinition(a),
+    )!;
+
+    expect(reopenedLayerB.flaGraphicInstanceShapeOverrides).toBeUndefined();
+    const evalA = evaluateFlaGraphicVisual({
+      definition: reopenedDef,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceShapeOverrides: reopenedLayerA.flaGraphicInstanceShapeOverrides,
+    })!;
+    const evalB = evaluateFlaGraphicVisual({
+      definition: reopenedDef,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceShapeOverrides: reopenedLayerB.flaGraphicInstanceShapeOverrides,
+    })!;
+    expect(evalA.layers![0]!.nodes[0]!.children).toHaveLength(2);
+    expect(evalB.layers![0]!.nodes[0]!.children).toHaveLength(1);
+    const extractedA = evalA.layers![0]!.nodes[0]!.children[1]!;
+    expect(extractedA.path).toEqual(extractedRes.extractedNodePath);
+    expect(extractedA.vectorVisual?.regions[0]?.fill.color?.toLowerCase()).toBe('#00aa88');
+    expect(extractedA.vectorVisual?.regions[0]?.contours[0]?.commands[0]).toEqual({
+      type: 'M',
+      x: 24,
+      y: 20,
+    });
+    expect(extractedA.vectorVisual?.regions[0]?.contours[0]?.commands.at(-1)).toEqual({
+      type: 'Z',
+    });
+    const emittedSvg = buildSvgFromFlaEditableShapeRegions({
+      regions: extractedA.vectorVisual!.regions,
+      viewBox: extractedA.vectorVisual!.baseViewBox,
+    });
+    expect(emittedSvg.toLowerCase()).toContain('#00aa88');
+    expect(emittedSvg).toContain('M 24 20');
+
+    const stageEval = evaluateShotAtTime(reopenedShot, 0, reopened.project);
+    const stageRender = buildStageRenderModel(
+      reopened.project,
+      stageEval,
+      Object.fromEntries(
+        reopened.project.assets
+          .filter((a) => a.kind === 'image')
+          .map((a) => [a.id, `asset:///${a.id}`]),
+      ),
+    );
+    expect(stageRender.layers.length).toBeGreaterThanOrEqual(3);
+    const evalCharLayer = stageEval.layers.find((l) => l.id === charLayerId)!;
+    const resolvedChar = resolveLayerVisualParts(
+      reopened.project,
+      reopenedShot,
+      evalCharLayer,
+    );
+    expect(resolvedChar.kind).toBe('adaptive-parts-character');
+    expect(resolvedChar.parts).toHaveLength(2);
+    const adaptiveChar = reopened.project.characters.find((c) => c.id === charId)!;
+    if (adaptiveChar.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+    const rad = (25 * Math.PI) / 180;
+    const scaleFactor = 0.5 * (Math.cos(rad) + Math.sin(rad));
+    expect(
+      characterPartSourceBounds(
+        adaptiveChar.parts[0]!,
+        reopened.project.animations,
+        reopened.project.assets,
+      )!.width,
+    ).toBeCloseTo(80 * scaleFactor, 6);
+    expect(
+      characterPartSourceBounds(
+        adaptiveChar.parts[1]!,
+        reopened.project.animations,
+        reopened.project.assets,
+      )!.width,
+    ).toBeCloseTo(40 * scaleFactor, 6);
+    const exportMedia = collectExportPreparationMedia(reopened.project);
+    expect(exportMedia.length).toBeGreaterThan(0);
+  });
 });

@@ -4,6 +4,10 @@ import {
   type EvaluatedFlaGraphicNode,
   type EvaluatedFlaGraphicVisual,
 } from './evaluate-fla-graphic';
+import {
+  unionFlaShapeRegionBounds,
+  type FlaEditableShapeRegion,
+} from './fla-shape-vector';
 import type { FlaGraphicStructureFrame, FlaGraphicStructureNode } from './models';
 
 export interface FlaGraphicAssetDimensionLike {
@@ -34,11 +38,42 @@ function isStrictPrefixPath(prefix: readonly string[], full: readonly string[]):
   return true;
 }
 
+export interface FlaGraphicSubtreeRegionSelection {
+  readonly regionRef?: string;
+  readonly regionVector?: FlaEditableShapeRegion;
+}
+
 function filterNodeSubtree(
   node: EvaluatedFlaGraphicNode,
   targetPath: readonly string[],
+  regionSelection?: FlaGraphicSubtreeRegionSelection,
 ): EvaluatedFlaGraphicNode | null {
   if (sameNodePath(node.path, targetPath)) {
+    if (regionSelection?.regionVector) {
+      const baseViewBox =
+        node.vectorVisual?.baseViewBox ??
+        (node.source.type === 'opaque' && node.source.fallbackViewBox
+          ? {
+              x: node.source.fallbackViewBox.x,
+              y: node.source.fallbackViewBox.y,
+              width: node.source.fallbackViewBox.width,
+              height: node.source.fallbackViewBox.height,
+            }
+          : { ...regionSelection.regionVector.bounds });
+      return {
+        ...node,
+        vectorVisual: {
+          baseViewBox,
+          regions: [regionSelection.regionVector],
+          ...(node.vectorVisual?.defsSvg
+            ? { defsSvg: node.vectorVisual.defsSvg }
+            : {}),
+        },
+        ...(regionSelection.regionRef
+          ? { regionRef: regionSelection.regionRef }
+          : {}),
+      };
+    }
     return node;
   }
   if (!isStrictPrefixPath(node.path, targetPath)) {
@@ -46,7 +81,7 @@ function filterNodeSubtree(
   }
   const matchedChildren: EvaluatedFlaGraphicNode[] = [];
   for (const child of node.children) {
-    const filtered = filterNodeSubtree(child, targetPath);
+    const filtered = filterNodeSubtree(child, targetPath, regionSelection);
     if (filtered) matchedChildren.push(filtered);
   }
   if (matchedChildren.length === 0) return null;
@@ -119,10 +154,12 @@ function buildEmptyStructuredVisual(
 export function selectFlaGraphicSubtreeVisual(
   visual: EvaluatedFlaGraphicVisual,
   nodePath: readonly string[],
+  regionSelection?: FlaGraphicSubtreeRegionSelection,
 ): EvaluatedFlaGraphicVisual {
-  const pathKey = JSON.stringify(nodePath);
-  let cache = subtreeVisualCache.get(visual);
-  const cached = cache?.get(pathKey);
+  const useCache = !regionSelection?.regionVector && !regionSelection?.regionRef;
+  const pathKey = useCache ? JSON.stringify(nodePath) : '';
+  const cache = useCache ? subtreeVisualCache.get(visual) : undefined;
+  const cached = useCache ? cache?.get(pathKey) : undefined;
   if (cached) return cached;
 
   let selected: EvaluatedFlaGraphicVisual;
@@ -134,7 +171,7 @@ export function selectFlaGraphicSubtreeVisual(
     for (const layer of visual.layers) {
       const matchedNodes: EvaluatedFlaGraphicNode[] = [];
       for (const node of layer.nodes) {
-        const filtered = filterNodeSubtree(node, nodePath);
+        const filtered = filterNodeSubtree(node, nodePath, regionSelection);
         if (filtered) matchedNodes.push(filtered);
       }
       if (matchedNodes.length > 0) {
@@ -164,11 +201,14 @@ export function selectFlaGraphicSubtreeVisual(
     }
   }
 
-  if (!cache) {
-    cache = new Map();
-    subtreeVisualCache.set(visual, cache);
+  if (useCache) {
+    let targetCache = cache;
+    if (!targetCache) {
+      targetCache = new Map();
+      subtreeVisualCache.set(visual, targetCache);
+    }
+    if (targetCache.size < 256) targetCache.set(pathKey, selected);
   }
-  if (cache.size < 256) cache.set(pathKey, selected);
   return selected;
 }
 
@@ -184,6 +224,10 @@ export function hasMatchedFlaGraphicSubtree(
 function hasRenderableLeaf(nodes: readonly EvaluatedFlaGraphicNode[]): boolean {
   for (const node of nodes) {
     if (!node.renderable) continue;
+    if (node.vectorVisual) {
+      if (node.vectorVisual.regions.length > 0) return true;
+      continue;
+    }
     if (node.source.type === 'bitmap' && Boolean(node.source.assetId)) {
       return true;
     }
@@ -225,17 +269,10 @@ export function measureFlaGraphicSubtreeBounds(
   let maxY = Number.NEGATIVE_INFINITY;
   let sawLeaf = false;
 
-  const includeTransformedQuad = (
+  const includeTransformedCorners = (
     matrix: EvaluatedFlaGraphicNode['worldTransform'],
-    width: number,
-    height: number,
+    corners: readonly [number, number][],
   ): boolean => {
-    const corners: readonly [number, number][] = [
-      [0, 0],
-      [width, 0],
-      [0, height],
-      [width, height],
-    ];
     for (const [lx, ly] of corners) {
       const wx = matrix.a * lx + matrix.c * ly + matrix.tx;
       const wy = matrix.b * lx + matrix.d * ly + matrix.ty;
@@ -249,13 +286,43 @@ export function measureFlaGraphicSubtreeBounds(
     return true;
   };
 
+  const includeTransformedQuad = (
+    matrix: EvaluatedFlaGraphicNode['worldTransform'],
+    width: number,
+    height: number,
+  ): boolean =>
+    includeTransformedCorners(matrix, [
+      [0, 0],
+      [width, 0],
+      [0, height],
+      [width, height],
+    ]);
+
   const visitNodes = (nodes: readonly EvaluatedFlaGraphicNode[]): boolean => {
     for (const node of nodes) {
       if (!node.renderable) continue;
       // Preserve composite semantics hook so unreadable opacity=0 subtrees still
       // have consistent visibility gating with the renderer when desired.
       evaluateFlaGraphicNodeCompositePlan(node);
-      if (node.source.type === 'bitmap') {
+      if (node.vectorVisual) {
+        if (node.vectorVisual.regions.length === 0) continue;
+        const bounds = unionFlaShapeRegionBounds(node.vectorVisual.regions);
+        if (!bounds) continue;
+        const bx = node.vectorVisual.baseViewBox.x;
+        const by = node.vectorVisual.baseViewBox.y;
+        const rx = bounds.x - bx;
+        const ry = bounds.y - by;
+        if (
+          !includeTransformedCorners(node.worldTransform, [
+            [rx, ry],
+            [rx + bounds.width, ry],
+            [rx, ry + bounds.height],
+            [rx + bounds.width, ry + bounds.height],
+          ])
+        ) {
+          return false;
+        }
+      } else if (node.source.type === 'bitmap') {
         if (!node.source.assetId) continue;
         const asset = assetsById.get(node.source.assetId);
         const width = asset?.width;

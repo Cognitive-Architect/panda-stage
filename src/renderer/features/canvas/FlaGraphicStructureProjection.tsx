@@ -1,5 +1,6 @@
 import Konva from 'konva';
 import {
+  Circle,
   Group,
   Image as KonvaImage,
   Rect,
@@ -8,16 +9,25 @@ import {
 import type {
   EvaluatedFlaGraphicNode,
   FlaGraphicDefinition,
+  FlaGraphicShapeOverrides,
   FlaGraphicStructureFrame,
   FlaGraphicStructureNode,
   FlaGraphicInstanceTransformOverrides,
+  FlaShapeVertexTarget,
   ImageAsset,
 } from '../../../domain';
 import {
+  cloneFlaGraphicShapeOverrides,
+  commandsToSvgPathD,
+  decomposeSvgToEditableShapeRegions,
   evaluateFlaGraphicVisual,
+  findFlaExtractedShapeRegionByPath,
   isFlaGraphicEditableSubtreeShapeNode,
+  listFlaShapeRegionVertices,
+  pickFlaShapeRegionAtPoint,
   resolveFlaGraphicInternalAuthoringState,
   unapplyFlaGraphicSubtreeViewBox,
+  unionFlaShapeRegionBounds,
   updateFlaGraphicStructureAuthoredTransform,
   updateFlaGraphicTimelineKeyframeTransform,
   withFlaGraphicContainerTimeline,
@@ -35,6 +45,7 @@ import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 import {
   drawClippedBitmapHitRegion,
   drawFlaSvgShapeHitRegion,
+  drawFlaVectorVisualHitRegion,
   extractFlaSvgTextForAsset,
   parseFlaSvgShapeHitGeometry,
 } from './flaSvgShapeHit';
@@ -135,13 +146,26 @@ export interface FlaGraphicStructureProjectionProps {
   readonly timelineAuthoringActive?: boolean;
   readonly internalTimeMs?: number;
   readonly selectedNodePathKey: string | null;
+  readonly selectedRegionRef?: string | null;
+  readonly vertexEditActive?: boolean;
+  readonly selectedVertexTarget?: FlaShapeVertexTarget | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   /** Transient gesture preview matrices; committed values live on the Layer. */
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
   readonly layerLocked: boolean;
   readonly scopeParentNodeRef: React.RefObject<Konva.Group | null>;
   readonly selectedNodeRef: React.RefObject<Konva.Group | null>;
   readonly onSelect: (path: readonly string[]) => void;
+  readonly onSelectRegion?: (path: readonly string[], regionRef: string | null) => void;
+  readonly onSelectVertex?: (target: FlaShapeVertexTarget | null) => void;
+  readonly onMoveVertex?: (
+    path: readonly string[],
+    regionRef: string,
+    target: FlaShapeVertexTarget,
+    x: number,
+    y: number,
+  ) => void;
   readonly onEnter: (path: readonly string[]) => void;
   readonly onTransformPreview: (path: readonly string[], matrix: AffineMatrix2D) => void;
   readonly onCommitTransform: (path: readonly string[], matrix: AffineMatrix2D) => void;
@@ -160,6 +184,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
   readonly timelineAuthoringActive?: boolean;
   readonly internalTimeMs?: number;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
+  readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
 }) {
   const {
@@ -169,6 +194,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     internalTimeMs,
     timelineAuthoringActive = internalTimeMs !== undefined,
     instanceTransformOverrides,
+    instanceShapeOverrides,
     draftMatrices,
   } = input;
   const draftEntries = Object.entries(draftMatrices);
@@ -176,6 +202,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     let previewDefinition = definition;
     if (draftEntries.length > 0 && definition.structure) {
       let nextStructure = definition.structure;
+      let nextSharedShapeOverrides = definition.flaGraphicSharedShapeOverrides;
       for (const [pathKey, matrix] of draftEntries) {
         let parsed: unknown;
         try {
@@ -213,19 +240,41 @@ export function evaluateFlaGraphicProjectionVisual(input: {
               );
             }
           } else {
-            nextStructure = updateFlaGraphicStructureAuthoredTransform(
+            const updatedStructure = updateFlaGraphicStructureAuthoredTransform(
               nextStructure,
               frameOrdinal,
               parsed,
               matrix,
             );
+            if (updatedStructure !== nextStructure) {
+              nextStructure = updatedStructure;
+            } else {
+              const frameKey = String(frameOrdinal);
+              const extracted = findFlaExtractedShapeRegionByPath(
+                nextSharedShapeOverrides?.[frameKey],
+                parsed,
+              );
+              if (extracted) {
+                const cloned = cloneFlaGraphicShapeOverrides(nextSharedShapeOverrides);
+                const owner = cloned?.[frameKey]?.[extracted.ownerPathKey];
+                const entry = owner?.extractedRegions[extracted.entryIndex];
+                if (cloned && entry) {
+                  entry.localTransform = { ...matrix };
+                  nextSharedShapeOverrides = cloned;
+                }
+              }
+            }
           }
         }
       }
-      if (nextStructure !== definition.structure) {
+      if (
+        nextStructure !== definition.structure ||
+        nextSharedShapeOverrides !== definition.flaGraphicSharedShapeOverrides
+      ) {
         previewDefinition = {
           ...definition,
           structure: nextStructure,
+          flaGraphicSharedShapeOverrides: nextSharedShapeOverrides,
         };
       }
     }
@@ -253,6 +302,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     frameOrdinal,
     mode: 'instance',
     instanceTransformOverrides: evaluationOverrides,
+    instanceShapeOverrides,
   });
 }
 
@@ -267,12 +317,19 @@ export function FlaGraphicStructureProjection({
   timelineAuthoringActive = false,
   internalTimeMs,
   selectedNodePathKey,
+  selectedRegionRef = null,
+  vertexEditActive = false,
+  selectedVertexTarget = null,
   instanceTransformOverrides,
+  instanceShapeOverrides,
   draftMatrices,
   layerLocked,
   scopeParentNodeRef,
   selectedNodeRef,
   onSelect,
+  onSelectRegion,
+  onSelectVertex,
+  onMoveVertex,
   onEnter,
   onTransformPreview,
   onCommitTransform,
@@ -285,6 +342,7 @@ export function FlaGraphicStructureProjection({
     timelineAuthoringActive,
     internalTimeMs,
     instanceTransformOverrides,
+    instanceShapeOverrides,
     draftMatrices,
   });
   const renderedCanvas = evaluatedVisual
@@ -331,7 +389,19 @@ export function FlaGraphicStructureProjection({
     }
     const source = node.source;
     let result: Bounds | null = null;
-    if (source.type === 'bitmap') {
+    if (node.vectorVisual) {
+      if (node.vectorVisual.regions.length > 0) {
+        const bounds = unionFlaShapeRegionBounds(node.vectorVisual.regions);
+        if (bounds) {
+          result = {
+            x: bounds.x - node.vectorVisual.baseViewBox.x,
+            y: bounds.y - node.vectorVisual.baseViewBox.y,
+            width: bounds.width,
+            height: bounds.height,
+          };
+        }
+      }
+    } else if (source.type === 'bitmap') {
       const asset = source.assetId ? assets.get(source.assetId) : undefined;
       if (source.assetId && images.has(source.assetId) && asset) {
         result = { x: 0, y: 0, width: asset.width, height: asset.height };
@@ -474,6 +544,58 @@ export function FlaGraphicStructureProjection({
         ? scopeParentNodeRef
         : undefined;
 
+    const assetId = node.type === 'opaque' ? node.fallbackAssetId : undefined;
+    const shapeSvgText =
+      isFlaGraphicEditableSubtreeShapeNode(node)
+        ? extractFlaSvgTextForAsset(
+            assetId,
+            assetId ? images.get(assetId) : undefined,
+            svgTexts,
+          )
+        : null;
+    const vectorVisual = evaluatedNode.vectorVisual;
+    const baseViewBoxForShape =
+      vectorVisual?.baseViewBox ??
+      (node.type === 'opaque' ? node.fallbackViewBox : undefined);
+    const regionsForShape = (() => {
+      if (vectorVisual) return vectorVisual.regions;
+      if (shapeSvgText && isFlaGraphicEditableSubtreeShapeNode(node)) {
+        return decomposeSvgToEditableShapeRegions(shapeSvgText, {
+          ...(node.sourceRef ? { sourceShapeRef: node.sourceRef } : {}),
+          ...(node.fallbackViewBox ? { baseViewBox: node.fallbackViewBox } : {}),
+        }).regions;
+      }
+      return [];
+    })();
+    const activeEditRegion =
+      selected && vertexEditActive && !layerLocked && regionsForShape.length > 0
+        ? regionsForShape.find((candidate) => candidate.regionRef === selectedRegionRef) ??
+          (regionsForShape.length === 1 ? regionsForShape[0] : undefined)
+        : undefined;
+    const editingVerticesHere = Boolean(activeEditRegion && baseViewBoxForShape);
+
+    const setLeafSelection = (
+      event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+    ): void => {
+      event.cancelBubble = true;
+      let pickedRef: string | null = evaluatedNode.regionRef ?? null;
+      if (!pickedRef && regionsForShape.length > 0 && baseViewBoxForShape) {
+        const pointer = event.target.getRelativePointerPosition();
+        if (pointer) {
+          const picked = pickFlaShapeRegionAtPoint(
+            regionsForShape,
+            pointer.x + baseViewBoxForShape.x,
+            pointer.y + baseViewBoxForShape.y,
+          );
+          pickedRef = picked?.regionRef ?? null;
+        } else if (regionsForShape.length === 1) {
+          pickedRef = regionsForShape[0]!.regionRef;
+        }
+      }
+      if (onSelectRegion) onSelectRegion(path, pickedRef);
+      else onSelect(path);
+    };
+
     const isLeafNode = node.type === 'bitmap' || node.type === 'opaque';
     const shouldMountLeafHit =
       isLeafNode && Boolean(content) && !layerLocked && (selectable || bubbleToSelectionAncestor);
@@ -481,17 +603,34 @@ export function FlaGraphicStructureProjection({
       if (!shouldMountLeafHit || !content) return null;
       const hitName = `fla-structure-hit-${node.id}`;
       const hitHandlers = selectable
-        ? { onClick: setSelection, onTap: setSelection }
+        ? { onClick: setLeafSelection, onTap: setLeafSelection }
         : {};
-      if (isFlaGraphicEditableSubtreeShapeNode(node)) {
-        const assetId = node.fallbackAssetId;
-        const svgText = extractFlaSvgTextForAsset(
-          assetId,
-          assetId ? images.get(assetId) : undefined,
-          svgTexts,
+      if (vectorVisual) {
+        if (vectorVisual.regions.length === 0) return null;
+        const worldTransform = evaluatedNode.worldTransform;
+        const clipPaths = evaluatedNode.clipPaths;
+        return (
+          <Shape
+            height={content.height}
+            hitFunc={(context, shape) => {
+              drawFlaVectorVisualHitRegion(context, shape, {
+                vectorVisual,
+                nodeWorldTransform: worldTransform,
+                clipPaths,
+              });
+            }}
+            listening
+            name={hitName}
+            width={content.width}
+            x={content.x}
+            y={content.y}
+            {...hitHandlers}
+          />
         );
-        if (svgText !== null) {
-          const geometry = parseFlaSvgShapeHitGeometry(svgText);
+      }
+      if (isFlaGraphicEditableSubtreeShapeNode(node)) {
+        if (shapeSvgText !== null) {
+          const geometry = parseFlaSvgShapeHitGeometry(shapeSvgText);
           if (geometry.primitives.length === 0) return null;
           const viewBox = node.fallbackViewBox!;
           const worldTransform = evaluatedNode.worldTransform;
@@ -555,10 +694,103 @@ export function FlaGraphicStructureProjection({
       );
     })();
 
+    const vertexEditOverlay =
+      editingVerticesHere && activeEditRegion && baseViewBoxForShape
+        ? (() => {
+            const handles = listFlaShapeRegionVertices(activeEditRegion);
+            const originX = baseViewBoxForShape.x;
+            const originY = baseViewBoxForShape.y;
+            const contourPaths = activeEditRegion.contours
+              .map((c) => commandsToSvgPathD(c.commands))
+              .filter(Boolean);
+            return (
+              <Group name="fla-shape-vertex-overlay">
+                <Shape
+                  listening={false}
+                  name="fla-shape-region-outline"
+                  sceneFunc={(context) => {
+                    const Path2DConstructor = globalThis.Path2D;
+                    if (!Path2DConstructor || contourPaths.length === 0) return;
+                    const raw = context._context;
+                    raw.save();
+                    raw.translate(-originX, -originY);
+                    raw.strokeStyle = '#55b6ff';
+                    raw.lineWidth = 1.5;
+                    for (const d of contourPaths) {
+                      raw.stroke(new Path2DConstructor(d));
+                    }
+                    raw.restore();
+                  }}
+                />
+                {handles.map((handle) => {
+                  const isControl = handle.pointKind !== 'anchor';
+                  const isSelectedHandle =
+                    selectedVertexTarget !== null &&
+                    selectedVertexTarget.contourIndex === handle.contourIndex &&
+                    selectedVertexTarget.commandIndex === handle.commandIndex &&
+                    selectedVertexTarget.pointKind === handle.pointKind;
+                  const handleKey = `${handle.contourIndex}:${handle.commandIndex}:${handle.pointKind}`;
+                  return (
+                    <Circle
+                      key={handleKey}
+                      draggable
+                      fill={
+                        isSelectedHandle
+                          ? '#ffb74d'
+                          : isControl
+                            ? '#7cd2ff'
+                            : '#ffffff'
+                      }
+                      name={`fla-shape-vertex-${handleKey}`}
+                      onClick={(event) => {
+                        event.cancelBubble = true;
+                        onSelectVertex?.({
+                          contourIndex: handle.contourIndex,
+                          commandIndex: handle.commandIndex,
+                          pointKind: handle.pointKind,
+                        });
+                      }}
+                      onDragStart={(event) => {
+                        event.cancelBubble = true;
+                        onSelectVertex?.({
+                          contourIndex: handle.contourIndex,
+                          commandIndex: handle.commandIndex,
+                          pointKind: handle.pointKind,
+                        });
+                      }}
+                      onDragEnd={(event) => {
+                        event.cancelBubble = true;
+                        const nextSvgX = event.target.x() + originX;
+                        const nextSvgY = event.target.y() + originY;
+                        onMoveVertex?.(
+                          path,
+                          activeEditRegion.regionRef,
+                          {
+                            contourIndex: handle.contourIndex,
+                            commandIndex: handle.commandIndex,
+                            pointKind: handle.pointKind,
+                          },
+                          nextSvgX,
+                          nextSvgY,
+                        );
+                      }}
+                      radius={isControl ? 4 : 5}
+                      stroke="#1b3a57"
+                      strokeWidth={1.5}
+                      x={handle.x - originX}
+                      y={handle.y - originY}
+                    />
+                  );
+                })}
+              </Group>
+            );
+          })()
+        : null;
+
     return (
       <Group
         {...transform}
-        draggable={transformable}
+        draggable={transformable && !editingVerticesHere}
         key={key}
         listening={listening}
         name={`fla-structure-node-${node.id}`}
@@ -569,12 +801,12 @@ export function FlaGraphicStructureProjection({
           onSelect(path);
           onEnter(path);
         } : undefined}
-        onDragStart={transformable ? (event) => {
+        onDragStart={transformable && !editingVerticesHere ? (event) => {
           event.cancelBubble = true;
           onSelect(path);
         } : undefined}
-        onDragMove={transformable ? handleTransformPreview : undefined}
-        onDragEnd={transformable ? handleDragEnd : undefined}
+        onDragMove={transformable && !editingVerticesHere ? handleTransformPreview : undefined}
+        onDragEnd={transformable && !editingVerticesHere ? handleDragEnd : undefined}
         onTransform={transformable ? handleTransformPreview : undefined}
         onTransformEnd={transformable ? handleTransformEnd : undefined}
         opacity={node.type === 'symbol' ? node.opacity ?? 1 : 1}
@@ -594,6 +826,7 @@ export function FlaGraphicStructureProjection({
             y={content.y}
           />
         ) : null}
+        {vertexEditOverlay}
       </Group>
     );
   };

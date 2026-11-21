@@ -26,6 +26,7 @@ import {
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
   isValidFrameTime,
+  type FlaShapeVertexTarget,
   type Layer,
 } from '../../../domain';
 import {
@@ -86,6 +87,7 @@ import {
   CanvasImageResourceSession,
   canvasImageResourceKey,
   EMPTY_CANVAS_IMAGE_STATE,
+  getCachedFlaSvgAssetText,
   type CanvasImageAssetSource,
   type CanvasImageState,
 } from './canvasImageResources';
@@ -276,6 +278,15 @@ export function CanvasStage({
   const selectedFlaGraphicNodePath = useSyncExternalStore(
     selectionStore.subscribe, selectionStore.getSelectedStructuredNodePath,
   );
+  const selectedFlaGraphicRegionRef = useSyncExternalStore(
+    selectionStore.subscribe, selectionStore.getSelectedStructuredRegionRef,
+  );
+  const flaShapeVertexEditActive = useSyncExternalStore(
+    selectionStore.subscribe, selectionStore.isFlaShapeVertexEditActive,
+  );
+  const selectedFlaShapeVertex = useSyncExternalStore(
+    selectionStore.subscribe, selectionStore.getSelectedFlaShapeVertex,
+  );
   const setFlaGraphicEditScope = selectionStore.setStructuredEditScope;
   const setSelectedFlaGraphicNodePath = selectionStore.setSelectedStructuredNodePath;
   const [flaGraphicEditDrafts, setFlaGraphicEditDrafts] = useState<
@@ -369,6 +380,13 @@ export function CanvasStage({
         selectedFlaGraphicTarget.frame,
         selectedFlaGraphicNodePath,
         selectedFlaGraphicTarget.animation.structure,
+        {
+          shared: selectedFlaGraphicTarget.animation.flaGraphicSharedShapeOverrides,
+          instance:
+            flaGraphicEditMode === 'definition'
+              ? undefined
+              : selectedFlaGraphicTarget.layer.flaGraphicInstanceShapeOverrides,
+        },
       )
     : null;
   const activeFlaGraphicEditDraftMatrices = selectedFlaGraphicTarget
@@ -701,6 +719,49 @@ export function CanvasStage({
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
   const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  const handleMoveFlaShapeVertex = useCallback((
+    nodePath: readonly string[],
+    regionRef: string,
+    target: FlaShapeVertexTarget,
+    x: number,
+    y: number,
+  ) => {
+    if (!selectedFlaGraphicTarget) return;
+    try {
+      const node = getFlaGraphicNodeAtPath(
+        selectedFlaGraphicTarget.frame,
+        nodePath,
+        selectedFlaGraphicTarget.animation.structure,
+        {
+          shared: selectedFlaGraphicTarget.animation.flaGraphicSharedShapeOverrides,
+          instance:
+            flaGraphicEditScope?.editMode === 'definition'
+              ? undefined
+              : selectedFlaGraphicTarget.layer.flaGraphicInstanceShapeOverrides,
+        },
+      );
+      const fallbackAssetId = node?.type === 'opaque' ? node.fallbackAssetId : undefined;
+      const svgText = fallbackAssetId
+        ? imageState.svgTexts?.get(fallbackAssetId) ??
+          getCachedFlaSvgAssetText(fallbackAssetId)
+        : undefined;
+      layerStore.moveFlaGraphicShapeRegionVertex({
+        layerId: selectedFlaGraphicTarget.layerId,
+        frameOrdinal: selectedFlaGraphicTarget.frameOrdinal,
+        nodePath,
+        regionRef,
+        mode: flaGraphicEditScope?.editMode === 'definition' ? 'definition' : 'instance',
+        target,
+        x,
+        y,
+        svgText,
+      });
+    } catch (error) {
+      setInteractionStatus(
+        error instanceof Error ? error.message : '路径顶点更新失败。',
+      );
+    }
+  }, [flaGraphicEditScope?.editMode, imageState.svgTexts, selectedFlaGraphicTarget]);
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -1150,7 +1211,9 @@ export function CanvasStage({
         Boolean(selectedStructuredAuthoringState?.canEditTransform)),
   );
   const structuredTransformerVisible = Boolean(
-    flaGraphicEditActive && selectedStructuredNodeCanTransform,
+    flaGraphicEditActive &&
+      selectedStructuredNodeCanTransform &&
+      !flaShapeVertexEditActive,
   );
   const layerTransformerVisible = !characterNodeSelected && !flaGraphicEditActive && isTransformerOverlayVisible({
     selected: Boolean(
@@ -1386,15 +1449,25 @@ export function CanvasStage({
                                 timelineAuthoringActive: sharedTimelineAuthoringActive,
                                 internalTimeMs: sharedInternalTimeMs,
                                 selectedNodePathKey: selectedFlaGraphicNodePathKey,
+                                selectedRegionRef: selectedFlaGraphicRegionRef,
+                                vertexEditActive: flaShapeVertexEditActive,
+                                selectedVertexTarget: selectedFlaShapeVertex,
                                 instanceTransformOverrides:
                                   flaGraphicEditMode === 'definition'
                                     ? undefined
                                     : layer.flaGraphicInstanceTransformOverrides,
+                                instanceShapeOverrides:
+                                  flaGraphicEditMode === 'definition'
+                                    ? undefined
+                                    : layer.flaGraphicInstanceShapeOverrides,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,
                                 selectedNodeRef: flaGraphicEditSelectedNodeRef,
                                 onSelect: setSelectedFlaGraphicNodePath,
+                                onSelectRegion: selectionStore.setSelectedStructuredNodeSelection,
+                                onSelectVertex: selectionStore.setSelectedFlaShapeVertex,
+                                onMoveVertex: handleMoveFlaShapeVertex,
                                 onEnter: enterFlaGraphicScope,
                                 onTransformPreview: updateFlaGraphicChildTransform,
                                 onCommitTransform: commitFlaGraphicChildTransform,

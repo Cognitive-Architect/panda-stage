@@ -1,7 +1,13 @@
 import {
+  decomposeSvgToEditableShapeRegions,
+  findFlaExtractedShapeRegionByPath,
+  isFlaGraphicEditableSubtreeShapeNode,
   isFlaGraphicNodeTransformable,
   resolveFlaGraphicSymbolChildren,
+  type FlaEditableShapeRegion,
   type FlaGraphicDefinition,
+  type FlaGraphicShapeNodeOverride,
+  type FlaGraphicShapeOverrides,
   type FlaGraphicStructure,
   type FlaGraphicStructureFrame,
   type FlaGraphicStructureNode,
@@ -231,6 +237,10 @@ export function getFlaGraphicNodeAtPath(
   frame: FlaGraphicStructureFrame,
   path: readonly string[],
   structure?: Pick<FlaGraphicStructure, 'symbolDefinitions'> | null,
+  shapeOverrides?: {
+    readonly shared?: FlaGraphicShapeOverrides;
+    readonly instance?: FlaGraphicShapeOverrides;
+  },
 ): FlaGraphicStructureNode | null {
   if (path.length === 0) return null;
   let nodes: readonly FlaGraphicStructureNode[] = frame.layers.flatMap(
@@ -239,14 +249,50 @@ export function getFlaGraphicNodeAtPath(
   let current: FlaGraphicStructureNode | undefined;
   for (const nodeId of path) {
     current = nodes.find((node) => node.id === nodeId);
-    if (!current) return null;
+    if (!current) {
+      current = undefined;
+      break;
+    }
     nodes = current.type === 'group'
       ? current.children
       : current.type === 'symbol'
         ? resolveFlaGraphicSymbolChildren(current, structure)
         : [];
   }
-  return current ?? null;
+  if (current) return current;
+  if (!shapeOverrides) return null;
+  const frameKey = String(frame.ordinal);
+  const extracted =
+    findFlaExtractedShapeRegionByPath(
+      shapeOverrides.instance?.[frameKey],
+      path,
+    ) ??
+    findFlaExtractedShapeRegionByPath(
+      shapeOverrides.shared?.[frameKey],
+      path,
+    );
+  if (!extracted) return null;
+  const ownerNode = getFlaGraphicNodeAtPath(frame, extracted.ownerPath, structure);
+  return {
+    id: extracted.entry.id,
+    type: 'opaque',
+    drawOrder: ownerNode?.drawOrder ?? 0,
+    localTransform: extracted.entry.localTransform,
+    opaqueKind: 'shape',
+    fallbackScope: 'subtree',
+    ...(ownerNode?.type === 'opaque' && ownerNode.sourceRef
+      ? { sourceRef: ownerNode.sourceRef }
+      : {}),
+    ...(ownerNode?.type === 'opaque' && ownerNode.fallbackAssetId
+      ? { fallbackAssetId: ownerNode.fallbackAssetId }
+      : {}),
+    fallbackViewBox: {
+      x: extracted.entry.baseViewBox.x,
+      y: extracted.entry.baseViewBox.y,
+      width: Math.max(1e-6, extracted.entry.baseViewBox.width),
+      height: Math.max(1e-6, extracted.entry.baseViewBox.height),
+    },
+  };
 }
 
 export function flaGraphicNodePathKey(path: readonly string[]): string {
@@ -317,4 +363,121 @@ export function flaGraphicNodeHasReadyVisual(
     ? node.children
     : resolveFlaGraphicSymbolChildren(node, structure);
   return children.some((child) => flaGraphicNodeHasReadyVisual(child, images, assets, structure));
+}
+
+/** Resolves effective per-frame Shape overrides respecting instance vs definition edit mode. */
+export function resolveEffectiveFlaShapeFrameOverrides(
+  definition: FlaGraphicDefinition,
+  layer: Layer,
+  frameOrdinal: number,
+  editMode: FlaGraphicEditMode,
+): Readonly<Record<string, FlaGraphicShapeNodeOverride>> | undefined {
+  const frameKey = String(frameOrdinal);
+  const shared = definition.flaGraphicSharedShapeOverrides?.[frameKey];
+  if (editMode === 'definition') return shared;
+  const instance = layer.flaGraphicInstanceShapeOverrides?.[frameKey];
+  if (!shared) return instance;
+  if (!instance) return shared;
+  return { ...shared, ...instance };
+}
+
+export interface FlaGraphicNodeShapeEditInfo {
+  readonly node: FlaGraphicStructureNode;
+  readonly isExtractedSibling: boolean;
+  readonly regions: readonly FlaEditableShapeRegion[];
+  readonly activeRegion: FlaEditableShapeRegion | null;
+  readonly ambiguousRegionRefs: ReadonlySet<string>;
+  readonly bitmapFillRegionRefs: ReadonlySet<string>;
+}
+
+/** Resolves decomposed/overridden regions for an editable subtree Shape or extracted sibling. */
+export function resolveFlaGraphicNodeShapeInfo(input: {
+  readonly target: FlaGraphicEditTarget;
+  readonly editMode: FlaGraphicEditMode;
+  readonly path: readonly string[];
+  readonly regionRef: string | null;
+  readonly svgText?: string;
+}): FlaGraphicNodeShapeEditInfo | null {
+  const { target, editMode, path, regionRef, svgText } = input;
+  const node = getFlaGraphicNodeAtPath(
+    target.frame,
+    path,
+    target.animation.structure,
+    {
+      shared: target.animation.flaGraphicSharedShapeOverrides,
+      instance:
+        editMode === 'definition'
+          ? undefined
+          : target.layer.flaGraphicInstanceShapeOverrides,
+    },
+  );
+  if (!node || !isFlaGraphicEditableSubtreeShapeNode(node)) return null;
+
+  const frameOverrides = resolveEffectiveFlaShapeFrameOverrides(
+    target.animation,
+    target.layer,
+    target.frameOrdinal,
+    editMode,
+  );
+  const extracted = findFlaExtractedShapeRegionByPath(frameOverrides, path);
+  if (extracted) {
+    return {
+      node,
+      isExtractedSibling: true,
+      regions: [extracted.entry.region],
+      activeRegion: extracted.entry.region,
+      ambiguousRegionRefs: new Set(),
+      bitmapFillRegionRefs: new Set(),
+    };
+  }
+
+  const nodeOverride = frameOverrides?.[JSON.stringify(path)];
+  if (nodeOverride) {
+    const excluded = new Set(nodeOverride.excludedRegionRefs);
+    const regions = nodeOverride.regions.filter((r) => !excluded.has(r.regionRef));
+    const activeRegion =
+      (regionRef
+        ? regions.find((r) => r.regionRef === regionRef)
+        : regions.length === 1
+          ? regions[0]
+          : undefined) ?? null;
+    return {
+      node,
+      isExtractedSibling: false,
+      regions,
+      activeRegion,
+      ambiguousRegionRefs: new Set(nodeOverride.ambiguousRegionRefs ?? []),
+      bitmapFillRegionRefs: new Set(nodeOverride.bitmapFillRegionRefs ?? []),
+    };
+  }
+
+  if (!svgText) {
+    return {
+      node,
+      isExtractedSibling: false,
+      regions: [],
+      activeRegion: null,
+      ambiguousRegionRefs: new Set(),
+      bitmapFillRegionRefs: new Set(),
+    };
+  }
+
+  const decomposed = decomposeSvgToEditableShapeRegions(svgText, {
+    ...(node.sourceRef ? { sourceShapeRef: node.sourceRef } : {}),
+    ...(node.fallbackViewBox ? { baseViewBox: node.fallbackViewBox } : {}),
+  });
+  const activeRegion =
+    (regionRef
+      ? decomposed.regions.find((r) => r.regionRef === regionRef)
+      : decomposed.regions.length === 1
+        ? decomposed.regions[0]
+        : undefined) ?? null;
+  return {
+    node,
+    isExtractedSibling: false,
+    regions: decomposed.regions,
+    activeRegion,
+    ambiguousRegionRefs: decomposed.ambiguousRegionRefs,
+    bitmapFillRegionRefs: decomposed.bitmapFillRegionRefs,
+  };
 }

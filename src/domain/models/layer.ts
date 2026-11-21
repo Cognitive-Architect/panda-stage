@@ -7,6 +7,7 @@ import {
 } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
 
 const AssetLayerSourceV22Schema = z
@@ -311,6 +312,7 @@ export const LayerV22Schema = LayerV20Schema.safeExtend({
 
 export const LayerSchema = LayerV20Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
+  flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
 }).superRefine(validateClipOwnership);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

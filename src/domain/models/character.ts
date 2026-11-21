@@ -4,6 +4,10 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import {
+  cloneFlaEditableShapeRegion,
+  FlaEditableShapeRegionSchema,
+} from '../fla-shape-vector';
 import { FlaGraphicInstanceTransformOverridesV22Schema, type FlaGraphicInstanceTransformOverrides } from './flaGraphicInstanceOverrides';
 import { FLA_GRAPHIC_STRUCTURE_MAX_DEPTH } from './flaGraphicStructure';
 
@@ -284,6 +288,8 @@ const CharacterPartFlaGraphicVisualSourceCurrentSchema = z
     animationId: IdSchema,
     nodePath: CharacterPartFlaGraphicNodePathSchema.optional(),
     poseFrameOrdinal: z.number().int().nonnegative().optional(),
+    regionRef: z.string().trim().min(1).max(128).optional(),
+    regionVector: FlaEditableShapeRegionSchema.optional(),
     instanceTransformOverrides:
       FlaGraphicInstanceTransformOverridesV22Schema.optional(),
   })
@@ -764,6 +770,10 @@ export function cloneCharacterPartVisualSource(
     ...(visualSource.nodePath ? { nodePath: [...visualSource.nodePath] } : {}),
     ...(visualSource.poseFrameOrdinal !== undefined
       ? { poseFrameOrdinal: visualSource.poseFrameOrdinal }
+      : {}),
+    ...(visualSource.regionRef ? { regionRef: visualSource.regionRef } : {}),
+    ...(visualSource.regionVector
+      ? { regionVector: cloneFlaEditableShapeRegion(visualSource.regionVector) }
       : {}),
     ...(visualSource.instanceTransformOverrides
       ? {

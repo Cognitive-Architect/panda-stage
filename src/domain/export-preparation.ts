@@ -364,6 +364,16 @@ function addFlaGraphicAnimationMedia(
               const subtree = selectFlaGraphicSubtreeVisual(
                 evaluated,
                 visualSource.nodePath,
+                visualSource.regionVector || visualSource.regionRef
+                  ? {
+                      ...(visualSource.regionRef
+                        ? { regionRef: visualSource.regionRef }
+                        : {}),
+                      ...(visualSource.regionVector
+                        ? { regionVector: visualSource.regionVector }
+                        : {}),
+                    }
+                  : undefined,
               );
               const bucket = ensureAnimationResources(flaGraphic.id);
               for (const assetId of subtree.resourceAssetIds) {

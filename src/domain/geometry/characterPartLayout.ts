@@ -133,6 +133,14 @@ export function characterPartSourceBounds(
       const subtreeVisual = selectFlaGraphicSubtreeVisual(
         evaluated,
         visualSource.nodePath,
+        visualSource.regionVector || visualSource.regionRef
+          ? {
+              ...(visualSource.regionRef ? { regionRef: visualSource.regionRef } : {}),
+              ...(visualSource.regionVector
+                ? { regionVector: visualSource.regionVector }
+                : {}),
+            }
+          : undefined,
       );
       const tightBounds = measureFlaGraphicSubtreeBounds(subtreeVisual, assets);
       if (tightBounds) {

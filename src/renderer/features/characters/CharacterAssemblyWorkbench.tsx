@@ -1029,7 +1029,20 @@ function AdaptivePartsAssemblyWorkbench({
           });
           const resolvedGraphic =
             evaluatedGraphic && visualSource.nodePath
-              ? selectFlaGraphicSubtreeVisual(evaluatedGraphic, visualSource.nodePath)
+              ? selectFlaGraphicSubtreeVisual(
+                  evaluatedGraphic,
+                  visualSource.nodePath,
+                  visualSource.regionVector || visualSource.regionRef
+                    ? {
+                        ...(visualSource.regionRef
+                          ? { regionRef: visualSource.regionRef }
+                          : {}),
+                        ...(visualSource.regionVector
+                          ? { regionVector: visualSource.regionVector }
+                          : {}),
+                      }
+                    : undefined,
+                )
               : evaluatedGraphic;
           for (const assetId of resolvedGraphic?.resourceAssetIds ?? []) {
             ids.add(assetId);

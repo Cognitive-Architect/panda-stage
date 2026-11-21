@@ -18,9 +18,13 @@ export function FlaGraphicInspectorPreview(): React.JSX.Element | null {
     const playback = shot ? evaluateShotAtTime(shot, time.currentTimeMs, snapshot.project).layers.find(layer => layer.id === target.layerId) : null;
     return scope ? evaluateFlaGraphicProjectionVisual({ definition: target.animation, frameOrdinal: scope.frameOrdinal,
       editMode: scope.editMode, internalTimeMs: scope.editMode === 'definition' && time.flaGraphicInternalContext?.timelineAuthoringActive ? time.flaGraphicInternalContext.internalTimeMs : undefined,
-      instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides, draftMatrices: {} })
+      instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
+      instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides,
+      draftMatrices: {} })
       : evaluateFlaGraphicVisual({ definition: target.animation, frameOrdinal: playback?.animationFrame?.frameOrdinal ?? 0,
-        internalTimeMs: playback?.animationFrame?.internalTimeMs, mode: 'instance', instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides });
+        internalTimeMs: playback?.animationFrame?.internalTimeMs, mode: 'instance',
+        instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
+        instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides });
   }, [target?.key, target?.layer, snapshot, scope, time.currentTimeMs, time.flaGraphicInternalContext]);
   useEffect(() => {
     const resourceSession = new CanvasImageResourceSession(); session.current = resourceSession;

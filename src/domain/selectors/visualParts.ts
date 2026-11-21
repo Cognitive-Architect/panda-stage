@@ -711,7 +711,20 @@ function adaptivePartVisuals(
         };
         const subtreeVisual =
           evaluated && evaluated.structureFrame && evaluated.layers
-            ? selectFlaGraphicSubtreeVisual(evaluated, visualSource.nodePath)
+            ? selectFlaGraphicSubtreeVisual(
+                evaluated,
+                visualSource.nodePath,
+                visualSource.regionVector || visualSource.regionRef
+                  ? {
+                      ...(visualSource.regionRef
+                        ? { regionRef: visualSource.regionRef }
+                        : {}),
+                      ...(visualSource.regionVector
+                        ? { regionVector: visualSource.regionVector }
+                        : {}),
+                    }
+                  : undefined,
+              )
             : emptySubtreeVisual;
         const tightBounds = characterPartSourceBounds(
           part,
@@ -1032,6 +1045,7 @@ export function resolveLayerVisualParts(
         frameOrdinal,
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+        instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
       });
       if (!flaGraphic) {
