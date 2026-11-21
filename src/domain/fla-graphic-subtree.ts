@@ -225,7 +225,12 @@ function hasRenderableLeaf(nodes: readonly EvaluatedFlaGraphicNode[]): boolean {
   for (const node of nodes) {
     if (!node.renderable) continue;
     if (node.vectorVisual) {
-      if (node.vectorVisual.regions.length > 0) return true;
+      if (
+        node.vectorVisual.regions.length > 0 ||
+        (node.vectorVisual.residueStrokes?.length ?? 0) > 0
+      ) {
+        return true;
+      }
       continue;
     }
     if (node.source.type === 'bitmap' && Boolean(node.source.assetId)) {
@@ -305,8 +310,16 @@ export function measureFlaGraphicSubtreeBounds(
       // have consistent visibility gating with the renderer when desired.
       evaluateFlaGraphicNodeCompositePlan(node);
       if (node.vectorVisual) {
-        if (node.vectorVisual.regions.length === 0) continue;
-        const bounds = unionFlaShapeRegionBounds(node.vectorVisual.regions);
+        if (
+          node.vectorVisual.regions.length === 0 &&
+          (node.vectorVisual.residueStrokes?.length ?? 0) === 0
+        ) {
+          continue;
+        }
+        const bounds = unionFlaShapeRegionBounds(
+          node.vectorVisual.regions,
+          node.vectorVisual.residueStrokes,
+        );
         if (!bounds) continue;
         const bx = node.vectorVisual.baseViewBox.x;
         const by = node.vectorVisual.baseViewBox.y;

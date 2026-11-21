@@ -235,7 +235,8 @@ function summarizeSubtreeLeaves(root: EvaluatedFlaGraphicNode): {
     if (node.source.type === 'opaque') {
       leafCount += 1;
       const hasRenderableVisual = node.vectorVisual
-        ? node.vectorVisual.regions.length > 0
+        ? node.vectorVisual.regions.length > 0 ||
+          (node.vectorVisual.residueStrokes?.length ?? 0) > 0
         : Boolean(node.source.fallbackAssetId);
       if (node.renderable && hasRenderableVisual) {
         renderableLeafCount += 1;

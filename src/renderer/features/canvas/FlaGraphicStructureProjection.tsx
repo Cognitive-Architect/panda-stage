@@ -390,8 +390,14 @@ export function FlaGraphicStructureProjection({
     const source = node.source;
     let result: Bounds | null = null;
     if (node.vectorVisual) {
-      if (node.vectorVisual.regions.length > 0) {
-        const bounds = unionFlaShapeRegionBounds(node.vectorVisual.regions);
+      if (
+        node.vectorVisual.regions.length > 0 ||
+        (node.vectorVisual.residueStrokes?.length ?? 0) > 0
+      ) {
+        const bounds = unionFlaShapeRegionBounds(
+          node.vectorVisual.regions,
+          node.vectorVisual.residueStrokes,
+        );
         if (bounds) {
           result = {
             x: bounds.x - node.vectorVisual.baseViewBox.x,
@@ -606,7 +612,12 @@ export function FlaGraphicStructureProjection({
         ? { onClick: setLeafSelection, onTap: setLeafSelection }
         : {};
       if (vectorVisual) {
-        if (vectorVisual.regions.length === 0) return null;
+        if (
+          vectorVisual.regions.length === 0 &&
+          (vectorVisual.residueStrokes?.length ?? 0) === 0
+        ) {
+          return null;
+        }
         const worldTransform = evaluatedNode.worldTransform;
         const clipPaths = evaluatedNode.clipPaths;
         return (

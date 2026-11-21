@@ -137,6 +137,8 @@ export const FlaGraphicShapeNodeOverrideSchema = z
     regions: z.array(FlaEditableShapeRegionSchema).max(512),
     excludedRegionRefs: z.array(z.string().trim().min(1).max(128)).max(512).default([]),
     extractedRegions: z.array(FlaExtractedShapeRegionEntrySchema).max(512).default([]),
+    residueStrokes: z.array(FlaEditableStrokeSchema).max(2_000).optional(),
+    hasUnrenderableResidue: z.boolean().optional(),
     ambiguousRegionRefs: z.array(z.string().trim().min(1).max(128)).max(512).optional(),
     bitmapFillRegionRefs: z.array(z.string().trim().min(1).max(128)).max(512).optional(),
     sourceDefsSvg: z.string().max(512 * 1024).optional(),
@@ -170,6 +172,8 @@ export interface FlaShapeVertexHandle extends FlaShapeVertexTarget {
 export interface FlaShapeRegionDecompositionResult {
   readonly viewBox: FlaShapeBounds;
   readonly regions: readonly FlaEditableShapeRegion[];
+  readonly residueStrokes: readonly FlaEditableStroke[];
+  readonly hasUnrenderableResidue: boolean;
   readonly ambiguousRegionRefs: ReadonlySet<string>;
   readonly bitmapFillRegionRefs: ReadonlySet<string>;
   readonly defsSvg?: string;
@@ -672,6 +676,7 @@ export function decomposeSvgToEditableShapeRegions(
   }
   const regionGroups: RawContourGroup[] = [];
   const rawStrokes: FlaEditableStroke[] = [];
+  let hasInternalClipOrUseResidue = false;
   const groupStack: Array<{ transform: AffineMatrix2D | null; clipPathId: string | null }> = [];
 
   const tagPattern = /<(\/?)(g|path|use)\b([^>]*)>/gu;
@@ -697,6 +702,7 @@ export function decomposeSvgToEditableShapeRegions(
       continue;
     }
     if (tag === 'use') {
+      hasInternalClipOrUseResidue = true;
       if (clipAttr && clipPaths.has(clipAttr)) {
         const contours = clipPaths.get(clipAttr)!.map((c) => ({
           closed: c.closed,
@@ -714,6 +720,9 @@ export function decomposeSvgToEditableShapeRegions(
       continue;
     }
 
+    if (clipAttr) {
+      hasInternalClipOrUseResidue = true;
+    }
     const d = attrs.get('d');
     if (!d) continue;
     const baseCommands = transformCommands(parseSvgPathCommands(d), tx);
@@ -866,7 +875,9 @@ export function decomposeSvgToEditableShapeRegions(
     if (item.grp.isBitmapFill) bitmapFillRegionRefs.add(item.regionRef);
   }
 
-  // Attribute each stroke to its closest bordering fill region, flagging shared boundary ambiguity.
+  const residueStrokes: FlaEditableStroke[] = [];
+
+  // Attribute each stroke to its closest bordering fill region, preserving unattached or shared strokes cleanly.
   for (const stroke of rawStrokes) {
     const strokePts = flattenCommandsToPolyline(stroke.commands);
     if (strokePts.length === 0) continue;
@@ -901,10 +912,12 @@ export function decomposeSvgToEditableShapeRegions(
       for (const entry of touchingRegions) {
         ambiguousRegionRefs.add(entry.item.regionRef);
       }
+      residueStrokes.push(stroke);
       continue;
     }
     if (!best || best.dist > tol) {
-      // Unattached stroke (or belongs to no fill region cleanly)
+      // Preserve unattached isolated strokes as read-only residue on the source Shape.
+      residueStrokes.push(stroke);
       continue;
     }
     const ambiguous = Boolean(
@@ -913,6 +926,7 @@ export function decomposeSvgToEditableShapeRegions(
     if (ambiguous) {
       ambiguousRegionRefs.add(best.item.regionRef);
       ambiguousRegionRefs.add(second!.item.regionRef);
+      residueStrokes.push(stroke);
       continue;
     }
     best.item.strokes.push(stroke);
@@ -932,9 +946,16 @@ export function decomposeSvgToEditableShapeRegions(
     };
   });
 
+  const hasUnrenderableResidue =
+    hasInternalClipOrUseResidue ||
+    bitmapFillRegionRefs.size > 0 ||
+    regions.some((region) => region.fill.kind === 'preserved');
+
   return {
     viewBox,
     regions,
+    residueStrokes,
+    hasUnrenderableResidue,
     ambiguousRegionRefs,
     bitmapFillRegionRefs,
     ...(defsSvg ? { defsSvg } : {}),
@@ -1091,6 +1112,7 @@ export function setFlaShapeRegionSolidFillColor(
 
 export function unionFlaShapeRegionBounds(
   regions: readonly FlaEditableShapeRegion[],
+  residueStrokes: readonly FlaEditableStroke[] = [],
 ): FlaShapeBounds | null {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -1103,6 +1125,15 @@ export function unionFlaShapeRegionBounds(
     if (b.x + b.width > maxX) maxX = b.x + b.width;
     if (b.y + b.height > maxY) maxY = b.y + b.height;
   }
+  for (const stroke of residueStrokes) {
+    const pad = stroke.lineWidth * 0.5;
+    for (const pt of flattenCommandsToPolyline(stroke.commands)) {
+      if (pt.x - pad < minX) minX = pt.x - pad;
+      if (pt.y - pad < minY) minY = pt.y - pad;
+      if (pt.x + pad > maxX) maxX = pt.x + pad;
+      if (pt.y + pad > maxY) maxY = pt.y + pad;
+    }
+  }
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
   return {
     x: minX,
@@ -1112,15 +1143,21 @@ export function unionFlaShapeRegionBounds(
   };
 }
 
+function serializeStrokeSvg(s: FlaEditableStroke): string {
+  const d = commandsToSvgPathD(s.commands);
+  return `<path d="${d}" fill="none" stroke="${s.color}" stroke-opacity="${s.opacity}" stroke-width="${s.lineWidth}" stroke-linecap="${s.lineCap}" stroke-linejoin="${s.lineJoin}" stroke-miterlimit="${s.miterLimit}"/>`;
+}
+
 /** Emits a clean SVG document from editable regions as a single-source projection. */
 export function buildSvgFromFlaEditableShapeRegions(input: {
   readonly regions: readonly FlaEditableShapeRegion[];
+  readonly residueStrokes?: readonly FlaEditableStroke[];
   readonly viewBox: FlaShapeBounds;
   readonly defsSvg?: string;
 }): string {
-  const { regions, viewBox, defsSvg } = input;
+  const { regions, residueStrokes = [], viewBox, defsSvg } = input;
   const defsMarkup = defsSvg ? `<defs>${defsSvg}</defs>` : '';
-  const body = regions
+  const regionMarkup = regions
     .map((region) => {
       const fillD = region.contours.map((c) => commandsToSvgPathD(c.commands)).join(' ');
       const paint =
@@ -1131,16 +1168,12 @@ export function buildSvgFromFlaEditableShapeRegions(input: {
         paint !== 'none' && region.fill.opacity > 0 && fillD
           ? `<path d="${fillD}" fill="${paint}" fill-opacity="${region.fill.opacity}" stroke="none" fill-rule="${region.fill.fillRule}"/>`
           : '';
-      const strokeNodes = region.strokes
-        .map((s) => {
-          const d = commandsToSvgPathD(s.commands);
-          return `<path d="${d}" fill="none" stroke="${s.color}" stroke-opacity="${s.opacity}" stroke-width="${s.lineWidth}" stroke-linecap="${s.lineCap}" stroke-linejoin="${s.lineJoin}" stroke-miterlimit="${s.miterLimit}"/>`;
-        })
-        .join('');
+      const strokeNodes = region.strokes.map(serializeStrokeSvg).join('');
       return `${fillNode}${strokeNodes}`;
     })
     .join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${Math.max(1, viewBox.width)} ${Math.max(1, viewBox.height)}" width="${Math.max(1, Math.ceil(viewBox.width))}" height="${Math.max(1, Math.ceil(viewBox.height))}">${defsMarkup}${body}</svg>`;
+  const residueMarkup = residueStrokes.map(serializeStrokeSvg).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${Math.max(1, viewBox.width)} ${Math.max(1, viewBox.height)}" width="${Math.max(1, Math.ceil(viewBox.width))}" height="${Math.max(1, Math.ceil(viewBox.height))}">${defsMarkup}${regionMarkup}${residueMarkup}</svg>`;
 }
 
 export function cloneFlaEditableShapeRegion(
@@ -1177,6 +1210,17 @@ export function cloneFlaGraphicShapeNodeOverride(
       baseViewBox: { ...entry.baseViewBox },
       localTransform: { ...entry.localTransform },
     })),
+    ...(override.residueStrokes
+      ? {
+          residueStrokes: override.residueStrokes.map((s) => ({
+            ...s,
+            commands: s.commands.map((cmd) => ({ ...cmd })),
+          })),
+        }
+      : {}),
+    ...(override.hasUnrenderableResidue !== undefined
+      ? { hasUnrenderableResidue: override.hasUnrenderableResidue }
+      : {}),
     ...(override.ambiguousRegionRefs
       ? { ambiguousRegionRefs: [...override.ambiguousRegionRefs] }
       : {}),

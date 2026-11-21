@@ -6,6 +6,7 @@ import {
   type EvaluatedFlaGraphicNode,
   type EvaluatedFlaGraphicVectorVisual,
   type EvaluatedFlaGraphicVisual,
+  type FlaEditableStroke,
   type FlaVectorPathCommand,
 } from '../../../domain';
 
@@ -161,6 +162,30 @@ function resolveRegionCanvasFillStyle(
   return canvasGrad;
 }
 
+function drawEditableStrokeToContext(
+  target: CanvasRenderingContext2D,
+  stroke: FlaEditableStroke,
+  Path2DConstructor: typeof Path2D | undefined,
+): void {
+  if (stroke.opacity <= 0 || stroke.lineWidth <= 0) return;
+  const strokeD = commandsToSvgPathD(stroke.commands);
+  target.save();
+  target.globalAlpha *= stroke.opacity;
+  target.strokeStyle = stroke.color;
+  target.lineWidth = stroke.lineWidth;
+  target.lineCap = stroke.lineCap;
+  target.lineJoin = stroke.lineJoin;
+  target.miterLimit = stroke.miterLimit;
+  if (Path2DConstructor && strokeD) {
+    target.stroke(new Path2DConstructor(strokeD));
+  } else {
+    target.beginPath();
+    replayVectorCommands(target, stroke.commands);
+    target.stroke();
+  }
+  target.restore();
+}
+
 /** Draws editable `vectorVisual` fill and stroke regions at SVG viewBox coordinates. */
 export function drawFlaVectorVisualToContext(
   target: CanvasRenderingContext2D,
@@ -197,24 +222,11 @@ export function drawFlaVectorVisualToContext(
       }
     }
     for (const stroke of region.strokes) {
-      if (stroke.opacity <= 0 || stroke.lineWidth <= 0) continue;
-      const strokeD = commandsToSvgPathD(stroke.commands);
-      target.save();
-      target.globalAlpha *= stroke.opacity;
-      target.strokeStyle = stroke.color;
-      target.lineWidth = stroke.lineWidth;
-      target.lineCap = stroke.lineCap;
-      target.lineJoin = stroke.lineJoin;
-      target.miterLimit = stroke.miterLimit;
-      if (Path2DConstructor && strokeD) {
-        target.stroke(new Path2DConstructor(strokeD));
-      } else {
-        target.beginPath();
-        replayVectorCommands(target, stroke.commands);
-        target.stroke();
-      }
-      target.restore();
+      drawEditableStrokeToContext(target, stroke, Path2DConstructor);
     }
+  }
+  for (const residueStroke of vectorVisual.residueStrokes ?? []) {
+    drawEditableStrokeToContext(target, residueStroke, Path2DConstructor);
   }
 }
 
@@ -352,7 +364,10 @@ function renderFlaGraphicCanvasUncached(
         }
       };
       if (node.vectorVisual) {
-        const bounds = unionFlaShapeRegionBounds(node.vectorVisual.regions);
+        const bounds = unionFlaShapeRegionBounds(
+          node.vectorVisual.regions,
+          node.vectorVisual.residueStrokes,
+        );
         if (!bounds) continue;
         const rx = bounds.x - node.vectorVisual.baseViewBox.x;
         const ry = bounds.y - node.vectorVisual.baseViewBox.y;
@@ -444,7 +459,12 @@ function renderFlaGraphicCanvasUncached(
     const matrix = affineProduct(rootTransform, node.worldTransform);
     if (!validTransform(matrix)) return false;
     if (node.vectorVisual) {
-      if (node.vectorVisual.regions.length === 0) return false;
+      if (
+        node.vectorVisual.regions.length === 0 &&
+        (node.vectorVisual.residueStrokes?.length ?? 0) === 0
+      ) {
+        return false;
+      }
       target.save();
       target.setTransform(...matrix);
       target.translate(

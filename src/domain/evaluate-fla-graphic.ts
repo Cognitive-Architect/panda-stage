@@ -25,6 +25,7 @@ import {
 } from './models/flaGraphicInstanceOverrides';
 import type {
   FlaEditableShapeRegion,
+  FlaEditableStroke,
   FlaGraphicShapeNodeOverride,
   FlaGraphicShapeOverrides,
 } from './fla-shape-vector';
@@ -77,6 +78,7 @@ export interface EvaluatedFlaGraphicVectorVisual {
     readonly height: number;
   };
   readonly regions: readonly FlaEditableShapeRegion[];
+  readonly residueStrokes?: readonly FlaEditableStroke[];
   readonly defsSvg?: string;
 }
 
@@ -599,6 +601,9 @@ export function evaluateFlaGraphicVisual(input: {
             ? {
                 baseViewBox: shapeNodeOverride.baseViewBox,
                 regions: remainingRegions,
+                ...(shapeNodeOverride.residueStrokes?.length
+                  ? { residueStrokes: shapeNodeOverride.residueStrokes }
+                  : {}),
                 defsSvg: shapeNodeOverride.sourceDefsSvg,
               }
             : undefined;

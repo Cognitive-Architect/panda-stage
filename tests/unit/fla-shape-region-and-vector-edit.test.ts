@@ -28,6 +28,7 @@ import {
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { drawFlaVectorVisualHitRegion } from '../../src/renderer/features/canvas/flaSvgShapeHit';
 import { FlaGraphicStructureTree } from '../../src/renderer/features/properties/FlaGraphicStructureTree';
 import { FlaGraphicChildTransform } from '../../src/renderer/features/properties/FlaGraphicChildTransform';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -48,7 +49,7 @@ const RING_ISLAND_STROKE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox=
 
 const MULTI_REGION_CLEAN_STROKE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" width="240" height="200"><path d="M 20 20 L 100 20 L 100 100 L 20 100 Z M 45 45 L 45 75 L 75 75 L 75 45 Z" fill="#ff5533" fill-opacity="1" stroke="none" fill-rule="nonzero"/><path d="M 20 20 L 100 20" fill="none" stroke="#112233" stroke-opacity="1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="3"/><path d="M 140 110 Q 170 90 210 110 L 210 170 L 140 170 Z" fill="#3366cc" fill-opacity="1" stroke="none" fill-rule="nonzero"/></svg>`;
 
-const AMBIGUOUS_AND_BITMAP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140"><defs><pattern id="bmp-pattern" width="10" height="10" patternUnits="userSpaceOnUse"><image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" width="10" height="10"/></pattern><linearGradient id="grad-1" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#112233"/><stop offset="1" stop-color="#44aaff"/></linearGradient></defs><path d="M 10 10 L 60 10 L 60 60 L 10 60 Z" fill="#aa2233" stroke="none" fill-rule="nonzero"/><path d="M 120 10 L 170 10 L 170 60 L 120 60 Z" fill="#22aa55" stroke="none" fill-rule="nonzero"/><path d="M 60 35 L 120 35" fill="none" stroke="#000000" stroke-width="4"/><path d="M 10 80 L 70 80 L 70 130 L 10 130 Z" fill="url(#bmp-pattern)" stroke="none" fill-rule="nonzero"/><path d="M 120 80 L 190 80 L 190 130 L 120 130 Z" fill="url(#grad-1)" stroke="none" fill-rule="nonzero"/></svg>`;
+const AMBIGUOUS_AND_BITMAP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140"><defs><pattern id="bmp-pattern" width="10" height="10" patternUnits="userSpaceOnUse"><image href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" width="10" height="10"/></pattern><linearGradient id="grad-1" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#112233"/><stop offset="1" stop-color="#44aaff"/></linearGradient></defs><path d="M 10 10 L 60 10 L 60 60 L 10 60 Z" fill="#aa2233" stroke="none" fill-rule="nonzero"/><path d="M 120 10 L 170 10 L 170 60 L 120 60 Z" fill="#22aa55" stroke="none" fill-rule="nonzero"/><path d="M 60 35 L 120 35" fill="none" stroke="#000000" stroke-width="4"/><path d="M 10 80 L 70 80 L 70 130 L 10 130 Z" fill="url(#bmp-pattern)" stroke="none" fill-rule="nonzero"/><path d="M 120 80 L 190 80 L 190 130 L 120 130 Z" fill="url(#grad-1)" stroke="none" fill-rule="nonzero"/><path d="M 195 20 L 230 20" fill="none" stroke="#9933ff" stroke-width="5"/></svg>`;
 
 function buildShapeTestFixture() {
   const project = migrateProject(exampleProject);
@@ -268,8 +269,12 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     expect(clean.regions[0]!.strokes).toHaveLength(1);
     expect(clean.regions[1]!.strokes).toHaveLength(0);
 
+    expect(first.residueStrokes).toHaveLength(1);
+
     const mixed = decomposeSvgToEditableShapeRegions(AMBIGUOUS_AND_BITMAP_SVG);
     expect(mixed.regions).toHaveLength(4);
+    expect(mixed.hasUnrenderableResidue).toBe(true);
+    expect(mixed.residueStrokes).toHaveLength(2);
     expect(mixed.ambiguousRegionRefs.has(mixed.regions[0]!.regionRef)).toBe(true);
     expect(mixed.ambiguousRegionRefs.has(mixed.regions[1]!.regionRef)).toBe(true);
     expect(mixed.bitmapFillRegionRefs.has(mixed.regions[2]!.regionRef)).toBe(true);
@@ -342,9 +347,11 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     expect(sourceNodeA.vectorVisual?.regions.map((r) => r.regionRef)).toEqual([
       regionB.regionRef,
     ]);
+    expect(sourceNodeA.vectorVisual?.residueStrokes).toHaveLength(1);
     expect(extractedNodeA.vectorVisual?.regions.map((r) => r.regionRef)).toEqual([
       regionA.regionRef,
     ]);
+    expect(extractedNodeA.vectorVisual?.residueStrokes).toBeUndefined();
 
     layerStore.updateFlaGraphicInstanceTransform(layerA, 0, extracted.extractedNodePath, {
       a: 1,
@@ -405,13 +412,19 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     ).toBeDefined();
   });
 
-  it('rejects ambiguous stroke / BitmapFill region extraction locally without blocking adjacent valid regions', () => {
+  it('prevents silent drop of mixed BitmapFill / isolated-stroke residue by rejecting unsafe mixed writes before mutation while allowing clean gradient Shapes', () => {
     const fixture = buildShapeTestFixture();
     const service = new LayerService();
     const mixed = decomposeSvgToEditableShapeRegions(AMBIGUOUS_AND_BITMAP_SVG);
+    editorProjectStore.open('C:\\dummy\\proj', fixture.project);
+    shotStore.select(fixture.shotId);
+    selectionStore.selectExplicit(fixture.layerId);
+    const beforeSnap = editorProjectStore.getSnapshot()!;
+    const beforeUndoCount = editorProjectStore.history.getSnapshot().undoCount;
+
+    // 1. Ambiguous solid region extract rejected pre-write
     expect(() =>
-      service.extractFlaGraphicShapeRegion(fixture.project, {
-        shotId: fixture.shotId,
+      layerStore.extractFlaGraphicShapeRegion({
         layerId: fixture.layerId,
         frameOrdinal: 0,
         nodePath: fixture.ringPath,
@@ -421,9 +434,9 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
       }),
     ).toThrow(/选择更外层组合/u);
 
+    // 2. BitmapFill region extract rejected pre-write
     expect(() =>
-      service.extractFlaGraphicShapeRegion(fixture.project, {
-        shotId: fixture.shotId,
+      layerStore.extractFlaGraphicShapeRegion({
         layerId: fixture.layerId,
         frameOrdinal: 0,
         nodePath: fixture.ringPath,
@@ -433,16 +446,74 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
       }),
     ).toThrow(/选择更外层组合/u);
 
+    // 3. Other non-bitmap region inside a Shape WITH BitmapFill residue is ALSO rejected before any write (no silent BitmapFill/stroke drop!)
+    expect(() =>
+      layerStore.extractFlaGraphicShapeRegion({
+        layerId: fixture.layerId,
+        frameOrdinal: 0,
+        nodePath: fixture.ringPath,
+        regionRef: mixed.regions[3]!.regionRef,
+        mode: 'instance',
+        svgText: AMBIGUOUS_AND_BITMAP_SVG,
+      }),
+    ).toThrow(/选择更外层组合/u);
+
+    // 4. Solid fill color change & vertex edit on solid region in a BitmapFill mixed Shape are ALSO rejected before any write!
+    expect(() =>
+      layerStore.updateFlaGraphicShapeRegionFillColor({
+        layerId: fixture.layerId,
+        frameOrdinal: 0,
+        nodePath: fixture.ringPath,
+        regionRef: mixed.regions[0]!.regionRef,
+        mode: 'instance',
+        color: '#00ff00',
+        svgText: AMBIGUOUS_AND_BITMAP_SVG,
+      }),
+    ).toThrow(/选择更外层组合/u);
+    expect(() =>
+      layerStore.moveFlaGraphicShapeRegionVertex({
+        layerId: fixture.layerId,
+        frameOrdinal: 0,
+        nodePath: fixture.ringPath,
+        regionRef: mixed.regions[0]!.regionRef,
+        mode: 'instance',
+        target: { contourIndex: 0, commandIndex: 0, pointKind: 'anchor' },
+        x: 5,
+        y: 5,
+        svgText: AMBIGUOUS_AND_BITMAP_SVG,
+      }),
+    ).toThrow(/选择更外层组合/u);
+
+    // Project, revision, History, and Layer overrides remain 100% unchanged!
+    const afterSnap = editorProjectStore.getSnapshot()!;
+    expect(afterSnap.revision).toBe(beforeSnap.revision);
+    expect(afterSnap.project).toEqual(beforeSnap.project);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(beforeUndoCount);
+
+    // Clean standalone gradient + isolated-stroke SVG (NO BitmapFill) extracts safely & keeps isolated stroke!
+    const cleanGradSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" width="240" height="140"><defs><linearGradient id="grad-1" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#112233"/><stop offset="1" stop-color="#44aaff"/></linearGradient></defs><path d="M 120 80 L 190 80 L 190 130 L 120 130 Z" fill="url(#grad-1)" stroke="none" fill-rule="nonzero"/><path d="M 20 20 L 60 20" fill="none" stroke="#9933ff" stroke-width="5"/></svg>`;
+    const cleanGrad = decomposeSvgToEditableShapeRegions(cleanGradSvg);
     const validResult = service.extractFlaGraphicShapeRegion(fixture.project, {
       shotId: fixture.shotId,
       layerId: fixture.layerId,
       frameOrdinal: 0,
       nodePath: fixture.ringPath,
-      regionRef: mixed.regions[3]!.regionRef,
+      regionRef: cleanGrad.regions[0]!.regionRef,
       mode: 'instance',
-      svgText: AMBIGUOUS_AND_BITMAP_SVG,
+      svgText: cleanGradSvg,
     });
     expect(validResult.region.fill.kind).toBe('gradient-ref');
+    const gradLayer = validResult.project.shots[0]!.layers.find((l) => l.id === fixture.layerId)!;
+    const gradDef = validResult.project.animations.find(
+      (a): a is FlaGraphicDefinition => a.id === fixture.graphicId && isFlaGraphicDefinition(a),
+    )!;
+    const evalGrad = evaluateFlaGraphicVisual({
+      definition: gradDef,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceShapeOverrides: gradLayer.flaGraphicInstanceShapeOverrides,
+    })!;
+    expect(evalGrad.layers![0]!.nodes[0]!.children[0]!.vectorVisual?.residueStrokes).toHaveLength(1);
   });
 
   it('builds two independent Adaptive CharacterParts from two regions of the same Shape with tight bounds and distinct identities', () => {
@@ -620,11 +691,13 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     });
     const emittedSvg = buildSvgFromFlaEditableShapeRegions({
       regions: editedNode.vectorVisual!.regions,
+      residueStrokes: editedNode.vectorVisual!.residueStrokes,
       viewBox: editedNode.vectorVisual!.baseViewBox,
       defsSvg: editedNode.vectorVisual!.defsSvg,
     });
     expect(emittedSvg.toLowerCase()).toContain('#00aa88');
     expect(emittedSvg).toContain('M 22 18');
+    expect(emittedSvg).toContain('M 155 60 L 195 60');
 
     const { ctx, ops } = makeCanvas2dMock();
     document.createElement = ((tag: string) => {
@@ -640,6 +713,37 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     const raster = renderFlaGraphicCanvas(evaluated, new Map(), 1);
     expect(raster).not.toBeNull();
     expect(ops.some((entry) => entry.op === 'fill')).toBe(true);
+    expect(ops.some((entry) => entry.op === 'stroke')).toBe(true);
+
+    // Hit region drawer ALSO paints both fill regions AND residueStrokes onto Konva hit canvas!
+    const hitOps: Array<{ op: string }> = [];
+    drawFlaVectorVisualHitRegion(
+      {
+        save: () => {},
+        restore: () => {},
+        translate: () => {},
+        beginPath: () => {},
+        moveTo: () => {},
+        lineTo: () => {},
+        quadraticCurveTo: () => {},
+        bezierCurveTo: () => {},
+        closePath: () => {},
+        setAttr: () => {},
+        fill: () => hitOps.push({ op: 'fill' }),
+        stroke: () => hitOps.push({ op: 'stroke' }),
+      } as unknown as Parameters<typeof drawFlaVectorVisualHitRegion>[0],
+      {
+        colorKey: '#abcdef',
+        getAbsoluteScale: () => ({ x: 1, y: 1 }),
+      } as unknown as Parameters<typeof drawFlaVectorVisualHitRegion>[1],
+      {
+        vectorVisual: editedNode.vectorVisual!,
+        nodeWorldTransform: editedNode.worldTransform,
+        clipPaths: editedNode.clipPaths,
+      },
+    );
+    expect(hitOps.some((e) => e.op === 'fill')).toBe(true);
+    expect(hitOps.some((e) => e.op === 'stroke')).toBe(true);
 
     const bezierSvg = `<svg viewBox="0 0 100 100" width="100" height="100"><path d="M 10 50 Q 50 10 90 50 L 90 90 L 10 90 Z" fill="#123456" stroke="none"/></svg>`;
     const bezierReg: FlaEditableShapeRegion =

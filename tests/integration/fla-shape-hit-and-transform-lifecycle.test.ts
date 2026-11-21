@@ -847,8 +847,17 @@ describe('FLA Shape S1/S2 persistence, Stage/Export parity, and real FLA lifecyc
     })!;
     expect(evalA.layers![0]!.nodes[0]!.children).toHaveLength(2);
     expect(evalB.layers![0]!.nodes[0]!.children).toHaveLength(1);
+    const sourceA = evalA.layers![0]!.nodes[0]!.children[0]!;
+    expect(sourceA.vectorVisual?.residueStrokes).toHaveLength(1);
     const extractedA = evalA.layers![0]!.nodes[0]!.children[1]!;
     expect(extractedA.path).toEqual(extractedRes.extractedNodePath);
+    expect(extractedA.vectorVisual?.residueStrokes).toBeUndefined();
+    const emittedSourceSvg = buildSvgFromFlaEditableShapeRegions({
+      regions: sourceA.vectorVisual!.regions,
+      residueStrokes: sourceA.vectorVisual!.residueStrokes,
+      viewBox: sourceA.vectorVisual!.baseViewBox,
+    });
+    expect(emittedSourceSvg).toContain('M 155 60 L 195 60');
     expect(extractedA.vectorVisual?.regions[0]?.fill.color?.toLowerCase()).toBe('#00aa88');
     expect(extractedA.vectorVisual?.regions[0]?.contours[0]?.commands[0]).toEqual({
       type: 'M',

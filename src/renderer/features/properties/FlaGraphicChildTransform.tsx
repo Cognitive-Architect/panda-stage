@@ -195,33 +195,39 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     </form>
     {activeRegion && !target.layer.locked ? (
       <div className="fla-shape-vector-panel" data-testid="fla-shape-vector-panel">
-        <div className="fla-shape-vector-row">
-          {activeRegion.fill.kind === 'solid' && activeRegion.fill.color ? (
-            <label className="fla-shape-color-field">
-              <span>区域填充色</span>
-              <input
-                aria-label="区域填充色"
-                data-testid="fla-shape-region-fill-color"
-                type="color"
-                value={activeRegion.fill.color}
-                onChange={(event) => handleColorChange(event.target.value)}
-              />
-            </label>
-          ) : (
-            <span className="fla-subtree-note">当前区域为非纯色填充，填充暂保持只读。</span>
-          )}
-          <button
-            type="button"
-            className="fla-subtree-stage-button"
-            data-testid="fla-shape-vertex-edit-toggle"
-            aria-pressed={vertexEditActive}
-            disabled={activeRegion.fill.kind === 'preserved' || vertexHandles.length === 0}
-            onClick={() => selectionStore.setFlaShapeVertexEditActive(!vertexEditActive)}
-          >
-            {vertexEditActive ? '完成路径顶点' : '编辑路径顶点'}
-          </button>
-        </div>
-        {vertexEditActive && activeVertex ? (
+        {shapeEditInfo?.hasUnrenderableResidue ? (
+          <p className="fla-subtree-note">
+            当前形状包含位图填充或受保护的复杂绘制残留，暂不支持拆区或内部矢量编辑；请选择更外层组合。
+          </p>
+        ) : (
+          <div className="fla-shape-vector-row">
+            {activeRegion.fill.kind === 'solid' && activeRegion.fill.color ? (
+              <label className="fla-shape-color-field">
+                <span>区域填充色</span>
+                <input
+                  aria-label="区域填充色"
+                  data-testid="fla-shape-region-fill-color"
+                  type="color"
+                  value={activeRegion.fill.color}
+                  onChange={(event) => handleColorChange(event.target.value)}
+                />
+              </label>
+            ) : (
+              <span className="fla-subtree-note">当前区域为非纯色填充，填充暂保持只读。</span>
+            )}
+            <button
+              type="button"
+              className="fla-subtree-stage-button"
+              data-testid="fla-shape-vertex-edit-toggle"
+              aria-pressed={vertexEditActive}
+              disabled={activeRegion.fill.kind === 'preserved' || vertexHandles.length === 0}
+              onClick={() => selectionStore.setFlaShapeVertexEditActive(!vertexEditActive)}
+            >
+              {vertexEditActive ? '完成路径顶点' : '编辑路径顶点'}
+            </button>
+          </div>
+        )}
+        {!shapeEditInfo?.hasUnrenderableResidue && vertexEditActive && activeVertex ? (
           <div className="fla-shape-vertex-fields" key={`${activeVertex.contourIndex}:${activeVertex.commandIndex}:${activeVertex.pointKind}:${activeVertex.x}:${activeVertex.y}`}>
             <label>
               <span>顶点 X</span>

@@ -4,6 +4,7 @@ import {
   parseSvgPathCommands,
   type EvaluatedFlaGraphicClipPath,
   type EvaluatedFlaGraphicVectorVisual,
+  type FlaEditableStroke,
   type FlaVectorPathCommand,
 } from '../../../domain';
 import {
@@ -510,6 +511,29 @@ export function drawFlaSvgShapeHitRegion(
   context.restore();
 }
 
+function drawEditableStrokeHit(
+  context: Konva.Context,
+  colorKey: string,
+  stroke: FlaEditableStroke,
+  minHitStrokeWidth: number,
+): void {
+  const rawContext = context._context;
+  const d = commandsToSvgPathD(stroke.commands);
+  const path2d = d ? getCompiledPath2D(d) : null;
+  context.setAttr('strokeStyle', colorKey);
+  context.setAttr('lineWidth', Math.max(stroke.lineWidth, minHitStrokeWidth));
+  context.setAttr('lineCap', stroke.lineCap);
+  context.setAttr('lineJoin', stroke.lineJoin);
+  context.setAttr('miterLimit', stroke.miterLimit);
+  if (path2d && rawContext) {
+    rawContext.stroke(path2d);
+  } else {
+    context.beginPath();
+    replaySvgPathCommands(context, stroke.commands);
+    context.stroke();
+  }
+}
+
 /**
  * Draws editable `vectorVisual` fill and stroke regions onto Konva's hit canvas
  * so extracted or vertex-edited shapes stay accurately selectable without bounding boxes.
@@ -524,7 +548,13 @@ export function drawFlaVectorVisualHitRegion(
   },
 ): void {
   const colorKey = konvaShape.colorKey;
-  if (!colorKey || input.vectorVisual.regions.length === 0) return;
+  if (
+    !colorKey ||
+    (input.vectorVisual.regions.length === 0 &&
+      (input.vectorVisual.residueStrokes?.length ?? 0) === 0)
+  ) {
+    return;
+  }
 
   const absScale = konvaShape.getAbsoluteScale();
   const minScale = Math.max(0.05, Math.min(Math.abs(absScale.x), Math.abs(absScale.y)));
@@ -554,21 +584,11 @@ export function drawFlaVectorVisualHitRegion(
       }
     }
     for (const stroke of region.strokes) {
-      const d = commandsToSvgPathD(stroke.commands);
-      const path2d = d ? getCompiledPath2D(d) : null;
-      context.setAttr('strokeStyle', colorKey);
-      context.setAttr('lineWidth', Math.max(stroke.lineWidth, minHitStrokeWidth));
-      context.setAttr('lineCap', stroke.lineCap);
-      context.setAttr('lineJoin', stroke.lineJoin);
-      context.setAttr('miterLimit', stroke.miterLimit);
-      if (path2d && rawContext) {
-        rawContext.stroke(path2d);
-      } else {
-        context.beginPath();
-        replaySvgPathCommands(context, stroke.commands);
-        context.stroke();
-      }
+      drawEditableStrokeHit(context, colorKey, stroke, minHitStrokeWidth);
     }
+  }
+  for (const residueStroke of input.vectorVisual.residueStrokes ?? []) {
+    drawEditableStrokeHit(context, colorKey, residueStroke, minHitStrokeWidth);
   }
   context.restore();
 }

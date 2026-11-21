@@ -836,6 +836,15 @@ export class LayerService {
       regions: decomposed.regions.map((region) => ({ ...region })),
       excludedRegionRefs: [],
       extractedRegions: [],
+      ...(decomposed.residueStrokes.length > 0
+        ? {
+            residueStrokes: decomposed.residueStrokes.map((s) => ({
+              ...s,
+              commands: s.commands.map((cmd) => ({ ...cmd })),
+            })),
+          }
+        : {}),
+      ...(decomposed.hasUnrenderableResidue ? { hasUnrenderableResidue: true } : {}),
       ...(decomposed.ambiguousRegionRefs.size > 0
         ? { ambiguousRegionRefs: [...decomposed.ambiguousRegionRefs] }
         : {}),
@@ -844,6 +853,21 @@ export class LayerService {
         : {}),
       ...(decomposed.defsSvg ? { sourceDefsSvg: decomposed.defsSvg } : {}),
     };
+  }
+
+  private assertShapeOverrideSafeForEdit(
+    nodeOverride: FlaGraphicShapeNodeOverride,
+  ): void {
+    if (
+      nodeOverride.hasUnrenderableResidue ||
+      (nodeOverride.bitmapFillRegionRefs?.length ?? 0) > 0 ||
+      nodeOverride.regions.some((r) => r.fill.kind === 'preserved')
+    ) {
+      throw new LayerServiceError(
+        'SHAPE_BITMAP_FILL_UNSUPPORTED',
+        '当前形状包含位图填充或受保护的复杂绘制残留，暂不支持拆区或内部矢量编辑；请选择更外层组合。',
+      );
+    }
   }
 
   private commitShapeOverrides(
@@ -930,6 +954,7 @@ export class LayerService {
       sourceShapeRef: node.sourceRef,
       svgText: input.svgText,
     });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
 
     if (nodeOverride.bitmapFillRegionRefs?.includes(input.regionRef)) {
       throw new LayerServiceError(
@@ -1104,6 +1129,7 @@ export class LayerService {
       sourceShapeRef: node.sourceRef,
       svgText: input.svgText,
     });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
     const targetRef =
       input.regionRef ??
       (nodeOverride.regions.length === 1 ? nodeOverride.regions[0]!.regionRef : undefined);

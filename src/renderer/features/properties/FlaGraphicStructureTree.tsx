@@ -266,11 +266,13 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
       ? `${selectedRowLabel ?? selectedAssessment?.label ?? '形状'} · 区域 ${selectedRegionIdx + 1}`
       : selectedRowLabel ?? selectedAssessment?.label ?? '零件';
   const regionAmbiguousReason =
-    currentSelectionRegionRef && shapeEditInfo?.bitmapFillRegionRefs.has(currentSelectionRegionRef)
-      ? '当前区域包含位图填充，暂不支持单独提取；请选择更外层组合。'
-      : currentSelectionRegionRef && shapeEditInfo?.ambiguousRegionRefs.has(currentSelectionRegionRef)
-        ? '当前区域的描边与相邻形状共用且无法明确归属，暂不支持单独提取；请选择更外层组合。'
-        : null;
+    currentSelectionRegionRef && shapeEditInfo?.hasUnrenderableResidue
+      ? '当前形状包含位图填充或受保护的复杂绘制残留，暂不支持拆区或内部矢量编辑；请选择更外层组合。'
+      : currentSelectionRegionRef && shapeEditInfo?.bitmapFillRegionRefs.has(currentSelectionRegionRef)
+        ? '当前区域包含位图填充，暂不支持单独提取；请选择更外层组合。'
+        : currentSelectionRegionRef && shapeEditInfo?.ambiguousRegionRefs.has(currentSelectionRegionRef)
+          ? '当前区域的描边与相邻形状共用且无法明确归属，暂不支持单独提取；请选择更外层组合。'
+          : null;
   const canToggleSelected =
     selectedStagedIndex >= 0 ||
     Boolean(selectedAssessment?.extractable && !overlappingStaged && !regionAmbiguousReason);
@@ -278,6 +280,7 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
     path?.length &&
       shapeEditInfo &&
       !shapeEditInfo.isExtractedSibling &&
+      !shapeEditInfo.hasUnrenderableResidue &&
       activeRegionForSelection &&
       !target.layer.locked,
   );

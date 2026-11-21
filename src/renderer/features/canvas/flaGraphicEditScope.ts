@@ -386,6 +386,7 @@ export interface FlaGraphicNodeShapeEditInfo {
   readonly isExtractedSibling: boolean;
   readonly regions: readonly FlaEditableShapeRegion[];
   readonly activeRegion: FlaEditableShapeRegion | null;
+  readonly hasUnrenderableResidue: boolean;
   readonly ambiguousRegionRefs: ReadonlySet<string>;
   readonly bitmapFillRegionRefs: ReadonlySet<string>;
 }
@@ -426,6 +427,7 @@ export function resolveFlaGraphicNodeShapeInfo(input: {
       isExtractedSibling: true,
       regions: [extracted.entry.region],
       activeRegion: extracted.entry.region,
+      hasUnrenderableResidue: false,
       ambiguousRegionRefs: new Set(),
       bitmapFillRegionRefs: new Set(),
     };
@@ -441,11 +443,17 @@ export function resolveFlaGraphicNodeShapeInfo(input: {
         : regions.length === 1
           ? regions[0]
           : undefined) ?? null;
+    const hasUnrenderableResidue = Boolean(
+      nodeOverride.hasUnrenderableResidue ||
+        (nodeOverride.bitmapFillRegionRefs?.length ?? 0) > 0 ||
+        nodeOverride.regions.some((r) => r.fill.kind === 'preserved'),
+    );
     return {
       node,
       isExtractedSibling: false,
       regions,
       activeRegion,
+      hasUnrenderableResidue,
       ambiguousRegionRefs: new Set(nodeOverride.ambiguousRegionRefs ?? []),
       bitmapFillRegionRefs: new Set(nodeOverride.bitmapFillRegionRefs ?? []),
     };
@@ -457,6 +465,7 @@ export function resolveFlaGraphicNodeShapeInfo(input: {
       isExtractedSibling: false,
       regions: [],
       activeRegion: null,
+      hasUnrenderableResidue: false,
       ambiguousRegionRefs: new Set(),
       bitmapFillRegionRefs: new Set(),
     };
@@ -477,6 +486,7 @@ export function resolveFlaGraphicNodeShapeInfo(input: {
     isExtractedSibling: false,
     regions: decomposed.regions,
     activeRegion,
+    hasUnrenderableResidue: decomposed.hasUnrenderableResidue,
     ambiguousRegionRefs: decomposed.ambiguousRegionRefs,
     bitmapFillRegionRefs: decomposed.bitmapFillRegionRefs,
   };
