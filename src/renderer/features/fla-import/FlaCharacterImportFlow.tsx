@@ -1270,6 +1270,10 @@ export function FlaCharacterImportFlow({
         result.partCount,
         result.skipped,
         result.warnings,
+        {
+          autoPlacedCount: result.autoPlacedCount,
+          autoPlacedOrigin: result.autoPlacedOrigin,
+        },
       );
       transition('created');
       onCommittingChange?.(false);

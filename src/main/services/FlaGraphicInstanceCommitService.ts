@@ -13,6 +13,7 @@ import {
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
   sameAuthoredStructure,
+  type FlaGraphicAuthorPoseReference,
   type ImageAsset,
   type Project,
 } from '../../domain';
@@ -816,6 +817,7 @@ export class FlaGraphicInstanceCommitService {
           existingLayer?.source.kind === 'animation' ? existingLayer.source.animationId : definition.id,
           existingLayer?.id ?? null,
           batch.groupEditPreview,
+          batch.authorPoseReferences,
         );
       }
       // An already-imported occurrence only needs a Project save when its
@@ -867,6 +869,7 @@ export class FlaGraphicInstanceCommitService {
         definition.id,
         created.layer?.id ?? null,
         batch.groupEditPreview,
+        batch.authorPoseReferences,
       );
     } catch (error) {
       if (projectSaved) {
@@ -947,6 +950,7 @@ export class FlaGraphicInstanceCommitService {
     animationId: string,
     layerId: string | null,
     groupEditPreview?: FlaGraphicGroupEditPreview,
+    authorPoseReferences?: readonly FlaGraphicAuthorPoseReference[],
   ): FlaGraphicInstanceCommitResponse {
     return FlaGraphicInstanceCommitResponseSchema.parse({
       ok: true,
@@ -962,6 +966,7 @@ export class FlaGraphicInstanceCommitService {
       animationId,
       layerId,
       ...(groupEditPreview ? { groupEditPreview } : {}),
+      ...(authorPoseReferences?.length ? { authorPoseReferences } : {}),
     });
   }
 

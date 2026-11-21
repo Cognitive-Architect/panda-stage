@@ -710,6 +710,23 @@ function AdaptivePartsContextMenu({
   );
 }
 
+function isAutoPlacedFlaSubtreePart(part: AdaptivePartsCharacterPart): boolean {
+  const sourceRest = part.sourceRestTransform;
+  if (!sourceRest) return false;
+  const visualSource = resolveCharacterPartVisualSource(part);
+  if (visualSource.kind !== 'fla-graphic' || !visualSource.nodePath?.length) return false;
+  return (
+    Math.hypot(
+      sourceRest.a - 1,
+      sourceRest.b,
+      sourceRest.c,
+      sourceRest.d - 1,
+      sourceRest.tx,
+      sourceRest.ty,
+    ) > 1e-4
+  );
+}
+
 function AdaptivePartsAssemblyRow({
   displayName,
   imageMissing,
@@ -901,12 +918,22 @@ function AdaptivePartsAssemblyRow({
         <Pencil aria-hidden="true" size={18} />
       </button>
       <button
-        aria-label={`恢复${displayName}原始源姿势`}
+        aria-label={
+          isAutoPlacedFlaSubtreePart(part)
+            ? `恢复${displayName}参考源姿势`
+            : `恢复${displayName}原始源姿势`
+        }
         className="adaptive-parts-row-action"
         data-testid="adaptive-parts-restore-button"
         disabled={!part.sourceRestTransform}
         onClick={onRestore}
-        title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
+        title={
+          part.sourceRestTransform
+            ? isAutoPlacedFlaSubtreePart(part)
+              ? '恢复参考源姿势'
+              : '恢复原始源姿势'
+            : '此零件没有可信的原始位置记录'
+        }
         type="button"
       >
         <RotateCcw aria-hidden="true" size={18} />
@@ -1694,6 +1721,21 @@ function AdaptivePartsAssemblyWorkbench({
     clearNumericDraftsForPart(partId);
     setMessage('');
   };
+  const restorePartToRawSourceOrigin = (partId: string): void => {
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const result = updatePart(partId, (part) => ({
+      ...part,
+      sourceRestTransform: { ...identity },
+      restTransform: { ...identity },
+      staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+    }));
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return;
+    }
+    clearNumericDraftsForPart(partId);
+    setMessage('');
+  };
   const selectPart = (partId: string, edit = false): boolean => {
     if (!activeHandle()?.selectPart(partId)) return false;
     if (edit) openInspector('part');
@@ -2325,6 +2367,16 @@ function AdaptivePartsAssemblyWorkbench({
               {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
               {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
               {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
+              {isAutoPlacedFlaSubtreePart(selectedPart) ? (
+                <button
+                  className="adaptive-parts-row-menu-button"
+                  data-testid="adaptive-parts-reset-raw-origin-button"
+                  onClick={() => restorePartToRawSourceOrigin(selectedPart.partId)}
+                  type="button"
+                >
+                  还原 FLA 散件原位
+                </button>
+              ) : null}
             </div>
           ) : inspectorContext === 'part' ? <span>选择零件</span> : null}
         </div>

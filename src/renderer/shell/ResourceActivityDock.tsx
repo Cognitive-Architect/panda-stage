@@ -257,6 +257,10 @@ export function ResourceActivityDock({
       result.partCount,
       result.skipped,
       result.warnings,
+      {
+        autoPlacedCount: result.autoPlacedCount,
+        autoPlacedOrigin: result.autoPlacedOrigin,
+      },
     );
     setPendingExternalAdaptiveCharacter({
       characterId: result.characterId,

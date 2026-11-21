@@ -2,6 +2,8 @@ import {
   buildAdaptivePartsFromFlaGraphicSubtrees,
   collectFlaGraphicSubtreeSelections,
   isFlaGraphicDefinition,
+  type FlaGraphicAuthorPoseReference,
+  type FlaGraphicAuthorPoseResolution,
   type FlaGraphicDefinition,
   type FlaGraphicSubtreeCollectionResult,
   type FlaGraphicSubtreeCollectionSkippedItem,
@@ -34,6 +36,9 @@ export type CreateAdaptiveCharacterFromGraphicResult =
       readonly characterId: string;
       readonly characterName: string;
       readonly partCount: number;
+      readonly autoPlacedCount: number;
+      readonly autoPlacedOrigin?: 'author-pose' | 'saved-layout' | null;
+      readonly autoPlacedReferenceLabel?: string | null;
       readonly skipped: readonly FlaGraphicSubtreeCollectionSkippedItem[];
       readonly warnings: readonly string[];
     }
@@ -66,21 +71,43 @@ export interface CreateAdaptiveCharacterFromGraphicDependencies
   readonly ensureMainSnapshot?: (snapshot: EditorProjectSnapshot) => Promise<void>;
 }
 
+export interface FlaGraphicPlacementNoticeMeta {
+  readonly autoPlacedCount?: number;
+  readonly autoPlacedOrigin?: 'author-pose' | 'saved-layout' | null;
+}
+
 export function formatFlaGraphicSkippedSummary(
   partCount: number,
   skipped: readonly FlaGraphicSubtreeCollectionSkippedItem[],
   warnings: readonly string[] = [],
+  placement?: FlaGraphicPlacementNoticeMeta,
 ): string | undefined {
   const uniqueWarnings = Array.from(
     new Set(warnings.map((warning) => warning.trim()).filter(Boolean)),
   );
-  if (skipped.length === 0 && uniqueWarnings.length === 0) return undefined;
+  const autoPlacedCount = placement?.autoPlacedCount ?? 0;
+  const placementLead =
+    autoPlacedCount > 0
+      ? placement?.autoPlacedOrigin === 'saved-layout'
+        ? `已按已保存布局自动摆放 ${autoPlacedCount}/${partCount} 个零件`
+        : `已按参考姿势自动还原 ${autoPlacedCount}/${partCount} 个零件`
+      : null;
+
+  if (skipped.length === 0 && uniqueWarnings.length === 0) {
+    return placementLead ?? undefined;
+  }
   if (skipped.length > 0 && uniqueWarnings.length === 0) {
     const firstReason = skipped[0]?.reason?.trim();
     const detail = firstReason ? `（${firstReason}）` : '';
+    if (placementLead) {
+      return `${placementLead}，已跳过 ${skipped.length} 个不支持独立提取的节点${detail}`;
+    }
     return `已创建 ${partCount} 个可编辑零件，已跳过 ${skipped.length} 个不支持独立提取的节点${detail}`;
   }
   if (skipped.length === 0) {
+    if (placementLead) {
+      return `${placementLead}，部分内容存在限制或已跳过：${uniqueWarnings.join('；')}`;
+    }
     return `角色已创建（${partCount} 个可编辑零件），部分内容存在限制或已跳过：${uniqueWarnings.join('；')}`;
   }
   const firstReason = skipped[0]?.reason?.trim();
@@ -89,6 +116,9 @@ export function formatFlaGraphicSkippedSummary(
     new Set([...(firstReason ? [firstReason] : []), ...extraWarnings]),
   );
   const suffix = details.length > 0 ? `（${details.join('；')}）` : '';
+  if (placementLead) {
+    return `${placementLead}，已跳过 ${skipped.length} 个不支持独立提取的节点${suffix}`;
+  }
   return `角色已创建（${partCount} 个可编辑零件），已跳过 ${skipped.length} 个不支持独立提取的节点${suffix}`;
 }
 
@@ -117,6 +147,8 @@ export async function createAdaptiveCharacterFromFlaGraphic(
     )
       ? options.reusedAnimationId
       : undefined;
+
+  let authorPoseReferences: readonly FlaGraphicAuthorPoseReference[] | undefined;
 
   if (!animationId) {
     const { preview, unitId } = options;
@@ -199,6 +231,7 @@ export async function createAdaptiveCharacterFromFlaGraphic(
         store.markSaved(response.project, response.savedRevision);
       }
       animationId = response.animationId;
+      authorPoseReferences = response.authorPoseReferences;
     } catch (error) {
       return {
         ok: false,
@@ -255,6 +288,7 @@ export async function createAdaptiveCharacterFromFlaGraphic(
   }
 
   try {
+    const authorPoseRef: { current: FlaGraphicAuthorPoseResolution | null } = { current: null };
     const createInput = buildAdaptivePartsFromFlaGraphicSubtrees({
       project: liveSnapshot.project,
       definition,
@@ -263,7 +297,14 @@ export async function createAdaptiveCharacterFromFlaGraphic(
       ...(options.characterName?.trim()
         ? { characterName: options.characterName.trim() }
         : {}),
+      applyAuthorPose: true,
+      ...(authorPoseReferences?.length ? { authorPoseReferences } : {}),
+      onAuthorPoseResolved: (resolution) => {
+        authorPoseRef.current = resolution;
+      },
     });
+    const autoPlacedCount = authorPoseRef.current?.matchedCount ?? 0;
+    const autoPlacedReferenceLabel = authorPoseRef.current?.matchedReferenceLabel ?? null;
     const updatedProject = options.characters.createAdaptiveParts(
       createInput,
       liveSnapshot,
@@ -293,6 +334,9 @@ export async function createAdaptiveCharacterFromFlaGraphic(
       characterId: createdCharacter.id,
       characterName: createdCharacter.name,
       partCount: createdCharacter.parts.length,
+      autoPlacedCount,
+      autoPlacedOrigin: autoPlacedCount > 0 ? 'author-pose' : null,
+      autoPlacedReferenceLabel,
       skipped: collection.skipped,
       warnings: collection.warnings,
     };
