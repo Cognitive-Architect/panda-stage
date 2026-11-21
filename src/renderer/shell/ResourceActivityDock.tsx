@@ -257,6 +257,13 @@ export function ResourceActivityDock({
       result.partCount,
       result.skipped,
       result.warnings,
+      {
+        autoPlacedCount: result.autoPlacedCount,
+        authorPosePlacedCount: result.authorPosePlacedCount,
+        savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+        availableSavedLayoutCount: result.availableSavedLayoutCount,
+        autoPlacedOrigin: result.autoPlacedOrigin,
+      },
     );
     setPendingExternalAdaptiveCharacter({
       characterId: result.characterId,

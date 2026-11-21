@@ -1,4 +1,8 @@
 import {
+  multiplyAffineMatrices,
+  type AffineMatrix2D,
+} from '../../shared/affine-matrix';
+import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicNode,
 } from '../evaluate-fla-graphic';
@@ -24,6 +28,17 @@ import {
   type FlaGraphicShapeOverrides,
 } from '../fla-shape-vector';
 import type { CreateAdaptivePartsCharacterInput } from './CharacterService';
+import {
+  extractFlaAuthorPoseReferencesFromDefinition,
+  resolveFlaGraphicAuthorPosePlacements,
+  type FlaGraphicAuthorPosePartCandidate,
+  type FlaGraphicAuthorPoseReference,
+  type FlaGraphicAuthorPoseResolution,
+} from './flaAuthorPosePlacement';
+import {
+  resolveFlaGraphicSavedLayoutPlacements,
+  type FlaGraphicSavedLayoutResolution,
+} from './flaAdaptiveLayoutReuse';
 
 const IDENTITY_TRANSFORM: Readonly<CharacterPartTransform> = {
   a: 1,
@@ -79,7 +94,9 @@ export interface FlaGraphicSubtreeCollectionResult {
 }
 
 export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
-  readonly project: Pick<Project, 'assets' | 'characters'>;
+  readonly project: Pick<Project, 'assets' | 'characters'> & {
+    readonly animations?: Project['animations'];
+  };
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
   readonly selections: readonly FlaGraphicSubtreeSelectionInput[];
@@ -87,6 +104,15 @@ export interface BuildAdaptivePartsFromFlaGraphicSubtreesInput {
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
   readonly characterName?: string;
   readonly createId?: () => string;
+  /** When true, attempts V2-A author reference pose placement before creating Parts. */
+  readonly applyAuthorPose?: boolean;
+  /** Bounded external author pose references extracted from the same FLA (e.g. sibling Graphics / Scene). */
+  readonly authorPoseReferences?: readonly FlaGraphicAuthorPoseReference[];
+  readonly onAuthorPoseResolved?: (resolution: FlaGraphicAuthorPoseResolution) => void;
+  /** When true, runs V2-B saved-layout reuse ONLY on parts left unmatched by V2-A. */
+  readonly applySavedLayoutReuse?: boolean;
+  readonly preferredTemplateCharacterId?: string;
+  readonly onSavedLayoutResolved?: (resolution: FlaGraphicSavedLayoutResolution) => void;
 }
 
 export function flaGraphicNodePathsEqual(
@@ -207,27 +233,56 @@ function sortedChildrenByDrawOrder(
 function findNodeAndRank(
   layers: readonly { readonly nodes: readonly EvaluatedFlaGraphicNode[] }[],
   targetPath: readonly string[],
-): { node: EvaluatedFlaGraphicNode; rank: number } | null {
+): {
+  node: EvaluatedFlaGraphicNode;
+  rank: number;
+  authoredWorldTransform: AffineMatrix2D;
+  ancestorSymbolChain: readonly string[];
+} | null {
   let rankCounter = 0;
-  let found: { node: EvaluatedFlaGraphicNode; rank: number } | null = null;
+  let found: {
+    node: EvaluatedFlaGraphicNode;
+    rank: number;
+    authoredWorldTransform: AffineMatrix2D;
+    ancestorSymbolChain: readonly string[];
+  } | null = null;
 
-  const walk = (nodes: readonly EvaluatedFlaGraphicNode[]): boolean => {
+  const walk = (
+    nodes: readonly EvaluatedFlaGraphicNode[],
+    parentAuthoredWorld: AffineMatrix2D,
+    ancestorSymbolChain: readonly string[],
+  ): boolean => {
     for (const node of sortedChildrenByDrawOrder(nodes)) {
       const currentRank = rankCounter;
       rankCounter += 1;
+      const authoredWorldTransform = multiplyAffineMatrices(
+        parentAuthoredWorld,
+        node.authoredLocalTransform,
+      );
       if (flaGraphicNodePathsEqual(node.path, targetPath)) {
-        found = { node, rank: currentRank };
+        found = {
+          node,
+          rank: currentRank,
+          authoredWorldTransform,
+          ancestorSymbolChain,
+        };
         return true;
       }
-      if (node.children.length > 0 && walk(node.children)) {
-        return true;
+      if (node.children.length > 0) {
+        const nextChain =
+          node.source.type === 'symbol'
+            ? [...ancestorSymbolChain, `symbol:${node.source.symbolRef}`]
+            : ancestorSymbolChain;
+        if (walk(node.children, authoredWorldTransform, nextChain)) {
+          return true;
+        }
       }
     }
     return false;
   };
 
   for (const layer of layers) {
-    if (walk(layer.nodes)) break;
+    if (walk(layer.nodes, IDENTITY_TRANSFORM, [])) break;
   }
   return found;
 }
@@ -903,8 +958,9 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
 
   const nextId = input.createId ?? (() => crypto.randomUUID());
   const usedDisplayNames = new Map<string, number>();
+  const authorPoseCandidates: FlaGraphicAuthorPosePartCandidate[] = [];
 
-  const parts: CharacterPart[] = assessed.map(({ selection, candidate }, drawOrder) => {
+  const baseParts: CharacterPart[] = assessed.map(({ selection, candidate }, drawOrder) => {
     const partId = nextId();
     const rawLabel = sanitizeDisplayName(
       selection.label ?? candidate.label,
@@ -918,9 +974,10 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
         ? rawLabel
         : sanitizeDisplayName(`${rawLabel.slice(0, 190)} (${seen + 1})`, `零件 ${drawOrder + 1}`);
 
-    const matchedNode = evaluatedForRegionLookup?.layers
-      ? findNodeAndRank(evaluatedForRegionLookup.layers, selection.nodePath)?.node
-      : undefined;
+    const matchedTrace = evaluatedForRegionLookup?.layers
+      ? findNodeAndRank(evaluatedForRegionLookup.layers, selection.nodePath)
+      : null;
+    const matchedNode = matchedTrace?.node;
     const effectiveNodePath =
       matchedNode?.extractedFromNodePath ?? selection.nodePath;
     const resolvedRegionRef =
@@ -930,6 +987,17 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       (matchedNode?.regionRef && matchedNode.vectorVisual?.regions.length === 1
         ? matchedNode.vectorVisual.regions[0]
         : undefined);
+
+    if (matchedTrace) {
+      authorPoseCandidates.push({
+        partIndex: drawOrder,
+        selectionKey: `${flaGraphicNodePathsEqual(effectiveNodePath, selection.nodePath) ? selection.nodePath.join('/') : effectiveNodePath.join('/')}${resolvedRegionRef ? `#${resolvedRegionRef}` : ''}`,
+        node: matchedTrace.node,
+        ancestorSymbolChain: matchedTrace.ancestorSymbolChain,
+        authoredWorldTransform: matchedTrace.authoredWorldTransform,
+        ...(resolvedRegionRef ? { regionRef: resolvedRegionRef } : {}),
+      });
+    }
 
     const baseFilteredOverrides = filterFlaGraphicInstanceOverridesForSubtree(
       input.instanceTransformOverrides,
@@ -979,6 +1047,93 @@ export function buildAdaptivePartsFromFlaGraphicSubtrees(
       displayName,
     };
   });
+
+  let parts = baseParts;
+  const authorPlacedPartIds = new Set<string>();
+  if (input.applyAuthorPose) {
+    const intraDefinitionReferences = extractFlaAuthorPoseReferencesFromDefinition(
+      input.definition,
+      input.frameOrdinal,
+    );
+    const combinedReferences: FlaGraphicAuthorPoseReference[] = [
+      ...intraDefinitionReferences,
+      ...(input.authorPoseReferences ?? []),
+    ];
+    const resolution = resolveFlaGraphicAuthorPosePlacements({
+      sourceParts: authorPoseCandidates,
+      references: combinedReferences,
+      sourceRootTransform: IDENTITY_TRANSFORM,
+      definitionAnchor: input.definition.source.anchor,
+    });
+    input.onAuthorPoseResolved?.(resolution);
+
+    if (resolution.matchedCount > 0) {
+      const matchedEntries = [...resolution.placementsByPartIndex.values()].sort((left, right) => {
+        if (left.referenceDrawOrderRank !== right.referenceDrawOrderRank) {
+          return left.referenceDrawOrderRank - right.referenceDrawOrderRank;
+        }
+        return baseParts[left.partIndex]!.drawOrder - baseParts[right.partIndex]!.drawOrder;
+      });
+      const matchedSlots = matchedEntries
+        .map((entry) => baseParts[entry.partIndex]!.drawOrder)
+        .sort((a, b) => a - b);
+      const assignedDrawOrderByPartIndex = new Map<number, number>();
+      matchedEntries.forEach((entry, slotIndex) => {
+        assignedDrawOrderByPartIndex.set(entry.partIndex, matchedSlots[slotIndex]!);
+      });
+
+      parts = baseParts
+        .map((part, partIndex) => {
+          const placement = resolution.placementsByPartIndex.get(partIndex);
+          if (!placement) return part;
+          authorPlacedPartIds.add(part.partId);
+          return {
+            ...part,
+            sourceRestTransform: { ...placement.sourceRestTransform },
+            restTransform: { ...placement.restTransform },
+            drawOrder: assignedDrawOrderByPartIndex.get(partIndex) ?? part.drawOrder,
+          };
+        })
+        .sort((left, right) => left.drawOrder - right.drawOrder);
+    }
+  }
+
+  if (input.applySavedLayoutReuse) {
+    const lockedPartIndices = new Set<number>();
+    parts.forEach((part, index) => {
+      if (authorPlacedPartIds.has(part.partId)) {
+        lockedPartIndices.add(index);
+      }
+    });
+    const layoutResolution = resolveFlaGraphicSavedLayoutPlacements({
+      project: {
+        assets: input.project.assets,
+        animations: input.project.animations ?? [input.definition],
+        characters: input.project.characters,
+      },
+      definition: input.definition,
+      frameOrdinal: input.frameOrdinal,
+      parts,
+      lockedPartIndices,
+      ...(input.preferredTemplateCharacterId
+        ? { preferredTemplateCharacterId: input.preferredTemplateCharacterId }
+        : {}),
+    });
+    input.onSavedLayoutResolved?.(layoutResolution);
+
+    if (layoutResolution.matchedCount > 0) {
+      parts = parts.map((part, partIndex) => {
+        if (authorPlacedPartIds.has(part.partId)) return part;
+        const placement = layoutResolution.placementsByPartIndex.get(partIndex);
+        if (!placement) return part;
+        return {
+          ...part,
+          sourceRestTransform: { ...placement.sourceRestTransform },
+          restTransform: { ...placement.restTransform },
+        };
+      });
+    }
+  }
 
   const name = uniqueCharacterName(
     input.characterName ?? `${input.definition.name} 拆件`,

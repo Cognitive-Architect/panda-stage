@@ -1266,10 +1266,18 @@ export function FlaCharacterImportFlow({
         transition('error');
         return;
       }
+      committedGraphicAnimationsRef.current.delete(activeGraphicTarget.unitId);
       const notice = formatFlaGraphicSkippedSummary(
         result.partCount,
         result.skipped,
         result.warnings,
+        {
+          autoPlacedCount: result.autoPlacedCount,
+          authorPosePlacedCount: result.authorPosePlacedCount,
+          savedLayoutPlacedCount: result.savedLayoutPlacedCount,
+          availableSavedLayoutCount: result.availableSavedLayoutCount,
+          autoPlacedOrigin: result.autoPlacedOrigin,
+        },
       );
       transition('created');
       onCommittingChange?.(false);
