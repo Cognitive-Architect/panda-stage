@@ -17,6 +17,7 @@ import {
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type { CreateAdaptiveCharacterFromGraphic } from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type {
   PendingFlaCharacterCreateCredential,
@@ -68,6 +69,7 @@ export interface ResourceActivityDockProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
@@ -152,6 +154,7 @@ export function ResourceActivityDock({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
+  onCreateCharacterFromGraphic,
   onImportGraphicInstance,
   onQueryFlaCharacterCreateStatus,
   flaCharacterRecoveryRecord,
@@ -768,6 +771,7 @@ export function ResourceActivityDock({
                 hideHeading={landscapePresentation}
                 onCloseFlaCharacterImport={closeFlaCharacterImport}
                 onCreateFlaCharacter={onCreateFlaCharacter}
+                onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
                 onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
                 flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
                 onQueryPendingFlaCharacterCreateStatus={onQueryPendingFlaCharacterCreateStatus}
