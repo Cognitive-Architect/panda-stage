@@ -28,6 +28,14 @@ import {
   type Layer,
 } from '../../src/domain';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
+import {
+  adaptiveCharacterSourceAnchor,
+  resolveShotVisualParts,
+  visualPartRenderTransform,
+} from '../../src/domain/selectors/visualParts';
+import { assessFlaGraphicSubtreeCandidate } from '../../src/domain/services/flaGraphicSubtreeParts';
+import { createCharacterPartAnimationClip } from '../../src/domain/character-part-animation';
+import { buildAdaptivePartsAssemblyPreviewVisual } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
@@ -1139,5 +1147,556 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     const exportMediaForBroken = collectExportPreparationMedia(onlyBrokenPartsProject)
       .filter((entry) => entry.asset.id === FRAME_ASSET_ID || entry.asset.id === RING_SHAPE_ASSET_ID);
     expect(exportMediaForBroken).toHaveLength(0);
+  });
+
+  function buildTwoShapePairFixture() {
+    const project = migrateProject(exampleProject);
+    const frameDuration = 1_000 / 24;
+    const SHAPE_A_ASSET_ID = 'e1000000-0000-4000-8000-000000000011';
+    const SHAPE_B_ASSET_ID = 'e1000000-0000-4000-8000-000000000012';
+    const BITMAP_NODE_ASSET_ID = 'e1000000-0000-4000-8000-000000000013';
+    const PAIR_GRAPHIC_ID = 'e2000000-0000-4000-8000-000000000010';
+    const GROUP_PATH = ['group-pair'];
+    const SHAPE_A_PATH = ['group-pair', 'shape-a'];
+    const SHAPE_B_PATH = ['group-pair', 'shape-b'];
+    const SYMBOL_PATH = ['symbol-wrap'];
+    const BITMAP_PATH = ['bitmap-leaf'];
+
+    const shapeASvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 20 80 80" width="80" height="80"><path d="M 20 20 L 100 20 L 100 100 L 20 100 Z" fill="#e63946" fill-opacity="1" stroke="none" fill-rule="nonzero"/></svg>`;
+    const shapeBSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="220 40 100 60" width="100" height="60"><path d="M 220 40 L 320 40 L 320 100 L 220 100 Z" fill="#457b9d" fill-opacity="1" stroke="none" fill-rule="nonzero"/></svg>`;
+    const rawRegA = decomposeSvgToEditableShapeRegions(shapeASvg).regions[0]!;
+    const rawRegB = decomposeSvgToEditableShapeRegions(shapeBSvg).regions[0]!;
+    const regA: FlaEditableShapeRegion = { ...rawRegA, regionRef: 'reg-shape-a', sourceShapeRef: 'fla-shape-a' };
+    const regB: FlaEditableShapeRegion = { ...rawRegB, regionRef: 'reg-shape-b', sourceShapeRef: 'fla-shape-b' };
+
+    const structure: FlaGraphicStructure = {
+      version: 1,
+      frames: [
+        {
+          ordinal: 0,
+          layers: [
+            {
+              name: '图层_双件',
+              nodes: [
+                {
+                  type: 'group',
+                  id: 'group-pair',
+                  sourceAddress: 'graphic:Pair/0',
+                  drawOrder: 0,
+                  localTransform: { a: 1, b: 0, c: 0, d: 1, tx: 30, ty: 10 },
+                  groupId: 'pair',
+                  children: [
+                    {
+                      type: 'opaque',
+                      id: 'shape-a',
+                      sourceAddress: 'graphic:Pair/0/0',
+                      drawOrder: 0,
+                      localTransform: IDENTITY,
+                      opaqueKind: 'shape',
+                      sourceRef: 'fla-shape-a',
+                      fallbackScope: 'subtree',
+                      fallbackAssetId: SHAPE_A_ASSET_ID,
+                      fallbackViewBox: { x: 20, y: 20, width: 80, height: 80 },
+                    },
+                    {
+                      type: 'opaque',
+                      id: 'shape-b',
+                      sourceAddress: 'graphic:Pair/0/1',
+                      drawOrder: 1,
+                      localTransform: IDENTITY,
+                      opaqueKind: 'shape',
+                      sourceRef: 'fla-shape-b',
+                      fallbackScope: 'subtree',
+                      fallbackAssetId: SHAPE_B_ASSET_ID,
+                      fallbackViewBox: { x: 220, y: 40, width: 100, height: 60 },
+                    },
+                  ],
+                },
+                {
+                  type: 'symbol',
+                  id: 'symbol-wrap',
+                  sourceAddress: 'graphic:Pair/1',
+                  drawOrder: 1,
+                  localTransform: IDENTITY,
+                  symbolRef: 'sym-inner',
+                  children: [],
+                },
+                {
+                  type: 'bitmap',
+                  id: 'bitmap-leaf',
+                  sourceAddress: 'graphic:Pair/2',
+                  drawOrder: 2,
+                  localTransform: IDENTITY,
+                  bitmapRef: 'bmp.png',
+                  assetId: BITMAP_NODE_ASSET_ID,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const definition = FlaGraphicDefinitionSchema.parse({
+      id: PAIR_GRAPHIC_ID,
+      kind: 'fla-graphic',
+      name: 'Pair Graphic',
+      source: {
+        basename: 'pair.fla',
+        sha256: 'd'.repeat(64),
+        renderTargetId: 'pair-target',
+        targetKind: 'graphic-symbol',
+        targetName: 'PairGraphic',
+        startFrameIndex: 0,
+        endFrameIndex: 0,
+        sourceFps: 24,
+        canvas: { width: 400, height: 240 },
+        anchor: { x: 0, y: 0 },
+        documentCanvas: { width: 1920, height: 1080 },
+      },
+      durationMs: frameDuration,
+      frames: [
+        {
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: FRAME_ASSET_ID,
+          sha256: 'b'.repeat(64),
+          sourceViewport: { x: 0, y: 0, width: 400, height: 240 },
+          offset: { x: 0, y: 0 },
+          startMs: 0,
+          durationMs: frameDuration,
+          createdBySequenceImport: false,
+        },
+      ],
+      structure,
+      flaGraphicSharedShapeOverrides: {
+        '0': {
+          [JSON.stringify(SHAPE_A_PATH)]: {
+            baseViewBox: { x: 20, y: 20, width: 80, height: 80 },
+            regions: [regA],
+            excludedRegionRefs: [],
+            extractedRegions: [],
+          },
+          [JSON.stringify(SHAPE_B_PATH)]: {
+            baseViewBox: { x: 220, y: 40, width: 100, height: 60 },
+            regions: [regB],
+            excludedRegionRefs: [],
+            extractedRegions: [],
+          },
+        },
+      },
+    });
+
+    project.assets.push(
+      {
+        id: FRAME_ASSET_ID,
+        kind: 'image',
+        name: 'pair-frame.svg',
+        relativePath: 'assets/pair-frame.svg',
+        mimeType: 'image/svg+xml',
+        width: 400,
+        height: 240,
+        sha256: 'b'.repeat(64),
+        usage: 'prop',
+        keywords: [],
+      },
+      {
+        id: SHAPE_A_ASSET_ID,
+        kind: 'image',
+        name: 'shape-a.svg',
+        relativePath: 'assets/shape-a.svg',
+        mimeType: 'image/svg+xml',
+        width: 80,
+        height: 80,
+        sha256: 'e'.repeat(64),
+        usage: 'prop',
+        keywords: [],
+      },
+      {
+        id: SHAPE_B_ASSET_ID,
+        kind: 'image',
+        name: 'shape-b.svg',
+        relativePath: 'assets/shape-b.svg',
+        mimeType: 'image/svg+xml',
+        width: 100,
+        height: 60,
+        sha256: 'f'.repeat(64),
+        usage: 'prop',
+        keywords: [],
+      },
+      {
+        id: BITMAP_NODE_ASSET_ID,
+        kind: 'image',
+        name: 'bmp.png',
+        relativePath: 'assets/bmp.png',
+        mimeType: 'image/png',
+        width: 40,
+        height: 40,
+        sha256: '1'.repeat(64),
+        usage: 'prop',
+        keywords: [],
+      },
+    );
+    project.animations.push(definition);
+
+    return {
+      project: ProjectSchema.parse(project),
+      definition,
+      GROUP_PATH,
+      SHAPE_A_PATH,
+      SHAPE_B_PATH,
+      SYMBOL_PATH,
+      BITMAP_PATH,
+      regA,
+      regB,
+      SHAPE_A_ASSET_ID,
+      SHAPE_B_ASSET_ID,
+      BITMAP_NODE_ASSET_ID,
+    };
+  }
+
+  it('fails closed when regionRef/regionVector points to Group/Symbol/Bitmap or mismatched sourceShapeRef while preserving Group/Shape/legacy region paths (#1201 A)', () => {
+    const pair = buildTwoShapePairFixture();
+    const evaluated = evaluateFlaGraphicVisual({
+      definition: pair.definition,
+      frameOrdinal: 0,
+      mode: 'instance',
+    })!;
+
+    // 1) regionRef + regionVector pointing to Group MUST return empty subtree (must NOT leak Shape A + Shape B or assets)
+    const groupAsRegion = selectFlaGraphicSubtreeVisual(evaluated, pair.GROUP_PATH, {
+      regionRef: pair.regA.regionRef,
+      regionVector: pair.regA,
+    });
+    expect(groupAsRegion.layers).toEqual([]);
+    expect(groupAsRegion.resourceAssetIds).toEqual([]);
+    expect(hasRenderableFlaGraphicSubtree(groupAsRegion)).toBe(false);
+
+    const groupCandidate = assessFlaGraphicSubtreeCandidate({
+      definition: pair.definition,
+      frameOrdinal: 0,
+      nodePath: pair.GROUP_PATH,
+      regionRef: pair.regA.regionRef,
+      regionVector: pair.regA,
+      assets: pair.project.assets,
+    });
+    expect(groupCandidate.extractable).toBe(false);
+    expect(groupCandidate.renderable).toBe(false);
+    expect(groupCandidate.resourceAssetIds).toEqual([]);
+
+    // Symbol and Bitmap nodes MUST also reject region selection
+    for (const nonShapePath of [pair.SYMBOL_PATH, pair.BITMAP_PATH]) {
+      const rejected = selectFlaGraphicSubtreeVisual(evaluated, nonShapePath, {
+        regionRef: pair.regA.regionRef,
+        regionVector: pair.regA,
+      });
+      expect(rejected.layers).toEqual([]);
+      expect(rejected.resourceAssetIds).toEqual([]);
+      expect(hasRenderableFlaGraphicSubtree(rejected)).toBe(false);
+    }
+
+    // 2) Shape A nodePath with regionVector whose sourceShapeRef points to Shape B -> fail closed!
+    const crossShapeConflict = selectFlaGraphicSubtreeVisual(evaluated, pair.SHAPE_A_PATH, {
+      regionRef: pair.regA.regionRef,
+      regionVector: { ...pair.regA, sourceShapeRef: 'fla-shape-b' },
+    });
+    expect(crossShapeConflict.layers).toEqual([]);
+    expect(crossShapeConflict.resourceAssetIds).toEqual([]);
+    expect(hasRenderableFlaGraphicSubtree(crossShapeConflict)).toBe(false);
+
+    // 3) Export media isolation when Adaptive CharacterPart points to Group with regionVector or mismatched sourceShapeRef
+    const badCharProject = new CharacterService().createAdaptiveParts(pair.project, {
+      name: 'Bad Region Identity Char',
+      sourceRootTransform: IDENTITY,
+      parts: [
+        {
+          partId: 'e5000000-0000-4000-8000-000000000021',
+          source: { kind: 'manual', sourceId: 'bad-group-region' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: pair.definition.id,
+            nodePath: pair.GROUP_PATH,
+            poseFrameOrdinal: 0,
+            regionRef: pair.regA.regionRef,
+            regionVector: pair.regA,
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 0,
+          visible: true,
+        },
+        {
+          partId: 'e5000000-0000-4000-8000-000000000022',
+          source: { kind: 'manual', sourceId: 'bad-cross-shape' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: pair.definition.id,
+            nodePath: pair.SHAPE_A_PATH,
+            poseFrameOrdinal: 0,
+            regionRef: pair.regA.regionRef,
+            regionVector: { ...pair.regA, sourceShapeRef: 'fla-shape-b' },
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 1,
+          visible: true,
+        },
+      ],
+    });
+    const badChar = badCharProject.characters.at(-1)!;
+    const withBadLayer = new LayerService().createFromAdaptiveCharacter(
+      badCharProject,
+      badCharProject.shots[0]!.id,
+      badChar.id,
+      { x: 960, y: 540 },
+    ).project;
+    const isolatedMedia = collectExportPreparationMedia(withBadLayer).filter((entry) =>
+      [FRAME_ASSET_ID, pair.SHAPE_A_ASSET_ID, pair.SHAPE_B_ASSET_ID, pair.BITMAP_NODE_ASSET_ID].includes(entry.asset.id),
+    );
+    expect(isolatedMedia).toEqual([]);
+
+    // 4) Non-degradation controls: Group Part (no regionRef), whole Shape Part (no regionRef),
+    // valid regionRef+regionVector, valid regionRef-only, and legacy vector without sourceShapeRef
+    const validGroup = selectFlaGraphicSubtreeVisual(evaluated, pair.GROUP_PATH);
+    expect(hasRenderableFlaGraphicSubtree(validGroup)).toBe(true);
+    expect(validGroup.layers![0]!.nodes[0]!.children).toHaveLength(2);
+
+    const validWholeShape = selectFlaGraphicSubtreeVisual(evaluated, pair.SHAPE_A_PATH);
+    expect(hasRenderableFlaGraphicSubtree(validWholeShape)).toBe(true);
+
+    const validRegionWithVector = selectFlaGraphicSubtreeVisual(evaluated, pair.SHAPE_A_PATH, {
+      regionRef: pair.regA.regionRef,
+      regionVector: pair.regA,
+    });
+    expect(hasRenderableFlaGraphicSubtree(validRegionWithVector)).toBe(true);
+
+    const validRegionRefOnly = selectFlaGraphicSubtreeVisual(evaluated, pair.SHAPE_A_PATH, {
+      regionRef: pair.regA.regionRef,
+    });
+    expect(hasRenderableFlaGraphicSubtree(validRegionRefOnly)).toBe(true);
+
+    const legacyWithoutSourceShapeRef: FlaEditableShapeRegion = {
+      regionRef: pair.regA.regionRef,
+      fill: pair.regA.fill,
+      contours: pair.regA.contours,
+      strokes: pair.regA.strokes,
+      bounds: pair.regA.bounds,
+    };
+    const validLegacyNoSourceRef = selectFlaGraphicSubtreeVisual(evaluated, pair.SHAPE_A_PATH, {
+      regionRef: pair.regA.regionRef,
+      regionVector: legacyWithoutSourceShapeRef,
+    });
+    expect(hasRenderableFlaGraphicSubtree(validLegacyNoSourceRef)).toBe(true);
+  });
+
+  it('keeps sibling Part B source/Stage/Workbench/Export position invariant when Part A region ref mismatches (#1201 B)', () => {
+    const pair = buildTwoShapePairFixture();
+    const buildInput = buildAdaptivePartsFromFlaGraphicSubtrees({
+      project: pair.project,
+      definition: pair.definition,
+      frameOrdinal: 0,
+      characterName: 'Left-Right Pair Character',
+      selections: [
+        {
+          nodePath: pair.SHAPE_A_PATH,
+          label: '左区域A',
+          regionRef: pair.regA.regionRef,
+          regionVector: pair.regA,
+        },
+        {
+          nodePath: pair.SHAPE_B_PATH,
+          label: '右区域B',
+          regionRef: pair.regB.regionRef,
+          regionVector: pair.regB,
+        },
+      ],
+    });
+    const baseProject = new CharacterService().createAdaptiveParts(pair.project, buildInput);
+    const baseChar = baseProject.characters.at(-1)!;
+    if (baseChar.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+    const anchorBefore = adaptiveCharacterSourceAnchor(baseProject, baseChar);
+    const placedProject = new LayerService().createFromAdaptiveCharacter(
+      baseProject,
+      baseProject.shots[0]!.id,
+      baseChar.id,
+      anchorBefore,
+    );
+    const healthyProject = placedProject.project;
+    const healthyLayerId = placedProject.layer.id;
+
+    const inspectState = (targetProject: typeof healthyProject) => {
+      const char = targetProject.characters.find((c) => c.id === baseChar.id)!;
+      if (char.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+      const shot = targetProject.shots[0]!;
+      const evaluated = evaluateShotAtTime(shot, 0, targetProject);
+      const evalLayer = evaluated.layers.find((l) => l.id === healthyLayerId)!;
+      const layerVisual = resolveLayerVisualParts(targetProject, shot, evalLayer, 0);
+      const shotVisual = resolveShotVisualParts(targetProject, shot, evaluated).find(
+        (entry) => entry.ownerLayerId === healthyLayerId,
+      )!;
+      const workbenchVisual = buildAdaptivePartsAssemblyPreviewVisual(targetProject, {
+        status: 'active',
+        kind: 'adaptive-parts',
+        sessionId: 1,
+        generation: 1,
+        projectId: targetProject.id,
+        projectRoot: '',
+        characterId: char.id,
+        selectedPartId: char.parts[1]?.partId ?? null,
+        draft: {
+          sourceRootTransform: char.sourceRootTransform,
+          parts: char.parts,
+        },
+      })!;
+      const partBShot = layerVisual.parts.find(
+        (p) => p.source.kind === 'adaptive-part-fla-graphic' && p.source.characterPartId === char.parts[1]!.partId,
+      )!;
+      const partBExport = shotVisual.parts.find(
+        (p) => p.source.kind === 'adaptive-part-fla-graphic' && p.source.characterPartId === char.parts[1]!.partId,
+      )!;
+      const partBWorkbench = workbenchVisual.parts.find(
+        (p) => p.source.kind === 'adaptive-part-fla-graphic' && p.source.characterPartId === char.parts[1]!.partId,
+      )!;
+      const partAShot = layerVisual.parts.find(
+        (p) => p.source.kind === 'adaptive-part-fla-graphic' && p.source.characterPartId === char.parts[0]!.partId,
+      )!;
+      return {
+        char,
+        anchor: adaptiveCharacterSourceAnchor(targetProject, char),
+        partAShot,
+        partBShot,
+        partBExport,
+        partBWorkbench,
+        partBRender: visualPartRenderTransform(partBShot),
+        partBWorldTx: evalLayer.x + partBShot.imageTransform!.tx,
+        partBWorldTy: evalLayer.y + partBShot.imageTransform!.ty,
+      };
+    };
+
+    const baseline = inspectState(healthyProject);
+
+    type AdaptivePartEntry = Extract<typeof baseChar, { mode: 'adaptive-parts' }>['parts'][number];
+    type FlaVisualSource = Extract<NonNullable<AdaptivePartEntry['visualSource']>, { kind: 'fla-graphic' }>;
+    const mutatePartA = (
+      patchVisualSource: (vs: FlaVisualSource) => FlaVisualSource,
+    ) =>
+      ProjectSchema.parse({
+        ...healthyProject,
+        characters: healthyProject.characters.map((c) => {
+          if (c.id !== baseChar.id || c.mode !== 'adaptive-parts') return c;
+          const partA = c.parts[0]!;
+          if (partA.visualSource?.kind !== 'fla-graphic') {
+            throw new Error('Expected fla-graphic visualSource');
+          }
+          return {
+            ...c,
+            parts: [{ ...partA, visualSource: patchVisualSource(partA.visualSource) }, c.parts[1]!],
+          };
+        }),
+      });
+
+    // Test all four broken Part A failure modes: nodePath->Group/missing, sourceShapeRef conflict, regionRef miss
+    const brokenVariants = [
+      mutatePartA((vs) => ({ ...vs, nodePath: pair.GROUP_PATH })),
+      mutatePartA((vs) => ({ ...vs, nodePath: ['nonexistent-node'] })),
+      mutatePartA((vs) => ({
+        ...vs,
+        regionVector: { ...pair.regA, sourceShapeRef: 'fla-shape-b' },
+      })),
+      mutatePartA((vs) => ({ ...vs, regionRef: 'reg-nonexistent-999' })),
+    ];
+
+    for (const variantProject of brokenVariants) {
+      const brokenChar = variantProject.characters.find((c) => c.id === baseChar.id)!;
+      if (brokenChar.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+      expect(
+        characterPartSourceBounds(brokenChar.parts[0]!, variantProject.animations, variantProject.assets),
+      ).toBeNull();
+
+      const broken = inspectState(variantProject);
+      expect(hasRenderableFlaGraphicSubtree(broken.partAShot.flaGraphic!)).toBe(false);
+      expect(broken.partAShot.localRect).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+      expect(broken.partAShot.flaGraphic!.resourceAssetIds).toEqual([]);
+
+      // Part B remains at exact same coordinates across Anchor, Stage, Export, Workbench, and Save/Reopen!
+      expect(broken.anchor).toEqual(baseline.anchor);
+      expect(broken.partBShot.imageTransform).toEqual(baseline.partBShot.imageTransform);
+      expect(broken.partBShot.localRect).toEqual(baseline.partBShot.localRect);
+      expect(broken.partBExport.imageTransform).toEqual(baseline.partBExport.imageTransform);
+      expect(broken.partBWorkbench.imageTransform).toEqual(baseline.partBWorkbench.imageTransform);
+      expect(broken.partBRender).toEqual(baseline.partBRender);
+      expect(broken.partBWorldTx).toBeCloseTo(baseline.partBWorldTx, 10);
+      expect(broken.partBWorldTy).toBeCloseTo(baseline.partBWorldTy, 10);
+      expect(Object.values(broken.partBShot.imageTransform!).every(Number.isFinite)).toBe(true);
+      expect(broken.partBRender.scaleX).not.toBe(0);
+      expect(broken.partBRender.scaleY).not.toBe(0);
+
+      const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(variantProject)));
+      const reopenedState = inspectState(reopened);
+      expect(reopenedState.partBShot.imageTransform).toEqual(baseline.partBShot.imageTransform);
+      expect(reopenedState.partAShot.localRect).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+    }
+
+    // Clip animation with frozen fixedCharacterCenter remains intact if Part A later breaks
+    const clip = createCharacterPartAnimationClip(healthyProject, healthyProject.shots[0]!.id, healthyLayerId);
+    const clipWithBrokenA = ProjectSchema.parse({
+      ...healthyProject,
+      shots: healthyProject.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) =>
+          l.id === healthyLayerId
+            ? {
+                ...l,
+                animationClip: {
+                  ...clip,
+                  targetBases: [
+                    {
+                      ...clip.targetBases[0]!,
+                      visualSource: {
+                        ...clip.targetBases[0]!.visualSource,
+                        regionRef: 'reg-nonexistent-999',
+                      },
+                    },
+                    clip.targetBases[1]!,
+                  ],
+                },
+              }
+            : l,
+        ),
+      })),
+    });
+    const healthyClipShot = ProjectSchema.parse({
+      ...healthyProject,
+      shots: healthyProject.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === healthyLayerId ? { ...l, animationClip: clip } : l)),
+      })),
+    });
+    const clipEvalHealthy = resolveLayerVisualParts(
+      healthyClipShot,
+      healthyClipShot.shots[0]!,
+      evaluateShotAtTime(healthyClipShot.shots[0]!, 0, healthyClipShot).layers.find((l) => l.id === healthyLayerId)!,
+    );
+    const clipEvalBroken = resolveLayerVisualParts(
+      clipWithBrokenA,
+      clipWithBrokenA.shots[0]!,
+      evaluateShotAtTime(clipWithBrokenA.shots[0]!, 0, clipWithBrokenA).layers.find((l) => l.id === healthyLayerId)!,
+    );
+    expect(clipEvalBroken.parts[1]!.imageTransform).toEqual(clipEvalHealthy.parts[1]!.imageTransform);
+    expect(hasRenderableFlaGraphicSubtree(clipEvalBroken.parts[0]!.flaGraphic!)).toBe(false);
+
+    // Intentional deletion of Part A keeps normal re-centering behavior for remaining [Part B]
+    const intentionallyRemovedA = ProjectSchema.parse({
+      ...healthyProject,
+      characters: healthyProject.characters.map((c) =>
+        c.id === baseChar.id && c.mode === 'adaptive-parts'
+          ? { ...c, parts: [{ ...c.parts[1]!, drawOrder: 0 }] }
+          : c,
+      ),
+    });
+    const charOnlyB = intentionallyRemovedA.characters.find((c) => c.id === baseChar.id)!;
+    if (charOnlyB.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+    const soloAnchor = adaptiveCharacterSourceAnchor(intentionallyRemovedA, charOnlyB);
+    expect(soloAnchor.x).not.toBeCloseTo(baseline.anchor.x, 3);
   });
 });

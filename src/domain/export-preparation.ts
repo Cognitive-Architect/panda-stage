@@ -339,7 +339,7 @@ function addFlaGraphicAnimationMedia(
             const visualSource = resolveCharacterPartVisualSource(part);
             if (visualSource.kind === 'fla-graphic') {
               if (!visualSource.nodePath) {
-                if (!visualSource.regionRef) {
+                if (!visualSource.regionRef && !visualSource.regionVector) {
                   fullAnimationIds.add(visualSource.animationId);
                 }
                 continue;

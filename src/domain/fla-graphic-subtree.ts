@@ -43,6 +43,14 @@ export interface FlaGraphicSubtreeRegionSelection {
   readonly regionVector?: FlaEditableShapeRegion;
 }
 
+function isShapeRegionHostNode(node: EvaluatedFlaGraphicNode): boolean {
+  return (
+    node.source.type === 'opaque' &&
+    node.source.opaqueKind === 'shape' &&
+    node.children.length === 0
+  );
+}
+
 function filterNodeSubtree(
   node: EvaluatedFlaGraphicNode,
   targetPath: readonly string[],
@@ -52,6 +60,13 @@ function filterNodeSubtree(
     const requestedRef = regionSelection?.regionRef;
     const providedVector = regionSelection?.regionVector;
     if (requestedRef || providedVector) {
+      if (!isShapeRegionHostNode(node)) {
+        // Fail closed: Group/Symbol/Bitmap/non-shape nodes must never host a Shape region selection.
+        return null;
+      }
+      if (node.regionRef && requestedRef && node.regionRef !== requestedRef) {
+        return null;
+      }
       let resolvedVector = providedVector;
       if (requestedRef && resolvedVector && resolvedVector.regionRef !== requestedRef) {
         return null;
@@ -68,6 +83,14 @@ function filterNodeSubtree(
         // Fail closed: an incomplete or unmatched regionRef must never expand back into the full Shape.
         return null;
       }
+      if (
+        resolvedVector.sourceShapeRef &&
+        node.source.type === 'opaque' &&
+        node.source.sourceRef &&
+        resolvedVector.sourceShapeRef !== node.source.sourceRef
+      ) {
+        return null;
+      }
       const baseViewBox =
         node.vectorVisual?.baseViewBox ??
         (node.source.type === 'opaque' && node.source.fallbackViewBox
@@ -80,6 +103,7 @@ function filterNodeSubtree(
           : { ...resolvedVector.bounds });
       return {
         ...node,
+        children: [],
         vectorVisual: {
           baseViewBox,
           regions: [resolvedVector],

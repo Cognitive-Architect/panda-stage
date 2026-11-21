@@ -25,7 +25,10 @@ import {
 } from '../evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
 import { resolveImageAsset } from './canvasLayers';
-import { characterPartSourceBounds } from '../geometry/characterPartLayout';
+import {
+  characterPartRegionAnchorBounds,
+  characterPartSourceBounds,
+} from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
 import {
   evaluateCompositeFacePoseAtTime,
@@ -674,7 +677,7 @@ function adaptivePartVisuals(
           `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
         );
       }
-      if (visualSource.nodePath || visualSource.regionRef) {
+      if (visualSource.nodePath || visualSource.regionRef || visualSource.regionVector) {
         const pinnedFrameOrdinal =
           visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0);
         const evaluated = definition.structure && visualSource.nodePath
@@ -906,20 +909,26 @@ function adaptiveCharacterSourceBounds(
 ): VisualLocalRect {
   // Source geometry is independent of frame-local fallback viewport/offset.
   // Preserve PNG bounds while measuring Graphics against their full Definition canvas.
+  // If a scoped subtree/region Part fails closed on render, reuse any persisted
+  // historical regionVector bounds strictly for pivot stability without rendering it.
   const measuredParts = parts.flatMap((visual, index) => {
     const part = character.parts[index]!;
     const visualSource = resolveCharacterPartVisualSource(part);
     if (visualSource.kind !== 'fla-graphic') return [visual];
-    const bounds = characterPartSourceBounds(
+    let bounds = characterPartSourceBounds(
       part,
       project.animations,
       project.assets,
     );
     if (!bounds) {
-      if (visualSource.regionRef || visualSource.nodePath) {
-        return [];
+      if (visualSource.regionRef || visualSource.nodePath || visualSource.regionVector) {
+        bounds = characterPartRegionAnchorBounds(part, project.animations);
+        if (!bounds) {
+          return [];
+        }
+      } else {
+        throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
       }
-      throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
     }
     return [{
       ...visual,
@@ -1275,7 +1284,12 @@ export function resolveLayerVisualParts(
     }
     for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
-      if (visualSource.kind !== 'fla-graphic' || visualSource.nodePath || visualSource.regionRef) continue;
+      if (
+        visualSource.kind !== 'fla-graphic' ||
+        visualSource.nodePath ||
+        visualSource.regionRef ||
+        visualSource.regionVector
+      ) continue;
       const definition = project.animations.find(
         (candidate): candidate is FlaGraphicDefinition =>
           isFlaGraphicDefinition(candidate) &&
