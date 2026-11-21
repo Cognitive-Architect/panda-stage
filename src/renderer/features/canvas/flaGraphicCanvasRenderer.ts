@@ -186,12 +186,13 @@ function drawEditableStrokeToContext(
   target.restore();
 }
 
-/** Draws editable `vectorVisual` fill and stroke regions at SVG viewBox coordinates. */
+/** Draws editable `vectorVisual` fill pass first and stroke pass second to match Animate/SVG order. */
 export function drawFlaVectorVisualToContext(
   target: CanvasRenderingContext2D,
   vectorVisual: EvaluatedFlaGraphicVectorVisual,
 ): void {
   const Path2DConstructor = globalThis.Path2D;
+  // Pass 1: all fills in region order
   for (const region of vectorVisual.regions) {
     const paint =
       region.fill.kind === 'solid'
@@ -221,6 +222,9 @@ export function drawFlaVectorVisualToContext(
         target.restore();
       }
     }
+  }
+  // Pass 2: all strokes on top of fills, then isolated/shared residue strokes
+  for (const region of vectorVisual.regions) {
     for (const stroke of region.strokes) {
       drawEditableStrokeToContext(target, stroke, Path2DConstructor);
     }

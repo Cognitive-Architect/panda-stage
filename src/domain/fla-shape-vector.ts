@@ -962,23 +962,24 @@ export function decomposeSvgToEditableShapeRegions(
   };
 }
 
-/** Tests which region (in viewBox coordinates) is hit first in reverse draw order. */
+/** Tests which region (in viewBox coordinates) is hit first matching Fill-pass -> Stroke-pass order. */
 export function pickFlaShapeRegionAtPoint(
   regions: readonly FlaEditableShapeRegion[],
   x: number,
   y: number,
   strokeFloor = 2,
 ): FlaEditableShapeRegion | null {
-  for (let i = regions.length - 1; i >= 0; i -= 1) {
-    const region = regions[i]!;
-    if (
+  const inBounds = (region: FlaEditableShapeRegion): boolean =>
+    !(
       x < region.bounds.x - strokeFloor ||
       y < region.bounds.y - strokeFloor ||
       x > region.bounds.x + region.bounds.width + strokeFloor ||
       y > region.bounds.y + region.bounds.height + strokeFloor
-    ) {
-      continue;
-    }
+    );
+  // Stroke pass sits visually on top of all fills; check topmost strokes first.
+  for (let i = regions.length - 1; i >= 0; i -= 1) {
+    const region = regions[i]!;
+    if (!inBounds(region)) continue;
     for (const stroke of region.strokes) {
       const halfWidth = Math.max(stroke.lineWidth, strokeFloor) * 0.5;
       const poly = flattenCommandsToPolyline(stroke.commands);
@@ -986,17 +987,20 @@ export function pickFlaShapeRegionAtPoint(
         return region;
       }
     }
-    if (region.fill.opacity > 0) {
-      let totalWinding = 0;
-      for (const contour of region.contours) {
-        totalWinding += pointInRing(x, y, flattenCommandsToPolyline(contour.commands));
-      }
-      const hitFill =
-        region.fill.fillRule === 'evenodd'
-          ? (Math.abs(totalWinding) % 2) === 1
-          : totalWinding !== 0;
-      if (hitFill) return region;
+  }
+  // Then check topmost fills underneath strokes.
+  for (let i = regions.length - 1; i >= 0; i -= 1) {
+    const region = regions[i]!;
+    if (!inBounds(region) || region.fill.opacity <= 0) continue;
+    let totalWinding = 0;
+    for (const contour of region.contours) {
+      totalWinding += pointInRing(x, y, flattenCommandsToPolyline(contour.commands));
     }
+    const hitFill =
+      region.fill.fillRule === 'evenodd'
+        ? (Math.abs(totalWinding) % 2) === 1
+        : totalWinding !== 0;
+    if (hitFill) return region;
   }
   return null;
 }
@@ -1148,7 +1152,7 @@ function serializeStrokeSvg(s: FlaEditableStroke): string {
   return `<path d="${d}" fill="none" stroke="${s.color}" stroke-opacity="${s.opacity}" stroke-width="${s.lineWidth}" stroke-linecap="${s.lineCap}" stroke-linejoin="${s.lineJoin}" stroke-miterlimit="${s.miterLimit}"/>`;
 }
 
-/** Emits a clean SVG document from editable regions as a single-source projection. */
+/** Emits a clean SVG document from editable regions aligned with Fill pass -> Stroke pass order. */
 export function buildSvgFromFlaEditableShapeRegions(input: {
   readonly regions: readonly FlaEditableShapeRegion[];
   readonly residueStrokes?: readonly FlaEditableStroke[];
@@ -1157,23 +1161,23 @@ export function buildSvgFromFlaEditableShapeRegions(input: {
 }): string {
   const { regions, residueStrokes = [], viewBox, defsSvg } = input;
   const defsMarkup = defsSvg ? `<defs>${defsSvg}</defs>` : '';
-  const regionMarkup = regions
+  const fillMarkup = regions
     .map((region) => {
       const fillD = region.contours.map((c) => commandsToSvgPathD(c.commands)).join(' ');
       const paint =
         region.fill.kind === 'solid'
           ? region.fill.color ?? '#000000'
           : region.fill.svgPaint ?? 'none';
-      const fillNode =
-        paint !== 'none' && region.fill.opacity > 0 && fillD
-          ? `<path d="${fillD}" fill="${paint}" fill-opacity="${region.fill.opacity}" stroke="none" fill-rule="${region.fill.fillRule}"/>`
-          : '';
-      const strokeNodes = region.strokes.map(serializeStrokeSvg).join('');
-      return `${fillNode}${strokeNodes}`;
+      return paint !== 'none' && region.fill.opacity > 0 && fillD
+        ? `<path d="${fillD}" fill="${paint}" fill-opacity="${region.fill.opacity}" stroke="none" fill-rule="${region.fill.fillRule}"/>`
+        : '';
     })
     .join('');
+  const regionStrokeMarkup = regions
+    .flatMap((region) => region.strokes.map(serializeStrokeSvg))
+    .join('');
   const residueMarkup = residueStrokes.map(serializeStrokeSvg).join('');
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${Math.max(1, viewBox.width)} ${Math.max(1, viewBox.height)}" width="${Math.max(1, Math.ceil(viewBox.width))}" height="${Math.max(1, Math.ceil(viewBox.height))}">${defsMarkup}${regionMarkup}${residueMarkup}</svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${Math.max(1, viewBox.width)} ${Math.max(1, viewBox.height)}" width="${Math.max(1, Math.ceil(viewBox.width))}" height="${Math.max(1, Math.ceil(viewBox.height))}">${defsMarkup}${fillMarkup}${regionStrokeMarkup}${residueMarkup}</svg>`;
 }
 
 export function cloneFlaEditableShapeRegion(

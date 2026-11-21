@@ -674,10 +674,10 @@ function adaptivePartVisuals(
           `Adaptive Part ${part.partId} references unknown or unstructured FLA Graphic Definition: ${visualSource.animationId}.`,
         );
       }
-      if (visualSource.nodePath) {
+      if (visualSource.nodePath || visualSource.regionRef) {
         const pinnedFrameOrdinal =
           visualSource.poseFrameOrdinal ?? (definition.frames[0]?.ordinal ?? 0);
-        const evaluated = definition.structure
+        const evaluated = definition.structure && visualSource.nodePath
           ? evaluateFlaGraphicVisual({
               definition,
               frameOrdinal: pinnedFrameOrdinal,
@@ -710,7 +710,7 @@ function adaptivePartVisuals(
           resourceAssetIds: [],
         };
         const subtreeVisual =
-          evaluated && evaluated.structureFrame && evaluated.layers
+          evaluated && evaluated.structureFrame && evaluated.layers && visualSource.nodePath
             ? selectFlaGraphicSubtreeVisual(
                 evaluated,
                 visualSource.nodePath,
@@ -748,8 +748,8 @@ function adaptivePartVisuals(
           localRect: tightBounds ?? {
             x: 0,
             y: 0,
-            width: definition.source.canvas.width,
-            height: definition.source.canvas.height,
+            width: 0,
+            height: 0,
           },
           rotationDeg: 0,
           flipX: false,
@@ -906,23 +906,31 @@ function adaptiveCharacterSourceBounds(
 ): VisualLocalRect {
   // Source geometry is independent of frame-local fallback viewport/offset.
   // Preserve PNG bounds while measuring Graphics against their full Definition canvas.
-  return visualBounds(parts.map((visual, index) => {
+  const measuredParts = parts.flatMap((visual, index) => {
     const part = character.parts[index]!;
-    if (resolveCharacterPartVisualSource(part).kind !== 'fla-graphic') return visual;
+    const visualSource = resolveCharacterPartVisualSource(part);
+    if (visualSource.kind !== 'fla-graphic') return [visual];
     const bounds = characterPartSourceBounds(
       part,
       project.animations,
       project.assets,
     );
     if (!bounds) {
+      if (visualSource.regionRef || visualSource.nodePath) {
+        return [];
+      }
       throw new Error(`Cannot resolve source bounds for Adaptive Part ${part.partId}.`);
     }
-    return {
+    return [{
       ...visual,
       localRect: bounds,
       imageTransform: composeAffine(character.sourceRootTransform, part.restTransform),
-    };
-  }), null, true);
+    }];
+  });
+  if (measuredParts.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  return visualBounds(measuredParts, null, true);
 }
 
 /** Returns the source-stage visual center used by a center-anchored Shot Layer. */
@@ -1267,7 +1275,7 @@ export function resolveLayerVisualParts(
     }
     for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
-      if (visualSource.kind !== 'fla-graphic' || visualSource.nodePath) continue;
+      if (visualSource.kind !== 'fla-graphic' || visualSource.nodePath || visualSource.regionRef) continue;
       const definition = project.animations.find(
         (candidate): candidate is FlaGraphicDefinition =>
           isFlaGraphicDefinition(candidate) &&

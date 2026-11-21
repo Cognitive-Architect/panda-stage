@@ -49,7 +49,25 @@ function filterNodeSubtree(
   regionSelection?: FlaGraphicSubtreeRegionSelection,
 ): EvaluatedFlaGraphicNode | null {
   if (sameNodePath(node.path, targetPath)) {
-    if (regionSelection?.regionVector) {
+    const requestedRef = regionSelection?.regionRef;
+    const providedVector = regionSelection?.regionVector;
+    if (requestedRef || providedVector) {
+      let resolvedVector = providedVector;
+      if (requestedRef && resolvedVector && resolvedVector.regionRef !== requestedRef) {
+        return null;
+      }
+      if (requestedRef && !resolvedVector && node.vectorVisual) {
+        const matches = node.vectorVisual.regions.filter(
+          (candidate) => candidate.regionRef === requestedRef,
+        );
+        if (matches.length === 1) {
+          resolvedVector = matches[0];
+        }
+      }
+      if (!resolvedVector) {
+        // Fail closed: an incomplete or unmatched regionRef must never expand back into the full Shape.
+        return null;
+      }
       const baseViewBox =
         node.vectorVisual?.baseViewBox ??
         (node.source.type === 'opaque' && node.source.fallbackViewBox
@@ -59,19 +77,17 @@ function filterNodeSubtree(
               width: node.source.fallbackViewBox.width,
               height: node.source.fallbackViewBox.height,
             }
-          : { ...regionSelection.regionVector.bounds });
+          : { ...resolvedVector.bounds });
       return {
         ...node,
         vectorVisual: {
           baseViewBox,
-          regions: [regionSelection.regionVector],
+          regions: [resolvedVector],
           ...(node.vectorVisual?.defsSvg
             ? { defsSvg: node.vectorVisual.defsSvg }
             : {}),
         },
-        ...(regionSelection.regionRef
-          ? { regionRef: regionSelection.regionRef }
-          : {}),
+        ...(requestedRef ? { regionRef: requestedRef } : {}),
       };
     }
     return node;

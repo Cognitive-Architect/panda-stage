@@ -1043,7 +1043,9 @@ function AdaptivePartsAssemblyWorkbench({
                       }
                     : undefined,
                 )
-              : evaluatedGraphic;
+              : visualSource.regionRef
+                ? undefined
+                : evaluatedGraphic;
           for (const assetId of resolvedGraphic?.resourceAssetIds ?? []) {
             ids.add(assetId);
           }
@@ -1377,7 +1379,7 @@ function AdaptivePartsAssemblyWorkbench({
       const partSource = sourceByPartId.get(characterPartId);
       if (
         partSource?.kind === 'fla-graphic' &&
-        partSource.nodePath &&
+        (partSource.nodePath || partSource.regionRef) &&
         !hasRenderableFlaGraphicSubtree(part.flaGraphic)
       ) {
         continue;
@@ -1385,7 +1387,7 @@ function AdaptivePartsAssemblyWorkbench({
       const rendered = renderFlaGraphicCanvas(part.flaGraphic, imageState.images);
       if (
         partSource?.kind === 'fla-graphic' &&
-        partSource.nodePath &&
+        (partSource.nodePath || partSource.regionRef) &&
         !rendered?.visibleRect
       ) {
         continue;
@@ -2008,7 +2010,7 @@ function AdaptivePartsAssemblyWorkbench({
               : undefined;
             const subtreeMissing = Boolean(
               visualSource.kind === 'fla-graphic' &&
-                visualSource.nodePath &&
+                (visualSource.nodePath || visualSource.regionRef) &&
                 (!visualPart?.flaGraphic ||
                   !hasRenderableFlaGraphicSubtree(visualPart.flaGraphic)),
             );

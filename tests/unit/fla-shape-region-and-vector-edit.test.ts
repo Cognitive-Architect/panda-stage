@@ -14,17 +14,20 @@ import {
   decomposeSvgToEditableShapeRegions,
   evaluateFlaGraphicVisual,
   evaluateShotAtTime,
+  hasRenderableFlaGraphicSubtree,
   isFlaGraphicDefinition,
   listFlaShapeRegionVertices,
   migrateProject,
   moveFlaShapeRegionVertex,
   pickFlaShapeRegionAtPoint,
   resolveLayerVisualParts,
+  selectFlaGraphicSubtreeVisual,
   type FlaEditableShapeRegion,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
   type Layer,
 } from '../../src/domain';
+import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
@@ -850,5 +853,291 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
     expect(selectedAfterExtract?.at(-1)).toBe(
       `${fixture.ringPath.at(-1)}::${regA.regionRef}`,
     );
+  });
+
+  it('aligns overlapping Fill/Stroke draw order (fill pass -> stroke pass) across Canvas, SVG, and click picking', () => {
+    // Original SVG order emits ALL fills before ALL strokes:
+    // Region 1 fill [20..100, 20..100] (#ff5533), Region 2 fill [80..160, 40..120] (#3366cc),
+    // then Region 1 edge stroke (100, 20) -> (100, 100) crossing inside Region 2 [80..160].
+    const overlappingSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" width="200" height="160"><path d="M 20 20 L 100 20 L 100 100 L 20 100 Z" fill="#ff5533" stroke="none" fill-rule="nonzero"/><path d="M 80 40 L 160 40 L 160 120 L 80 120 Z" fill="#3366cc" stroke="none" fill-rule="nonzero"/><path d="M 100 20 L 100 100" fill="none" stroke="#112233" stroke-width="6" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="3"/></svg>`;
+    const decomposed = decomposeSvgToEditableShapeRegions(overlappingSvg);
+    expect(decomposed.regions).toHaveLength(2);
+    const reg1 = decomposed.regions[0]!;
+    const reg2 = decomposed.regions[1]!;
+    expect(reg1.strokes).toHaveLength(1);
+    expect(reg2.strokes).toHaveLength(0);
+
+    // Clicking on Region 1's visible stroke inside Region 2 (100, 60) picks Region 1 (stroke pass above fill pass);
+    // clicking inside Region 2 away from Region 1's stroke (120, 60) picks Region 2.
+    expect(pickFlaShapeRegionAtPoint(decomposed.regions, 100, 60)?.regionRef).toBe(reg1.regionRef);
+    expect(pickFlaShapeRegionAtPoint(decomposed.regions, 120, 60)?.regionRef).toBe(reg2.regionRef);
+
+    // Edit Region 2 solid color inside a Shape and check Canvas draw ops order & SVG element order:
+    const fixture = buildShapeTestFixture();
+    editorProjectStore.open('C:\\dummy\\proj', fixture.project);
+    shotStore.select(fixture.shotId);
+    selectionStore.selectExplicit(fixture.layerId);
+    layerStore.updateFlaGraphicShapeRegionFillColor({
+      layerId: fixture.layerId,
+      frameOrdinal: 0,
+      nodePath: fixture.ringPath,
+      regionRef: reg2.regionRef,
+      mode: 'instance',
+      color: '#22aa66',
+      svgText: overlappingSvg,
+    });
+    const projectAfter = editorProjectStore.getSnapshot()!.project;
+    const defAfter = projectAfter.animations.find(
+      (a): a is FlaGraphicDefinition => a.id === fixture.graphicId && isFlaGraphicDefinition(a),
+    )!;
+    const layerAfter = projectAfter.shots[0]!.layers.find((l) => l.id === fixture.layerId)!;
+    const evaluated = evaluateFlaGraphicVisual({
+      definition: defAfter,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceShapeOverrides: layerAfter.flaGraphicInstanceShapeOverrides,
+    })!;
+    const nodeVector = evaluated.layers![0]!.nodes[0]!.children[0]!.vectorVisual!;
+
+    // Single-source SVG output must place all fills before all strokes (never Region1 fill -> Region1 stroke -> Region2 fill)
+    const emittedSvg = buildSvgFromFlaEditableShapeRegions({
+      regions: nodeVector.regions,
+      residueStrokes: nodeVector.residueStrokes,
+      viewBox: nodeVector.baseViewBox,
+    });
+    const firstStrokeIdx = emittedSvg.indexOf('stroke="#112233"');
+    const secondFillIdx = emittedSvg.indexOf('fill="#22AA66"');
+    expect(secondFillIdx).toBeGreaterThan(-1);
+    expect(firstStrokeIdx).toBeGreaterThan(secondFillIdx);
+
+    // Canvas2D draw sequence must execute ALL fill ops before ANY stroke op!
+    const { ctx, ops } = makeCanvas2dMock();
+    document.createElement = ((tag: string) => {
+      if (tag === 'canvas') {
+        return { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+      }
+      return originalCreateElement(tag);
+    }) as typeof document.createElement;
+    renderFlaGraphicCanvas(evaluated, new Map(), 1);
+    const drawSequence = ops
+      .filter((entry) => entry.op === 'fill' || entry.op === 'stroke')
+      .map((entry) => entry.op);
+    expect(drawSequence).toEqual(['fill', 'fill', 'stroke']);
+  });
+
+  it('fails closed on regionRef-only / mismatched / no-nodePath Adaptive CharacterParts without falling back to whole Shape or whole Graphic', () => {
+    const fixture = buildShapeTestFixture();
+    const decomposed = decomposeSvgToEditableShapeRegions(RING_ISLAND_STROKE_SVG);
+    const regA = decomposed.regions[0]!;
+    const regB = decomposed.regions[1]!;
+
+    // Seed sharedShapeOverrides on the FLA Graphic Definition so regB IS recoverable by regionRef alone from formal data.
+    const baseDef = fixture.project.animations.find(
+      (a): a is FlaGraphicDefinition => a.id === fixture.graphicId && isFlaGraphicDefinition(a),
+    )!;
+    const defWithSharedOverride: FlaGraphicDefinition = {
+      ...baseDef,
+      flaGraphicSharedShapeOverrides: {
+        '0': {
+          [JSON.stringify(fixture.ringPath)]: {
+            baseViewBox: { x: 40, y: 30, width: 220, height: 180 },
+            regions: [regB],
+            excludedRegionRefs: [],
+            extractedRegions: [],
+          },
+        },
+      },
+    };
+    const projectWithShared = ProjectSchema.parse({
+      ...fixture.project,
+      animations: fixture.project.animations.map((a) =>
+        a.id === baseDef.id ? defWithSharedOverride : a,
+      ),
+    });
+
+    const evaluatedWithShared = evaluateFlaGraphicVisual({
+      definition: defWithSharedOverride,
+      frameOrdinal: 0,
+      mode: 'instance',
+    })!;
+
+    // Verify selectFlaGraphicSubtreeVisual fail-closed directly on unmatched regionRef vs recoverable regionRef-only:
+    const recoverableSubtree = selectFlaGraphicSubtreeVisual(
+      evaluatedWithShared,
+      fixture.ringPath,
+      { regionRef: regB.regionRef },
+    );
+    expect(hasRenderableFlaGraphicSubtree(recoverableSubtree)).toBe(true);
+    const missingSubtree = selectFlaGraphicSubtreeVisual(
+      evaluatedWithShared,
+      fixture.ringPath,
+      { regionRef: 'reg-does-not-exist' },
+    );
+    expect(hasRenderableFlaGraphicSubtree(missingSubtree)).toBe(false);
+    expect(missingSubtree.layers).toEqual([]);
+    expect(missingSubtree.resourceAssetIds).toEqual([]);
+
+    // Build an Adaptive Character containing all 5 combinations required by Issue #1200 Part B!
+    const adaptiveCharProject = new CharacterService().createAdaptiveParts(projectWithShared, {
+      name: 'Issue1200五态测试角色',
+      sourceRootTransform: IDENTITY,
+      parts: [
+        // (1) Normal regionRef + regionVector
+        {
+          partId: 'e5000000-0000-4000-8000-000000000001',
+          source: { kind: 'manual', sourceId: 's1' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: defWithSharedOverride.id,
+            nodePath: fixture.ringPath,
+            poseFrameOrdinal: 0,
+            regionRef: regA.regionRef,
+            regionVector: regA,
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 0,
+          visible: true,
+        },
+        // (2) regionRef-only recoverable from formal shared override
+        {
+          partId: 'e5000000-0000-4000-8000-000000000002',
+          source: { kind: 'manual', sourceId: 's2' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: defWithSharedOverride.id,
+            nodePath: fixture.ringPath,
+            poseFrameOrdinal: 0,
+            regionRef: regB.regionRef,
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 1,
+          visible: true,
+        },
+        // (3) regionRef-only with non-existent regionRef -> MUST fail closed (NOT full Shape!)
+        {
+          partId: 'e5000000-0000-4000-8000-000000000003',
+          source: { kind: 'manual', sourceId: 's3' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: defWithSharedOverride.id,
+            nodePath: fixture.ringPath,
+            poseFrameOrdinal: 0,
+            regionRef: 'reg-nonexistent-999',
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 2,
+          visible: true,
+        },
+        // (4) regionRef WITHOUT nodePath -> MUST fail closed (NOT whole Graphic!)
+        {
+          partId: 'e5000000-0000-4000-8000-000000000004',
+          source: { kind: 'manual', sourceId: 's4' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: defWithSharedOverride.id,
+            poseFrameOrdinal: 0,
+            regionRef: regA.regionRef,
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 3,
+          visible: true,
+        },
+        // (5) Legacy whole-Graphic Part without nodePath & without regionRef -> MUST still render full Graphic
+        {
+          partId: 'e5000000-0000-4000-8000-000000000005',
+          source: { kind: 'manual', sourceId: 's5' },
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: defWithSharedOverride.id,
+            poseFrameOrdinal: 0,
+          },
+          sourceRestTransform: IDENTITY,
+          restTransform: IDENTITY,
+          drawOrder: 4,
+          visible: true,
+        },
+      ],
+    });
+
+    const createdChar = adaptiveCharProject.characters.at(-1)!;
+    if (createdChar.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts');
+    // (1) tight bounds of regA (80x80)
+    expect(
+      characterPartSourceBounds(createdChar.parts[0]!, adaptiveCharProject.animations, adaptiveCharProject.assets)!.width,
+    ).toBeCloseTo(80, 6);
+    // (2) recovered tight bounds of regB (40x40)
+    expect(
+      characterPartSourceBounds(createdChar.parts[1]!, adaptiveCharProject.animations, adaptiveCharProject.assets)!.width,
+    ).toBeCloseTo(40, 6);
+    // (3) missing regionRef -> null bounds (not whole Shape!)
+    expect(
+      characterPartSourceBounds(createdChar.parts[2]!, adaptiveCharProject.animations, adaptiveCharProject.assets),
+    ).toBeNull();
+    // (4) regionRef && !nodePath -> null bounds (not whole Graphic!)
+    expect(
+      characterPartSourceBounds(createdChar.parts[3]!, adaptiveCharProject.animations, adaptiveCharProject.assets),
+    ).toBeNull();
+    // (5) legacy full Graphic -> canvas width 320
+    expect(
+      characterPartSourceBounds(createdChar.parts[4]!, adaptiveCharProject.animations, adaptiveCharProject.assets)!.width,
+    ).toBe(320);
+
+    // Stage/layer evaluation does not throw when valid + broken Parts coexist!
+    const mixedCharLayer: Layer = {
+      ...adaptiveCharProject.shots[0]!.layers[0]!,
+      id: 'e3000000-0000-4000-8000-000000000099',
+      name: '五态混合角色层',
+      source: { kind: 'character', characterId: createdChar.id },
+      animationPlayback: undefined,
+    };
+    const projectWithMixedCharLayer = ProjectSchema.parse({
+      ...adaptiveCharProject,
+      shots: [{
+        ...adaptiveCharProject.shots[0]!,
+        layers: [...adaptiveCharProject.shots[0]!.layers, mixedCharLayer],
+      }],
+    });
+    const evalShot = evaluateShotAtTime(projectWithMixedCharLayer.shots[0]!, 0, projectWithMixedCharLayer);
+    const resolved = resolveLayerVisualParts(
+      projectWithMixedCharLayer,
+      projectWithMixedCharLayer.shots[0]!,
+      evalShot.layers.find((l) => l.id === mixedCharLayer.id)!,
+    );
+    expect(resolved.parts).toHaveLength(5);
+    expect(hasRenderableFlaGraphicSubtree(resolved.parts[0]!.flaGraphic!)).toBe(true);
+    expect(hasRenderableFlaGraphicSubtree(resolved.parts[1]!.flaGraphic!)).toBe(true);
+    expect(hasRenderableFlaGraphicSubtree(resolved.parts[2]!.flaGraphic!)).toBe(false);
+    expect(resolved.parts[2]!.localRect.width).toBe(0);
+    expect(hasRenderableFlaGraphicSubtree(resolved.parts[3]!.flaGraphic!)).toBe(false);
+    expect(resolved.parts[3]!.localRect.width).toBe(0);
+    expect(resolved.parts[4]!.localRect.width).toBe(320);
+
+    // Check Export Preparation asset isolation: remove Part 5 (legacy full) and verify Part 3 + Part 4 alone add ZERO whole-frame assets!
+    const onlyBrokenPartsProject = ProjectSchema.parse({
+      ...projectWithMixedCharLayer,
+      characters: projectWithMixedCharLayer.characters.map((c) =>
+        c.id === createdChar.id && c.mode === 'adaptive-parts'
+          ? {
+              ...c,
+              parts: [
+                { ...createdChar.parts[2]!, drawOrder: 0 },
+                { ...createdChar.parts[3]!, drawOrder: 1 },
+              ],
+            }
+          : c,
+      ),
+      shots: projectWithMixedCharLayer.shots.map((s) => ({
+        ...s,
+        timelineEvents: [],
+        layers: s.layers.filter((l) => l.id !== fixture.layerId),
+      })),
+    });
+    const exportMediaForBroken = collectExportPreparationMedia(onlyBrokenPartsProject)
+      .filter((entry) => entry.asset.id === FRAME_ASSET_ID || entry.asset.id === RING_SHAPE_ASSET_ID);
+    expect(exportMediaForBroken).toHaveLength(0);
   });
 });

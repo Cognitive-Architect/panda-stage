@@ -913,5 +913,23 @@ describe('FLA Shape S1/S2 persistence, Stage/Export parity, and real FLA lifecyc
     ).toBeCloseTo(40 * scaleFactor, 6);
     const exportMedia = collectExportPreparationMedia(reopened.project);
     expect(exportMedia.length).toBeGreaterThan(0);
+
+    // Issue #1200 Part B persistence spot check: unmatched regionRef stays fail-closed across reopen!
+    expect(
+      characterPartSourceBounds(
+        {
+          ...adaptiveChar.parts[0]!,
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: reopenedDef.id,
+            nodePath: ringPath,
+            poseFrameOrdinal: 0,
+            regionRef: 'reg-missing-after-reopen',
+          },
+        },
+        reopened.project.animations,
+        reopened.project.assets,
+      ),
+    ).toBeNull();
   });
 });

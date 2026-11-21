@@ -148,6 +148,9 @@ export function characterPartSourceBounds(
       }
     }
   }
+  if (visualSource.regionRef || visualSource.nodePath) {
+    return null;
+  }
   return {
     x: 0,
     y: 0,
