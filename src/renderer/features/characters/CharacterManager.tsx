@@ -165,6 +165,12 @@ export interface CharacterManagerProps {
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
+  externalCreatedCharacter?: {
+    readonly characterId: string;
+    readonly notice?: string;
+    readonly nonce: number;
+  } | null;
+  onConsumeExternalCreatedCharacter?: () => void;
   /**
    * Issue #1031 / CHAR-UNI-01 F01: the unified Create entry routes the third
    * creation way into the existing FLA import flow owned by the dock.
@@ -330,6 +336,8 @@ export function CharacterManager({
   onFlaCharacterCommitStateChange,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy = false,
+  externalCreatedCharacter = null,
+  onConsumeExternalCreatedCharacter,
   onStartFlaCharacterImport,
 }: CharacterManagerProps): React.JSX.Element {
   const floatTarget = useContext(CharacterFloatHost)?.target;
@@ -825,6 +833,18 @@ export function CharacterManager({
     openAssembly,
     pendingImportedCharacterId,
   ]);
+
+  const consumedExternalNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!externalCreatedCharacter) return;
+    if (consumedExternalNonceRef.current === externalCreatedCharacter.nonce) return;
+    consumedExternalNonceRef.current = externalCreatedCharacter.nonce;
+    openCreatedAdaptiveCharacter(
+      externalCreatedCharacter.characterId,
+      externalCreatedCharacter.notice,
+    );
+    onConsumeExternalCreatedCharacter?.();
+  });
 
   const updateAssembly = (
     update: Parameters<CharacterAssemblySessionHandle['updateDraft']>[0],

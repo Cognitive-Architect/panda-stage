@@ -15,6 +15,7 @@ import {
   assessFlaGraphicSubtreeCandidate,
   buildAdaptivePartsFromFlaGraphicSubtrees,
   characterPartSourceBounds,
+  collectFlaGraphicSubtreeSelections,
   evaluateFlaGraphicVisual,
   evaluateShotAtTime,
   isFlaGraphicDefinition,
@@ -46,6 +47,9 @@ import {
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
+import { createAdaptiveCharacterFromFlaGraphic } from '../../src/renderer/features/fla-import/createAdaptiveCharacterFromGraphic';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { CharacterStore } from '../../src/renderer/stores/characterStore';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
 const REAL_XIAOSHIMEI_FLA_PATH = 'F:\\素材\\唉小师妹唉.fla';
@@ -694,7 +698,267 @@ describe('FLA Graphic Subtree Adaptive Parts lifecycle persistence (#1192 V2-C)'
       expect(stageCharLayer.parts[1]?.flaGraphic?.resourceAssetIds).toEqual(
         sleeveSubtree.resourceAssetIds,
       );
+
+      // Also verify #1203 automatic candidate collection on real 朱孝天女儿 extracts >= 10 parts cleanly.
+      const autoCollected = collectFlaGraphicSubtreeSelections({
+        definition: committedGraphic,
+        frameOrdinal: 0,
+        assets: snapshotState.project.assets,
+      });
+      expect(autoCollected.selections.length).toBeGreaterThanOrEqual(10);
+      const autoInput = buildAdaptivePartsFromFlaGraphicSubtrees({
+        project: snapshotState.project,
+        definition: committedGraphic,
+        frameOrdinal: 0,
+        selections: autoCollected.selections,
+      });
+      expect(autoInput.parts.length).toBe(autoCollected.selections.length);
+      expect(autoInput.parts.every((part) => part.visualSource?.kind === 'fla-graphic')).toBe(true);
     },
     60_000,
   );
+
+  it('runs shared V1-A/B Graphic->AdaptiveParts flow on a 28-part synthetic FLA with Definition reuse and save/reopen parity (#1203)', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'DOMDocument.xml',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="320" height="240" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Main"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="HeroRig" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="40" ty="20"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`,
+    );
+    const groupParts = Array.from({ length: 24 }, (_, idx) => {
+      const x = (idx % 6) * 28;
+      const y = Math.floor(idx / 6) * 28;
+      return `<DOMGroup name="PartGroup${idx + 1}"><members><DOMShape>
+        <fills><FillStyle index="1"><SolidColor color="#${String(10 + idx).padStart(2, '0')}55aa" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!${x} ${y}|${x + 16} ${y}|${x + 16} ${y + 16}|${x} ${y + 16}|${x} ${y}"/></edges>
+      </DOMShape></members></DOMGroup>`;
+    }).join('\n');
+    const directShapes = Array.from({ length: 3 }, (_, idx) => {
+      const x = 180 + idx * 24;
+      return `<DOMShape>
+        <fills><FillStyle index="1"><SolidColor color="#cc${String(20 + idx * 10)}44" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!${x} 140|${x + 18} 140|${x + 18} 160|${x} 160|${x} 140"/></edges>
+      </DOMShape>`;
+    }).join('\n');
+    zip.file(
+      'LIBRARY/HeroRig.xml',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="HeroRig" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="HeroRig"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="HeadPart" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="12" ty="8"/></matrix>
+      </DOMSymbolInstance>
+      ${groupParts}
+      ${directShapes}
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`,
+    );
+    zip.file(
+      'LIBRARY/HeadPart.xml',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="HeadPart" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="HeadPart"><layers><DOMLayer name="Head"><frames>
+    <DOMFrame index="0" duration="1"><elements><DOMShape>
+      <fills><FillStyle index="1"><SolidColor color="#f0a060" alpha="1"/></FillStyle></fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|24 0|24 24|0 24|0 0"/></edges>
+    </DOMShape></elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`,
+    );
+
+    const sourceBytes = await zip.generateAsync({ type: 'uint8array' });
+    const sha256 = createHash('sha256').update(sourceBytes).digest('hex');
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(sourceBytes, 'preview');
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) throw new Error(prepared.message);
+
+    const sessionId = randomUUID();
+    const requestId = randomUUID();
+    const scene = prepared.source.sceneTimelines[0]!;
+    const targetId = stableRenderTargetId(sourceBytes, `scene\u0000timeline\u0000${scene.index}`);
+    const flaImportService = {
+      getSession: (id: string) =>
+        id === sessionId
+          ? {
+              sessionId,
+              ir: {
+                source: { basename: 'hero-28.fla', sha256 },
+                document: { width: 320, height: 240, frameRate: 24 },
+                media: [],
+              },
+              originalSourceSha256: sha256,
+              sourceBytes,
+            }
+          : null,
+    } as unknown as FlaImportService;
+    const renderSession = {
+      prepareDisplaySourceForPartPreview: async () => ({
+        ok: true as const,
+        source: prepared.source,
+        xmlByteLength: prepared.xmlByteLength,
+        cacheHit: false,
+      }),
+    };
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize(input) {
+        return {
+          pngBytes: makeSolidPng(input.width, input.height, input.width),
+          width: input.width,
+          height: input.height,
+          pixelCount: input.pixelCount,
+        };
+      },
+      cancel: () => true,
+      close: () => undefined,
+    };
+    const previewService = new FlaPartPreviewService({
+      flaImportService,
+      renderSession: renderSession as never,
+      rasterizer,
+      wallTimeMs: 30_000,
+    });
+
+    const previewResponse = await previewService.preview(
+      FlaPartPreviewRequestSchema.parse({
+        format: 'fla-part-preview',
+        version: 1,
+        requestId,
+        sessionId,
+        generation: 1,
+        purpose: 'graphic-instance',
+        target: { renderTargetId: targetId, selectedFrameIndex: 0 },
+      }),
+    );
+    if (!previewResponse.ok || previewResponse.capability !== 'GRAPHIC_INSTANCES_READY') {
+      throw new Error(`Expected GRAPHIC_INSTANCES_READY, got ${JSON.stringify(previewResponse)}`);
+    }
+    const heroPreview = { ...previewResponse, sessionId, generation: 1 };
+    const heroUnit = heroPreview.partPreviews[0]!;
+
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-v1ab-parity-'));
+    temporaryParents.push(parent);
+    const projectRoot = path.join(parent, 'DualEntry.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(projectRoot, { name: 'Dual Entry Parity' });
+    const base = buildProject();
+    const seedProject = ProjectSchema.parse({
+      ...base,
+      id: created.project.id,
+      name: created.project.name,
+      createdAt: created.project.createdAt,
+      updatedAt: created.project.updatedAt,
+    });
+    await projectService.save(projectRoot, seedProject, 1);
+
+    const store = new EditorProjectStore();
+    store.open(projectRoot, seedProject);
+    // Sync store revision to 1 so commit service matches disk revision 1.
+    store.markSaved(seedProject, 0);
+    // Re-open with revision 1 via ProjectService-aligned state:
+    const snapshotState = {
+      project: seedProject,
+      revision: store.getSnapshot()!.revision,
+      openInstanceId: store.getProjectInstanceId()!,
+    };
+    const commitProjectService = new ProjectService({
+      onProjectSaved: (root, savedProject, savedRevision) => {
+        if (root === projectRoot && savedRevision !== undefined) {
+          snapshotState.project = savedProject;
+          snapshotState.revision = savedRevision;
+        }
+      },
+    });
+    const commitService = new FlaGraphicInstanceCommitService({
+      projectService: commitProjectService,
+      partPreviewService: previewService,
+      getCurrentProjectSnapshot: (root) => (root === projectRoot ? snapshotState : null),
+    });
+    const characters = new CharacterStore(store, new CharacterService());
+    const ensureMainSnapshot = async (snap: { project: Project; revision: number }) => {
+      snapshotState.project = snap.project;
+      snapshotState.revision = snap.revision;
+      snapshotState.openInstanceId = store.getProjectInstanceId()!;
+    };
+
+    // Entry 1 (导入角色): creates AdaptiveParts character without shotId, bypassing 24 PNG limit.
+    const entry1 = await createAdaptiveCharacterFromFlaGraphic({
+      preview: heroPreview,
+      unitId: heroUnit.unitId,
+      characterName: 'HeroRig',
+      poseFrameOrdinal: 0,
+      api: { commitGraphicInstance: (req) => commitService.commit(req) },
+      store,
+      characters,
+      ensureMainSnapshot,
+    });
+    expect(entry1.ok).toBe(true);
+    if (!entry1.ok) throw new Error(entry1.message);
+    expect(entry1.partCount).toBe(28);
+    const afterEntry1 = store.getSnapshot()!.project;
+    expect(afterEntry1.animations).toHaveLength(1);
+    expect(afterEntry1.shots[0]!.layers).toHaveLength(base.shots[0]!.layers.length);
+    const assetsAfterEntry1 = afterEntry1.assets.length;
+
+    // Entry 2 (导入 FLA -> 创建为角色): reuses existing Definition, produces identical part semantics.
+    const entry2 = await createAdaptiveCharacterFromFlaGraphic({
+      preview: heroPreview,
+      unitId: heroUnit.unitId,
+      characterName: 'HeroRig',
+      poseFrameOrdinal: 0,
+      api: { commitGraphicInstance: (req) => commitService.commit(req) },
+      store,
+      characters,
+      ensureMainSnapshot,
+    });
+    expect(entry2.ok).toBe(true);
+    if (!entry2.ok) throw new Error(entry2.message);
+    expect(entry2.animationId).toBe(entry1.animationId);
+    expect(entry2.characterId).not.toBe(entry1.characterId);
+    expect(entry2.partCount).toBe(28);
+
+    const afterEntry2 = store.getSnapshot()!.project;
+    expect(afterEntry2.animations).toHaveLength(1);
+    expect(afterEntry2.assets).toHaveLength(assetsAfterEntry1);
+    expect(afterEntry2.shots[0]!.layers).toHaveLength(base.shots[0]!.layers.length);
+
+    const char1 = afterEntry2.characters.find((c) => c.id === entry1.characterId) as AdaptivePartsCharacter;
+    const char2 = afterEntry2.characters.find((c) => c.id === entry2.characterId) as AdaptivePartsCharacter;
+    const normalizeParts = (c: AdaptivePartsCharacter) =>
+      c.parts.map((p) => ({
+        drawOrder: p.drawOrder,
+        displayName: p.displayName,
+        sourcePoseFrame: p.source.kind === 'source-instance' ? p.source.sourcePoseFrame : null,
+        sourceRestTransform: p.sourceRestTransform,
+        restTransform: p.restTransform,
+        visualSource: p.visualSource,
+      }));
+    expect(normalizeParts(char2)).toEqual(normalizeParts(char1));
+    expect(char1.parts.map((p) => p.partId)).not.toEqual(char2.parts.map((p) => p.partId));
+
+    // Persist to disk, close, reopen, and verify all 28 parts survive intact.
+    const withCharShot = new LayerService().createFromAdaptiveCharacter(
+      afterEntry2,
+      IDS.shot,
+      char1.id,
+      { x: 960, y: 540 },
+    ).project;
+    await projectService.save(projectRoot, withCharShot, store.getSnapshot()!.revision);
+    const reopened = await projectService.open(projectRoot);
+    const reopenedChar1 = reopened.project.characters.find((c) => c.id === char1.id) as AdaptivePartsCharacter;
+    expect(reopenedChar1.parts).toHaveLength(28);
+    const reopenedShot = reopened.project.shots.find((s) => s.id === IDS.shot)!;
+    const evaluated = evaluateShotAtTime(reopenedShot, 0, reopened.project);
+    const visual = resolveLayerVisualParts(reopened.project, reopenedShot, evaluated.layers.at(-1)!);
+    expect(visual.parts).toHaveLength(28);
+  }, 60_000);
 });

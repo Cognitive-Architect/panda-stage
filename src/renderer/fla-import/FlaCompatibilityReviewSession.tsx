@@ -34,6 +34,10 @@ import { FlaStageF3Blocked } from './FlaStageF';
 import { FlaUnifiedWorkbench, type FlaUnifiedWorkbenchProgress } from './FlaUnifiedWorkbench';
 import { FlaGraphicInstanceWorkbench } from './FlaGraphicInstanceWorkbench';
 import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
+import type {
+  CreateAdaptiveCharacterFromGraphic,
+  CreateAdaptiveCharacterFromGraphicResult,
+} from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import {
   describeFlaUnifiedCandidate,
   flaUnifiedCandidateSelectionKey,
@@ -56,6 +60,10 @@ interface FlaCompatibilityReviewSessionProps {
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
   onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
+  onGraphicCharacterCreated?(
+    result: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }>,
+  ): void;
   graphicImportDisabledReason: string | null;
 }
 
@@ -73,6 +81,8 @@ export function FlaCompatibilityReviewSession({
   onSnapshotImported,
   onSequenceImported,
   onImportGraphicInstance,
+  onCreateCharacterFromGraphic,
+  onGraphicCharacterCreated,
   graphicImportDisabledReason,
 }: FlaCompatibilityReviewSessionProps): React.JSX.Element {
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
@@ -903,6 +913,11 @@ export function FlaCompatibilityReviewSession({
             importDisabledReason={graphicImportDisabledReason}
             onRequestReimport={closeSession}
             onImportGraphicInstance={onImportGraphicInstance}
+            onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
+            onCharacterCreated={(result) => {
+              onClose();
+              onGraphicCharacterCreated?.(result);
+            }}
             onImportingChange={updateGraphicImporting}
             onRecoveryRequired={() => { recoveryRequiredRef.current = true; setRecoveryRequired(true); }}
             sessionId={sessionId}

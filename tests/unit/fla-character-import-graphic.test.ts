@@ -709,4 +709,253 @@ describe('createAdaptiveCharacterFromFlaGraphic & FlaCharacterImportFlow (#1203 
     expect(createdChar.parts.every((p) => p.visualSource?.kind === 'fla-graphic')).toBe(true);
     expect(IDS.shot).toBeDefined();
   });
+
+  it('keeps legacy PNG character import path working when no Graphic instances exist (#1203 V1-A non-regression)', async () => {
+    const baseProject = buildProject();
+    editorProjectStore.open('D:\\Temp\\LegacyPngProject', baseProject);
+    const sessionId = '00000000-0000-4000-8000-000000000501';
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    const wholeImageFallback: FlaPartPreviewResponse = {
+      ok: true,
+      status: 'PREVIEW_READY',
+      capability: 'WHOLE_IMAGE_ONLY',
+      reason: 'No importable source-addressed Graphic instance was found.',
+      requestId: '00000000-0000-4000-8000-000000000502',
+      sessionId,
+      generation: 1,
+      planId: '00000000-0000-4000-8000-000000000503',
+      poseIdentity: SHA_A,
+      target: {
+        renderTargetId: 'fla-render-target-scene000001',
+        userLabel: '主场景 · 第 1 帧',
+        frameCount: 1,
+        selectedFrameIndex: 0,
+      },
+      stage: { width: 400, height: 400, pixelCount: 160000 },
+      nativePreview: {
+        width: 400,
+        height: 400,
+        pixelCount: 160000,
+        sha256: SHA_A,
+        byteLength: pngBytes.byteLength,
+        bytes: pngBytes,
+      },
+      partPreviews: [],
+      reassembledPreview: null,
+      metrics: {
+        preparedSourceCacheHit: false,
+        sourcePreparationCountForRequest: 1,
+        displayListResolveCount: 1,
+        rasterCount: 1,
+        unitCount: 0,
+        totalPngBytes: 4,
+        elapsedMs: 1,
+      },
+    };
+    const editablePngPreview: FlaPartPreviewResponse = {
+      ok: true,
+      status: 'PREVIEW_READY',
+      capability: 'EDITABLE_PARTS_READY',
+      requestId: '00000000-0000-4000-8000-000000000504',
+      sessionId,
+      generation: 2,
+      planId: '00000000-0000-4000-8000-000000000505',
+      poseIdentity: SHA_B,
+      target: {
+        renderTargetId: 'fla-render-target-scene000001',
+        userLabel: '主场景 · 第 1 帧',
+        frameCount: 1,
+        selectedFrameIndex: 0,
+      },
+      stage: { width: 400, height: 400, pixelCount: 160000 },
+      nativePreview: {
+        width: 400,
+        height: 400,
+        pixelCount: 160000,
+        sha256: SHA_A,
+        byteLength: pngBytes.byteLength,
+        bytes: pngBytes,
+      },
+      partPreviews: [
+        {
+          unitId: 'part-001-shape01',
+          occurrenceId: 'occ-11111111111111111111111111111111',
+          sourceKind: 'shape-occurrence',
+          sourceSymbolId: null,
+          sourceAddress: 'scene/0/0',
+          adapterIdentity: null,
+          sourceDefinitionFrameCount: null,
+          layerName: 'Layer 1',
+          drawOrder: 0,
+          image: {
+            width: 400,
+            height: 400,
+            pixelCount: 160000,
+            sha256: SHA_B,
+            byteLength: pngBytes.byteLength,
+            bytes: pngBytes,
+          },
+        },
+        {
+          unitId: 'part-002-shape02',
+          occurrenceId: 'occ-22222222222222222222222222222222',
+          sourceKind: 'shape-occurrence',
+          sourceSymbolId: null,
+          sourceAddress: 'scene/0/1',
+          adapterIdentity: null,
+          sourceDefinitionFrameCount: null,
+          layerName: 'Layer 1',
+          drawOrder: 1,
+          image: {
+            width: 400,
+            height: 400,
+            pixelCount: 160000,
+            sha256: SHA_C,
+            byteLength: pngBytes.byteLength,
+            bytes: pngBytes,
+          },
+        },
+      ],
+      reassembledPreview: {
+        width: 400,
+        height: 400,
+        pixelCount: 160000,
+        sha256: SHA_A,
+        byteLength: pngBytes.byteLength,
+        bytes: pngBytes,
+      },
+      metrics: {
+        preparedSourceCacheHit: false,
+        sourcePreparationCountForRequest: 0,
+        displayListResolveCount: 3,
+        rasterCount: 4,
+        unitCount: 2,
+        totalPngBytes: 16,
+        elapsedMs: 1,
+      },
+    };
+    const catalogResponse: FlaRenderableTargetCatalogResponse = {
+      ok: true,
+      sessionId,
+      omittedCandidateCount: 0,
+      summary: 'ok',
+      entries: [
+        {
+          target: {
+            renderTargetId: 'fla-render-target-scene000001',
+            kind: 'scene',
+            userLabel: '主场景 · 第 1 帧',
+            sourceTimelineIndex: 0,
+            frameCount: 1,
+            selectedFrameIndex: 0,
+            compatibility: ['degraded'],
+          },
+          catalogRole: 'scene',
+          previewSupported: true,
+          isBlank: false,
+        },
+      ],
+    };
+    const inspectionResponse: FlaInspectionResponse = {
+      ok: true,
+      sessionId,
+      ir: {
+        source: {
+          format: 'fla',
+          basename: 'legacy-png.fla',
+          byteLength: 100,
+          sha256: SHA_A,
+          parser: {
+            package: FLA_PARSER_PACKAGE,
+            entrypoint: FLA_PARSER_ENTRYPOINT,
+            commit: FLA_PARSER_COMMIT,
+          },
+        },
+        document: { width: 400, height: 400, frameRate: 24, backgroundColor: '#FFFFFF' },
+        media: [],
+        timelines: [],
+        compatibility: [],
+        summary: { placedInstanceCount: 2, libraryOnlyMediaCount: 0 },
+      },
+      diagnostics: [],
+    };
+    const partPreviewMock = vi.fn(async (req: { purpose?: string }) =>
+      req.purpose === 'graphic-instance' ? wholeImageFallback : editablePngPreview,
+    );
+    Object.defineProperty(window, 'pandaStage', {
+      configurable: true,
+      value: {
+        fla: {
+          chooseAndInspect: vi.fn(),
+          onInspectionStarted: vi.fn(() => () => undefined),
+          cancel: vi.fn(async () => undefined),
+          staticSnapshotCatalog: vi.fn(async () => catalogResponse),
+          staticSnapshotCancel: vi.fn(async () => ({ accepted: true })),
+          partPreview: partPreviewMock,
+          partPreviewCancel: vi.fn(async () => ({ accepted: true })),
+        },
+      },
+    });
+    const attempt: FlaCharacterImportAttempt = {
+      lifecycle: { cancel: vi.fn(async () => undefined) } as unknown as FlaCharacterImportAttempt['lifecycle'],
+      operation: {
+        requestId: '00000000-0000-4000-8000-000000000506',
+        inspectionStarted: Promise.resolve(),
+        response: Promise.resolve(inspectionResponse),
+      },
+    };
+    const onCreateCharacter = vi.fn(async () => ({
+      operationId: 'op-1',
+      projectRoot: 'D:\\Temp\\LegacyPngProject',
+      projectId: baseProject.id,
+      openInstanceId: editorProjectStore.getProjectInstanceId()!,
+      baseRevision: 0,
+      savedRevision: 1,
+      characterId: 'legacy-char-1',
+      voiceProfileId: 'vp-1',
+      identity: {
+        planId: editablePngPreview.planId,
+        sessionId,
+        requestId: '00000000-0000-4000-8000-000000000504',
+        generation: 2,
+        rawSourceSha256: SHA_A,
+        normalizedSourceSha256: SHA_A,
+        poseIdentity: editablePngPreview.poseIdentity,
+        target: {
+          renderTargetId: 'fla-render-target-scene000001',
+          kind: 'scene' as const,
+          sceneIndex: 0,
+          sourceLibraryItemName: null,
+          selectedFrameIndex: 0,
+        },
+      },
+      assets: [],
+      createdAssetCount: 0,
+      reusedAssetCount: 0,
+    }));
+
+    await act(async () => {
+      root.render(
+        createElement(FlaCharacterImportFlow, {
+          snapshot: editorProjectStore.getSnapshot(),
+          attempt,
+          onCreateCharacter,
+          onCreateCharacterFromGraphic: vi.fn(),
+          onQueryCharacterCreateStatus: vi.fn(),
+          onCreatedCharacter: () => true,
+          onClose: vi.fn(),
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(document.querySelector('[data-testid="fla-character-import-graphic-badge"]')).toBeNull();
+    expect(document.querySelector('[data-testid="fla-character-import-parts-toggle"]')?.textContent)
+      .toContain('零件 2');
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="fla-character-import-create"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(onCreateCharacter).toHaveBeenCalledTimes(1);
+  });
 });

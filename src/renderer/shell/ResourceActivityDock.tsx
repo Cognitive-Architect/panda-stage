@@ -17,7 +17,11 @@ import {
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
-import type { CreateAdaptiveCharacterFromGraphic } from '../features/fla-import/createAdaptiveCharacterFromGraphic';
+import {
+  formatFlaGraphicSkippedSummary,
+  type CreateAdaptiveCharacterFromGraphic,
+  type CreateAdaptiveCharacterFromGraphicResult,
+} from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import type { ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type {
   PendingFlaCharacterCreateCredential,
@@ -192,6 +196,12 @@ export function ResourceActivityDock({
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
+  const [pendingExternalAdaptiveCharacter, setPendingExternalAdaptiveCharacter] = useState<{
+    readonly characterId: string;
+    readonly notice?: string;
+    readonly nonce: number;
+  } | null>(null);
+  const externalAdaptiveNonceRef = useRef(0);
   const narrow = useNarrowViewport(
     compact === undefined ? 'auto' : compact ? 'compact' : 'expanded',
   );
@@ -239,6 +249,25 @@ export function ResourceActivityDock({
     if (flaCharacterImportCommittingRef.current) return;
     setFlaCharacterImportAttempt(null);
     setFlaCharacterCommitState(false);
+  };
+  const handleGraphicCharacterCreated = (
+    result: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }>,
+  ): void => {
+    const notice = formatFlaGraphicSkippedSummary(result.partCount, result.skipped);
+    setPendingExternalAdaptiveCharacter({
+      characterId: result.characterId,
+      ...(notice ? { notice } : {}),
+      nonce: ++externalAdaptiveNonceRef.current,
+    });
+    setCharacterView('list');
+    if (requestedActivity === undefined) {
+      setInternalActivity('characters');
+    } else {
+      onActiveActivityChange?.('characters');
+    }
+    if (!drawerOpen) {
+      setDrawerOpen(true);
+    }
   };
   /**
    * Issue #1031 / CHAR-UNI-01 F01: the unified Create entry is the single FLA
@@ -749,6 +778,8 @@ export function ResourceActivityDock({
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
                 onImportGraphicInstance={onImportGraphicInstance}
+                onCreateCharacterFromGraphic={onCreateCharacterFromGraphic}
+                onGraphicCharacterCreated={handleGraphicCharacterCreated}
                 onViewChange={setAssetView}
                 presentation={
                   landscapePresentation
@@ -781,6 +812,8 @@ export function ResourceActivityDock({
                 onSafeFlaCharacterExit={onSafeFlaCharacterExit}
                 flaCharacterRecoveryAction={flaCharacterRecoveryAction}
                 flaCharacterRecoveryBusy={flaCharacterRecoveryBusy}
+                externalCreatedCharacter={pendingExternalAdaptiveCharacter}
+                onConsumeExternalCreatedCharacter={() => setPendingExternalAdaptiveCharacter(null)}
                 onFlaCharacterCommitStateChange={setFlaCharacterCommitState}
                 onViewChange={setCharacterView}
                 presentation={
