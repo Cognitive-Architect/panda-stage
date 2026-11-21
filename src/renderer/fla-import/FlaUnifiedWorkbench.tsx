@@ -24,6 +24,7 @@ interface FlaUnifiedWorkbenchProps {
   locked: boolean;
   canImport: boolean;
   importing: boolean;
+  importingMessage?: string;
   importKind: FlaStageGImportKind;
   stopAfterCurrentAvailable: boolean;
   stopAfterCurrentRequested: boolean;
@@ -79,6 +80,7 @@ export function FlaUnifiedWorkbench({
   locked,
   canImport,
   importing,
+  importingMessage,
   importKind,
   stopAfterCurrentAvailable,
   stopAfterCurrentRequested,
@@ -541,7 +543,7 @@ export function FlaUnifiedWorkbench({
             <FlaStageGImporting
               importKind={importKind}
               route="unified"
-              statusMessage={stopAfterCurrentRequested ? '将在当前项完成后停止' : undefined}
+              statusMessage={stopAfterCurrentRequested ? '将在当前项完成后停止' : importingMessage}
             />
             {stopAfterCurrentAvailable || stopAfterCurrentRequested ? (
               <button

@@ -40,8 +40,13 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { selectionStore } from '../stores/selectionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
+import { characterStore } from '../stores/characterStore';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
+import {
+  createAdaptiveCharacterFromFlaGraphic,
+  type CreateAdaptiveCharacterFromGraphic,
+} from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import {
   createCharacterFromPreparedParts,
   queryFlaCharacterCreateStatus,
@@ -526,6 +531,24 @@ export function EditorShell({
         operationId,
         api: window.pandaStage.fla,
         store: editorProjectStore,
+        ensureMainSnapshot: async (currentSnapshot) => {
+          session.assertNoControllerTransition();
+          const response = await session.syncAutosave(currentSnapshot);
+          if (response && !response.ok) throw new Error(response.error.message);
+          session.assertNoControllerTransition();
+        },
+      });
+    },
+    [session],
+  );
+  const createFlaCharacterFromGraphic = useCallback<CreateAdaptiveCharacterFromGraphic>(
+    async (input) => {
+      session.assertNoControllerTransition();
+      return createAdaptiveCharacterFromFlaGraphic({
+        ...input,
+        api: window.pandaStage.fla,
+        store: editorProjectStore,
+        characters: characterStore,
         ensureMainSnapshot: async (currentSnapshot) => {
           session.assertNoControllerTransition();
           const response = await session.syncAutosave(currentSnapshot);
@@ -2705,6 +2728,7 @@ export function EditorShell({
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
+                onCreateCharacterFromGraphic={createFlaCharacterFromGraphic}
                 onImportGraphicInstance={importFlaGraphicInstance}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
                 flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}

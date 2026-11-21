@@ -616,4 +616,122 @@ describe('FLA Graphic occurrence candidate workbench', () => {
     await act(async () => click('fla-graphic-instance-reimport'));
     expect(onRequestReimport).toHaveBeenCalledTimes(1);
   });
+
+  it('creates an adaptive character from the selected Graphic without altering 导入此元件 (#1203 V1-B)', async () => {
+    const pendingCreate = deferred<{
+      ok: true;
+      animationId: string;
+      characterId: string;
+      characterName: string;
+      partCount: number;
+      skipped: readonly [];
+      warnings: readonly [];
+    }>();
+    const onCreateCharacterFromGraphic = vi.fn()
+      .mockImplementationOnce(() => pendingCreate.promise);
+    const onCharacterCreated = vi.fn();
+    const onImportGraphicInstance = vi.fn(async () => undefined);
+    const onImportingChange = vi.fn();
+
+    await renderWorkbench({
+      onImportGraphicInstance,
+      onCreateCharacterFromGraphic,
+      onCharacterCreated,
+      onImportingChange,
+    });
+
+    const createButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="fla-graphic-instance-create-character"]',
+    );
+    const importButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="fla-graphic-instance-import"]',
+    );
+    expect(createButton).not.toBeNull();
+    expect(createButton?.textContent).toBe('创建为角色');
+    expect(createButton?.disabled).toBe(true);
+    expect(importButton?.textContent).toBe('导入此元件');
+
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    expect(createButton?.disabled).toBe(false);
+    expect(importButton?.disabled).toBe(false);
+
+    await act(async () => {
+      click('fla-graphic-instance-create-character');
+      click('fla-graphic-instance-create-character');
+    });
+    expect(onCreateCharacterFromGraphic).toHaveBeenCalledTimes(1);
+    expect(onCreateCharacterFromGraphic).toHaveBeenCalledWith(expect.objectContaining({
+      unitId: 'part-graphic1',
+      characterName: 'MyGraphic',
+      poseFrameOrdinal: 0,
+    }));
+    expect(onImportingChange).toHaveBeenCalledWith(true);
+
+    await act(async () => {
+      pendingCreate.resolve({
+        ok: true,
+        animationId: 'anim-1',
+        characterId: 'char-1',
+        characterName: 'MyGraphic',
+        partCount: 12,
+        skipped: [],
+        warnings: [],
+      });
+      await pendingCreate.promise;
+    });
+
+    expect(onImportingChange).toHaveBeenLastCalledWith(false);
+    expect(onCharacterCreated).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      characterId: 'char-1',
+      partCount: 12,
+    }));
+
+    // Existing "导入此元件" still works normally alongside "创建为角色".
+    await act(async () => click('fla-graphic-instance-import'));
+    expect(onImportGraphicInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves saved Definition animationId and reuses it on retry after character creation failure (#1203 V1-B)', async () => {
+    const onCreateCharacterFromGraphic = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false as const,
+        kind: 'character-create-failed' as const,
+        animationId: 'anim-saved-1',
+        message: '角色写入失败，请重试。',
+      })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        animationId: 'anim-saved-1',
+        characterId: 'char-retried-1',
+        characterName: 'MyGraphic',
+        partCount: 10,
+        skipped: [],
+        warnings: [],
+      });
+    const onCharacterCreated = vi.fn();
+
+    await renderWorkbench({
+      onCreateCharacterFromGraphic,
+      onCharacterCreated,
+    });
+    await act(async () => click('fla-graphic-instance-candidate-part-graphic1'));
+    await act(async () => click('fla-graphic-instance-create-character'));
+
+    expect(container.querySelector('[data-testid="fla-graphic-instance-preview-failure"]')?.textContent)
+      .toContain('导入失败');
+    expect(container.querySelector<HTMLButtonElement>('[data-testid="fla-graphic-instance-create-character"]')?.disabled)
+      .toBe(false);
+
+    await act(async () => click('fla-graphic-instance-create-character'));
+    expect(onCreateCharacterFromGraphic).toHaveBeenCalledTimes(2);
+    expect(onCreateCharacterFromGraphic.mock.calls[1]?.[0]).toMatchObject({
+      unitId: 'part-graphic1',
+      reusedAnimationId: 'anim-saved-1',
+    });
+    expect(onCharacterCreated).toHaveBeenCalledWith(expect.objectContaining({
+      characterId: 'char-retried-1',
+    }));
+    expect(partPreview).toHaveBeenCalledTimes(1);
+  });
 });

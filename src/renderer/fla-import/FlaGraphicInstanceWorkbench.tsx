@@ -11,6 +11,10 @@ import {
   type EditableFlaGraphicInstancePreview,
   type ImportFlaGraphicInstance,
 } from '../features/fla-import/fla-graphic-instance-import';
+import type {
+  CreateAdaptiveCharacterFromGraphic,
+  CreateAdaptiveCharacterFromGraphicResult,
+} from '../features/fla-import/createAdaptiveCharacterFromGraphic';
 import { FlaUnifiedWorkbench, type FlaUnifiedWorkbenchProgress } from './FlaUnifiedWorkbench';
 import type { FlaWorkbenchCandidate } from './fla-workbench-candidates';
 
@@ -25,6 +29,10 @@ interface FlaGraphicInstanceWorkbenchProps {
   onImportComplete?(): void;
   onRequestReimport?(): void;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
+  onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
+  onCharacterCreated?(
+    result: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }>,
+  ): void;
   onImportingChange?(importing: boolean): boolean | void;
   onRecoveryRequired?(): void;
 }
@@ -68,6 +76,8 @@ export function FlaGraphicInstanceWorkbench({
   onImportComplete,
   onRequestReimport,
   onImportGraphicInstance,
+  onCreateCharacterFromGraphic,
+  onCharacterCreated,
   onImportingChange,
   onRecoveryRequired,
 }: FlaGraphicInstanceWorkbenchProps): React.JSX.Element {
@@ -82,6 +92,7 @@ export function FlaGraphicInstanceWorkbench({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [emptyGraphicList, setEmptyGraphicList] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importingMessage, setImportingMessage] = useState<string | undefined>(undefined);
   const [successNoticeId, setSuccessNoticeId] = useState<number | null>(null);
   const successNoticeIdRef = useRef(0);
   const dismissSuccessNotice = useCallback((id: number) => {
@@ -90,6 +101,7 @@ export function FlaGraphicInstanceWorkbench({
   const successNoticeHandlers = useImportFeedbackDismiss(successNoticeId, 3_000, dismissSuccessNotice);
   const [planInvalidated, setPlanInvalidated] = useState(false);
   const importingRef = useRef(false);
+  const committedCharacterAnimationIdsRef = useRef(new Map<string, string>());
   const generationBySessionRef = useRef(new Map<string, number>());
   const flowGenerationRef = useRef(0);
   const activeRequestRef = useRef<ActiveRequest | null>(null);
@@ -114,6 +126,11 @@ export function FlaGraphicInstanceWorkbench({
   const canCommit = Boolean(
     enabled && sessionId && preview && previewContext === context && targetRenderTargetId && selectedCandidate?.selectable &&
     !importDisabledReason && onImportGraphicInstance && !importing && !importLocked && !planInvalidated &&
+    (!previewFailure || previewFailure.kind === 'import'),
+  );
+  const canCreateCharacter = Boolean(
+    enabled && sessionId && preview && previewContext === context && targetRenderTargetId && selectedCandidate?.selectable &&
+    !importDisabledReason && onCreateCharacterFromGraphic && !importing && !importLocked && !planInvalidated &&
     (!previewFailure || previewFailure.kind === 'import'),
   );
 
@@ -316,6 +333,7 @@ export function FlaGraphicInstanceWorkbench({
     setSuccessNoticeId(null);
     let imported = false;
     setImporting(true);
+    setImportingMessage('正在导入元件…');
     setPreviewFailure(null);
     setStatusMessage('正在导入元件…');
     try {
@@ -332,12 +350,79 @@ export function FlaGraphicInstanceWorkbench({
       if (recoveryRequired) onRecoveryRequired?.();
     } finally {
       setImporting(false);
+      setImportingMessage(undefined);
       importingRef.current = false;
       onImportingChange?.(false);
     }
     if (imported) {
       setSuccessNoticeId(++successNoticeIdRef.current);
       onImportComplete?.();
+    }
+  };
+
+  const createCharacterFromSelected = async (): Promise<void> => {
+    if (
+      importingRef.current ||
+      !canCreateCharacter ||
+      !preview ||
+      !selectedCandidate ||
+      !onCreateCharacterFromGraphic
+    ) return;
+    if (onImportingChange?.(true) === false) return;
+    importingRef.current = true;
+    setSuccessNoticeId(null);
+    let createdResult: Extract<CreateAdaptiveCharacterFromGraphicResult, { ok: true }> | null = null;
+    setImporting(true);
+    setImportingMessage('正在创建角色…');
+    setPreviewFailure(null);
+    setStatusMessage('正在创建角色…');
+    try {
+      const rawName = selectedCandidate.provenance.sourceSymbolId ?? selectedCandidate.displayLabel;
+      const characterName = rawName.split(/[\\/]/u).pop()?.trim() || undefined;
+      const result = await onCreateCharacterFromGraphic({
+        preview,
+        unitId: selectedCandidate.operation.unitId,
+        ...(characterName ? { characterName } : {}),
+        poseFrameOrdinal: 0,
+        reusedAnimationId: committedCharacterAnimationIdsRef.current.get(
+          selectedCandidate.identityKey,
+        ),
+      });
+      if (!result.ok) {
+        if (result.animationId) {
+          committedCharacterAnimationIdsRef.current.set(
+            selectedCandidate.identityKey,
+            result.animationId,
+          );
+        }
+        const recoveryRequired = result.code === 'ROLLBACK_FAILED';
+        setPlanInvalidated(
+          result.code === 'STALE_PLAN' ||
+            result.code === 'PROJECT_NOT_TRACKED' ||
+            result.code === 'UNSUPPORTED_SOURCE' ||
+            recoveryRequired,
+        );
+        setPreviewFailure({
+          kind: recoveryRequired ? 'recovery' : 'import',
+          details: result.message,
+        });
+        setStatusMessage('');
+        if (recoveryRequired) onRecoveryRequired?.();
+        return;
+      }
+      createdResult = result;
+      setStatusMessage('');
+    } catch (error) {
+      setPreviewFailure({ kind: 'import', details: diagnosticText(error) });
+      setStatusMessage('');
+    } finally {
+      setImporting(false);
+      setImportingMessage(undefined);
+      importingRef.current = false;
+      onImportingChange?.(false);
+    }
+    if (createdResult) {
+      onCharacterCreated?.(createdResult);
     }
   };
 
@@ -404,7 +489,18 @@ export function FlaGraphicInstanceWorkbench({
       locked={!enabled || importing || importLocked}
       canImport={false}
       importing={importing}
+      importingMessage={importingMessage}
       importKind="mixed"
+      footerAuxiliary={onCreateCharacterFromGraphic ? (
+        <button
+          data-testid="fla-graphic-instance-create-character"
+          disabled={!canCreateCharacter}
+          onClick={() => void createCharacterFromSelected()}
+          type="button"
+        >
+          创建为角色
+        </button>
+      ) : undefined}
       stopAfterCurrentAvailable={false}
       stopAfterCurrentRequested={false}
       bulkConfirmationOpen={false}
