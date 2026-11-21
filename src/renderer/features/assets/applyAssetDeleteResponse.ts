@@ -26,6 +26,7 @@ export function applyAssetDeleteResponse(
   );
   return {
     applied: true,
+    // TODO: Shorten the normal success message; retain cleanup and newer-edit warnings.
     status:
       response.cleanupResidualPaths.length > 0
         ? `素材已从项目中删除，但有待清理文件：${response.cleanupResidualPaths.join('；')}`
