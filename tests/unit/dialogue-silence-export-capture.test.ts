@@ -850,6 +850,76 @@ describe('Issue #1220: pending dialogue silence capture for export', () => {
     expect(analyzeDialogueSilence).toHaveBeenCalledTimes(1);
   });
 
+  it('serializes background analysis across a batch of 16 dialogue assets and a project switch', async () => {
+    const { project } = buildTalkingProject();
+    const shot = project.shots[0]!;
+    const audio = project.assets.find((asset) => asset.id === AUDIO_ASSET_1)!;
+    const extraLines = Array.from({ length: 15 }, () => {
+      const asset = { ...audio, id: crypto.randomUUID() };
+      const clip = { ...shot.audioClips[0]!, id: crypto.randomUUID(), assetId: asset.id };
+      const dialogue = { ...shot.dialogues[0]!, id: crypto.randomUUID(), audioClipId: clip.id };
+      return { asset, clip, dialogue };
+    });
+    const batch = {
+      ...project,
+      assets: [...project.assets, ...extraLines.map(({ asset }) => asset)],
+      shots: [{
+        ...shot,
+        audioClips: [...shot.audioClips, ...extraLines.map(({ clip }) => clip)],
+        dialogues: [...shot.dialogues, ...extraLines.map(({ dialogue }) => dialogue)],
+      }],
+    };
+    expect(collectTalkingDialogueAudioAssets(batch)).toHaveLength(16);
+    const requests: ReturnType<typeof createDeferred<DialogueSilenceIntervals | null>>[] = [];
+    const analyzeDialogueSilence = vi.fn(() => {
+      const request = createDeferred<DialogueSilenceIntervals | null>();
+      requests.push(request);
+      return request.promise;
+    });
+    (window as { pandaStage?: unknown }).pandaStage = buildWindowPandaStageMock({
+      analyzeDialogueSilence,
+    });
+
+    const hook = mountHookHarness(batch, 'C:/temp/issue1221-batch.pandastage', 1);
+    for (let index = 0; index < 12; index += 1) {
+      expect(analyzeDialogueSilence).toHaveBeenCalledTimes(index + 1);
+      await act(async () => requests[index]!.resolve([[300, 700]]));
+    }
+    expect(Object.keys(hook.latest().dialogueSilence)).toHaveLength(12);
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(13);
+    const targetRoot = 'C:/temp/issue1221-next.pandastage';
+    hook.rerender(project, targetRoot, 2);
+    expect(hook.latest().dialogueSilence).toEqual({});
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(13);
+    await act(async () => requests[12]!.resolve([[400, 900]]));
+    expect(hook.latest().dialogueSilence).toEqual({});
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(14);
+    expect(analyzeDialogueSilence).toHaveBeenLastCalledWith({
+      projectRoot: targetRoot,
+      assetId: AUDIO_ASSET_1,
+      sha256: HASH_B,
+    });
+    await act(async () => requests[13]!.resolve([[500, 800]]));
+    expect(hook.latest().dialogueSilence).toEqual({
+      [AUDIO_ASSET_1]: { sha256: HASH_B, intervals: [[500, 800]] },
+    });
+
+    const unconfigured = {
+      ...project,
+      characters: project.characters.map((character) => ({
+        ...character,
+        talkingAnimationId: undefined,
+      })),
+    };
+    hook.rerender(unconfigured, targetRoot, 3);
+    await expect(hook.latest().captureForExport({
+      project: unconfigured,
+      projectRoot: targetRoot,
+      openInstanceId: 3,
+    })).resolves.toEqual({});
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(14);
+  });
+
   it('completes boundedly on reject, null, empty, or timeout while preserving settled intervals for other audio assets', async () => {
     vi.useFakeTimers();
     const setup = buildTalkingProject({ includeSecondSpeaker: true });
@@ -864,13 +934,14 @@ describe('Issue #1220: pending dialogue silence capture for export', () => {
     });
 
     const hook = mountHookHarness(setup.project, projectRoot, 1);
-    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(2);
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(1);
 
     const capturePromise = hook.latest().captureForExport({
       project: setup.project,
       projectRoot,
       openInstanceId: 1,
     });
+    expect(analyzeDialogueSilence).toHaveBeenCalledTimes(2);
 
     // Audio 1 succeeds; Audio 2 never resolves -> bounded timeout (20s) preserves Audio 1 and degrades Audio 2 to M0.
     await act(async () => {

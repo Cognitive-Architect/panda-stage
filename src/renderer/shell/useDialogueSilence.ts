@@ -147,6 +147,7 @@ export function useDialogueSilence(
     [project],
   );
   const cache = useRef<SilenceCacheScope | null>(null);
+  const backgroundRequest = useRef<SilenceRequestEntry | null>(null);
   const [ready, setReady] = useState<{
     scopeKey: string;
     data: DialogueSilence;
@@ -171,10 +172,17 @@ export function useDialogueSilence(
     const analyze = window.pandaStage?.assets?.analyzeDialogueSilence;
     if (!projectRoot || assets.length === 0 || !analyze) return;
     let active = true;
-    for (const asset of assets) {
-      const entry = ensureRequestEntry(scope, projectRoot, asset, analyze);
-      void entry.promise.then((intervals) => {
-        if (!active || !intervals?.length) return;
+    const analyzeInBackground = async () => {
+      // A previous effect may still be finishing its one request after an edit
+      // or project switch. Export can reuse it or start its own required assets.
+      if (backgroundRequest.current) await backgroundRequest.current.promise;
+      for (const asset of assets) {
+        if (!active) return;
+        const entry = ensureRequestEntry(scope, projectRoot, asset, analyze);
+        backgroundRequest.current = entry;
+        const intervals = await entry.promise;
+        if (backgroundRequest.current === entry) backgroundRequest.current = null;
+        if (!active || !intervals?.length) continue;
         setReady((previous) => {
           const previousData =
             previous?.scopeKey === scopeKey ? previous.data : {};
@@ -189,8 +197,9 @@ export function useDialogueSilence(
             },
           };
         });
-      });
-    }
+      }
+    };
+    void analyzeInBackground();
     return () => {
       active = false;
     };
