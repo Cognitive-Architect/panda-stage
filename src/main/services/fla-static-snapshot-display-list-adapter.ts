@@ -4,9 +4,8 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds fail-closed Classic Motion interpolation for transforms, color, easing,
- * and one directional frame BlurFilter; unrelated XFL semantics (shape tweens,
- * non-vector/animated masks, other filters, or ActionScript) remain unsupported.
+ * adds Classic Motion interpolation and bounded solid-fill Shape Tween
+ * interpolation. Non-vector/animated masks and ActionScript remain unsupported.
  * Static filled-vector mask layers have a bounded resolver path.
  */
 
@@ -1009,6 +1008,112 @@ function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElement
   return getFlaXflDirectChildren(container.xml, container.name);
 }
 
+// MorphShape stores these points in units of 256 twips. In the authored sample,
+// 2.75 corresponds to the DOMShape edge coordinate 704, and #4.5 to 1104.
+function morphCoordinateInTwips(value: string): number {
+  const fixed = /^#([0-9a-f]{1,6})(?:\.([0-9a-f]{1,2}))?$/iu.exec(value);
+  if (fixed) {
+    const integer = Number.parseInt(fixed[1]!, 16);
+    const signed = integer >= 0x800000 ? integer - 0x1000000 : integer;
+    const fraction = Number.parseInt((fixed[2] ?? '').padEnd(2, '0'), 16);
+    return signed * 256 + fraction;
+  }
+  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(value)) return NaN;
+  const twips = Number(value) * 256;
+  return Math.abs(twips) <= 0x80000000 ? twips : NaN;
+}
+
+function readMorphPoint(raw: string | undefined): readonly [number, number] | null {
+  const coordinates = raw?.split(',');
+  if (coordinates?.length !== 2) return null;
+  const x = morphCoordinateInTwips(coordinates[0]!.trim());
+  const y = morphCoordinateInTwips(coordinates[1]!.trim());
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+}
+
+function readMorphFill(shape: FlaXflElementBlock): readonly number[] | null {
+  const fills = directChild(shape.xml, shape.name, 'fills');
+  const strokes = directChild(shape.xml, shape.name, 'strokes');
+  if (!fills || (strokes && getFlaXflDirectChildren(strokes.xml, strokes.name).length > 0)) return null;
+  const styles = getFlaXflDirectChildren(fills.xml, fills.name);
+  const style = styles[0];
+  if (styles.length !== 1 || style?.name !== 'FillStyle' || style.attributes.index !== '1') return null;
+  const paints = getFlaXflDirectChildren(style.xml, style.name);
+  const paint = paints[0];
+  if (paints.length !== 1 || paint?.name !== 'SolidColor') return null;
+  const color = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(paint.attributes.color ?? '#000000');
+  const alpha = Number(paint.attributes.alpha ?? '1');
+  if (!color || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
+  return [...color.slice(1).map((hex) => Number.parseInt(hex, 16)), alpha];
+}
+
+function sampleSolidShapeTween(
+  startFrame: FlaXflElementBlock,
+  start: FlaXflElementBlock,
+  end: FlaXflElementBlock,
+  linearProgress: number,
+): string | null {
+  const startFill = readMorphFill(start);
+  const endFill = readMorphFill(end);
+  const startMatrix = readDirectMatrix(start);
+  const endMatrix = readDirectMatrix(end);
+  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
+      !Object.entries(startMatrix.matrix).every(([key, value]) =>
+        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
+
+  const ease = classicMotionEasesForFrame(startFrame);
+  if (!ease.ok) return null;
+  const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
+  if (!timing.ok) return null;
+  const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
+  const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
+  const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
+  if (!segments) return null;
+  const contours = getFlaXflDirectChildren(segments.xml, segments.name);
+  const contour = contours[0];
+  if (contours.length !== 1 || contour?.name !== 'MorphSegment' ||
+      contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
+      contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0') return null;
+  const originA = readMorphPoint(contour.attributes.startPointA);
+  const originB = readMorphPoint(contour.attributes.startPointB);
+  const curves = getFlaXflDirectChildren(contour.xml, contour.name);
+  if (!originA || !originB || curves.length === 0 || curves.length > 8_192) return null;
+  const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
+    lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  const commands = ['!' + interpolatePoint(originA, originB)];
+  let lastA = originA;
+  let lastB = originB;
+  for (const curve of curves) {
+    if (curve.name !== 'MorphCurves') return null;
+    const anchorA = readMorphPoint(curve.attributes.anchorPointA);
+    const anchorB = readMorphPoint(curve.attributes.anchorPointB);
+    if (!anchorA || !anchorB) return null;
+    const anchor = interpolatePoint(anchorA, anchorB);
+    if (curve.attributes.isLine === 'true') {
+      commands.push('|' + anchor);
+    } else {
+      if (curve.attributes.isLine !== undefined && curve.attributes.isLine !== 'false') return null;
+      const controlA = readMorphPoint(curve.attributes.controlPointA);
+      const controlB = readMorphPoint(curve.attributes.controlPointB);
+      if (!controlA || !controlB) return null;
+      commands.push('[' + interpolatePoint(controlA, controlB) + ' ' + anchor);
+    }
+    lastA = anchorA;
+    lastB = anchorB;
+  }
+  if (lastA[0] !== originA[0] || lastA[1] !== originA[1] ||
+      lastB[0] !== originB[0] || lastB[1] !== originB[1]) return null;
+
+  const color = startFill.slice(0, 3).map((value, i) =>
+    Math.round(lerp(value, endFill[i]!)).toString(16).padStart(2, '0')).join('');
+  const alpha = lerp(startFill[3]!, endFill[3]!);
+  const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
+  return '<DOMShape>' + matrix +
+    '<fills><FillStyle index="1"><SolidColor color="#' + color + '" alpha="' + alpha +
+    '"/></FillStyle></fills><edges><Edge fillStyle0="1" edges="' + commands.join('') +
+    '"/></edges></DOMShape>';
+}
+
 type ClassicMotionFrameBlurResult =
   | { readonly ok: true; readonly filter?: FlaDisplayListBlurFilter }
   | { readonly ok: false; readonly message: string };
@@ -1885,7 +1990,49 @@ function buildGraphicFrameContext(
 
     let elements: readonly FlaDisplayListElement[] = [];
     let frameFilter: FlaDisplayListBlurFilter | undefined;
-    if (selection.kind === 'authored-frame') {
+    if (selection.kind === 'unsupported-tween-interior' && selection.visible &&
+        selection.span.tweenType === 'shape' && !maskLayerIds.has(selection.layerIndex)) {
+      const spans = frameSpanIndex.layers[selection.layerIndex]?.spans;
+      const start = spans?.find((span) => span.index === selection.span.index);
+      const end = spans?.find((span) => span.index === selection.span.endExclusive);
+      if (!start) return fail('RENDER_FAILED', 'Shape Tween is missing its authored start keyframe');
+      const startElements = frameDisplayElements(start.sourceFrame);
+      const endElements = end ? frameDisplayElements(end.sourceFrame) : [];
+      const startShape = startElements[0];
+      const endShape = endElements[0];
+      const sampledXml = startElements.length === 1 && endElements.length === 1 &&
+        startShape?.name === 'DOMShape' && endShape?.name === 'DOMShape'
+        ? sampleSolidShapeTween(start.sourceFrame, startShape, endShape, (frameIndex - start.index) / start.duration)
+        : null;
+      // When the morph pair is outside the supported subset, keep the authored
+      // start drawing on this layer and continue evaluating the other layers.
+      const frame = start.sourceFrame;
+      const container = sampledXml
+        ? { name: 'elements', attributes: {}, xml: '<elements>' + sampledXml + '</elements>' }
+        : directChild(frame.xml, frame.name, 'elements') ?? frame;
+      const parsed = parseDisplayElements(container, {
+        scope,
+        parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+        depth: 0,
+        path: `layer-${selection.layerIndex}-frame-${frameIndex}`,
+        sourceParentFrameIndex: frameIndex,
+        sourceParentFrameSpanStart: start.index,
+        sourceParentSpanTweenType: 'shape',
+        unsupportedDisplayReasons,
+        state,
+      });
+      if (!parsed.ok) return parsed;
+      const rigged = applyRigCorrectionToElements(
+        rigContext,
+        selection.layerIndex,
+        frame,
+        frameIndex,
+        start.index,
+        parsed.value,
+      );
+      if (!rigged.ok) return fail('RENDER_FAILED', rigged.message);
+      elements = rigged.value;
+    } else if (selection.kind === 'authored-frame') {
       const frame = selection.sourceFrame;
       const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
       const indexedLayer = frameSpanIndex.layers[selection.layerIndex];
