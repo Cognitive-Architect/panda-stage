@@ -447,12 +447,16 @@ export function prepareFlaNestedGraphicFrameSelections(
     if (depth > maxDepth) return failure('BUDGET_EXCEEDED', `Nested Graphic depth exceeded ${maxDepth}`);
     const layers = [];
     for (const layer of context.layers) {
-      if (!layer.visible) {
+      if ((!layer.visible && !layer.maskLayerId) || layer.unsupportedMaskReason) {
         layers.push(layer);
         continue;
       }
       const elements = prepareElements(layer.elements, sourceStack, depth, clock);
-      if (!elements.ok) return elements;
+      if (!elements.ok) {
+        if (!layer.maskLayerId || elements.code === 'BUDGET_EXCEEDED') return elements;
+        layers.push({ ...layer, elements: [], unsupportedMaskReason: elements.message });
+        continue;
+      }
       layers.push({ ...layer, elements: elements.elements });
     }
     return { ok: true, frameContext: { ...context, layers } };

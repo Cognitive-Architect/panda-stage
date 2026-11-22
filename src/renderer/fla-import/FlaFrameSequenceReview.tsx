@@ -233,6 +233,7 @@ export function FlaFrameSequenceReview({
   const displayedSequenceItems = sequenceIsCurrent ? orderedSequenceItems : [];
   const displayedPreviewUrls = sequenceIsCurrent ? previewUrls : [];
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
+  const maskedFrameWarning = displayedSequenceItems.find((item) => item.preview.maskWarning);
   const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
   const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
 
@@ -1546,6 +1547,11 @@ export function FlaFrameSequenceReview({
             <div><dt>范围</dt><dd>第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
             <div><dt>结果</dt><dd>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
+          {maskedFrameWarning ? (
+            <p className="fla-frame-sequence-unsupported" role="status">
+              第 {maskedFrameWarning.frameIndex + 1} 帧的部分遮罩内容未显示。{maskedFrameWarning.preview.maskWarning}
+            </p>
+          ) : null}
            <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
             <summary>更多详情</summary>
             <ul>

@@ -61,6 +61,7 @@ export interface FlaDisplayListLayer {
   readonly frameFilter?: FlaDisplayListBlurFilter;
   /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
   readonly maskLayerId?: string;
+  readonly unsupportedMaskReason?: string;
   /** Source XFL mask identity linked to this layer through parentLayerIndex. */
   readonly maskedBy?: string;
 }
@@ -206,11 +207,13 @@ export interface FlaResolvedBitmapNode {
 export interface FlaResolvedClipShape {
   readonly shapeId: string;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
 /** One XFL mask; its filled vector shapes form a union within this clip path. */
 export interface FlaResolvedClipPath {
   readonly shapes: readonly FlaResolvedClipShape[];
+  readonly sourcePath?: string;
 }
 
 export interface FlaResolvedGroupNode {
@@ -256,6 +259,7 @@ export interface FlaResolvedDisplayList {
   readonly frameIndex: number;
   readonly layers: readonly FlaResolvedDisplayLayer[];
   readonly resolvedNodeCount: number;
+  readonly maskDiagnostics?: readonly string[];
 }
 
 export type FlaDisplayListResolverErrorCode =
@@ -284,6 +288,8 @@ interface ResolveContext {
   readonly limits: FlaDisplayListResolverLimits;
   visitedNodeCount: number;
   resolvedNodeCount: number;
+  readonly maskDiagnostics: Set<string>;
+  maskFailureCount: number;
 }
 
 type ResolveNodesResult =
@@ -364,16 +370,17 @@ function collectMaskShapes(
   const shapes: FlaResolvedClipShape[] = [];
   const visit = (node: FlaResolvedDisplayNode, nodePath: string): FlaDisplayListResolverFailure | null => {
     if (node.kind === 'shape') {
-      if (node.clipPaths?.length) {
-        return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Nested or inherited masks on a mask item are unsupported', nodePath);
-      }
-      shapes.push({ shapeId: node.shapeId, worldTransform: node.worldTransform });
+      shapes.push({
+        shapeId: node.shapeId,
+        worldTransform: node.worldTransform,
+        ...(node.clipPaths?.length ? { clipPaths: node.clipPaths } : {}),
+      });
       return null;
     }
-    if (node.kind === 'bitmap' || (node.kind === 'group' && node.symbolLibraryItemName)) {
+    if (node.kind === 'bitmap' || (node.kind === 'group' && node.opaque)) {
       return failure(
         'UNSUPPORTED_DISPLAY_CONTENT',
-        'Only static vector shapes and groups are supported as mask items',
+        'Only filled vector geometry is supported as mask items',
         nodePath,
       );
     }
@@ -393,9 +400,6 @@ function collectMaskShapes(
     if (!node) return failure('INVALID_INPUT', 'Missing mask node', `${sourcePath}/node[${index}]`);
     const nodeFailure = visit(node, `${sourcePath}/node[${index}]`);
     if (nodeFailure) return nodeFailure;
-  }
-  if (shapes.length === 0) {
-    return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask layer has no filled vector-shape items', sourcePath);
   }
   return { ok: true, shapes };
 }
@@ -427,28 +431,28 @@ function resolveLayers(
     if (maskLayers.has(layer.maskLayerId)) {
       return failure('INVALID_INPUT', 'Duplicate source mask identity', `${sourcePath}/layer[${index}]`);
     }
-    if (!layer.visible) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Hidden XFL masks cannot be previewed safely', `${sourcePath}/layer[${index}]`);
-    }
     maskLayers.set(layer.maskLayerId, layer);
   }
 
-  const linkedLayerCountByMask = new Map<string, number>();
-  for (let index = 0; index < frameContext.layers.length; index += 1) {
-    const layer = frameContext.layers[index];
-    if (!layer?.maskedBy) continue;
-    if (!maskLayers.has(layer.maskedBy)) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer references a missing mask layer', `${sourcePath}/layer[${index}]`);
+  // A dependency failure must not paint. An empty clip list means
+  // an authored blank/uncovered mask layer, which Animate exports without a clip.
+  type MaskResult = { readonly ok: true; readonly clips: readonly FlaResolvedClipPath[] } | FlaDisplayListResolverFailure;
+  const maskCache = new Map<string, MaskResult>();
+  const buildMask = (maskId: string, ancestry: readonly string[]): MaskResult => {
+    if (ancestry.includes(maskId) || ancestry.length >= context.limits.maxRecursionDepth) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask dependency is cyclic or too deeply nested', sourcePath);
     }
-    linkedLayerCountByMask.set(layer.maskedBy, (linkedLayerCountByMask.get(layer.maskedBy) ?? 0) + 1);
-  }
-
-  const clipPathByMaskId = new Map<string, FlaResolvedClipPath>();
-  for (const [maskId, layer] of maskLayers) {
-    if ((linkedLayerCountByMask.get(maskId) ?? 0) === 0) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'XFL mask has no linked masked layer', `${sourcePath}:${maskId}`);
-    }
+    const layer = maskLayers.get(maskId);
+    if (!layer) return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked layer references a missing mask', sourcePath);
     const maskPath = `${sourcePath}/mask(${layer.name})`;
+    if (layer.unsupportedMaskReason || layer.frameFilter) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', layer.unsupportedMaskReason ?? 'Mask filter is unsupported', maskPath);
+    }
+    const enclosing = layer.maskedBy ? resolveMask(layer.maskedBy, [...ancestry, maskId])
+      : { ok: true as const, clips: [] };
+    if (!enclosing.ok) return enclosing;
+    if (layer.elements.length === 0) return enclosing;
+    const diagnosticCount = context.maskFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
       parentTransform,
@@ -459,10 +463,21 @@ function resolveLayers(
       [],
     );
     if (!resolvedMask.ok) return resolvedMask;
+    if (context.maskFailureCount !== diagnosticCount) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'A nested mask dependency could not be sampled', maskPath);
+    }
     const maskShapes = collectMaskShapes(resolvedMask.nodes, maskPath);
     if (!maskShapes.ok) return maskShapes;
-    clipPathByMaskId.set(maskId, { shapes: maskShapes.shapes });
-  }
+    // A present symbol with no display geometry has an empty silhouette.
+    return { ok: true, clips: [...enclosing.clips, { shapes: maskShapes.shapes, sourcePath: maskPath }] };
+  };
+  const resolveMask = (maskId: string, ancestry: readonly string[] = []): MaskResult => {
+    const cached = maskCache.get(maskId);
+    if (cached) return cached;
+    const result = buildMask(maskId, ancestry);
+    maskCache.set(maskId, result);
+    return result;
+  };
 
   const layers: FlaResolvedDisplayLayer[] = [];
   for (let layerIndex = 0; layerIndex < frameContext.layers.length; layerIndex += 1) {
@@ -474,12 +489,17 @@ function resolveLayers(
     if (layer.maskLayerId) continue;
     if (!layer.visible) continue;
 
-    const ownClipPath = layer.maskedBy ? clipPathByMaskId.get(layer.maskedBy) : undefined;
-    if (layer.maskedBy && !ownClipPath) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer has no usable mask geometry', layerPath);
+    const mask = layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
+    if (mask && !mask.ok) {
+      if (mask.code === 'MAX_RESOLVED_NODES_EXCEEDED') return mask;
+      context.maskFailureCount += 1;
+      if (context.maskDiagnostics.size < 32) {
+        context.maskDiagnostics.add(`${layer.name}: ${mask.message} (${mask.sourcePath})`.slice(0, 500));
+      }
+      continue;
     }
-    const activeClipPaths = ownClipPath
-      ? [...inheritedClipPaths, ownClipPath]
+    const activeClipPaths = mask?.clips.length
+      ? [...inheritedClipPaths, ...mask.clips]
       : inheritedClipPaths;
 
     const resolved = resolveElements(
@@ -805,6 +825,8 @@ export function resolveFlaDisplayList(
     limits: resolvedLimits,
     visitedNodeCount: 0,
     resolvedNodeCount: 0,
+    maskDiagnostics: new Set(),
+    maskFailureCount: 0,
   };
   const layers = resolveLayers(
     input.root.frameContext,
@@ -823,6 +845,7 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
+      ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
     },
   };
 }

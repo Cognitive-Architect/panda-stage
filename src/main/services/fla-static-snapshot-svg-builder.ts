@@ -107,6 +107,7 @@ export interface BuildSvgSuccess {
   // Whether any vector path was emitted; a bitmap-only snapshot can still
   // contain visible content when this is false.
   hasRenderablePath: boolean;
+  readonly maskWarning?: string;
 }
 
 export interface BuildSvgFailure {
@@ -2561,7 +2562,7 @@ function resolveTargetDisplayList(
       );
       if (!frameContext.ok) return frameContext;
       for (const layer of frameContext.value.layers) {
-        if (!layer.visible) continue;
+        if (!layer.visible && !layer.maskLayerId) continue;
         const captureError = captureShapeBlocks(layer.elements);
         if (captureError) {
           return {
@@ -2720,7 +2721,7 @@ export async function buildRenderableTargetCatalog(
       resolved: resolved.ok,
     });
     let unsupportedReason = check.unsupportedReason;
-    if (resolved.ok && !unsupportedReason && !check.isBlank) {
+    if (resolved.ok && !unsupportedReason && (!check.isBlank || resolved.displayList.maskDiagnostics?.length)) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
@@ -3722,25 +3723,37 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: true, id };
   };
 
-  const registeredClipPathIds = new Map<FlaResolvedClipPath, string>();
+  const registeredClips = new Map<FlaResolvedClipPath, RegisteredClip>();
+  const maskWarnings = new Set(displayList.maskDiagnostics);
+  let emittedLeafCount = 0;
+  type RegisteredClip = { readonly ok: true; readonly id: string; readonly geometry: string };
+  const clipId = (identity: string) =>
+    `fla-mask-clip-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+  const registerClipDefinition = (id: string, definition: string): BuildSvgFailure | null => {
+    const existing = definitions.get(id);
+    if (existing) {
+      return existing === definition ? null
+        : { ok: false, code: 'RENDER_FAILED', message: 'Mask definition id collision detected' };
+    }
+    const definitionBytes = Buffer.byteLength(definition, 'utf8');
+    if (clipDefinitionBytes + definitionBytes + gradientDefinitionBytes + bitmapDefinitionBytes + emittedContentBytes >
+        FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    definitions.set(id, definition);
+    clipDefinitionBytes += definitionBytes;
+    return null;
+  };
+
   const registerClipPath = (
     clipPath: FlaResolvedClipPath,
-  ): { readonly ok: true; readonly id: string } | BuildSvgFailure => {
-    const existingId = registeredClipPathIds.get(clipPath);
-    if (existingId) return { ok: true, id: existingId };
-    if (!clipPath.shapes.length || clipPath.shapes.length > 100_000) {
-      return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'XFL mask has no bounded vector-shape geometry' };
+    depth = 0,
+  ): RegisteredClip | BuildSvgFailure => {
+    const existing = registeredClips.get(clipPath);
+    if (existing) return existing;
+    if (depth >= 64 || clipPath.shapes.length > 100_000) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'XFL mask exceeds its nesting or geometry budget' };
     }
-    const identity = JSON.stringify(clipPath.shapes.map(({ shapeId, worldTransform }) => [
-      shapeId,
-      worldTransform.a,
-      worldTransform.b,
-      worldTransform.c,
-      worldTransform.d,
-      worldTransform.tx,
-      worldTransform.ty,
-    ]));
-    const id = `fla-mask-clip-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const clipNodes: string[] = [];
     let clipPathByteLength = 0;
     for (const clipShape of clipPath.shapes) {
@@ -3764,6 +3777,20 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (reconstructed.result.fills.length === 0) {
         return { ok: false, code: 'TARGET_UNSUPPORTED', message: `XFL mask shape contains no filled vector area: ${clipShape.shapeId}` };
       }
+      let enclosingId: string | undefined;
+      for (const enclosure of clipShape.clipPaths ?? []) {
+        const nested = registerClipPath(enclosure, depth + 1);
+        if (!nested.ok) return nested;
+        if (!enclosingId) {
+          enclosingId = nested.id;
+          continue;
+        }
+        const intersectionId = clipId(`${enclosingId}&${nested.id}`);
+        const problem = registerClipDefinition(intersectionId,
+          `<clipPath id="${intersectionId}" clipPathUnits="userSpaceOnUse" clip-path="url(#${enclosingId})">${nested.geometry}</clipPath>`);
+        if (problem) return problem;
+        enclosingId = intersectionId;
+      }
       for (const fill of reconstructed.result.fills) {
         if ('bitmapPath' in fill.paint) {
           return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'XFL bitmap-filled mask is unsupported' };
@@ -3772,7 +3799,16 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         if (pathBytes <= 0 || pathBytes > MAX_EDGE_CHARS) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'XFL mask path exceeds the geometry byte budget' };
         }
-        const clipNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(clipShape.worldTransform)}" fill="white" fill-rule="nonzero"/>`;
+        const attributes = `d="${fill.pathD}" transform="${matrixToSvgTransform(clipShape.worldTransform)}" fill="white" fill-rule="nonzero" clip-rule="nonzero"`;
+        let clipNode = `<path ${attributes}/>`;
+        if (enclosingId) {
+          // The reference carries the shape transform. The clip on the use
+          // therefore stays in the same world coordinates as the enclosing mask.
+          const shapeId = `${clipId(attributes)}-shape`;
+          const problem = registerClipDefinition(shapeId, `<path id="${shapeId}" ${attributes}/>`);
+          if (problem) return problem;
+          clipNode = `<use href="#${shapeId}" clip-path="url(#${enclosingId})"/>`;
+        }
         clipPathByteLength += Buffer.byteLength(clipNode, 'utf8');
         if (clipPathByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'XFL mask geometry exceeds the snapshot byte budget' };
@@ -3780,21 +3816,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         clipNodes.push(clipNode);
       }
     }
-    const definition = `<clipPath id="${id}" clipPathUnits="userSpaceOnUse">${clipNodes.join('')}</clipPath>`;
-    const definitionBytes = Buffer.byteLength(definition, 'utf8');
-    if (clipDefinitionBytes + definitionBytes + gradientDefinitionBytes + bitmapDefinitionBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
-    }
-    const existingDefinition = definitions.get(id);
-    if (existingDefinition && existingDefinition !== definition) {
-      return { ok: false, code: 'RENDER_FAILED', message: 'Mask clip-path id collision detected' };
-    }
-    if (!existingDefinition) {
-      definitions.set(id, definition);
-      clipDefinitionBytes += definitionBytes;
-    }
-    registeredClipPathIds.set(clipPath, id);
-    return { ok: true, id };
+    const geometry = clipNodes.join('');
+    const id = clipId(geometry);
+    const problem = registerClipDefinition(id, `<clipPath id="${id}" clipPathUnits="userSpaceOnUse">${geometry}</clipPath>`);
+    if (problem) return problem;
+    const result = { ok: true as const, id, geometry };
+    registeredClips.set(clipPath, result);
+    return result;
   };
 
   const appendEmittedNode = (
@@ -3804,9 +3832,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     let wrappedNode = node;
     for (const clipPath of clipPaths) {
       const registered = registerClipPath(clipPath);
-      if (!registered.ok) return registered;
+      if (!registered.ok) {
+        if (registered.code !== 'TARGET_UNSUPPORTED') return registered;
+        maskWarnings.add(`${clipPath.sourcePath ?? '遮罩'}: ${registered.message}`);
+        return null;
+      }
       wrappedNode = `<g clip-path="url(#${registered.id})">${wrappedNode}</g>`;
     }
+    emittedLeafCount += 1;
     const nodeBytes = Buffer.byteLength(wrappedNode, 'utf8');
     if (gradientDefinitionBytes + clipDefinitionBytes + bitmapDefinitionBytes + emittedContentBytes + nodeBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
@@ -4118,6 +4151,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
+  if (maskWarnings.size && emittedLeafCount === 0) {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings].join('；').slice(0, 500) };
+  }
   return {
     ok: true,
     svg,
@@ -4127,6 +4163,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     pathCommandCount,
     firstFillColor,
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
+    ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

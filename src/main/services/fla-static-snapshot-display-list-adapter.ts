@@ -5,8 +5,7 @@
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
  * adds Classic Motion interpolation and bounded solid-fill Shape Tween
- * interpolation. Non-vector/animated masks and ActionScript remain unsupported.
- * Static filled-vector mask layers have a bounded resolver path.
+ * interpolation. Masks use the same source frame and the bounded vector resolver.
  */
 
 import crypto from 'node:crypto';
@@ -14,6 +13,7 @@ import {
   buildFlaTimelineFrameSpanIndex,
   resolveFlaTimelineFrameSpan,
   type FlaNormalizedFrameSpan,
+  type FlaTimelineFrameSelection,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
 import {
@@ -1112,10 +1112,10 @@ function readMorphPoint(raw: string | undefined): readonly [number, number] | nu
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
 }
 
-function readMorphFill(shape: FlaXflElementBlock): readonly number[] | null {
+function readMorphFill(shape: FlaXflElementBlock, mask: boolean): readonly number[] | null {
   const fills = directChild(shape.xml, shape.name, 'fills');
   const strokes = directChild(shape.xml, shape.name, 'strokes');
-  if (!fills || (strokes && getFlaXflDirectChildren(strokes.xml, strokes.name).length > 0)) return null;
+  if (!fills || (!mask && strokes && getFlaXflDirectChildren(strokes.xml, strokes.name).length > 0)) return null;
   const styles = getFlaXflDirectChildren(fills.xml, fills.name);
   const style = styles[0];
   if (styles.length !== 1 || style?.name !== 'FillStyle' || style.attributes.index !== '1') return null;
@@ -1133,9 +1133,10 @@ function sampleSolidShapeTween(
   start: FlaXflElementBlock,
   end: FlaXflElementBlock,
   linearProgress: number,
+  mask = false,
 ): string | null {
-  const startFill = readMorphFill(start);
-  const endFill = readMorphFill(end);
+  const startFill = readMorphFill(start, mask);
+  const endFill = readMorphFill(end, mask);
   const startMatrix = readDirectMatrix(start);
   const endMatrix = readDirectMatrix(end);
   if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
@@ -1154,7 +1155,7 @@ function sampleSolidShapeTween(
   const contour = contours[0];
   if (contours.length !== 1 || contour?.name !== 'MorphSegment' ||
       contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
-      contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0') return null;
+      (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
   const originA = readMorphPoint(contour.attributes.startPointA);
   const originB = readMorphPoint(contour.attributes.startPointB);
   const curves = getFlaXflDirectChildren(contour.xml, contour.name);
@@ -1527,9 +1528,9 @@ interface RigMotionParentPoses {
   readonly maxParentDepth: number;
 }
 
-function isNormalRigLayer(layer: FlaXflElementBlock | undefined): boolean {
+function isRigDisplayLayer(layer: FlaXflElementBlock | undefined): boolean {
   const layerType = (layer?.attributes.layerType ?? '').trim().toLocaleLowerCase('en-US');
-  return layerType === '' || layerType === 'normal';
+  return layerType === '' || layerType === 'normal' || layerType === 'mask' || layerType === 'masked';
 }
 
 /**
@@ -1546,8 +1547,8 @@ function rigParentLayerForFrame(
   if (!/^\d+$/u.test(rawRigId) || !Number.isSafeInteger(Number(rawRigId))) {
     return { ok: false, message: `DOMFrame parentLayerIndex=${rawRigId} is not a numeric Rig id` };
   }
-  if (!isNormalRigLayer(layers[childLayerIndex])) {
-    return { ok: false, message: 'Rig parenting is supported only on normal child layers' };
+  if (!isRigDisplayLayer(layers[childLayerIndex])) {
+    return { ok: false, message: 'Rig parenting requires a display layer' };
   }
   const matches = layers.flatMap((layer, layerIndex) =>
     layer.attributes.layerRiggingIndex === rawRigId ? [layerIndex] : [],
@@ -1562,8 +1563,8 @@ function rigParentLayerForFrame(
   if (parentLayerIndex === childLayerIndex) {
     return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} points to its own layer` };
   }
-  if (!isNormalRigLayer(layers[parentLayerIndex])) {
-    return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} resolves to a non-normal layer` };
+  if (!isRigDisplayLayer(layers[parentLayerIndex])) {
+    return { ok: false, message: `DOMFrame Rig parent id ${rawRigId} does not resolve to a display layer` };
   }
   return { ok: true, value: parentLayerIndex };
 }
@@ -1775,7 +1776,7 @@ function computeRigLayerObjectMatrix(
   const layer = context.layers[layerIndex];
   const indexedLayer = context.frameSpanIndex.layers[layerIndex];
   if (!layer || !indexedLayer) return { ok: false, message: `Rig parent layer ${layerIndex} has no frame spans` };
-  if (!isNormalRigLayer(layer)) return { ok: false, message: `Rig parent layer ${layerIndex} is not a normal layer` };
+  if (!isRigDisplayLayer(layer)) return { ok: false, message: `Rig parent layer ${layerIndex} is not a display layer` };
   const span = indexedLayer.spans.find((candidate) =>
     candidate.index <= frameIndex && frameIndex < candidate.endExclusive);
   if (!span) return { ok: false, message: `Rig parent layer ${layerIndex} has no authored pose at frame ${frameIndex}` };
@@ -2151,24 +2152,26 @@ function buildGraphicFrameContext(
       maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
     }
   }
-  const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
-  const unsupportedDisplayReasons: string[] = [];
-  for (const selection of resolution.layers) {
-    const layer = layers[selection.layerIndex];
-    if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
-
+  const sampleLayer = (
+    selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
+    layerReasons: string[],
+    isMask: boolean,
+  ): FlaStaticSnapshotDisplaySourceResult<{
+    readonly elements: readonly FlaDisplayListElement[];
+    readonly frameFilter?: FlaDisplayListBlurFilter;
+  }> => {
+    // Animate's export still uses mask geometry when the mask layer is hidden.
+    const sampleVisible = selection.visible || isMask;
     let elements: readonly FlaDisplayListElement[] = [];
     let frameFilter: FlaDisplayListBlurFilter | undefined;
-    if (selection.kind === 'object-motion' && selection.visible) {
-      const sampled = maskLayerIds.has(selection.layerIndex)
-        ? fail('RENDER_FAILED', '此帧含对象补间遮罩，暂未支持')
-        : buildObjectMotionFrameElements(selection.sourceFrame, selection.span.index, frameIndex, scope,
-            selection.layerIndex, rigContext, unsupportedDisplayReasons);
+    if (selection.kind === 'object-motion' && sampleVisible) {
+      const sampled = buildObjectMotionFrameElements(selection.sourceFrame, selection.span.index, frameIndex, scope,
+          selection.layerIndex, rigContext, layerReasons);
       if (sampled.ok) elements = sampled.value;
       else if (sampled.code === 'BUDGET_EXCEEDED') return sampled;
-      else unsupportedDisplayReasons.push(sampled.message);
-    } else if (selection.kind === 'unsupported-tween-interior' && selection.visible &&
-        selection.span.tweenType === 'shape' && !maskLayerIds.has(selection.layerIndex)) {
+      else layerReasons.push(sampled.message);
+    } else if (selection.kind === 'unsupported-tween-interior' && sampleVisible &&
+        selection.span.tweenType === 'shape') {
       const spans = frameSpanIndex.layers[selection.layerIndex]?.spans;
       const start = spans?.find((span) => span.index === selection.span.index);
       const end = spans?.find((span) => span.index === selection.span.endExclusive);
@@ -2179,8 +2182,9 @@ function buildGraphicFrameContext(
       const endShape = endElements[0];
       const sampledXml = startElements.length === 1 && endElements.length === 1 &&
         startShape?.name === 'DOMShape' && endShape?.name === 'DOMShape'
-        ? sampleSolidShapeTween(start.sourceFrame, startShape, endShape, (frameIndex - start.index) / start.duration)
+        ? sampleSolidShapeTween(start.sourceFrame, startShape, endShape, (frameIndex - start.index) / start.duration, isMask)
         : null;
+      if (isMask && !sampledXml) return fail('RENDER_FAILED', '遮罩的形状补间超出支持范围');
       // When the morph pair is outside the supported subset, keep the authored
       // start drawing on this layer and continue evaluating the other layers.
       const frame = start.sourceFrame;
@@ -2195,7 +2199,7 @@ function buildGraphicFrameContext(
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: start.index,
         sourceParentSpanTweenType: 'shape',
-        unsupportedDisplayReasons,
+        unsupportedDisplayReasons: layerReasons,
         state,
       });
       if (!parsed.ok) return parsed;
@@ -2286,7 +2290,7 @@ function buildGraphicFrameContext(
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
         ...(motionSync !== undefined ? { sourceParentMotionTweenSync: motionSync } : {}),
         ...(motionSpanMetadata ? { motionTweenEndpoint: true } : {}),
-        unsupportedDisplayReasons,
+        unsupportedDisplayReasons: layerReasons,
         state,
       });
       if (!parsed.ok) return parsed;
@@ -2303,11 +2307,11 @@ function buildGraphicFrameContext(
         if (!riggedElements.fromObjectMotion) {
           return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has unsupported Rig parenting: ${riggedElements.message}`);
         }
-        unsupportedDisplayReasons.push(riggedElements.message);
+        layerReasons.push(riggedElements.message);
       } else {
         elements = riggedElements.value;
       }
-    } else if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
+    } else if (selection.kind === 'unsupported-tween-interior' && sampleVisible) {
       const rejectTween = (reason: string) => fail(
         'RENDER_FAILED',
         `Graphic frame ${frameIndex} requires unsupported ${selection.span.tweenType} tween interpolation on layer ${selection.layerIndex}: ${reason}`,
@@ -2378,7 +2382,7 @@ function buildGraphicFrameContext(
           sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
           ...(sourceMotionSync !== undefined ? { sourceParentMotionTweenSync: sourceMotionSync } : {}),
           motionTweenEndpoint: true,
-          unsupportedDisplayReasons,
+          unsupportedDisplayReasons: layerReasons,
           state,
         });
       };
@@ -2455,6 +2459,23 @@ function buildGraphicFrameContext(
       }
       elements = interpolatedElements;
     }
+    return { ok: true, value: { elements, ...(frameFilter ? { frameFilter } : {}) } };
+  };
+
+  const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  const unsupportedDisplayReasons: string[] = [];
+  for (const selection of resolution.layers) {
+    const layer = layers[selection.layerIndex];
+    if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
+
+    const isMask = maskLayerIds.has(selection.layerIndex);
+    const layerReasons: string[] = [];
+    const sampled = sampleLayer(selection, layerReasons, isMask);
+    if (!sampled.ok && (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
+    const { elements, frameFilter } = sampled.ok ? sampled.value : { elements: [], frameFilter: undefined };
+    const maskReason = isMask ? (!sampled.ok ? sampled.message : layerReasons[0] ??
+      (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
+    if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
     let maskedBy: string | undefined;
     const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
@@ -2470,6 +2491,7 @@ function buildGraphicFrameContext(
       name: layer.attributes.name?.trim() || `Layer ${selection.layerIndex + 1}`,
       visible: selection.visible,
       elements,
+      ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
       ...(maskLayerIds.has(selection.layerIndex)
         ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
         : {}),
@@ -2565,6 +2587,7 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
     if (!token) return false;
     cursor = token.end;
     if (token.closing) continue;
+    if (token.name === 'DOMLayer' && token.attributes.layerType?.toLowerCase() === 'mask') return true;
     if (token.name === 'DOMFrame' && token.attributes.tweenType?.trim().toLowerCase() === 'motion object') return true;
     if (token.name !== 'DOMSymbolInstance' || !hasMovieClips) continue;
     const name = token.attributes.libraryItemName?.trim();
