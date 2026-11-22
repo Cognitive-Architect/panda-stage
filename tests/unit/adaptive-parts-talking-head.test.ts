@@ -23,6 +23,7 @@ import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExpo
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
+import { characterStore } from '../../src/renderer/stores/characterStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
@@ -385,10 +386,12 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
   });
 
   it('supports UI head part binding (设为头部/移出头部 + 头 tag), intensity slider (0-200%), preview button without dirtying, and Undo/Redo', () => {
-    const setup = buildPhaseCProject({ withDialogue: false });
+    const setup = buildPhaseCProject({ withDialogue: true, withClipV1: true });
     // Clear existing head binding to test binding cleanly through UI
     const charSvc = new CharacterService();
-    const unboundProject = charSvc.setAdaptivePartsHeadMotionBinding(setup.project, setup.characterId, null);
+    let unboundProject = charSvc.setAdaptivePartsHeadMotionBinding(setup.project, setup.characterId, null);
+    unboundProject = upsertExpressionEventAtTime(unboundProject, IDS.shot, setup.layerId, setup.graphicExprId, 200);
+    unboundProject = upsertMouthCueEventAtTime(unboundProject, IDS.shot, setup.layerId, 'rest', 200);
     if (typeof globalThis.IntersectionObserver !== 'function') {
       globalThis.IntersectionObserver = class {
         observe() {}
@@ -496,5 +499,61 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
         ) as AdaptivePartsCharacter
       ).talkingHeadMotionIntensityPercent,
     ).toBeUndefined();
+
+    const row = (partId: string) => container!.querySelector<HTMLButtonElement>(
+      `[data-part-id="${partId}"] [data-testid="adaptive-parts-assembly-row-select"]`,
+    )!;
+    const addHead = () => container!.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-batch-set-head"]')!;
+    const removeHead = () => container!.querySelector<HTMLButtonElement>('[data-testid="adaptive-parts-batch-remove-head"]')!;
+    const charFrom = (project: Project) => project.characters.find(({ id }) => id === setup.characterId) as AdaptivePartsCharacter;
+    const beforeBatch = editorProjectStore.getSnapshot()!;
+    const undoBeforeBatch = editorProjectStore.history.getSnapshot().undoCount;
+    act(() => row(PART_FACE).click());
+    for (const id of [PART_HEAD, PART_FRONT_HAIR]) {
+      act(() => row(id).dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })));
+    }
+    expect(editorProjectStore.getSnapshot()).toBe(beforeBatch);
+    const binding = vi.spyOn(characterStore, 'setAdaptivePartsHeadMotionBinding');
+    act(() => addHead().click());
+    const bound = editorProjectStore.getSnapshot()!;
+    const winner = [PART_BACK_HAIR, PART_FACE, PART_HEAD, PART_FRONT_HAIR];
+    expect(binding).toHaveBeenCalledTimes(1);
+    expect(binding).toHaveBeenCalledWith(setup.characterId, winner);
+    expect(charFrom(bound.project).headMotionBinding?.partIds).toEqual(winner);
+    expect(charFrom(bound.project).parts).toEqual(charFrom(beforeBatch.project).parts);
+    expect(charFrom(bound.project).faceBinding).toEqual(charFrom(beforeBatch.project).faceBinding);
+    expect(bound.project.shots).toEqual(beforeBatch.project.shots);
+    expect(bound.revision).toBe(beforeBatch.revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoBeforeBatch + 1);
+    const selected = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()?.getSnapshot()?.selectedPartIds;
+    expect(selected).toEqual([PART_FACE, PART_HEAD, PART_FRONT_HAIR]);
+    expect(addHead().disabled).toBe(true);
+
+    const shot = bound.project.shots[0]!;
+    const frame = evaluateShotAtTime(shot, 225, bound.project);
+    const displayed = projectShotDialogueVisual(bound.project, shot, frame);
+    const exported = evaluateExportShotAtTime(bound.project, shot, 225, DIALOGUE_ID);
+    const visual = (evaluated: typeof frame) => resolveLayerVisualParts(
+      bound.project, shot, evaluated.layers.find(({ id }) => id === setup.layerId)!, 225,
+    );
+    const neutralParts = visual(frame).parts;
+    const speakingParts = visual(displayed).parts;
+    expect(speakingParts).toEqual(visual(exported).parts);
+    expect(speakingParts.map(({ drawOrder }) => drawOrder)).toEqual([0, 1, 2, 3, 4]);
+    const bob = resolveTalkingHeadMotionTransform(125, 1200, 100);
+    for (const [index, partId] of [PART_BACK_HAIR, PART_BODY, PART_HEAD, PART_FACE, PART_FRONT_HAIR].entries()) {
+      expect(speakingParts[index]!.imageTransform!.tx - neutralParts[index]!.imageTransform!.tx)
+        .toBeCloseTo(partId === PART_BODY ? 0 : bob.translateX, 6);
+    }
+    act(() => editorProjectStore.undo());
+    expect(charFrom(editorProjectStore.getSnapshot()!.project).headMotionBinding?.partIds).toEqual([PART_BACK_HAIR, PART_FACE]);
+    act(() => editorProjectStore.redo());
+    expect(charFrom(editorProjectStore.getSnapshot()!.project).headMotionBinding?.partIds).toEqual(winner);
+    act(() => removeHead().click());
+    expect(binding).toHaveBeenCalledTimes(2);
+    expect(binding).toHaveBeenLastCalledWith(setup.characterId, [PART_BACK_HAIR]);
+    expect(charFrom(editorProjectStore.getSnapshot()!.project).headMotionBinding?.partIds).toEqual([PART_BACK_HAIR]);
+    expect(removeHead().disabled).toBe(true);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoBeforeBatch + 2);
   });
 });

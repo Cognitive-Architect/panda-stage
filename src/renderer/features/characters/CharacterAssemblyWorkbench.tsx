@@ -1661,20 +1661,32 @@ function AdaptivePartsAssemblyWorkbench({
       });
     });
   };
-  const toggleHeadMotionPart = (partId: string): void => {
-    const exists = activeHeadMotionPartSet.has(partId);
-    const nextIds = exists
-      ? activeHeadMotionPartIds.filter((id) => id !== partId)
-      : [...activeHeadMotionPartIds, partId];
+  const changeHeadMotionParts = (
+    partIds: readonly string[],
+    operation: 'add' | 'remove',
+  ): void => {
     runImmediateCharacterMutation(() => {
+      const definition = characterStore.getAdaptivePartsDefinition(session.characterId);
+      const validPartIds = new Set(definition.parts.map((part) => part.partId));
+      const chosenIds = new Set(partIds.filter((id) => validPartIds.has(id)));
+      if (chosenIds.size === 0) return;
+      const currentPartIds = definition.headMotionBinding?.partIds ?? [];
+      const nextIds = operation === 'add'
+        ? [...new Set([...currentPartIds, ...chosenIds])]
+        : currentPartIds.filter((id) => !chosenIds.has(id));
       characterStore.setAdaptivePartsHeadMotionBinding(
         session.characterId,
         nextIds.length > 0 ? nextIds : null,
       );
+      if (nextIds.length === 0) setHeadMotionPreviewPlaying(false);
     });
-    if (nextIds.length === 0) {
-      setHeadMotionPreviewPlaying(false);
-    }
+  };
+  const toggleHeadMotionPart = (partId: string): void => {
+    changeHeadMotionParts([partId], activeHeadMotionPartSet.has(partId) ? 'remove' : 'add');
+  };
+  const changeSelectedHeadMotionParts = (operation: 'add' | 'remove'): void => {
+    const currentSelection = activeHandle()?.getSnapshot()?.selectedPartIds ?? [];
+    if (currentSelection.length > 1) changeHeadMotionParts(currentSelection, operation);
   };
   const updateFacePlacementDraft = (patch: Partial<FacePlacement>): void => {
     setDefinition((definition) => {
@@ -2280,9 +2292,9 @@ function AdaptivePartsAssemblyWorkbench({
         return;
       }
       if (event.code !== 'Space' || event.ctrlKey || event.altKey || event.metaKey ||
-          event.defaultPrevented || (event.target as Element | null)?.closest?.('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
+          event.defaultPrevented || (event.target as Element | null)?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
       spaceHeld.current = true;
-      event.preventDefault();
+      if (!(event.target as Element | null)?.closest?.('button')) event.preventDefault();
     };
     const onKeyUp = (event: KeyboardEvent): void => {
       if (event.code === 'Space') spaceHeld.current = false;
@@ -3194,6 +3206,26 @@ function AdaptivePartsAssemblyWorkbench({
         ) : null}
         <div className="adaptive-parts-assembly-canvas-toolbar">
           {selectedPartIds.size > 0 ? <output>选中 {selectedPartIds.size} 个</output> : null}
+          {selectedPartIds.size > 1 ? (
+            <>
+              <button
+                data-testid="adaptive-parts-batch-set-head"
+                disabled={session.selectedPartIds.every((id) => activeHeadMotionPartSet.has(id))}
+                onClick={() => changeSelectedHeadMotionParts('add')}
+                type="button"
+              >
+                设为头部
+              </button>
+              <button
+                data-testid="adaptive-parts-batch-remove-head"
+                disabled={!session.selectedPartIds.some((id) => activeHeadMotionPartSet.has(id))}
+                onClick={() => changeSelectedHeadMotionParts('remove')}
+                type="button"
+              >
+                移出头部
+              </button>
+            </>
+          ) : null}
           <button type="button" aria-label="缩小画布" onClick={() => zoomFromToolbar(1 / 1.25)}>
             <Minus size={16} aria-hidden="true" />
           </button>

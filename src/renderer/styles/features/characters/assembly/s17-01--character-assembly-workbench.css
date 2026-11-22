@@ -1558,6 +1558,7 @@
   bottom: var(--ui-space-2);
   left: var(--ui-space-2);
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
@@ -1577,6 +1578,11 @@
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
+}
+
+.adaptive-parts-assembly-canvas-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .adaptive-parts-assembly-canvas-toolbar output {

@@ -29,6 +29,8 @@ describe('Adaptive Parts assembly camera and hit testing', () => {
     expect(pointAt(resized, 410, 310)).toEqual(pointAt(panned, 320, 240));
     expect(resized.scale).toBe(1.2);
     expect(zoomAssemblyViewportTransformAtPoint(fit, anchor, 99).scale).toBe(4);
+    const distantFit = { ...fit, scale: 0.02 };
+    expect(zoomAssemblyViewportTransformAtPoint(distantFit, anchor, 0.016).scale).toBe(0.02);
   });
 
   it('hits Graphic and image alpha in painter order with an off-center mirrored raster', () => {

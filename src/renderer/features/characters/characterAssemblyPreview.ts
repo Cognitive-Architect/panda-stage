@@ -352,7 +352,7 @@ export function zoomAssemblyViewportTransformAtPoint(
   }
   const scale = Math.min(
     ASSEMBLY_CAMERA_MAX_SCALE,
-    Math.max(ASSEMBLY_CAMERA_MIN_SCALE, requestedScale),
+    Math.max(Math.min(ASSEMBLY_CAMERA_MIN_SCALE, transform.scale), requestedScale),
   );
   const logicalX = (point.x - transform.offsetX) / transform.scale;
   const logicalY = (point.y - transform.offsetY) / transform.scale;

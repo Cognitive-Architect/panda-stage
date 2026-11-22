@@ -185,11 +185,15 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
       { x: 960, y: 540 },
     );
     project = layerRes.project;
+    project = charService.setAdaptivePartsHeadMotionBinding(project, charId, [partBackId, partFaceId]);
 
     await projectService.save(projectRoot, project, 1);
     const reopened = await projectService.open(projectRoot);
     expect(reopened.sourceVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(reopened.project).toStrictEqual(project);
+    expect(reopened.project.characters.find(({ id }) => id === charId)).toMatchObject({
+      headMotionBinding: { partIds: [partBackId, partFaceId] },
+    });
 
     const shot = reopened.project.shots[0]!;
     const evaluated = evaluateShotAtTime(shot, 0, reopened.project);
