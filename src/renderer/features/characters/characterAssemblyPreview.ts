@@ -390,6 +390,12 @@ export function isCharacterAssemblyPending(
         staticAdjustment:
           part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
       })),
+      ...(character.faceBinding
+        ? { faceBinding: character.faceBinding }
+        : {}),
+      ...(character.headMotionBinding
+        ? { headMotionBinding: character.headMotionBinding }
+        : {}),
     };
     return JSON.stringify(normalized) !== JSON.stringify(session.draft);
   }
@@ -712,6 +718,7 @@ export function buildCharacterAssemblyPreviewVisual(
 export function buildAdaptivePartsAssemblyPreviewVisual(
   project: Project,
   session: AdaptivePartsAssemblySnapshot,
+  previewExpressionId?: string | null,
 ): LayerVisualParts | null {
   const existing = project.characters.find(
     (candidate): candidate is AdaptivePartsCharacter =>
@@ -742,6 +749,20 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
     sourceRootTransform: { ...session.draft.sourceRootTransform },
     parts: session.draft.parts.map(cloneCharacterPart),
   };
+  if (session.draft.faceBinding) {
+    character.faceBinding = session.draft.faceBinding;
+  } else {
+    delete character.faceBinding;
+  }
+  if (session.draft.headMotionBinding) {
+    character.headMotionBinding = session.draft.headMotionBinding;
+  } else {
+    delete character.headMotionBinding;
+  }
+  const activeExpressionId =
+    previewExpressionId === undefined
+      ? existing.defaultExpressionId
+      : previewExpressionId;
   const previewProject: Project = {
     ...project,
     characters: [
@@ -755,7 +776,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
     source: {
       kind: 'character',
       characterId: character.id,
-      expressionId: character.defaultVoiceProfileId,
+      ...(activeExpressionId ? { expressionId: activeExpressionId } : {}),
     },
     anchor: 'center',
     x: project.width / 2,
@@ -772,7 +793,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
   const evaluated: EvaluatedLayer = {
     id: layer.id,
     assetId: character.parts[0]!.assetId ?? character.parts[0]!.partId,
-    currentExpressionId: character.defaultVoiceProfileId,
+    currentExpressionId: activeExpressionId ?? null,
     mouthOverrideAssetId: null,
     anchor: layer.anchor,
     x: layer.x,

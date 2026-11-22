@@ -24,3 +24,15 @@ export function resolveCharacterFaceSource(project: Project, source: CharacterFa
     flaGraphic,
   };
 }
+
+/** Non-throwing variant so missing/broken Expression resources degrade locally. */
+export function resolveCharacterFaceSourceOrNull(
+  project: Project,
+  source: CharacterFaceSource,
+): ReturnType<typeof resolveCharacterFaceSource> | null {
+  try {
+    return resolveCharacterFaceSource(project, source);
+  } catch {
+    return null;
+  }
+}

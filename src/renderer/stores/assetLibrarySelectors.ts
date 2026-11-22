@@ -61,10 +61,16 @@ export function assetCategory(
   const characterAssetIds = new Set(
     project.characters.flatMap((character) =>
       character.mode === 'adaptive-parts'
-        ? character.parts.flatMap((part) => {
-            const visualSource = resolveCharacterPartVisualSource(part);
-            return visualSource.kind === 'image' ? [visualSource.assetId] : [];
-          })
+        ? [
+            ...character.parts.flatMap((part) => {
+              const visualSource = resolveCharacterPartVisualSource(part);
+              return visualSource.kind === 'image' ? [visualSource.assetId] : [];
+            }),
+            ...(character.expressions ?? []).flatMap((expression) =>
+              expression.assetId ? [expression.assetId] : [],
+            ),
+            ...(character.mouthOpenAssetId ? [character.mouthOpenAssetId] : []),
+          ]
         : [
             character.baseAssetId,
             ...(character.mode === 'composite' ? [character.bodyAssetId] : []),
@@ -106,6 +112,12 @@ export function selectAssetLibraryEntries(
           separatelyUsedAssetIds.add(visualSource.assetId);
         }
       });
+      for (const expression of character.expressions ?? []) {
+        if (expression.assetId) separatelyUsedAssetIds.add(expression.assetId);
+      }
+      if (character.mouthOpenAssetId) {
+        separatelyUsedAssetIds.add(character.mouthOpenAssetId);
+      }
       continue;
     }
     if (character.baseAssetId) separatelyUsedAssetIds.add(character.baseAssetId);

@@ -264,6 +264,59 @@ export function validateProjectReferences(
           );
         }
       });
+
+      const adaptiveExpressions = character.expressions ?? [];
+      if (adaptiveExpressions.length > 0) {
+        validateUniqueIds(
+          adaptiveExpressions,
+          ['characters', characterIndex, 'expressions'],
+          context,
+        );
+        validateUniqueNames(
+          adaptiveExpressions,
+          ['characters', characterIndex, 'expressions'],
+          context,
+        );
+        adaptiveExpressions.forEach((expression, expressionIndex) => {
+          if (expression.visualSource) {
+            validateFaceGraphic(
+              expression.visualSource,
+              ['characters', characterIndex, 'expressions', expressionIndex, 'visualSource'],
+            );
+            return;
+          }
+          const expressionAsset = expression.assetId ? assets.get(expression.assetId) : undefined;
+          if (!expressionAsset || expressionAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [
+                'characters',
+                characterIndex,
+                'expressions',
+                expressionIndex,
+                'assetId',
+              ],
+              `Expression references unknown or non-image asset: ${expression.assetId}`,
+            );
+          }
+        });
+      }
+      if (character.mouthOpenAssetId) {
+        const mouthAsset = assets.get(character.mouthOpenAssetId);
+        if (!mouthAsset || mouthAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'mouthOpenAssetId'],
+            `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
+          );
+        }
+      }
+      if (character.mouthOpenVisualSource) {
+        validateFaceGraphic(
+          character.mouthOpenVisualSource,
+          ['characters', characterIndex, 'mouthOpenVisualSource'],
+        );
+      }
     } else {
       validateUniqueIds(
         character.expressions,
@@ -487,11 +540,24 @@ export function validateProjectReferences(
         );
       } else if (character.mode === 'adaptive-parts') {
         if (characterSource.expressionId !== undefined) {
-          addIssue(
-            context,
-            ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
-            `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
-          );
+          const expressions = character.expressions ?? [];
+          if (expressions.length === 0) {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+              `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
+            );
+          } else if (
+            !expressions.some(
+              (expression) => expression.id === characterSource.expressionId,
+            )
+          ) {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+              `Layer references unknown character expression: ${characterSource.expressionId}`,
+            );
+          }
         }
       } else if (
         !characterSource.expressionId ||

@@ -19,6 +19,7 @@ import {
   characterPartPlacementForReplacement,
   characterPartSourceBounds,
   characterPartTransformFromStaticAdjustment,
+  cloneAdaptivePartsFaceBinding,
   evaluateFlaGraphicVisual,
   hasRenderableFlaGraphicSubtree,
   isFlaGraphicDefinition,
@@ -30,7 +31,6 @@ import {
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterPartStaticAdjustment,
-  type FlaGraphicDefinition,
   type ImageAsset,
   type LayerVisualPart,
   type BodyPlacement,
@@ -59,6 +59,10 @@ import {
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
+import {
+  ExpressionEditor,
+  type ExpressionResourceSwapRequest,
+} from './ExpressionEditor';
 import { GraphicFacePreview } from './GraphicFacePicker';
 import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
 import { useProjectImageThumbnails } from './CharacterIdentity';
@@ -489,17 +493,27 @@ function AdaptivePartsContextMenu({
   canReplace,
   disabled,
   displayName,
+  hasFaceBinding = false,
+  isFaceReplaceMember = false,
+  isFaceTarget = false,
   onRemove,
   onRename,
   onReplace,
+  onToggleFaceReplace,
+  onToggleFaceTarget,
 }: {
   canRemove: boolean;
   canReplace: boolean;
   disabled: boolean;
   displayName: string;
+  hasFaceBinding?: boolean;
+  isFaceReplaceMember?: boolean;
+  isFaceTarget?: boolean;
   onRemove: () => void;
   onRename: () => void;
   onReplace: () => void;
+  onToggleFaceReplace?: () => void;
+  onToggleFaceTarget?: () => void;
 }): React.JSX.Element {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -695,6 +709,26 @@ function AdaptivePartsContextMenu({
         >
           替换素材
         </button>
+        {onToggleFaceTarget ? (
+          <button
+            className="adaptive-parts-overflow-item"
+            data-testid="adaptive-parts-set-face-button"
+            onClick={() => runAction(onToggleFaceTarget)}
+            type="button"
+          >
+            {isFaceTarget ? '取消表情位置' : '设为表情位置'}
+          </button>
+        ) : null}
+        {hasFaceBinding && !isFaceTarget && onToggleFaceReplace ? (
+          <button
+            className="adaptive-parts-overflow-item"
+            data-testid="adaptive-parts-toggle-replace-face-button"
+            onClick={() => runAction(onToggleFaceReplace)}
+            type="button"
+          >
+            {isFaceReplaceMember ? '移出替换表情' : '设为替换表情成员'}
+          </button>
+        ) : null}
         <button
           aria-label={`从角色移除${displayName}`}
           className="adaptive-parts-overflow-item adaptive-parts-overflow-item-danger"
@@ -742,6 +776,7 @@ function AdaptivePartsAssemblyRow({
   onToggleVisibility,
   part,
   renaming,
+  roleTag,
   selected,
 }: {
   displayName: string;
@@ -757,6 +792,7 @@ function AdaptivePartsAssemblyRow({
   onToggleVisibility: () => void;
   part: AdaptivePartsCharacterPart;
   renaming: boolean;
+  roleTag?: string;
   selected: boolean;
 }): React.JSX.Element {
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -890,7 +926,12 @@ function AdaptivePartsAssemblyRow({
               <span aria-hidden="true">▧</span>
             )}
           </span>
-          <span aria-label={displayName} className="adaptive-parts-assembly-name" title={displayName}>{displayName}</span>
+          <span aria-label={displayName} className="adaptive-parts-assembly-name" title={displayName}>
+            <span className="adaptive-parts-assembly-name-text">{displayName}</span>
+            {roleTag ? (
+              <span className="adaptive-parts-role-tag">{roleTag}</span>
+            ) : null}
+          </span>
         </button>
       )}
       <button
@@ -998,8 +1039,9 @@ function AdaptivePartsAssemblyWorkbench({
   );
   const [imageState, setImageState] = useState(EMPTY_CANVAS_IMAGE_STATE);
   const [operationsOpen, setOperationsOpen] = useState(true);
+  const [leftTab, setLeftTab] = useState<'parts' | 'expressions'>('parts');
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorContext, setInspectorContext] = useState<'part' | 'character'>('part');
+  const [inspectorContext, setInspectorContext] = useState<'part' | 'character' | 'face'>('part');
   const [renamingPartId, setRenamingPartId] = useState<string | null>(null);
   const [numericDrafts, setNumericDrafts] = useState<AdaptiveAdjustmentDrafts>({});
   const numericInitialValuesRef = useRef<
@@ -1007,6 +1049,9 @@ function AdaptivePartsAssemblyWorkbench({
   >({});
   const [message, setMessage] = useState('');
   const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
+  const [expressionAddOpen, setExpressionAddOpen] = useState(false);
+  const [previewExpressionId, setPreviewExpressionId] = useState<string | null | undefined>(undefined);
+  const [expressionSwapRequest, setExpressionSwapRequest] = useState<ExpressionResourceSwapRequest | null>(null);
   const replaceTriggerRef = useRef<HTMLElement | null>(null);
   const projectImageAssets = useMemo(
     () =>
@@ -1020,16 +1065,17 @@ function AdaptivePartsAssemblyWorkbench({
     onThumbnailError: onAdaptiveSwapThumbnailError,
   } = useProjectImageThumbnails(
     projectRoot,
-    replacingPartId ? projectImageAssets : EMPTY_SWAP_IMAGE_ASSETS,
+    replacingPartId || leftTab === 'expressions' ? projectImageAssets : EMPTY_SWAP_IMAGE_ASSETS,
     project,
+  );
+  const allFlaGraphics = useMemo(
+    () => project.animations.filter(isFlaGraphicDefinition),
+    [project.animations],
   );
   const structuredGraphics = useMemo(
     () =>
-      project.animations.filter(
-        (animation): animation is FlaGraphicDefinition =>
-          isFlaGraphicDefinition(animation) && Boolean(animation.structure),
-      ),
-    [project.animations],
+      allFlaGraphics.filter((animation) => Boolean(animation.structure)),
+    [allFlaGraphics],
   );
   const structuredGraphicById = useMemo(
     () => new Map(structuredGraphics.map((graphic) => [graphic.id, graphic] as const)),
@@ -1072,9 +1118,24 @@ function AdaptivePartsAssemblyWorkbench({
     compatibleLayoutTemplates.some((item) => item.templateCharacterId === selectedLayoutTemplateId)
       ? selectedLayoutTemplateId
       : (compatibleLayoutTemplates[0]?.templateCharacterId ?? '');
+  const activeFaceBinding =
+    session.draft.faceBinding ??
+    (assemblyCharacter?.mode === 'adaptive-parts' ? assemblyCharacter.faceBinding : undefined);
+  const adaptiveExpressions =
+    assemblyCharacter?.mode === 'adaptive-parts' ? (assemblyCharacter.expressions ?? []) : [];
+  const effectivePreviewExpressionId =
+    typeof previewExpressionId === 'string' &&
+    !adaptiveExpressions.some((expr) => expr.id === previewExpressionId)
+      ? undefined
+      : previewExpressionId;
   const visual = useMemo(
-    () => buildAdaptivePartsAssemblyPreviewVisual(project, session),
-    [project, session],
+    () =>
+      buildAdaptivePartsAssemblyPreviewVisual(
+        project,
+        session,
+        effectivePreviewExpressionId,
+      ),
+    [effectivePreviewExpressionId, project, session],
   );
   const imageAssets = useMemo(() => {
     const ids = new Set<string>();
@@ -1117,12 +1178,21 @@ function AdaptivePartsAssemblyWorkbench({
         }
       }
     }
+    if (visual) {
+      for (const ref of [
+        ...visual.resources.required,
+        ...visual.resources.fallback,
+        ...visual.resources.candidates,
+      ]) {
+        ids.add(ref.assetId);
+      }
+    }
     return project.assets.flatMap((asset): CanvasImageAssetSource[] =>
       asset.kind === 'image' && ids.has(asset.id)
         ? [{ id: asset.id, ...(asset.sha256 ? { sha256: asset.sha256 } : {}) }]
         : [],
     );
-  }, [project.assets, session.draft.parts, structuredGraphicById]);
+  }, [project.assets, session.draft.parts, structuredGraphicById, visual]);
   const contextKey = `${project.id}\u0000${projectRoot}`;
   const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
   useEffect(() => {
@@ -1198,7 +1268,7 @@ function AdaptivePartsAssemblyWorkbench({
     const width = viewportRef.current?.clientWidth ?? 0;
     return width > 0 && width < 720;
   };
-  const openInspector = (context: 'part' | 'character', focus = true): void => {
+  const openInspector = (context: 'part' | 'character' | 'face', focus = true): void => {
     if (isNarrow()) setOperationsOpen(false);
     setInspectorContext(context);
     setInspectorOpen(true);
@@ -1409,6 +1479,69 @@ function AdaptivePartsAssemblyWorkbench({
       setMessage('');
     }
   };
+  const runImmediateCharacterMutation = (mutate: () => void): void => {
+    if (hasPendingChanges) {
+      setMessage('请先应用或取消零件组装更改。');
+      return;
+    }
+    try {
+      mutate();
+      setMessage('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '操作失败。');
+    }
+  };
+  const toggleFaceTargetPart = (partId: string): void => {
+    if (activeFaceBinding?.targetPartId === partId) {
+      runImmediateCharacterMutation(() => {
+        characterStore.setAdaptivePartsFaceBinding(session.characterId, null);
+        setPreviewExpressionId(undefined);
+        if (inspectorContext === 'face') setInspectorContext('part');
+      });
+      return;
+    }
+    runImmediateCharacterMutation(() => {
+      characterStore.setAdaptivePartsFaceBinding(session.characterId, {
+        targetPartId: partId,
+        replacePartIds: (activeFaceBinding?.replacePartIds ?? []).filter((id) => id !== partId),
+        ...(activeFaceBinding ? { placement: activeFaceBinding.placement } : {}),
+      });
+    });
+  };
+  const toggleFaceReplaceMember = (partId: string): void => {
+    if (!activeFaceBinding || activeFaceBinding.targetPartId === partId) return;
+    const isMember = activeFaceBinding.replacePartIds.includes(partId);
+    const nextReplaceIds = isMember
+      ? activeFaceBinding.replacePartIds.filter((id) => id !== partId)
+      : [...activeFaceBinding.replacePartIds, partId];
+    runImmediateCharacterMutation(() => {
+      characterStore.setAdaptivePartsFaceBinding(session.characterId, {
+        targetPartId: activeFaceBinding.targetPartId,
+        replacePartIds: nextReplaceIds,
+        placement: activeFaceBinding.placement,
+      });
+    });
+  };
+  const updateFacePlacementDraft = (patch: Partial<FacePlacement>): void => {
+    setDefinition((definition) => {
+      const currentBinding =
+        definition.faceBinding ??
+        (assemblyCharacter?.mode === 'adaptive-parts' && assemblyCharacter.faceBinding
+          ? cloneAdaptivePartsFaceBinding(assemblyCharacter.faceBinding)
+          : undefined);
+      if (!currentBinding) return definition;
+      return {
+        ...definition,
+        faceBinding: {
+          ...currentBinding,
+          placement: {
+            ...currentBinding.placement,
+            ...patch,
+          },
+        },
+      };
+    });
+  };
   const selectedPart = session.draft.parts.find(
     (part) => part.partId === session.selectedPartId,
   ) ?? null;
@@ -1441,8 +1574,12 @@ function AdaptivePartsAssemblyWorkbench({
     for (const part of visual?.parts ?? []) {
       const characterPartId = adaptiveCharacterPartIdOf(part);
       if (!characterPartId || !part.flaGraphic) continue;
+      const isReplacedExpressionFace = Boolean(
+        visual?.activeFace && characterPartId === activeFaceBinding?.targetPartId,
+      );
       const partSource = sourceByPartId.get(characterPartId);
       if (
+        !isReplacedExpressionFace &&
         partSource?.kind === 'fla-graphic' &&
         (partSource.nodePath || partSource.regionRef || partSource.regionVector) &&
         !hasRenderableFlaGraphicSubtree(part.flaGraphic)
@@ -1451,6 +1588,7 @@ function AdaptivePartsAssemblyWorkbench({
       }
       const rendered = renderFlaGraphicCanvas(part.flaGraphic, imageState.images);
       if (
+        !isReplacedExpressionFace &&
         partSource?.kind === 'fla-graphic' &&
         (partSource.nodePath || partSource.regionRef || partSource.regionVector) &&
         !rendered?.visibleRect
@@ -1468,7 +1606,7 @@ function AdaptivePartsAssemblyWorkbench({
       }
     }
     return result;
-  }, [visual?.parts, imageState.images, session.draft.parts]);
+  }, [activeFaceBinding?.targetPartId, imageState.images, session.draft.parts, visual?.activeFace, visual?.parts]);
   readVisibleBounds.current = () => {
     if (!visual) return null;
     const imageBounds = new Map<string, NormalizedImageBounds | null>();
@@ -2070,139 +2208,300 @@ function AdaptivePartsAssemblyWorkbench({
         <span className="quick-action-drawer-grip" aria-hidden="true" />
       </button>
       <div className="adaptive-parts-assembly-list" id={panelId + '-operations'} inert={!operationsOpen}>
-        <div className="adaptive-parts-list-heading">
-          <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
-          <AdaptivePartsContextMenu
-            canRemove={rows.length > 1}
-            canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
-            disabled={!selectedPart}
-            displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
-            onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
-            onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
-            onReplace={() => {
-              if (!selectedPart) return;
-              replaceTriggerRef.current =
-                operationsRef.current?.querySelector<HTMLElement>(
-                  '[data-testid="adaptive-parts-row-overflow-trigger"]',
-                ) ?? null;
-              setReplacingPartId(selectedPart.partId);
-            }}
-          />
-        </div>
-        {compatibleLayoutTemplates.length > 0 ? (
-          <div className="adaptive-parts-template-reuse-bar" data-testid="adaptive-parts-template-reuse-bar">
-            <select
-              aria-label="布局参考角色"
-              data-testid="adaptive-parts-template-select"
-              onChange={(event) => setSelectedLayoutTemplateId(event.target.value)}
-              value={effectiveLayoutTemplateId}
-            >
-              {compatibleLayoutTemplates.map((candidate) => (
-                <option key={candidate.templateCharacterId} value={candidate.templateCharacterId}>
-                  {candidate.templateCharacterName}（{candidate.matchedPartCount}件）
-                </option>
-              ))}
-            </select>
-            <button
-              className="adaptive-parts-row-menu-button"
-              data-testid="adaptive-parts-template-apply"
-              onClick={() => applySavedLayoutTemplate(effectiveLayoutTemplateId)}
-              type="button"
-            >
-              套用布局
-            </button>
-          </div>
-        ) : null}
-        <div className="adaptive-parts-assembly-rows">
-          {rows.map((part) => {
-            const visualSource = resolveCharacterPartVisualSource(part);
-            const matchingAssetParts = session.draft.parts.filter((candidate) => {
-              const candidateSource = resolveCharacterPartVisualSource(candidate);
-              if (visualSource.kind === 'image' && candidateSource.kind === 'image') {
-                return candidateSource.assetId === visualSource.assetId;
-              }
-              if (
-                visualSource.kind === 'fla-graphic' &&
-                candidateSource.kind === 'fla-graphic'
-              ) {
-                return candidateSource.animationId === visualSource.animationId;
-              }
-              return false;
-            }).length;
-            const sourceLabel =
-              visualSource.kind === 'image'
-                ? assetNames.get(visualSource.assetId)
-                : structuredGraphicById.get(visualSource.animationId)?.name;
-            const baseName = part.displayName ?? sourceLabel ?? `Part ${part.drawOrder + 1}`;
-            const name = matchingAssetParts > 1 && !part.displayName
-              ? `${localizeDefaultAdaptivePartName(baseName)} · 零件 ${part.drawOrder + 1}`
-              : localizeDefaultAdaptivePartName(baseName);
-            const graphicRaster = graphicPartRasters.get(part.partId);
-            const visualPart = (visual?.parts ?? []).find(
-              (candidate) => adaptiveCharacterPartIdOf(candidate) === part.partId,
-            );
-            const fallbackImageId =
-              visualSource.kind === 'fla-graphic' && !visualPart?.flaGraphic
-                ? visualPart?.assetId
-                : undefined;
-            const effectiveImageId =
-              visualSource.kind === 'image' ? visualSource.assetId : fallbackImageId;
-            const image = effectiveImageId
-              ? imageState.images.get(effectiveImageId)
-              : undefined;
-            const subtreeMissing = Boolean(
-              visualSource.kind === 'fla-graphic' &&
-                (visualSource.nodePath || visualSource.regionRef || visualSource.regionVector) &&
-                (!visualPart?.flaGraphic ||
-                  !hasRenderableFlaGraphicSubtree(visualPart.flaGraphic)),
-            );
-            const imageMissing =
-              visualSource.kind === 'image'
-                ? imageState.missing.has(visualSource.assetId)
-                : !structuredGraphicById.has(visualSource.animationId) ||
-                  subtreeMissing ||
-                  (fallbackImageId
-                    ? imageState.missing.has(fallbackImageId)
-                    : Boolean(
-                        visualPart?.flaGraphic?.resourceAssetIds.some((id) =>
-                          imageState.missing.has(id),
-                        ),
-                      ));
-            const imageCacheKey =
-              visualSource.kind === 'image'
-                ? assetThumbnailKeys.get(visualSource.assetId) ??
-                  `asset:${project.id}:${visualSource.assetId}`
-                : fallbackImageId
-                  ? assetThumbnailKeys.get(fallbackImageId) ??
-                    `asset:${project.id}:${fallbackImageId}`
-                  : `fla-graphic:${project.id}:${visualSource.animationId}:${visualSource.poseFrameOrdinal ?? 0}:${JSON.stringify(visualSource.nodePath ?? null)}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
-            return (
-              <AdaptivePartsAssemblyRow
-                displayName={name}
-                imageMissing={imageMissing}
-                imageCacheKey={imageCacheKey}
-                imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
-                key={part.partId}
-                onEdit={() => selectPart(part.partId, true)}
-                onMessage={setMessage}
-                onRenameEnd={() => setRenamingPartId(null)}
-                onRename={(displayName) => updatePart(part.partId, (current) => ({
-                  ...current,
-                  displayName,
-                }))}
-                onRestore={() => restorePartToSourcePose(part.partId)}
-                onSelect={() => selectPart(part.partId)}
-                renaming={renamingPartId === part.partId}
-                onToggleVisibility={() => updatePart(part.partId, (current) => ({
-                  ...current,
-                  visible: current.visible === false,
-                }))}
-                part={part}
-                selected={session.selectedPartId === part.partId}
+        <nav aria-label="角色操作" className="character-float-left-nav adaptive-parts-left-nav">
+          <button
+            aria-pressed={leftTab === 'parts'}
+            data-testid="adaptive-parts-tab-parts"
+            onClick={() => setLeftTab('parts')}
+            type="button"
+          >
+            部件
+          </button>
+          <button
+            aria-pressed={leftTab === 'expressions'}
+            data-testid="adaptive-parts-tab-expressions"
+            onClick={() => setLeftTab('expressions')}
+            type="button"
+          >
+            表情
+          </button>
+        </nav>
+        {leftTab === 'parts' ? (
+          <>
+            <div className="adaptive-parts-list-heading">
+              <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+              <AdaptivePartsContextMenu
+                canRemove={rows.length > 1}
+                canReplace={projectImageAssets.length > 0 || structuredGraphics.length > 0}
+                disabled={!selectedPart}
+                displayName={selectedPart?.displayName ? localizeDefaultAdaptivePartName(selectedPart.displayName) : '零件'}
+                hasFaceBinding={Boolean(activeFaceBinding)}
+                isFaceReplaceMember={Boolean(
+                  selectedPart && activeFaceBinding?.replacePartIds.includes(selectedPart.partId),
+                )}
+                isFaceTarget={Boolean(
+                  selectedPart && activeFaceBinding?.targetPartId === selectedPart.partId,
+                )}
+                onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
+                onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
+                onReplace={() => {
+                  if (!selectedPart) return;
+                  replaceTriggerRef.current =
+                    operationsRef.current?.querySelector<HTMLElement>(
+                      '[data-testid="adaptive-parts-row-overflow-trigger"]',
+                    ) ?? null;
+                  setReplacingPartId(selectedPart.partId);
+                }}
+                onToggleFaceReplace={() => {
+                  if (selectedPart) toggleFaceReplaceMember(selectedPart.partId);
+                }}
+                onToggleFaceTarget={() => {
+                  if (selectedPart) toggleFaceTargetPart(selectedPart.partId);
+                }}
               />
-            );
-          })}
-        </div>
+            </div>
+            {compatibleLayoutTemplates.length > 0 ? (
+              <div className="adaptive-parts-template-reuse-bar" data-testid="adaptive-parts-template-reuse-bar">
+                <select
+                  aria-label="布局参考角色"
+                  data-testid="adaptive-parts-template-select"
+                  onChange={(event) => setSelectedLayoutTemplateId(event.target.value)}
+                  value={effectiveLayoutTemplateId}
+                >
+                  {compatibleLayoutTemplates.map((candidate) => (
+                    <option key={candidate.templateCharacterId} value={candidate.templateCharacterId}>
+                      {candidate.templateCharacterName}（{candidate.matchedPartCount}件）
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="adaptive-parts-row-menu-button"
+                  data-testid="adaptive-parts-template-apply"
+                  onClick={() => applySavedLayoutTemplate(effectiveLayoutTemplateId)}
+                  type="button"
+                >
+                  套用布局
+                </button>
+              </div>
+            ) : null}
+            <div className="adaptive-parts-assembly-rows">
+              {rows.map((part) => {
+                const visualSource = resolveCharacterPartVisualSource(part);
+                const matchingAssetParts = session.draft.parts.filter((candidate) => {
+                  const candidateSource = resolveCharacterPartVisualSource(candidate);
+                  if (visualSource.kind === 'image' && candidateSource.kind === 'image') {
+                    return candidateSource.assetId === visualSource.assetId;
+                  }
+                  if (
+                    visualSource.kind === 'fla-graphic' &&
+                    candidateSource.kind === 'fla-graphic'
+                  ) {
+                    return candidateSource.animationId === visualSource.animationId;
+                  }
+                  return false;
+                }).length;
+                const sourceLabel =
+                  visualSource.kind === 'image'
+                    ? assetNames.get(visualSource.assetId)
+                    : structuredGraphicById.get(visualSource.animationId)?.name;
+                const baseName = part.displayName ?? sourceLabel ?? `Part ${part.drawOrder + 1}`;
+                const name = matchingAssetParts > 1 && !part.displayName
+                  ? `${localizeDefaultAdaptivePartName(baseName)} · 零件 ${part.drawOrder + 1}`
+                  : localizeDefaultAdaptivePartName(baseName);
+                const isFaceReplacedRow = Boolean(
+                  visual?.activeFace && part.partId === activeFaceBinding?.targetPartId,
+                );
+                const graphicRaster = isFaceReplacedRow
+                  ? undefined
+                  : graphicPartRasters.get(part.partId);
+                const visualPart = (visual?.parts ?? []).find(
+                  (candidate) => adaptiveCharacterPartIdOf(candidate) === part.partId,
+                );
+                const fallbackImageId =
+                  !isFaceReplacedRow &&
+                  visualSource.kind === 'fla-graphic' &&
+                  !visualPart?.flaGraphic
+                    ? visualPart?.assetId
+                    : undefined;
+                const effectiveImageId =
+                  visualSource.kind === 'image' ? visualSource.assetId : fallbackImageId;
+                const image = effectiveImageId
+                  ? imageState.images.get(effectiveImageId)
+                  : undefined;
+                const subtreeMissing = Boolean(
+                  !isFaceReplacedRow &&
+                  visualSource.kind === 'fla-graphic' &&
+                    (visualSource.nodePath || visualSource.regionRef || visualSource.regionVector) &&
+                    (!visualPart?.flaGraphic ||
+                      !hasRenderableFlaGraphicSubtree(visualPart.flaGraphic)),
+                );
+                const imageMissing =
+                  visualSource.kind === 'image'
+                    ? imageState.missing.has(visualSource.assetId)
+                    : !structuredGraphicById.has(visualSource.animationId) ||
+                      subtreeMissing ||
+                      (fallbackImageId
+                        ? imageState.missing.has(fallbackImageId)
+                        : Boolean(
+                            visualPart?.flaGraphic?.resourceAssetIds.some((id) =>
+                              imageState.missing.has(id),
+                            ),
+                          ));
+                const imageCacheKey =
+                  visualSource.kind === 'image'
+                    ? assetThumbnailKeys.get(visualSource.assetId) ??
+                      `asset:${project.id}:${visualSource.assetId}`
+                    : fallbackImageId
+                      ? assetThumbnailKeys.get(fallbackImageId) ??
+                        `asset:${project.id}:${fallbackImageId}`
+                      : `fla-graphic:${project.id}:${visualSource.animationId}:${visualSource.poseFrameOrdinal ?? 0}:${JSON.stringify(visualSource.nodePath ?? null)}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
+                const roleTag =
+                  activeFaceBinding?.targetPartId === part.partId ||
+                  activeFaceBinding?.replacePartIds.includes(part.partId)
+                    ? '表情'
+                    : undefined;
+                return (
+                  <AdaptivePartsAssemblyRow
+                    displayName={name}
+                    imageMissing={imageMissing}
+                    imageCacheKey={imageCacheKey}
+                    imageSrc={effectiveImageId ? image?.src : graphicRaster?.dataUrl}
+                    key={part.partId}
+                    onEdit={() => selectPart(part.partId, true)}
+                    onMessage={setMessage}
+                    onRenameEnd={() => setRenamingPartId(null)}
+                    onRename={(displayName) => updatePart(part.partId, (current) => ({
+                      ...current,
+                      displayName,
+                    }))}
+                    onRestore={() => restorePartToSourcePose(part.partId)}
+                    onSelect={() => selectPart(part.partId)}
+                    renaming={renamingPartId === part.partId}
+                    roleTag={roleTag}
+                    onToggleVisibility={() => updatePart(part.partId, (current) => ({
+                      ...current,
+                      visible: current.visible === false,
+                    }))}
+                    part={part}
+                    selected={session.selectedPartId === part.partId}
+                  />
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="adaptive-parts-expression-tab" data-testid="adaptive-parts-expression-workspace">
+            {!activeFaceBinding ? (
+              <div className="adaptive-parts-expression-empty" data-testid="adaptive-parts-expression-unbound">
+                <p>请在“部件”中选中脸部零件，并通过更多菜单设为表情位置。</p>
+                <button
+                  className="adaptive-parts-row-menu-button"
+                  data-testid="adaptive-parts-go-to-parts"
+                  onClick={() => setLeftTab('parts')}
+                  type="button"
+                >
+                  前往部件
+                </button>
+              </div>
+            ) : assemblyCharacter?.mode === 'adaptive-parts' ? (
+              <>
+                <div className="adaptive-parts-list-heading">
+                  <strong id="adaptive-expression-workspace-heading">表情</strong>
+                  <div className="adaptive-parts-expression-header-actions">
+                    <button
+                      className="adaptive-parts-row-menu-button"
+                      data-testid="adaptive-parts-face-placement-button"
+                      onClick={() => openInspector('face')}
+                      type="button"
+                    >
+                      对齐
+                    </button>
+                    <button
+                      aria-expanded={expressionAddOpen}
+                      className="adaptive-parts-row-menu-button"
+                      data-testid="expression-add-trigger"
+                      onClick={() => setExpressionAddOpen(!expressionAddOpen)}
+                      type="button"
+                    >
+                      <Plus aria-hidden="true" size={14} />
+                      <span>添加</span>
+                    </button>
+                  </div>
+                </div>
+                <ExpressionEditor
+                  character={assemblyCharacter}
+                  compactDetailWorkspace
+                  graphicDefinitions={allFlaGraphics}
+                  imageAssets={projectImageAssets}
+                  isAddOpen={expressionAddOpen}
+                  onAdd={(name, assetId) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.addExpression(assemblyCharacter.id, { name, assetId });
+                    })
+                  }
+                  onAddGraphic={(name, visualSource) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.addExpression(assemblyCharacter.id, {
+                        name,
+                        visualSource,
+                      });
+                    })
+                  }
+                  onAddOpenChange={setExpressionAddOpen}
+                  onClearDefault={() =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.clearDefaultExpression(assemblyCharacter.id);
+                    })
+                  }
+                  onPreview={(expressionId) =>
+                    setPreviewExpressionId((current) =>
+                      current === expressionId ? undefined : expressionId,
+                    )
+                  }
+                  onRemove={(expressionId) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.removeExpression(assemblyCharacter.id, expressionId);
+                    })
+                  }
+                  onRename={(expressionId, name) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.renameExpression(assemblyCharacter.id, expressionId, name);
+                    })
+                  }
+                  onRequestResourceSwap={(request) => setExpressionSwapRequest(request)}
+                  onSetAsset={(expressionId, assetId) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.setExpressionAsset(assemblyCharacter.id, expressionId, assetId);
+                    })
+                  }
+                  onSetDefault={(expressionId) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.setDefaultExpression(assemblyCharacter.id, expressionId);
+                    })
+                  }
+                  onSetSource={(expressionId, source) =>
+                    runImmediateCharacterMutation(() => {
+                      characterStore.setExpressionVisualSource(
+                        assemblyCharacter.id,
+                        expressionId,
+                        source,
+                      );
+                    })
+                  }
+                  onThumbnailError={onAdaptiveSwapThumbnailError}
+                  presentation="landscape"
+                  previewExpressionId={
+                    typeof effectivePreviewExpressionId === 'string'
+                      ? effectivePreviewExpressionId
+                      : undefined
+                  }
+                  thumbnails={adaptiveSwapThumbnails}
+                  warnings={[]}
+                />
+              </>
+            ) : null}
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -2452,6 +2751,82 @@ function AdaptivePartsAssemblyWorkbench({
               />
             </div>
           ) : null}
+          {inspectorContext === 'face' && activeFaceBinding ? (
+            <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-face-inspector">
+              <div className="adaptive-parts-inspector-heading">
+                <strong>表情对齐</strong>
+              </div>
+              <label className="adaptive-parts-face-field">
+                <span>X 偏移</span>
+                <input
+                  data-testid="adaptive-face-offset-x"
+                  onChange={(event) => {
+                    const value = Number(event.currentTarget.value);
+                    if (Number.isFinite(value)) updateFacePlacementDraft({ offsetX: value });
+                  }}
+                  step={1}
+                  type="number"
+                  value={activeFaceBinding.placement.offsetX}
+                />
+              </label>
+              <label className="adaptive-parts-face-field">
+                <span>Y 偏移</span>
+                <input
+                  data-testid="adaptive-face-offset-y"
+                  onChange={(event) => {
+                    const value = Number(event.currentTarget.value);
+                    if (Number.isFinite(value)) updateFacePlacementDraft({ offsetY: value });
+                  }}
+                  step={1}
+                  type="number"
+                  value={activeFaceBinding.placement.offsetY}
+                />
+              </label>
+              <label className="adaptive-parts-face-field">
+                <span>缩放 (%)</span>
+                <input
+                  data-testid="adaptive-face-scale-percent"
+                  min={10}
+                  max={500}
+                  onChange={(event) => {
+                    const value = Number(event.currentTarget.value);
+                    if (Number.isFinite(value) && value > 0) {
+                      updateFacePlacementDraft({ scale: value / 100 });
+                    }
+                  }}
+                  step={5}
+                  type="number"
+                  value={Math.round(activeFaceBinding.placement.scale * 100)}
+                />
+              </label>
+              <label className="adaptive-parts-face-field">
+                <span>旋转 (°)</span>
+                <input
+                  data-testid="adaptive-face-rotation-deg"
+                  min={-180}
+                  max={180}
+                  onChange={(event) => {
+                    const value = Number(event.currentTarget.value);
+                    if (Number.isFinite(value) && value >= -180 && value <= 180) {
+                      updateFacePlacementDraft({ rotationDeg: value });
+                    }
+                  }}
+                  step={1}
+                  type="number"
+                  value={activeFaceBinding.placement.rotationDeg}
+                />
+              </label>
+              <label className="adaptive-character-management-flip">
+                <input
+                  checked={activeFaceBinding.placement.flipX}
+                  data-testid="adaptive-face-flip-x"
+                  onChange={(event) => updateFacePlacementDraft({ flipX: event.currentTarget.checked })}
+                  type="checkbox"
+                />
+                <span>水平翻转</span>
+              </label>
+            </div>
+          ) : null}
           {inspectorContext === 'part' && selectedPart && selectedAdjustment ? (
             <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
               <div className="adaptive-parts-inspector-heading">
@@ -2534,6 +2909,24 @@ function AdaptivePartsAssemblyWorkbench({
           />
         );
       })() : null}
+      {expressionSwapRequest ? (
+        <CharacterResourceSwapDialog
+          currentValue={expressionSwapRequest.currentValue}
+          graphicDefinitions={allFlaGraphics}
+          graphicSelectionMode="frame"
+          imageAssets={projectImageAssets}
+          onCancel={() => setExpressionSwapRequest(null)}
+          onConfirm={(nextValue) => {
+            expressionSwapRequest.onConfirm(nextValue);
+            setExpressionSwapRequest(null);
+          }}
+          onThumbnailError={onAdaptiveSwapThumbnailError}
+          open
+          returnFocusTo={expressionSwapRequest.trigger}
+          thumbnails={adaptiveSwapThumbnails}
+          title={expressionSwapRequest.title}
+        />
+      ) : null}
     </section>
   );
 }

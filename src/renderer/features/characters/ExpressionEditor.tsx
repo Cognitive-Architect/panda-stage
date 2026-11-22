@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Pencil, Play } from 'lucide-react';
 import type {
+  AdaptivePartsCharacter,
   Character,
   CharacterDimensionWarning,
   ExpressionCharacter,
@@ -28,7 +29,7 @@ export interface ExpressionResourceSwapRequest {
 }
 
 export interface ExpressionEditorProps {
-  character: ExpressionCharacter;
+  character: ExpressionCharacter | AdaptivePartsCharacter;
   imageAssets: readonly ImageAsset[];
   graphicDefinitions?: readonly FlaGraphicDefinition[];
   thumbnails: Readonly<Record<string, ThumbnailState>>;
@@ -48,6 +49,7 @@ export interface ExpressionEditorProps {
   onRequestResourceSwap?: (request: ExpressionResourceSwapRequest) => void;
   onRemove: (expressionId: string) => void;
   onSetDefault: (expressionId: string) => void;
+  onClearDefault?: () => void;
   previewExpressionId?: string;
   onPreview?: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
@@ -192,6 +194,7 @@ function LegacyExpressionEditor({
   const [newAssetId, setNewAssetId] = useState(imageAssets[0]?.id ?? '');
   const [newGraphic, setNewGraphic] = useState<CharacterFaceGraphicSource>();
 
+  const expressions = character.expressions ?? [];
   return (
     <section className="expression-editor" aria-label="表情管理">
       <div className="character-section-heading">
@@ -199,7 +202,7 @@ function LegacyExpressionEditor({
         <span>中心锚点固定，不按图片尺寸自动偏移</span>
       </div>
       <ul className="expression-list">
-        {character.expressions.map((expression) => {
+        {expressions.map((expression) => {
           const isDefault =
             expression.id === character.defaultExpressionId;
           return (
@@ -251,7 +254,11 @@ function LegacyExpressionEditor({
                   </button>
                 )}
                 <button
-                  disabled={disabled || isDefault}
+                  disabled={
+                    disabled ||
+                    isDefault ||
+                    (character.mode !== 'adaptive-parts' && expressions.length <= 1)
+                  }
                   onClick={() => onRemove(expression.id)}
                   title={
                     isDefault
@@ -343,10 +350,12 @@ function LandscapeExpressionEditor({
   onRequestResourceSwap,
   onRemove,
   onSetDefault,
+  onClearDefault,
   onPreview,
   previewExpressionId,
   onThumbnailError,
 }: ExpressionEditorProps): React.JSX.Element {
+  const expressions = character.expressions ?? [];
   const [newName, setNewName] = useState('');
   const [newAssetId, setNewAssetId] = useState(imageAssets[0]?.id ?? '');
   const [newGraphic, setNewGraphic] = useState<CharacterFaceGraphicSource>();
@@ -366,7 +375,7 @@ function LandscapeExpressionEditor({
   useEffect(() => {
     if (
       !editingExpressionId ||
-      character.expressions.some(
+      expressions.some(
         (expression) => expression.id === editingExpressionId,
       )
     ) {
@@ -374,21 +383,21 @@ function LandscapeExpressionEditor({
     }
     setEditingExpressionId(null);
     setEditingName('');
-  }, [character.expressions, editingExpressionId]);
+  }, [expressions, editingExpressionId]);
 
   const cancelExpressionEdit = (): void => {
     setEditingExpressionId(null);
     setEditingName('');
   };
 
-  const startExpressionEdit = (expression: ExpressionCharacter['expressions'][number]): void => {
+  const startExpressionEdit = (expression: (typeof expressions)[number]): void => {
     onAddOpenChange(false);
     setEditingExpressionId(expression.id);
     setEditingName(expression.name);
   };
 
   const applyExpressionName = (
-    expression: ExpressionCharacter['expressions'][number],
+    expression: (typeof expressions)[number],
   ): void => {
     const nextName = expressionRenameValue(editingName, expression.name);
     if (!nextName) return;
@@ -406,7 +415,7 @@ function LandscapeExpressionEditor({
   const expressionWarnings = (expressionId: string): CharacterDimensionWarning[] =>
     warnings.filter((warning) => warning.expressionId === expressionId);
   const unscopedWarnings = warnings.filter((warning) => !warning.expressionId);
-  const editingExpression = character.expressions.find(
+  const editingExpression = expressions.find(
     (expression) => expression.id === editingExpressionId,
   );
 
@@ -642,7 +651,7 @@ function LandscapeExpressionEditor({
         </section>
       ) : null}
       <ul className="expression-card-list">
-        {character.expressions.map((expression) => {
+        {expressions.map((expression) => {
           const asset = imageAssets.find(
             (candidate) => candidate.id === expression.assetId,
           );
@@ -714,11 +723,23 @@ function LandscapeExpressionEditor({
                                   onSelect: () => onSetDefault(expression.id),
                                 },
                               ]
-                            : []),
+                            : onClearDefault
+                              ? [
+                                  {
+                                    label: '恢复原脸默认',
+                                    testId: `expression-clear-default-${expression.id}`,
+                                    disabled,
+                                    onSelect: onClearDefault,
+                                  },
+                                ]
+                              : []),
                           {
                             label: '删除表情',
                             testId: `expression-delete-${expression.id}`,
-                            disabled: disabled || isDefault,
+                            disabled:
+                              disabled ||
+                              isDefault ||
+                              (character.mode !== 'adaptive-parts' && expressions.length <= 1),
                             title: isDefault
                               ? '请先选择替代表情，再删除默认表情。'
                               : '删除表情',
@@ -880,7 +901,9 @@ export function ExpressionEditor({
   presentation = 'default',
   ...props
 }: ExpressionEditorInputProps): React.JSX.Element | null {
-  if (props.character.mode === 'adaptive-parts') return null;
+  if (props.character.mode === 'adaptive-parts' && !props.character.faceBinding) {
+    return null;
+  }
   const expressionProps: ExpressionEditorProps = {
     ...props,
     character: props.character,

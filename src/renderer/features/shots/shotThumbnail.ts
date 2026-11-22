@@ -86,12 +86,17 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
         layer.source.kind === 'asset'
           ? [layer.source.assetId]
           : character?.mode === 'adaptive-parts'
-            ? character.parts.flatMap((part) => {
-                const visualSource = resolveCharacterPartVisualSource(part);
-                return visualSource.kind === 'image'
-                  ? [visualSource.assetId]
-                  : [];
-              })
+            ? [
+                ...character.parts.flatMap((part) => {
+                  const visualSource = resolveCharacterPartVisualSource(part);
+                  return visualSource.kind === 'image'
+                    ? [visualSource.assetId]
+                    : [];
+                }),
+                ...(character.expressions ?? []).flatMap((expression) =>
+                  expression.assetId ? [expression.assetId] : [],
+                ),
+              ]
             : character?.mode === 'composite'
             ? [character.bodyAssetId, expression?.assetId].filter(
                 (assetId): assetId is string => Boolean(assetId),
@@ -138,6 +143,9 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
                     visible: part.visible,
                   };
                 }),
+                faceBinding: character.faceBinding ?? null,
+                expressions: character.expressions ?? [],
+                defaultExpressionId: character.defaultExpressionId ?? null,
               }
             : null,
         owner: {

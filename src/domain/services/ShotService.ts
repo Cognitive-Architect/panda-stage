@@ -270,7 +270,10 @@ export class ShotService {
       ...project.characters.flatMap((character) => [
         character.id,
         ...(character.mode === 'adaptive-parts'
-          ? character.parts.map((part) => part.partId)
+          ? [
+              ...character.parts.map((part) => part.partId),
+              ...(character.expressions ?? []).map((expression) => expression.id),
+            ]
           : character.expressions.map((expression) => expression.id)),
       ]),
       ...project.voiceProfiles.map((profile) => profile.id),

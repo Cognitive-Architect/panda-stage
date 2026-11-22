@@ -24,6 +24,7 @@ import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
   CharacterV22Schema,
+  CharacterV23Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -655,6 +656,14 @@ const CurrentProjectDataSchema = ProjectDataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   shots: z.array(ShotSchema),
 });
+
+/** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */
+export const ProjectV23Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(23),
+  characters: z.array(CharacterV23Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
 
 // Legacy envelopes are migrated by migrateProject before current validation.
 export const ProjectSchema = CurrentProjectDataSchema.superRefine(validateProjectReferences)

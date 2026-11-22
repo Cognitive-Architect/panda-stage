@@ -482,13 +482,162 @@ const AdaptivePartsCharacterV22Schema = z
   .strict()
   .superRefine(validateAdaptivePartsUniqueness);
 
-const AdaptivePartsCharacterCurrentSchema = z
+/** Frozen v23 Adaptive Parts character before face/expression/head bindings. */
+const AdaptivePartsCharacterV23Schema = z
   .object({
     ...AdaptivePartsCharacterBaseShape,
     parts: z.array(CharacterPartCurrentSchema).min(1),
   })
   .strict()
   .superRefine(validateAdaptivePartsUniqueness);
+
+/** A Graphic face is always a frozen instance, never a raster-cache identity. */
+const CharacterFaceGraphicSourceV22Schema = z.object({
+  kind: z.literal('fla-graphic'),
+  animationId: IdSchema,
+  firstFrame: z.number().int().nonnegative(),
+}).strict();
+
+const CharacterExpressionV22Schema = CharacterExpressionV19Schema.extend({
+  assetId: IdSchema.optional(),
+  visualSource: CharacterFaceGraphicSourceV22Schema.optional(),
+}).superRefine((expression, context) => {
+  if (Boolean(expression.assetId) === Boolean(expression.visualSource)) {
+    context.addIssue({ code: 'custom', path: ['visualSource'], message: 'Expression requires exactly one image or Graphic source.' });
+  }
+});
+
+const AdaptivePartsFaceAnchorRectV24Schema = z
+  .object({
+    x: FiniteNumberSchema,
+    y: FiniteNumberSchema,
+    width: FiniteNumberSchema.positive(),
+    height: FiniteNumberSchema.positive(),
+  })
+  .strict();
+
+const AdaptivePartsFaceBindingV24Schema = z
+  .object({
+    targetPartId: IdSchema,
+    replacePartIds: z.array(IdSchema).max(64).default([]),
+    anchorRect: AdaptivePartsFaceAnchorRectV24Schema,
+    placement: FacePlacementV22Schema.default({
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotationDeg: 0,
+      flipX: false,
+    }),
+  })
+  .strict();
+
+const AdaptivePartsHeadMotionBindingV24Schema = z
+  .object({
+    partIds: z.array(IdSchema).min(1).max(256),
+  })
+  .strict();
+
+function validateAdaptivePartsFaceAndHeadBindings(
+  character: {
+    parts: readonly { partId: string }[];
+    faceBinding?: z.infer<typeof AdaptivePartsFaceBindingV24Schema>;
+    expressions?: readonly { id: string }[];
+    defaultExpressionId?: string;
+    mouthOpenAssetId?: string;
+    mouthOpenVisualSource?: z.infer<typeof CharacterFaceGraphicSourceV22Schema>;
+    headMotionBinding?: z.infer<typeof AdaptivePartsHeadMotionBindingV24Schema>;
+  },
+  context: z.RefinementCtx,
+): void {
+  const partIds = new Set(character.parts.map((part) => part.partId));
+  if (character.faceBinding) {
+    if (!partIds.has(character.faceBinding.targetPartId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['faceBinding', 'targetPartId'],
+        message: `Face binding references unknown Part identity: ${character.faceBinding.targetPartId}`,
+      });
+    }
+    const seenReplace = new Set<string>();
+    character.faceBinding.replacePartIds.forEach((partId, index) => {
+      if (partId === character.faceBinding!.targetPartId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['faceBinding', 'replacePartIds', index],
+          message: 'Face replacePartIds must not duplicate targetPartId.',
+        });
+      }
+      if (seenReplace.has(partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['faceBinding', 'replacePartIds', index],
+          message: `Duplicate Part identity in faceBinding.replacePartIds: ${partId}`,
+        });
+      }
+      seenReplace.add(partId);
+      if (!partIds.has(partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['faceBinding', 'replacePartIds', index],
+          message: `Face binding references unknown replaced Part identity: ${partId}`,
+        });
+      }
+    });
+  }
+  if (character.defaultExpressionId !== undefined) {
+    if (!character.expressions?.some((expr) => expr.id === character.defaultExpressionId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['defaultExpressionId'],
+        message: `Unknown defaultExpressionId: ${character.defaultExpressionId}`,
+      });
+    }
+  }
+  if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({
+      code: 'custom',
+      path: ['mouthOpenVisualSource'],
+      message: 'Mouth requires a single visual source.',
+    });
+  }
+  if (character.headMotionBinding) {
+    const seenHead = new Set<string>();
+    character.headMotionBinding.partIds.forEach((partId, index) => {
+      if (seenHead.has(partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['headMotionBinding', 'partIds', index],
+          message: `Duplicate Part identity in headMotionBinding.partIds: ${partId}`,
+        });
+      }
+      seenHead.add(partId);
+      if (!partIds.has(partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['headMotionBinding', 'partIds', index],
+          message: `Head motion binding references unknown Part identity: ${partId}`,
+        });
+      }
+    });
+  }
+}
+
+const AdaptivePartsCharacterCurrentSchema = z
+  .object({
+    ...AdaptivePartsCharacterBaseShape,
+    parts: z.array(CharacterPartCurrentSchema).min(1),
+    faceBinding: AdaptivePartsFaceBindingV24Schema.optional(),
+    expressions: z.array(CharacterExpressionV22Schema).optional(),
+    defaultExpressionId: IdSchema.optional(),
+    mouthOpenAssetId: IdSchema.optional(),
+    mouthOpenVisualSource: CharacterFaceGraphicSourceV22Schema.optional(),
+    headMotionBinding: AdaptivePartsHeadMotionBindingV24Schema.optional(),
+    talkingHeadMotionIntensityPercent:
+      z.number().int().min(0).max(200).optional(),
+  })
+  .strict()
+  .superRefine(validateAdaptivePartsUniqueness)
+  .superRefine(validateAdaptivePartsFaceAndHeadBindings);
 
 const CompositeCharacterV11Schema = z
   .object({
@@ -584,22 +733,6 @@ export const CharacterV19Schema = z.discriminatedUnion('mode', [
   AdaptivePartsCharacterV22Schema,
 ]);
 
-/** A Graphic face is always a frozen instance, never a raster-cache identity. */
-const CharacterFaceGraphicSourceV22Schema = z.object({
-  kind: z.literal('fla-graphic'),
-  animationId: IdSchema,
-  firstFrame: z.number().int().nonnegative(),
-}).strict();
-
-const CharacterExpressionV22Schema = CharacterExpressionV19Schema.extend({
-  assetId: IdSchema.optional(),
-  visualSource: CharacterFaceGraphicSourceV22Schema.optional(),
-}).superRefine((expression, context) => {
-  if (Boolean(expression.assetId) === Boolean(expression.visualSource)) {
-    context.addIssue({ code: 'custom', path: ['visualSource'], message: 'Expression requires exactly one image or Graphic source.' });
-  }
-});
-
 const CharacterFaceV22Shape = {
   baseAssetId: IdSchema.optional(),
   expressions: z.array(CharacterExpressionV22Schema).min(1),
@@ -610,6 +743,18 @@ export const CharacterV22Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema.extend(CharacterFaceV22Shape),
   CompositeCharacterSchema.extend(CharacterFaceV22Shape),
   AdaptivePartsCharacterV22Schema,
+]).superRefine((character, context) => {
+  if (character.mode === 'adaptive-parts') return;
+  if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
+  }
+});
+
+/** Frozen v23 Character contract before AdaptiveParts face/expression/head bindings. */
+export const CharacterV23Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend(CharacterFaceV22Shape),
+  CompositeCharacterSchema.extend(CharacterFaceV22Shape),
+  AdaptivePartsCharacterV23Schema,
 ]).superRefine((character, context) => {
   if (character.mode === 'adaptive-parts') return;
   if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
@@ -637,7 +782,9 @@ export function resolveExpressionVisualSource(expression: CharacterExpression): 
   throw new Error(`Expression ${expression.id} has no visual source.`);
 }
 
-export function resolveMouthVisualSource(character: ExpressionCharacter): CharacterFaceSource | null {
+export function resolveMouthVisualSource(
+  character: Pick<ExpressionCharacter, 'mouthOpenVisualSource' | 'mouthOpenAssetId'>,
+): CharacterFaceSource | null {
   return character.mouthOpenVisualSource ?? (character.mouthOpenAssetId ? { kind: 'image', assetId: character.mouthOpenAssetId } : null);
 }
 
@@ -682,12 +829,18 @@ export const CharacterPartImageVisualSourceSchema = CharacterPartImageVisualSour
 export const CharacterPartFlaGraphicVisualSourceSchema = CharacterPartFlaGraphicVisualSourceCurrentSchema;
 export const CharacterPartVisualSourceSchema = CharacterPartVisualSourceCurrentSchema;
 export const CharacterPartSchema = CharacterPartCurrentSchema;
+export const AdaptivePartsFaceAnchorRectSchema = AdaptivePartsFaceAnchorRectV24Schema;
+export const AdaptivePartsFaceBindingSchema = AdaptivePartsFaceBindingV24Schema;
+export const AdaptivePartsHeadMotionBindingSchema = AdaptivePartsHeadMotionBindingV24Schema;
 export const AdaptivePartsCharacterSchema = AdaptivePartsCharacterCurrentSchema;
 export const CharacterFaceGraphicSourceSchema = CharacterFaceGraphicSourceV22Schema;
 export const CharacterExpressionSchema = CharacterExpressionV22Schema;
 export const CharacterSchema = CharacterCurrentSchema;
 export const VoiceProfileSchema = VoiceProfileV22Schema;
 
+export type AdaptivePartsFaceAnchorRect = z.infer<typeof AdaptivePartsFaceAnchorRectSchema>;
+export type AdaptivePartsFaceBinding = z.infer<typeof AdaptivePartsFaceBindingSchema>;
+export type AdaptivePartsHeadMotionBinding = z.infer<typeof AdaptivePartsHeadMotionBindingSchema>;
 export type CharacterExpression = z.infer<typeof CharacterExpressionSchema>;
 export type FacePlacement = z.infer<typeof FacePlacementSchema>;
 export type HeadPlacement = z.infer<typeof HeadPlacementSchema>;
@@ -810,6 +963,44 @@ export function cloneCharacterPart(part: CharacterPart): CharacterPart {
       : {}),
   };
 }
+export function cloneAdaptivePartsFaceBinding(
+  binding: AdaptivePartsFaceBinding,
+): AdaptivePartsFaceBinding {
+  return {
+    targetPartId: binding.targetPartId,
+    replacePartIds: [...binding.replacePartIds],
+    anchorRect: { ...binding.anchorRect },
+    placement: { ...binding.placement },
+  };
+}
+
+export function cloneAdaptivePartsHeadMotionBinding(
+  binding: AdaptivePartsHeadMotionBinding,
+): AdaptivePartsHeadMotionBinding {
+  return {
+    partIds: [...binding.partIds],
+  };
+}
+
+export function adaptiveCharacterHasFaceBinding(
+  character: Pick<AdaptivePartsCharacter, 'faceBinding' | 'parts'>,
+): boolean {
+  return Boolean(
+    character.faceBinding &&
+      character.parts.some((part) => part.partId === character.faceBinding?.targetPartId),
+  );
+}
+
+export function characterHasExpressions(
+  character: Pick<Character, 'mode'> & {
+    faceBinding?: AdaptivePartsFaceBinding;
+    expressions?: readonly CharacterExpression[];
+  },
+): boolean {
+  if (character.mode !== 'adaptive-parts') return true;
+  return Boolean(character.faceBinding) || Boolean(character.expressions?.length);
+}
+
 export type ExpressionCharacter = Extract<
   Character,
   { mode: 'single-image' | 'composite' }

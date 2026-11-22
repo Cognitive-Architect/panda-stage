@@ -1016,6 +1016,7 @@ export class DialogueService {
       ids.add(character.id);
       if (character.mode === 'adaptive-parts') {
         character.parts.forEach((part) => ids.add(part.partId));
+        character.expressions?.forEach((expression) => ids.add(expression.id));
       } else {
         character.expressions.forEach((expression) => ids.add(expression.id));
       }

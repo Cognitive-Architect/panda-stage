@@ -1,6 +1,8 @@
 import {
   CharacterServiceError,
   DEFAULT_BODY_PLACEMENT,
+  cloneAdaptivePartsFaceBinding,
+  cloneAdaptivePartsHeadMotionBinding,
   cloneCharacterPart,
   type AdaptivePartsCharacterDefinition,
   type CharacterExpressionDraft,
@@ -415,6 +417,12 @@ function cloneAdaptivePartsDefinition(
   return {
     sourceRootTransform: { ...definition.sourceRootTransform },
     parts: definition.parts.map(cloneCharacterPart),
+    ...(definition.faceBinding
+      ? { faceBinding: cloneAdaptivePartsFaceBinding(definition.faceBinding) }
+      : {}),
+    ...(definition.headMotionBinding
+      ? { headMotionBinding: cloneAdaptivePartsHeadMotionBinding(definition.headMotionBinding) }
+      : {}),
   };
 }
 

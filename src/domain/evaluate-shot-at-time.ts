@@ -132,8 +132,19 @@ function resolveLayerVisualState(
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
-  if (!character || character.mode === 'adaptive-parts') {
+  if (!character) {
     return { assetId: null, currentExpressionId: null };
+  }
+  if (character.mode === 'adaptive-parts') {
+    const expressions = character.expressions ?? [];
+    const targetId = expressionId ?? character.defaultExpressionId;
+    const expression = targetId
+      ? expressions.find((candidate) => candidate.id === targetId)
+      : undefined;
+    return {
+      assetId: expression?.assetId ?? null,
+      currentExpressionId: expression?.id ?? null,
+    };
   }
   const expression = character?.expressions.find(
     (candidate) => candidate.id === expressionId,

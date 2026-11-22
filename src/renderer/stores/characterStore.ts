@@ -348,6 +348,46 @@ export class CharacterStore {
     );
   }
 
+  clearDefaultExpression(characterId: string): Project {
+    return this.apply(
+      (project) => this.service.clearDefaultExpression(project, characterId),
+      'Restore original default face',
+    );
+  }
+
+  setAdaptivePartsFaceBinding(
+    characterId: string,
+    input: Parameters<CharacterService['setAdaptivePartsFaceBinding']>[2],
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setAdaptivePartsFaceBinding(project, characterId, input),
+      input ? 'Set face expression slot' : 'Clear face expression slot',
+    );
+  }
+
+  updateAdaptivePartsFacePlacement(
+    characterId: string,
+    placement: Parameters<CharacterService['updateAdaptivePartsFacePlacement']>[2],
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.updateAdaptivePartsFacePlacement(project, characterId, placement),
+      'Update face placement',
+    );
+  }
+
+  setAdaptivePartsHeadMotionBinding(
+    characterId: string,
+    partIds: readonly string[] | null,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setAdaptivePartsHeadMotionBinding(project, characterId, partIds),
+      'Update head motion parts',
+    );
+  }
+
   setMouthOpenAsset(
     characterId: string,
     assetId: string | null,

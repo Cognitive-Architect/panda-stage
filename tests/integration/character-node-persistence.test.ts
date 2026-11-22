@@ -11,6 +11,7 @@ import {
   evaluateShotAtTime,
   LayerV22Schema,
   migrateProject,
+  PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   ProjectV22Schema,
   resolveEffectiveMouthCue,
@@ -83,7 +84,7 @@ describe('Character Node Project persistence (#1155)', () => {
       await writeFile(path.join(root, 'project.json'), await readFile(v22File));
       const opened = await new ProjectService().open(root);
       expect(opened).toMatchObject({ sourceVersion: 22, migrated: true });
-      expect(opened.project).toStrictEqual({ ...v22Input, schemaVersion: 23 });
+      expect(opened.project).toStrictEqual({ ...v22Input, schemaVersion: PROJECT_SCHEMA_VERSION });
       expect(ProjectOperationResponseSchema.parse({ ok: true, value: opened })).toEqual({ ok: true, value: opened });
     } finally {
       await rm(parent, { recursive: true, force: true });
@@ -109,7 +110,7 @@ describe('Character Node Project persistence (#1155)', () => {
       type: 'visibility', startMs: 750, endMs: 1000, visible: false,
     });
     expect(ProjectV22Schema.parse(project)).toStrictEqual(project);
-    expect(migrateProject(project)).toStrictEqual({ ...project, schemaVersion: 23 });
+    expect(migrateProject(project)).toStrictEqual({ ...project, schemaVersion: PROJECT_SCHEMA_VERSION });
   });
 
   it('round-trips a v3 face target through ProjectService and evaluates Composite Face motion', async () => {
@@ -127,7 +128,7 @@ describe('Character Node Project persistence (#1155)', () => {
       const persisted = JSON.parse(await readFile(file, 'utf8'));
       expect(persisted).toStrictEqual(JSON.parse(JSON.stringify(project)));
       const reopened = await service.open(root);
-      expect(reopened).toMatchObject({ sourceVersion: 23, migrated: false });
+      expect(reopened).toMatchObject({ sourceVersion: PROJECT_SCHEMA_VERSION, migrated: false });
       expect(reopened.project).toStrictEqual(project);
       expect(ProjectOperationResponseSchema.parse({ ok: true, value: reopened })).toEqual({ ok: true, value: reopened });
       const reopenedClip = reopened.project.shots[0]!.layers.find((entry) => entry.id === layer.id)!.animationClip!;

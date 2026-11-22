@@ -1,5 +1,6 @@
 import {
   AdaptivePartsCharacterSchema,
+  AdaptivePartsFaceBindingSchema,
   AnimationClipV0Schema,
   BodyPlacementSchema,
   CharacterHeadSchema,
@@ -9,10 +10,14 @@ import {
   FacePlacementSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
+  cloneAdaptivePartsFaceBinding,
+  cloneAdaptivePartsHeadMotionBinding,
   cloneCharacterPart,
   isFlaGraphicDefinition,
   resolveCharacterPartVisualSource,
   resolveExpressionVisualSource,
+  type AdaptivePartsFaceBinding,
+  type AdaptivePartsHeadMotionBinding,
   type CharacterFaceSource,
   type CharacterFaceGraphicSource,
   type Character,
@@ -27,6 +32,7 @@ import {
   type ImageAsset,
   type Project,
 } from '../models';
+import { computeAdaptiveFaceAnchorRect } from '../geometry/characterPartLayout';
 import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 import {
   scanCharacterReferences,
@@ -133,6 +139,8 @@ export interface AdaptivePartsCharacterDefinition {
   /** Source container transform retained outside Character-local Part transforms. */
   sourceRootTransform: CharacterPartTransform;
   parts: readonly CharacterPart[];
+  faceBinding?: AdaptivePartsFaceBinding;
+  headMotionBinding?: AdaptivePartsHeadMotionBinding;
 }
 
 /** Updates one Part while preserving its stable identity. */
@@ -233,10 +241,27 @@ export function removeAdaptivePartFromDefinition(
       ...cloneCharacterPart(part),
       drawOrder,
     }));
-  return {
+  const next: AdaptivePartsCharacterDefinition = {
     sourceRootTransform: { ...definition.sourceRootTransform },
     parts: remaining,
   };
+  if (definition.faceBinding && definition.faceBinding.targetPartId !== partId) {
+    next.faceBinding = {
+      ...cloneAdaptivePartsFaceBinding(definition.faceBinding),
+      replacePartIds: definition.faceBinding.replacePartIds.filter(
+        (candidateId) => candidateId !== partId,
+      ),
+    };
+  }
+  if (definition.headMotionBinding) {
+    const nextHeadIds = definition.headMotionBinding.partIds.filter(
+      (candidateId) => candidateId !== partId,
+    );
+    if (nextHeadIds.length > 0) {
+      next.headMotionBinding = { partIds: nextHeadIds };
+    }
+  }
+  return next;
 }
 
 export class CharacterService {
@@ -403,6 +428,12 @@ export class CharacterService {
         staticAdjustment:
           part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
       })),
+      ...(character.faceBinding
+        ? { faceBinding: cloneAdaptivePartsFaceBinding(character.faceBinding) }
+        : {}),
+      ...(character.headMotionBinding
+        ? { headMotionBinding: cloneAdaptivePartsHeadMotionBinding(character.headMotionBinding) }
+        : {}),
     };
   }
 
@@ -412,24 +443,57 @@ export class CharacterService {
     definition: AdaptivePartsCharacterDefinition,
   ): Project {
     const character = this.adaptivePartsCharacter(project, characterId);
-    const next = this.validAdaptivePartsCharacter(project, {
+    const nextPartIds = new Set(definition.parts.map((part) => part.partId));
+    const reconciledFaceBinding =
+      definition.faceBinding && nextPartIds.has(definition.faceBinding.targetPartId)
+        ? {
+            ...cloneAdaptivePartsFaceBinding(definition.faceBinding),
+            replacePartIds: definition.faceBinding.replacePartIds.filter(
+              (partId) =>
+                partId !== definition.faceBinding!.targetPartId && nextPartIds.has(partId),
+            ),
+          }
+        : undefined;
+    const reconciledHeadPartIds =
+      definition.headMotionBinding?.partIds.filter((partId) => nextPartIds.has(partId)) ?? [];
+    const reconciledHeadMotionBinding =
+      reconciledHeadPartIds.length > 0
+        ? { partIds: [...new Set(reconciledHeadPartIds)] }
+        : undefined;
+
+    const draftCandidate: AdaptivePartsCharacter = {
       ...character,
       sourceRootTransform: definition.sourceRootTransform,
-      parts: definition.parts,
-    });
+      parts: [...definition.parts],
+    };
+    if (reconciledFaceBinding) {
+      draftCandidate.faceBinding = reconciledFaceBinding;
+    } else {
+      delete draftCandidate.faceBinding;
+    }
+    if (reconciledHeadMotionBinding) {
+      draftCandidate.headMotionBinding = reconciledHeadMotionBinding;
+    } else {
+      delete draftCandidate.headMotionBinding;
+    }
+
+    const next = this.validAdaptivePartsCharacter(project, draftCandidate);
     if (
       JSON.stringify({
         sourceRootTransform: character.sourceRootTransform,
         parts: character.parts,
+        faceBinding: character.faceBinding ?? null,
+        headMotionBinding: character.headMotionBinding ?? null,
       }) ===
       JSON.stringify({
         sourceRootTransform: next.sourceRootTransform,
         parts: next.parts,
+        faceBinding: next.faceBinding ?? null,
+        headMotionBinding: next.headMotionBinding ?? null,
       })
     ) {
       return project;
     }
-    const nextPartIds = new Set(next.parts.map((part) => part.partId));
     const removedPartIds = new Set(
       character.parts
         .map((part) => part.partId)
@@ -523,7 +587,117 @@ export class CharacterService {
     return this.applyAdaptivePartsDefinition(project, characterId, {
       sourceRootTransform: character.sourceRootTransform,
       parts,
+      ...(character.faceBinding
+        ? { faceBinding: cloneAdaptivePartsFaceBinding(character.faceBinding) }
+        : {}),
+      ...(character.headMotionBinding
+        ? { headMotionBinding: cloneAdaptivePartsHeadMotionBinding(character.headMotionBinding) }
+        : {}),
     });
+  }
+
+  setAdaptivePartsFaceBinding(
+    project: Project,
+    characterId: string,
+    input: {
+      readonly targetPartId: string;
+      readonly replacePartIds?: readonly string[];
+      readonly placement?: Partial<FacePlacement>;
+    } | null,
+  ): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    if (!input) {
+      if (!character.faceBinding) return project;
+      const next: AdaptivePartsCharacter = { ...character };
+      delete next.faceBinding;
+      return this.replaceCharacter(project, next);
+    }
+    const targetPart = character.parts.find((part) => part.partId === input.targetPartId);
+    if (!targetPart) {
+      throw new CharacterServiceError(
+        'ADAPTIVE_PART_NOT_FOUND',
+        `Adaptive Part not found: ${input.targetPartId}`,
+      );
+    }
+    const replacePartIds = [...new Set(input.replacePartIds ?? [])].filter(
+      (partId) =>
+        partId !== input.targetPartId &&
+        character.parts.some((candidate) => candidate.partId === partId),
+    );
+    const anchorRect = computeAdaptiveFaceAnchorRect({
+      sourceRootTransform: character.sourceRootTransform,
+      parts: character.parts,
+      targetPartId: input.targetPartId,
+      replacePartIds,
+      animations: project.animations,
+      assets: project.assets,
+    });
+    if (!anchorRect) {
+      throw new CharacterServiceError(
+        'INVALID_ADAPTIVE_PARTS_DEFINITION',
+        '无法计算所选表情部位的稳定对齐范围。',
+      );
+    }
+    const placement = FacePlacementSchema.parse({
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotationDeg: 0,
+      flipX: false,
+      ...(input.placement ?? {}),
+    });
+    const faceBinding = AdaptivePartsFaceBindingSchema.parse({
+      targetPartId: input.targetPartId,
+      replacePartIds,
+      anchorRect,
+      placement,
+    });
+    const next = this.validAdaptivePartsCharacter(project, {
+      ...character,
+      faceBinding,
+    });
+    return this.replaceCharacter(project, next);
+  }
+
+  updateAdaptivePartsFacePlacement(
+    project: Project,
+    characterId: string,
+    placement: FacePlacement,
+  ): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    if (!character.faceBinding) {
+      throw new CharacterServiceError(
+        'EXPRESSION_CHARACTER_REQUIRED',
+        '请先为元件角色指定表情位置。',
+      );
+    }
+    const nextPlacement = FacePlacementSchema.parse(placement);
+    const next = this.validAdaptivePartsCharacter(project, {
+      ...character,
+      faceBinding: {
+        ...character.faceBinding,
+        placement: nextPlacement,
+      },
+    });
+    return this.replaceCharacter(project, next);
+  }
+
+  setAdaptivePartsHeadMotionBinding(
+    project: Project,
+    characterId: string,
+    partIds: readonly string[] | null,
+  ): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    const existingIds = new Set(character.parts.map((part) => part.partId));
+    const filtered = [...new Set(partIds ?? [])].filter((partId) => existingIds.has(partId));
+    const next: AdaptivePartsCharacter = { ...character };
+    if (filtered.length === 0) {
+      delete next.headMotionBinding;
+    } else {
+      next.headMotionBinding = { partIds: filtered };
+    }
+    const validated = this.validAdaptivePartsCharacter(project, next);
+    return this.replaceCharacter(project, validated);
   }
 
   getCompositeDefinition(
@@ -698,9 +872,12 @@ export class CharacterService {
     characterId: string,
     draft: CharacterExpressionDraft,
   ): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: true,
+    });
+    const currentExpressions = character.expressions ?? [];
     this.assertUniqueExpressionNames([
-      ...character.expressions,
+      ...currentExpressions,
       { name: draft.name },
     ]);
     const expression: CharacterExpression = {
@@ -710,7 +887,7 @@ export class CharacterService {
     };
     return this.replaceCharacter(project, {
       ...character,
-      expressions: [...character.expressions, expression],
+      expressions: [...currentExpressions, expression],
     });
   }
 
@@ -720,9 +897,10 @@ export class CharacterService {
     expressionId: string,
     rawName: string,
   ): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId);
     this.expression(character, expressionId);
-    const expressions = character.expressions.map((expression) =>
+    const currentExpressions = character.expressions ?? [];
+    const expressions = currentExpressions.map((expression) =>
       expression.id === expressionId
         ? { ...expression, name: rawName.trim() }
         : expression,
@@ -741,10 +919,13 @@ export class CharacterService {
   }
 
   setExpressionVisualSource(project: Project, characterId: string, expressionId: string, source: CharacterFaceSource): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: true,
+    });
     const expression = this.expression(character, expressionId);
     const fields = this.faceFields(project, source.kind === 'image' ? source : { visualSource: source });
-    const expressions = character.expressions.map((candidate) =>
+    const currentExpressions = character.expressions ?? [];
+    const expressions = currentExpressions.map((candidate) =>
       candidate.id === expression.id
         ? { id: candidate.id, name: candidate.name, ...fields }
         : candidate,
@@ -752,7 +933,7 @@ export class CharacterService {
     return this.replaceCharacter(project, {
       ...character,
       expressions,
-      ...(character.defaultExpressionId === expression.id
+      ...(character.mode !== 'adaptive-parts' && character.defaultExpressionId === expression.id
         ? { baseAssetId: fields.assetId }
         : {}),
     });
@@ -763,15 +944,18 @@ export class CharacterService {
     characterId: string,
     expressionId: string,
   ): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId);
     const expression = this.expression(character, expressionId);
+    const currentExpressions = character.expressions ?? [];
     if (character.defaultExpressionId === expression.id) {
       throw new CharacterServiceError(
         'DEFAULT_EXPRESSION_REQUIRED',
-        `“${expression.name}”是默认表情。请先选择替代表情，再执行删除。`,
+        character.mode === 'adaptive-parts'
+          ? `“${expression.name}”是默认表情。请先恢复原脸或切换其他默认表情，再执行删除。`
+          : `“${expression.name}”是默认表情。请先选择替代表情，再执行删除。`,
       );
     }
-    if (character.expressions.length === 1) {
+    if (character.mode !== 'adaptive-parts' && currentExpressions.length === 1) {
       throw new CharacterServiceError(
         'LAST_EXPRESSION_REQUIRED',
         '角色至少需要保留一个表情。',
@@ -789,11 +973,17 @@ export class CharacterService {
         references,
       );
     }
+    const nextExpressions = currentExpressions.filter(
+      (candidate) => candidate.id !== expression.id,
+    );
+    if (character.mode === 'adaptive-parts' && nextExpressions.length === 0) {
+      const nextAdaptive = { ...character };
+      delete nextAdaptive.expressions;
+      return this.replaceCharacter(project, nextAdaptive);
+    }
     return this.replaceCharacter(project, {
       ...character,
-      expressions: character.expressions.filter(
-        (candidate) => candidate.id !== expression.id,
-      ),
+      expressions: nextExpressions,
     });
   }
 
@@ -802,14 +992,24 @@ export class CharacterService {
     characterId: string,
     expressionId: string,
   ): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: true,
+    });
     const expression = this.expression(character, expressionId);
     if (character.defaultExpressionId === expression.id) return project;
     return this.replaceCharacter(project, {
       ...character,
       defaultExpressionId: expression.id,
-      baseAssetId: expression.assetId,
+      ...(character.mode !== 'adaptive-parts' ? { baseAssetId: expression.assetId } : {}),
     });
+  }
+
+  clearDefaultExpression(project: Project, characterId: string): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    if (character.defaultExpressionId === undefined) return project;
+    const next = { ...character };
+    delete next.defaultExpressionId;
+    return this.replaceCharacter(project, next);
   }
 
   setMouthOpenAsset(
@@ -821,7 +1021,9 @@ export class CharacterService {
   }
 
   setMouthOpenVisualSource(project: Project, characterId: string, source: CharacterFaceSource | null): Project {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: Boolean(source),
+    });
     const next = { ...character };
     delete next.mouthOpenAssetId;
     delete next.mouthOpenVisualSource;
@@ -881,7 +1083,9 @@ export class CharacterService {
     project: Project,
     characterId: string,
   ): CharacterDimensionWarning[] {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId);
+    const currentExpressions = character.expressions ?? [];
+    if (!character.defaultExpressionId) return [];
     const defaultExpression = this.expression(
       character,
       character.defaultExpressionId,
@@ -889,7 +1093,7 @@ export class CharacterService {
     if (!defaultExpression.assetId) return [];
     const baseline = this.imageAsset(project, defaultExpression.assetId);
     const candidates = [
-      ...character.expressions
+      ...currentExpressions
         .filter((expression) => expression.id !== defaultExpression.id && expression.assetId)
         .map((expression) => ({
           expressionId: expression.id,
@@ -934,10 +1138,27 @@ export class CharacterService {
     expressionId: string | undefined,
     center: { x: number; y: number },
   ): ResolvedCharacterAppearance {
-    const character = this.expressionCharacter(project, characterId);
+    const character = this.expressionHostCharacter(project, characterId);
+    const targetExpressionId = expressionId ?? character.defaultExpressionId;
+    if (!targetExpressionId && character.mode === 'adaptive-parts') {
+      const rect = character.faceBinding?.anchorRect;
+      return {
+        characterId,
+        expressionId: '',
+        assetId: '',
+        center: { ...center },
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        scaleX: character.defaultFlipX
+          ? -character.defaultScale
+          : character.defaultScale,
+        scaleY: character.defaultScale,
+        flipX: character.defaultFlipX,
+      };
+    }
     const expression = this.expression(
       character,
-      expressionId ?? character.defaultExpressionId,
+      targetExpressionId ?? '',
     );
     const asset = resolveCharacterFaceSource(project, resolveExpressionVisualSource(expression));
     return {
@@ -983,16 +1204,20 @@ export class CharacterService {
     return character;
   }
 
-  private expressionCharacter(
+  private expressionHostCharacter(
     project: Project,
     characterId: string,
-  ): ExpressionCharacter {
+    options: { readonly requireFaceBinding?: boolean } = {},
+  ): ExpressionCharacter | AdaptivePartsCharacter {
     const character = this.character(project, characterId);
     if (character.mode === 'adaptive-parts') {
-      throw new CharacterServiceError(
-        'EXPRESSION_CHARACTER_REQUIRED',
-        `Adaptive Parts Character ${characterId} does not have Expressions.`,
-      );
+      if (options.requireFaceBinding && !character.faceBinding) {
+        throw new CharacterServiceError(
+          'EXPRESSION_CHARACTER_REQUIRED',
+          '请先为元件角色指定表情位置。',
+        );
+      }
+      return character;
     }
     return character;
   }
@@ -1246,10 +1471,10 @@ export class CharacterService {
   }
 
   private expression(
-    character: ExpressionCharacter,
+    character: ExpressionCharacter | AdaptivePartsCharacter,
     expressionId: string,
   ): CharacterExpression {
-    const expression = character.expressions.find(
+    const expression = (character.expressions ?? []).find(
       (candidate) => candidate.id === expressionId,
     );
     if (!expression) {

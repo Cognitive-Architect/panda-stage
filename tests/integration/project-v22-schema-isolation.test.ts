@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { migrateProject, ProjectSchema, ProjectV22Schema } from '../../src/domain';
+import { migrateProject, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV22Schema } from '../../src/domain';
 import fixture from '../fixtures/project-v22-mixed-character-motion.json';
 import { IDS } from '../unit/domain/testProject';
 
@@ -38,7 +38,7 @@ it.each(['character', 'timeline event'])('keeps a future current %s field out of
     };
     project.shots[0]!.timelineEvents.push(event);
   }
-  const current = { ...project, schemaVersion: 23 };
+  const current = { ...project, schemaVersion: PROJECT_SCHEMA_VERSION };
   expect(ProjectSchema.parse(current)).toStrictEqual(current);
   expect(ProjectV22Schema.safeParse(project).success).toBe(false);
   expect(() => migrateProject(project)).toThrow();
