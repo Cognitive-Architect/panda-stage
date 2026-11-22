@@ -31,11 +31,14 @@ import {
   type AssetCanvasImageReadRequest,
 } from '../shared/asset-canvas-image-api';
 import {
+  AssetDialogueSilenceRequestSchema,
+  type AssetDialogueSilenceRequest,
   AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   type AssetPreviewAudioReadRequest,
 } from '../shared/asset-preview-audio-api';
+import { DialogueSilenceIntervalsSchema } from '../shared/dialogue-silence';
 import {
   AppPingRequestSchema,
   AppPingResponseSchema,
@@ -343,6 +346,11 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetPreviewAudioReadResponseSchema.parse(response);
+    },
+    analyzeDialogueSilence: async (rawRequest: AssetDialogueSilenceRequest) => {
+      const request = AssetDialogueSilenceRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE, request);
+      return DialogueSilenceIntervalsSchema.nullable().parse(response);
     },
     getAudioInfo: async (rawRequest: AssetPreviewAudioReadRequest) => {
       const request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);

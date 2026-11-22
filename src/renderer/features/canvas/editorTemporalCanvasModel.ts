@@ -12,6 +12,7 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import {
   resolveEditorTemporalAssetResolution,
   type EditorTemporalVisual,
@@ -23,6 +24,7 @@ export interface EditorTemporalCanvasModelInput {
   shot: Shot;
   currentTimeMs: number;
   activeDialogueId?: string | null;
+  dialogueSilence?: DialogueSilence;
   readyAssetIds: ReadonlySet<string>;
   /** Decoded source hashes keyed by Asset id; distinguishes replacement bytes. */
   readyAssetSourceKeys?: ReadonlyMap<string, string>;
@@ -137,6 +139,7 @@ export function buildEditorTemporalCanvasModel({
   shot,
   currentTimeMs,
   activeDialogueId = null,
+  dialogueSilence,
   readyAssetIds,
   readyAssetSourceKeys,
   readyResourceKeys,
@@ -149,9 +152,10 @@ export function buildEditorTemporalCanvasModel({
   // Keep base transform editing at 0:00, while showing any formally authored
   // Expression switch or configured talking face at zero. Only the face
   // state is projected so the base transforms remain editable.
+  const hasSilenceAnalysis = dialogueSilence !== undefined && Object.keys(dialogueSilence).length > 0;
   const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
     source.kind === 'character' && project.characters.some(character =>
-      character.id === source.characterId && character.talkingAnimationPlayback),
+      character.id === source.characterId && character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback)),
   );
   const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
@@ -160,14 +164,14 @@ export function buildEditorTemporalCanvasModel({
   )
     ? (() => {
         const atZero = evaluateShotAtTime(shot, 0, project);
-        const formal = hasConfiguredTalkingFace ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId) : atZero;
+        const formal = hasConfiguredTalkingFace ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId, dialogueSilence) : atZero;
         return {
           ...baseEditorShot,
           layers: baseEditorShot.layers.map((layer) => {
             const source = shot.layers.find((candidate) => candidate.id === layer.id)?.source;
             if (source?.kind !== 'character') return layer;
             const configured = project.characters.some(character =>
-              character.id === source.characterId && character.talkingAnimationPlayback);
+              character.id === source.characterId && character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback));
             const evaluated = (configured ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
             return evaluated
               ? {
@@ -189,6 +193,7 @@ export function buildEditorTemporalCanvasModel({
         shot,
         evaluateShotAtTime(shot, currentTimeMs, project),
         activeDialogueId,
+        dialogueSilence,
       )
     : zeroTimeExpressionShot;
   // Base Edit View owns 0:00 transforms and the continuity resolver owns image

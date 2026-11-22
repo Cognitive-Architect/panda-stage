@@ -736,6 +736,7 @@ export class ExportPreparationService {
         project,
         renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
         cameraMode: request.cameraMode,
+        ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
         supportProfile: EXPORT_PREPARATION_SUPPORT_PROFILE,
         outputIntent: {

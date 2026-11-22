@@ -53,12 +53,14 @@ function services(): {
   readCanvasImage: ReturnType<typeof vi.fn>;
   readAudio: ReturnType<typeof vi.fn>;
   getAudioInfo: ReturnType<typeof vi.fn>;
+  analyzeDialogueSilence: ReturnType<typeof vi.fn>;
 } {
   const deleteAsset = vi.fn();
   const read = vi.fn();
   const readCanvasImage = vi.fn();
   const readAudio = vi.fn();
   const getAudioInfo = vi.fn();
+  const analyzeDialogueSilence = vi.fn();
   return {
     assetDeleteService: { deleteAsset } as unknown as AssetDeleteService,
     assetThumbnailService: { read } as unknown as AssetThumbnailService,
@@ -68,16 +70,36 @@ function services(): {
     assetPreviewAudioService: {
       read: readAudio,
       getInfo: getAudioInfo,
+      analyzeDialogueSilence,
     } as unknown as AssetPreviewAudioService,
     deleteAsset,
     read,
     readCanvasImage,
     readAudio,
     getAudioInfo,
+    analyzeDialogueSilence,
   };
 }
 
 describe('asset library IPC handlers', () => {
+  it('returns validated silence for a trusted audio request and rejects invalid or foreign requests', async () => {
+    const dependencies = services();
+    registerAssetLibraryIpcHandlers({ getMainWindow: () => mainWindow(), ...dependencies });
+    const handler = electronMocks.handlers.get(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE)!;
+    const input = {
+      projectRoot: 'C:/temp/silence.pandastage',
+      assetId: '10000000-0000-4000-8000-000000000201',
+      sha256: 'c'.repeat(64),
+    };
+    await expect(handler(event(999), input)).rejects.toThrow();
+    await expect(handler(event(), { ...input, path: 'arbitrary.wav' })).resolves.toBeNull();
+    expect(dependencies.analyzeDialogueSilence).not.toHaveBeenCalled();
+    dependencies.analyzeDialogueSilence.mockResolvedValueOnce([[200, 600]]);
+    await expect(handler(event(), input)).resolves.toEqual([[200, 600]]);
+    dependencies.analyzeDialogueSilence.mockResolvedValueOnce([[600, 200]]);
+    await expect(handler(event(), input)).resolves.toBeNull();
+  });
+
   beforeEach(() => {
     electronMocks.handlers.clear();
     electronMocks.handle.mockClear();
@@ -97,11 +119,12 @@ describe('asset library IPC handlers', () => {
       IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
       IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
       IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
+      IPC_CHANNELS.ASSET_DIALOGUE_SILENCE,
     ]);
-    expect(electronMocks.handle).toHaveBeenCalledTimes(5);
+    expect(electronMocks.handle).toHaveBeenCalledTimes(6);
     remove();
     expect(electronMocks.handlers.size).toBe(0);
-    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(5);
+    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(6);
   });
 
   it('rejects an untrusted renderer before calling any service', async () => {

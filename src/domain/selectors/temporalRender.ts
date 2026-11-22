@@ -13,6 +13,7 @@ import {
   resolveLayerVisualParts,
   type VisualResourceReference,
 } from './visualParts';
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 
@@ -135,6 +136,7 @@ export function projectShotMouth(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId: string | null,
+  dialogueSilence?: DialogueSilence,
 ): EvaluatedShot {
   const dialogue = activeDialogueId
     ? shot.dialogues.find((candidate) => candidate.id === activeDialogueId)
@@ -165,7 +167,7 @@ export function projectShotMouth(
   const hasAnyMouthCue = shot.timelineEvents.some(
     (event) => event.type === 'mouth-cue',
   );
-  const talkingClips = new Map<string, AudioClip>();
+  const talkingClips = new Map<string, { clip: AudioClip; silent: boolean }>();
   for (const voice of shot.dialogues) {
     if (!voice.characterId || !voice.audioClipId ||
       !project.characters.some(character => character.id === voice.characterId && character.talkingAnimationId)) continue;
@@ -175,7 +177,13 @@ export function projectShotMouth(
     if (asset?.kind !== 'audio' ||
       (asset.durationMs !== undefined && audioClipSourceTimeMs(clip, evaluatedShot.timeMs) >= asset.durationMs)) continue;
     const previous = talkingClips.get(voice.characterId);
-    if (!previous || clip.startMs > previous.startMs) talkingClips.set(voice.characterId, clip);
+    if (!previous || clip.startMs > previous.clip.startMs) {
+      const analysis = dialogueSilence?.[asset.id];
+      const sourceTime = audioClipSourceTimeMs(clip, evaluatedShot.timeMs);
+      const silent = Boolean(analysis && analysis.sha256 === asset.sha256 &&
+        analysis.intervals.some(([start, end]) => sourceTime >= start && sourceTime < end));
+      talkingClips.set(voice.characterId, { clip, silent });
+    }
   }
   const hasRestFrames = project.characters.some(character => character.talkingAnimationPlayback?.restFrame !== undefined);
   if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0 && !hasRestFrames) return evaluatedShot;
@@ -226,11 +234,16 @@ export function projectShotMouth(
       return layer;
     }
 
-    const talkingClip = talkingClips.get(layerCharacterId);
-    if (cue === 'none' && talkingTargets?.get(layerCharacterId) === layer.id &&
-      (talkingClip || restFrame !== undefined)) {
-      changed = true;
-      return { ...layer, talkingAnimationElapsedMs: talkingClip ? evaluatedShot.timeMs - talkingClip.startMs : 'rest' };
+    const talking = talkingClips.get(layerCharacterId);
+    if (cue === 'none' && talkingTargets?.get(layerCharacterId) === layer.id) {
+      if (talking && !talking.silent) {
+        changed = true;
+        return { ...layer, talkingAnimationElapsedMs: evaluatedShot.timeMs - talking.clip.startMs };
+      }
+      if (restFrame !== undefined) {
+        changed = true;
+        return { ...layer, talkingAnimationElapsedMs: 'rest' };
+      }
     }
 
     const shouldOpenFromCue = cue === 'open';
@@ -361,6 +374,7 @@ export function projectShotDialogueVisual(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   explicitActiveDialogueId?: string | null,
+  dialogueSilence?: DialogueSilence,
 ): EvaluatedShot {
   const activeDialogueId =
     explicitActiveDialogueId === undefined
@@ -374,6 +388,7 @@ export function projectShotDialogueVisual(
     shot,
     evaluatedShot,
     activeDialogueId,
+    dialogueSilence,
   );
   return projectShotHeadMotion(
     project,

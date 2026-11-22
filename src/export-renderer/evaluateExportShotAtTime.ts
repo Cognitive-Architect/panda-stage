@@ -6,17 +6,21 @@ import {
   type Shot,
 } from '../domain';
 
+import type { DialogueSilence } from '../shared/dialogue-silence';
+
 /** The hidden Export renderer's requested-time Dialogue projection. */
 export function evaluateExportShotAtTime(
   project: Project,
   shot: Shot,
   requestedTimeMs: number,
   activeDialogueId?: string | null,
+  dialogueSilence?: DialogueSilence,
 ): EvaluatedShot {
   return projectShotDialogueVisual(
     project,
     shot,
     evaluateShotAtTime(shot, requestedTimeMs, project),
     activeDialogueId,
+    dialogueSilence,
   );
 }

@@ -91,6 +91,7 @@ import {
 } from './CompactProjectBar';
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
+import { useDialogueSilence } from './useDialogueSilence';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
@@ -510,6 +511,11 @@ export function EditorShell({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const dialogueSilence = useDialogueSilence(projectSnapshot?.project, projectSnapshot?.projectRoot);
+  const dialogueSilenceCapture = useRef({ projectRoot: projectSnapshot?.projectRoot, projectId: projectSnapshot?.project.id, data: dialogueSilence });
+  useEffect(() => {
+    dialogueSilenceCapture.current = { projectRoot: projectSnapshot?.projectRoot, projectId: projectSnapshot?.project.id, data: dialogueSilence };
+  }, [dialogueSilence, projectSnapshot?.project.id, projectSnapshot?.projectRoot]);
   const characterAssemblySnapshot = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
@@ -2049,6 +2055,9 @@ export function EditorShell({
         issues: [],
       });
       const cameraMode = autoCameraEnabled ? 'speaker-focus' : 'static';
+      const analyzed = dialogueSilenceCapture.current;
+      const silenceAtCapture = analyzed.projectRoot === captured.projectRoot && analyzed.projectId === captured.project.id
+        ? analyzed.data : undefined;
       const result = await window.pandaStage.exportPreparation.prepare({
         selectionId: selection.selectionId,
         attemptId,
@@ -2058,6 +2067,7 @@ export function EditorShell({
         revision: captured.revision,
         dirty: captured.dirty,
         cameraMode,
+        ...(silenceAtCapture && Object.keys(silenceAtCapture).length > 0 ? { dialogueSilence: silenceAtCapture } : {}),
         project: structuredClone(captured.project),
       });
 
@@ -2799,6 +2809,7 @@ export function EditorShell({
                 inert={Boolean(characterFloatMode) || assemblyActive || undefined}
               >
                 <CanvasWorkspace
+                  dialogueSilence={dialogueSilence}
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
@@ -2866,6 +2877,7 @@ export function EditorShell({
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
+              dialogueSilence={dialogueSilence}
               autoPlay
               autoCameraEnabled={autoCameraEnabled}
               onAutoCameraChange={setAutoCameraEnabled}

@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type Konva from 'konva';
+import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
@@ -252,12 +253,14 @@ function isCurrentCanvasAssetReady(
 }
 
 export interface CanvasStageProps {
+  dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
   onCharacterPartSelected?: () => void;
 }
 
 export function CanvasStage({
+  dialogueSilence,
   showHeading = true,
   showToolbar = true,
   onCharacterPartSelected,
@@ -785,6 +788,7 @@ export function CanvasStage({
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
+            dialogueSilence,
             currentTimeMs: timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
             project: snapshot.project,
@@ -803,6 +807,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,
       previousTemporalVisuals,

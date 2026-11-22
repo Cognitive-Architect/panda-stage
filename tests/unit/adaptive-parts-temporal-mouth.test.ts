@@ -118,6 +118,7 @@ function buildPhaseBProject(options?: {
         id: AUDIO_ASSET,
         kind: 'audio',
         name: 'LineAudio',
+        sha256: 'b'.repeat(64),
         relativePath: 'assets/line.wav',
         mimeType: 'audio/wav',
         durationMs: 1200,
@@ -286,6 +287,47 @@ it('loops a shared talking animation on the clip clock and restores the current 
   const graphicId = base.animations[0]!.id;
   project = new CharacterService().setTalkingAnimation(project, setup.characterId, graphicId);
   expect(visualAt(100).parts[1]?.source).toMatchObject({ kind: 'adaptive-part-fla-graphic', animationId: graphicId });
+
+  const service = new CharacterService();
+  const continuous = service.setTalkingAnimation(project, setup.characterId, animationId);
+  const configuredRest = service.setTalkingAnimation(continuous, setup.characterId, animationId, {
+    mode: 'loop', firstFrame: 0, lastFrame: 1, restFrame: 0,
+  });
+  const silence: import('../../src/shared/dialogue-silence').DialogueSilence = {
+    [AUDIO_ASSET]: { sha256: 'b'.repeat(64), intervals: [[850, 1_100]] },
+  };
+  const automatic = { ...shot, timelineEvents: shot.timelineEvents.filter(event => event.type !== 'mouth-cue') };
+  const at = (time: number, activeShot: typeof shot = automatic, activeProject = configuredRest, analysis = silence) => {
+    const result = evaluateExportShotAtTime(activeProject, activeShot, time, undefined, analysis);
+    const preview = projectProductPreviewDialogue(activeProject, activeShot, evaluateShotAtTime(activeShot, time, activeProject), undefined, analysis);
+    const editor = buildEditorTemporalCanvasModel({
+      project: activeProject, shot: activeShot, currentTimeMs: time, dialogueSilence: analysis,
+      readyAssetIds: new Set(activeProject.assets.map(asset => asset.id)), previousVisuals: new Map(),
+    }).evaluatedShot;
+    const fetchLayer = (frame: typeof result) => frame.layers.find(layer => layer.id === setup.layerId)!;
+    const state = fetchLayer(result);
+    expect(fetchLayer(preview).talkingAnimationElapsedMs).toBe(state.talkingAnimationElapsedMs);
+    expect(fetchLayer(editor).talkingAnimationElapsedMs).toBe(state.talkingAnimationElapsedMs);
+    return state;
+  };
+  expect(at(349).talkingAnimationElapsedMs).toBe(249);
+  expect(at(350).talkingAnimationElapsedMs).toBe('rest');
+  expect(at(599).talkingAnimationElapsedMs).toBe('rest');
+  expect(at(600).talkingAnimationElapsedMs).toBe(500);
+  expect(resolveLayerVisualParts(configuredRest, automatic, at(450), 450).activeFace?.assetId).toBe(PART_FACE_ASSET);
+  expect(resolveLayerVisualParts(configuredRest, automatic, at(600), 600).activeFace?.assetId).toBe(secondFrameAsset);
+  expect(at(450, automatic, continuous).talkingAnimationElapsedMs).toBeUndefined();
+  expect(at(450, automatic, continuous, {}).talkingAnimationElapsedMs).toBe(350);
+  expect(at(450, automatic, continuous, { [AUDIO_ASSET]: { ...silence[AUDIO_ASSET]!, sha256: 'e'.repeat(64) } }).talkingAnimationElapsedMs).toBe(350);
+  expect(at(380, shot).talkingAnimationElapsedMs).toBe('rest');
+  expect(at(480, shot).mouthOverrideAssetId).toBe(MOUTH_OPEN_ASSET);
+
+  const shifted = { ...automatic, audioClips: automatic.audioClips.map(clip => ({
+    ...clip, startMs: 400, endMs: 1_200, offsetMs: 400,
+  })) };
+  expect(at(849, shifted).talkingAnimationElapsedMs).toBe(449);
+  expect(at(850, shifted).talkingAnimationElapsedMs).toBe('rest');
+  expect(at(1_100, shifted).talkingAnimationElapsedMs).toBe(700);
 });
 
 it('samples a six-frame talking source in a custom inclusive range and restores the chosen frame', () => {

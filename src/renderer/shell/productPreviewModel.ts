@@ -12,6 +12,7 @@
  * revision, the dirty flag, the selection or the history. They all take the
  * project as a readonly input and return new values.
  */
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import {
   listShotRuntimeImageAssets,
   projectShotMouth,
@@ -551,12 +552,14 @@ export function projectProductPreviewDialogue(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId?: string | null,
+  dialogueSilence?: DialogueSilence,
 ): EvaluatedShot {
   return projectShotDialogueVisual(
     project,
     shot,
     evaluatedShot,
     activeDialogueId,
+    dialogueSilence,
   );
 }
 

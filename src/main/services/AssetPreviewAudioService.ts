@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { DialogueSilenceIntervalsSchema, type DialogueSilenceIntervals } from '../../shared/dialogue-silence';
+import type { FFmpegAdapter } from './FFmpegAdapter';
 import path from 'node:path';
 import { ProjectSchema, type Project } from '../../domain';
 import {
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
+  AssetDialogueSilenceRequestSchema,
+  type AssetDialogueSilenceRequest,
   AssetPreviewAudioReadRequestSchema,
   type AssetPreviewAudioErrorResponse,
   type AssetPreviewAudioInfoResponse,
@@ -22,6 +27,7 @@ export interface AssetPreviewAudioServiceOptions {
   inspectionService?: MediaInspectionService;
   /** Reuse only a successful hash check for the same immutable project/file identity. */
   enableValidatedHashIndex?: boolean;
+  audioTiming?: Pick<FFmpegAdapter, 'analyzeAudioTiming'>;
 }
 
 export interface AssetPreviewAudioHashIndexSnapshot {
@@ -34,6 +40,8 @@ export interface AssetPreviewAudioHashIndexSnapshot {
 }
 
 const ASSET_PREVIEW_AUDIO_HASH_INDEX_MAX_ENTRIES = 32;
+const MIN_DIALOGUE_PAUSE_MS = 240;
+const MAX_BRIDGED_SOUND_MS = 40;
 
 /**
  * Secure, read-only bridge prepared for the later Product Preview phase.
@@ -47,6 +55,8 @@ export class AssetPreviewAudioService {
   private readonly inspectionService: MediaInspectionService;
   private readonly enableValidatedHashIndex: boolean;
   private readonly validatedHashes = new Map<string, string>();
+  private readonly audioTiming: AssetPreviewAudioServiceOptions['audioTiming'];
+  private readonly silenceBySource = new Map<string, Promise<DialogueSilenceIntervals | null>>();
   private hashIndexHits = 0;
   private hashIndexMisses = 0;
   private sha256Computations = 0;
@@ -61,6 +71,7 @@ export class AssetPreviewAudioService {
     this.inspectionService =
       options.inspectionService ?? new MediaInspectionService();
     this.enableValidatedHashIndex = options.enableValidatedHashIndex ?? false;
+    this.audioTiming = options.audioTiming;
   }
 
   getHashValidationIndexSnapshot(): AssetPreviewAudioHashIndexSnapshot {
@@ -72,6 +83,60 @@ export class AssetPreviewAudioService {
       sha256Computations: this.sha256Computations,
       evictions: this.hashIndexEvictions,
     };
+  }
+
+  async analyzeDialogueSilence(rawRequest: unknown): Promise<DialogueSilenceIntervals | null> {
+    const request = AssetDialogueSilenceRequestSchema.parse(rawRequest);
+    if (!this.audioTiming) return null;
+    const snapshot = this.getCurrentProjectSnapshot(request.projectRoot);
+    const asset = snapshot?.project.assets.find(candidate => candidate.id === request.assetId);
+    if (asset?.kind !== 'audio' || asset.sha256 !== request.sha256) return null;
+    const key = JSON.stringify([request.projectRoot, request.assetId, request.sha256]);
+    const pending = this.silenceBySource.get(key);
+    if (pending) return pending;
+
+    const analysis = this.readDialogueSilence(request, asset.durationMs).catch(() => null);
+    this.silenceBySource.set(key, analysis);
+    if (this.silenceBySource.size > ASSET_PREVIEW_AUDIO_HASH_INDEX_MAX_ENTRIES) {
+      const oldest = this.silenceBySource.keys().next().value;
+      if (oldest !== undefined) this.silenceBySource.delete(oldest);
+    }
+    return analysis;
+  }
+
+  private async readDialogueSilence(
+    request: AssetDialogueSilenceRequest,
+    durationMs?: number,
+  ): Promise<DialogueSilenceIntervals | null> {
+    const source = await this.read(request);
+    if (!source.ok || !this.audioTiming) return null;
+    // Analyze the same verified bytes that the preview audio reader would use.
+    const directory = await mkdtemp(path.join(tmpdir(), 'panda-dialogue-'));
+    const file = path.join(directory, source.mimeType === 'audio/wav' ? 'source.wav' : 'source.mp3');
+    try {
+      await writeFile(file, source.bytes, { flag: 'wx' });
+      const timing = await this.audioTiming.analyzeAudioTiming(file, AbortSignal.timeout(20_000));
+      const starts = timing.silenceStartsSeconds;
+      const ends = timing.silenceEndsSeconds;
+      if (ends.length > starts.length || starts.length - ends.length > 1) return null;
+      const joined: DialogueSilenceIntervals = [];
+      for (const [index, seconds] of starts.entries()) {
+        const start = Math.round(seconds * 1_000);
+        const end = ends[index] === undefined ? durationMs : Math.min(
+          durationMs ?? Number.POSITIVE_INFINITY, Math.round(ends[index]! * 1_000),
+        );
+        if (end === undefined) continue;
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= end) return null;
+        const prior = joined.at(-1);
+        if (prior && start < prior[0]) return null;
+        if (prior && start - prior[1] <= MAX_BRIDGED_SOUND_MS) prior[1] = Math.max(prior[1], end);
+        else joined.push([start, end]);
+      }
+      return DialogueSilenceIntervalsSchema.parse(joined.filter(([start, end]) => end - start >= MIN_DIALOGUE_PAUSE_MS));
+    } finally {
+      await unlink(file).catch(() => undefined);
+      await rmdir(directory).catch(() => undefined);
+    }
   }
 
   async getInfo(rawRequest: unknown): Promise<AssetPreviewAudioInfoResponse> {

@@ -27,6 +27,9 @@ export const AssetPreviewAudioReadRequestSchema = z
   })
   .strict();
 
+export const AssetDialogueSilenceRequestSchema = AssetPreviewAudioReadRequestSchema.omit({ expectedByteLength: true });
+export type AssetDialogueSilenceRequest = z.infer<typeof AssetDialogueSilenceRequestSchema>;
+
 const AssetPreviewAudioReadyResponseSchema = z
   .object({
     ok: z.literal(true),

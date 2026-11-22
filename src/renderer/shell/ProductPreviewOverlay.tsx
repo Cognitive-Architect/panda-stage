@@ -32,6 +32,7 @@ import {
   type CameraView,
   type Project,
 } from '../../domain';
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
 import {
@@ -77,6 +78,7 @@ import {
 } from './productPreviewReveal';
 
 export interface ProductPreviewOverlayProps {
+  dialogueSilence?: DialogueSilence;
   /** Project folder of the current project, used by bounded asset reads. */
   projectRoot: string;
   /** The already loaded formal project. Treated as immutable input. */
@@ -99,6 +101,7 @@ export interface ProductPreviewOverlayProps {
 type ProductPreviewInitialReadiness = 'preparing' | 'ready' | 'error';
 
 export function ProductPreviewOverlay({
+  dialogueSilence,
   projectRoot,
   project,
   shotId,
@@ -528,13 +531,14 @@ export function ProductPreviewOverlay({
         shot,
         evaluatedShot,
         activeCue?.id ?? null,
+        dialogueSilence,
       );
       recordPreviewDuration('mouth-projection', startedAt, {
         timeMs: evaluatedShot.timeMs,
       });
       return projected;
     },
-    [activeCue?.id, evaluatedShot, project, shot],
+    [activeCue?.id, dialogueSilence, evaluatedShot, project, shot],
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);

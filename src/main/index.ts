@@ -551,6 +551,7 @@ async function initialize(): Promise<void> {
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
       enableValidatedHashIndex: true,
+      audioTiming: ffmpegAdapter,
     }),
   });
   flaAssetCommitService = new FlaAssetCommitService({

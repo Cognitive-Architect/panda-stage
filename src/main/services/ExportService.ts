@@ -538,6 +538,7 @@ export class ExportService {
             jobId: active.jobId,
             project: input.candidate.project,
             cameraMode: input.candidate.cameraMode,
+            ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
             media: input.media
               .filter((entry) => entry.kind === 'image')
               .map(({ assetId, mimeType, bytes }) => ({

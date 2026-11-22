@@ -18,12 +18,14 @@ import {
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
 import {
+  AssetDialogueSilenceRequestSchema,
   AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   type AssetPreviewAudioInfoResponse,
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
+import { DialogueSilenceIntervalsSchema } from '../../shared/dialogue-silence';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
   AssetDeleteService,
@@ -307,7 +309,19 @@ export function registerAssetLibraryIpcHandlers(
     },
   );
 
+  ipcMain.handle(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE, async (event, rawRequest: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_DIALOGUE_SILENCE);
+    try {
+      const request = AssetDialogueSilenceRequestSchema.parse(rawRequest);
+      const result = await dependencies.assetPreviewAudioService.analyzeDialogueSilence(request);
+      return DialogueSilenceIntervalsSchema.nullable().parse(result);
+    } catch {
+      return null;
+    }
+  });
+
   return () => {
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ);
