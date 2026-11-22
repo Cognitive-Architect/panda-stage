@@ -333,7 +333,7 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
   });
 
   it('binds a sequence selection to a verified, bounded frame range and request', () => {
-    const sequence = target('long-action', '动作/挥剑', { kind: 'timeline', frameCount: 40 });
+    const sequence = target('long-action', '动作/挥剑', { kind: 'timeline', frameCount: 300 });
     const previewInput = {
       status: 'verified' as const,
       sha256: 'd'.repeat(64),
@@ -366,7 +366,7 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
       context: context(),
       sequenceEntries: [sequence],
       sequencePreviews: {
-        [sequence.target.renderTargetId]: { ...previewInput, startFrameIndex: 0, endFrameIndex: 24 },
+        [sequence.target.renderTargetId]: { ...previewInput, startFrameIndex: 0, endFrameIndex: 256 },
       },
     })[0]!;
     expect(overCap).toMatchObject({

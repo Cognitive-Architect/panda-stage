@@ -15,7 +15,7 @@
   },
   "capabilityMatrix": {
     "version": "dl06-2026-10-23.1",
-    "visibleSummary": "正式导出支持 PNG/JPEG 静态图、MP3/WAV 音频和受信 FLA Graphic SVG 帧；JPEG、SVG 尚未完成 Windows 端到端验证。",
+    "visibleSummary": "正式导出支持 PNG/JPEG 静态图、MP3/WAV 音频、FLA 连续帧动画和受信 FLA Graphic SVG 帧；JPEG、SVG 尚未完成 Windows 端到端验证。",
     "layers": [
       { "id": "import", "label": "导入素材库 / FLA 工作台" },
       { "id": "shot", "label": "放入镜头" },
@@ -124,18 +124,19 @@
         "mimeTypes": [],
         "statuses": {
           "import": "SUPPORTED_VERIFIED",
-          "shot": "NOT_SUPPORTED",
+          "shot": "SUPPORTED_VERIFIED",
           "preview": "SUPPORTED_VERIFIED",
-          "formalExport": "NOT_SUPPORTED"
+          "formalExport": "SUPPORTED_UNVERIFIED"
         },
         "evidence": [
           "src/shared/fla-frame-sequence-api.ts",
           "src/main/services/fla-frame-sequence-service.ts",
           "tests/unit/fla-frame-sequence-service.test.ts",
           "tests/unit/fla-frame-sequence-commit.test.ts",
-          "tests/unit/fla-frame-sequence-playback-state.test.ts"
+          "tests/unit/fla-frame-sequence-playback-state.test.ts",
+          "tests/unit/export-preparation.test.ts"
         ],
-        "note": "工作台可检查和预览帧序列；提交会生成普通静态 ImageAsset，不会把连续帧自动接成镜头动画。导出的 PNG 帧可按静态图像逐张使用。"
+        "note": "以动画导入后可按源播放速度在镜头中使用，并在素材数量和体积预算内导出视频。"
       },
       {
         "id": "special-fla-semantics",

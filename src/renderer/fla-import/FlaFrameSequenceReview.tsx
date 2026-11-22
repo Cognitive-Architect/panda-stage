@@ -1355,7 +1355,7 @@ export function FlaFrameSequenceReview({
                 ) : null}
                 <small>
                   {sourceFpsAvailable
-                    ? '动画将按源文件时序预览；目前仅支持素材库预览，不能加入镜头或正式导出。'
+                    ? '动画保留源文件的播放速度，可用于镜头和视频导出。'
                     : '源文件播放速度无法确认，不能作为动画素材入库。'}
                 </small>
               </fieldset>

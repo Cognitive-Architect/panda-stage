@@ -330,7 +330,7 @@ function addShotVisualAssets(
  * shot's visual state changes. Preview-only alternate-expression preloads are
  * excluded; audio-bound Mouth assets are included when the shot can use them.
  */
-function addFlaGraphicAnimationMedia(
+function addShotAnimationMedia(
   entries: Map<string, ExportPreparationMediaSource>,
   project: Project,
   shot: Project['shots'][number],
@@ -428,9 +428,13 @@ function addFlaGraphicAnimationMedia(
 
   for (const animationId of fullAnimationIds) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
-    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
+    if (!animation) continue;
+    const resourceIds = ensureAnimationResources(animation.id);
+    if (!('kind' in animation) || animation.kind !== 'fla-graphic') {
+      for (const frame of animation.frames) resourceIds.add(frame.assetId);
+      continue;
+    }
     const definition = animation as FlaGraphicDefinition;
-    const resourceIds = ensureAnimationResources(definition.id);
     const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
       for (const node of nodes) {
         if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
@@ -463,7 +467,7 @@ function addFlaGraphicAnimationMedia(
 
   for (const [animationId, resourceIds] of resourceIdsByAnimation) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
-    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
+    if (!animation) continue;
     for (const assetId of resourceIds) {
       const asset = project.assets.find(
         (candidate) => candidate.id === assetId && candidate.kind === 'image',
@@ -479,7 +483,7 @@ function addFlaGraphicAnimationMedia(
         asset,
         labels.length > 0
           ? labels
-          : ['Shot "' + shot.name + '" FLA Graphic "' + animation.name + '" resource'],
+          : ['镜头“' + shot.name + '”的动画“' + animation.name + '”素材'],
       );
     }
   }
@@ -504,7 +508,7 @@ export function collectExportPreparationMedia(
       shotIndex,
       referencesByAssetId,
     );
-    addFlaGraphicAnimationMedia(
+    addShotAnimationMedia(
       entries,
       project,
       shot,
@@ -582,22 +586,6 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
-    if (shot.layers.some((layer) => {
-      if (layer.source.kind !== 'animation') return false;
-      const animationId = layer.source.animationId;
-      const animation = project.animations.find(
-        (candidate) => candidate.id === animationId,
-      );
-      return !animation || !('kind' in animation) || animation.kind !== 'fla-graphic';
-    })) {
-      issues.push(
-        issue(
-          location,
-          '当前版本暂不支持镜头动画导出',
-          '等待动画视频导出支持后再导出，或先从本次项目删除动画实例。',
-        ),
-      );
-    }
     if (shot.backgroundLayerId === null) {
       issues.push(
         issue(
