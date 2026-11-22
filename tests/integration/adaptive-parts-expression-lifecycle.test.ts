@@ -43,7 +43,8 @@ import { FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-a
 import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from '../unit/domain/testProject';
 
-const REAL_XIAOSHIMEI_FLA_PATH = 'F:\\素材\\唉小师妹唉.fla';
+const REAL_XIAOSHIMEI_FLA_PATH =
+  process.env.PANDA_STAGE_LOCAL_XIAOSHIMEI_FLA ?? 'F:\\素材\\唉小师妹唉.fla';
 const temporaryParents: string[] = [];
 
 function crc32(buffer: Buffer): number {
@@ -106,7 +107,7 @@ afterEach(async () => {
 });
 
 describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reopen (#1211)', () => {
-  it('persists faceBinding, PNG/Graphic expressions, defaultExpressionId, and alignment across save and reopen', async () => {
+  it('persists faceBinding, PNG/Graphic expressions, talking animation, and alignment across save and reopen', async () => {
     const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-phase-a-'));
     temporaryParents.push(parent);
     const projectRoot = path.join(parent, 'PhaseA.pandastage');
@@ -178,6 +179,7 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
       project.characters.find((c) => c.id === charId) as AdaptivePartsCharacter
     ).expressions![1]!.id;
     project = charService.setDefaultExpression(project, charId, graphicExprId);
+    project = charService.setTalkingAnimation(project, charId, seed.animations[0]!.id);
     const layerRes = new LayerService().createFromAdaptiveCharacter(
       project,
       IDS.shot,
@@ -193,6 +195,7 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     expect(reopened.project).toStrictEqual(project);
     expect(reopened.project.characters.find(({ id }) => id === charId)).toMatchObject({
       headMotionBinding: { partIds: [partBackId, partFaceId] },
+      talkingAnimationId: seed.animations[0]!.id,
     });
 
     const shot = reopened.project.shots[0]!;
@@ -214,7 +217,7 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
   });
 
   it.skipIf(!existsSync(REAL_XIAOSHIMEI_FLA_PATH))(
-    'imports F:\\素材\\唉小师妹唉.fla 36-part character locally, binds a face part, switches PNG & Graphic expressions cleanly without altering remaining vector parts',
+    'imports the local 36-part character, binds a face part, and switches PNG & Graphic expressions',
     async () => {
       const sourceRead = await readFlaSourceBytes(REAL_XIAOSHIMEI_FLA_PATH);
       let sourceBytes = sourceRead.bytes;

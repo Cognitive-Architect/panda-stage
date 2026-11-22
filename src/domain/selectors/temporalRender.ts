@@ -3,7 +3,8 @@ import type {
   EvaluatedLayer,
   EvaluatedShot,
 } from '../evaluate-shot-at-time';
-import type { ImageAsset, Project, Shot } from '../models';
+import { audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../audio-contract';
+import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import {
   evaluateShotAtTime,
   resolveEffectiveMouthCue,
@@ -139,13 +140,26 @@ export function projectShotMouth(
       speakingCharacter &&
       (speakingCharacter.mode !== 'adaptive-parts' ||
         Boolean(speakingCharacter.faceBinding)) &&
+      !speakingCharacter.talkingAnimationId &&
       (speakingCharacter.mouthOpenAssetId ||
         speakingCharacter.mouthOpenVisualSource),
   );
   const hasAnyMouthCue = shot.timelineEvents.some(
     (event) => event.type === 'mouth-cue',
   );
-  if (!dialogueOpenPhase && !hasAnyMouthCue) return evaluatedShot;
+  const talkingClips = new Map<string, AudioClip>();
+  for (const voice of shot.dialogues) {
+    if (!voice.characterId || !voice.audioClipId ||
+      !project.characters.some(character => character.id === voice.characterId && character.talkingAnimationId)) continue;
+    const clip = shot.audioClips.find((candidate) => candidate.id === voice.audioClipId);
+    if (clip?.role !== 'dialogue' || !isAudioClipActiveAtTime(clip, evaluatedShot.timeMs)) continue;
+    const asset = project.assets.find((candidate) => candidate.id === clip.assetId);
+    if (asset?.kind !== 'audio' ||
+      (asset.durationMs !== undefined && audioClipSourceTimeMs(clip, evaluatedShot.timeMs) >= asset.durationMs)) continue;
+    const previous = talkingClips.get(voice.characterId);
+    if (!previous || clip.startMs > previous.startMs) talkingClips.set(voice.characterId, clip);
+  }
+  if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0) return evaluatedShot;
 
   let changed = false;
   const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
@@ -183,6 +197,12 @@ export function projectShotMouth(
         };
       }
       return layer;
+    }
+
+    const talkingClip = talkingClips.get(layerCharacterId);
+    if (cue === 'none' && layerCharacter.talkingAnimationId && talkingClip) {
+      changed = true;
+      return { ...layer, talkingAnimationElapsedMs: evaluatedShot.timeMs - talkingClip.startMs };
     }
 
     const shouldOpenFromCue = cue === 'open';

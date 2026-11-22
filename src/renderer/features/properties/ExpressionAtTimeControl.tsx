@@ -183,7 +183,7 @@ export function ExpressionAtTimeControl({
           </ul>
         </div>
       ) : null}
-      {hasMouthOpenVisual ? (
+      {hasMouthOpenVisual || character.talkingAnimationId ? (
         <div className="mouth-cue-at-time" data-testid="mouth-cue-at-time">
           <div className="mouth-cue-at-time-row" role="group" aria-label="嘴型">
             <span className="mouth-cue-at-time-label">嘴型</span>
@@ -196,14 +196,14 @@ export function ExpressionAtTimeControl({
                 onClick={() => applyMouthCue('rest')}
                 type="button"
               >闭合</button>
-              <button
+              {hasMouthOpenVisual ? <button
                 aria-pressed={effectiveMouthCue === 'open'}
                 className="expression-at-time-choice mouth-cue-choice"
                 data-testid="mouth-cue-open-button"
                 disabled={layer.locked || !validTime}
                 onClick={() => applyMouthCue('open')}
                 type="button"
-              >张开</button>
+              >张开</button> : null}
             </div>
           </div>
           {mouthCueEvents.length > 0 ? (

@@ -622,7 +622,7 @@ function validateAdaptivePartsFaceAndHeadBindings(
   }
 }
 
-const AdaptivePartsCharacterCurrentSchema = z
+const AdaptivePartsCharacterV24Schema = z
   .object({
     ...AdaptivePartsCharacterBaseShape,
     parts: z.array(CharacterPartCurrentSchema).min(1),
@@ -762,9 +762,24 @@ export const CharacterV23Schema = z.discriminatedUnion('mode', [
   }
 });
 
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+export const CharacterV24Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema.extend(CharacterFaceV22Shape),
   CompositeCharacterSchema.extend(CharacterFaceV22Shape),
+  AdaptivePartsCharacterV24Schema,
+]).superRefine((character, context) => {
+  if (character.mode === 'adaptive-parts') return;
+  if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
+  }
+});
+
+const TalkingAnimationShape = { talkingAnimationId: IdSchema.optional() };
+
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV24Schema.safeExtend(TalkingAnimationShape);
+
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape }),
+  CompositeCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape }),
   AdaptivePartsCharacterCurrentSchema,
 ]).superRefine((character, context) => {
   if (character.mode === 'adaptive-parts') return;

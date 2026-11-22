@@ -2,6 +2,7 @@
 import { act, createElement, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ActionPresetPanel } from '../../src/renderer/features/actions/ActionPresetPanel';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
@@ -23,6 +24,7 @@ import {
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   evaluateShotAtTime,
+  migrateProject,
   projectShotDialogueVisual,
   resolveLayerVisualParts,
   upsertExpressionEventAtTime,
@@ -195,6 +197,92 @@ afterEach(() => {
   editorProjectStore.clear();
   delete (window as { pandaStage?: unknown }).pandaStage;
   vi.restoreAllMocks();
+});
+
+it('loops a shared talking animation on the clip clock and restores the current static face', () => {
+  const setup = buildPhaseBProject();
+  const base = setup.project;
+  const clipId = 'c3000000-0000-4000-8000-000000000041';
+  const voiceId = 'c3000000-0000-4000-8000-000000000042';
+  const animationId = 'c3000000-0000-4000-8000-000000000043';
+  const source = base.animations[0]!.source;
+  const secondFrameAsset = 'c3000000-0000-4000-8000-000000000045';
+  const frames = [PART_FACE_ASSET, secondFrameAsset].map((assetId, ordinal) => ({
+    assetId, ordinal, sourceFrameIndex: ordinal + 3, sha256: 'a'.repeat(64),
+    sourceViewport: { x: ordinal * 10, y: 0, width: 100, height: 100 },
+    offset: { x: ordinal * 10, y: 0 }, startMs: ordinal * 100,
+    durationMs: 100, createdBySequenceImport: true,
+  }));
+  let project = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, imageAsset(secondFrameAsset, 'TalkingFrame', 100, 100)].map(asset => frames.some(frame => frame.assetId === asset.id)
+      ? { ...asset, sha256: 'a'.repeat(64) } : asset),
+    animations: [...base.animations, {
+      id: animationId, name: 'Talking sequence', durationMs: 200, frames,
+      source: { ...source, targetKind: 'scene', sourceFps: 10, startFrameIndex: 3, endFrameIndex: 4,
+        canvas: { width: 110, height: 100 }, anchor: { x: 0, y: 0 } },
+    }],
+    voiceProfiles: [...base.voiceProfiles, { ...base.voiceProfiles[0], id: voiceId, name: 'Talking Voice', characterId: setup.characterId }],
+    shots: base.shots.map(shot => ({
+      ...shot,
+      audioClips: [{ id: clipId, name: 'Voice', assetId: AUDIO_ASSET, role: 'dialogue', startMs: 100, endMs: 700, offsetMs: 600 }],
+      dialogues: [{ id: 'c3000000-0000-4000-8000-000000000044', characterId: setup.characterId,
+        voiceProfileId: voiceId, subtitleStyleId: IDS.subtitle, audioClipId: clipId,
+        text: '你好', startMs: 100, endMs: 700 }],
+    })),
+  });
+  expect(migrateProject({ ...project, schemaVersion: 24 })).toEqual(project);
+  editorProjectStore.open('C:/temp/talking-animation.pandastage', project);
+  characterStore.setTalkingAnimation(setup.characterId, animationId);
+  const configured = editorProjectStore.getSnapshot()!.project;
+  editorProjectStore.undo();
+  expect(editorProjectStore.getSnapshot()!.project).toEqual(project);
+  editorProjectStore.redo();
+  project = ProjectSchema.parse(JSON.parse(JSON.stringify(editorProjectStore.getSnapshot()!.project)));
+  expect(project).toEqual(configured);
+  expect(() => migrateProject({ ...project, schemaVersion: 24 })).toThrow();
+  expect(() => new CharacterService().setTalkingAnimation(project, setup.characterId, 'missing')).toThrow();
+  expect(ProjectSchema.safeParse({
+    ...project, characters: project.characters.map(character =>
+      character.id === setup.characterId ? { ...character, talkingAnimationId: clipId } : character),
+  }).success).toBe(false);
+
+  project = upsertExpressionEventAtTime(project, setup.shotId, setup.layerId, setup.angryExprId, 150);
+  project = upsertMouthCueEventAtTime(project, setup.shotId, setup.layerId, 'rest', 340);
+  project = upsertMouthCueEventAtTime(project, setup.shotId, setup.layerId, 'open', 440);
+  const shot = project.shots[0]!;
+  const visualAt = (time: number, unavailable?: string, shotWithoutCues = false) => {
+    const activeShot = shotWithoutCues ? { ...shot, timelineEvents: shot.timelineEvents.filter(event => event.type !== 'mouth-cue') } : shot;
+    const evaluated = projectShotDialogueVisual(project, activeShot, evaluateShotAtTime(activeShot, time, project));
+    return resolveLayerVisualParts(project, activeShot, evaluated.layers.find(layer => layer.id === setup.layerId)!,
+      time, id => id === unavailable);
+  };
+  expect(visualAt(99).activeFace?.source).toBe('expression');
+  expect(visualAt(100).activeFace).toMatchObject({ source: 'mouth', assetId: PART_FACE_ASSET });
+  expect(visualAt(200).activeFace).toMatchObject({ source: 'mouth', assetId: secondFrameAsset });
+  expect(visualAt(300).activeFace).toMatchObject({ source: 'mouth', assetId: PART_FACE_ASSET });
+  expect(visualAt(200).parts[1]?.imageTransform?.tx).toBeGreaterThan(visualAt(100).parts[1]!.imageTransform!.tx);
+  expect(visualAt(200, secondFrameAsset).activeFace).toMatchObject({ source: 'expression', currentExpressionId: setup.angryExprId });
+  expect(visualAt(360).activeFace?.source).toBe('expression');
+  expect(visualAt(460).activeFace).toMatchObject({ source: 'mouth', assetId: MOUTH_OPEN_ASSET });
+  expect(visualAt(540, undefined, true).activeFace?.source).toBe('mouth');
+  expect(visualAt(700, undefined, true).activeFace).toMatchObject({ source: 'expression', currentExpressionId: setup.angryExprId });
+  expect(collectExportPreparationMedia(project).find(({ asset }) => asset.id === secondFrameAsset))
+    .toMatchObject({ optionalExpression: true });
+  const previewAt200 = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, 200, project));
+  expect(buildProductPreviewImagePlan(project, shot, previewAt200).requiredAssetIds).toContain(secondFrameAsset);
+  const urls = Object.fromEntries(project.assets.filter(asset => asset.kind === 'image')
+    .map(asset => [asset.id, `blob:${asset.id}`]));
+  const exported = evaluateExportShotAtTime(project, shot, 200);
+  expect(buildStageRenderModel(project, exported, urls).layers)
+    .toEqual(buildStageRenderModel(project, previewAt200, urls).layers);
+  delete urls[secondFrameAsset];
+  expect(buildStageRenderModel(project, exported, urls).layers.find(layer => layer.id === setup.layerId)?.visual?.activeFace)
+    .toMatchObject({ source: 'expression', currentExpressionId: setup.angryExprId });
+
+  const graphicId = base.animations[0]!.id;
+  project = new CharacterService().setTalkingAnimation(project, setup.characterId, graphicId);
+  expect(visualAt(100).parts[1]?.source).toMatchObject({ kind: 'adaptive-part-fla-graphic', animationId: graphicId });
 });
 
 describe('Phase B: AdaptiveParts Timeline Expressions, MouthCue & Simple Mouth (#1211)', () => {

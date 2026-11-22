@@ -1012,6 +1012,20 @@ export class CharacterService {
     return this.replaceCharacter(project, next);
   }
 
+  setTalkingAnimation(project: Project, characterId: string, animationId: string | null): Project {
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: Boolean(animationId),
+    });
+    if (character.talkingAnimationId === (animationId ?? undefined)) return project;
+    if (animationId && !project.animations.some((animation) => animation.id === animationId)) {
+      throw new Error('说话动画已不在当前项目中。');
+    }
+    const next = { ...character };
+    if (animationId) next.talkingAnimationId = animationId;
+    else delete next.talkingAnimationId;
+    return this.replaceCharacter(project, next);
+  }
+
   setMouthOpenAsset(
     project: Project,
     characterId: string,

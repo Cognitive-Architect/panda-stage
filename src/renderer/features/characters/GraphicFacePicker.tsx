@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { isFlaGraphicDefinition, type CharacterFaceGraphicSource, type CharacterFaceSource } from '../../../domain';
 import { resolveCharacterFaceSource } from '../../../domain/selectors/characterFaceSource';
+import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
+import { Button } from '../../ui/Button';
+import { AnimationPreview } from '../assets/AnimationLibraryPanel';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { CanvasImageResourceSession, EMPTY_CANVAS_IMAGE_STATE } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
@@ -52,6 +55,47 @@ export function GraphicFacePreview({ source, label = '表情预览' }: { source:
   const width = resolved ? Math.max(1, Math.round(resolved.width * thumbnailScale)) : 240;
   const height = resolved ? Math.max(1, Math.round(resolved.height * thumbnailScale)) : 180;
   return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
+}
+
+export function TalkingAnimationPicker({ animationId, onApply, disabled }: {
+  animationId?: string;
+  onApply: (animationId: string | null) => void;
+  disabled?: boolean;
+}): React.JSX.Element {
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const titleId = useId();
+  const animations = snapshot?.project.animations.filter(animation =>
+    isFlaGraphicDefinition(animation) ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1,
+  ) ?? [];
+  const selected = animations.find(animation => animation.id === (draft ?? animationId));
+  return (
+    <div className="graphic-face-picker">
+      <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
+        setDraft(null);
+        setOpen(!open);
+      }}>说话动画</Button>
+      {open && snapshot ? (
+        <div className="graphic-face-options">
+          <label>
+            选择说话动画
+            <select value={selected?.id ?? ''} disabled={disabled} onChange={event => setDraft(event.target.value)}>
+              <option value="">未配置</option>
+              {animations.map(animation => <option key={animation.id} value={animation.id}>{animation.name}</option>)}
+            </select>
+          </label>
+          {animations.length === 0 ? <p>请先在素材库导入一段多帧动画。</p> : null}
+          {selected ? <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot} titleId={titleId} /> : null}
+          <Button disabled={disabled || draft === null || (draft || undefined) === animationId} onClick={() => {
+            onApply(draft || null);
+            setDraft(null);
+            setOpen(false);
+          }}>应用说话动画</Button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children }: {

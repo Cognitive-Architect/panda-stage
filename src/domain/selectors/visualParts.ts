@@ -40,6 +40,8 @@ import { sameAnimationTarget } from '../models/animationCore';
 import {
   resolveCharacterFaceSource,
   resolveCharacterFaceSourceOrNull,
+  listTalkingAnimationImageIds,
+  resolveTalkingAnimationFace,
 } from './characterFaceSource';
 
 export type LayerVisualKind =
@@ -559,6 +561,14 @@ function characterResources(
     }
   }
 
+  const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+  if (talking) {
+    for (const assetId of listTalkingAnimationImageIds(talking)) {
+      if (!required.has(assetId) && !fallback.has(assetId) && resolveImageAsset(project, assetId)) {
+        addResource(candidates, assetId, 'mouth-override');
+      }
+    }
+  }
   return {
     required: [...required.values()],
     candidates: [...candidates.values()],
@@ -571,6 +581,7 @@ function resolveCharacterFace(
   character: Extract<Project['characters'][number], { mode: 'single-image' | 'composite' }>,
   evaluated: EvaluatedLayer,
   fallbackExpressionId: string,
+  isImageUnavailable?: (assetId: string) => boolean,
 ): { face: ActiveCharacterFace; visualSource: CharacterFaceSource; asset: ReturnType<typeof resolveCharacterFaceSource>; fallback: ReturnType<typeof resolveCharacterFaceSource> | null } {
   const currentExpressionId =
     evaluated.currentExpressionId ?? fallbackExpressionId;
@@ -588,11 +599,12 @@ function resolveCharacterFace(
   }
   const expressionSource = resolveExpressionVisualSource(expression);
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
-  const requestedMouth = evaluated.mouthOverrideAssetId
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
+  const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
-    : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null;
+    : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
   const mouthSource = requestedMouth?.kind === 'image' && !resolveImageAsset(project, requestedMouth.assetId) ? null : requestedMouth;
-  const mouthAsset = mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null;
+  const mouthAsset = talking?.asset ?? (mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null);
   const activeAsset = mouthAsset ?? expressionAsset;
   const source = mouthAsset ? 'mouth' : 'expression';
   return {
@@ -624,6 +636,22 @@ function facePixelGeometry(
   flaGraphic?: EvaluatedFlaGraphicVisual;
 } {
   const graphic = asset.flaGraphic;
+  if (asset.rasterFrame) {
+    const { offset, sourceViewport } = asset.rasterFrame;
+    const image = imageAsset(project, asset.rasterFrame.assetId, ownerLayerId);
+    return {
+      assetId: image.id,
+      localRect: { x: 0, y: 0, width: image.width, height: image.height },
+      pixelToCanvas: {
+        a: sourceViewport.width / image.width,
+        b: 0,
+        c: 0,
+        d: sourceViewport.height / image.height,
+        tx: offset.x - asset.width / 2,
+        ty: offset.y - asset.height / 2,
+      },
+    };
+  }
   if (!graphic) {
     return {
       pixelToCanvas: {
@@ -693,7 +721,7 @@ function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCha
     localRect: rect, rotationDeg: placement.rotationDeg, flipX: placement.flipX,
     drawOrder, ownerZIndex: evaluated.zIndex,
   };
-  if (graphic) {
+  if (graphic || asset.rasterFrame) {
     // Center/rotate/mirror the full source canvas; cropped fallback pixels do
     // not redefine the face pivot. Structure uses exactly the same affine.
     const angle = placement.rotationDeg * Math.PI / 180;
@@ -785,14 +813,15 @@ function projectAdaptivePartsFaceVisual(input: {
     ? rawExpressionAsset
     : null;
 
-  const requestedMouth = evaluated.mouthOverrideAssetId
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
+  const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
     ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
     : evaluated.mouthOpen
       ? resolveMouthVisualSource(character)
-      : null;
-  const rawMouthAsset = requestedMouth
+      : null);
+  const rawMouthAsset = talking?.asset ?? (requestedMouth
     ? resolveCharacterFaceSourceOrNull(project, requestedMouth)
-    : null;
+    : null);
   const mouthAsset = isResolvedFaceRenderable(rawMouthAsset, validImageAssetIds)
     ? rawMouthAsset
     : null;
@@ -1618,6 +1647,12 @@ export function resolveLayerVisualParts(
         }
       }
     };
+    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    if (talking && character.faceBinding) {
+      for (const assetId of listTalkingAnimationImageIds(talking)) {
+        if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
+      }
+    }
     for (const expression of character.expressions ?? []) {
       collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
     }
@@ -1684,6 +1719,7 @@ export function resolveLayerVisualParts(
     character,
     evaluated,
     source.expressionId ?? character.defaultExpressionId,
+    isImageUnavailable,
   );
   const requiredAssetIds = new Set<string>();
   const fallbackAssetIds = new Set<string>();

@@ -25,6 +25,7 @@ import {
   CharacterSchema,
   CharacterV22Schema,
   CharacterV23Schema,
+  CharacterV24Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -661,6 +662,14 @@ const CurrentProjectDataSchema = ProjectDataSchema.extend({
 export const ProjectV23Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(23),
   characters: z.array(CharacterV23Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+/** Frozen v24 envelope before reusable talking animations. */
+export const ProjectV24Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(24),
+  characters: z.array(CharacterV24Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);

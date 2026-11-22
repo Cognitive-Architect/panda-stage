@@ -28,7 +28,7 @@ import {
 } from './CharacterResourceSwapDialog';
 import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import { ExpressionEditor } from './ExpressionEditor';
-import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
+import { GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
 import {
   ImageAssetPicker,
@@ -356,6 +356,7 @@ export interface CharacterEditorProps {
   onSetExpressionAsset: (expressionId: string, assetId: string) => void;
   onSetExpressionSource?: (expressionId: string, source: CharacterFaceSource) => void;
   onAddGraphicExpression?: (name: string, source: CharacterFaceGraphicSource) => void;
+  onSetTalkingAnimation?: (animationId: string | null) => void;
   onSetMouthSource?: (source: CharacterFaceSource | null) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
@@ -402,6 +403,7 @@ export function CharacterEditor({
   onSetExpressionSource,
   onAddGraphicExpression,
   onSetMouthSource,
+  onSetTalkingAnimation,
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
@@ -613,6 +615,10 @@ export function CharacterEditor({
   }
 
   const expressionCharacter = character;
+  const talkingAnimationPicker = expressionCharacter && onSetTalkingAnimation ? (
+    <TalkingAnimationPicker key={expressionCharacter.id} animationId={expressionCharacter.talkingAnimationId}
+      disabled={disabled || assemblyPending} onApply={onSetTalkingAnimation} />
+  ) : null;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head
       ? (character as HeadedCompositeCharacter)
@@ -1330,6 +1336,7 @@ export function CharacterEditor({
                   </GraphicFacePicker>
                 )}
               </div>
+              {talkingAnimationPicker}
               {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
                 <Button aria-pressed={previewMouth} className="character-float-mouth-preview-button" onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
               ) : null}
@@ -2294,6 +2301,7 @@ export function CharacterEditor({
             />
             </GraphicFacePicker>
           ) : null}
+          {talkingAnimationPicker}
           <label>
             默认缩放
             <input

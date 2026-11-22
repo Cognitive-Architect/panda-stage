@@ -12,7 +12,7 @@ import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { resolveCharacterFaceSource } from './selectors/characterFaceSource';
+import { listTalkingAnimationImageIds, resolveCharacterFaceSource } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -262,7 +262,7 @@ function addShotVisualAssets(
     if (
       !character ||
       (character.mode === 'adaptive-parts' && !character.faceBinding) ||
-      (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
+      (!character.talkingAnimationId && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
       shot.layers
@@ -274,6 +274,13 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
+    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    if (talking) {
+      for (const assetId of listTalkingAnimationImageIds(talking)) {
+        const asset = project.assets.find(candidate => candidate.id === assetId);
+        if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+      }
+    }
     const visibleDuringMouthOpen = characterVisibleDuringMouthOpen(
       project,
       shot,

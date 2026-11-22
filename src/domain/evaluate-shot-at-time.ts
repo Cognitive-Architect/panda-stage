@@ -47,6 +47,7 @@ export interface EvaluatedLayer {
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
   mouthOpen?: boolean;
+  talkingAnimationElapsedMs?: number;
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
     animationId: string;

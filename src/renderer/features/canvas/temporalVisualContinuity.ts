@@ -220,7 +220,7 @@ function mouthExpressionFallback(
 ): EvaluatedLayer | null {
   const fallbackAssetId = visual?.activeFace?.fallbackAssetId;
   if (
-    (!fallbackAssetId && !visual?.activeFace?.fallbackVisualSource) ||
+    (!fallbackAssetId && !visual?.activeFace?.fallbackVisualSource && evaluated.talkingAnimationElapsedMs === undefined) ||
     visual?.activeFace?.source !== 'mouth' ||
     (missingAssetIds && !hasMouthHardFailure(visual, missingAssetIds))
   ) {
@@ -229,6 +229,7 @@ function mouthExpressionFallback(
   return {
     ...evaluated,
     assetId: fallbackAssetId ?? '',
+    talkingAnimationElapsedMs: undefined,
     mouthOverrideAssetId: null,
     ...(evaluated.mouthOpen === undefined ? {} : { mouthOpen: false }),
   };

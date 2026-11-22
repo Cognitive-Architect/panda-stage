@@ -103,7 +103,8 @@ export function validatePresetApplication(
           errors.push('当前角色不支持嘴型关键帧。');
         } else if (
           !character.mouthOpenAssetId &&
-          !character.mouthOpenVisualSource
+          !character.mouthOpenVisualSource &&
+          !(event.state === 'rest' && character.talkingAnimationId)
         ) {
           errors.push('请先为角色配置张嘴视觉。');
         }

@@ -65,7 +65,8 @@ export function upsertMouthCueEventAtTime(
   if (!character || (character.mode === 'adaptive-parts' && !character.faceBinding)) {
     throw new Error('当前角色不支持嘴型关键帧。');
   }
-  if (!characterHasMouthOpenVisual(project, character)) {
+  if (!characterHasMouthOpenVisual(project, character) &&
+    !(state === 'rest' && character.talkingAnimationId)) {
     throw new Error('请先为角色配置张嘴视觉。');
   }
   if (

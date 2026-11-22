@@ -1,7 +1,7 @@
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
-import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
+import { listTalkingAnimationImageIds, resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -79,6 +79,14 @@ export function scanAssetReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    if (talking && listTalkingAnimationImageIds(talking).has(assetId)) {
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].talkingAnimationId`,
+        label: `角色“${character.name}”的说话动画`,
+      });
+    }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);

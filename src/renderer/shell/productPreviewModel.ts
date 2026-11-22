@@ -332,6 +332,9 @@ export function buildProductPreviewImagePlan(
 
   for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
     const activeFace = visual.activeFace;
+    const talking = evaluatedShot.layers.some(layer =>
+      layer.id === visual.ownerLayerId && layer.talkingAnimationElapsedMs !== undefined,
+    );
     const expressionFallback = activeFace?.source === 'expression' && activeFace.originalPartsFallback;
     if (activeFace && expressionFallback) {
       expressionFallbacks.push({
@@ -375,7 +378,7 @@ export function buildProductPreviewImagePlan(
     );
     if (
       visual.activeFace?.source === 'mouth' &&
-      (visual.activeFace.fallbackAssetId || visual.activeFace.fallbackVisualSource) &&
+      (visual.activeFace.fallbackAssetId || visual.activeFace.fallbackVisualSource || talking) &&
       activeMouthPart
     ) {
       for (const assetId of visual.activeFace.mouthResourceAssetIds ?? [visual.activeFace.assetId]) {
@@ -383,7 +386,7 @@ export function buildProductPreviewImagePlan(
           partId: activeMouthPart.flaGraphic ? `${visual.ownerLayerId}:fla-graphic-resource:${assetId}` : activeMouthPart.partId,
           sourceAssetId: assetId,
           fallbackAssetId: visual.activeFace.fallbackAssetId ?? '',
-          ...(visual.activeFace.fallbackVisualSource ? { fallbackAssetIds: visual.resources.fallback.map(resource => resource.assetId) } : {}),
+          ...(visual.activeFace.fallbackVisualSource || talking ? { fallbackAssetIds: visual.resources.fallback.map(resource => resource.assetId) } : {}),
         });
       }
     }
@@ -505,7 +508,7 @@ export function applyProductPreviewMouthFallback(
     if (
       activeFace?.source !== 'mouth' ||
       (!failedMouthAssetIds.has(activeFace.assetId) && !activeFace.mouthResourceAssetIds?.some(id => failedMouthAssetIds.has(id))) ||
-      (!activeFace.fallbackAssetId && !activeFace.fallbackVisualSource)
+      (!activeFace.fallbackAssetId && !activeFace.fallbackVisualSource && layer.talkingAnimationElapsedMs === undefined)
     ) {
       return layer;
     }
@@ -513,6 +516,7 @@ export function applyProductPreviewMouthFallback(
     return {
       ...layer,
       assetId: activeFace.fallbackAssetId ?? '',
+      talkingAnimationElapsedMs: undefined,
       mouthOverrideAssetId: null,
       ...(layer.mouthOpen === undefined ? {} : { mouthOpen: false }),
     };

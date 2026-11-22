@@ -534,11 +534,14 @@ export function StageRenderer({
   const imageStateCurrent = imageState.desiredSourceKey === imageSourceKey;
   const recoverableFailure = imageStateCurrent && !onImageResourceFailure && imageState.failures.find((failure) =>
     assetUrls[failure.assetId] === failure.sourceUrl &&
-    layers.some(({ visual }) =>
-      visual?.activeFace?.source === 'expression' &&
-      visual.activeFace.assetId === failure.assetId &&
-      visual.activeFace.originalPartsFallback?.partId === failure.partId,
-    ),
+    layers.some(({ visual, talkingAnimationElapsedMs }) => {
+      const face = visual?.activeFace;
+      if (talkingAnimationElapsedMs !== undefined && face?.source === 'mouth') {
+        return face.assetId === failure.assetId || face.mouthResourceAssetIds?.includes(failure.assetId);
+      }
+      return face?.source === 'expression' && face.assetId === failure.assetId &&
+        face.originalPartsFallback?.partId === failure.partId;
+    }),
   );
   useEffect(() => {
     if (!recoverableFailure) return;

@@ -188,6 +188,9 @@ export function validateProjectReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    if (character.talkingAnimationId && !animations.has(character.talkingAnimationId)) {
+      addIssue(context, ['characters', characterIndex, 'talkingAnimationId'], 'Unknown talking animation.');
+    }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);

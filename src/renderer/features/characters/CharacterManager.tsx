@@ -1177,6 +1177,9 @@ export function CharacterManager({
           onAddGraphicExpression={(name, source) => {
             if (selectedCharacter) mutate(() => characterStore.addExpression(selectedCharacter.id, { name, visualSource: source }));
           }}
+          onSetTalkingAnimation={(animationId) => {
+            if (selectedCharacter) mutate(() => characterStore.setTalkingAnimation(selectedCharacter.id, animationId));
+          }}
           onSetMouthSource={(source) => {
             if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
           }}

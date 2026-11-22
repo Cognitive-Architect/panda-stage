@@ -318,6 +318,10 @@ export class CharacterStore {
     return this.apply(project => this.service.setExpressionVisualSource(project, characterId, expressionId, source), 'Change expression source');
   }
 
+  setTalkingAnimation(characterId: string, animationId: string | null): Project {
+    return this.apply(project => this.service.setTalkingAnimation(project, characterId, animationId), 'Change talking animation');
+  }
+
   setMouthOpenVisualSource(characterId: string, source: CharacterFaceSource | null): Project {
     return this.apply(project => this.service.setMouthOpenVisualSource(project, characterId, source), 'Change mouth source');
   }
