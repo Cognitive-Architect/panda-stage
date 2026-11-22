@@ -10,7 +10,7 @@ import {
   evaluateShotAtTime,
   resolveLayerVisualParts,
 } from '../../src/domain';
-import { evaluateExportPreparationSupport } from '../../src/domain/export-preparation';
+import { collectExportPreparationMedia, evaluateExportPreparationSupport } from '../../src/domain/export-preparation';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import {
   adaptivePartsFixture,
@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 describe('Adaptive Parts and animation compatibility', () => {
-  it('saves, reopens, and renders both models together while blocking animation export', async () => {
+  it('saves, reopens, renders, and prepares export for both models together', async () => {
     const parent = await mkdtemp(
       path.join(os.tmpdir(), 'panda-character-animation-compatibility-'),
     );
@@ -123,13 +123,11 @@ describe('Adaptive Parts and animation compatibility', () => {
       visible: true,
       animationFrame: { animationId: IDS.animation },
     });
-    expect(evaluateExportPreparationSupport(reopened.project, 'static')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
-          problem: expect.stringContaining('镜头动画导出'),
-        }),
-      ]),
-    );
+    expect(evaluateExportPreparationSupport(reopened.project, 'static')).toEqual([]);
+    const mediaIds = new Set(collectExportPreparationMedia(reopened.project).map(({ asset }) => asset.id));
+    const definition = reopened.project.animations.find(({ id }) => id === IDS.animation)!;
+    for (const frame of definition.frames) {
+      expect(mediaIds.has(frame.assetId)).toBe(true);
+    }
   });
 });
