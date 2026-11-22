@@ -106,6 +106,24 @@ export function listShotRuntimeImageAssets(
   return [...assets.values()];
 }
 
+/** Shared speaker targeting. A null entry means multiple visible occurrences. */
+function uniqueVisibleCharacterLayerIds(
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+): ReadonlyMap<string, string | null> {
+  const visibleLayerIds = new Set(
+    evaluatedShot.layers.filter((layer) => layer.visible).map((layer) => layer.id),
+  );
+  const layerIdsByCharacter = new Map<string, string | null>();
+  for (const layer of shot.layers) {
+    if (layer.id === shot.backgroundLayerId || layer.source.kind !== 'character' ||
+      !visibleLayerIds.has(layer.id)) continue;
+    const { characterId } = layer.source;
+    layerIdsByCharacter.set(characterId, layerIdsByCharacter.has(characterId) ? null : layer.id);
+  }
+  return layerIdsByCharacter;
+}
+
 /**
  * Applies the transient Mouth projection used by Editor Live Scrub and Product
  * Preview. The bound AudioClip starts an open-first 320ms cycle: 160ms Mouth,
@@ -160,6 +178,9 @@ export function projectShotMouth(
     if (!previous || clip.startMs > previous.startMs) talkingClips.set(voice.characterId, clip);
   }
   if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0) return evaluatedShot;
+  const talkingTargets = talkingClips.size > 0
+    ? uniqueVisibleCharacterLayerIds(shot, evaluatedShot)
+    : null;
 
   let changed = false;
   const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
@@ -200,7 +221,7 @@ export function projectShotMouth(
     }
 
     const talkingClip = talkingClips.get(layerCharacterId);
-    if (cue === 'none' && layerCharacter.talkingAnimationId && talkingClip) {
+    if (cue === 'none' && talkingClip && talkingTargets?.get(layerCharacterId) === layer.id) {
       changed = true;
       return { ...layer, talkingAnimationElapsedMs: evaluatedShot.timeMs - talkingClip.startMs };
     }
@@ -287,18 +308,9 @@ export function projectShotHeadMotion(
     return neutralShot;
   }
 
-  const evaluatedById = new Map(
-    neutralShot.layers.map((layer) => [layer.id, layer]),
-  );
-  const matchingLayers = shot.layers.filter((layer) =>
-    layer.id !== shot.backgroundLayerId &&
-    layer.source.kind === 'character' &&
-    layer.source.characterId === dialogue.characterId &&
-    evaluatedById.get(layer.id)?.visible,
-  );
-  if (matchingLayers.length !== 1) return neutralShot;
-
-  const targetLayer = matchingLayers[0]!;
+  if (!dialogue.characterId) return neutralShot;
+  const targetLayerId = uniqueVisibleCharacterLayerIds(shot, neutralShot).get(dialogue.characterId);
+  if (!targetLayerId) return neutralShot;
   const character = project.characters.find(
     (candidate) => candidate.id === dialogue.characterId,
   );
@@ -326,7 +338,7 @@ export function projectShotHeadMotion(
   return {
     ...neutralShot,
     layers: neutralShot.layers.map((layer) =>
-      layer.id === targetLayer.id
+      layer.id === targetLayerId
         ? { ...layer, headGroupTransform: transform }
         : layer,
     ),

@@ -19,6 +19,8 @@ import {
   type ImageAsset,
   type Project,
 } from '../../src/domain';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -383,6 +385,88 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     const dupShot = dup.shots[0]!;
     const dupEval = projectShotDialogueVisual(dup, dupShot, evaluateShotAtTime(dupShot, 225, dup));
     expect(dupEval.layers.every((l) => l.headGroupTransform === undefined)).toBe(true);
+  });
+
+  it('isolates automatic talking animation to each unique visible character instance', () => {
+    const setup = buildPhaseCProject();
+    const service = new CharacterService();
+    const configured = service.setTalkingAnimation(setup.project, setup.characterId, faceSource(0).animationId);
+    const original = configured.characters.find(character => character.id === setup.characterId)!;
+    const otherId = crypto.randomUUID();
+    const otherVoiceId = crypto.randomUUID();
+    const otherClipId = crypto.randomUUID();
+    const withOther = ProjectSchema.parse({
+      ...configured,
+      characters: [...configured.characters, { ...original, id: otherId, defaultVoiceProfileId: otherVoiceId, name: '另一位说话角色' }],
+      voiceProfiles: [
+        ...configured.voiceProfiles,
+        { ...configured.voiceProfiles.find(voice => voice.id === VOICE_ID)!, id: otherVoiceId, characterId: otherId, name: '另一位音色' },
+      ],
+      shots: configured.shots.map(shot => ({
+        ...shot,
+        audioClips: [...shot.audioClips, { ...shot.audioClips[0], id: otherClipId, startMs: 200, endMs: 1400 }],
+        dialogues: [...shot.dialogues, {
+          ...shot.dialogues[0], id: crypto.randomUUID(), voiceProfileId: otherVoiceId,
+          characterId: otherId, audioClipId: otherClipId, startMs: 200, endMs: 1400,
+        }],
+      })),
+    });
+    const layers = new LayerService();
+    const duplicate = layers.createFromAdaptiveCharacter(withOther, IDS.shot, setup.characterId, { x: 400, y: 540 });
+    const other = layers.createFromAdaptiveCharacter(duplicate.project, IDS.shot, otherId, { x: 1500, y: 540 });
+    const project = other.project;
+    const shot = project.shots[0]!;
+    const readyAssetIds = new Set(project.assets.map(asset => asset.id));
+    const frameAt = (time: number, currentShot = shot, currentProject = project) => {
+      const requested = evaluateShotAtTime(currentShot, time, currentProject);
+      const editor = buildEditorTemporalCanvasModel({
+        project: currentProject, shot: currentShot, currentTimeMs: time,
+        activeDialogueId: DIALOGUE_ID, readyAssetIds, previousVisuals: new Map(),
+      }).evaluatedShot;
+      const preview = projectProductPreviewDialogue(currentProject, currentShot, requested, DIALOGUE_ID);
+      const exported = evaluateExportShotAtTime(currentProject, currentShot, time, DIALOGUE_ID);
+      expect(editor).toEqual(preview);
+      expect(exported).toEqual(preview);
+      return new Map(exported.layers.map(layer => [layer.id, layer]));
+    };
+
+    const ambiguous = frameAt(225);
+    for (const id of [setup.layerId, duplicate.layer.id]) {
+      const instance = ambiguous.get(id)!;
+      expect(instance.talkingAnimationElapsedMs).toBeUndefined();
+      expect(instance.headGroupTransform).toBeUndefined();
+      expect(resolveLayerVisualParts(project, shot, instance, 225).activeFace?.source).toBe('expression');
+    }
+    expect(ambiguous.get(other.layer.id)?.talkingAnimationElapsedMs).toBe(25);
+
+    let authored = upsertMouthCueEventAtTime(project, shot.id, setup.layerId, 'open', 150);
+    authored = upsertMouthCueEventAtTime(authored, shot.id, duplicate.layer.id, 'rest', 150);
+    const manual = frameAt(225, authored.shots[0]!, authored);
+    expect(manual.get(setup.layerId)?.mouthOverrideAssetId).toBe(ASSET_MOUTH);
+    expect(manual.get(duplicate.layer.id)?.mouthOverrideAssetId).toBeNull();
+    expect(manual.get(duplicate.layer.id)?.talkingAnimationElapsedMs).toBeUndefined();
+    expect(manual.get(other.layer.id)?.talkingAnimationElapsedMs).toBe(25);
+
+    const hidingShot = {
+      ...shot,
+      timelineEvents: [...shot.timelineEvents, {
+        id: crypto.randomUUID(), type: 'visibility' as const, layerId: duplicate.layer.id,
+        startMs: 300, endMs: 300, visible: false,
+      }],
+    };
+    expect(frameAt(225, hidingShot).get(setup.layerId)?.talkingAnimationElapsedMs).toBeUndefined();
+    const advanced = frameAt(375, hidingShot);
+    expect(advanced.get(setup.layerId)?.talkingAnimationElapsedMs).toBe(275);
+    expect(advanced.get(setup.layerId)?.headGroupTransform).toBeDefined();
+    expect(advanced.get(duplicate.layer.id)?.visible).toBe(false);
+    expect(advanced.get(duplicate.layer.id)?.talkingAnimationElapsedMs).toBeUndefined();
+    expect(advanced.get(other.layer.id)?.talkingAnimationElapsedMs).toBe(175);
+    expect(resolveLayerVisualParts(project, hidingShot, advanced.get(setup.layerId)!, 375)
+      .parts.find(part => part.flaGraphic)?.flaGraphic?.frameOrdinal).toBe(2);
+    expect(resolveLayerVisualParts(project, hidingShot, advanced.get(other.layer.id)!, 375)
+      .parts.find(part => part.flaGraphic)?.flaGraphic?.frameOrdinal).toBe(0);
+    expect(frameAt(375, hidingShot)).toEqual(advanced);
+    expect(frameAt(1300, hidingShot).get(setup.layerId)?.talkingAnimationElapsedMs).toBeUndefined();
   });
 
   it('supports UI head part binding (设为头部/移出头部 + 头 tag), intensity slider (0-200%), preview button without dirtying, and Undo/Redo', () => {
