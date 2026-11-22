@@ -18,13 +18,17 @@ import {
   evaluateExportPreparationSupport,
 } from '../../src/domain/export-preparation';
 import {
+  CharacterService,
   evaluateShotAtTime,
   FlaGraphicDefinitionSchema,
+  LayerService,
   ProjectSchema,
+  upsertMouthCueEventAtTime,
   type Project,
 } from '../../src/domain';
 import {
   ExportPreparationService,
+  MainProjectAssetReader,
   type ExportPreparationMediaReader,
   type TrackedProjectSnapshot,
 } from '../../src/main/services/ExportPreparationService';
@@ -42,6 +46,7 @@ import {
   EXPORT_PREPARATION_SUPPORT_PROFILE,
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
+import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import {
   buildProject,
   buildProjectWithAnimation,
@@ -313,6 +318,65 @@ afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
+});
+
+it('prepares export with a missing Adaptive Parts expression file and includes it again after repair', async () => {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const expressionId = randomUUID();
+  const base = projectWithMedia();
+  const faceAsset = base.assets.find(({ id }) => id === IDS.assetChar)!;
+  let project = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, { ...faceAsset, id: expressionId, relativePath: 'assets/expression.png' }]
+      .map((asset) => ({ ...asset, width: 1, height: 1, sha256: hash(png) })),
+  });
+  const service = new CharacterService();
+  const partId = randomUUID();
+  project = service.createAdaptiveParts(project, {
+    name: 'Adaptive Parts',
+    parts: [{
+      partId,
+      source: { kind: 'manual', sourceId: 'original-face' },
+      assetId: IDS.assetChar,
+      imageMapping: { sourceWidth: 1, sourceHeight: 1, crop: { x: 0, y: 0, width: 1, height: 1 }, exportScale: 1 },
+      restTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      drawOrder: 0,
+      visible: true,
+    }],
+  });
+  const characterId = project.characters.at(-1)!.id;
+  project = service.setAdaptivePartsFaceBinding(project, characterId, { targetPartId: partId });
+  project = service.addExpression(project, characterId, { name: 'Smile', assetId: expressionId });
+  const character = project.characters.at(-1)!;
+  project = service.setDefaultExpression(project, characterId, character.expressions![0]!.id);
+  project = service.setMouthOpenAsset(project, characterId, IDS.assetChar2);
+  const layer = new LayerService().createFromAdaptiveCharacter(project, IDS.shot, characterId, { x: 900, y: 500 });
+  project = upsertMouthCueEventAtTime(layer.project, IDS.shot, layer.layer.id, 'open', 800);
+  const fixture = await harness({ project, reader: new MainProjectAssetReader() });
+  for (const asset of fixture.project.assets) {
+    if (asset.id !== expressionId) await writeFile(path.join(fixture.projectRoot, asset.relativePath), png);
+  }
+  const prepare = async (name: string) => {
+    const selection = await selectOutput(fixture, name);
+    const result = await fixture.service.prepare(requestFor(fixture, selection.selectionId));
+    expect(result.status).toBe('PREPARATION_READY');
+    if (result.status !== 'PREPARATION_READY') throw new Error(JSON.stringify(result));
+    const candidate = result.candidate;
+    const shot = candidate.project.shots[0]!;
+    const urls = Object.fromEntries(candidate.mediaManifest.map(({ assetId }) => [assetId, `blob:${assetId}`]));
+    const model = buildStageRenderModel(candidate.project, evaluateShotAtTime(shot, 0, candidate.project), urls);
+    return model.layers.find(({ id }) => id === layer.layer.id)!.parts[0]!.asset.id;
+  };
+
+  expect(await prepare('missing.png.mp4')).toBe(IDS.assetChar);
+  await writeFile(path.join(fixture.projectRoot, 'assets/expression.png'), 'corrupt contents');
+  expect(await prepare('corrupt.mp4')).toBe(IDS.assetChar);
+  await writeFile(path.join(fixture.projectRoot, 'assets/expression.png'), png);
+  expect(await prepare('repaired.mp4')).toBe(expressionId);
+  await fixture.service.dispose();
 });
 
 describe('DL-01 export preparation domain rules', () => {

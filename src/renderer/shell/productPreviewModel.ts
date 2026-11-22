@@ -114,6 +114,11 @@ export interface ProductPreviewImagePlan {
   /** Resources belonging to active visible loops; retained without eager reads. */
   retainedAnimationAssetIds?: string[];
   mouthFallbacks: ProductPreviewMouthFallback[];
+  expressionFallbacks?: {
+    partId: string;
+    sourceAssetId: string;
+    fallbackAssetIds: readonly string[];
+  }[];
 }
 
 export const PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES = 3;
@@ -322,8 +327,24 @@ export function buildProductPreviewImagePlan(
   const candidateAssetIds: string[] = [];
   const resolvedCandidateAssetIds: string[] = [];
   const mouthFallbacks: ProductPreviewMouthFallback[] = [];
+  const expressionFallbacks: NonNullable<ProductPreviewImagePlan['expressionFallbacks']> = [];
+  const requiredWithoutExpressionFallback = new Set<string>();
 
   for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
+    const activeFace = visual.activeFace;
+    const expressionFallback = activeFace?.source === 'expression' && activeFace.originalPartsFallback;
+    if (activeFace && expressionFallback) {
+      expressionFallbacks.push({
+        partId: expressionFallback.partId,
+        sourceAssetId: activeFace.assetId,
+        fallbackAssetIds: expressionFallback.assetIds,
+      });
+    }
+    for (const { assetId } of visual.resources.required) {
+      if (!expressionFallback || assetId !== activeFace?.assetId) {
+        requiredWithoutExpressionFallback.add(assetId);
+      }
+    }
     appendUnique(
       requiredAssetIds,
       visual.resources.required.map((resource) => resource.assetId),
@@ -423,6 +444,9 @@ export function buildProductPreviewImagePlan(
     recentAnimationAssetIds,
     retainedAnimationAssetIds,
     mouthFallbacks,
+    expressionFallbacks: expressionFallbacks.filter(
+      (rule) => !requiredWithoutExpressionFallback.has(rule.sourceAssetId),
+    ),
   };
 }
 

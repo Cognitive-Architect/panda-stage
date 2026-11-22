@@ -8,6 +8,8 @@ import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characte
 import { ExpressionAtTimeControl } from '../../src/renderer/features/properties/ExpressionAtTimeControl';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
+import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
+import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { characterStore } from '../../src/renderer/stores/characterStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -196,6 +198,104 @@ afterEach(() => {
 });
 
 describe('Phase B: AdaptiveParts Timeline Expressions, MouthCue & Simple Mouth (#1211)', () => {
+  it('keeps authored face events in two shots through unbind, undo, redo and rebind', () => {
+    const setup = buildPhaseBProject();
+    const originalShot = setup.project.shots[0]!;
+    const secondShot = { ...originalShot, id: 'c3000000-0000-4000-8000-000000000010' };
+    let project = ProjectSchema.parse({ ...setup.project, shots: [originalShot, secondShot] });
+    for (const shot of project.shots) {
+      project = upsertExpressionEventAtTime(project, shot.id, setup.layerId, setup.angryExprId, 320);
+      project = upsertMouthCueEventAtTime(project, shot.id, setup.layerId, 'open', 800);
+    }
+    project = upsertExpressionEventAtTime(
+      project, secondShot.id, IDS.layerChar, project.characters[0]!.expressions![0]!.id, 500,
+    );
+    editorProjectStore.open('C:/temp/phase-b.pandastage', project);
+    characterStore.setAdaptivePartsFaceBinding(setup.characterId, null);
+    const unbound = editorProjectStore.getSnapshot()!.project;
+    expect(unbound.shots).toEqual(project.shots);
+    for (const shot of unbound.shots) {
+      const layer = evaluateShotAtTime(shot, 800, unbound).layers.find(({ id }) => id === setup.layerId)!;
+      expect(resolveLayerVisualParts(unbound, shot, layer, 800).activeFace).toBeNull();
+    }
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(project);
+    editorProjectStore.redo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(unbound);
+    characterStore.setAdaptivePartsFaceBinding(setup.characterId, { targetPartId: PART_BODY_ID });
+    const rebound = editorProjectStore.getSnapshot()!.project;
+    expect(rebound.shots).toEqual(project.shots);
+    const shot = rebound.shots[1]!;
+    const layer = evaluateShotAtTime(shot, 800, rebound).layers.find(({ id }) => id === setup.layerId)!;
+    expect(resolveLayerVisualParts(rebound, shot, layer, 800).activeFace?.assetId).toBe(MOUTH_OPEN_ASSET);
+  });
+
+  it('renders the original parts when the active PNG has a Project record but fails read or decode', async () => {
+    const setup = buildPhaseBProject();
+    let project = new CharacterService().setAdaptivePartsFaceBinding(setup.project, setup.characterId, {
+      targetPartId: PART_FACE_ID,
+      replacePartIds: [PART_BODY_ID],
+    });
+    const second = new LayerService().createFromAdaptiveCharacter(project, IDS.shot, setup.characterId, { x: 400, y: 400 });
+    project = upsertExpressionEventAtTime(second.project, IDS.shot, second.layer.id, setup.angryExprId, 0);
+    project = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) => ({ ...asset, sha256: asset.sha256 ?? 'a'.repeat(64) })),
+    });
+    const shot = project.shots[0]!;
+    const frame = evaluateShotAtTime(shot, 0, project);
+    const urls = Object.fromEntries(project.assets.filter(({ kind }) => kind === 'image')
+      .map(({ id }) => [id, `blob:${id}`]));
+    expect(project.assets.some(({ id }) => id === EXPR_SMILE_ASSET)).toBe(true);
+    const healthy = buildStageRenderModel(project, frame, urls).layers.find(({ id }) => id === setup.layerId)!;
+    expect(healthy.parts.map(({ asset, render }) => [asset.id, render.visible])).toEqual([
+      [PART_BODY_ASSET, false], [EXPR_SMILE_ASSET, true],
+    ]);
+    const plan = buildProductPreviewImagePlan(project, shot, frame);
+    let missing = true;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        if (missing && assetId === EXPR_SMILE_ASSET) return {
+          ok: false,
+          error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED', message: 'File missing', assetId },
+        };
+        const asset = project.assets.find((candidate) => candidate.id === assetId)! as ImageAsset;
+        if (asset.mimeType !== 'image/png' && asset.mimeType !== 'image/svg+xml') {
+          throw new Error(`Unexpected fixture image type: ${asset.mimeType}`);
+        }
+        return {
+          ok: true, status: 'ready', assetId, mimeType: asset.mimeType,
+          width: asset.width, height: asset.height, byteLength: 4, bytes: new Uint8Array(4),
+        };
+      },
+      createObjectUrl: () => 'blob:preview-image',
+      revokeObjectUrl: () => {},
+    });
+    const failedRead = await session.load('C:/temp/phase-b.pandastage', project, plan);
+    expect(failedRead).toMatchObject({ status: 'degraded', degradedAssetIds: [EXPR_SMILE_ASSET], fatalAssetIds: [] });
+    const fromReadFailure = buildStageRenderModel(project, frame, failedRead!.urls);
+    const fromDecodeFailure = buildStageRenderModel(project, frame, urls, new Set([EXPR_SMILE_ASSET]));
+    const assetVisibility = (model: ReturnType<typeof buildStageRenderModel>) =>
+      model.layers.find(({ id }) => id === setup.layerId)!.parts.map(({ asset, render }) => [asset.id, render.visible]);
+    expect(assetVisibility(fromReadFailure)).toEqual([
+      [PART_BODY_ASSET, true], [PART_FACE_ASSET, true],
+    ]);
+    expect(assetVisibility(fromDecodeFailure)).toEqual(assetVisibility(fromReadFailure));
+    expect(fromReadFailure.layers.find(({ id }) => id === second.layer.id)!.visual?.parts[1]!.flaGraphic?.frameOrdinal).toBe(1);
+    const editor = resolveEditorTemporalAssetResolution(
+      project, shot, frame, new Set(plan.requiredAssetIds.concat(plan.fallbackAssetIds).filter((id) => id !== EXPR_SMILE_ASSET)),
+      new Map(), undefined, new Set([EXPR_SMILE_ASSET]),
+    );
+    expect(editor.visualStatusByLayer.get(setup.layerId)).toBe('expression-original-fallback');
+    expect(editor.visualsByLayer.get(setup.layerId)?.parts).toEqual(fromReadFailure.layers.find(({ id }) => id === setup.layerId)!.visual?.parts);
+    missing = false;
+    expect(session.clearFailedExpressions('C:/temp/phase-b.pandastage', project, plan)).toBe(true);
+    const ready = await session.load('C:/temp/phase-b.pandastage', project, plan);
+    expect(ready?.status).toBe('ready');
+    expect(assetVisibility(buildStageRenderModel(project, frame, ready!.urls))).toEqual(assetVisibility(buildStageRenderModel(project, frame, urls)));
+    session.dispose();
+  });
+
   it('evaluates ExpressionEvent across seek, enforces MouthCue > SimpleMouth > expression/original priority, and clears cleanly on rest without defaultExpression', () => {
     const setup = buildPhaseBProject({ withDefaultExpression: false });
     const AUDIO_CLIP_ID = 'c3000000-0000-4000-8000-000000000001';

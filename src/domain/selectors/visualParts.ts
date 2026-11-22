@@ -164,6 +164,11 @@ export interface ActiveCharacterFace {
   configuredMouthAssetId: string | null;
   /** The current Expression resource to use if the active Mouth cannot load. */
   fallbackAssetId: string | null;
+  /** An Adaptive Parts image replacement can be dropped to reveal its original parts. */
+  originalPartsFallback?: {
+    partId: string;
+    assetIds: readonly string[];
+  };
 }
 
 export type VisualResourceReason =
@@ -730,6 +735,7 @@ function projectAdaptivePartsFaceVisual(input: {
   readonly evaluated: EvaluatedLayer;
   readonly sourceExpressionId?: string;
   readonly validImageAssetIds: ReadonlySet<string>;
+  readonly isImageUnavailable?: (assetId: string) => boolean;
 }): {
   readonly parts: LayerVisualPart[];
   readonly activeFace: ActiveCharacterFace | null;
@@ -743,6 +749,7 @@ function projectAdaptivePartsFaceVisual(input: {
     evaluated,
     sourceExpressionId,
     validImageAssetIds,
+    isImageUnavailable,
   } = input;
   const fallbackAssetIds = new Set<string>();
   const faceBinding = character.faceBinding;
@@ -837,6 +844,16 @@ function projectAdaptivePartsFaceVisual(input: {
   if (!targetVisual.imageTransform) {
     return { parts, activeFace: null, fallbackAssetIds };
   }
+  const canRestoreOriginalParts =
+    expressionAsset &&
+    expressionSource?.kind === 'image' &&
+    !parts.some((part) =>
+      part.assetId === expressionSource.assetId ||
+      part.flaGraphic?.resourceAssetIds.includes(expressionSource.assetId),
+    );
+  if (chosenKind === 'expression' && canRestoreOriginalParts && isImageUnavailable?.(expressionSource.assetId)) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
   const targetBaseTransform = stripCropTransformFromAdaptivePartMatrix(
     targetDefinitionPart,
     targetVisual.imageTransform,
@@ -897,6 +914,12 @@ function projectAdaptivePartsFaceVisual(input: {
     source: chosenKind,
     assetId: chosenAsset.assetId ?? '',
     configuredMouthAssetId: character.mouthOpenAssetId ?? null,
+    ...(canRestoreOriginalParts
+      ? { originalPartsFallback: {
+          partId: targetVisual.partId,
+          assetIds: [...fallbackAssetIds].filter((id) => id !== expressionSource.assetId),
+        } }
+      : {}),
     fallbackAssetId:
       chosenKind === 'mouth'
         ? (expressionAsset?.assetId ?? null)
@@ -1275,6 +1298,7 @@ export function resolveLayerVisualParts(
   shot: { layers: readonly Layer[] },
   evaluated: EvaluatedLayer,
   timeMs = 0,
+  isImageUnavailable?: (assetId: string) => boolean,
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1540,6 +1564,7 @@ export function resolveLayerVisualParts(
       evaluated,
       sourceExpressionId: source.expressionId,
       validImageAssetIds,
+      isImageUnavailable,
     });
     parts = [...faceProjection.parts];
     const headDelta = evaluated.headGroupTransform;

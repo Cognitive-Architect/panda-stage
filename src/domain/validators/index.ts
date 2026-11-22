@@ -5,6 +5,7 @@ export {
   scanAssetReferences,
   scanCharacterReferences,
   scanExpressionReferences,
+  hasCharacterFaceTimelineEvents,
   type AssetReference,
   type AssetReferenceKind,
   type CharacterReference,

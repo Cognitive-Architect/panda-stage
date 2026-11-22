@@ -558,7 +558,12 @@ export function ProductPreviewOverlay({
     },
     [assetIds, project, renderedShot, shot],
   );
-  const decodeFallbackAssetIds = imagePlan.mouthFallbacks
+  const expressionFallbacks = imagePlan.expressionFallbacks ?? [];
+  const isExpressionFallbackFailure = useCallback((failure: StageImageResourceFailure): boolean =>
+    imagePlan.expressionFallbacks?.some((rule) =>
+      rule.partId === failure.partId && rule.sourceAssetId === failure.assetId,
+    ) ?? false, [imagePlan]);
+  const decodeFallbackAssetIds = [...imagePlan.mouthFallbacks, ...expressionFallbacks]
     .filter((rule) =>
       stageImageFailures.some(
         (failure) =>
@@ -566,7 +571,7 @@ export function ProductPreviewOverlay({
           failure.assetId === rule.sourceAssetId,
       ),
     )
-    .flatMap((rule) => rule.fallbackAssetIds ?? [rule.fallbackAssetId]);
+    .flatMap((rule) => rule.fallbackAssetIds ?? ('fallbackAssetId' in rule ? [rule.fallbackAssetId] : []));
   const imageScope = {
     ...imagePlan,
     requiredAssetIds: [
@@ -589,9 +594,25 @@ export function ProductPreviewOverlay({
       isProductPreviewMouthFallbackFailure(imagePlan, failure),
     )
     .map((failure) => failure.assetId);
+  const failedExpressionAssetIds = [
+    ...new Set([
+      ...(assets.degradedAssetIds ?? []).filter((id) =>
+        expressionFallbacks.some((rule) => rule.sourceAssetId === id),
+      ),
+      ...currentStageImageFailures.filter(isExpressionFallbackFailure).map((failure) => failure.assetId),
+    ]),
+  ];
+  const failedExpressionKey = JSON.stringify(failedExpressionAssetIds.sort());
+  const displayAssetUrls = useMemo(() => {
+    const failedIds: string[] = JSON.parse(failedExpressionKey);
+    if (failedIds.length === 0) return assets.urls;
+    const urls = { ...assets.urls };
+    for (const id of failedIds) delete urls[id];
+    return urls;
+  }, [assets.urls, failedExpressionKey]);
   const degradedAssetIds = [
     ...new Set([
-      ...(assets.degradedAssetIds ?? []),
+      ...(assets.degradedAssetIds ?? []).filter((id) => !failedExpressionAssetIds.includes(id)),
       ...stageMouthFailureAssetIds,
     ]),
   ];
@@ -601,7 +622,8 @@ export function ProductPreviewOverlay({
       ...currentStageImageFailures
         .filter(
           (failure) =>
-            !isProductPreviewMouthFallbackFailure(imagePlan, failure),
+            !isProductPreviewMouthFallbackFailure(imagePlan, failure) &&
+            !isExpressionFallbackFailure(failure),
         )
         .map((failure) => failure.assetId),
     ]),
@@ -619,7 +641,7 @@ export function ProductPreviewOverlay({
     [degradedAssetIds.join('|'), project, renderedShot, shot],
   );
   const previewDegraded =
-    degradedAssetIds.length > 0 &&
+    (degradedAssetIds.length > 0 || failedExpressionAssetIds.length > 0) &&
     (assets.status === 'ready' || assets.status === 'degraded');
   const handleInitialStageReady = useCallback((): void => {
     if (
@@ -657,7 +679,7 @@ export function ProductPreviewOverlay({
           ? current
           : [...current, failure],
       );
-      if (isProductPreviewMouthFallbackFailure(imagePlan, failure)) return;
+      if (isProductPreviewMouthFallbackFailure(imagePlan, failure) || isExpressionFallbackFailure(failure)) return;
 
       initialReadinessRef.current = 'error';
       setInitialReadiness('error');
@@ -666,7 +688,7 @@ export function ProductPreviewOverlay({
         setHandoffPhase('warming');
       }
     },
-    [assets.urls, imagePlan, pauseAtCurrentClock],
+    [assets.urls, imagePlan, isExpressionFallbackFailure, pauseAtCurrentClock],
   );
   useEffect(() => {
     if (assets.status === 'error') {
@@ -787,7 +809,7 @@ export function ProductPreviewOverlay({
       return;
     }
     lastReadyVisual.current = {
-      assetUrls: assets.urls,
+      assetUrls: displayAssetUrls,
       caption,
       captionStyle,
       evaluatedShot: displayedShot,
@@ -796,7 +818,7 @@ export function ProductPreviewOverlay({
     };
   }, [
     assets.status,
-    assets.urls,
+    displayAssetUrls,
     caption,
     captionStyle,
     camera,
@@ -988,7 +1010,7 @@ export function ProductPreviewOverlay({
                 ) : previewDegraded && displayedShot ? (
                   <>
                     <CanvasStage
-                      assetUrls={assets.urls}
+                      assetUrls={displayAssetUrls}
                       camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
@@ -1005,10 +1027,18 @@ export function ProductPreviewOverlay({
                     />
                     <div
                       className="product-preview-message product-preview-warning"
-                      data-testid="product-preview-mouth-degraded-warning"
+                      data-testid={degradedAssetIds.length > 0
+                        ? 'product-preview-mouth-degraded-warning'
+                        : 'product-preview-expression-degraded-warning'}
                     >
-                      <strong>嘴型素材不可用，已显示当前表情</strong>
-                      <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
+                      {degradedAssetIds.length > 0 ? (
+                        <>
+                          <strong>嘴型素材不可用，已显示当前表情</strong>
+                          <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
+                        </>
+                      ) : (
+                        <strong>表情素材不可用，已显示原脸。</strong>
+                      )}
                     </div>
                     {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
                       <div
@@ -1040,7 +1070,7 @@ export function ProductPreviewOverlay({
                   </div>
                 ) : displayedShot ? (
                   <CanvasStage
-                    assetUrls={assets.urls}
+                    assetUrls={displayAssetUrls}
                     camera={camera}
                     caption={caption}
                     captionStyle={captionStyle}

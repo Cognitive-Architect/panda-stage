@@ -28,6 +28,7 @@ export type EditorTemporalVisualStatus =
   | 'current-complete'
   | 'mouth-expression-fallback'
   | 'mouth-fallback-pending'
+  | 'expression-original-fallback'
   | 'previous-complete'
   | 'required-failed'
   | 'pending'
@@ -123,9 +124,10 @@ function resolveVisual(
   shot: Shot,
   evaluated: EvaluatedLayer,
   timeMs = 0,
+  isImageUnavailable?: (assetId: string) => boolean,
 ): LayerVisualParts | null {
   try {
-    return resolveLayerVisualParts(project, shot, evaluated, timeMs);
+    return resolveLayerVisualParts(project, shot, evaluated, timeMs, isImageUnavailable);
   } catch {
     // Invalid/missing Project references are represented by the existing
     // Canvas missing state. They must not produce a half visual.
@@ -288,18 +290,28 @@ export function resolveEditorTemporalAssetResolution(
       return layer;
     }
 
-    const fallbackLayer = mouthExpressionFallback(
+    const mouthFallbackLayer = mouthExpressionFallback(
       layer,
       currentVisual,
       missingAssetIds,
     );
-    if (fallbackLayer) {
+    const activeFace = currentVisual?.activeFace;
+    const expressionFailed = Boolean(
+      activeFace?.source === 'expression' &&
+      activeFace.originalPartsFallback &&
+      missingAssetIds.has(activeFace.assetId),
+    );
+    let requiredVisual = currentVisual;
+    if (mouthFallbackLayer || expressionFailed) {
+      const fallbackLayer = mouthFallbackLayer ?? layer;
       const fallbackVisual = resolveVisual(
         project,
         shot,
         fallbackLayer,
         evaluatedShot.timeMs,
+        (assetId) => missingAssetIds.has(assetId),
       );
+      if (expressionFailed && fallbackVisual) requiredVisual = fallbackVisual;
       if (
         fallbackVisual &&
         isCompleteVisualReady(
@@ -316,7 +328,12 @@ export function resolveEditorTemporalAssetResolution(
           fallbackVisual,
           readyAssetSourceKeys,
         );
-        visualStatusByLayer.set(layer.id, 'mouth-expression-fallback');
+        visualStatusByLayer.set(
+          layer.id,
+          fallbackVisual.kind === 'adaptive-parts-character' && !fallbackVisual.activeFace
+            ? 'expression-original-fallback'
+            : 'mouth-expression-fallback',
+        );
         lastValidVisuals.set(layer.id, fallbackSnapshot);
         visualsByLayer.set(layer.id, fallbackSnapshot.visual!);
         visualSourceKeysByLayer.set(
@@ -328,7 +345,7 @@ export function resolveEditorTemporalAssetResolution(
     }
 
     const requiredFailed = hasRequiredHardFailure(
-      currentVisual,
+      requiredVisual,
       missingAssetIds,
     );
     const mouthFailed = hasMouthHardFailure(currentVisual, missingAssetIds);

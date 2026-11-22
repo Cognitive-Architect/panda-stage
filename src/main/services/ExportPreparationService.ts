@@ -584,6 +584,7 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
+          if (entry.optionalExpression) continue;
           issues.push(
             this.mediaUnavailableIssue(
               entry.usages[0] ?? '工程素材',
@@ -593,13 +594,14 @@ export class ExportPreparationService {
         }
       }
       const budget = evaluateExportPreparationBudget(budgetEntries);
-      const totalMediaBytes = budget.totalBytes;
       issues.push(...budget.issues);
 
       const overBudget = issues.some(
         (item) => item.code === 'PREPARATION_BUDGET_EXCEEDED',
       );
-      const missingSize = media.some((entry) => !mediaSizes.has(entry.asset.id));
+      const missingSize = media.some((entry) =>
+        !entry.optionalExpression && !mediaSizes.has(entry.asset.id),
+      );
       if (overBudget || (missingSize && mediaSizes.size === 0)) {
         return this.block(request.attemptId, issues, diagnosticDetails.join('\n'));
       }
@@ -639,6 +641,7 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
+          if (entry.optionalExpression) continue;
           issues.push(
             this.mediaUnavailableIssue(
               entry.usages[0] ?? '工程素材',
@@ -743,7 +746,7 @@ export class ExportPreparationService {
           targetIdentity: selection.targetIdentity,
         },
         mediaManifest,
-        totalMediaBytes,
+        totalMediaBytes: mediaManifest.reduce((total, entry) => total + entry.byteLength, 0),
       }) as ExportPreparationCandidate;
       this.candidates.set(snapshotId, {
         candidate: structuredClone(candidate),

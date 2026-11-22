@@ -31,6 +31,8 @@ import {
 export interface ExportPreparationMediaSource {
   asset: Asset;
   usages: string[];
+  /** Every sampled use can render the original Adaptive Parts if this file fails. */
+  optionalExpression?: true;
 }
 
 export interface ExportPreparationBudgetEntry {
@@ -88,15 +90,21 @@ function addUsage(
   entries: Map<string, ExportPreparationMediaSource>,
   asset: Asset,
   usages: readonly string[],
+  optionalExpression = false,
 ): void {
   const existing = entries.get(asset.id);
   if (existing) {
+    if (!optionalExpression) delete existing.optionalExpression;
     for (const usage of usages) {
       if (!existing.usages.includes(usage)) existing.usages.push(usage);
     }
     return;
   }
-  entries.set(asset.id, { asset, usages: [...new Set(usages)] });
+  entries.set(asset.id, {
+    asset,
+    usages: [...new Set(usages)],
+    ...(optionalExpression ? { optionalExpression: true } : {}),
+  });
 }
 
 function isSupportedFormalImageAsset(asset: Asset): boolean {
@@ -226,7 +234,15 @@ function addShotVisualAssets(
           project,
           shotIndex,
         );
-        addUsage(entries, asset, labels.length > 0 ? labels : fallbackUsage);
+        const face = visual.activeFace;
+        addUsage(
+          entries, asset, labels.length > 0 ? labels : fallbackUsage,
+          Boolean(
+            face?.originalPartsFallback &&
+            face.currentExpressionAssetId === asset.id &&
+            (face.source === 'expression' || face.assetId !== asset.id),
+          ),
+        );
       }
     }
   }

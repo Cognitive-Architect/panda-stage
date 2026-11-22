@@ -242,6 +242,19 @@ export function scanCharacterReferences(
   return references;
 }
 
+export function hasCharacterFaceTimelineEvents(project: Project, characterId: string): boolean {
+  return project.shots.some((shot) => {
+    const layerIds = new Set(shot.layers.flatMap((layer) =>
+      layer.source.kind === 'character' && layer.source.characterId === characterId
+        ? [layer.id]
+        : [],
+    ));
+    return shot.timelineEvents.some((event) =>
+      (event.type === 'expression' || event.type === 'mouth-cue') && layerIds.has(event.layerId),
+    );
+  });
+}
+
 export function scanExpressionReferences(
   project: Project,
   characterId: string,

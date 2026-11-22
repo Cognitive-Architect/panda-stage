@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CharacterService,
   LayerService,
@@ -12,6 +12,8 @@ import {
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   scanAssetReferences,
+  upsertExpressionEventAtTime,
+  upsertMouthCueEventAtTime,
   type AdaptivePartsCharacter,
   type ImageAsset,
   type Project,
@@ -387,6 +389,9 @@ describe('Phase A: AdaptiveParts face binding & static expressions (#1211)', () 
     const adaptive = project.characters.find((c) => c.id === characterId) as AdaptivePartsCharacter;
     const smileId = adaptive.expressions![0]!.id;
     project = service.setDefaultExpression(project, characterId, smileId);
+    project = service.setMouthOpenAsset(project, characterId, ANGRY_PNG_ID);
+    project = upsertExpressionEventAtTime(project, IDS.shot, layerId, smileId, 320);
+    project = upsertMouthCueEventAtTime(project, IDS.shot, layerId, 'open', 800);
 
     // Simulate broken expression asset at render time without deleting other parts
     const brokenProject: Project = {
@@ -436,15 +441,21 @@ describe('Phase A: AdaptiveParts face binding & static expressions (#1211)', () 
       PART_FACE,
     );
     expect(defAfterTargetRemoved.faceBinding).toBeUndefined();
-    const projectAfterTargetRemoved = service.applyAdaptivePartsDefinition(
-      projectAfterExtraRemoved,
-      characterId,
-      defAfterTargetRemoved,
-    );
+    editorProjectStore.open(PROJECT_ROOT, projectAfterExtraRemoved);
+    const draft = characterAssemblySessionStore.beginAdaptiveParts(characterId);
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) throw new Error(draft.error.message);
+    expect(draft.session.setDraft(defAfterTargetRemoved).ok).toBe(true);
+    expect(draft.session.commit().status).toBe('committed');
+    const projectAfterTargetRemoved = editorProjectStore.getSnapshot()!.project;
     const charAfterTargetRemoved = projectAfterTargetRemoved.characters.find(
       (c) => c.id === characterId,
     ) as AdaptivePartsCharacter;
     expect(charAfterTargetRemoved.faceBinding).toBeUndefined();
+    expect(charAfterTargetRemoved.parts).toEqual(defAfterTargetRemoved.parts);
+    expect(projectAfterTargetRemoved.shots).toEqual(projectAfterExtraRemoved.shots);
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(projectAfterExtraRemoved);
   });
 
   it('supports UI binding -> expression add/preview/default/placement -> History Undo/Redo inside AdaptivePartsAssemblyWorkbench', () => {
@@ -577,5 +588,31 @@ describe('Phase A: AdaptiveParts face binding & static expressions (#1211)', () 
       .getSnapshot()!
       .project.characters.find((c) => c.id === characterId) as AdaptivePartsCharacter;
     expect(liveChar.faceBinding?.placement.offsetX).toBe(12);
+
+    const current = editorProjectStore.getSnapshot()!.project;
+    const layerId = current.shots[0]!.layers.find(({ source }) =>
+      source.kind === 'character' && source.characterId === characterId,
+    )!.id;
+    const withEvent = upsertExpressionEventAtTime(current, IDS.shot, layerId, addedExprId, 300);
+    act(() => editorProjectStore.updateProject(withEvent));
+    act(() => (container.querySelector('[data-testid="adaptive-parts-tab-parts"]') as HTMLButtonElement).click());
+    act(() => (container.querySelector(
+      `[data-part-id="${PART_FACE}"] [data-testid="adaptive-parts-assembly-row-select"]`,
+    ) as HTMLButtonElement).click());
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    try {
+      const unbindButton = () => container.querySelector('[data-testid="adaptive-parts-set-face-button"]') as HTMLButtonElement;
+      act(() => unbindButton().click());
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('暂停播放'));
+      expect(editorProjectStore.getSnapshot()!.project).toEqual(withEvent);
+      confirm.mockReturnValue(true);
+      act(() => unbindButton().click());
+      const unbound = editorProjectStore.getSnapshot()!.project;
+      expect((unbound.characters.find(({ id }) => id === characterId) as AdaptivePartsCharacter).faceBinding).toBeUndefined();
+      expect(unbound.shots).toEqual(withEvent.shots);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

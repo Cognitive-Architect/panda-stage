@@ -460,6 +460,9 @@ export function StageRenderer({
   drawMode = 'legacy-raf',
 }: StageRendererProps): React.JSX.Element {
   const renderStartedAt = previewDiagnosticNow();
+  const [failedExpressionUrls, setFailedExpressionUrls] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
   const stageRef = useRef<Konva.Stage | null>(null);
   const stageRendererRef = useRef<HTMLDivElement | null>(null);
   const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
@@ -485,7 +488,12 @@ export function StageRenderer({
   const modelResult = useMemo(() => {
     const startedAt = previewDiagnosticNow();
     try {
-      const model = buildStageRenderModel(project, evaluatedShot, assetUrls);
+      const failedImageAssetIds = new Set(
+        [...failedExpressionUrls]
+          .filter(([assetId, url]) => assetUrls[assetId] === url)
+          .map(([assetId]) => assetId),
+      );
+      const model = buildStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds);
       recordPreviewDuration('stage-render-model', startedAt, {
         timeMs: evaluatedShot.timeMs,
         layerCount: model.layers.length,
@@ -500,7 +508,7 @@ export function StageRenderer({
         error: error instanceof Error ? error : new Error('舞台模型无效。'),
       };
     }
-  }, [assetUrls, evaluatedShot, project]);
+  }, [assetUrls, evaluatedShot, failedExpressionUrls, project]);
   const layers = modelResult.model?.layers ?? [];
   const imageSourceKey = buildStageImageSourceKey(
     buildStagePartSources(layers, project.id),
@@ -523,6 +531,21 @@ export function StageRenderer({
     project.id,
     prewarmSources,
   );
+  const imageStateCurrent = imageState.desiredSourceKey === imageSourceKey;
+  const recoverableFailure = imageStateCurrent && !onImageResourceFailure && imageState.failures.find((failure) =>
+    assetUrls[failure.assetId] === failure.sourceUrl &&
+    layers.some(({ visual }) =>
+      visual?.activeFace?.source === 'expression' &&
+      visual.activeFace.assetId === failure.assetId &&
+      visual.activeFace.originalPartsFallback?.partId === failure.partId,
+    ),
+  );
+  useEffect(() => {
+    if (!recoverableFailure) return;
+    setFailedExpressionUrls((previous) => new Map(previous).set(
+      recoverableFailure.assetId, recoverableFailure.sourceUrl,
+    ));
+  }, [recoverableFailure]);
   useEffect(() => {
     imageState.optionalFailures.forEach((failure) => {
       recordPreviewDiagnostic('stage-image-prewarm-failure', {
@@ -531,7 +554,7 @@ export function StageRenderer({
       });
     });
   }, [imageState.optionalFailures]);
-  const error = modelResult.error ?? imageState.error;
+  const error = modelResult.error ?? (imageStateCurrent && !recoverableFailure ? imageState.error : null);
   const ready = isStageFrameReady({
     error,
     hasModel: modelResult.model !== null,
@@ -580,6 +603,7 @@ export function StageRenderer({
       onError?.(modelResult.error);
       return;
     }
+    if (!imageStateCurrent || recoverableFailure) return;
     if (imageState.failures.length > 0) {
       if (onImageResourceFailure) {
         imageState.failures.forEach(onImageResourceFailure);
@@ -655,12 +679,14 @@ export function StageRenderer({
     drawMode,
     imageState.error,
     imageState.failures,
+    imageStateCurrent,
     modelResult.error,
     modelResult.model?.timeMs,
     onError,
     onImageResourceFailure,
     onReady,
     ready,
+    recoverableFailure,
     renderToken,
   ]);
   useEffect(() => {

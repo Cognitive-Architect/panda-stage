@@ -17,7 +17,7 @@ export interface ProductPreviewImageFallbackRule {
 export interface ProductPreviewImageScope {
   /** Resources required by the exact current visual. */
   requiredAssetIds: readonly string[];
-  /** Current Expression resources that can replace a failed Mouth. */
+  /** Resources that can replace a failed face image. */
   fallbackAssetIds?: readonly string[];
   /** Upcoming animation frames; these outrank other optional candidates. */
   recentAnimationAssetIds?: readonly string[];
@@ -26,6 +26,10 @@ export interface ProductPreviewImageScope {
   /** Already visited or upcoming frames in active loops, retained without eager reads. */
   retainedAnimationAssetIds?: readonly string[];
   mouthFallbacks?: readonly ProductPreviewImageFallbackRule[];
+  expressionFallbacks?: readonly {
+    sourceAssetId: string;
+    fallbackAssetIds: readonly string[];
+  }[];
 }
 
 export type ProductPreviewImageScopeInput =
@@ -36,7 +40,7 @@ export interface ProductPreviewAssetLoadState {
   status: ProductPreviewAssetLoadStatus;
   urls: StageAssetUrlMap;
   missingCount: number;
-  /** Failed active Mouth sources that are currently displayed via fallback. */
+  /** Failed active face sources with a usable fallback. */
   degradedAssetIds?: readonly string[];
   /** Required current resources that have no contract-valid fallback. */
   fatalAssetIds?: readonly string[];
@@ -117,7 +121,7 @@ interface NormalizedImageScope {
   recentAnimationAssetIds: string[];
   candidateAssetIds: string[];
   retainedAnimationAssetIds: string[];
-  mouthFallbacks: ProductPreviewImageFallbackRule[];
+  fallbackRules: { sourceAssetId: string; fallbackAssetIds: readonly string[] }[];
   structured: boolean;
 }
 
@@ -135,7 +139,7 @@ function normalizeScope(
       recentAnimationAssetIds: [],
       candidateAssetIds: [],
       retainedAnimationAssetIds: [],
-      mouthFallbacks: [],
+      fallbackRules: [],
       structured: false,
     };
   }
@@ -164,7 +168,13 @@ function normalizeScope(
     retainedAnimationAssetIds: unique(
       structuredScope.retainedAnimationAssetIds ?? [],
     ),
-    mouthFallbacks: [...(structuredScope.mouthFallbacks ?? [])],
+    fallbackRules: [
+      ...(structuredScope.mouthFallbacks ?? []).map((rule) => ({
+        sourceAssetId: rule.sourceAssetId,
+        fallbackAssetIds: [rule.fallbackAssetId],
+      })),
+      ...(structuredScope.expressionFallbacks ?? []),
+    ],
     structured: true,
   };
 }
@@ -666,12 +676,11 @@ export class ProductPreviewImageSession {
     };
 
     const fallbackBySource = new Map<string, string[]>();
-    for (const rule of scope.mouthFallbacks) {
-      const fallbackIds = fallbackBySource.get(rule.sourceAssetId) ?? [];
-      if (!fallbackIds.includes(rule.fallbackAssetId)) {
-        fallbackIds.push(rule.fallbackAssetId);
-      }
-      fallbackBySource.set(rule.sourceAssetId, fallbackIds);
+    for (const rule of scope.fallbackRules) {
+      fallbackBySource.set(rule.sourceAssetId, unique([
+        ...(fallbackBySource.get(rule.sourceAssetId) ?? []),
+        ...rule.fallbackAssetIds,
+      ]));
     }
     const requiredDescriptors = new Map(
       required.descriptors.map((descriptor) => [descriptor.assetId, descriptor]),
@@ -687,15 +696,15 @@ export class ProductPreviewImageSession {
         continue;
       }
 
-      const fallbackIds = fallbackBySource.get(assetId) ?? [];
-      if (fallbackIds.length === 0) {
+      const fallbackIds = fallbackBySource.get(assetId);
+      if (!fallbackIds) {
         fatalAssetIds.push(assetId);
         continue;
       }
       let fallbackLoading = false;
       let fallbackFailed = false;
       for (const fallbackId of fallbackIds) {
-        const fallbackStatus = readEntry(fallbackDescriptors.get(fallbackId));
+        const fallbackStatus = readEntry(fallbackDescriptors.get(fallbackId) ?? requiredDescriptors.get(fallbackId));
         if (fallbackStatus === 'loading') fallbackLoading = true;
         if (fallbackStatus === 'error' || fallbackStatus === 'missing') {
           fallbackFailed = true;
@@ -835,8 +844,8 @@ export class ProductPreviewImageSession {
     if (this.disposed) return null;
     let state = this.snapshot(projectRoot, project, activeScope);
     if (state.status === 'loading') {
-      // A failed active Mouth is the one case where a fallback is part of the
-      // current decision. Wait for that bounded fallback before classifying the
+      // A failed face resource may need its fallback to finish loading.
+      // Wait for that bounded fallback before classifying the
       // frame as degraded or fatal. Candidates never block exact readiness.
       const fallbackEntries = active.fallbackAssetIds
         .map((assetId) =>
@@ -861,6 +870,25 @@ export class ProductPreviewImageSession {
     scope: ProductPreviewImageScopeInput,
   ): Promise<ProductPreviewAssetLoadState | null> {
     return this.prepare(projectRoot, project, scope);
+  }
+
+  clearFailedExpressions(
+    projectRoot: string,
+    project: Project,
+    scope: ProductPreviewImageScopeInput,
+  ): boolean {
+    if (this.disposed || Array.isArray(scope)) return false;
+    const assetIds = (scope as ProductPreviewImageScope).expressionFallbacks?.map(
+      (rule) => rule.sourceAssetId,
+    ) ?? [];
+    let cleared = false;
+    for (const { key } of describeImages(projectRoot, project, assetIds).descriptors) {
+      if (this.entries.get(key)?.status === 'error') {
+        this.entries.delete(key);
+        cleared = true;
+      }
+    }
+    return cleared;
   }
 
   dispose(): void {
@@ -923,8 +951,8 @@ export function useProductPreviewImages(
           return `${assetId}:${asset?.sha256 ?? 'missing'}`;
         })
         .sort(),
-      mouthFallbacks: current.mouthFallbacks
-        .map((rule) => `${rule.sourceAssetId}->${rule.fallbackAssetId}`)
+      fallbackRules: current.fallbackRules
+        .map((rule) => JSON.stringify([rule.sourceAssetId, rule.fallbackAssetIds]))
         .sort(),
     });
   const assetKey = scopeKey(normalizedScope);
@@ -939,13 +967,19 @@ export function useProductPreviewImages(
   useEffect(() => {
     if (!session) return;
     let active = true;
-    void session
-      .prepare(projectRoot, project, scope, nextAssetIds)
-      .then((nextState) => {
+    const prepare = () => {
+      void session.prepare(projectRoot, project, scope, nextAssetIds).then((nextState) => {
         if (active && nextState) setRevision((current) => current + 1);
       });
+    };
+    const retryExpressions = () => {
+      if (session.clearFailedExpressions(projectRoot, project, scope)) prepare();
+    };
+    prepare();
+    window.addEventListener('focus', retryExpressions);
     return () => {
       active = false;
+      window.removeEventListener('focus', retryExpressions);
     };
   }, [assetKey, nextAssetKey, project, projectRoot, session]);
 

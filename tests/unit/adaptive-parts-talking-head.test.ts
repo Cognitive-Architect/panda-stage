@@ -10,6 +10,7 @@ import {
   ProjectSchema,
   evaluateShotAtTime,
   projectShotDialogueVisual,
+  removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   resolveTalkingHeadMotionTransform,
   upsertExpressionEventAtTime,
@@ -205,6 +206,11 @@ function buildPhaseCProject(options?: { withDialogue?: boolean; withClipV1?: boo
         'transform.offsetY': -6,
       },
     );
+    project = motionSvc.apply(
+      project,
+      { shotId: IDS.shot, layerId: layerRes.layer.id, partId: PART_BODY, timeMs: 0, autoKey: true },
+      { 'transform.offsetX': 8 },
+    );
   }
 
   return { project, characterId: charId, layerId: layerRes.layer.id, smileExprId, graphicExprId };
@@ -338,6 +344,33 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     const expectedBob = resolveTalkingHeadMotionTransform(125, 1200, 100);
     expect(faceTalk.imageTransform!.tx - faceNeutral.imageTransform!.tx).toBeCloseTo(expectedBob.translateX, 6);
     expect(faceTalk.imageTransform!.ty - faceNeutral.imageTransform!.ty).toBeCloseTo(expectedBob.translateY, 6);
+
+    const withRest = upsertMouthCueEventAtTime(setup.project, shot.id, setup.layerId, 'rest', 200);
+    const restShot = withRest.shots[0]!;
+    const layerAtRest = projectShotDialogueVisual(withRest, restShot, evaluateShotAtTime(restShot, 225, withRest))
+      .layers.find((layer) => layer.id === setup.layerId)!;
+    const fallback = resolveLayerVisualParts(withRest, restShot, layerAtRest, 225, (id) => id === ASSET_SMILE);
+    const unbound = new CharacterService().setAdaptivePartsFaceBinding(withRest, setup.characterId, null);
+    const unboundShot = unbound.shots[0]!;
+    const unboundLayer = projectShotDialogueVisual(unbound, unboundShot, evaluateShotAtTime(unboundShot, 225, unbound))
+      .layers.find((layer) => layer.id === setup.layerId)!;
+    expect(fallback.activeFace).toBeNull();
+    expect(fallback.parts).toEqual(resolveLayerVisualParts(unbound, unboundShot, unboundLayer, 225).parts);
+    expect(unboundShot.layers).toEqual(restShot.layers);
+
+    const characterService = new CharacterService();
+    const definition = characterService.getAdaptivePartsDefinition(withRest, setup.characterId);
+    const withoutFace = characterService.applyAdaptivePartsDefinition(
+      withRest, setup.characterId, removeAdaptivePartFromDefinition(definition, PART_FACE),
+    );
+    const removedShot = withoutFace.shots[0]!;
+    const beforeClip = restShot.layers.find(({ id }) => id === setup.layerId)!.animationClip;
+    const afterClip = removedShot.layers.find(({ id }) => id === setup.layerId)!.animationClip;
+    expect(beforeClip?.version).toBe(1);
+    expect(afterClip?.version).toBe(1);
+    if (beforeClip?.version !== 1 || afterClip?.version !== 1) throw new Error('Expected Clip v1');
+    expect(afterClip.tracks).toEqual(beforeClip.tracks.filter((track) => track.target.partId !== PART_FACE));
+    expect(removedShot.timelineEvents).toEqual(restShot.timelineEvents);
 
     // Duplicate visible occurrences of same speaker character -> stays neutral
     const dup = new LayerService().createFromAdaptiveCharacter(

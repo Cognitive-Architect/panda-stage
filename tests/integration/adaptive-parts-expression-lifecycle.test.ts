@@ -198,6 +198,15 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     const visual = resolveLayerVisualParts(reopened.project, shot, layer);
     expect(visual.parts[1]!.flaGraphic?.frameOrdinal).toBe(1);
     expect(visual.parts[1]!.drawOrder).toBe(1);
+
+    project = charService.setMouthOpenAsset(project, charId, smileAssetId);
+    project = upsertExpressionEventAtTime(project, shot.id, layerRes.layer.id, graphicExprId, 200);
+    project = upsertMouthCueEventAtTime(project, shot.id, layerRes.layer.id, 'open', 400);
+    const unbound = charService.setAdaptivePartsFaceBinding(project, charId, null);
+    await projectService.save(projectRoot, unbound, 2);
+    const reopenedUnbound = await projectService.open(projectRoot);
+    expect(reopenedUnbound.project).toStrictEqual(unbound);
+    expect(reopenedUnbound.project.shots).toEqual(project.shots);
   });
 
   it.skipIf(!existsSync(REAL_XIAOSHIMEI_FLA_PATH))(

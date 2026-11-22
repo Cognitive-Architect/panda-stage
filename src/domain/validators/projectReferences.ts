@@ -705,52 +705,32 @@ export function validateProjectReferences(
             ],
             'Expression events require a character layer.',
           );
-          } else {
-            const characterId = layer.source.characterId;
-            const character = characters.get(characterId);
-            if (
-              !character ||
-              (character.mode === 'adaptive-parts' && !character.faceBinding) ||
-              !(character.expressions ?? []).some(
-                (expression) => expression.id === event.expressionId,
-              )
-            ) {
-              addIssue(
-                context,
-                [
-                  'shots',
-                  shotIndex,
-                  'timelineEvents',
-                  eventIndex,
-                  'expressionId',
-                ],
-                `Expression event references unknown expression: ${event.expressionId}`,
-              );
-            }
-          }
-        }
-        if (event.type === 'mouth-cue' && layer) {
-          if (layer.source.kind !== 'character') {
+        } else {
+          const character = characters.get(layer.source.characterId);
+          // Adaptive Parts can suspend face playback while unbound. The
+          // persisted event still needs a valid expression on its owner.
+          if (!(character?.expressions ?? []).some(
+            (expression) => expression.id === event.expressionId,
+          )) {
             addIssue(
               context,
-              ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-              'Mouth cue events require a character layer.',
+              ['shots', shotIndex, 'timelineEvents', eventIndex, 'expressionId'],
+              `Expression event references unknown expression: ${event.expressionId}`,
             );
-          } else {
-            const characterId = layer.source.characterId;
-            const character = characters.get(characterId);
-            if (
-              !character ||
-              (character.mode === 'adaptive-parts' && !character.faceBinding)
-            ) {
-              addIssue(
-                context,
-                ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-                'Mouth cue events require a character with face expressions or mouth support.',
-              );
-            }
           }
         }
-      });
+      }
+      if (event.type === 'mouth-cue' && layer) {
+        if (layer.source.kind !== 'character') {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
+            'Mouth cue events require a character layer.',
+          );
+        }
+        // Character existence is checked on the layer source above.
+        // Authoring still requires a binding and configured mouth visual.
+      }
+    });
   });
 }

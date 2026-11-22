@@ -28,6 +28,7 @@ import {
   resolveFlaGraphicSavedLayoutPlacements,
   resolveTalkingHeadMotionTransform,
   scanAdaptivePartReferences,
+  hasCharacterFaceTimelineEvents,
   selectFlaGraphicSubtreeVisual,
   transformVisualRectByPart,
   type AdaptivePartsCharacterDefinition,
@@ -1525,9 +1526,13 @@ function AdaptivePartsAssemblyWorkbench({
       const scope = refs.keyframeCount > 0
         ? `此零件当前被 ${refs.shotCount} 个镜头使用，并包含 ${refs.keyframeCount} 个关键帧。`
         : `此零件当前被 ${refs.shotCount} 个镜头使用。`;
+      const faceImpact = current.faceBinding?.targetPartId === partId &&
+        hasCharacterFaceTimelineEvents(project, session.characterId)
+        ? '脸位也会解除，已有表情和嘴型事件将暂停播放，重新绑定后恢复。'
+        : '';
       if (
         !window.confirm(
-          `${scope}从角色移除后，应用更改将同步清理相关动画轨道，不会删除源素材。确认移除？`,
+          `${scope}从角色移除后，应用更改将同步清理相关动画轨道，不会删除源素材。${faceImpact}确认移除？`,
         )
       ) {
         return;
@@ -1563,6 +1568,10 @@ function AdaptivePartsAssemblyWorkbench({
   const toggleFaceTargetPart = (partId: string): void => {
     if (activeFaceBinding?.targetPartId === partId) {
       runImmediateCharacterMutation(() => {
+        if (
+          hasCharacterFaceTimelineEvents(project, session.characterId) &&
+          !window.confirm('解绑后，已有表情和嘴型事件将暂停播放，重新绑定后恢复。确认解绑？')
+        ) return;
         characterStore.setAdaptivePartsFaceBinding(session.characterId, null);
         setPreviewExpressionId(undefined);
         if (inspectorContext === 'face') setInspectorContext('part');
