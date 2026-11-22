@@ -26,8 +26,9 @@ describe('R2-H.2 bounded default range (Issue #400)', () => {
     [1, 0],
     [10, 9],
     [24, 23],
-    [30, 23],
-    [100, 23],
+    [30, 29],
+    [100, 99],
+    [300, 255],
   ])('selects 0–%i for a %i-frame target', (frameCount, expectedEnd) => {
     expect(getDefaultSequenceRange(frameCount)).toEqual({
       startFrameIndex: 0,
@@ -39,10 +40,10 @@ describe('R2-H.2 bounded default range (Issue #400)', () => {
   });
 
   it('does not change explicit over-cap input into a valid range', () => {
-    const defaultRange = getDefaultSequenceRange(30);
-    expect(defaultRange).toEqual({ startFrameIndex: 0, endFrameIndex: 23 });
-    expect(validateRange(0, 29, 30).valid).toBe(false);
-    expect(validateRange(0, 23, 30).valid).toBe(true);
+    const defaultRange = getDefaultSequenceRange(300);
+    expect(defaultRange).toEqual({ startFrameIndex: 0, endFrameIndex: 255 });
+    expect(validateRange(0, 256, 300).valid).toBe(false);
+    expect(validateRange(0, 255, 300).valid).toBe(true);
   });
 });
 
@@ -96,8 +97,8 @@ describe('Issue #781 sequence range summary', () => {
   });
 
   it('keeps an invalid range explicit without claiming a valid frame count', () => {
-    expect(formatSequenceRangeSummary(24, 48, validateRange(24, 48, 50)))
-      .toBe('第 25–49 帧 · 范围无效');
+    expect(formatSequenceRangeSummary(24, 280, validateRange(24, 280, 300)))
+      .toBe('第 25–281 帧 · 范围无效');
   });
 });
 
@@ -112,10 +113,10 @@ describe('unified sequence presentation copy and input sizing', () => {
   });
 
   it('keeps invalid range details visible in the unified preview', () => {
-    const invalidRange = validateRange(4, 28, 30);
+    const invalidRange = validateRange(4, 260, 300);
 
-    expect(formatSequenceRangeSummaryForPresentation(4, 28, invalidRange, 'unified-preview'))
-      .toBe('第 5–29 帧 · 范围无效');
+    expect(formatSequenceRangeSummaryForPresentation(4, 260, invalidRange, 'unified-preview'))
+      .toBe('第 5–261 帧 · 范围无效');
   });
 
   it('expands the unified start-frame input with the entered digit count', () => {

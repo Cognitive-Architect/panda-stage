@@ -549,7 +549,7 @@ export function AnimationLibraryPanel({
     return (
       <div className="animation-library-empty" data-testid="animation-library-empty">
         <strong>{normalizedQuery ? '没有匹配的动画' : '还没有已导入的动画'}</strong>
-        <p>{normalizedQuery ? '清除搜索条件后再试。' : '从 FLA 导入 1–24 帧序列后，动画会显示在这里。'}</p>
+        <p>{normalizedQuery ? '清除搜索条件后再试。' : '从 FLA 导入动画后，动画会显示在这里。'}</p>
       </div>
     );
   }

@@ -304,6 +304,41 @@ describe('R2-G frame sequence commit: happy path', () => {
     expect(entries).toHaveLength(3);
   });
 
+  it('commits a 60-frame scene as a regular animation and reopens its full range', async () => {
+    const h = await harness();
+    const start = 300;
+    const frames = Array.from({ length: 60 }, (_, ordinal) => ({
+      ...makeFrame(start + ordinal, 0, 8 + ordinal, 8, { x: ordinal, y: -10, width: 8 + ordinal, height: 8 }),
+      sequenceOrdinal: ordinal,
+    }));
+    const service = h.createService({
+      sequenceStore: fakeSequenceStore(frames),
+      getAnimationContext: async () => ({
+        ...ANIMATION_CONTEXT,
+        sourceFps: 24,
+        target: { ...ANIMATION_CONTEXT.target, kind: 'scene', frameCount: 400 },
+      }),
+    });
+    const result = await service.commit(request(h, frames, { importAsAnimation: true }));
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result).toMatchObject({ ok: true, savedRevision: 1 });
+    const { project } = await h.projectService.open(h.projectRoot);
+    const animation = project.animations[0];
+    expect(animation).not.toHaveProperty('kind');
+    expect(animation).toMatchObject({
+      durationMs: 2500,
+      source: {
+        targetKind: 'scene', startFrameIndex: 300, endFrameIndex: 359, sourceFps: 24,
+        canvas: { width: 126, height: 8 }, anchor: { x: 0, y: -10 },
+      },
+    });
+    expect(animation?.frames.map((frame) => frame.sourceFrameIndex)).toEqual(frames.map((frame) => frame.frameIndex));
+    expect(animation?.frames.at(-1)).toMatchObject({
+      ordinal: 59, sourceFrameIndex: 359, offset: { x: 59, y: 0 }, sha256: frames[59]!.sha256,
+    });
+    expect(await assetEntries(h.projectRoot)).toHaveLength(60);
+  });
+
   it('deduplicates repeated frames inside the same sequence while preserving timing entries', async () => {
     const h = await harness();
     const frames = [makeFrame(0, 0, 8, 8), makeFrame(1, 0, 8, 8)];

@@ -911,8 +911,8 @@
   grid-area: inputs;
   min-height: 44px;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs label {
@@ -936,7 +936,6 @@
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-arrow,
-.fla-frame-sequence-review-unified-preview [data-testid='fla-frame-sequence-end'],
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-result {
   display: none;
 }
