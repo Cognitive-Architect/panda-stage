@@ -2448,6 +2448,7 @@ function resolveTargetDisplayList(
   readonly shapeBlocks: ReadonlyMap<string, string>;
 } | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
+  let playbackFrameIndex: number | undefined;
   if (target.kind === 'graphic-symbol') {
     const sourceName = target.sourceLibraryItemName;
     const descriptor = sourceName
@@ -2496,13 +2497,15 @@ function resolveTargetDisplayList(
       return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Scene timeline not found: ' + timelineIndex };
     }
     const selectedFrameIndex = target.selectedFrameIndex ?? 0;
-    if (selectedFrameIndex >= target.frameCount || selectedFrameIndex >= descriptor.frameCount) {
+    if (selectedFrameIndex >= target.frameCount ||
+        selectedFrameIndex >= (descriptor.playbackFrameCount ?? descriptor.frameCount)) {
       return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + target.frameCount };
     }
     let frameContext: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
-    if (selectedFrameIndex === 0) {
+    if (selectedFrameIndex === 0 || descriptor.playbackFrameCount !== undefined) {
       source.resetFrameBuildState();
       frameContext = { ok: true, value: descriptor.frameContext };
+      playbackFrameIndex = selectedFrameIndex;
     } else {
       frameContext = source.buildSceneFrameContext(descriptor.xml, selectedFrameIndex, 'scene:' + timelineIndex);
     }
@@ -2570,7 +2573,8 @@ function resolveTargetDisplayList(
       return frameContext;
     },
   };
-  const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, root);
+  const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, root,
+    playbackFrameIndex === undefined ? {} : { playbackFrameIndex });
   if (shapeBlockBudgetExceeded) {
     return {
       ok: false,
@@ -2765,7 +2769,7 @@ export async function buildRenderableTargetCatalog(
       kind: 'scene',
       userLabel: '\u4e3b\u573a\u666f \u00b7 \u7b2c 1 \u5e27',
       sourceTimelineIndex: scene.index,
-      frameCount: Math.min(100_000, scene.frameCount),
+      frameCount: Math.min(100_000, scene.playbackFrameCount ?? scene.frameCount),
       selectedFrameIndex: 0,
       compatibility: ['degraded'],
     }

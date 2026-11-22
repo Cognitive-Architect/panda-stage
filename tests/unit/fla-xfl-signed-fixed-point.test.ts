@@ -55,7 +55,7 @@ class SyntheticElement {
   }
 }
 
-function morphDocument(coordinate: string): SyntheticElement {
+function morphDocument(coordinate: string, attributes: Record<string, string>): SyntheticElement {
   const segment = new SyntheticElement('MorphSegment', {
     startPointA: `${coordinate}, 0`,
     startPointB: `${coordinate}, 0`,
@@ -70,14 +70,15 @@ function morphDocument(coordinate: string): SyntheticElement {
   const timeline = new SyntheticElement('DOMTimeline', { name: 'Scene 1' }, [
     new SyntheticElement('layers', {}, [layer]),
   ]);
-  return new SyntheticElement('DOMDocument', { width: '8', height: '8', frameRate: '24' }, [
+  return new SyntheticElement('DOMDocument', { width: '8', height: '8', ...attributes }, [
     new SyntheticElement('timelines', {}, [timeline]),
   ]);
 }
 
-async function parseMorphCoordinate(coordinate: string): Promise<number | undefined> {
+async function parseMorphDocument(coordinate: string, attributes: Record<string, string> = { frameRate: '24' }) {
   const zip = new JSZip();
-  const xml = `<DOMDocument width="8" height="8" frameRate="24"><timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="Layer 1"><frames><DOMFrame index="0" tweenType="shape"><MorphShape><morphSegments><MorphSegment startPointA="${coordinate}, 0" startPointB="${coordinate}, 0"/></morphSegments></MorphShape></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
+  const documentAttributes = Object.entries(attributes).map(([key, value]) => `${key}="${value}"`).join(' ');
+  const xml = `<DOMDocument width="8" height="8" ${documentAttributes}><timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="Layer 1"><frames><DOMFrame index="0" tweenType="shape"><MorphShape><morphSegments><MorphSegment startPointA="${coordinate}, 0" startPointB="${coordinate}, 0"/></morphSegments></MorphShape></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
   zip.file('DOMDocument.xml', xml);
   const archive = await zip.generateAsync({ type: 'uint8array' });
   const fileBytes = Uint8Array.from(archive) as unknown as File;
@@ -93,7 +94,7 @@ async function parseMorphCoordinate(coordinate: string): Promise<number | undefi
     },
   });
 
-  const root = morphDocument(coordinate);
+  const root = morphDocument(coordinate, attributes);
   vi.stubGlobal('DOMParser', class {
     parseFromString(source: string) {
       expect(source).toContain(`startPointA="${coordinate}, 0"`);
@@ -102,8 +103,7 @@ async function parseMorphCoordinate(coordinate: string): Promise<number | undefi
   });
 
   try {
-    const document = await new FLAParser().parse(fileBytes);
-    return document.timelines[0]?.layers[0]?.frames[0]?.morphShape?.segments[0]?.startPointA.x;
+    return await new FLAParser().parse(fileBytes);
   } finally {
     vi.unstubAllGlobals();
   }
@@ -115,7 +115,20 @@ describe('XFL signed fixed-point coordinate decoding', () => {
     expect(commands[0]).toEqual({ type: 'M', x: expected, y: 0 });
   });
 
-  it.each(fixedPointCases)('decodes morph coordinate %s', (coordinate, expected) => {
-    return expect(parseMorphCoordinate(coordinate)).resolves.toBe(expected);
+  it.each(fixedPointCases)('decodes morph coordinate %s', async (coordinate, expected) => {
+    const document = await parseMorphDocument(coordinate);
+    expect(document.timelines[0]?.layers[0]?.frames[0]?.morphShape?.segments[0]?.startPointA.x).toBe(expected);
+  });
+});
+
+describe('Animate document playback rate', () => {
+  const animate = { creatorInfo: 'Adobe Animate', versionInfo: 'Saved by Animate Windows 23.0 build 407' };
+  it.each([
+    [animate, 24],
+    [{ ...animate, frameRate: '30' }, 30],
+    [{ ...animate, frameRate: '0' }, 0],
+    [{}, 0],
+  ] as const)('uses the authored rate or the identified Animate default for %o', async (attributes, expected) => {
+    expect((await parseMorphDocument('0', attributes)).frameRate).toBe(expected);
   });
 });

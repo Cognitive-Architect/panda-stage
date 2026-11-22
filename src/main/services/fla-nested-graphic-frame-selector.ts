@@ -57,7 +57,9 @@ export interface FlaNestedGraphicFrameSelection {
     | 'play-once-parent-timeline'
     | 'play-once-reverse-parent-timeline'
     | 'play-once-hold-terminal'
-    | 'single-frame-parent-keyframe';
+    | 'single-frame-parent-keyframe'
+    | 'movieclip-local-timeline'
+    | 'movieclip-script-held';
   readonly selectionBasis?: 'mode-invariant-single-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
 }
@@ -92,6 +94,8 @@ type ElementsResult =
 type ContextResult =
   | { readonly ok: true; readonly frameContext: FlaDisplayListFrameContext }
   | SelectorFailure;
+
+type TimelineClock = (ticksAgo: number) => number | undefined;
 
 function failure(
   code: FlaNestedGraphicFrameSelectorFailureCode,
@@ -242,7 +246,7 @@ function selectAuthoredChildFrame(
 export function prepareFlaNestedGraphicFrameSelections(
   source: FlaStaticSnapshotDisplaySource,
   root: FlaDisplayListRoot,
-  options: { readonly maxDepth?: number; readonly maxSelections?: number } = {},
+  options: { readonly maxDepth?: number; readonly maxSelections?: number; readonly playbackFrameIndex?: number } = {},
 ): FlaNestedGraphicFrameSelectorResult {
   const maxDepth = options.maxDepth ?? FLA_NESTED_GRAPHIC_FRAME_SELECTOR_LIMITS.maxDepth;
   const maxSelections = options.maxSelections ?? FLA_NESTED_GRAPHIC_FRAME_SELECTOR_LIMITS.maxSelections;
@@ -255,6 +259,7 @@ export function prepareFlaNestedGraphicFrameSelections(
   const definitions = new Map<string, FlaGraphicSymbolDefinition>();
   const selections: FlaNestedGraphicFrameSelection[] = [];
   const building = new Set<string>();
+  let clockSteps = 0;
 
   const prepareSymbol = (
     libraryItemName: string,
@@ -262,6 +267,8 @@ export function prepareFlaNestedGraphicFrameSelections(
     sourceStack: readonly string[],
     depth: number,
     sourceAddress: string,
+    descriptor: NonNullable<ReturnType<typeof descriptors.get>>,
+    clock: TimelineClock,
   ): { readonly ok: true; readonly key: string } | SelectorFailure => {
     if (sourceStack.includes(libraryItemName)) {
       return failure(
@@ -277,10 +284,6 @@ export function prepareFlaNestedGraphicFrameSelections(
     const key = frameSelectionKey(libraryItemName, frameIndex, sourceAddress);
     if (building.has(key)) {
       return failure('SYMBOL_CYCLE', `Nested Graphic frame cycle at ${libraryItemName}@${frameIndex}`, sourceAddress);
-    }
-    const descriptor = descriptors.get(libraryItemName);
-    if (!descriptor) {
-      return failure('MISSING_SYMBOL', `Nested Graphic definition not found: ${libraryItemName}`, sourceAddress);
     }
     if (frameIndex < 0 || frameIndex >= descriptor.frameCount) {
       return failure(
@@ -312,6 +315,7 @@ export function prepareFlaNestedGraphicFrameSelections(
       contextResult.value,
       [...sourceStack, libraryItemName],
       depth + 1,
+      clock,
     );
     building.delete(key);
     if (!prepared.ok) return prepared;
@@ -323,6 +327,7 @@ export function prepareFlaNestedGraphicFrameSelections(
     elements: readonly FlaDisplayListElement[],
     sourceStack: readonly string[],
     depth: number,
+    clock: TimelineClock,
   ): ElementsResult => {
     const prepared: FlaDisplayListElement[] = [];
     for (const element of elements) {
@@ -331,7 +336,7 @@ export function prepareFlaNestedGraphicFrameSelections(
         continue;
       }
       if (element.kind === 'group') {
-        const nested = prepareElements(element.elements, sourceStack, depth);
+        const nested = prepareElements(element.elements, sourceStack, depth, clock);
         if (!nested.ok) return nested;
         prepared.push({ ...element, elements: nested.elements });
         continue;
@@ -340,7 +345,11 @@ export function prepareFlaNestedGraphicFrameSelections(
         prepared.push(element);
         continue;
       }
-      if (element.symbolType !== 'graphic') {
+      const isMovieClip = element.symbolType === 'movieclip';
+      const descriptor = isMovieClip
+        ? source.movieClipSymbols?.get(element.libraryItemName)
+        : descriptors.get(element.libraryItemName);
+      if (element.symbolType === 'button' || (isMovieClip && !descriptor)) {
         return failure(
           'UNSUPPORTED_SYMBOL_TYPE',
           `Nested static reconstruction does not execute ${element.symbolType} symbols: ${element.libraryItemName}`,
@@ -350,12 +359,9 @@ export function prepareFlaNestedGraphicFrameSelections(
       if (selections.length >= maxSelections) {
         return failure('BUDGET_EXCEEDED', `Nested Graphic selection count exceeded ${maxSelections}`, element.sourceAddress);
       }
-      const descriptor = descriptors.get(element.libraryItemName);
       if (!descriptor) {
         return failure('MISSING_SYMBOL', `Nested Graphic definition not found: ${element.libraryItemName}`, element.sourceAddress);
       }
-      const selected = selectAuthoredChildFrame(element, descriptor.frameCount);
-      if (!selected.ok) return selected;
       const sourceAddress = element.sourceAddress?.trim();
       const parentFrameIndex = element.sourceParentFrameIndex;
       const parentFrameSpanStart = element.sourceParentFrameSpanStart;
@@ -366,6 +372,38 @@ export function prepareFlaNestedGraphicFrameSelections(
           element.sourceAddress,
         );
       }
+      let selected: ReturnType<typeof selectAuthoredChildFrame>;
+      let childClock: TimelineClock;
+      if (isMovieClip) {
+        const run = element.movieClipRun ?? { start: parentFrameSpanStart, end: parentFrameIndex + 1 };
+        let age = 0;
+        if (!descriptor.movieClipHasScript && descriptor.frameCount > 1) {
+          for (;;) {
+            if (++clockSteps > 1_000_000) {
+              return failure('BUDGET_EXCEEDED', 'MovieClip clock traversal exceeded its frame budget', sourceAddress);
+            }
+            const previous = clock(age + 1);
+            if (previous === undefined || previous < run.start || previous >= run.end) break;
+            age += 1;
+          }
+        }
+        childClock = (ticksAgo) => ticksAgo > age ? undefined : (age - ticksAgo) % descriptor.frameCount;
+        selected = {
+          ok: true,
+          frameIndex: age % descriptor.frameCount,
+          effectiveFirstFrame: 0,
+          selectionRule: descriptor.movieClipHasScript ? 'movieclip-script-held' : 'movieclip-local-timeline',
+        };
+      } else {
+        selected = selectAuthoredChildFrame(element, descriptor.frameCount);
+        childClock = (ticksAgo) => {
+          const frame = clock(ticksAgo);
+          if (frame === undefined || frame < parentFrameSpanStart || frame > parentFrameIndex) return undefined;
+          const sample = selectAuthoredChildFrame({ ...element, sourceParentFrameIndex: frame }, descriptor.frameCount);
+          return sample.ok ? sample.frameIndex : undefined;
+        };
+      }
+      if (!selected.ok) return selected;
       selections.push({
         sourceAddress,
         libraryItemName: element.libraryItemName,
@@ -390,9 +428,12 @@ export function prepareFlaNestedGraphicFrameSelections(
         sourceStack,
         depth + 1,
         sourceAddress,
+        descriptor,
+        childClock,
       );
       if (!variant.ok) return variant;
-      prepared.push({ ...element, frameSelectionKey: variant.key });
+      // The resolver receives an already sampled visual, with no runtime script.
+      prepared.push({ ...element, symbolType: 'graphic', frameSelectionKey: variant.key });
     }
     return { ok: true, elements: prepared };
   };
@@ -401,6 +442,7 @@ export function prepareFlaNestedGraphicFrameSelections(
     context: FlaDisplayListFrameContext,
     sourceStack: readonly string[],
     depth: number,
+    clock: TimelineClock,
   ): ContextResult {
     if (depth > maxDepth) return failure('BUDGET_EXCEEDED', `Nested Graphic depth exceeded ${maxDepth}`);
     const layers = [];
@@ -409,14 +451,18 @@ export function prepareFlaNestedGraphicFrameSelections(
         layers.push(layer);
         continue;
       }
-      const elements = prepareElements(layer.elements, sourceStack, depth);
+      const elements = prepareElements(layer.elements, sourceStack, depth, clock);
       if (!elements.ok) return elements;
       layers.push({ ...layer, elements: elements.elements });
     }
     return { ok: true, frameContext: { ...context, layers } };
   }
 
-  const rootResult = prepareContext(root.frameContext, root.kind === 'graphic' ? [root.name] : [], 0);
+  const playbackFrame = options.playbackFrameIndex ?? root.frameContext.frameIndex;
+  const rootClock: TimelineClock = (ticksAgo) => ticksAgo > playbackFrame
+    ? undefined
+    : Math.min(root.frameContext.frameIndex, playbackFrame - ticksAgo);
+  const rootResult = prepareContext(root.frameContext, root.kind === 'graphic' ? [root.name] : [], 0, rootClock);
   if (!rootResult.ok) return rootResult;
   return {
     ok: true,

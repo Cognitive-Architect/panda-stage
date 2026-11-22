@@ -125,9 +125,13 @@ export class FLAParser {
     const parsedFrameRate = rawFrameRate === null || rawFrameRate.trim() === ''
       ? Number.NaN
       : Number(rawFrameRate);
-    const frameRate = Number.isFinite(parsedFrameRate) && parsedFrameRate > 0
-      ? parsedFrameRate
-      : 0;
+    // Animate omits its default 24 FPS attribute when saving modern FLA files.
+    // Keep the unknown-rate behavior for incomplete or explicitly invalid data.
+    const omittedAnimateRate = rawFrameRate === null &&
+      root.getAttribute('creatorInfo') === 'Adobe Animate' &&
+      /^Saved by Animate\b/u.test(root.getAttribute('versionInfo') ?? '');
+    const frameRate = omittedAnimateRate ? 24
+      : Number.isFinite(parsedFrameRate) && parsedFrameRate > 0 ? parsedFrameRate : 0;
     const backgroundColor = root.getAttribute('backgroundColor') || '#FFFFFF';
 
     // Parse symbol references and load them

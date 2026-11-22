@@ -101,6 +101,8 @@ export interface FlaXflTimelineDescriptor {
   readonly index: number;
   readonly name: string;
   readonly frameCount: number;
+  /** Additional playback samples while a one-frame scene stays on frame zero. */
+  readonly playbackFrameCount?: number;
   readonly frameSpanIndex?: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly xml: string;
   readonly frameContext: FlaDisplayListFrameContext;
@@ -114,6 +116,7 @@ export interface FlaXflGraphicSymbolDescriptor extends FlaGraphicSymbolDefinitio
   readonly hasNestedSymbol: boolean;
   readonly hasPotentialDisplayElements: boolean;
   readonly timelineXml: string;
+  readonly movieClipHasScript?: boolean;
 }
 
 export interface FlaStaticSnapshotDisplaySource {
@@ -121,6 +124,7 @@ export interface FlaStaticSnapshotDisplaySource {
   readonly stageHeight: number;
   readonly sceneTimelines: readonly FlaXflTimelineDescriptor[];
   readonly graphicSymbols: readonly FlaXflGraphicSymbolDescriptor[];
+  readonly movieClipSymbols?: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>;
   readonly symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>;
   readonly shapeBlocks: ReadonlyMap<string, string>;
   /** Restore base-source parsing state before resolving a cached frame-zero context. */
@@ -158,6 +162,7 @@ export type FlaStaticSnapshotDisplaySourceBuildResult =
 interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
   symbolAliases: SymbolAliasIndex;
+  readonly movieClipNames: Set<string>;
   visitedNodeCount: number;
 }
 
@@ -559,6 +564,7 @@ interface ElementParseContext {
   readonly path: string;
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
+  readonly layerSpans?: readonly FlaNormalizedFrameSpan<FlaXflElementBlock>[];
   readonly sourceParentSpanTweenType?: string;
   readonly sourceParentMotionTweenSync?: boolean;
   readonly motionTweenEndpoint?: boolean;
@@ -685,6 +691,7 @@ function parseDisplayElements(
             path,
             sourceParentFrameIndex: context.sourceParentFrameIndex,
             sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+            ...(context.layerSpans ? { layerSpans: context.layerSpans } : {}),
             ...(context.sourceParentSpanTweenType !== undefined
               ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
               : {}),
@@ -755,13 +762,11 @@ function parseDisplayElements(
       continue;
     }
 
-    const sourceSymbolType = (child.attributes.symbolType ?? 'graphic').trim().toLocaleLowerCase('en-US');
-    const symbolType = sourceSymbolType === 'graphic'
-      ? 'graphic'
-      : sourceSymbolType === 'button'
-        ? 'button'
-        : 'movieclip';
     const resolvedName = resolveSymbolAlias(context.state.symbolAliases, libraryItemName) ?? libraryItemName;
+    const symbolType = displaySymbolType(child, resolvedName, context.state);
+    const movieClipRun = symbolType === 'movieclip' && context.layerSpans
+      ? findMovieClipRun(context, path, child, resolvedName)
+      : undefined;
     let alphaMultiplier: number | undefined;
     let rgbTransform: FlaDisplayListRgbTransform | undefined;
     if (context.motionTweenEndpoint) {
@@ -774,6 +779,7 @@ function parseDisplayElements(
       kind: 'symbol',
       libraryItemName: resolvedName,
       symbolType,
+      ...(movieClipRun ? { movieClipRun } : {}),
       ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
@@ -1006,6 +1012,63 @@ function classicMotionEasesForFrame(frame: FlaXflElementBlock): ClassicMotionEas
 function frameDisplayElements(frame: FlaXflElementBlock): readonly FlaXflElementBlock[] {
   const container = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
   return getFlaXflDirectChildren(container.xml, container.name);
+}
+
+function displaySymbolType(
+  element: FlaXflElementBlock,
+  libraryItemName: string,
+  state: SourceBuildState,
+): 'graphic' | 'movieclip' | 'button' {
+  const attrs = element.attributes;
+  const type = attrs.symbolType?.trim().toLowerCase();
+  if (type === 'button') return 'button';
+  if (type === 'graphic') return 'graphic';
+  if (type) return 'movieclip';
+  if (attrs.loop !== undefined || attrs.firstFrame !== undefined || attrs.lastFrame !== undefined) return 'graphic';
+  // Adobe omits symbolType on default MovieClip declarations and placements.
+  return state.movieClipNames.has(libraryItemName) ? 'movieclip' : 'graphic';
+}
+
+function findMovieClipRun(
+  context: ElementParseContext,
+  path: string,
+  current: FlaXflElementBlock,
+  libraryItemName: string,
+): { start: number; end: number } | undefined {
+  const spans = context.layerSpans!;
+  const position = spans.findIndex((span) => span.index === context.sourceParentFrameSpanStart);
+  const currentSpan = spans[position];
+  if (!currentSpan) return undefined;
+  const address = path.split('/').slice(1).map(Number);
+  const matches = (frame: FlaXflElementBlock): boolean => {
+    let elements = frameDisplayElements(frame);
+    for (const index of address.slice(0, -1)) {
+      const group = elements[index];
+      if (group?.name !== 'DOMGroup' || !elementIsVisible(group.attributes)) return false;
+      const members = directChild(group.xml, group.name, 'members');
+      if (!members) return false;
+      elements = getFlaXflDirectChildren(members.xml, members.name);
+    }
+    const element = elements[address.at(-1)!];
+    const rawName = element?.attributes.libraryItemName?.trim();
+    if (!rawName || element?.name !== 'DOMSymbolInstance' || !elementIsVisible(element.attributes)) return false;
+    const name = resolveSymbolAlias(context.state.symbolAliases, rawName) ?? rawName;
+    return name === libraryItemName && element.attributes.name === current.attributes.name &&
+      displaySymbolType(element, name, context.state) === 'movieclip';
+  };
+  let start = currentSpan.index;
+  let end = currentSpan.endExclusive;
+  for (let i = position - 1; i >= 0; i -= 1) {
+    const span = spans[i]!;
+    if (span.endExclusive !== start || !matches(span.sourceFrame)) break;
+    start = span.index;
+  }
+  for (let i = position + 1; i < spans.length; i += 1) {
+    const span = spans[i]!;
+    if (span.index !== end || !matches(span.sourceFrame)) break;
+    end = span.endExclusive;
+  }
+  return { start, end };
 }
 
 // MorphShape stores these points in units of 256 twips. In the authored sample,
@@ -2105,6 +2168,7 @@ function buildGraphicFrameContext(
         path: `layer-${selection.layerIndex}-frame-${selection.span.index}`,
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
+        ...(indexedLayer ? { layerSpans: indexedLayer.spans } : {}),
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
         ...(motionSync !== undefined ? { sourceParentMotionTweenSync: motionSync } : {}),
         ...(motionSpanMetadata ? { motionTweenEndpoint: true } : {}),
@@ -2372,6 +2436,46 @@ interface GraphicSymbolShell {
   readonly timelineXml: string;
   readonly frameCount: number;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
+  readonly symbolType?: string;
+  readonly movieClipHasScript?: boolean;
+}
+
+function hasMovieClipPlacement(xml: string, state: SourceBuildState): boolean {
+  let cursor = 0;
+  for (;;) {
+    const token = nextTagToken(xml, cursor);
+    if (!token) return false;
+    cursor = token.end;
+    if (token.closing || token.name !== 'DOMSymbolInstance') continue;
+    const name = token.attributes.libraryItemName?.trim();
+    if (name && displaySymbolType(
+      { name: token.name, attributes: token.attributes, xml: '' },
+      resolveSymbolAlias(state.symbolAliases, name) ?? name,
+      state,
+    ) === 'movieclip') return true;
+  }
+}
+
+function oneFrameScenePlaybackCount(
+  frameContext: FlaDisplayListFrameContext,
+  movieClips: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+): number {
+  let period = 1;
+  const visit = (elements: readonly FlaDisplayListElement[]): void => {
+    for (const element of elements) {
+      if (element.visible === false) continue;
+      if (element.kind === 'group') visit(element.elements);
+      if (element.kind !== 'symbol' || element.symbolType !== 'movieclip') continue;
+      const clip = movieClips.get(element.libraryItemName);
+      if (!clip || clip.movieClipHasScript) continue;
+      let a = period;
+      let b = clip.frameCount;
+      while (b !== 0) [a, b] = [b, a % b];
+      period = Math.min(100_000, period / a * clip.frameCount);
+    }
+  };
+  for (const layer of frameContext.layers) if (layer.visible) visit(layer.elements);
+  return period;
 }
 
 export interface FlaStaticSnapshotDisplaySourceExecution {
@@ -2387,6 +2491,7 @@ function* adaptFlaXflDisplaySourceSteps(
   const state: SourceBuildState = {
     shapeBlocks,
     symbolAliases: { exact: new Map(), basename: new Map() },
+    movieClipNames: new Set(),
     visitedNodeCount: 0,
   };
   const sceneSources = timelineDescriptors(docXml, 'DOMDocument');
@@ -2398,14 +2503,17 @@ function* adaptFlaXflDisplaySourceSteps(
     yield;
     const root = firstElementToken(library.xml, 'DOMSymbolItem');
     if (!root) continue;
-    const symbolType = (root.attributes.symbolType ?? 'graphic').trim().toLocaleLowerCase('en-US');
-    if (symbolType !== 'graphic') continue;
+    const symbolType = root.attributes.symbolType?.trim().toLowerCase();
+    if (symbolType && !['graphic', 'movie clip', 'movieclip'].includes(symbolType)) continue;
     const sourceLibraryItemName = libraryItemKey(library.name);
     const userLabel = root.attributes.name?.trim() || sourceLibraryItemName;
     if (!sourceLibraryItemName || sourceLibraryItemName.length > 500 ||
         !userLabel || userLabel.length > 500) continue;
     const timelines = timelineDescriptors(library.xml, 'DOMSymbolItem');
-    if (!timelines.ok) return timelines;
+    if (!timelines.ok) {
+      if (symbolType && symbolType !== 'graphic') continue;
+      return timelines;
+    }
     const timeline = timelines.value[0];
     if (!timeline || !timeline.frameSpanIndex || timeline.frameCount <= 0) continue;
     shells.push({
@@ -2414,7 +2522,12 @@ function* adaptFlaXflDisplaySourceSteps(
       timelineXml: timeline.xml,
       frameCount: timeline.frameCount,
       frameSpanIndex: timeline.frameSpanIndex,
+      ...(symbolType ? { symbolType } : {}),
+      ...(symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
+        ? { movieClipHasScript: true }
+        : {}),
     });
+    if (symbolType !== 'graphic') state.movieClipNames.add(sourceLibraryItemName);
   }
 
   const aliases = makeSymbolAliasIndex(shells);
@@ -2422,6 +2535,7 @@ function* adaptFlaXflDisplaySourceSteps(
   yield;
   const symbols = new Map<string, FlaGraphicSymbolDefinition>();
   const graphicSymbols: FlaXflGraphicSymbolDescriptor[] = [];
+  const movieClipSymbols = new Map<string, FlaXflGraphicSymbolDescriptor>();
   for (const shell of shells) {
     yield;
     const parsed = buildGraphicFrameContext(
@@ -2431,15 +2545,17 @@ function* adaptFlaXflDisplaySourceSteps(
       `graphic:${shell.sourceLibraryItemName}`,
       state,
     );
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      if (shell.symbolType && shell.symbolType !== 'graphic') continue;
+      return parsed;
+    }
     const definition: FlaGraphicSymbolDefinition = {
       kind: 'graphic',
       libraryItemName: shell.sourceLibraryItemName,
       sourceFrameCount: shell.frameCount,
       frameContext: parsed.value,
     };
-    symbols.set(shell.sourceLibraryItemName, definition);
-    graphicSymbols.push({
+    const descriptor = {
       ...definition,
       sourceLibraryItemName: shell.sourceLibraryItemName,
       userLabel: shell.userLabel,
@@ -2448,16 +2564,39 @@ function* adaptFlaXflDisplaySourceSteps(
       hasNestedSymbol: countNestedSymbols(parsed.value.layers.flatMap((layer) => layer.elements)),
       hasPotentialDisplayElements: timelineHasPotentialDisplayElements(shell.frameSpanIndex),
       timelineXml: shell.timelineXml,
-    });
+      ...(shell.movieClipHasScript ? { movieClipHasScript: true } : {}),
+    };
+    if (shell.symbolType !== 'graphic') movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
+    if (!shell.symbolType || shell.symbolType === 'graphic') {
+      symbols.set(shell.sourceLibraryItemName, definition);
+      graphicSymbols.push(descriptor);
+    }
   }
   yield;
 
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
+  const movieClipSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
   for (const scene of sceneSources.value) {
     yield;
-    const parsed = buildFrameContext(scene.xml, 0, `scene:${scene.index}`, state);
+    const scope = `scene:${scene.index}`;
+    const spans = movieClipSymbols.size > 0 && hasMovieClipPlacement(scene.xml, state)
+      ? timelineFrameSpanIndex(scene.xml)
+      : undefined;
+    if (spans?.ok) movieClipSceneSpans.set(scope, spans.value);
+    const parsed = spans?.ok
+      ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state)
+      : buildFrameContext(scene.xml, 0, scope, state);
     if (!parsed.ok) return parsed;
-    sceneTimelines.push({ ...scene, frameContext: parsed.value });
+    const frameCount = spans?.ok ? spans.value.frameCount : scene.frameCount;
+    const playbackFrameCount = spans?.ok && frameCount === 1
+      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols)
+      : 1;
+    sceneTimelines.push({
+      ...scene,
+      frameCount,
+      frameContext: parsed.value,
+      ...(playbackFrameCount > 1 ? { playbackFrameCount } : {}),
+    });
   }
   yield;
 
@@ -2482,12 +2621,15 @@ function* adaptFlaXflDisplaySourceSteps(
       stageHeight: parseStageDimension(docXml, 'height', 400),
       sceneTimelines,
       graphicSymbols,
+      movieClipSymbols,
       symbols,
       shapeBlocks,
       resetFrameBuildState,
       buildSceneFrameContext: (timelineXml, frameIndex, scope) => {
         resetFrameBuildState();
         frameBuildStateIsBase = false;
+        const spans = movieClipSceneSpans.get(scope);
+        if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state);
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },
       buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope, options) => {
