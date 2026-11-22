@@ -20,6 +20,7 @@ import {
   interpolateFlaClassicMotionInstanceTransform,
   type FlaMotionTweenRotation,
 } from './fla-motion-tween-transform-interpolator';
+import { evaluateFlaObjectMotion, parseFlaObjectMotion, type ObjectMotionPose } from './fla-object-motion';
 import {
   evaluateFlaViewerClassicTweenProgress,
   type FlaViewerEasePoint,
@@ -103,6 +104,7 @@ export interface FlaXflTimelineDescriptor {
   readonly frameCount: number;
   /** Additional playback samples while a one-frame scene stays on frame zero. */
   readonly playbackFrameCount?: number;
+  readonly firstObjectMotionFrameIndex?: number;
   readonly frameSpanIndex?: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly xml: string;
   readonly frameContext: FlaDisplayListFrameContext;
@@ -161,6 +163,8 @@ export type FlaStaticSnapshotDisplaySourceBuildResult =
 
 interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
+  readonly sourceFps: number;
+  readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
   symbolAliases: SymbolAliasIndex;
   readonly movieClipNames: Set<string>;
   visitedNodeCount: number;
@@ -581,13 +585,14 @@ type ClassicMotionColorParseResult =
   | { readonly ok: true; readonly transform: ClassicMotionColorTransform | null }
   | { readonly ok: false; readonly message: string };
 
-function classicMotionColorTransform(target: FlaXflElementBlock): ClassicMotionColorParseResult {
+function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = false): ClassicMotionColorParseResult {
   const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
     .filter((child) => child.name === 'color');
   if (colorWrappers.length === 0) return { ok: true, transform: null };
   const unsupported = (reason: string): ClassicMotionColorParseResult => ({
     ok: false,
-    message: `Classic Motion contains unsupported Color data: ${reason}`,
+    message: objectMotion ? `对象补间的初始色彩无法读取（${reason}）`
+      : `Classic Motion contains unsupported Color data: ${reason}`,
   });
   if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
   const wrapper = colorWrappers[0]!;
@@ -601,7 +606,8 @@ function classicMotionColorTransform(target: FlaXflElementBlock): ClassicMotionC
 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
-  if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness')) {
+  if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness' &&
+      !(objectMotion && (name === 'tintMultiplier' || name === 'tintColor')))) {
     return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
   }
   let alphaMultiplier: number | undefined;
@@ -625,7 +631,19 @@ function classicMotionColorTransform(target: FlaXflElementBlock): ClassicMotionC
       ? { multiplier: 1 - brightness, offset: brightness * 255 }
       : { multiplier: 1 + brightness, offset: 0 };
   }
-  if (names.length === 0) return unsupported('Color has no supported attributes');
+  if (objectMotion && (attributes.tintMultiplier !== undefined || attributes.tintColor !== undefined)) {
+    const amount = Number(attributes.tintMultiplier);
+    const tint = attributes.tintColor;
+    if (rgbTransform || !Number.isFinite(amount) || amount < 0 || amount > 1 || !/^#[\da-f]{6}$/iu.test(tint ?? '')) {
+      return unsupported('invalid tint');
+    }
+    const rgb = Number.parseInt(tint!.slice(1), 16);
+    rgbTransform = {
+      multiplier: 1 - amount, offset: 0,
+      channelOffsets: [(rgb >>> 16) * amount, ((rgb >>> 8) & 255) * amount, (rgb & 255) * amount],
+    };
+  }
+  if (!objectMotion && names.length === 0) return unsupported('Color has no supported attributes');
   const effectiveAlpha = alphaMultiplier === 1 ? undefined : alphaMultiplier;
   const effectiveRgb = rgbTransform?.multiplier === 1 && rgbTransform.offset === 0
     ? undefined
@@ -1480,10 +1498,11 @@ function classicMotionFramePairRejectionReason(
 
 type RigCalculationResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly message: string };
+  | { readonly ok: false; readonly message: string; readonly fromObjectMotion?: true };
 
 interface RigEvaluationContext {
   readonly timelineXml: string;
+  readonly state: SourceBuildState;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly layers: readonly FlaXflElementBlock[];
   /** Scoped to one Graphic frame build; never shared across timelines or requests. */
@@ -1603,6 +1622,46 @@ function soleGraphicFrameMatrix(
   return object.ok
     ? { ok: true, value: object.value.matrix }
     : object;
+}
+
+function sampleObjectMotion(
+  frame: FlaXflElementBlock,
+  offset: number,
+  state: SourceBuildState,
+): RigCalculationResult<{
+  readonly instance: FlaXflElementBlock;
+  readonly pose: ObjectMotionPose;
+}> {
+  const target = readObjectMotionTarget(frame);
+  if (!target.ok) return { ...target, fromObjectMotion: true };
+  const { instance, matrix } = target.value;
+  const pivot = readDirectTransformationPoint(instance);
+  if (!pivot) return { ok: false, message: '此帧的对象补间转轴无效', fromObjectMotion: true };
+  let core = state.objectMotionCurves.get(frame);
+  if (!core) {
+    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren);
+    state.objectMotionCurves.set(frame, core);
+  }
+  const sampled = core.ok ? evaluateFlaObjectMotion(core.value, offset, state.sourceFps, matrix, pivot) : core;
+  return sampled.ok ? { ok: true, value: { instance, pose: sampled.value } }
+    : { ...sampled, fromObjectMotion: true };
+}
+
+function readObjectMotionTarget(frame: FlaXflElementBlock): RigCalculationResult<SoleGraphicFrameObject> {
+  const elements = frameDisplayElements(frame);
+  const instance = elements[0];
+  if (elements.length !== 1 || instance?.name !== 'DOMSymbolInstance' ||
+      !elementIsVisible(instance.attributes)) {
+    return { ok: false, message: '此帧的对象补间需要一个可见的元件实例' };
+  }
+  if (directChild(instance.xml, instance.name, 'matrix3D') ||
+      directChild(instance.xml, instance.name, 'filters') ||
+      (instance.attributes.blendMode && instance.attributes.blendMode !== 'normal')) {
+    return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换、滤镜或混合模式' };
+  }
+  const matrix = readDirectMatrix(instance);
+  return matrix.ok ? { ok: true, value: { instance, matrix: matrix.matrix } }
+    : { ok: false, message: '此帧的对象补间起始位置无效' };
 }
 
 function rigMotionParentPoses(
@@ -1797,7 +1856,12 @@ function computeRigLayerObjectMatrix(
     };
   }
 
-  const authoredMatrix = soleGraphicFrameMatrix(span.sourceFrame, 'authored');
+  const motion = span.tweenType === 'motion object'
+    ? sampleObjectMotion(span.sourceFrame, frameIndex - span.index, context.state)
+    : undefined;
+  if (motion && !motion.ok) return motion;
+  const authoredMatrix = motion ? { ok: true as const, value: motion.value.pose.matrix }
+    : soleGraphicFrameMatrix(span.sourceFrame, 'authored');
   if (!authoredMatrix.ok) return authoredMatrix;
   const parent = rigParentLayerForFrame(span.sourceFrame, layerIndex, context.layers);
   if (!parent.ok) return parent;
@@ -2019,6 +2083,47 @@ function normalizeXflTimelineLayersForPainterOrder<T>(
   return [...layers].reverse();
 }
 
+function buildObjectMotionFrameElements(
+  frame: FlaXflElementBlock,
+  spanStart: number,
+  frameIndex: number,
+  scope: string,
+  layerIndex: number,
+  context: RigEvaluationContext,
+  unsupportedDisplayReasons: string[],
+): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListElement[]> {
+  const sampled = sampleObjectMotion(frame, frameIndex - spanStart, context.state);
+  if (!sampled.ok) return fail('RENDER_FAILED', sampled.message);
+  const { instance, pose } = sampled.value;
+  const color = classicMotionColorTransform(instance, true);
+  if (!color.ok) return fail('RENDER_FAILED', color.message);
+  const layer = context.frameSpanIndex.layers[layerIndex];
+  const parsed = parseDisplayElements(directChild(frame.xml, 'DOMFrame', 'elements') ?? frame, {
+    scope,
+    parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+    depth: 0,
+    path: `layer-${layerIndex}-frame-${spanStart}`,
+    sourceParentFrameIndex: frameIndex,
+    sourceParentFrameSpanStart: spanStart,
+    sourceParentSpanTweenType: 'motion object',
+    ...(layer ? { layerSpans: layer.spans } : {}),
+    unsupportedDisplayReasons,
+    state: context.state,
+  });
+  if (!parsed.ok) return parsed;
+  const element = parsed.value[0];
+  if (element?.kind !== 'symbol') return fail('RENDER_FAILED', '此帧的对象补间元件无法读取');
+  const alpha = pose.alphaMultiplier ?? color.transform?.alphaMultiplier;
+  const rgb = pose.rgbTransform ?? color.transform?.rgbTransform;
+  const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
+    ...element,
+    localTransform: pose.matrix,
+    ...(alpha !== undefined ? { alphaMultiplier: alpha } : {}),
+    ...(rgb ? { rgbTransform: rgb } : {}),
+  }]);
+  return rigged.ok ? rigged : fail('RENDER_FAILED', rigged.message);
+}
+
 function buildGraphicFrameContext(
   timelineXml: string,
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
@@ -2033,6 +2138,7 @@ function buildGraphicFrameContext(
   const layers = layersForTimeline(timelineXml);
   const rigContext: RigEvaluationContext = {
     timelineXml,
+    state,
     frameSpanIndex,
     layers,
     matrixCache: new Map(),
@@ -2053,7 +2159,15 @@ function buildGraphicFrameContext(
 
     let elements: readonly FlaDisplayListElement[] = [];
     let frameFilter: FlaDisplayListBlurFilter | undefined;
-    if (selection.kind === 'unsupported-tween-interior' && selection.visible &&
+    if (selection.kind === 'object-motion' && selection.visible) {
+      const sampled = maskLayerIds.has(selection.layerIndex)
+        ? fail('RENDER_FAILED', '此帧含对象补间遮罩，暂未支持')
+        : buildObjectMotionFrameElements(selection.sourceFrame, selection.span.index, frameIndex, scope,
+            selection.layerIndex, rigContext, unsupportedDisplayReasons);
+      if (sampled.ok) elements = sampled.value;
+      else if (sampled.code === 'BUDGET_EXCEEDED') return sampled;
+      else unsupportedDisplayReasons.push(sampled.message);
+    } else if (selection.kind === 'unsupported-tween-interior' && selection.visible &&
         selection.span.tweenType === 'shape' && !maskLayerIds.has(selection.layerIndex)) {
       const spans = frameSpanIndex.layers[selection.layerIndex]?.spans;
       const start = spans?.find((span) => span.index === selection.span.index);
@@ -2186,9 +2300,13 @@ function buildGraphicFrameContext(
         synchronizedElements,
       );
       if (!riggedElements.ok) {
-        return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has unsupported Rig parenting: ${riggedElements.message}`);
+        if (!riggedElements.fromObjectMotion) {
+          return fail('RENDER_FAILED', `Graphic frame ${frameIndex} has unsupported Rig parenting: ${riggedElements.message}`);
+        }
+        unsupportedDisplayReasons.push(riggedElements.message);
+      } else {
+        elements = riggedElements.value;
       }
-      elements = riggedElements.value;
     } else if (selection.kind === 'unsupported-tween-interior' && selection.visible) {
       const rejectTween = (reason: string) => fail(
         'RENDER_FAILED',
@@ -2440,13 +2558,15 @@ interface GraphicSymbolShell {
   readonly movieClipHasScript?: boolean;
 }
 
-function hasMovieClipPlacement(xml: string, state: SourceBuildState): boolean {
+function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieClips: boolean): boolean {
   let cursor = 0;
   for (;;) {
     const token = nextTagToken(xml, cursor);
     if (!token) return false;
     cursor = token.end;
-    if (token.closing || token.name !== 'DOMSymbolInstance') continue;
+    if (token.closing) continue;
+    if (token.name === 'DOMFrame' && token.attributes.tweenType?.trim().toLowerCase() === 'motion object') return true;
+    if (token.name !== 'DOMSymbolInstance' || !hasMovieClips) continue;
     const name = token.attributes.libraryItemName?.trim();
     if (name && displaySymbolType(
       { name: token.name, attributes: token.attributes, xml: '' },
@@ -2488,8 +2608,14 @@ function* adaptFlaXflDisplaySourceSteps(
   libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
 ): Generator<void, FlaStaticSnapshotDisplaySourceBuildResult, void> {
   const shapeBlocks = new Map<string, string>();
+  const documentAttributes = firstElementToken(docXml, 'DOMDocument')?.attributes;
+  const rawFps = documentAttributes?.frameRate;
+  const sourceFps = rawFps === undefined && documentAttributes?.creatorInfo === 'Adobe Animate' &&
+    /^Saved by Animate\b/u.test(documentAttributes.versionInfo ?? '') ? 24 : Number(rawFps);
   const state: SourceBuildState = {
     shapeBlocks,
+    sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
+    objectMotionCurves: new WeakMap(),
     symbolAliases: { exact: new Map(), basename: new Map() },
     movieClipNames: new Set(),
     visitedNodeCount: 0,
@@ -2575,14 +2701,14 @@ function* adaptFlaXflDisplaySourceSteps(
   yield;
 
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
-  const movieClipSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
+  const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
   for (const scene of sceneSources.value) {
     yield;
     const scope = `scene:${scene.index}`;
-    const spans = movieClipSymbols.size > 0 && hasMovieClipPlacement(scene.xml, state)
+    const spans = needsIndexedSceneFrames(scene.xml, state, movieClipSymbols.size > 0)
       ? timelineFrameSpanIndex(scene.xml)
       : undefined;
-    if (spans?.ok) movieClipSceneSpans.set(scope, spans.value);
+    if (spans?.ok) indexedSceneSpans.set(scope, spans.value);
     const parsed = spans?.ok
       ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state)
       : buildFrameContext(scene.xml, 0, scope, state);
@@ -2591,10 +2717,20 @@ function* adaptFlaXflDisplaySourceSteps(
     const playbackFrameCount = spans?.ok && frameCount === 1
       ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols)
       : 1;
+    let firstObjectMotionFrameIndex: number | undefined;
+    for (const layer of spans?.ok ? spans.value.layers : []) {
+      if (!layer.visible) continue;
+      const first = layer.spans.find((span) =>
+        span.tweenType === 'motion object' && frameHasPotentialDisplayElements(span.sourceFrame));
+      if (first && (firstObjectMotionFrameIndex === undefined || first.index < firstObjectMotionFrameIndex)) {
+        firstObjectMotionFrameIndex = first.index;
+      }
+    }
     sceneTimelines.push({
       ...scene,
       frameCount,
       frameContext: parsed.value,
+      ...(firstObjectMotionFrameIndex !== undefined ? { firstObjectMotionFrameIndex } : {}),
       ...(playbackFrameCount > 1 ? { playbackFrameCount } : {}),
     });
   }
@@ -2628,7 +2764,7 @@ function* adaptFlaXflDisplaySourceSteps(
       buildSceneFrameContext: (timelineXml, frameIndex, scope) => {
         resetFrameBuildState();
         frameBuildStateIsBase = false;
-        const spans = movieClipSceneSpans.get(scope);
+        const spans = indexedSceneSpans.get(scope);
         if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state);
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },

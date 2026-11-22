@@ -53,6 +53,7 @@ import type {
 } from './fla-display-list-resolver';
 import {
   DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS,
+  isValidFlaDisplayListRgbTransform,
   resolveFlaDisplayList,
   type FlaDisplayListResolverResult,
 } from './fla-display-list-resolver';
@@ -2755,22 +2756,19 @@ export async function buildRenderableTargetCatalog(
     return true;
   };
 
-  // Keep a Scene target only when its frame-zero display list has visible
-  // content. Authored-state catalogs reserve their bounded slots for exact
-  // Scene-referenced Graphic states before adding the Scene itself.
+  // Normally use frame zero. A scene can lead with blank frames before its
+  // first Object Motion span, so use that span as its catalog cover if needed.
   const scene = source.sceneTimelines[0];
-  const hasSceneCandidate = Boolean(
-    scene && scene.frameCount > 0 &&
-      scene.frameContext.layers.some((layer) => layer.visible && layer.elements.length > 0),
-  );
-  const sceneTarget: FlaRenderTarget | null = scene && hasSceneCandidate
+  const sceneCoverIndex = scene?.frameContext.layers.some((layer) => layer.visible && layer.elements.length > 0)
+    ? 0 : scene?.firstObjectMotionFrameIndex;
+  const sceneTarget: FlaRenderTarget | null = scene && scene.frameCount > 0 && sceneCoverIndex !== undefined
     ? {
       renderTargetId: stableRenderTargetId(bytes, 'scene\u0000timeline\u0000' + scene.index),
       kind: 'scene',
-      userLabel: '\u4e3b\u573a\u666f \u00b7 \u7b2c 1 \u5e27',
+      userLabel: `主场景 · 第 ${sceneCoverIndex + 1} 帧`,
       sourceTimelineIndex: scene.index,
       frameCount: Math.min(100_000, scene.playbackFrameCount ?? scene.frameCount),
-      selectedFrameIndex: 0,
+      selectedFrameIndex: sceneCoverIndex,
       compatibility: ['degraded'],
     }
     : null;
@@ -2931,7 +2929,7 @@ export async function buildRenderableTargetCatalog(
         }
       }
     }
-    omittedCandidateCount = Number(hasSceneCandidate) + totalGraphicCandidateCount - entries.length;
+    omittedCandidateCount = Number(sceneTarget !== null) + totalGraphicCandidateCount - entries.length;
   }
 
   finishIssue762Profile('fla.catalog.enumeration', enumerationStartedAt, {
@@ -3490,10 +3488,7 @@ function flattenResolvedDisplayList(
           (!Number.isFinite(node.opacity) || node.opacity < 0 || node.opacity > 1)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group opacity' };
       }
-      if (node.rgbTransform !== undefined &&
-          (!Number.isFinite(node.rgbTransform.multiplier) || node.rgbTransform.multiplier < 0 ||
-            node.rgbTransform.multiplier > 1 || !Number.isFinite(node.rgbTransform.offset) ||
-            node.rgbTransform.offset < 0 || node.rgbTransform.offset > 255)) {
+      if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
       const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined
@@ -3587,15 +3582,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
   for (const group of colorTransformGroups) {
     const transform = group.rgbTransform!;
-    const identity = `${formatSvgNumber(transform.multiplier)}\u0000${formatSvgNumber(transform.offset)}`;
+    const offsets = transform.channelOffsets ?? [transform.offset, transform.offset, transform.offset];
+    const identity = [transform.multiplier, ...(transform.channelOffsets ?? [transform.offset])]
+      .map(formatSvgNumber).join('\u0000');
     const id = `fla-rgb-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const existingDefinition = definitions.get(id);
     const multiplier = formatSvgNumber(transform.multiplier);
-    const offset = formatSvgNumber(transform.offset / 255);
+    const [red, green, blue] = offsets.map((offset) => formatSvgNumber(offset / 255));
     const values = [
-      multiplier, '0', '0', '0', offset,
-      '0', multiplier, '0', '0', offset,
-      '0', '0', multiplier, '0', offset,
+      multiplier, '0', '0', '0', red,
+      '0', multiplier, '0', '0', green,
+      '0', '0', multiplier, '0', blue,
       '0', '0', '0', '1', '0',
     ].join(' ');
     const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;

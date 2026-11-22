@@ -92,7 +92,7 @@ export interface Frame {
   index: number;
   duration: number;
   keyMode: number;
-  tweenType?: 'motion' | 'shape' | 'none';
+  tweenType?: 'motion' | 'shape' | 'motion object' | 'none';
   acceleration?: number;
   elements: DisplayElement[];
   tweens?: Tween[];

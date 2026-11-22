@@ -697,7 +697,7 @@ export class FLAParser {
       // Duration must be at least 1 to avoid division by zero in tween calculations
       const duration = Math.max(1, parseInt(frameEl.getAttribute('duration') || '1') || 1);
       const keyMode = parseInt(frameEl.getAttribute('keyMode') || '0');
-      const tweenType = frameEl.getAttribute('tweenType') as 'motion' | 'shape' | undefined;
+      const tweenType = frameEl.getAttribute('tweenType');
       const acceleration = frameEl.getAttribute('acceleration');
 
       // Motion tween properties
@@ -723,7 +723,8 @@ export class FLAParser {
         index,
         duration,
         keyMode,
-        tweenType: tweenType || 'none',
+        tweenType: tweenType === 'motion' || tweenType === 'shape' || tweenType === 'motion object'
+          ? tweenType : 'none',
         acceleration: acceleration ? parseInt(acceleration) : undefined,
         elements,
         tweens,

@@ -36,11 +36,21 @@ export interface FlaDisplayListBlurFilter {
   readonly enabled: true;
 }
 
-/** Per-channel shared RGB transform used by the verified Sync brightness tween. */
+/** Shared RGB multiplier with either a uniform brightness or per-channel tint offset. */
 export interface FlaDisplayListRgbTransform {
   readonly multiplier: number;
   /** Additive channel offset in 0..255 units. */
   readonly offset: number;
+  readonly channelOffsets?: readonly [number, number, number];
+}
+
+export function isValidFlaDisplayListRgbTransform(transform: FlaDisplayListRgbTransform): boolean {
+  const validOffset = (value: number) => Number.isFinite(value) && value >= 0 && value <= 255;
+  return Number.isFinite(transform.multiplier) && transform.multiplier >= 0 &&
+    transform.multiplier <= 1 && validOffset(transform.offset) &&
+    (transform.channelOffsets === undefined ||
+      (Array.isArray(transform.channelOffsets) && transform.channelOffsets.length === 3 &&
+        Array.from(transform.channelOffsets).every(validOffset)));
 }
 
 export interface FlaDisplayListLayer {
@@ -672,10 +682,7 @@ function resolveElements(
       nodes.push(opaqueStandIn(element, parentTransform, 'Graphic alpha multiplier must be within 0..1'));
       continue;
     }
-    if (element.rgbTransform !== undefined &&
-        (!Number.isFinite(element.rgbTransform.multiplier) || element.rgbTransform.multiplier < 0 ||
-          element.rgbTransform.multiplier > 1 || !Number.isFinite(element.rgbTransform.offset) ||
-          element.rgbTransform.offset < 0 || element.rgbTransform.offset > 255)) {
+    if (element.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(element.rgbTransform)) {
       if (!context.limits.tolerant) {
         return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
       }
