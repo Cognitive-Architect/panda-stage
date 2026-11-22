@@ -40,6 +40,7 @@ import { sameAnimationTarget } from '../models/animationCore';
 import {
   resolveCharacterFaceSource,
   resolveCharacterFaceSourceOrNull,
+  findTalkingAnimation,
   listTalkingAnimationImageIds,
   resolveTalkingAnimationFace,
 } from './characterFaceSource';
@@ -561,7 +562,7 @@ function characterResources(
     }
   }
 
-  const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+  const talking = findTalkingAnimation(project, character.talkingAnimationId);
   if (talking) {
     for (const assetId of listTalkingAnimationImageIds(talking)) {
       if (!required.has(assetId) && !fallback.has(assetId) && resolveImageAsset(project, assetId)) {
@@ -1647,7 +1648,7 @@ export function resolveLayerVisualParts(
         }
       }
     };
-    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
     if (talking && character.faceBinding) {
       for (const assetId of listTalkingAnimationImageIds(talking)) {
         if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);

@@ -13,6 +13,11 @@ type ResolvedFace = {
   rasterFrame?: AnimationFrame;
 };
 
+export function findTalkingAnimation(project: Project, animationId: string | undefined): ProjectAnimationDefinition | undefined {
+  if (!animationId) return undefined;
+  return project.animations.find((animation) => animation.id === animationId);
+}
+
 export function resolveTalkingAnimationFace(
   project: Project,
   animationId: string | undefined,
@@ -20,7 +25,7 @@ export function resolveTalkingAnimationFace(
   isImageUnavailable?: (assetId: string) => boolean,
 ): { source: CharacterFaceSource; asset: ResolvedFace } | null {
   if (elapsedMs === undefined || !animationId) return null;
-  const definition = project.animations.find((candidate) => candidate.id === animationId);
+  const definition = findTalkingAnimation(project, animationId);
   if (!definition) return null;
   const state = resolveAnimationPlaybackFrameState(definition, 0, 0, { mode: 'loop', endBehavior: 'hold' }, elapsedMs);
   if (!state) return null;

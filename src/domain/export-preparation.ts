@@ -12,7 +12,7 @@ import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { listTalkingAnimationImageIds, resolveCharacterFaceSource } from './selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -274,7 +274,7 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
-    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
     if (talking) {
       for (const assetId of listTalkingAnimationImageIds(talking)) {
         const asset = project.assets.find(candidate => candidate.id === assetId);

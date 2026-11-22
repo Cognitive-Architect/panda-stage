@@ -1,7 +1,7 @@
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
-import { listTalkingAnimationImageIds, resolveCharacterFaceSource } from '../selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -79,7 +79,7 @@ export function scanAssetReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
-    const talking = project.animations.find(animation => animation.id === character.talkingAnimationId);
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
     if (talking && listTalkingAnimationImageIds(talking).has(assetId)) {
       references.push({
         kind: 'character-mouth',
