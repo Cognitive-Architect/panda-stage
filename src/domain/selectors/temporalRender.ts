@@ -177,13 +177,14 @@ export function projectShotMouth(
     const previous = talkingClips.get(voice.characterId);
     if (!previous || clip.startMs > previous.startMs) talkingClips.set(voice.characterId, clip);
   }
-  if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0) return evaluatedShot;
-  const talkingTargets = talkingClips.size > 0
+  const hasRestFrames = project.characters.some(character => character.talkingAnimationPlayback?.restFrame !== undefined);
+  if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0 && !hasRestFrames) return evaluatedShot;
+  const talkingTargets = talkingClips.size > 0 || hasRestFrames
     ? uniqueVisibleCharacterLayerIds(shot, evaluatedShot)
     : null;
 
   let changed = false;
-  const layers = evaluatedShot.layers.map((layer: EvaluatedLayer) => {
+  const layers = evaluatedShot.layers.map((layer): EvaluatedLayer => {
     const shotLayer = shot.layers.find((candidate) => candidate.id === layer.id);
     if (!shotLayer || shotLayer.source.kind !== 'character') return layer;
 
@@ -199,7 +200,12 @@ export function projectShotMouth(
       return layer;
     }
 
+    const restFrame = layerCharacter.talkingAnimationPlayback?.restFrame;
     if (cue === 'rest') {
+      if (restFrame !== undefined) {
+        changed = true;
+        return { ...layer, talkingAnimationElapsedMs: 'rest' };
+      }
       if (layer.mouthOverrideAssetId !== null || layer.mouthOpen) {
         const exprId =
           layer.currentExpressionId ?? layerCharacter.defaultExpressionId;
@@ -221,9 +227,10 @@ export function projectShotMouth(
     }
 
     const talkingClip = talkingClips.get(layerCharacterId);
-    if (cue === 'none' && talkingClip && talkingTargets?.get(layerCharacterId) === layer.id) {
+    if (cue === 'none' && talkingTargets?.get(layerCharacterId) === layer.id &&
+      (talkingClip || restFrame !== undefined)) {
       changed = true;
-      return { ...layer, talkingAnimationElapsedMs: evaluatedShot.timeMs - talkingClip.startMs };
+      return { ...layer, talkingAnimationElapsedMs: talkingClip ? evaluatedShot.timeMs - talkingClip.startMs : 'rest' };
     }
 
     const shouldOpenFromCue = cue === 'open';

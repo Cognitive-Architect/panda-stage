@@ -147,27 +147,36 @@ export function buildEditorTemporalCanvasModel({
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
   // Keep base transform editing at 0:00, while showing any formally authored
-  // Expression switch that starts there. Only the Face state is projected;
-  // Position, scale, opacity and the non-speaking base view stay unchanged.
-  const zeroTimeExpressionShot = shot.timelineEvents.some(
+  // Expression switch or configured talking face at zero. Only the face
+  // state is projected so the base transforms remain editable.
+  const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
+    source.kind === 'character' && project.characters.some(character =>
+      character.id === source.characterId && character.talkingAnimationPlayback),
+  );
+  const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
       (event.type === 'expression' || event.type === 'mouth-cue') &&
       event.startMs === 0,
   )
     ? (() => {
-        const formal = evaluateShotAtTime(shot, 0, project);
+        const atZero = evaluateShotAtTime(shot, 0, project);
+        const formal = hasConfiguredTalkingFace ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId) : atZero;
         return {
           ...baseEditorShot,
           layers: baseEditorShot.layers.map((layer) => {
-            const source = shot.layers.find((candidate) => candidate.id === layer.id);
-            const evaluated = formal.layers.find((candidate) => candidate.id === layer.id);
-            return source?.source.kind === 'character' && evaluated
+            const source = shot.layers.find((candidate) => candidate.id === layer.id)?.source;
+            if (source?.kind !== 'character') return layer;
+            const configured = project.characters.some(character =>
+              character.id === source.characterId && character.talkingAnimationPlayback);
+            const evaluated = (configured ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
+            return evaluated
               ? {
                   ...layer,
                   assetId: evaluated.assetId,
                   currentExpressionId: evaluated.currentExpressionId,
                   mouthOverrideAssetId: evaluated.mouthOverrideAssetId ?? null,
                   ...(evaluated.mouthOpen ? { mouthOpen: true } : {}),
+                  talkingAnimationElapsedMs: evaluated.talkingAnimationElapsedMs,
                 }
               : layer;
           }),
@@ -183,8 +192,7 @@ export function buildEditorTemporalCanvasModel({
       )
     : zeroTimeExpressionShot;
   // Base Edit View owns 0:00 transforms and the continuity resolver owns image
-  // transitions. At 0:00 we show authored Expression state without projecting
-  // runtime Mouth/dialogue state, and retain the previous complete visual
+  // transitions. At 0:00 we retain the previous complete visual
   // until the new Face is ready.
   const resolved = resolveEditorTemporalAssetResolution(
     project,

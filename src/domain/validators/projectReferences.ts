@@ -3,6 +3,7 @@ import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
+import { isTalkingAnimationPlaybackInRange } from '../selectors/animationSourceTimeline';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { ProjectData } from '../models/project';
@@ -188,8 +189,13 @@ export function validateProjectReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
-    if (character.talkingAnimationId && !animations.has(character.talkingAnimationId)) {
+    const talkingAnimation = character.talkingAnimationId ? animations.get(character.talkingAnimationId) : undefined;
+    if (character.talkingAnimationId && !talkingAnimation) {
       addIssue(context, ['characters', characterIndex, 'talkingAnimationId'], 'Unknown talking animation.');
+    }
+    if (character.talkingAnimationPlayback && (!talkingAnimation ||
+      !isTalkingAnimationPlaybackInRange(talkingAnimation, character.talkingAnimationPlayback))) {
+      addIssue(context, ['characters', characterIndex, 'talkingAnimationPlayback'], 'Talking animation frame is outside the source timeline.');
     }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {

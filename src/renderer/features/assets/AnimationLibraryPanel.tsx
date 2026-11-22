@@ -2,16 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import {
-  collectFlaGraphicTimelineDurationMs,
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
   type ProjectAnimationDefinition,
   type Project,
+  type TalkingAnimationPlayback,
 } from '../../../domain';
+import { resolveConfiguredAnimationFrameIndex, resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import {
   createAnimationPlaybackTimeline,
   markAnimationPlaybackFrameVisible,
   sampleAnimationPlaybackTimeline,
+  sampleLoopingAnimationFrameIndex,
   type AnimationPlaybackTimeline,
 } from './animationPlayback';
 import { createAnimationImageBlob } from './animationImageBytes';
@@ -73,65 +75,7 @@ async function decodeCanvasImage(
   }
 }
 
-export interface FlaGraphicPreviewTimelineSpec {
-  readonly hasInternalTimeline: boolean;
-  readonly timelineDurationMs: number;
-  readonly fps: number;
-  readonly totalFrames: number;
-  readonly sampleAtFrameIndex: (frameIndex: number) => {
-    readonly frameOrdinal: number;
-    readonly internalTimeMs: number | undefined;
-  };
-}
-
-export function resolveFlaGraphicPreviewTimeline(
-  animation: ProjectAnimationDefinition,
-): FlaGraphicPreviewTimelineSpec {
-  const fps = Math.max(1, animation.source.sourceFps || 24);
-  const timelineDurationMs =
-    'kind' in animation && animation.kind === 'fla-graphic' && animation.structure
-      ? collectFlaGraphicTimelineDurationMs(
-          animation.structure.timeline,
-          animation.structure,
-        )
-      : 0;
-  const hasInternalTimeline = timelineDurationMs > 0;
-  const totalFrames = hasInternalTimeline
-    ? Math.max(
-        animation.frames.length,
-        Math.floor((timelineDurationMs * fps) / 1_000) + 1,
-      )
-    : animation.frames.length;
-
-  return {
-    hasInternalTimeline,
-    timelineDurationMs,
-    fps,
-    totalFrames,
-    sampleAtFrameIndex(frameIndex: number) {
-      const clampedIndex = Math.max(
-        0,
-        Math.min(frameIndex, Math.max(0, totalFrames - 1)),
-      );
-      const mappedFrameIndex = Math.min(
-        clampedIndex,
-        Math.max(0, animation.frames.length - 1),
-      );
-      const frameOrdinal = animation.frames[mappedFrameIndex]?.ordinal ?? 0;
-      if (!hasInternalTimeline) {
-        return { frameOrdinal, internalTimeMs: undefined };
-      }
-      const internalTimeMs =
-        clampedIndex >= totalFrames - 1
-          ? timelineDurationMs
-          : Math.min(
-              timelineDurationMs,
-              Math.round((clampedIndex * 1_000) / fps),
-            );
-      return { frameOrdinal, internalTimeMs };
-    },
-  };
-}
+export { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 
 export function evaluateFlaGraphicDefinitionPreviewVisual(
   animation: Extract<ProjectAnimationDefinition, { kind: 'fla-graphic' }>,
@@ -629,15 +573,25 @@ interface AnimationPreviewProps {
   project: Project;
   projectRoot: string;
   titleId: string;
+  playback?: TalkingAnimationPlayback;
+  stillFrame?: number;
 }
 
 type FrameLoadResult = 'loaded' | 'stale' | 'error';
+
+function previewSourceFrame(
+  offset: number, totalFrames: number, playback?: TalkingAnimationPlayback, stillFrame?: number,
+): number {
+  return stillFrame ?? (playback && resolveConfiguredAnimationFrameIndex(playback, totalFrames, offset)) ?? offset;
+}
 
 export function AnimationPreview({
   animation,
   project,
   projectRoot,
   titleId,
+  playback,
+  stillFrame,
 }: AnimationPreviewProps): React.JSX.Element {
   const [frameIndex, setFrameIndex] = useState(0);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
@@ -650,9 +604,13 @@ export function AnimationPreview({
   const playingRef = useRef(false);
   const playbackTimelineRef = useRef<AnimationPlaybackTimeline | null>(null);
   const pendingFrameIndexRef = useRef<number | null>(null);
-  const previewTimelineSpec = resolveFlaGraphicPreviewTimeline(animation);
+  const configured = playback !== undefined || stillFrame !== undefined;
+  const previewTimelineSpec = resolveFlaGraphicPreviewTimeline(animation, configured);
   const animationFrameRef = useRef<number | null>(null);
-  const totalPreviewFrames = previewTimelineSpec.totalFrames;
+  const totalPreviewFrames = stillFrame !== undefined || playback?.mode === 'single frame' ? 1
+    : playback ? playback.lastFrame - playback.firstFrame + 1 : previewTimelineSpec.totalFrames;
+  const repeats = playback?.mode === 'loop' || playback?.mode === 'loop reverse';
+  const displayedSourceFrame = previewSourceFrame(frameIndex, previewTimelineSpec.totalFrames, playback, stillFrame);
   const lastFrameIndex = Math.max(0, totalPreviewFrames - 1);
 
   const replaceFrameUrl = useCallback((nextUrl: string | null): void => {
@@ -666,9 +624,8 @@ export function AnimationPreview({
     shouldApply?: () => boolean,
   ): Promise<FrameLoadResult> => {
     const requestId = ++loadRequestRef.current;
-    const sample = resolveFlaGraphicPreviewTimeline(animation).sampleAtFrameIndex(
-      requestedIndex,
-    );
+    const spec = resolveFlaGraphicPreviewTimeline(animation, configured);
+    const sample = spec.sampleAtFrameIndex(previewSourceFrame(requestedIndex, spec.totalFrames, playback, stillFrame));
     const frame = animation.frames.find(
       (candidate) => candidate.ordinal === sample.frameOrdinal,
     ) ?? animation.frames[requestedIndex];
@@ -726,7 +683,7 @@ export function AnimationPreview({
       );
       return 'error';
     }
-  }, [animation, project.assets, projectRoot, replaceFrameUrl]);
+  }, [animation, project.assets, projectRoot, replaceFrameUrl, playback, stillFrame, configured]);
 
   useEffect(() => {
     playingRef.current = false;
@@ -752,17 +709,16 @@ export function AnimationPreview({
   }, [loadFrame, replaceFrameUrl]);
 
   const startPlayback = useCallback((fromIndex: number): void => {
-    const spec = resolveFlaGraphicPreviewTimeline(animation);
     playbackTimelineRef.current = createAnimationPlaybackTimeline(
-      spec.fps,
-      spec.totalFrames,
+      previewTimelineSpec.fps,
+      totalPreviewFrames,
       performance.now(),
       fromIndex,
     );
     pendingFrameIndexRef.current = null;
     playingRef.current = true;
     setPlaying(true);
-  }, [animation]);
+  }, [previewTimelineSpec.fps, totalPreviewFrames]);
 
   const pausePlayback = (): void => {
     playingRef.current = false;
@@ -773,7 +729,7 @@ export function AnimationPreview({
 
   const play = (): void => {
     if (loading || error) return;
-    if (frameIndex >= lastFrameIndex) {
+    if (!repeats && frameIndex >= lastFrameIndex) {
       void loadFrame(0).then((loaded) => {
         if (loaded === 'loaded') startPlayback(0);
       });
@@ -806,20 +762,25 @@ export function AnimationPreview({
         return;
       }
       const sample = sampleAnimationPlaybackTimeline(timeline, now);
-      if (sample.complete) {
+      const nextIndex = repeats
+        ? sampleLoopingAnimationFrameIndex(sample.elapsedMs, timeline.sourceFps, timeline.frameCount)
+        : sample.frameIndex;
+      if (!repeats && sample.complete) {
         stop();
         return;
       }
       if (
-        sample.frameIndex !== frameIndexRef.current &&
+        nextIndex !== frameIndexRef.current &&
         pendingFrameIndexRef.current === null
       ) {
-        const requestedIndex = sample.frameIndex;
+        const requestedIndex = nextIndex;
         pendingFrameIndexRef.current = requestedIndex;
         void loadFrame(requestedIndex, () => {
           const currentTimeline = playbackTimelineRef.current;
           return playingRef.current && currentTimeline !== null &&
-            sampleAnimationPlaybackTimeline(currentTimeline, performance.now()).frameIndex === requestedIndex;
+            (repeats
+              ? sampleLoopingAnimationFrameIndex(performance.now() - currentTimeline.startedAtMs, currentTimeline.sourceFps, currentTimeline.frameCount)
+              : sampleAnimationPlaybackTimeline(currentTimeline, performance.now()).frameIndex) === requestedIndex;
         }).then((result) => {
           if (pendingFrameIndexRef.current === requestedIndex) {
             pendingFrameIndexRef.current = null;
@@ -836,7 +797,7 @@ export function AnimationPreview({
         window.cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [loadFrame, playing]);
+  }, [loadFrame, playing, repeats]);
 
   useEffect(() => {
     const timeline = playbackTimelineRef.current;
@@ -851,7 +812,7 @@ export function AnimationPreview({
   };
 
   const displayedFrameIndex = Math.min(
-    frameIndex,
+    displayedSourceFrame,
     Math.max(0, animation.frames.length - 1),
   );
   const displayedFrame = animation.frames[displayedFrameIndex];
@@ -873,7 +834,7 @@ export function AnimationPreview({
       <div
         aria-busy={loading}
         className="animation-preview-stage"
-        data-frame-index={frameIndex}
+        data-frame-index={displayedSourceFrame}
         data-testid="animation-preview-stage"
       >
         {frameUrl ? (
@@ -886,7 +847,7 @@ export function AnimationPreview({
             }}
           >
             <img
-              alt={`${animation.name}，第 ${frameIndex + 1} 帧`}
+              alt={`${animation.name}，第 ${displayedSourceFrame + 1} 帧`}
               src={frameUrl}
               style={{
                 left: displayedFrameIsStructured ? '0%' : `${displayedFrame!.offset.x / animation.source.canvas.width * 100}%`,
@@ -897,7 +858,7 @@ export function AnimationPreview({
             />
           </div>
         ) : loading ? (
-          <span>正在读取第 {frameIndex + 1} 帧…</span>
+          <span>正在读取第 {displayedSourceFrame + 1} 帧…</span>
         ) : (
           <span>帧图片不可用</span>
         )}
@@ -940,7 +901,7 @@ export function AnimationPreview({
             type="range"
             value={frameIndex}
           />
-          <output>{frameIndex + 1} / {totalPreviewFrames}</output>
+          <output>{displayedSourceFrame + 1} / {previewTimelineSpec.totalFrames}</output>
         </label>
       </div>
     </section>

@@ -773,7 +773,31 @@ export const CharacterV24Schema = z.discriminatedUnion('mode', [
   }
 });
 
-const TalkingAnimationShape = { talkingAnimationId: IdSchema.optional() };
+export const TalkingAnimationPlaybackSchema = z.object({
+  firstFrame: z.number().int().nonnegative(),
+  lastFrame: z.number().int().nonnegative(),
+  mode: z.enum(['loop', 'play once', 'single frame', 'loop reverse', 'play once reverse']),
+  restFrame: z.number().int().nonnegative().optional(),
+}).strict().refine(value => value.firstFrame <= value.lastFrame, {
+  path: ['lastFrame'],
+  message: 'End frame must not precede the start frame.',
+});
+export type TalkingAnimationPlayback = z.infer<typeof TalkingAnimationPlaybackSchema>;
+
+const TalkingAnimationV25Shape = { talkingAnimationId: IdSchema.optional() };
+const TalkingAnimationShape = {
+  ...TalkingAnimationV25Shape,
+  talkingAnimationPlayback: TalkingAnimationPlaybackSchema.optional(),
+};
+export const CharacterV25Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationV25Shape }),
+  CompositeCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationV25Shape }),
+  AdaptivePartsCharacterV24Schema.safeExtend(TalkingAnimationV25Shape),
+]).superRefine((character, context) => {
+  if (character.mode !== 'adaptive-parts' && character.mouthOpenAssetId && character.mouthOpenVisualSource) {
+    context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
+  }
+});
 
 const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV24Schema.safeExtend(TalkingAnimationShape);
 

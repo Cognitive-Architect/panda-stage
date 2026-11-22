@@ -2839,9 +2839,10 @@ function AdaptivePartsAssemblyWorkbench({
                   <TalkingAnimationPicker
                     key={assemblyCharacter.id}
                     animationId={assemblyCharacter.talkingAnimationId}
+                    playback={assemblyCharacter.talkingAnimationPlayback}
                     disabled={hasPendingChanges}
-                    onApply={animationId => runImmediateCharacterMutation(() => {
-                      characterStore.setTalkingAnimation(assemblyCharacter.id, animationId);
+                    onApply={(animationId, playback) => runImmediateCharacterMutation(() => {
+                      characterStore.setTalkingAnimation(assemblyCharacter.id, animationId, playback);
                     })}
                   />
                 ) : null}

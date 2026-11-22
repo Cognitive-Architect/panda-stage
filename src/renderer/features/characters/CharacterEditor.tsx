@@ -29,7 +29,7 @@ import {
 import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import { ExpressionEditor } from './ExpressionEditor';
 import { GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
-import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
+import type { CharacterFaceSource, CharacterFaceGraphicSource, TalkingAnimationPlayback } from '../../../domain';
 import {
   ImageAssetPicker,
   ImageAssetPickerSelectedSurface,
@@ -356,7 +356,7 @@ export interface CharacterEditorProps {
   onSetExpressionAsset: (expressionId: string, assetId: string) => void;
   onSetExpressionSource?: (expressionId: string, source: CharacterFaceSource) => void;
   onAddGraphicExpression?: (name: string, source: CharacterFaceGraphicSource) => void;
-  onSetTalkingAnimation?: (animationId: string | null) => void;
+  onSetTalkingAnimation?: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   onSetMouthSource?: (source: CharacterFaceSource | null) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
@@ -617,6 +617,7 @@ export function CharacterEditor({
   const expressionCharacter = character;
   const talkingAnimationPicker = expressionCharacter && onSetTalkingAnimation ? (
     <TalkingAnimationPicker key={expressionCharacter.id} animationId={expressionCharacter.talkingAnimationId}
+      playback={expressionCharacter.talkingAnimationPlayback}
       disabled={disabled || assemblyPending} onApply={onSetTalkingAnimation} />
   ) : null;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =

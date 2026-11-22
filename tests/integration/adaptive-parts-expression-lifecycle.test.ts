@@ -179,7 +179,8 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
       project.characters.find((c) => c.id === charId) as AdaptivePartsCharacter
     ).expressions![1]!.id;
     project = charService.setDefaultExpression(project, charId, graphicExprId);
-    project = charService.setTalkingAnimation(project, charId, seed.animations[0]!.id);
+    const talkingAnimationPlayback = { firstFrame: 1, lastFrame: 3, mode: 'loop reverse' as const, restFrame: 0 };
+    project = charService.setTalkingAnimation(project, charId, seed.animations[0]!.id, talkingAnimationPlayback);
     const layerRes = new LayerService().createFromAdaptiveCharacter(
       project,
       IDS.shot,
@@ -196,6 +197,7 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     expect(reopened.project.characters.find(({ id }) => id === charId)).toMatchObject({
       headMotionBinding: { partIds: [partBackId, partFaceId] },
       talkingAnimationId: seed.animations[0]!.id,
+      talkingAnimationPlayback,
     });
 
     const shot = reopened.project.shots[0]!;

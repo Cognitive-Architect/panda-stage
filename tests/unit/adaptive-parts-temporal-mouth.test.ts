@@ -2,6 +2,9 @@
 import { act, createElement, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
+import { resolveTalkingAnimationFace } from '../../src/domain/selectors/characterFaceSource';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ActionPresetPanel } from '../../src/renderer/features/actions/ActionPresetPanel';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -283,6 +286,77 @@ it('loops a shared talking animation on the clip clock and restores the current 
   const graphicId = base.animations[0]!.id;
   project = new CharacterService().setTalkingAnimation(project, setup.characterId, graphicId);
   expect(visualAt(100).parts[1]?.source).toMatchObject({ kind: 'adaptive-part-fla-graphic', animationId: graphicId });
+});
+
+it('samples a six-frame talking source in a custom inclusive range and restores the chosen frame', () => {
+  const setup = buildPhaseBProject();
+  const source = setup.project.animations[0]!;
+  const animationId = crypto.randomUUID();
+  const frames = Array.from({ length: 6 }, (_, ordinal) => ({
+    ...source.frames[ordinal % source.frames.length]!,
+    assetId: PART_FACE_ASSET, ordinal, sourceFrameIndex: ordinal + 7, sha256: 'a'.repeat(64),
+    sourceViewport: { x: ordinal, y: 0, width: 100, height: 100 },
+    offset: { x: ordinal, y: 0 }, startMs: ordinal * 100, durationMs: 100, createdBySequenceImport: true,
+  }));
+  const project = ProjectSchema.parse({
+    ...setup.project,
+    assets: setup.project.assets.map(asset => asset.id === PART_FACE_ASSET ? { ...asset, sha256: 'a'.repeat(64) } : asset),
+    animations: [...setup.project.animations, {
+      id: animationId, name: 'Six frames', durationMs: 600, frames,
+      source: { ...source.source, sourceFps: 10, startFrameIndex: 7, endFrameIndex: 12,
+        canvas: { width: 110, height: 100 }, anchor: { x: 0, y: 0 } },
+    }],
+  });
+  const range = { firstFrame: 1, lastFrame: 4, restFrame: 5 };
+  const times = [0, 100, 200, 399, 400, 500];
+  for (const [mode, expected] of [
+    ['loop', [1, 2, 3, 4, 1, 2]],
+    ['play once', [1, 2, 3, 4, 4, 4]],
+    ['loop reverse', [4, 3, 2, 1, 4, 3]],
+    ['play once reverse', [4, 3, 2, 1, 1, 1]],
+    ['single frame', [1, 1, 1, 1, 1, 1]],
+  ] as const) {
+    expect(times.map(time => resolveTalkingAnimationFace(project, animationId, time, { ...range, mode })?.asset.rasterFrame?.ordinal)).toEqual(expected);
+  }
+
+  const playback = { ...range, mode: 'loop reverse' as const };
+  editorProjectStore.open('C:/temp/talking-range.pandastage', project);
+  characterStore.setTalkingAnimation(setup.characterId, animationId, playback);
+  const configured = editorProjectStore.getSnapshot()!.project;
+  expect(configured.animations).toEqual(project.animations);
+  expect(() => new CharacterService().setTalkingAnimation(project, setup.characterId, animationId, { ...playback, lastFrame: 6 })).toThrow();
+  editorProjectStore.undo();
+  expect(editorProjectStore.getSnapshot()!.project).toEqual(project);
+  editorProjectStore.redo();
+  expect(editorProjectStore.getSnapshot()!.project).toEqual(configured);
+  expect(migrateProject({ ...project, schemaVersion: 25 })).toEqual(project);
+  expect(() => migrateProject({ ...configured, schemaVersion: 25 })).toThrow();
+
+  const shot = configured.shots[0]!;
+  const resolve = (time: number) => {
+    const layer = (shotResult: ReturnType<typeof evaluateShotAtTime>) =>
+      shotResult.layers.find(candidate => candidate.id === setup.layerId)!;
+    const readyAssetIds = new Set(project.assets.map(asset => asset.id));
+    const editor = layer(buildEditorTemporalCanvasModel({
+      project: configured, shot, currentTimeMs: time, readyAssetIds, previousVisuals: new Map(),
+    }).evaluatedShot);
+    const preview = layer(projectProductPreviewDialogue(configured, shot, evaluateShotAtTime(shot, time, configured)));
+    const exported = layer(evaluateExportShotAtTime(configured, shot, time));
+    expect(editor.talkingAnimationElapsedMs).toBe('rest');
+    expect(preview.talkingAnimationElapsedMs).toBe('rest');
+    expect(exported.talkingAnimationElapsedMs).toBe('rest');
+    const visual = resolveLayerVisualParts(configured, shot, exported);
+    expect(resolveLayerVisualParts(configured, shot, editor).parts).toEqual(visual.parts);
+    expect(resolveLayerVisualParts(configured, shot, preview).parts).toEqual(visual.parts);
+    return visual;
+  };
+  expect(resolve(0).activeFace?.assetId).toBe(PART_FACE_ASSET);
+  expect(resolve(250).activeFace?.assetId).toBe(PART_FACE_ASSET);
+  expect(collectExportPreparationMedia(configured).some(entry => entry.asset.id === PART_FACE_ASSET)).toBe(true);
+  const graphic = resolveTalkingAnimationFace(project, source.id, 50, {
+    firstFrame: 1, lastFrame: 3, mode: 'loop reverse',
+  });
+  expect(graphic?.asset.flaGraphic?.frameOrdinal).toBe(2);
 });
 
 describe('Phase B: AdaptiveParts Timeline Expressions, MouthCue & Simple Mouth (#1211)', () => {

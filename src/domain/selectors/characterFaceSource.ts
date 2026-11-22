@@ -2,8 +2,9 @@ import { evaluateFlaGraphicFrame } from '../../shared/fla-graphic-playback';
 import { resolveAnimationPlaybackFrameState } from '../evaluate-shot-at-time';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
 import type { AnimationFrame, ProjectAnimationDefinition } from '../models/animation';
+import { resolveConfiguredAnimationFrameIndex, resolveFlaGraphicPreviewTimeline } from './animationSourceTimeline';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
-import { isFlaGraphicDefinition, type CharacterFaceSource, type Project } from '../models';
+import { isFlaGraphicDefinition, type CharacterFaceSource, type Project, type TalkingAnimationPlayback } from '../models';
 
 type ResolvedFace = {
   width: number;
@@ -21,15 +22,30 @@ export function findTalkingAnimation(project: Project, animationId: string | und
 export function resolveTalkingAnimationFace(
   project: Project,
   animationId: string | undefined,
-  elapsedMs: number | undefined,
+  elapsedMs: number | 'rest' | undefined,
+  playback?: TalkingAnimationPlayback,
   isImageUnavailable?: (assetId: string) => boolean,
 ): { source: CharacterFaceSource; asset: ResolvedFace } | null {
   if (elapsedMs === undefined || !animationId) return null;
   const definition = findTalkingAnimation(project, animationId);
   if (!definition) return null;
-  const state = resolveAnimationPlaybackFrameState(definition, 0, 0, { mode: 'loop', endBehavior: 'hold' }, elapsedMs);
-  if (!state) return null;
-  const { frame, internalTimeMs } = state;
+  const sample = (() => {
+    if (!playback) {
+      if (elapsedMs === 'rest') return null;
+      const state = resolveAnimationPlaybackFrameState(definition, 0, 0, { mode: 'loop', endBehavior: 'hold' }, elapsedMs);
+      return state ? { frameOrdinal: state.frame.ordinal, internalTimeMs: state.internalTimeMs } : null;
+    }
+    const timeline = resolveFlaGraphicPreviewTimeline(definition, true);
+    const index = elapsedMs === 'rest'
+      ? playback.restFrame
+      : resolveConfiguredAnimationFrameIndex(playback, timeline.totalFrames, Math.floor(elapsedMs * timeline.fps / 1_000));
+    return index === undefined ? null : timeline.sampleAtFrameIndex(index);
+  })();
+  if (!sample) return null;
+  const frame = definition.frames[sample.frameOrdinal];
+  if (!frame) return null;
+  // Even a Graphic with one stored drawing can contain a nested animation.
+  const internalTimeMs = sample.internalTimeMs ?? 1_000 * frame.ordinal / definition.source.sourceFps;
   const { width, height } = definition.source.canvas;
   const isUnavailable = (id: string): boolean =>
     !project.assets.some((asset) => asset.id === id && asset.kind === 'image') ||

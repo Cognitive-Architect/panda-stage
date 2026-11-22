@@ -12,7 +12,7 @@ import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource } from './selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -211,10 +211,25 @@ function addShotVisualAssets(
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
 ): void {
   const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
+  const restResourcesByCharacter = new Set<string>();
   for (const timeMs of shotVisualSampleTimes(shot)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     for (const evaluatedLayer of evaluatedShot.layers) {
       if (!evaluatedLayer.visible) continue;
+      const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
+      if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
+        restResourcesByCharacter.add(source.characterId);
+        const character = project.characters.find(candidate => candidate.id === source.characterId);
+        if (character?.talkingAnimationPlayback?.restFrame !== undefined &&
+          (character.mode !== 'adaptive-parts' || character.faceBinding)) {
+          const rest = resolveTalkingAnimationFace(project, character.talkingAnimationId, 'rest', character.talkingAnimationPlayback);
+          const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
+          for (const assetId of assetIds) {
+            const asset = project.assets.find(candidate => candidate.id === assetId);
+            if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+          }
+        }
+      }
       const visual = resolveLayerVisualParts(
         project,
         shot,

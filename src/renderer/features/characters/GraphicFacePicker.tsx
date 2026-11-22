@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isFlaGraphicDefinition, type CharacterFaceGraphicSource, type CharacterFaceSource } from '../../../domain';
+import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type CharacterFaceSource } from '../../../domain';
 import { resolveCharacterFaceSource } from '../../../domain/selectors/characterFaceSource';
+import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
 import { Button } from '../../ui/Button';
 import { AnimationPreview } from '../assets/AnimationLibraryPanel';
@@ -57,39 +58,91 @@ export function GraphicFacePreview({ source, label = '表情预览' }: { source:
   return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
-export function TalkingAnimationPicker({ animationId, onApply, disabled }: {
+export function TalkingAnimationPicker({ animationId, playback, onApply, disabled }: {
   animationId?: string;
-  onApply: (animationId: string | null) => void;
+  playback?: TalkingAnimationPlayback;
+  onApply: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   disabled?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [draft, setDraft] = useState<string | null>(null);
+  const [draftPlayback, setDraftPlayback] = useState<TalkingAnimationPlayback>();
+  const [previewRest, setPreviewRest] = useState(false);
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const animations = snapshot?.project.animations.filter(animation =>
     isFlaGraphicDefinition(animation) ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1,
   ) ?? [];
   const selected = animations.find(animation => animation.id === (draft ?? animationId));
+  const selectedPlayback = draftPlayback ?? (selected?.id === animationId ? playback : undefined);
+  const total = selected ? resolveFlaGraphicPreviewTimeline(selected, true).totalFrames : 1;
+  const settings = selectedPlayback ?? { firstFrame: 0, lastFrame: total - 1, mode: 'loop' as const };
+  const update = (value: Partial<TalkingAnimationPlayback>): void => {
+    setDraftPlayback({ ...settings, ...value });
+    setPreviewRest(false);
+  };
   return (
     <div className="graphic-face-picker">
       <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
         setDraft(null);
+        setDraftPlayback(undefined);
+        setPreviewRest(false);
         setOpen(!open);
       }}>说话动画</Button>
       {open && snapshot ? (
         <div className="graphic-face-options">
           <label>
             选择说话动画
-            <select value={selected?.id ?? ''} disabled={disabled} onChange={event => setDraft(event.target.value)}>
+            <select value={selected?.id ?? ''} disabled={disabled} onChange={event => {
+              setDraft(event.target.value);
+              setDraftPlayback(undefined);
+              setPreviewRest(false);
+            }}>
               <option value="">未配置</option>
               {animations.map(animation => <option key={animation.id} value={animation.id}>{animation.name}</option>)}
             </select>
           </label>
           {animations.length === 0 ? <p>请先在素材库导入一段多帧动画。</p> : null}
-          {selected ? <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot} titleId={titleId} /> : null}
-          <Button disabled={disabled || draft === null || (draft || undefined) === animationId} onClick={() => {
-            onApply(draft || null);
-            setDraft(null);
+          {selected ? <>
+            <div className="animation-preview-controls">
+              <label>起始帧 <input type="number" min={1} max={settings.mode === 'single frame' ? total : settings.lastFrame + 1} value={settings.firstFrame + 1}
+                disabled={disabled} onChange={event => {
+                  const frame = event.target.valueAsNumber - 1;
+                  if (!Number.isInteger(frame) || frame < 0 || frame >= total) return;
+                  if (settings.mode === 'single frame') update({ firstFrame: frame, lastFrame: Math.max(frame, settings.lastFrame) });
+                  else if (frame <= settings.lastFrame) update({ firstFrame: frame });
+                }} /></label>
+              <label>结束帧 <input type="number" min={settings.firstFrame + 1} max={total} value={settings.lastFrame + 1}
+                disabled={disabled || settings.mode === 'single frame'} onChange={event => {
+                  const frame = event.target.valueAsNumber - 1;
+                  if (Number.isInteger(frame) && frame >= settings.firstFrame && frame < total) update({ lastFrame: frame });
+                }} /></label>
+              <label>播放方式 <select value={settings.mode} disabled={disabled}
+                onChange={event => update({ mode: TalkingAnimationPlaybackSchema.shape.mode.parse(event.target.value) })}>
+                <option value="loop">正放循环</option>
+                <option value="play once">正放一次</option>
+                <option value="loop reverse">倒放循环</option>
+                <option value="play once reverse">倒放一次</option>
+                <option value="single frame">单帧</option>
+              </select></label>
+              <label>静止帧 <input type="number" min={1} max={total} value={settings.restFrame === undefined ? '' : settings.restFrame + 1}
+                placeholder="当前表情" disabled={disabled} onChange={event => {
+                  const frame = event.target.valueAsNumber - 1;
+                  if (event.target.value === '') update({ restFrame: undefined });
+                  else if (Number.isInteger(frame) && frame >= 0 && frame < total) {
+                    update({ restFrame: frame });
+                    setPreviewRest(true);
+                  }
+                }} /></label>
+              {settings.restFrame !== undefined ? <Button variant="secondary" aria-pressed={previewRest}
+                onClick={() => setPreviewRest(!previewRest)}>查看静止帧</Button> : null}
+            </div>
+            <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot}
+              titleId={titleId} playback={selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
+          </> : null}
+          <Button disabled={disabled || ((selected?.id ?? undefined) === animationId &&
+            JSON.stringify(selectedPlayback) === JSON.stringify(playback))} onClick={() => {
+            onApply(selected?.id ?? null, selectedPlayback);
             setOpen(false);
           }}>应用说话动画</Button>
         </div>

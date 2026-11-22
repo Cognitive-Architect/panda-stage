@@ -600,7 +600,7 @@ function resolveCharacterFace(
   }
   const expressionSource = resolveExpressionVisualSource(expression);
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
   const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
     : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
@@ -814,7 +814,7 @@ function projectAdaptivePartsFaceVisual(input: {
     ? rawExpressionAsset
     : null;
 
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
   const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
     ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
     : evaluated.mouthOpen

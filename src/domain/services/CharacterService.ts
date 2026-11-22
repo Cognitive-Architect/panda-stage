@@ -22,6 +22,7 @@ import {
   type CharacterFaceGraphicSource,
   type Character,
   type CharacterExpression,
+  type TalkingAnimationPlayback,
   type CharacterHead,
   type CharacterPart,
   type CharacterPartTransform,
@@ -1012,17 +1013,22 @@ export class CharacterService {
     return this.replaceCharacter(project, next);
   }
 
-  setTalkingAnimation(project: Project, characterId: string, animationId: string | null): Project {
+  setTalkingAnimation(
+    project: Project, characterId: string, animationId: string | null, playback?: TalkingAnimationPlayback,
+  ): Project {
     const character = this.expressionHostCharacter(project, characterId, {
       requireFaceBinding: Boolean(animationId),
     });
-    if (character.talkingAnimationId === (animationId ?? undefined)) return project;
+    if (character.talkingAnimationId === (animationId ?? undefined) &&
+      JSON.stringify(character.talkingAnimationPlayback) === JSON.stringify(playback)) return project;
     if (animationId && !project.animations.some((animation) => animation.id === animationId)) {
       throw new Error('说话动画已不在当前项目中。');
     }
     const next = { ...character };
     if (animationId) next.talkingAnimationId = animationId;
     else delete next.talkingAnimationId;
+    if (animationId && playback) next.talkingAnimationPlayback = { ...playback };
+    else delete next.talkingAnimationPlayback;
     return this.replaceCharacter(project, next);
   }
 
