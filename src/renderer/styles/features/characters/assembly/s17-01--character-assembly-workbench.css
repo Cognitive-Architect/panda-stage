@@ -1493,22 +1493,23 @@
 .adaptive-parts-assembly-viewport {
   grid-column: 1;
   grid-row: 2;
+  touch-action: none;
+}
+
+.adaptive-parts-assembly-viewport[data-panning='true'],
+.adaptive-parts-assembly-viewport[data-panning='true'] .adaptive-parts-assembly-canvas-part {
+  cursor: grabbing;
 }
 .adaptive-parts-assembly-canvas-part {
   position: absolute;
   z-index: 1;
   box-sizing: border-box;
-  border: 1px solid transparent;
   cursor: grab;
   touch-action: none;
   user-select: none;
 }
 
 .adaptive-parts-assembly-canvas-part:active { cursor: grabbing; }
-
-.adaptive-parts-assembly-canvas-part.is-selected {
-  border-color: transparent;
-}
 
 .adaptive-parts-assembly-selection-outline {
   position: absolute;
@@ -1568,6 +1569,12 @@
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
+}
+
+.adaptive-parts-assembly-canvas-toolbar output {
+  min-width: 4ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .adaptive-parts-inspector-fields {

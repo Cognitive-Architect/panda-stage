@@ -88,14 +88,23 @@ import {
   isCharacterCreationSnapshot,
   isAdaptivePartsAssemblySnapshot,
   largestUnoccludedAssemblyViewportRect,
+  panAssemblyViewportTransform,
   parseAssemblyRotationInput,
+  resizeAssemblyViewportTransformPreservingCenter,
   visibleImageRect,
+  zoomAssemblyViewportTransformAtPoint,
   type AssemblyHeadMotionTestToken,
   type AssemblyFaceSelection,
   type AssemblyViewportRect,
   type CharacterAssemblySnapshotUnion,
   type NormalizedImageBounds,
 } from './characterAssemblyPreview';
+import {
+  getAdaptivePartAlphaHitMap,
+  hitTestAdaptivePartsAtPoint,
+  viewportClientToAssemblyPoint,
+  type AdaptivePartHitSurface,
+} from './adaptivePartHitTesting';
 import {
   assessCharacterLayoutReuse,
   buildCharacterLayoutReuseUpdate,
@@ -318,6 +327,7 @@ export function CharacterAssemblyWorkbench({
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
       <AdaptivePartsAssemblyWorkbench
+        key={projectSnapshot.projectRoot + '/' + session.characterId}
         adaptivePartsActionsRef={adaptivePartsActionsRef}
         projectSnapshot={projectSnapshot}
         session={session}
@@ -335,6 +345,7 @@ export function CharacterAssemblyWorkbench({
 }
 
 type AdaptivePartPointerDrag =
+  | { kind: 'pan'; pointerId: number; clientX: number; clientY: number }
   | {
       kind: 'move';
       partId: string;
@@ -1049,6 +1060,9 @@ function AdaptivePartsAssemblyWorkbench({
   const inspectorHandleRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const dragRef = useRef<AdaptivePartPointerDrag | null>(null);
+  const manualCamera = useRef(false);
+  const spaceHeld = useRef(false);
+  const [panning, setPanning] = useState(false);
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform({ width: 0, height: 0 }, 'fit', {
       width: project.width,
@@ -1297,7 +1311,7 @@ function AdaptivePartsAssemblyWorkbench({
     });
     const area = largestUnoccludedAssemblyViewportRect(container, occlusions);
     const logicalFrame = { width: project.width, height: project.height };
-    const visibleBounds = inspectorRef.current?.dataset.expanded === 'true' ? readVisibleBounds.current() : null;
+    const visibleBounds = readVisibleBounds.current();
     if (visibleBounds) {
       setTransform(calculateAssemblyFitViewportTransform(container, logicalFrame, visibleBounds, area));
       return;
@@ -1305,11 +1319,23 @@ function AdaptivePartsAssemblyWorkbench({
     const next = calculateViewportTransform(area, 'fit', logicalFrame);
     setTransform({ ...next, container, offsetX: next.offsetX + area.x, offsetY: next.offsetY + area.y });
   }, [project.height, project.width]);
+  const showAllParts = (): void => {
+    if (dragRef.current) return;
+    viewportRef.current?.focus({ preventScroll: true });
+    manualCamera.current = false;
+    fitPreview();
+  };
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     fitPreview();
     const observer = new ResizeObserver(() => {
+      if (manualCamera.current) {
+        setTransform((current) => resizeAssemblyViewportTransformPreservingCenter(current, {
+          width: viewport.clientWidth,
+          height: viewport.clientHeight,
+        }));
+      }
       if (viewport.clientWidth < 720 &&
           inspectorRef.current?.dataset.expanded === 'true' &&
           operationsRef.current?.dataset.expanded === 'true') {
@@ -1318,7 +1344,7 @@ function AdaptivePartsAssemblyWorkbench({
         setOperationsOpen(false);
         return;
       }
-      fitPreview();
+      if (!manualCamera.current) fitPreview();
     });
     observer.observe(viewport);
     return () => observer.disconnect();
@@ -1330,9 +1356,29 @@ function AdaptivePartsAssemblyWorkbench({
     if (refitAfterNarrowCollapse.current ||
         (operationsOpen && !previous.operationsOpen) || (inspectorOpen && !previous.inspectorOpen)) {
       refitAfterNarrowCollapse.current = false;
-      fitPreview();
+      if (!manualCamera.current) fitPreview();
     }
   }, [fitPreview, inspectorOpen, operationsOpen]);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent): void => {
+      if (event.deltaY === 0 || dragRef.current) return;
+      event.preventDefault();
+      const bounds = viewport.getBoundingClientRect();
+      const point = {
+        x: event.clientX - bounds.left - viewport.clientLeft,
+        y: event.clientY - bounds.top - viewport.clientTop,
+      };
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1);
+      manualCamera.current = true;
+      setTransform((current) => zoomAssemblyViewportTransformAtPoint(
+        current, point, current.scale * Math.exp(-Math.max(-600, Math.min(600, delta)) * 0.002),
+      ));
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, []);
 
   const isNarrow = (): boolean => {
     const width = viewportRef.current?.clientWidth ?? 0;
@@ -1655,7 +1701,7 @@ function AdaptivePartsAssemblyWorkbench({
         readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
         readonly dataUrl: string;
         readonly canvasWidth: number;
-        readonly visibleRect: VisualLocalRect | null;
+        readonly canvas: HTMLCanvasElement;
       }
     >();
     const sourceByPartId = new Map(
@@ -1694,45 +1740,75 @@ function AdaptivePartsAssemblyWorkbench({
           rect: rendered.rect,
           dataUrl,
           canvasWidth: part.flaGraphic.canvas.width,
-          visibleRect: rendered.visibleRect,
+          canvas: rendered.canvas,
         });
       }
     }
     return result;
   }, [activeFaceBinding?.targetPartId, imageState.images, session.draft.parts, visual?.activeFace, visual?.parts]);
+  const hitSurfaces = useMemo(() => {
+    const surfaces = new Map<string, AdaptivePartHitSurface>();
+    for (const part of visual?.parts ?? []) {
+      if (part.visible === false) continue;
+      if (part.flaGraphic) {
+        const raster = graphicPartRasters.get(adaptiveCharacterPartIdOf(part) ?? '');
+        if (!raster) continue;
+        surfaces.set(part.partId, {
+          rect: {
+            ...raster.rect,
+            x: raster.rect.x + part.flaGraphic.canvas.width / 2,
+            y: raster.rect.y + part.flaGraphic.canvas.height / 2,
+          },
+          alpha: getAdaptivePartAlphaHitMap(raster.canvas),
+        });
+      } else {
+        const image = part.assetId ? imageState.images.get(part.assetId) : undefined;
+        if (image) surfaces.set(part.partId, { rect: part.localRect, alpha: getAdaptivePartAlphaHitMap(image) });
+      }
+    }
+    return surfaces;
+  }, [graphicPartRasters, imageState.images, visual?.parts]);
+  const partVisibleRects = useMemo(() => {
+    const rects = new Map<string, VisualLocalRect>();
+    for (const [id, { rect, alpha }] of hitSurfaces) {
+      if (alpha.visibleBounds) rects.set(id, visibleImageRect(rect, alpha.visibleBounds));
+    }
+    return rects;
+  }, [hitSurfaces]);
   readVisibleBounds.current = () => {
     if (!visual) return null;
-    const imageBounds = new Map<string, NormalizedImageBounds | null>();
     const parts = visual.parts.flatMap((part) => {
-      if (part.visible === false) return [];
-      if (part.flaGraphic) {
-        const partId = adaptiveCharacterPartIdOf(part);
-        const bounds = partId ? graphicPartRasters.get(partId)?.visibleRect : null;
-        if (!bounds) return [];
-        return [{
-          ...part,
-          assetId: undefined,
-          localRect: {
-            ...bounds,
-            x: bounds.x + part.flaGraphic.canvas.width / 2,
-            y: bounds.y + part.flaGraphic.canvas.height / 2,
-          },
-        }];
-      }
-      const image = part.assetId ? imageState.images.get(part.assetId) : undefined;
-      if (!image || !part.assetId) return [];
-      imageBounds.set(part.assetId, measureImageVisibleBounds(image));
-      return [part];
+      const localRect = partVisibleRects.get(part.partId);
+      return localRect ? [{ ...part, localRect }] : [];
     });
-    return calculateAssemblyVisibleBounds({ ...visual, parts, headPart: null }, imageBounds);
+    return calculateAssemblyVisibleBounds({ ...visual, parts, headPart: null }, new Map());
   };
-  const selectedCanvasReady = selectedCanvasPart
-    ? selectedCanvasPart.flaGraphic
-      ? graphicPartRasters.has(session.selectedPartId ?? '')
-      : Boolean(selectedCanvasPart.assetId && imageState.images.get(selectedCanvasPart.assetId))
-    : false;
-  const selectedCanvasMatrix = selectedCanvasPart
-    ? adaptivePartCanvasCssMatrix(selectedCanvasPart, project.width, project.height)
+  const hasVisibleParts = partVisibleRects.size > 0;
+  useLayoutEffect(() => {
+    if (hasVisibleParts && !manualCamera.current && !dragRef.current) fitPreview();
+  }, [fitPreview, hasVisibleParts]);
+  const canvasParts = useMemo(() => {
+    const parts = visual?.parts ?? [];
+    if (!adaptiveHeadPreviewActive) return parts;
+    return parts.map((part) => {
+      const matrix = part.imageTransform;
+      if (!matrix || !activeHeadMotionPartSet.has(adaptiveCharacterPartIdOf(part) ?? '')) return part;
+      return {
+        ...part,
+        imageTransform: {
+          ...matrix,
+          tx: matrix.tx + headMotionPreviewOffset.translateX,
+          ty: matrix.ty + headMotionPreviewOffset.translateY,
+        },
+      };
+    });
+  }, [activeHeadMotionPartSet, adaptiveHeadPreviewActive, headMotionPreviewOffset, visual?.parts]);
+  const selectedCanvasOutline = selectedCanvasPart
+    ? partVisibleRects.get(selectedCanvasPart.partId)
+    : undefined;
+  const selectedPaintedPart = canvasParts.find((part) => part.partId === selectedCanvasPart?.partId);
+  const selectedCanvasMatrix = selectedPaintedPart && selectedCanvasOutline
+    ? adaptivePartCanvasCssMatrix({ ...selectedPaintedPart, localRect: selectedCanvasOutline }, project.width, project.height)
     : null;
   const rows = [...session.draft.parts].sort(
     (left, right) => right.drawOrder - left.drawOrder,
@@ -2049,24 +2125,41 @@ function AdaptivePartsAssemblyWorkbench({
     else if (inspectorOpen) setInspectorContext('part');
     return true;
   };
-  const pointerToLocal = (clientX: number, clientY: number): { x: number; y: number } => {
-    const bounds = viewportRef.current?.getBoundingClientRect();
-    if (!bounds) return { x: 0, y: 0 };
-    return {
-      x: (clientX - bounds.left - transform.offsetX) / Math.max(0.0001, transform.scale) - project.width / 2,
-      y: (clientY - bounds.top - transform.offsetY) / Math.max(0.0001, transform.scale) - project.height / 2,
-    };
+  const pointerToLocal = (clientX: number, clientY: number) => {
+    const viewport = viewportRef.current;
+    return viewport && viewportClientToAssemblyPoint(
+      clientX, clientY, viewport.getBoundingClientRect(),
+      { x: viewport.clientLeft, y: viewport.clientTop }, transform,
+    );
   };
   const pointerToLocalRef = useRef(pointerToLocal);
   pointerToLocalRef.current = pointerToLocal;
   const setAdjustmentRef = useRef(setAdjustment);
   setAdjustmentRef.current = setAdjustment;
-  const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
+  const beginPan = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 1 && !(event.button === 0 && spaceHeld.current)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (dragRef.current) return;
+    event.currentTarget.focus({ preventScroll: true });
+    dragRef.current = {
+      kind: 'pan', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
+    };
+    setPanning(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const beginMove = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0 || dragRef.current) return;
+    if ((event.target as Element).closest('.adaptive-parts-assembly-canvas-toolbar')) return;
+    event.currentTarget.focus({ preventScroll: true });
+    const point = pointerToLocal(event.clientX, event.clientY);
+    if (!point) return;
+    const part = hitTestAdaptivePartsAtPoint(canvasParts, hitSurfaces, point);
+    if (!part) return;
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
     if (!selectPart(partId)) return;
     event.preventDefault();
-    const point = pointerToLocal(event.clientX, event.clientY);
     dragRef.current = {
       kind: 'move',
       partId,
@@ -2075,9 +2168,12 @@ function AdaptivePartsAssemblyWorkbench({
       startY: point.y,
       adjustment: adjustmentOf(partId),
     };
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
   const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
+    if (event.button !== 0 || dragRef.current) return;
+    const point = pointerToLocal(event.clientX, event.clientY);
+    if (!point) return;
     const partId = adaptiveCharacterPartIdOf(part);
     if (!partId) return;
     if (!selectPart(partId)) return;
@@ -2088,7 +2184,6 @@ function AdaptivePartsAssemblyWorkbench({
       part.localRect.x + part.localRect.width / 2,
       part.localRect.y + part.localRect.height / 2,
     );
-    const point = pointerToLocal(event.clientX, event.clientY);
     dragRef.current = {
       kind: 'scale',
       partId,
@@ -2098,12 +2193,50 @@ function AdaptivePartsAssemblyWorkbench({
       startDistance: Math.hypot(point.x - center.x, point.y - center.y),
       adjustment: adjustmentOf(partId),
     };
+    viewportRef.current?.setPointerCapture?.(event.pointerId);
+  };
+  const finishPointer = (pointerId?: number): void => {
+    const drag = dragRef.current;
+    if (!drag || (pointerId !== undefined && drag.pointerId !== pointerId)) return;
+    dragRef.current = null;
+    if (drag.kind === 'pan') setPanning(false);
+    const viewport = viewportRef.current;
+    if (viewport?.hasPointerCapture?.(drag.pointerId)) viewport.releasePointerCapture(drag.pointerId);
+  };
+  const zoomFromToolbar = (factor: number): void => {
+    if (dragRef.current) return;
+    viewportRef.current?.focus({ preventScroll: true });
+    manualCamera.current = true;
+    setTransform((current) => zoomAssemblyViewportTransformAtPoint(current, {
+      x: current.container.width / 2, y: current.container.height / 2,
+    }, current.scale * factor));
   };
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.code !== 'Space' || event.ctrlKey || event.altKey || event.metaKey ||
+          event.defaultPrevented || (event.target as Element | null)?.closest?.('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
+      spaceHeld.current = true;
+      event.preventDefault();
+    };
+    const onKeyUp = (event: KeyboardEvent): void => {
+      if (event.code === 'Space') spaceHeld.current = false;
+    };
     const onMove = (event: PointerEvent): void => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
+      if (drag.kind === 'pan') {
+        const dx = event.clientX - drag.clientX;
+        const dy = event.clientY - drag.clientY;
+        drag.clientX = event.clientX;
+        drag.clientY = event.clientY;
+        if (dx || dy) {
+          manualCamera.current = true;
+          setTransform((current) => panAssemblyViewportTransform(current, dx, dy));
+        }
+        return;
+      }
       const point = pointerToLocalRef.current(event.clientX, event.clientY);
+      if (!point) return;
       if (drag.kind === 'move') {
         setAdjustmentRef.current(drag.partId, {
           ...drag.adjustment,
@@ -2119,18 +2252,26 @@ function AdaptivePartsAssemblyWorkbench({
         setAdjustmentRef.current(drag.partId, { ...drag.adjustment, scale });
       }
     };
-    const onEnd = (event: PointerEvent): void => {
-      if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    const onEnd = (event: PointerEvent): void => finishPointer(event.pointerId);
+    const onBlur = (): void => {
+      spaceHeld.current = false;
+      finishPointer();
     };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onEnd);
     window.addEventListener('pointercancel', onEnd);
     return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
     };
-  }, [project.height, project.width, transform]);
+  }, []);
 
   const applyDraft = (): void => {
     if (hasInvalidAdjustmentDraft) {
@@ -2816,8 +2957,14 @@ function AdaptivePartsAssemblyWorkbench({
       <div
         aria-label="角色部件画布"
         className="character-assembly-preview-viewport adaptive-parts-assembly-viewport"
+        data-camera-fit-mode="content"
+        data-panning={panning}
+        onLostPointerCapture={(event) => finishPointer(event.pointerId)}
+        onPointerDown={beginMove}
+        onPointerDownCapture={beginPan}
         ref={viewportRef}
         role="group"
+        tabIndex={-1}
         data-testid="adaptive-parts-assembly-canvas"
       >
         <div
@@ -2831,7 +2978,7 @@ function AdaptivePartsAssemblyWorkbench({
             width: project.width,
           }}
         >
-          {[...(visual?.parts ?? [])]
+          {[...canvasParts]
             .filter((part) => part.visible !== false)
             .sort((left, right) => left.drawOrder - right.drawOrder)
             .map((part) => {
@@ -2857,10 +3004,6 @@ function AdaptivePartsAssemblyWorkbench({
               const matrix =
                 adaptivePartCanvasCssMatrix(part, project.width, project.height) ??
                 `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
-              const canvasPartTransform =
-                adaptiveHeadPreviewActive && activeHeadMotionPartSet.has(partId)
-                  ? `translate(${headMotionPreviewOffset.translateX}px, ${headMotionPreviewOffset.translateY}px) ${matrix}`
-                  : matrix;
               return (
                 <div
                   className={`adaptive-parts-assembly-canvas-part${selected ? ' is-selected' : ''}`}
@@ -2871,11 +3014,15 @@ function AdaptivePartsAssemblyWorkbench({
                     height: part.localRect.height,
                     left: 0,
                     top: 0,
-                    transform: canvasPartTransform,
+                    transform: matrix,
                     transformOrigin: 'top left',
                     width: part.localRect.width,
                   }}
-                  onPointerDown={(event) => beginMove(event, part)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    selectPart(partId);
+                  }}
                   role="button"
                   tabIndex={0}
                   aria-label={`选择并拖动${sourcePart?.displayName ?? sourceName ?? '部件'}`}
@@ -2909,31 +3056,38 @@ function AdaptivePartsAssemblyWorkbench({
                 </div>
               );
             })}
-          {selectedCanvasPart && selectedCanvasReady && selectedCanvasMatrix ? (
+          {selectedPaintedPart && selectedCanvasOutline && selectedCanvasMatrix ? (
             <div
               className="adaptive-parts-assembly-selection-outline"
-              data-part-id={adaptiveCharacterPartIdOf(selectedCanvasPart) ?? undefined}
+              data-part-id={adaptiveCharacterPartIdOf(selectedPaintedPart) ?? undefined}
               data-testid="adaptive-parts-assembly-selection-outline"
               style={{
-                height: selectedCanvasPart.localRect.height,
+                height: selectedCanvasOutline.height,
                 left: 0,
                 top: 0,
                 transform: selectedCanvasMatrix,
                 transformOrigin: 'top left',
-                width: selectedCanvasPart.localRect.width,
+                width: selectedCanvasOutline.width,
               }}
             >
               <button
                 aria-label="调整选中部件大小"
                 className="adaptive-parts-assembly-scale-handle"
-                onPointerDown={(event) => beginScale(event, selectedCanvasPart)}
+                onPointerDown={(event) => beginScale(event, selectedPaintedPart)}
                 type="button"
               />
             </div>
           ) : null}
         </div>
         <div className="adaptive-parts-assembly-canvas-toolbar">
-          <button type="button" onClick={fitPreview}>查看全貌</button>
+          <button type="button" aria-label="缩小画布" onClick={() => zoomFromToolbar(1 / 1.25)}>
+            <Minus size={16} aria-hidden="true" />
+          </button>
+          <output aria-label="画布缩放">{Math.round(transform.scale * 100)}%</output>
+          <button type="button" aria-label="放大画布" onClick={() => zoomFromToolbar(1.25)}>
+            <Plus size={16} aria-hidden="true" />
+          </button>
+          <button type="button" onClick={showAllParts}>查看全貌</button>
         </div>
       </div>
 
