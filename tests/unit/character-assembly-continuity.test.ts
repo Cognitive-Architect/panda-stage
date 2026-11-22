@@ -445,6 +445,37 @@ describe('S09-R04 assembly workspace continuity', () => {
 });
 
 describe('C3 Adaptive Parts assembly session', () => {
+  it('retains a deduplicated temporary selection, prunes removed or hidden Parts and resets on reopening', () => {
+    const { project, characterId } = adaptivePartsProjectWithLegacyParts();
+    const h = harness(project);
+    const before = h.editor.getSnapshot();
+    const historyBefore = h.editor.history.getSnapshot();
+    const begun = h.assembly.beginAdaptiveParts(characterId);
+    if (!begun.ok) throw new Error(begun.error.message);
+    const { draft } = begun.snapshot;
+    const [first, second, third] = draft.parts;
+    expect(begun.session.selectParts([first!.partId, second!.partId, third!.partId, first!.partId, 'unknown'], first!.partId)).toBe(true);
+    expect(begun.session.getSnapshot()).toMatchObject({
+      selectedPartIds: [first!.partId, second!.partId, third!.partId],
+      selectedPartId: first!.partId,
+    });
+    expect(begun.session.setDraft({
+      ...draft,
+      parts: draft.parts.filter((part) => part !== first).map((part) =>
+        part === second ? { ...part, visible: false } : part,
+      ),
+    }).ok).toBe(true);
+    expect(begun.session.getSnapshot()).toMatchObject({
+      selectedPartIds: [third!.partId], selectedPartId: third!.partId,
+    });
+    expect(h.editor.getSnapshot()).toBe(before);
+    expect(h.editor.history.getSnapshot()).toEqual(historyBefore);
+    begun.session.cancel();
+    const next = h.assembly.beginAdaptiveParts(characterId);
+    expect(next).toMatchObject({ ok: true, snapshot: { selectedPartIds: [], selectedPartId: null } });
+    h.assembly.dispose();
+  });
+
   it('captures legacy source poses in draft only and applies one atomic update with undo/redo continuity', () => {
     const { project, characterId } = adaptivePartsProjectWithLegacyParts();
     const h = harness(project);

@@ -35,6 +35,7 @@ import {
   type CharacterPartStaticAdjustment,
   type ImageAsset,
   type LayerVisualPart,
+  type Point,
   type BodyPlacement,
   type CharacterHead,
   type FacePlacement,
@@ -100,8 +101,10 @@ import {
   type NormalizedImageBounds,
 } from './characterAssemblyPreview';
 import {
+  assemblyMarqueeRect,
   getAdaptivePartAlphaHitMap,
   hitTestAdaptivePartsAtPoint,
+  selectAdaptivePartsInMarquee,
   viewportClientToAssemblyPoint,
   type AdaptivePartHitSurface,
 } from './adaptivePartHitTesting';
@@ -346,6 +349,16 @@ export function CharacterAssemblyWorkbench({
 
 type AdaptivePartPointerDrag =
   | { kind: 'pan'; pointerId: number; clientX: number; clientY: number }
+  | {
+      kind: 'marquee';
+      pointerId: number;
+      clientX: number;
+      clientY: number;
+      start: Point;
+      shift: boolean;
+      clickedPartId: string | null;
+      dragged: boolean;
+    }
   | {
       kind: 'move';
       partId: string;
@@ -817,7 +830,7 @@ function AdaptivePartsAssemblyRow({
   onMessage: (message: string) => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
   onRestore: () => void;
-  onSelect: () => void;
+  onSelect: (shift: boolean) => void;
   onToggleVisibility: () => void;
   part: AdaptivePartsCharacterPart;
   renaming: boolean;
@@ -934,7 +947,7 @@ function AdaptivePartsAssemblyRow({
           className="adaptive-parts-assembly-row-select"
           data-part-visible={visible}
           data-testid="adaptive-parts-assembly-row-select"
-          onClick={onSelect}
+          onClick={(event) => onSelect(event.shiftKey)}
           type="button"
         >
           <span
@@ -1063,6 +1076,8 @@ function AdaptivePartsAssemblyWorkbench({
   const manualCamera = useRef(false);
   const spaceHeld = useRef(false);
   const [panning, setPanning] = useState(false);
+  const [marquee, setMarquee] = useState<VisualLocalRect | null>(null);
+  const [marqueeSkippedCount, setMarqueeSkippedCount] = useState(0);
   const [transform, setTransform] = useState(() =>
     calculateViewportTransform({ width: 0, height: 0 }, 'fit', {
       width: project.width,
@@ -1681,7 +1696,8 @@ function AdaptivePartsAssemblyWorkbench({
       };
     });
   };
-  const selectedPart = session.draft.parts.find(
+  const selectedPartIds = new Set(session.selectedPartIds);
+  const selectedPart = selectedPartIds.size > 1 ? null : session.draft.parts.find(
     (part) => part.partId === session.selectedPartId,
   ) ?? null;
   const selectedPartVisualSource = selectedPart
@@ -1690,10 +1706,6 @@ function AdaptivePartsAssemblyWorkbench({
   const selectedAdjustment = selectedPart
     ? adjustmentOf(selectedPart.partId)
     : null;
-  const selectedCanvasPart = (visual?.parts ?? []).find((part) =>
-    adaptiveCharacterPartIdOf(part) === session.selectedPartId &&
-    part.visible !== false,
-  ) ?? null;
   const graphicPartRasters = useMemo(() => {
     const result = new Map<
       string,
@@ -1702,6 +1714,7 @@ function AdaptivePartsAssemblyWorkbench({
         readonly dataUrl: string;
         readonly canvasWidth: number;
         readonly canvas: HTMLCanvasElement;
+        readonly visibleRect: VisualLocalRect | null;
       }
     >();
     const sourceByPartId = new Map(
@@ -1741,6 +1754,7 @@ function AdaptivePartsAssemblyWorkbench({
           dataUrl,
           canvasWidth: part.flaGraphic.canvas.width,
           canvas: rendered.canvas,
+          visibleRect: rendered.visibleRect,
         });
       }
     }
@@ -1803,13 +1817,6 @@ function AdaptivePartsAssemblyWorkbench({
       };
     });
   }, [activeHeadMotionPartSet, adaptiveHeadPreviewActive, headMotionPreviewOffset, visual?.parts]);
-  const selectedCanvasOutline = selectedCanvasPart
-    ? partVisibleRects.get(selectedCanvasPart.partId)
-    : undefined;
-  const selectedPaintedPart = canvasParts.find((part) => part.partId === selectedCanvasPart?.partId);
-  const selectedCanvasMatrix = selectedPaintedPart && selectedCanvasOutline
-    ? adaptivePartCanvasCssMatrix({ ...selectedPaintedPart, localRect: selectedCanvasOutline }, project.width, project.height)
-    : null;
   const rows = [...session.draft.parts].sort(
     (left, right) => right.drawOrder - left.drawOrder,
   );
@@ -2121,9 +2128,24 @@ function AdaptivePartsAssemblyWorkbench({
   };
   const selectPart = (partId: string, edit = false): boolean => {
     if (!activeHandle()?.selectPart(partId)) return false;
+    setMarqueeSkippedCount(0);
     if (edit) openInspector('part');
     else if (inspectorOpen) setInspectorContext('part');
     return true;
+  };
+  const togglePartInSelection = (partId: string): void => {
+    const handle = activeHandle();
+    const selection = handle?.getSnapshot();
+    if (!handle || !selection || !selection.draft.parts.some((part) => part.partId === partId && part.visible !== false)) return;
+    const ids = new Set(selection.selectedPartIds);
+    if (ids.has(partId)) {
+      ids.delete(partId);
+      handle.selectParts([...ids], selection.selectedPartId);
+    } else {
+      ids.add(partId);
+      handle.selectParts([...ids], partId);
+    }
+    setMarqueeSkippedCount(0);
   };
   const pointerToLocal = (clientX: number, clientY: number) => {
     const viewport = viewportRef.current;
@@ -2155,9 +2177,22 @@ function AdaptivePartsAssemblyWorkbench({
     const point = pointerToLocal(event.clientX, event.clientY);
     if (!point) return;
     const part = hitTestAdaptivePartsAtPoint(canvasParts, hitSurfaces, point);
-    if (!part) return;
-    const partId = adaptiveCharacterPartIdOf(part);
-    if (!partId) return;
+    const partId = part ? adaptiveCharacterPartIdOf(part) : null;
+    if (event.shiftKey || !partId) {
+      event.preventDefault();
+      dragRef.current = {
+        kind: 'marquee',
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        start: point,
+        shift: event.shiftKey,
+        clickedPartId: partId,
+        dragged: false,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      return;
+    }
     if (!selectPart(partId)) return;
     event.preventDefault();
     dragRef.current = {
@@ -2171,7 +2206,7 @@ function AdaptivePartsAssemblyWorkbench({
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
   const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
-    if (event.button !== 0 || dragRef.current) return;
+    if (event.button !== 0 || dragRef.current || event.shiftKey) return;
     const point = pointerToLocal(event.clientX, event.clientY);
     if (!point) return;
     const partId = adaptiveCharacterPartIdOf(part);
@@ -2195,13 +2230,38 @@ function AdaptivePartsAssemblyWorkbench({
     };
     viewportRef.current?.setPointerCapture?.(event.pointerId);
   };
-  const finishPointer = (pointerId?: number): void => {
+  const finishPointer = useCallback((pointerId?: number): void => {
     const drag = dragRef.current;
     if (!drag || (pointerId !== undefined && drag.pointerId !== pointerId)) return;
     dragRef.current = null;
     if (drag.kind === 'pan') setPanning(false);
+    if (drag.kind === 'marquee') setMarquee(null);
     const viewport = viewportRef.current;
     if (viewport?.hasPointerCapture?.(drag.pointerId)) viewport.releasePointerCapture(drag.pointerId);
+  }, []);
+  useLayoutEffect(() => {
+    finishPointer();
+  }, [finishPointer, session.generation, session.sessionId]);
+  const commitMarqueeRef = useRef<(drag: Extract<AdaptivePartPointerDrag, { kind: 'marquee' }>, end: Point) => void>(() => {});
+  commitMarqueeRef.current = (drag, end) => {
+    const handle = activeHandle();
+    if (!drag.dragged) {
+      if (drag.shift && drag.clickedPartId) togglePartInSelection(drag.clickedPartId);
+      else if (!drag.shift) {
+        handle?.selectParts([]);
+        setMarqueeSkippedCount(0);
+      }
+      return;
+    }
+    const matched = selectAdaptivePartsInMarquee(canvasParts, partVisibleRects, assemblyMarqueeRect(drag.start, end));
+    const ids = drag.shift ? [...(handle?.getSnapshot()?.selectedPartIds ?? [])] : [];
+    for (const part of matched) {
+      const partId = adaptiveCharacterPartIdOf(part);
+      if (partId) ids.push(partId);
+    }
+    handle?.selectParts(ids);
+    setMarqueeSkippedCount(canvasParts.filter((part) => part.visible !== false &&
+      !partVisibleRects.has(part.partId) && hitSurfaces.get(part.partId)?.alpha.mode !== 'transparent').length);
   };
   const zoomFromToolbar = (factor: number): void => {
     if (dragRef.current) return;
@@ -2213,6 +2273,12 @@ function AdaptivePartsAssemblyWorkbench({
   };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && dragRef.current?.kind === 'marquee') {
+        event.preventDefault();
+        event.stopPropagation();
+        finishPointer();
+        return;
+      }
       if (event.code !== 'Space' || event.ctrlKey || event.altKey || event.metaKey ||
           event.defaultPrevented || (event.target as Element | null)?.closest?.('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
       spaceHeld.current = true;
@@ -2237,6 +2303,11 @@ function AdaptivePartsAssemblyWorkbench({
       }
       const point = pointerToLocalRef.current(event.clientX, event.clientY);
       if (!point) return;
+      if (drag.kind === 'marquee') {
+        drag.dragged ||= Math.hypot(event.clientX - drag.clientX, event.clientY - drag.clientY) >= 4;
+        if (drag.dragged) setMarquee(assemblyMarqueeRect(drag.start, point));
+        return;
+      }
       if (drag.kind === 'move') {
         setAdjustmentRef.current(drag.partId, {
           ...drag.adjustment,
@@ -2252,7 +2323,17 @@ function AdaptivePartsAssemblyWorkbench({
         setAdjustmentRef.current(drag.partId, { ...drag.adjustment, scale });
       }
     };
-    const onEnd = (event: PointerEvent): void => finishPointer(event.pointerId);
+    const onEnd = (event: PointerEvent): void => {
+      const drag = dragRef.current;
+      if (event.type === 'pointerup' && drag?.kind === 'marquee' && drag.pointerId === event.pointerId) {
+        const point = pointerToLocalRef.current(event.clientX, event.clientY);
+        if (point) {
+          drag.dragged ||= Math.hypot(event.clientX - drag.clientX, event.clientY - drag.clientY) >= 4;
+          commitMarqueeRef.current(drag, point);
+        }
+      }
+      finishPointer(event.pointerId);
+    };
     const onBlur = (): void => {
       spaceHeld.current = false;
       finishPointer();
@@ -2271,7 +2352,7 @@ function AdaptivePartsAssemblyWorkbench({
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
     };
-  }, []);
+  }, [finishPointer]);
 
   const applyDraft = (): void => {
     if (hasInvalidAdjustmentDraft) {
@@ -2618,7 +2699,7 @@ function AdaptivePartsAssemblyWorkbench({
                       displayName,
                     }))}
                     onRestore={() => restorePartToSourcePose(part.partId)}
-                    onSelect={() => selectPart(part.partId)}
+                    onSelect={(shift) => shift ? togglePartInSelection(part.partId) : selectPart(part.partId)}
                     renaming={renamingPartId === part.partId}
                     roleTag={roleTag}
                     onToggleVisibility={() => updatePart(part.partId, (current) => ({
@@ -2626,7 +2707,7 @@ function AdaptivePartsAssemblyWorkbench({
                       visible: current.visible === false,
                     }))}
                     part={part}
-                    selected={session.selectedPartId === part.partId}
+                    selected={selectedPartIds.has(part.partId) || session.selectedPartId === part.partId}
                   />
                 );
               })}
@@ -2990,7 +3071,7 @@ function AdaptivePartsAssemblyWorkbench({
                 ? graphicPartRasters.get(partId)
                 : undefined;
               if (part.flaGraphic ? !graphicRaster : !image) return null;
-              const selected = session.selectedPartId === partId;
+              const selected = selectedPartIds.has(partId);
               const sourcePart = session.draft.parts.find((candidate) => candidate.partId === partId);
               const partSource = sourcePart
                 ? resolveCharacterPartVisualSource(sourcePart)
@@ -3024,6 +3105,7 @@ function AdaptivePartsAssemblyWorkbench({
                     selectPart(partId);
                   }}
                   role="button"
+                  aria-pressed={selected}
                   tabIndex={0}
                   aria-label={`选择并拖动${sourcePart?.displayName ?? sourceName ?? '部件'}`}
                 >
@@ -3056,30 +3138,62 @@ function AdaptivePartsAssemblyWorkbench({
                 </div>
               );
             })}
-          {selectedPaintedPart && selectedCanvasOutline && selectedCanvasMatrix ? (
-            <div
+          {canvasParts.map((part) => {
+            const partId = adaptiveCharacterPartIdOf(part);
+            if (!partId || !selectedPartIds.has(partId) || part.visible === false) return null;
+            // The existing Graphic leaf geometry can still draw a list-selected
+            // outline when alpha cannot be sampled. Marquee uses painted bounds only.
+            const graphicRect = part.flaGraphic && hitSurfaces.get(part.partId)?.alpha.mode === 'list-only'
+              ? graphicPartRasters.get(partId)?.visibleRect
+              : null;
+            const rect = partVisibleRects.get(part.partId) ?? (graphicRect && part.flaGraphic
+              ? {
+                  ...graphicRect,
+                  x: graphicRect.x + part.flaGraphic.canvas.width / 2,
+                  y: graphicRect.y + part.flaGraphic.canvas.height / 2,
+                }
+              : null);
+            if (!rect) return null;
+            const matrix = adaptivePartCanvasCssMatrix({ ...part, localRect: rect }, project.width, project.height);
+            if (!matrix) return null;
+            return <div
               className="adaptive-parts-assembly-selection-outline"
-              data-part-id={adaptiveCharacterPartIdOf(selectedPaintedPart) ?? undefined}
+              data-part-id={partId}
               data-testid="adaptive-parts-assembly-selection-outline"
+              key={part.partId}
               style={{
-                height: selectedCanvasOutline.height,
+                height: rect.height,
                 left: 0,
                 top: 0,
-                transform: selectedCanvasMatrix,
+                transform: matrix,
                 transformOrigin: 'top left',
-                width: selectedCanvasOutline.width,
+                width: rect.width,
               }}
             >
-              <button
+              {selectedPartIds.size === 1 ? <button
                 aria-label="调整选中部件大小"
                 className="adaptive-parts-assembly-scale-handle"
-                onPointerDown={(event) => beginScale(event, selectedPaintedPart)}
+                onPointerDown={(event) => beginScale(event, part)}
                 type="button"
-              />
-            </div>
-          ) : null}
+              /> : null}
+            </div>;
+          })}
         </div>
+        {marquee ? (
+          <div
+            aria-hidden="true"
+            className="adaptive-parts-assembly-marquee"
+            data-testid="adaptive-parts-assembly-marquee"
+            style={{
+              left: transform.offsetX + (project.width / 2 + marquee.x) * transform.scale,
+              top: transform.offsetY + (project.height / 2 + marquee.y) * transform.scale,
+              width: marquee.width * transform.scale,
+              height: marquee.height * transform.scale,
+            }}
+          />
+        ) : null}
         <div className="adaptive-parts-assembly-canvas-toolbar">
+          {selectedPartIds.size > 0 ? <output>选中 {selectedPartIds.size} 个</output> : null}
           <button type="button" aria-label="缩小画布" onClick={() => zoomFromToolbar(1 / 1.25)}>
             <Minus size={16} aria-hidden="true" />
           </button>
@@ -3327,7 +3441,11 @@ function AdaptivePartsAssemblyWorkbench({
       </aside>
 
       <footer className="character-assembly-workbench-footer adaptive-parts-assembly-footer">
-        {message ? <span role="status" aria-live="polite">{message}</span> : null}
+        {message || marqueeSkippedCount > 0 ? (
+          <span role="status" aria-live="polite">
+            {message || `${marqueeSkippedCount} 个部件无法框选，可在列表中补选。`}
+          </span>
+        ) : null}
         <div className="adaptive-parts-assembly-footer-actions">
           <button data-testid="adaptive-parts-assembly-cancel" type="button" onClick={cancelDraft}>取消</button>
           <button

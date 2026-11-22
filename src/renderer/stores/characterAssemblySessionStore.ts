@@ -101,6 +101,7 @@ export interface AdaptivePartsAssemblySnapshot {
   readonly characterId: string;
   /** Session-only Part selection; changing it never changes Project state. */
   readonly selectedPartId: string | null;
+  readonly selectedPartIds: readonly string[];
   readonly draft: AdaptivePartsCharacterDefinition;
 }
 
@@ -182,6 +183,7 @@ export interface AdaptivePartsAssemblySessionHandle {
   getSnapshot(): AdaptivePartsAssemblySnapshot | null;
   setDraft(draft: AdaptivePartsCharacterDefinition): AdaptivePartsDraftUpdateResult;
   selectPart(partId: string | null): boolean;
+  selectParts(partIds: readonly string[], primaryPartId?: string | null): boolean;
   commit(draft?: AdaptivePartsCharacterDefinition): AdaptivePartsAssemblyCommitResult;
   cancel(): void;
   exit(): void;
@@ -355,6 +357,22 @@ interface ActiveAdaptivePartsSession {
   readonly characterId: string;
   draft: AdaptivePartsCharacterDefinition;
   selectedPartId: string | null;
+  selectedPartIds: string[];
+}
+
+function reconcileAdaptivePartSelection(
+  definition: AdaptivePartsCharacterDefinition,
+  proposedIds: readonly string[],
+  primaryPartId: string | null,
+): Pick<ActiveAdaptivePartsSession, 'selectedPartId' | 'selectedPartIds'> {
+  const visibleIds = new Set(definition.parts.filter((part) => part.visible !== false).map((part) => part.partId));
+  const selectedPartIds = [...new Set(proposedIds)].filter((id) => visibleIds.has(id));
+  return {
+    selectedPartIds,
+    selectedPartId: primaryPartId && selectedPartIds.includes(primaryPartId)
+      ? primaryPartId
+      : selectedPartIds.at(-1) ?? null,
+  };
 }
 
 type ActiveSession = ActiveAssemblySession | ActiveCreationSession | ActiveAdaptivePartsSession;
@@ -771,6 +789,7 @@ export class CharacterAssemblySessionStore {
       characterId,
       draft: cloneAdaptivePartsDefinition(definition),
       selectedPartId: null,
+      selectedPartIds: [],
     };
     this.active = session;
     this.emit();
@@ -964,9 +983,7 @@ export class CharacterAssemblySessionStore {
         projectInstanceId: this.dependencies.editorStore.getProjectInstanceId(),
         characterId: previous.characterId,
         draft: cloneAdaptivePartsDefinition(definition),
-        selectedPartId: previous.selectedPartId && definition.parts.some(
-          (part) => part.partId === previous.selectedPartId,
-        ) ? previous.selectedPartId : null,
+        ...reconcileAdaptivePartSelection(definition, previous.selectedPartIds, previous.selectedPartId),
       };
       return;
     }
@@ -1022,6 +1039,8 @@ export class CharacterAssemblySessionStore {
       getSnapshot: () => this.adaptivePartsSnapshotForToken(sessionId, generation),
       setDraft: (draft) => this.setAdaptivePartsDraft(sessionId, generation, draft),
       selectPart: (partId) => this.selectAdaptivePart(sessionId, generation, partId),
+      selectParts: (partIds, primaryPartId = null) =>
+        this.selectAdaptiveParts(sessionId, generation, partIds, primaryPartId),
       commit: (draft) => this.commitAdaptiveParts(sessionId, generation, draft),
       cancel: () => this.exit(sessionId, generation),
       exit: () => this.exit(sessionId, generation),
@@ -1102,12 +1121,9 @@ export class CharacterAssemblySessionStore {
       return { ok: true, snapshot: this.snapshot as AdaptivePartsAssemblySnapshot };
     }
     active.draft = cloneAdaptivePartsDefinition(draft);
-    if (
-      active.selectedPartId &&
-      !active.draft.parts.some((part) => part.partId === active.selectedPartId)
-    ) {
-      active.selectedPartId = null;
-    }
+    Object.assign(active, reconcileAdaptivePartSelection(
+      active.draft, active.selectedPartIds, active.selectedPartId,
+    ));
     this.emit();
     return { ok: true, snapshot: this.snapshot as AdaptivePartsAssemblySnapshot };
   }
@@ -1118,11 +1134,37 @@ export class CharacterAssemblySessionStore {
     partId: string | null,
   ): boolean {
     const active = this.activeAdaptivePartsForToken(sessionId, generation);
-    if (!active || (partId !== null && !active.draft.parts.some((part) => part.partId === partId))) {
-      return false;
-    }
-    if (active.selectedPartId === partId) return true;
-    active.selectedPartId = partId;
+    if (!active) return false;
+    const part = active.draft.parts.find((candidate) => candidate.partId === partId);
+    if (partId !== null && !part) return false;
+    // A hidden Part can still be inspected explicitly from its list row.
+    return this.updateAdaptivePartSelection(active, {
+      selectedPartId: partId,
+      selectedPartIds: partId !== null && part?.visible !== false ? [partId] : [],
+    });
+  }
+
+  private selectAdaptiveParts(
+    sessionId: number,
+    generation: number,
+    partIds: readonly string[],
+    primaryPartId: string | null,
+  ): boolean {
+    const active = this.activeAdaptivePartsForToken(sessionId, generation);
+    if (!active) return false;
+    return this.updateAdaptivePartSelection(active, reconcileAdaptivePartSelection(
+      active.draft, partIds, primaryPartId,
+    ));
+  }
+
+  private updateAdaptivePartSelection(
+    active: ActiveAdaptivePartsSession,
+    next: Pick<ActiveAdaptivePartsSession, 'selectedPartId' | 'selectedPartIds'>,
+  ): boolean {
+    if (active.selectedPartId === next.selectedPartId &&
+        active.selectedPartIds.length === next.selectedPartIds.length &&
+        active.selectedPartIds.every((id, index) => id === next.selectedPartIds[index])) return true;
+    Object.assign(active, next);
     this.emit();
     return true;
   }
@@ -1577,6 +1619,7 @@ export class CharacterAssemblySessionStore {
         projectRoot: active.projectRoot,
         characterId: active.characterId,
         selectedPartId: active.selectedPartId,
+        selectedPartIds: [...active.selectedPartIds],
         draft: cloneAdaptivePartsDefinition(active.draft),
       };
     }

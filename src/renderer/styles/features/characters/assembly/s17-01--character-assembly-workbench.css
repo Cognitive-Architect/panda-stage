@@ -1519,6 +1519,14 @@
   pointer-events: none;
 }
 
+.adaptive-parts-assembly-marquee {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed var(--ui-color-selected-border);
+  background: color-mix(in srgb, var(--ui-color-selected-border) 17%, transparent);
+  pointer-events: none;
+}
+
 .adaptive-parts-assembly-canvas-part img {
   display: block;
   width: 100%;

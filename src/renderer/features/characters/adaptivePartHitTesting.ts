@@ -4,6 +4,7 @@ import type {
   ViewportTransform,
   VisualLocalRect,
 } from '../../../domain';
+import { transformVisualRectByPart } from '../../../domain';
 import { invertAffineMatrix } from '../../../shared/affine-matrix';
 
 export type AdaptivePartAlphaHitMode = 'alpha' | 'transparent' | 'list-only';
@@ -237,4 +238,30 @@ export function hitTestAdaptivePartsAtPoint(
     }
   }
   return null;
+}
+
+export function assemblyMarqueeRect(start: Point, end: Point): VisualLocalRect {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+export function selectAdaptivePartsInMarquee(
+  parts: readonly LayerVisualPart[],
+  visibleRects: ReadonlyMap<string, VisualLocalRect>,
+  marquee: VisualLocalRect,
+): LayerVisualPart[] {
+  return parts.filter((part) => {
+    if (part.visible === false) return false;
+    const local = visibleRects.get(part.partId);
+    if (!local) return false;
+    const bounds = transformVisualRectByPart(local, part);
+    return bounds.x >= marquee.x &&
+      bounds.y >= marquee.y &&
+      bounds.x + bounds.width <= marquee.x + marquee.width &&
+      bounds.y + bounds.height <= marquee.y + marquee.height;
+  });
 }

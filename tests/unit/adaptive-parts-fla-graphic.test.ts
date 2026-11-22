@@ -651,6 +651,7 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
       projectRoot,
       characterId,
       selectedPartId: headPartId,
+      selectedPartIds: [headPartId],
       draft: def,
     };
 
@@ -1345,6 +1346,7 @@ describe('Adaptive Parts with structured FLA Graphic visual source (Issue #1100)
       projectRoot: 'f:\\temp\\project',
       characterId,
       selectedPartId: headPartId,
+      selectedPartIds: [headPartId],
       draft: assemblyChar,
     };
     const assemblyVisual = buildAdaptivePartsAssemblyPreviewVisual(frame0FallbackProject, assemblySession);

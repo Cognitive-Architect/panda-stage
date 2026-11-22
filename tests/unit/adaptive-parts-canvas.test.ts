@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { calculateViewportTransform, type LayerVisualPart } from '../../src/domain';
 import {
+  assemblyMarqueeRect,
   createAdaptivePartAlphaHitMapFromRgba,
   hitTestAdaptivePartsAtPoint,
+  selectAdaptivePartsInMarquee,
   viewportClientToAssemblyPoint,
 } from '../../src/renderer/features/characters/adaptivePartHitTesting';
 import {
@@ -51,5 +53,16 @@ describe('Adaptive Parts assembly camera and hit testing', () => {
     expect(hitTestAdaptivePartsAtPoint([rear, front], surfaces, { x: 30, y: 42 })).toBe(front);
     expect(hitTestAdaptivePartsAtPoint([rear, front], surfaces, { x: 30, y: 22 })).toBe(rear);
     expect(hitTestAdaptivePartsAtPoint([rear, { ...front, visible: false }], surfaces, { x: 30, y: 42 })).toBe(rear);
+
+    // The Graphic raster contains padding, and its opaque half is rotated and mirrored.
+    const tight = new Map([
+      ['rear', rear.localRect],
+      ['front', { x: 4, y: 10, width: 10, height: 10 }],
+    ]);
+    const enclosing = assemblyMarqueeRect({ x: 40, y: 52 }, { x: 20, y: 32 });
+    expect(selectAdaptivePartsInMarquee([rear, front], tight, enclosing)).toEqual([front]);
+    expect(selectAdaptivePartsInMarquee([rear, front], tight, { ...enclosing, width: 19 })).toEqual([]);
+    expect(selectAdaptivePartsInMarquee([front], new Map(), enclosing)).toEqual([]);
+    expect(selectAdaptivePartsInMarquee([{ ...front, visible: false }], tight, enclosing)).toEqual([]);
   });
 });
