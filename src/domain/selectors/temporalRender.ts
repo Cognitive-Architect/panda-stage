@@ -137,7 +137,8 @@ export function projectShotMouth(
       (evaluatedShot.timeMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS <
         MOUTH_OPEN_MS &&
       speakingCharacter &&
-      speakingCharacter.mode !== 'adaptive-parts' &&
+      (speakingCharacter.mode !== 'adaptive-parts' ||
+        Boolean(speakingCharacter.faceBinding)) &&
       (speakingCharacter.mouthOpenAssetId ||
         speakingCharacter.mouthOpenVisualSource),
   );
@@ -156,7 +157,10 @@ export function projectShotMouth(
     const layerCharacter = project.characters.find(
       (candidate) => candidate.id === layerCharacterId,
     );
-    if (!layerCharacter || layerCharacter.mode === 'adaptive-parts') {
+    if (
+      !layerCharacter ||
+      (layerCharacter.mode === 'adaptive-parts' && !layerCharacter.faceBinding)
+    ) {
       return layer;
     }
 
@@ -164,7 +168,7 @@ export function projectShotMouth(
       if (layer.mouthOverrideAssetId !== null || layer.mouthOpen) {
         const exprId =
           layer.currentExpressionId ?? layerCharacter.defaultExpressionId;
-        const expression = layerCharacter.expressions.find(
+        const expression = (layerCharacter.expressions ?? []).find(
           (candidate) => candidate.id === exprId,
         );
         const restored = { ...layer };
@@ -172,7 +176,9 @@ export function projectShotMouth(
         changed = true;
         return {
           ...restored,
-          assetId: expression?.assetId ?? layer.assetId,
+          assetId:
+            expression?.assetId ??
+            (layerCharacter.mode === 'adaptive-parts' ? '' : layer.assetId),
           mouthOverrideAssetId: null,
         };
       }

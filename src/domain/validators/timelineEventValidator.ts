@@ -73,8 +73,8 @@ export function validatePresetApplication(
         if (!character) {
           errors.push('找不到该图层所属的角色。');
         } else if (
-          character.mode === 'adaptive-parts' ||
-          !character.expressions.some(
+          (character.mode === 'adaptive-parts' && !character.faceBinding) ||
+          !(character.expressions ?? []).some(
             (expression) => expression.id === event.expressionId,
           )
         ) {
@@ -96,7 +96,10 @@ export function validatePresetApplication(
         );
         if (!character) {
           errors.push('找不到该图层所属的角色。');
-        } else if (character.mode === 'adaptive-parts') {
+        } else if (
+          character.mode === 'adaptive-parts' &&
+          !character.faceBinding
+        ) {
           errors.push('当前角色不支持嘴型关键帧。');
         } else if (
           !character.mouthOpenAssetId &&

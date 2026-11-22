@@ -65,8 +65,10 @@ export function ActionPresetPanel(): React.JSX.Element {
     const character = project.characters.find(
       (candidate) => candidate.id === characterId,
     );
-    if (!character || character.mode === 'adaptive-parts') return [];
-    return character.expressions.map((expression) => ({
+    if (!character || (character.mode === 'adaptive-parts' && !character.faceBinding)) {
+      return [];
+    }
+    return (character.expressions ?? []).map((expression) => ({
           id: expression.id,
           name: expression.name,
         }));

@@ -336,10 +336,21 @@ export function buildProductPreviewImagePlan(
       resolvedCandidateAssetIds,
       visual.resources.candidates.map((resource) => resource.assetId),
     );
+    const ownerShotLayer = shot.layers.find((candidate) => candidate.id === visual.ownerLayerId);
+    const ownerSource = ownerShotLayer?.source;
+    const ownerCharacter =
+      ownerSource?.kind === 'character'
+        ? project.characters.find((candidate) => candidate.id === ownerSource.characterId)
+        : undefined;
+    const adaptiveTargetPartId =
+      ownerCharacter?.mode === 'adaptive-parts' && ownerCharacter.faceBinding
+        ? `${visual.ownerLayerId}:${ownerCharacter.faceBinding.targetPartId}`
+        : null;
     const activeMouthPart = visual.parts.find(
       (part) =>
-        (part.slot === 'face' || part.slot === 'single') &&
-        (part.assetId === visual.activeFace?.assetId || Boolean(part.flaGraphic)),
+        ((part.slot === 'face' || part.slot === 'single') &&
+          (part.assetId === visual.activeFace?.assetId || Boolean(part.flaGraphic))) ||
+        (adaptiveTargetPartId !== null && part.partId === adaptiveTargetPartId),
     );
     if (
       visual.activeFace?.source === 'mouth' &&

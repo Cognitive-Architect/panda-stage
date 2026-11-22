@@ -245,7 +245,7 @@ function addShotVisualAssets(
     );
     if (
       !character ||
-      character.mode === 'adaptive-parts' ||
+      (character.mode === 'adaptive-parts' && !character.faceBinding) ||
       (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(

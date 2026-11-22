@@ -348,14 +348,15 @@ function resolveExpressionState(
   if (!character) {
     return { assetId: null, currentExpressionId: null };
   }
-  if (character.mode === 'adaptive-parts') {
+  if (character.mode === 'adaptive-parts' && !character.faceBinding) {
     return { assetId: null, currentExpressionId: null };
   }
+  const expressions = character.expressions ?? [];
   const target =
-    character.expressions.find(
+    expressions.find(
       (candidate) => candidate.id === expressionId,
     ) ??
-    character.expressions.find(
+    expressions.find(
       (candidate) => candidate.id === fallbackExpressionId,
     );
   return {
@@ -670,7 +671,7 @@ function resolveAuthoredMouthOpenOverride(
   );
   if (
     !character ||
-    character.mode === 'adaptive-parts' ||
+    (character.mode === 'adaptive-parts' && !character.faceBinding) ||
     (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
   ) {
     return null;

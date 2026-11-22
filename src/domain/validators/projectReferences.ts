@@ -710,8 +710,8 @@ export function validateProjectReferences(
             const character = characters.get(characterId);
             if (
               !character ||
-              character.mode === 'adaptive-parts' ||
-              !character.expressions.some(
+              (character.mode === 'adaptive-parts' && !character.faceBinding) ||
+              !(character.expressions ?? []).some(
                 (expression) => expression.id === event.expressionId,
               )
             ) {
@@ -739,11 +739,14 @@ export function validateProjectReferences(
           } else {
             const characterId = layer.source.characterId;
             const character = characters.get(characterId);
-            if (!character || character.mode === 'adaptive-parts') {
+            if (
+              !character ||
+              (character.mode === 'adaptive-parts' && !character.faceBinding)
+            ) {
               addIssue(
                 context,
                 ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-                'Mouth cue events require a single-image or composite character.',
+                'Mouth cue events require a character with face expressions or mouth support.',
               );
             }
           }

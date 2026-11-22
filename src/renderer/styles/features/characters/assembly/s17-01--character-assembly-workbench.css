@@ -3021,3 +3021,8 @@
   min-width: 0;
   width: 100%;
 }
+
+.adaptive-parts-mouth-row-section {
+  padding-top: var(--ui-space-2);
+  border-top: 1px solid var(--ui-color-separator);
+}

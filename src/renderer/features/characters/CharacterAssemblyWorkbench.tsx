@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Eye, EyeOff, Minus, MoreHorizontal, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Minus, MoreHorizontal, Pencil, Play, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -59,6 +59,8 @@ import {
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
+import { CharacterCompactObjectRow } from './CharacterCompactObjectRow';
+import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import {
   ExpressionEditor,
   type ExpressionResourceSwapRequest,
@@ -66,7 +68,7 @@ import {
 import { GraphicFacePreview } from './GraphicFacePicker';
 import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
 import { useProjectImageThumbnails } from './CharacterIdentity';
-import { ThumbnailStateIcon } from './ThumbnailStateIcon';
+import { getThumbnailFallbackIconKind, ThumbnailStateIcon } from './ThumbnailStateIcon';
 import { measureImageVisibleBounds } from './measureImageVisibleBounds';
 import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
 import { VisibleBoundsThumbnail } from './VisibleBoundsThumbnail';
@@ -1051,6 +1053,7 @@ function AdaptivePartsAssemblyWorkbench({
   const [replacingPartId, setReplacingPartId] = useState<string | null>(null);
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [previewExpressionId, setPreviewExpressionId] = useState<string | null | undefined>(undefined);
+  const [previewMouthOpen, setPreviewMouthOpen] = useState(false);
   const [expressionSwapRequest, setExpressionSwapRequest] = useState<ExpressionResourceSwapRequest | null>(null);
   const replaceTriggerRef = useRef<HTMLElement | null>(null);
   const projectImageAssets = useMemo(
@@ -1128,14 +1131,28 @@ function AdaptivePartsAssemblyWorkbench({
     !adaptiveExpressions.some((expr) => expr.id === previewExpressionId)
       ? undefined
       : previewExpressionId;
+  const adaptiveMouthVisualSource =
+    assemblyCharacter?.mode === 'adaptive-parts' ? assemblyCharacter.mouthOpenVisualSource : undefined;
+  const adaptiveMouthAssetId =
+    assemblyCharacter?.mode === 'adaptive-parts' ? assemblyCharacter.mouthOpenAssetId : undefined;
+  const adaptiveMouthAsset = adaptiveMouthAssetId
+    ? projectImageAssets.find((asset) => asset.id === adaptiveMouthAssetId)
+    : undefined;
+  const adaptiveMouthGraphicDef = adaptiveMouthVisualSource
+    ? allFlaGraphics.find((graphic) => graphic.id === adaptiveMouthVisualSource.animationId)
+    : undefined;
+  const isAdaptiveMouthConfigured = Boolean(adaptiveMouthVisualSource || adaptiveMouthAsset);
+  const effectivePreviewMouthOpen =
+    leftTab === 'expressions' && previewMouthOpen && isAdaptiveMouthConfigured;
   const visual = useMemo(
     () =>
       buildAdaptivePartsAssemblyPreviewVisual(
         project,
         session,
         effectivePreviewExpressionId,
+        effectivePreviewMouthOpen,
       ),
-    [effectivePreviewExpressionId, project, session],
+    [effectivePreviewExpressionId, effectivePreviewMouthOpen, project, session],
   );
   const imageAssets = useMemo(() => {
     const ids = new Set<string>();
@@ -2453,11 +2470,12 @@ function AdaptivePartsAssemblyWorkbench({
                       characterStore.clearDefaultExpression(assemblyCharacter.id);
                     })
                   }
-                  onPreview={(expressionId) =>
+                  onPreview={(expressionId) => {
+                    setPreviewMouthOpen(false);
                     setPreviewExpressionId((current) =>
                       current === expressionId ? undefined : expressionId,
-                    )
-                  }
+                    );
+                  }}
                   onRemove={(expressionId) =>
                     runImmediateCharacterMutation(() => {
                       characterStore.removeExpression(assemblyCharacter.id, expressionId);
@@ -2498,6 +2516,159 @@ function AdaptivePartsAssemblyWorkbench({
                   thumbnails={adaptiveSwapThumbnails}
                   warnings={[]}
                 />
+                {assemblyCharacter ? (() => {
+                  const openAdaptiveMouthSwap = (trigger: HTMLElement | null): void => {
+                    setExpressionSwapRequest({
+                      title: '更换张嘴图',
+                      currentValue: adaptiveMouthVisualSource
+                        ? {
+                            kind: 'fla-graphic',
+                            animationId: adaptiveMouthVisualSource.animationId,
+                            firstFrame: adaptiveMouthVisualSource.firstFrame,
+                          }
+                        : { kind: 'image', assetId: adaptiveMouthAssetId ?? null },
+                      trigger,
+                      onConfirm: (nextValue) =>
+                        runImmediateCharacterMutation(() => {
+                          if (nextValue.kind === 'image') {
+                            characterStore.setMouthOpenAsset(
+                              assemblyCharacter.id,
+                              nextValue.assetId,
+                            );
+                          } else {
+                            characterStore.setMouthOpenVisualSource(
+                              assemblyCharacter.id,
+                              {
+                                kind: 'fla-graphic',
+                                animationId: nextValue.animationId,
+                                firstFrame: nextValue.firstFrame ?? 0,
+                              },
+                            );
+                          }
+                        }),
+                    });
+                  };
+                  return (
+                    <div className="adaptive-parts-mouth-row-section">
+                      <CharacterCompactObjectRow
+                        actions={
+                          <>
+                            <button
+                              aria-label={isAdaptiveMouthConfigured ? '更换张嘴图' : '设置张嘴图'}
+                              className="character-compact-icon-action"
+                              data-testid="adaptive-mouth-swap-button"
+                              onClick={(event) => openAdaptiveMouthSwap(event.currentTarget)}
+                              title={isAdaptiveMouthConfigured ? '更换张嘴图' : '设置张嘴图'}
+                              type="button"
+                            >
+                              <RefreshCw aria-hidden="true" size={14} />
+                            </button>
+                            {isAdaptiveMouthConfigured ? (
+                              <button
+                                aria-label="预览张嘴图"
+                                aria-pressed={effectivePreviewMouthOpen}
+                                className="character-compact-icon-action"
+                                data-testid="adaptive-mouth-preview-button"
+                                onClick={() => {
+                                  setPreviewExpressionId(undefined);
+                                  setPreviewMouthOpen((current) => !current);
+                                }}
+                                title="预览张嘴图"
+                                type="button"
+                              >
+                                <Play aria-hidden="true" size={14} />
+                              </button>
+                            ) : null}
+                            {adaptiveMouthVisualSource || adaptiveMouthAssetId ? (
+                              <CompactRowOverflowMenu
+                                ariaLabel="张嘴图更多操作"
+                                items={[
+                                  {
+                                    label: '清除',
+                                    className: 'character-mouth-clear',
+                                    danger: true,
+                                    testId: 'adaptive-mouth-clear-button',
+                                    onSelect: () => {
+                                      setPreviewMouthOpen(false);
+                                      runImmediateCharacterMutation(() => {
+                                        characterStore.setMouthOpenVisualSource(
+                                          assemblyCharacter.id,
+                                          null,
+                                        );
+                                      });
+                                    },
+                                  },
+                                ]}
+                                menuTestId="adaptive-mouth-overflow-menu"
+                                restoreFocusSelector='[data-testid="adaptive-mouth-visual-picker-selected"]'
+                                triggerTestId="adaptive-mouth-overflow-trigger"
+                              />
+                            ) : null}
+                          </>
+                        }
+                        assetState={
+                          adaptiveMouthVisualSource || adaptiveMouthAsset
+                            ? 'configured'
+                            : adaptiveMouthAssetId
+                              ? 'missing'
+                              : 'empty'
+                        }
+                        onSelect={openAdaptiveMouthSwap}
+                        previewing={effectivePreviewMouthOpen}
+                        rowTestId="adaptive-mouth-visual-picker"
+                        selectAriaLabel="更换张嘴图"
+                        selectTestId="adaptive-mouth-visual-picker-selected"
+                        subtitle={
+                          adaptiveMouthVisualSource
+                            ? `${adaptiveMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${adaptiveMouthVisualSource.firstFrame + 1} 帧`
+                            : adaptiveMouthAsset?.name ?? (adaptiveMouthAssetId ? '素材不可用' : '未设置')
+                        }
+                        thumbnail={
+                          adaptiveMouthVisualSource ? (
+                            <GraphicFacePreview label="张嘴图" source={adaptiveMouthVisualSource} />
+                          ) : (() => {
+                            const thumbState = adaptiveMouthAssetId
+                              ? adaptiveSwapThumbnails[adaptiveMouthAssetId]
+                              : undefined;
+                            if (thumbState?.status === 'ready') {
+                              return (
+                                <img
+                                  alt="张嘴图"
+                                  onError={() => {
+                                    if (adaptiveMouthAssetId) {
+                                      onAdaptiveSwapThumbnailError(adaptiveMouthAssetId);
+                                    }
+                                  }}
+                                  src={thumbState.dataUrl}
+                                />
+                              );
+                            }
+                            return (
+                              <ThumbnailStateIcon
+                                kind={
+                                  adaptiveMouthAssetId
+                                    ? getThumbnailFallbackIconKind(thumbState, {
+                                        assetConfigured: true,
+                                        assetResolved: Boolean(adaptiveMouthAsset),
+                                      })
+                                    : 'empty'
+                                }
+                              />
+                            );
+                          })()
+                        }
+                        title="张嘴图"
+                        tooltip={
+                          adaptiveMouthVisualSource
+                            ? `${adaptiveMouthGraphicDef?.name ?? 'FLA 元件'} · 第 ${adaptiveMouthVisualSource.firstFrame + 1} 帧`
+                            : adaptiveMouthAsset
+                              ? `${adaptiveMouthAsset.name} · ${adaptiveMouthAsset.width}×${adaptiveMouthAsset.height}`
+                              : '张嘴图'
+                        }
+                      />
+                    </div>
+                  );
+                })() : null}
               </>
             ) : null}
           </div>

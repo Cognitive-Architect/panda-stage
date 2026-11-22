@@ -719,6 +719,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
   project: Project,
   session: AdaptivePartsAssemblySnapshot,
   previewExpressionId?: string | null,
+  previewMouthOpen = false,
 ): LayerVisualParts | null {
   const existing = project.characters.find(
     (candidate): candidate is AdaptivePartsCharacter =>
@@ -794,7 +795,8 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
     id: layer.id,
     assetId: character.parts[0]!.assetId ?? character.parts[0]!.partId,
     currentExpressionId: activeExpressionId ?? null,
-    mouthOverrideAssetId: null,
+    mouthOverrideAssetId: previewMouthOpen ? (character.mouthOpenAssetId ?? null) : null,
+    ...(previewMouthOpen && character.mouthOpenVisualSource ? { mouthOpen: true } : {}),
     anchor: layer.anchor,
     x: layer.x,
     y: layer.y,
