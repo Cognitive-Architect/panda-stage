@@ -2809,9 +2809,9 @@ export function EditorShell({
                 inert={Boolean(characterFloatMode) || assemblyActive || undefined}
               >
                 <CanvasWorkspace
-                  dialogueSilence={dialogueSilence}
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  dialogueSilence={dialogueSilence}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                 />
               </div>
@@ -2877,9 +2877,9 @@ export function EditorShell({
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay
-              dialogueSilence={dialogueSilence}
               autoPlay
               autoCameraEnabled={autoCameraEnabled}
+              dialogueSilence={dialogueSilence}
               onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}
