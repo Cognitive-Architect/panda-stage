@@ -1798,7 +1798,7 @@ export function CanvasStage({
                 </span>
               </div>
             ) : null}
-            {(hasRequiredVisualFailure || hasExpressionOriginalFallback || hasMouthVisualDegradation) ? (
+            {(hasRequiredVisualFailure || hasMouthVisualDegradation || hasExpressionOriginalFallback) ? (
               <div
                 className="canvas-stage-message canvas-stage-warning"
                 data-testid="canvas-visual-failure-warning"
