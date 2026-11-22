@@ -282,14 +282,18 @@ export function projectShotHeadMotion(
   const character = project.characters.find(
     (candidate) => candidate.id === dialogue.characterId,
   );
-  if (character?.mode !== 'composite' || !character.head) {
+  const supportsHeadMotion =
+    (character?.mode === 'composite' && Boolean(character.head)) ||
+    (character?.mode === 'adaptive-parts' &&
+      Boolean(character.headMotionBinding?.partIds.length));
+  if (!character || !supportsHeadMotion) {
     return neutralShot;
   }
 
   const transform = resolveTalkingHeadMotionTransform(
     neutralShot.timeMs - dialogue.startMs,
     dialogue.endMs - dialogue.startMs,
-    character.talkingHeadMotionIntensityPercent,
+    character.talkingHeadMotionIntensityPercent ?? 100,
   );
   if (
     transform.translateX === 0 &&

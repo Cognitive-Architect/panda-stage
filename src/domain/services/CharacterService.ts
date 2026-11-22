@@ -1060,14 +1060,18 @@ export class CharacterService {
     characterId: string,
     intensityPercent: number,
   ): Project {
-    const character = this.compositeCharacter(project, characterId);
+    const character = this.character(project, characterId);
+    const hasHeadMotion =
+      (character.mode === 'composite' && Boolean(character.head)) ||
+      (character.mode === 'adaptive-parts' &&
+        Boolean(character.headMotionBinding?.partIds.length));
     const parsedIntensity = TalkingHeadMotionIntensityPercentSchema.safeParse(
       intensityPercent,
     );
-    if (!character.head || !parsedIntensity.success) {
+    if (!hasHeadMotion || !parsedIntensity.success) {
       throw new CharacterServiceError(
         'INVALID_TALKING_HEAD_INTENSITY',
-        'Talking head intensity requires a Head and a whole percentage from 0 to 200.',
+        'Talking head intensity requires a bound head and a whole percentage from 0 to 200.',
       );
     }
     if (character.talkingHeadMotionIntensityPercent === parsedIntensity.data) {

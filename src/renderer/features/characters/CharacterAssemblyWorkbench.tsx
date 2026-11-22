@@ -26,6 +26,7 @@ import {
   removeAdaptivePartFromDefinition,
   resolveCharacterPartVisualSource,
   resolveFlaGraphicSavedLayoutPlacements,
+  resolveTalkingHeadMotionTransform,
   scanAdaptivePartReferences,
   selectFlaGraphicSubtreeVisual,
   transformVisualRectByPart,
@@ -498,11 +499,13 @@ function AdaptivePartsContextMenu({
   hasFaceBinding = false,
   isFaceReplaceMember = false,
   isFaceTarget = false,
+  isHeadPart = false,
   onRemove,
   onRename,
   onReplace,
   onToggleFaceReplace,
   onToggleFaceTarget,
+  onToggleHeadMotionPart,
 }: {
   canRemove: boolean;
   canReplace: boolean;
@@ -511,11 +514,13 @@ function AdaptivePartsContextMenu({
   hasFaceBinding?: boolean;
   isFaceReplaceMember?: boolean;
   isFaceTarget?: boolean;
+  isHeadPart?: boolean;
   onRemove: () => void;
   onRename: () => void;
   onReplace: () => void;
   onToggleFaceReplace?: () => void;
   onToggleFaceTarget?: () => void;
+  onToggleHeadMotionPart?: () => void;
 }): React.JSX.Element {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -729,6 +734,16 @@ function AdaptivePartsContextMenu({
             type="button"
           >
             {isFaceReplaceMember ? '移出替换表情' : '设为替换表情成员'}
+          </button>
+        ) : null}
+        {onToggleHeadMotionPart ? (
+          <button
+            className="adaptive-parts-overflow-item"
+            data-testid="adaptive-parts-toggle-head-button"
+            onClick={() => runAction(onToggleHeadMotionPart)}
+            type="button"
+          >
+            {isHeadPart ? '移出头部' : '设为头部'}
           </button>
         ) : null}
         <button
@@ -1054,6 +1069,8 @@ function AdaptivePartsAssemblyWorkbench({
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [previewExpressionId, setPreviewExpressionId] = useState<string | null | undefined>(undefined);
   const [previewMouthOpen, setPreviewMouthOpen] = useState(false);
+  const [headMotionPreviewPlaying, setHeadMotionPreviewPlaying] = useState(false);
+  const [headMotionPreviewOffset, setHeadMotionPreviewOffset] = useState({ translateX: 0, translateY: 0 });
   const [expressionSwapRequest, setExpressionSwapRequest] = useState<ExpressionResourceSwapRequest | null>(null);
   const replaceTriggerRef = useRef<HTMLElement | null>(null);
   const projectImageAssets = useMemo(
@@ -1124,6 +1141,41 @@ function AdaptivePartsAssemblyWorkbench({
   const activeFaceBinding =
     session.draft.faceBinding ??
     (assemblyCharacter?.mode === 'adaptive-parts' ? assemblyCharacter.faceBinding : undefined);
+  const activeHeadMotionPartIds =
+    assemblyCharacter?.mode === 'adaptive-parts'
+      ? (assemblyCharacter.headMotionBinding?.partIds ?? [])
+      : [];
+  const activeHeadMotionPartSet = new Set(activeHeadMotionPartIds);
+  const adaptiveHeadIntensityPercent =
+    assemblyCharacter?.mode === 'adaptive-parts'
+      ? (assemblyCharacter.talkingHeadMotionIntensityPercent ?? 100)
+      : 100;
+  const adaptiveHeadPreviewActive =
+    headMotionPreviewPlaying &&
+    activeHeadMotionPartIds.length > 0 &&
+    adaptiveHeadIntensityPercent > 0;
+  useEffect(() => {
+    if (!adaptiveHeadPreviewActive) {
+      setHeadMotionPreviewOffset({ translateX: 0, translateY: 0 });
+      return undefined;
+    }
+    let frameId = 0;
+    const startTime = performance.now();
+    const tick = (now: number): void => {
+      const next = resolveTalkingHeadMotionTransform(
+        now - startTime,
+        Number.MAX_SAFE_INTEGER,
+        adaptiveHeadIntensityPercent,
+      );
+      setHeadMotionPreviewOffset({
+        translateX: next.translateX,
+        translateY: next.translateY,
+      });
+      frameId = window.requestAnimationFrame(tick);
+    };
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [adaptiveHeadIntensityPercent, adaptiveHeadPreviewActive]);
   const adaptiveExpressions =
     assemblyCharacter?.mode === 'adaptive-parts' ? (assemblyCharacter.expressions ?? []) : [];
   const effectivePreviewExpressionId =
@@ -1538,6 +1590,21 @@ function AdaptivePartsAssemblyWorkbench({
         placement: activeFaceBinding.placement,
       });
     });
+  };
+  const toggleHeadMotionPart = (partId: string): void => {
+    const exists = activeHeadMotionPartSet.has(partId);
+    const nextIds = exists
+      ? activeHeadMotionPartIds.filter((id) => id !== partId)
+      : [...activeHeadMotionPartIds, partId];
+    runImmediateCharacterMutation(() => {
+      characterStore.setAdaptivePartsHeadMotionBinding(
+        session.characterId,
+        nextIds.length > 0 ? nextIds : null,
+      );
+    });
+    if (nextIds.length === 0) {
+      setHeadMotionPreviewPlaying(false);
+    }
   };
   const updateFacePlacementDraft = (patch: Partial<FacePlacement>): void => {
     setDefinition((definition) => {
@@ -2259,6 +2326,9 @@ function AdaptivePartsAssemblyWorkbench({
                 isFaceTarget={Boolean(
                   selectedPart && activeFaceBinding?.targetPartId === selectedPart.partId,
                 )}
+                isHeadPart={Boolean(
+                  selectedPart && activeHeadMotionPartSet.has(selectedPart.partId),
+                )}
                 onRemove={() => { if (selectedPart) removePart(selectedPart.partId); }}
                 onRename={() => setRenamingPartId(selectedPart?.partId ?? null)}
                 onReplace={() => {
@@ -2274,6 +2344,9 @@ function AdaptivePartsAssemblyWorkbench({
                 }}
                 onToggleFaceTarget={() => {
                   if (selectedPart) toggleFaceTargetPart(selectedPart.partId);
+                }}
+                onToggleHeadMotionPart={() => {
+                  if (selectedPart) toggleHeadMotionPart(selectedPart.partId);
                 }}
               />
             </div>
@@ -2372,11 +2445,14 @@ function AdaptivePartsAssemblyWorkbench({
                       ? assetThumbnailKeys.get(fallbackImageId) ??
                         `asset:${project.id}:${fallbackImageId}`
                       : `fla-graphic:${project.id}:${visualSource.animationId}:${visualSource.poseFrameOrdinal ?? 0}:${JSON.stringify(visualSource.nodePath ?? null)}:${(visualPart?.flaGraphic?.resourceAssetIds ?? []).map((id) => assetThumbnailKeys.get(id) ?? id).join(',')}`;
-                const roleTag =
+                const isFaceRole =
                   activeFaceBinding?.targetPartId === part.partId ||
-                  activeFaceBinding?.replacePartIds.includes(part.partId)
-                    ? '表情'
-                    : undefined;
+                  activeFaceBinding?.replacePartIds.includes(part.partId);
+                const isHeadRole = activeHeadMotionPartSet.has(part.partId);
+                const roleTag =
+                  [isFaceRole ? '表情' : null, isHeadRole ? '头' : null]
+                    .filter((tag): tag is string => tag !== null)
+                    .join(' · ') || undefined;
                 return (
                   <AdaptivePartsAssemblyRow
                     displayName={name}
@@ -2699,7 +2775,7 @@ function AdaptivePartsAssemblyWorkbench({
         </button>
         <div className="adaptive-parts-assembly-title">
           <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
-          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+          {assemblyCharacter?.mode === 'adaptive-parts' ? (
             <button
               aria-controls={panelId + '-properties'}
               aria-expanded={inspectorOpen && inspectorContext === 'character'}
@@ -2772,6 +2848,10 @@ function AdaptivePartsAssemblyWorkbench({
               const matrix =
                 adaptivePartCanvasCssMatrix(part, project.width, project.height) ??
                 `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
+              const canvasPartTransform =
+                adaptiveHeadPreviewActive && activeHeadMotionPartSet.has(partId)
+                  ? `translate(${headMotionPreviewOffset.translateX}px, ${headMotionPreviewOffset.translateY}px) ${matrix}`
+                  : matrix;
               return (
                 <div
                   className={`adaptive-parts-assembly-canvas-part${selected ? ' is-selected' : ''}`}
@@ -2782,7 +2862,7 @@ function AdaptivePartsAssemblyWorkbench({
                     height: part.localRect.height,
                     left: 0,
                     top: 0,
-                    transform: matrix,
+                    transform: canvasPartTransform,
                     transformOrigin: 'top left',
                     width: part.localRect.width,
                   }}
@@ -2877,49 +2957,104 @@ function AdaptivePartsAssemblyWorkbench({
           <span className="quick-action-drawer-grip" aria-hidden="true" />
         </button>
         <div className="adaptive-parts-properties-body" id={panelId + '-properties'} inert={!inspectorOpen}>
-          {assemblyCharacter?.mode === 'adaptive-parts' && adaptivePartsActionsRef ? (
+          {assemblyCharacter?.mode === 'adaptive-parts' ? (
             <div hidden={inspectorContext !== 'character'}>
-              <AdaptiveCharacterManagement
-                key={JSON.stringify([assemblyCharacter.id, assemblyCharacter.name, assemblyCharacter.defaultScale, assemblyCharacter.defaultFlipX])}
-                character={assemblyCharacter}
-                onManage={(action) => {
-                  if (adaptivePartsActionsRef.current) {
-                    return adaptivePartsActionsRef.current.manage(action);
-                  }
-                  if (isCharacterAssemblyPending(project, session)) {
-                    return { ok: false, message: '请先应用或取消零件组装更改。' };
-                  }
-                  try {
-                    switch (action.kind) {
-                      case 'rename':
-                        characterStore.renameCharacter(assemblyCharacter.id, action.name);
-                        break;
-                      case 'transform':
-                        characterStore.setDefaultTransform(
-                          assemblyCharacter.id,
-                          action.scale,
-                          action.flipX,
-                        );
-                        break;
-                      case 'delete': {
-                        if (!window.confirm(`确认删除角色“${assemblyCharacter.name}”？`)) {
-                          return { ok: false };
-                        }
-                        characterStore.deleteCharacter(assemblyCharacter.id);
-                        activeHandle()?.cancel();
-                        break;
-                      }
+              {adaptivePartsActionsRef ? (
+                <AdaptiveCharacterManagement
+                  key={JSON.stringify([assemblyCharacter.id, assemblyCharacter.name, assemblyCharacter.defaultScale, assemblyCharacter.defaultFlipX])}
+                  character={assemblyCharacter}
+                  onManage={(action) => {
+                    if (adaptivePartsActionsRef.current) {
+                      return adaptivePartsActionsRef.current.manage(action);
                     }
-                    setMessage('');
-                    return { ok: true };
-                  } catch (error) {
-                    return {
-                      ok: false,
-                      message: error instanceof Error ? error.message : '角色操作失败。',
-                    };
-                  }
-                }}
-              />
+                    if (isCharacterAssemblyPending(project, session)) {
+                      return { ok: false, message: '请先应用或取消零件组装更改。' };
+                    }
+                    try {
+                      switch (action.kind) {
+                        case 'rename':
+                          characterStore.renameCharacter(assemblyCharacter.id, action.name);
+                          break;
+                        case 'transform':
+                          characterStore.setDefaultTransform(
+                            assemblyCharacter.id,
+                            action.scale,
+                            action.flipX,
+                          );
+                          break;
+                        case 'delete': {
+                          if (!window.confirm(`确认删除角色“${assemblyCharacter.name}”？`)) {
+                            return { ok: false };
+                          }
+                          characterStore.deleteCharacter(assemblyCharacter.id);
+                          activeHandle()?.cancel();
+                          break;
+                        }
+                      }
+                      setMessage('');
+                      return { ok: true };
+                    } catch (error) {
+                      return {
+                        ok: false,
+                        message: error instanceof Error ? error.message : '角色操作失败。',
+                      };
+                    }
+                  }}
+                />
+              ) : null}
+              {activeHeadMotionPartIds.length > 0 ? (
+                <section
+                  aria-label="说话点头联动"
+                  className="adaptive-talking-head-settings"
+                  data-testid="adaptive-talking-head-settings"
+                >
+                  <div className="character-talking-head-field-heading">
+                    <label htmlFor={`${panelId}-head-intensity`}>点头强度</label>
+                    <output
+                      aria-live="polite"
+                      className="character-talking-head-value"
+                      data-testid="adaptive-talking-head-intensity-value"
+                      htmlFor={`${panelId}-head-intensity`}
+                    >
+                      {adaptiveHeadIntensityPercent}%
+                    </output>
+                  </div>
+                  <input
+                    aria-label="点头强度"
+                    data-testid="adaptive-talking-head-intensity"
+                    id={`${panelId}-head-intensity`}
+                    max={200}
+                    min={0}
+                    onChange={(event) => {
+                      const nextValue = Number(event.currentTarget.value);
+                      runImmediateCharacterMutation(() => {
+                        characterStore.setTalkingHeadMotionIntensityPercent(
+                          assemblyCharacter.id,
+                          nextValue,
+                        );
+                      });
+                    }}
+                    step={10}
+                    type="range"
+                    value={adaptiveHeadIntensityPercent}
+                  />
+                  <div aria-hidden="true" className="character-talking-head-scale-labels">
+                    <span>静止</span>
+                    <span>标准</span>
+                    <span>明显</span>
+                  </div>
+                  <button
+                    aria-pressed={adaptiveHeadPreviewActive}
+                    className="adaptive-parts-row-menu-button"
+                    data-testid="adaptive-talking-head-preview-button"
+                    disabled={adaptiveHeadIntensityPercent === 0}
+                    onClick={() => setHeadMotionPreviewPlaying((current) => !current)}
+                    type="button"
+                  >
+                    {adaptiveHeadPreviewActive ? '停止预览' : '预览说话晃动'}
+                  </button>
+                </section>
+              ) : null}
             </div>
           ) : null}
           {inspectorContext === 'face' && activeFaceBinding ? (

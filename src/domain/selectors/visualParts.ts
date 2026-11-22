@@ -1542,6 +1542,34 @@ export function resolveLayerVisualParts(
       validImageAssetIds,
     });
     parts = [...faceProjection.parts];
+    const headDelta = evaluated.headGroupTransform;
+    const boundHeadPartIds = character.headMotionBinding?.partIds;
+    if (
+      headDelta &&
+      boundHeadPartIds &&
+      boundHeadPartIds.length > 0 &&
+      (headDelta.translateX !== 0 || headDelta.translateY !== 0)
+    ) {
+      const headPartIdSet = new Set(boundHeadPartIds);
+      const deltaMatrix: CharacterPartTransform = {
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: headDelta.translateX,
+        ty: headDelta.translateY,
+      };
+      parts = parts.map((part) => {
+        const charPartId = adaptivePartIdOfSource(part.source);
+        if (!charPartId || !headPartIdSet.has(charPartId) || !part.imageTransform) {
+          return part;
+        }
+        return {
+          ...part,
+          imageTransform: composeAffine(deltaMatrix, part.imageTransform),
+        };
+      });
+    }
     const requiredAssetIds = new Set<string>();
     const candidateAssetIds = new Set<string>();
     for (const part of parts) {

@@ -12,11 +12,16 @@ import {
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   evaluateShotAtTime,
+  projectShotDialogueVisual,
   resolveLayerVisualParts,
+  resolveTalkingHeadMotionTransform,
+  upsertExpressionEventAtTime,
+  upsertMouthCueEventAtTime,
   type AdaptivePartsCharacter,
   type ImageAsset,
   type Project,
 } from '../../src/domain';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import {
   preflightFlaBytes,
@@ -353,7 +358,10 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     const charSvc = new CharacterService();
     let project = store.getSnapshot()!.project;
     const xiaoshimei = project.characters.find((c) => c.id === createdEntry.characterId) as AdaptivePartsCharacter;
+    const backHairPart = xiaoshimei.parts[0]!;
+    const bodyMiddlePart = xiaoshimei.parts[Math.floor(xiaoshimei.parts.length / 4)]!;
     const targetFacePart = xiaoshimei.parts[Math.floor(xiaoshimei.parts.length / 2)]!;
+    const frontHairPart = xiaoshimei.parts[xiaoshimei.parts.length - 1]!;
 
     project = charSvc.setAdaptivePartsFaceBinding(project, xiaoshimei.id, {
       targetPartId: targetFacePart.partId,
@@ -370,6 +378,13 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     const pngExprId = boundChar.expressions![0]!.id;
     const graphicExprId = boundChar.expressions![1]!.id;
     project = charSvc.setDefaultExpression(project, xiaoshimei.id, graphicExprId);
+    project = charSvc.setMouthOpenAsset(project, xiaoshimei.id, smilePngId);
+    project = charSvc.setAdaptivePartsHeadMotionBinding(project, xiaoshimei.id, [
+      backHairPart.partId,
+      targetFacePart.partId,
+      frontHairPart.partId,
+    ]);
+    project = charSvc.setTalkingHeadMotionIntensityPercent(project, xiaoshimei.id, 150);
 
     const added = new LayerService().createFromAdaptiveCharacter(
       project,
@@ -378,10 +393,70 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
       { x: 960, y: 540 },
     );
     project = added.project;
+    const xiaoAudioAssetId = 'e1000000-0000-4000-8000-000000000088';
+    const xiaoAudioClipId = 'e1000000-0000-4000-8000-000000000089';
+    const xiaoDialogueId = 'e1000000-0000-4000-8000-000000000090';
+    const xiaoVoiceId = 'e1000000-0000-4000-8000-000000000091';
+    const baseVoice = project.voiceProfiles[0]!;
+    project = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        {
+          id: xiaoAudioAssetId,
+          kind: 'audio',
+          name: '小师妹台词',
+          relativePath: 'assets/xiao.wav',
+          mimeType: 'audio/wav',
+          durationMs: 1200,
+        },
+      ],
+      voiceProfiles: [
+        ...project.voiceProfiles,
+        { ...baseVoice, id: xiaoVoiceId, characterId: xiaoshimei.id, name: '小师妹声线' },
+      ],
+      shots: project.shots.map((s) => ({
+        ...s,
+        durationMs: 2000,
+        audioClips: [
+          {
+            id: xiaoAudioClipId,
+            name: '台词',
+            assetId: xiaoAudioAssetId,
+            role: 'dialogue',
+            startMs: 100,
+            endMs: 1300,
+            offsetMs: 0,
+            volume: 1,
+          },
+        ],
+        dialogues: [
+          {
+            id: xiaoDialogueId,
+            characterId: xiaoshimei.id,
+            voiceProfileId: xiaoVoiceId,
+            subtitleStyleId: IDS.subtitle,
+            audioClipId: xiaoAudioClipId,
+            text: '小师妹',
+            startMs: 100,
+            endMs: 1300,
+          },
+        ],
+      })),
+    });
+    project = upsertExpressionEventAtTime(project, IDS.shot, added.layer.id, pngExprId, 0);
+    project = upsertMouthCueEventAtTime(project, IDS.shot, added.layer.id, 'rest', 0);
+
     await projectService.save(projectRoot, project, snapshotState.revision);
     const reopened = await projectService.open(projectRoot);
     const reopenedChar = reopened.project.characters.find((c) => c.id === xiaoshimei.id) as AdaptivePartsCharacter;
     expect(reopenedChar.parts.length).toBe(xiaoshimei.parts.length);
+    expect(reopenedChar.headMotionBinding?.partIds).toEqual([
+      backHairPart.partId,
+      targetFacePart.partId,
+      frontHairPart.partId,
+    ]);
+    expect(reopenedChar.talkingHeadMotionIntensityPercent).toBe(150);
     // All non-target parts retain vector fla-graphic nodePath provenance
     const otherPart = reopenedChar.parts.find((p) => p.partId !== targetFacePart.partId)!;
     expect(otherPart.visualSource?.kind).toBe('fla-graphic');
@@ -414,16 +489,34 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
         .filter((asset) => asset.kind === 'image')
         .map((asset) => [asset.id, `file:///assets/${asset.id}.png`]),
     );
-    const stageModel = buildStageRenderModel(
-      reopened.project,
-      evaluateShotAtTime(shot, 0, reopened.project),
-      assetUrls,
-    );
-    const renderedLayer = stageModel.layers.find((entry) => entry.id === added.layer.id)!;
+    // Mid-dialogue (225ms -> elapsed 125ms): Stage & Export parity + head motion delta + preserved backHair drawOrder < body < frontHair
+    const evalNeutral = projectShotDialogueVisual(reopened.project, shot, evaluateShotAtTime(shot, 0, reopened.project));
+    const evalTalk = projectShotDialogueVisual(reopened.project, shot, evaluateShotAtTime(shot, 225, reopened.project));
+    const evalExportTalk = evaluateExportShotAtTime(reopened.project, shot, 225);
+    const stageNeutral = buildStageRenderModel(reopened.project, evalNeutral, assetUrls);
+    const stageTalk = buildStageRenderModel(reopened.project, evalTalk, assetUrls);
+    const exportStageTalk = buildStageRenderModel(reopened.project, evalExportTalk, assetUrls);
+    const renderedLayer = stageTalk.layers.find((entry) => entry.id === added.layer.id)!;
     expect(renderedLayer.parts).toHaveLength(xiaoshimei.parts.length);
-    expect(
-      renderedLayer.parts.find((p) => p.id === `${added.layer.id}:${targetFacePart.partId}`)!
-        .flaGraphic?.frameOrdinal,
-    ).toBe(1);
+    expect(renderedLayer).toEqual(exportStageTalk.layers.find((entry) => entry.id === added.layer.id)!);
+
+    const neutralLayerParts = stageNeutral.layers.find((entry) => entry.id === added.layer.id)!.parts;
+    const expectedDelta = resolveTalkingHeadMotionTransform(125, 1200, 150);
+    // BackHair (drawOrder 0) stays strictly ahead of Body in array order (behind in paint order) AND moves with head
+    const backIdx = renderedLayer.parts.findIndex((p) => p.id === `${added.layer.id}:${backHairPart.partId}`);
+    const bodyIdx = renderedLayer.parts.findIndex((p) => p.id === `${added.layer.id}:${bodyMiddlePart.partId}`);
+    const frontIdx = renderedLayer.parts.findIndex((p) => p.id === `${added.layer.id}:${frontHairPart.partId}`);
+    expect(backIdx).toBeLessThan(bodyIdx);
+    expect(bodyIdx).toBeLessThan(frontIdx);
+    expect(renderedLayer.parts[bodyIdx]!.render.x).toBe(neutralLayerParts[bodyIdx]!.render.x);
+    expect(renderedLayer.parts[bodyIdx]!.render.y).toBe(neutralLayerParts[bodyIdx]!.render.y);
+    expect(renderedLayer.parts[backIdx]!.render.x - neutralLayerParts[backIdx]!.render.x).toBeCloseTo(
+      expectedDelta.translateX,
+      5,
+    );
+    expect(renderedLayer.parts[frontIdx]!.render.x - neutralLayerParts[frontIdx]!.render.x).toBeCloseTo(
+      expectedDelta.translateX,
+      5,
+    );
   });
 });
