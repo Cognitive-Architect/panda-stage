@@ -25,6 +25,7 @@ import {
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
+  CharacterV34Schema,
   CharacterV22Schema,
   CharacterV23Schema,
   CharacterV24Schema,
@@ -149,7 +150,7 @@ const ProjectDataSchema = z
     ...ProjectIdentityShape,
     assets: z.array(AssetSchema),
     animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV34Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV22Schema),
@@ -731,9 +732,18 @@ export const ProjectV33Schema = ProjectV33DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV33DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV34DataSchema = ProjectV33DataSchema.extend({
+  schemaVersion: z.literal(34),
   shots: z.array(ShotSchema),
+});
+
+export const ProjectV34Schema = ProjectV34DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV34DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  characters: z.array(CharacterSchema),
 });
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */

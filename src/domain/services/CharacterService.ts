@@ -4,7 +4,7 @@ import {
   AnimationClipV0Schema,
   BodyPlacementSchema,
   CharacterActionPlacementSchema,
-  CharacterActionSchema,
+  BakedCharacterActionSchema,
   CharacterHeadSchema,
   CharacterPartSchema,
   DEFAULT_BODY_PLACEMENT,
@@ -24,7 +24,6 @@ import {
   type CharacterFaceSource,
   type CharacterFaceGraphicSource,
   type Character,
-  type CharacterAction,
   type CharacterActionPlacement,
   type CharacterExpression,
   type TalkingAnimationPlayback,
@@ -985,7 +984,8 @@ export class CharacterService {
       );
     }
 
-    const action: CharacterAction = CharacterActionSchema.parse({
+    if (existing && 'kind' in existing) throw new Error('请从分件动作入口编辑此动作。');
+    const action = BakedCharacterActionSchema.parse({
       id: existing?.id ?? this.createId(),
       name: parsedName.data,
       animationId: draft.animationId,

@@ -221,6 +221,12 @@ export function validateProjectReferences(
       addIssue(context, ['characters', characterIndex, 'talkingAnimationPlayback'], 'Talking animation frame is outside the source timeline.');
     }
     (character.actions ?? []).forEach((action, actionIndex) => {
+      if ('kind' in action) {
+        if (character.mode !== 'adaptive-parts') {
+          addIssue(context, ['characters', characterIndex, 'actions', actionIndex], 'Layered actions require an Adaptive Parts Character.');
+        }
+        return;
+      }
       if (!animations.has(action.animationId)) {
         addIssue(
           context,

@@ -1,7 +1,8 @@
 import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
-  CharacterAction,
+  BakedCharacterAction,
+  LayeredCharacterAction,
   Layer,
   MouthPose,
   Project,
@@ -53,7 +54,8 @@ export interface EvaluatedLayer {
   mouthOpen?: boolean;
   mouthPose?: MouthPose;
   /** Transient named Character action replacing the base Character visual. */
-  characterAction?: Pick<CharacterAction, 'id' | 'animationId' | 'placement'>;
+  characterAction?: BakedCharacterAction;
+  layeredCharacterAction?: { action: LayeredCharacterAction; localTimeMs: number };
   talkingAnimationElapsedMs?: number | 'rest';
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
@@ -784,8 +786,9 @@ export function evaluateShotAtTime(
       const characterAction = actionEvent?.type === 'character-action'
         ? character?.actions?.find((candidate) => candidate.id === actionEvent.actionId)
         : undefined;
-      const actionAnimation = characterAction
-        ? project.animations.find((candidate) => candidate.id === characterAction.animationId)
+      const bakedAction = characterAction && 'animationId' in characterAction ? characterAction : undefined;
+      const actionAnimation = bakedAction
+        ? project.animations.find((candidate) => candidate.id === bakedAction.animationId)
         : undefined;
       const actionFrame = actionEvent?.type === 'character-action' && actionAnimation
         ? resolveAnimationPlaybackFrameState(
@@ -796,8 +799,11 @@ export function evaluateShotAtTime(
             timeMs,
           )
         : null;
-      const activeCharacterAction = characterAction && actionAnimation && actionFrame
-        ? characterAction
+      const activeCharacterAction = bakedAction && actionAnimation && actionFrame
+        ? bakedAction
+        : undefined;
+      const layeredCharacterAction = characterAction && 'kind' in characterAction && actionEvent
+        ? { action: characterAction, localTimeMs: timeMs - actionEvent.startMs }
         : undefined;
       const preTrack = evaluateLayerPreTrackState(
         shot,
@@ -856,6 +862,7 @@ export function evaluateShotAtTime(
         assetId: actionFrame?.frame.assetId ?? mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
         ...(activeCharacterAction ? { characterAction: activeCharacterAction } : {}),
+        ...(layeredCharacterAction ? { layeredCharacterAction } : {}),
         mouthOverrideAssetId: mouthOpenOverride?.mouthOverrideAssetId ?? null,
         ...(mouthOpenOverride?.mouthOpen ? { mouthOpen: true } : {}),
         ...(actionFrame && actionAnimation

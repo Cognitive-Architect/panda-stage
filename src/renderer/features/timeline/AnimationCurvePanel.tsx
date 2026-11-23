@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
-  animationTargetIdentity, editAnimationPropertyKey, editOpacityEventKey, evaluateAnimationEase, keySelectedAnimationTargets,
-  resolveTimelineFrameTime, retimeAnimationPropertyRange,
+  animationTargetIdentity, characterFaceAndMouthPartIds, editAnimationPropertyKey, editOpacityEventKey, evaluateAnimationEase, keySelectedAnimationTargets,
+  resolveTimelineFrameTime, retimeAnimationPropertyRange, saveLayeredCharacterAction,
   type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type Shot,
   type AnimationTargetRef, type AnimationTrack,
 } from '../../../domain';
@@ -69,6 +69,8 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const [rangeEnd, setRangeEnd] = useState<number>();
   const [rangeMode, setRangeMode] = useState<'move' | 'scale' | 'hold'>('move');
   const [rangeFrames, setRangeFrames] = useState(1);
+  const [actionName, setActionName] = useState('');
+  const [headAnchor, setHeadAnchor] = useState('');
   const { currentTimeMs } = useTimelineUi();
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -88,6 +90,10 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const points = handles ?? key?.curveToNext?.bezier ?? defaults;
   const characterId = layer.source.kind === 'character' ? layer.source.characterId : null;
   const character = snapshot.project.characters.find(({ id }) => id === characterId);
+  const protectedParts = character?.mode === 'adaptive-parts' ? characterFaceAndMouthPartIds(character) : undefined;
+  const selectedParts = selected.filter(target => target.kind === 'character-part')
+    .filter(target => !protectedParts?.has(target.partId));
+  const headAnchors = selectedParts.filter(target => tracks.some(entry => entry.target.kind === 'character-part' && entry.target.partId === target.partId));
   function targetLabel(target: AnimationTargetRef): string {
     if (target.kind === 'layer') return layer.name;
     const node = target.kind === 'character-node' ? target.nodeId : null;
@@ -296,6 +302,29 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
       </div>
       <Button disabled={layer.locked || startMs >= endMs || !Number.isSafeInteger(rangeFrames) ||
         (rangeMode === 'move' ? rangeFrames === 0 : rangeFrames < 1)} onClick={retime}>应用到当前属性</Button>
+      {character?.mode === 'adaptive-parts' && selectedParts.length > 0 ? <div className="animation-curve-fields">
+        <label>分件动作名称<input value={actionName} maxLength={64} onChange={event => setActionName(event.target.value)} /></label>
+        <label>头部跟随<select value={headAnchors.some(part => part.partId === headAnchor) ? headAnchor : ''}
+          onChange={event => setHeadAnchor(event.target.value)}>
+          <option value="">无</option>
+          {headAnchors.map(part => <option key={part.partId} value={part.partId}>{targetLabel(part)}</option>)}
+        </select></label>
+        <Button disabled={layer.locked || startMs >= endMs || !actionName.trim()} onClick={() => {
+          try {
+            const state = editorProjectStore.getSnapshot();
+            if (!state) return;
+            const project = saveLayeredCharacterAction(state.project, shot.id, layer.id, {
+              name: actionName, startMs, endMs, partIds: selectedParts.map(({ partId }) => partId),
+              headAnchorPartId: headAnchors.some(part => part.partId === headAnchor) ? headAnchor : undefined,
+            });
+            editorProjectStore.updateProject(project, '保存分件动作');
+            setActionName('');
+            setError('');
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : '无法保存分件动作。');
+          }
+        }}>保存分件动作</Button>
+      </div> : null}
     </details> : null}
     {error ? <p role="alert">{error}</p> : null}
   </section>;

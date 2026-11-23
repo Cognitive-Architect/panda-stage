@@ -1,13 +1,15 @@
-import { multiplyAffineMatrices } from '../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices } from '../shared/affine-matrix';
 import { characterPartSourceBounds } from './geometry/characterPartLayout';
 import {
   AnimationClipV0Schema, TargetLocalPivotSchema, sameAnimationTarget,
   type AnimationClipV0, type CharacterPartTargetBasis, type CharacterPartTargetRef,
   type TargetLocalPivot,
 } from './models/animationCore';
-import { resolveCharacterPartVisualSource, type CharacterPartTransform } from './models/character';
+import {
+  resolveCharacterPartVisualSource, type AdaptivePartsCharacter, type CharacterPartTransform, type LayeredCharacterAction,
+} from './models/character';
 import type { Project } from './models/project';
-import type { EvaluatedAnimationValue } from './evaluate-animation-core';
+import { evaluateAnimationTrackAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 
 const IDENTITY: CharacterPartTransform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 
@@ -31,6 +33,10 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
     if (layer.animationClip.version !== 1) throw new Error('Character Layer requires a Character Animation Clip v1.');
     return structuredClone(layer.animationClip);
   }
+  return captureCharacterPartAnimationBasis(project, character, layerId);
+}
+
+export function captureCharacterPartAnimationBasis(project: Project, character: AdaptivePartsCharacter, layerId: string): AnimationClipV0 {
   const sourcePosePoints: { x: number; y: number }[] = [];
   const targetBases = character.parts.map((part): CharacterPartTargetBasis => {
     const bounds = characterPartSourceBounds(part, project.animations, project.assets);
@@ -54,6 +60,48 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
     fixedCharacterCenter: { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 },
     targetBases, tracks: [],
   });
+}
+
+export function characterFaceAndMouthPartIds(character: AdaptivePartsCharacter): Set<string> {
+  const binding = character.faceBinding;
+  return new Set([
+    ...(binding ? [binding.targetPartId, ...binding.replacePartIds] : []),
+    ...(character.mouthPoseSet?.poses.flatMap(({ target }) => target.kind === 'mouth' ? [target.partId] : []) ?? []),
+  ]);
+}
+
+/** Overlay owned properties on the instance pose, then carry the head with the authored anchor. */
+export function resolveLayeredCharacterPartTransforms(
+  clip: AnimationClipV0,
+  character: AdaptivePartsCharacter,
+  baseValues: readonly EvaluatedAnimationValue[],
+  layered: { action: LayeredCharacterAction; localTimeMs: number },
+): ReadonlyMap<string, CharacterPartTransform> {
+  const layerId = clip.targetBases[0]?.target.layerId;
+  if (!layerId) return new Map();
+  const protectedParts = characterFaceAndMouthPartIds(character);
+  const actionValues: EvaluatedAnimationValue[] = layered.action.tracks
+    .filter(({ partId }) => !protectedParts.has(partId))
+    .map((track) => ({ target: { kind: 'character-part', layerId, partId: track.partId },
+      property: track.property, value: evaluateAnimationTrackAtTime(track, layered.localTimeMs) }));
+  const values = [...baseValues, ...actionValues];
+  const anchor = clip.targetBases.find(({ target }) => target.partId === layered.action.headAnchorPartId);
+  let headDelta: CharacterPartTransform | undefined;
+  if (anchor && !protectedParts.has(anchor.target.partId)) {
+    const before = composeAnimatedCharacterPartTransform(anchor, clip.fixedCharacterCenter, baseValues);
+    const inverse = invertAffineMatrix(before);
+    if (inverse) {
+      const after = composeAnimatedCharacterPartTransform(anchor, clip.fixedCharacterCenter, values);
+      headDelta = multiplyAffineMatrices(after, inverse);
+    }
+  }
+  const followers = new Set([...protectedParts, ...(character.headMotionBinding?.partIds ?? [])]);
+  return new Map(clip.targetBases.map((basis) => {
+    const id = basis.target.partId;
+    const transform = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+    return [id, headDelta && id !== anchor?.target.partId && followers.has(id)
+      ? multiplyAffineMatrices(headDelta, transform) : transform];
+  }));
 }
 
 /** Resolve only the frozen instance identity, never current Library Part membership. */

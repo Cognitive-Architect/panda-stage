@@ -36,7 +36,9 @@ export function listCharacterActionVisualAssetIds(project: Project, shot: Shot):
     const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
     const character = project.characters.find((candidate) => candidate.id === characterId);
     const action = character?.actions?.find((candidate) => candidate.id === event.actionId);
-    const animation = project.animations.find((candidate) => candidate.id === action?.animationId);
+    const animation = action && 'animationId' in action
+      ? project.animations.find((candidate) => candidate.id === action.animationId)
+      : undefined;
     if (!animation) continue;
     for (const frame of animation.frames) assetIds.add(frame.assetId);
     if (isFlaGraphicDefinition(animation)) {
@@ -351,6 +353,12 @@ export function projectShotMouth(
         return { ...layer, mouthPose: restPose };
       }
       return layer;
+    }
+
+    if (shouldOpenFromDialogue && restPose?.target.kind === 'mouth') {
+      const openPose = poseSet?.poses.find(({ id }) => id === poseSet.analyzerMapping.open);
+      changed = true;
+      return { ...layer, mouthPose: openPose?.target.kind === 'mouth' ? openPose : restPose };
     }
 
     if (

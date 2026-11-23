@@ -15,7 +15,8 @@ const frameNumber = (timeMs: number): number => Math.round(timeMs * TIMELINE_FPS
 const scaleProperty = (property: AnimationProperty): boolean =>
   property === 'transform.scaleX' || property === 'transform.scaleY';
 
-function captureTrack(track: AnimationTrack, startMs: number, endMs: number): UserMotionPreset['tracks'][number] {
+export function captureMotionTrackRange(track: AnimationTrack, startMs: number, endMs: number,
+  relative: boolean): UserMotionPreset['tracks'][number] {
   const times = [startMs, ...track.keys.map((key) => key.timeMs).filter((time) => time > startMs && time < endMs), endMs];
   const fromFrame = frameNumber(startMs);
   const baseline = evaluateAnimationTrackAtTime(track, startMs);
@@ -23,7 +24,8 @@ function captureTrack(track: AnimationTrack, startMs: number, endMs: number): Us
   const keys: UserMotionPreset['tracks'][number]['keys'] = [];
   const capture = (timeMs: number, interpolationToNext: AnimationKey['interpolationToNext'], curveToNext?: AnimationKey['curveToNext']): void => {
     const value = evaluateAnimationTrackAtTime(track, timeMs);
-    keys.push({ frameOffset: frameNumber(timeMs) - fromFrame, value: scale ? value / baseline : value - baseline,
+    const outputValue = relative ? (scale ? value / baseline : value - baseline) : value;
+    keys.push({ frameOffset: frameNumber(timeMs) - fromFrame, value: outputValue,
       interpolationToNext, ...(curveToNext ? { curveToNext } : {}) });
   };
   let authoredIndex = 0;
@@ -50,7 +52,7 @@ function captureTrack(track: AnimationTrack, startMs: number, endMs: number): Us
 }
 
 export function captureUserMotionPreset(clip: LayerAnimationClip, id: string, name: string, startMs: number, endMs: number): UserMotionPreset {
-  const tracks = clip.tracks.map((track) => captureTrack(track, startMs, endMs))
+  const tracks = clip.tracks.map((track) => captureMotionTrackRange(track, startMs, endMs, true))
     .filter(({ property, keys }) => keys.some(({ value }) => value !== (scaleProperty(property) ? 1 : 0)));
   if (!tracks.length) throw new Error('这个时段内没有可保存的运动。');
   return UserMotionPresetSchema.parse({ id, name, durationFrames: frameNumber(endMs) - frameNumber(startMs), tracks });

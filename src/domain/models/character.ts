@@ -4,6 +4,7 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { AnimationKeySchema, AnimationPropertySchema } from './animationKeys';
 import {
   cloneFlaEditableShapeRegion,
   FlaEditableShapeRegionSchema,
@@ -863,15 +864,44 @@ export const CharacterActionPlacementSchema = z.object({
   scale: FiniteNumberSchema.min(CHARACTER_PART_MIN_SCALE).max(CHARACTER_PART_MAX_SCALE),
 }).strict();
 
-export const CharacterActionSchema = z.object({
+export const BakedCharacterActionSchema = z.object({
   id: IdSchema,
   name: NameSchema,
   animationId: IdSchema,
   placement: CharacterActionPlacementSchema,
 }).strict();
 
+export const LayeredCharacterActionSchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  kind: z.literal('layered'),
+  tracks: z.array(z.object({
+    partId: IdSchema,
+    property: AnimationPropertySchema,
+    keys: z.array(AnimationKeySchema).min(2),
+  }).strict()).min(1),
+  headAnchorPartId: IdSchema.optional(),
+}).strict().superRefine(({ tracks, headAnchorPartId }, context) => {
+  const addresses = new Set<string>();
+  tracks.forEach(({ partId, property, keys }, index) => {
+    const address = `${partId}:${property}`;
+    const scale = property === 'transform.scaleX' || property === 'transform.scaleY';
+    if (addresses.has(address) || keys[0]?.timeMs !== 0 || keys.some((key, keyIndex) =>
+      (keyIndex > 0 && key.timeMs <= keys[keyIndex - 1]!.timeMs) ||
+      (scale && (key.value < CHARACTER_PART_MIN_SCALE || key.value > CHARACTER_PART_MAX_SCALE)))) {
+      context.addIssue({ code: 'custom', path: ['tracks', index], message: 'Invalid or duplicate layered action track.' });
+    }
+    addresses.add(address);
+  });
+  if (headAnchorPartId && !tracks.some(({ partId }) => partId === headAnchorPartId)) {
+    context.addIssue({ code: 'custom', path: ['headAnchorPartId'], message: 'The head anchor must have an action track.' });
+  }
+});
+
+export const CharacterActionSchema = z.union([BakedCharacterActionSchema, LayeredCharacterActionSchema]);
+
 const CharacterActionsShape = {
-  actions: z.array(CharacterActionSchema).max(64).optional(),
+  actions: z.array(BakedCharacterActionSchema).max(64).optional(),
 };
 
 const CharacterV28Fields = { ...MouthPoseShape, ...CharacterActionsShape };
@@ -909,23 +939,42 @@ export type ExpressionTalkingSource = z.infer<typeof ExpressionTalkingSourceSche
 const ExpressionTalkingShape = {
   expressionTalkingSources: z.record(IdSchema, ExpressionTalkingSourceSchema).optional(),
 };
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV28Schema.safeExtend(ExpressionTalkingShape);
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterV28Schema.safeExtend(ExpressionTalkingShape),
-  CompositeCharacterV28Schema.safeExtend(ExpressionTalkingShape),
-  AdaptivePartsCharacterCurrentSchema,
-]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine((character, context) => {
+const SingleImageCharacterWithTalkingSchema = SingleImageCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const CompositeCharacterWithTalkingSchema = CompositeCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const AdaptivePartsCharacterV34Schema = AdaptivePartsCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const CurrentCharacterActionsShape = {
+  actions: z.array(CharacterActionSchema).max(64).optional(),
+};
+const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
+
+function validateExpressionTalkingSources(character: {
+  expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
+  expressions?: readonly { id: string }[];
+}, context: z.RefinementCtx): void {
   for (const expressionId of Object.keys(character.expressionTalkingSources ?? {})) {
     if (!(character.expressions ?? []).some((entry) => entry.id === expressionId)) {
       context.addIssue({ code: 'custom', path: ['expressionTalkingSources', expressionId], message: 'Unknown expression.' });
     }
   }
-});
+}
+
+export const CharacterV34Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterWithTalkingSchema, CompositeCharacterWithTalkingSchema, AdaptivePartsCharacterV34Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
 export type CharacterAction = z.infer<typeof CharacterActionSchema>;
+export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
+export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;

@@ -55,7 +55,7 @@ export function sliceAnimationCurve(curve: AnimationCurve | undefined, from: num
 }
 
 /** Evaluate a validated track at absolute Shot time, without playback state. */
-export function evaluateAnimationTrackAtTime(track: AnimationTrack, requestedTimeMs: number): number {
+export function evaluateAnimationTrackAtTime(track: Pick<AnimationTrack, 'keys'>, requestedTimeMs: number): number {
   const timeMs = Number.isFinite(requestedTimeMs)
     ? Math.max(0, Math.round(requestedTimeMs)) : 0;
   const first = track.keys[0]!;
