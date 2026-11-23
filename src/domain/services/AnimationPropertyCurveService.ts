@@ -6,7 +6,7 @@ import {
   type AnimationTrack,
 } from '../models/animationCore';
 import { ProjectSchema, type Project } from '../models/project';
-import { isValidFrameTime } from '../timeline/frame-grid';
+import { frameTimeMs, isValidFrameTime, TIMELINE_FPS } from '../timeline/frame-grid';
 
 export interface AnimationPropertyKeyAddress {
   shotId: string;
@@ -96,4 +96,48 @@ export function keySelectedAnimationTargets(
     return { ...track, keys };
   });
   return { project: inserted ? commitTrackChanges(project, shot, layer, tracks, [timeMs]) : project, inserted, skipped };
+}
+
+/** Move uses a signed frame delta. Scale and hold use positive frame lengths. */
+export function retimeAnimationPropertyRange(
+  project: Project, address: Omit<AnimationPropertyKeyAddress, 'keyTimeMs'>,
+  range: { startMs: number; endMs: number; mode: 'move' | 'scale' | 'hold'; frames: number },
+): Project {
+  const shot = project.shots.find(({ id }) => id === address.shotId);
+  const layer = shot?.layers.find(({ id }) => id === address.target.layerId);
+  const clip = layer?.animationClip;
+  if (!shot || !layer || !clip || layer.locked) throw new Error('所选对象动作已不可编辑。');
+  const track = clip.tracks.find((candidate) => candidate.property === address.property &&
+    sameAnimationTarget(candidate.target, address.target));
+  if (!track) throw new Error('所选属性轨道已不存在。');
+  const start = track.keys.findIndex((key) => key.timeMs === range.startMs);
+  const end = track.keys.findIndex((key) => key.timeMs === range.endMs);
+  if (start < 0 || end <= start || !Number.isSafeInteger(range.frames) ||
+    (range.mode !== 'move' && range.frames <= 0)) throw new Error('请选择起止关键帧和有效帧数。');
+  if (range.mode === 'move' && range.frames === 0) return project;
+  const frameIndex = (time: number) => Math.round(time * TIMELINE_FPS / 1_000);
+  const startFrame = frameIndex(range.startMs);
+  const endFrame = frameIndex(range.endMs);
+  const keys = [...track.keys];
+  if (range.mode === 'hold') {
+    const endKey = keys[end]!;
+    keys[end] = { timeMs: endKey.timeMs, value: endKey.value, interpolationToNext: 'step' };
+    keys.splice(end + 1, 0, { ...endKey, timeMs: frameTimeMs(endFrame + range.frames) });
+  } else {
+    for (let index = start; index <= end; index += 1) {
+      const key = keys[index]!;
+      const position = frameIndex(key.timeMs);
+      const frame = range.mode === 'move' ? position + range.frames
+        : startFrame + Math.round((position - startFrame) * range.frames / (endFrame - startFrame));
+      if (frame < 0) throw new Error('选段不能移动到镜头外。');
+      keys[index] = { ...key, timeMs: frameTimeMs(frame) };
+    }
+  }
+  if (keys[0]!.timeMs !== 0 || keys.some((key, index) =>
+    key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs))) {
+    throw new Error('选段越界、遇到其他关键帧，或会移动固定起始帧。');
+  }
+  if (range.mode !== 'hold' && keys.every((key, index) => key.timeMs === track.keys[index]?.timeMs)) return project;
+  return commitTrackChanges(project, shot, layer, clip.tracks.map((candidate) =>
+    candidate === track ? { ...track, keys } : candidate), keys.slice(start, end + 2).map(({ timeMs }) => timeMs));
 }

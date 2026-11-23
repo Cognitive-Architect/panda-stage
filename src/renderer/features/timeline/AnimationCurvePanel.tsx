@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
-  animationTargetIdentity, editAnimationPropertyKey, evaluateAnimationEase, keySelectedAnimationTargets, resolveTimelineFrameTime,
+  animationTargetIdentity, editAnimationPropertyKey, evaluateAnimationEase, keySelectedAnimationTargets,
+  resolveTimelineFrameTime, retimeAnimationPropertyRange,
   type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type Shot,
   type AnimationTargetRef,
 } from '../../../domain';
@@ -47,6 +48,10 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const [handles, setHandles] = useState<AnimationBezier>();
   const [error, setError] = useState('');
   const [selectedTargets, setSelectedTargets] = useState<readonly string[]>([]);
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd, setRangeEnd] = useState<number>();
+  const [rangeMode, setRangeMode] = useState<'move' | 'scale' | 'hold'>('move');
+  const [rangeFrames, setRangeFrames] = useState(1);
   const { currentTimeMs } = useTimelineUi();
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -58,6 +63,9 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const index = Math.max(0, track?.keys.findIndex(({ timeMs }) => timeMs === keyTime) ?? 0);
   const key = track?.keys[index];
   const next = track?.keys[index + 1];
+  const rangeKeys = track?.keys ?? [];
+  const startMs = rangeKeys.some(({ timeMs }) => timeMs === rangeStart) ? rangeStart : 0;
+  const endMs = rangeKeys.some(({ timeMs }) => timeMs === rangeEnd) ? rangeEnd! : (rangeKeys.at(-1)?.timeMs ?? 0);
   const curve = handles ? { bezier: handles } : key?.curveToNext;
   const points = handles ?? key?.curveToNext?.bezier ?? defaults;
   const characterId = layer.source.kind === 'character' ? layer.source.characterId : null;
@@ -172,6 +180,20 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     }
   }
 
+  function retime(): void {
+    const state = current();
+    if (!state || !track) return;
+    try {
+      const project = retimeAnimationPropertyRange(state.project,
+        { shotId: shot.id, target: track.target, property: track.property },
+        { startMs, endMs, mode: rangeMode, frames: rangeFrames });
+      if (project !== state.project) editorProjectStore.updateProject(project, '调整属性选段时间');
+      setError('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法调整选段时间。');
+    }
+  }
+
   return <section className="animation-curve-panel" aria-label="属性曲线" onKeyDown={(event) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
@@ -234,6 +256,26 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
       <Button disabled={layer.locked || !selected.length} onClick={keySelected}>
         在 {formatTimecode(currentTimeMs)} 落键
       </Button>
+    </details> : null}
+    {rangeKeys.length > 1 ? <details className="animation-key-selection">
+      <summary>选段时间</summary>
+      <div className="animation-curve-fields">
+        <label>起始关键帧<select value={startMs} onChange={(event) => setRangeStart(Number(event.target.value))}>
+          {rangeKeys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
+        </select></label>
+        <label>结束关键帧<select value={endMs} onChange={(event) => setRangeEnd(Number(event.target.value))}>
+          {rangeKeys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
+        </select></label>
+        <label>操作<select value={rangeMode} onChange={(event) => setRangeMode(event.target.value as typeof rangeMode)}>
+          <option value="move">整体移动</option><option value="scale">等比改时</option><option value="hold">延长停留</option>
+        </select></label>
+        <label>{rangeMode === 'move' ? '移动帧数' : rangeMode === 'scale' ? '新时长（帧）' : '停留帧数'}
+          <input type="number" step={1} min={rangeMode === 'move' ? undefined : 1} value={rangeFrames}
+            onChange={(event) => setRangeFrames(Number(event.target.value))} />
+        </label>
+      </div>
+      <Button disabled={layer.locked || startMs >= endMs || !Number.isSafeInteger(rangeFrames) ||
+        (rangeMode === 'move' ? rangeFrames === 0 : rangeFrames < 1)} onClick={retime}>应用到当前属性</Button>
     </details> : null}
     {error ? <p role="alert">{error}</p> : null}
   </section>;

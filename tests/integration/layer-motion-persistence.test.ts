@@ -27,6 +27,39 @@ import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProje
 import { IDS } from '../unit/domain/testProject';
 
 describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
+  it('skips a reference closing frame and synchronizes only consecutive editable source instances', async () => {
+    const layers = new LayerService();
+    let project = graphicFaceProject();
+    const ids: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const placed = layers.createFromAnimation(project, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 550 + index * 125, y: 450 },
+      });
+      ids.push(placed.layer.id);
+      project = placed.project;
+    }
+    const shot = project.shots[0]!;
+    const blocked = shot.layers.find(({ id }) => id === ids[2])!;
+    blocked.locked = true;
+    const result = layers.applySourceLoop(project, IDS.shot, ids[0]!, {
+      firstFrame: 0, lastFrame: 3, closingReference: true, throughLayerId: ids[3]!,
+    });
+    expect(result.stoppedAt).toBe(blocked.name);
+    const edited = result.project.shots[0]!;
+    expect(edited.layers.find(({ id }) => id === ids[1])?.animationSourceRange).toEqual({ firstFrame: 0, lastFrame: 2 });
+    expect(edited.layers.find(({ id }) => id === ids[3])?.animationSourceRange).toBeUndefined();
+    const live = edited.layers.find(({ id }) => id === ids[1])!;
+    const independent = layers.updateAnimationPlayback(result.project, IDS.shot, ids[0]!, { mode: 'once' });
+    expect(independent.shots[0]!.layers.find(({ id }) => id === ids[1])).toEqual(live);
+    const reopened = migrateProject(JSON.parse(JSON.stringify(result.project)));
+    for (const [time, ordinal] of [[125, 0], [42, 1], [83, 2], [0, 0], [167, 1]] as const) {
+      const reopenedShot = reopened.shots[0]!;
+      const stage = evaluateShotAtTime(reopenedShot, time, reopened);
+      for (const output of [stage, projectProductPreviewDialogue(reopened, reopenedShot, stage), evaluateExportShotAtTime(reopened, reopenedShot, time)]) {
+        expect(output.layers.find(({ id }) => id === ids[0])?.animationFrame?.frameOrdinal).toBe(ordinal);
+      }
+    }
+  });
   it('writes audio energy as one editable key range while preserving untouched curves and silent sections', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-audio-motion-'));
     try {

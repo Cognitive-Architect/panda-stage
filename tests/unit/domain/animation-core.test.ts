@@ -6,12 +6,36 @@ import {
   evaluateAnimationTrackAtTime, evaluateAnimationClipAtTime, migrateProject,
   editAnimationPropertyKey,
   keySelectedAnimationTargets,
+  retimeAnimationPropertyRange,
   type AnimationInterpolation,
 } from '../../../src/domain';
 import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
+  it('moves, scales and extends hold for one property without moving surrounding keys', () => {
+    const { project, clip, layerId } = animationCoreFixture();
+    const track = clip.tracks[0]!;
+    track.keys = [0, 500, 750, 1000, 2000].map((timeMs, index) => ({
+      timeMs, value: index * 10, interpolationToNext: 'linear',
+    }));
+    const layer = project.shots[0]!.layers.find(({ id }) => id === layerId)!;
+    layer.animationClip = clip;
+    const address = { shotId: IDS.shot, target: track.target, property: track.property };
+    const range = { startMs: 500, endMs: 1000 };
+    function keys(mode: 'move' | 'scale' | 'hold', frames: number) {
+      const edited = retimeAnimationPropertyRange(project, address, { ...range, mode, frames });
+      return edited.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks[0]!.keys;
+    }
+    expect(keys('move', 6).map(({ timeMs }) => timeMs)).toEqual([0, 750, 1000, 1250, 2000]);
+    expect(keys('scale', 24).map(({ timeMs }) => timeMs)).toEqual([0, 500, 1000, 1500, 2000]);
+    expect(keys('hold', 6).map(({ timeMs, value }) => [timeMs, value])).toEqual([
+      [0, 0], [500, 10], [750, 20], [1000, 30], [1250, 30], [2000, 40],
+    ]);
+    expect(keys('hold', 6)[3]!.interpolationToNext).toBe('step');
+    expect(() => keys('scale', 36)).toThrow('遇到其他关键帧');
+    expect(track.keys.map(({ timeMs }) => timeMs)).toEqual([0, 500, 750, 1000, 2000]);
+  });
   it('inserts one sampled key per selected track while preserving curved and stepped motion', () => {
     const { project, layerId } = animationCoreFixture();
     const layer = project.shots[0]!.layers.find(({ id }) => id === layerId)!;

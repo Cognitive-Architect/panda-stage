@@ -154,6 +154,13 @@ export class LayerStore {
     return next;
   }
 
+  applySourceLoop(layerId: string, input: Parameters<LayerService['applySourceLoop']>[3]): string | undefined {
+    const { project, shotId } = this.context();
+    const result = this.service.applySourceLoop(project, shotId, layerId, input);
+    if (result.project !== project) this.editorStore.updateProject(result.project, '设置动画循环范围');
+    return result.stoppedAt;
+  }
+
   duplicateAnimationLayer(layerId: string): Layer {
     const { project, projectRoot, shotId } = this.context();
     const result = this.service.duplicateAnimationLayer(

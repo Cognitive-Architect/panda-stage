@@ -1545,6 +1545,44 @@ export class LayerService {
     return this.replaceShot(project, { ...shot, layers });
   }
 
+  applySourceLoop(
+    project: Project, shotId: string, layerId: string,
+    input: { firstFrame: number; lastFrame: number; closingReference: boolean; throughLayerId: string },
+  ): { project: Project; stoppedAt?: string } {
+    const shot = this.shot(project, shotId);
+    const ordered = [...shot.layers].sort((left, right) => left.zIndex - right.zIndex);
+    const startIndex = ordered.findIndex(({ id }) => id === layerId);
+    const endIndex = ordered.findIndex(({ id }) => id === input.throughLayerId);
+    const start = ordered[startIndex];
+    if (!start || start.source.kind !== 'animation' || endIndex < startIndex) {
+      throw new LayerServiceError('ANIMATION_LAYER_REQUIRED', '请选择从当前动画图层开始的连续范围。');
+    }
+    this.assertEditable(shot, start);
+    const animationId = start.source.animationId;
+    const definition = project.animations.find(({ id }) => id === animationId);
+    if (!definition || input.lastFrame >= resolveFlaGraphicPreviewTimeline(definition, true).totalFrames) {
+      throw new LayerServiceError('ANIMATION_FRAME_INVALID', '尾帧必须位于源动画内。');
+    }
+    const range = AnimationSourceRangeSchema.safeParse({
+      firstFrame: input.firstFrame,
+      lastFrame: input.lastFrame - Number(input.closingReference),
+    });
+    if (!range.success) throw new LayerServiceError('ANIMATION_FRAME_INVALID', '循环至少保留一个播放帧。');
+    const edits = new Map<string, Layer>();
+    let stoppedAt: string | undefined;
+    for (const layer of ordered.slice(startIndex, endIndex + 1)) {
+      if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId || layer.locked || !layer.animationPlayback) {
+        stoppedAt = layer.name;
+        break;
+      }
+      if (layer.animationSourceRange?.firstFrame === range.data.firstFrame &&
+        layer.animationSourceRange.lastFrame === range.data.lastFrame && layer.animationPlayback.mode === 'loop') continue;
+      edits.set(layer.id, { ...layer, animationSourceRange: range.data, animationPlayback: { ...layer.animationPlayback, mode: 'loop' } });
+    }
+    const next = edits.size ? this.replaceShot(project, { ...shot, layers: shot.layers.map((layer) => edits.get(layer.id) ?? layer) }) : project;
+    return { project: next, stoppedAt };
+  }
+
   reorder(
     project: Project,
     shotId: string,
