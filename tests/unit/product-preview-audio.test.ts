@@ -134,6 +134,40 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+it('auditions only the latest selected-clip seek and clips playback at the trimmed boundary', async () => {
+  const project = buildAudioProject();
+  const clip = project.shots[0]!.audioClips[0]!;
+  const context = new FakeContext();
+  const resume = deferred<void>();
+  context.state = 'suspended';
+  context.resume.mockImplementation(async () => { await resume.promise; context.state = 'running'; });
+  const readAudio = vi.fn(async (request: AssetPreviewAudioReadRequest) => readyResponse(request));
+  const transport = new ProductPreviewAudioTransport({ createContext: () => context.api(), readAudio });
+  const abort = new AbortController();
+  const samples = await transport.readEditorClip({ projectRoot: PROJECT_ROOT, project }, clip, abort.signal);
+  expect(samples).not.toBeNull();
+  const old = samples!.audition(550);
+  const latest = samples!.audition(950);
+  resume.resolve();
+  await Promise.all([old, latest]);
+  expect(context.sources).toHaveLength(1);
+  expect(context.sources[0]!.start).toHaveBeenCalledWith(10, 0.55, 0.05);
+  expect(context.gains[0]!.gain.value).toBe(0.75);
+  await samples!.audition(1_000);
+  expect(context.sources).toHaveLength(1);
+  expect(context.sources[0]!.stop).toHaveBeenCalledOnce();
+  await samples!.audition(700);
+  expect(context.sources[1]!.start).toHaveBeenCalledWith(10, 0.3, 0.12);
+  abort.abort();
+  expect(context.sources[1]!.stop).toHaveBeenCalledOnce();
+  const next = new AbortController();
+  const nextClip = project.shots[0]!.audioClips[1]!;
+  await transport.readEditorClip({ projectRoot: PROJECT_ROOT, project }, nextClip, next.signal);
+  expect(readAudio).toHaveBeenCalledOnce();
+  next.abort();
+  transport.dispose();
+});
 type TestSyncOverrides = Partial<Omit<ProductPreviewAudioSyncInput, 'readMasterSnapshot'>> & {
   timeMs?: number;
   readMasterSnapshot?: ProductPreviewAudioSyncInput['readMasterSnapshot'];

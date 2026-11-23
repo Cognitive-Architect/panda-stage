@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AudioClip as AudioClipModel, Dialogue } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
@@ -28,6 +28,7 @@ export interface AudioClipProps {
   projectRoot: string;
   selected: boolean;
   shotId: string;
+  waveform?: ReactNode;
 }
 
 export function AudioClip({
@@ -39,6 +40,7 @@ export function AudioClip({
   projectRoot,
   selected,
   shotId,
+  waveform,
 }: AudioClipProps): React.JSX.Element {
   const dragRef = useRef<DragState | null>(null);
   const handleRef = useRef<HTMLSpanElement>(null);
@@ -110,6 +112,7 @@ export function AudioClip({
       }}
       tabIndex={dialogue ? 0 : undefined}
     >
+      {waveform}
       <span className="timeline-audio-clip-label">{displayName}</span>
       {selected && dialogue && maximumEndMs !== null ? (
         <span

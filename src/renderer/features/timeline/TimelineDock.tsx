@@ -41,6 +41,8 @@ import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
 import { StandaloneAudioControls } from './StandaloneAudioControls';
 import { FlaGraphicInternalTimelineBar } from './FlaGraphicInternalTimelineBar';
+import { TimelineAudioWaveform } from './TimelineAudioWaveform';
+import { useTimelineAudio } from './useTimelineAudio';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -113,6 +115,11 @@ export function TimelineDock({
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
   const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
+  const selectedDialogueAudioId = shot?.dialogues.find(({ id }) => id === selectedDialogueId)?.audioClipId;
+  const focusedAudio = selectedAudioClip ?? audioClips.find(({ id }) => id === selectedDialogueAudioId);
+  const timelineAudio = useTimelineAudio(currentShotId, focusedAudio, ui.expanded && !productPreviewOpen);
+  const [scrubAudio, setScrubAudio] = useState(true);
+  const lastAudition = useRef<number | null>(null);
   const laneLabelWidth =
     presentation === 'portrait'
       ? PORTRAIT_TIMELINE_LANE_LABEL_WIDTH
@@ -170,6 +177,10 @@ export function TimelineDock({
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
   const ticks = generateRulerTicks(durationMs, pixelsPerMs);
+  const selectedWaveform = focusedAudio && timelineAudio.samples ? (
+    <TimelineAudioWaveform clip={focusedAudio} samples={timelineAudio.samples} pixelsPerMs={pixelsPerMs}
+      scrollPx={ui.scrollPx} viewportWidth={viewportWidth} laneLabelWidth={laneLabelWidth} />
+  ) : null;
 
   useLayoutEffect(() => {
     const element = subtitleLaneContentRef.current;
@@ -185,12 +196,17 @@ export function TimelineDock({
     const track = trackRef.current;
     if (!track || !hasShot) return;
     const rect = track.getBoundingClientRect();
-    const time = pxToTime(clientX - rect.left, pixelsPerMs);
+    const time = pxToTime(clientX - rect.left - laneLabelWidth, pixelsPerMs);
     timelineUiStore.seek(time, durationMs);
+    const position = timelineUiStore.getSnapshot().currentTimeMs;
+    if (!scrubAudio || productPreviewOpen || position === lastAudition.current) return;
+    lastAudition.current = position;
+    void timelineAudio.samples?.audition(position).catch(() => undefined);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (!hasShot) return;
+    lastAudition.current = null;
     draggingRef.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
     seekFromClientX(event.clientX);
@@ -216,6 +232,7 @@ export function TimelineDock({
     if (event.pointerType !== 'touch' ||
         getComputedStyle(event.currentTarget).overflowY !== 'auto') return;
     event.stopPropagation();
+    lastAudition.current = null;
     mediaGestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: 'pending' };
   };
 
@@ -324,6 +341,16 @@ export function TimelineDock({
           data-testid="character-motion-toolbar-host"
           ref={setMotionToolbarHost}
         />
+        {focusedAudio && ui.expanded && !productPreviewOpen ? (timelineAudio.unavailable ? (
+          <span role="status" className="timeline-audio-notice">这段音频无法解码</span>
+        ) : (
+          <button type="button" className="timeline-scrub-audio" aria-pressed={scrubAudio}
+            title="拖动播放头时试听附近声音"
+            onClick={() => {
+              timelineAudio.samples?.stop();
+              setScrubAudio(!scrubAudio);
+            }}>擦听</button>
+        )) : null}
         {selectedAudioClip && ui.expanded && !productPreviewOpen ? (
           <StandaloneAudioControls
             key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`}
@@ -387,6 +414,10 @@ export function TimelineDock({
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
+              onPointerCancel={() => {
+                draggingRef.current = false;
+                timelineAudio.samples?.stop();
+              }}
             >
               <div
                 aria-label="时间标尺"
@@ -622,6 +653,7 @@ export function TimelineDock({
                             projectRoot={snapshot?.projectRoot ?? ''}
                             selected={dialogue?.id === selectedDialogueId}
                             shotId={shot!.id}
+                            waveform={clip.id === focusedAudio?.id ? selectedWaveform : null}
                           />
                         );
                       })}
@@ -637,7 +669,7 @@ export function TimelineDock({
                   </div>
                   {shot && snapshot ? (['sfx', 'bgm'] as const).map(role => (
                     <StandaloneAudioLane key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}:${role}`} role={role} project={snapshot.project} shotId={shot.id}
-                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} />
+                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} selectedWaveform={selectedWaveform} />
                   )) : null}
                   </div>
                 </div>
