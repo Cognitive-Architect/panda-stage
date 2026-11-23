@@ -1,4 +1,7 @@
 export const IPC_CHANNELS = Object.freeze({
+  DESKTOP_AUTOMATION_STATUS: 'desktop-automation:status',
+  DESKTOP_AUTOMATION_REQUEST: 'desktop-automation:request',
+  DESKTOP_AUTOMATION_RESPONSE: 'desktop-automation:response',
   APP_PING: 'app:ping',
   HIDDEN_READY: 'hidden:ready',
   EXPORT_LOAD_PROBE: 'export:load-probe',

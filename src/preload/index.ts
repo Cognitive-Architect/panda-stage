@@ -188,9 +188,28 @@ import {
   type FlaGraphicInstanceCommitRequest,
 } from '../shared/fla-graphic-instance-api';
 
+import {
+  DesktopAutomationRendererRequestSchema, DesktopAutomationRendererResponseSchema, DesktopAutomationStatusSchema,
+  type DesktopAutomationRendererRequest, type DesktopAutomationRendererResponse,
+} from '../shared/desktop-automation-api';
+
 type Unsubscribe = () => void;
 
 const pandaStageApi = Object.freeze({
+  desktopAutomation: Object.freeze({
+    status: async () => DesktopAutomationStatusSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_AUTOMATION_STATUS)),
+    onRequest: (callback: (request: DesktopAutomationRendererRequest) => void): Unsubscribe => {
+      const listener = (_event: Electron.IpcRendererEvent, value: unknown): void => {
+        const request = DesktopAutomationRendererRequestSchema.safeParse(value);
+        if (request.success) callback(request.data);
+      };
+      ipcRenderer.on(IPC_CHANNELS.DESKTOP_AUTOMATION_REQUEST, listener);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.DESKTOP_AUTOMATION_REQUEST, listener);
+    },
+    respond: (value: DesktopAutomationRendererResponse): void => {
+      ipcRenderer.send(IPC_CHANNELS.DESKTOP_AUTOMATION_RESPONSE, DesktopAutomationRendererResponseSchema.parse(value));
+    },
+  }),
   app: Object.freeze({
     ping: async () => {
       const request = AppPingRequestSchema.parse({});

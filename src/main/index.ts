@@ -10,6 +10,7 @@ import {
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
+import { startDesktopAutomation } from './ipc/desktop-automation';
 import { registerExportPreparationIpcHandlers } from './ipc/register-export-preparation-ipc-handlers';
 import { ExportService } from './services/ExportService';
 import { FileSystemService } from './services/FileSystemService';
@@ -79,6 +80,7 @@ let exportPreparationService: ExportPreparationService | null = null;
 let exportFileSystem: FileSystemService | null = null;
 const formalOutputNameSeries = new FormalOutputNameSeriesService();
 let removeIpcHandlers: (() => void) | null = null;
+let stopDesktopAutomation: (() => void) | null = null;
 let removeExportPreparationIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
@@ -830,6 +832,18 @@ async function initialize(): Promise<void> {
     );
 
   await createApplicationWindows();
+  try {
+    stopDesktopAutomation = await startDesktopAutomation({
+      ipcMain,
+      getWindow: () => mainWindow,
+      userData: app.getPath('userData'),
+      appVersion: app.getVersion(),
+      cliFile: app.isPackaged ? path.join(process.resourcesPath, 'automation', 'panda-live.cjs')
+        : path.join(app.getAppPath(), 'scripts', 'panda-live.cjs'),
+    });
+  } catch (error) {
+    console.error('Desktop automation could not start.', error);
+  }
 }
 
 void app
@@ -871,6 +885,8 @@ app.on('before-quit', (event) => {
 });
 
 app.on('will-quit', () => {
+  stopDesktopAutomation?.();
+  stopDesktopAutomation = null;
   exportService?.cancelActiveJob();
   for (const failure of exportPreparationService?.disposeSync() ?? []) {
     console.error(

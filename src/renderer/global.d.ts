@@ -142,6 +142,8 @@ import type {
   FlaGraphicInstanceCommitResponse,
 } from '../shared/fla-graphic-instance-api';
 
+import type { DesktopAutomationRendererRequest, DesktopAutomationRendererResponse, DesktopAutomationStatus } from '../shared/desktop-automation-api';
+
 declare global {
   interface Window {
     __pandaStageIssue816Acceptance?: {
@@ -157,6 +159,11 @@ declare global {
       prepare: () => Promise<unknown>;
     };
     pandaStage: {
+      desktopAutomation: {
+        status(): Promise<DesktopAutomationStatus>;
+        onRequest(callback: (request: DesktopAutomationRendererRequest) => void): () => void;
+        respond(response: DesktopAutomationRendererResponse): void;
+      };
       app: {
         ping: () => Promise<AppPingResponse>;
       };

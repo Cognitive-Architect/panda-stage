@@ -21,6 +21,7 @@
     "verify:issue676-p0-c03": "pnpm build && electron scripts/verify-issue676-p0-c03.cjs",
     "verify:issue680-p1-c03": "pnpm build && electron scripts/verify-issue680-p1-c03.cjs",
     "dev": "pnpm build:electron && concurrently --kill-others --success first \"pnpm dev:renderer\" \"pnpm dev:electron\"",
+    "automation:cli": "node scripts/panda-live.cjs",
     "dev:renderer": "vite",
     "dev:electron": "concurrently --kill-others \"tsc -p tsconfig.main.json --watch --preserveWatchOutput\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron dist-electron/main/index.js\"",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",

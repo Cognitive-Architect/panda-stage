@@ -95,6 +95,7 @@ import {
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { useDialogueSilence } from './useDialogueSilence';
+import { useDesktopAutomation } from './useDesktopAutomation';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
@@ -508,6 +509,7 @@ export function EditorShell({
   debugSurface,
   gatePreview,
 }: EditorShellProps): React.JSX.Element {
+  useDesktopAutomation();
   const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
   const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
   const rightWorkspaceRef = useRef<RightWorkspaceHandle>(null);

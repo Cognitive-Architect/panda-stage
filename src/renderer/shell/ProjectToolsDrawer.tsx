@@ -4,6 +4,7 @@ import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
+import { DesktopAutomationCard } from './DesktopAutomationCard';
 
 export interface ProjectToolsDrawerProps {
   onClose(): void;
@@ -135,6 +136,7 @@ export function ProjectToolsDrawer({
               <span>打开动作预设</span>
             </button>
           </section>
+          <DesktopAutomationCard />
         </div>
       ) : (
         <section
