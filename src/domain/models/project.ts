@@ -70,6 +70,7 @@ import { DialogueV5Schema } from './dialogue';
 import { TimelineEventV26Schema } from './timeline-event';
 import { UserMotionPresetSchema } from './userMotionPreset';
 import { ReusableAnimationSegmentSchema } from './reusableAnimationSegment';
+import { ActionRecipeSchema } from './actionRecipe';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -687,12 +688,24 @@ export const ProjectV30Schema = ProjectV30DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV30DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV31DataSchema = ProjectV30DataSchema.extend({
+  schemaVersion: z.literal(31),
   shots: z.array(ShotSchema),
   animationSegments: z.array(ReusableAnimationSegmentSchema).refine(
     (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
     'Reusable animation segment IDs must be unique.',
+  ).optional(),
+});
+
+export const ProjectV31Schema = ProjectV31DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV31DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  actionRecipes: z.array(ActionRecipeSchema).refine(
+    (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
+    'Action recipe IDs must be unique.',
   ).optional(),
 });
 

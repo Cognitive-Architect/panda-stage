@@ -13,6 +13,7 @@ import { actionPresetStore } from './actionPresetStore';
 import { isSupportedLayerMotionLayer } from '../properties/layerTransformTemporalGuard';
 import { UserMotionPresetControls } from './UserMotionPresetControls';
 import { AnimationSegmentControls } from './AnimationSegmentControls';
+import { ActionRecipeControls } from './ActionRecipeControls';
 import {
   PresetParameterForm,
   type ExpressionOption,
@@ -145,6 +146,8 @@ export function ActionPresetPanel({ onPreview }: { onPreview?: (project: Project
         <AnimationSegmentControls key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id])}
           project={project} shot={shot} layer={layer} onPreview={onPreview} />
       ) : null}
+      {project && shot ? <ActionRecipeControls key={editorProjectStore.getProjectInstanceId()}
+        project={project} shot={shot} layer={layer} onPreview={onPreview} /> : null}
       <output data-testid="action-preset-status">{status}</output>
     </section>
   );
