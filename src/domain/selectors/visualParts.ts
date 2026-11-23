@@ -41,8 +41,9 @@ import {
   resolveCharacterFaceSource,
   resolveCharacterFaceSourceOrNull,
   findTalkingAnimation,
+  listCharacterTalkingSources,
   listTalkingAnimationImageIds,
-  resolveTalkingAnimationFace,
+  resolveCharacterTalkingFace,
 } from './characterFaceSource';
 
 export type LayerVisualKind =
@@ -562,8 +563,9 @@ function characterResources(
     }
   }
 
-  const talking = findTalkingAnimation(project, character.talkingAnimationId);
-  if (talking) {
+  for (const { animationId } of listCharacterTalkingSources(character)) {
+    const talking = findTalkingAnimation(project, animationId);
+    if (!talking) continue;
     for (const assetId of listTalkingAnimationImageIds(talking)) {
       if (!required.has(assetId) && !fallback.has(assetId) && resolveImageAsset(project, assetId)) {
         addResource(candidates, assetId, 'mouth-override');
@@ -602,7 +604,7 @@ function resolveCharacterFace(
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
   const poseSource = evaluated.mouthPose?.source;
   const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
+  const talking = resolveCharacterTalkingFace(project, character, expression.id, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
   const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
     : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
@@ -821,7 +823,7 @@ function projectAdaptivePartsFaceVisual(input: {
     ? rawExpressionAsset
     : null;
 
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
+  const talking = resolveCharacterTalkingFace(project, character, expression?.id, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
   const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
     : evaluated.mouthOpen
@@ -1691,8 +1693,9 @@ export function resolveLayerVisualParts(
         }
       }
     };
-    const talking = findTalkingAnimation(project, character.talkingAnimationId);
-    if (talking && character.faceBinding) {
+    for (const { animationId } of character.faceBinding ? listCharacterTalkingSources(character) : []) {
+      const talking = findTalkingAnimation(project, animationId);
+      if (!talking) continue;
       for (const assetId of listTalkingAnimationImageIds(talking)) {
         if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
       }

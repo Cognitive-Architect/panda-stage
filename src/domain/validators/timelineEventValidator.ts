@@ -1,4 +1,5 @@
 import type { Project, TimelineEvent } from '../models';
+import { listCharacterTalkingSources } from '../selectors/characterFaceSource';
 
 export interface ValidationResult {
   ok: boolean;
@@ -104,7 +105,7 @@ export function validatePresetApplication(
         } else if (
           !character.mouthOpenAssetId &&
           !character.mouthOpenVisualSource &&
-          !(event.state === 'rest' && character.talkingAnimationId)
+          !(event.state === 'rest' && listCharacterTalkingSources(character).length > 0)
         ) {
           errors.push('请先为角色配置张嘴视觉。');
         }

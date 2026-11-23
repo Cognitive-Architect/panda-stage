@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type FlaGraphicDefinition, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
-import { resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
+import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type Character, type FlaGraphicDefinition, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
+import { isCharacterTalkingSourceAvailable, resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
 import { Button } from '../../ui/Button';
@@ -109,10 +109,11 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
   return <canvas ref={canvas} width={width} height={height} role="img" aria-label={failed || !resolved ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
-export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false }: {
+export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false, forExpression = false }: {
   animationId?: string;
   playback?: TalkingAnimationPlayback;
   forClaim?: boolean;
+  forExpression?: boolean;
   onApply: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   disabled?: boolean;
 }): React.JSX.Element {
@@ -120,7 +121,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   const [draft, setDraft] = useState<string | null>(null);
   const [draftPlayback, setDraftPlayback] = useState<TalkingAnimationPlayback>();
   const [previewRest, setPreviewRest] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(forExpression);
   const titleId = useId();
   const animations = snapshot?.project.animations.filter(animation =>
     isFlaGraphicDefinition(animation) ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1,
@@ -129,18 +130,19 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   const selectedPlayback = draftPlayback ?? (selected?.id === animationId ? playback : undefined);
   const total = selected ? resolveFlaGraphicPreviewTimeline(selected, true).totalFrames : 1;
   const settings = selectedPlayback ?? { firstFrame: 0, lastFrame: total - 1, mode: 'loop' as const };
+  const appliedPlayback = forClaim || forExpression ? settings : selectedPlayback;
   const update = (value: Partial<TalkingAnimationPlayback>): void => {
     setDraftPlayback({ ...settings, ...value });
     setPreviewRest(false);
   };
   return (
     <div className="graphic-face-picker">
-      <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
+      {!forExpression ? <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
         setDraft(null);
         setDraftPlayback(undefined);
         setPreviewRest(false);
         setOpen(!open);
-      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button>
+      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button> : null}
       {open && snapshot ? (
         <div className="graphic-face-options">
           <label>
@@ -150,7 +152,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
               setDraftPlayback(undefined);
               setPreviewRest(false);
             }}>
-              <option value="">未配置</option>
+              <option value="">{forExpression ? '沿用角色通用来源' : '未配置'}</option>
               {animations.map(animation => <option key={animation.id} value={animation.id}>{animation.name}</option>)}
             </select>
           </label>
@@ -190,17 +192,43 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
                 onClick={() => setPreviewRest(!previewRest)}>查看静止帧</Button> : null}
             </div>
             <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot}
-              titleId={titleId} playback={forClaim ? settings : selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
+              titleId={titleId} playback={appliedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
           </> : null}
           <Button disabled={disabled || ((selected?.id ?? undefined) === animationId &&
-            JSON.stringify(selectedPlayback) === JSON.stringify(playback))} onClick={() => {
-            onApply(selected?.id ?? null, forClaim && selected ? settings : selectedPlayback);
-            setOpen(false);
+            JSON.stringify(selected ? appliedPlayback : undefined) === JSON.stringify(playback))} onClick={() => {
+            onApply(selected?.id ?? null, selected ? appliedPlayback : undefined);
+            if (!forExpression) setOpen(false);
           }}>{forClaim ? '选用这段' : '应用说话动画'}</Button>
         </div>
       ) : null}
     </div>
   );
+}
+
+export function ExpressionTalkingAnimationPicker({ character, disabled, onApply }: {
+  character: Character;
+  disabled?: boolean;
+  onApply: (expressionId: string, animationId: string | null, playback?: TalkingAnimationPlayback) => void;
+}): React.JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>();
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
+  const expressions = character.expressions ?? [];
+  const expression = expressions.find((entry) => entry.id === selectedId) ?? expressions[0];
+  if (!expression) return null;
+  const source = character.expressionTalkingSources?.[expression.id];
+  return <div className="graphic-face-picker">
+    <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => setOpen(!open)}>表情专属说话</Button>
+    {open ? <>
+      <label>表情 <select value={expression.id} onChange={(event) => setSelectedId(event.target.value)}>
+        {expressions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+      </select></label>
+      {source && snapshot && !isCharacterTalkingSourceAvailable(snapshot.project, source.animationId, source.playback)
+        ? <p role="status">专属说话动画不可用。{character.talkingAnimationId ? '当前沿用角色通用来源。' : '当前沿用原表情与口型。'}</p> : null}
+      <TalkingAnimationPicker key={expression.id} forExpression animationId={source?.animationId} playback={source?.playback}
+        disabled={disabled} onApply={(id, playback) => onApply(expression.id, id, playback)} />
+    </> : null}
+  </div>;
 }
 
 type GraphicFrameSource = Extract<MouthPoseSource, { kind: 'fla-graphic' }>;

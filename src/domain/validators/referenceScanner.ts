@@ -100,6 +100,16 @@ export function scanAssetReferences(
         label: `角色“${character.name}”的说话动画`,
       });
     }
+    for (const [expressionId, source] of Object.entries(character.expressionTalkingSources ?? {})) {
+      const animation = findTalkingAnimation(project, source.animationId);
+      if (!animation || !listTalkingAnimationImageIds(animation).has(assetId)) continue;
+      const expression = (character.expressions ?? []).find((entry) => entry.id === expressionId);
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].expressionTalkingSources.${expressionId}`,
+        label: `角色“${character.name}”的表情“${expression?.name ?? ''}”专属说话动画`,
+      });
+    }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);

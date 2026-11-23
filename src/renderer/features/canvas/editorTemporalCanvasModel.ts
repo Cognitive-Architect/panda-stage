@@ -13,6 +13,7 @@ import {
   type Shot,
 } from '../../../domain';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
+import { listCharacterTalkingSources } from '../../../domain/selectors/characterFaceSource';
 import {
   resolveEditorTemporalAssetResolution,
   type EditorTemporalVisual,
@@ -158,7 +159,7 @@ export function buildEditorTemporalCanvasModel({
   const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
     source.kind === 'character' && project.characters.some(character =>
       character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
-        (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback)))),
+        listCharacterTalkingSources(character).some(({ playback }) => hasSilenceAnalysis || playback))),
   );
   const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
@@ -176,7 +177,7 @@ export function buildEditorTemporalCanvasModel({
             if (source?.kind !== 'character') return layer;
             const configured = project.characters.some(character =>
               character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
-                (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback))));
+                listCharacterTalkingSources(character).some(({ playback }) => hasSilenceAnalysis || playback)));
             const evaluated = (configured || manualAtZero.has(layer.id) ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
             return evaluated
               ? {

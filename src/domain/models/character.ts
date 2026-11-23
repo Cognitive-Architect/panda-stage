@@ -874,15 +874,12 @@ const CharacterActionsShape = {
   actions: z.array(CharacterActionSchema).max(64).optional(),
 };
 
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend({
-  ...MouthPoseShape,
-  ...CharacterActionsShape,
-});
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
-  CompositeCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
-  AdaptivePartsCharacterCurrentSchema,
-]).superRefine(validateMouthSource).superRefine((character, context) => {
+const CharacterV28Fields = { ...MouthPoseShape, ...CharacterActionsShape };
+const SingleImageCharacterV28Schema = SingleImageCharacterV26Schema.safeExtend(CharacterV28Fields);
+const CompositeCharacterV28Schema = CompositeCharacterV26Schema.safeExtend(CharacterV28Fields);
+const AdaptivePartsCharacterV28Schema = AdaptivePartsCharacterV26Schema.safeExtend(CharacterV28Fields);
+
+function validateNamedActions(character: { actions?: CharacterAction[] }, context: z.RefinementCtx): void {
   const actions = character.actions ?? [];
   const actionIds = new Set<string>();
   const actionNames = new Set<string>();
@@ -897,6 +894,32 @@ const CharacterCurrentSchema = z.discriminatedUnion('mode', [
     actionIds.add(action.id);
     actionNames.add(normalizedName);
   });
+}
+
+export const CharacterV28Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV28Schema, CompositeCharacterV28Schema, AdaptivePartsCharacterV28Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions);
+
+const ExpressionTalkingSourceSchema = z.object({
+  animationId: IdSchema,
+  playback: TalkingAnimationPlaybackSchema,
+}).strict();
+export type ExpressionTalkingSource = z.infer<typeof ExpressionTalkingSourceSchema>;
+
+const ExpressionTalkingShape = {
+  expressionTalkingSources: z.record(IdSchema, ExpressionTalkingSourceSchema).optional(),
+};
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV28Schema.safeExtend(ExpressionTalkingShape),
+  CompositeCharacterV28Schema.safeExtend(ExpressionTalkingShape),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine((character, context) => {
+  for (const expressionId of Object.keys(character.expressionTalkingSources ?? {})) {
+    if (!(character.expressions ?? []).some((entry) => entry.id === expressionId)) {
+      context.addIssue({ code: 'custom', path: ['expressionTalkingSources', expressionId], message: 'Unknown expression.' });
+    }
+  }
 });
 
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;

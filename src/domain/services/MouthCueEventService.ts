@@ -1,4 +1,5 @@
 import { resolveEffectiveMouthCue } from '../evaluate-shot-at-time';
+import { listCharacterTalkingSources } from '../selectors/characterFaceSource';
 import { ProjectSchema, type Character, type Project, type Shot } from '../models';
 import {
   TimelineEventSchema,
@@ -66,7 +67,7 @@ export function upsertMouthCueEventAtTime(
     throw new Error('当前角色不支持嘴型关键帧。');
   }
   if (!characterHasMouthOpenVisual(project, character) &&
-    !(state === 'rest' && character.talkingAnimationId)) {
+    !(state === 'rest' && listCharacterTalkingSources(character).length > 0)) {
     throw new Error('请先为角色配置张嘴视觉。');
   }
   if (

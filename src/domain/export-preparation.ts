@@ -12,7 +12,7 @@ import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { listCharacterActionVisualAssetIds, MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
+import { findTalkingAnimation, listCharacterTalkingSources, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -230,13 +230,16 @@ function addShotVisualAssets(
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);
         const character = project.characters.find(candidate => candidate.id === source.characterId);
-        if (character?.talkingAnimationPlayback?.restFrame !== undefined &&
+        if (character &&
           (character.mode !== 'adaptive-parts' || character.faceBinding)) {
-          const rest = resolveTalkingAnimationFace(project, character.talkingAnimationId, 'rest', character.talkingAnimationPlayback);
-          const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
-          for (const assetId of assetIds) {
-            const asset = project.assets.find(candidate => candidate.id === assetId);
-            if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+          for (const { animationId, playback } of listCharacterTalkingSources(character)) {
+            if (playback?.restFrame === undefined) continue;
+            const rest = resolveTalkingAnimationFace(project, animationId, 'rest', playback);
+            const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
+            for (const assetId of assetIds) {
+              const asset = project.assets.find(candidate => candidate.id === assetId);
+              if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+            }
           }
         }
       }
@@ -287,7 +290,7 @@ function addShotVisualAssets(
     if (
       !character ||
       (character.mode === 'adaptive-parts' && !character.faceBinding) ||
-      (!character.talkingAnimationId && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
+      (listCharacterTalkingSources(character).length === 0 && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
       shot.layers
@@ -299,8 +302,9 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
-    const talking = findTalkingAnimation(project, character.talkingAnimationId);
-    if (talking) {
+    for (const { animationId } of listCharacterTalkingSources(character)) {
+      const talking = findTalkingAnimation(project, animationId);
+      if (!talking) continue;
       for (const assetId of listTalkingAnimationImageIds(talking)) {
         const asset = project.assets.find(candidate => candidate.id === assetId);
         if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);

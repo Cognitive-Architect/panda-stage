@@ -70,7 +70,7 @@ import {
   type ExpressionResourceSwapRequest,
 } from './ExpressionEditor';
 import { CharacterAssetClaimPanel } from './CharacterAssetClaimPanel';
-import { GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
+import { ExpressionTalkingAnimationPicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
 import { useProjectImageThumbnails } from './CharacterIdentity';
 import { getThumbnailFallbackIconKind, ThumbnailStateIcon } from './ThumbnailStateIcon';
@@ -2862,6 +2862,10 @@ function AdaptivePartsAssemblyWorkbench({
                     })}
                   />
                 ) : null}
+                {assemblyCharacter ? <ExpressionTalkingAnimationPicker character={assemblyCharacter}
+                  disabled={hasPendingChanges} onApply={(expressionId, animationId, playback) => runImmediateCharacterMutation(() => {
+                    characterStore.setExpressionTalkingAnimation(assemblyCharacter.id, expressionId, animationId, playback);
+                  })} /> : null}
                 {assemblyCharacter ? (() => {
                   const openAdaptiveMouthSwap = (trigger: HTMLElement | null): void => {
                     setExpressionSwapRequest({

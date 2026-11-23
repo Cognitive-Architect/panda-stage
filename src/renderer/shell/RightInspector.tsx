@@ -715,7 +715,7 @@ export function RightInspector({
       selection.layer?.source.kind === 'character' &&
       motionNode?.motion !== 'character-clip-v1' ? (
         <ExpressionAtTimeControl
-          key={`${currentShot.id}:${selection.layer.id}`}
+          key={`expression:${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           projectRoot={snapshot.projectRoot}
           shot={currentShot}
@@ -726,7 +726,7 @@ export function RightInspector({
       currentShot &&
       selection.layer?.source.kind === 'character' ? (
         <CharacterActionAtTimeControl
-          key={`${currentShot.id}:${selection.layer.id}`}
+          key={`action:${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           shot={currentShot}
           layer={selection.layer}

@@ -30,6 +30,7 @@ import {
   CharacterV25Schema,
   CharacterV26Schema,
   CharacterV27Schema,
+  CharacterV28Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -715,6 +716,7 @@ export const ProjectV27Schema = CurrentProjectDataSchema.extend({
 
 export const ProjectV28Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(28),
+  characters: z.array(CharacterV28Schema),
   shots: z.array(ShotV28Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)

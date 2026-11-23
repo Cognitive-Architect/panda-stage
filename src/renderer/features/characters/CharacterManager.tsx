@@ -1181,6 +1181,10 @@ export function CharacterManager({
           onSetTalkingAnimation={(animationId, playback) => {
             if (selectedCharacter) mutate(() => characterStore.setTalkingAnimation(selectedCharacter.id, animationId, playback));
           }}
+          onSetExpressionTalkingAnimation={(expressionId, animationId, playback) => {
+            if (selectedCharacter && !assemblyPending) mutate(() =>
+              characterStore.setExpressionTalkingAnimation(selectedCharacter.id, expressionId, animationId, playback));
+          }}
           onSetMouthSource={(source) => {
             if (selectedCharacter) mutate(() => characterStore.setMouthOpenVisualSource(selectedCharacter.id, source));
           }}
