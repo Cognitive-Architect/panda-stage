@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildEditorStageRenderModel, evaluateShotAtTime, LayerService, migrateProject, setGraphicFrameAtTime } from '../../../src/domain';
+import { buildEditorStageRenderModel, clearGraphicFrameAtTime, evaluateShotAtTime, LayerService, migrateProject, setGraphicFrameAtTime } from '../../../src/domain';
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
 import { EditorProjectStore } from '../../../src/renderer/stores/EditorProjectStore';
@@ -50,6 +50,25 @@ it('holds each instance source frame until its next key and preserves same-sourc
     expect(evaluated.layers.find((entry) => entry.id === second.layer.id)?.animationFrame)
       .toEqual(evaluateShotAtTime(initial.project.shots[0]!, time, initial.project).layers.find((entry) => entry.id === second.layer.id)?.animationFrame);
   }
+  editor.open('D:/graphic-frame-test', reopened);
+  expect(clearGraphicFrameAtTime(reopened, IDS.shot, first.layer.id, FACE_GRAPHIC_ID, 1_000, firstKeyId)).toBe(reopened);
+  const cleared = clearGraphicFrameAtTime(reopened, IDS.shot, first.layer.id, FACE_GRAPHIC_ID, 500, firstKeyId);
+  const clearedShot = cleared.shots[0]!;
+  expect(clearedShot.timelineEvents).toEqual([shot.timelineEvents[1]]);
+  editor.updateProject(cleared, 'Clear Graphic frame');
+  expect(editor.history.getSnapshot().undoCount).toBe(1);
+  expect(editor.undo()).toBe(true);
+  expect(editor.getSnapshot()!.project).toEqual(reopened);
+  expect(editor.redo()).toBe(true);
+  expect(editor.getSnapshot()!.project).toEqual(cleared);
+  expect(evaluateShotAtTime(clearedShot, 500, cleared)).toEqual(evaluateShotAtTime(initial.project.shots[0]!, 500, initial.project));
+  const afterClear = evaluateShotAtTime(clearedShot, 875, cleared);
+  const expected = evaluateShotAtTime(initial.project.shots[0]!, 875, initial.project);
+  for (const frame of [afterClear, projectProductPreviewDialogue(cleared, clearedShot, afterClear),
+    evaluateExportShotAtTime(cleared, clearedShot, 875)]) {
+    expect(frame.layers.map((entry) => entry.animationFrame)).toEqual(expected.layers.map((entry) => entry.animationFrame));
+  }
+  expect(evaluateShotAtTime(clearedShot, 1_000, cleared)).toEqual(evaluateShotAtTime(shot, 1_000, reopened));
 });
 
 it('keeps a keyed Graphic hidden outside its independently authored play window', () => {

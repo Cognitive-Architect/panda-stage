@@ -21,7 +21,8 @@ it('browses without edits, applies at the latest time, and discards choice when 
   document.body.append(element);
   const root = createRoot(element);
   const control = () => element.querySelector('[data-testid="graphic-frame-at-time"]')!;
-  const button = (label: string) => [...control().querySelectorAll('button')].find((entry) => entry.textContent === label)!;
+  const findButton = (label: string) => [...control().querySelectorAll('button')].find((entry) => entry.textContent === label);
+  const button = (label: string) => findButton(label)!;
   try {
     editorProjectStore.open('D:/graphic-frame-ui', second.project);
     shotStore.select(IDS.shot);
@@ -40,9 +41,18 @@ it('browses without edits, applies at the latest time, and discards choice when 
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents)
       .toMatchObject([{ type: 'graphic-frame', layerId: first.layer.id, startMs: 1_000, sourceFrameIndex: 9 }]);
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+    await act(async () => timelineUiStore.seek(1_500, 3_000));
+    expect(findButton('清除这次切换')).toBeUndefined();
+    await act(async () => timelineUiStore.seek(1_000, 3_000));
+    await act(async () => button('清除这次切换').click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents).toHaveLength(0);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+    await act(async () => { editorProjectStore.undo(); });
+    expect(findButton('清除这次切换')).toBeDefined();
     await act(async () => selectionStore.select(second.layer.id));
     await act(async () => button('选择显示帧').click());
     expect(button('应用到播放头').disabled).toBe(true);
+    expect(findButton('清除这次切换')).toBeUndefined();
   } finally {
     await act(async () => root.unmount());
     element.remove();

@@ -705,7 +705,7 @@ export function RightInspector({
       {motionSection}
       {currentShot && selection.layer && selectedGraphic && isFlaGraphicDefinition(selectedGraphic) ? (
         <GraphicFrameAtTimeControl key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, selectedGraphic.id])}
-          definition={selectedGraphic} shotId={currentShot.id} layerId={selection.layer.id} locked={selection.layer.locked} />
+          definition={selectedGraphic} shot={currentShot} layerId={selection.layer.id} locked={selection.layer.locked} />
       ) : null}
       {showMotionInspector && motionNode?.motion === 'character-clip-v1' ? null : (
         <FlaGraphicStructureTree />
