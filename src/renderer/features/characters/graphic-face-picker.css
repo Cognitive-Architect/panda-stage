@@ -12,3 +12,33 @@
 .right-inspector-selection-thumbnail canvas { width: 100%; height: 100%; object-fit: contain; }
 .character-identity-avatar canvas, .character-detail-avatar canvas, .character-expression-thumbnail canvas { width: 100%; height: 100%; object-fit: contain; }
 .character-assembly-graphic-face canvas { width: 100%; height: 100%; }
+
+.character-claim-expression {
+  display: grid;
+  grid-template-columns: 38px minmax(64px, 1fr) minmax(0, 2fr);
+  gap: var(--ui-space-2);
+  align-items: center;
+}
+.character-claim-expression input {
+  min-width: 0;
+  width: 100%;
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+.character-claim-expression button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.character-claim-preview {
+  width: 38px;
+  height: 38px;
+}
+.character-claim-preview :is(img, canvas) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

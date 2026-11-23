@@ -89,11 +89,13 @@ export function CharacterAssetClaimPanel({
         const graphic = source?.kind === 'fla-graphic' ? graphics.find(item => item.id === source.animationId) : undefined;
         const thumbnail = image ? thumbnails[image.id] : undefined;
         return (
-          <div key={index} className="graphic-face-selected">
-            {source?.kind === 'fla-graphic' && graphic ? <GraphicFacePreview source={source} label={name} /> : null}
-            {image && thumbnail?.status === 'ready' ? (
-              <img alt={name} src={thumbnail.dataUrl} width={48} height={48} style={{ objectFit: 'contain' }} onError={() => onThumbnailError(image.id)} />
-            ) : null}
+          <div key={index} className="character-claim-expression">
+            <div className="character-claim-preview">
+              {source?.kind === 'fla-graphic' && graphic ? <GraphicFacePreview source={source} label={name} /> : null}
+              {image && thumbnail?.status === 'ready' ? (
+                <img alt={name} src={thumbnail.dataUrl} onError={() => onThumbnailError(image.id)} />
+              ) : null}
+            </div>
             <input aria-label={`表情 ${index + 1} 名称`} disabled={disabled}
               maxLength={200} value={name} onChange={event => updateExpression(index, { name: event.target.value })} />
             <Button variant="secondary" disabled={disabled || (imageAssets.length === 0 && graphics.length === 0)}
@@ -116,7 +118,7 @@ export function CharacterAssetClaimPanel({
           onClick={confirm}>确认认领</Button>
       </div>
       {picker ? (
-        <CharacterResourceSwapDialog open title={`选择「${draft.expressions[picker.index]?.name || '表情'}」素材`}
+        <CharacterResourceSwapDialog open confirmLabel="选用素材" title={`选择「${draft.expressions[picker.index]?.name || '表情'}」素材`}
           currentValue={currentValue} imageAssets={imageAssets} thumbnails={thumbnails} graphicDefinitions={graphics}
           getDisabledReason={asset => thumbnails[asset.id]?.status === 'missing' ? '图片不可用' : undefined}
           onThumbnailError={onThumbnailError} returnFocusTo={picker.trigger} onCancel={() => setPicker(null)}

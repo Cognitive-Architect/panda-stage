@@ -28,6 +28,7 @@ export interface CharacterResourceSwapDialogProps {
   };
   getDisabledReason?: (asset: ImageAsset) => string | undefined;
   graphicDefinitions?: readonly FlaGraphicDefinition[];
+  confirmLabel?: string;
   graphicSelectionMode?: 'frame' | 'definition';
   currentValue: ResourceSwapValue;
   returnFocusTo?: HTMLElement | null;
@@ -145,6 +146,7 @@ export function CharacterResourceSwapDialog({
   emptyOption,
   getDisabledReason,
   graphicDefinitions = [],
+  confirmLabel = '确认替换',
   graphicSelectionMode = 'frame',
   currentValue,
   returnFocusTo,
@@ -685,7 +687,7 @@ export function CharacterResourceSwapDialog({
               onClick={handleConfirm}
               variant="primary"
             >
-              确认替换
+              {confirmLabel}
             </Button>
           </div>
         </footer>
