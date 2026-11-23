@@ -1,3 +1,27 @@
+.timeline-toolbar .timeline-dialogue-find {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+}
+
+.timeline-toolbar .timeline-dialogue-find:focus-visible,
+.timeline-toolbar .timeline-dialogue-find:hover:not(:disabled),
+.timeline-toolbar .timeline-dialogue-find[aria-expanded='true'] {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch'] .timeline-toolbar .timeline-dialogue-find {
+  flex-basis: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+}
+
 .dialogue-find-replace {
   position: fixed;
   z-index: 80;
