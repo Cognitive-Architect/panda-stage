@@ -18,6 +18,16 @@ function call(port, request) {
   });
 }
 
+async function readStdin() {
+  process.stdin.setEncoding('utf8');
+  let input = '';
+  for await (const chunk of process.stdin) {
+    input += chunk;
+    if (Buffer.byteLength(input) > 64 * 1024) throw new Error('Command parameters are too large.');
+  }
+  return input;
+}
+
 async function main([flag, file, name, rawParams, ...extra]) {
   if (flag !== '--session-file' || !file || !name || extra.length) {
     throw new Error('Usage: node panda-live.cjs --session-file <file in the desktop tool drawer> <command> [JSON parameters]');
@@ -28,14 +38,14 @@ async function main([flag, file, name, rawParams, ...extra]) {
     typeof credential !== 'string' || !/^[a-f0-9]{64}$/u.test(credential)) {
     throw new Error('Open the desktop tool drawer and copy the current session command.');
   }
-  const params = rawParams === '-' ? JSON.parse(await fs.readFile(0, 'utf8')) : rawParams ? JSON.parse(rawParams) : {};
+  const params = rawParams ? JSON.parse(rawParams === '-' ? await readStdin() : rawParams) : {};
   if (!params || Array.isArray(params) || typeof params !== 'object') throw new Error('Parameters must be a JSON object.');
   return call(port, { protocol, credential, command: { ...params, name } });
 }
 
 main(process.argv.slice(2)).then(result => {
   process.stdout.write(`${JSON.stringify(result)}\n`);
-  if (!result.ok) process.exitCode = 1;
+  if (!result.ok || result.data?.allSucceeded === false) process.exitCode = 1;
 }).catch(error => {
   process.stdout.write(`${JSON.stringify({ ok: false, code: 'CLI_ERROR', message: error.message })}\n`);
   process.exitCode = 1;

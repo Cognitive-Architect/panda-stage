@@ -1,40 +1,80 @@
-import { useEffect } from 'react';
-import type { DesktopAutomationRendererRequest, DesktopAutomationResult } from '../../shared/desktop-automation-api';
-import { timelineUiStore } from '../features/timeline/timelineUiStore';
-import { editorProjectStore } from '../stores/EditorProjectStore';
-import { selectionStore } from '../stores/selectionStore';
-import { shotStore } from '../stores/shotStore';
+import { useEffect, useRef } from 'react';
+import type { Project } from '../../domain';
+import type { DesktopAutomationRendererRequest } from '../../shared/desktop-automation-api';
+import { executeDesktopAutomation } from './desktopAutomationCommands';
 
-function readState(request: DesktopAutomationRendererRequest): DesktopAutomationResult {
-  const snapshot = editorProjectStore.getSnapshot();
-  const instanceId = editorProjectStore.getProjectInstanceId();
-  if (!snapshot || instanceId === null) return { ok: false, code: 'NO_PROJECT', message: 'No Project is open in the desktop editor.' };
-  const { project, revision, dirty } = snapshot;
-  const shotId = shotStore.getCurrentShotId();
-  const shot = project.shots.find(({ id }) => id === shotId);
-  const selectedLayer = shot?.layers.find(({ id }) => id === selectionStore.getSelectedLayerId());
-  return { ok: true, data: {
-    appVersion: request.appVersion,
-    session: { sessionId: request.sessionId, projectId: project.id, instanceId },
-    project: { id: project.id, name: project.name, schemaVersion: project.schemaVersion, revision, dirty },
-    shots: project.shots.map(({ id, name, durationMs }) => ({ id, name, durationMs })),
-    shot: shot ? { id: shot.id, name: shot.name, durationMs: shot.durationMs,
-      playheadMs: timelineUiStore.getSnapshot().currentTimeMs,
-      dialogues: shot.dialogues.map(({ id, text, startMs, endMs }) => ({ id, text, startMs, endMs })),
-      layers: shot.layers.map(({ id, name, locked }) => ({ id, name, locked })),
-    } : null,
-    selection: selectedLayer ? { layerId: selectedLayer.id, nodeId: selectionStore.getSelectedCharacterNodeId() } : null,
-  } };
-}
+type EditorState = { isBusy: () => boolean; previewDraft: (project: Project, shotId: string) => boolean };
 
-/** Bind the local bridge to the same live editor instance that owns Project and History. */
-export function useDesktopAutomation(): void {
+/** Commands share the live editor and wait for locally started gestures to finish. */
+export function useDesktopAutomation(state: EditorState): void {
+  const latest = useRef(state);
+  useEffect(() => { latest.current = state; }, [state]);
+
   useEffect(() => {
     const bridge = window.pandaStage?.desktopAutomation;
-    return bridge?.onRequest(request => {
-      const result: DesktopAutomationResult = Date.now() > request.deadlineMs
-        ? { ok: false, code: 'TIMEOUT', message: 'The desktop command expired.' } : readState(request);
-      bridge.respond({ requestId: request.requestId, result });
+    if (!bridge) return;
+    const queue: DesktopAutomationRendererRequest[] = [];
+    const pointers = new Set<number>();
+    let htmlDrag = false;
+    let timer: number | undefined;
+
+    function schedule(delay = 0): void {
+      if (timer === undefined && queue.length) timer = window.setTimeout(flush, delay);
+    }
+
+    function flush(): void {
+      timer = undefined;
+      while (queue.length) {
+        const request = queue[0]!;
+        const expired = Date.now() >= request.deadlineMs;
+        if (!expired && (pointers.size || htmlDrag || latest.current.isBusy())) {
+          schedule(30);
+          return;
+        }
+        queue.shift();
+        bridge?.respond({ requestId: request.requestId, result: executeDesktopAutomation(request, latest.current.previewDraft) });
+      }
+    }
+
+    function onDown(event: PointerEvent): void {
+      if (event.isPrimary && event.button === 0) pointers.add(event.pointerId);
+    }
+    function onEnd(event: PointerEvent): void {
+      pointers.delete(event.pointerId);
+      schedule();
+    }
+    function onDragStart(): void { htmlDrag = true; }
+    function onDragEnd(): void { htmlDrag = false; schedule(); }
+    function onBlur(): void { pointers.clear(); onDragEnd(); }
+
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onEnd, true);
+    window.addEventListener('pointercancel', onEnd, true);
+    window.addEventListener('lostpointercapture', onEnd, true);
+    window.addEventListener('dragstart', onDragStart, true);
+    window.addEventListener('dragend', onDragEnd, true);
+    window.addEventListener('drop', onDragEnd, true);
+    window.addEventListener('blur', onBlur);
+    const unsubscribe = bridge.onRequest(request => {
+      if (request.command.name === 'state') {
+        bridge.respond({ requestId: request.requestId, result: executeDesktopAutomation(request, latest.current.previewDraft) });
+        return;
+      }
+      queue.push(request);
+      schedule();
     });
+
+    return () => {
+      unsubscribe();
+      if (timer !== undefined) window.clearTimeout(timer);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onEnd, true);
+      window.removeEventListener('pointercancel', onEnd, true);
+      window.removeEventListener('lostpointercapture', onEnd, true);
+      window.removeEventListener('dragstart', onDragStart, true);
+      window.removeEventListener('dragend', onDragEnd, true);
+      window.removeEventListener('drop', onDragEnd, true);
+      window.removeEventListener('blur', onBlur);
+    };
   }, []);
 }

@@ -509,7 +509,6 @@ export function EditorShell({
   debugSurface,
   gatePreview,
 }: EditorShellProps): React.JSX.Element {
-  useDesktopAutomation();
   const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
   const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
   const rightWorkspaceRef = useRef<RightWorkspaceHandle>(null);
@@ -2836,6 +2835,15 @@ export function EditorShell({
   // existing toolbar only for the active portrait Canvas workspace.
   const canvasToolbarVisible =
     !isPortrait || portraitWorkspace === 'canvas';
+
+  useDesktopAutomation({
+    isBusy: () => busy || closeConfirmOpen || flaCharacterCommitActiveRef.current,
+    previewDraft: (project, shotId) => {
+      if (productPreviewOpenRef.current || shotId !== shotStore.getCurrentShotId()) return false;
+      openDraftPreview(project);
+      return true;
+    },
+  });
 
   const surface = (
     <main
