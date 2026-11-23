@@ -134,6 +134,7 @@ function selectAuthoredChildFrame(
   readonly selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
   readonly selectionBasis?: FlaNestedGraphicFrameSelection['selectionBasis'];
   readonly effectiveFirstFrame: number;
+  readonly playOnceFrameCount?: number;
 } | SelectorFailure {
   const sourceAddress = element.sourceAddress;
   const parentFrameIndex = element.sourceParentFrameIndex;
@@ -212,6 +213,7 @@ function selectAuthoredChildFrame(
   if (!selected.ok) return failure('UNSUPPORTED_TIMING', selected.message, sourceAddress);
 
   let selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
+  let playOnceFrameCount: number | undefined;
   if (mode === 'single frame') {
     selectionRule = 'single-frame-parent-keyframe';
   } else if (mode === 'loop reverse') {
@@ -226,6 +228,7 @@ function selectAuthoredChildFrame(
         ? ((firstFrame - lastFrame + childFrameCount) % childFrameCount)
         : ((lastFrame - firstFrame + childFrameCount) % childFrameCount);
     const held = elapsed > distanceToTerminal;
+    playOnceFrameCount = distanceToTerminal + 1;
     selectionRule = held
       ? 'play-once-hold-terminal'
       : reverse ? 'play-once-reverse-parent-timeline' : 'play-once-parent-timeline';
@@ -235,7 +238,16 @@ function selectAuthoredChildFrame(
     frameIndex: selected.frameIndex,
     selectionRule,
     effectiveFirstFrame: firstFrame,
+    playOnceFrameCount,
   };
+}
+
+export function ikContainerPlaybackLength(
+  element: Extract<FlaDisplayListElement, { kind: 'symbol' }>,
+  frameCount: number,
+): number {
+  const selected = selectAuthoredChildFrame(element, frameCount);
+  return selected.ok ? selected.playOnceFrameCount ?? 1 : 1;
 }
 
 /**
@@ -395,10 +407,16 @@ export function prepareFlaNestedGraphicFrameSelections(
           selectionRule: descriptor.movieClipHasScript ? 'movieclip-script-held' : 'movieclip-local-timeline',
         };
       } else {
-        selected = selectAuthoredChildFrame(element, descriptor.frameCount);
+        // A single authored Scene frame may expose extra playback samples.
+        // Advance only its IK container occurrences, leaving Graphic source
+        // addresses and the existing MovieClip clock intact.
+        const rootIkPlayback = element.symbolType === 'ik container' && depth === 0 &&
+          root.kind === 'scene' ? options.playbackFrameIndex : undefined;
+        const current = rootIkPlayback ?? parentFrameIndex;
+        selected = selectAuthoredChildFrame({ ...element, sourceParentFrameIndex: current }, descriptor.frameCount);
         childClock = (ticksAgo) => {
-          const frame = clock(ticksAgo);
-          if (frame === undefined || frame < parentFrameSpanStart || frame > parentFrameIndex) return undefined;
+          const frame = rootIkPlayback === undefined ? clock(ticksAgo) : rootIkPlayback - ticksAgo;
+          if (frame === undefined || frame < parentFrameSpanStart || frame > current) return undefined;
           const sample = selectAuthoredChildFrame({ ...element, sourceParentFrameIndex: frame }, descriptor.frameCount);
           return sample.ok ? sample.frameIndex : undefined;
         };

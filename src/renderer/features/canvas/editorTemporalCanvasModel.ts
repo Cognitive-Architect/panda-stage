@@ -153,6 +153,8 @@ export function buildEditorTemporalCanvasModel({
   // Expression switch or configured talking face at zero. Only the face
   // state is projected so the base transforms remain editable.
   const hasSilenceAnalysis = dialogueSilence !== undefined && Object.keys(dialogueSilence).length > 0;
+  const manualAtZero = new Set(shot.timelineEvents.flatMap((event) =>
+    event.type === 'mouth-pose' && event.origin === 'manual' && event.startMs === 0 ? [event.layerId] : []));
   const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
     source.kind === 'character' && project.characters.some(character =>
       character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
@@ -165,7 +167,8 @@ export function buildEditorTemporalCanvasModel({
   )
     ? (() => {
         const atZero = evaluateShotAtTime(shot, 0, project);
-        const formal = hasConfiguredTalkingFace ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId, dialogueSilence) : atZero;
+        const formal = hasConfiguredTalkingFace || manualAtZero.size > 0
+          ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId, dialogueSilence) : atZero;
         return {
           ...baseEditorShot,
           layers: baseEditorShot.layers.map((layer) => {
@@ -174,7 +177,7 @@ export function buildEditorTemporalCanvasModel({
             const configured = project.characters.some(character =>
               character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
                 (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback))));
-            const evaluated = (configured ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
+            const evaluated = (configured || manualAtZero.has(layer.id) ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
             return evaluated
               ? {
                   ...layer,

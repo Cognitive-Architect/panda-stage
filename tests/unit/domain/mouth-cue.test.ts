@@ -29,6 +29,8 @@ import { collectExportPreparationMedia } from '../../../src/domain/export-prepar
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
 import { buildEditorTemporalCanvasModel } from '../../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
+import { iterateFormalProjectFrameSchedule } from '../../../src/shared/export-types';
+import { firstExportFrameTimeAtOrAfter, exportFrameTimeMs } from '../../../src/domain/timeline/frame-grid';
 import { FACE_GRAPHIC_ID, faceSource, graphicFaceProject } from '../../helpers/graphicFaceProject';
 import { buildProject, IDS } from './testProject';
 
@@ -253,6 +255,93 @@ describe('Editable mouth poses (#1226)', () => {
       expect(resolveLayerVisualParts(project, shot, preview.layers.find((layer) => layer.id === IDS.layerChar)!, time)).toEqual(visual);
       expect(visual.parts.find((part) => part.slot === 'face')?.source).toMatchObject({ firstFrame });
     }
+  });
+
+  it('keeps a manual pose at zero and during playback in both modes with only its needed resources', () => {
+    const base = projectWithPoses();
+    const configured = ProjectSchema.parse({
+      ...base,
+      characters: base.characters.map(character => character.id === IDS.character ? {
+        ...character,
+        mouthPoseSet: { ...character.mouthPoseSet!, poses: character.mouthPoseSet!.poses.map(item =>
+          item.id === rest ? { ...item, source: { kind: 'image', assetId: MOUTH_ASSET_ID } } : item) },
+      } : character),
+    });
+    const drafted = applyMouthPoseDraft(configured, selection, draft, randomUUID);
+    const manual = setManualMouthPose(drafted, IDS.shot, IDS.layerChar, randomUUID(),
+      { startMs: 0, endMs: 200, poseId: rest });
+    for (const mode of ['asset-loop', 'mouth-poses'] as const) {
+      const project = ProjectSchema.parse(JSON.parse(JSON.stringify({
+        ...manual,
+        characters: manual.characters.map(character => character.id === IDS.character
+          ? { ...character, mouthPoseSet: { ...character.mouthPoseSet, driveMode: mode } } : character),
+      })));
+      const shot = project.shots[0]!;
+      expect(listShotRuntimeImageAssets(project, shot).some(asset => asset.id === MOUTH_ASSET_ID)).toBe(true);
+      expect(collectExportPreparationMedia(project).some(({ asset }) => asset.id === MOUTH_ASSET_ID)).toBe(true);
+      const readyAssetIds = new Set(project.assets.map(asset => asset.id));
+      for (const [time, expected] of [[550, mode === 'asset-loop' ? undefined : pose], [0, rest], [160, rest],
+        [250, mode === 'asset-loop' ? undefined : rest]] as const) {
+        const stage = buildEditorTemporalCanvasModel({ project, shot, currentTimeMs: time, readyAssetIds,
+          missingAssetIds: new Set(), previousVisuals: new Map() });
+        const preview = projectProductPreviewDialogue(project, shot, evaluateShotAtTime(shot, time, project));
+        const exported = evaluateExportShotAtTime(project, shot, time);
+        const expectedLayer = exported.layers.find(layer => layer.id === IDS.layerChar)!;
+        expect(expectedLayer.mouthPose?.id).toBe(expected);
+        expect(preview.layers.find(layer => layer.id === IDS.layerChar)?.mouthPose?.id).toBe(expected);
+        expect(stage.visualsByLayer.get(IDS.layerChar)).toEqual(resolveLayerVisualParts(project, shot, expectedLayer, time));
+        expect(exported.layers.find(layer => layer.id === other)?.mouthPose?.id).toBe(mode === 'mouth-poses' ? rest : undefined);
+      }
+    }
+  });
+
+  it('assigns the 960–1000 ms pulse to an actual export frame and drops fragments hidden by a manual pose', () => {
+    const range = { ...selection, startMs: 920, endMs: 1_040 };
+    const pulse = [
+      { startMs: 920, endMs: 960, category: 'rest' },
+      { startMs: 960, endMs: 1_000, category: 'open' },
+      { startMs: 1_000, endMs: 1_040, category: 'rest' },
+    ] as const;
+    const original = projectWithPoses();
+    const project = applyMouthPoseDraft(original, range, pulse, randomUUID);
+    expect(original.shots[0]!.timelineEvents).toEqual([]);
+    const shot = project.shots[0]!;
+    const sampleTimes = [...iterateFormalProjectFrameSchedule(project)].map(frame => frame.shotLocalTimeMs);
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 958)).toMatchObject({ startMs: 958, endMs: 1_000, poseId: pose });
+    for (const event of shot.timelineEvents) {
+      if (event.type === 'mouth-pose') expect(sampleTimes.some(time => event.startMs <= time && time < event.endMs)).toBe(true);
+    }
+    expect(() => applyMouthPoseDraft(original, { ...range, startMs: 960, endMs: 1_000 }, [pulse[1]], randomUUID)).toThrow(/没有可显示/u);
+    const id = randomUUID();
+    const saved = setManualMouthPose(original, IDS.shot, IDS.layerChar, id, { startMs: 958, endMs: 970, poseId: rest });
+    const reapplied = applyMouthPoseDraft(saved, range, pulse, randomUUID);
+    const events = reapplied.shots[0]!.timelineEvents.filter(event => event.type === 'mouth-pose');
+    expect(events.find(event => event.id === id)).toMatchObject({ startMs: 958, endMs: 970, origin: 'manual' });
+    expect(events.some(event => event.origin === 'generated' && event.poseId === pose)).toBe(false);
+  });
+
+  it('aligns generated events for a Shot after an off-grid cut and honors export sampling at 30 fps', () => {
+    const base = projectWithPoses();
+    const shot = base.shots[0]!;
+    const leadBackground = { ...shot.layers[0]!, id: randomUUID() };
+    const previous = { ...shot, id: randomUUID(), name: 'Lead-in', durationMs: 517,
+      layers: [leadBackground], backgroundLayerId: leadBackground.id, timelineEvents: [], dialogues: [], audioClips: [] };
+    const project = applyMouthPoseDraft(ProjectSchema.parse({ ...base, shots: [previous, shot] }), selection, [
+      { startMs: 440, endMs: 541, category: 'rest' },
+      { startMs: 541, endMs: 581, category: 'open' },
+      { startMs: 581, endMs: 960, category: 'rest' },
+    ], randomUUID);
+    const stamps = [...iterateFormalProjectFrameSchedule(project)]
+      .filter(frame => frame.shotId === shot.id).map(frame => frame.shotLocalTimeMs);
+    const events = project.shots[1]!.timelineEvents.filter(event => event.type === 'mouth-pose');
+    const open = events.find(event => event.poseId === pose)!;
+    expect(open.startMs).toBe(524); // Project frame 25 at 1041 ms, less the lead-in.
+    expect(stamps).toContain(open.startMs);
+    expect(events.every(event => stamps.some(time => event.startMs <= time && time < event.endMs))).toBe(true);
+    expect(exportFrameTimeMs(29, 30)).toBe(966);
+    expect(firstExportFrameTimeAtOrAfter(966, 30)).toBe(966);
+    expect(firstExportFrameTimeAtOrAfter(967, 30)).toBe(1_000);
+    expect(firstExportFrameTimeAtOrAfter(965, 30)).toBe(966);
   });
 
   it('waits for the resolved pose image and keeps the second instance at rest under a targeted draft', () => {

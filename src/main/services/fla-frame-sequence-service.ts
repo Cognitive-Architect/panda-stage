@@ -99,6 +99,8 @@ export interface SequenceFrameInput {
   svg: string;
   /** Source-space crop used by the renderer to frame this particular PNG. */
   sourceViewport?: { x: number; y: number; width: number; height: number };
+  maskWarning?: string;
+  ikPoseWarning?: string;
 }
 
 export type SequenceFrameSource = AsyncIterable<SequenceFrameInput> | Iterable<SequenceFrameInput>;
@@ -145,6 +147,8 @@ interface SequenceInFlightItem {
   frameIndex: number;
   sequenceOrdinal: number;
   sourceViewport?: { x: number; y: number; width: number; height: number };
+  maskWarning?: string;
+  ikPoseWarning?: string;
   rasterOutput: FlaStaticSnapshotRasterizeOutput;
   frameWallClockMs: number;
   receivedAt: number;
@@ -392,6 +396,8 @@ export class FlaFrameSequenceService {
           frameIndex: frame.frameIndex,
           sequenceOrdinal: ordinal,
           ...(frame.sourceViewport ? { sourceViewport: frame.sourceViewport } : {}),
+          maskWarning: frame.maskWarning,
+          ikPoseWarning: frame.ikPoseWarning,
           rasterOutput,
           frameWallClockMs,
           receivedAt: this.now(),
@@ -576,6 +582,8 @@ export class FlaFrameSequenceService {
         width: it.rasterOutput.width,
         height: it.rasterOutput.height,
         pixelCount: it.rasterOutput.pixelCount,
+        ...(it.maskWarning ? { maskWarning: it.maskWarning } : {}),
+        ...(it.ikPoseWarning ? { ikPoseWarning: it.ikPoseWarning } : {}),
       };
       return {
         frameIndex: it.frameIndex,

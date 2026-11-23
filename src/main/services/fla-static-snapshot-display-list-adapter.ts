@@ -37,6 +37,7 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
+import { ikContainerPlaybackLength } from './fla-nested-graphic-frame-selector';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
@@ -159,6 +160,9 @@ export type FlaStaticSnapshotDisplaySourceResult<T> =
   | { readonly ok: true; readonly value: T }
   | FlaStaticSnapshotDisplaySourceFailure;
 
+type IkPoseFailure = { readonly ok: false; readonly code: 'UNSUPPORTED_IK_POSE'; readonly message: string };
+type LayerSampleResult<T> = FlaStaticSnapshotDisplaySourceResult<T> | IkPoseFailure;
+
 export type FlaStaticSnapshotDisplaySourceBuildResult =
   | { readonly ok: true; readonly source: FlaStaticSnapshotDisplaySource }
   | FlaStaticSnapshotDisplaySourceFailure;
@@ -167,7 +171,7 @@ interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
   readonly sourceFps: number;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
-  readonly ikPoses: WeakMap<FlaXflElementBlock, FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListMatrix[]>>;
+  readonly ikPoses: WeakMap<FlaXflElementBlock, LayerSampleResult<readonly FlaDisplayListMatrix[]>>;
   symbolAliases: SymbolAliasIndex;
   readonly movieClipNames: Set<string>;
   readonly ikContainerNames: Set<string>;
@@ -187,10 +191,10 @@ interface MatrixReadResult {
 
 type MatrixReadFailure = FlaStaticSnapshotDisplaySourceFailure;
 
-function fail(
-  code: FlaStaticSnapshotDisplaySourceFailure['code'],
+function fail<Code extends FlaStaticSnapshotDisplaySourceFailure['code'] | IkPoseFailure['code']>(
+  code: Code,
   message: string,
-): FlaStaticSnapshotDisplaySourceFailure {
+): { readonly ok: false; readonly code: Code; readonly message: string } {
   return { ok: false, code, message };
 }
 
@@ -583,6 +587,7 @@ interface ElementParseContext {
 interface ClassicMotionColorTransform {
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly tintRgb?: readonly [number, number, number];
 }
 
 type ClassicMotionColorParseResult =
@@ -623,6 +628,7 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
     }
   }
   let rgbTransform: FlaDisplayListRgbTransform | undefined;
+  let tintRgb: ClassicMotionColorTransform['tintRgb'];
   if (attributes.brightness !== undefined) {
     const rawBrightness = attributes.brightness;
     const brightness = rawBrightness === undefined || rawBrightness.trim() === ''
@@ -642,9 +648,10 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
       return unsupported('invalid tint');
     }
     const rgb = Number.parseInt(tint!.slice(1), 16);
+    tintRgb = [rgb >>> 16, (rgb >>> 8) & 255, rgb & 255];
     rgbTransform = {
       multiplier: 1 - amount, offset: 0,
-      channelOffsets: [(rgb >>> 16) * amount, ((rgb >>> 8) & 255) * amount, (rgb & 255) * amount],
+      channelOffsets: [tintRgb[0] * amount, tintRgb[1] * amount, tintRgb[2] * amount],
     };
   }
   if (!objectMotion && names.length === 0) return unsupported('Color has no supported attributes');
@@ -654,11 +661,12 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
     : rgbTransform;
   return {
     ok: true,
-    transform: effectiveAlpha === undefined && effectiveRgb === undefined
+    transform: effectiveAlpha === undefined && effectiveRgb === undefined && tintRgb === undefined
       ? null
       : {
           ...(effectiveAlpha !== undefined ? { alphaMultiplier: effectiveAlpha } : {}),
           ...(effectiveRgb ? { rgbTransform: effectiveRgb } : {}),
+          ...(tintRgb ? { tintRgb } : {}),
         },
   };
 }
@@ -1635,7 +1643,7 @@ function sampleObjectMotion(
   offset: number,
   state: SourceBuildState,
 ): RigCalculationResult<{
-  readonly instance: FlaXflElementBlock;
+  readonly color: ClassicMotionColorParseResult;
   readonly pose: ObjectMotionPose;
 }> {
   const target = readObjectMotionTarget(frame);
@@ -1648,8 +1656,11 @@ function sampleObjectMotion(
     core = parseFlaObjectMotion(frame, getFlaXflDirectChildren);
     state.objectMotionCurves.set(frame, core);
   }
-  const sampled = core.ok ? evaluateFlaObjectMotion(core.value, offset, state.sourceFps, matrix, pivot) : core;
-  return sampled.ok ? { ok: true, value: { instance, pose: sampled.value } }
+  const color = classicMotionColorTransform(instance, true);
+  const sampled = core.ok
+    ? evaluateFlaObjectMotion(core.value, offset, state.sourceFps, matrix, pivot, color.ok ? color.transform?.tintRgb : undefined)
+    : core;
+  return sampled.ok ? { ok: true, value: { color, pose: sampled.value } }
     : { ...sampled, fromObjectMotion: true };
 }
 
@@ -2100,8 +2111,7 @@ function buildObjectMotionFrameElements(
 ): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListElement[]> {
   const sampled = sampleObjectMotion(frame, frameIndex - spanStart, context.state);
   if (!sampled.ok) return fail('RENDER_FAILED', sampled.message);
-  const { instance, pose } = sampled.value;
-  const color = classicMotionColorTransform(instance, true);
+  const { color, pose } = sampled.value;
   if (!color.ok) return fail('RENDER_FAILED', color.message);
   const layer = context.frameSpanIndex.layers[layerIndex];
   const parsed = parseDisplayElements(directChild(frame.xml, 'DOMFrame', 'elements') ?? frame, {
@@ -2133,15 +2143,15 @@ function buildObjectMotionFrameElements(
 function readIkPoseMatrices(
   frame: FlaXflElementBlock,
   count: number,
-): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListMatrix[]> {
+): LayerSampleResult<readonly FlaDisplayListMatrix[]> {
   const frameChildren = getFlaXflDirectChildren(frame.xml, frame.name);
   const lists = frameChildren.filter((child) => child.name === 'betweenFrameMatrixList');
   if (lists.length !== 1 || Object.keys(lists[0]!.attributes).length > 0) {
-    return fail('RENDER_FAILED', '骨架动作缺少有效的已保存姿态矩阵');
+    return fail('UNSUPPORTED_IK_POSE', '骨架动作缺少有效的已保存姿态矩阵');
   }
   const nodes = getFlaXflDirectChildren(lists[0]!.xml, lists[0]!.name);
   if (count < 1 || nodes.length !== count) {
-    return fail('RENDER_FAILED', '骨架姿态矩阵数量与元件数及帧数不匹配');
+    return fail('UNSUPPORTED_IK_POSE', '骨架姿态矩阵数量与元件数及帧数不匹配');
   }
   const matrices: FlaDisplayListMatrix[] = [];
   for (const node of nodes) {
@@ -2152,7 +2162,7 @@ function readIkPoseMatrices(
           !Object.hasOwn(matrix, key) ||
           !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(value) ||
           !Number.isFinite(Number(value)))) {
-      return fail('RENDER_FAILED', '骨架动作包含无效的姿态矩阵或不支持的变形');
+      return fail('UNSUPPORTED_IK_POSE', '骨架动作包含无效的姿态矩阵或不支持的变形');
     }
     for (const key of Object.keys(matrix) as (keyof FlaDisplayListMatrix)[]) {
       if (node.attributes[key] !== undefined) matrix[key] = Number(node.attributes[key]);
@@ -2170,12 +2180,12 @@ function buildIkPoseFrameElements(
   layerIndex: number,
   state: SourceBuildState,
   layerReasons: string[],
-): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListElement[]> {
+): LayerSampleResult<readonly FlaDisplayListElement[]> {
   const container = directChild(frame.xml, frame.name, 'elements');
   const authored = container ? getFlaXflDirectChildren(container.xml, container.name) : [];
   if (!container || authored.some((element) => !['DOMSymbolInstance', 'DOMBitmapInstance', 'DOMShape'].includes(element.name)) ||
       /<(?:matrix3D|skin(?:ning|Weights)?|deform(?:ation)?|mesh|filters)\b/iu.test(frame.xml)) {
-    return fail('RENDER_FAILED', '此骨架片段包含无法匹配姿态的组合元件或暂不支持的变形');
+    return fail('UNSUPPORTED_IK_POSE', '此骨架片段包含无法匹配姿态的组合元件或暂不支持的变形');
   }
   const count = authored.length * span.duration;
   if (count > MAX_SOURCE_DISPLAY_NODES) {
@@ -2201,7 +2211,7 @@ function buildIkPoseFrameElements(
   if (!parsed.ok) return parsed;
   const visibleOrdinals = authored.flatMap((element, index) => elementIsVisible(element.attributes) ? [index] : []);
   if (parsed.value.length !== visibleOrdinals.length) {
-    return fail('RENDER_FAILED', '骨架姿态与显示元件的顺序无法对齐');
+    return fail('UNSUPPORTED_IK_POSE', '骨架姿态与显示元件的顺序无法对齐');
   }
   const matrices = poses.value;
   const frameOffset = frameIndex - span.index;
@@ -2214,7 +2224,7 @@ function buildIkPoseFrameElements(
       element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
   }));
   if (elements.some((element) => !Object.values(element.localTransform).every(Number.isFinite))) {
-    return fail('RENDER_FAILED', '骨架姿态变换超出支持范围');
+    return fail('UNSUPPORTED_IK_POSE', '骨架姿态变换超出支持范围');
   }
   return { ok: true, value: elements };
 }
@@ -2250,7 +2260,7 @@ function buildGraphicFrameContext(
     selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
     layerReasons: string[],
     isMask: boolean,
-  ): FlaStaticSnapshotDisplaySourceResult<{
+  ): LayerSampleResult<{
     readonly elements: readonly FlaDisplayListElement[];
     readonly frameFilter?: FlaDisplayListBlurFilter;
   }> => {
@@ -2261,9 +2271,8 @@ function buildGraphicFrameContext(
     if (selection.kind === 'ik-pose' && sampleVisible) {
       const sampled = buildIkPoseFrameElements(selection.sourceFrame, selection.span, frameIndex,
         scope, selection.layerIndex, state, layerReasons);
-      if (sampled.ok) elements = sampled.value;
-      else if (sampled.code === 'BUDGET_EXCEEDED') return sampled;
-      else layerReasons.push(sampled.message);
+      if (!sampled.ok) return sampled;
+      elements = sampled.value;
     } else if (selection.kind === 'object-motion' && sampleVisible) {
       const sampled = buildObjectMotionFrameElements(selection.sourceFrame, selection.span.index, frameIndex, scope,
           selection.layerIndex, rigContext, layerReasons);
@@ -2571,9 +2580,13 @@ function buildGraphicFrameContext(
     const isMask = maskLayerIds.has(selection.layerIndex);
     const layerReasons: string[] = [];
     const sampled = sampleLayer(selection, layerReasons, isMask);
-    if (!sampled.ok && (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
+    const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
+      ? `第 ${selection.span.index + 1}–${selection.span.endExclusive} 帧：${sampled.message}`
+      : undefined;
+    if (!sampled.ok && sampled.code !== 'UNSUPPORTED_IK_POSE' &&
+        (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
     const { elements, frameFilter } = sampled.ok ? sampled.value : { elements: [], frameFilter: undefined };
-    const maskReason = isMask ? (!sampled.ok ? sampled.message : layerReasons[0] ??
+    const maskReason = isMask ? (!sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
       (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
@@ -2592,6 +2605,7 @@ function buildGraphicFrameContext(
       visible: selection.visible,
       elements,
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
+      ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
       ...(maskLayerIds.has(selection.layerIndex)
         ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
         : {}),
@@ -2704,13 +2718,20 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
 function oneFrameScenePlaybackCount(
   frameContext: FlaDisplayListFrameContext,
   movieClips: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+  ikContainers: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
 ): number {
   let period = 1;
+  let ikLength = 1;
   const visit = (elements: readonly FlaDisplayListElement[]): void => {
     for (const element of elements) {
       if (element.visible === false) continue;
       if (element.kind === 'group') visit(element.elements);
-      if (element.kind !== 'symbol' || element.symbolType !== 'movieclip') continue;
+      if (element.kind !== 'symbol') continue;
+      if (element.symbolType === 'ik container') {
+        const descriptor = ikContainers.get(element.libraryItemName);
+        if (descriptor) ikLength = Math.max(ikLength, ikContainerPlaybackLength(element, descriptor.frameCount));
+      }
+      if (element.symbolType !== 'movieclip') continue;
       const clip = movieClips.get(element.libraryItemName);
       if (!clip || clip.movieClipHasScript) continue;
       let a = period;
@@ -2720,7 +2741,7 @@ function oneFrameScenePlaybackCount(
     }
   };
   for (const layer of frameContext.layers) if (layer.visible) visit(layer.elements);
-  return period;
+  return Math.max(period, ikLength);
 }
 
 export interface FlaStaticSnapshotDisplaySourceExecution {
@@ -2790,6 +2811,7 @@ function* adaptFlaXflDisplaySourceSteps(
   const symbols = new Map<string, FlaGraphicSymbolDefinition>();
   const graphicSymbols: FlaXflGraphicSymbolDescriptor[] = [];
   const movieClipSymbols = new Map<string, FlaXflGraphicSymbolDescriptor>();
+  const ikContainers = new Map<string, FlaXflGraphicSymbolDescriptor>();
   for (const shell of shells) {
     yield;
     const parsed = buildGraphicFrameContext(
@@ -2823,6 +2845,7 @@ function* adaptFlaXflDisplaySourceSteps(
     if (shell.symbolType !== 'graphic' && shell.symbolType !== 'ik container') {
       movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
     }
+    if (shell.symbolType === 'ik container') ikContainers.set(shell.sourceLibraryItemName, descriptor);
     if (!shell.symbolType || shell.symbolType === 'graphic' || shell.symbolType === 'ik container') {
       symbols.set(shell.sourceLibraryItemName, definition);
       graphicSymbols.push(descriptor);
@@ -2845,7 +2868,7 @@ function* adaptFlaXflDisplaySourceSteps(
     if (!parsed.ok) return parsed;
     const frameCount = spans?.ok ? spans.value.frameCount : scene.frameCount;
     const playbackFrameCount = spans?.ok && frameCount === 1
-      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols)
+      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols, ikContainers)
       : 1;
     let firstObjectMotionFrameIndex: number | undefined;
     const laterCoverFrames = new Set<number>();

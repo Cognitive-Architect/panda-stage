@@ -134,6 +134,20 @@ const SEQ_REQ = '00000000-0000-4000-8000-0000000000aa';
 // ---- Tests ----
 
 describe('R2-C sequence service: deterministic sequential rendering', () => {
+  it('preserves frame-local warnings on the sequence preview contract', async () => {
+    const service = new FlaFrameSequenceService({ rasterizer: new FakeRasterizer() });
+    const warnings = { maskWarning: 'Mask failed closed', ikPoseWarning: 'Armature: frame 1' };
+    const [first, second] = frames(2);
+    const result = FlaFrameSequenceResponseSchema.parse(await service.renderSequence(
+      SESSION_ID, makeRange(0, 1), [{ ...first!, ...warnings }, second!], { sequenceRequestId: SEQ_REQ },
+    ));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0]!.preview).toMatchObject(warnings);
+    expect(result.items[1]!.preview.ikPoseWarning).toBeUndefined();
+    expect(result.items[1]!.preview.maskWarning).toBeUndefined();
+  });
+
   it('returns a schema-valid success with the selected target identity', async () => {
     const rasterizer = new FakeRasterizer();
     const service = new FlaFrameSequenceService({ rasterizer });

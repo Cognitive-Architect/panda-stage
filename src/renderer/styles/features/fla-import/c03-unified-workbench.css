@@ -1116,6 +1116,16 @@
   margin: 0;
 }
 
+.fla-frame-sequence-review-unified-preview .fla-frame-sequence-warnings {
+  grid-area: error;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fla-frame-sequence-review-unified-preview .fla-frame-sequence-warnings p {
+  margin: 0;
+}
+
 .fla-c03-import-footer {
   display: grid;
   min-width: 0;

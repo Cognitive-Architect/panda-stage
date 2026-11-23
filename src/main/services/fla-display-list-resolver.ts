@@ -62,6 +62,7 @@ export interface FlaDisplayListLayer {
   /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
   readonly maskLayerId?: string;
   readonly unsupportedMaskReason?: string;
+  readonly skippedIkPoseReason?: string;
   /** Source XFL mask identity linked to this layer through parentLayerIndex. */
   readonly maskedBy?: string;
 }
@@ -260,6 +261,7 @@ export interface FlaResolvedDisplayList {
   readonly layers: readonly FlaResolvedDisplayLayer[];
   readonly resolvedNodeCount: number;
   readonly maskDiagnostics?: readonly string[];
+  readonly ikPoseDiagnostics?: readonly string[];
 }
 
 export type FlaDisplayListResolverErrorCode =
@@ -290,6 +292,8 @@ interface ResolveContext {
   resolvedNodeCount: number;
   readonly maskDiagnostics: Set<string>;
   maskFailureCount: number;
+  readonly ikPoseDiagnostics: Set<string>;
+  ikPoseFailureCount: number;
 }
 
 type ResolveNodesResult =
@@ -452,7 +456,7 @@ function resolveLayers(
       : { ok: true as const, clips: [] };
     if (!enclosing.ok) return enclosing;
     if (layer.elements.length === 0) return enclosing;
-    const diagnosticCount = context.maskFailureCount;
+    const diagnosticCount = context.maskFailureCount + context.ikPoseFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
       parentTransform,
@@ -463,7 +467,7 @@ function resolveLayers(
       [],
     );
     if (!resolvedMask.ok) return resolvedMask;
-    if (context.maskFailureCount !== diagnosticCount) {
+    if (context.maskFailureCount + context.ikPoseFailureCount !== diagnosticCount) {
       return failure('UNSUPPORTED_DISPLAY_CONTENT', 'A nested mask dependency could not be sampled', maskPath);
     }
     const maskShapes = collectMaskShapes(resolvedMask.nodes, maskPath);
@@ -488,6 +492,13 @@ function resolveLayers(
     if (!layer) return failure('INVALID_INPUT', 'Missing layer entry', layerPath);
     if (layer.maskLayerId) continue;
     if (!layer.visible) continue;
+    if (layer.skippedIkPoseReason) {
+      context.ikPoseFailureCount += 1;
+      if (context.ikPoseDiagnostics.size < 32) {
+        context.ikPoseDiagnostics.add(`${layer.name}：${layer.skippedIkPoseReason}`.slice(0, 500));
+      }
+      continue;
+    }
 
     const mask = layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
     if (mask && !mask.ok) {
@@ -827,6 +838,8 @@ export function resolveFlaDisplayList(
     resolvedNodeCount: 0,
     maskDiagnostics: new Set(),
     maskFailureCount: 0,
+    ikPoseDiagnostics: new Set(),
+    ikPoseFailureCount: 0,
   };
   const layers = resolveLayers(
     input.root.frameContext,
@@ -846,6 +859,7 @@ export function resolveFlaDisplayList(
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
       ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
+      ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },
   };
 }

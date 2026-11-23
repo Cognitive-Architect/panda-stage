@@ -120,7 +120,7 @@ export function captureFlaGraphicStructure(
   const canStoreMaskGeometry = (node: FlaResolvedDisplayNode): boolean => node.kind === 'group'
     ? node.children.every(canStoreMaskGeometry)
     : !node.clipPaths?.some((clip) => clip.shapes.length === 0 || clip.shapes.some((shape) => shape.clipPaths?.length));
-  if (displayList.maskDiagnostics?.length ||
+  if (displayList.maskDiagnostics?.length || displayList.ikPoseDiagnostics?.length ||
       !displayList.layers.every((layer) => layer.children.every(canStoreMaskGeometry))) return undefined;
   const usedIds = new Set<string>();
   const symbolDefinitions: Record<string, FlaGraphicNestedSymbolDefinition> = {};

@@ -108,6 +108,7 @@ export interface BuildSvgSuccess {
   // contain visible content when this is false.
   hasRenderablePath: boolean;
   readonly maskWarning?: string;
+  readonly ikPoseWarning?: string;
 }
 
 export interface BuildSvgFailure {
@@ -2720,7 +2721,8 @@ export async function buildRenderableTargetCatalog(
       resolved: resolved.ok,
     });
     let unsupportedReason = check.unsupportedReason;
-    if (resolved.ok && !unsupportedReason && (!check.isBlank || resolved.displayList.maskDiagnostics?.length)) {
+    if (resolved.ok && !unsupportedReason &&
+        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length)) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
@@ -4165,8 +4167,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   if (svgByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
-  if (maskWarnings.size && emittedLeafCount === 0) {
-    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings].join('；').slice(0, 500) };
+  const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
+  if ((maskWarnings.size || ikPoseWarning) && emittedLeafCount === 0) {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning].filter(Boolean).join('；').slice(0, 500) };
   }
   return {
     ok: true,
@@ -4178,6 +4181,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     firstFillColor,
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
+    ...(ikPoseWarning ? { ikPoseWarning } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

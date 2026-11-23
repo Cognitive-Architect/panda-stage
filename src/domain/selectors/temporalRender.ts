@@ -90,14 +90,28 @@ export function listShotRuntimeImageAssets(
   shot: Shot,
 ): ImageAsset[] {
   const assets = new Map<string, ImageAsset>();
-  const characterIds = new Set(shot.layers.flatMap(({ source }) => source.kind === 'character' ? [source.characterId] : []));
-  const eventPoseIds = new Set(shot.timelineEvents.flatMap((event) => event.type === 'mouth-pose' ? [event.poseId] : []));
+  const ownerByLayer = new Map(shot.layers.flatMap(({ id, source }) =>
+    source.kind === 'character' ? [[id, source.characterId] as const] : []));
+  const characterIds = new Set(ownerByLayer.values());
+  const eventsByCharacter = new Map<string, Map<string, boolean>>();
+  for (const event of shot.timelineEvents) {
+    if (event.type !== 'mouth-pose') continue;
+    const owner = ownerByLayer.get(event.layerId);
+    if (!owner) continue;
+    const poses = eventsByCharacter.get(owner) ?? new Map<string, boolean>();
+    poses.set(event.poseId, poses.get(event.poseId) === true || event.origin === 'manual');
+    eventsByCharacter.set(owner, poses);
+  }
   const assetIndex = new Map(project.assets.map((asset) => [asset.id, asset]));
   for (const character of project.characters) {
     const set = character.mouthPoseSet;
-    if (!characterIds.has(character.id) || set?.driveMode !== 'mouth-poses') continue;
+    if (!characterIds.has(character.id) || !set) continue;
+    const events = eventsByCharacter.get(character.id);
     for (const pose of set.poses) {
-      if (pose.id !== set.restPoseId && !eventPoseIds.has(pose.id)) continue;
+      const used = set.driveMode === 'mouth-poses'
+        ? pose.id === set.restPoseId || events?.has(pose.id)
+        : events?.get(pose.id) === true;
+      if (!used) continue;
       const face = resolveCharacterFaceSourceOrNull(project, pose.source);
       const resourceIds = face?.flaGraphic?.resourceAssetIds ?? (face?.assetId ? [face.assetId] : []);
       for (const id of resourceIds) {
@@ -226,9 +240,8 @@ export function projectShotMouth(
       (candidate) => candidate.id === layerCharacterId,
     );
     const poseSet = layerCharacter?.mouthPoseSet;
-    const poseEvent = poseSet?.driveMode === 'mouth-poses'
-      ? resolveMouthPoseEvent(shot, layer.id, evaluatedShot.timeMs) : undefined;
-    const pose = poseEvent && (poseEvent.origin === 'manual' || cue === 'none')
+    const poseEvent = poseSet ? resolveMouthPoseEvent(shot, layer.id, evaluatedShot.timeMs) : undefined;
+    const pose = poseEvent && (poseEvent.origin === 'manual' || (poseSet?.driveMode === 'mouth-poses' && cue === 'none'))
       ? poseSet?.poses.find((candidate) => candidate.id === poseEvent.poseId) : undefined;
     if (pose) {
       changed = true;

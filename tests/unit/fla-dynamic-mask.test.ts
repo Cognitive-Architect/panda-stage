@@ -26,6 +26,33 @@ async function sceneSampler(bytes: Uint8Array) {
 }
 
 describe('Animate dynamic masks', () => {
+  it.each(['ordinary', 'mask'] as const)('isolates a bad IK %s layer through catalog and real SVG composition', async (kind) => {
+    const zip = await JSZip.loadAsync(await load('MASK'));
+    const doc = await zip.file('DOMDocument.xml')!.async('string');
+    const broken = (frame: string) => frame.replace(/tweenType="[^"]+"/u, 'tweenType="IK pose"');
+    const updated = kind === 'mask'
+      ? doc.replace(/<DOMLayer[^>]*name="Moving[ _]windows"[^>]*>[\s\S]*?<\/DOMLayer>/u, (layer) =>
+        layer.replace(/<DOMFrame[^>]+tweenType="motion object"[^>]*>/u, broken))
+      : doc.replace('<layers>', '<layers><DOMLayer name="Bad armature"><frames>' +
+        '<DOMFrame index="0" duration="8" tweenType="IK pose"><elements>' +
+        '<DOMSymbolInstance libraryItemName="DoubleWindow" symbolType="graphic"/>' +
+        '</elements><betweenFrameMatrixList><Matrix/></betweenFrameMatrixList></DOMFrame></frames></DOMLayer>')
+        .replace(/parentLayerIndex="(\d+)"/gu, (_, value: string) => `parentLayerIndex="${Number(value) + 1}"`);
+    expect(updated).not.toBe(doc);
+    zip.file('DOMDocument.xml', updated);
+    const sample = await sceneSampler(await zip.generateAsync({ type: 'uint8array' }));
+    const frame = await sample(3);
+    expect(frame.svg).toMatch(/#196be6/iu);
+    expect(frame.svg).toMatch(/#f23544/iu);
+    if (kind === 'mask') {
+      expect(frame.maskWarning).toMatch(/骨架/u);
+      expect(frame.svg).not.toMatch(/#f08f36/iu);
+    } else {
+      expect(frame.ikPoseWarning).toMatch(/Bad armature.*第 1–8 帧.*骨架/u);
+      expect(frame.maskWarning).toBeUndefined();
+      expect(frame.svg).toMatch(/#f08f36/iu);
+    }
+  });
   it('updates the shape and object motion clip geometry on the same source frame', async () => {
     const sample = await sceneSampler(await load('MASK'));
     const [middle, start, end] = [await sample(3), await sample(0), await sample(7)];

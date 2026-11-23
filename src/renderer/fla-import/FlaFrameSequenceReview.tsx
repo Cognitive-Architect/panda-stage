@@ -234,6 +234,21 @@ export function FlaFrameSequenceReview({
   const displayedPreviewUrls = sequenceIsCurrent ? previewUrls : [];
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
   const maskedFrameWarning = displayedSequenceItems.find((item) => item.preview.maskWarning);
+  const ikPoseFrameWarning = displayedSequenceItems.find((item) => item.preview.ikPoseWarning);
+  const sequenceWarnings = maskedFrameWarning || ikPoseFrameWarning ? (
+    <div className="fla-frame-sequence-warnings">
+      {maskedFrameWarning ? (
+        <p className="fla-frame-sequence-unsupported" role="status">
+          第 {maskedFrameWarning.frameIndex + 1} 帧的部分遮罩内容未显示。{maskedFrameWarning.preview.maskWarning}
+        </p>
+      ) : null}
+      {ikPoseFrameWarning ? (
+        <p className="fla-frame-sequence-unsupported" role="status">
+          跳过了无法读取的骨架动作。{ikPoseFrameWarning.preview.ikPoseWarning}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
   const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
   const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
 
@@ -1370,6 +1385,7 @@ export function FlaFrameSequenceReview({
             {!validation.valid && validation.message ? (
               <p id="fla-frame-sequence-range-error" role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
             ) : null}
+            {presentation === 'unified-preview' ? sequenceWarnings : null}
             {presentation === 'unified-preview' ? (
               <div className="fla-c03-sequence-actions">
                 {sequenceIsCurrent ? (
@@ -1547,11 +1563,7 @@ export function FlaFrameSequenceReview({
             <div><dt>范围</dt><dd>第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
             <div><dt>结果</dt><dd>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
-          {maskedFrameWarning ? (
-            <p className="fla-frame-sequence-unsupported" role="status">
-              第 {maskedFrameWarning.frameIndex + 1} 帧的部分遮罩内容未显示。{maskedFrameWarning.preview.maskWarning}
-            </p>
-          ) : null}
+          {presentation === 'standard' ? sequenceWarnings : null}
            <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
             <summary>更多详情</summary>
             <ul>

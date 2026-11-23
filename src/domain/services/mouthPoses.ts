@@ -1,5 +1,6 @@
 import type { MouthPoseCategory, MouthPoseEvent, Project, Shot, TimelineEvent } from '../models';
 import { ProjectSchema } from '../models';
+import { exportFrameTimeMs, firstExportFrameTimeAtOrAfter } from '../timeline/frame-grid';
 
 export interface MouthPoseWindow { startMs: number; endMs: number }
 export interface MouthPoseDraftSegment extends MouthPoseWindow { category: MouthPoseCategory }
@@ -67,7 +68,7 @@ function subtract(window: MouthPoseWindow, blockers: readonly MouthPoseWindow[])
 export function applyMouthPoseDraft(
   project: Project, selection: MouthPoseSelection, draft: readonly MouthPoseDraftSegment[], createId: () => string,
 ): Project {
-  const { shot, poseSet } = selectMouthPoseGeneration(project, selection);
+  const { shot, poseSet, audio } = selectMouthPoseGeneration(project, selection);
   let cursor = selection.startMs;
   for (const segment of draft) {
     if (segment.startMs !== cursor || segment.endMs <= cursor || !poseSet.analyzerMapping[segment.category]) {
@@ -77,6 +78,16 @@ export function applyMouthPoseDraft(
   }
   if (cursor !== selection.endMs || draft.length > 6_000) throw new Error('口型草稿范围不完整。');
 
+  // Export samples one project-wide grid. A Shot after an off-grid cut has
+  // that same grid shifted by its own start time.
+  const shotStartMs = project.shots.slice(0, project.shots.indexOf(shot))
+    .reduce((start, item) => start + item.durationMs, 0);
+  const snap = (timeMs: number) =>
+    exportFrameTimeMs(Math.round((shotStartMs + timeMs) * project.fps / 1_000), project.fps) - shotStartMs;
+  const hasSample = (window: MouthPoseWindow): boolean =>
+    firstExportFrameTimeAtOrAfter(shotStartMs + window.startMs, project.fps) < shotStartMs + window.endMs;
+  if (!hasSample(selection)) throw new Error('这段范围没有可显示口型的帧，请稍微扩大范围。');
+
   const manuals = shot.timelineEvents.filter((event) =>
     event.type === 'mouth-pose' && event.origin === 'manual' && event.layerId === selection.layerId)
     .sort((a, b) => a.startMs - b.startMs);
@@ -84,12 +95,19 @@ export function applyMouthPoseDraft(
     if (event.type !== 'mouth-pose' || event.origin !== 'generated' ||
         event.layerId !== selection.layerId || event.dialogueId !== selection.dialogueId ||
         !intersectMouthPoseWindow(event, selection)) return [event];
-    return subtract(event, [selection]).map((window, index) => ({ ...event, ...window, id: index ? createId() : event.id }));
+    return subtract(event, [selection]).filter(hasSample)
+      .map((window, index) => ({ ...event, ...window, id: index ? createId() : event.id }));
   });
   const generationId = createId();
   const generated: MouthPoseEvent[] = [];
-  for (const segment of draft) {
-    for (const window of subtract(segment, manuals)) {
+  for (const [index, segment] of draft.entries()) {
+    const bounds = segment.category === 'rest' ? selection : audio;
+    const snapped = intersectMouthPoseWindow(bounds, {
+      startMs: index === 0 ? selection.startMs : snap(segment.startMs),
+      endMs: index === draft.length - 1 ? selection.endMs : snap(segment.endMs),
+    });
+    if (!snapped) continue;
+    for (const window of subtract(snapped, manuals).filter(hasSample)) {
       const poseId = poseSet.analyzerMapping[segment.category];
       const last = generated.at(-1);
       if (last?.poseId === poseId && last.endMs === window.startMs) {

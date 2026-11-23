@@ -125,4 +125,30 @@ describe('Animate Object Motion', () => {
       rgbTransform: { multiplier: 0.5, offset: 0, channelOffsets: [64, 32, 16] },
     });
   });
+
+  it.each([false, true])('animates Tint Amount with authored or explicit RGB (explicit=%s)', async (explicit) => {
+    const zip = await JSZip.loadAsync(await readFile(fixture));
+    const doc = await zip.file('DOMDocument.xml')!.async('string');
+    const changed = doc.replace('<Color/>', '<Color tintColor="#C06030" tintMultiplier="0"/>');
+    const tint = '<Property id="Tint_Amount" ignoreTimeMap="1">' +
+      '<Keyframe anchor="0,0" timevalue="0"/><Keyframe anchor="0,100" timevalue="11000"/></Property>' +
+      (explicit ? '<Property id="Tint_Color" value="0x2070e0ff"/>' : '');
+    const withTint = changed.replace(/<PropertyContainer\b[^>]*>/u, '$&' + tint);
+    expect(withTint).toContain('Tint_Amount');
+    zip.file('DOMDocument.xml', withTint);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const scene = prepared.source.sceneTimelines[0]!;
+    const expected = explicit ? [32,112,224] : [192,96,48];
+    for (const ordinal of [4,9,15]) {
+      const result = prepared.source.buildSceneFrameContext(scene.xml, ordinal, 'scene:0');
+      if (!result.ok) throw new Error(result.message);
+      const symbol = result.value.layers[0]?.elements[0];
+      if (symbol?.kind !== 'symbol' || !symbol.rgbTransform) throw new Error(result.value.unsupportedDisplayReason ?? 'Missing Tint');
+      const amount = 1 - symbol.rgbTransform.multiplier;
+      expect(amount).toBeCloseTo((ordinal - 4) / 11, 5);
+      expect(symbol.rgbTransform.channelOffsets).toEqual(expected.map((channel) => expect.closeTo(channel * amount, 5)));
+    }
+  });
 });

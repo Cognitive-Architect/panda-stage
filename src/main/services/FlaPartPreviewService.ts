@@ -2247,7 +2247,7 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning;
+    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning;
     if (wholeImageReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, wholeImageReason, {
         sourcePreparationCountForRequest,

@@ -126,7 +126,7 @@ export function MouthPoseDraftControl({ snapshot, shot, dialogue }: {
       {busy ? <button type="button" onClick={cancel}>取消分析</button>
         : <button type="button" disabled={!layerId || !dialogue.audioClipId} onClick={() => void generate()}>分析配音</button>}
       {!dialogue.audioClipId ? <p>绑定配音后可生成草稿。时间轴仍可手动添加口型。</p> : null}
-      {character.mouthPoseSet.driveMode === 'asset-loop' ? <p>当前为素材循环。切换到口型帧后，时间轴上的口型段会生效。</p> : null}
+      {character.mouthPoseSet.driveMode === 'asset-loop' ? <p>当前为素材循环。切换到口型帧后，自动生成的口型段会生效。</p> : null}
       {currentDraft ? <>
         {oldCue ? <p role="status">旧张闭嘴标记会盖过自动段。可在时间轴选择并删除对应标记。</p> : null}
         <label>草稿段 <select value={inspected} onChange={(event) => setInspected(Number(event.currentTarget.value))}>

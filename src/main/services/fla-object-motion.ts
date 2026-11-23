@@ -204,6 +204,7 @@ export function evaluateFlaObjectMotion(
   sourceFps: number,
   base: FlaDisplayListMatrix,
   pivot: { readonly x: number; readonly y: number },
+  authoredTint?: readonly [number, number, number],
 ): MotionResult<ObjectMotionPose> {
   const ticks = frameOffset / sourceFps * core.timeScale;
   if (!Number.isFinite(ticks) || ticks < 0) return invalid('无法确认源文件帧率');
@@ -239,7 +240,11 @@ export function evaluateFlaObjectMotion(
     rgbTransform = {
       multiplier: 1 - amount,
       offset: 0,
-      channelOffsets: [value('Tint_R', 0) * amount, value('Tint_G', 0) * amount, value('Tint_B', 0) * amount],
+      channelOffsets: [
+        value('Tint_R', authoredTint?.[0] ?? 0) * amount,
+        value('Tint_G', authoredTint?.[1] ?? 0) * amount,
+        value('Tint_B', authoredTint?.[2] ?? 0) * amount,
+      ],
     };
   }
   return { ok: true, value: {

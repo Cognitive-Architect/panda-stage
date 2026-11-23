@@ -83,8 +83,9 @@ describe('baked IK display sampling', () => {
       if (!adapted.ok) throw new Error(adapted.message);
       const scene = adapted.source.sceneTimelines[0]!;
       const sampled = adapted.source.buildSceneFrameContext(scene.xml, 3, 'scene:0');
-      expect(sampled).toMatchObject({ ok: true, value: { unsupportedDisplayReason: expect.stringContaining('骨架'),
-        layers: [{ name: 'healthy' }, { name: 'armature', elements: [] }] } });
+      expect(sampled).toMatchObject({ ok: true, value: { layers: [
+        { name: 'healthy' }, { name: 'armature', elements: [], skippedIkPoseReason: expect.stringContaining('骨架') },
+      ] } });
       expect(adapted.source.sceneTimelines[1]?.frameContext.layers[0]?.elements).toHaveLength(1);
     },
   );
@@ -110,6 +111,35 @@ describe('baked IK display sampling', () => {
         selectedChildFrameIndex: childIndex,
         selectionRule: index! > 2 ? 'play-once-hold-terminal' : 'play-once-parent-timeline',
       }] });
+    }
+  });
+
+  it('extends a one-keyframe Scene to 36 baked positions and holds past the IK end beside MovieClips', () => {
+    const placement = '<DOMSymbolInstance libraryItemName="Pose" symbolType="graphic"/>';
+    const symbolXml = (name: string, type: string, count: number) => ({
+      name: `LIBRARY/${name}.xml`,
+      xml: graphic(name, [layer('drawings', Array.from({ length: count }, (_, i) => frame(i, shape())).join(''))])
+        .replace('symbolType="graphic"', `symbolType="${type}"`),
+    });
+    for (const movieCount of [8, 42]) {
+      const doc = `<DOMDocument><timelines>${timeline('Scene', [
+        layer('instances', frame(0, placement + '<DOMSymbolInstance libraryItemName="Clip"/>')),
+      ])}</timelines></DOMDocument>`;
+      const adapted = adaptFlaXflDisplaySource(doc, [
+        symbolXml('Pose', 'ik container', 36), symbolXml('Clip', 'movie clip', movieCount),
+      ]);
+      if (!adapted.ok) throw new Error(adapted.message);
+      const scene = adapted.source.sceneTimelines[0]!;
+      expect(scene).toMatchObject({ frameCount: 1, playbackFrameCount: Math.max(36, movieCount) });
+      for (const playhead of [35, 0, 18, Math.max(36, movieCount) - 1]) {
+        const prepared = prepareFlaNestedGraphicFrameSelections(adapted.source, {
+          kind: 'scene', name: scene.name, frameContext: scene.frameContext,
+        }, { playbackFrameIndex: playhead });
+        expect(prepared).toMatchObject({ ok: true, selections: [
+          { libraryItemName: 'Pose', sourceParentFrameIndex: 0, selectedChildFrameIndex: Math.min(playhead, 35) },
+          { libraryItemName: 'Clip', selectedChildFrameIndex: playhead % movieCount },
+        ] });
+      }
     }
   });
 });
