@@ -1,0 +1,69 @@
+.dialogue-find-replace {
+  position: fixed;
+  z-index: 80;
+  inset-block-start: var(--ui-space-4);
+  inset-inline-end: var(--ui-space-4);
+  box-sizing: border-box;
+  width: min(26rem, calc(100vw - 2 * var(--ui-space-4)));
+  max-height: calc(100vh - 2 * var(--ui-space-4));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-4);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.dialogue-find-replace > header,
+.dialogue-find-replace > label,
+.dialogue-find-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+}
+
+.dialogue-find-replace > header {
+  justify-content: space-between;
+}
+
+.dialogue-find-replace > header h3 {
+  margin: 0;
+}
+
+.dialogue-find-replace > label > :is(input, select) {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.25rem;
+}
+
+.dialogue-find-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dialogue-find-results {
+  min-height: 0;
+  max-height: min(35vh, 18rem);
+  overflow: auto;
+  display: grid;
+  gap: var(--ui-space-1);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.dialogue-find-results button {
+  width: 100%;
+  display: grid;
+  justify-items: start;
+  text-align: start;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dialogue-find-results button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+}

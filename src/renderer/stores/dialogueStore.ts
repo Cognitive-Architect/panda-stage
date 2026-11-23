@@ -3,6 +3,7 @@ import {
   type DialogueArrangementTiming,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
+  type DialogueTextMatch,
   type MoveDialogueInput,
   type Project,
   type ResizeBoundAudioEndInput,
@@ -143,6 +144,15 @@ export class DialogueStore {
     if (next !== project) {
       this.editorStore.updateProject(next, 'Set dialogue timing');
     }
+  }
+
+  replaceText(scope: 'shot' | 'project', query: string, replacement: string, match?: DialogueTextMatch): void {
+    const snapshot = this.editorStore.getSnapshot();
+    const shotId = this.shotSelection.getCurrentShotId();
+    if (!snapshot || (scope === 'shot' && !shotId)) return;
+    const next = this.service.replaceText(snapshot.project,
+      { query, shotId: scope === 'shot' ? shotId : null }, replacement, match);
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '替换台词');
   }
 
   bindAudio(dialogueId: string, assetId: string): void {

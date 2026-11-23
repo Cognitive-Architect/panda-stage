@@ -12,12 +12,13 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  Search,
   SkipBack,
   Volume2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { getBoundAudioEndRange } from '../../../domain';
+import { getBoundAudioEndRange, type DialogueTextMatch } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
@@ -34,6 +35,7 @@ import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
 import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
+import { DialogueFindReplace } from '../dialogue/DialogueFindReplace';
 import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
@@ -134,6 +136,8 @@ export function TimelineDock({
   const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const findButton = useRef<HTMLButtonElement>(null);
   const {
     drag: pendingDrag,
     registerDropTarget,
@@ -233,6 +237,18 @@ export function TimelineDock({
     mediaGestureRef.current = null;
   };
 
+  const locateDialogue = (match: DialogueTextMatch): void => {
+    const targetShot = editorProjectStore.getSnapshot()?.project.shots.find((entry) => entry.id === match.shotId);
+    const target = targetShot?.dialogues.find((entry) => entry.id === match.dialogueId);
+    if (!targetShot || !target || target.text !== match.text) return;
+    shotStore.select(targetShot.id);
+    dialogueSelectionStore.select(target.id);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(target.startMs, targetShot.durationMs);
+    const scale = computePixelsPerMs(viewportWidth, targetShot.durationMs, timelineUiStore.getSnapshot().zoom);
+    timelineUiStore.setScrollPx(Math.max(0, timeToPx(target.startMs, scale) - viewportWidth / 4));
+  };
+
   return (
     <section
       aria-label="镜头时间轴"
@@ -298,6 +314,11 @@ export function TimelineDock({
         >
           <SkipBack aria-hidden="true" focusable="false" size={18} />
         </button>
+        <button type="button" className="timeline-dialogue-find" ref={findButton}
+          aria-label="台词查找替换" title="台词查找替换" aria-expanded={findOpen && !productPreviewOpen}
+          disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
+          <Search aria-hidden="true" focusable="false" size={16} />
+        </button>
         <div
           className="character-motion-toolbar-host"
           data-testid="character-motion-toolbar-host"
@@ -338,6 +359,13 @@ export function TimelineDock({
           </button>
         </div>
       </header>
+      {findOpen && !productPreviewOpen && snapshot && currentShotId ? (
+        <DialogueFindReplace key={editorProjectStore.getProjectInstanceId()} project={snapshot.project} shotId={currentShotId}
+          onLocate={locateDialogue} onClose={() => {
+            setFindOpen(false);
+            findButton.current?.focus();
+          }} />
+      ) : null}
       {ui.expanded ? (
         hasShot ? (
           <div

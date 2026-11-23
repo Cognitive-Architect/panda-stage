@@ -79,6 +79,32 @@ export interface UpdateDialogueInput {
   text?: string;
 }
 
+export interface DialogueTextMatch {
+  shotId: string;
+  dialogueId: string;
+  text: string;
+  offset: number;
+}
+
+export interface DialogueTextSearch {
+  query: string;
+  /** Null means the entire project. */
+  shotId: string | null;
+}
+
+export function* findDialogueText(project: Project, { query, shotId }: DialogueTextSearch): IterableIterator<DialogueTextMatch> {
+  if (!query) return;
+  for (const shot of project.shots) {
+    if (shotId !== null && shot.id !== shotId) continue;
+    const dialogues = [...shot.dialogues].sort((a, b) => a.startMs - b.startMs);
+    for (const { id, text } of dialogues) {
+      for (let offset = text.indexOf(query); offset !== -1; offset = text.indexOf(query, offset + query.length)) {
+        yield { shotId: shot.id, dialogueId: id, text, offset };
+      }
+    }
+  }
+}
+
 export interface SetDialogueTimingInput {
   shotId: string;
   dialogueId: string;
@@ -248,6 +274,37 @@ export class DialogueService {
         candidate.id === dialogue.id ? next : candidate,
       ),
     });
+  }
+
+  replaceText(project: Project, search: DialogueTextSearch, replacement: string, match?: DialogueTextMatch): Project {
+    const { query, shotId } = search;
+    if (!query || query === replacement || (match &&
+      (!Number.isSafeInteger(match.offset) || match.offset < 0))) return project;
+    let changed = false;
+    const shots = project.shots.map((shot) => {
+      if ((shotId !== null && shot.id !== shotId) || (match && shot.id !== match.shotId)) return shot;
+      let shotChanged = false;
+      const dialogues = shot.dialogues.map((dialogue) => {
+        const { text } = dialogue;
+        if (match && (dialogue.id !== match.dialogueId || text !== match.text ||
+          !text.startsWith(query, match.offset))) return dialogue;
+        if (!text.includes(query)) return dialogue;
+        const replaced = match
+          ? text.slice(0, match.offset) + replacement + text.slice(match.offset + query.length)
+          : text.replaceAll(query, () => replacement);
+        const next = this.validText(replaced);
+        if (next.length > 10_000) {
+          throw new DialogueServiceError('INVALID_DIALOGUE_TEXT', '替换后的台词不能超过 10000 个字符。');
+        }
+        if (next === text) return dialogue;
+        shotChanged = true;
+        return { ...dialogue, text: next };
+      });
+      if (!shotChanged) return shot;
+      changed = true;
+      return { ...shot, dialogues };
+    });
+    return changed ? this.finish(project, { ...project, shots }) : project;
   }
 
   /** Explicitly commits a positive Timed interval. */
