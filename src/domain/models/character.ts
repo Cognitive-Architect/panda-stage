@@ -920,6 +920,18 @@ export const CharacterBodyPoseSchema = z.object({
   });
 });
 
+const ArmPointSchema = z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict();
+export const CharacterArmChainSchema = z.object({
+  segments: z.array(z.object({
+    partId: IdSchema,
+    joint: ArmPointSchema,
+    minDeg: FiniteNumberSchema.min(-360).max(360),
+    maxDeg: FiniteNumberSchema.min(-360).max(360),
+  }).strict()).min(2).max(3),
+  tip: ArmPointSchema,
+}).strict().refine(({ segments }) => new Set(segments.map(({ partId }) => partId)).size === segments.length &&
+  segments.every(({ minDeg, maxDeg }) => minDeg <= maxDeg), 'Invalid rigid arm joints or limits.');
+
 const CharacterActionsShape = {
   actions: z.array(BakedCharacterActionSchema).max(64).optional(),
 };
@@ -967,11 +979,14 @@ const CurrentCharacterActionsShape = {
 };
 const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
 const AdaptivePartsCharacterV35Schema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV35Schema.safeExtend({
+const AdaptivePartsCharacterV36Schema = AdaptivePartsCharacterV35Schema.safeExtend({
   bodyPoses: z.array(CharacterBodyPoseSchema).max(64).refine((poses) =>
     new Set(poses.map(({ id }) => id)).size === poses.length &&
     new Set(poses.map(({ name }) => name.toLocaleLowerCase())).size === poses.length,
   'Body pose names and ids must be unique.').optional(),
+});
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV36Schema.safeExtend({
+  armChain: CharacterArmChainSchema.optional(),
 });
 
 function validateExpressionTalkingSources(character: {
@@ -1001,6 +1016,12 @@ export const CharacterV35Schema = z.discriminatedUnion('mode', [
   AdaptivePartsCharacterV35Schema,
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
+export const CharacterV36Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV36Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
@@ -1008,6 +1029,7 @@ export type CharacterAction = z.infer<typeof CharacterActionSchema>;
 export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
 export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
 export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
+export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;
