@@ -714,8 +714,7 @@ export function RightInspector({
       ) : null}
       {snapshot &&
       currentShot &&
-      selection.layer?.source.kind === 'character' &&
-      motionNode?.motion !== 'character-clip-v1' ? (
+      selection.layer?.source.kind === 'character' ? (
         <CharacterActionAtTimeControl
           key={`${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
