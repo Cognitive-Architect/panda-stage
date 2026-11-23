@@ -1,7 +1,7 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import {
   MouthPoseCategorySchema, MouthPoseSetSchema, resolveCharacterPartVisualSource, resolveExpressionVisualSource,
-  type ImageAsset, type MouthPose, type MouthPoseCategory, type MouthPoseSet,
+  type ImageAsset, type MouthPose, type MouthPoseCategory, type MouthPoseSet, type MouthPoseSource,
 } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { isFlaGraphicDefinition } from '../../../domain';
@@ -18,13 +18,16 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
   const character = snapshot?.project.characters.find((item) => item.id === characterId);
   const [selectedId, setSelectedId] = useState('');
   const [initialMouth, setInitialMouth] = useState<{ projectRoot: string; characterId: string; partId: string }>();
+  const [initialPick, setInitialPick] = useState<{ target: typeof initialMouth; source: MouthPoseSource }>();
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState('');
   const [visibleImageIds, setVisibleImageIds] = useState<readonly string[]>([]);
   const set = character?.mouthPoseSet;
   const pose = set?.poses.find((candidate) => candidate.id === selectedId) ?? set?.poses[0];
-  const images = snapshot?.project.assets.filter((asset) => asset.kind === 'image') ?? [];
-  const selectedAssetId = pose?.source.kind === 'image' ? pose.source.assetId : null;
+  const projectAssets = snapshot?.project.assets;
+  const images = useMemo(() => projectAssets?.filter((asset) => asset.kind === 'image') ?? [], [projectAssets]);
+  const pickerSource = pose?.source ?? (initialPick?.target === initialMouth ? initialPick?.source : undefined);
+  const selectedAssetId = pickerSource?.kind === 'image' ? pickerSource.assetId : null;
   const thumbnailAssets = useMemo(() => snapshot?.project.assets.filter((asset): asset is ImageAsset =>
     expanded && asset.kind === 'image' && (asset.id === selectedAssetId || visibleImageIds.includes(asset.id))) ?? [],
   [expanded, selectedAssetId, snapshot, visibleImageIds]);
@@ -36,6 +39,31 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
     initialMouth.characterId === character.id
     ? character.parts.find((part) => part.partId === initialMouth.partId)
     : undefined;
+  const partSource = needsMouthTarget && mouthPart ? resolveCharacterPartVisualSource(mouthPart) : undefined;
+  const scopedGraphic = partSource?.kind === 'fla-graphic' && (
+    partSource.nodePath || partSource.regionRef || partSource.regionVector || partSource.instanceTransformOverrides
+  ) ? partSource.animationId : undefined;
+  const imageMapping = partSource?.kind === 'image' ? partSource.imageMapping : undefined;
+  // The Part asset already contains the crop pixels. Its mapping places those pixels
+  // at the original position, which the independent mouth replacement preserves.
+  const partImage = partSource?.kind === 'image' && imageMapping
+    ? images.find((asset) => asset.id === partSource.assetId &&
+      asset.width === Math.round(imageMapping.crop.width * imageMapping.exportScale) &&
+      asset.height === Math.round(imageMapping.crop.height * imageMapping.exportScale))
+    : undefined;
+  const partGraphic = partSource?.kind === 'fla-graphic'
+    ? snapshot.project.animations.find((animation) => animation.id === partSource.animationId && isFlaGraphicDefinition(animation))
+    : undefined;
+  const needsExplicitSource = Boolean(partSource && (
+    partSource.kind === 'image' ? !partImage :
+      scopedGraphic || !partGraphic?.frames[partSource.poseFrameOrdinal ?? 0]
+  ));
+  const explicitSource = initialPick?.target === initialMouth ? initialPick?.source : undefined;
+  const validExplicitSource = explicitSource?.kind === 'image'
+    ? images.some((asset) => asset.id === explicitSource.assetId)
+    : Boolean(explicitSource && explicitSource.animationId !== scopedGraphic &&
+      snapshot.project.animations.some((item) => item.id === explicitSource.animationId &&
+        isFlaGraphicDefinition(item) && item.frames[explicitSource.firstFrame]));
 
   function save(next: MouthPoseSet) {
     try {
@@ -60,12 +88,14 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
   }
 
   function addPose() {
-    if (!character || (needsMouthTarget && !mouthPart)) return;
+    if (!character || (needsMouthTarget && !mouthPart) || (needsExplicitSource && !validExplicitSource)) return;
     const expression = character.expressions?.find((item) => item.id === character.defaultExpressionId);
     const graphic = snapshot?.project.animations.find(isFlaGraphicDefinition);
-    const partSource = needsMouthTarget && mouthPart ? resolveCharacterPartVisualSource(mouthPart) : undefined;
-    const initialSource = partSource?.kind === 'image' ? { kind: 'image' as const, assetId: partSource.assetId } :
-      partSource ? { kind: 'fla-graphic' as const, animationId: partSource.animationId, firstFrame: partSource.poseFrameOrdinal ?? 0 } : null;
+    const initialSource = needsExplicitSource ? explicitSource :
+      partImage ? { kind: 'image' as const, assetId: partImage.id } :
+      partSource?.kind === 'fla-graphic'
+        ? { kind: 'fla-graphic' as const, animationId: partSource.animationId, firstFrame: partSource.poseFrameOrdinal ?? 0 }
+        : undefined;
     const source = pose?.source ?? initialSource ?? (
       expression ? resolveExpressionVisualSource(expression) :
       images[0] ? { kind: 'image' as const, assetId: images[0].id } :
@@ -106,6 +136,20 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
       {character.parts.map((part) => <option key={part.partId} value={part.partId}>{part.displayName ?? '独立部件'}</option>)}
     </select></label>
   ) : null;
+  function chooseSource(source: MouthPoseSource) {
+    if (pose) changePose({ source });
+    else setInitialPick({ target: initialMouth, source });
+  }
+  const sourcePicker = expanded && (pose || needsExplicitSource) ? (
+    <GraphicFacePicker source={pickerSource?.kind === 'fla-graphic' ? pickerSource : undefined}
+      key={pose?.id ?? mouthPart?.partId} disabled={disabled} includeInternalFrames
+      excludeAnimationId={needsExplicitSource ? scopedGraphic : undefined} onChange={chooseSource}
+      testId="mouth-pose-source">
+      <ImageAssetPicker label="姿态图片" assets={images} selectedAssetId={selectedAssetId} thumbnails={thumbnails}
+        onVisibleCandidatesChange={setVisibleImageIds} onThumbnailError={onThumbnailError}
+        onChange={(assetId) => { if (assetId) chooseSource({ kind: 'image', assetId }); }} />
+    </GraphicFacePicker>
+  ) : null;
   return <details className="character-mouth-pose-settings" data-testid="mouth-pose-settings"
     onToggle={(event) => setExpanded(event.currentTarget.open)}>
     <summary>可编辑口型</summary>
@@ -115,8 +159,13 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
         <option value="mouth-poses">口型帧</option><option value="asset-loop">素材循环</option>
       </select></label> : null}
       {needsMouthTarget ? targetPicker : null}
+      {needsExplicitSource ? <>
+        <p>请在下方选择一张独立的嘴部图片，或选择只包含嘴部的元件及对应帧。</p>
+        {sourcePicker}
+      </> : null}
       <button type="button" onClick={addPose}
-        disabled={(needsMouthTarget && !mouthPart) || (set?.poses.length ?? 0) >= 64}>添加姿态</button>
+        disabled={(needsMouthTarget && !mouthPart) || (needsExplicitSource && !validExplicitSource) ||
+          (set?.poses.length ?? 0) >= 64}>添加姿态</button>
       {set && pose ? <>
         <label>姿态 <select value={pose.id} onChange={(event) => setSelectedId(event.currentTarget.value)}>
           {set.poses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -124,13 +173,7 @@ export function MouthPoseSetEditor({ characterId, disabled }: { characterId: str
         <input key={pose.id} aria-label="姿态名称" defaultValue={pose.name} maxLength={200}
           onBlur={(event) => { const name = event.currentTarget.value.trim(); if (name && name !== pose.name) changePose({ name }); }} />
         {targetPicker}
-        {expanded ? <GraphicFacePicker source={pose.source.kind === 'fla-graphic' ? pose.source : undefined}
-          key={pose.id} disabled={disabled} includeInternalFrames onChange={(source) => changePose({ source })}
-          testId="mouth-pose-source">
-          <ImageAssetPicker label="姿态图片" assets={images} selectedAssetId={selectedAssetId} thumbnails={thumbnails}
-            onVisibleCandidatesChange={setVisibleImageIds} onThumbnailError={onThumbnailError}
-            onChange={(assetId) => { if (assetId) changePose({ source: { kind: 'image', assetId } }); }} />
-        </GraphicFacePicker> : null}
+        {sourcePicker}
         <button type="button" disabled={mapped || inUse} title={mapped || inUse ? '此姿态仍被映射或时间段使用' : undefined}
           onClick={() => save({ ...set, poses: set.poses.filter((item) => item.id !== pose.id) })}>移除姿态</button>
         <button type="button" disabled={set.poses[0] === pose} onClick={() => reorder(-1)}>上移姿态</button>

@@ -10,7 +10,7 @@ export const FLA_TIMELINE_FRAME_SPAN_LIMITS = Object.freeze({
   maxFrameSpanCount: 100_000,
 });
 
-export type FlaTimelineTweenType = 'none' | 'motion' | 'shape' | 'motion object';
+export type FlaTimelineTweenType = 'none' | 'motion' | 'shape' | 'motion object' | 'IK pose';
 
 export interface FlaTimelineFrameSpanInput<T> {
   /** Raw DOMFrame index attribute. */
@@ -81,7 +81,7 @@ export type FlaTimelineFrameSelection<T> =
       readonly span: FlaTimelineFrameSpanMetadata;
     }
   | {
-      readonly kind: 'object-motion';
+      readonly kind: 'object-motion' | 'ik-pose';
       readonly layerIndex: number;
       readonly visible: boolean;
       readonly sourceFrame: T;
@@ -145,6 +145,8 @@ function parseTweenType(value: unknown): FlaTimelineTweenType | null {
       return 'shape';
     case 'motion object':
       return 'motion object';
+    case 'ik pose':
+      return 'IK pose';
     default:
       return null;
   }
@@ -295,9 +297,10 @@ export function resolveFlaTimelineFrameSpan<T>(
     if (!span) return { kind: 'uncovered', layerIndex, visible: layer.visible };
 
     const metadata = spanMetadata(span);
-    if (span.tweenType === 'motion object') {
+    if (span.tweenType === 'motion object' || span.tweenType === 'IK pose') {
       return {
-        kind: 'object-motion', layerIndex, visible: layer.visible, sourceFrame: span.sourceFrame, span: metadata,
+        kind: span.tweenType === 'IK pose' ? 'ik-pose' : 'object-motion',
+        layerIndex, visible: layer.visible, sourceFrame: span.sourceFrame, span: metadata,
       };
     }
     if (span.tweenType !== 'none' && frameIndex > span.index) {

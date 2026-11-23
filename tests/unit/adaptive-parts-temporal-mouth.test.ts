@@ -252,13 +252,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it('waits for an explicit first mouth target on an unbound character with body first', () => {
+it.each(['whole image', 'cropped image'])('preserves the first independent mouth from a %s', (sourceKind) => {
   const setup = buildPhaseBProject({ bindFace: false });
   const mouthId = 'c2000000-0000-4000-8000-000000000009';
+  const mouth = makeWholePart(mouthId, '嘴', MOUTH_OPEN_ASSET, 100, 100, 2, -50, -25);
+  if (sourceKind === 'cropped image') {
+    mouth.imageMapping = { sourceWidth: 240, sourceHeight: 180,
+      crop: { x: 40, y: 30, width: 50, height: 50 }, exportScale: 2 };
+  }
   const project = ProjectSchema.parse({
     ...setup.project,
     characters: setup.project.characters.map(character => character.id === setup.characterId && character.mode === 'adaptive-parts'
-      ? { ...character, parts: [...character.parts, makeWholePart(mouthId, '嘴', MOUTH_OPEN_ASSET, 100, 100, 2, -50, -25)] }
+      ? { ...character, parts: [...character.parts, mouth] }
       : character),
   });
   editorProjectStore.open('C:/temp/unbound-mouth.pandastage', project);
@@ -281,7 +286,7 @@ it('waits for an explicit first mouth target on an unbound character with body f
   expect(editorProjectStore.getSnapshot()).toBe(before);
   expect(add.disabled).toBe(false);
   act(() => add.click());
-  const saved = editorProjectStore.getSnapshot()!.project;
+  const saved = ProjectSchema.parse(JSON.parse(JSON.stringify(editorProjectStore.getSnapshot()!.project)));
   const character = saved.characters.find(item => item.id === setup.characterId) as AdaptivePartsCharacter;
   expect(character.faceBinding).toBeUndefined();
   expect(character.mouthPoseSet?.poses[0]).toMatchObject({
@@ -293,6 +298,62 @@ it('waits for an explicit first mouth target on an unbound character with body f
   const visual = resolveLayerVisualParts(saved, shot, evaluated.layers.find(layer => layer.id === setup.layerId)!, 0);
   expect(visual.parts.find(part => part.assetId === PART_BODY_ASSET)?.visible).toBe(true);
   expect(visual.parts.filter(part => part.visible && part.assetId === MOUTH_OPEN_ASSET)).toHaveLength(1);
+  const beforeShot = project.shots[0]!;
+  const beforeFrame = evaluateShotAtTime(beforeShot, 0, project);
+  const beforeVisual = resolveLayerVisualParts(project, beforeShot, beforeFrame.layers.find(layer => layer.id === setup.layerId)!, 0);
+  expect(visual.parts.find(part => part.assetId === MOUTH_OPEN_ASSET)).toMatchObject({
+    imageTransform: beforeVisual.parts.find(part => part.assetId === MOUTH_OPEN_ASSET)?.imageTransform,
+    localRect: beforeVisual.parts.find(part => part.assetId === MOUTH_OPEN_ASSET)?.localRect,
+  });
+});
+
+it('blocks a scoped Graphic from becoming a whole-Graphic pose and waits for an independent source', () => {
+  const setup = buildPhaseBProject({ bindFace: false });
+  const id = 'c2000000-0000-4000-8000-000000000009';
+  const mouth = {
+    partId: id, displayName: '子元件嘴', source: { kind: 'manual', sourceId: MOUTH_OPEN_ASSET },
+    drawOrder: 2, visible: true, restTransform: { a: 1, b: 0, c: 0, d: 1, tx: -50, ty: -25 },
+  };
+  const project = ProjectSchema.parse({
+    ...setup.project,
+    characters: setup.project.characters.map(character => character.id === setup.characterId && character.mode === 'adaptive-parts'
+      ? { ...character, parts: [...character.parts, { ...mouth, visualSource: {
+        kind: 'fla-graphic', animationId: faceSource(0).animationId, nodePath: ['face-0'], poseFrameOrdinal: 0,
+      } }] } : character),
+  });
+  editorProjectStore.open('C:/temp/scoped-mouth.pandastage', project);
+  Object.defineProperty(window, 'pandaStage', { configurable: true, value: {
+    assets: { readThumbnail: vi.fn().mockResolvedValue({ ok: false }) },
+  } });
+  const before = editorProjectStore.getSnapshot();
+  mountedContainer = document.createElement('div');
+  mountedRoot = createRoot(mountedContainer);
+  act(() => mountedRoot!.render(createElement(MouthPoseSetEditor, { characterId: setup.characterId })));
+  const details = mountedContainer.querySelector('details')!;
+  const add = [...details.querySelectorAll('button')].find(button => button.textContent === '添加姿态')!;
+  const target = details.querySelector('select')!;
+  act(() => {
+    details.open = true;
+    details.dispatchEvent(new Event('toggle'));
+    target.value = id;
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(details.textContent).toContain('独立的嘴部');
+  expect(details.querySelector('[data-testid="mouth-pose-source-graphic-toggle"]')).toBeNull();
+  expect(add.disabled).toBe(true);
+  act(() => add.click());
+  expect(editorProjectStore.getSnapshot()).toBe(before);
+  act(() => details.querySelector<HTMLButtonElement>('button[aria-label^="姿态图片"]')!.click());
+  act(() => details.querySelector<HTMLButtonElement>(`button[data-asset-id="${MOUTH_OPEN_ASSET}"]`)!.click());
+  expect(editorProjectStore.getSnapshot()).toBe(before);
+  expect(add.disabled).toBe(false);
+  act(() => add.click());
+  const saved = ProjectSchema.parse(JSON.parse(JSON.stringify(editorProjectStore.getSnapshot()!.project)));
+  const character = saved.characters.find(item => item.id === setup.characterId) as AdaptivePartsCharacter;
+  expect(character.mouthPoseSet?.poses[0]).toMatchObject({
+    target: { kind: 'mouth', partId: id }, source: { kind: 'image', assetId: MOUTH_OPEN_ASSET },
+  });
+  expect(character.parts.at(-1)?.visualSource).toMatchObject({ nodePath: ['face-0'] });
 });
 
 it('uses an accessible Plus for timeline mouth poses and retains the disabled behavior', () => {

@@ -13,6 +13,7 @@ import {
   buildFlaTimelineFrameSpanIndex,
   resolveFlaTimelineFrameSpan,
   type FlaNormalizedFrameSpan,
+  type FlaTimelineFrameSpanMetadata,
   type FlaTimelineFrameSelection,
   type FlaTimelineFrameSpanIndex,
 } from './fla-timeline-frame-span-resolver';
@@ -166,8 +167,10 @@ interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
   readonly sourceFps: number;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
+  readonly ikPoses: WeakMap<FlaXflElementBlock, FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListMatrix[]>>;
   symbolAliases: SymbolAliasIndex;
   readonly movieClipNames: Set<string>;
+  readonly ikContainerNames: Set<string>;
   visitedNodeCount: number;
 }
 
@@ -1037,9 +1040,10 @@ function displaySymbolType(
   element: FlaXflElementBlock,
   libraryItemName: string,
   state: SourceBuildState,
-): 'graphic' | 'movieclip' | 'button' {
+): Extract<FlaDisplayListElement, { kind: 'symbol' }>['symbolType'] {
   const attrs = element.attributes;
   const type = attrs.symbolType?.trim().toLowerCase();
+  if (type === 'ik container' || state.ikContainerNames.has(libraryItemName)) return 'ik container';
   if (type === 'button') return 'button';
   if (type === 'graphic') return 'graphic';
   if (type) return 'movieclip';
@@ -2126,6 +2130,95 @@ function buildObjectMotionFrameElements(
   return rigged.ok ? rigged : fail('RENDER_FAILED', rigged.message);
 }
 
+function readIkPoseMatrices(
+  frame: FlaXflElementBlock,
+  count: number,
+): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListMatrix[]> {
+  const frameChildren = getFlaXflDirectChildren(frame.xml, frame.name);
+  const lists = frameChildren.filter((child) => child.name === 'betweenFrameMatrixList');
+  if (lists.length !== 1 || Object.keys(lists[0]!.attributes).length > 0) {
+    return fail('RENDER_FAILED', '骨架动作缺少有效的已保存姿态矩阵');
+  }
+  const nodes = getFlaXflDirectChildren(lists[0]!.xml, lists[0]!.name);
+  if (count < 1 || nodes.length !== count) {
+    return fail('RENDER_FAILED', '骨架姿态矩阵数量与元件数及帧数不匹配');
+  }
+  const matrices: FlaDisplayListMatrix[] = [];
+  for (const node of nodes) {
+    const matrix = { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX };
+    if (node.name !== 'Matrix' ||
+        getFlaXflDirectChildren(node.xml, node.name).length > 0 ||
+        Object.entries(node.attributes).some(([key, value]) =>
+          !Object.hasOwn(matrix, key) ||
+          !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(value) ||
+          !Number.isFinite(Number(value)))) {
+      return fail('RENDER_FAILED', '骨架动作包含无效的姿态矩阵或不支持的变形');
+    }
+    for (const key of Object.keys(matrix) as (keyof FlaDisplayListMatrix)[]) {
+      if (node.attributes[key] !== undefined) matrix[key] = Number(node.attributes[key]);
+    }
+    matrices.push(matrix);
+  }
+  return { ok: true, value: matrices };
+}
+
+function buildIkPoseFrameElements(
+  frame: FlaXflElementBlock,
+  span: FlaTimelineFrameSpanMetadata,
+  frameIndex: number,
+  scope: string,
+  layerIndex: number,
+  state: SourceBuildState,
+  layerReasons: string[],
+): FlaStaticSnapshotDisplaySourceResult<readonly FlaDisplayListElement[]> {
+  const container = directChild(frame.xml, frame.name, 'elements');
+  const authored = container ? getFlaXflDirectChildren(container.xml, container.name) : [];
+  if (!container || authored.some((element) => !['DOMSymbolInstance', 'DOMBitmapInstance', 'DOMShape'].includes(element.name)) ||
+      /<(?:matrix3D|skin(?:ning|Weights)?|deform(?:ation)?|mesh|filters)\b/iu.test(frame.xml)) {
+    return fail('RENDER_FAILED', '此骨架片段包含无法匹配姿态的组合元件或暂不支持的变形');
+  }
+  const count = authored.length * span.duration;
+  if (count > MAX_SOURCE_DISPLAY_NODES) {
+    return fail('BUDGET_EXCEEDED', '骨架姿态矩阵超过读取上限');
+  }
+  let poses = state.ikPoses.get(frame);
+  if (!poses) {
+    poses = readIkPoseMatrices(frame, count);
+    state.ikPoses.set(frame, poses);
+  }
+  if (!poses.ok) return poses;
+  const parsed = parseDisplayElements(container, {
+    scope,
+    parentWorld: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+    depth: 0,
+    path: `layer-${layerIndex}-frame-${span.index}`,
+    sourceParentFrameIndex: frameIndex,
+    sourceParentFrameSpanStart: span.index,
+    sourceParentSpanTweenType: 'IK pose',
+    unsupportedDisplayReasons: layerReasons,
+    state,
+  });
+  if (!parsed.ok) return parsed;
+  const visibleOrdinals = authored.flatMap((element, index) => elementIsVisible(element.attributes) ? [index] : []);
+  if (parsed.value.length !== visibleOrdinals.length) {
+    return fail('RENDER_FAILED', '骨架姿态与显示元件的顺序无法对齐');
+  }
+  const matrices = poses.value;
+  const frameOffset = frameIndex - span.index;
+  // XFL stores all frames of element zero first, followed by all frames of
+  // element one. The pose operates in the parent space on the authored matrix.
+  // The baked pose already contains IK propagation; do not apply Rig correction.
+  const elements = parsed.value.map((element, index) => ({
+    ...element,
+    localTransform: compose(matrices[visibleOrdinals[index]! * span.duration + frameOffset]!,
+      element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
+  }));
+  if (elements.some((element) => !Object.values(element.localTransform).every(Number.isFinite))) {
+    return fail('RENDER_FAILED', '骨架姿态变换超出支持范围');
+  }
+  return { ok: true, value: elements };
+}
+
 function buildGraphicFrameContext(
   timelineXml: string,
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
@@ -2165,7 +2258,13 @@ function buildGraphicFrameContext(
     const sampleVisible = selection.visible || isMask;
     let elements: readonly FlaDisplayListElement[] = [];
     let frameFilter: FlaDisplayListBlurFilter | undefined;
-    if (selection.kind === 'object-motion' && sampleVisible) {
+    if (selection.kind === 'ik-pose' && sampleVisible) {
+      const sampled = buildIkPoseFrameElements(selection.sourceFrame, selection.span, frameIndex,
+        scope, selection.layerIndex, state, layerReasons);
+      if (sampled.ok) elements = sampled.value;
+      else if (sampled.code === 'BUDGET_EXCEEDED') return sampled;
+      else layerReasons.push(sampled.message);
+    } else if (selection.kind === 'object-motion' && sampleVisible) {
       const sampled = buildObjectMotionFrameElements(selection.sourceFrame, selection.span.index, frameIndex, scope,
           selection.layerIndex, rigContext, layerReasons);
       if (sampled.ok) elements = sampled.value;
@@ -2589,14 +2688,16 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
     cursor = token.end;
     if (token.closing) continue;
     if (token.name === 'DOMLayer' && token.attributes.layerType?.toLowerCase() === 'mask') return true;
-    if (token.name === 'DOMFrame' && token.attributes.tweenType?.trim().toLowerCase() === 'motion object') return true;
-    if (token.name !== 'DOMSymbolInstance' || !hasMovieClips) continue;
+    if (token.name === 'DOMFrame' && ['motion object', 'ik pose'].includes(token.attributes.tweenType?.trim().toLowerCase() ?? '')) return true;
+    if (token.name !== 'DOMSymbolInstance') continue;
     const name = token.attributes.libraryItemName?.trim();
-    if (name && displaySymbolType(
+    if (!name) continue;
+    const symbolType = displaySymbolType(
       { name: token.name, attributes: token.attributes, xml: '' },
       resolveSymbolAlias(state.symbolAliases, name) ?? name,
       state,
-    ) === 'movieclip') return true;
+    );
+    if (symbolType === 'ik container' || (hasMovieClips && symbolType === 'movieclip')) return true;
   }
 }
 
@@ -2640,8 +2741,10 @@ function* adaptFlaXflDisplaySourceSteps(
     shapeBlocks,
     sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
     objectMotionCurves: new WeakMap(),
+    ikPoses: new WeakMap(),
     symbolAliases: { exact: new Map(), basename: new Map() },
     movieClipNames: new Set(),
+    ikContainerNames: new Set(),
     visitedNodeCount: 0,
   };
   const sceneSources = timelineDescriptors(docXml, 'DOMDocument');
@@ -2654,7 +2757,7 @@ function* adaptFlaXflDisplaySourceSteps(
     const root = firstElementToken(library.xml, 'DOMSymbolItem');
     if (!root) continue;
     const symbolType = root.attributes.symbolType?.trim().toLowerCase();
-    if (symbolType && !['graphic', 'movie clip', 'movieclip'].includes(symbolType)) continue;
+    if (symbolType && !['graphic', 'movie clip', 'movieclip', 'ik container'].includes(symbolType)) continue;
     const sourceLibraryItemName = libraryItemKey(library.name);
     const userLabel = root.attributes.name?.trim() || sourceLibraryItemName;
     if (!sourceLibraryItemName || sourceLibraryItemName.length > 500 ||
@@ -2677,7 +2780,8 @@ function* adaptFlaXflDisplaySourceSteps(
         ? { movieClipHasScript: true }
         : {}),
     });
-    if (symbolType !== 'graphic') state.movieClipNames.add(sourceLibraryItemName);
+    if (symbolType === 'ik container') state.ikContainerNames.add(sourceLibraryItemName);
+    else if (symbolType !== 'graphic') state.movieClipNames.add(sourceLibraryItemName);
   }
 
   const aliases = makeSymbolAliasIndex(shells);
@@ -2716,8 +2820,10 @@ function* adaptFlaXflDisplaySourceSteps(
       timelineXml: shell.timelineXml,
       ...(shell.movieClipHasScript ? { movieClipHasScript: true } : {}),
     };
-    if (shell.symbolType !== 'graphic') movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
-    if (!shell.symbolType || shell.symbolType === 'graphic') {
+    if (shell.symbolType !== 'graphic' && shell.symbolType !== 'ik container') {
+      movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
+    }
+    if (!shell.symbolType || shell.symbolType === 'graphic' || shell.symbolType === 'ik container') {
       symbols.set(shell.sourceLibraryItemName, definition);
       graphicSymbols.push(descriptor);
     }

@@ -105,7 +105,7 @@ export type FlaDisplayListElement =
   | {
       readonly kind: 'symbol';
       readonly libraryItemName: string;
-      readonly symbolType: 'graphic' | 'movieclip' | 'button';
+      readonly symbolType: 'graphic' | 'movieclip' | 'button' | 'ik container';
       readonly movieClipRun?: { readonly start: number; readonly end: number };
       /** Raw XFL playback mode retained for bounded nested-frame selection. */
       readonly playbackMode?: string;

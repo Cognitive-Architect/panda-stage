@@ -152,7 +152,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   );
 }
 
-export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children, includeInternalFrames }: {
+export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children, includeInternalFrames, excludeAnimationId }: {
   source?: CharacterFaceGraphicSource & { internalTimeMs?: number };
   onChange?: (source: MouthPoseSource) => void;
   onClear?: () => void;
@@ -160,6 +160,7 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   testId: string;
   children: React.ReactNode;
   includeInternalFrames?: boolean;
+  excludeAnimationId?: string;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [open, setOpen] = useState(false);
@@ -171,7 +172,8 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
     setPage(0);
   }, [testId]);
   useEffect(() => { setShowImages(false); }, [source?.animationId, source?.firstFrame]);
-  const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition) ?? [];
+  const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition)
+    .filter((definition) => definition.id !== excludeAnimationId) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
   const timeline = definition && includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
   const frameCount = timeline?.totalFrames ?? definition?.frames.length ?? 0;

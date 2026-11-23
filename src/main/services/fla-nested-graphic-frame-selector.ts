@@ -154,7 +154,7 @@ function selectAuthoredChildFrame(
       effectiveFirstFrame: 0,
     };
   }
-  const mode = resolveFlaGraphicPlaybackMode(element.playbackMode);
+  const mode = element.symbolType === 'ik container' ? 'play once' : resolveFlaGraphicPlaybackMode(element.playbackMode);
   if (!Number.isSafeInteger(parentFrameIndex) || !Number.isSafeInteger(parentSpanStart) ||
       parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < parentSpanStart) {
     return failure(

@@ -13,7 +13,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, frameTimeMs } from './timeline/frame-grid';
+import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -191,9 +191,14 @@ export function resolveAnimationPlaybackFrameState<
     return null;
   }
   const elapsedMs = timeMs - startTimeMs;
-  const elapsedSourceFrames = Math.floor(
-    Math.max(0, elapsedMs) * animation.source.sourceFps / 1_000,
-  );
+  // Timeline and export share integer millisecond frame stamps. Resolve a pair
+  // of on-grid stamps as frame indices so e.g. 958 ms means frame 23 at 24 fps.
+  const sourceFps = animation.source.sourceFps;
+  const elapsedSourcePosition = isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
+    ? (Math.round(timeMs * TIMELINE_FPS / 1_000) -
+        Math.round(startTimeMs * TIMELINE_FPS / 1_000)) * sourceFps / TIMELINE_FPS
+    : elapsedMs * sourceFps / 1_000;
+  const elapsedSourceFrames = Math.floor(Math.max(0, elapsedSourcePosition));
   const firstFrame = Math.min(firstFrameIndex, animation.frames.length - 1);
   const availableFrames = animation.frames.length - firstFrame;
   const completedOnce = elapsedSourceFrames >= availableFrames;
