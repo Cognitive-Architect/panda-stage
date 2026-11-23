@@ -831,7 +831,6 @@ async function initialize(): Promise<void> {
       onNativeCloseSyncResponse,
     );
 
-  await createApplicationWindows();
   try {
     stopDesktopAutomation = await startDesktopAutomation({
       ipcMain,
@@ -843,7 +842,10 @@ async function initialize(): Promise<void> {
     });
   } catch (error) {
     console.error('Desktop automation could not start.', error);
+    ipcMain.handle(IPC_CHANNELS.DESKTOP_AUTOMATION_STATUS, () => null);
+    stopDesktopAutomation = () => ipcMain.removeHandler(IPC_CHANNELS.DESKTOP_AUTOMATION_STATUS);
   }
+  await createApplicationWindows();
 }
 
 void app

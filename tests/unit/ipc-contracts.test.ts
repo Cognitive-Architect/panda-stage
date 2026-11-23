@@ -115,6 +115,9 @@ describe('IPC channel registry', () => {
       'fla:frame-sequence-commit',
       'fla:frame-sequence-progress',
       'fla:graphic-instance-commit',
+      'desktop-automation:status',
+      'desktop-automation:request',
+      'desktop-automation:response',
     ]);
   });
 });

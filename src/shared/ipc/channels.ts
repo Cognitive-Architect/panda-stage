@@ -1,7 +1,4 @@
 export const IPC_CHANNELS = Object.freeze({
-  DESKTOP_AUTOMATION_STATUS: 'desktop-automation:status',
-  DESKTOP_AUTOMATION_REQUEST: 'desktop-automation:request',
-  DESKTOP_AUTOMATION_RESPONSE: 'desktop-automation:response',
   APP_PING: 'app:ping',
   HIDDEN_READY: 'hidden:ready',
   EXPORT_LOAD_PROBE: 'export:load-probe',
@@ -94,6 +91,9 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_FRAME_SEQUENCE_COMMIT: 'fla:frame-sequence-commit',
   FLA_FRAME_SEQUENCE_PROGRESS: 'fla:frame-sequence-progress',
   FLA_GRAPHIC_INSTANCE_COMMIT: 'fla:graphic-instance-commit',
+  DESKTOP_AUTOMATION_STATUS: 'desktop-automation:status',
+  DESKTOP_AUTOMATION_REQUEST: 'desktop-automation:request',
+  DESKTOP_AUTOMATION_RESPONSE: 'desktop-automation:response',
 } as const);
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
