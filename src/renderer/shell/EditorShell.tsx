@@ -43,7 +43,7 @@ import { selectionStore } from '../stores/selectionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { characterStore } from '../stores/characterStore';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
-import { AnimationCurveDraftContext, AnimationCurveDraftDispatch, type AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
+import type { AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
   createAdaptiveCharacterFromFlaGraphic,
@@ -3036,14 +3036,13 @@ export function EditorShell({
                 hidden={!portraitCanvasVisible && !assemblyActive}
                 inert={Boolean(characterFloatMode) || assemblyActive || undefined}
               >
-                <AnimationCurveDraftContext.Provider value={animationCurveDraft}>
-                  <CanvasWorkspace
-                    showHeading={false}
-                    showToolbar={canvasToolbarVisible}
-                    dialogueSilence={dialogueSilence}
-                    onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
-                  />
-                </AnimationCurveDraftContext.Provider>
+                <CanvasWorkspace
+                  showHeading={false}
+                  showToolbar={canvasToolbarVisible}
+                  dialogueSilence={dialogueSilence}
+                  onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
+                  curveDraft={animationCurveDraft}
+                />
               </div>
               <div className="character-float-host" ref={setCharacterFloatTarget} />
               {activeAssemblySession && projectSnapshot && characterFloatMode !== 'composite' ? (
@@ -3095,18 +3094,17 @@ export function EditorShell({
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
-            <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
-              <BottomWorkspace
-                productPreviewOpen={productPreviewOpen}
-                hidden={
-                  isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
-                }
-                assemblyInactive={assemblyActive || Boolean(characterFloatMode)}
-                presentation={layoutMode}
-                resizable={layoutMode === 'landscape'}
-                showHistoryControls={false}
-              />
-            </AnimationCurveDraftDispatch.Provider>
+            <BottomWorkspace
+              productPreviewOpen={productPreviewOpen}
+              hidden={
+                isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
+              }
+              assemblyInactive={assemblyActive || Boolean(characterFloatMode)}
+              presentation={layoutMode}
+              resizable={layoutMode === 'landscape'}
+              showHistoryControls={false}
+              onCurveDraftChange={setAnimationCurveDraft}
+            />
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay

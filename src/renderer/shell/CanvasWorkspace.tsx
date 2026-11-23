@@ -1,7 +1,9 @@
 import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { CanvasStage } from '../features/canvas/CanvasStage';
+import type { AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 
 export interface CanvasWorkspaceProps {
+  curveDraft?: AnimationCurveDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -16,6 +18,7 @@ export interface CanvasWorkspaceProps {
  * same owner so portrait workspaces can hide it without recreating the Canvas.
  */
 export function CanvasWorkspace({
+  curveDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -28,6 +31,7 @@ export function CanvasWorkspace({
       data-testid="canvas-workspace-scroll"
     >
       <CanvasStage
+        curveDraft={curveDraft}
         dialogueSilence={dialogueSilence}
         showHeading={showHeading}
         showToolbar={showToolbar}

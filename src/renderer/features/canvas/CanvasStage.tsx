@@ -1,7 +1,6 @@
 import {
   createRef,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,7 +11,7 @@ import {
 import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
-import { AnimationCurveDraftContext } from '../timeline/AnimationCurveDraft';
+import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
   adaptivePartIdForNodeId,
@@ -255,6 +254,7 @@ function isCurrentCanvasAssetReady(
 }
 
 export interface CanvasStageProps {
+  curveDraft?: AnimationCurveDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -262,6 +262,7 @@ export interface CanvasStageProps {
 }
 
 export function CanvasStage({
+  curveDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -325,7 +326,6 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
-  const curveDraft = useContext(AnimationCurveDraftContext);
   const activeCurveDraft = curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;

@@ -10,5 +10,4 @@ export interface AnimationCurveDraft {
   timeMs: number;
 }
 
-export const AnimationCurveDraftContext = createContext<AnimationCurveDraft | null>(null);
 export const AnimationCurveDraftDispatch = createContext<((draft: AnimationCurveDraft | null) => void) | undefined>(undefined);
