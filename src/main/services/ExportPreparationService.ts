@@ -32,7 +32,9 @@ import {
   type ExportPreparationResponse,
   type ExportPreparationSelectOutputRequest,
   type ExportPreparationSelectOutputResponse,
+  type PngSequenceOptions,
 } from '../../shared/export-preparation-types';
+import { planPngSequenceFrames } from '../../shared/export-types';
 import {
   AssetCanvasImageService,
 } from './AssetCanvasImageService';
@@ -85,6 +87,7 @@ interface OutputSelection {
   fileName: string;
   overwriteApproved: boolean;
   targetIdentity: ExportOutputTargetIdentity | null;
+  pngSequence?: PngSequenceOptions;
 }
 
 interface ActivePreparation {
@@ -252,7 +255,9 @@ export class ExportPreparationService {
     }
     if (
       process.platform === 'win32' &&
-      !isWithinWindowsFormalExportPathLimit(selectedPath)
+      (request.pngSequence
+        ? path.join(selectedPath, 'frame_1999999.png').length > EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS
+        : !isWithinWindowsFormalExportPathLimit(selectedPath))
     ) {
       return {
         status: 'blocked',
@@ -261,12 +266,12 @@ export class ExportPreparationService {
     }
 
     try {
-      const target = await captureTargetIdentity(selectedPath);
+      const target = await captureTargetIdentity(selectedPath, Boolean(request.pngSequence));
       if (target.identity !== null) {
         return { status: 'blocked', issue: this.outputExistsIssue() };
       }
       try {
-        await this.options.assertFormalOutputLocation?.(target.canonicalPath);
+        if (!request.pngSequence) await this.options.assertFormalOutputLocation?.(target.canonicalPath);
       } catch (error) {
         return {
           status: 'blocked',
@@ -289,6 +294,7 @@ export class ExportPreparationService {
         fileName,
         overwriteApproved: false,
         targetIdentity: target.identity,
+        pngSequence: request.pngSequence,
       };
       if (request.snapshotId) {
         const stored = this.candidates.get(request.snapshotId);
@@ -299,6 +305,9 @@ export class ExportPreparationService {
           };
         }
         const candidate = stored.candidate;
+        if (Boolean(candidate.pngSequence) !== Boolean(selection.pngSequence)) {
+          return { status: 'blocked', issue: this.outputChangedIssue() };
+        }
         if (
           candidate.projectRoot !== selection.projectRoot ||
           candidate.projectId !== selection.projectId ||
@@ -518,12 +527,14 @@ export class ExportPreparationService {
     let snapshotDirectoryCreated = false;
 
     try {
-      const issues = evaluateExportPreparationSupport(project, request.cameraMode);
-      const media = collectExportPreparationMedia(project);
+      const scoped = selection.pngSequence ? { ...project, shots: [planPngSequenceFrames(project, selection.pngSequence).shot] } : project;
+      const issues = evaluateExportPreparationSupport(scoped, request.cameraMode,
+        selection.pngSequence ? { imagesOnly: true } : undefined);
+      const media = collectExportPreparationMedia(scoped).filter(({ asset }) => !selection.pngSequence || asset.kind === 'image');
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
 
-      const targetAtStart = await captureTargetIdentity(selection.targetPath);
+      const targetAtStart = await captureTargetIdentity(selection.targetPath, Boolean(selection.pngSequence));
       if (!sameTarget(selection, targetAtStart)) {
         issues.push(this.outputChangedIssue());
         return this.block(request.attemptId, issues, 'target changed before preflight');
@@ -679,7 +690,7 @@ export class ExportPreparationService {
       }
 
       this.throwIfCancelled(active);
-      const targetAtEnd = await captureTargetIdentity(selection.targetPath);
+      const targetAtEnd = await captureTargetIdentity(selection.targetPath, Boolean(selection.pngSequence));
       if (!sameTarget(selection, targetAtEnd)) {
         issues.push(this.outputChangedIssue());
       }
@@ -722,6 +733,7 @@ export class ExportPreparationService {
         openInstanceId: request.openInstanceId,
         revision: request.revision,
         dirtyAtCapture: request.dirty,
+        ...(selection.pngSequence ? { pngSequence: selection.pngSequence } : {}),
         capturedAt: this.now().toISOString(),
         project,
         renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
@@ -919,7 +931,7 @@ export class ExportPreparationService {
     };
     let current: CapturedTarget;
     try {
-      current = await captureTargetIdentity(candidate.outputIntent.targetPath);
+      current = await captureTargetIdentity(candidate.outputIntent.targetPath, Boolean(candidate.pngSequence));
     } catch {
       throw new Error('OUTPUT_TARGET_CHANGED');
     }
@@ -1422,12 +1434,13 @@ interface CapturedTarget {
 
 async function captureTargetIdentity(
   rawTargetPath: string,
+  directoryTarget = false,
 ): Promise<CapturedTarget> {
   if (rawTargetPath.length > 32_767) {
     throw new Error('The selected output path exceeds the supported length.');
   }
   const absoluteTargetPath = path.resolve(rawTargetPath);
-  if (path.extname(absoluteTargetPath).toLocaleLowerCase() !== '.mp4') {
+  if (!directoryTarget && path.extname(absoluteTargetPath).toLocaleLowerCase() !== '.mp4') {
     throw new Error('The selected output must use the .mp4 extension.');
   }
   const parentDirectory = await realpath(path.dirname(absoluteTargetPath));
@@ -1440,7 +1453,7 @@ async function captureTargetIdentity(
     if (isMissingFile(error)) return { canonicalPath, identity: null };
     throw error;
   }
-  if (!linkDetails.isFile() || linkDetails.isSymbolicLink()) {
+  if ((!directoryTarget && !linkDetails.isFile()) || linkDetails.isSymbolicLink()) {
     throw new Error('The selected output target is not a regular file.');
   }
   const realTargetPath = await realpath(canonicalPath);
@@ -1448,7 +1461,7 @@ async function captureTargetIdentity(
     throw new Error('The selected output target changed while being inspected.');
   }
   const details = await stat(realTargetPath, { bigint: true });
-  if (!details.isFile()) {
+  if (!directoryTarget && !details.isFile()) {
     throw new Error('The selected output target is not a regular file.');
   }
   return {

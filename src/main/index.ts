@@ -7,7 +7,7 @@ import {
   type BrowserWindow,
   type IpcMainEvent,
 } from 'electron';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
 import { startDesktopAutomation } from './ipc/desktop-automation';
@@ -154,6 +154,19 @@ function defaultExportFileName(projectName: string): string {
   return baseName + '.mp4';
 }
 
+async function selectPngSequenceTarget(parent: string, projectName: string): Promise<string> {
+  const stem = `${defaultExportFileName(projectName).slice(0, -4).slice(0, 80)}-frames`;
+  for (let ordinal = 1; ordinal <= 1000; ordinal++) {
+    const target = path.join(parent, ordinal === 1 ? stem : `${stem}-${ordinal}`);
+    try { await lstat(target); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return target;
+      throw error;
+    }
+  }
+  throw new Error('该位置已有过多同名 PNG 序列，请选择其他目录。');
+}
+
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 }
@@ -280,10 +293,9 @@ async function initialize(): Promise<void> {
       );
       let handle;
       try {
-        handle = exportService.startFormalExport(
-          input,
-          () => preparation.assertOutputTargetUnchanged(request.snapshotId),
-        );
+        const assertTarget = () => preparation.assertOutputTargetUnchanged(request.snapshotId);
+        handle = input.candidate.pngSequence ? exportService.startPngSequenceExport(input, assertTarget)
+          : exportService.startFormalExport(input, assertTarget);
       } catch (error) {
         formalOutputNameSeries.discardOutput(
           input.candidate.outputIntent.targetPath,
@@ -304,7 +316,7 @@ async function initialize(): Promise<void> {
       };
       void handle.completion.then(
         async (result) => {
-          formalOutputNameSeries.recordCompletedOutput(result.outputPath);
+          if (!input.candidate.pngSequence) formalOutputNameSeries.recordCompletedOutput(result.outputPath);
           await finalizeCandidate();
         },
         (error: unknown) => {
@@ -332,6 +344,7 @@ async function initialize(): Promise<void> {
     revealExportOutput: async (jobId) => {
       const outputPath = exportService?.getCompletedOutputPath(jobId);
       if (!outputPath) return false;
+      if (exportService?.getJob(jobId)?.outputPath) return (await shell.openPath(outputPath)) === '';
       shell.showItemInFolder(outputPath);
       return true;
     },
@@ -431,6 +444,13 @@ async function initialize(): Promise<void> {
       getMainWindow: () => mainWindow,
       service: exportPreparationService,
       selectOutputPath: async (window, request) => {
+        if (request.pngSequence) {
+          const directory = await dialog.showOpenDialog(window, {
+            title: '选择 PNG 序列输出目录', defaultPath: request.projectRoot, properties: ['openDirectory', 'createDirectory'],
+          });
+          return directory.canceled || !directory.filePaths[0] ? null
+            : selectPngSequenceTarget(directory.filePaths[0], request.projectName);
+        }
         if (!exportFileSystem) {
           throw new Error('Formal export filesystem is unavailable.');
         }

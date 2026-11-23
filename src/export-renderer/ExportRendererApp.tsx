@@ -576,6 +576,7 @@ export function ExportRendererApp(): React.JSX.Element {
         camera={camera}
         captionStyle={captionStyle}
         showStageLabel={false}
+        solidClear={formalRequest?.solidClear}
         drawMode={exportStageDrawMode}
         onError={handleStageError}
         onReady={handleStageReady}

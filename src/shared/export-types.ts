@@ -3,7 +3,7 @@ import type { Project } from '../domain';
 import { mapProjectTime } from '../domain/selectors/projectTime';
 import { projectDurationMs } from '../domain/selectors/projectDuration';
 import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
-import { ExportPreparationCameraModeSchema } from './export-preparation-types';
+import { ExportPreparationCameraModeSchema, type PngSequenceOptions } from './export-preparation-types';
 import { DialogueSilenceSchema } from './dialogue-silence';
 import { ExportAudioClipInputSchema } from './audio-mix-types';
 
@@ -56,6 +56,7 @@ export const ExportLoadFormalRequestSchema = z
     jobId: JobIdSchema,
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
+    solidClear: z.literal(true).optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
     media: z.array(ExportLoadFormalMediaSchema).max(512),
   })
@@ -229,6 +230,8 @@ export const ExportJobUpdateSchema = z
     error: z.string().trim().min(1).max(2_000).nullable(),
     originalError: z.string().trim().min(1).max(2_000).nullable().optional(),
     cleanupError: z.string().trim().min(1).max(2_000).nullable().optional(),
+    outputPath: FileSystemPathSchema.optional(),
+    incomplete: z.boolean().optional(),
   })
   .strict();
 
@@ -360,4 +363,28 @@ export function* iterateFormalProjectFrameSchedule(
       shotLocalTimeMs: position.shotLocalTimeMs,
     };
   }
+}
+
+/** Shot-local formal frame samples in a half-open interval, with contiguous output names. */
+export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
+  const shot = project.shots.find(({ id }) => id === settings.shotId);
+  if (!shot) throw new Error('请选择一个可导出的镜头。');
+  const startMs = settings.range?.startMs ?? 0;
+  const endMs = settings.range?.endMs ?? shot.durationMs;
+  if (startMs < 0 || endMs > shot.durationMs || startMs >= endMs) throw new Error('PNG 时间段须在当前镜头范围内。');
+  const first = startMs === 0 ? 0 : formalFrameCount(startMs);
+  const lastExclusive = formalFrameCount(endMs);
+  const totalFrames = lastExclusive - first;
+  if (totalFrames <= 0) throw new Error('该时间段内没有可导出的帧。');
+  return {
+    totalFrames,
+    shot,
+    *frames(): Generator<ProjectFrameScheduleEntry> {
+      for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+        const timeMs = frameTimeMs(first + frameIndex);
+        yield { frameIndex, timeMs, shotId: settings.shotId, shotIndex: 0, shotStartMs: 0, shotLocalTimeMs: timeMs,
+          fileName: formatFrameFileName(frameIndex) };
+      }
+    },
+  };
 }

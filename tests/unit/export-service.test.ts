@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
@@ -20,6 +22,7 @@ import type {
   ExportRenderFrameRequest,
 } from '../../src/shared/export-types';
 import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
+import { buildProject } from './domain/testProject';
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -201,6 +204,54 @@ class MemoryRenderer implements FrameRenderer {
     };
   }
 }
+
+it('exports contiguous Shot-local PNG frames without FFmpeg and retains a marked partial sequence on cancel', async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'panda-png-sequence-'));
+  const existing = path.join(parent, 'existing.txt');
+  const output = path.join(parent, 'frames');
+  const partial = path.join(parent, 'frames-2');
+  await writeFile(existing, 'owned by the user');
+  const project = buildProject();
+  const selected = project.shots[0]!;
+  const renderer = new MemoryRenderer();
+  const service = new ExportService(renderer, new MemoryFileSystem());
+  const frozen = (targetPath: string, transparent: boolean) => ({
+    candidate: { project, pngSequence: { shotId: selected.id, transparent, range: { startMs: 42, endMs: 166 } },
+      renderSettings: { fps: 24 }, outputIntent: { targetPath }, cameraMode: 'static' }, media: [],
+  }) as unknown as FrozenExportInput;
+  const assertTarget = async () => {};
+  try {
+    const job = service.startPngSequenceExport(frozen(output, true), assertTarget);
+    await expect(job.completion).resolves.toEqual({ outputPath: output });
+    expect(await readdir(output)).toEqual(['frame_000000.png', 'frame_000001.png']);
+    expect(renderer.requests.map(({ frameIndex, shotLocalTimeMs }) => [frameIndex, shotLocalTimeMs])).toEqual([[0, 83], [1, 125]]);
+    expect(renderer.formalLoads[0]?.solidClear).toBeUndefined();
+    expect(await readFile(existing, 'utf8')).toBe('owned by the user');
+
+    const occupied = service.startPngSequenceExport(frozen(output, true), assertTarget);
+    await expect(occupied.completion).rejects.toBeInstanceOf(ExportJobError);
+    expect(await readdir(output)).toEqual(['frame_000000.png', 'frame_000001.png']);
+
+    const cancelOnFirst = service.subscribe((update) => {
+      if (update.outputPath === partial && update.completedFrames === 1 && update.status === 'running') service.cancelJob(update.jobId);
+    });
+    const incomplete = service.startPngSequenceExport(frozen(partial, false), assertTarget);
+    await expect(incomplete.completion).rejects.toBeInstanceOf(ExportJobError);
+    cancelOnFirst();
+    expect(renderer.formalLoads.at(-1)?.solidClear).toBe(true);
+    expect(service.getJob(incomplete.jobId)).toMatchObject({ status: 'cancelled', completedFrames: 1, incomplete: true, outputPath: partial });
+    expect(JSON.parse(await readFile(path.join(partial, 'incomplete.json'), 'utf8'))).toMatchObject({ status: 'cancelled', completedFrames: 1 });
+    expect(await readdir(partial)).toEqual(['frame_000000.png', 'incomplete.json']);
+  } finally {
+    for (const directory of [output, partial]) {
+      const files = await readdir(directory).catch(() => []);
+      await Promise.all(files.map(name => unlink(path.join(directory, name))));
+      await rmdir(directory).catch(() => undefined);
+    }
+    await unlink(existing);
+    await rmdir(parent);
+  }
+});
 
 const probeResult: VideoProbeResult = {
   codecName: 'h264',

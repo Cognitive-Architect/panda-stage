@@ -565,6 +565,7 @@ function issue(
 export function evaluateExportPreparationSupport(
   project: Project,
   cameraMode: ExportPreparationCameraMode,
+  options?: { imagesOnly: boolean },
 ): ExportPreparationIssue[] {
   const issues: ExportPreparationIssue[] = [];
   if (project.shots.length === 0) {
@@ -600,7 +601,7 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
-    if (shot.backgroundLayerId === null) {
+    if (shot.backgroundLayerId === null && !options?.imagesOnly) {
       issues.push(
         issue(
           location,
@@ -608,7 +609,7 @@ export function evaluateExportPreparationSupport(
           '为镜头指定并显示图像背景后重新检查。',
         ),
       );
-    } else {
+    } else if (shot.backgroundLayerId !== null) {
       const background = shot.layers.find(
         (layer) => layer.id === shot.backgroundLayerId,
       );
@@ -627,7 +628,7 @@ export function evaluateExportPreparationSupport(
           problem: '镜头引用的背景图层或背景视觉源无效。',
           nextStep: '修复镜头的背景图层引用后重新检查。',
         });
-      } else if (!background.visible) {
+      } else if (!background.visible && !options?.imagesOnly) {
         issues.push(
           issue(
             location,
@@ -636,7 +637,7 @@ export function evaluateExportPreparationSupport(
           ),
         );
       } else if (
-        backgroundAsset?.kind === 'image' &&
+        background?.visible && backgroundAsset?.kind === 'image' &&
         !isSupportedFormalImageAsset(backgroundAsset)
       ) {
         issues.push(
@@ -648,6 +649,7 @@ export function evaluateExportPreparationSupport(
         );
       }
     }
+    if (options?.imagesOnly) return;
     shot.audioClips.forEach((clip) => {
       const clipLocation =
         '镜头“' + shot.name + '”的音频片段“' + clip.name + '”';

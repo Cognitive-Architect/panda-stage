@@ -87,6 +87,15 @@ export const ExportPreparationCameraModeSchema = z.enum([
   'speaker-focus',
 ]);
 
+export const PngSequenceOptionsSchema = z.object({
+  shotId: z.uuid(),
+  transparent: z.boolean(),
+  range: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
+    .strict().refine(({ startMs, endMs }) => startMs < endMs, 'PNG range must have positive length.').optional(),
+}).strict();
+
+export type PngSequenceOptions = z.infer<typeof PngSequenceOptionsSchema>;
+
 export const ExportPreparationSelectOutputRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
@@ -94,6 +103,7 @@ export const ExportPreparationSelectOutputRequestSchema = z
     projectName: z.string().trim().min(1).max(500),
     openInstanceId: OpenInstanceIdSchema,
     snapshotId: z.uuid().optional(),
+    pngSequence: PngSequenceOptionsSchema.optional(),
   })
   .strict();
 
@@ -338,6 +348,7 @@ export const ExportPreparationCandidateSchema = z
     openInstanceId: OpenInstanceIdSchema,
     revision: RevisionSchema,
     dirtyAtCapture: z.boolean(),
+    pngSequence: PngSequenceOptionsSchema.optional(),
     capturedAt: z.string().datetime(),
     project: z.unknown(),
     renderSettings: z
