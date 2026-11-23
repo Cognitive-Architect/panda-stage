@@ -9,8 +9,10 @@ import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExpo
 import { ActionPresetPanel } from '../../src/renderer/features/actions/ActionPresetPanel';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
+import { MouthPoseSetEditor } from '../../src/renderer/features/characters/MouthPoseSetEditor';
 import { ExpressionAtTimeControl } from '../../src/renderer/features/properties/ExpressionAtTimeControl';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
+import { MouthPoseLane } from '../../src/renderer/features/timeline/MouthPoseLane';
 import { buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
 import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
 import { resolveEditorTemporalAssetResolution } from '../../src/renderer/features/canvas/temporalVisualContinuity';
@@ -248,6 +250,85 @@ afterEach(() => {
   editorProjectStore.clear();
   delete (window as { pandaStage?: unknown }).pandaStage;
   vi.restoreAllMocks();
+});
+
+it('waits for an explicit first mouth target on an unbound character with body first', () => {
+  const setup = buildPhaseBProject({ bindFace: false });
+  const mouthId = 'c2000000-0000-4000-8000-000000000009';
+  const project = ProjectSchema.parse({
+    ...setup.project,
+    characters: setup.project.characters.map(character => character.id === setup.characterId && character.mode === 'adaptive-parts'
+      ? { ...character, parts: [...character.parts, makeWholePart(mouthId, '嘴', MOUTH_OPEN_ASSET, 100, 100, 2, -50, -25)] }
+      : character),
+  });
+  editorProjectStore.open('C:/temp/unbound-mouth.pandastage', project);
+  const before = editorProjectStore.getSnapshot();
+  mountedContainer = document.createElement('div');
+  mountedRoot = createRoot(mountedContainer);
+  act(() => mountedRoot!.render(createElement(MouthPoseSetEditor, { characterId: setup.characterId })));
+  const details = mountedContainer.querySelector('details')!;
+  const add = [...details.querySelectorAll('button')].find(button => button.textContent === '添加姿态')!;
+  const target = details.querySelector('select')!;
+  expect(target.value).toBe('');
+  expect(target.options[1]?.value).toBe(PART_BODY_ID);
+  expect(add.disabled).toBe(true);
+  act(() => add.click());
+  expect(editorProjectStore.getSnapshot()).toBe(before);
+  act(() => {
+    target.value = mouthId;
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(editorProjectStore.getSnapshot()).toBe(before);
+  expect(add.disabled).toBe(false);
+  act(() => add.click());
+  const saved = editorProjectStore.getSnapshot()!.project;
+  const character = saved.characters.find(item => item.id === setup.characterId) as AdaptivePartsCharacter;
+  expect(character.faceBinding).toBeUndefined();
+  expect(character.mouthPoseSet?.poses[0]).toMatchObject({
+    target: { kind: 'mouth', partId: mouthId }, source: { kind: 'image', assetId: MOUTH_OPEN_ASSET },
+  });
+  expect(character.parts[0]?.partId).toBe(PART_BODY_ID);
+  const shot = saved.shots[0]!;
+  const evaluated = projectShotDialogueVisual(saved, shot, evaluateShotAtTime(shot, 0, saved));
+  const visual = resolveLayerVisualParts(saved, shot, evaluated.layers.find(layer => layer.id === setup.layerId)!, 0);
+  expect(visual.parts.find(part => part.assetId === PART_BODY_ASSET)?.visible).toBe(true);
+  expect(visual.parts.filter(part => part.visible && part.assetId === MOUTH_OPEN_ASSET)).toHaveLength(1);
+});
+
+it('uses an accessible Plus for timeline mouth poses and retains the disabled behavior', () => {
+  const setup = buildPhaseBProject();
+  const restId = 'c2000000-0000-4000-8000-000000000010';
+  const project = ProjectSchema.parse({
+    ...setup.project,
+    characters: setup.project.characters.map(character => character.id === setup.characterId ? {
+      ...character, mouthPoseSet: {
+        poses: [{ id: restId, name: '静止', target: { kind: 'face' }, source: { kind: 'image', assetId: EXPR_SMILE_ASSET } }],
+        restPoseId: restId, driveMode: 'mouth-poses',
+        analyzerMapping: { rest: restId, open: restId, wide: restId, round: restId, closed: restId },
+      },
+    } : character),
+  });
+  editorProjectStore.open('C:/temp/mouth-timeline.pandastage', project);
+  const snapshot = editorProjectStore.getSnapshot()!;
+  const props = { project: snapshot.project, shot: snapshot.project.shots[0]!, layerId: setup.layerId,
+    currentTimeMs: 200, pixelsPerMs: 1, trackWidth: 2400 };
+  mountedContainer = document.createElement('div');
+  document.body.appendChild(mountedContainer);
+  mountedRoot = createRoot(mountedContainer);
+  act(() => mountedRoot!.render(createElement(MouthPoseLane, { ...props, disabled: true })));
+  const button = mountedContainer.querySelector<HTMLButtonElement>('button[aria-label="在播放位置添加口型段"]')!;
+  expect(button.querySelector('svg.lucide-plus[aria-hidden="true"]')).not.toBeNull();
+  expect(button.textContent?.trim()).toBe('');
+  expect(button.disabled).toBe(true);
+  act(() => button.click());
+  expect(editorProjectStore.getSnapshot()).toBe(snapshot);
+  act(() => mountedRoot!.render(createElement(MouthPoseLane, { ...props, disabled: false })));
+  button.focus();
+  expect(document.activeElement).toBe(button);
+  act(() => button.click());
+  expect(editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents).toContainEqual(expect.objectContaining({
+    type: 'mouth-pose', layerId: setup.layerId, origin: 'manual', startMs: 200, poseId: restId,
+  }));
 });
 
 it('loops a shared talking animation on the clip clock and restores the current static face', () => {

@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { ProjectSchema, setManualMouthPose, type MouthPoseEvent, type Project, type Shot } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { timelineUiStore } from './timelineUiStore';
@@ -82,7 +83,9 @@ export function MouthPoseLane({ project, shot, layerId, currentTimeMs, pixelsPer
   return <div className="mouth-pose-lane" data-testid="mouth-pose-lane">
     <div className="timeline-lane character-motion-lane">
       <span className="timeline-lane-label">
-        口型 <button type="button" aria-label="在播放位置添加口型段" disabled={locked} onClick={add}>+</button>
+        口型 <button type="button" aria-label="在播放位置添加口型段" disabled={locked} onClick={add}>
+          <Plus size={12} aria-hidden="true" focusable="false" />
+        </button>
       </span>
       <div className="timeline-lane-content mouth-pose-track" style={{ width: trackWidth }} aria-label="口型时间段">
         {events.map((event) => {
