@@ -268,4 +268,17 @@ describe('Character actions', () => {
     expect(held.animationFrame?.frameOrdinal).toBe(0);
     expect(visual.flaGraphic?.layers?.[0]?.nodes[0]?.children?.[0]?.worldTransform.tx).toBe(0);
   });
+
+  it('applies action calibration to a live Position draft even with a cached visual', () => {
+    const project = characterActionGraphicFixture();
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 500, project);
+    const layer = evaluated.layers.find((entry) => entry.id === IDS.layerChar)!;
+    const cached = resolveLayerVisualParts(project, shot, layer, 500);
+    layer.x += 40;
+    layer.y += 20;
+    const rendered = buildEditorStageRenderModel(project, shot, evaluated, new Map([[layer.id, cached]]));
+    expect(rendered.layers.find((entry) => entry.layer.id === layer.id)?.render)
+      .toMatchObject({ x: 628, y: 396, scaleX: -1.5, scaleY: 1.5 });
+  });
 });

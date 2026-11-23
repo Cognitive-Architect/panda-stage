@@ -11,6 +11,7 @@ import type {
 import { evaluateShotAtTime, type EvaluatedLayer, type EvaluatedShot } from '../evaluate-shot-at-time';
 import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
 import {
+  resolveCharacterActionRenderTransform,
   resolveLayerVisualParts,
   type LayerVisualParts,
 } from './visualParts';
@@ -99,7 +100,8 @@ export function buildEditorStageRenderModel(
             assetId: compatibilityAsset.id,
             assetWidth: compatibilityAsset.width,
             assetHeight: compatibilityAsset.height,
-            ...visual.ownerTransform,
+            // Cached visuals can predate a live Position draft.
+            ...resolveCharacterActionRenderTransform(evaluated),
           },
           { width: project.width, height: project.height },
           shot.backgroundLayerId === layer.id,
