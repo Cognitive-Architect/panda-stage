@@ -26,7 +26,7 @@ import { characterAssemblySessionStore } from '../../src/renderer/stores/charact
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
-import { RightInspector } from '../../src/renderer/shell/RightInspector';
+import { RightInspector, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from './domain/testProject';
@@ -269,7 +269,7 @@ it('registers the first action from the character list and protects a pending as
     shotStore.select(IDS.shot);
     selectionStore.select(layerId);
     timelineUiStore.seek(1_000, 3_000);
-    root.render(createElement(RightInspector, { embedded: true, shellMode: 'landscape' }));
+    root.render(createElement<RightInspectorProps>(RightInspector, { embedded: true, shellMode: 'landscape' }));
   });
   const inspectorAction = container.querySelector('[data-testid="character-action-at-time"]')!;
   expect(inspectorAction.querySelector('select')?.selectedOptions[0]?.textContent).toBe('挥手');
