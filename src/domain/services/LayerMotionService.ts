@@ -49,6 +49,7 @@ import { isValidFrameTime } from '../timeline/frame-grid';
 import { normalizeLayerRotation } from './LayerService';
 import { PositionProjectService } from './PositionProjectService';
 import { applyUserMotionPresetTracks, captureUserMotionPreset } from '../user-motion-presets';
+import { buildAudioMotionTracks, type AudioMotionDraft } from '../audio-motion';
 
 export const NEUTRAL_LAYER_MOTION = NEUTRAL_ANIMATION_MOTION;
 export type LayerMotionValues = AnimationMotionValues;
@@ -246,6 +247,28 @@ export class LayerMotionService {
     assertValidFrame(shot, input.timeMs);
     const clip = clipV2(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
     const tracks = applyUserMotionPresetTracks(clip, layer.id, preset, input.timeMs, shot.durationMs);
+    return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
+  }
+
+  applyAudioMotion(project: Project, input: LayerMotionTargetInput, draft: AudioMotionDraft): Project {
+    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId);
+    assertValidFrame(shot, draft.startMs);
+    assertValidFrame(shot, draft.endMs);
+    if (draft.endMs <= draft.startMs || !Number.isFinite(draft.strength) || draft.strength <= 0 || draft.strength > 1) {
+      throw new Error('请选择有效的音频时段与运动强度。');
+    }
+    let previous = draft.startMs;
+    for (const point of draft.levels) {
+      assertValidFrame(shot, point.timeMs);
+      if (point.timeMs <= previous || point.timeMs >= draft.endMs ||
+          !Number.isFinite(point.level) || point.level < 0 || point.level > 1) {
+        throw new Error('音量草稿包含不在选段内的关键帧。');
+      }
+      previous = point.timeMs;
+    }
+    if (!draft.levels.some(({ level }) => level > 0)) throw new Error('所选时段内没有可生成运动的声音。');
+    const clip = clipV2(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const tracks = buildAudioMotionTracks(clip, layer.id, draft);
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }
 

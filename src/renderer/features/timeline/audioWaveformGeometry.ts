@@ -1,4 +1,5 @@
-import { audioClipSourceTimeMs, type AudioClip } from '../../../domain';
+import { audioClipSourceTimeMs, audioMotionSampleTimes, smoothAudioMotionLevels, type AudioClip } from '../../../domain';
+import type { EditorAudioClipSamples } from '../../shell/productPreviewAudio';
 
 const BLOCK = 128;
 
@@ -46,4 +47,22 @@ export function projectWaveformViewport(clip: Pick<AudioClip, 'startMs' | 'endMs
     fromPx, width: toPx - fromPx,
     sourceStartMs: audioClipSourceTimeMs(clip, clip.startMs + fromPx / pixelsPerMs),
   };
+}
+
+export function sampleAudioMotionLevels(samples: EditorAudioClipSamples, clip: AudioClip, startMs: number, endMs: number) {
+  const { buffer, sourceStartMs } = samples;
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
+  const halfWindow = 24;
+  const sourceIndex = (timeMs: number) => Math.min(buffer.length, Math.max(0,
+    Math.round((audioClipSourceTimeMs(clip, timeMs) - sourceStartMs) * buffer.sampleRate / 1_000)));
+  const levels = audioMotionSampleTimes(startMs, endMs).map((timeMs) => {
+    const first = sourceIndex(Math.max(startMs, timeMs - halfWindow));
+    const end = sourceIndex(Math.min(endMs, timeMs + halfWindow));
+    let energy = 0;
+    for (const pcm of channels) {
+      for (let index = first; index < end; index += 1) energy += pcm[index]! ** 2;
+    }
+    return { timeMs, level: Math.sqrt(energy / Math.max(1, (end - first) * channels.length)) };
+  });
+  return smoothAudioMotionLevels(levels);
 }

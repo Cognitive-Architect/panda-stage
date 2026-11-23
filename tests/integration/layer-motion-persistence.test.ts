@@ -12,6 +12,7 @@ import {
   layerCompositeKeyTimes,
   migrateProject,
   scanAssetReferences,
+  smoothAudioMotionLevels,
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
@@ -26,6 +27,62 @@ import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProje
 import { IDS } from '../unit/domain/testProject';
 
 describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
+  it('writes audio energy as one editable key range while preserving untouched curves and silent sections', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-audio-motion-'));
+    try {
+      const root = path.join(parent, 'audio-motion.pandastage');
+      await mkdir(root);
+      const placed = new LayerService().createFromAnimation(graphicFaceProject(), IDS.shot, {
+        animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 550, y: 450 },
+      });
+      const motion = new LayerMotionService();
+      const target = { shotId: IDS.shot, layerId: placed.layer.id };
+      let project = placed.project;
+      for (const [timeMs, y] of [[500, 20], [750, 30], [1_500, 20], [2_000, 40]] as const) {
+        project = motion.applyKeys(project, { ...target, timeMs }, { 'transform.offsetY': y });
+      }
+      project = motion.setKeyEasing(project, { ...target, timeMs: 1_500 }, 'ease-in-out');
+      const levels = smoothAudioMotionLevels([
+        { timeMs: 625, level: 0.01 }, { timeMs: 750, level: 0.6 },
+        { timeMs: 875, level: 0.01 }, { timeMs: 1_250, level: 0.55 },
+      ]);
+      const range = { startMs: 500, endMs: 1_500, property: 'vertical' as const, strength: 0.5, levels };
+      expect(() => motion.applyAudioMotion(project, target, { ...range, replaceExisting: false })).toThrow('手工关键帧');
+      expect(() => motion.applyAudioMotion(project, target, { ...range, startMs: 542, replaceExisting: true })).toThrow('穿过已有缓动');
+      const draft = motion.applyAudioMotion(project, target, { ...range, replaceExisting: true });
+      const oldShot = project.shots[0]!;
+      const newShot = draft.shots[0]!;
+      const layerAt = (snapshot: Project, time: number) => evaluateShotAtTime(snapshot.shots[0]!, time, snapshot)
+        .layers.find(({ id }) => id === placed.layer.id)!;
+      for (const time of [2_700, 1_750, 500, 0, 875, 1_500]) expect(layerAt(draft, time)).toEqual(layerAt(project, time));
+      expect(layerAt(draft, 750).y).toBeLessThan(layerAt(project, 750).y);
+      expect(newShot.timelineEvents).toEqual(oldShot.timelineEvents);
+      expect(newShot.layers.filter(({ id }) => id !== placed.layer.id)).toEqual(oldShot.layers.filter(({ id }) => id !== placed.layer.id));
+      expect(newShot.audioClips).toEqual(oldShot.audioClips);
+      expect(newShot.dialogues).toEqual(oldShot.dialogues);
+      const editor = new EditorProjectStore();
+      editor.open(root, project);
+      editor.updateProject(draft, '生成音量动作');
+      expect(editor.history.getSnapshot().undoCount).toBe(1);
+      expect(editor.undo()).toBe(true);
+      expect(editor.getSnapshot()!.project).toEqual(project);
+      expect(editor.redo()).toBe(true);
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(project));
+      const projects = new ProjectService();
+      await projects.save(root, draft);
+      const reopened = (await projects.open(root)).project;
+      expect(reopened).toEqual(draft);
+      for (const time of [1_250, 0, 750, 875]) {
+        const shot = reopened.shots[0]!;
+        const stage = evaluateShotAtTime(shot, time, reopened);
+        expect(projectProductPreviewDialogue(reopened, shot, stage).layers).toEqual(stage.layers);
+        expect(evaluateExportShotAtTime(reopened, shot, time).layers).toEqual(stage.layers);
+      }
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   it('keeps named reusable segments bounded to the stored source range in Stage, Preview and Export', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-animation-segment-'));
     try {

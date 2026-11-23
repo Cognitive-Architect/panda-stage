@@ -14,6 +14,7 @@ import { isSupportedLayerMotionLayer } from '../properties/layerTransformTempora
 import { UserMotionPresetControls } from './UserMotionPresetControls';
 import { AnimationSegmentControls } from './AnimationSegmentControls';
 import { ActionRecipeControls } from './ActionRecipeControls';
+import { AudioMotionControls } from './AudioMotionControls';
 import {
   PresetParameterForm,
   type ExpressionOption,
@@ -148,6 +149,11 @@ export function ActionPresetPanel({ onPreview }: { onPreview?: (project: Project
       ) : null}
       {project && shot ? <ActionRecipeControls key={editorProjectStore.getProjectInstanceId()}
         project={project} shot={shot} layer={layer} onPreview={onPreview} /> : null}
+      {project && shot && layer && isSupportedLayerMotionLayer(project, shot, layer) &&
+        shot.audioClips.some(({ role }) => role === 'dialogue') ? (
+          <AudioMotionControls key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, layer.id])}
+            shot={shot} layer={layer} onPreview={onPreview} />
+        ) : null}
       <output data-testid="action-preset-status">{status}</output>
     </section>
   );

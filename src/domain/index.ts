@@ -1,5 +1,6 @@
 export * from './constants';
 export * from './audio-contract';
+export * from './audio-motion';
 export * from './export-audio-mix-plan';
 export * from './assetDropPayload';
 export * from './geometry';
