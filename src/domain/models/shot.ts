@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema, DialogueV22Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV30Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -86,18 +87,23 @@ export const ShotV22Schema = z.object({
 
 export const ShotV26Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV26Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV30Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 /** Frozen v27 Shot reader before bounded Character action events. */
 export const ShotV27Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV27Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV30Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotV28Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV28Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV30Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV30Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
+  layers: z.array(LayerV30Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotSchema = ShotV20Schema.extend({

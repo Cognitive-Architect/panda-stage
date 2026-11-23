@@ -183,6 +183,14 @@ function resolveCharacterActionHoldTimeMs(animation: ProjectAnimationDefinition)
   return Math.max(timeline.timelineDurationMs, lastFrame.internalTimeMs ?? 0);
 }
 
+function elapsedAnimationSourcePosition(timeMs: number, startTimeMs: number, sourceFps: number): number {
+  // Resolve on-grid stamps as frame indices so 958 ms is frame 23 at 24 fps.
+  return isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
+    ? (Math.round(timeMs * TIMELINE_FPS / 1_000) - Math.round(startTimeMs * TIMELINE_FPS / 1_000)) *
+      sourceFps / TIMELINE_FPS
+    : (timeMs - startTimeMs) * sourceFps / 1_000;
+}
+
 /**
  * Shared FLA Graphic / Sequence playback frame & internal clock resolver.
  * Projects a Shot-level elapsed timeline onto frame selection and continuous
@@ -208,13 +216,7 @@ export function resolveAnimationPlaybackFrameState<
     return null;
   }
   const elapsedMs = timeMs - startTimeMs;
-  // Timeline and export share integer millisecond frame stamps. Resolve a pair
-  // of on-grid stamps as frame indices so e.g. 958 ms means frame 23 at 24 fps.
-  const sourceFps = animation.source.sourceFps;
-  const elapsedSourcePosition = isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
-    ? (Math.round(timeMs * TIMELINE_FPS / 1_000) -
-        Math.round(startTimeMs * TIMELINE_FPS / 1_000)) * sourceFps / TIMELINE_FPS
-    : elapsedMs * sourceFps / 1_000;
+  const elapsedSourcePosition = elapsedAnimationSourcePosition(timeMs, startTimeMs, animation.source.sourceFps);
   const elapsedSourceFrames = Math.floor(Math.max(0, elapsedSourcePosition));
   const firstFrame = Math.min(firstFrameIndex, animation.frames.length - 1);
   const availableFrames = animation.frames.length - firstFrame;
@@ -316,6 +318,7 @@ function resolveAnimationFrame(
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
   selectedSourceFrameIndex?: number,
+  range?: Layer['animationSourceRange'],
 ): ResolvedLayerVisualState {
   const animation = project.animations.find(
     (candidate) => candidate.id === animationId,
@@ -330,13 +333,9 @@ function resolveAnimationFrame(
   const selectedSample = selectedSourceFrameIndex !== undefined && isFlaGraphicDefinition(animation)
     ? resolveFlaGraphicPreviewTimeline(animation, true).sampleAtFrameIndex(selectedSourceFrameIndex - animation.source.startFrameIndex)
     : undefined;
-  const state = resolveAnimationPlaybackFrameState(
-    animation,
-    startTimeMs,
-    firstFrameIndex,
-    playback,
-    timeMs,
-  );
+  const state = range
+    ? resolveAnimationSegmentFrame(animation, range, startTimeMs, playback, timeMs)
+    : resolveAnimationPlaybackFrameState(animation, startTimeMs, firstFrameIndex, playback, timeMs);
   if (!state) {
     return {
       assetId: null,
@@ -364,6 +363,32 @@ function resolveAnimationFrame(
       },
       canvas: animation.source.canvas,
     },
+  };
+}
+
+function resolveAnimationSegmentFrame(
+  animation: ProjectAnimationDefinition,
+  range: NonNullable<Layer['animationSourceRange']>,
+  startTimeMs: number,
+  playback: NonNullable<Layer['animationPlayback']>,
+  timeMs: number,
+): AnimationPlaybackFrameState<ProjectAnimationDefinition['frames'][number]> | null {
+  const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+  if (range.lastFrame >= timeline.totalFrames) return null;
+  const elapsedMs = timeMs - startTimeMs;
+  const elapsedFrames = Math.max(0, elapsedAnimationSourcePosition(timeMs, startTimeMs, timeline.fps));
+  const length = range.lastFrame - range.firstFrame + 1;
+  const completedOnce = elapsedFrames >= length;
+  const local = playback.mode === 'single-frame' ? 0
+    : playback.mode === 'loop' ? elapsedFrames % length
+    : completedOnce ? length - 1 : elapsedFrames;
+  const sourceFrameIndex = range.firstFrame + Math.floor(local);
+  const { frameOrdinal } = timeline.sampleAtFrameIndex(sourceFrameIndex);
+  const frame = animation.frames[frameOrdinal];
+  if (!frame) return null;
+  return {
+    frame, sourceFrameIndex, elapsedMs, completedOnce,
+    internalTimeMs: (range.firstFrame + local) * 1_000 / timeline.fps,
   };
 }
 
@@ -468,6 +493,7 @@ export function evaluateLayerPreTrackState(
         layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
         timeMs,
         frameSwitch && frameSwitch.type === 'graphic-frame' ? frameSwitch.sourceFrameIndex : undefined,
+        layer.animationSourceRange,
       )
     : resolveLayerVisualState(project, layer);
   const animationVisible = initialVisual.animationVisible ?? true;

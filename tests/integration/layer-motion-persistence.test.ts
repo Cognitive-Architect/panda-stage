@@ -11,6 +11,7 @@ import {
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
   migrateProject,
+  scanAssetReferences,
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
@@ -25,6 +26,56 @@ import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProje
 import { IDS } from '../unit/domain/testProject';
 
 describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
+  it('keeps named reusable segments bounded to the stored source range in Stage, Preview and Export', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-animation-segment-'));
+    try {
+      const root = path.join(parent, 'animation-segment.pandastage');
+      await mkdir(root);
+      const projects = new ProjectService();
+      const layers = new LayerService();
+      const prior = { ...graphicFaceProject(), schemaVersion: 30 };
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(prior));
+      const migrated = await projects.open(root);
+      expect(migrated.sourceVersion).toBe(30);
+      expect(migrated.project.animationSegments).toBeUndefined();
+      const options = {
+        name: '局部特效', animationId: FACE_GRAPHIC_ID, range: { firstFrame: 1, lastFrame: 2 },
+        playback: { mode: 'loop' as const, endBehavior: 'hold' as const }, position: { x: 700, y: 500 },
+      };
+      const library = layers.saveAnimationSegment(migrated.project, options);
+      expect(library.animations).toEqual(migrated.project.animations);
+      expect(library.assets).toEqual(migrated.project.assets);
+      const assetId = library.animations[0]!.frames[1]!.assetId;
+      expect(scanAssetReferences(library, assetId).some((ref) => ref.kind === 'animation-frame')).toBe(true);
+      const segmentId = library.animationSegments![0]!.id;
+      const loop = layers.placeAnimationSegment(library, IDS.shot, segmentId, 500);
+      const updated = layers.saveAnimationSegment(loop.project, {
+        ...options, playback: { mode: 'once', endBehavior: 'hide' }, replaceId: segmentId,
+      });
+      expect(updated.shots).toEqual(loop.project.shots);
+      const once = layers.placeAnimationSegment(updated, IDS.shot, segmentId, 1_000);
+      expect(once.layer.x).toBe(700);
+      await projects.save(root, once.project);
+      const reopened = (await projects.open(root)).project;
+      const shot = reopened.shots[0]!;
+      for (const [at, loopOrdinal, onceVisible] of [
+        [1_125, 2, false], [500, 1, false], [1_042, 2, true], [583, 1, false], [542, 2, false], [1_000, 1, true],
+      ] as const) {
+        const stage = evaluateShotAtTime(shot, at, reopened);
+        for (const frame of [stage, projectProductPreviewDialogue(reopened, shot, stage), evaluateExportShotAtTime(reopened, shot, at)]) {
+          expect(frame.layers.find(({ id }) => id === loop.layer.id)?.animationFrame?.frameOrdinal).toBe(loopOrdinal);
+          expect(frame.layers.find(({ id }) => id === once.layer.id)?.visible).toBe(onceVisible);
+        }
+      }
+      const orphan = ProjectSchema.parse({ ...library, animations: [], assets: migrated.project.assets.filter((asset) => !(asset.kind === 'image' && asset.flaGraphicFrame)) });
+      expect(() => layers.placeAnimationSegment(orphan, IDS.shot, segmentId, 500)).toThrow('Animation definition is unavailable');
+      expect(layers.saveAnimationSegment(ProjectSchema.parse({ ...library, animationSegments: orphan.animationSegments }),
+        { ...options, replaceId: segmentId }).animationSegments).toHaveLength(1);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   it('reuses a captured motion on another Graphic relative to its own basis and keeps the application editable', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-user-motion-'));
     try {

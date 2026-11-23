@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
   AnimationClipSchema,
   AnimationClipV0V22Schema,
@@ -310,10 +311,18 @@ export const LayerV22Schema = LayerV20Schema.safeExtend({
   animationClip: AnimationClipV22Schema.optional(),
 }).superRefine(validateClipOwnership);
 
-export const LayerSchema = LayerV20Schema.safeExtend({
+export const LayerV30Schema = LayerV20Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
   flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
 }).superRefine(validateClipOwnership);
+
+export const LayerSchema = LayerV30Schema.safeExtend({
+  animationSourceRange: AnimationSourceRangeSchema.optional(),
+}).superRefine((layer, context) => {
+  if (layer.animationSourceRange && layer.source.kind !== 'animation') {
+    context.addIssue({ code: 'custom', path: ['animationSourceRange'], message: 'Animation source ranges require an animation layer.' });
+  }
+});
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

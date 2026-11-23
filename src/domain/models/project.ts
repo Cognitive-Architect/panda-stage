@@ -50,6 +50,7 @@ import {
   ShotV26Schema,
   ShotV27Schema,
   ShotV28Schema,
+  ShotV30Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -68,6 +69,7 @@ import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventV26Schema } from './timeline-event';
 import { UserMotionPresetSchema } from './userMotionPreset';
+import { ReusableAnimationSegmentSchema } from './reusableAnimationSegment';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -666,18 +668,31 @@ export const ProjectV22Schema = z.object({
 const ProjectV29DataSchema = ProjectDataSchema.extend({
   schemaVersion: z.literal(29),
   animations: z.array(ProjectAnimationDefinitionSchema),
-  shots: z.array(ShotSchema),
+  shots: z.array(ShotV30Schema),
 });
 
 export const ProjectV29Schema = ProjectV29DataSchema.superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV29DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV30DataSchema = ProjectV29DataSchema.extend({
+  schemaVersion: z.literal(30),
   userMotionPresets: z.array(UserMotionPresetSchema).refine(
     (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
     'User motion preset IDs must be unique.',
+  ).optional(),
+});
+
+export const ProjectV30Schema = ProjectV30DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV30DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  shots: z.array(ShotSchema),
+  animationSegments: z.array(ReusableAnimationSegmentSchema).refine(
+    (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
+    'Reusable animation segment IDs must be unique.',
   ).optional(),
 });
 
