@@ -43,6 +43,12 @@ export interface ExpressionReference {
   label: string;
 }
 
+export interface CharacterActionReference {
+  kind: 'timeline-character-action-event';
+  path: string;
+  label: string;
+}
+
 function dialoguePreview(text: string): string {
   const normalized = text.replace(/\s+/gu, ' ').trim();
   return normalized.length <= 160
@@ -309,6 +315,36 @@ export function scanExpressionReferences(
           `shots[${shotIndex}].timelineEvents[${eventIndex}]` +
           '.expressionId',
         label: `镜头“${shot.name}”的表情切换事件`,
+      });
+    });
+  });
+  return references;
+}
+
+export function scanCharacterActionReferences(
+  project: Project,
+  characterId: string,
+  actionId: string,
+): CharacterActionReference[] {
+  const references: CharacterActionReference[] = [];
+  project.shots.forEach((shot, shotIndex) => {
+    const characterLayerIds = new Set(shot.layers.flatMap((layer) =>
+      layer.source.kind === 'character' && layer.source.characterId === characterId
+        ? [layer.id]
+        : [],
+    ));
+    shot.timelineEvents.forEach((event, eventIndex) => {
+      if (
+        event.type !== 'character-action' ||
+        event.actionId !== actionId ||
+        !characterLayerIds.has(event.layerId)
+      ) {
+        return;
+      }
+      references.push({
+        kind: 'timeline-character-action-event',
+        path: `shots[${shotIndex}].timelineEvents[${eventIndex}].actionId`,
+        label: `镜头“${shot.name}”中的角色动作段`,
       });
     });
   });

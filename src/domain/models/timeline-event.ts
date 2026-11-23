@@ -181,8 +181,26 @@ export const MouthPoseEventSchema = z.object({
   }
 });
 
-export const TimelineEventSchema = z.discriminatedUnion('type', [...TimelineEventV26Options, MouthPoseEventSchema])
+const TimelineEventV27Options = [...TimelineEventV26Options, MouthPoseEventSchema] as const;
+
+/** Frozen current-project timeline events before bounded Character actions. */
+export const TimelineEventV27Schema = z.discriminatedUnion('type', TimelineEventV27Options)
   .superRefine(validateRange);
+
+export const CharacterActionEventSchema = z.object({
+  ...TimelineEventBaseShape,
+  type: z.literal('character-action'),
+  actionId: IdSchema,
+}).strict().superRefine((event, context) => {
+  if (event.endMs <= event.startMs) {
+    context.addIssue({ code: 'custom', path: ['endMs'], message: 'Character action ranges must have positive duration.' });
+  }
+});
+
+export const TimelineEventSchema = z.discriminatedUnion('type', [
+  ...TimelineEventV27Options,
+  CharacterActionEventSchema,
+]).superRefine(validateRange);
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
 export type ScaleEvent = z.infer<typeof ScaleEventSchema>;
@@ -193,4 +211,6 @@ export type FlipEvent = z.infer<typeof FlipEventSchema>;
 export type VisibilityEvent = z.infer<typeof VisibilityEventSchema>;
 export type MouthCueEvent = z.infer<typeof MouthCueEventSchema>;
 export type MouthPoseEvent = z.infer<typeof MouthPoseEventSchema>;
+export type CharacterActionEvent = z.infer<typeof CharacterActionEventSchema>;
+export type TimelineEventV27 = z.infer<typeof TimelineEventV27Schema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;

@@ -1342,6 +1342,32 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve visual owner Layer ${evaluated.id}.`);
   }
 
+  if (evaluated.characterAction) {
+    const placement = evaluated.characterAction.placement;
+    const radians = evaluated.rotationDeg * Math.PI / 180;
+    const localX = placement.offsetX * evaluated.scaleX * (evaluated.flipX ? -1 : 1);
+    const localY = placement.offsetY * evaluated.scaleY;
+    const actionLayer: Layer = {
+      ...layer,
+      source: { kind: 'animation', animationId: evaluated.characterAction.animationId },
+    };
+    const actionEvaluated: EvaluatedLayer = {
+      ...evaluated,
+      characterAction: undefined,
+      x: evaluated.x + localX * Math.cos(radians) - localY * Math.sin(radians),
+      y: evaluated.y + localX * Math.sin(radians) + localY * Math.cos(radians),
+      scaleX: evaluated.scaleX * placement.scale,
+      scaleY: evaluated.scaleY * placement.scale,
+    };
+    return resolveLayerVisualParts(
+      project,
+      { layers: shot.layers.map((candidate) => candidate.id === layer.id ? actionLayer : candidate) },
+      actionEvaluated,
+      timeMs,
+      isImageUnavailable,
+    );
+  }
+
   const source = layer.source;
   if (source.kind === 'asset') {
     const asset = imageAsset(project, evaluated.assetId || source.assetId, layer.id);

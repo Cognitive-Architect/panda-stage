@@ -16,6 +16,7 @@ import {
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
   type CharacterHead,
+  type CharacterActionDraft,
   type CompositeCharacterDefinition,
   type ExpressionCharacter,
   type ImageAsset,
@@ -41,6 +42,7 @@ import {
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
+import { CharacterActionEditor } from './CharacterActionEditor';
 import { CharacterFloatHost } from './characterFloatHost';
 import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import { CharacterList } from './CharacterList';
@@ -1298,6 +1300,21 @@ export function CharacterManager({
           />
         ) : null}
       </div>
+      {snapshot && selectedDisplayCharacter && (view === 'legacy' || view === 'detail' || view === 'expression') ? (
+        <CharacterActionEditor
+          character={selectedDisplayCharacter}
+          project={project}
+          projectRoot={snapshot.projectRoot}
+          disabled={!snapshot}
+          onSave={(draft: CharacterActionDraft) => {
+            const next = mutate(() => characterStore.setAction(selectedDisplayCharacter.id, draft));
+            const updated = next?.characters.find((candidate) => candidate.id === selectedDisplayCharacter.id);
+            return updated?.actions?.find((action) => action.id === draft.id) ??
+              (draft.id ? null : updated?.actions?.find((action) => action.name === draft.name.trim()) ?? null);
+          }}
+          onDelete={(actionId) => Boolean(mutate(() => characterStore.removeAction(selectedDisplayCharacter.id, actionId)))}
+        />
+      ) : null}
       {bindingReminderCount !== null ? (
         <output
           aria-atomic="true"

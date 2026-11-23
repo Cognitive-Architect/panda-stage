@@ -29,6 +29,7 @@ import {
   CharacterV24Schema,
   CharacterV25Schema,
   CharacterV26Schema,
+  CharacterV27Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -45,6 +46,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV26Schema,
+  ShotV27Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -697,6 +699,15 @@ export const ProjectV26Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(26),
   characters: z.array(CharacterV26Schema),
   shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+/** Frozen v27 envelope before Character actions and bounded action events. */
+export const ProjectV27Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(27),
+  characters: z.array(CharacterV27Schema),
+  shots: z.array(ShotV27Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);

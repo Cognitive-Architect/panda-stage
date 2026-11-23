@@ -220,6 +220,15 @@ export function validateProjectReferences(
       !isTalkingAnimationPlaybackInRange(talkingAnimation, character.talkingAnimationPlayback))) {
       addIssue(context, ['characters', characterIndex, 'talkingAnimationPlayback'], 'Talking animation frame is outside the source timeline.');
     }
+    (character.actions ?? []).forEach((action, actionIndex) => {
+      if (!animations.has(action.animationId)) {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'actions', actionIndex, 'animationId'],
+          `Character action references unknown animation: ${action.animationId}`,
+        );
+      }
+    });
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);
@@ -777,6 +786,27 @@ export function validateProjectReferences(
               (event.origin === 'generated' && !dialogue.audioClipId)) {
             addIssue(context, [...path, 'dialogueId'], 'Mouth pose must belong to the same character and fit its dialogue window.');
           }
+        }
+      }
+      if (event.type === 'character-action') {
+        const path = ['shots', shotIndex, 'timelineEvents', eventIndex];
+        if (layer?.source.kind !== 'character') {
+          addIssue(context, [...path, 'layerId'], 'Character actions require a character layer.');
+        } else {
+          const owner = characters.get(layer.source.characterId);
+          if (!owner?.actions?.some((action) => action.id === event.actionId)) {
+            addIssue(context, [...path, 'actionId'], 'Character action is not defined on the instance character.');
+          }
+        }
+        const overlap = shot.timelineEvents.find((candidate, candidateIndex) =>
+          candidateIndex !== eventIndex &&
+          candidate.type === 'character-action' &&
+          candidate.layerId === event.layerId &&
+          candidate.startMs < event.endMs &&
+          event.startMs < candidate.endMs,
+        );
+        if (overlap) {
+          addIssue(context, [...path, 'startMs'], 'Character action events on one layer must not overlap.');
         }
       }
     });

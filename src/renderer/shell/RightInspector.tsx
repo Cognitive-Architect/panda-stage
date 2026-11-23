@@ -38,6 +38,7 @@ import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStruct
 import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
+import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -707,6 +708,17 @@ export function RightInspector({
           key={`${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           projectRoot={snapshot.projectRoot}
+          shot={currentShot}
+          layer={selection.layer}
+        />
+      ) : null}
+      {snapshot &&
+      currentShot &&
+      selection.layer?.source.kind === 'character' &&
+      motionNode?.motion !== 'character-clip-v1' ? (
+        <CharacterActionAtTimeControl
+          key={`${currentShot.id}:${selection.layer.id}`}
+          project={snapshot.project}
           shot={currentShot}
           layer={selection.layer}
         />

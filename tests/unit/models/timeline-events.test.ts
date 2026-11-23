@@ -62,6 +62,20 @@ describe('TimelineEvent discriminated union', () => {
     }
   });
 
+  it('accepts a positive-duration character action event', () => {
+    const actionEvent = {
+      id: '60000000-0000-4000-8000-000000000021',
+      type: 'character-action',
+      layerId: '60000000-0000-4000-8000-000000000022',
+      startMs: 250,
+      endMs: 750,
+      actionId: '60000000-0000-4000-8000-000000000023',
+    };
+
+    expect(TimelineEventSchema.parse(actionEvent)).toEqual(actionEvent);
+    expect(TimelineEventSchema.safeParse({ ...actionEvent, endMs: 250 }).success).toBe(false);
+  });
+
   it.each([-1, 1.5])('rejects invalid millisecond value %s', (startMs) => {
     const input = {
       ...structuredClone(exampleProject.shots[0]!.timelineEvents[0]),
