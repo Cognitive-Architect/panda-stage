@@ -1,3 +1,4 @@
+import { MouthPoseSetEditor } from './MouthPoseSetEditor';
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Pencil, Play, Plus, RefreshCw, X } from 'lucide-react';
@@ -28,8 +29,8 @@ import {
 } from './CharacterResourceSwapDialog';
 import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import { ExpressionEditor } from './ExpressionEditor';
-import { GraphicFacePicker, GraphicFacePreview } from './GraphicFacePicker';
-import type { CharacterFaceSource, CharacterFaceGraphicSource } from '../../../domain';
+import { GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
+import type { CharacterFaceSource, CharacterFaceGraphicSource, TalkingAnimationPlayback } from '../../../domain';
 import {
   ImageAssetPicker,
   ImageAssetPickerSelectedSurface,
@@ -356,6 +357,7 @@ export interface CharacterEditorProps {
   onSetExpressionAsset: (expressionId: string, assetId: string) => void;
   onSetExpressionSource?: (expressionId: string, source: CharacterFaceSource) => void;
   onAddGraphicExpression?: (name: string, source: CharacterFaceGraphicSource) => void;
+  onSetTalkingAnimation?: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   onSetMouthSource?: (source: CharacterFaceSource | null) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
@@ -402,6 +404,7 @@ export function CharacterEditor({
   onSetExpressionSource,
   onAddGraphicExpression,
   onSetMouthSource,
+  onSetTalkingAnimation,
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
@@ -613,6 +616,11 @@ export function CharacterEditor({
   }
 
   const expressionCharacter = character;
+  const talkingAnimationPicker = expressionCharacter && onSetTalkingAnimation ? (
+    <TalkingAnimationPicker key={expressionCharacter.id} animationId={expressionCharacter.talkingAnimationId}
+      playback={expressionCharacter.talkingAnimationPlayback}
+      disabled={disabled || assemblyPending} onApply={onSetTalkingAnimation} />
+  ) : null;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head
       ? (character as HeadedCompositeCharacter)
@@ -1330,6 +1338,7 @@ export function CharacterEditor({
                   </GraphicFacePicker>
                 )}
               </div>
+              {talkingAnimationPicker}
               {floatMode === 'single-image' && (character.mouthOpenAssetId || character.mouthOpenVisualSource) ? (
                 <Button aria-pressed={previewMouth} className="character-float-mouth-preview-button" onClick={() => setPreviewMouth(!previewMouth)} variant="secondary">预览张嘴</Button>
               ) : null}
@@ -1952,6 +1961,7 @@ export function CharacterEditor({
             </div>
             <div className="character-float-section-stack" hidden={floatOperations !== 'expressions'}>
               {floatMouthRow}
+            <MouthPoseSetEditor characterId={character.id} disabled={disabled || assemblyPending} />
               <div className="character-float-expression-heading">
                 <strong id="character-expression-workspace-heading">表情</strong>
                 <Button aria-expanded={expressionAddOpen} className="character-float-expression-add" onClick={() => setExpressionAddOpen(!expressionAddOpen)} variant="secondary">
@@ -2294,6 +2304,7 @@ export function CharacterEditor({
             />
             </GraphicFacePicker>
           ) : null}
+          {talkingAnimationPicker}
           <label>
             默认缩放
             <input
@@ -2330,6 +2341,7 @@ export function CharacterEditor({
         </section>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? talkingHeadSettings : null}
+            <MouthPoseSetEditor characterId={character.id} disabled={disabled || assemblyPending} />
       {view === 'detail' && !landscapeDetail && expressionCharacter ? (
         <section
           aria-labelledby="character-expression-summary-heading"

@@ -194,6 +194,7 @@ export function ExportRendererApp(): React.JSX.Element {
           shot,
           shotLocalTimeMs,
           subtitle?.id ?? null,
+          formalRequest.dialogueSilence,
         )
       : evaluatedBaseShot,
     [

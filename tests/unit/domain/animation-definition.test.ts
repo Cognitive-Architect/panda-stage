@@ -5,6 +5,7 @@ import {
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   ProjectV16Schema,
+  ProjectV22Schema,
   migrateProject,
   scanAssetReferences,
   type AnimationDefinition,
@@ -94,9 +95,20 @@ function projectWithAnimation(nextAnimation = animation()) {
 }
 
 describe('formal AnimationDefinition', () => {
-  it('keeps the sequence-import limit while allowing bounded FLA Graphic Definitions', () => {
-    const regular = definitionWithFrameCount(25);
-    expect(AnimationDefinitionSchema.safeParse(regular).success).toBe(false);
+  it('accepts at most 256 ordinary frames while preserving the v22 limit', () => {
+    const regular = definitionWithFrameCount(256);
+    const scene = { ...regular, source: { ...regular.source, targetKind: 'scene' as const } };
+    expect(AnimationDefinitionSchema.parse(scene).frames).toHaveLength(256);
+    expect(ProjectSchema.parse(projectWithAnimation(scene)).animations[0]?.frames).toHaveLength(256);
+    expect(AnimationDefinitionSchema.safeParse(definitionWithFrameCount(257)).success).toBe(false);
+
+    const oldProject = ProjectV22Schema.parse({
+      ...projectWithAnimation(definitionWithFrameCount(24)), schemaVersion: 22,
+    });
+    expect(migrateProject(oldProject).animations).toEqual(oldProject.animations);
+    expect(ProjectV22Schema.safeParse({
+      ...projectWithAnimation(definitionWithFrameCount(25)), schemaVersion: 22,
+    }).success).toBe(false);
 
     const graphic = {
       ...definitionWithFrameCount(65),

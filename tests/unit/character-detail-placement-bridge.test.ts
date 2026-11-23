@@ -589,6 +589,7 @@ describe('Adaptive Parts inline rename completion', () => {
       getSnapshot: () => null,
       setDraft: activeHandle.setDraft.bind(activeHandle),
       selectPart: activeHandle.selectPart.bind(activeHandle),
+      selectParts: activeHandle.selectParts.bind(activeHandle),
       commit: activeHandle.commit.bind(activeHandle),
       cancel: activeHandle.cancel.bind(activeHandle),
       exit: activeHandle.exit.bind(activeHandle),

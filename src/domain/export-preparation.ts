@@ -9,10 +9,10 @@ import {
 import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
-import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
+import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { resolveCharacterFaceSource } from './selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -31,6 +31,8 @@ import {
 export interface ExportPreparationMediaSource {
   asset: Asset;
   usages: string[];
+  /** Every sampled use can render the original Adaptive Parts if this file fails. */
+  optionalExpression?: true;
 }
 
 export interface ExportPreparationBudgetEntry {
@@ -88,15 +90,21 @@ function addUsage(
   entries: Map<string, ExportPreparationMediaSource>,
   asset: Asset,
   usages: readonly string[],
+  optionalExpression = false,
 ): void {
   const existing = entries.get(asset.id);
   if (existing) {
+    if (!optionalExpression) delete existing.optionalExpression;
     for (const usage of usages) {
       if (!existing.usages.includes(usage)) existing.usages.push(usage);
     }
     return;
   }
-  entries.set(asset.id, { asset, usages: [...new Set(usages)] });
+  entries.set(asset.id, {
+    asset,
+    usages: [...new Set(usages)],
+    ...(optionalExpression ? { optionalExpression: true } : {}),
+  });
 }
 
 function isSupportedFormalImageAsset(asset: Asset): boolean {
@@ -146,9 +154,11 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
     if (
       event.type === 'expression' ||
       event.type === 'visibility' ||
-      event.type === 'mouth-cue'
+      event.type === 'mouth-cue' ||
+      event.type === 'mouth-pose'
     ) {
       times.add(event.startMs);
+      if (event.type === 'mouth-pose') times.add(event.endMs);
     }
   }
   return [...times].sort((left, right) => left - right);
@@ -203,10 +213,28 @@ function addShotVisualAssets(
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
 ): void {
   const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
+  const restResourcesByCharacter = new Set<string>();
   for (const timeMs of shotVisualSampleTimes(shot)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
-    for (const evaluatedLayer of evaluatedShot.layers) {
+    const projected = projectShotMouth(project, shot, evaluatedShot, null);
+    for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
+      const poseLayer = projected.layers[layerIndex];
+      const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
       if (!evaluatedLayer.visible) continue;
+      const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
+      if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
+        restResourcesByCharacter.add(source.characterId);
+        const character = project.characters.find(candidate => candidate.id === source.characterId);
+        if (character?.talkingAnimationPlayback?.restFrame !== undefined &&
+          (character.mode !== 'adaptive-parts' || character.faceBinding)) {
+          const rest = resolveTalkingAnimationFace(project, character.talkingAnimationId, 'rest', character.talkingAnimationPlayback);
+          const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
+          for (const assetId of assetIds) {
+            const asset = project.assets.find(candidate => candidate.id === assetId);
+            if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+          }
+        }
+      }
       const visual = resolveLayerVisualParts(
         project,
         shot,
@@ -226,7 +254,15 @@ function addShotVisualAssets(
           project,
           shotIndex,
         );
-        addUsage(entries, asset, labels.length > 0 ? labels : fallbackUsage);
+        const face = visual.activeFace;
+        addUsage(
+          entries, asset, labels.length > 0 ? labels : fallbackUsage,
+          Boolean(
+            face?.originalPartsFallback &&
+            face.currentExpressionAssetId === asset.id &&
+            (face.source === 'expression' || face.assetId !== asset.id),
+          ),
+        );
       }
     }
   }
@@ -245,8 +281,8 @@ function addShotVisualAssets(
     );
     if (
       !character ||
-      character.mode === 'adaptive-parts' ||
-      (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
+      (character.mode === 'adaptive-parts' && !character.faceBinding) ||
+      (!character.talkingAnimationId && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
       shot.layers
@@ -258,6 +294,13 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
+    if (talking) {
+      for (const assetId of listTalkingAnimationImageIds(talking)) {
+        const asset = project.assets.find(candidate => candidate.id === assetId);
+        if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+      }
+    }
     const visibleDuringMouthOpen = characterVisibleDuringMouthOpen(
       project,
       shot,
@@ -292,7 +335,7 @@ function addShotVisualAssets(
  * shot's visual state changes. Preview-only alternate-expression preloads are
  * excluded; audio-bound Mouth assets are included when the shot can use them.
  */
-function addFlaGraphicAnimationMedia(
+function addShotAnimationMedia(
   entries: Map<string, ExportPreparationMediaSource>,
   project: Project,
   shot: Project['shots'][number],
@@ -390,9 +433,13 @@ function addFlaGraphicAnimationMedia(
 
   for (const animationId of fullAnimationIds) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
-    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
+    if (!animation) continue;
+    const resourceIds = ensureAnimationResources(animation.id);
+    if (!('kind' in animation) || animation.kind !== 'fla-graphic') {
+      for (const frame of animation.frames) resourceIds.add(frame.assetId);
+      continue;
+    }
     const definition = animation as FlaGraphicDefinition;
-    const resourceIds = ensureAnimationResources(definition.id);
     const collectNodeResources = (nodes: readonly FlaGraphicStructureNode[]): void => {
       for (const node of nodes) {
         if (node.type === 'bitmap' && node.assetId) resourceIds.add(node.assetId);
@@ -425,7 +472,7 @@ function addFlaGraphicAnimationMedia(
 
   for (const [animationId, resourceIds] of resourceIdsByAnimation) {
     const animation = project.animations.find((candidate) => candidate.id === animationId);
-    if (!animation || !('kind' in animation) || animation.kind !== 'fla-graphic') continue;
+    if (!animation) continue;
     for (const assetId of resourceIds) {
       const asset = project.assets.find(
         (candidate) => candidate.id === assetId && candidate.kind === 'image',
@@ -441,7 +488,7 @@ function addFlaGraphicAnimationMedia(
         asset,
         labels.length > 0
           ? labels
-          : ['Shot "' + shot.name + '" FLA Graphic "' + animation.name + '" resource'],
+          : ['镜头“' + shot.name + '”的动画“' + animation.name + '”素材'],
       );
     }
   }
@@ -466,7 +513,7 @@ export function collectExportPreparationMedia(
       shotIndex,
       referencesByAssetId,
     );
-    addFlaGraphicAnimationMedia(
+    addShotAnimationMedia(
       entries,
       project,
       shot,
@@ -544,22 +591,6 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
-    if (shot.layers.some((layer) => {
-      if (layer.source.kind !== 'animation') return false;
-      const animationId = layer.source.animationId;
-      const animation = project.animations.find(
-        (candidate) => candidate.id === animationId,
-      );
-      return !animation || !('kind' in animation) || animation.kind !== 'fla-graphic';
-    })) {
-      issues.push(
-        issue(
-          location,
-          '当前版本暂不支持镜头动画导出',
-          '等待动画视频导出支持后再导出，或先从本次项目删除动画实例。',
-        ),
-      );
-    }
     if (shot.backgroundLayerId === null) {
       issues.push(
         issue(

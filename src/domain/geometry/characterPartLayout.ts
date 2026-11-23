@@ -4,11 +4,14 @@ import {
   CharacterPartImageMappingSchema,
   CharacterPartStaticAdjustmentSchema,
   CharacterPartTransformSchema,
+  FacePlacementSchema,
   resolveCharacterPartVisualSource,
+  type AdaptivePartsFaceAnchorRect,
   type CharacterPart,
   type CharacterPartImageMapping,
   type CharacterPartStaticAdjustment,
   type CharacterPartTransform,
+  type FacePlacement,
 } from '../models/character';
 import {
   isFlaGraphicDefinition,
@@ -448,4 +451,142 @@ export function characterPartTransformFromStaticAdjustment(
   const currentSourcePose = multiply(characterAdjustment, sourcePose);
   const result = multiply(inverse(sourceRoot), currentSourcePose);
   return CharacterPartTransformSchema.parse(result);
+}
+
+/**
+ * Computes a frozen `anchorRect` in `targetPart`'s pre-crop source coordinates
+ * covering `targetPartId` and any optional `replacePartIds` in their current rest pose.
+ */
+export function computeAdaptiveFaceAnchorRect(input: {
+  readonly sourceRootTransform: CharacterPartTransform;
+  readonly parts: readonly Pick<
+    CharacterPart,
+    'partId' | 'assetId' | 'imageMapping' | 'visualSource' | 'restTransform'
+  >[];
+  readonly targetPartId: string;
+  readonly replacePartIds?: readonly string[];
+  readonly animations: readonly ProjectAnimationDefinition[];
+  readonly assets?: readonly FlaGraphicAssetDimensionLike[];
+}): AdaptivePartsFaceAnchorRect | null {
+  const sourceRoot = CharacterPartTransformSchema.parse(input.sourceRootTransform);
+  const targetPart = input.parts.find((part) => part.partId === input.targetPartId);
+  if (!targetPart) return null;
+
+  const targetBounds =
+    characterPartSourceBounds(targetPart, input.animations, input.assets ?? []) ??
+    characterPartRegionAnchorBounds(targetPart, input.animations);
+  if (!targetBounds || targetBounds.width <= 0 || targetBounds.height <= 0) {
+    return null;
+  }
+
+  const replaceIds = (input.replacePartIds ?? []).filter(
+    (partId) => partId !== input.targetPartId,
+  );
+  if (replaceIds.length === 0) {
+    return {
+      x: targetBounds.x,
+      y: targetBounds.y,
+      width: targetBounds.width,
+      height: targetBounds.height,
+    };
+  }
+
+  const targetPose = multiply(
+    sourceRoot,
+    CharacterPartTransformSchema.parse(targetPart.restTransform),
+  );
+  const poseCorners: Point[] = [];
+  for (const partId of [input.targetPartId, ...replaceIds]) {
+    const part = input.parts.find((candidate) => candidate.partId === partId);
+    if (!part) return null;
+    const bounds =
+      characterPartSourceBounds(part, input.animations, input.assets ?? []) ??
+      characterPartRegionAnchorBounds(part, input.animations);
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+    const partPose = multiply(
+      sourceRoot,
+      CharacterPartTransformSchema.parse(part.restTransform),
+    );
+    for (const x of [bounds.x, bounds.x + bounds.width]) {
+      for (const y of [bounds.y, bounds.y + bounds.height]) {
+        poseCorners.push(transformPoint(partPose, { x, y }));
+      }
+    }
+  }
+  const minPoseX = Math.min(...poseCorners.map((point) => point.x));
+  const maxPoseX = Math.max(...poseCorners.map((point) => point.x));
+  const minPoseY = Math.min(...poseCorners.map((point) => point.y));
+  const maxPoseY = Math.max(...poseCorners.map((point) => point.y));
+  const invTargetPose = inverse(targetPose);
+  const localCorners = [
+    transformPoint(invTargetPose, { x: minPoseX, y: minPoseY }),
+    transformPoint(invTargetPose, { x: maxPoseX, y: minPoseY }),
+    transformPoint(invTargetPose, { x: minPoseX, y: maxPoseY }),
+    transformPoint(invTargetPose, { x: maxPoseX, y: maxPoseY }),
+  ];
+  const x = Math.min(...localCorners.map((point) => point.x));
+  const y = Math.min(...localCorners.map((point) => point.y));
+  const width = Math.max(...localCorners.map((point) => point.x)) - x;
+  const height = Math.max(...localCorners.map((point) => point.y)) - y;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
+/**
+ * Recovers the target Part's pre-crop base transform (`sourceRoot * restTransform`
+ * or Clip-animated base matrix) from the evaluated `imageTransform`.
+ */
+export function stripCropTransformFromAdaptivePartMatrix(
+  part: Pick<CharacterPart, 'partId' | 'assetId' | 'imageMapping' | 'visualSource'>,
+  imageTransform: CharacterPartTransform,
+): CharacterPartTransform {
+  const visualSource = resolveCharacterPartVisualSource(part);
+  if (visualSource.kind !== 'image') {
+    return imageTransform;
+  }
+  const { crop, exportScale } = visualSource.imageMapping;
+  const cropInverse: CharacterPartTransform = {
+    a: exportScale,
+    b: 0,
+    c: 0,
+    d: exportScale,
+    tx: -crop.x * exportScale,
+    ty: -crop.y * exportScale,
+  };
+  return multiply(imageTransform, cropInverse);
+}
+
+/**
+ * Places a center-origin replacement Expression / Mouth canvas into a bound
+ * Adaptive Part's frozen `anchorRect`, plus user-authored fine-tuning `placement`.
+ */
+export function composeAdaptiveFaceReplacementMatrix(input: {
+  readonly targetBaseTransform: CharacterPartTransform;
+  readonly anchorRect: AdaptivePartsFaceAnchorRect;
+  readonly placement: FacePlacement;
+  readonly resolvedWidth: number;
+  readonly resolvedHeight: number;
+}): CharacterPartTransform {
+  const safePlacement = FacePlacementSchema.parse(input.placement);
+  const fitScale = Math.min(
+    input.anchorRect.width / input.resolvedWidth,
+    input.anchorRect.height / input.resolvedHeight,
+  );
+  const safeFitScale = Number.isFinite(fitScale) && fitScale > 1e-6 ? fitScale : 1;
+  const anchorCenterX = input.anchorRect.x + input.anchorRect.width / 2;
+  const anchorCenterY = input.anchorRect.y + input.anchorRect.height / 2;
+  const angle = (safePlacement.rotationDeg * Math.PI) / 180;
+  const sx = safeFitScale * safePlacement.scale * (safePlacement.flipX ? -1 : 1);
+  const sy = safeFitScale * safePlacement.scale;
+  const faceInTargetSpace: CharacterPartTransform = {
+    a: Math.cos(angle) * sx,
+    b: Math.sin(angle) * sx,
+    c: -Math.sin(angle) * sy,
+    d: Math.cos(angle) * sy,
+    tx: anchorCenterX + safePlacement.offsetX,
+    ty: anchorCenterY + safePlacement.offsetY,
+  };
+  return multiply(input.targetBaseTransform, faceInTargetSpace);
 }

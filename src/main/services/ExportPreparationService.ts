@@ -519,16 +519,6 @@ export class ExportPreparationService {
 
     try {
       const issues = evaluateExportPreparationSupport(project, request.cameraMode);
-      const animationExportIssue = issues.find(
-        (item) => item.problem === '当前版本暂不支持镜头动画导出',
-      );
-      if (animationExportIssue) {
-        return this.block(
-          request.attemptId,
-          [animationExportIssue],
-          'animation layers are not supported by the formal MP4 export renderer',
-        );
-      }
       const media = collectExportPreparationMedia(project);
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
@@ -584,6 +574,7 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
+          if (entry.optionalExpression) continue;
           issues.push(
             this.mediaUnavailableIssue(
               entry.usages[0] ?? '工程素材',
@@ -593,13 +584,14 @@ export class ExportPreparationService {
         }
       }
       const budget = evaluateExportPreparationBudget(budgetEntries);
-      const totalMediaBytes = budget.totalBytes;
       issues.push(...budget.issues);
 
       const overBudget = issues.some(
         (item) => item.code === 'PREPARATION_BUDGET_EXCEEDED',
       );
-      const missingSize = media.some((entry) => !mediaSizes.has(entry.asset.id));
+      const missingSize = media.some((entry) =>
+        !entry.optionalExpression && !mediaSizes.has(entry.asset.id),
+      );
       if (overBudget || (missingSize && mediaSizes.size === 0)) {
         return this.block(request.attemptId, issues, diagnosticDetails.join('\n'));
       }
@@ -639,6 +631,7 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
+          if (entry.optionalExpression) continue;
           issues.push(
             this.mediaUnavailableIssue(
               entry.usages[0] ?? '工程素材',
@@ -733,6 +726,7 @@ export class ExportPreparationService {
         project,
         renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
         cameraMode: request.cameraMode,
+        ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
         supportProfile: EXPORT_PREPARATION_SUPPORT_PROFILE,
         outputIntent: {
@@ -743,7 +737,7 @@ export class ExportPreparationService {
           targetIdentity: selection.targetIdentity,
         },
         mediaManifest,
-        totalMediaBytes,
+        totalMediaBytes: mediaManifest.reduce((total, entry) => total + entry.byteLength, 0),
       }) as ExportPreparationCandidate;
       this.candidates.set(snapshotId, {
         candidate: structuredClone(candidate),

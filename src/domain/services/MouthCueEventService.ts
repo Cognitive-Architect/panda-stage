@@ -41,7 +41,9 @@ export function characterHasMouthOpenVisual(
   project: Project,
   character: Character | null | undefined,
 ): boolean {
-  if (!character || character.mode === 'adaptive-parts') return false;
+  if (!character || (character.mode === 'adaptive-parts' && !character.faceBinding)) {
+    return false;
+  }
   if (character.mouthOpenVisualSource) return true;
   if (!character.mouthOpenAssetId) return false;
   return project.assets.some(
@@ -60,10 +62,11 @@ export function upsertMouthCueEventAtTime(
 ): Project {
   const { shot, characterId } = selectedCharacterShot(project, shotId, layerId);
   const character = project.characters.find((candidate) => candidate.id === characterId);
-  if (!character || character.mode === 'adaptive-parts') {
+  if (!character || (character.mode === 'adaptive-parts' && !character.faceBinding)) {
     throw new Error('当前角色不支持嘴型关键帧。');
   }
-  if (!characterHasMouthOpenVisual(project, character)) {
+  if (!characterHasMouthOpenVisual(project, character) &&
+    !(state === 'rest' && character.talkingAnimationId)) {
     throw new Error('请先为角色配置张嘴视觉。');
   }
   if (

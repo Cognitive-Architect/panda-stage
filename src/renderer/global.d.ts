@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import type { MouthPoseAnalysisRequest, MouthPoseAnalysisResponse } from '../shared/mouth-pose-analysis-api';
 import type {
   AssetImportProjectRequest,
   AssetImportResponse,
@@ -22,10 +23,12 @@ import type {
   AssetCanvasImageReadResponse,
 } from '../shared/asset-canvas-image-api';
 import type {
+  AssetDialogueSilenceRequest,
   AssetPreviewAudioInfoResponse,
   AssetPreviewAudioReadRequest,
   AssetPreviewAudioReadResponse,
 } from '../shared/asset-preview-audio-api';
+import type { DialogueSilenceIntervals } from '../shared/dialogue-silence';
 import type {
   AppPingResponse,
   HiddenReadyResponse,
@@ -203,6 +206,9 @@ declare global {
         readAudio: (
           request: AssetPreviewAudioReadRequest,
         ) => Promise<AssetPreviewAudioReadResponse>;
+        analyzeMouthPoses: (request: MouthPoseAnalysisRequest) => Promise<MouthPoseAnalysisResponse>;
+        cancelMouthPoseAnalysis: (requestId: string) => Promise<void>;
+        analyzeDialogueSilence: (request: AssetDialogueSilenceRequest) => Promise<DialogueSilenceIntervals | null>;
         getAudioInfo: (
           request: AssetPreviewAudioReadRequest,
         ) => Promise<AssetPreviewAudioInfoResponse>;

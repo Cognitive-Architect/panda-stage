@@ -44,65 +44,28 @@
  */
 
 import { z } from 'zod';
-import { ImageAssetSchema, ProjectSchema } from '../domain';
+import { ANIMATION_MAX_FRAMES, ImageAssetSchema, ProjectSchema } from '../domain';
 import {
   FlaRenderTargetIdSchema,
   FlaStaticSnapshotPreviewErrorCodeSchema,
   FlaStaticSnapshotPreviewSuccessSchema,
 } from './fla-static-snapshot-api';
 
-// ---- R2 hard budgets (per #294 R2-B) ----
-//
-// Numbers are evidence-backed from R0 spike measurements
-// (Draft CI #503 / run 32460457977) and from the R1 contract
-// limits already pinned in FLA_STATIC_SNAPSHOT_LIMITS:
-//   - maxSnapshotBytes 64 MiB (R1, R0 PNG payload cap)
-//   - previewWallTimeMs 30,000 (R0 cold start measured 28,279 ms;
-//     R1 single-preview wall = same)
-//   - maxOutputWidth 4,096 / maxOutputHeight 4,096
-//   - maxOutputPixels 16,777,216 (4,096 * 4,096)
-//
-// R2 derives per-frame limits from R1 and adds sequence-level caps.
-// MAX_SEQUENCE_FRAMES is the only number that required a
-// non-derived choice; #294 R2-B says "do not invent marketing
-// numbers from one local machine". 24 is the number used in the
-// #294 spec example (attack_0001..attack_0024) and is consistent
-// with the 剑.fla structural fact that the symbol frameCount is 2;
-// 24 is therefore a conservative 12x cap relative to the existing
-// acceptance sample. The exact number is also the only one that
-// R2-B explicitly anchors: "24 frames is the highest
-// evidence-anchored number currently available for a
-// contiguous range in this repo".
+// #1223 separates the selectable frame count from the existing resource budgets.
 export const FLA_FRAME_SEQUENCE_LIMITS = {
-  // R2-B: exact numeric value with evidence rationale. R0 evidence
-  // is 2 frames in 剑.fla's graphic symbol. R2 first slice
-  // explicitly accepts a contiguous range only, so 24 is well
-  // within the existing per-preview wall-time budget at 30 s/frame
-  // (24 * 30s = 12 minutes sequence wall clock).
-  MAX_SEQUENCE_FRAMES: 24,
-  // Inherits R1 per-frame limits verbatim. R2-B requires these
-  // to remain enforced on the sequence path.
+  MAX_SEQUENCE_FRAMES: ANIMATION_MAX_FRAMES,
   MAX_FRAME_WIDTH: 4_096,
   MAX_FRAME_HEIGHT: 4_096,
   MAX_FRAME_PIXELS: 16_777_216,
-  // R2-B: cumulative pixel budget = MAX_SEQUENCE_FRAMES * max frame pixels.
-  // 24 * 16,777,216 = 402,653,184.
   MAX_SEQUENCE_TOTAL_PIXELS: 402_653_184,
-  // R2-B: cumulative encoded-bytes budget = MAX_SEQUENCE_FRAMES * max snapshot bytes.
-  // 24 * 64 MiB = 1.5 GiB. Bounds the Main-owned temporary sequence state.
-  MAX_SEQUENCE_ENCODED_BYTES: 24 * 64 * 1024 * 1024,
-  // R2-B: per-frame timeout inherits the R1 preview wall time.
+  MAX_SEQUENCE_ENCODED_BYTES: 1_610_612_736,
   perFrameTimeoutMs: 30_000,
-  // R2-B: sequence wall-clock timeout = MAX_SEQUENCE_FRAMES * perFrameTimeoutMs.
-  // 24 * 30s = 720s = 12 minutes. This is the cumulative cap; a
-  // single failed frame does NOT consume the whole budget; the
-  // counter only advances while frames are actively rendering.
-  sequenceTimeoutMs: 24 * 30_000,
-  // R2-B: actual raster concurrency for the first R2 slice is
-  // exactly 1. The Main process MUST NOT spin up parallel
-  // BrowserWindow jobs to make performance acceptable.
+  sequenceTimeoutMs: 720_000,
   maxActualRasterConcurrency: 1,
 } as const;
+
+// Absolute, zero-based index within a render target of at most 100,000 frames.
+const MAX_SOURCE_FRAME_INDEX = 99_999;
 
 // ---- R2-A range contract ----
 export const FlaFrameSequenceRangeSchema = z
@@ -115,8 +78,8 @@ export const FlaFrameSequenceRangeSchema = z
     // service validates endFrameIndex < target.frameCount at the
     // service boundary because the target itself is not part of
     // this request (only its renderTargetId is).
-    startFrameIndex: z.number().int().nonnegative(),
-    endFrameIndex: z.number().int().nonnegative(),
+    startFrameIndex: z.number().int().nonnegative().max(MAX_SOURCE_FRAME_INDEX),
+    endFrameIndex: z.number().int().nonnegative().max(MAX_SOURCE_FRAME_INDEX),
   })
   .strict()
   // R2-A: inclusive range; reversed/empty are invalid.
@@ -416,7 +379,7 @@ export const FlaFrameSequenceProgressSchema = z
     // Total frame count for THIS request (range end - start + 1).
     totalFrameCount: z.number().int().positive().max(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES),
     // Optional current frame ordinal (0-based), for finer display.
-    currentFrameIndex: z.number().int().nonnegative().max(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES).optional(),
+    currentFrameIndex: z.number().int().nonnegative().max(MAX_SOURCE_FRAME_INDEX).optional(),
   })
   .strict()
   // The completed count can never exceed the total for the request.

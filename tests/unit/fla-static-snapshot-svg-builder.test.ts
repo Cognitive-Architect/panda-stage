@@ -548,7 +548,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(preview.svg).not.toContain('#FF0000');
   });
 
-  it('fails closed for a hidden static vector mask instead of exposing masked artwork', async () => {
+  it('preserves the vector clip when the source mask layer is hidden', async () => {
     const bytes = await buildSyntheticFla({
       symbolName: 'hidden-mask-root',
       includeSceneShape: false,
@@ -562,8 +562,14 @@ describe('R1-B SVG builder: catalog discovery', () => {
     const candidate = catalog.entries.find((entry) =>
       entry.target.kind === 'graphic-symbol' && entry.target.sourceLibraryItemName === 'hidden-mask-root',
     );
-    expect(candidate?.previewSupported).toBe(false);
-    expect(candidate?.unsupportedReason).toContain('Hidden XFL masks cannot be previewed safely');
+    expect(candidate?.previewSupported).toBe(true);
+    if (!candidate) throw new Error('Hidden mask candidate is missing');
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(true);
+    if (preview.ok) {
+      expect(preview.svg).toContain('clip-path="url(#fla-mask-clip-');
+      expect(preview.svg).not.toContain('#FF0000');
+    }
   });
 
   it('respects a hidden masked-content layer while omitting the visible mask fill', async () => {
@@ -603,7 +609,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
 
     const candidate = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol');
     expect(candidate?.previewSupported).toBe(false);
-    expect(candidate?.unsupportedReason).toContain('Only static vector shapes and groups are supported as mask items');
+    expect(candidate?.unsupportedReason).toContain('Only filled vector geometry is supported as mask items');
   });
 
   it('reports a multi-frame graphic target for the R2 bridge fixture', async () => {

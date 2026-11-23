@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
+import { FFmpegAdapter } from '../../src/main/services/FFmpegAdapter';
 import { AssetPreviewAudioService } from '../../src/main/services/AssetPreviewAudioService';
 import { MediaInspectionError } from '../../src/main/services/MediaInspectionService';
 import type { MediaInspectionService } from '../../src/main/services/MediaInspectionService';
@@ -23,8 +24,9 @@ import { buildProject } from './domain/testProject';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000201';
 const temporaryDirectories: string[] = [];
 
-function createWav(): Buffer {
-  const bytes = Buffer.alloc(48);
+function createWav(durationMs?: number, silence: readonly [number, number][] = []): Buffer {
+  const samples = durationMs === undefined ? 2 : durationMs * 8;
+  const bytes = Buffer.alloc(44 + samples * 2);
   bytes.write('RIFF', 0, 'ascii');
   bytes.writeUInt32LE(bytes.length - 8, 4);
   bytes.write('WAVE', 8, 'ascii');
@@ -37,9 +39,15 @@ function createWav(): Buffer {
   bytes.writeUInt16LE(2, 32);
   bytes.writeUInt16LE(16, 34);
   bytes.write('data', 36, 'ascii');
-  bytes.writeUInt32LE(4, 40);
-  bytes.writeInt16LE(0, 44);
-  bytes.writeInt16LE(0, 46);
+  bytes.writeUInt32LE(samples * 2, 40);
+  if (durationMs !== undefined) {
+    for (let sample = 0; sample < samples; sample++) {
+      const time = sample / 8;
+      if (!silence.some(([start, end]) => start <= time && time < end)) {
+        bytes.writeInt16LE(Math.round(9_000 * Math.sin(2 * Math.PI * 440 * sample / 8_000)), 44 + sample * 2);
+      }
+    }
+  }
   return bytes;
 }
 
@@ -106,6 +114,36 @@ afterEach(async () => {
 });
 
 describe('AssetPreviewAudioService', () => {
+  it.skipIf(process.platform !== 'win32')('analyzes real voiced and silent PCM once per verified audio source', async () => {
+    const input = await createAudioProject({
+      durationMs: 1_300,
+      bytes: createWav(1_300, [[160, 260], [450, 900]]),
+    });
+    const adapter = new FFmpegAdapter({
+      ffmpegPath: path.join(process.cwd(), 'node_modules', '@ffmpeg-installer', 'win32-x64', 'ffmpeg.exe'),
+    });
+    const analyzeAudioTiming = vi.spyOn(adapter, 'analyzeAudioTiming');
+    const service = new AssetPreviewAudioService({
+      getCurrentProjectSnapshot: () => ({ project: input.project }),
+      audioTiming: adapter,
+    });
+    await expect(service.analyzeDialogueSilence({ ...request(input), sha256: 'b'.repeat(64) })).resolves.toBeNull();
+    const [first, second] = await Promise.all([
+      service.analyzeDialogueSilence(request(input)), service.analyzeDialogueSilence(request(input)),
+    ]);
+    expect(first).toEqual(second);
+    expect(first).toHaveLength(1);
+    expect(first?.[0]?.[0]).toBeCloseTo(450, -1);
+    expect(first?.[0]?.[1]).toBeCloseTo(900, -1);
+    expect(analyzeAudioTiming).toHaveBeenCalledTimes(1);
+
+    const failed = new AssetPreviewAudioService({
+      getCurrentProjectSnapshot: () => ({ project: input.project }),
+      audioTiming: { analyzeAudioTiming: vi.fn().mockRejectedValue(new Error('analysis unavailable')) },
+    });
+    await expect(failed.analyzeDialogueSilence(request(input))).resolves.toBeNull();
+  });
+
   it('rejects malformed, untracked, unknown, non-audio, and hash-mismatched requests', async () => {
     const input = await createAudioProject();
     const service = new AssetPreviewAudioService({

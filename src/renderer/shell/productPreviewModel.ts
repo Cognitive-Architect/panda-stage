@@ -12,6 +12,7 @@
  * revision, the dirty flag, the selection or the history. They all take the
  * project as a readonly input and return new values.
  */
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import {
   listShotRuntimeImageAssets,
   projectShotMouth,
@@ -114,6 +115,11 @@ export interface ProductPreviewImagePlan {
   /** Resources belonging to active visible loops; retained without eager reads. */
   retainedAnimationAssetIds?: string[];
   mouthFallbacks: ProductPreviewMouthFallback[];
+  expressionFallbacks?: {
+    partId: string;
+    sourceAssetId: string;
+    fallbackAssetIds: readonly string[];
+  }[];
 }
 
 export const PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES = 3;
@@ -322,8 +328,27 @@ export function buildProductPreviewImagePlan(
   const candidateAssetIds: string[] = [];
   const resolvedCandidateAssetIds: string[] = [];
   const mouthFallbacks: ProductPreviewMouthFallback[] = [];
+  const expressionFallbacks: NonNullable<ProductPreviewImagePlan['expressionFallbacks']> = [];
+  const requiredWithoutExpressionFallback = new Set<string>();
 
   for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
+    const activeFace = visual.activeFace;
+    const talking = evaluatedShot.layers.some(layer =>
+      layer.id === visual.ownerLayerId && layer.talkingAnimationElapsedMs !== undefined,
+    );
+    const expressionFallback = activeFace?.source === 'expression' && activeFace.originalPartsFallback;
+    if (activeFace && expressionFallback) {
+      expressionFallbacks.push({
+        partId: expressionFallback.partId,
+        sourceAssetId: activeFace.assetId,
+        fallbackAssetIds: expressionFallback.assetIds,
+      });
+    }
+    for (const { assetId } of visual.resources.required) {
+      if (!expressionFallback || assetId !== activeFace?.assetId) {
+        requiredWithoutExpressionFallback.add(assetId);
+      }
+    }
     appendUnique(
       requiredAssetIds,
       visual.resources.required.map((resource) => resource.assetId),
@@ -336,14 +361,25 @@ export function buildProductPreviewImagePlan(
       resolvedCandidateAssetIds,
       visual.resources.candidates.map((resource) => resource.assetId),
     );
+    const ownerShotLayer = shot.layers.find((candidate) => candidate.id === visual.ownerLayerId);
+    const ownerSource = ownerShotLayer?.source;
+    const ownerCharacter =
+      ownerSource?.kind === 'character'
+        ? project.characters.find((candidate) => candidate.id === ownerSource.characterId)
+        : undefined;
+    const poseTarget = evaluatedShot.layers.find(layer => layer.id === visual.ownerLayerId)?.mouthPose?.target;
+    const targetPartId = poseTarget?.kind === 'mouth' ? poseTarget.partId :
+      ownerCharacter?.mode === 'adaptive-parts' ? ownerCharacter.faceBinding?.targetPartId : undefined;
+    const adaptiveTargetPartId = targetPartId ? `${visual.ownerLayerId}:${targetPartId}` : null;
     const activeMouthPart = visual.parts.find(
       (part) =>
-        (part.slot === 'face' || part.slot === 'single') &&
-        (part.assetId === visual.activeFace?.assetId || Boolean(part.flaGraphic)),
+        ((part.slot === 'face' || part.slot === 'single') &&
+          (part.assetId === visual.activeFace?.assetId || Boolean(part.flaGraphic))) ||
+        (adaptiveTargetPartId !== null && part.partId === adaptiveTargetPartId),
     );
     if (
       visual.activeFace?.source === 'mouth' &&
-      (visual.activeFace.fallbackAssetId || visual.activeFace.fallbackVisualSource) &&
+      (visual.activeFace.fallbackAssetId || visual.activeFace.fallbackVisualSource || talking) &&
       activeMouthPart
     ) {
       for (const assetId of visual.activeFace.mouthResourceAssetIds ?? [visual.activeFace.assetId]) {
@@ -351,7 +387,7 @@ export function buildProductPreviewImagePlan(
           partId: activeMouthPart.flaGraphic ? `${visual.ownerLayerId}:fla-graphic-resource:${assetId}` : activeMouthPart.partId,
           sourceAssetId: assetId,
           fallbackAssetId: visual.activeFace.fallbackAssetId ?? '',
-          ...(visual.activeFace.fallbackVisualSource ? { fallbackAssetIds: visual.resources.fallback.map(resource => resource.assetId) } : {}),
+          ...(visual.activeFace.fallbackVisualSource || talking ? { fallbackAssetIds: visual.resources.fallback.map(resource => resource.assetId) } : {}),
         });
       }
     }
@@ -412,6 +448,9 @@ export function buildProductPreviewImagePlan(
     recentAnimationAssetIds,
     retainedAnimationAssetIds,
     mouthFallbacks,
+    expressionFallbacks: expressionFallbacks.filter(
+      (rule) => !requiredWithoutExpressionFallback.has(rule.sourceAssetId),
+    ),
   };
 }
 
@@ -470,7 +509,7 @@ export function applyProductPreviewMouthFallback(
     if (
       activeFace?.source !== 'mouth' ||
       (!failedMouthAssetIds.has(activeFace.assetId) && !activeFace.mouthResourceAssetIds?.some(id => failedMouthAssetIds.has(id))) ||
-      (!activeFace.fallbackAssetId && !activeFace.fallbackVisualSource)
+      (!activeFace.fallbackAssetId && !activeFace.fallbackVisualSource && layer.talkingAnimationElapsedMs === undefined)
     ) {
       return layer;
     }
@@ -478,6 +517,8 @@ export function applyProductPreviewMouthFallback(
     return {
       ...layer,
       assetId: activeFace.fallbackAssetId ?? '',
+      mouthPose: undefined,
+      talkingAnimationElapsedMs: undefined,
       mouthOverrideAssetId: null,
       ...(layer.mouthOpen === undefined ? {} : { mouthOpen: false }),
     };
@@ -512,12 +553,14 @@ export function projectProductPreviewDialogue(
   shot: Shot,
   evaluatedShot: EvaluatedShot,
   activeDialogueId?: string | null,
+  dialogueSilence?: DialogueSilence,
 ): EvaluatedShot {
   return projectShotDialogueVisual(
     project,
     shot,
     evaluatedShot,
     activeDialogueId,
+    dialogueSilence,
   );
 }
 

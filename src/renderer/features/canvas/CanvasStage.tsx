@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import type Konva from 'konva';
+import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
@@ -217,6 +218,24 @@ function useCanvasImages(
     sourceKey,
   ]);
 
+  useEffect(() => {
+    if (!snapshot || !shot || !projectContextKey || !projectRoot) return;
+    const characterIds = new Set(shot.layers.flatMap(({ source }) =>
+      source.kind === 'character' ? [source.characterId] : [],
+    ));
+    const expressionAssetIds = new Set(snapshot.project.characters.flatMap((character) =>
+      character.mode === 'adaptive-parts' && characterIds.has(character.id)
+        ? (character.expressions ?? []).flatMap(({ assetId }) => assetId ? [assetId] : [])
+        : [],
+    ));
+    if (expressionAssetIds.size === 0) return;
+    const retryExpressions = () => sessionRef.current?.retryMissing(
+      projectContextKey, projectRoot, expressionAssetIds,
+    );
+    window.addEventListener('focus', retryExpressions);
+    return () => window.removeEventListener('focus', retryExpressions);
+  }, [projectContextKey, projectRoot, shot, snapshot]);
+
   return state;
 }
 
@@ -234,12 +253,14 @@ function isCurrentCanvasAssetReady(
 }
 
 export interface CanvasStageProps {
+  dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
   onCharacterPartSelected?: () => void;
 }
 
 export function CanvasStage({
+  dialogueSilence,
   showHeading = true,
   showToolbar = true,
   onCharacterPartSelected,
@@ -767,6 +788,7 @@ export function CanvasStage({
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
+            dialogueSilence,
             currentTimeMs: timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
             project: snapshot.project,
@@ -785,6 +807,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,
       previousTemporalVisuals,
@@ -1025,6 +1048,8 @@ export function CanvasStage({
     ) || (compositeCharacterStatuses?.includes('required-failed') ?? false);
   const hasRequiredVisualFailure =
     failedRequiredVisualLayers.length > 0 || hasRequiredCharacterFailure;
+  const hasExpressionOriginalFallback =
+    nonBackgroundStatuses?.includes('expression-original-fallback') ?? false;
   const hasMouthVisualDegradation = compositeCharacterStatuses?.some(
     (status) =>
       status === 'mouth-expression-fallback' ||
@@ -1039,12 +1064,14 @@ export function CanvasStage({
   const hasNonBackgroundVisualIssue =
     missingNonBackgroundVisual ||
     hasRequiredVisualFailure ||
+    hasExpressionOriginalFallback ||
     hasMouthVisualDegradation ||
     hasPendingVisual;
   const routineVisualPending =
     !missingBackground &&
     hasNonBackgroundVisualIssue &&
     !hasRequiredVisualFailure &&
+    !hasExpressionOriginalFallback &&
     !hasMouthVisualDegradation;
   const pendingFeedbackKey = `${temporalContextKey}:${snapshot?.revision}:${timelineUi.currentTimeMs}`;
   const [visiblePendingKey, setVisiblePendingKey] = useState<string | null>(null);
@@ -1776,7 +1803,7 @@ export function CanvasStage({
                 </span>
               </div>
             ) : null}
-            {(hasRequiredVisualFailure || hasMouthVisualDegradation) ? (
+            {(hasRequiredVisualFailure || hasMouthVisualDegradation || hasExpressionOriginalFallback) ? (
               <div
                 className="canvas-stage-message canvas-stage-warning"
                 data-testid="canvas-visual-failure-warning"
@@ -1789,11 +1816,13 @@ export function CanvasStage({
                     ? hasRequiredCharacterFailure
                       ? '角色素材读取失败'
                       : '素材读取失败'
+                    : hasExpressionOriginalFallback
+                      ? '表情素材不可用，已显示原脸。'
                     : hasMouthExpressionFallback
                       ? '张嘴表情不可用，已暂时显示当前表情'
                       : '张嘴表情不可用，正在准备当前表情'}
                 </strong>
-                <span>
+                {hasRequiredVisualFailure || !hasExpressionOriginalFallback ? <span>
                   {hasRequiredVisualFailure
                     ? hasRequiredCharacterFailure
                       ? '当前角色画面不可用，请检查素材后重试。'
@@ -1801,7 +1830,7 @@ export function CanvasStage({
                     : hasMouthExpressionFallback
                       ? '素材恢复后会自动更新。'
                       : '当前表情准备完成后会自动更新。'}
-                </span>
+                </span> : null}
               </div>
             ) : null}
             {showRoutineVisualPending ? (

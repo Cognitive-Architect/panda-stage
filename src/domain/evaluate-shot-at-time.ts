@@ -2,6 +2,7 @@ import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
   Layer,
+  MouthPose,
   Project,
   Shot,
   TimelineEvent,
@@ -12,7 +13,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, frameTimeMs } from './timeline/frame-grid';
+import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -47,6 +48,8 @@ export interface EvaluatedLayer {
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
   mouthOpen?: boolean;
+  mouthPose?: MouthPose;
+  talkingAnimationElapsedMs?: number | 'rest';
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
     animationId: string;
@@ -132,8 +135,19 @@ function resolveLayerVisualState(
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
-  if (!character || character.mode === 'adaptive-parts') {
+  if (!character) {
     return { assetId: null, currentExpressionId: null };
+  }
+  if (character.mode === 'adaptive-parts') {
+    const expressions = character.expressions ?? [];
+    const targetId = expressionId ?? character.defaultExpressionId;
+    const expression = targetId
+      ? expressions.find((candidate) => candidate.id === targetId)
+      : undefined;
+    return {
+      assetId: expression?.assetId ?? null,
+      currentExpressionId: expression?.id ?? null,
+    };
   }
   const expression = character?.expressions.find(
     (candidate) => candidate.id === expressionId,
@@ -177,9 +191,14 @@ export function resolveAnimationPlaybackFrameState<
     return null;
   }
   const elapsedMs = timeMs - startTimeMs;
-  const elapsedSourceFrames = Math.floor(
-    Math.max(0, elapsedMs) * animation.source.sourceFps / 1_000,
-  );
+  // Timeline and export share integer millisecond frame stamps. Resolve a pair
+  // of on-grid stamps as frame indices so e.g. 958 ms means frame 23 at 24 fps.
+  const sourceFps = animation.source.sourceFps;
+  const elapsedSourcePosition = isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
+    ? (Math.round(timeMs * TIMELINE_FPS / 1_000) -
+        Math.round(startTimeMs * TIMELINE_FPS / 1_000)) * sourceFps / TIMELINE_FPS
+    : elapsedMs * sourceFps / 1_000;
+  const elapsedSourceFrames = Math.floor(Math.max(0, elapsedSourcePosition));
   const firstFrame = Math.min(firstFrameIndex, animation.frames.length - 1);
   const availableFrames = animation.frames.length - firstFrame;
   const completedOnce = elapsedSourceFrames >= availableFrames;
@@ -337,14 +356,15 @@ function resolveExpressionState(
   if (!character) {
     return { assetId: null, currentExpressionId: null };
   }
-  if (character.mode === 'adaptive-parts') {
+  if (character.mode === 'adaptive-parts' && !character.faceBinding) {
     return { assetId: null, currentExpressionId: null };
   }
+  const expressions = character.expressions ?? [];
   const target =
-    character.expressions.find(
+    expressions.find(
       (candidate) => candidate.id === expressionId,
     ) ??
-    character.expressions.find(
+    expressions.find(
       (candidate) => candidate.id === fallbackExpressionId,
     );
   return {
@@ -659,7 +679,7 @@ function resolveAuthoredMouthOpenOverride(
   );
   if (
     !character ||
-    character.mode === 'adaptive-parts' ||
+    (character.mode === 'adaptive-parts' && !character.faceBinding) ||
     (!character.mouthOpenAssetId && !character.mouthOpenVisualSource)
   ) {
     return null;

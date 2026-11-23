@@ -244,7 +244,7 @@ export class LayerService {
     }
     if (input.type === 'character-expression') {
       const character = project.characters.find(candidate => candidate.id === input.characterId);
-      const expression = character && character.mode !== 'adaptive-parts' ? character.expressions.find(candidate => candidate.id === input.expressionId) : undefined;
+      const expression = (character?.mode === 'adaptive-parts' ? character.expressions ?? [] : character?.expressions ?? []).find(candidate => candidate.id === input.expressionId);
       if (expression?.visualSource && !input.assetId && character) {
         return this.appendLayer(project, shot, character.name, { kind: 'character', characterId: character.id, expressionId: expression.id }, position, character.defaultScale, character.defaultFlipX);
       }
@@ -1788,7 +1788,10 @@ export class LayerService {
       ...project.characters.flatMap((character) => [
         character.id,
         ...(character.mode === 'adaptive-parts'
-          ? character.parts.map((part) => part.partId)
+          ? [
+              ...character.parts.map((part) => part.partId),
+              ...(character.expressions ?? []).map((expression) => expression.id),
+            ]
           : character.expressions.map((expression) => expression.id)),
       ]),
       ...project.voiceProfiles.map((profile) => profile.id),

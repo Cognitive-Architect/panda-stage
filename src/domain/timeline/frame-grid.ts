@@ -23,6 +23,20 @@ export function frameTimeMs(
   return Math.round(Math.floor(frameIndex) * (1_000 / safeFps(fps)));
 }
 
+/** Export samples at the start of each frame, rounded down to milliseconds. */
+export function exportFrameTimeMs(frameIndex: number, fps: number = TIMELINE_FPS): number {
+  return Math.floor((frameIndex / safeFps(fps)) * 1_000);
+}
+
+/** First export sample at or after an absolute time. */
+export function firstExportFrameTimeAtOrAfter(timeMs: number, fps: number = TIMELINE_FPS): number {
+  if (!Number.isFinite(timeMs) || timeMs <= 0) return 0;
+  const resolvedFps = safeFps(fps);
+  const index = Math.floor(timeMs * resolvedFps / 1_000);
+  const time = exportFrameTimeMs(index, resolvedFps);
+  return time >= timeMs ? time : exportFrameTimeMs(index + 1, resolvedFps);
+}
+
 /** Snap a time to the nearest integer-millisecond Timeline frame boundary. */
 export function snapToFrame(
   timeMs: number,

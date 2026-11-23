@@ -467,7 +467,7 @@ describe('R2-D cancel contract', () => {
 // ---- R2-B limits sanity ----
 describe('R2-B hard budget constants', () => {
   it('pins the documented budget numbers from R0/R1 evidence', () => {
-    expect(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES).toBe(24);
+    expect(FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES).toBe(256);
     expect(FLA_FRAME_SEQUENCE_LIMITS.MAX_FRAME_WIDTH).toBe(4_096);
     expect(FLA_FRAME_SEQUENCE_LIMITS.MAX_FRAME_HEIGHT).toBe(4_096);
     expect(FLA_FRAME_SEQUENCE_LIMITS.MAX_FRAME_PIXELS).toBe(16_777_216);

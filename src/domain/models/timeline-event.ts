@@ -141,9 +141,7 @@ export const ExpressionEventSchema = ExpressionEventV22Schema;
 export const FlipEventSchema = FlipEventV22Schema;
 export const VisibilityEventSchema = VisibilityEventV22Schema;
 
-/** Current (v23+) Timeline Event union; frozen v22 readers use `TimelineEventV22Schema`. */
-export const TimelineEventSchema = z
-  .discriminatedUnion('type', [
+const TimelineEventV26Options = [
     MoveEventV22Schema,
     ScaleEventV22Schema,
     OpacityEventV22Schema,
@@ -152,8 +150,9 @@ export const TimelineEventSchema = z
     FlipEventV22Schema,
     VisibilityEventV22Schema,
     MouthCueEventSchema,
-  ])
-  .superRefine((event, context) => {
+] as const;
+
+function validateRange(event: { startMs: number; endMs: number }, context: z.RefinementCtx) {
     if (event.endMs < event.startMs) {
       context.addIssue({
         code: 'custom',
@@ -161,7 +160,29 @@ export const TimelineEventSchema = z
         path: ['endMs'],
       });
     }
-  });
+}
+
+export const TimelineEventV26Schema = z.discriminatedUnion('type', TimelineEventV26Options)
+  .superRefine(validateRange);
+
+export const MouthPoseEventSchema = z.object({
+  ...TimelineEventBaseShape,
+  type: z.literal('mouth-pose'),
+  poseId: IdSchema,
+  origin: z.enum(['manual', 'generated']),
+  dialogueId: IdSchema.optional(),
+  generationId: IdSchema.optional(),
+}).strict().superRefine((event, context) => {
+  if (event.endMs <= event.startMs) {
+    context.addIssue({ code: 'custom', path: ['endMs'], message: 'Mouth pose ranges must have positive duration.' });
+  }
+  if (event.origin === 'generated' && (!event.dialogueId || !event.generationId)) {
+    context.addIssue({ code: 'custom', path: ['origin'], message: 'Generated mouth poses require dialogue and generation ids.' });
+  }
+});
+
+export const TimelineEventSchema = z.discriminatedUnion('type', [...TimelineEventV26Options, MouthPoseEventSchema])
+  .superRefine(validateRange);
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
 export type ScaleEvent = z.infer<typeof ScaleEventSchema>;
@@ -171,4 +192,5 @@ export type ExpressionEvent = z.infer<typeof ExpressionEventSchema>;
 export type FlipEvent = z.infer<typeof FlipEventSchema>;
 export type VisibilityEvent = z.infer<typeof VisibilityEventSchema>;
 export type MouthCueEvent = z.infer<typeof MouthCueEventSchema>;
+export type MouthPoseEvent = z.infer<typeof MouthPoseEventSchema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;

@@ -1,3 +1,4 @@
+import { MouthPoseAnalysisCancelSchema, MouthPoseAnalysisRequestSchema, MouthPoseAnalysisResponseSchema } from '../../shared/mouth-pose-analysis-api';
 import {
   ipcMain,
   type BrowserWindow,
@@ -18,12 +19,14 @@ import {
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
 import {
+  AssetDialogueSilenceRequestSchema,
   AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   type AssetPreviewAudioInfoResponse,
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
+import { DialogueSilenceIntervalsSchema } from '../../shared/dialogue-silence';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
   AssetDeleteService,
@@ -307,7 +310,31 @@ export function registerAssetLibraryIpcHandlers(
     },
   );
 
+  ipcMain.handle(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE, async (event, rawRequest: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_DIALOGUE_SILENCE);
+    try {
+      const request = AssetDialogueSilenceRequestSchema.parse(rawRequest);
+      const result = await dependencies.assetPreviewAudioService.analyzeDialogueSilence(request);
+      return DialogueSilenceIntervalsSchema.nullable().parse(result);
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS, async (event, payload: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS);
+    const request = MouthPoseAnalysisRequestSchema.parse(payload);
+    return MouthPoseAnalysisResponseSchema.parse(await dependencies.assetPreviewAudioService.analyzeMouthPoses(request));
+  });
+  ipcMain.handle(IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL, (event, payload: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL);
+    dependencies.assetPreviewAudioService.cancelMouthPoseAnalysis(MouthPoseAnalysisCancelSchema.parse(payload).requestId);
+  });
+
   return () => {
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ);

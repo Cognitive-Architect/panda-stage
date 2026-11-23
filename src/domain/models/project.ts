@@ -7,8 +7,9 @@ import {
   SHOT_MIN_DURATION_MS,
 } from '../constants';
 import {
-  AnimationDefinitionSchema,
+  AnimationDefinitionV22Schema,
   isFlaGraphicDefinition,
+  ProjectAnimationDefinitionLegacyCapacitySchema,
   ProjectAnimationDefinitionSchema,
   ProjectAnimationDefinitionV22Schema,
 } from './animation';
@@ -24,6 +25,10 @@ import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
   CharacterV22Schema,
+  CharacterV23Schema,
+  CharacterV24Schema,
+  CharacterV25Schema,
+  CharacterV26Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -39,6 +44,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV26Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -55,7 +61,7 @@ import {
 } from './shot';
 import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
-import { TimelineEventSchema } from './timeline-event';
+import { TimelineEventV26Schema } from './timeline-event';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -75,7 +81,7 @@ export const ProjectV15AnimationSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    animations: z.array(AnimationDefinitionSchema),
+    animations: z.array(AnimationDefinitionV22Schema),
     characters: z.array(CharacterV14Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -95,7 +101,7 @@ export const ProjectV15AdaptiveSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
-    animations: z.array(AnimationDefinitionSchema),
+    animations: z.array(AnimationDefinitionV22Schema),
     characters: z.array(CharacterV17Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -131,7 +137,7 @@ const ProjectDataSchema = z
     schemaVersion: z.literal(22),
     ...ProjectIdentityShape,
     assets: z.array(AssetSchema),
-    animations: z.array(ProjectAnimationDefinitionSchema),
+    animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
     characters: z.array(CharacterSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -168,7 +174,7 @@ export const ProjectV13Schema = ProjectV12DataSchema.extend({
 /** Strict persisted v14 envelope, before Adaptive Parts Characters. */
 export const ProjectV14Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(14),
-  animations: z.array(AnimationDefinitionSchema),
+  animations: z.array(AnimationDefinitionV22Schema),
   characters: z.array(CharacterV14Schema),
   shots: z.array(ShotV14Schema),
 });
@@ -176,7 +182,7 @@ export const ProjectV14Schema = ProjectDataSchema.extend({
 /** Strict persisted v16 envelope before reusable FLA Graphic Definitions. */
 export const ProjectV16Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(16),
-  animations: z.array(AnimationDefinitionSchema),
+  animations: z.array(AnimationDefinitionV22Schema),
   assets: z.array(AssetV16Schema),
   characters: z.array(CharacterV17Schema),
   shots: z.array(ShotV16Schema),
@@ -330,7 +336,7 @@ const ShotV5BaseShape = {
   defaultSubtitleStyleId: IdSchema,
   dialogues: z.array(DialogueV5Schema),
   audioClips: z.array(AudioClipV7Schema),
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV26Schema).default([]),
   layers: z.array(LayerV14Schema),
   backgroundLayerId: IdSchema.nullable(),
 };
@@ -653,8 +659,47 @@ export const ProjectV22Schema = z.object({
 
 const CurrentProjectDataSchema = ProjectDataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  animations: z.array(ProjectAnimationDefinitionSchema),
   shots: z.array(ShotSchema),
 });
+
+/** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */
+export const ProjectV23Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(23),
+  animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
+  characters: z.array(CharacterV23Schema),
+  shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+/** Frozen v24 envelope before reusable talking animations. */
+export const ProjectV24Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(24),
+  animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
+  characters: z.array(CharacterV24Schema),
+  shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+/** Frozen v25 envelope before talking animation playback settings. */
+export const ProjectV25Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(25),
+  animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
+  characters: z.array(CharacterV25Schema),
+  shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV26Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(26),
+  characters: z.array(CharacterV26Schema),
+  shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
 
 // Legacy envelopes are migrated by migrateProject before current validation.
 export const ProjectSchema = CurrentProjectDataSchema.superRefine(validateProjectReferences)

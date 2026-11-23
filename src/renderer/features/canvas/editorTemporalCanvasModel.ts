@@ -12,6 +12,7 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import {
   resolveEditorTemporalAssetResolution,
   type EditorTemporalVisual,
@@ -23,6 +24,7 @@ export interface EditorTemporalCanvasModelInput {
   shot: Shot;
   currentTimeMs: number;
   activeDialogueId?: string | null;
+  dialogueSilence?: DialogueSilence;
   readyAssetIds: ReadonlySet<string>;
   /** Decoded source hashes keyed by Asset id; distinguishes replacement bytes. */
   readyAssetSourceKeys?: ReadonlyMap<string, string>;
@@ -137,6 +139,7 @@ export function buildEditorTemporalCanvasModel({
   shot,
   currentTimeMs,
   activeDialogueId = null,
+  dialogueSilence,
   readyAssetIds,
   readyAssetSourceKeys,
   readyResourceKeys,
@@ -147,27 +150,43 @@ export function buildEditorTemporalCanvasModel({
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
   // Keep base transform editing at 0:00, while showing any formally authored
-  // Expression switch that starts there. Only the Face state is projected;
-  // Position, scale, opacity and the non-speaking base view stay unchanged.
-  const zeroTimeExpressionShot = shot.timelineEvents.some(
+  // Expression switch or configured talking face at zero. Only the face
+  // state is projected so the base transforms remain editable.
+  const hasSilenceAnalysis = dialogueSilence !== undefined && Object.keys(dialogueSilence).length > 0;
+  const manualAtZero = new Set(shot.timelineEvents.flatMap((event) =>
+    event.type === 'mouth-pose' && event.origin === 'manual' && event.startMs === 0 ? [event.layerId] : []));
+  const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
+    source.kind === 'character' && project.characters.some(character =>
+      character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
+        (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback)))),
+  );
+  const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
-      (event.type === 'expression' || event.type === 'mouth-cue') &&
+      (event.type === 'expression' || event.type === 'mouth-cue' || event.type === 'mouth-pose') &&
       event.startMs === 0,
   )
     ? (() => {
-        const formal = evaluateShotAtTime(shot, 0, project);
+        const atZero = evaluateShotAtTime(shot, 0, project);
+        const formal = hasConfiguredTalkingFace || manualAtZero.size > 0
+          ? projectShotDialogueVisual(project, shot, atZero, activeDialogueId, dialogueSilence) : atZero;
         return {
           ...baseEditorShot,
           layers: baseEditorShot.layers.map((layer) => {
-            const source = shot.layers.find((candidate) => candidate.id === layer.id);
-            const evaluated = formal.layers.find((candidate) => candidate.id === layer.id);
-            return source?.source.kind === 'character' && evaluated
+            const source = shot.layers.find((candidate) => candidate.id === layer.id)?.source;
+            if (source?.kind !== 'character') return layer;
+            const configured = project.characters.some(character =>
+              character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
+                (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback))));
+            const evaluated = (configured || manualAtZero.has(layer.id) ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
+            return evaluated
               ? {
                   ...layer,
                   assetId: evaluated.assetId,
                   currentExpressionId: evaluated.currentExpressionId,
                   mouthOverrideAssetId: evaluated.mouthOverrideAssetId ?? null,
                   ...(evaluated.mouthOpen ? { mouthOpen: true } : {}),
+                  talkingAnimationElapsedMs: evaluated.talkingAnimationElapsedMs,
+                  ...(evaluated.mouthPose ? { mouthPose: evaluated.mouthPose } : {}),
                 }
               : layer;
           }),
@@ -180,11 +199,11 @@ export function buildEditorTemporalCanvasModel({
         shot,
         evaluateShotAtTime(shot, currentTimeMs, project),
         activeDialogueId,
+        dialogueSilence,
       )
     : zeroTimeExpressionShot;
   // Base Edit View owns 0:00 transforms and the continuity resolver owns image
-  // transitions. At 0:00 we show authored Expression state without projecting
-  // runtime Mouth/dialogue state, and retain the previous complete visual
+  // transitions. At 0:00 we retain the previous complete visual
   // until the new Face is ready.
   const resolved = resolveEditorTemporalAssetResolution(
     project,

@@ -310,6 +310,106 @@ export function calculateAssemblyFitViewportTransform(
   };
 }
 
+export const ASSEMBLY_CAMERA_MIN_SCALE = 0.05;
+export const ASSEMBLY_CAMERA_MAX_SCALE = 4;
+
+function cameraTransformWith(
+  transform: ViewportTransform,
+  container: Size,
+  scale: number,
+  offsetX: number,
+  offsetY: number,
+): ViewportTransform {
+  const width = Number.isFinite(container.width) ? Math.max(0, container.width) : 0;
+  const height = Number.isFinite(container.height) ? Math.max(0, container.height) : 0;
+  const displayWidth = transform.logical.width * scale;
+  const displayHeight = transform.logical.height * scale;
+  return {
+    ...transform,
+    container: { width, height },
+    scale,
+    offsetX,
+    offsetY,
+    displayWidth,
+    displayHeight,
+    contentWidth: Math.max(width, displayWidth),
+    contentHeight: Math.max(height, displayHeight),
+  };
+}
+
+export function zoomAssemblyViewportTransformAtPoint(
+  transform: ViewportTransform,
+  point: { x: number; y: number },
+  requestedScale: number,
+): ViewportTransform {
+  if (
+    !(Number.isFinite(transform.scale) && transform.scale > 0) ||
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y) ||
+    !Number.isFinite(requestedScale)
+  ) {
+    return transform;
+  }
+  const scale = Math.min(
+    ASSEMBLY_CAMERA_MAX_SCALE,
+    Math.max(Math.min(ASSEMBLY_CAMERA_MIN_SCALE, transform.scale), requestedScale),
+  );
+  const logicalX = (point.x - transform.offsetX) / transform.scale;
+  const logicalY = (point.y - transform.offsetY) / transform.scale;
+  return cameraTransformWith(
+    transform,
+    transform.container,
+    scale,
+    point.x - logicalX * scale,
+    point.y - logicalY * scale,
+  );
+}
+
+export function panAssemblyViewportTransform(
+  transform: ViewportTransform,
+  deltaX: number,
+  deltaY: number,
+): ViewportTransform {
+  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return transform;
+  return cameraTransformWith(
+    transform,
+    transform.container,
+    transform.scale,
+    transform.offsetX + deltaX,
+    transform.offsetY + deltaY,
+  );
+}
+
+export function resizeAssemblyViewportTransformPreservingCenter(
+  transform: ViewportTransform,
+  container: Size,
+): ViewportTransform {
+  const width = Number.isFinite(container.width) ? Math.max(0, container.width) : 0;
+  const height = Number.isFinite(container.height) ? Math.max(0, container.height) : 0;
+  if (
+    !(transform.scale > 0) ||
+    !(transform.container.width > 0) ||
+    !(transform.container.height > 0)
+  ) {
+    return calculateViewportTransform(
+      { width, height },
+      'fit',
+      transform.logical,
+    );
+  }
+  const centerLogicalX =
+    (transform.container.width / 2 - transform.offsetX) / transform.scale;
+  const centerLogicalY =
+    (transform.container.height / 2 - transform.offsetY) / transform.scale;
+  return cameraTransformWith(
+    transform,
+    { width, height },
+    transform.scale,
+    width / 2 - centerLogicalX * transform.scale,
+    height / 2 - centerLogicalY * transform.scale,
+  );
+}
+
 export function characterLocalPointerDelta(
   startX: number,
   startY: number,
@@ -390,6 +490,12 @@ export function isCharacterAssemblyPending(
         staticAdjustment:
           part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
       })),
+      ...(character.faceBinding
+        ? { faceBinding: character.faceBinding }
+        : {}),
+      ...(character.headMotionBinding
+        ? { headMotionBinding: character.headMotionBinding }
+        : {}),
     };
     return JSON.stringify(normalized) !== JSON.stringify(session.draft);
   }
@@ -712,6 +818,8 @@ export function buildCharacterAssemblyPreviewVisual(
 export function buildAdaptivePartsAssemblyPreviewVisual(
   project: Project,
   session: AdaptivePartsAssemblySnapshot,
+  previewExpressionId?: string | null,
+  previewMouthOpen = false,
 ): LayerVisualParts | null {
   const existing = project.characters.find(
     (candidate): candidate is AdaptivePartsCharacter =>
@@ -742,6 +850,20 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
     sourceRootTransform: { ...session.draft.sourceRootTransform },
     parts: session.draft.parts.map(cloneCharacterPart),
   };
+  if (session.draft.faceBinding) {
+    character.faceBinding = session.draft.faceBinding;
+  } else {
+    delete character.faceBinding;
+  }
+  if (session.draft.headMotionBinding) {
+    character.headMotionBinding = session.draft.headMotionBinding;
+  } else {
+    delete character.headMotionBinding;
+  }
+  const activeExpressionId =
+    previewExpressionId === undefined
+      ? existing.defaultExpressionId
+      : previewExpressionId;
   const previewProject: Project = {
     ...project,
     characters: [
@@ -755,7 +877,7 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
     source: {
       kind: 'character',
       characterId: character.id,
-      expressionId: character.defaultVoiceProfileId,
+      ...(activeExpressionId ? { expressionId: activeExpressionId } : {}),
     },
     anchor: 'center',
     x: project.width / 2,
@@ -772,8 +894,9 @@ export function buildAdaptivePartsAssemblyPreviewVisual(
   const evaluated: EvaluatedLayer = {
     id: layer.id,
     assetId: character.parts[0]!.assetId ?? character.parts[0]!.partId,
-    currentExpressionId: character.defaultVoiceProfileId,
-    mouthOverrideAssetId: null,
+    currentExpressionId: activeExpressionId ?? null,
+    mouthOverrideAssetId: previewMouthOpen ? (character.mouthOpenAssetId ?? null) : null,
+    ...(previewMouthOpen && character.mouthOpenVisualSource ? { mouthOpen: true } : {}),
     anchor: layer.anchor,
     x: layer.x,
     y: layer.y,

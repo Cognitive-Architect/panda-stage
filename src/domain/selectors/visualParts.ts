@@ -28,6 +28,8 @@ import { resolveImageAsset } from './canvasLayers';
 import {
   characterPartRegionAnchorBounds,
   characterPartSourceBounds,
+  composeAdaptiveFaceReplacementMatrix,
+  stripCropTransformFromAdaptivePartMatrix,
 } from '../geometry/characterPartLayout';
 import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
 import {
@@ -35,7 +37,13 @@ import {
   type EvaluatedCharacterNodePose,
 } from '../character-node-animation';
 import { sameAnimationTarget } from '../models/animationCore';
-import { resolveCharacterFaceSource } from './characterFaceSource';
+import {
+  resolveCharacterFaceSource,
+  resolveCharacterFaceSourceOrNull,
+  findTalkingAnimation,
+  listTalkingAnimationImageIds,
+  resolveTalkingAnimationFace,
+} from './characterFaceSource';
 
 export type LayerVisualKind =
   | 'ordinary-image'
@@ -159,6 +167,11 @@ export interface ActiveCharacterFace {
   configuredMouthAssetId: string | null;
   /** The current Expression resource to use if the active Mouth cannot load. */
   fallbackAssetId: string | null;
+  /** An Adaptive Parts image replacement can be dropped to reveal its original parts. */
+  originalPartsFallback?: {
+    partId: string;
+    assetIds: readonly string[];
+  };
 }
 
 export type VisualResourceReason =
@@ -549,6 +562,14 @@ function characterResources(
     }
   }
 
+  const talking = findTalkingAnimation(project, character.talkingAnimationId);
+  if (talking) {
+    for (const assetId of listTalkingAnimationImageIds(talking)) {
+      if (!required.has(assetId) && !fallback.has(assetId) && resolveImageAsset(project, assetId)) {
+        addResource(candidates, assetId, 'mouth-override');
+      }
+    }
+  }
   return {
     required: [...required.values()],
     candidates: [...candidates.values()],
@@ -561,6 +582,7 @@ function resolveCharacterFace(
   character: Extract<Project['characters'][number], { mode: 'single-image' | 'composite' }>,
   evaluated: EvaluatedLayer,
   fallbackExpressionId: string,
+  isImageUnavailable?: (assetId: string) => boolean,
 ): { face: ActiveCharacterFace; visualSource: CharacterFaceSource; asset: ReturnType<typeof resolveCharacterFaceSource>; fallback: ReturnType<typeof resolveCharacterFaceSource> | null } {
   const currentExpressionId =
     evaluated.currentExpressionId ?? fallbackExpressionId;
@@ -578,11 +600,14 @@ function resolveCharacterFace(
   }
   const expressionSource = resolveExpressionVisualSource(expression);
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
-  const requestedMouth = evaluated.mouthOverrideAssetId
+  const poseSource = evaluated.mouthPose?.source;
+  const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
+  const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
-    : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null;
+    : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
   const mouthSource = requestedMouth?.kind === 'image' && !resolveImageAsset(project, requestedMouth.assetId) ? null : requestedMouth;
-  const mouthAsset = mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null;
+  const mouthAsset = mouthSource ? poseAsset ?? talking?.asset ?? resolveCharacterFaceSourceOrNull(project, mouthSource) : null;
   const activeAsset = mouthAsset ?? expressionAsset;
   const source = mouthAsset ? 'mouth' : 'expression';
   return {
@@ -600,6 +625,80 @@ function resolveCharacterFace(
     asset: activeAsset,
     visualSource: mouthSource ?? expressionSource,
     fallback: mouthAsset ? expressionAsset : null,
+  };
+}
+
+function facePixelGeometry(
+  project: Project,
+  asset: ReturnType<typeof resolveCharacterFaceSource>,
+  ownerLayerId: string,
+): {
+  pixelToCanvas: CharacterPartTransform;
+  localRect: VisualLocalRect;
+  assetId?: string;
+  flaGraphic?: EvaluatedFlaGraphicVisual;
+} {
+  const graphic = asset.flaGraphic;
+  if (asset.rasterFrame) {
+    const { offset, sourceViewport } = asset.rasterFrame;
+    const image = imageAsset(project, asset.rasterFrame.assetId, ownerLayerId);
+    return {
+      assetId: image.id,
+      localRect: { x: 0, y: 0, width: image.width, height: image.height },
+      pixelToCanvas: {
+        a: sourceViewport.width / image.width,
+        b: 0,
+        c: 0,
+        d: sourceViewport.height / image.height,
+        tx: offset.x - asset.width / 2,
+        ty: offset.y - asset.height / 2,
+      },
+    };
+  }
+  if (!graphic) {
+    return {
+      pixelToCanvas: {
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: -asset.width / 2,
+        ty: -asset.height / 2,
+      },
+      localRect: { x: 0, y: 0, width: asset.width, height: asset.height },
+      ...(asset.assetId ? { assetId: asset.assetId } : {}),
+    };
+  }
+  const fallback = graphic.structureFrame
+    ? null
+    : imageAsset(project, graphic.frameAssetId, ownerLayerId);
+  const pixelToCanvas = fallback
+    ? {
+        a: graphic.frameViewport.width / fallback.width,
+        b: 0,
+        c: 0,
+        d: graphic.frameViewport.height / fallback.height,
+        tx: graphic.frameOffset.x - asset.width / 2,
+        ty: graphic.frameOffset.y - asset.height / 2,
+      }
+    : {
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: -asset.width / 2,
+        ty: -asset.height / 2,
+      };
+  return {
+    pixelToCanvas,
+    localRect: {
+      x: 0,
+      y: 0,
+      width: fallback?.width ?? asset.width,
+      height: fallback?.height ?? asset.height,
+    },
+    ...(fallback ? { assetId: fallback.id } : {}),
+    ...(graphic.structureFrame ? { flaGraphic: graphic } : {}),
   };
 }
 
@@ -625,21 +724,246 @@ function faceVisualPart(project: Project, resolved: ReturnType<typeof resolveCha
     localRect: rect, rotationDeg: placement.rotationDeg, flipX: placement.flipX,
     drawOrder, ownerZIndex: evaluated.zIndex,
   };
-  if (graphic) {
+  if (graphic || asset.rasterFrame) {
     // Center/rotate/mirror the full source canvas; cropped fallback pixels do
     // not redefine the face pivot. Structure uses exactly the same affine.
     const angle = placement.rotationDeg * Math.PI / 180;
     const sx = placement.scaleX * (placement.flipX ? -1 : 1), sy = placement.scaleY;
     const matrix = { a: Math.cos(angle) * sx, b: Math.sin(angle) * sx, c: -Math.sin(angle) * sy, d: Math.cos(angle) * sy, tx: placement.offsetX, ty: placement.offsetY };
-    const fallback = graphic.structureFrame ? null : imageAsset(project, graphic.frameAssetId, evaluated.id);
-    const pixelToCanvas = fallback
-      ? { a: graphic.frameViewport.width / fallback.width, b: 0, c: 0, d: graphic.frameViewport.height / fallback.height, tx: graphic.frameOffset.x - asset.width / 2, ty: graphic.frameOffset.y - asset.height / 2 }
-      : { a: 1, b: 0, c: 0, d: 1, tx: -asset.width / 2, ty: -asset.height / 2 };
-    part.imageTransform = composeAffine(matrix, pixelToCanvas);
-    part.localRect = { x: 0, y: 0, width: fallback?.width ?? asset.width, height: fallback?.height ?? asset.height };
+    const geom = facePixelGeometry(project, asset, evaluated.id);
+    part.imageTransform = composeAffine(matrix, geom.pixelToCanvas);
+    part.localRect = geom.localRect;
     part.rotationDeg = 0; part.flipX = false;
   }
   return part;
+}
+
+function isResolvedFaceRenderable(
+  asset: ReturnType<typeof resolveCharacterFaceSource> | null,
+  validImageAssetIds: ReadonlySet<string>,
+): asset is ReturnType<typeof resolveCharacterFaceSource> {
+  if (!asset) return false;
+  if (!asset.flaGraphic) {
+    return Boolean(asset.assetId && validImageAssetIds.has(asset.assetId));
+  }
+  if (!asset.flaGraphic.structureFrame) {
+    return validImageAssetIds.has(asset.flaGraphic.frameAssetId);
+  }
+  return true;
+}
+
+function adaptivePartIdOfSource(source: VisualPartSource): string | undefined {
+  return source.kind === 'adaptive-part' || source.kind === 'adaptive-part-fla-graphic'
+    ? source.characterPartId
+    : undefined;
+}
+
+function projectAdaptivePartsFaceVisual(input: {
+  readonly project: Project;
+  readonly character: AdaptivePartsCharacter;
+  readonly visualDefinition: AdaptivePartVisualDefinition;
+  readonly parts: LayerVisualPart[];
+  readonly evaluated: EvaluatedLayer;
+  readonly sourceExpressionId?: string;
+  readonly validImageAssetIds: ReadonlySet<string>;
+  readonly isImageUnavailable?: (assetId: string) => boolean;
+}): {
+  readonly parts: LayerVisualPart[];
+  readonly activeFace: ActiveCharacterFace | null;
+  readonly fallbackAssetIds: ReadonlySet<string>;
+} {
+  const {
+    project,
+    character,
+    visualDefinition,
+    parts,
+    evaluated,
+    sourceExpressionId,
+    validImageAssetIds,
+    isImageUnavailable,
+  } = input;
+  const fallbackAssetIds = new Set<string>();
+  const faceBinding = character.faceBinding;
+  const poseSource = evaluated.mouthPose?.source;
+  const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
+  const independentTarget = evaluated.mouthPose?.target.kind === 'mouth' &&
+    isResolvedFaceRenderable(poseAsset, validImageAssetIds) ? evaluated.mouthPose.target.partId : undefined;
+  const targetPartId = independentTarget ?? faceBinding?.targetPartId;
+  if (!targetPartId) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
+  const targetPartIndex = parts.findIndex(
+    (part) => adaptivePartIdOfSource(part.source) === targetPartId,
+  );
+  const targetDefinitionPart = visualDefinition.parts.find(
+    (part) => part.partId === targetPartId,
+  );
+  if (targetPartIndex === -1 || !targetDefinitionPart) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
+
+  const expressions = character.expressions ?? [];
+  const requestedExpressionId =
+    evaluated.currentExpressionId ?? sourceExpressionId ?? character.defaultExpressionId;
+  const expression =
+    (requestedExpressionId
+      ? expressions.find((candidate) => candidate.id === requestedExpressionId)
+      : undefined) ??
+    (character.defaultExpressionId
+      ? expressions.find((candidate) => candidate.id === character.defaultExpressionId)
+      : undefined);
+
+  const expressionSource = expression ? resolveExpressionVisualSource(expression) : null;
+  const rawExpressionAsset = expressionSource
+    ? resolveCharacterFaceSourceOrNull(project, expressionSource)
+    : null;
+  const expressionAsset = isResolvedFaceRenderable(rawExpressionAsset, validImageAssetIds)
+    ? rawExpressionAsset
+    : null;
+
+  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
+  const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
+    ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
+    : evaluated.mouthOpen
+      ? resolveMouthVisualSource(character)
+      : null);
+  const rawMouthAsset = poseAsset ?? talking?.asset ?? (requestedMouth
+    ? resolveCharacterFaceSourceOrNull(project, requestedMouth)
+    : null);
+  const mouthAsset = isResolvedFaceRenderable(rawMouthAsset, validImageAssetIds)
+    ? rawMouthAsset
+    : null;
+
+  const chosenSource = mouthAsset ? requestedMouth! : expressionAsset ? expressionSource! : null;
+  const chosenAsset = mouthAsset ?? expressionAsset;
+  const chosenKind: 'mouth' | 'expression' | null = mouthAsset
+    ? 'mouth'
+    : expressionAsset
+      ? 'expression'
+      : null;
+
+  const collectAssetIds = (resolved: ReturnType<typeof resolveCharacterFaceSource> | null): void => {
+    if (!resolved) return;
+    if (resolved.flaGraphic) {
+      for (const id of resolved.flaGraphic.resourceAssetIds) {
+        if (validImageAssetIds.has(id)) fallbackAssetIds.add(id);
+      }
+      if (!resolved.flaGraphic.structureFrame && validImageAssetIds.has(resolved.flaGraphic.frameAssetId)) {
+        fallbackAssetIds.add(resolved.flaGraphic.frameAssetId);
+      }
+    } else if (resolved.assetId && validImageAssetIds.has(resolved.assetId)) {
+      fallbackAssetIds.add(resolved.assetId);
+    }
+  };
+  if (chosenKind === 'mouth') {
+    collectAssetIds(expressionAsset);
+  }
+  const replaceSet = new Set(independentTarget ? [] : faceBinding?.replacePartIds ?? []);
+  for (const part of parts) {
+    const partCharId = adaptivePartIdOfSource(part.source);
+    if (partCharId === targetPartId || (partCharId !== undefined && replaceSet.has(partCharId))) {
+      if (part.assetId && validImageAssetIds.has(part.assetId)) {
+        fallbackAssetIds.add(part.assetId);
+      }
+      if (part.flaGraphic) {
+        for (const id of part.flaGraphic.resourceAssetIds) {
+          if (validImageAssetIds.has(id)) fallbackAssetIds.add(id);
+        }
+      }
+    }
+  }
+
+  if (!chosenAsset || !chosenSource || !chosenKind) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
+
+  const targetVisual = parts[targetPartIndex]!;
+  if (!targetVisual.imageTransform) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
+  const canRestoreOriginalParts =
+    expressionAsset &&
+    expressionSource?.kind === 'image' &&
+    !parts.some((part) =>
+      part.assetId === expressionSource.assetId ||
+      part.flaGraphic?.resourceAssetIds.includes(expressionSource.assetId),
+    );
+  if (chosenKind === 'expression' && canRestoreOriginalParts && isImageUnavailable?.(expressionSource.assetId)) {
+    return { parts, activeFace: null, fallbackAssetIds };
+  }
+  const targetBaseTransform = independentTarget ? targetVisual.imageTransform : stripCropTransformFromAdaptivePartMatrix(
+    targetDefinitionPart,
+    targetVisual.imageTransform,
+  );
+  const placementMatrix = composeAdaptiveFaceReplacementMatrix({
+    targetBaseTransform,
+    anchorRect: independentTarget ? targetVisual.localRect : faceBinding!.anchorRect,
+    placement: independentTarget ? { scale: 1, offsetX: 0, offsetY: 0, rotationDeg: 0, flipX: false } : faceBinding!.placement,
+    resolvedWidth: chosenAsset.width,
+    resolvedHeight: chosenAsset.height,
+  });
+  const geom = facePixelGeometry(project, chosenAsset, evaluated.id);
+  const replacedImageTransform = composeAffine(placementMatrix, geom.pixelToCanvas);
+
+  const replacedTarget: LayerVisualPart = {
+    partId: targetVisual.partId,
+    ownerLayerId: targetVisual.ownerLayerId,
+    slot: 'adaptive-part',
+    source: chosenSource.kind === 'fla-graphic'
+      ? {
+          kind: 'adaptive-part-fla-graphic',
+          characterPartId: targetPartId,
+          animationId: chosenSource.animationId,
+        }
+      : {
+          kind: 'adaptive-part',
+          characterPartId: targetPartId,
+          assetId: geom.assetId!,
+        },
+    ...(geom.assetId ? { assetId: geom.assetId } : {}),
+    ...(geom.flaGraphic ? { flaGraphic: geom.flaGraphic } : {}),
+    localRect: geom.localRect,
+    rotationDeg: 0,
+    flipX: false,
+    imageTransform: replacedImageTransform,
+    visible: targetVisual.visible,
+    drawOrder: targetVisual.drawOrder,
+    ownerZIndex: targetVisual.ownerZIndex,
+  };
+
+  const nextParts = parts.map((part, index) => {
+    if (index === targetPartIndex) return replacedTarget;
+    const partCharId = adaptivePartIdOfSource(part.source);
+    if (partCharId !== undefined && replaceSet.has(partCharId)) {
+      return { ...part, visible: false };
+    }
+    return part;
+  });
+
+  const activeFace: ActiveCharacterFace = {
+    currentExpressionId: expression?.id ?? '',
+    ...(chosenSource.kind === 'fla-graphic' ? { visualSource: chosenSource } : {}),
+    ...(mouthAsset?.flaGraphic ? { mouthResourceAssetIds: mouthAsset.flaGraphic.resourceAssetIds } : {}),
+    ...(chosenKind === 'mouth' && expressionSource?.kind === 'fla-graphic'
+      ? { fallbackVisualSource: expressionSource }
+      : {}),
+    currentExpressionAssetId: expressionAsset?.assetId ?? '',
+    source: chosenKind,
+    assetId: chosenAsset.assetId ?? '',
+    configuredMouthAssetId: character.mouthOpenAssetId ?? null,
+    ...(canRestoreOriginalParts
+      ? { originalPartsFallback: {
+          partId: targetVisual.partId,
+          assetIds: [...fallbackAssetIds].filter((id) => id !== expressionSource.assetId),
+        } }
+      : {}),
+    fallbackAssetId:
+      chosenKind === 'mouth'
+        ? (expressionAsset?.assetId ?? null)
+        : (targetVisual.assetId ?? null),
+  };
+
+  return { parts: nextParts, activeFace, fallbackAssetIds };
 }
 
 type AdaptivePartsCharacter = Extract<
@@ -1011,6 +1335,7 @@ export function resolveLayerVisualParts(
   shot: { layers: readonly Layer[] },
   evaluated: EvaluatedLayer,
   timeMs = 0,
+  isImageUnavailable?: (assetId: string) => boolean,
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1268,6 +1593,45 @@ export function resolveLayerVisualParts(
         .filter((candidate) => candidate.kind === 'image')
         .map((candidate) => candidate.id),
     );
+    const faceProjection = projectAdaptivePartsFaceVisual({
+      project,
+      character,
+      visualDefinition,
+      parts,
+      evaluated,
+      sourceExpressionId: source.expressionId,
+      validImageAssetIds,
+      isImageUnavailable,
+    });
+    parts = [...faceProjection.parts];
+    const headDelta = evaluated.headGroupTransform;
+    const boundHeadPartIds = character.headMotionBinding?.partIds;
+    if (
+      headDelta &&
+      boundHeadPartIds &&
+      boundHeadPartIds.length > 0 &&
+      (headDelta.translateX !== 0 || headDelta.translateY !== 0)
+    ) {
+      const headPartIdSet = new Set(boundHeadPartIds);
+      const deltaMatrix: CharacterPartTransform = {
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: headDelta.translateX,
+        ty: headDelta.translateY,
+      };
+      parts = parts.map((part) => {
+        const charPartId = adaptivePartIdOfSource(part.source);
+        if (!charPartId || !headPartIdSet.has(charPartId) || !part.imageTransform) {
+          return part;
+        }
+        return {
+          ...part,
+          imageTransform: composeAffine(deltaMatrix, part.imageTransform),
+        };
+      });
+    }
     const requiredAssetIds = new Set<string>();
     const candidateAssetIds = new Set<string>();
     for (const part of parts) {
@@ -1281,6 +1645,28 @@ export function resolveLayerVisualParts(
           }
         }
       }
+    }
+    const collectCandidateFaceSourceAssets = (faceSource: CharacterFaceSource): void => {
+      const resolved = resolveCharacterFaceSourceOrNull(project, faceSource);
+      if (!resolved) return;
+      for (const id of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
+        if (validImageAssetIds.has(id) && !requiredAssetIds.has(id) && !faceProjection.fallbackAssetIds.has(id)) {
+          candidateAssetIds.add(id);
+        }
+      }
+    };
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
+    if (talking && character.faceBinding) {
+      for (const assetId of listTalkingAnimationImageIds(talking)) {
+        if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
+      }
+    }
+    for (const expression of character.expressions ?? []) {
+      collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
+    }
+    const configuredMouth = resolveMouthVisualSource(character);
+    if (configuredMouth) {
+      collectCandidateFaceSourceAssets(configuredMouth);
     }
     for (const part of visualDefinition.parts) {
       const visualSource = resolveCharacterPartVisualSource(part);
@@ -1319,7 +1705,7 @@ export function resolveLayerVisualParts(
       'adaptive-parts-character',
       null,
       parts,
-      null,
+      faceProjection.activeFace,
       {
         required: [...requiredAssetIds].map((assetId) => ({
           assetId,
@@ -1329,7 +1715,10 @@ export function resolveLayerVisualParts(
           assetId,
           reason: 'fla-graphic-resource' as const,
         })),
-        fallback: [],
+        fallback: [...faceProjection.fallbackAssetIds].map((assetId) => ({
+          assetId,
+          reason: 'current-expression-fallback' as const,
+        })),
       },
     );
   }
@@ -1338,6 +1727,7 @@ export function resolveLayerVisualParts(
     character,
     evaluated,
     source.expressionId ?? character.defaultExpressionId,
+    isImageUnavailable,
   );
   const requiredAssetIds = new Set<string>();
   const fallbackAssetIds = new Set<string>();

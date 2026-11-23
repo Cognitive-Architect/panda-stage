@@ -13,6 +13,7 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
 import type { ExportJobUpdate } from '../../shared/export-types';
 import {
@@ -91,6 +92,7 @@ import {
 } from './CompactProjectBar';
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
+import { useDialogueSilence } from './useDialogueSilence';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
@@ -510,6 +512,13 @@ export function EditorShell({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const openInstanceId = editorProjectStore.getProjectInstanceId();
+  const { dialogueSilence, captureForExport: captureDialogueSilence } =
+    useDialogueSilence(
+      projectSnapshot?.project,
+      projectSnapshot?.projectRoot,
+      openInstanceId,
+    );
   const characterAssemblySnapshot = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
@@ -735,6 +744,22 @@ export function EditorShell({
   const [exportSurfaceOpen, setExportSurfaceOpen] = useState(false);
   const exportJobIdRef = useRef<string | null>(null);
   const latestExportUpdatesRef = useRef(new Map<string, ExportJobUpdate>());
+  const mountedRef = useRef(true);
+  const pendingSilenceWaitRef = useRef<{
+    attemptId: string;
+    controller: AbortController;
+    cancelledByUser: boolean;
+  } | null>(null);
+  useEffect(
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        pendingSilenceWaitRef.current?.controller.abort();
+      };
+    },
+    [],
+  );
   const [saveActivity, setSaveActivity] = useState<{
     phase: 'idle' | 'saving' | 'failed';
     revision: number | null;
@@ -2049,6 +2074,116 @@ export function EditorShell({
         issues: [],
       });
       const cameraMode = autoCameraEnabled ? 'speaker-focus' : 'static';
+      const waitController = new AbortController();
+      const silenceWait = {
+        attemptId,
+        controller: waitController,
+        cancelledByUser: false,
+      };
+      pendingSilenceWaitRef.current = silenceWait;
+      const unsubscribeProjectWatch = editorProjectStore.subscribe(() => {
+        const currentSnapshot = editorProjectStore.getSnapshot();
+        const currentInstanceId = editorProjectStore.getProjectInstanceId();
+        if (
+          currentSnapshot !== captured ||
+          currentInstanceId !== capturedInstanceId
+        ) {
+          waitController.abort();
+        }
+      });
+      let silenceAtCapture: DialogueSilence;
+      try {
+        silenceAtCapture = await captureDialogueSilence({
+          project: captured.project,
+          projectRoot: captured.projectRoot,
+          openInstanceId: capturedInstanceId,
+          signal: waitController.signal,
+        });
+      } finally {
+        unsubscribeProjectWatch();
+        if (pendingSilenceWaitRef.current === silenceWait) {
+          pendingSilenceWaitRef.current = null;
+        }
+      }
+      if (!mountedRef.current || silenceWait.cancelledByUser) {
+        await window.pandaStage.exportPreparation.discard({
+          selectionId: selection.selectionId,
+        });
+        if (mountedRef.current) {
+          setExportTaskState({
+            status: 'cancelled',
+            attemptId,
+            projectRoot: captured.projectRoot,
+            projectId: captured.project.id,
+            openInstanceId: capturedInstanceId,
+            fileName: selection.fileName,
+            durationMs: projectDurationMs(captured.project),
+            completedFrames: 0,
+            totalFrames: 0,
+            message: '\u5bfc\u51fa\u51c6\u5907\u5df2\u53d6\u6d88\u3002',
+            issues: [],
+          });
+        }
+        return;
+      }
+      const latest = editorProjectStore.getSnapshot();
+      const latestInstanceId = editorProjectStore.getProjectInstanceId();
+      if (
+        !latest ||
+        latestInstanceId !== capturedInstanceId ||
+        latest.projectRoot !== captured.projectRoot ||
+        latest.project.id !== captured.project.id
+      ) {
+        await window.pandaStage.exportPreparation.discard({
+          selectionId: selection.selectionId,
+        });
+        setExportTaskState({
+          status: 'failed',
+          attemptId,
+          projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
+          fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
+          completedFrames: 0,
+          totalFrames: 0,
+          message:
+            '\u5f53\u524d\u9879\u76ee\u5df2\u53d8\u5316\u3002\u8bf7\u6253\u5f00\u76ee\u6807\u9879\u76ee\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
+          issues: [],
+        });
+        return;
+      }
+      if (
+        latest.revision !== captured.revision ||
+        latest.dirty !== captured.dirty ||
+        latest.project !== captured.project
+      ) {
+        await window.pandaStage.exportPreparation.discard({
+          selectionId: selection.selectionId,
+        });
+        const projectChangedIssue = {
+          code: 'PROJECT_SESSION_CHANGED' as const,
+          location: '\u5f53\u524d\u5de5\u7a0b',
+          problem:
+            '\u9009\u62e9\u8f93\u51fa\u4f4d\u7f6e\u540e\uff0c\u5de5\u7a0b\u5185\u5bb9\u6216\u4fdd\u5b58\u7248\u672c\u5df2\u53d8\u5316\u3002',
+          nextStep:
+            '\u91cd\u65b0\u9009\u62e9\u8f93\u51fa\u4f4d\u7f6e\uff0c\u5e76\u68c0\u67e5\u5f53\u524d\u5de5\u7a0b\u7248\u672c\u3002',
+        };
+        setExportTaskState({
+          status: 'failed',
+          attemptId,
+          projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
+          fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
+          completedFrames: 0,
+          totalFrames: 0,
+          message: projectChangedIssue.problem,
+          issues: [projectChangedIssue],
+        });
+        return;
+      }
       const result = await window.pandaStage.exportPreparation.prepare({
         selectionId: selection.selectionId,
         attemptId,
@@ -2058,6 +2193,7 @@ export function EditorShell({
         revision: captured.revision,
         dirty: captured.dirty,
         cameraMode,
+        ...(Object.keys(silenceAtCapture).length > 0 ? { dialogueSilence: silenceAtCapture } : {}),
         project: structuredClone(captured.project),
       });
 
@@ -2154,6 +2290,22 @@ export function EditorShell({
   const cancelExportTask = async (): Promise<void> => {
     const task = exportTaskRef.current;
     if (task.status === 'preparing' && task.attemptId) {
+      if (pendingSilenceWaitRef.current?.attemptId === task.attemptId) {
+        pendingSilenceWaitRef.current.cancelledByUser = true;
+        pendingSilenceWaitRef.current.controller.abort();
+        const current = exportTaskRef.current;
+        if (
+          current.attemptId === task.attemptId &&
+          !['completed', 'failed', 'cancelled'].includes(current.status)
+        ) {
+          setExportTaskState({
+            ...current,
+            status: 'cancelling',
+            message: undefined,
+          });
+        }
+        return;
+      }
       const response = await window.pandaStage.exportPreparation.cancel(
         task.attemptId,
       );
@@ -2801,6 +2953,7 @@ export function EditorShell({
                 <CanvasWorkspace
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  dialogueSilence={dialogueSilence}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                 />
               </div>
@@ -2868,6 +3021,7 @@ export function EditorShell({
             <ProductPreviewOverlay
               autoPlay
               autoCameraEnabled={autoCameraEnabled}
+              dialogueSilence={dialogueSilence}
               onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}

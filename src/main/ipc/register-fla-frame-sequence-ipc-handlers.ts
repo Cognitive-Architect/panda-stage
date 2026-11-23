@@ -141,6 +141,8 @@ const defaultBuildFrameSource = async function* buildFrameSource(
       frameIndex: i,
       svg: svg.svg,
       sourceViewport: svg.composition.framing.viewBox,
+      maskWarning: svg.maskWarning,
+      ikPoseWarning: svg.ikPoseWarning,
     };
   }
 };

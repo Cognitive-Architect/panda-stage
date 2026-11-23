@@ -1021,6 +1021,7 @@ describe('FLA Graphic independent Subtree CharacterParts (#1192 V2-C)', () => {
       kind: 'adaptive-parts',
       characterId: char.id,
       selectedPartId: char.parts[0]!.partId,
+      selectedPartIds: [char.parts[0]!.partId],
       draft: {
         sourceRootTransform: char.sourceRootTransform,
         parts: char.parts,

@@ -48,6 +48,13 @@ export class DialogueStore {
     },
   ) {}
 
+  duplicate(dialogueId: string): void {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicate(project, shotId, dialogueId);
+    this.editorStore.updateProject(result.project, '复制对白');
+    this.dialogueSelection.select(result.dialogueId);
+  }
+
   create(characterId: string, text: string): string {
     const { project, shotId } = this.context();
     const pointTimeMs = this.timelineUi.getSnapshot().currentTimeMs;

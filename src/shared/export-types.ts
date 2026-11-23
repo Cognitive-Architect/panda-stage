@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type { Project } from '../domain';
 import { mapProjectTime } from '../domain/selectors/projectTime';
 import { projectDurationMs } from '../domain/selectors/projectDuration';
+import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
 import { ExportPreparationCameraModeSchema } from './export-preparation-types';
+import { DialogueSilenceSchema } from './dialogue-silence';
 import { ExportAudioClipInputSchema } from './audio-mix-types';
 
 export const EXPORT_FPS = 24 as const;
@@ -54,6 +56,7 @@ export const ExportLoadFormalRequestSchema = z
     jobId: JobIdSchema,
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
+    dialogueSilence: DialogueSilenceSchema.optional(),
     media: z.array(ExportLoadFormalMediaSchema).max(512),
   })
   .strict()
@@ -285,7 +288,7 @@ export interface ProjectFrameScheduleEntry extends FrameScheduleEntry {
 export function frameTimeMs(frameIndex: number, fps = EXPORT_FPS): number {
   const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
   const parsedFps = z.literal(EXPORT_FPS).parse(fps);
-  return Math.floor((parsedFrameIndex / parsedFps) * 1_000);
+  return exportFrameTimeMs(parsedFrameIndex, parsedFps);
 }
 
 export function formatFrameFileName(frameIndex: number): string {

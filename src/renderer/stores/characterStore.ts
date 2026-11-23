@@ -318,6 +318,10 @@ export class CharacterStore {
     return this.apply(project => this.service.setExpressionVisualSource(project, characterId, expressionId, source), 'Change expression source');
   }
 
+  setTalkingAnimation(characterId: string, animationId: string | null, playback?: Parameters<CharacterService['setTalkingAnimation']>[3]): Project {
+    return this.apply(project => this.service.setTalkingAnimation(project, characterId, animationId, playback), 'Change talking animation');
+  }
+
   setMouthOpenVisualSource(characterId: string, source: CharacterFaceSource | null): Project {
     return this.apply(project => this.service.setMouthOpenVisualSource(project, characterId, source), 'Change mouth source');
   }
@@ -345,6 +349,46 @@ export class CharacterStore {
           expressionId,
         ),
       'Set default expression',
+    );
+  }
+
+  clearDefaultExpression(characterId: string): Project {
+    return this.apply(
+      (project) => this.service.clearDefaultExpression(project, characterId),
+      'Restore original default face',
+    );
+  }
+
+  setAdaptivePartsFaceBinding(
+    characterId: string,
+    input: Parameters<CharacterService['setAdaptivePartsFaceBinding']>[2],
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setAdaptivePartsFaceBinding(project, characterId, input),
+      input ? 'Set face expression slot' : 'Clear face expression slot',
+    );
+  }
+
+  updateAdaptivePartsFacePlacement(
+    characterId: string,
+    placement: Parameters<CharacterService['updateAdaptivePartsFacePlacement']>[2],
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.updateAdaptivePartsFacePlacement(project, characterId, placement),
+      'Update face placement',
+    );
+  }
+
+  setAdaptivePartsHeadMotionBinding(
+    characterId: string,
+    partIds: readonly string[] | null,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setAdaptivePartsHeadMotionBinding(project, characterId, partIds),
+      'Update head motion parts',
     );
   }
 

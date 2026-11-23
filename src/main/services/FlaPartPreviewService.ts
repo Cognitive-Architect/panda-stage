@@ -2247,8 +2247,9 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    if (selectionFallbackReason) {
-      return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, selectionFallbackReason, {
+    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning;
+    if (wholeImageReason) {
+      return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, wholeImageReason, {
         sourcePreparationCountForRequest,
         displayListResolveCount,
         rasterCount,

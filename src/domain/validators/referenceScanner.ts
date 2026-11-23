@@ -1,7 +1,7 @@
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
-import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveCharacterFaceSourceOrNull } from '../selectors/characterFaceSource';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -79,6 +79,21 @@ export function scanAssetReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    for (const [poseIndex, pose] of (character.mouthPoseSet?.poses ?? []).entries()) {
+      const resolved = resolveCharacterFaceSourceOrNull(project, pose.source);
+      if (resolved?.assetId === assetId || resolved?.flaGraphic?.resourceAssetIds.includes(assetId)) {
+        references.push({ kind: 'character-mouth', path: `characters[${characterIndex}].mouthPoseSet.poses[${poseIndex}].source`,
+          label: `角色“${character.name}”的口型“${pose.name}”` });
+      }
+    }
+    const talking = findTalkingAnimation(project, character.talkingAnimationId);
+    if (talking && listTalkingAnimationImageIds(talking).has(assetId)) {
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].talkingAnimationId`,
+        label: `角色“${character.name}”的说话动画`,
+      });
+    }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);
@@ -93,6 +108,29 @@ export function scanAssetReferences(
             `${part.displayName ?? part.partId}`,
         });
       });
+      (character.expressions ?? []).forEach((expression, expressionIndex) => {
+        if (expression.visualSource && resolveCharacterFaceSource(project, expression.visualSource).flaGraphic?.resourceAssetIds.includes(assetId)) {
+          references.push({ kind: 'character-expression', path: `characters[${characterIndex}].expressions[${expressionIndex}].visualSource`, label: `角色“${character.name}”的表情“${expression.name}”` });
+        }
+        if (expression.assetId !== assetId) return;
+        references.push({
+          kind: 'character-expression',
+          path:
+            `characters[${characterIndex}].expressions` +
+            `[${expressionIndex}].assetId`,
+          label: `角色“${character.name}”的表情“${expression.name}”`,
+        });
+      });
+      if (character.mouthOpenAssetId === assetId) {
+        references.push({
+          kind: 'character-mouth',
+          path: `characters[${characterIndex}].mouthOpenAssetId`,
+          label: `角色“${character.name}”的张嘴图片`,
+        });
+      }
+      if (character.mouthOpenVisualSource && resolveCharacterFaceSource(project, character.mouthOpenVisualSource).flaGraphic?.resourceAssetIds.includes(assetId)) {
+        references.push({ kind: 'character-mouth', path: `characters[${characterIndex}].mouthOpenVisualSource`, label: `角色“${character.name}”的张嘴状态` });
+      }
       return;
     }
     if (character.baseAssetId === assetId) {
@@ -217,6 +255,19 @@ export function scanCharacterReferences(
     });
   });
   return references;
+}
+
+export function hasCharacterFaceTimelineEvents(project: Project, characterId: string): boolean {
+  return project.shots.some((shot) => {
+    const layerIds = new Set(shot.layers.flatMap((layer) =>
+      layer.source.kind === 'character' && layer.source.characterId === characterId
+        ? [layer.id]
+        : [],
+    ));
+    return shot.timelineEvents.some((event) =>
+      (event.type === 'expression' || event.type === 'mouth-cue') && layerIds.has(event.layerId),
+    );
+  });
 }
 
 export function scanExpressionReferences(

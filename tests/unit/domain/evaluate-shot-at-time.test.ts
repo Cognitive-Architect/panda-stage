@@ -5,6 +5,7 @@ import {
   resolveLayerVisualParts,
 } from '../../../src/domain';
 import type { EvaluatedLayer, Layer, Project, Shot, TimelineEvent } from '../../../src/domain';
+import { resolveAnimationPlaybackFrameState } from '../../../src/domain/evaluate-shot-at-time';
 import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
 function shotWithEvents(events: readonly TimelineEvent[]): Shot {
@@ -19,6 +20,17 @@ describe('T02 evaluateShotAtTime', () => {
   const project: Project = buildProject();
   const shot = project.shots[0]!;
 
+  it('seeks rounded project frame stamps without lagging a source frame', () => {
+    const frames = Array.from({ length: 36 }, (_, ordinal) => ({ ordinal }));
+    const animation = { frames, source: { sourceFps: 24 } };
+    const once = { mode: 'once', endBehavior: 'hold' } as const;
+    for (const [time, ordinal] of [[1458, 35], [0, 0], [958, 23], [625, 15], [1458, 35]] as const) {
+      expect(resolveAnimationPlaybackFrameState(animation, 0, 0, once, time)?.frame.ordinal).toBe(ordinal);
+    }
+    expect(resolveAnimationPlaybackFrameState(animation, 42, 0, once, 83)?.frame.ordinal).toBe(1);
+    expect(resolveAnimationPlaybackFrameState(animation, 0, 0, once, 957)?.frame.ordinal).toBe(22);
+    expect(resolveAnimationPlaybackFrameState({ ...animation, source: { sourceFps: 30 } }, 0, 0, once, 333)?.frame.ordinal).toBe(10);
+  });
   it('samples one animation from Shot time at its source FPS and anchors every crop to its common canvas', () => {
     const animationProject = buildProjectWithAnimation();
     const baseShot = animationProject.shots[0]!;

@@ -233,6 +233,22 @@ export function FlaFrameSequenceReview({
   const displayedSequenceItems = sequenceIsCurrent ? orderedSequenceItems : [];
   const displayedPreviewUrls = sequenceIsCurrent ? previewUrls : [];
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
+  const maskedFrameWarning = displayedSequenceItems.find((item) => item.preview.maskWarning);
+  const ikPoseFrameWarning = displayedSequenceItems.find((item) => item.preview.ikPoseWarning);
+  const sequenceWarnings = maskedFrameWarning || ikPoseFrameWarning ? (
+    <div className="fla-frame-sequence-warnings">
+      {maskedFrameWarning ? (
+        <p className="fla-frame-sequence-unsupported" role="status">
+          第 {maskedFrameWarning.frameIndex + 1} 帧的部分遮罩内容未显示。{maskedFrameWarning.preview.maskWarning}
+        </p>
+      ) : null}
+      {ikPoseFrameWarning ? (
+        <p className="fla-frame-sequence-unsupported" role="status">
+          跳过了无法读取的骨架动作。{ikPoseFrameWarning.preview.ikPoseWarning}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
   const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
   const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
 
@@ -706,7 +722,11 @@ export function FlaFrameSequenceReview({
         setPhase('preview-ready');
       } else {
         setCompletedFrameCount(response.error.completedFrameCount ?? 0);
-        setErrorMessage(response.error.message);
+        setErrorMessage(response.error.code === 'BUDGET_EXCEEDED'
+          ? '所选画面超出生成容量，请缩短帧范围后重试。'
+          : response.error.code === 'SEQUENCE_TIMEOUT'
+            ? '生成超时，请缩短帧范围后重试。'
+            : response.error.message);
         setPhase(response.error.code === 'SEQUENCE_CANCELLED' ? 'cancelled' : 'error');
       }
     } catch (error) {
@@ -1222,8 +1242,8 @@ export function FlaFrameSequenceReview({
                             : previewPhase === 'error'
                               ? errorMessage || '请调整起始帧后重试。'
                               : presentation === 'unified-preview'
-                                ? '调整范围后生成预览，最多 24 帧。'
-                                : '选择起始帧后，按需生成最多 24 张连续图片。'}
+                                ? `调整范围后生成预览，最多 ${MAX_SEQUENCE_FRAMES} 帧。`
+                                : `选择帧范围后，按需生成最多 ${MAX_SEQUENCE_FRAMES} 张连续图片。`}
                     </span>
                   </>
                 )}
@@ -1276,7 +1296,26 @@ export function FlaFrameSequenceReview({
                 />
               </label>
               <span className="fla-frame-sequence-range-arrow" aria-hidden="true">→</span>
-              <output data-testid="fla-frame-sequence-end">至第 {endFrameIndex + 1} 帧</output>
+              <label>
+                <span>结束帧</span>
+                <input
+                  aria-label="结束帧"
+                  aria-invalid={!validation.valid}
+                  type="number"
+                  min={startFrameIndex + 1}
+                  max={Math.min(targetFrameCount, startFrameIndex + MAX_SEQUENCE_FRAMES)}
+                  value={endFrameIndex + 1}
+                  disabled={intentLocked}
+                  onChange={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    if (Number.isInteger(value)) setEndFrameIndex(value - 1);
+                  }}
+                  style={presentation === 'unified-preview'
+                    ? { width: `${getSequenceStartFrameInputWidthPx(endFrameIndex + 1)}px` }
+                    : undefined}
+                  data-testid="fla-frame-sequence-end"
+                />
+              </label>
               <output className="fla-frame-sequence-range-result" aria-live="polite">
                 = {validation.valid ? `${validation.frameCount} 帧` : '—'}
               </output>
@@ -1332,7 +1371,7 @@ export function FlaFrameSequenceReview({
                 ) : null}
                 <small>
                   {sourceFpsAvailable
-                    ? '动画将按源文件时序预览；目前仅支持素材库预览，不能加入镜头或正式导出。'
+                    ? '动画保留源文件的播放速度，可用于镜头和视频导出。'
                     : '源文件播放速度无法确认，不能作为动画素材入库。'}
                 </small>
               </fieldset>
@@ -1346,6 +1385,7 @@ export function FlaFrameSequenceReview({
             {!validation.valid && validation.message ? (
               <p id="fla-frame-sequence-range-error" role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
             ) : null}
+            {presentation === 'unified-preview' ? sequenceWarnings : null}
             {presentation === 'unified-preview' ? (
               <div className="fla-c03-sequence-actions">
                 {sequenceIsCurrent ? (
@@ -1523,6 +1563,7 @@ export function FlaFrameSequenceReview({
             <div><dt>范围</dt><dd>第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
             <div><dt>结果</dt><dd>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
+          {presentation === 'standard' ? sequenceWarnings : null}
            <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
             <summary>更多详情</summary>
             <ul>

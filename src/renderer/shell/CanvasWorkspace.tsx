@@ -1,6 +1,8 @@
+import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { CanvasStage } from '../features/canvas/CanvasStage';
 
 export interface CanvasWorkspaceProps {
+  dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
   onCharacterPartSelected?: () => void;
@@ -14,6 +16,7 @@ export interface CanvasWorkspaceProps {
  * same owner so portrait workspaces can hide it without recreating the Canvas.
  */
 export function CanvasWorkspace({
+  dialogueSilence,
   showHeading = true,
   showToolbar = true,
   onCharacterPartSelected,
@@ -25,6 +28,7 @@ export function CanvasWorkspace({
       data-testid="canvas-workspace-scroll"
     >
       <CanvasStage
+        dialogueSilence={dialogueSilence}
         showHeading={showHeading}
         showToolbar={showToolbar}
         onCharacterPartSelected={onCharacterPartSelected}

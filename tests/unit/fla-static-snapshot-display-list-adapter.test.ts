@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
+import { prepareFlaNestedGraphicFrameSelections } from '../../src/main/services/fla-nested-graphic-frame-selector';
 import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
@@ -41,6 +42,107 @@ function timeline(name: string, layers: string[]): string {
 function graphic(name: string, layers: string[]): string {
   return `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(`${name}-timeline`, layers)}</timeline></DOMSymbolItem>`;
 }
+
+describe('baked IK display sampling', () => {
+  const ink = (name: string, poses: string) => timeline(name, [
+    layer('armature', `<DOMFrame index="3" duration="3" tweenType="IK pose"><elements>${
+      symbol('arm', 10, 20) + symbol('hand', 30, 40)
+    }</elements><betweenFrameMatrixList>${poses}</betweenFrameMatrixList></DOMFrame>`),
+    layer('healthy', frame(0, bitmap('unaffected'))),
+  ]);
+  const poses = '<Matrix/><Matrix a="0" b="1" c="-1" d="0" tx="5"/><Matrix tx="18"/>' +
+    '<Matrix/><Matrix b=".25" c=".5" ty="9"/><Matrix tx="-7"/>';
+  const expected = [
+    [{ a: 1, b: 0, c: 0, d: 1, tx: 10, ty: 20 }, { a: 1, b: 0, c: 0, d: 1, tx: 30, ty: 40 }],
+    [{ a: 0, b: 1, c: -1, d: 0, tx: -15, ty: 10 }, { a: 1, b: 0.25, c: 0.5, d: 1, tx: 50, ty: 56.5 }],
+    [{ a: 1, b: 0, c: 0, d: 1, tx: 28, ty: 20 }, { a: 1, b: 0, c: 0, d: 1, tx: 23, ty: 40 }],
+  ];
+
+  it('samples nonzero indexed spans in element-major order on every seek', () => {
+    const adapted = adaptFlaXflDisplaySource(`<DOMDocument frameRate="30"><timelines>${ink('Scene', poses)}</timelines></DOMDocument>`, []);
+    expect(adapted.ok).toBe(true);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+    expect(scene.frameCount).toBe(6);
+    for (const index of [5, 3, 4, 3, 5]) {
+      const selected = adapted.source.buildSceneFrameContext(scene.xml, index, 'scene:0');
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) throw new Error(selected.message);
+      const sampled = selected.value.layers.find((item) => item.name === 'armature')?.elements ?? [];
+      expect(sampled.map((element) => element.localTransform)).toEqual(expected[index - 3]);
+      expect(sampled[0]).toMatchObject({ sourceParentFrameSpanStart: 3, sourceParentFrameIndex: index, sourceParentSpanTweenType: 'IK pose' });
+    }
+  });
+
+  it.each([['count', poses.slice(0, -16)], ['nonfinite interior', poses.replace('b=".25"', 'b="1e999"')]])(
+    'reports an invalid %s before sampling the first pose and leaves a healthy Scene available', (_label, invalid) => {
+      const adapted = adaptFlaXflDisplaySource(`<DOMDocument><timelines>${ink('Malformed', invalid)}${
+        timeline('Other', [layer('healthy', frame(0, bitmap('healthy')))])
+      }</timelines></DOMDocument>`, []);
+      expect(adapted.ok).toBe(true);
+      if (!adapted.ok) throw new Error(adapted.message);
+      const scene = adapted.source.sceneTimelines[0]!;
+      const sampled = adapted.source.buildSceneFrameContext(scene.xml, 3, 'scene:0');
+      expect(sampled).toMatchObject({ ok: true, value: { layers: [
+        { name: 'healthy' }, { name: 'armature', elements: [], skippedIkPoseReason: expect.stringContaining('骨架') },
+      ] } });
+      expect(adapted.source.sceneTimelines[1]?.frameContext.layers[0]?.elements).toHaveLength(1);
+    },
+  );
+
+  it('holds the last saved shape inside a play-once IK container', () => {
+    const instance = '<DOMSymbolInstance libraryItemName="Skin" symbolType="graphic" loop="loop"/>';
+    const doc = `<DOMDocument><timelines>${timeline('Scene', [layer('pose',
+      `<DOMFrame index="0" duration="8"><elements>${instance}</elements></DOMFrame>`)])}</timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(doc, [{ name: 'LIBRARY/Skin.xml', xml:
+      graphic('Skin', [layer('skin', frame(0, bitmap('start')) + frame(1, bitmap('middle')) + frame(2, bitmap('end')))])
+        .replace('symbolType="graphic"', 'symbolType="ik container"') }]);
+    expect(adapted.ok).toBe(true);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+    expect(scene.frameCount).toBe(8);
+    for (const [index, childIndex] of [[7, 2], [0, 0], [1, 1], [3, 2]]) {
+      const selected = adapted.source.buildSceneFrameContext(scene.xml, index!, 'scene:0');
+      if (!selected.ok) throw new Error(selected.message);
+      const prepared = prepareFlaNestedGraphicFrameSelections(adapted.source, {
+        kind: 'scene', name: scene.name, frameContext: selected.value,
+      });
+      expect(prepared).toMatchObject({ ok: true, selections: [{
+        selectedChildFrameIndex: childIndex,
+        selectionRule: index! > 2 ? 'play-once-hold-terminal' : 'play-once-parent-timeline',
+      }] });
+    }
+  });
+
+  it('extends a one-keyframe Scene to 36 baked positions and holds past the IK end beside MovieClips', () => {
+    const placement = '<DOMSymbolInstance libraryItemName="Pose" symbolType="graphic"/>';
+    const symbolXml = (name: string, type: string, count: number) => ({
+      name: `LIBRARY/${name}.xml`,
+      xml: graphic(name, [layer('drawings', Array.from({ length: count }, (_, i) => frame(i, shape())).join(''))])
+        .replace('symbolType="graphic"', `symbolType="${type}"`),
+    });
+    for (const movieCount of [8, 42]) {
+      const doc = `<DOMDocument><timelines>${timeline('Scene', [
+        layer('instances', frame(0, placement + '<DOMSymbolInstance libraryItemName="Clip"/>')),
+      ])}</timelines></DOMDocument>`;
+      const adapted = adaptFlaXflDisplaySource(doc, [
+        symbolXml('Pose', 'ik container', 36), symbolXml('Clip', 'movie clip', movieCount),
+      ]);
+      if (!adapted.ok) throw new Error(adapted.message);
+      const scene = adapted.source.sceneTimelines[0]!;
+      expect(scene).toMatchObject({ frameCount: 1, playbackFrameCount: Math.max(36, movieCount) });
+      for (const playhead of [35, 0, 18, Math.max(36, movieCount) - 1]) {
+        const prepared = prepareFlaNestedGraphicFrameSelections(adapted.source, {
+          kind: 'scene', name: scene.name, frameContext: scene.frameContext,
+        }, { playbackFrameIndex: playhead });
+        expect(prepared).toMatchObject({ ok: true, selections: [
+          { libraryItemName: 'Pose', sourceParentFrameIndex: 0, selectedChildFrameIndex: Math.min(playhead, 35) },
+          { libraryItemName: 'Clip', selectedChildFrameIndex: playhead % movieCount },
+        ] });
+      }
+    }
+  });
+});
 
 function buildAdapterFixture() {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [

@@ -36,11 +36,21 @@ export interface FlaDisplayListBlurFilter {
   readonly enabled: true;
 }
 
-/** Per-channel shared RGB transform used by the verified Sync brightness tween. */
+/** Shared RGB multiplier with either a uniform brightness or per-channel tint offset. */
 export interface FlaDisplayListRgbTransform {
   readonly multiplier: number;
   /** Additive channel offset in 0..255 units. */
   readonly offset: number;
+  readonly channelOffsets?: readonly [number, number, number];
+}
+
+export function isValidFlaDisplayListRgbTransform(transform: FlaDisplayListRgbTransform): boolean {
+  const validOffset = (value: number) => Number.isFinite(value) && value >= 0 && value <= 255;
+  return Number.isFinite(transform.multiplier) && transform.multiplier >= 0 &&
+    transform.multiplier <= 1 && validOffset(transform.offset) &&
+    (transform.channelOffsets === undefined ||
+      (Array.isArray(transform.channelOffsets) && transform.channelOffsets.length === 3 &&
+        Array.from(transform.channelOffsets).every(validOffset)));
 }
 
 export interface FlaDisplayListLayer {
@@ -51,6 +61,8 @@ export interface FlaDisplayListLayer {
   readonly frameFilter?: FlaDisplayListBlurFilter;
   /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
   readonly maskLayerId?: string;
+  readonly unsupportedMaskReason?: string;
+  readonly skippedIkPoseReason?: string;
   /** Source XFL mask identity linked to this layer through parentLayerIndex. */
   readonly maskedBy?: string;
 }
@@ -94,7 +106,8 @@ export type FlaDisplayListElement =
   | {
       readonly kind: 'symbol';
       readonly libraryItemName: string;
-      readonly symbolType: 'graphic' | 'movieclip' | 'button';
+      readonly symbolType: 'graphic' | 'movieclip' | 'button' | 'ik container';
+      readonly movieClipRun?: { readonly start: number; readonly end: number };
       /** Raw XFL playback mode retained for bounded nested-frame selection. */
       readonly playbackMode?: string;
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
@@ -195,11 +208,13 @@ export interface FlaResolvedBitmapNode {
 export interface FlaResolvedClipShape {
   readonly shapeId: string;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
 /** One XFL mask; its filled vector shapes form a union within this clip path. */
 export interface FlaResolvedClipPath {
   readonly shapes: readonly FlaResolvedClipShape[];
+  readonly sourcePath?: string;
 }
 
 export interface FlaResolvedGroupNode {
@@ -245,6 +260,8 @@ export interface FlaResolvedDisplayList {
   readonly frameIndex: number;
   readonly layers: readonly FlaResolvedDisplayLayer[];
   readonly resolvedNodeCount: number;
+  readonly maskDiagnostics?: readonly string[];
+  readonly ikPoseDiagnostics?: readonly string[];
 }
 
 export type FlaDisplayListResolverErrorCode =
@@ -273,6 +290,10 @@ interface ResolveContext {
   readonly limits: FlaDisplayListResolverLimits;
   visitedNodeCount: number;
   resolvedNodeCount: number;
+  readonly maskDiagnostics: Set<string>;
+  maskFailureCount: number;
+  readonly ikPoseDiagnostics: Set<string>;
+  ikPoseFailureCount: number;
 }
 
 type ResolveNodesResult =
@@ -353,16 +374,17 @@ function collectMaskShapes(
   const shapes: FlaResolvedClipShape[] = [];
   const visit = (node: FlaResolvedDisplayNode, nodePath: string): FlaDisplayListResolverFailure | null => {
     if (node.kind === 'shape') {
-      if (node.clipPaths?.length) {
-        return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Nested or inherited masks on a mask item are unsupported', nodePath);
-      }
-      shapes.push({ shapeId: node.shapeId, worldTransform: node.worldTransform });
+      shapes.push({
+        shapeId: node.shapeId,
+        worldTransform: node.worldTransform,
+        ...(node.clipPaths?.length ? { clipPaths: node.clipPaths } : {}),
+      });
       return null;
     }
-    if (node.kind === 'bitmap' || (node.kind === 'group' && node.symbolLibraryItemName)) {
+    if (node.kind === 'bitmap' || (node.kind === 'group' && node.opaque)) {
       return failure(
         'UNSUPPORTED_DISPLAY_CONTENT',
-        'Only static vector shapes and groups are supported as mask items',
+        'Only filled vector geometry is supported as mask items',
         nodePath,
       );
     }
@@ -382,9 +404,6 @@ function collectMaskShapes(
     if (!node) return failure('INVALID_INPUT', 'Missing mask node', `${sourcePath}/node[${index}]`);
     const nodeFailure = visit(node, `${sourcePath}/node[${index}]`);
     if (nodeFailure) return nodeFailure;
-  }
-  if (shapes.length === 0) {
-    return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask layer has no filled vector-shape items', sourcePath);
   }
   return { ok: true, shapes };
 }
@@ -416,28 +435,28 @@ function resolveLayers(
     if (maskLayers.has(layer.maskLayerId)) {
       return failure('INVALID_INPUT', 'Duplicate source mask identity', `${sourcePath}/layer[${index}]`);
     }
-    if (!layer.visible) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Hidden XFL masks cannot be previewed safely', `${sourcePath}/layer[${index}]`);
-    }
     maskLayers.set(layer.maskLayerId, layer);
   }
 
-  const linkedLayerCountByMask = new Map<string, number>();
-  for (let index = 0; index < frameContext.layers.length; index += 1) {
-    const layer = frameContext.layers[index];
-    if (!layer?.maskedBy) continue;
-    if (!maskLayers.has(layer.maskedBy)) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer references a missing mask layer', `${sourcePath}/layer[${index}]`);
+  // A dependency failure must not paint. An empty clip list means
+  // an authored blank/uncovered mask layer, which Animate exports without a clip.
+  type MaskResult = { readonly ok: true; readonly clips: readonly FlaResolvedClipPath[] } | FlaDisplayListResolverFailure;
+  const maskCache = new Map<string, MaskResult>();
+  const buildMask = (maskId: string, ancestry: readonly string[]): MaskResult => {
+    if (ancestry.includes(maskId) || ancestry.length >= context.limits.maxRecursionDepth) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask dependency is cyclic or too deeply nested', sourcePath);
     }
-    linkedLayerCountByMask.set(layer.maskedBy, (linkedLayerCountByMask.get(layer.maskedBy) ?? 0) + 1);
-  }
-
-  const clipPathByMaskId = new Map<string, FlaResolvedClipPath>();
-  for (const [maskId, layer] of maskLayers) {
-    if ((linkedLayerCountByMask.get(maskId) ?? 0) === 0) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'XFL mask has no linked masked layer', `${sourcePath}:${maskId}`);
-    }
+    const layer = maskLayers.get(maskId);
+    if (!layer) return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked layer references a missing mask', sourcePath);
     const maskPath = `${sourcePath}/mask(${layer.name})`;
+    if (layer.unsupportedMaskReason || layer.frameFilter) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', layer.unsupportedMaskReason ?? 'Mask filter is unsupported', maskPath);
+    }
+    const enclosing = layer.maskedBy ? resolveMask(layer.maskedBy, [...ancestry, maskId])
+      : { ok: true as const, clips: [] };
+    if (!enclosing.ok) return enclosing;
+    if (layer.elements.length === 0) return enclosing;
+    const diagnosticCount = context.maskFailureCount + context.ikPoseFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
       parentTransform,
@@ -448,10 +467,21 @@ function resolveLayers(
       [],
     );
     if (!resolvedMask.ok) return resolvedMask;
+    if (context.maskFailureCount + context.ikPoseFailureCount !== diagnosticCount) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'A nested mask dependency could not be sampled', maskPath);
+    }
     const maskShapes = collectMaskShapes(resolvedMask.nodes, maskPath);
     if (!maskShapes.ok) return maskShapes;
-    clipPathByMaskId.set(maskId, { shapes: maskShapes.shapes });
-  }
+    // A present symbol with no display geometry has an empty silhouette.
+    return { ok: true, clips: [...enclosing.clips, { shapes: maskShapes.shapes, sourcePath: maskPath }] };
+  };
+  const resolveMask = (maskId: string, ancestry: readonly string[] = []): MaskResult => {
+    const cached = maskCache.get(maskId);
+    if (cached) return cached;
+    const result = buildMask(maskId, ancestry);
+    maskCache.set(maskId, result);
+    return result;
+  };
 
   const layers: FlaResolvedDisplayLayer[] = [];
   for (let layerIndex = 0; layerIndex < frameContext.layers.length; layerIndex += 1) {
@@ -462,13 +492,25 @@ function resolveLayers(
     if (!layer) return failure('INVALID_INPUT', 'Missing layer entry', layerPath);
     if (layer.maskLayerId) continue;
     if (!layer.visible) continue;
-
-    const ownClipPath = layer.maskedBy ? clipPathByMaskId.get(layer.maskedBy) : undefined;
-    if (layer.maskedBy && !ownClipPath) {
-      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer has no usable mask geometry', layerPath);
+    if (layer.skippedIkPoseReason) {
+      context.ikPoseFailureCount += 1;
+      if (context.ikPoseDiagnostics.size < 32) {
+        context.ikPoseDiagnostics.add(`${layer.name}：${layer.skippedIkPoseReason}`.slice(0, 500));
+      }
+      continue;
     }
-    const activeClipPaths = ownClipPath
-      ? [...inheritedClipPaths, ownClipPath]
+
+    const mask = layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
+    if (mask && !mask.ok) {
+      if (mask.code === 'MAX_RESOLVED_NODES_EXCEEDED') return mask;
+      context.maskFailureCount += 1;
+      if (context.maskDiagnostics.size < 32) {
+        context.maskDiagnostics.add(`${layer.name}: ${mask.message} (${mask.sourcePath})`.slice(0, 500));
+      }
+      continue;
+    }
+    const activeClipPaths = mask?.clips.length
+      ? [...inheritedClipPaths, ...mask.clips]
       : inheritedClipPaths;
 
     const resolved = resolveElements(
@@ -671,10 +713,7 @@ function resolveElements(
       nodes.push(opaqueStandIn(element, parentTransform, 'Graphic alpha multiplier must be within 0..1'));
       continue;
     }
-    if (element.rgbTransform !== undefined &&
-        (!Number.isFinite(element.rgbTransform.multiplier) || element.rgbTransform.multiplier < 0 ||
-          element.rgbTransform.multiplier > 1 || !Number.isFinite(element.rgbTransform.offset) ||
-          element.rgbTransform.offset < 0 || element.rgbTransform.offset > 255)) {
+    if (element.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(element.rgbTransform)) {
       if (!context.limits.tolerant) {
         return failure('INVALID_INPUT', 'Graphic RGB transform must use a multiplier in 0..1 and offset in 0..255', elementPath);
       }
@@ -797,6 +836,10 @@ export function resolveFlaDisplayList(
     limits: resolvedLimits,
     visitedNodeCount: 0,
     resolvedNodeCount: 0,
+    maskDiagnostics: new Set(),
+    maskFailureCount: 0,
+    ikPoseDiagnostics: new Set(),
+    ikPoseFailureCount: 0,
   };
   const layers = resolveLayers(
     input.root.frameContext,
@@ -815,6 +858,8 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
+      ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
+      ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },
   };
 }

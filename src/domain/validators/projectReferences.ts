@@ -3,6 +3,7 @@ import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
+import { isTalkingAnimationPlaybackInRange, resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { ProjectData } from '../models/project';
@@ -188,6 +189,37 @@ export function validateProjectReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    for (const [poseIndex, pose] of (character.mouthPoseSet?.poses ?? []).entries()) {
+      const path = ['characters', characterIndex, 'mouthPoseSet', 'poses', poseIndex];
+      if (pose.source.kind === 'fla-graphic') {
+        validateFaceGraphic(pose.source, [...path, 'source']);
+        const animation = animations.get(pose.source.animationId);
+        if (pose.source.internalTimeMs !== undefined && animation && isFlaGraphicDefinition(animation)) {
+          const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+          const frame = Math.round(pose.source.internalTimeMs * timeline.fps / 1_000);
+          const sample = timeline.sampleAtFrameIndex(frame);
+          if (frame >= timeline.totalFrames || sample.frameOrdinal !== pose.source.firstFrame) {
+            addIssue(context, [...path, 'source', 'internalTimeMs'], 'Mouth pose sample is outside its Graphic frame.');
+          }
+        }
+      } else if (assets.get(pose.source.assetId)?.kind !== 'image') {
+        addIssue(context, [...path, 'source', 'assetId'], 'Mouth pose requires an existing image.');
+      }
+      if (pose.target.kind === 'mouth') {
+        const { partId } = pose.target;
+        if (character.mode !== 'adaptive-parts' || !character.parts.some((part) => part.partId === partId)) {
+          addIssue(context, [...path, 'target', 'partId'], 'Mouth pose requires an existing character part.');
+        }
+      }
+    }
+    const talkingAnimation = character.talkingAnimationId ? animations.get(character.talkingAnimationId) : undefined;
+    if (character.talkingAnimationId && !talkingAnimation) {
+      addIssue(context, ['characters', characterIndex, 'talkingAnimationId'], 'Unknown talking animation.');
+    }
+    if (character.talkingAnimationPlayback && (!talkingAnimation ||
+      !isTalkingAnimationPlaybackInRange(talkingAnimation, character.talkingAnimationPlayback))) {
+      addIssue(context, ['characters', characterIndex, 'talkingAnimationPlayback'], 'Talking animation frame is outside the source timeline.');
+    }
     if (character.mode === 'adaptive-parts') {
       character.parts.forEach((part, partIndex) => {
         const visualSource = resolveCharacterPartVisualSource(part);
@@ -264,6 +296,59 @@ export function validateProjectReferences(
           );
         }
       });
+
+      const adaptiveExpressions = character.expressions ?? [];
+      if (adaptiveExpressions.length > 0) {
+        validateUniqueIds(
+          adaptiveExpressions,
+          ['characters', characterIndex, 'expressions'],
+          context,
+        );
+        validateUniqueNames(
+          adaptiveExpressions,
+          ['characters', characterIndex, 'expressions'],
+          context,
+        );
+        adaptiveExpressions.forEach((expression, expressionIndex) => {
+          if (expression.visualSource) {
+            validateFaceGraphic(
+              expression.visualSource,
+              ['characters', characterIndex, 'expressions', expressionIndex, 'visualSource'],
+            );
+            return;
+          }
+          const expressionAsset = expression.assetId ? assets.get(expression.assetId) : undefined;
+          if (!expressionAsset || expressionAsset.kind !== 'image') {
+            addIssue(
+              context,
+              [
+                'characters',
+                characterIndex,
+                'expressions',
+                expressionIndex,
+                'assetId',
+              ],
+              `Expression references unknown or non-image asset: ${expression.assetId}`,
+            );
+          }
+        });
+      }
+      if (character.mouthOpenAssetId) {
+        const mouthAsset = assets.get(character.mouthOpenAssetId);
+        if (!mouthAsset || mouthAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'mouthOpenAssetId'],
+            `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
+          );
+        }
+      }
+      if (character.mouthOpenVisualSource) {
+        validateFaceGraphic(
+          character.mouthOpenVisualSource,
+          ['characters', characterIndex, 'mouthOpenVisualSource'],
+        );
+      }
     } else {
       validateUniqueIds(
         character.expressions,
@@ -487,11 +572,24 @@ export function validateProjectReferences(
         );
       } else if (character.mode === 'adaptive-parts') {
         if (characterSource.expressionId !== undefined) {
-          addIssue(
-            context,
-            ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
-            `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
-          );
+          const expressions = character.expressions ?? [];
+          if (expressions.length === 0) {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+              `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
+            );
+          } else if (
+            !expressions.some(
+              (expression) => expression.id === characterSource.expressionId,
+            )
+          ) {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+              `Layer references unknown character expression: ${characterSource.expressionId}`,
+            );
+          }
         }
       } else if (
         !characterSource.expressionId ||
@@ -639,49 +737,48 @@ export function validateProjectReferences(
             ],
             'Expression events require a character layer.',
           );
-          } else {
-            const characterId = layer.source.characterId;
-            const character = characters.get(characterId);
-            if (
-              !character ||
-              character.mode === 'adaptive-parts' ||
-              !character.expressions.some(
-                (expression) => expression.id === event.expressionId,
-              )
-            ) {
-              addIssue(
-                context,
-                [
-                  'shots',
-                  shotIndex,
-                  'timelineEvents',
-                  eventIndex,
-                  'expressionId',
-                ],
-                `Expression event references unknown expression: ${event.expressionId}`,
-              );
-            }
-          }
-        }
-        if (event.type === 'mouth-cue' && layer) {
-          if (layer.source.kind !== 'character') {
+        } else {
+          const character = characters.get(layer.source.characterId);
+          // Adaptive Parts can suspend face playback while unbound. The
+          // persisted event still needs a valid expression on its owner.
+          if (!(character?.expressions ?? []).some(
+            (expression) => expression.id === event.expressionId,
+          )) {
             addIssue(
               context,
-              ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-              'Mouth cue events require a character layer.',
+              ['shots', shotIndex, 'timelineEvents', eventIndex, 'expressionId'],
+              `Expression event references unknown expression: ${event.expressionId}`,
             );
-          } else {
-            const characterId = layer.source.characterId;
-            const character = characters.get(characterId);
-            if (!character || character.mode === 'adaptive-parts') {
-              addIssue(
-                context,
-                ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
-                'Mouth cue events require a single-image or composite character.',
-              );
-            }
           }
         }
-      });
+      }
+      if (event.type === 'mouth-cue' && layer) {
+        if (layer.source.kind !== 'character') {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'timelineEvents', eventIndex, 'layerId'],
+            'Mouth cue events require a character layer.',
+          );
+        }
+        // Character existence is checked on the layer source above.
+        // Authoring still requires a binding and configured mouth visual.
+      }
+      if (event.type === 'mouth-pose') {
+        const path = ['shots', shotIndex, 'timelineEvents', eventIndex];
+        const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
+        const owner = characterId ? characters.get(characterId) : undefined;
+        if (!owner?.mouthPoseSet?.poses.some((pose) => pose.id === event.poseId)) {
+          addIssue(context, [...path, 'poseId'], 'Mouth pose is not defined on the instance character.');
+        }
+        if (event.dialogueId) {
+          const dialogue = shot.dialogues.find((item) => item.id === event.dialogueId);
+          if (!dialogue || !characterId || dialogue.characterId !== characterId ||
+              event.startMs < dialogue.startMs || event.endMs > dialogue.endMs ||
+              (event.origin === 'generated' && !dialogue.audioClipId)) {
+            addIssue(context, [...path, 'dialogueId'], 'Mouth pose must belong to the same character and fit its dialogue window.');
+          }
+        }
+      }
+    });
   });
 }

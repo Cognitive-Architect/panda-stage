@@ -18,13 +18,17 @@ import {
   evaluateExportPreparationSupport,
 } from '../../src/domain/export-preparation';
 import {
+  CharacterService,
   evaluateShotAtTime,
   FlaGraphicDefinitionSchema,
+  LayerService,
   ProjectSchema,
+  upsertMouthCueEventAtTime,
   type Project,
 } from '../../src/domain';
 import {
   ExportPreparationService,
+  MainProjectAssetReader,
   type ExportPreparationMediaReader,
   type TrackedProjectSnapshot,
 } from '../../src/main/services/ExportPreparationService';
@@ -42,6 +46,7 @@ import {
   EXPORT_PREPARATION_SUPPORT_PROFILE,
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
+import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import {
   buildProject,
   buildProjectWithAnimation,
@@ -315,6 +320,65 @@ afterEach(async () => {
   );
 });
 
+it('prepares export with a missing Adaptive Parts expression file and includes it again after repair', async () => {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const expressionId = randomUUID();
+  const base = projectWithMedia();
+  const faceAsset = base.assets.find(({ id }) => id === IDS.assetChar)!;
+  let project = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, { ...faceAsset, id: expressionId, relativePath: 'assets/expression.png' }]
+      .map((asset) => ({ ...asset, width: 1, height: 1, sha256: hash(png) })),
+  });
+  const service = new CharacterService();
+  const partId = randomUUID();
+  project = service.createAdaptiveParts(project, {
+    name: 'Adaptive Parts',
+    parts: [{
+      partId,
+      source: { kind: 'manual', sourceId: 'original-face' },
+      assetId: IDS.assetChar,
+      imageMapping: { sourceWidth: 1, sourceHeight: 1, crop: { x: 0, y: 0, width: 1, height: 1 }, exportScale: 1 },
+      restTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      drawOrder: 0,
+      visible: true,
+    }],
+  });
+  const characterId = project.characters.at(-1)!.id;
+  project = service.setAdaptivePartsFaceBinding(project, characterId, { targetPartId: partId });
+  project = service.addExpression(project, characterId, { name: 'Smile', assetId: expressionId });
+  const character = project.characters.at(-1)!;
+  project = service.setDefaultExpression(project, characterId, character.expressions![0]!.id);
+  project = service.setMouthOpenAsset(project, characterId, IDS.assetChar2);
+  const layer = new LayerService().createFromAdaptiveCharacter(project, IDS.shot, characterId, { x: 900, y: 500 });
+  project = upsertMouthCueEventAtTime(layer.project, IDS.shot, layer.layer.id, 'open', 800);
+  const fixture = await harness({ project, reader: new MainProjectAssetReader() });
+  for (const asset of fixture.project.assets) {
+    if (asset.id !== expressionId) await writeFile(path.join(fixture.projectRoot, asset.relativePath), png);
+  }
+  const prepare = async (name: string) => {
+    const selection = await selectOutput(fixture, name);
+    const result = await fixture.service.prepare(requestFor(fixture, selection.selectionId));
+    expect(result.status).toBe('PREPARATION_READY');
+    if (result.status !== 'PREPARATION_READY') throw new Error(JSON.stringify(result));
+    const candidate = result.candidate;
+    const shot = candidate.project.shots[0]!;
+    const urls = Object.fromEntries(candidate.mediaManifest.map(({ assetId }) => [assetId, `blob:${assetId}`]));
+    const model = buildStageRenderModel(candidate.project, evaluateShotAtTime(shot, 0, candidate.project), urls);
+    return model.layers.find(({ id }) => id === layer.layer.id)!.parts[0]!.asset.id;
+  };
+
+  expect(await prepare('missing.png.mp4')).toBe(IDS.assetChar);
+  await writeFile(path.join(fixture.projectRoot, 'assets/expression.png'), 'corrupt contents');
+  expect(await prepare('corrupt.mp4')).toBe(IDS.assetChar);
+  await writeFile(path.join(fixture.projectRoot, 'assets/expression.png'), png);
+  expect(await prepare('repaired.mp4')).toBe(expressionId);
+  await fixture.service.dispose();
+});
+
 describe('DL-01 export preparation domain rules', () => {
   it('uses the versioned capability matrix as the formal media support source', () => {
     const matrix = EXPORT_PREPARATION_SUPPORT_PROFILE.capabilityMatrix;
@@ -342,9 +406,9 @@ describe('DL-01 export preparation domain rules', () => {
     expect(exportCapabilityStatusForMimeType('audio/aac')).toBe('UNKNOWN');
     expect(flaSequence?.statuses).toEqual({
       import: 'SUPPORTED_VERIFIED',
-      shot: 'NOT_SUPPORTED',
+      shot: 'SUPPORTED_VERIFIED',
       preview: 'SUPPORTED_VERIFIED',
-      formalExport: 'NOT_SUPPORTED',
+      formalExport: 'SUPPORTED_UNVERIFIED',
     });
     expect(
       EXPORT_PREPARATION_SUPPORT_PROFILE.imageMimeTypes,
@@ -687,56 +751,51 @@ describe('DL-01 export preparation domain rules', () => {
     { mode: 'loop', endBehavior: 'hold' },
     { mode: 'loop', endBehavior: 'hide' },
   ] as const)(
-    'blocks animation export before creating a preparation snapshot (%#)',
+    'freezes all 60 ordinary animation frames, including the tail (%#)',
     async (animationPlayback) => {
-    const base = buildProjectWithAnimation();
-    const shot = base.shots[0]!;
-    const animationLayer = {
-      id: IDS.animationLayer,
-      name: 'test animation',
-      source: { kind: 'animation' as const, animationId: IDS.animation },
-      startTimeMs: 1_000,
-      animationPlayback,
-      anchor: 'center' as const,
-      x: 700,
-      y: 500,
-      scaleX: 1,
-      scaleY: 1,
-      rotationDeg: 0,
-      opacity: 1,
-      visible: true,
-      locked: false,
-      flipX: false,
-      zIndex: 3,
-    };
-    const project = ProjectSchema.parse({
-      ...base,
-      shots: [{ ...shot, layers: [...shot.layers, animationLayer] }],
-    });
-    const fixture = await harness({ project });
-    const selection = await selectOutput(fixture, 'animation-not-exported.mp4');
-    const outputPath = path.join(fixture.outputDirectory, 'animation-not-exported.mp4');
-    const sentinel = 'existing MP4 must remain untouched while animation export is blocked';
-    await writeFile(outputPath, sentinel, 'utf8');
-    const createSnapshot = vi.spyOn(fixture.fileStore, 'create');
+      const media = new Map<string, Uint8Array>();
+      const base = projectWithMedia(media);
+      const template = buildProjectWithAnimation().animations[0]!;
+      const image = base.assets.find((asset) => asset.kind === 'image')!;
+      const frameDurationMs = 1_000 / 30;
+      const frames = Array.from({ length: 60 }, (_, ordinal) => {
+        const id = `10000000-0000-4000-8000-${(1_000 + ordinal).toString().padStart(12, '0')}`;
+        const bytes = Buffer.from('frame:' + ordinal);
+        media.set(id, bytes);
+        const sha256 = hash(bytes);
+        const asset = { ...image, id, sha256, relativePath: `assets/long-${ordinal}.png` };
+        const frame = {
+          ...template.frames[0]!,
+          ordinal, sourceFrameIndex: ordinal, assetId: id, sha256,
+          startMs: ordinal * frameDurationMs, durationMs: frameDurationMs,
+        };
+        return { asset, frame };
+      });
+      const shot = base.shots[0]!;
+      const project = new LayerService().createFromAnimation(ProjectSchema.parse({
+        ...base,
+        assets: [...base.assets, ...frames.map(({ asset }) => asset)],
+        animations: [{
+          ...template,
+          source: { ...template.source, targetKind: 'scene', startFrameIndex: 0, endFrameIndex: 59, sourceFps: 30 },
+          frames: frames.map(({ frame }) => frame),
+          durationMs: 2_000,
+        }],
+      }), shot.id, {
+        animationId: template.id,
+        startTimeMs: 800,
+        position: { x: 700, y: 500 },
+        playback: animationPlayback,
+      }).project;
+      expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
 
-    const result = await fixture.service.prepare(
-      requestFor(fixture, selection.selectionId),
-    );
-
-    expect(result.status).toBe('BLOCK');
-    if (result.status !== 'BLOCK') return;
-    expect(result.issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          problem: '当前版本暂不支持镜头动画导出',
-        }),
-      ]),
-    );
-    expect(createSnapshot).not.toHaveBeenCalled();
-    expect(await readDirectoryOrEmpty(path.join(fixture.root, 'snapshots')))
-      .toEqual([]);
-    expect(await readFile(outputPath, 'utf8')).toBe(sentinel);
+      const fixture = await harness({ project, media });
+      const selection = await selectOutput(fixture, 'long-animation.mp4');
+      const result = await fixture.service.prepare(requestFor(fixture, selection.selectionId));
+      expect(result.status).toBe('PREPARATION_READY');
+      if (result.status !== 'PREPARATION_READY') return;
+      const captured = new Set(result.candidate.mediaManifest.map((entry) => entry.assetId));
+      expect(frames.filter(({ asset }) => captured.has(asset.id))).toHaveLength(60);
     },
   );
 

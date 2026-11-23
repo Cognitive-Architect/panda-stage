@@ -125,9 +125,13 @@ export class FLAParser {
     const parsedFrameRate = rawFrameRate === null || rawFrameRate.trim() === ''
       ? Number.NaN
       : Number(rawFrameRate);
-    const frameRate = Number.isFinite(parsedFrameRate) && parsedFrameRate > 0
-      ? parsedFrameRate
-      : 0;
+    // Animate omits its default 24 FPS attribute when saving modern FLA files.
+    // Keep the unknown-rate behavior for incomplete or explicitly invalid data.
+    const omittedAnimateRate = rawFrameRate === null &&
+      root.getAttribute('creatorInfo') === 'Adobe Animate' &&
+      /^Saved by Animate\b/u.test(root.getAttribute('versionInfo') ?? '');
+    const frameRate = omittedAnimateRate ? 24
+      : Number.isFinite(parsedFrameRate) && parsedFrameRate > 0 ? parsedFrameRate : 0;
     const backgroundColor = root.getAttribute('backgroundColor') || '#FFFFFF';
 
     // Parse symbol references and load them
@@ -693,7 +697,7 @@ export class FLAParser {
       // Duration must be at least 1 to avoid division by zero in tween calculations
       const duration = Math.max(1, parseInt(frameEl.getAttribute('duration') || '1') || 1);
       const keyMode = parseInt(frameEl.getAttribute('keyMode') || '0');
-      const tweenType = frameEl.getAttribute('tweenType') as 'motion' | 'shape' | undefined;
+      const tweenType = frameEl.getAttribute('tweenType');
       const acceleration = frameEl.getAttribute('acceleration');
 
       // Motion tween properties
@@ -719,7 +723,8 @@ export class FLAParser {
         index,
         duration,
         keyMode,
-        tweenType: tweenType || 'none',
+        tweenType: tweenType === 'motion' || tweenType === 'shape' || tweenType === 'motion object'
+          ? tweenType : 'none',
         acceleration: acceleration ? parseInt(acceleration) : undefined,
         elements,
         tweens,

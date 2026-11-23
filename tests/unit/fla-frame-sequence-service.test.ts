@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   FlaFrameSequenceService,
   type SequenceFrameInput,
 } from '../../src/main/services/fla-frame-sequence-service';
 import {
   FLA_FRAME_SEQUENCE_LIMITS,
+  FlaFrameSequenceProgressSchema,
   FlaFrameSequenceResponseSchema,
   type FlaFrameSequenceRange,
 } from '../../src/shared/fla-frame-sequence-api';
@@ -133,6 +134,20 @@ const SEQ_REQ = '00000000-0000-4000-8000-0000000000aa';
 // ---- Tests ----
 
 describe('R2-C sequence service: deterministic sequential rendering', () => {
+  it('preserves frame-local warnings on the sequence preview contract', async () => {
+    const service = new FlaFrameSequenceService({ rasterizer: new FakeRasterizer() });
+    const warnings = { maskWarning: 'Mask failed closed', ikPoseWarning: 'Armature: frame 1' };
+    const [first, second] = frames(2);
+    const result = FlaFrameSequenceResponseSchema.parse(await service.renderSequence(
+      SESSION_ID, makeRange(0, 1), [{ ...first!, ...warnings }, second!], { sequenceRequestId: SEQ_REQ },
+    ));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0]!.preview).toMatchObject(warnings);
+    expect(result.items[1]!.preview.ikPoseWarning).toBeUndefined();
+    expect(result.items[1]!.preview.maskWarning).toBeUndefined();
+  });
+
   it('returns a schema-valid success with the selected target identity', async () => {
     const rasterizer = new FakeRasterizer();
     const service = new FlaFrameSequenceService({ rasterizer });
@@ -303,6 +318,47 @@ describe('R2-C sequence service: budget enforcement (R2-B)', () => {
       expect(r.error.code).toBe('SEQUENCE_TIMEOUT');
       expect(r.error.completedFrameCount).toBe(1);
     }
+  });
+
+  it('does not confirm a range when its final raster finishes after the deadline', async () => {
+    const rasterizer = new FakeRasterizer();
+    rasterizer.autoResolve = false;
+    let time = 0;
+    const service = new FlaFrameSequenceService({ rasterizer, now: () => time });
+    const render = service.renderSequence(SESSION_ID, makeRange(0, 0), frames(1), { sequenceRequestId: SEQ_REQ });
+    await flush();
+    time = FLA_FRAME_SEQUENCE_LIMITS.sequenceTimeoutMs + 1;
+    rasterizer.release(`${SEQ_REQ}/frame-0`);
+    await expect(render).resolves.toMatchObject({ ok: false, error: { code: 'SEQUENCE_TIMEOUT' } });
+    expect(service.latestAcceptedFor(SESSION_ID)).toBeNull();
+  });
+
+  it('settles and cancels a still-running raster at the sequence deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const rasterizer = new FakeRasterizer();
+      rasterizer.autoResolve = false;
+      const service = new FlaFrameSequenceService({ rasterizer });
+      const render = service.renderSequence(SESSION_ID, makeRange(0, 0), frames(1), { sequenceRequestId: SEQ_REQ });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(rasterizer.activeCount).toBe(1);
+      await vi.advanceTimersByTimeAsync(FLA_FRAME_SEQUENCE_LIMITS.sequenceTimeoutMs);
+      await expect(render).resolves.toMatchObject({ ok: false, error: { code: 'SEQUENCE_TIMEOUT' } });
+      expect(rasterizer.activeCount).toBe(0);
+      expect(service.latestAcceptedFor(SESSION_ID)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([[0, 1], [0, 1, 3], [0, 1, 2, 3]])('never confirms incomplete, wrong, or extra frames (%j)', async (...indices) => {
+    const service = new FlaFrameSequenceService({ rasterizer: new FakeRasterizer() });
+    const result = await service.renderSequence(
+      SESSION_ID, makeRange(0, 2), indices.map((frameIndex) => ({ frameIndex, svg: '<svg/>' })),
+      { sequenceRequestId: SEQ_REQ },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'RENDER_FAILED' } });
+    expect(service.getConfirmedSequence(SEQ_REQ)).toBeNull();
   });
 });
 
@@ -567,9 +623,28 @@ describe('R2-B real per-frame progress (Corrective #296)', () => {
     const unsub = service.subscribe((p) => {
       lastTotal = p.totalFrameCount;
     });
-    await service.renderSequence(SESSION_ID, makeRange(3, 6), frames(4), { sequenceRequestId: SEQ_REQ });
+    await service.renderSequence(SESSION_ID, makeRange(3, 6), frames(4).map((frame) => ({
+      ...frame, frameIndex: frame.frameIndex + 3,
+    })), { sequenceRequestId: SEQ_REQ });
     unsub();
     expect(lastTotal).toBe(4);
+  });
+
+  it('renders all 256 frames in order and validates progress at high source indices', async () => {
+    const rasterizer = new FakeRasterizer();
+    rasterizer.defaultOutput = { width: 12, height: 12, pixelCount: 144 };
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const selected = frames(256).map((frame) => ({ ...frame, frameIndex: frame.frameIndex + 300 }));
+    const progress: unknown[] = [];
+    service.subscribe((event) => { progress.push(event); });
+    const result = await service.renderSequence(SESSION_ID, makeRange(300, 555), selected, { sequenceRequestId: SEQ_REQ });
+    expect(FlaFrameSequenceResponseSchema.parse(result)).toMatchObject({ ok: true });
+    expect(service.getConfirmedSequence(SEQ_REQ)?.map((frame) => frame.frameIndex)).toEqual(selected.map((frame) => frame.frameIndex));
+    expect(progress).toHaveLength(256);
+    expect(FlaFrameSequenceProgressSchema.parse(progress.at(-1))).toMatchObject({
+      totalFrameCount: 256, completedFrameCount: 256, currentFrameIndex: 555,
+    });
+    expect(rasterizer.peakActive).toBe(1);
   });
 
   it('progress never reports more completed frames than the total', async () => {

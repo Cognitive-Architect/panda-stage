@@ -249,6 +249,20 @@ export class CanvasImageResourceSession {
     if (stateChanged) this.emit();
   }
 
+  retryMissing(
+    contextKey: string,
+    projectRoot: string,
+    assetIds: ReadonlySet<string>,
+  ): void {
+    if (this.disposed || this.contextKey !== contextKey) return;
+    for (const assetId of this.missing) {
+      const hash = this.currentSources.get(assetId);
+      if (hash && assetIds.has(assetId)) {
+        this.ensureResource(projectRoot, assetId, hash);
+      }
+    }
+  }
+
   getSnapshot(): CanvasImageState {
     const images = new Map<string, HTMLImageElement>();
     const sourceKeys = new Map<string, string>();

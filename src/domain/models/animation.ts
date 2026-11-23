@@ -3,7 +3,8 @@ import { IdSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicStructureV1Schema } from './flaGraphicStructure';
 
-export const ANIMATION_MAX_FRAMES = 24;
+const ANIMATION_V22_MAX_FRAMES = 24;
+export const ANIMATION_MAX_FRAMES = 256;
 export const FLA_GRAPHIC_MAX_FRAMES = 256;
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -141,10 +142,10 @@ function validateAnimationDefinition(
     }
 }
 
-const AnimationDefinitionV22Schema = z
+export const AnimationDefinitionV22Schema = z
   .object({
     ...AnimationDefinitionShape,
-    frames: z.array(AnimationFrameV22Schema).min(1).max(ANIMATION_MAX_FRAMES),
+    frames: z.array(AnimationFrameV22Schema).min(1).max(ANIMATION_V22_MAX_FRAMES),
   })
   .strict()
   .superRefine(validateAnimationDefinition);
@@ -191,15 +192,25 @@ export const ProjectAnimationDefinitionV22Schema = z.union([
 ]);
 
 export const AnimationFrameSchema = AnimationFrameV22Schema;
-export const AnimationDefinitionSchema = AnimationDefinitionV22Schema;
+export const AnimationDefinitionSchema = z
+  .object({
+    ...AnimationDefinitionShape,
+    frames: z.array(AnimationFrameSchema).min(1).max(ANIMATION_MAX_FRAMES),
+  })
+  .strict()
+  .superRefine(validateAnimationDefinition);
 export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionBaseObject
   .extend({
     flaGraphicSharedShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
   })
   .strict()
   .superRefine(validateFlaGraphicDefinition);
-export const ProjectAnimationDefinitionSchema = z.union([
+export const ProjectAnimationDefinitionLegacyCapacitySchema = z.union([
   AnimationDefinitionV22Schema,
+  FlaGraphicDefinitionSchema,
+]);
+export const ProjectAnimationDefinitionSchema = z.union([
+  AnimationDefinitionSchema,
   FlaGraphicDefinitionSchema,
 ]);
 

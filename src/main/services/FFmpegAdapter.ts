@@ -21,6 +21,8 @@ import {
 } from '../../shared/ffmpeg-types';
 import { formatFrameFileName } from '../../shared/export-types';
 
+import { MAX_MOUTH_POSE_ANALYSIS_MS, MOUTH_POSE_SAMPLE_RATE } from '../../shared/mouth-pose-analysis-api';
+
 const FRAME_FILE_PATTERN = /^frame_(\d{6,})\.png$/;
 const MAX_CAPTURED_OUTPUT_CHARS = 256_000;
 
@@ -865,6 +867,19 @@ export class FFmpegAdapter {
       ),
       raw,
     };
+  }
+
+  async decodeMouthPosePcm(input: string, output: string, startMs: number, durationMs: number, signal: AbortSignal): Promise<void> {
+    if (!Number.isSafeInteger(startMs) || startMs < 0 || !Number.isSafeInteger(durationMs) ||
+        durationMs <= 0 || durationMs > MAX_MOUTH_POSE_ANALYSIS_MS) throw new Error('Invalid mouth-pose audio range.');
+    signal.throwIfAborted();
+    const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-n',
+      '-ss', String(startMs / 1000), '-i', input, '-t', String(durationMs / 1000),
+      '-map', '0:a:0', '-ac', '1', '-ar', String(MOUTH_POSE_SAMPLE_RATE),
+      '-c:a', 'pcm_s16le', '-f', 's16le', output];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    signal.throwIfAborted();
+    if (result.code !== 0) throw new Error('Could not decode the selected voice audio.');
   }
 
   async analyzeAudioTiming(

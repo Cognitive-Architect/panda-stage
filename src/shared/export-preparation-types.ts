@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
+import { DialogueSilenceSchema } from './dialogue-silence';
 import supportSource from './export-preparation-support-source.json';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION = supportSource.version;
@@ -158,6 +159,7 @@ export const ExportPreparationRequestSchema = z
     revision: RevisionSchema,
     dirty: z.boolean(),
     cameraMode: ExportPreparationCameraModeSchema,
+    dialogueSilence: DialogueSilenceSchema.optional(),
     project: z.unknown(),
   })
   .strict();
@@ -346,6 +348,7 @@ export const ExportPreparationCandidateSchema = z
       })
       .strict(),
     cameraMode: ExportPreparationCameraModeSchema,
+    dialogueSilence: DialogueSilenceSchema.optional(),
     supportProfileVersion: z.literal(
       EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION,
     ),

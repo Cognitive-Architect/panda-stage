@@ -1,3 +1,4 @@
+import { MouthPoseAnalysisCancelSchema, MouthPoseAnalysisRequestSchema, MouthPoseAnalysisResponseSchema, type MouthPoseAnalysisRequest } from '../shared/mouth-pose-analysis-api';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { ProjectSchema } from '../domain';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
@@ -31,11 +32,14 @@ import {
   type AssetCanvasImageReadRequest,
 } from '../shared/asset-canvas-image-api';
 import {
+  AssetDialogueSilenceRequestSchema,
+  type AssetDialogueSilenceRequest,
   AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   type AssetPreviewAudioReadRequest,
 } from '../shared/asset-preview-audio-api';
+import { DialogueSilenceIntervalsSchema } from '../shared/dialogue-silence';
 import {
   AppPingRequestSchema,
   AppPingResponseSchema,
@@ -343,6 +347,18 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return AssetPreviewAudioReadResponseSchema.parse(response);
+    },
+    analyzeMouthPoses: async (payload: MouthPoseAnalysisRequest) => {
+      const request = MouthPoseAnalysisRequestSchema.parse(payload);
+      return MouthPoseAnalysisResponseSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS, request));
+    },
+    cancelMouthPoseAnalysis: async (requestId: string) => {
+      await ipcRenderer.invoke(IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL, MouthPoseAnalysisCancelSchema.parse({ requestId }));
+    },
+    analyzeDialogueSilence: async (rawRequest: AssetDialogueSilenceRequest) => {
+      const request = AssetDialogueSilenceRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE, request);
+      return DialogueSilenceIntervalsSchema.nullable().parse(response);
     },
     getAudioInfo: async (rawRequest: AssetPreviewAudioReadRequest) => {
       const request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);

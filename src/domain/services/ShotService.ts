@@ -109,6 +109,7 @@ export class ShotService {
         this.nextUniqueId(usedIds),
       ]),
     );
+    const dialogueIds = new Map(source.dialogues.map((dialogue) => [dialogue.id, this.nextUniqueId(usedIds)]));
     const duplicate: Shot = {
       ...source,
       id: this.nextUniqueId(usedIds),
@@ -131,7 +132,7 @@ export class ShotService {
       })),
       dialogues: source.dialogues.map((dialogue) => ({
         ...dialogue,
-        id: this.nextUniqueId(usedIds),
+        id: dialogueIds.get(dialogue.id)!,
         audioClipId:
           dialogue.audioClipId === undefined
             ? undefined
@@ -141,6 +142,7 @@ export class ShotService {
         ...event,
         id: this.nextUniqueId(usedIds),
         layerId: layerIds.get(event.layerId)!,
+        ...(event.type === 'mouth-pose' && event.dialogueId ? { dialogueId: dialogueIds.get(event.dialogueId)! } : {}),
       })),
     };
     const shots = [...project.shots];
@@ -270,7 +272,10 @@ export class ShotService {
       ...project.characters.flatMap((character) => [
         character.id,
         ...(character.mode === 'adaptive-parts'
-          ? character.parts.map((part) => part.partId)
+          ? [
+              ...character.parts.map((part) => part.partId),
+              ...(character.expressions ?? []).map((expression) => expression.id),
+            ]
           : character.expressions.map((expression) => expression.id)),
       ]),
       ...project.voiceProfiles.map((profile) => profile.id),

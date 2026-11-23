@@ -17,8 +17,7 @@
  *         single-job-at-a-time invariant, so a misuse here would
  *         fail at the R1 boundary.
  *   R2-B: per-frame wall timeout inherits from R1 (30_000 ms).
- *   R2-B: cumulative sequence wall timeout
- *         (= MAX_SEQUENCE_FRAMES * perFrameTimeoutMs = 720_000 ms).
+ *   R2-B: cumulative sequence wall timeout of 720_000 ms.
  *   R2-B: cumulative pixel cap
  *         (= MAX_SEQUENCE_TOTAL_PIXELS = 402_653_184 pixels).
  *   R2-B: cumulative encoded-bytes cap
@@ -100,6 +99,8 @@ export interface SequenceFrameInput {
   svg: string;
   /** Source-space crop used by the renderer to frame this particular PNG. */
   sourceViewport?: { x: number; y: number; width: number; height: number };
+  maskWarning?: string;
+  ikPoseWarning?: string;
 }
 
 export type SequenceFrameSource = AsyncIterable<SequenceFrameInput> | Iterable<SequenceFrameInput>;
@@ -146,6 +147,8 @@ interface SequenceInFlightItem {
   frameIndex: number;
   sequenceOrdinal: number;
   sourceViewport?: { x: number; y: number; width: number; height: number };
+  maskWarning?: string;
+  ikPoseWarning?: string;
   rasterOutput: FlaStaticSnapshotRasterizeOutput;
   frameWallClockMs: number;
   receivedAt: number;
@@ -271,7 +274,7 @@ export class FlaFrameSequenceService {
     // session. The previous sequence's promise is settled as
     // SEQUENCE_CANCELLED with its current completedFrameCount.
     const previous = this.inFlight.get(sessionId);
-    if (previous && previous.sequenceRequestId !== requestId) {
+    if (previous) {
       this.settleInFlightAsCancelled(previous, 'Sequence superseded by a newer request for the same session');
     }
 
@@ -293,7 +296,19 @@ export class FlaFrameSequenceService {
       sequence.resolve = resolve;
     });
     this.inFlight.set(sessionId, sequence);
+    const deadline = setTimeout(() => this.settleInFlightAsFailed(
+      sequence, 'SEQUENCE_TIMEOUT', `Sequence exceeded ${this.limits.sequenceTimeoutMs}ms`,
+    ), this.limits.sequenceTimeoutMs);
+    void this.renderFrames(sequence, range, source);
+    return responsePromise.finally(() => clearTimeout(deadline));
+  }
 
+  private async renderFrames(
+    sequence: SequenceInFlight,
+    range: FlaFrameSequenceRange,
+    source: SequenceFrameSource,
+  ): Promise<void> {
+    const { sequenceRequestId: requestId, sessionId, totalFrames } = sequence;
     // Iterate frames sequentially. The for-of loop is the only
     // place frames are started. R2-C: deterministic order.
     try {
@@ -311,25 +326,20 @@ export class FlaFrameSequenceService {
           break;
         }
 
-        // R2-B: cumulative sequence wall-time cap. The check is
-        // BEFORE the raster call so a sequence that has been
-        // running for sequenceTimeoutMs is rejected on the next
-        // frame rather than after the frame completes.
+        // Also check the elapsed time after synchronous source work.
         const elapsedMs = this.now() - sequence.startedAt;
         if (elapsedMs > this.limits.sequenceTimeoutMs) {
           this.settleInFlightAsFailed(sequence, 'SEQUENCE_TIMEOUT', `Sequence exceeded sequenceTimeoutMs=${this.limits.sequenceTimeoutMs}ms after ${elapsedMs}ms`);
           break;
         }
 
-        // R2-B: cumulative pixel cap. Check BEFORE raster so we do
-        // not allocate another frame once the limit is reached.
-        if (sequence.cumulativePixelCount > this.limits.MAX_SEQUENCE_TOTAL_PIXELS) {
-          this.settleInFlightAsFailed(sequence, 'BUDGET_EXCEEDED', `Cumulative pixel count ${sequence.cumulativePixelCount} exceeds MAX_SEQUENCE_TOTAL_PIXELS=${this.limits.MAX_SEQUENCE_TOTAL_PIXELS}`);
+        const ordinal = sequence.items.length;
+        if (ordinal >= totalFrames || frame.frameIndex !== range.startFrameIndex + ordinal) {
+          this.settleInFlightAsFailed(sequence, 'RENDER_FAILED', 'Frame source did not match the requested inclusive range.');
           break;
         }
 
-        sequence.currentOrdinal += 1;
-        const ordinal = sequence.currentOrdinal;
+        sequence.currentOrdinal = ordinal;
         const frameRequestId = `${requestId}/frame-${ordinal}`;
         sequence.currentFrameRequestId = frameRequestId;
         const frameStartAt = this.now();
@@ -386,6 +396,8 @@ export class FlaFrameSequenceService {
           frameIndex: frame.frameIndex,
           sequenceOrdinal: ordinal,
           ...(frame.sourceViewport ? { sourceViewport: frame.sourceViewport } : {}),
+          maskWarning: frame.maskWarning,
+          ikPoseWarning: frame.ikPoseWarning,
           rasterOutput,
           frameWallClockMs,
           receivedAt: this.now(),
@@ -410,12 +422,14 @@ export class FlaFrameSequenceService {
       // error response. We do NOT throw.
     }
 
-    // If the loop exited without settling (e.g. normal completion),
-    // settle as success.
-    if (this.inFlight.get(sessionId) === sequence) {
+    if (this.inFlight.get(sessionId) !== sequence) return;
+    if (this.now() - sequence.startedAt > this.limits.sequenceTimeoutMs) {
+      this.settleInFlightAsFailed(sequence, 'SEQUENCE_TIMEOUT', `Sequence exceeded ${this.limits.sequenceTimeoutMs}ms`);
+    } else if (sequence.items.length !== totalFrames) {
+      this.settleInFlightAsFailed(sequence, 'RENDER_FAILED', 'Frame source ended before the requested range was complete.');
+    } else {
       this.settleInFlightAsSuccess(sequence);
     }
-    return responsePromise;
   }
 
   /**
@@ -505,6 +519,7 @@ export class FlaFrameSequenceService {
     }
     this.inFlight.delete(sequence.sessionId);
     sequence.resolve(makeError('SEQUENCE_CANCELLED', message, sequence.sequenceRequestId, sequence.items.length));
+    sequence.items.length = 0;
   }
 
   private settleInFlightAsFailed(sequence: SequenceInFlight, code: FlaFrameSequenceErrorCode, message: string): void {
@@ -515,6 +530,7 @@ export class FlaFrameSequenceService {
     }
     this.inFlight.delete(sequence.sessionId);
     sequence.resolve(makeError(code, message, sequence.sequenceRequestId, sequence.items.length));
+    sequence.items.length = 0;
   }
 
   private settleInFlightAsSuccess(sequence: SequenceInFlight): void {
@@ -566,6 +582,8 @@ export class FlaFrameSequenceService {
         width: it.rasterOutput.width,
         height: it.rasterOutput.height,
         pixelCount: it.rasterOutput.pixelCount,
+        ...(it.maskWarning ? { maskWarning: it.maskWarning } : {}),
+        ...(it.ikPoseWarning ? { ikPoseWarning: it.ikPoseWarning } : {}),
       };
       return {
         frameIndex: it.frameIndex,

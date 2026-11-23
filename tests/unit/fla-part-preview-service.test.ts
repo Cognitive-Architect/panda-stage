@@ -1334,11 +1334,8 @@ describe('F1-02 Main part preview service', () => {
     previewService.close();
   });
 
-  it.each([
-    ['visible-text', 'Visible display content is outside the supported static preview subset'],
-    ['empty-mask', 'Mask layer has no filled vector-shape items'],
-  ] as const)('fails closed for %s in the production display-source path', async (sceneKind, expectedReason) => {
-    const data = await fixture(true, sceneKind);
+  it('fails closed for visible text in the production display-source path', async () => {
+    const data = await fixture(true, 'visible-text');
     const { calls, previewService } = rasterizerFor(data);
     const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
 
@@ -1348,10 +1345,22 @@ describe('F1-02 Main part preview service', () => {
     if (response.ok) throw new Error('Expected unsupported display content to be rejected');
     expect(response).toMatchObject({ capability: 'UNSUPPORTED' });
     expect(response.error.code).toBe('UNSUPPORTED_SOURCE');
-    expect(response.error.message).toContain(expectedReason);
+    expect(response.error.message).toContain('Visible display content is outside the supported static preview subset');
     expect(response).not.toHaveProperty('partPreviews');
     expect(calls).toHaveLength(0);
     expect(previewService.getPlan('any-plan-id', SESSION_ID, 1)).toBeNull();
+    previewService.close();
+  });
+
+  it('previews the content of an authored blank mask as Animate exports it', async () => {
+    const data = await fixture(true, 'empty-mask');
+    const { calls, previewService } = rasterizerFor(data);
+    const response = await previewService.preview({
+      ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(response.ok).toBe(true);
+    expect(calls[0]?.svg).toContain('#f03a55');
+    expect(calls[0]?.svg).not.toContain('<clipPath');
     previewService.close();
   });
 

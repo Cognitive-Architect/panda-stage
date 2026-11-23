@@ -1543,6 +1543,7 @@ describe('FLA Shape S3-A / S3-B region extraction and vector editing', () => {
         projectRoot: '',
         characterId: char.id,
         selectedPartId: char.parts[1]?.partId ?? null,
+        selectedPartIds: char.parts[1] ? [char.parts[1].partId] : [],
         draft: {
           sourceRootTransform: char.sourceRootTransform,
           parts: char.parts,
