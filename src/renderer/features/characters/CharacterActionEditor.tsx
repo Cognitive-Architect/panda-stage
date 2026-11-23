@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import type { Character, CharacterAction, CharacterActionDraft, Project } from '../../../domain';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
-import { AnimationPreview } from '../assets/AnimationLibraryPanel';
+import { AnimationPreview, matchesAnimationSearch } from '../assets/AnimationLibraryPanel';
 import './character-action-editor.css';
 
 interface CharacterActionEditorProps {
@@ -10,8 +10,8 @@ interface CharacterActionEditorProps {
   projectRoot: string | null;
   disabled: boolean;
   disabledReason?: string;
-  onSave: (draft: CharacterActionDraft) => CharacterAction | null;
-  onDelete: (actionId: string) => boolean;
+  onSave: (draft: CharacterActionDraft) => void;
+  onDelete: (actionId: string) => void;
 }
 
 /** Draft locally; only the Save action writes to the formal Project. */
@@ -48,10 +48,7 @@ export function CharacterActionEditor({
     lastFrame: resolveFlaGraphicPreviewTimeline(previewAnimation, true).totalFrames - 1,
   } : undefined, [previewAnimation]);
   const query = search.trim().toLocaleLowerCase('zh-CN');
-  const visibleAnimations = animations.filter((animation) =>
-    [animation.name, animation.source.basename, animation.source.targetName]
-      .some((value) => value.toLocaleLowerCase('zh-CN').includes(query)),
-  );
+  const visibleAnimations = animations.filter((animation) => matchesAnimationSearch(animation, query));
 
   if (!character || !project) return null;
 
@@ -92,13 +89,14 @@ export function CharacterActionEditor({
       return;
     }
     try {
-      const saved = onSave({
+      onSave({
         ...(editingId ? { id: editingId } : {}),
         name,
         animationId,
         placement: { offsetX: x, offsetY: y, scale: zoom },
       });
-      if (saved) { setEditing(false); setError(''); }
+      setEditing(false);
+      setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '无法保存动作。');
     }
@@ -163,7 +161,9 @@ export function CharacterActionEditor({
           {editingId ? <button type="button" disabled={disabled} onClick={() => {
             if (disabled) return;
             try {
-              if (onDelete(editingId)) { setEditing(false); setEditingId(null); }
+              onDelete(editingId);
+              setEditing(false);
+              setEditingId(null);
             } catch (cause) {
               setError(cause instanceof Error ? cause.message : '无法删除动作。');
             }

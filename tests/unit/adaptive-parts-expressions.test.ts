@@ -24,6 +24,10 @@ import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/cha
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { selectionStore } from '../../src/renderer/stores/selectionStore';
+import { shotStore } from '../../src/renderer/stores/shotStore';
+import { RightInspector } from '../../src/renderer/shell/RightInspector';
+import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { faceSource, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from './domain/testProject';
 
@@ -259,6 +263,19 @@ it('registers the first action from the character list and protects a pending as
   expect(btn('删除', library).disabled).toBe(false);
   await act(async () => btn('删除', library).click());
   expect(editorProjectStore.getSnapshot()!.project.characters.find((entry) => entry.id === characterId)?.actions ?? []).toEqual([]);
+  await act(async () => {
+    editorProjectStore.undo();
+    characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()?.cancel();
+    shotStore.select(IDS.shot);
+    selectionStore.select(layerId);
+    timelineUiStore.seek(1_000, 3_000);
+    root.render(createElement(RightInspector, { embedded: true, shellMode: 'landscape' }));
+  });
+  const inspectorAction = container.querySelector('[data-testid="character-action-at-time"]')!;
+  expect(inspectorAction.querySelector('select')?.selectedOptions[0]?.textContent).toBe('挥手');
+  await act(async () => btn('添加动作', inspectorAction).click());
+  expect(editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents)
+    .toContainEqual(expect.objectContaining({ type: 'character-action', layerId, startMs: 1_000 }));
 });
 
 describe('Phase A: AdaptiveParts face binding & static expressions (#1211)', () => {

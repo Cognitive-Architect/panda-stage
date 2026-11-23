@@ -530,6 +530,11 @@ export function AnimationLibraryCard({
   );
 }
 
+export function matchesAnimationSearch(animation: ProjectAnimationDefinition, normalizedQuery: string): boolean {
+  return [animation.name, animation.source.basename, animation.source.targetName]
+    .some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
+}
+
 export function AnimationLibraryPanel({
   animations,
   project,
@@ -538,10 +543,7 @@ export function AnimationLibraryPanel({
 }: AnimationLibraryPanelProps): React.JSX.Element {
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('zh-CN');
   const visibleAnimations = useMemo(
-    () => animations.filter((animation) =>
-      [animation.name, animation.source.basename, animation.source.targetName]
-        .some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery)),
-    ),
+    () => animations.filter((animation) => matchesAnimationSearch(animation, normalizedQuery)),
     [animations, normalizedQuery],
   );
 

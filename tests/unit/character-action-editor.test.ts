@@ -6,7 +6,8 @@ import type { CharacterAction, CharacterActionDraft } from '../../src/domain';
 import { CharacterActionEditor } from '../../src/renderer/features/characters/CharacterActionEditor';
 import { buildProjectWithAnimation, IDS } from './domain/testProject';
 
-vi.mock('../../src/renderer/features/assets/AnimationLibraryPanel', () => ({
+vi.mock(import('../../src/renderer/features/assets/AnimationLibraryPanel'), async (importOriginal) => ({
+  ...await importOriginal(),
   AnimationPreview: () => createElement('div', { 'data-testid': 'animation-preview' }),
 }));
 

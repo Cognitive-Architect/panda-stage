@@ -37,13 +37,11 @@ export function CharacterActionLibrary({ snapshot, characterId }: {
     disabledReason={pending ? pendingMessage : undefined}
     onSave={(draft) => {
       guardMutation();
-      const updated = characterStore.setAction(characterId, draft).characters.find((entry) => entry.id === characterId);
-      return updated?.actions?.find((action) => draft.id ? action.id === draft.id : action.name === draft.name.trim()) ?? null;
+      characterStore.setAction(characterId, draft);
     }}
     onDelete={(actionId) => {
       guardMutation();
       characterStore.removeAction(characterId, actionId);
-      return true;
     }}
   />;
 }
