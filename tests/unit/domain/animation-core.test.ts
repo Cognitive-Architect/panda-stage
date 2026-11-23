@@ -4,7 +4,7 @@ import {
   AnimationTargetRefSchema, AnimationPropertySchema, LayerSchema,
   ProjectSchema, ProjectV20Schema, PROJECT_SCHEMA_VERSION,
   evaluateAnimationTrackAtTime, evaluateAnimationClipAtTime, migrateProject,
-  editAnimationPropertyKey,
+  editAnimationPropertyKey, editOpacityEventKey, evaluateShotAtTime,
   keySelectedAnimationTargets,
   retimeAnimationPropertyRange,
   type AnimationInterpolation,
@@ -13,6 +13,26 @@ import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
+  it('round-trips an opacity curve while preserving legacy interval evaluation', () => {
+    const { project, layerId } = animationCoreFixture();
+    const shot = project.shots[0]!;
+    const id = '71000000-0000-4000-8000-000000000003';
+    shot.timelineEvents.push({ id, layerId, type: 'opacity', startMs: 0, endMs: 1000,
+      from: 0, to: 1, easing: 'ease-in-out' });
+    const opacity = (snapshot: typeof project, timeMs: number) =>
+      evaluateShotAtTime(snapshot.shots[0]!, timeMs, snapshot).layers.find(layer => layer.id === layerId)?.opacity;
+    const migrated = migrateProject({ ...project, schemaVersion: 33 });
+    expect(opacity(migrated, 500)).toBeCloseTo(0.5);
+    const edited = editOpacityEventKey(migrated, shot.id, layerId, id, 0, {
+      curveToNext: { bezier: { x1: 1 / 3, y1: 0, x2: 2 / 3, y2: 1 / 3 } },
+    });
+    expect(() => migrateProject({ ...edited, schemaVersion: 33 })).toThrow();
+    const reloaded = migrateProject(JSON.parse(JSON.stringify(edited)));
+    expect(reloaded.shots[0]!.timelineEvents.at(-1)?.id).toBe(id);
+    expect(opacity(reloaded, 1000)).toBeCloseTo(1);
+    expect(opacity(reloaded, 500)).toBeCloseTo(0.25);
+    expect(opacity(reloaded, 0)).toBeCloseTo(0);
+  });
   it('moves, scales and extends hold for one property without moving surrounding keys', () => {
     const { project, clip, layerId } = animationCoreFixture();
     const track = clip.tracks[0]!;

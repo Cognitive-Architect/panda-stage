@@ -18,7 +18,7 @@ import {
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
 import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
-import { evaluateAnimationClipAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
+import { evaluateAnimationClipAtTime, evaluateAnimationEase, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
@@ -98,21 +98,12 @@ function interpolate(from: number, to: number, progress: number): number {
   return from + (to - from) * progress;
 }
 
-function ease(progress: number, easing: 'linear' | 'ease-in-out'): number {
-  if (easing === 'linear') {
-    return progress;
-  }
-  return progress < 0.5
-    ? 2 * progress * progress
-    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-}
-
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
 function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
-  if (event.type === 'scale' || event.type === 'opacity') {
+  if (event.type === 'scale') {
     return event.easing;
   }
   return 'linear';
@@ -532,7 +523,9 @@ export function evaluateLayerPreTrackState(
         : timeMs > event.endMs
           ? 1
           : (timeMs - event.startMs) / span;
-    const progress = ease(rawProgress, eventEasing(event));
+    const progress = event.type === 'opacity'
+      ? evaluateAnimationEase(rawProgress, event.easing, event.curveToNext)
+      : evaluateAnimationEase(rawProgress, eventEasing(event));
 
     switch (event.type) {
       case 'scale': {

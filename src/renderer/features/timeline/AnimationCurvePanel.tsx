@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
-  animationTargetIdentity, editAnimationPropertyKey, evaluateAnimationEase, keySelectedAnimationTargets,
+  animationTargetIdentity, editAnimationPropertyKey, editOpacityEventKey, evaluateAnimationEase, keySelectedAnimationTargets,
   resolveTimelineFrameTime, retimeAnimationPropertyRange,
   type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type Shot,
-  type AnimationTargetRef,
+  type AnimationTargetRef, type AnimationTrack,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -19,6 +19,7 @@ const presets: Readonly<Record<AnimationInterpolation, string>> = {
 const properties = {
   'transform.offsetX': '位置 X', 'transform.offsetY': '位置 Y',
   'transform.scaleX': '缩放 X', 'transform.scaleY': '缩放 Y', 'transform.rotationDeg': '旋转',
+  opacity: '透明度',
 };
 const defaults: AnimationBezier = { x1: 1 / 3, y1: 1 / 3, x2: 2 / 3, y2: 2 / 3 };
 const chart = { left: 20, top: 14, width: 280, height: 100 };
@@ -34,6 +35,12 @@ type Drag = {
   handles: AnimationBezier;
   draft?: AnimationCurveDraft;
 };
+type CurveTrack = AnimationTrack | {
+  property: 'opacity';
+  target: AnimationTargetRef;
+  eventId: string;
+  keys: AnimationKey[];
+};
 
 export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }: {
   snapshot: EditorProjectSnapshot;
@@ -42,7 +49,17 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   onDraft?: (draft: AnimationCurveDraft | null) => void;
   onClose: () => void;
 }): React.JSX.Element {
-  const tracks = layer.animationClip?.tracks ?? [];
+  const tracks: CurveTrack[] = [...(layer.animationClip?.tracks ?? [])];
+  for (const event of shot.timelineEvents) {
+    if (event.layerId !== layer.id || event.type !== 'opacity' || event.endMs <= event.startMs) continue;
+    tracks.push({
+      property: 'opacity', target: { kind: 'layer', layerId: layer.id }, eventId: event.id,
+      keys: [
+        { timeMs: event.startMs, value: event.from, interpolationToNext: event.easing, curveToNext: event.curveToNext },
+        { timeMs: event.endMs, value: event.to, interpolationToNext: 'linear' },
+      ],
+    });
+  }
   const [trackId, setTrackId] = useState('');
   const [keyTime, setKeyTime] = useState(0);
   const [handles, setHandles] = useState<AnimationBezier>();
@@ -56,7 +73,8 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const instance = editorProjectStore.getProjectInstanceId();
-  const trackKey = (entry: (typeof tracks)[number]) => JSON.stringify([entry.property, animationTargetIdentity(entry.target)]);
+  const trackKey = (entry: CurveTrack) => entry.property === 'opacity' ? entry.eventId
+    : JSON.stringify([entry.property, animationTargetIdentity(entry.target)]);
   const track = tracks.find((entry) => trackKey(entry) === trackId) ?? tracks[0];
   const targets = layer.animationClip?.targetBases.map(({ target }) => target) ?? [];
   const selected = targets.filter((target) => selectedTargets.includes(animationTargetIdentity(target)));
@@ -106,6 +124,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
 
   function edit(change: Partial<AnimationKey>, project = snapshot.project) {
     if (!key || !track) return project;
+    if (track.property === 'opacity') return editOpacityEventKey(project, shot.id, layer.id, track.eventId, key.timeMs, change);
     return editAnimationPropertyKey(project, {
       shotId: shot.id, target: track.target, property: track.property, keyTimeMs: key.timeMs,
     }, change);
@@ -182,7 +201,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
 
   function retime(): void {
     const state = current();
-    if (!state || !track) return;
+    if (!state || !track || track.property === 'opacity') return;
     try {
       const project = retimeAnimationPropertyRange(state.project,
         { shotId: shot.id, target: track.target, property: track.property },
@@ -205,13 +224,14 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         <label>属性<select value={trackKey(track)} onChange={(event) => { cancel(); setTrackId(event.target.value); setKeyTime(0); }}>
           {tracks.map((entry) => <option key={trackKey(entry)} value={trackKey(entry)}>
             {targetLabel(entry.target)} · {properties[entry.property]}
+            {entry.property === 'opacity' ? ` ${formatTimecode(entry.keys[0]!.timeMs)}` : ''}
           </option>)}
         </select></label>
         <label>关键帧<select value={key.timeMs} onChange={(event) => { cancel(); setKeyTime(Number(event.target.value)); }}>
           {track.keys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
         </select></label>
         <label>帧时间 (ms)<input key={`time-${key.timeMs}`} type="number" min={0} max={shot.durationMs}
-          disabled={layer.locked || index === 0} defaultValue={key.timeMs} onBlur={(event) => {
+          disabled={layer.locked || (index === 0 && track.property !== 'opacity')} defaultValue={key.timeMs} onBlur={(event) => {
             if (event.target.value !== '') commit({ timeMs: resolveTimelineFrameTime(Number(event.target.value), shot.durationMs) });
           }} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} /></label>
         <label>值<input key={`value-${key.timeMs}-${key.value}`} type="number" step="any" disabled={layer.locked}
@@ -257,7 +277,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         在 {formatTimecode(currentTimeMs)} 落键
       </Button>
     </details> : null}
-    {rangeKeys.length > 1 ? <details className="animation-key-selection">
+    {rangeKeys.length > 1 && track?.property !== 'opacity' ? <details className="animation-key-selection">
       <summary>选段时间</summary>
       <div className="animation-curve-fields">
         <label>起始关键帧<select value={startMs} onChange={(event) => setRangeStart(Number(event.target.value))}>

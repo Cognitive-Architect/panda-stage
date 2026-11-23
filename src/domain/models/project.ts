@@ -52,6 +52,7 @@ import {
   ShotV28Schema,
   ShotV30Schema,
   ShotV32Schema,
+  ShotV33Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -717,13 +718,22 @@ export const ProjectV32Schema = ProjectV32DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV32DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
-  shots: z.array(ShotSchema),
+const ProjectV33DataSchema = ProjectV32DataSchema.extend({
+  schemaVersion: z.literal(33),
+  shots: z.array(ShotV33Schema),
   userMotionPresets: z.array(UserMotionPresetSchema).refine(
     uniquePresetIds,
     'User motion preset IDs must be unique.',
   ).optional(),
+});
+
+export const ProjectV33Schema = ProjectV33DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV33DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  shots: z.array(ShotSchema),
 });
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */

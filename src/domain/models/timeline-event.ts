@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnimationCurveSchema, AnimationInterpolationSchema } from './animationCore';
 import {
   FiniteNumberSchema,
   IdSchema,
@@ -135,22 +136,26 @@ export const TimelineEventV22Schema = z
 
 export const MoveEventSchema = MoveEventV22Schema;
 export const ScaleEventSchema = ScaleEventV22Schema;
-export const OpacityEventSchema = OpacityEventV22Schema;
+export const OpacityEventSchema = OpacityEventV22Schema.extend({
+  easing: AnimationInterpolationSchema.default('linear'),
+  curveToNext: AnimationCurveSchema.optional(),
+});
 export const ShakeEventSchema = ShakeEventV22Schema;
 export const ExpressionEventSchema = ExpressionEventV22Schema;
 export const FlipEventSchema = FlipEventV22Schema;
 export const VisibilityEventSchema = VisibilityEventV22Schema;
 
-const TimelineEventV26Options = [
+const timelineEventOptionsBeforeOpacity = [
     MoveEventV22Schema,
     ScaleEventV22Schema,
-    OpacityEventV22Schema,
     ShakeEventV22Schema,
     ExpressionEventV22Schema,
     FlipEventV22Schema,
     VisibilityEventV22Schema,
     MouthCueEventSchema,
 ] as const;
+
+const TimelineEventV26Options = [...timelineEventOptionsBeforeOpacity, OpacityEventV22Schema] as const;
 
 function validateRange(event: { startMs: number; endMs: number }, context: z.RefinementCtx) {
     if (event.endMs < event.startMs) {
@@ -215,8 +220,16 @@ export const GraphicFrameEventSchema = z.object({
   }
 });
 
-export const TimelineEventSchema = z.discriminatedUnion('type', [
+export const TimelineEventV33Schema = z.discriminatedUnion('type', [
   ...TimelineEventV28Options,
+  GraphicFrameEventSchema,
+]).superRefine(validateRange);
+
+export const TimelineEventSchema = z.discriminatedUnion('type', [
+  ...timelineEventOptionsBeforeOpacity,
+  OpacityEventSchema,
+  MouthPoseEventSchema,
+  CharacterActionEventSchema,
   GraphicFrameEventSchema,
 ]).superRefine(validateRange);
 

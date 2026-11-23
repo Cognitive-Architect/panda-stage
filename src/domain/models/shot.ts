@@ -17,7 +17,7 @@ import {
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
-import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema } from './timeline-event';
+import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema, TimelineEventV33Schema } from './timeline-event';
 
 const ShotIdentityShape = {
   id: IdSchema,
@@ -103,13 +103,18 @@ export const ShotV28Schema = ShotV20Schema.extend({
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotV30Schema = ShotV20Schema.extend({
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
   layers: z.array(LayerV30Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotV32Schema = ShotV20Schema.extend({
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
   layers: z.array(LayerV32Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV33Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
+  layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotSchema = ShotV20Schema.extend({

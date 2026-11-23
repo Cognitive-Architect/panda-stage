@@ -6,6 +6,7 @@ import {
   type AnimationTrack,
 } from '../models/animationCore';
 import { ProjectSchema, type Project } from '../models/project';
+import { OpacityEventSchema } from '../models/timeline-event';
 import { frameTimeMs, isValidFrameTime, TIMELINE_FPS } from '../timeline/frame-grid';
 
 export interface AnimationPropertyKeyAddress {
@@ -13,6 +14,31 @@ export interface AnimationPropertyKeyAddress {
   target: AnimationTargetRef;
   property: AnimationProperty;
   keyTimeMs: number;
+}
+
+/** Edit an endpoint of the existing opacity interval, preserving its event identity and ownership. */
+export function editOpacityEventKey(
+  project: Project, shotId: string, layerId: string, eventId: string, timeMs: number, change: Partial<AnimationKey>,
+): Project {
+  const shot = project.shots.find(({ id }) => id === shotId);
+  const layer = shot?.layers.find(({ id }) => id === layerId);
+  const event = shot?.timelineEvents.find((entry) => entry.id === eventId && entry.layerId === layerId);
+  if (!shot || !layer || layer.locked || event?.type !== 'opacity' || event.startMs >= event.endMs ||
+    (timeMs !== event.startMs && timeMs !== event.endMs)) throw new Error('所选透明度区段已不可编辑。');
+  const start = timeMs === event.startMs;
+  const next = OpacityEventSchema.parse({
+    ...event,
+    ...(start ? {
+      startMs: change.timeMs ?? event.startMs,
+      from: change.value ?? event.from,
+      easing: change.interpolationToNext ?? event.easing,
+      curveToNext: 'curveToNext' in change ? change.curveToNext : event.curveToNext,
+    } : { endMs: change.timeMs ?? event.endMs, to: change.value ?? event.to }),
+  });
+  if (next.startMs >= next.endMs || next.endMs > shot.durationMs) throw new Error('透明度起止必须在镜头内且保持顺序。');
+  if (JSON.stringify(next) === JSON.stringify(event)) return project;
+  return ProjectSchema.parse({ ...project, shots: project.shots.map((entry) => entry === shot
+    ? { ...shot, timelineEvents: shot.timelineEvents.map((item) => item === event ? next : item) } : entry) });
 }
 
 /** Edit exactly one authored property key. The renderer may evaluate this as a draft before a single commit. */

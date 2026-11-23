@@ -117,6 +117,8 @@ export function TimelineDock({
     : null;
   const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
   const motionLayer = shot?.layers.find(({ id }) => id === selectedLayerId);
+  const hasCurveTracks = Boolean(motionLayer && (motionLayer.animationClip?.tracks.length ||
+    shot?.timelineEvents.some((event) => event.layerId === motionLayer.id && event.type === 'opacity' && event.endMs > event.startMs)));
   const [curveOpen, setCurveOpen] = useState(false);
   const onAnimationCurveDraft = useContext(AnimationCurveDraftDispatch);
   const characters = snapshot?.project.characters ?? [];
@@ -343,7 +345,7 @@ export function TimelineDock({
           disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
           <Search aria-hidden="true" focusable="false" size={16} />
         </button>
-        {Boolean(motionLayer?.animationClip?.tracks.length) && !productPreviewOpen ? (
+        {hasCurveTracks && !productPreviewOpen ? (
           <button type="button" className="animation-curve-toggle" aria-label="属性曲线" title="属性曲线"
             aria-expanded={curveOpen && ui.expanded} onClick={() => {
               if (!ui.expanded) timelineUiStore.setExpanded(true);
@@ -402,7 +404,7 @@ export function TimelineDock({
           </button>
         </div>
       </header>
-      {curveOpen && ui.expanded && !productPreviewOpen && snapshot && shot && motionLayer?.animationClip?.tracks.length ? (
+      {curveOpen && ui.expanded && !productPreviewOpen && snapshot && shot && motionLayer && hasCurveTracks ? (
         <AnimationCurvePanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, motionLayer.id])}
           snapshot={snapshot} shot={shot} layer={motionLayer} onDraft={onAnimationCurveDraft} onClose={() => setCurveOpen(false)} />
       ) : null}
