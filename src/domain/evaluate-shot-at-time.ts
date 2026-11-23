@@ -9,6 +9,8 @@ import type {
   TimelineEvent,
 } from './models';
 import type { MouthCueEvent, MouthCueState } from './models/timeline-event';
+import { isFlaGraphicDefinition, type ProjectAnimationDefinition } from './models/animation';
+import { resolveFlaGraphicPreviewTimeline } from './selectors/animationSourceTimeline';
 import {
   collectFlaGraphicTimelineDurationMs,
   type FlaGraphicInternalTimeline,
@@ -167,6 +169,18 @@ export interface AnimationPlaybackFrameState<TFrame> {
   readonly internalTimeMs: number;
   readonly elapsedMs: number;
   readonly completedOnce: boolean;
+}
+
+function resolveCharacterActionHoldTimeMs(animation: ProjectAnimationDefinition): number {
+  const outerEnd = Math.max(0, animation.durationMs - 1);
+  if (!isFlaGraphicDefinition(animation) || animation.frames.length !== 1) return outerEnd;
+
+  const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+  if (!timeline.hasInternalTimeline) return outerEnd;
+  const lastFrame = timeline.sampleAtFrameIndex(timeline.totalFrames - 1);
+  // Sample the terminal authored pose so a nested Graphic does not wrap
+  // while the outer action is holding at the end of its source.
+  return Math.max(timeline.timelineDurationMs, lastFrame.internalTimeMs ?? 0);
 }
 
 /**
@@ -824,7 +838,7 @@ export function evaluateShotAtTime(
                 frameOrdinal: actionFrame.frame.ordinal,
                 internalTimeMs: Math.min(
                   actionFrame.internalTimeMs,
-                  Math.max(0, actionAnimation.durationMs - 1),
+                  resolveCharacterActionHoldTimeMs(actionAnimation),
                 ),
                 offset: actionFrame.frame.offset,
                 viewport: {

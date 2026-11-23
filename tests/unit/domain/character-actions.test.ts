@@ -17,6 +17,8 @@ import {
 } from '../../../src/domain';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
+import { buildStageRenderModel } from '../../../src/shared/stage/render-model';
+import { characterActionGraphicFixture } from '../../helpers/characterActionGraphicFixture';
 import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
 const action = {
@@ -218,5 +220,52 @@ describe('Character actions', () => {
 
     const removed = deleteCharacterActionEvent(withEvent, IDS.shot, IDS.layerChar, originalEvent.id);
     expect(removed.shots[0]!.timelineEvents).toHaveLength(0);
+  });
+
+  it('renders calibrated geometry and holds the terminal nested pose across all three surfaces', () => {
+    const project = characterActionGraphicFixture();
+    const shot = project.shots[0]!;
+    const original = structuredClone(shot.layers.find((layer) => layer.id === IDS.layerChar)!);
+    const second = { ...original, id: '72000000-0000-4000-8000-000000000003', x: 1000, zIndex: 99 };
+    shot.layers.push(second);
+    const assetUrls = Object.fromEntries(project.assets.map((asset) => [asset.id, 'file:///' + asset.relativePath]));
+    expect(listCharacterActionVisualAssetIds(project, shot)).toContain(IDS.assetChar2);
+
+    // Seek out of order, including the exclusive end and the held section.
+    for (const [timeMs, handX] of [[1_000, 100], [250, 0], [1_250, null], [500, 50], [0, null], [750, 100]] as const) {
+      const evaluated = evaluateShotAtTime(shot, timeMs, project);
+      const editor = buildEditorStageRenderModel(project, shot, evaluated).layers.find((entry) => entry.layer.id === original.id)!;
+      const preview = buildStageRenderModel(project, projectProductPreviewDialogue(project, shot, evaluated), assetUrls);
+      const output = buildStageRenderModel(project, evaluateExportShotAtTime(project, shot, timeMs), assetUrls);
+      const expectedGeometry = handX === null
+        ? { x: 600, y: 400, scaleX: -1, scaleY: 1, rotationDeg: 90 }
+        : { x: 588, y: 376, scaleX: -1.5, scaleY: 1.5, rotationDeg: 90 };
+      for (const entry of [
+        editor, preview.layers.find((layer) => layer.id === original.id)!,
+        output.layers.find((layer) => layer.id === original.id)!,
+      ]) {
+        expect(entry.render).toMatchObject({ id: original.id, ...expectedGeometry });
+        if (handX === null) {
+          expect(entry.visual?.kind).toBe('single-image-character');
+          continue;
+        }
+        expect(entry.visual?.kind).toBe('fla-graphic');
+        expect(entry.visual?.parts).toHaveLength(1);
+        const hand = entry.visual?.flaGraphic?.layers?.[0]?.nodes[0]?.children?.[0];
+        expect(hand?.worldTransform.tx).toBeCloseTo(handX);
+      }
+      expect(output.layers).toHaveLength(shot.layers.length);
+      expect(output.layers.find((layer) => layer.id === second.id)?.visual?.kind).toBe('single-image-character');
+    }
+    expect(shot.layers.find((layer) => layer.id === original.id)).toEqual(original);
+  });
+
+  it('keeps a static one-frame Graphic on its resting pose until the action ends', () => {
+    const project = characterActionGraphicFixture(false);
+    const shot = project.shots[0]!;
+    const held = evaluateShotAtTime(shot, 1_000, project).layers.find((layer) => layer.id === IDS.layerChar)!;
+    const visual = resolveLayerVisualParts(project, shot, held, 1_000);
+    expect(held.animationFrame?.frameOrdinal).toBe(0);
+    expect(visual.flaGraphic?.layers?.[0]?.nodes[0]?.children?.[0]?.worldTransform.tx).toBe(0);
   });
 });
