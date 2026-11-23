@@ -9,7 +9,7 @@ import {
 import { createPortal } from 'react-dom';
 import type { FlaInspectionResponse } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
-import type { FlaStaticSnapshotCommitResponse } from '../../shared/fla-static-snapshot-api';
+import type { FlaRenderableTargetCatalogEntry, FlaRenderTarget, FlaStaticSnapshotCommitResponse } from '../../shared/fla-static-snapshot-api';
 import type { FlaFrameSequenceCommitResponse } from '../../shared/fla-frame-sequence-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { reviewMedia } from './fla-review';
@@ -18,6 +18,7 @@ import {
   createFlaWorkbenchCandidates,
   formatFlaSingleModeSummary,
   focusFlaWorkbenchCandidate,
+  flaWorkbenchSnapshotIdentityKey,
   sortFlaWorkbenchCandidates,
   type FlaWorkbenchCandidate,
 } from './fla-workbench-candidates';
@@ -26,6 +27,7 @@ import {
   subscribeToFlaInspection,
   type FlaInspectionOperation,
 } from './fla-inspection-lifecycle';
+import { FlaSourceFrameSuggestions } from './FlaSourceFrameSuggestions';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
 import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTerminal';
@@ -90,6 +92,7 @@ export function FlaCompatibilityReviewSession({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rasterSelection, setRasterSelection] = useState(createFlaWorkbenchCandidateSelection);
   const [snapshotCandidates, setSnapshotCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
+  const [onDemandEntries, setOnDemandEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
   const [sequenceCandidates, setSequenceCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
   const [focusedCandidateIdentityKey, setFocusedCandidateIdentityKey] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -139,6 +142,7 @@ export function FlaCompatibilityReviewSession({
           setSessionId(nextResponse.sessionId);
           setRasterSelection(createFlaWorkbenchCandidateSelection());
           setSnapshotCandidates([]);
+          setOnDemandEntries([]);
           setSequenceCandidates([]);
           setFocusedCandidateIdentityKey(null);
           setSearchText('');
@@ -222,15 +226,18 @@ export function FlaCompatibilityReviewSession({
     })),
     [checkedCandidateKeys, focusedCandidateIdentityKey, rasterCandidates, snapshotCandidates, visibleSequenceCandidates],
   );
+  const onDemandKeys = useMemo(() => new Set(sessionId && ir
+    ? onDemandEntries.map(entry => flaWorkbenchSnapshotIdentityKey({ sessionId, source: ir.source }, entry))
+    : []), [sessionId, ir, onDemandEntries]);
   const workbenchCandidates = useMemo(() => {
     if (multiSelectMode) return unifiedCandidates;
     const sequenceTargets = new Set(visibleSequenceCandidates.map((candidate) =>
       candidate.provenance.renderTargetId,
     ));
     return unifiedCandidates.filter((candidate) => candidate.kind !== 'snapshot' ||
-      candidate.operation.target.frameCount <= 1 ||
+      onDemandKeys.has(candidate.identityKey) || candidate.operation.target.frameCount <= 1 ||
       !sequenceTargets.has(candidate.provenance.renderTargetId));
-  }, [multiSelectMode, unifiedCandidates, visibleSequenceCandidates]);
+  }, [multiSelectMode, onDemandKeys, unifiedCandidates, visibleSequenceCandidates]);
   const mainSceneRenderTargetId = useMemo(() => {
     const candidate = snapshotCandidates.find((item) =>
       item.kind === 'snapshot' &&
@@ -260,7 +267,7 @@ export function FlaCompatibilityReviewSession({
   const showSnapshotPreview = Boolean(focusedSnapshotCandidate &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable) &&
     !(focusedCandidate?.kind === 'sequence' && (!focusedCandidate.supported || focusedCandidate.blank || focusedCandidate.preview.status === 'error')));
-  const showSequencePreview = Boolean(focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
+  const showSequencePreview = Boolean(!onDemandKeys.has(focusedCandidateIdentityKey ?? '') && focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.preview.status === 'error'));
   const showGeneratedSequencePreview = focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable;
   const selectionLocked = unifiedImportRunning || graphicInstanceImporting || recoveryRequired;
@@ -270,11 +277,11 @@ export function FlaCompatibilityReviewSession({
 
   useEffect(() => {
     if (workbenchCandidates.length === 0 || catalogProgress.phase === 'loading') return;
-    if (focusedCandidateIdentityKey && workbenchCandidates.some((candidate) =>
+    if (focusedCandidateIdentityKey && (onDemandKeys.has(focusedCandidateIdentityKey) || workbenchCandidates.some((candidate) =>
       candidate.identityKey === focusedCandidateIdentityKey,
-    )) return;
+    ))) return;
     setFocusedCandidateIdentityKey(workbenchCandidates[0]?.identityKey ?? null);
-  }, [catalogProgress.phase, focusedCandidateIdentityKey, workbenchCandidates]);
+  }, [catalogProgress.phase, focusedCandidateIdentityKey, onDemandKeys, workbenchCandidates]);
 
   useEffect(() => {
     if (!ir) return undefined;
@@ -373,6 +380,33 @@ export function FlaCompatibilityReviewSession({
     } else if (candidate.kind === 'snapshot') {
       setSnapshotScanRequested(true);
     }
+  };
+  const focusSourceFrame = (target: FlaRenderTarget, frame: number, suggestedFrameName?: string): void => {
+    if (!ir || !sessionId || selectionLocked) return;
+    const existing = snapshotCandidates.find(candidate => candidate.kind === 'snapshot' &&
+      candidate.provenance.targetKind === target.kind &&
+      candidate.provenance.sourceLibraryItemName === target.sourceLibraryItemName &&
+      candidate.provenance.sourceTimelineIndex === target.sourceTimelineIndex &&
+      candidate.provenance.selectedFrameIndex === frame);
+    const renderTargetId = existing?.kind === 'snapshot' ? existing.provenance.renderTargetId : target.renderTargetId;
+    const entry: FlaRenderableTargetCatalogEntry = {
+      target: {
+        ...target, renderTargetId, selectedFrameIndex: frame, suggestedFrameName,
+        userLabel: target.kind === 'scene'
+          ? `${target.userLabel.replace(/ · 第 \d+ 帧$/u, '')} · 第 ${frame + 1} 帧`
+          : target.userLabel,
+      },
+      previewSupported: true,
+      isBlank: false,
+      catalogRole: existing?.catalogRole ?? (target.kind === 'scene' ? 'scene' : 'graphic-state'),
+    };
+    const context = { sessionId, source: ir.source };
+    const key = flaWorkbenchSnapshotIdentityKey(context, entry);
+    setOnDemandEntries(current => [
+      ...current.filter(item => flaWorkbenchSnapshotIdentityKey(context, item) !== key),
+      entry,
+    ]);
+    setFocusedCandidateIdentityKey(key);
   };
   const selectCurrentResults = (): void => {
     if (selectionLocked || selectedOnly || newEligibleCandidates.length === 0) return;
@@ -560,7 +594,7 @@ export function FlaCompatibilityReviewSession({
   const canImportSelected = canImportItems(selectedUnifiedItems);
   const focusedSingleCandidate = !multiSelectMode && focusedCandidate?.selectable &&
     (focusedCandidate.kind === 'raster' ||
-      (focusedCandidate.kind === 'snapshot' && focusedCandidate.operation.target.frameCount <= 1))
+      (focusedCandidate.kind === 'snapshot' && (onDemandKeys.has(focusedCandidate.identityKey) || focusedCandidate.operation.target.frameCount <= 1)))
     ? focusedCandidate
     : null;
   const focusedSingleItem = focusedSingleCandidate
@@ -754,6 +788,7 @@ export function FlaCompatibilityReviewSession({
       onCandidatesChange={setSnapshotCandidates}
       onCatalogProgressChange={setCatalogProgress}
       focusedCandidateIdentityKey={focusedSnapshotCandidate?.identityKey ?? null}
+      onDemandEntries={onDemandEntries}
       presentation="unified-preview"
       sessionId={sessionId}
       source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
@@ -876,6 +911,17 @@ export function FlaCompatibilityReviewSession({
           showSequencePreview={showSequencePreview}
           snapshotPreview={snapshotPreview}
           sequencePreview={sequencePreview}
+          previewAuxiliary={catalogProgress.phase === 'ready' && focusedCandidate &&
+            (focusedCandidate.kind === 'snapshot' || focusedCandidate.kind === 'sequence') ? (
+            <FlaSourceFrameSuggestions
+              key={focusedCandidate.operation.target.sourceLibraryItemName ??
+                `scene-${focusedCandidate.operation.target.sourceTimelineIndex ?? 0}`}
+              disabled={selectionLocked}
+              sessionId={sessionId}
+              target={focusedCandidate.operation.target}
+              onChooseFrame={focusSourceFrame}
+            />
+          ) : undefined}
           onSearchTextChange={(value) => {
             setSearchText(value);
           }}

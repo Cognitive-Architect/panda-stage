@@ -46,6 +46,7 @@ import {
   FlaStaticSnapshotCancelRequestSchema,
   FlaStaticSnapshotCancelResponseSchema,
   FlaStaticSnapshotPreviewRequestSchema,
+  type FlaSourceFrameSuggestionQuery,
   FlaStaticSnapshotPreviewResponseSchema,
   type FlaRenderTarget,
   type FlaStaticSnapshotCancelRequest,
@@ -338,7 +339,7 @@ export class FlaStaticSnapshotRenderSession {
   /** R1-A catalog: discover renderable targets for an inspection session. */
   async catalog(
     sessionId: string,
-    options: { readonly includeAuthoredStates?: boolean } = {},
+    options: { readonly includeAuthoredStates?: boolean; readonly frameSuggestionsFor?: FlaSourceFrameSuggestionQuery } = {},
   ): Promise<BuildCatalogResult> {
     const source = this.sourceLookup?.getSource(sessionId) ?? null;
     if (!source) {

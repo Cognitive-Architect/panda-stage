@@ -1510,3 +1510,32 @@
     min-height: 120px;
   }
 }
+
+.fla-c03-source-frames summary {
+  padding-block: var(--ui-space-2);
+  cursor: pointer;
+}
+.fla-c03-source-frames input {
+  max-width: 100%;
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+.fla-c03-source-frame-results {
+  display: grid;
+  gap: var(--ui-space-1);
+  max-height: 12rem;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.fla-c03-source-frame-results button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.fla-c03-source-frame-pages {
+  display: flex;
+  gap: var(--ui-space-2);
+}

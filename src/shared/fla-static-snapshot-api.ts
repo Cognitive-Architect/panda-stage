@@ -79,6 +79,7 @@ export const FlaRenderTargetSchema = z
     frameCount: z.number().int().positive().max(100_000),
     // Optional; defaults to 0. Commit requires it to be set explicitly.
     selectedFrameIndex: z.number().int().nonnegative().optional(),
+    suggestedFrameName: z.string().trim().min(1).max(120).optional(),
     // Compatibility / warning state for this target (the existing V1
     // status vocabulary; a future R2 may extend).
     compatibility: FlaCompatibilityStatusListSchema,
@@ -117,6 +118,28 @@ export const FlaRenderableTargetCatalogEntrySchema = z
     'unsupportedReason is required when previewSupported is false',
   );
 
+export const FLA_SOURCE_FRAME_SUGGESTION_PAGE_SIZE = 24;
+
+const FlaSourceFrameSuggestionSchema = z.object({
+  sourceFrameIndex: z.number().int().nonnegative().max(99_999),
+  label: z.object({
+    text: z.string().trim().min(1).max(120),
+    type: z.enum(['name', 'comment', 'anchor']),
+  }).strict().optional(),
+}).strict();
+
+export const FlaSourceFrameSuggestionQuerySchema = z.object({
+  sourceLibraryItemName: z.string().trim().min(1).max(500).optional(),
+  sourceTimelineIndex: z.number().int().nonnegative().max(10_000).optional(),
+  search: z.string().max(120),
+  offset: z.number().int().nonnegative().max(100_000),
+}).strict().refine(
+  query => (query.sourceLibraryItemName !== undefined) !== (query.sourceTimelineIndex !== undefined),
+  'Choose exactly one source timeline',
+);
+export type FlaSourceFrameSuggestion = z.infer<typeof FlaSourceFrameSuggestionSchema>;
+export type FlaSourceFrameSuggestionQuery = z.infer<typeof FlaSourceFrameSuggestionQuerySchema>;
+
 export const FlaRenderableTargetCatalogSchema = z
   .object({
     ok: z.literal(true),
@@ -126,6 +149,10 @@ export const FlaRenderableTargetCatalogSchema = z
       .max(FLA_STATIC_SNAPSHOT_LIMITS.maxRenderableTargetsPerFile),
     // A bounded catalog may omit authored states after its limit. Report the
     // exact remainder so the UI never presents the bounded prefix as complete.
+    frameSuggestions: z.object({
+      items: z.array(FlaSourceFrameSuggestionSchema).max(FLA_SOURCE_FRAME_SUGGESTION_PAGE_SIZE),
+      hasMore: z.boolean(),
+    }).strict().optional(),
     omittedCandidateCount: z.number().int().nonnegative().max(100_000).default(0),
     // Beginner-facing summary line shown next to the catalog (Chinese in
     // V1/V1.5 review). The Main-side adapter may localize.
@@ -143,6 +170,7 @@ export const FlaRenderableTargetCatalogRequestSchema = z
     // Static asset review asks for authored candidate states. Sequence review
     // keeps the root-target catalog so its range controls remain unchanged.
     includeAuthoredStates: z.boolean().default(false),
+    frameSuggestionsFor: FlaSourceFrameSuggestionQuerySchema.optional(),
   })
   .strict();
 

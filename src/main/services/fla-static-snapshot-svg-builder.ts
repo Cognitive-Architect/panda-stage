@@ -35,9 +35,11 @@ import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
 import type {
   FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
+  FlaSourceFrameSuggestion,
+  FlaSourceFrameSuggestionQuery,
   FlaStaticSnapshotPreviewErrorCode,
 } from '../../shared/fla-static-snapshot-api';
-import { FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api';
+import { FLA_SOURCE_FRAME_SUGGESTION_PAGE_SIZE, FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api';
 import {
   finishIssue762Profile,
   startIssue762Profile,
@@ -131,6 +133,7 @@ export interface BuildCatalogSuccess {
     unsupportedReason?: string;
   }>;
   omittedCandidateCount: number;
+  frameSuggestions?: { items: FlaSourceFrameSuggestion[]; hasMore: boolean };
   // Brief beginner-facing summary, e.g.
   // "这个 FLA 有 1 个可渲染图形。"
   summary: string;
@@ -2672,11 +2675,48 @@ export async function prepareFlaStaticSnapshotDisplaySource(
   };
 }
 
+/** Work on the selected source's authored spans without resolving any display lists. */
+function listSourceFrameSuggestions(
+  source: FlaStaticSnapshotDisplaySource,
+  query: FlaSourceFrameSuggestionQuery,
+): NonNullable<BuildCatalogSuccess['frameSuggestions']> {
+  const index = query.sourceLibraryItemName !== undefined
+    ? source.graphicSymbols.find(symbol => symbol.sourceLibraryItemName === query.sourceLibraryItemName)?.frameSpanIndex
+    : source.sceneTimelines.find(timeline => timeline.index === query.sourceTimelineIndex)?.frameSpanIndex;
+  const byKey = new Map<string, FlaSourceFrameSuggestion>();
+  const search = query.search.trim().toLocaleLowerCase('en-US');
+  for (const layer of index?.layers ?? []) {
+    for (const span of layer.spans) {
+      const { name, labelType } = span.sourceFrame.attributes;
+      const text = name?.trim().slice(0, 120);
+      const label: FlaSourceFrameSuggestion['label'] = text && (labelType === 'name' || labelType === 'comment' || labelType === 'anchor')
+        ? { text, type: labelType }
+        : undefined;
+      if (!layer.visible && !label) continue;
+      const sourceFrameIndex = span.index;
+      if (search && !label?.text.toLocaleLowerCase('en-US').includes(search) &&
+          !String(sourceFrameIndex + 1).includes(search)) continue;
+      const key = JSON.stringify([sourceFrameIndex, label?.type, label?.text]);
+      byKey.set(key, { sourceFrameIndex, ...(label ? { label } : {}) });
+    }
+  }
+  const suggestions = [...byKey.values()].sort((left, right) =>
+    Number(right.label?.type === 'name') - Number(left.label?.type === 'name') ||
+    left.sourceFrameIndex - right.sourceFrameIndex,
+  );
+  const end = query.offset + FLA_SOURCE_FRAME_SUGGESTION_PAGE_SIZE;
+  return { items: suggestions.slice(query.offset, end), hasMore: suggestions.length > end };
+}
+
 // ---- Public catalog builder ----
 export async function buildRenderableTargetCatalog(
   bytes: Uint8Array,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
-  options: { readonly includeAuthoredStates?: boolean; readonly metadataOnlyBitmaps?: boolean } = {},
+  options: {
+    readonly includeAuthoredStates?: boolean;
+    readonly metadataOnlyBitmaps?: boolean;
+    readonly frameSuggestionsFor?: FlaSourceFrameSuggestionQuery;
+  } = {},
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
   execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<BuildCatalogResult> {
@@ -2692,6 +2732,13 @@ export async function buildRenderableTargetCatalog(
     return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
   }
   const source = sourceResult.source;
+  if (options.frameSuggestionsFor) {
+    return {
+      ok: true, entries: [], omittedCandidateCount: 0,
+      summary: '源关键帧',
+      frameSuggestions: listSourceFrameSuggestions(source, options.frameSuggestionsFor),
+    };
+  }
   const entries: BuildCatalogSuccess['entries'] = [];
   let omittedCandidateCount: number;
   let candidateIndex = 0;

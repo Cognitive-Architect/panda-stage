@@ -67,6 +67,7 @@ interface FlaStaticSnapshotReviewProps {
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
   presentation?: 'standard' | 'unified-preview';
   focusedCandidateIdentityKey?: string | null;
+  onDemandEntries?: readonly FlaRenderableTargetCatalogEntry[];
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   onCatalogProgressChange?: (progress: {
     phase: 'loading' | 'scanning' | 'ready' | 'error';
@@ -75,6 +76,8 @@ interface FlaStaticSnapshotReviewProps {
     omittedCandidateCount: number;
   }) => void;
 }
+
+const EMPTY_ON_DEMAND_ENTRIES: readonly FlaRenderableTargetCatalogEntry[] = [];
 
 type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'error';
 type ImportItemStatus = 'imported' | 'duplicate' | 'failed' | 'not-attempted';
@@ -124,11 +127,17 @@ export function FlaStaticSnapshotReview({
   onTerminalStateChange,
   presentation = 'standard',
   focusedCandidateIdentityKey,
+  onDemandEntries = EMPTY_ON_DEMAND_ENTRIES,
   onCandidatesChange,
   onCatalogProgressChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
-  const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
+  const [catalogEntries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
+  const entries = useMemo(() => {
+    const byKey = new Map(catalogEntries.map(entry => [flaStaticSnapshotCandidateKey(entry), entry]));
+    for (const entry of onDemandEntries) byKey.set(flaStaticSnapshotCandidateKey(entry), entry);
+    return [...byKey.values()];
+  }, [catalogEntries, onDemandEntries]);
   const [catalogSummary, setCatalogSummary] = useState('');
   const [omittedCandidateCount, setOmittedCandidateCount] = useState(0);
   const [previews, setPreviews] = useState<FlaStaticSnapshotCandidatePreviews>({});
@@ -199,10 +208,10 @@ export function FlaStaticSnapshotReview({
     onCatalogProgressChange?.({
       phase,
       completed: scanProgress,
-      total: entries.length,
+      total: catalogEntries.length,
       omittedCandidateCount,
     });
-  }, [entries.length, omittedCandidateCount, onCatalogProgressChange, phase, scanProgress]);
+  }, [catalogEntries.length, omittedCandidateCount, onCatalogProgressChange, phase, scanProgress]);
 
   useEffect(() => {
     if (!focusedCandidateIdentityKey) return;
@@ -553,13 +562,16 @@ export function FlaStaticSnapshotReview({
   }, [candidateContext, deferPreviewScan, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
-    if (!active || deferPreviewScan) return;
+    if (!active) return;
     const candidateId = effectiveFocusedCandidateKey;
     const identityKey = effectiveFocusedCandidateIdentityKey;
     const entry = focusedEntry;
     const status = focusedStatus;
+    const isOnDemand = Boolean(entry && onDemandEntries.includes(entry));
+    if (deferPreviewScan && !isOnDemand) return;
     const explicitRetry = Boolean(identityKey && retryIdentityRef.current === identityKey);
-    const needsFreshPreview = explicitRetry || (phase === 'ready' && status?.status === 'checking');
+    const needsFreshPreview = explicitRetry || (phase === 'ready' &&
+      (status?.status === 'checking' || (isOnDemand && (!status || status.status === 'unscanned'))));
     const canRequest = Boolean(
       candidateId && identityKey && entry && ((status?.status === 'supported' && status.sha256) || needsFreshPreview) &&
       (phase === 'scanning' || phase === 'ready'),
@@ -671,7 +683,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [active, deferPreviewScan, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, previewRetry, sessionId, updateFocusedPreview]);
+  }, [active, deferPreviewScan, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, onDemandEntries, phase, previewRetry, sessionId, updateFocusedPreview]);
 
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
     if (phase !== 'ready' || importLocked) return;

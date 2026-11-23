@@ -9,6 +9,7 @@
 
 import type {
   FlaRenderableTargetCatalogResponse,
+  FlaSourceFrameSuggestionQuery,
   FlaStaticSnapshotCancelRequest,
   FlaStaticSnapshotCancelResponse,
   FlaStaticSnapshotCommitRequest,
@@ -20,7 +21,7 @@ import type {
 export interface FlaStaticSnapshotCatalogClient {
   catalog(
     sessionId: string,
-    options?: { readonly includeAuthoredStates?: boolean },
+    options?: { readonly includeAuthoredStates?: boolean; readonly frameSuggestionsFor?: FlaSourceFrameSuggestionQuery },
   ): Promise<FlaRenderableTargetCatalogResponse>;
   preview(request: FlaStaticSnapshotPreviewRequest): Promise<FlaStaticSnapshotPreviewResponse>;
   commit(request: FlaStaticSnapshotCommitRequest): Promise<FlaStaticSnapshotCommitResponse>;
@@ -34,6 +35,7 @@ export const flaStaticSnapshotClient: FlaStaticSnapshotCatalogClient = {
       version: 1,
       sessionId,
       includeAuthoredStates: options.includeAuthoredStates ?? false,
+      ...(options.frameSuggestionsFor ? { frameSuggestionsFor: options.frameSuggestionsFor } : {}),
     }),
   preview: (request) => window.pandaStage.fla.staticSnapshotPreview(request),
   commit: (request) => window.pandaStage.fla.staticSnapshotCommit(request),
