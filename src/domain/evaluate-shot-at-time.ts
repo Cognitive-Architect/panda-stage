@@ -2,6 +2,7 @@ import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
   Layer,
+  MouthPose,
   Project,
   Shot,
   TimelineEvent,
@@ -47,6 +48,7 @@ export interface EvaluatedLayer {
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
   mouthOpen?: boolean;
+  mouthPose?: MouthPose;
   talkingAnimationElapsedMs?: number | 'rest';
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {

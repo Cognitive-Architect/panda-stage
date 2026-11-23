@@ -159,7 +159,7 @@ export function buildEditorTemporalCanvasModel({
   );
   const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
-      (event.type === 'expression' || event.type === 'mouth-cue') &&
+      (event.type === 'expression' || event.type === 'mouth-cue' || event.type === 'mouth-pose') &&
       event.startMs === 0,
   )
     ? (() => {

@@ -1,3 +1,4 @@
+import { MouthPoseLane } from './MouthPoseLane';
 import { CharacterMotionLane } from './CharacterMotionLane';
 import { LayerMotionLane } from './LayerMotionLane';
 import {
@@ -427,6 +428,11 @@ export function TimelineDock({
                       productPreviewOpen={productPreviewOpen}
                     />
                   ) : null}
+                  {shot && snapshot && selectedLayerId ? <MouthPoseLane
+                    key={`${snapshot.project.id}/${shot.id}/${selectedLayerId}`}
+                    project={snapshot.project} shot={shot} layerId={selectedLayerId}
+                    pixelsPerMs={pixelsPerMs} currentTimeMs={ui.currentTimeMs}
+                    trackWidth={trackWidth} disabled={Boolean(productPreviewOpen)} /> : null}
                   {shot && snapshot ? (
                     <LayerMotionLane
                       snapshot={snapshot}

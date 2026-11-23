@@ -120,11 +120,13 @@ describe('asset library IPC handlers', () => {
       IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
       IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
       IPC_CHANNELS.ASSET_DIALOGUE_SILENCE,
+      IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS,
+      IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL,
     ]);
-    expect(electronMocks.handle).toHaveBeenCalledTimes(6);
+    expect(electronMocks.handle).toHaveBeenCalledTimes(8);
     remove();
     expect(electronMocks.handlers.size).toBe(0);
-    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(6);
+    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(8);
   });
 
   it('rejects an untrusted renderer before calling any service', async () => {

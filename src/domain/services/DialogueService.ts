@@ -1,3 +1,4 @@
+import { reconcileDialogueMouthPoses } from './mouthPoses';
 import {
   DIALOGUE_SPEAKER_CHARACTER,
   DIALOGUE_SPEAKER_NARRATOR,
@@ -436,6 +437,42 @@ export class DialogueService {
     });
   }
 
+  duplicate(project: Project, shotId: string, dialogueId: string): { project: Project; dialogueId: string } {
+    const shot = this.shot(project, shotId);
+    const source = this.dialogue(shot, dialogueId);
+    const timing = this.findFirstAvailableTiming(shot.dialogues, source.endMs, this.timedDuration(source), shot.durationMs);
+    const deltaMs = timing.startMs - source.startMs;
+    const ids = this.collectIds(project);
+    const id = this.nextId(ids);
+    const sourceClip = source.audioClipId ? this.audioClip(shot, source.audioClipId) : undefined;
+    const clip = sourceClip ? {
+      ...sourceClip, id: this.nextId(ids),
+      startMs: Math.max(0, sourceClip.startMs + deltaMs),
+      endMs: Math.min(shot.durationMs, sourceClip.endMs + deltaMs),
+      offsetMs: sourceClip.offsetMs + Math.max(0, -(sourceClip.startMs + deltaMs)),
+    } : undefined;
+    const audio = clip && clip.startMs < clip.endMs ? clip : undefined;
+    const generationIds = new Map<string, string>();
+    const poses = shot.timelineEvents.flatMap((event) => {
+      if (event.type !== 'mouth-pose' || event.dialogueId !== dialogueId ||
+          (event.origin === 'generated' && !audio)) return [];
+      const generationId = event.generationId
+        ? generationIds.get(event.generationId) ?? this.nextId(ids) : undefined;
+      if (event.generationId && generationId) generationIds.set(event.generationId, generationId);
+      return [{
+        ...event, id: this.nextId(ids), startMs: event.startMs + deltaMs, endMs: event.endMs + deltaMs,
+        dialogueId: id, ...(generationId ? { generationId } : {}),
+      }];
+    });
+    const replacement: Shot = {
+      ...shot,
+      dialogues: [...shot.dialogues, { ...source, ...timing, id, audioClipId: audio?.id }],
+      audioClips: audio ? [...shot.audioClips, audio] : shot.audioClips,
+      timelineEvents: [...shot.timelineEvents, ...poses],
+    };
+    return { project: this.replaceShot(project, shotId, replacement), dialogueId: id };
+  }
+
   /** Clear one Dialogue voice binding and collect only an orphaned child clip. */
   unbindAudio(project: Project, shotId: string, dialogueId: string): Project {
     const shot = this.shot(project, shotId);
@@ -568,7 +605,11 @@ export class DialogueService {
     const current = this.dialogue(shot, dialogueId);
     const nextDialogue = { ...current, ...timing };
     if (!current.audioClipId) {
-      return this.replaceDialogueTiming(project, shot, dialogueId, timing);
+      if (deltaMs === 0) return project;
+      return this.replaceShot(project, shot.id, {
+        ...shot,
+        dialogues: shot.dialogues.map((candidate) => candidate.id === dialogueId ? nextDialogue : candidate),
+      }, { dialogueId, deltaMs });
     }
 
     const clip = this.audioClip(shot, current.audioClipId);
@@ -610,7 +651,7 @@ export class DialogueService {
           ? { ...nextDialogue, audioClipId: clipId }
           : candidate,
       ),
-    });
+    }, { dialogueId, deltaMs });
   }
 
   private explicitArrangementTiming(
@@ -744,11 +785,13 @@ export class DialogueService {
     project: Project,
     shotId: string,
     replacement: Shot,
+    moved?: { dialogueId: string; deltaMs: number },
   ): Project {
+    const timelineEvents = reconcileDialogueMouthPoses(this.shot(project, shotId), replacement, moved);
     return this.finish(project, {
       ...project,
       shots: project.shots.map((shot) =>
-        shot.id === shotId ? replacement : shot,
+        shot.id === shotId ? { ...replacement, timelineEvents } : shot,
       ),
     });
   }

@@ -1,3 +1,4 @@
+import { MouthPoseSetEditor } from './MouthPoseSetEditor';
 import {
   useCallback,
   useEffect,
@@ -2727,6 +2728,7 @@ function AdaptivePartsAssemblyWorkbench({
           </>
         ) : (
           <div className="adaptive-parts-expression-tab" data-testid="adaptive-parts-expression-workspace">
+            {assemblyCharacter ? <MouthPoseSetEditor characterId={assemblyCharacter.id} /> : null}
             {!activeFaceBinding ? (
               <div className="adaptive-parts-expression-empty" data-testid="adaptive-parts-expression-unbound">
                 <p>请在“部件”中选中脸部零件，并通过更多菜单设为表情位置。</p>

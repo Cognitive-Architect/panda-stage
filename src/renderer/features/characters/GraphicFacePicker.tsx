@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type CharacterFaceSource } from '../../../domain';
+import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
 import { resolveCharacterFaceSource } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
@@ -11,13 +11,14 @@ import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import './graphic-face-picker.css';
 
 /** Uses the same structured renderer and decoded-image cache contract as Stage. */
-export function GraphicFacePreview({ source, label = '表情预览' }: { source: CharacterFaceGraphicSource; label?: string }): React.JSX.Element {
+export function GraphicFacePreview({ source, label = '表情预览' }: { source: Extract<MouthPoseSource, { kind: 'fla-graphic' }>; label?: string }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
   const [images, setImages] = useState(EMPTY_CANVAS_IMAGE_STATE);
   const session = useRef<CanvasImageResourceSession | null>(null);
-  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSource(snapshot.project, source) : null, [snapshot, source.animationId, source.firstFrame]);
+  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSource(snapshot.project, source) : null,
+    [snapshot, source.animationId, source.firstFrame, source.internalTimeMs]);
   useEffect(() => {
     const target = canvas.current;
     if (!target) return;
@@ -151,13 +152,14 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   );
 }
 
-export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children }: {
-  source?: CharacterFaceGraphicSource;
-  onChange?: (source: CharacterFaceSource) => void;
+export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children, includeInternalFrames }: {
+  source?: CharacterFaceGraphicSource & { internalTimeMs?: number };
+  onChange?: (source: MouthPoseSource) => void;
   onClear?: () => void;
   disabled?: boolean;
   testId: string;
   children: React.ReactNode;
+  includeInternalFrames?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [open, setOpen] = useState(false);
@@ -171,10 +173,14 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   useEffect(() => { setShowImages(false); }, [source?.animationId, source?.firstFrame]);
   const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
+  const timeline = definition && includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
+  const frameCount = timeline?.totalFrames ?? definition?.frames.length ?? 0;
+  const selectedIndex = timeline && source?.internalTimeMs !== undefined
+    ? Math.round(source.internalTimeMs * timeline.fps / 1_000) : source?.firstFrame ?? 0;
   return <div className="graphic-face-picker" data-testid={`${testId}-visual-source`}>
     {source && definition ? <div className="graphic-face-selected">
       <GraphicFacePreview source={source} />
-      <button type="button" className="graphic-face-selected-toggle" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} title={`${definition.name} · 第 ${source.firstFrame + 1} 帧`} onClick={() => setOpen(!open)}>{definition.name} · {source.firstFrame + 1}</button>
+      <button type="button" className="graphic-face-selected-toggle" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} title={`${definition.name} · 第 ${selectedIndex + 1} 帧`} onClick={() => setOpen(!open)}>{definition.name} · {selectedIndex + 1}</button>
       {onClear ? <button type="button" className="graphic-face-clear" disabled={disabled} onClick={onClear}>清除</button> : null}
     </div> : null}
     {source && !showImages ? <button type="button" className="graphic-face-switch" disabled={disabled} onClick={() => setShowImages(true)}>更换图片</button> : children}
@@ -182,12 +188,14 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
     {open && onChange ? <div className="graphic-face-options">
       <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" className="graphic-face-definition" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
       {definition ? <>
-        <div className="graphic-face-frames" aria-label="选择表情帧">{definition.frames.slice(page * 12, page * 12 + 12).map((frame, index) => {
-          const firstFrame = page * 12 + index;
-          const selected = { kind: 'fla-graphic' as const, animationId: definition.id, firstFrame };
-          return <button type="button" className="graphic-face-frame" key={frame.ordinal} disabled={disabled} aria-label={`第 ${firstFrame + 1} 帧`} aria-pressed={source?.firstFrame === firstFrame} data-testid={`${testId}-frame-${firstFrame}`} onClick={() => { setShowImages(false); onChange(selected); }}><GraphicFacePreview source={selected} label={`第 ${firstFrame + 1} 帧`} /><span>{firstFrame + 1}</span></button>;
+        <div className="graphic-face-frames" aria-label="选择表情帧">{Array.from({ length: Math.max(0, Math.min(12, frameCount - page * 12)) }, (_, index) => {
+          const frameIndex = page * 12 + index;
+          const sample = timeline?.sampleAtFrameIndex(frameIndex);
+          const selected = { kind: 'fla-graphic' as const, animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
+            ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
+          return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled} aria-label={`第 ${frameIndex + 1} 帧`} aria-pressed={selectedIndex === frameIndex} data-testid={`${testId}-frame-${frameIndex}`} onClick={() => { setShowImages(false); onChange(selected); }}><GraphicFacePreview source={selected} label={`第 ${frameIndex + 1} 帧`} /><span>{frameIndex + 1}</span></button>;
         })}</div>
-        {definition.frames.length > 12 ? <div className="graphic-face-pagination"><button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button><button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= definition.frames.length} onClick={() => setPage(page + 1)}>下一页</button></div> : null}
+        {frameCount > 12 ? <div className="graphic-face-pagination"><button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button><button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= frameCount} onClick={() => setPage(page + 1)}>下一页</button></div> : null}
       </> : null}
     </div> : null}
   </div>;

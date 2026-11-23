@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import {
+  applyMouthPoseDraft,
   characterHasMouthOpenVisual,
   CharacterNodeMotionService,
   deleteMouthCueEvent,
+  DialogueService,
   evaluateShotAtTime,
   migrateProject,
   MouthCueEventSchema,
   ProjectSchema,
+  ProjectV26Schema,
   ProjectV22Schema,
   resolveEffectiveMouthCue,
   resolveLayerVisualParts,
+  resolveMouthPoseEvent,
+  selectMouthPoseGeneration,
+  setManualMouthPose,
   ShotV20Schema,
   ShotV21Schema,
   ShotV22Schema,
@@ -176,6 +183,95 @@ function buildMouthProject(options: {
     })),
   });
 }
+
+describe('Editable mouth poses (#1226)', () => {
+  const selection = { shotId: IDS.shot, layerId: IDS.layerChar, dialogueId: DIALOGUE_ID, startMs: 440, endMs: 960 };
+  const rest = randomUUID();
+  const pose = randomUUID();
+  const other = randomUUID();
+  const draft = [{ startMs: 440, endMs: 960, category: 'open' as const }];
+
+  function projectWithPoses() {
+    const base = buildMouthProject({ mouthKind: 'graphic', withDialogue: true });
+    return ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) => asset.id === AUDIO_ASSET_ID ? { ...asset, sha256: 'a'.repeat(64) } : asset),
+      characters: base.characters.map((character) => character.id === IDS.character ? {
+        ...character, mouthPoseSet: {
+          poses: [
+            { id: rest, name: '静止', source: faceSource(0), target: { kind: 'face' } },
+            { id: pose, name: '圆嘴', source: faceSource(3), target: { kind: 'face' } },
+          ], restPoseId: rest, driveMode: 'mouth-poses',
+          analyzerMapping: { rest, closed: rest, open: pose, round: pose, wide: pose },
+        },
+      } : character),
+      shots: base.shots.map((shot) => ({ ...shot, durationMs: 3_000,
+        layers: [...shot.layers, { ...shot.layers.find((layer) => layer.id === IDS.layerChar), id: other, zIndex: 99 }],
+        audioClips: shot.audioClips.map((clip) => ({ ...clip, endMs: 1_140, offsetMs: 100 })),
+      })),
+    });
+  }
+
+  it('uses the trimmed source clock, preserves other instances and manual intervals, and migrates the frozen old shape', () => {
+    let project = projectWithPoses();
+    expect(selectMouthPoseGeneration(project, selection)).toMatchObject({ sourceStartMs: 200, audio: { startMs: 440, endMs: 960 } });
+    project = applyMouthPoseDraft(project, selection, draft, randomUUID);
+    project = applyMouthPoseDraft(project, { ...selection, layerId: other }, draft, randomUUID);
+    const otherEvent = resolveMouthPoseEvent(project.shots[0]!, other, 600);
+    const manualId = randomUUID();
+    project = setManualMouthPose(project, IDS.shot, IDS.layerChar, manualId,
+      { startMs: 540, endMs: 720, poseId: rest, dialogueId: DIALOGUE_ID });
+    const range = { ...selection, startMs: 490, endMs: 830 };
+    project = applyMouthPoseDraft(project, range, [{ ...range, category: 'open' }], randomUUID);
+    const shot = project.shots[0]!;
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 539)?.poseId).toBe(pose);
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 540)).toMatchObject({ id: manualId, poseId: rest, origin: 'manual', startMs: 540, endMs: 720 });
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 720)?.poseId).toBe(pose);
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 959)?.poseId).toBe(pose);
+    expect(resolveMouthPoseEvent(shot, IDS.layerChar, 960)).toBeUndefined();
+    expect(resolveMouthPoseEvent(shot, other, 600)).toEqual(otherEvent);
+    expect(ProjectV26Schema.safeParse({ ...project, schemaVersion: 26 }).success).toBe(false);
+    const legacy = { ...buildMouthProject(), schemaVersion: 26 };
+    expect(ProjectV26Schema.safeParse(legacy).success).toBe(true);
+    expect(migrateProject(legacy).schemaVersion).toBe(27);
+  });
+
+  it('resolves the same frozen Graphic pose in Stage, Preview, and Export with old cue and manual priority', () => {
+    let project = applyMouthPoseDraft(projectWithPoses(), selection, draft, randomUUID);
+    project = upsertMouthCueEventAtTime(project, IDS.shot, IDS.layerChar, 'rest', 490);
+    project = setManualMouthPose(project, IDS.shot, IDS.layerChar, randomUUID(),
+      { startMs: 550, endMs: 730, poseId: pose, dialogueId: DIALOGUE_ID });
+    const shot = project.shots[0]!;
+    for (const [time, firstFrame] of [[730, 0], [600, 3], [500, 0], [450, 3]] as const) {
+      const stage = buildEditorTemporalCanvasModel({ project, shot, currentTimeMs: time, activeDialogueId: DIALOGUE_ID,
+        readyAssetIds: new Set(project.assets.map((asset) => asset.id)), missingAssetIds: new Set(), previousVisuals: new Map() });
+      const preview = projectProductPreviewDialogue(project, shot, evaluateShotAtTime(shot, time, project), DIALOGUE_ID);
+      const exported = evaluateExportShotAtTime(project, shot, time, DIALOGUE_ID);
+      const visual = resolveLayerVisualParts(project, shot, exported.layers.find((layer) => layer.id === IDS.layerChar)!, time);
+      expect(stage.visualsByLayer.get(IDS.layerChar)).toEqual(visual);
+      expect(resolveLayerVisualParts(project, shot, preview.layers.find((layer) => layer.id === IDS.layerChar)!, time)).toEqual(visual);
+      expect(visual.parts.find((part) => part.slot === 'face')?.source).toMatchObject({ firstFrame });
+    }
+  });
+
+  it('keeps manual edits through a dialogue move, trim and audio unbind, and copies then removes associations', () => {
+    const dialogue = new DialogueService();
+    let project = applyMouthPoseDraft(projectWithPoses(), selection, draft, randomUUID);
+    const manualId = randomUUID();
+    project = setManualMouthPose(project, IDS.shot, IDS.layerChar, manualId,
+      { startMs: 540, endMs: 720, poseId: rest, dialogueId: DIALOGUE_ID });
+    project = dialogue.move(project, { shotId: IDS.shot, dialogueId: DIALOGUE_ID, deltaMs: 120 });
+    expect(resolveMouthPoseEvent(project.shots[0]!, IDS.layerChar, 660)?.id).toBe(manualId);
+    project = dialogue.resize(project, { shotId: IDS.shot, dialogueId: DIALOGUE_ID, edge: 'start', timeMs: 690 });
+    expect(resolveMouthPoseEvent(project.shots[0]!, IDS.layerChar, 690)).toMatchObject({ id: manualId, startMs: 690, endMs: 840 });
+    project = dialogue.unbindAudio(project, IDS.shot, DIALOGUE_ID);
+    expect(project.shots[0]!.timelineEvents.filter((event) => event.type === 'mouth-pose').map((event) => event.id)).toEqual([manualId]);
+    const copy = dialogue.duplicate(project, IDS.shot, DIALOGUE_ID);
+    expect(copy.project.shots[0]!.timelineEvents.some((event) => event.type === 'mouth-pose' && event.dialogueId === copy.dialogueId)).toBe(true);
+    project = dialogue.remove(copy.project, IDS.shot, DIALOGUE_ID);
+    expect(project.shots[0]!.timelineEvents.some((event) => event.id === manualId)).toBe(false);
+  });
+});
 
 describe('Mouth Cue rest/open domain & evaluator (#1159)', () => {
   it('accepts mouth-cue in v23 ProjectSchema while frozen v20/v21/v22 readers strictly reject it', () => {

@@ -600,12 +600,14 @@ function resolveCharacterFace(
   }
   const expressionSource = resolveExpressionVisualSource(expression);
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
+  const poseSource = evaluated.mouthPose?.source;
+  const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
   const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
-  const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
+  const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
     : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
   const mouthSource = requestedMouth?.kind === 'image' && !resolveImageAsset(project, requestedMouth.assetId) ? null : requestedMouth;
-  const mouthAsset = talking?.asset ?? (mouthSource ? resolveCharacterFaceSource(project, mouthSource) : null);
+  const mouthAsset = mouthSource ? poseAsset ?? talking?.asset ?? resolveCharacterFaceSourceOrNull(project, mouthSource) : null;
   const activeAsset = mouthAsset ?? expressionAsset;
   const source = mouthAsset ? 'mouth' : 'expression';
   return {
@@ -782,14 +784,19 @@ function projectAdaptivePartsFaceVisual(input: {
   } = input;
   const fallbackAssetIds = new Set<string>();
   const faceBinding = character.faceBinding;
-  if (!faceBinding) {
+  const poseSource = evaluated.mouthPose?.source;
+  const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
+  const independentTarget = evaluated.mouthPose?.target.kind === 'mouth' &&
+    isResolvedFaceRenderable(poseAsset, validImageAssetIds) ? evaluated.mouthPose.target.partId : undefined;
+  const targetPartId = independentTarget ?? faceBinding?.targetPartId;
+  if (!targetPartId) {
     return { parts, activeFace: null, fallbackAssetIds };
   }
   const targetPartIndex = parts.findIndex(
-    (part) => adaptivePartIdOfSource(part.source) === faceBinding.targetPartId,
+    (part) => adaptivePartIdOfSource(part.source) === targetPartId,
   );
   const targetDefinitionPart = visualDefinition.parts.find(
-    (part) => part.partId === faceBinding.targetPartId,
+    (part) => part.partId === targetPartId,
   );
   if (targetPartIndex === -1 || !targetDefinitionPart) {
     return { parts, activeFace: null, fallbackAssetIds };
@@ -815,12 +822,12 @@ function projectAdaptivePartsFaceVisual(input: {
     : null;
 
   const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
-  const requestedMouth = talking?.source ?? (evaluated.mouthOverrideAssetId
+  const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
     : evaluated.mouthOpen
       ? resolveMouthVisualSource(character)
       : null);
-  const rawMouthAsset = talking?.asset ?? (requestedMouth
+  const rawMouthAsset = poseAsset ?? talking?.asset ?? (requestedMouth
     ? resolveCharacterFaceSourceOrNull(project, requestedMouth)
     : null);
   const mouthAsset = isResolvedFaceRenderable(rawMouthAsset, validImageAssetIds)
@@ -851,10 +858,10 @@ function projectAdaptivePartsFaceVisual(input: {
   if (chosenKind === 'mouth') {
     collectAssetIds(expressionAsset);
   }
-  const replaceSet = new Set(faceBinding.replacePartIds);
+  const replaceSet = new Set(independentTarget ? [] : faceBinding?.replacePartIds ?? []);
   for (const part of parts) {
     const partCharId = adaptivePartIdOfSource(part.source);
-    if (partCharId === faceBinding.targetPartId || (partCharId !== undefined && replaceSet.has(partCharId))) {
+    if (partCharId === targetPartId || (partCharId !== undefined && replaceSet.has(partCharId))) {
       if (part.assetId && validImageAssetIds.has(part.assetId)) {
         fallbackAssetIds.add(part.assetId);
       }
@@ -884,14 +891,14 @@ function projectAdaptivePartsFaceVisual(input: {
   if (chosenKind === 'expression' && canRestoreOriginalParts && isImageUnavailable?.(expressionSource.assetId)) {
     return { parts, activeFace: null, fallbackAssetIds };
   }
-  const targetBaseTransform = stripCropTransformFromAdaptivePartMatrix(
+  const targetBaseTransform = independentTarget ? targetVisual.imageTransform : stripCropTransformFromAdaptivePartMatrix(
     targetDefinitionPart,
     targetVisual.imageTransform,
   );
   const placementMatrix = composeAdaptiveFaceReplacementMatrix({
     targetBaseTransform,
-    anchorRect: faceBinding.anchorRect,
-    placement: faceBinding.placement,
+    anchorRect: independentTarget ? targetVisual.localRect : faceBinding!.anchorRect,
+    placement: independentTarget ? { scale: 1, offsetX: 0, offsetY: 0, rotationDeg: 0, flipX: false } : faceBinding!.placement,
     resolvedWidth: chosenAsset.width,
     resolvedHeight: chosenAsset.height,
   });
@@ -905,12 +912,12 @@ function projectAdaptivePartsFaceVisual(input: {
     source: chosenSource.kind === 'fla-graphic'
       ? {
           kind: 'adaptive-part-fla-graphic',
-          characterPartId: faceBinding.targetPartId,
+          characterPartId: targetPartId,
           animationId: chosenSource.animationId,
         }
       : {
           kind: 'adaptive-part',
-          characterPartId: faceBinding.targetPartId,
+          characterPartId: targetPartId,
           assetId: geom.assetId!,
         },
     ...(geom.assetId ? { assetId: geom.assetId } : {}),

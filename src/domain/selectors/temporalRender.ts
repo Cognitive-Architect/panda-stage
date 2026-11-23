@@ -4,6 +4,7 @@ import type {
   EvaluatedShot,
 } from '../evaluate-shot-at-time';
 import { audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../audio-contract';
+import { resolveMouthPoseEvent } from '../services/mouthPoses';
 import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import {
   evaluateShotAtTime,
@@ -165,7 +166,7 @@ export function projectShotMouth(
         speakingCharacter.mouthOpenVisualSource),
   );
   const hasAnyMouthCue = shot.timelineEvents.some(
-    (event) => event.type === 'mouth-cue',
+    (event) => event.type === 'mouth-cue' || event.type === 'mouth-pose',
   );
   const talkingClips = new Map<string, { clip: AudioClip; silent: boolean }>();
   for (const voice of shot.dialogues) {
@@ -186,7 +187,8 @@ export function projectShotMouth(
     }
   }
   const hasRestFrames = project.characters.some(character => character.talkingAnimationPlayback?.restFrame !== undefined);
-  if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0 && !hasRestFrames) return evaluatedShot;
+  const hasPoseRest = project.characters.some((character) => character.mouthPoseSet?.driveMode === 'mouth-poses');
+  if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0 && !hasRestFrames && !hasPoseRest) return evaluatedShot;
   const talkingTargets = talkingClips.size > 0 || hasRestFrames
     ? uniqueVisibleCharacterLayerIds(shot, evaluatedShot)
     : null;
@@ -201,10 +203,25 @@ export function projectShotMouth(
     const layerCharacter = project.characters.find(
       (candidate) => candidate.id === layerCharacterId,
     );
+    const poseSet = layerCharacter?.mouthPoseSet;
+    const poseEvent = poseSet?.driveMode === 'mouth-poses'
+      ? resolveMouthPoseEvent(shot, layer.id, evaluatedShot.timeMs) : undefined;
+    const pose = poseEvent && (poseEvent.origin === 'manual' || cue === 'none')
+      ? poseSet?.poses.find((candidate) => candidate.id === poseEvent.poseId) : undefined;
+    if (pose) {
+      changed = true;
+      return { ...layer, mouthPose: pose };
+    }
+    const restPose = cue === 'none' && poseSet?.driveMode === 'mouth-poses'
+      ? poseSet.poses.find((candidate) => candidate.id === poseSet.restPoseId) : undefined;
     if (
       !layerCharacter ||
       (layerCharacter.mode === 'adaptive-parts' && !layerCharacter.faceBinding)
     ) {
+      if (restPose?.target.kind === 'mouth') {
+        changed = true;
+        return { ...layer, mouthPose: restPose };
+      }
       return layer;
     }
 
@@ -252,6 +269,10 @@ export function projectShotMouth(
       dialogueOpenPhase &&
       layerCharacterId === dialogue?.characterId;
     if (!shouldOpenFromCue && !shouldOpenFromDialogue) {
+      if (restPose) {
+        changed = true;
+        return { ...layer, mouthPose: restPose };
+      }
       return layer;
     }
 

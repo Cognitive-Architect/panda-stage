@@ -189,7 +189,8 @@ describe('Issue #402 integration/source contracts', () => {
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
     expect(builder).toContain('export async function buildRenderableTargetCatalog');
     expect(builder).toContain('const scene = source.sceneTimelines[0];');
-    expect(builder).toContain('entries.push({');
+    expect(builder).toContain('entries.push(evaluateCandidate(target, role))');
+    expect(builder).toContain('entries.push(sceneEntry)');
     expect(builder).toContain('isBlank: check.isBlank');
   });
 

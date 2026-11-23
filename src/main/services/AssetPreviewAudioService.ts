@@ -20,6 +20,9 @@ import { MediaInspectionService } from './MediaInspectionService';
 import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 import { resolveProjectAssetPath } from './project-asset-path';
 
+import { MOUTH_POSE_SAMPLE_RATE, MouthPoseAnalysisRequestSchema, type MouthPoseAnalysisResponse } from '../../shared/mouth-pose-analysis-api';
+import { analyzeMouthPosePcm } from './analyze-mouth-pose-pcm';
+
 export interface AssetPreviewAudioServiceOptions {
   getCurrentProjectSnapshot: (
     projectRoot: string,
@@ -27,7 +30,7 @@ export interface AssetPreviewAudioServiceOptions {
   inspectionService?: MediaInspectionService;
   /** Reuse only a successful hash check for the same immutable project/file identity. */
   enableValidatedHashIndex?: boolean;
-  audioTiming?: Pick<FFmpegAdapter, 'analyzeAudioTiming'>;
+  audioTiming?: Pick<FFmpegAdapter, 'analyzeAudioTiming'> & Partial<Pick<FFmpegAdapter, 'decodeMouthPosePcm'>>;
 }
 
 export interface AssetPreviewAudioHashIndexSnapshot {
@@ -56,6 +59,7 @@ export class AssetPreviewAudioService {
   private readonly enableValidatedHashIndex: boolean;
   private readonly validatedHashes = new Map<string, string>();
   private readonly audioTiming: AssetPreviewAudioServiceOptions['audioTiming'];
+  private readonly mouthPoseJobs = new Map<string, AbortController>();
   private readonly silenceBySource = new Map<string, Promise<DialogueSilenceIntervals | null>>();
   private hashIndexHits = 0;
   private hashIndexMisses = 0;
@@ -102,6 +106,47 @@ export class AssetPreviewAudioService {
       if (oldest !== undefined) this.silenceBySource.delete(oldest);
     }
     return analysis;
+  }
+
+  cancelMouthPoseAnalysis(requestId: string): void {
+    this.mouthPoseJobs.get(requestId)?.abort();
+  }
+
+  async analyzeMouthPoses(rawRequest: unknown): Promise<MouthPoseAnalysisResponse> {
+    const request = MouthPoseAnalysisRequestSchema.parse(rawRequest);
+    if (!this.audioTiming?.decodeMouthPosePcm || this.mouthPoseJobs.size >= 2 ||
+        this.mouthPoseJobs.has(request.requestId)) return null;
+    const controller = new AbortController();
+    this.mouthPoseJobs.set(request.requestId, controller);
+    let directory: string | undefined;
+    let input: string | undefined;
+    let output: string | undefined;
+    try {
+      const source = await this.read({
+        projectRoot: request.projectRoot, assetId: request.assetId, sha256: request.sha256,
+      });
+      controller.signal.throwIfAborted();
+      if (!source.ok) return null;
+      directory = await mkdtemp(path.join(tmpdir(), 'panda-mouth-pose-'));
+      input = path.join(directory, source.mimeType === 'audio/wav' ? 'source.wav' : 'source.mp3');
+      output = path.join(directory, 'voice.s16le');
+      await writeFile(input, source.bytes, { flag: 'wx' });
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+      await this.audioTiming.decodeMouthPosePcm(input, output, request.sourceStartMs, request.durationMs, signal);
+      const info = await stat(output);
+      const maximumBytes = 2 * Math.ceil(request.durationMs * MOUTH_POSE_SAMPLE_RATE / 1000);
+      if (info.size <= 0 || info.size > maximumBytes + 2) return null;
+      const pcm = await readFile(output);
+      signal.throwIfAborted();
+      return analyzeMouthPosePcm(pcm, request.durationMs);
+    } catch {
+      return null;
+    } finally {
+      this.mouthPoseJobs.delete(request.requestId);
+      if (output) await unlink(output).catch(() => undefined);
+      if (input) await unlink(input).catch(() => undefined);
+      if (directory) await rmdir(directory).catch(() => undefined);
+    }
   }
 
   private async readDialogueSilence(

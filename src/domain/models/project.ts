@@ -28,6 +28,7 @@ import {
   CharacterV23Schema,
   CharacterV24Schema,
   CharacterV25Schema,
+  CharacterV26Schema,
   CharacterV19Schema,
   CharacterV8Schema,
   CharacterV9Schema,
@@ -43,6 +44,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV26Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -59,7 +61,7 @@ import {
 } from './shot';
 import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
-import { TimelineEventSchema } from './timeline-event';
+import { TimelineEventV26Schema } from './timeline-event';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -334,7 +336,7 @@ const ShotV5BaseShape = {
   defaultSubtitleStyleId: IdSchema,
   dialogues: z.array(DialogueV5Schema),
   audioClips: z.array(AudioClipV7Schema),
-  timelineEvents: z.array(TimelineEventSchema).default([]),
+  timelineEvents: z.array(TimelineEventV26Schema).default([]),
   layers: z.array(LayerV14Schema),
   backgroundLayerId: IdSchema.nullable(),
 };
@@ -666,6 +668,7 @@ export const ProjectV23Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(23),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV23Schema),
+  shots: z.array(ShotV26Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
@@ -675,6 +678,7 @@ export const ProjectV24Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(24),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV24Schema),
+  shots: z.array(ShotV26Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
@@ -684,6 +688,15 @@ export const ProjectV25Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(25),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV25Schema),
+  shots: z.array(ShotV26Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV26Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(26),
+  characters: z.array(CharacterV26Schema),
+  shots: z.array(ShotV26Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);

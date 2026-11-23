@@ -4,7 +4,7 @@ import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
 import type { AnimationFrame, ProjectAnimationDefinition } from '../models/animation';
 import { resolveConfiguredAnimationFrameIndex, resolveFlaGraphicPreviewTimeline } from './animationSourceTimeline';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
-import { isFlaGraphicDefinition, type CharacterFaceSource, type Project, type TalkingAnimationPlayback } from '../models';
+import { isFlaGraphicDefinition, type CharacterFaceSource, type MouthPoseSource, type Project, type TalkingAnimationPlayback } from '../models';
 
 type ResolvedFace = {
   width: number;
@@ -92,7 +92,7 @@ export function listTalkingAnimationImageIds(definition: ProjectAnimationDefinit
 }
 
 /** Thin source adapter. Graphic timing, structure and fallback remain owned by P0. */
-export function resolveCharacterFaceSource(project: Project, source: CharacterFaceSource): ResolvedFace {
+export function resolveCharacterFaceSource(project: Project, source: MouthPoseSource): ResolvedFace {
   if (source.kind === 'image') {
     const asset = project.assets.find(candidate => candidate.id === source.assetId && candidate.kind === 'image');
     if (!asset || asset.kind !== 'image') throw new Error(`Unknown face image: ${source.assetId}`);
@@ -105,7 +105,9 @@ export function resolveCharacterFaceSource(project: Project, source: CharacterFa
   const selected = evaluateFlaGraphicFrame('single frame', source.firstFrame, undefined, definition.frames.length, 0);
   if (!selected.ok) throw new Error(selected.message);
   const frame = definition.frames[selected.frameIndex]!;
-  const flaGraphic = evaluateFlaGraphicVisual({ definition, frameOrdinal: frame.ordinal, mode: 'instance' });
+  const flaGraphic = evaluateFlaGraphicVisual({
+    definition, frameOrdinal: frame.ordinal, mode: 'instance', internalTimeMs: source.internalTimeMs,
+  });
   if (!flaGraphic) throw new Error(`Missing Graphic frame: ${frame.ordinal}`);
   return {
     width: flaGraphic.canvas.width, height: flaGraphic.canvas.height,
@@ -117,7 +119,7 @@ export function resolveCharacterFaceSource(project: Project, source: CharacterFa
 /** Non-throwing variant so missing/broken Expression resources degrade locally. */
 export function resolveCharacterFaceSourceOrNull(
   project: Project,
-  source: CharacterFaceSource,
+  source: MouthPoseSource,
 ): ReturnType<typeof resolveCharacterFaceSource> | null {
   try {
     return resolveCharacterFaceSource(project, source);

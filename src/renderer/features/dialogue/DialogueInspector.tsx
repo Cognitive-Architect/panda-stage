@@ -1,3 +1,4 @@
+import { MouthPoseDraftControl } from './MouthPoseDraftControl';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Clock3, MessageSquareText, Trash2, UserRound, Volume2 } from 'lucide-react';
 import {
@@ -400,6 +401,8 @@ export function DialogueInspector({
     if (applied) setAudioTrimEditorOpen(false);
   };
 
+  const mouthPoseDraftControl = snapshot && shot && timed ? <MouthPoseDraftControl
+    key={`${shot.id}:${dialogue.id}:${dialogue.startMs}:${dialogue.endMs}`} snapshot={snapshot} shot={shot} dialogue={dialogue} /> : null;
   const audioBindingControl = timed ? (
     <div
       className={`dialogue-audio-state${audioClip ? ' is-bound' : ' is-empty'}`}
@@ -1014,9 +1017,11 @@ export function DialogueInspector({
               {audioSummary}
             </p>
           ) : null}
+          {mouthPoseDraftControl}
         </section>
 
         <div className="dialogue-inspector-actions dialogue-timed-actions">
+          {timed && <button type="button" onClick={() => dialogueStore.duplicate(dialogue.id)}>复制对白</button>}
           <button
             aria-label={`删除字幕：${speakerName}：${dialogue.text}`}
             type="button"
@@ -1299,6 +1304,7 @@ export function DialogueInspector({
             <h3>配音</h3>
           </div>
           {audioBindingControl}
+          {mouthPoseDraftControl}
         </section>
 
         <div className="dialogue-properties-actions">
@@ -1598,6 +1604,7 @@ export function DialogueInspector({
             <h3>配音</h3>
           </div>
           {audioBindingControl}
+          {mouthPoseDraftControl}
         </section>
 
         <div className="dialogue-properties-actions dialogue-landscape-properties-actions">
@@ -1773,6 +1780,7 @@ export function DialogueInspector({
             {error.message}
           </p>
         ) : null}
+        {mouthPoseDraftControl}
         <button
           type="button"
           className="dialogue-delete"

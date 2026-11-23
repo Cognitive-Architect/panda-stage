@@ -1,7 +1,7 @@
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { Project } from '../models/project';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
-import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource } from '../selectors/characterFaceSource';
+import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveCharacterFaceSourceOrNull } from '../selectors/characterFaceSource';
 
 export type AssetReferenceKind =
   | 'character-base'
@@ -79,6 +79,13 @@ export function scanAssetReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    for (const [poseIndex, pose] of (character.mouthPoseSet?.poses ?? []).entries()) {
+      const resolved = resolveCharacterFaceSourceOrNull(project, pose.source);
+      if (resolved?.assetId === assetId || resolved?.flaGraphic?.resourceAssetIds.includes(assetId)) {
+        references.push({ kind: 'character-mouth', path: `characters[${characterIndex}].mouthPoseSet.poses[${poseIndex}].source`,
+          label: `角色“${character.name}”的口型“${pose.name}”` });
+      }
+    }
     const talking = findTalkingAnimation(project, character.talkingAnimationId);
     if (talking && listTalkingAnimationImageIds(talking).has(assetId)) {
       references.push({

@@ -30,6 +30,7 @@ import {
   migrateProject,
   projectShotDialogueVisual,
   resolveLayerVisualParts,
+  setManualMouthPose,
   upsertExpressionEventAtTime,
   upsertMouthCueEventAtTime,
   validatePresetApplication,
@@ -185,6 +186,52 @@ function buildPhaseBProject(options?: {
 }
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
+it('replaces one independent mouth or the bound face group, while preserving foreground order', () => {
+  const fixture = buildPhaseBProject({ includeMouth: false });
+  const mouthPartId = 'c2000000-0000-4000-8000-000000000003';
+  const hairPartId = 'c2000000-0000-4000-8000-000000000004';
+  const independent = 'c2000000-0000-4000-8000-000000000005';
+  const face = 'c2000000-0000-4000-8000-000000000006';
+  let project = ProjectSchema.parse({
+    ...fixture.project,
+    characters: fixture.project.characters.map((character) => {
+      if (character.id !== fixture.characterId || character.mode !== 'adaptive-parts' || !character.faceBinding) return character;
+      return {
+        ...character,
+        parts: [...character.parts,
+          makeWholePart(mouthPartId, '嘴', MOUTH_OPEN_ASSET, 100, 100, 2, -10, -30),
+          makeWholePart(hairPartId, '刘海', EXPR_SMILE_ASSET, 100, 100, 3, -20, -90),
+        ],
+        faceBinding: { ...character.faceBinding, replacePartIds: [mouthPartId] },
+        mouthPoseSet: {
+          poses: [
+            { id: independent, name: '独立嘴', target: { kind: 'mouth', partId: mouthPartId },
+              source: { kind: 'image', assetId: MOUTH_OPEN_ASSET } },
+            { id: face, name: '整脸', target: { kind: 'face' }, source: faceSource(1) },
+          ],
+          restPoseId: independent, analyzerMapping: { rest: independent, open: face, closed: independent, round: face, wide: face },
+          driveMode: 'mouth-poses',
+        },
+      };
+    }),
+  });
+  project = setManualMouthPose(project, fixture.shotId, fixture.layerId, 'c2000000-0000-4000-8000-000000000007',
+    { startMs: 300, endMs: 650, poseId: face });
+  const shot = project.shots[0]!;
+  const visualAt = (time: number) => {
+    const evaluated = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, time, project));
+    return resolveLayerVisualParts(project, shot, evaluated.layers.find(layer => layer.id === fixture.layerId)!, time);
+  };
+  const before = visualAt(299);
+  const during = visualAt(300);
+  expect(before.activeFace).toMatchObject({ source: 'mouth', assetId: MOUTH_OPEN_ASSET });
+  expect(during.activeFace).toMatchObject({ source: 'mouth', visualSource: faceSource(1) });
+  expect(before.parts.some(part => part.source.kind === 'adaptive-part' && part.source.characterPartId === PART_FACE_ID)).toBe(true);
+  expect(during.parts.some(part => part.visible && part.source.kind === 'adaptive-part' && part.source.characterPartId === mouthPartId)).toBe(false);
+  expect(during.parts.at(-1)?.source).toMatchObject({ characterPartId: hairPartId });
+  expect(visualAt(650)).toEqual(before);
+});
 
 let mountedRoot: Root | null = null;
 let mountedContainer: HTMLDivElement | null = null;

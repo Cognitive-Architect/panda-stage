@@ -1,3 +1,4 @@
+import { MouthPoseSetEditor } from './MouthPoseSetEditor';
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Pencil, Play, Plus, RefreshCw, X } from 'lucide-react';
@@ -1960,6 +1961,7 @@ export function CharacterEditor({
             </div>
             <div className="character-float-section-stack" hidden={floatOperations !== 'expressions'}>
               {floatMouthRow}
+            <MouthPoseSetEditor characterId={character.id} disabled={disabled || assemblyPending} />
               <div className="character-float-expression-heading">
                 <strong id="character-expression-workspace-heading">表情</strong>
                 <Button aria-expanded={expressionAddOpen} className="character-float-expression-add" onClick={() => setExpressionAddOpen(!expressionAddOpen)} variant="secondary">
@@ -2339,6 +2341,7 @@ export function CharacterEditor({
         </section>
       ) : null}
       {view !== 'expression' && !landscapeDetail ? talkingHeadSettings : null}
+            <MouthPoseSetEditor characterId={character.id} disabled={disabled || assemblyPending} />
       {view === 'detail' && !landscapeDetail && expressionCharacter ? (
         <section
           aria-labelledby="character-expression-summary-heading"

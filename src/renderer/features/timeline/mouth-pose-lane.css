@@ -1,0 +1,55 @@
+.mouth-pose-track {
+  position: relative;
+  min-height: 24px;
+}
+
+.mouth-pose-range {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.mouth-pose-range[data-origin='manual'],
+.mouth-pose-range[data-selected='true'] {
+  background: color-mix(in srgb, currentColor 28%, transparent);
+}
+
+.mouth-pose-range-label {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0 5px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mouth-pose-handle {
+  position: absolute;
+  inset-block: 0;
+  width: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.mouth-pose-handle-startMs { left: 0; }
+.mouth-pose-handle-endMs { right: 0; }
+
+.mouth-pose-range-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.mouth-pose-range-editor input { width: 6em; }

@@ -3,7 +3,7 @@ import {
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
-import { isTalkingAnimationPlaybackInRange } from '../selectors/animationSourceTimeline';
+import { isTalkingAnimationPlaybackInRange, resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { resolveCharacterPartVisualSource } from '../models/character';
 import type { ProjectData } from '../models/project';
@@ -189,6 +189,29 @@ export function validateProjectReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    for (const [poseIndex, pose] of (character.mouthPoseSet?.poses ?? []).entries()) {
+      const path = ['characters', characterIndex, 'mouthPoseSet', 'poses', poseIndex];
+      if (pose.source.kind === 'fla-graphic') {
+        validateFaceGraphic(pose.source, [...path, 'source']);
+        const animation = animations.get(pose.source.animationId);
+        if (pose.source.internalTimeMs !== undefined && animation && isFlaGraphicDefinition(animation)) {
+          const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+          const frame = Math.round(pose.source.internalTimeMs * timeline.fps / 1_000);
+          const sample = timeline.sampleAtFrameIndex(frame);
+          if (frame >= timeline.totalFrames || sample.frameOrdinal !== pose.source.firstFrame) {
+            addIssue(context, [...path, 'source', 'internalTimeMs'], 'Mouth pose sample is outside its Graphic frame.');
+          }
+        }
+      } else if (assets.get(pose.source.assetId)?.kind !== 'image') {
+        addIssue(context, [...path, 'source', 'assetId'], 'Mouth pose requires an existing image.');
+      }
+      if (pose.target.kind === 'mouth') {
+        const { partId } = pose.target;
+        if (character.mode !== 'adaptive-parts' || !character.parts.some((part) => part.partId === partId)) {
+          addIssue(context, [...path, 'target', 'partId'], 'Mouth pose requires an existing character part.');
+        }
+      }
+    }
     const talkingAnimation = character.talkingAnimationId ? animations.get(character.talkingAnimationId) : undefined;
     if (character.talkingAnimationId && !talkingAnimation) {
       addIssue(context, ['characters', characterIndex, 'talkingAnimationId'], 'Unknown talking animation.');
@@ -739,6 +762,22 @@ export function validateProjectReferences(
         }
         // Character existence is checked on the layer source above.
         // Authoring still requires a binding and configured mouth visual.
+      }
+      if (event.type === 'mouth-pose') {
+        const path = ['shots', shotIndex, 'timelineEvents', eventIndex];
+        const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
+        const owner = characterId ? characters.get(characterId) : undefined;
+        if (!owner?.mouthPoseSet?.poses.some((pose) => pose.id === event.poseId)) {
+          addIssue(context, [...path, 'poseId'], 'Mouth pose is not defined on the instance character.');
+        }
+        if (event.dialogueId) {
+          const dialogue = shot.dialogues.find((item) => item.id === event.dialogueId);
+          if (!dialogue || !characterId || dialogue.characterId !== characterId ||
+              event.startMs < dialogue.startMs || event.endMs > dialogue.endMs ||
+              (event.origin === 'generated' && !dialogue.audioClipId)) {
+            addIssue(context, [...path, 'dialogueId'], 'Mouth pose must belong to the same character and fit its dialogue window.');
+          }
+        }
       }
     });
   });

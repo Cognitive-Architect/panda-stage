@@ -1,3 +1,4 @@
+import { MouthPoseAnalysisCancelSchema, MouthPoseAnalysisRequestSchema, MouthPoseAnalysisResponseSchema } from '../../shared/mouth-pose-analysis-api';
 import {
   ipcMain,
   type BrowserWindow,
@@ -320,7 +321,19 @@ export function registerAssetLibraryIpcHandlers(
     }
   });
 
+  ipcMain.handle(IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS, async (event, payload: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS);
+    const request = MouthPoseAnalysisRequestSchema.parse(payload);
+    return MouthPoseAnalysisResponseSchema.parse(await dependencies.assetPreviewAudioService.analyzeMouthPoses(request));
+  });
+  ipcMain.handle(IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL, (event, payload: unknown) => {
+    assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL);
+    dependencies.assetPreviewAudioService.cancelMouthPoseAnalysis(MouthPoseAnalysisCancelSchema.parse(payload).requestId);
+  });
+
   return () => {
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_MOUTH_POSE_ANALYSIS);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_MOUTH_POSE_CANCEL);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DIALOGUE_SILENCE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);

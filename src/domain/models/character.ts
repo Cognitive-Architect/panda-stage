@@ -799,18 +799,64 @@ export const CharacterV25Schema = z.discriminatedUnion('mode', [
   }
 });
 
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV24Schema.safeExtend(TalkingAnimationShape);
-
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape }),
-  CompositeCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape }),
-  AdaptivePartsCharacterCurrentSchema,
-]).superRefine((character, context) => {
+function validateMouthSource(character: { mode: string; mouthOpenAssetId?: string; mouthOpenVisualSource?: unknown },
+  context: z.RefinementCtx) {
   if (character.mode === 'adaptive-parts') return;
   if (character.mouthOpenAssetId && character.mouthOpenVisualSource) {
     context.addIssue({ code: 'custom', path: ['mouthOpenVisualSource'], message: 'Mouth requires a single visual source.' });
   }
+}
+
+const SingleImageCharacterV26Schema = SingleImageCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape });
+const CompositeCharacterV26Schema = CompositeCharacterSchema.extend({ ...CharacterFaceV22Shape, ...TalkingAnimationShape });
+const AdaptivePartsCharacterV26Schema = AdaptivePartsCharacterV24Schema.safeExtend(TalkingAnimationShape);
+export const CharacterV26Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema, CompositeCharacterV26Schema, AdaptivePartsCharacterV26Schema,
+]).superRefine(validateMouthSource);
+
+export const MouthPoseCategorySchema = z.enum(['rest', 'open', 'wide', 'round', 'closed']);
+export const MouthPoseSourceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('image'), assetId: IdSchema }).strict(),
+  CharacterFaceGraphicSourceV22Schema.extend({ internalTimeMs: z.number().finite().nonnegative().optional() }),
+]);
+export const MouthPoseSchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  source: MouthPoseSourceSchema,
+  target: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('face') }).strict(),
+    z.object({ kind: z.literal('mouth'), partId: IdSchema }).strict(),
+  ]),
+}).strict();
+export const MouthPoseSetSchema = z.object({
+  poses: z.array(MouthPoseSchema).min(1).max(64),
+  restPoseId: IdSchema,
+  analyzerMapping: z.record(MouthPoseCategorySchema, IdSchema),
+  driveMode: z.enum(['asset-loop', 'mouth-poses']),
+}).strict().superRefine((set, context) => {
+  const ids = new Set(set.poses.map((pose) => pose.id));
+  const check = (valid: boolean, path: (string | number)[], message: string) => {
+    if (!valid) context.addIssue({ code: 'custom', path, message });
+  };
+  check(ids.size === set.poses.length, ['poses'], 'Mouth pose ids must be unique.');
+  check(ids.has(set.restPoseId), ['restPoseId'], 'Unknown rest mouth pose.');
+  for (const category of MouthPoseCategorySchema.options) {
+    check(ids.has(set.analyzerMapping[category]), ['analyzerMapping', category], 'Unknown mapped mouth pose.');
+  }
+  check(set.analyzerMapping.rest === set.restPoseId, ['restPoseId'], 'Rest mapping must match the rest mouth pose.');
 });
+export type MouthPoseCategory = z.infer<typeof MouthPoseCategorySchema>;
+export type MouthPoseSource = z.infer<typeof MouthPoseSourceSchema>;
+export type MouthPose = z.infer<typeof MouthPoseSchema>;
+export type MouthPoseSet = z.infer<typeof MouthPoseSetSchema>;
+
+const MouthPoseShape = { mouthPoseSet: MouthPoseSetSchema.optional() };
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend(MouthPoseShape);
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(MouthPoseShape),
+  CompositeCharacterV26Schema.safeExtend(MouthPoseShape),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource);
 
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
