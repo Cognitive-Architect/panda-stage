@@ -1969,12 +1969,8 @@ export function EditorShell({
     }
   };
 
-  const openProductPreview = (draft?: Project): void => {
+  const openProductPreview = (): void => {
     if (productPreviewOpenRef.current) return;
-    setProductPreviewDraft(draft ? {
-      ...draft,
-      shots: draft.shots.filter((shot) => shot.id === shotStore.getCurrentShotId()),
-    } : null);
     cancelProductPreviewFocusRestore();
     const sessionId = productPreviewSessionRef.current + 1;
     productPreviewSessionRef.current = sessionId;
@@ -1994,6 +1990,14 @@ export function EditorShell({
         : null;
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(true);
+  };
+
+  const openDraftPreview = (draft: Project): void => {
+    if (productPreviewOpenRef.current) return;
+    const activeShot = draft.shots.find((shot) => shot.id === shotStore.getCurrentShotId());
+    if (!activeShot) return;
+    setProductPreviewDraft({ ...draft, shots: [activeShot] });
+    openProductPreview();
   };
 
   const startCandidateExport = async (candidate: {
@@ -3081,7 +3085,7 @@ export function EditorShell({
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
-                  onPreviewDraft={openProductPreview}
+                  onPreviewDraft={openDraftPreview}
                 />
               )}
             </div>
@@ -3106,7 +3110,8 @@ export function EditorShell({
               onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}
-              project={productPreviewDraft ?? projectSnapshot.project}
+              project={projectSnapshot.project}
+              draftProject={productPreviewDraft}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
               surfaceActive={productPreviewSurfaceActive}

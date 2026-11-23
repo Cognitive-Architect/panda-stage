@@ -83,6 +83,8 @@ export interface ProductPreviewOverlayProps {
   projectRoot: string;
   /** The already loaded formal project. Treated as immutable input. */
   project: Project;
+  /** Computed edit preview, discarded when the overlay closes. */
+  draftProject?: Project | null;
   /** Shot selected in the editor, or `null` when nothing is selected. */
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
@@ -103,7 +105,8 @@ type ProductPreviewInitialReadiness = 'preparing' | 'ready' | 'error';
 export function ProductPreviewOverlay({
   dialogueSilence,
   projectRoot,
-  project,
+  project: formalProject,
+  draftProject,
   shotId,
   autoPlay = false,
   autoCameraEnabled,
@@ -112,6 +115,7 @@ export function ProductPreviewOverlay({
   onHandoffReady,
   onClose,
 }: ProductPreviewOverlayProps): React.JSX.Element {
+  const project = draftProject ?? formalProject;
   const renderStartedAt = previewDiagnosticNow();
   const currentShot = useMemo(
     () => resolveProductPreviewShot(project, shotId),
