@@ -67,6 +67,7 @@ import type {
   ProjectOpenFolderResponse,
   ProjectOperationResponse,
   ProjectSaveRequest,
+  ProjectSaveTemplateRequest,
   ProjectSwitchGuardRequest,
   ProjectSwitchGuardResponse,
 } from '../shared/project-api';
@@ -179,6 +180,7 @@ declare global {
         save: (
           request: ProjectSaveRequest,
         ) => Promise<ProjectOperationResponse>;
+        saveTemplate: (request: ProjectSaveTemplateRequest) => Promise<ProjectOperationResponse>;
       };
       assets: {
         choose: (

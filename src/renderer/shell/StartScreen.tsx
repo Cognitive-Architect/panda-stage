@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowRight, Box, Check } from 'lucide-react';
 import { RecentProjectsPanel } from '../features/welcome/RecentProjectsPanel';
-import { DecorativeIcon } from '../ui';
+import { Button, DecorativeIcon } from '../ui';
 import { NewProjectEntry } from './NewProjectEntry';
 
 export interface ProjectCenterCurrentProject {
@@ -27,6 +27,8 @@ export interface StartScreenProps {
     expectedProjectId: string,
   ): Promise<void>;
   onRequestNewProject(): void;
+  onCreateFromTemplate?(): Promise<void>;
+  onRequestSaveTemplate?(): void;
   currentProject?: ProjectCenterCurrentProject | null;
   onReturnToEditor?(): void;
   recoveryBanner?: ReactNode;
@@ -44,6 +46,8 @@ export function StartScreen({
   onOpenProject,
   onOpenRecentProject,
   onRequestNewProject,
+  onCreateFromTemplate,
+  onRequestSaveTemplate,
   currentProject = null,
   onReturnToEditor,
   recoveryBanner,
@@ -159,6 +163,14 @@ export function StartScreen({
           onRequestNewProject={onRequestNewProject}
           openCandidatePath={openCandidatePath}
         />
+        {onCreateFromTemplate || (currentProject && onRequestSaveTemplate) ? (
+          <div className="project-launcher-template-actions">
+            {onCreateFromTemplate ? <Button variant="secondary" disabled={busy || newProjectDialogOpen}
+              onClick={() => void onCreateFromTemplate()}>从模板创建工程</Button> : null}
+            {currentProject && onRequestSaveTemplate ? <Button variant="secondary" disabled={busy || newProjectDialogOpen}
+              onClick={onRequestSaveTemplate}>存为模板</Button> : null}
+          </div>
+        ) : null}
         <output
           aria-live="polite"
           className="project-launcher-status"

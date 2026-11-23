@@ -120,6 +120,7 @@ import {
   projectCreateErrorMessage,
   validateNewProjectInput,
 } from './projectCreateFlow';
+import { PROJECT_TEMPLATE_EXTENSION } from '../../shared/project-api';
 import {
   projectOpenErrorMessage,
   validateProjectOpenCandidate,
@@ -665,6 +666,9 @@ export function EditorShell({
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
+  const [projectTemplateMode, setProjectTemplateMode] = useState<
+    { kind: 'save-template' } | { kind: 'from-template'; templateRoot: string } | null
+  >(null);
   const [newProjectParentDirectory, setNewProjectParentDirectory] =
     useState('');
   const [newProjectParentDirectoryTouched, setNewProjectParentDirectoryTouched] =
@@ -1812,6 +1816,7 @@ export function EditorShell({
   };
 
   const requestNewProject = (): void => {
+    setProjectTemplateMode(null);
     setNewProjectParentDirectoryTouched(false);
     setNewProjectNameTouched(false);
     setNewProjectStatus('');
@@ -1820,7 +1825,35 @@ export function EditorShell({
 
   const cancelNewProject = (): void => {
     setNewProjectDialogOpen(false);
+    setProjectTemplateMode(null);
     setNewProjectStatus('');
+  };
+
+  const requestSaveTemplate = (): void => {
+    requestNewProject();
+    setProjectTemplateMode({ kind: 'save-template' });
+    setNewProjectName('');
+  };
+
+  const requestCreateFromTemplate = async (): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') return;
+      if (!response.projectRoot.replace(/[\\/]+$/u, '').toLowerCase().endsWith(PROJECT_TEMPLATE_EXTENSION)) {
+        setStatus('请选择 Panda Stage 模板文件夹。');
+        return;
+      }
+      requestNewProject();
+      setProjectTemplateMode({ kind: 'from-template', templateRoot: response.projectRoot });
+      setNewProjectName('');
+      setStatus('');
+    } catch {
+      setStatus('无法选择模板文件夹，请重试。');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const chooseNewProjectParentDirectory = async (): Promise<void> => {
@@ -1835,7 +1868,7 @@ export function EditorShell({
       // For creation that folder is only the parent: the Main Process appends
       // the project directory name and performs the join.
       setNewProjectParentDirectory(response.projectRoot);
-      setNewProjectStatus('已选择存放文件夹，请填写项目名称。');
+      setNewProjectStatus(projectTemplateMode ? '' : '已选择存放文件夹，请填写项目名称。');
     } catch (error) {
       setNewProjectStatus(
         error instanceof Error
@@ -1864,10 +1897,45 @@ export function EditorShell({
     }
     setBusy(true);
     try {
+      if (projectTemplateMode?.kind === 'save-template') {
+        setNewProjectStatus('正在保存模板…');
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) {
+          setNewProjectStatus('请先打开要保存为模板的工程。');
+          return;
+        }
+        const synced = await session.syncAutosave(snapshot);
+        if (synced && !synced.ok) {
+          setNewProjectStatus(synced.error.message);
+          return;
+        }
+        const response = await window.pandaStage.project.saveTemplate({
+          projectRoot: snapshot.projectRoot,
+          project: snapshot.project,
+          revision: snapshot.revision,
+          parentDirectory,
+          templateName: projectName,
+        });
+        if (!response.ok) {
+          const message = response.error.code === 'PROJECT_ALREADY_EXISTS'
+            ? '该文件夹已存在同名模板，请更换名称。'
+            : response.error.code === 'PROJECT_SAVE_STALE_REVISION'
+              ? '项目已有更新，请重试以保存最新内容。'
+              : '无法保存模板，请检查项目和存放文件夹后重试。';
+          setNewProjectStatus(message);
+          return;
+        }
+        cancelNewProject();
+        setNewProjectName('');
+        setStatus('模板已保存。');
+        return;
+      }
+      if (projectTemplateMode?.kind === 'from-template') setNewProjectStatus('正在从模板创建工程…');
       const response = await window.pandaStage.project.createAt({
         parentDirectory,
         projectName,
         metadata: { name: projectName },
+        ...(projectTemplateMode?.kind === 'from-template' ? { templateRoot: projectTemplateMode.templateRoot } : {}),
       });
       if (!response.ok) {
         setNewProjectStatus(projectCreateErrorMessage(response.error));
@@ -1885,12 +1953,15 @@ export function EditorShell({
         return;
       }
       setNewProjectDialogOpen(false);
+      setProjectTemplateMode(null);
       setNewProjectName('');
       setNewProjectParentDirectoryTouched(false);
       setNewProjectNameTouched(false);
       setNewProjectStatus('');
     } catch (error) {
-      setNewProjectStatus(projectCreateErrorMessage(error));
+      setNewProjectStatus(projectTemplateMode?.kind === 'save-template'
+        ? '无法保存模板，请检查项目和存放文件夹后重试。'
+        : projectCreateErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -2775,6 +2846,8 @@ export function EditorShell({
           onOpenRecentProject={switchToRecentProject}
           onOpenCandidatePathChange={setOpenCandidatePath}
           onRequestNewProject={requestNewProject}
+          onCreateFromTemplate={requestCreateFromTemplate}
+          onRequestSaveTemplate={requestSaveTemplate}
           onReturnToEditor={returnToEditor}
           openCandidatePath={openCandidatePath}
           recentRefreshToken={recentRefreshToken}
@@ -3047,6 +3120,7 @@ export function EditorShell({
         newProjectDialogOpen ? (
         <NewProjectDialog
           busy={busy}
+          mode={projectTemplateMode?.kind}
           onCancel={cancelNewProject}
           onChooseParentDirectory={chooseNewProjectParentDirectory}
           onCreateProject={createProject}

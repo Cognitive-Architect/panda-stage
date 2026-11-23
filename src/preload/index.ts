@@ -80,12 +80,14 @@ import {
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
+  ProjectSaveTemplateRequestSchema,
   ProjectSwitchGuardRequestSchema,
   ProjectSwitchGuardResponseSchema,
   type ProjectCreateAtRequest,
   type ProjectCreateRequest,
   type ProjectOpenRequest,
   type ProjectSaveRequest,
+  type ProjectSaveTemplateRequest,
   type ProjectSwitchGuardRequest,
 } from '../shared/project-api';
 import {
@@ -254,6 +256,11 @@ const pandaStageApi = Object.freeze({
         IPC_CHANNELS.PROJECT_SAVE,
         request,
       );
+      return ProjectOperationResponseSchema.parse(response);
+    },
+    saveTemplate: async (rawRequest: ProjectSaveTemplateRequest) => {
+      const request = ProjectSaveTemplateRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(IPC_CHANNELS.PROJECT_SAVE_TEMPLATE, request);
       return ProjectOperationResponseSchema.parse(response);
     },
   }),

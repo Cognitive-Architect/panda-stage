@@ -15,6 +15,7 @@ export const ProjectErrorCodeSchema = z.enum([
   'PROJECT_SAVE_STALE_REVISION',
   'PROJECT_NOT_WRITABLE',
   'CREATE_FAILED',
+  'INVALID_TEMPLATE',
   'OPEN_FAILED',
   'SAVE_FAILED',
 ]);
@@ -96,6 +97,7 @@ export const ProjectCreateRequestSchema = z
  * project name and never assembles the final project root itself.
  */
 export const PROJECT_ROOT_EXTENSION = '.pandastage';
+export const PROJECT_TEMPLATE_EXTENSION = '.pandastage-template';
 
 /** Maximum length of the bare (extension-less) project directory name. */
 export const PROJECT_NAME_MAX_LENGTH = 120;
@@ -172,6 +174,7 @@ export const ProjectCreateAtRequestSchema = z
     parentDirectory: FileSystemPathSchema,
     projectName: ProjectNameSchema,
     metadata: ProjectCreateMetadataSchema,
+    templateRoot: FileSystemPathSchema.optional(),
   })
   .strict();
 
@@ -188,6 +191,11 @@ export const ProjectSaveRequestSchema = z
     revision: z.number().int().nonnegative(),
   })
   .strict();
+
+export const ProjectSaveTemplateRequestSchema = ProjectSaveRequestSchema.extend({
+  parentDirectory: FileSystemPathSchema,
+  templateName: ProjectNameSchema,
+});
 
 export const ProjectDocumentSchema = z
   .object({
@@ -280,6 +288,7 @@ export type ProjectCreateAtRequest = z.infer<
 >;
 export type ProjectOpenRequest = z.infer<typeof ProjectOpenRequestSchema>;
 export type ProjectSaveRequest = z.infer<typeof ProjectSaveRequestSchema>;
+export type ProjectSaveTemplateRequest = z.infer<typeof ProjectSaveTemplateRequestSchema>;
 export type ProjectDocument = z.infer<typeof ProjectDocumentSchema>;
 export type ProjectOperationError = z.infer<
   typeof ProjectOperationErrorSchema

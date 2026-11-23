@@ -127,6 +127,7 @@ const PROJECT_CREATE_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PROJECT_NOT_FOUND: '存放文件夹不存在，请重新选择后重试。',
   INVALID_PROJECT: '新项目数据校验失败，请稍后重试。',
   CREATE_FAILED: '创建项目失败，请检查存放文件夹后重试。',
+  INVALID_TEMPLATE: '无法读取模板，请重新选择有效的 Panda Stage 模板文件夹。',
 };
 
 /**

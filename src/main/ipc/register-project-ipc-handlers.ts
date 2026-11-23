@@ -9,6 +9,7 @@ import {
   ProjectOpenRequestSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
+  ProjectSaveTemplateRequestSchema,
   ProjectSwitchGuardRequestSchema,
   ProjectSwitchGuardResponseSchema,
   type ProjectDocument,
@@ -203,9 +204,24 @@ export function registerProjectIpcHandlers(
           request.parentDirectory,
           request.projectName,
           request.metadata,
+          ...(request.templateRoot ? [request.templateRoot] : []),
         );
         dependencies.onProjectContextChanged?.();
         await recordProjectAccess(dependencies, value);
+        return ProjectOperationResponseSchema.parse({ ok: true, value });
+      } catch (error) {
+        return failure(error, request.parentDirectory, 'CREATE_FAILED');
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PROJECT_SAVE_TEMPLATE,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow(), IPC_CHANNELS.PROJECT_SAVE_TEMPLATE);
+      const request = ProjectSaveTemplateRequestSchema.parse(rawRequest);
+      try {
+        const value = await dependencies.projectService.saveAsTemplate(request);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
         return failure(error, request.parentDirectory, 'CREATE_FAILED');
@@ -264,6 +280,7 @@ export function registerProjectIpcHandlers(
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_CREATE_AT);
+    ipcMain.removeHandler(IPC_CHANNELS.PROJECT_SAVE_TEMPLATE);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_OPEN);
     ipcMain.removeHandler(IPC_CHANNELS.PROJECT_SAVE);
   };
