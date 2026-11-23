@@ -15,6 +15,7 @@ export function CharacterActionLibrary({ snapshot, characterId }: {
   const session = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
+    characterAssemblySessionStore.getSnapshot,
   );
   const character = snapshot.project.characters.find((entry) => entry.id === characterId) ?? null;
   const pending = session !== null && isCharacterAssemblyPending(snapshot.project, session);
