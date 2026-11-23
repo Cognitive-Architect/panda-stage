@@ -69,6 +69,7 @@ import {
   ExpressionEditor,
   type ExpressionResourceSwapRequest,
 } from './ExpressionEditor';
+import { CharacterAssetClaimPanel } from './CharacterAssetClaimPanel';
 import { GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
 import { useProjectImageThumbnails } from './CharacterIdentity';
@@ -2766,6 +2767,9 @@ function AdaptivePartsAssemblyWorkbench({
                     </button>
                   </div>
                 </div>
+                <CharacterAssetClaimPanel key={assemblyCharacter.id} character={assemblyCharacter}
+                  snapshot={projectSnapshot} imageAssets={projectImageAssets} thumbnails={adaptiveSwapThumbnails}
+                  onThumbnailError={onAdaptiveSwapThumbnailError} disabled={hasPendingChanges} />
                 <ExpressionEditor
                   character={assemblyCharacter}
                   compactDetailWorkspace

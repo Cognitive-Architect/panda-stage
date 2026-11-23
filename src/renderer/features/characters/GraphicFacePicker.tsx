@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
-import { resolveCharacterFaceSource } from '../../../domain/selectors/characterFaceSource';
+import { resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
 import { Button } from '../../ui/Button';
@@ -17,7 +17,7 @@ export function GraphicFacePreview({ source, label = '表情预览' }: { source:
   const [visible, setVisible] = useState(false);
   const [images, setImages] = useState(EMPTY_CANVAS_IMAGE_STATE);
   const session = useRef<CanvasImageResourceSession | null>(null);
-  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSource(snapshot.project, source) : null,
+  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSourceOrNull(snapshot.project, source) : null,
     [snapshot, source.animationId, source.firstFrame, source.internalTimeMs]);
   useEffect(() => {
     const target = canvas.current;
@@ -56,12 +56,13 @@ export function GraphicFacePreview({ source, label = '表情预览' }: { source:
   const thumbnailScale = resolved ? Math.min(1, 480 / resolved.width, 360 / resolved.height) : 1;
   const width = resolved ? Math.max(1, Math.round(resolved.width * thumbnailScale)) : 240;
   const height = resolved ? Math.max(1, Math.round(resolved.height * thumbnailScale)) : 180;
-  return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
+  return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing || !resolved ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
-export function TalkingAnimationPicker({ animationId, playback, onApply, disabled }: {
+export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false }: {
   animationId?: string;
   playback?: TalkingAnimationPlayback;
+  forClaim?: boolean;
   onApply: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   disabled?: boolean;
 }): React.JSX.Element {
@@ -89,7 +90,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
         setDraftPlayback(undefined);
         setPreviewRest(false);
         setOpen(!open);
-      }}>说话动画</Button>
+      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button>
       {open && snapshot ? (
         <div className="graphic-face-options">
           <label>
@@ -139,13 +140,13 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
                 onClick={() => setPreviewRest(!previewRest)}>查看静止帧</Button> : null}
             </div>
             <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot}
-              titleId={titleId} playback={selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
+              titleId={titleId} playback={forClaim ? settings : selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
           </> : null}
           <Button disabled={disabled || ((selected?.id ?? undefined) === animationId &&
             JSON.stringify(selectedPlayback) === JSON.stringify(playback))} onClick={() => {
-            onApply(selected?.id ?? null, selectedPlayback);
+            onApply(selected?.id ?? null, forClaim && selected ? settings : selectedPlayback);
             setOpen(false);
-          }}>应用说话动画</Button>
+          }}>{forClaim ? '选用这段' : '应用说话动画'}</Button>
         </div>
       ) : null}
     </div>

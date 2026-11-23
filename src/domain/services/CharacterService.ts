@@ -8,6 +8,7 @@ import {
   DEFAULT_BODY_PLACEMENT,
   DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   FacePlacementSchema,
+  TalkingAnimationPlaybackSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
   cloneAdaptivePartsFaceBinding,
@@ -34,6 +35,9 @@ import {
   type Project,
 } from '../models';
 import { computeAdaptiveFaceAnchorRect } from '../geometry/characterPartLayout';
+import { NameSchema } from '../models/common';
+import { hasFlaGraphicTemporalPlayback } from '../evaluate-shot-at-time';
+import { isTalkingAnimationPlaybackInRange } from '../selectors/animationSourceTimeline';
 import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 import {
   scanCharacterReferences,
@@ -80,6 +84,12 @@ export interface CharacterExpressionDraft {
   name: string;
   assetId?: string;
   visualSource?: CharacterFaceGraphicSource;
+}
+
+export interface CharacterAssetClaim {
+  expressions: readonly { name: string; source: CharacterFaceSource }[];
+  talkingAnimationId: string;
+  playback: TalkingAnimationPlayback;
 }
 
 export interface CreateCharacterInput {
@@ -865,6 +875,53 @@ export class CharacterService {
       voiceProfiles: project.voiceProfiles.filter(
         (profile) => profile.characterId !== character.id,
       ),
+    });
+  }
+
+  claimCharacterAssets(
+    project: Project,
+    characterId: string,
+    claim: CharacterAssetClaim,
+  ): Project {
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: true,
+    });
+    const currentExpressions = character.expressions ?? [];
+    const { expressions, talkingAnimationId } = claim;
+    if (expressions.length !== 3) throw new Error('请选择三张表情。');
+    this.assertUniqueExpressionNames([...currentExpressions, ...expressions]);
+    const sourceKeys = new Set<string>();
+    const ready = expressions.map(({ name, source }) => {
+      const parsedName = NameSchema.safeParse(name);
+      if (!parsedName.success) throw new Error('表情名称须为 1 到 200 个字符。');
+      const key = source.kind === 'image' ? source.assetId : `${source.animationId}/${source.firstFrame}`;
+      if (sourceKeys.has(key)) throw new Error('请选择三张不同的表情。');
+      sourceKeys.add(key);
+
+      try {
+        const face = resolveCharacterFaceSource(project, source);
+        const ids = face.flaGraphic?.resourceAssetIds ?? (face.assetId ? [face.assetId] : []);
+        for (const id of ids) this.imageAsset(project, id);
+      } catch {
+        throw new Error(`“${parsedName.data}”的素材不可用，请重新选择。`);
+      }
+      return {
+        name: parsedName.data,
+        ...(source.kind === 'image' ? { assetId: source.assetId } : { visualSource: { ...source } }),
+      };
+    });
+    const animation = project.animations.find((candidate) => candidate.id === talkingAnimationId);
+    const playback = TalkingAnimationPlaybackSchema.safeParse(claim.playback);
+    if (!animation || !(isFlaGraphicDefinition(animation)
+      ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1) ||
+      !playback.success || !isTalkingAnimationPlaybackInRange(animation, playback.data)) {
+      throw new Error('说话动画或帧范围已不可用，请重新选择。');
+    }
+    return this.replaceCharacter(project, {
+      ...character,
+      expressions: [...currentExpressions, ...ready.map((draft) => ({ id: this.createId(), ...draft }))],
+      talkingAnimationId,
+      talkingAnimationPlayback: playback.data,
     });
   }
 

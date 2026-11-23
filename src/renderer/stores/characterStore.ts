@@ -1,5 +1,6 @@
 import {
   CharacterService,
+  type CharacterAssetClaim,
   type CharacterExpressionAssetUpdate,
   type CharacterExpressionDraft,
   type AdaptivePartUpdate,
@@ -267,6 +268,14 @@ export class CharacterStore {
     return this.apply(
       (project) => this.service.deleteCharacter(project, characterId),
       'Delete character',
+    );
+  }
+
+  claimCharacterAssets(characterId: string, claim: CharacterAssetClaim, expectedSnapshot: EditorProjectSnapshot): Project {
+    return this.apply(
+      (project) => this.service.claimCharacterAssets(project, characterId, claim),
+      '认领角色表情与说话动画',
+      expectedSnapshot,
     );
   }
 

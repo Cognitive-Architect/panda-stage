@@ -23,6 +23,8 @@ import {
 } from '../../src/domain';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { CharacterStore } from '../../src/renderer/stores/characterStore';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
   preflightFlaBytes,
   readFlaSourceBytes,
@@ -180,7 +182,58 @@ describe('Phase A lifecycle: AdaptiveParts face binding & expressions save/reope
     ).expressions![1]!.id;
     project = charService.setDefaultExpression(project, charId, graphicExprId);
     const talkingAnimationPlayback = { firstFrame: 1, lastFrame: 3, mode: 'loop reverse' as const, restFrame: 0 };
-    project = charService.setTalkingAnimation(project, charId, seed.animations[0]!.id, talkingAnimationPlayback);
+    // #1231: one claim over already-imported resources, with a pre-existing default and mouth mode.
+    const restId = randomUUID();
+    const mouthPoseSet = {
+      driveMode: 'mouth-poses',
+      poses: [{ id: restId, name: '闭嘴', source: faceSource(0), target: { kind: 'face' } }],
+      restPoseId: restId,
+      analyzerMapping: { rest: restId, open: restId, wide: restId, round: restId, closed: restId },
+    };
+    project = ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map(character => character.id === charId
+        ? { ...character, mouthPoseSet }
+        : character),
+    });
+    const editor = new EditorProjectStore();
+    editor.open(projectRoot, project);
+    const store = new CharacterStore(editor, charService);
+    const before = editor.getSnapshot()!;
+    const claim = {
+      expressions: [
+        { name: '普通', source: faceSource(0) },
+        { name: '生气', source: faceSource(2) },
+        { name: '哭泣', source: faceSource(3) },
+      ],
+      talkingAnimationId: seed.animations[0]!.id,
+      playback: talkingAnimationPlayback,
+    };
+    expect(() => store.claimCharacterAssets(charId, {
+      ...claim, playback: { ...talkingAnimationPlayback, lastFrame: 50 },
+    }, before)).toThrow('帧范围');
+    expect(editor.getSnapshot()).toBe(before);
+    expect(editor.history.getSnapshot().undoCount).toBe(0);
+    const claimed = store.claimCharacterAssets(charId, claim, before);
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    expect(editor.getSnapshot()?.revision).toBe(before.revision + 1);
+    expect(() => store.claimCharacterAssets(charId, claim, editor.getSnapshot()!)).toThrow('已存在');
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    expect(editor.undo()).toBe(true);
+    expect(editor.getSnapshot()?.project).toEqual(before.project);
+    expect(editor.redo()).toBe(true);
+    project = editor.getSnapshot()!.project;
+    expect(project).toEqual(claimed);
+    expect(project.animations).toEqual(before.project.animations);
+    expect(project.assets).toEqual(before.project.assets);
+    const oldCharacter = before.project.characters.find(({ id }) => id === charId) as AdaptivePartsCharacter;
+    const newCharacter = project.characters.find(({ id }) => id === charId) as AdaptivePartsCharacter;
+    expect(newCharacter.mouthPoseSet).toEqual(oldCharacter.mouthPoseSet);
+    expect(newCharacter.faceBinding).toEqual(oldCharacter.faceBinding);
+    expect(newCharacter.expressions?.slice(0, 2)).toEqual(oldCharacter.expressions);
+    expect(newCharacter.expressions?.slice(2)).toMatchObject(
+      claim.expressions.map(({ name, source }) => ({ name, visualSource: source })),
+    );
     const layerRes = new LayerService().createFromAdaptiveCharacter(
       project,
       IDS.shot,
