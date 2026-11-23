@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
+import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type FlaGraphicDefinition, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
 import { resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
@@ -203,6 +203,54 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   );
 }
 
+type GraphicFrameSource = Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
+
+export function GraphicFrameChoices({ definition, selectedIndex, onSelect, includeInternalFrames, sourceAddresses, disabled, testId }: {
+  definition: FlaGraphicDefinition;
+  selectedIndex: number;
+  onSelect: (source: GraphicFrameSource, frameIndex: number) => void;
+  includeInternalFrames?: boolean;
+  sourceAddresses?: boolean;
+  disabled?: boolean;
+  testId: string;
+}): React.JSX.Element {
+  const [page, setPage] = useState(0);
+  const [address, setAddress] = useState('');
+  const timeline = includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
+  const count = timeline?.totalFrames ?? definition.frames.length;
+  const firstAddress = definition.source.startFrameIndex + 1;
+  const offset = Number(address) - firstAddress;
+  const validAddress = Number.isInteger(offset) && offset >= 0 && offset < count;
+  return <>
+    {sourceAddresses && count > 12 ? <form className="graphic-face-pagination" onSubmit={(event) => {
+      event.preventDefault();
+      if (validAddress) setPage(Math.floor(offset / 12));
+    }}>
+      <input type="number" aria-label="源帧号" placeholder="源帧号" min={firstAddress} max={firstAddress + count - 1}
+        value={address} onChange={(event) => setAddress(event.target.value)} />
+      <Button variant="secondary" type="submit" disabled={!validAddress}>定位</Button>
+    </form> : null}
+    <div className="graphic-face-frames" aria-label={sourceAddresses ? '选择元件帧' : '选择表情帧'}>
+      {Array.from({ length: Math.max(0, Math.min(12, count - page * 12)) }, (_, index) => {
+        const frameIndex = page * 12 + index;
+        const sample = timeline?.sampleAtFrameIndex(frameIndex);
+        const source: GraphicFrameSource = { kind: 'fla-graphic', animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
+          ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
+        const number = frameIndex + (sourceAddresses ? firstAddress : 1);
+        return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled}
+          aria-label={`第 ${number} 帧`} aria-pressed={selectedIndex === frameIndex}
+          data-testid={`${testId}-frame-${frameIndex}`} onClick={() => onSelect(source, frameIndex)}>
+          <GraphicFacePreview source={source} label={`第 ${number} 帧`} /><span>{number}</span>
+        </button>;
+      })}
+    </div>
+    {count > 12 ? <div className="graphic-face-pagination">
+      <button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button>
+      <button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= count} onClick={() => setPage(page + 1)}>下一页</button>
+    </div> : null}
+  </>;
+}
+
 export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children, includeInternalFrames, excludeAnimationId }: {
   source?: CharacterFaceGraphicSource & { internalTimeMs?: number };
   onChange?: (source: MouthPoseSource) => void;
@@ -216,18 +264,15 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [open, setOpen] = useState(false);
   const [showImages, setShowImages] = useState(false);
-  const [page, setPage] = useState(0);
   useEffect(() => {
     setOpen(false);
     setShowImages(false);
-    setPage(0);
   }, [testId]);
   useEffect(() => { setShowImages(false); }, [source?.animationId, source?.firstFrame]);
   const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition)
     .filter((definition) => definition.id !== excludeAnimationId) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
   const timeline = definition && includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
-  const frameCount = timeline?.totalFrames ?? definition?.frames.length ?? 0;
   const selectedIndex = timeline && source?.internalTimeMs !== undefined
     ? Math.round(source.internalTimeMs * timeline.fps / 1_000) : source?.firstFrame ?? 0;
   return <div className="graphic-face-picker" data-testid={`${testId}-visual-source`}>
@@ -239,17 +284,11 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
     {source && !showImages ? <button type="button" className="graphic-face-switch" disabled={disabled} onClick={() => setShowImages(true)}>更换图片</button> : children}
     {onChange && definitions.length && !source ? <button type="button" className="graphic-face-toggle" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>选择元件</button> : null}
     {open && onChange ? <div className="graphic-face-options">
-      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" className="graphic-face-definition" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
-      {definition ? <>
-        <div className="graphic-face-frames" aria-label="选择表情帧">{Array.from({ length: Math.max(0, Math.min(12, frameCount - page * 12)) }, (_, index) => {
-          const frameIndex = page * 12 + index;
-          const sample = timeline?.sampleAtFrameIndex(frameIndex);
-          const selected = { kind: 'fla-graphic' as const, animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
-            ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
-          return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled} aria-label={`第 ${frameIndex + 1} 帧`} aria-pressed={selectedIndex === frameIndex} data-testid={`${testId}-frame-${frameIndex}`} onClick={() => { setShowImages(false); onChange(selected); }}><GraphicFacePreview source={selected} label={`第 ${frameIndex + 1} 帧`} /><span>{frameIndex + 1}</span></button>;
-        })}</div>
-        {frameCount > 12 ? <div className="graphic-face-pagination"><button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button><button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= frameCount} onClick={() => setPage(page + 1)}>下一页</button></div> : null}
-      </> : null}
+      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" className="graphic-face-definition" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
+      {definition ? <GraphicFrameChoices key={`${testId}:${definition.id}`} definition={definition} selectedIndex={selectedIndex}
+        includeInternalFrames={includeInternalFrames} disabled={disabled} testId={testId} onSelect={(next) => {
+          setShowImages(false); onChange(next);
+        }} /> : null}
     </div> : null}
   </div>;
 }

@@ -197,9 +197,27 @@ export const CharacterActionEventSchema = z.object({
   }
 });
 
-export const TimelineEventSchema = z.discriminatedUnion('type', [
+const TimelineEventV28Options = [
   ...TimelineEventV27Options,
   CharacterActionEventSchema,
+] as const;
+
+export const TimelineEventV28Schema = z.discriminatedUnion('type', TimelineEventV28Options).superRefine(validateRange);
+
+export const GraphicFrameEventSchema = z.object({
+  ...TimelineEventBaseShape,
+  type: z.literal('graphic-frame'),
+  animationId: IdSchema,
+  sourceFrameIndex: z.number().int().nonnegative(),
+}).strict().superRefine((event, context) => {
+  if (event.endMs !== event.startMs) {
+    context.addIssue({ code: 'custom', path: ['endMs'], message: 'Graphic frame switches are point events.' });
+  }
+});
+
+export const TimelineEventSchema = z.discriminatedUnion('type', [
+  ...TimelineEventV28Options,
+  GraphicFrameEventSchema,
 ]).superRefine(validateRange);
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
@@ -212,5 +230,6 @@ export type VisibilityEvent = z.infer<typeof VisibilityEventSchema>;
 export type MouthCueEvent = z.infer<typeof MouthCueEventSchema>;
 export type MouthPoseEvent = z.infer<typeof MouthPoseEventSchema>;
 export type CharacterActionEvent = z.infer<typeof CharacterActionEventSchema>;
+export type GraphicFrameEvent = z.infer<typeof GraphicFrameEventSchema>;
 export type TimelineEventV27 = z.infer<typeof TimelineEventV27Schema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;

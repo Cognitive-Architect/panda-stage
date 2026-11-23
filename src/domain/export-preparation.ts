@@ -155,6 +155,7 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
       event.type === 'expression' ||
       event.type === 'visibility' ||
       event.type === 'mouth-cue' ||
+      event.type === 'graphic-frame' ||
       event.type === 'mouth-pose'
     ) {
       times.add(event.startMs);

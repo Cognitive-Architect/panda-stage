@@ -717,6 +717,7 @@ export function validateProjectReferences(
       }
     });
 
+    const graphicFrameKeys = new Set<string>();
     shot.timelineEvents.forEach((event, eventIndex) => {
       const layer = layers.get(event.layerId);
       if (!layer) {
@@ -732,6 +733,22 @@ export function validateProjectReferences(
           ['shots', shotIndex, 'timelineEvents', eventIndex, 'endMs'],
           'Timeline event must end within the shot duration.',
         );
+      }
+      if (event.type === 'graphic-frame') {
+        const path = ['shots', shotIndex, 'timelineEvents', eventIndex];
+        const definition = animations.get(event.animationId);
+        if (layer?.source.kind !== 'animation' || layer.source.animationId !== event.animationId ||
+            !definition || !isFlaGraphicDefinition(definition)) {
+          addIssue(context, [...path, 'animationId'], 'Graphic frame switch must reference its layer definition.');
+        } else {
+          const offset = event.sourceFrameIndex - definition.source.startFrameIndex;
+          if (offset < 0 || offset >= resolveFlaGraphicPreviewTimeline(definition, true).totalFrames) {
+            addIssue(context, [...path, 'sourceFrameIndex'], 'Graphic frame switch is outside its source timeline.');
+          }
+        }
+        const key = `${event.layerId}:${event.startMs}`;
+        if (graphicFrameKeys.has(key)) addIssue(context, [...path, 'startMs'], 'Only one Graphic frame switch per layer and time.');
+        graphicFrameKeys.add(key);
       }
       if (event.type === 'expression' && layer) {
         if (layer.source.kind !== 'character') {

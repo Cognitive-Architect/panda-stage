@@ -15,7 +15,7 @@ import {
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
-import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema } from './timeline-event';
+import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema } from './timeline-event';
 
 const ShotIdentityShape = {
   id: IdSchema,
@@ -92,6 +92,11 @@ export const ShotV26Schema = ShotV20Schema.extend({
 /** Frozen v27 Shot reader before bounded Character action events. */
 export const ShotV27Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV27Schema).default([]),
+  layers: z.array(LayerSchema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV28Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV28Schema).default([]),
   layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
 

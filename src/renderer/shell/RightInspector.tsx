@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {
+  isFlaGraphicDefinition,
   isLegacyCharacterImageLayer,
   resolveCharacterPartVisualSource,
   type Asset,
@@ -34,6 +35,7 @@ import {
 import { VisibleBoundsThumbnail } from '../features/characters/VisibleBoundsThumbnail';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
+import { GraphicFrameAtTimeControl } from '../features/properties/GraphicFrameAtTimeControl';
 import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
 import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
@@ -645,6 +647,10 @@ export function RightInspector({
     />
   );
 
+  const selectedSource = selection.layer?.source;
+  const selectedGraphic = selectedSource?.kind === 'animation'
+    ? snapshot?.project.animations.find((entry) => entry.id === selectedSource.animationId)
+    : undefined;
   const motionSection = snapshot && currentShot ? <CharacterMotionInspectorSection project={snapshot.project} shot={currentShot} layerId={selectedLayerId} /> : null;
   const motionPanelInput = motionNode && currentShot && selection.layer
     ? motionNode.motion === 'character-clip-v1'
@@ -697,6 +703,10 @@ export function RightInspector({
         </>
       )}
       {motionSection}
+      {currentShot && selection.layer && selectedGraphic && isFlaGraphicDefinition(selectedGraphic) ? (
+        <GraphicFrameAtTimeControl key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, selectedGraphic.id])}
+          definition={selectedGraphic} shotId={currentShot.id} layerId={selection.layer.id} locked={selection.layer.locked} />
+      ) : null}
       {showMotionInspector && motionNode?.motion === 'character-clip-v1' ? null : (
         <FlaGraphicStructureTree />
       )}

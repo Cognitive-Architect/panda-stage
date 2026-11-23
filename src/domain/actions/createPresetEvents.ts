@@ -69,6 +69,8 @@ function propertyOfType(type: TimelineEvent['type']): string {
       return 'mouth-pose';
     case 'character-action':
       return 'character-action';
+    case 'graphic-frame':
+      return 'graphic-frame';
   }
 }
 

@@ -315,6 +315,7 @@ function resolveAnimationFrame(
   firstFrameIndex: number,
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
+  selectedSourceFrameIndex?: number,
 ): ResolvedLayerVisualState {
   const animation = project.animations.find(
     (candidate) => candidate.id === animationId,
@@ -326,7 +327,16 @@ function resolveAnimationFrame(
       animationVisible: false,
     };
   }
-  const state = resolveAnimationPlaybackFrameState(
+  const selectedSample = selectedSourceFrameIndex !== undefined && isFlaGraphicDefinition(animation)
+    ? resolveFlaGraphicPreviewTimeline(animation, true).sampleAtFrameIndex(selectedSourceFrameIndex - animation.source.startFrameIndex)
+    : undefined;
+  const selectedFrame = selectedSample && animation.frames[selectedSample.frameOrdinal];
+  const state = selectedFrame ? {
+    frame: selectedFrame,
+    internalTimeMs: selectedSample.internalTimeMs,
+    elapsedMs: 0,
+    completedOnce: false,
+  } : resolveAnimationPlaybackFrameState(
     animation,
     startTimeMs,
     firstFrameIndex,
@@ -447,6 +457,12 @@ export function evaluateLayerPreTrackState(
   let visible = layer.visible;
   const animationSource =
     layer.source.kind === 'animation' ? layer.source : null;
+  const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
+    (left, right) =>
+      left.startMs - right.startMs || left.id.localeCompare(right.id),
+  );
+  const frameSwitch = animationSource && events.filter((event) =>
+    event.type === 'graphic-frame' && event.animationId === animationSource.animationId && event.startMs <= timeMs).at(-1);
   const initialVisual = animationSource
     ? resolveAnimationFrame(
         project,
@@ -455,16 +471,12 @@ export function evaluateLayerPreTrackState(
         layer.animationFirstFrame ?? 0,
         layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
         timeMs,
+        frameSwitch && frameSwitch.type === 'graphic-frame' ? frameSwitch.sourceFrameIndex : undefined,
       )
     : resolveLayerVisualState(project, layer);
   const animationVisible = initialVisual.animationVisible ?? true;
   let assetId = initialVisual.assetId;
   let currentExpressionId = initialVisual.currentExpressionId;
-
-  const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
-    (left, right) =>
-      left.startMs - right.startMs || left.id.localeCompare(right.id),
-  );
 
   const motion = evaluateLayerMotionAtTime(
     { id: layer.id, x: basePose.x, y: basePose.y },

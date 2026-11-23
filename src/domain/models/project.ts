@@ -47,6 +47,7 @@ import {
   ShotSchema,
   ShotV26Schema,
   ShotV27Schema,
+  ShotV28Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -708,6 +709,13 @@ export const ProjectV27Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(27),
   characters: z.array(CharacterV27Schema),
   shots: z.array(ShotV27Schema),
+}).strict().superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV28Schema = CurrentProjectDataSchema.extend({
+  schemaVersion: z.literal(28),
+  shots: z.array(ShotV28Schema),
 }).strict().superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
