@@ -161,6 +161,31 @@
   color: #f5b5a6;
 }
 
+.character-action-range-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-2);
+}
+
+.character-action-range-fields > select {
+  grid-column: 1 / -1;
+}
+
+.character-action-range-fields label {
+  display: grid;
+  gap: var(--ui-space-1);
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.character-action-range-fields input,
+.character-action-range-fields select {
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  width: 100%;
+}
+
 .mouth-cue-at-time {
   margin-top: var(--ui-space-3);
   padding-top: var(--ui-space-3);

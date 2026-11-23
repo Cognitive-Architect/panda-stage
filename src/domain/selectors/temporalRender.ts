@@ -7,6 +7,8 @@ import { audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../audio-contrac
 import { resolveMouthPoseEvent } from '../services/mouthPoses';
 import { resolveCharacterFaceSourceOrNull } from './characterFaceSource';
 import type { AudioClip, ImageAsset, Project, Shot } from '../models';
+import { isFlaGraphicDefinition } from '../models/animation';
+import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
 import {
   evaluateShotAtTime,
   resolveEffectiveMouthCue,
@@ -24,6 +26,33 @@ export const MOUTH_OPEN_MS = 160;
 export const TALKING_HEAD_BOB_AMPLITUDE_PX = 4;
 export const TALKING_HEAD_FREQUENCY_HZ = 2;
 export const TALKING_HEAD_EDGE_ENVELOPE_MS = 120;
+
+/** Images needed by every referenced Character action frame in one Shot. */
+export function listCharacterActionVisualAssetIds(project: Project, shot: Shot): string[] {
+  const assetIds = new Set<string>();
+  for (const event of shot.timelineEvents) {
+    if (event.type !== 'character-action') continue;
+    const layer = shot.layers.find((candidate) => candidate.id === event.layerId);
+    const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
+    const character = project.characters.find((candidate) => candidate.id === characterId);
+    const action = character?.actions?.find((candidate) => candidate.id === event.actionId);
+    const animation = project.animations.find((candidate) => candidate.id === action?.animationId);
+    if (!animation) continue;
+    for (const frame of animation.frames) assetIds.add(frame.assetId);
+    if (isFlaGraphicDefinition(animation)) {
+      for (const frame of animation.frames) {
+        const visual = evaluateFlaGraphicVisual({
+          definition: animation,
+          frameOrdinal: frame.ordinal,
+          mode: 'instance',
+          internalTimeMs: frame.startMs,
+        });
+        for (const assetId of visual?.resourceAssetIds ?? []) assetIds.add(assetId);
+      }
+    }
+  }
+  return [...assetIds];
+}
 
 const IDENTITY_HEAD_GROUP_TRANSFORM = {
   translateX: 0,
@@ -103,6 +132,10 @@ export function listShotRuntimeImageAssets(
     eventsByCharacter.set(owner, poses);
   }
   const assetIndex = new Map(project.assets.map((asset) => [asset.id, asset]));
+  for (const assetId of listCharacterActionVisualAssetIds(project, shot)) {
+    const asset = assetIndex.get(assetId);
+    if (asset?.kind === 'image') assets.set(asset.id, asset);
+  }
   for (const character of project.characters) {
     const set = character.mouthPoseSet;
     if (!characterIds.has(character.id) || !set) continue;

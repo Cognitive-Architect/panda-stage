@@ -1,67 +1,118 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
-import { resolveCharacterFaceSource } from '../../../domain/selectors/characterFaceSource';
+import { resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
 import { Button } from '../../ui/Button';
 import { AnimationPreview } from '../assets/AnimationLibraryPanel';
-import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { CanvasImageResourceSession, EMPTY_CANVAS_IMAGE_STATE } from '../canvas/canvasImageResources';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import './graphic-face-picker.css';
 
+export type GraphicFacePreviewResult = 'pending' | 'ready' | 'failed';
+
 /** Uses the same structured renderer and decoded-image cache contract as Stage. */
-export function GraphicFacePreview({ source, label = '表情预览' }: { source: Extract<MouthPoseSource, { kind: 'fla-graphic' }>; label?: string }): React.JSX.Element {
+export function GraphicFacePreview({ source, label = '表情预览', onResult }: {
+  source: Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
+  label?: string;
+  onResult?: (snapshot: EditorProjectSnapshot, result: GraphicFacePreviewResult) => void;
+}): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
-  const [images, setImages] = useState(EMPTY_CANVAS_IMAGE_STATE);
-  const session = useRef<CanvasImageResourceSession | null>(null);
-  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSource(snapshot.project, source) : null,
+  const [loaded, setLoaded] = useState<{ resolved: NonNullable<typeof resolved>; images: typeof EMPTY_CANVAS_IMAGE_STATE }>();
+  const [failed, setFailed] = useState(false);
+  const resolved = useMemo(() => snapshot ? resolveCharacterFaceSourceOrNull(snapshot.project, source) : null,
     [snapshot, source.animationId, source.firstFrame, source.internalTimeMs]);
+  const report = useEffectEvent((result: GraphicFacePreviewResult) => {
+    if (snapshot) onResult?.(snapshot, result);
+  });
+  const checkPreview = Boolean(onResult);
   useEffect(() => {
     const target = canvas.current;
-    if (!target) return;
+    if (!target || checkPreview) return;
     const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect(); } });
     observer.observe(target);
     return () => observer.disconnect();
-  }, []);
+  }, [checkPreview]);
+  const active = visible || checkPreview;
+  const graphic = resolved?.flaGraphic;
+  const requiredIds = useMemo(() => new Set([
+    ...(graphic?.resourceAssetIds ?? []),
+    ...(resolved?.assetId ? [resolved.assetId] : []),
+  ]), [resolved, graphic]);
   useEffect(() => {
-    if (!visible || !snapshot || !resolved) return;
+    if (!active || !snapshot || !resolved || requiredIds.size === 0) return;
     const resourceSession = new CanvasImageResourceSession();
-    session.current = resourceSession;
-    const ids = new Set(resolved.flaGraphic?.resourceAssetIds ?? []);
-    if (resolved.assetId) ids.add(resolved.assetId);
-    resourceSession.reconcile({ contextKey: snapshot.projectRoot, projectRoot: snapshot.projectRoot, assets: snapshot.project.assets.filter(asset => asset.kind === 'image' && ids.has(asset.id)) }, setImages);
-    return () => { resourceSession.dispose(); session.current = null; };
-  }, [visible, snapshot?.projectRoot, resolved]);
+    resourceSession.reconcile({
+      contextKey: snapshot.projectRoot,
+      projectRoot: snapshot.projectRoot,
+      assets: snapshot.project.assets.filter(asset => asset.kind === 'image' && requiredIds.has(asset.id)),
+    }, images => setLoaded({ resolved, images }));
+    return () => resourceSession.dispose();
+  }, [active, snapshot, resolved, requiredIds]);
   useEffect(() => {
     const target = canvas.current;
     const context = target?.getContext('2d');
-    if (!target || !context) return;
+    const finish = (result: GraphicFacePreviewResult): void => {
+      setFailed(result === 'failed');
+      report(result);
+    };
+    if (!active) return;
+    if (!target || !context || !resolved || !graphic) {
+      finish('failed');
+      return;
+    }
     context.clearRect(0, 0, target.width, target.height);
-    if (!resolved) return;
+    const images = loaded?.resolved === resolved ? loaded.images : EMPTY_CANVAS_IMAGE_STATE;
+    if (images.missing.size > 0 || [...requiredIds].some(id => !snapshot?.project.assets.some(
+      asset => asset.kind === 'image' && asset.id === id,
+    ))) {
+      finish('failed');
+      return;
+    }
+    if ([...requiredIds].some(id => !images.images.has(id))) {
+      finish('pending');
+      return;
+    }
     const scale = Math.min(target.width / resolved.width, target.height / resolved.height);
     const left = (target.width - resolved.width * scale) / 2, top = (target.height - resolved.height * scale) / 2;
-    const graphic = resolved.flaGraphic;
-    if (graphic?.structureFrame) {
-      const rendered = renderFlaGraphicCanvas(graphic, images.images);
-      if (rendered) context.drawImage(rendered.canvas, left + (rendered.rect.x + resolved.width / 2) * scale, top + (rendered.rect.y + resolved.height / 2) * scale, rendered.rect.width * scale, rendered.rect.height * scale);
-    } else if (graphic && resolved.assetId) {
-      const image = images.images.get(resolved.assetId);
-      if (image) context.drawImage(image, left + graphic.frameOffset.x * scale, top + graphic.frameOffset.y * scale, graphic.frameViewport.width * scale, graphic.frameViewport.height * scale);
+    try {
+      if (graphic.structureFrame) {
+        const rendered = renderFlaGraphicCanvas(graphic, images.images);
+        if (rendered?.visibleRect) {
+          context.drawImage(rendered.canvas, left + (rendered.rect.x + resolved.width / 2) * scale, top + (rendered.rect.y + resolved.height / 2) * scale, rendered.rect.width * scale, rendered.rect.height * scale);
+        } else {
+          finish('failed');
+          return;
+        }
+      } else {
+        const image = resolved.assetId ? images.images.get(resolved.assetId) : undefined;
+        if (!image) {
+          finish('failed');
+          return;
+        }
+        context.drawImage(image, left + graphic.frameOffset.x * scale, top + graphic.frameOffset.y * scale, graphic.frameViewport.width * scale, graphic.frameViewport.height * scale);
+      }
+      const visiblePixels = !checkPreview || context.getImageData(0, 0, target.width, target.height).data.some(
+        (value, index) => index % 4 === 3 && value !== 0,
+      );
+      finish(visiblePixels ? 'ready' : 'failed');
+    } catch {
+      finish('failed');
     }
-  }, [resolved, images]);
-  const missing = images.missing.size > 0;
+  }, [active, checkPreview, graphic, loaded, requiredIds, resolved, snapshot]);
   const thumbnailScale = resolved ? Math.min(1, 480 / resolved.width, 360 / resolved.height) : 1;
   const width = resolved ? Math.max(1, Math.round(resolved.width * thumbnailScale)) : 240;
   const height = resolved ? Math.max(1, Math.round(resolved.height * thumbnailScale)) : 180;
-  return <canvas ref={canvas} width={width} height={height} role="img" aria-label={missing ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
+  return <canvas ref={canvas} width={width} height={height} role="img" aria-label={failed || !resolved ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
-export function TalkingAnimationPicker({ animationId, playback, onApply, disabled }: {
+export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false }: {
   animationId?: string;
   playback?: TalkingAnimationPlayback;
+  forClaim?: boolean;
   onApply: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   disabled?: boolean;
 }): React.JSX.Element {
@@ -89,7 +140,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
         setDraftPlayback(undefined);
         setPreviewRest(false);
         setOpen(!open);
-      }}>说话动画</Button>
+      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button>
       {open && snapshot ? (
         <div className="graphic-face-options">
           <label>
@@ -139,13 +190,13 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
                 onClick={() => setPreviewRest(!previewRest)}>查看静止帧</Button> : null}
             </div>
             <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot}
-              titleId={titleId} playback={selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
+              titleId={titleId} playback={forClaim ? settings : selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
           </> : null}
           <Button disabled={disabled || ((selected?.id ?? undefined) === animationId &&
             JSON.stringify(selectedPlayback) === JSON.stringify(playback))} onClick={() => {
-            onApply(selected?.id ?? null, selectedPlayback);
+            onApply(selected?.id ?? null, forClaim && selected ? settings : selectedPlayback);
             setOpen(false);
-          }}>应用说话动画</Button>
+          }}>{forClaim ? '选用这段' : '应用说话动画'}</Button>
         </div>
       ) : null}
     </div>

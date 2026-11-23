@@ -8,7 +8,7 @@ const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
  * no private or licensed source bytes are used.
  */
 export async function buildMultiFrameGraphicFla(
-  options: { readonly blankFirstFrame?: boolean } = {},
+  options: { readonly blankFirstFrame?: boolean; readonly lateRange?: boolean } = {},
 ): Promise<Uint8Array> {
   const zip = new JSZip();
   const symbolName = 'r2-multi-frame-fixture';
@@ -34,7 +34,13 @@ export async function buildMultiFrameGraphicFla(
 </DOMDocument>`;
   zip.file('DOMDocument.xml', docXml);
 
-  const frameSpecs = options.blankFirstFrame
+  const frameSpecs = options.lateRange
+    ? [
+        { index: 0, duration: 1800, frameIndex: 0, blank: true },
+        { index: 1800, duration: 30, frameIndex: 0, blank: false },
+        { index: 1830, duration: 30, frameIndex: 1, blank: false },
+      ]
+    : options.blankFirstFrame
     ? [
         { index: 0, duration: 2, frameIndex: 0, blank: true },
         { index: 2, duration: 2, frameIndex: 1, blank: false },

@@ -3,11 +3,14 @@ import {
   AdaptivePartsFaceBindingSchema,
   AnimationClipV0Schema,
   BodyPlacementSchema,
+  CharacterActionPlacementSchema,
+  CharacterActionSchema,
   CharacterHeadSchema,
   CharacterPartSchema,
   DEFAULT_BODY_PLACEMENT,
   DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   FacePlacementSchema,
+  TalkingAnimationPlaybackSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
   cloneAdaptivePartsFaceBinding,
@@ -21,6 +24,8 @@ import {
   type CharacterFaceSource,
   type CharacterFaceGraphicSource,
   type Character,
+  type CharacterAction,
+  type CharacterActionPlacement,
   type CharacterExpression,
   type TalkingAnimationPlayback,
   type CharacterHead,
@@ -34,11 +39,16 @@ import {
   type Project,
 } from '../models';
 import { computeAdaptiveFaceAnchorRect } from '../geometry/characterPartLayout';
+import { NameSchema } from '../models/common';
+import { hasFlaGraphicTemporalPlayback } from '../evaluate-shot-at-time';
+import { isTalkingAnimationPlaybackInRange } from '../selectors/animationSourceTimeline';
 import { resolveCharacterFaceSource } from '../selectors/characterFaceSource';
 import {
   scanCharacterReferences,
+  scanCharacterActionReferences,
   scanExpressionReferences,
   type CharacterReference,
+  type CharacterActionReference,
   type ExpressionReference,
 } from '../validators';
 
@@ -46,6 +56,11 @@ export type CharacterServiceErrorCode =
   | 'CHARACTER_NOT_FOUND'
   | 'EXPRESSION_NOT_FOUND'
   | 'DUPLICATE_CHARACTER_NAME'
+  | 'DUPLICATE_CHARACTER_ACTION_NAME'
+  | 'CHARACTER_ACTION_NOT_FOUND'
+  | 'CHARACTER_ACTION_REFERENCED'
+  | 'CHARACTER_ACTION_ANIMATION_REQUIRED'
+  | 'CHARACTER_ACTION_LIMIT'
   | 'DUPLICATE_EXPRESSION_NAME'
   | 'IMAGE_ASSET_REQUIRED'
   | 'DEFAULT_EXPRESSION_REQUIRED'
@@ -69,6 +84,7 @@ export class CharacterServiceError extends Error {
     message: string,
     readonly references:
       | readonly CharacterReference[]
+      | readonly CharacterActionReference[]
       | readonly ExpressionReference[] = [],
   ) {
     super(message);
@@ -80,6 +96,19 @@ export interface CharacterExpressionDraft {
   name: string;
   assetId?: string;
   visualSource?: CharacterFaceGraphicSource;
+}
+
+export interface CharacterAssetClaim {
+  expressions: readonly { name: string; source: CharacterFaceSource }[];
+  talkingAnimationId: string;
+  playback: TalkingAnimationPlayback;
+}
+
+export interface CharacterActionDraft {
+  id?: string;
+  name: string;
+  animationId: string;
+  placement?: CharacterActionPlacement;
 }
 
 export interface CreateCharacterInput {
@@ -866,6 +895,137 @@ export class CharacterService {
         (profile) => profile.characterId !== character.id,
       ),
     });
+  }
+
+  claimCharacterAssets(
+    project: Project,
+    characterId: string,
+    claim: CharacterAssetClaim,
+  ): Project {
+    const character = this.expressionHostCharacter(project, characterId, {
+      requireFaceBinding: true,
+    });
+    const currentExpressions = character.expressions ?? [];
+    const { expressions, talkingAnimationId } = claim;
+    if (expressions.length !== 3) throw new Error('请选择三张表情。');
+    this.assertUniqueExpressionNames([...currentExpressions, ...expressions]);
+    const sourceKeys = new Set<string>();
+    const ready = expressions.map(({ name, source }) => {
+      const parsedName = NameSchema.safeParse(name);
+      if (!parsedName.success) throw new Error('表情名称须为 1 到 200 个字符。');
+      const key = source.kind === 'image' ? source.assetId : `${source.animationId}/${source.firstFrame}`;
+      if (sourceKeys.has(key)) throw new Error('请选择三张不同的表情。');
+      sourceKeys.add(key);
+
+      try {
+        const face = resolveCharacterFaceSource(project, source);
+        const ids = face.flaGraphic?.resourceAssetIds ?? (face.assetId ? [face.assetId] : []);
+        for (const id of ids) this.imageAsset(project, id);
+      } catch {
+        throw new Error(`“${parsedName.data}”的素材不可用，请重新选择。`);
+      }
+      return {
+        name: parsedName.data,
+        ...(source.kind === 'image' ? { assetId: source.assetId } : { visualSource: { ...source } }),
+      };
+    });
+    const animation = project.animations.find((candidate) => candidate.id === talkingAnimationId);
+    const playback = TalkingAnimationPlaybackSchema.safeParse(claim.playback);
+    if (!animation || !(isFlaGraphicDefinition(animation)
+      ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1) ||
+      !playback.success || !isTalkingAnimationPlaybackInRange(animation, playback.data)) {
+      throw new Error('说话动画或帧范围已不可用，请重新选择。');
+    }
+    return this.replaceCharacter(project, {
+      ...character,
+      expressions: [...currentExpressions, ...ready.map((draft) => ({ id: this.createId(), ...draft }))],
+      talkingAnimationId,
+      talkingAnimationPlayback: playback.data,
+    });
+  }
+
+  setAction(
+    project: Project,
+    characterId: string,
+    draft: CharacterActionDraft,
+  ): Project {
+    const character = this.character(project, characterId);
+    const actions = character.actions ?? [];
+    const existing = draft.id
+      ? actions.find((action) => action.id === draft.id)
+      : undefined;
+    if (draft.id && !existing) {
+      throw new CharacterServiceError(
+        'CHARACTER_ACTION_NOT_FOUND',
+        '这个角色动作已不存在，请刷新后重试。',
+      );
+    }
+    if (!project.animations.some((animation) => animation.id === draft.animationId)) {
+      throw new CharacterServiceError(
+        'CHARACTER_ACTION_ANIMATION_REQUIRED',
+        '请选择项目中仍可用的动画素材。',
+      );
+    }
+
+    const parsedName = NameSchema.safeParse(draft.name);
+    if (!parsedName.success) throw new Error('动作名称须为 1 到 200 个字符。');
+    if (actions.some((action) =>
+      action.id !== existing?.id &&
+      normalizedName(action.name) === normalizedName(parsedName.data),
+    )) {
+      throw new CharacterServiceError(
+        'DUPLICATE_CHARACTER_ACTION_NAME',
+        `动作名称“${parsedName.data}”已存在。`,
+      );
+    }
+    if (!existing && actions.length >= 64) {
+      throw new CharacterServiceError(
+        'CHARACTER_ACTION_LIMIT',
+        '一个角色最多可以保存 64 个动作。',
+      );
+    }
+
+    const action: CharacterAction = CharacterActionSchema.parse({
+      id: existing?.id ?? this.createId(),
+      name: parsedName.data,
+      animationId: draft.animationId,
+      placement: CharacterActionPlacementSchema.parse(
+        draft.placement ?? existing?.placement ?? { offsetX: 0, offsetY: 0, scale: 1 },
+      ),
+    });
+    const nextActions = existing
+      ? actions.map((candidate) => candidate.id === action.id ? action : candidate)
+      : [...actions, action];
+    return this.replaceCharacter(project, { ...character, actions: nextActions });
+  }
+
+  removeAction(
+    project: Project,
+    characterId: string,
+    actionId: string,
+  ): Project {
+    const character = this.character(project, characterId);
+    const actions = character.actions ?? [];
+    const action = actions.find((candidate) => candidate.id === actionId);
+    if (!action) {
+      throw new CharacterServiceError(
+        'CHARACTER_ACTION_NOT_FOUND',
+        '这个角色动作已不存在，请刷新后重试。',
+      );
+    }
+    const references = scanCharacterActionReferences(project, character.id, action.id);
+    if (references.length > 0) {
+      throw new CharacterServiceError(
+        'CHARACTER_ACTION_REFERENCED',
+        `动作“${action.name}”仍被 ${references.length} 段镜头动作使用，不能删除。`,
+        references,
+      );
+    }
+    const next = { ...character };
+    const remaining = actions.filter((candidate) => candidate.id !== action.id);
+    if (remaining.length > 0) next.actions = remaining;
+    else delete next.actions;
+    return this.replaceCharacter(project, next);
   }
 
   addExpression(

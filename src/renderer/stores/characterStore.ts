@@ -1,7 +1,9 @@
 import {
   CharacterService,
+  type CharacterAssetClaim,
   type CharacterExpressionAssetUpdate,
   type CharacterExpressionDraft,
+  type CharacterActionDraft,
   type AdaptivePartUpdate,
   type AdaptivePartsCharacterDefinition,
   type CompositeCharacterDefinition,
@@ -270,6 +272,14 @@ export class CharacterStore {
     );
   }
 
+  claimCharacterAssets(characterId: string, claim: CharacterAssetClaim, expectedSnapshot: EditorProjectSnapshot): Project {
+    return this.apply(
+      (project) => this.service.claimCharacterAssets(project, characterId, claim),
+      '认领角色表情与说话动画',
+      expectedSnapshot,
+    );
+  }
+
   addExpression(
     characterId: string,
     draft: CharacterExpressionDraft,
@@ -320,6 +330,14 @@ export class CharacterStore {
 
   setTalkingAnimation(characterId: string, animationId: string | null, playback?: Parameters<CharacterService['setTalkingAnimation']>[3]): Project {
     return this.apply(project => this.service.setTalkingAnimation(project, characterId, animationId, playback), 'Change talking animation');
+  }
+
+  setAction(characterId: string, draft: CharacterActionDraft): Project {
+    return this.apply(project => this.service.setAction(project, characterId, draft), 'Save character action');
+  }
+
+  removeAction(characterId: string, actionId: string): Project {
+    return this.apply(project => this.service.removeAction(project, characterId, actionId), 'Delete character action');
   }
 
   setMouthOpenVisualSource(characterId: string, source: CharacterFaceSource | null): Project {

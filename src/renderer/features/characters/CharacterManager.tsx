@@ -41,6 +41,7 @@ import {
   type ThumbnailState,
 } from '../assets/AssetCard';
 import { CharacterEditor } from './CharacterEditor';
+import { CharacterActionLibrary } from './CharacterActionLibrary';
 import { CharacterFloatHost } from './characterFloatHost';
 import { useGraphicSvgThumbnails } from './useGraphicSvgThumbnails';
 import { CharacterList } from './CharacterList';
@@ -1298,6 +1299,9 @@ export function CharacterManager({
           />
         ) : null}
       </div>
+      {snapshot && selectedDisplayCharacter && (view === 'legacy' || view === 'detail' || view === 'expression') ? (
+        <CharacterActionLibrary snapshot={snapshot} characterId={selectedDisplayCharacter.id} />
+      ) : null}
       {bindingReminderCount !== null ? (
         <output
           aria-atomic="true"

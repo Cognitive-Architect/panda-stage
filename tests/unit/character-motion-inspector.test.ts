@@ -149,6 +149,43 @@ it.each([
   }
 });
 
+it('keeps action interval controls visible while editing an adaptive Character Clip part', async () => {
+  const data = characterPartAnimationFixture();
+  const project = ProjectSchema.parse({
+    ...data.project,
+    characters: data.project.characters.map((character) => character.id === data.characterId
+      ? {
+        ...character,
+        actions: [{
+          id: '71000000-0000-4000-8000-000000000001',
+          name: '挥手',
+          animationId: data.project.animations[0]!.id,
+          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+        }],
+      }
+      : character),
+  });
+  editorProjectStore.open('D:/character-action-with-clip.pandastage', project);
+  shotStore.select(IDS.shot);
+  selectionStore.select(data.layerId);
+  selectionStore.selectCharacterPart(data.imagePartId);
+
+  const element = document.createElement('div');
+  document.body.append(element);
+  const root = createRoot(element);
+  try {
+    await act(async () => root.render(createElement<RightInspectorProps>(RightInspector, {
+      embedded: true,
+      shellMode: 'landscape',
+    })));
+    expect(selectionStore.getSelectedCharacterNodeId()).toBe(`part:${data.imagePartId}`);
+    expect(element.querySelector('[data-testid="character-action-at-time"]')).not.toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    element.remove();
+  }
+});
+
 async function mount(source: 'image' | 'graphic', autoKey: boolean) {
   const data = characterPartAnimationFixture();
   const character = data.project.characters.find(c => c.id === data.characterId)!;

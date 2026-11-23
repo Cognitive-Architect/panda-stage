@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { sampleLoopingAnimationFrameIndex } from '../features/assets/animationPlayback';
 import type {
@@ -94,6 +95,7 @@ interface FlaFrameSequenceReviewProps {
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
   presentation?: 'standard' | 'unified-preview';
   focusedCandidateIdentityKey?: string | null;
+  sourceSequenceStart?: { renderTargetId: string; frameIndex: number };
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   showUnifiedSequencePreview?: boolean;
   selectedOnlyView?: boolean;
@@ -127,6 +129,7 @@ export function FlaFrameSequenceReview({
   onTerminalStateChange,
   presentation = 'standard',
   focusedCandidateIdentityKey,
+  sourceSequenceStart,
   onCandidatesChange,
   showUnifiedSequencePreview = true,
   selectedOnlyView = false,
@@ -183,6 +186,7 @@ export function FlaFrameSequenceReview({
   // Subscribed only while a request is in flight; removed on
   // cancel / re-render / completion / unmount.
   const progressUnsubRef = useRef<(() => void) | null>(null);
+  const appliedSourceSequenceStartRef = useRef<typeof sourceSequenceStart>(undefined);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
@@ -300,16 +304,25 @@ export function FlaFrameSequenceReview({
     if (!candidate || candidate.kind !== 'sequence') return;
     const renderTargetId = candidate.operation.target.renderTargetId;
     setFocusedTargetId(renderTargetId);
-    if (selectedTargetId === renderTargetId) return;
+    const point = sourceSequenceStart?.renderTargetId === renderTargetId &&
+      sourceSequenceStart !== appliedSourceSequenceStartRef.current ? sourceSequenceStart : undefined;
+    if (selectedTargetId === renderTargetId && !point) return;
     const entry = entries.find((item) => item.target.renderTargetId === renderTargetId);
     if (!entry) return;
+    if (point && point.frameIndex >= 0 && point.frameIndex < entry.target.frameCount) {
+      appliedSourceSequenceStartRef.current = point;
+      setSelectedTargetId(renderTargetId);
+      setStartFrameIndex(point.frameIndex);
+      setEndFrameIndex(Math.min(entry.target.frameCount - 1, point.frameIndex + 59));
+      return;
+    }
     const restoredRange = success?.renderTargetId === renderTargetId && renderedRange
       ? { startFrameIndex: renderedRange.startFrameIndex, endFrameIndex: renderedRange.endFrameIndex }
       : getDefaultSequenceRange(entry.target.frameCount);
     setSelectedTargetId(renderTargetId);
     setStartFrameIndex(restoredRange.startFrameIndex);
     setEndFrameIndex(restoredRange.endFrameIndex);
-  }, [entries, focusedCandidateIdentityKey, renderedRange, selectedTargetId, sequenceCandidates, success]);
+  }, [entries, focusedCandidateIdentityKey, renderedRange, selectedTargetId, sequenceCandidates, sourceSequenceStart, success]);
   useEffect(() => {
     if (!selectedTargetId || nameSuggestionTargetIdRef.current === selectedTargetId) return;
     const entry = entries.find((item) => item.target.renderTargetId === selectedTargetId);
@@ -535,10 +548,15 @@ export function FlaFrameSequenceReview({
           setPhase('error');
           return;
         }
-        setEntries(response.entries);
+        // The cover frame's failure only describes that frame. A long source
+        // can still contain valid short ranges, verified by the usual render.
+        const rangeEntries = response.entries.map(entry => entry.target.frameCount > FLA_GRAPHIC_MAX_FRAMES
+          ? { ...entry, previewSupported: true, isBlank: false, unsupportedReason: undefined }
+          : entry);
+        setEntries(rangeEntries);
         if (!catalogInitializedRef.current) {
           catalogInitializedRef.current = true;
-          const firstSupported = response.entries.find((entry) => entry.previewSupported);
+          const firstSupported = rangeEntries.find((entry) => entry.previewSupported);
           if (firstSupported) {
             const defaultRange = getDefaultSequenceRange(firstSupported.target.frameCount);
             setSelectedTargetId(firstSupported.target.renderTargetId);

@@ -46,6 +46,7 @@ import {
   FlaStaticSnapshotCancelRequestSchema,
   FlaStaticSnapshotCancelResponseSchema,
   FlaStaticSnapshotPreviewRequestSchema,
+  type FlaSourceFrameSuggestionQuery,
   FlaStaticSnapshotPreviewResponseSchema,
   type FlaRenderTarget,
   type FlaStaticSnapshotCancelRequest,
@@ -338,7 +339,7 @@ export class FlaStaticSnapshotRenderSession {
   /** R1-A catalog: discover renderable targets for an inspection session. */
   async catalog(
     sessionId: string,
-    options: { readonly includeAuthoredStates?: boolean } = {},
+    options: { readonly includeAuthoredStates?: boolean; readonly frameSuggestionsFor?: FlaSourceFrameSuggestionQuery } = {},
   ): Promise<BuildCatalogResult> {
     const source = this.sourceLookup?.getSource(sessionId) ?? null;
     if (!source) {
@@ -494,6 +495,11 @@ export class FlaStaticSnapshotRenderSession {
         active,
         this.previewError(svgResult.code, svgResult.message, requestId),
       );
+      return active.settledPromise;
+    }
+
+    if (svgResult.composition.shapeCount === 0 && svgResult.composition.bitmapInstanceCount === 0) {
+      this.settleActive(active, this.previewError('TARGET_UNSUPPORTED', '此源帧没有可见内容，请选择其它帧。', requestId));
       return active.settledPromise;
     }
 

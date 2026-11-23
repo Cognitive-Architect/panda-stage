@@ -1322,6 +1322,23 @@ function composeAffine(
   return result;
 }
 
+/** Apply transient action placement to the latest evaluated owner transform. */
+export function resolveCharacterActionRenderTransform(evaluated: EvaluatedLayer): VisualOwnerTransform {
+  const transform = ownerTransform(evaluated);
+  const placement = evaluated.characterAction?.placement;
+  if (!placement) return transform;
+  const radians = transform.rotationDeg * Math.PI / 180;
+  const localX = placement.offsetX * transform.scaleX * (transform.flipX ? -1 : 1);
+  const localY = placement.offsetY * transform.scaleY;
+  return {
+    ...transform,
+    x: transform.x + localX * Math.cos(radians) - localY * Math.sin(radians),
+    y: transform.y + localX * Math.sin(radians) + localY * Math.cos(radians),
+    scaleX: transform.scaleX * placement.scale,
+    scaleY: transform.scaleY * placement.scale,
+  };
+}
+
 /**
  * Resolves one logical Layer into its complete runtime visual parts.
  *
@@ -1340,6 +1357,25 @@ export function resolveLayerVisualParts(
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
     throw new Error(`Cannot resolve visual owner Layer ${evaluated.id}.`);
+  }
+
+  if (evaluated.characterAction) {
+    const actionLayer: Layer = {
+      ...layer,
+      source: { kind: 'animation', animationId: evaluated.characterAction.animationId },
+    };
+    const actionEvaluated: EvaluatedLayer = {
+      ...evaluated,
+      ...resolveCharacterActionRenderTransform(evaluated),
+      characterAction: undefined,
+    };
+    return resolveLayerVisualParts(
+      project,
+      { layers: shot.layers.map((candidate) => candidate.id === layer.id ? actionLayer : candidate) },
+      actionEvaluated,
+      timeMs,
+      isImageUnavailable,
+    );
   }
 
   const source = layer.source;

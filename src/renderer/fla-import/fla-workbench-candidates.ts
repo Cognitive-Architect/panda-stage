@@ -264,9 +264,10 @@ export function createFlaWorkbenchCandidates(
       identityKey,
       kind: 'snapshot',
       catalogRole: entry.catalogRole ?? (entry.target.kind === 'scene' ? 'scene' : 'graphic-state'),
-      displayLabel: readableRenderTargetLabel(target, true),
+      displayLabel: [target.suggestedFrameName, readableRenderTargetLabel(target, true)].filter(Boolean).join(' · '),
       searchText: [
         target.userLabel,
+        target.suggestedFrameName,
         target.sourceLibraryItemName,
         target.sourceSymbolName,
         readableRenderTargetLabel(target, true),

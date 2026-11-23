@@ -1,6 +1,7 @@
 import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
+  CharacterAction,
   Layer,
   MouthPose,
   Project,
@@ -8,6 +9,8 @@ import type {
   TimelineEvent,
 } from './models';
 import type { MouthCueEvent, MouthCueState } from './models/timeline-event';
+import { isFlaGraphicDefinition, type ProjectAnimationDefinition } from './models/animation';
+import { resolveFlaGraphicPreviewTimeline } from './selectors/animationSourceTimeline';
 import {
   collectFlaGraphicTimelineDurationMs,
   type FlaGraphicInternalTimeline,
@@ -49,6 +52,8 @@ export interface EvaluatedLayer {
   mouthOverrideAssetId?: string | null;
   mouthOpen?: boolean;
   mouthPose?: MouthPose;
+  /** Transient named Character action replacing the base Character visual. */
+  characterAction?: Pick<CharacterAction, 'id' | 'animationId' | 'placement'>;
   talkingAnimationElapsedMs?: number | 'rest';
   /** Transient source-canvas projection for a formal animation instance. */
   animationFrame?: {
@@ -164,6 +169,18 @@ export interface AnimationPlaybackFrameState<TFrame> {
   readonly internalTimeMs: number;
   readonly elapsedMs: number;
   readonly completedOnce: boolean;
+}
+
+function resolveCharacterActionHoldTimeMs(animation: ProjectAnimationDefinition): number {
+  const outerEnd = Math.max(0, animation.durationMs - 1);
+  if (!isFlaGraphicDefinition(animation) || animation.frames.length !== 1) return outerEnd;
+
+  const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+  if (!timeline.hasInternalTimeline) return outerEnd;
+  const lastFrame = timeline.sampleAtFrameIndex(timeline.totalFrames - 1);
+  // Sample the terminal authored pose so a nested Graphic does not wrap
+  // while the outer action is holding at the end of its source.
+  return Math.max(timeline.timelineDurationMs, lastFrame.internalTimeMs ?? 0);
 }
 
 /**
@@ -724,6 +741,37 @@ export function evaluateShotAtTime(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
+      const actionEvent = layer.source.kind === 'character'
+        ? (eventsByLayer.get(layer.id) ?? []).find((event) =>
+            event.type === 'character-action' &&
+            event.startMs <= timeMs &&
+            timeMs < event.endMs,
+          )
+        : undefined;
+      const characterId = layer.source.kind === 'character'
+        ? layer.source.characterId
+        : undefined;
+      const character = characterId
+        ? project.characters.find((candidate) => candidate.id === characterId)
+        : undefined;
+      const characterAction = actionEvent?.type === 'character-action'
+        ? character?.actions?.find((candidate) => candidate.id === actionEvent.actionId)
+        : undefined;
+      const actionAnimation = characterAction
+        ? project.animations.find((candidate) => candidate.id === characterAction.animationId)
+        : undefined;
+      const actionFrame = actionEvent?.type === 'character-action' && actionAnimation
+        ? resolveAnimationPlaybackFrameState(
+            actionAnimation,
+            actionEvent.startMs,
+            0,
+            { mode: 'once', endBehavior: 'hold' },
+            timeMs,
+          )
+        : null;
+      const activeCharacterAction = characterAction && actionAnimation && actionFrame
+        ? characterAction
+        : undefined;
       const preTrack = evaluateLayerPreTrackState(
         shot,
         layer,
@@ -778,11 +826,29 @@ export function evaluateShotAtTime(
         id: layer.id,
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
         ...(faceTransform ? { faceTransform } : {}),
-        assetId: mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
+        assetId: actionFrame?.frame.assetId ?? mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
+        ...(activeCharacterAction ? { characterAction: activeCharacterAction } : {}),
         mouthOverrideAssetId: mouthOpenOverride?.mouthOverrideAssetId ?? null,
         ...(mouthOpenOverride?.mouthOpen ? { mouthOpen: true } : {}),
-        ...(preTrack.animationFrame
+        ...(actionFrame && actionAnimation
+          ? {
+              animationFrame: {
+                animationId: actionAnimation.id,
+                frameOrdinal: actionFrame.frame.ordinal,
+                internalTimeMs: Math.min(
+                  actionFrame.internalTimeMs,
+                  resolveCharacterActionHoldTimeMs(actionAnimation),
+                ),
+                offset: actionFrame.frame.offset,
+                viewport: {
+                  width: actionFrame.frame.sourceViewport.width,
+                  height: actionFrame.frame.sourceViewport.height,
+                },
+                canvas: actionAnimation.source.canvas,
+              },
+            }
+          : preTrack.animationFrame
           ? { animationFrame: preTrack.animationFrame }
           : {}),
         anchor: layer.anchor,

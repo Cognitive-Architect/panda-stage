@@ -15,7 +15,7 @@ import {
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import { ExpressionEditor } from '../../src/renderer/features/characters/ExpressionEditor';
-import { GraphicFacePicker } from '../../src/renderer/features/characters/GraphicFacePicker';
+import { GraphicFacePicker, GraphicFacePreview } from '../../src/renderer/features/characters/GraphicFacePicker';
 import { ExpressionAtTimeControl } from '../../src/renderer/features/properties/ExpressionAtTimeControl';
 import { getRightInspectorLayerSummary } from '../../src/renderer/shell/RightInspector';
 import {
@@ -168,6 +168,48 @@ afterEach(() => {
   editorProjectStore.clear();
   Reflect.deleteProperty(window, 'pandaStage');
   vi.restoreAllMocks();
+});
+
+describe('selected Graphic claim preview', () => {
+  it('reports resource failure, decode failure, and recovery for the current selected frame', async () => {
+    const project = graphicFaceProject(false);
+    editorProjectStore.open(PROJECT_ROOT, project);
+    const snapshot = editorProjectStore.getSnapshot()!;
+    const received = vi.fn();
+    const drawImage = vi.fn();
+    const pixels = new Uint8ClampedArray([15, 20, 25, 255]);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      clearRect: vi.fn(), drawImage, getImageData: () => ({ data: pixels }),
+    } as unknown as CanvasRenderingContext2D);
+    const image = document.createElement('img');
+    let outcome: 'missing' | 'decode-error' | 'ready' = 'missing';
+    const imageFactory = vi.spyOn(window, 'Image').mockImplementation(function () { return image; });
+    const read = vi.fn(async () => outcome === 'missing'
+      ? { ok: true, status: 'missing' }
+      : { ok: true, status: 'ready', bytes: new Uint8Array(1), mimeType: 'image/png' });
+    Object.defineProperty(window, 'pandaStage', { configurable: true, value: { assets: { readCanvasImage: read } } });
+    const show = (frame: number, attempt: number) => createElement(GraphicFacePreview, {
+      key: attempt, source: faceSource(frame), onResult: received,
+    });
+    await act(async () => root.render(show(0, 0)));
+    expect(received).toHaveBeenLastCalledWith(snapshot, 'failed');
+    expect(drawImage).not.toHaveBeenCalled();
+    outcome = 'decode-error';
+    await act(async () => root.render(show(1, 1)));
+    expect(received).toHaveBeenLastCalledWith(snapshot, 'pending');
+    expect(imageFactory).toHaveBeenCalledTimes(1);
+    await act(async () => image.dispatchEvent(new Event('error')));
+    expect(received).toHaveBeenLastCalledWith(snapshot, 'failed');
+    outcome = 'ready';
+    await act(async () => root.render(show(2, 2)));
+    await act(async () => image.dispatchEvent(new Event('load')));
+    expect(received).toHaveBeenLastCalledWith(snapshot, 'ready');
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    pixels[3] = 0;
+    await act(async () => root.render(show(2, 3)));
+    await act(async () => image.dispatchEvent(new Event('load')));
+    expect(received).toHaveBeenLastCalledWith(snapshot, 'failed');
+  });
 });
 
 describe('Graphic face composite assembly & UI regression (#1112 / PR #1113 review)', () => {

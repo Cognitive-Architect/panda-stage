@@ -851,15 +851,58 @@ export type MouthPose = z.infer<typeof MouthPoseSchema>;
 export type MouthPoseSet = z.infer<typeof MouthPoseSetSchema>;
 
 const MouthPoseShape = { mouthPoseSet: MouthPoseSetSchema.optional() };
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend(MouthPoseShape);
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+export const CharacterV27Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterV26Schema.safeExtend(MouthPoseShape),
   CompositeCharacterV26Schema.safeExtend(MouthPoseShape),
-  AdaptivePartsCharacterCurrentSchema,
+  AdaptivePartsCharacterV26Schema.safeExtend(MouthPoseShape),
 ]).superRefine(validateMouthSource);
+
+export const CharacterActionPlacementSchema = z.object({
+  offsetX: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+  offsetY: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+  scale: FiniteNumberSchema.min(CHARACTER_PART_MIN_SCALE).max(CHARACTER_PART_MAX_SCALE),
+}).strict();
+
+export const CharacterActionSchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  animationId: IdSchema,
+  placement: CharacterActionPlacementSchema,
+}).strict();
+
+const CharacterActionsShape = {
+  actions: z.array(CharacterActionSchema).max(64).optional(),
+};
+
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend({
+  ...MouthPoseShape,
+  ...CharacterActionsShape,
+});
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
+  CompositeCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource).superRefine((character, context) => {
+  const actions = character.actions ?? [];
+  const actionIds = new Set<string>();
+  const actionNames = new Set<string>();
+  actions.forEach((action, index) => {
+    const normalizedName = action.name.trim().toLocaleLowerCase();
+    if (actionIds.has(action.id)) {
+      context.addIssue({ code: 'custom', path: ['actions', index, 'id'], message: 'Character action ids must be unique.' });
+    }
+    if (actionNames.has(normalizedName)) {
+      context.addIssue({ code: 'custom', path: ['actions', index, 'name'], message: 'Character action names must be unique.' });
+    }
+    actionIds.add(action.id);
+    actionNames.add(normalizedName);
+  });
+});
 
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
+export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
+export type CharacterAction = z.infer<typeof CharacterActionSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;

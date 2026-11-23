@@ -67,6 +67,7 @@ interface FlaStaticSnapshotReviewProps {
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
   presentation?: 'standard' | 'unified-preview';
   focusedCandidateIdentityKey?: string | null;
+  onDemandEntries?: readonly FlaRenderableTargetCatalogEntry[];
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   onCatalogProgressChange?: (progress: {
     phase: 'loading' | 'scanning' | 'ready' | 'error';
@@ -75,6 +76,8 @@ interface FlaStaticSnapshotReviewProps {
     omittedCandidateCount: number;
   }) => void;
 }
+
+const EMPTY_ON_DEMAND_ENTRIES: readonly FlaRenderableTargetCatalogEntry[] = [];
 
 type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'error';
 type ImportItemStatus = 'imported' | 'duplicate' | 'failed' | 'not-attempted';
@@ -124,11 +127,17 @@ export function FlaStaticSnapshotReview({
   onTerminalStateChange,
   presentation = 'standard',
   focusedCandidateIdentityKey,
+  onDemandEntries = EMPTY_ON_DEMAND_ENTRIES,
   onCandidatesChange,
   onCatalogProgressChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
-  const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
+  const [catalogEntries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
+  const entries = useMemo(() => {
+    const byKey = new Map(catalogEntries.map(entry => [flaStaticSnapshotCandidateKey(entry), entry]));
+    for (const entry of onDemandEntries) byKey.set(flaStaticSnapshotCandidateKey(entry), entry);
+    return [...byKey.values()];
+  }, [catalogEntries, onDemandEntries]);
   const [catalogSummary, setCatalogSummary] = useState('');
   const [omittedCandidateCount, setOmittedCandidateCount] = useState(0);
   const [previews, setPreviews] = useState<FlaStaticSnapshotCandidatePreviews>({});
@@ -143,6 +152,7 @@ export function FlaStaticSnapshotReview({
   const activeRef = useRef(active);
   activeRef.current = active;
   const previewUrlsRef = useRef(new Set<string>());
+  const onDemandUrlsRef = useRef(new Map<string, string>());
   const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
   const focusedCandidateIdentityKeyRef = useRef<string | null>(null);
   const activePreviewRequestIdRef = useRef<string | null>(null);
@@ -173,6 +183,23 @@ export function FlaStaticSnapshotReview({
     pendingScanProgressProfileRef.current = null;
   }, [scanProgress]);
 
+  useEffect(() => {
+    const kept = new Set(entries.map(flaStaticSnapshotCandidateKey));
+    const evicted = [...onDemandUrlsRef.current].filter(([key]) => !kept.has(key));
+    for (const [key, url] of evicted) {
+      URL.revokeObjectURL(url);
+      previewUrlsRef.current.delete(url);
+      onDemandUrlsRef.current.delete(key);
+    }
+    if (evicted.length) {
+      setPreviews(current => {
+        const next = { ...current };
+        for (const [key] of evicted) delete next[key];
+        return next;
+      });
+    }
+  }, [entries]);
+
   const entryByKey = useMemo(
     () => new Map(entries.map((entry) => [flaStaticSnapshotCandidateKey(entry), entry])),
     [entries],
@@ -199,10 +226,10 @@ export function FlaStaticSnapshotReview({
     onCatalogProgressChange?.({
       phase,
       completed: scanProgress,
-      total: entries.length,
+      total: catalogEntries.length,
       omittedCandidateCount,
     });
-  }, [entries.length, omittedCandidateCount, onCatalogProgressChange, phase, scanProgress]);
+  }, [catalogEntries.length, omittedCandidateCount, onCatalogProgressChange, phase, scanProgress]);
 
   useEffect(() => {
     if (!focusedCandidateIdentityKey) return;
@@ -545,6 +572,7 @@ export function FlaStaticSnapshotReview({
       }).catch(() => undefined);
       for (const previewUrl of previewUrlsRef.current) URL.revokeObjectURL(previewUrl);
       previewUrlsRef.current.clear();
+      onDemandUrlsRef.current.clear();
       thumbnailImageLoadStartedAtRef.current.clear();
       const fullSizePreview = focusedPreviewUrlRef.current;
       if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
@@ -553,13 +581,16 @@ export function FlaStaticSnapshotReview({
   }, [candidateContext, deferPreviewScan, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
-    if (!active || deferPreviewScan) return;
+    if (!active) return;
     const candidateId = effectiveFocusedCandidateKey;
     const identityKey = effectiveFocusedCandidateIdentityKey;
     const entry = focusedEntry;
     const status = focusedStatus;
+    const isOnDemand = Boolean(entry && onDemandEntries.includes(entry));
+    if (deferPreviewScan && !isOnDemand) return;
     const explicitRetry = Boolean(identityKey && retryIdentityRef.current === identityKey);
-    const needsFreshPreview = explicitRetry || (phase === 'ready' && status?.status === 'checking');
+    const needsFreshPreview = explicitRetry || (phase === 'ready' &&
+      (status?.status === 'checking' || (isOnDemand && (!status || status.status === 'unscanned'))));
     const canRequest = Boolean(
       candidateId && identityKey && entry && ((status?.status === 'supported' && status.sha256) || needsFreshPreview) &&
       (phase === 'scanning' || phase === 'ready'),
@@ -635,6 +666,14 @@ export function FlaStaticSnapshotReview({
           URL.revokeObjectURL(thumbnail);
           return;
         }
+        if (isOnDemand) {
+          const replaced = onDemandUrlsRef.current.get(candidateId);
+          if (replaced) {
+            URL.revokeObjectURL(replaced);
+            previewUrlsRef.current.delete(replaced);
+          }
+          onDemandUrlsRef.current.set(candidateId, thumbnail);
+        }
         previewUrlsRef.current.add(thumbnail);
         setPreviews((current) => ({ ...current, [candidateId]: {
           status: 'supported', previewUrl: thumbnail, sha256: response.sha256,
@@ -671,7 +710,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [active, deferPreviewScan, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, previewRetry, sessionId, updateFocusedPreview]);
+  }, [active, deferPreviewScan, effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, onDemandEntries, phase, previewRetry, sessionId, updateFocusedPreview]);
 
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
     if (phase !== 'ready' || importLocked) return;

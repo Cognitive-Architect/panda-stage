@@ -54,6 +54,7 @@ export function registerFlaStaticSnapshotIpcHandlers(
     }
     const result = await renderSession.catalog(parsed.sessionId, {
       includeAuthoredStates: parsed.includeAuthoredStates,
+      ...(parsed.frameSuggestionsFor ? { frameSuggestionsFor: parsed.frameSuggestionsFor } : {}),
     });
     if (!result.ok) {
       return FlaRenderableTargetCatalogResponseSchema.parse({
@@ -65,6 +66,7 @@ export function registerFlaStaticSnapshotIpcHandlers(
       ok: true,
       sessionId: parsed.sessionId,
       entries: result.entries,
+      ...(result.frameSuggestions ? { frameSuggestions: result.frameSuggestions } : {}),
       omittedCandidateCount: result.omittedCandidateCount,
       summary: result.summary,
     });

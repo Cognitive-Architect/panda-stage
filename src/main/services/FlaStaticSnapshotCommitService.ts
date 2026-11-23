@@ -109,6 +109,7 @@ function isSameConfirmedTarget(
   return confirmed.renderTargetId === requested.renderTargetId &&
     confirmed.kind === requested.kind &&
     confirmed.userLabel === requested.userLabel &&
+    confirmed.suggestedFrameName === requested.suggestedFrameName &&
     confirmed.sourceLibraryItemName === requested.sourceLibraryItemName &&
     confirmed.sourceTimelineIndex === requested.sourceTimelineIndex &&
     confirmed.sourceSymbolName === requested.sourceSymbolName &&
@@ -295,7 +296,8 @@ export class FlaStaticSnapshotCommitService {
       asset = ImageAssetSchema.parse({
         id: this.createId(),
         name: safeUtf16Slice(
-          assetDisplayName(request.source.basename) + ' · ' +
+          (request.target.suggestedFrameName ? request.target.suggestedFrameName + ' · ' : '') +
+            assetDisplayName(request.source.basename) + ' · ' +
             snapshotTargetDisplayName(request.target.userLabel) + ' · 第 ' +
             String((request.target.selectedFrameIndex ?? 0) + 1) + ' 帧',
           200,

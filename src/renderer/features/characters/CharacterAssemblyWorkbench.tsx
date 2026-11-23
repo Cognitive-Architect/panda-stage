@@ -69,6 +69,7 @@ import {
   ExpressionEditor,
   type ExpressionResourceSwapRequest,
 } from './ExpressionEditor';
+import { CharacterAssetClaimPanel } from './CharacterAssetClaimPanel';
 import { GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import { CharacterResourceSwapDialog } from './CharacterResourceSwapDialog';
 import { useProjectImageThumbnails } from './CharacterIdentity';
@@ -119,6 +120,7 @@ import {
   type CharacterLayoutReuseTarget,
 } from './characterLayoutReuse';
 import { AdaptiveCharacterManagement } from './AdaptiveCharacterManagement';
+import { CharacterActionLibrary } from './CharacterActionLibrary';
 import {
   placeCharacterInCurrentShot,
   type AdaptivePartsAssemblyActionResult,
@@ -1087,7 +1089,7 @@ function AdaptivePartsAssemblyWorkbench({
   );
   const [imageState, setImageState] = useState(EMPTY_CANVAS_IMAGE_STATE);
   const [operationsOpen, setOperationsOpen] = useState(true);
-  const [leftTab, setLeftTab] = useState<'parts' | 'expressions'>('parts');
+  const [leftTab, setLeftTab] = useState<'parts' | 'expressions' | 'actions'>('parts');
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorContext, setInspectorContext] = useState<'part' | 'character' | 'face'>('part');
   const [renamingPartId, setRenamingPartId] = useState<string | null>(null);
@@ -2553,8 +2555,17 @@ function AdaptivePartsAssemblyWorkbench({
           >
             表情
           </button>
+          <button
+            aria-pressed={leftTab === 'actions'}
+            onClick={() => setLeftTab('actions')}
+            type="button"
+          >
+            动作
+          </button>
         </nav>
-        {leftTab === 'parts' ? (
+        {leftTab === 'actions' ? (
+          <CharacterActionLibrary snapshot={projectSnapshot} characterId={session.characterId} />
+        ) : leftTab === 'parts' ? (
           <>
             <div className="adaptive-parts-list-heading">
               <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
@@ -2766,6 +2777,9 @@ function AdaptivePartsAssemblyWorkbench({
                     </button>
                   </div>
                 </div>
+                <CharacterAssetClaimPanel key={assemblyCharacter.id} character={assemblyCharacter}
+                  snapshot={projectSnapshot} imageAssets={projectImageAssets} thumbnails={adaptiveSwapThumbnails}
+                  onThumbnailError={onAdaptiveSwapThumbnailError} disabled={hasPendingChanges} />
                 <ExpressionEditor
                   character={assemblyCharacter}
                   compactDetailWorkspace

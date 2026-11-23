@@ -29,6 +29,7 @@ interface SyntheticGraphicFrame {
   readonly tweenType?: 'none' | 'motion' | 'shape';
   readonly tx?: number;
   readonly color?: string;
+  readonly label?: { text: string; type: 'name' | 'comment' | 'anchor' };
   readonly blank?: boolean;
   readonly unsupportedElement?: string;
 }
@@ -110,10 +111,12 @@ async function buildSyntheticFla(
     for (const currentSymbolName of symbolNames) {
       const frames = graphicFrames.map((frame) => {
         const attributes = `index="${frame.index}"${frame.duration === undefined ? '' : ` duration="${frame.duration}"`}${frame.tweenType === undefined ? '' : ` tweenType="${frame.tweenType}"`}`;
+        const label = frame.label ? ` name="${frame.label.text}" labelType="${frame.label.type}"` : '';
+        const labelledAttributes = attributes + label;
         if (frame.blank) {
-          return `<DOMFrame ${attributes}>${frame.unsupportedElement ?? '<elements/>'}</DOMFrame>`;
+          return `<DOMFrame ${labelledAttributes}>${frame.unsupportedElement ?? '<elements/>'}</DOMFrame>`;
         }
-        return `<DOMFrame ${attributes}>
+        return `<DOMFrame ${labelledAttributes}>
               <DOMGroup>
                 <matrix><Matrix a="2" d="2" tx="${frame.tx ?? 10}" ty="20"/></matrix>
                 <members>
@@ -994,5 +997,38 @@ describe('T05 C02: nested Graphic frame selection in the formal builder path', (
     expect(preview.message).toContain('UNSUPPORTED_TIMING');
     expect(preview.message).toContain('firstFrame=7');
     expect(preview.message).toContain('scene:0/layer-0-frame-0/3/1');
+  });
+});
+
+describe('source frame suggestions', () => {
+  it('lists selected source spans without expanding held frames or merging repeated names', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'Head',
+      graphicFrames: [
+        { index: 0, duration: 600, label: { text: '生气', type: 'name' } },
+        { index: 600, duration: 400, label: { text: '作者注释', type: 'comment' } },
+        { index: 1000, duration: 400, label: { text: '动作锚点', type: 'anchor' } },
+        { index: 1400, duration: 400 },
+        { index: 1800, duration: 60, label: { text: '生气', type: 'name' } },
+      ],
+    });
+    const query = { sourceLibraryItemName: 'Head', search: '', offset: 0 };
+    const result = await buildRenderableTargetCatalog(bytes, undefined, { frameSuggestionsFor: query });
+    expect(result).toMatchObject({
+      ok: true, entries: [],
+      frameSuggestions: { hasMore: false, items: [
+        { sourceFrameIndex: 0, label: { text: '生气', type: 'name' } },
+        { sourceFrameIndex: 1800, label: { text: '生气', type: 'name' } },
+        { sourceFrameIndex: 600, label: { text: '作者注释', type: 'comment' } },
+        { sourceFrameIndex: 1000, label: { text: '动作锚点', type: 'anchor' } },
+        { sourceFrameIndex: 1400 },
+      ] },
+    });
+    const filtered = await buildRenderableTargetCatalog(bytes, undefined, {
+      frameSuggestionsFor: { ...query, search: '1801' },
+    });
+    expect(filtered).toMatchObject({ frameSuggestions: { items: [
+      { sourceFrameIndex: 1800, label: { text: '生气', type: 'name' } },
+    ] } });
   });
 });

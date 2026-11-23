@@ -314,7 +314,7 @@ export function FlaUnifiedWorkbench({
                 : progress.phase === 'error'
                   ? '部分素材预览未能读取。'
                   : progress.omittedCandidateCount > 0
-                    ? `另有 ${progress.omittedCandidateCount} 项未列出，这些项目不能导入。`
+                    ? `另有 ${progress.omittedCandidateCount} 项未展开。可在已列出的元件中查找或定位源帧。`
                     : '')}
           </output>
 

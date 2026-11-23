@@ -28,6 +28,7 @@ import {
   type ResourceSwapValue,
 } from './CharacterResourceSwapDialog';
 import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
+import { CharacterAssetClaimPanel } from './CharacterAssetClaimPanel';
 import { ExpressionEditor } from './ExpressionEditor';
 import { GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import type { CharacterFaceSource, CharacterFaceGraphicSource, TalkingAnimationPlayback } from '../../../domain';
@@ -1131,7 +1132,14 @@ export function CharacterEditor({
                 })()}
               </div>
             ) : null;
-  const expressionContent = (<ExpressionEditor
+  const claimAssets = projectSnapshot ? (
+    <CharacterAssetClaimPanel character={expressionCharacter} snapshot={projectSnapshot}
+      imageAssets={imageAssets} thumbnails={thumbnails} onThumbnailError={onThumbnailError}
+      disabled={disabled || assemblyPending} />
+  ) : null;
+  const expressionContent = (<>
+    {claimAssets}
+    <ExpressionEditor
                 character={expressionCharacter}
                 disabled={disabled}
                 graphicDefinitions={flaGraphicDefinitions}
@@ -1164,7 +1172,8 @@ export function CharacterEditor({
                 presentation="landscape"
                 thumbnails={thumbnails}
                 warnings={warnings}
-              />);
+              />
+  </>);
   const defaultProperties = (<><section
               className="character-settings-section character-default-presentation"
               data-default-transform-pending={hasPendingTransform}
@@ -2493,7 +2502,8 @@ export function CharacterEditor({
           </section>
         </>
       ) : null}
-      {(view === 'full' || view === 'expression') && expressionCharacter ? (
+      {(view === 'full' || view === 'expression') && expressionCharacter ? (<>
+        {claimAssets}
         <ExpressionEditor
           character={expressionCharacter}
           disabled={disabled}
@@ -2512,7 +2522,7 @@ export function CharacterEditor({
           thumbnails={thumbnails}
           warnings={warnings}
         />
-      ) : null}
+      </>) : null}
       {view === 'full' ? (
         <p className="voice-profile-notice">
           语音配置仅保留最小项目数据。本页面不提供语音合成、声音克隆或嘴型识别入口。

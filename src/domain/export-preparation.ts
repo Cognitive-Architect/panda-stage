@@ -9,7 +9,7 @@ import {
 import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
-import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
+import { listCharacterActionVisualAssetIds, MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
 import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
@@ -214,6 +214,10 @@ function addShotVisualAssets(
 ): void {
   const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
   const restResourcesByCharacter = new Set<string>();
+  for (const assetId of listCharacterActionVisualAssetIds(project, shot)) {
+    const asset = project.assets.find((candidate) => candidate.id === assetId);
+    if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage);
+  }
   for (const timeMs of shotVisualSampleTimes(shot)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     const projected = projectShotMouth(project, shot, evaluatedShot, null);

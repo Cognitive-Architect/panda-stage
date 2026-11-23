@@ -11,6 +11,7 @@ import {
   migrateProject,
   MouthCueEventSchema,
   ProjectSchema,
+  PROJECT_SCHEMA_VERSION,
   ProjectV26Schema,
   ProjectV22Schema,
   resolveEffectiveMouthCue,
@@ -236,7 +237,7 @@ describe('Editable mouth poses (#1226)', () => {
     expect(ProjectV26Schema.safeParse({ ...project, schemaVersion: 26 }).success).toBe(false);
     const legacy = { ...buildMouthProject(), schemaVersion: 26 };
     expect(ProjectV26Schema.safeParse(legacy).success).toBe(true);
-    expect(migrateProject(legacy).schemaVersion).toBe(27);
+    expect(migrateProject(legacy).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
   it('resolves the same frozen Graphic pose in Stage, Preview, and Export with old cue and manual priority', () => {
