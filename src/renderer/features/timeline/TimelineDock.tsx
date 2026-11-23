@@ -3,6 +3,7 @@ import { CharacterMotionLane } from './CharacterMotionLane';
 import { LayerMotionLane } from './LayerMotionLane';
 import {
   useLayoutEffect,
+  useContext,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,6 +13,7 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  Spline,
   Search,
   SkipBack,
   Volume2,
@@ -43,6 +45,8 @@ import { StandaloneAudioControls } from './StandaloneAudioControls';
 import { FlaGraphicInternalTimelineBar } from './FlaGraphicInternalTimelineBar';
 import { TimelineAudioWaveform } from './TimelineAudioWaveform';
 import { useTimelineAudio } from './useTimelineAudio';
+import { AnimationCurveDraftDispatch } from './AnimationCurveDraft';
+import { AnimationCurvePanel } from './AnimationCurvePanel';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -112,6 +116,9 @@ export function TimelineDock({
     ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
     : null;
   const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
+  const motionLayer = shot?.layers.find(({ id }) => id === selectedLayerId);
+  const [curveOpen, setCurveOpen] = useState(false);
+  const onAnimationCurveDraft = useContext(AnimationCurveDraftDispatch);
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
   const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
@@ -336,6 +343,15 @@ export function TimelineDock({
           disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
           <Search aria-hidden="true" focusable="false" size={16} />
         </button>
+        {Boolean(motionLayer?.animationClip?.tracks.length) && !productPreviewOpen ? (
+          <button type="button" className="animation-curve-toggle" aria-label="属性曲线" title="属性曲线"
+            aria-expanded={curveOpen && ui.expanded} onClick={() => {
+              if (!ui.expanded) timelineUiStore.setExpanded(true);
+              setCurveOpen(!(curveOpen && ui.expanded));
+            }}>
+            <Spline aria-hidden="true" focusable="false" size={16} />
+          </button>
+        ) : null}
         <div
           className="character-motion-toolbar-host"
           data-testid="character-motion-toolbar-host"
@@ -386,6 +402,10 @@ export function TimelineDock({
           </button>
         </div>
       </header>
+      {curveOpen && ui.expanded && !productPreviewOpen && snapshot && shot && motionLayer?.animationClip?.tracks.length ? (
+        <AnimationCurvePanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, motionLayer.id])}
+          snapshot={snapshot} shot={shot} layer={motionLayer} onDraft={onAnimationCurveDraft} onClose={() => setCurveOpen(false)} />
+      ) : null}
       {findOpen && !productPreviewOpen && snapshot && currentShotId ? (
         <DialogueFindReplace key={editorProjectStore.getProjectInstanceId()} project={snapshot.project} shotId={currentShotId}
           onLocate={locateDialogue} onClose={() => {

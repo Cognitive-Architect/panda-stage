@@ -1,6 +1,7 @@
 import {
   createRef,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -11,6 +12,7 @@ import {
 import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
+import { AnimationCurveDraftContext } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
   adaptivePartIdForNodeId,
@@ -323,6 +325,10 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const curveDraft = useContext(AnimationCurveDraftContext);
+  const activeCurveDraft = curveDraft?.projectInstanceId === projectInstanceId &&
+    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
+    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
   const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
@@ -789,14 +795,14 @@ export function CanvasStage({
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
             dialogueSilence,
-            currentTimeMs: timelineUi.currentTimeMs,
+            currentTimeMs: activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
-            project: snapshot.project,
+            project: activeCurveDraft?.project ?? snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
             readyAssetSourceKeys: imageState.sourceKeys,
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
-            shot,
+            shot: activeCurveDraft?.project.shots.find(({ id }) => id === shot.id) ?? shot,
             positionDraft: positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -807,6 +813,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      activeCurveDraft,
       dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,
