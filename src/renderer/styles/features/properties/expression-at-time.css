@@ -168,8 +168,7 @@
   margin-top: var(--ui-space-2);
 }
 
-.character-action-range-fields > select,
-.character-action-range-fields > button:only-of-type {
+.character-action-range-fields > select {
   grid-column: 1 / -1;
 }
 

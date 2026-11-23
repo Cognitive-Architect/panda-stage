@@ -19,6 +19,7 @@ import {
   type Project,
 } from '../../src/domain';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
+import { CharacterManager } from '../../src/renderer/features/characters/CharacterManager';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
@@ -200,6 +201,64 @@ afterEach(() => {
   characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()?.cancel();
   editorProjectStore.clear();
   Reflect.deleteProperty(window, 'pandaStage');
+});
+
+it('registers the first action from the character list and protects a pending assembly from action writes', async () => {
+  const { project, characterId, layerId } = buildAdaptiveExpressionProject();
+  editorProjectStore.open(PROJECT_ROOT, project);
+  function Workspace() {
+    const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
+    return createElement('div', null,
+      createElement(CharacterManager, { snapshot, view: 'list' }),
+      createElement(LiveAdaptiveWorkbench),
+    );
+  }
+  const btn = (text: string, scope: ParentNode = container) => [...scope.querySelectorAll('button')]
+    .find((button) => button.textContent?.trim() === text)!;
+  await act(async () => root.render(createElement(Workspace)));
+  const character = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('小师妹试装'))!;
+  await act(async () => character.click());
+  await act(async () => btn('动作').click());
+  const library = container.querySelector('[data-testid="character-action-library"]')!;
+  await act(async () => btn('新增', library).click());
+  const name = library.querySelector<HTMLInputElement>('input:not([type])')!;
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setValue.call(name, '挥手');
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    btn(project.animations[0]!.name, library).click();
+  });
+  await act(async () => btn('使用此动画', library).click());
+  expect(btn('保存', library).disabled, library.textContent ?? '').toBe(false);
+  await act(async () => library.querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  const saved = editorProjectStore.getSnapshot()!;
+  expect(saved.project.characters.find((entry) => entry.id === characterId)?.actions?.[0]?.name, library.textContent ?? '').toBe('挥手');
+  expect(saved.project.shots[0]!.layers.some((entry) => entry.id === layerId)).toBe(true);
+  const item = library.querySelector<HTMLButtonElement>('.character-action-list li > button')!;
+  await act(async () => item.click());
+  const active = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()!;
+  const session = characterAssemblySessionStore.getSnapshot()!;
+  if (!isAdaptivePartsAssemblySnapshot(session)) throw new Error('Expected adaptive assembly');
+  await act(async () => active.setDraft({
+    ...session.draft, parts: session.draft.parts.map((part, index) => index === 0 ? { ...part, visible: false } : part),
+  }));
+  const pending = characterAssemblySessionStore.getSnapshot();
+  const history = editorProjectStore.history.getSnapshot();
+  expect(library.textContent).toContain('请先应用或取消组装更改');
+  expect(btn('保存', library).disabled).toBe(true);
+  expect(btn('删除', library).disabled).toBe(true);
+  await act(async () => {
+    btn('删除', library).click();
+    library.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  expect(editorProjectStore.getSnapshot()).toBe(saved);
+  expect(editorProjectStore.history.getSnapshot()).toEqual(history);
+  expect(characterAssemblySessionStore.getSnapshot()).toBe(pending);
+  await act(async () => characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()!.commit());
+  expect(btn('删除', library).disabled).toBe(false);
+  await act(async () => btn('删除', library).click());
+  expect(editorProjectStore.getSnapshot()!.project.characters.find((entry) => entry.id === characterId)?.actions ?? []).toEqual([]);
 });
 
 describe('Phase A: AdaptiveParts face binding & static expressions (#1211)', () => {

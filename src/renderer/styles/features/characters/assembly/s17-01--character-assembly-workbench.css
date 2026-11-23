@@ -2960,7 +2960,8 @@
   min-height: 36px;
 }
 
-.adaptive-parts-left-nav {
+.character-float-left-nav.adaptive-parts-left-nav {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: var(--ui-space-2);
 }
 

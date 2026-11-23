@@ -5,17 +5,20 @@ import {
   type FlaSourceFrameSuggestion,
 } from '../../shared/fla-static-snapshot-api';
 import { Button } from '../ui/Button';
+import { FLA_FRAME_SEQUENCE_LIMITS } from '../../shared/fla-frame-sequence-api';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { readableFlaCandidateLabel } from './fla-workbench-candidates';
 
-export function FlaSourceFrameSuggestions({ sessionId, target, disabled, onChooseFrame, onStartSequence }: {
+export function FlaSourceFrameSuggestions({ sessionId, target, disabled, initialOpen, onOpenChange, onChooseFrame, onStartSequence }: {
   sessionId: string;
   target: FlaRenderTarget;
   disabled: boolean;
+  initialOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onChooseFrame: (target: FlaRenderTarget, frameIndex: number, suggestedName?: string) => void;
   onStartSequence?: (target: FlaRenderTarget, frameIndex: number) => void;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen ?? (target.frameCount > FLA_FRAME_SEQUENCE_LIMITS.MAX_SEQUENCE_FRAMES));
   const [search, setSearch] = useState('');
   const currentFrame = (target.selectedFrameIndex ?? 0) + 1;
   const [pointFrame, setPointFrame] = useState<string>();
@@ -48,7 +51,12 @@ export function FlaSourceFrameSuggestions({ sessionId, target, disabled, onChoos
 
   const sourceName = readableFlaCandidateLabel(sourceLibraryItemName ?? target.userLabel.replace(/ · 第 \d+ 帧$/u, ''));
   return (
-    <details className="fla-c03-source-frames" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <details className="fla-c03-source-frames" open={open} onToggle={(event) => {
+      const nextOpen = event.currentTarget.open;
+      if (nextOpen === open) return;
+      setOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    }}>
       <summary>查找或定位源帧</summary>
       {open ? <>
         {target.frameCount > 1 ? <div className="fla-c03-source-frame-pages">

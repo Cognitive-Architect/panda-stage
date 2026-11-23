@@ -93,6 +93,7 @@ export function FlaCompatibilityReviewSession({
   const [rasterSelection, setRasterSelection] = useState(createFlaWorkbenchCandidateSelection);
   const [snapshotCandidates, setSnapshotCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
   const [sourceSequenceStart, setSourceSequenceStart] = useState<{ renderTargetId: string; frameIndex: number }>();
+  const sourceFrameDisclosure = useRef(new Map<string, boolean>());
   const [onDemandEntries, setOnDemandEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
   const [sequenceCandidates, setSequenceCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
   const [focusedCandidateIdentityKey, setFocusedCandidateIdentityKey] = useState<string | null>(null);
@@ -930,17 +931,20 @@ export function FlaCompatibilityReviewSession({
           snapshotPreview={snapshotPreview}
           sequencePreview={sequencePreview}
           previewAuxiliary={catalogProgress.phase === 'ready' && focusedCandidate &&
-            (focusedCandidate.kind === 'snapshot' || focusedCandidate.kind === 'sequence') ? (
-            <FlaSourceFrameSuggestions
-              key={focusedCandidate.operation.target.sourceLibraryItemName ??
-                `scene-${focusedCandidate.operation.target.sourceTimelineIndex ?? 0}`}
-              disabled={selectionLocked}
-              sessionId={sessionId}
-              target={focusedCandidate.operation.target}
-              onChooseFrame={focusSourceFrame}
-              onStartSequence={sourceSequence(focusedCandidate.operation.target)?.supported ? startSourceSequence : undefined}
-            />
-          ) : undefined}
+            (focusedCandidate.kind === 'snapshot' || focusedCandidate.kind === 'sequence') ? (() => {
+              const target = focusedCandidate.operation.target;
+              const sourceKey = JSON.stringify([sessionId, target.kind, target.sourceLibraryItemName, target.sourceTimelineIndex]);
+              return <FlaSourceFrameSuggestions
+                key={sourceKey}
+                disabled={selectionLocked}
+                sessionId={sessionId}
+                target={target}
+                initialOpen={sourceFrameDisclosure.current.get(sourceKey)}
+                onOpenChange={(open) => sourceFrameDisclosure.current.set(sourceKey, open)}
+                onChooseFrame={focusSourceFrame}
+                onStartSequence={sourceSequence(target)?.supported ? startSourceSequence : undefined}
+              />;
+            })() : undefined}
           onSearchTextChange={(value) => {
             setSearchText(value);
           }}

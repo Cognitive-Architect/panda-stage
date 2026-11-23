@@ -34,7 +34,8 @@ it('keeps action edits local until Save is submitted', async () => {
       onDelete,
     })));
     await act(async () => container.querySelector<HTMLButtonElement>('button')!.click());
-    expect(container.querySelector('[data-testid="animation-preview"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="animation-preview"]')).toBeNull();
+    expect(container.querySelector('details')?.open).toBe(false);
     expect(onSave).not.toHaveBeenCalled();
 
     const name = container.querySelector<HTMLInputElement>('.character-action-form label input')!;
@@ -43,6 +44,21 @@ it('keeps action edits local until Save is submitted', async () => {
       setValue.call(name, '挥手');
       name.dispatchEvent(new Event('input', { bubbles: true }));
     });
+    const search = container.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => {
+      setValue.call(search, '没有对应动作');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('没有匹配的动画');
+    await act(async () => {
+      setValue.call(search, project.animations[0]!.name);
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => container.querySelector<HTMLButtonElement>('.character-action-sources button')!.click());
+    expect(container.querySelector('[data-testid="animation-preview"]')).not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+    const useSource = [...container.querySelectorAll('button')].find((button) => button.textContent === '使用此动画')!;
+    await act(async () => useSource.click());
     await act(async () => container.querySelector<HTMLFormElement>('form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(onSave).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   resolveTimelineFrameTime,
   type CharacterActionEvent,
@@ -6,14 +6,26 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import { isFlaGraphicDefinition, type ProjectAnimationDefinition } from '../../../domain/models/animation';
+import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { characterActionAuthoringStore } from '../../stores/characterActionAuthoringStore';
+import { Button } from '../../ui/Button';
 
 interface CharacterActionAtTimeControlProps {
   project: Project;
   shot: Shot;
   layer: Layer;
+}
+
+function defaultActionEnd(startMs: number, shotDuration: number, animation?: ProjectAnimationDefinition): number {
+  let duration = animation?.durationMs ?? 1_000;
+  if (animation && isFlaGraphicDefinition(animation) && animation.frames.length === 1) {
+    const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
+    if (timeline.hasInternalTimeline) duration = Math.max(duration, timeline.totalFrames * 1_000 / timeline.fps);
+  }
+  return Math.min(shotDuration, startMs + Math.max(1, Math.round(duration)));
 }
 
 /** Edit bounded action intervals on the selected existing Character Layer. */
@@ -27,39 +39,38 @@ export function CharacterActionAtTimeControl({
   const character = characterId ? project.characters.find((candidate) => candidate.id === characterId) : null;
   const actions = character?.actions ?? [];
   const [selectedActionId, setSelectedActionId] = useState(actions[0]?.id ?? '');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const initialStart = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
-  const initialAnimation = project.animations.find((candidate) => candidate.id === actions[0]?.animationId);
-  const [startMs, setStartMs] = useState(initialStart);
-  const [endMs, setEndMs] = useState(Math.min(shot.durationMs, initialStart + Math.max(1, Math.round(initialAnimation?.durationMs ?? 1_000))));
+  const [editing, setEditing] = useState<{ id: string; actionId: string } | null>(null);
+  const [manualRange, setManualRange] = useState<{ startMs: number; endMs: number } | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (selectedActionId && actions.some((action) => action.id === selectedActionId)) return;
-    const firstAction = actions[0];
-    if (!firstAction) return;
-    const start = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
-    const animation = project.animations.find((candidate) => candidate.id === firstAction.animationId);
-    setSelectedActionId(firstAction.id);
-    setStartMs(start);
-    setEndMs(Math.min(shot.durationMs, start + Math.max(1, Math.round(animation?.durationMs ?? 1_000))));
-  }, [actions, currentTimeMs, project.animations, selectedActionId, shot.durationMs]);
-
   if (!character || layer.source.kind !== 'character' || actions.length === 0) return null;
   const events = shot.timelineEvents
     .filter((event): event is CharacterActionEvent => event.type === 'character-action' && event.layerId === layer.id)
     .sort((left, right) => left.startMs - right.startMs || left.id.localeCompare(right.id));
+  const selectedAction = actions.find((action) => action.id === (editing?.actionId ?? selectedActionId)) ?? actions[0]!;
+  const animation = project.animations.find((entry) => entry.id === selectedAction.animationId);
+  const playhead = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
+  const { startMs, endMs } = manualRange ?? {
+    startMs: playhead,
+    endMs: defaultActionEnd(playhead, shot.durationMs, animation),
+  };
   const validRange = Number.isSafeInteger(startMs) && Number.isSafeInteger(endMs) && startMs >= 0 && startMs < endMs && endMs <= shot.durationMs;
 
+  const resetRange = (): void => {
+    setEditing(null);
+    setManualRange(null);
+    setAdjusting(false);
+    setError('');
+  };
   const save = (): void => {
-    const result = characterActionAuthoringStore.upsert(selectedActionId, startMs, endMs, selectedEventId ?? undefined);
-    setError(result.ok ? '' : result.error ?? '无法设置角色动作段。');
-    if (result.ok) setSelectedEventId(null);
+    const result = characterActionAuthoringStore.upsert(selectedAction.id, startMs, endMs, editing?.id);
+    if (result.ok) resetRange();
+    else setError(result.error ?? '无法设置角色动作段。');
   };
   const remove = (eventId: string): void => {
     const result = characterActionAuthoringStore.delete(eventId);
     setError(result.ok ? '' : result.error ?? '无法删除角色动作段。');
-    if (result.ok && selectedEventId === eventId) setSelectedEventId(null);
+    if (result.ok && editing?.id === eventId) resetRange();
   };
 
   return (
@@ -69,26 +80,26 @@ export function CharacterActionAtTimeControl({
         <time>{formatTimecode(currentTimeMs)}</time>
       </div>
       <div className="character-action-range-fields">
-        <select aria-label="角色动作" disabled={layer.locked} value={selectedActionId}
+        <select aria-label="角色动作" disabled={layer.locked} value={selectedAction.id}
           onChange={(event) => {
-            const nextActionId = event.target.value;
-            const nextStart = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
-            const animation = project.animations.find((candidate) => candidate.id === actions.find((action) => action.id === nextActionId)?.animationId);
-            setSelectedActionId(nextActionId);
-            setSelectedEventId(null);
-            setStartMs(nextStart);
-            setEndMs(Math.min(shot.durationMs, nextStart + Math.max(1, Math.round(animation?.durationMs ?? 1_000))));
+            if (editing) setEditing({ ...editing, actionId: event.target.value });
+            else setSelectedActionId(event.target.value);
+            setError('');
           }}>
           {actions.map((action) => <option key={action.id} value={action.id}>{action.name}</option>)}
         </select>
-        <label>开始 <input aria-label="动作开始时间" type="number" min={0} max={shot.durationMs - 1} step={1}
-          disabled={layer.locked} value={startMs} onChange={(event) => setStartMs(Number(event.target.value))} /></label>
-        <label>结束 <input aria-label="动作结束时间" type="number" min={1} max={shot.durationMs} step={1}
-          disabled={layer.locked} value={endMs} onChange={(event) => setEndMs(Number(event.target.value))} /></label>
-        <button type="button" disabled={layer.locked || !validRange} onClick={save}>
-          {selectedEventId ? '更新' : '添加'}
-        </button>
-        {selectedEventId ? <button type="button" onClick={() => { setSelectedEventId(null); setError(''); }}>取消</button> : null}
+        {editing || adjusting ? <>
+          <label>开始（毫秒） <input aria-label="动作开始时间" type="number" min={0} max={shot.durationMs - 1} step={1}
+            disabled={layer.locked} value={startMs} onChange={(event) => setManualRange({ startMs: Number(event.target.value), endMs })} /></label>
+          <label>结束（毫秒） <input aria-label="动作结束时间" type="number" min={1} max={shot.durationMs} step={1}
+            disabled={layer.locked} value={endMs} onChange={(event) => setManualRange({ startMs, endMs: Number(event.target.value) })} /></label>
+        </> : null}
+        <Button disabled={layer.locked || !validRange} onClick={save}>
+          {editing ? '更新' : '添加动作'}
+        </Button>
+        {editing || adjusting
+          ? <Button variant="secondary" onClick={resetRange}>取消</Button>
+          : <Button variant="secondary" disabled={layer.locked} onClick={() => setAdjusting(true)}>调整时间</Button>}
       </div>
       {events.length > 0 ? <div className="expression-at-time-events">
         <ul aria-label="角色动作段">
@@ -100,8 +111,8 @@ export function CharacterActionAtTimeControl({
               </button>
               <button className="expression-at-time-delete" type="button" disabled={layer.locked}
                 aria-label={`编辑动作段 ${name}`} onClick={() => {
-                  setSelectedEventId(event.id); setSelectedActionId(event.actionId);
-                  setStartMs(event.startMs); setEndMs(event.endMs); setError('');
+                  setEditing({ id: event.id, actionId: event.actionId });
+                  setManualRange({ startMs: event.startMs, endMs: event.endMs }); setError('');
                 }}>编辑</button>
               <button className="expression-at-time-delete" type="button" disabled={layer.locked}
                 aria-label={`删除动作段 ${name}`} onClick={() => remove(event.id)}>删除</button>
