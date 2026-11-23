@@ -67,6 +67,7 @@ import {
 import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventV26Schema } from './timeline-event';
+import { UserMotionPresetSchema } from './userMotionPreset';
 
 const CharacterExpressionV1Schema = z
   .object({
@@ -662,14 +663,26 @@ export const ProjectV22Schema = z.object({
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectDataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV29DataSchema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(29),
   animations: z.array(ProjectAnimationDefinitionSchema),
   shots: z.array(ShotSchema),
 });
 
+export const ProjectV29Schema = ProjectV29DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV29DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  userMotionPresets: z.array(UserMotionPresetSchema).refine(
+    (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
+    'User motion preset IDs must be unique.',
+  ).optional(),
+});
+
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */
-export const ProjectV23Schema = CurrentProjectDataSchema.extend({
+export const ProjectV23Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(23),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV23Schema),
@@ -679,7 +692,7 @@ export const ProjectV23Schema = CurrentProjectDataSchema.extend({
   .superRefine(validateLayerClipOwnership);
 
 /** Frozen v24 envelope before reusable talking animations. */
-export const ProjectV24Schema = CurrentProjectDataSchema.extend({
+export const ProjectV24Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(24),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV24Schema),
@@ -689,7 +702,7 @@ export const ProjectV24Schema = CurrentProjectDataSchema.extend({
   .superRefine(validateLayerClipOwnership);
 
 /** Frozen v25 envelope before talking animation playback settings. */
-export const ProjectV25Schema = CurrentProjectDataSchema.extend({
+export const ProjectV25Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(25),
   animations: z.array(ProjectAnimationDefinitionLegacyCapacitySchema),
   characters: z.array(CharacterV25Schema),
@@ -698,7 +711,7 @@ export const ProjectV25Schema = CurrentProjectDataSchema.extend({
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-export const ProjectV26Schema = CurrentProjectDataSchema.extend({
+export const ProjectV26Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(26),
   characters: z.array(CharacterV26Schema),
   shots: z.array(ShotV26Schema),
@@ -707,7 +720,7 @@ export const ProjectV26Schema = CurrentProjectDataSchema.extend({
   .superRefine(validateLayerClipOwnership);
 
 /** Frozen v27 envelope before Character actions and bounded action events. */
-export const ProjectV27Schema = CurrentProjectDataSchema.extend({
+export const ProjectV27Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(27),
   characters: z.array(CharacterV27Schema),
   shots: z.array(ShotV27Schema),
@@ -715,7 +728,7 @@ export const ProjectV27Schema = CurrentProjectDataSchema.extend({
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-export const ProjectV28Schema = CurrentProjectDataSchema.extend({
+export const ProjectV28Schema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(28),
   animations: z.array(ProjectAnimationDefinitionV28Schema),
   characters: z.array(CharacterV28Schema),

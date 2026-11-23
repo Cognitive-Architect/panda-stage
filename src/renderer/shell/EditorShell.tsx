@@ -677,6 +677,7 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const [productPreviewDraft, setProductPreviewDraft] = useState<Project | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
   const productPreviewFocusRestoreFrameRef = useRef<number | null>(null);
@@ -723,6 +724,7 @@ export function EditorShell({
     cancelProductPreviewFocusRestore();
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    setProductPreviewDraft(null);
   };
   useEffect(
     () => () => {
@@ -1967,8 +1969,12 @@ export function EditorShell({
     }
   };
 
-  const openProductPreview = (): void => {
+  const openProductPreview = (draft?: Project): void => {
     if (productPreviewOpenRef.current) return;
+    setProductPreviewDraft(draft ? {
+      ...draft,
+      shots: draft.shots.filter((shot) => shot.id === shotStore.getCurrentShotId()),
+    } : null);
     cancelProductPreviewFocusRestore();
     const sessionId = productPreviewSessionRef.current + 1;
     productPreviewSessionRef.current = sessionId;
@@ -2575,6 +2581,7 @@ export function EditorShell({
     cancelProductPreviewFocusRestore();
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    setProductPreviewDraft(null);
     if (!opener) return;
     productPreviewFocusRestoreFrameRef.current = window.requestAnimationFrame(() => {
       productPreviewFocusRestoreFrameRef.current = null;
@@ -3074,6 +3081,7 @@ export function EditorShell({
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
+                  onPreviewDraft={openProductPreview}
                 />
               )}
             </div>
@@ -3098,7 +3106,7 @@ export function EditorShell({
               onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}
-              project={projectSnapshot.project}
+              project={productPreviewDraft ?? projectSnapshot.project}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
               surfaceActive={productPreviewSurfaceActive}

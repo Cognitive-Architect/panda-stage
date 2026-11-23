@@ -4,11 +4,14 @@ import {
   ACTION_PRESETS,
   type ActionPresetId,
   type CreatePresetEventsParams,
+  type Project,
 } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { actionPresetStore } from './actionPresetStore';
+import { isSupportedLayerMotionLayer } from '../properties/layerTransformTemporalGuard';
+import { UserMotionPresetControls } from './UserMotionPresetControls';
 import {
   PresetParameterForm,
   type ExpressionOption,
@@ -25,7 +28,7 @@ function presetById(id: ActionPresetId) {
  * is not a character. Application is delegated entirely to the bridge store,
  * which routes through history; this component never manipulates the stage.
  */
-export function ActionPresetPanel(): React.JSX.Element {
+export function ActionPresetPanel({ onPreview }: { onPreview?: (project: Project) => void }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -132,6 +135,10 @@ export function ActionPresetPanel(): React.JSX.Element {
           onCancel={() => setActivePresetId(null)}
           preset={activePreset}
         />
+      ) : null}
+      {snapshot && shot && layer && isSupportedLayerMotionLayer(snapshot.project, shot, layer) ? (
+        <UserMotionPresetControls key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, layer.id])}
+          snapshot={snapshot} shot={shot} layer={layer} onPreview={onPreview} />
       ) : null}
       <output data-testid="action-preset-status">{status}</output>
     </section>

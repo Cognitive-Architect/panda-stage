@@ -10,6 +10,7 @@ import {
   evaluateShotAtTime,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
+  migrateProject,
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
@@ -18,11 +19,84 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
+import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { animationCoreFixture } from '../helpers/animationCoreFixture';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from '../unit/domain/testProject';
 
 describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
+  it('reuses a captured motion on another Graphic relative to its own basis and keeps the application editable', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-user-motion-'));
+    try {
+      const root = path.join(parent, 'motion-preset.pandastage');
+      await mkdir(root);
+      const layers = new LayerService();
+      const motion = new LayerMotionService();
+      const source = layers.createFromAnimation(graphicFaceProject(), IDS.shot, {
+        animationId: FACE_GRAPHIC_ID, position: { x: 100, y: 150 }, startTimeMs: 0,
+      });
+      const destination = layers.createFromAnimation(source.project, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID, position: { x: 600, y: 500 }, startTimeMs: 0,
+      });
+      const from = { shotId: IDS.shot, layerId: source.layer.id };
+      const target = { shotId: IDS.shot, layerId: destination.layer.id };
+      const legacy = { ...destination.project, schemaVersion: 29 };
+      const migrated = migrateProject(legacy);
+      expect(migrated).toEqual(destination.project);
+      let project = motion.applyKeys(migrated, { ...from, timeMs: 500 }, { 'transform.offsetX': 40, 'transform.scaleX': 1.3 });
+      project = motion.applyKeys(project, { ...from, timeMs: 1_000 }, { 'transform.offsetX': 0, 'transform.scaleX': 1 });
+      project = motion.setKeyEasing(project, { ...from, timeMs: 500 }, 'ease-in-out');
+      project = motion.applyKeys(project, { ...target, timeMs: 500 }, { 'transform.offsetY': 30 });
+      project = motion.applyKeys(project, { ...target, timeMs: 750 }, { 'transform.offsetX': 25, 'transform.scaleX': 1.5 });
+      const captured = motion.saveUserMotionPreset(project, { ...from, name: '抖一下再回稳', startMs: 0, endMs: 1_000 });
+      const [preset] = captured.userMotionPresets!;
+      expect(preset?.durationFrames).toBe(24);
+      expect(JSON.stringify(preset)).not.toContain(source.layer.id);
+      expect(JSON.stringify(preset)).not.toContain(destination.layer.id);
+      expect(() => migrateProject({ ...captured, schemaVersion: 29 })).toThrow();
+      expect(() => motion.applyUserMotionPreset(captured, { ...target, timeMs: 500 }, preset!.id)).toThrow('水平位置');
+      const before = new EditorProjectStore();
+      before.open(root, captured);
+      const applied = motion.applyUserMotionPreset(captured, { ...target, timeMs: 1_000 }, preset!.id);
+      expect(before.getSnapshot()!.project).toEqual(captured);
+      before.updateProject(applied, '应用运动预设');
+      expect(before.history.getSnapshot().undoCount).toBe(1);
+      expect(before.undo()).toBe(true);
+      expect(before.getSnapshot()!.project).toEqual(captured);
+      expect(before.redo()).toBe(true);
+      expect(before.getSnapshot()!.project).toEqual(applied);
+      const scopedLayer = (snapshot: Project, at: number) =>
+        evaluateShotAtTime(snapshot.shots[0]!, at, snapshot).layers.find((layer) => layer.id === target.layerId)!;
+      for (const at of [750, 1_000, 2_125, 2_700, 0]) {
+        expect(scopedLayer(applied, at)).toEqual(scopedLayer(captured, at));
+      }
+      expect(scopedLayer(applied, 1_500)).toMatchObject({ x: 665, y: 530 });
+      expect(scopedLayer(applied, 1_500).scaleX).toBeCloseTo(1.95);
+      const draftTrack = applied.shots[0]!.layers.find((layer) => layer.id === target.layerId)!;
+      expect(layerCompositeKeyTimes(draftTrack)).toContain(1_500);
+      expect(scopedLayer(motion.applyKeys(applied, { ...target, timeMs: 1_500 }, { 'transform.offsetX': 70 }), 1_500).x).toBe(670);
+      const updated = motion.saveUserMotionPreset(applied, { ...from, name: '另一段', startMs: 500, endMs: 1_000, replaceId: preset!.id });
+      expect(updated.shots).toEqual(applied.shots);
+      expect(updated.userMotionPresets).toHaveLength(1);
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(legacy));
+      const projects = new ProjectService();
+      await projects.save(root, updated);
+      const reopened = (await projects.open(root)).project;
+      expect(reopened).toEqual(updated);
+      const shot = reopened.shots[0]!;
+      for (const at of [1_700, 1_500, 1_250, 2_125]) {
+        const stage = evaluateShotAtTime(shot, at, reopened);
+        const preview = projectProductPreviewDialogue(reopened, shot, stage);
+        const exported = evaluateExportShotAtTime(reopened, shot, at);
+        for (const result of [preview, exported]) {
+          expect(result.layers.find((layer) => layer.id === target.layerId)).toEqual(scopedLayer(reopened, at));
+        }
+      }
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   it('runs Graphic Layer -> LayerMotionService -> Clip v2 -> Single History -> Save/Reopen -> Evaluate(500ms) with Character=0', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-layer-v2-'));
     try {

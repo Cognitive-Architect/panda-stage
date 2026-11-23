@@ -48,6 +48,7 @@ import { recognizePositionChain } from '../position-chain';
 import { isValidFrameTime } from '../timeline/frame-grid';
 import { normalizeLayerRotation } from './LayerService';
 import { PositionProjectService } from './PositionProjectService';
+import { applyUserMotionPresetTracks, captureUserMotionPreset } from '../user-motion-presets';
 
 export const NEUTRAL_LAYER_MOTION = NEUTRAL_ANIMATION_MOTION;
 export type LayerMotionValues = AnimationMotionValues;
@@ -218,6 +219,35 @@ export function layerCompositePoseSnapshot(
 /** Thin Domain service for Character-free FLA Graphic Layer animation tracks and basis edits. */
 export class LayerMotionService {
   private readonly positionProjectService = new PositionProjectService();
+
+  saveUserMotionPreset(project: Project, input: LayerMotionTargetInput & {
+    name: string; startMs: number; endMs: number; replaceId?: string;
+  }): Project {
+    const { shot, layer } = resolveLayerContext(project, input.shotId, input.layerId);
+    assertValidFrame(shot, input.startMs);
+    assertValidFrame(shot, input.endMs);
+    const clip = clipV2(layer);
+    if (!clip || input.endMs <= input.startMs) throw new Error('请选择有关键帧的运动时段。');
+    const library = project.userMotionPresets ?? [];
+    if (input.replaceId && !library.some((item) => item.id === input.replaceId)) {
+      throw new Error('找不到要更新的运动预设。');
+    }
+    const preset = captureUserMotionPreset(clip, input.replaceId ?? crypto.randomUUID(),
+      input.name, input.startMs, input.endMs);
+    return ProjectSchema.parse({ ...project, userMotionPresets: input.replaceId
+      ? library.map((item) => item.id === input.replaceId ? preset : item)
+      : [...library, preset] });
+  }
+
+  applyUserMotionPreset(project: Project, input: LayerKeyTimeInput, presetId: string): Project {
+    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId);
+    const preset = project.userMotionPresets?.find((entry) => entry.id === presetId);
+    if (!preset) throw new Error('找不到选择的运动预设。');
+    assertValidFrame(shot, input.timeMs);
+    const clip = clipV2(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const tracks = applyUserMotionPresetTracks(clip, layer.id, preset, input.timeMs, shot.durationMs);
+    return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
+  }
 
   /** Write relative Property Track keys at `input.timeMs` (no static Layer write). */
   applyKeys(
