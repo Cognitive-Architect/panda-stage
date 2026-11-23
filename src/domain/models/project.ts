@@ -28,6 +28,7 @@ import {
   CharacterV34Schema,
   CharacterV35Schema,
   CharacterV36Schema,
+  CharacterV37Schema,
   CharacterV22Schema,
   CharacterV23Schema,
   CharacterV24Schema,
@@ -761,7 +762,16 @@ export const ProjectV36Schema = ProjectV36DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV36DataSchema.extend({
+const ProjectV37DataSchema = ProjectV36DataSchema.extend({
+  schemaVersion: z.literal(37),
+  characters: z.array(CharacterV37Schema),
+});
+
+export const ProjectV37Schema = ProjectV37DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV37DataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   characters: z.array(CharacterSchema),
 });

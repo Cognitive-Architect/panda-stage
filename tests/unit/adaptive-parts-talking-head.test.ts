@@ -11,6 +11,7 @@ import {
   evaluateShotAtTime,
   migrateProject,
   planCharacterBodyPose,
+  planMappedCharacterMotion,
   projectShotDialogueVisual,
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
@@ -18,6 +19,7 @@ import {
   saveLayeredCharacterAction,
   saveCharacterBodyPose,
   setManualMouthPose,
+  suggestCharacterMotionMapping,
   upsertCharacterActionEvent,
   upsertExpressionEventAtTime,
   upsertMouthCueEventAtTime,
@@ -378,6 +380,97 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(editorProjectStore.getSnapshot()!.project).toEqual(beforePose);
     editorProjectStore.redo();
     expect(editorProjectStore.getSnapshot()!.project).toEqual(afterPose);
+  });
+
+  it('maps a layered action between two characters with an adjusted pivot and a missing part', () => {
+    const setup = buildPhaseCProject();
+    const characters = new CharacterService();
+    const motion = new CharacterMotionService();
+    const id = 'd3000000-0000-4000-8000-000000000015';
+    const key = { shotId: IDS.shot, layerId: setup.layerId, timeMs: 250, autoKey: true };
+    let project = motion.apply(setup.project, { ...key, partId: PART_BODY },
+      { 'transform.rotationDeg': 55, 'transform.offsetX': 20, 'transform.offsetY': 13 });
+    project = motion.apply(project, { ...key, partId: PART_FRONT_HAIR }, { 'transform.rotationDeg': 14 });
+    project = saveLayeredCharacterAction(project, IDS.shot, setup.layerId, {
+      name: 'Wave', startMs: 0, endMs: 500, partIds: [PART_BODY, PART_FRONT_HAIR], headAnchorPartId: PART_BODY,
+    }, () => id);
+    const source = project.characters.find(({ id: characterId }) => characterId === setup.characterId)!;
+    if (source.mode !== 'adaptive-parts') throw new Error('Expected a source Adaptive Parts Character.');
+    const sourceAction = source.actions![0]!;
+    if (!('kind' in sourceAction)) throw new Error('Expected a layered action.');
+    const targetParts = source.parts.filter(({ partId }) => partId !== PART_FRONT_HAIR).map((part, index) => ({
+      ...part, partId: `d2300000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    }));
+    const bodyId = targetParts[1]!.partId;
+    const faceId = targetParts[3]!.partId;
+    project = characters.createAdaptiveParts(project, { name: 'Second Character', parts: targetParts });
+    const targetId = project.characters.at(-1)!.id;
+    project = characters.setAdaptivePartsFaceBinding(project, targetId, { targetPartId: faceId });
+    project = characters.addExpression(project, targetId, { name: 'Target face', visualSource: faceSource(1) });
+    project = characters.setMouthOpenAsset(project, targetId, ASSET_MOUTH);
+    const target = project.characters.at(-1)!;
+    if (target.mode !== 'adaptive-parts') throw new Error('Expected a target Adaptive Parts Character.');
+    const targetExpression = target.expressions![0]!.id;
+    const layerService = new LayerService();
+    const one = layerService.createFromAdaptiveCharacter(project, IDS.shot, targetId, { x: 1350, y: 570 });
+    const two = layerService.createFromAdaptiveCharacter(one.project, IDS.shot, targetId, { x: 1560, y: 410 });
+    const oneId = one.layer.id;
+    project = upsertExpressionEventAtTime(two.project, IDS.shot, oneId, targetExpression, 625);
+    project = upsertMouthCueEventAtTime(project, IDS.shot, oneId, 'open', 700);
+    const suggested = suggestCharacterMotionMapping(source, sourceAction, target);
+    expect(suggested.find(rule => rule.sourcePartId === PART_BODY)?.targetPartId).toBe(bodyId);
+    expect(suggested.find(rule => rule.sourcePartId === PART_FRONT_HAIR)?.targetPartId).toBeUndefined();
+    const rules = suggested.map(rule => rule.sourcePartId !== PART_BODY ? rule : {
+      ...rule, mirror: true, translationScale: 2, pivotOffset: { x: 12, y: 0 },
+      properties: rule.properties.filter(property => property !== 'transform.offsetY'),
+    });
+    const mapping = { sourceCharacterId: source.id, sourceActionId: id, rules };
+    const noPivot = planMappedCharacterMotion(project, IDS.shot, oneId, 500, { ...mapping,
+      rules: rules.map(rule => ({ ...rule, pivotOffset: { x: 0, y: 0 } })),
+    });
+    const planned = planMappedCharacterMotion(project, IDS.shot, oneId, 500, mapping);
+    expect(planned.missingSourcePartIds).toEqual([PART_FRONT_HAIR]);
+    expect(migrateProject({ ...project, schemaVersion: 37 })).toEqual(project);
+    expect(() => migrateProject({ ...planned.project, schemaVersion: 37 })).toThrow();
+    const opened = migrateProject(JSON.parse(JSON.stringify(planned.project)));
+    const sameSource = opened.characters.find(({ id: characterId }) => characterId === source.id);
+    expect(sameSource).toEqual(source);
+    const mappedTarget = opened.characters.find(({ id: characterId }) => characterId === target.id)!;
+    if (mappedTarget.mode !== 'adaptive-parts') throw new Error('Expected a mapped Adaptive Parts Character.');
+    expect(mappedTarget.motionMappings?.[0]?.rules).toEqual(rules);
+    const action = mappedTarget.actions?.[0];
+    expect(action && 'kind' in action && action.tracks.map(track => [track.partId, track.property, track.keys[1]?.value]))
+      .toEqual([[bodyId, 'transform.rotationDeg', -55], [bodyId, 'transform.offsetX', -40]]);
+
+    function at(snapshot: Project, timeMs: number) {
+      const shot = snapshot.shots[0]!;
+      const evaluated = projectShotDialogueVisual(snapshot, shot, evaluateShotAtTime(shot, timeMs, snapshot));
+      const layer = evaluated.layers.find(({ id: layerId }) => layerId === oneId)!;
+      const visual = resolveLayerVisualParts(snapshot, shot, layer, timeMs);
+      const body = visual.parts.find(({ partId }) => partId === `${oneId}:${bodyId}`)!;
+      return { shot, layer, body, evaluated, visual };
+    }
+    const mid = at(opened, 750);
+    expect(mid.layer.x).toBe(one.layer.x);
+    expect(mid.layer.y).toBe(one.layer.y);
+    expect(mid.visual.activeFace).toMatchObject({ currentExpressionId: targetExpression, assetId: ASSET_MOUTH });
+    expect(mid.body.imageTransform!.tx - at(noPivot.project, 750).body.imageTransform!.tx)
+      .toBeCloseTo(12 * (1 - Math.cos(55 * Math.PI / 180)));
+    expect(at(opened, 1050).layer.layeredCharacterAction).toBeUndefined();
+    expect(at(opened, 400).layer.layeredCharacterAction).toBeUndefined();
+    const urls = Object.fromEntries(opened.assets.filter(({ kind }) => kind === 'image').map(({ id: assetId }) => [assetId, `blob:${assetId}`]));
+    expect(buildStageRenderModel(opened, evaluateExportShotAtTime(opened, mid.shot, 750), urls).layers)
+      .toEqual(buildStageRenderModel(opened, mid.evaluated, urls).layers);
+    expect(mid.evaluated.layers.find(({ id: layerId }) => layerId === two.layer.id)?.layeredCharacterAction).toBeUndefined();
+    const repeat = planMappedCharacterMotion(opened, IDS.shot, oneId, 1250, mapping).project;
+    expect(repeat.characters).toEqual(opened.characters);
+    expect(repeat.shots[0]!.timelineEvents.filter(event => event.type === 'character-action')).toHaveLength(2);
+    editorProjectStore.open('C:/temp/body-mapping.pandastage', project);
+    editorProjectStore.updateProject(planned.project, '应用跨角色动作');
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(project);
+    editorProjectStore.redo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(planned.project);
   });
 
   it('moves only head-bound parts (including replaced face expressions/mouth) while preserving drawOrder (backHair behind body), neutral outside dialogue, and Stage/Export parity', () => {

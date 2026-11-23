@@ -43,6 +43,7 @@ import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTime
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
+import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -737,6 +738,8 @@ export function RightInspector({
         <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterMotionMappingControl key={`motion-mapping:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         </>
       ) : null}

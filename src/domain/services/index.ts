@@ -12,6 +12,7 @@ export * from './GraphicFrameEventService';
 export * from './AnimationPropertyCurveService';
 export * from './CharacterBodyPoseService';
 export * from './CharacterArmIkService';
+export * from './CharacterMotionMappingService';
 export * from './MouthCueEventService';
 export * from './LayerService';
 export * from './PositionProjectService';

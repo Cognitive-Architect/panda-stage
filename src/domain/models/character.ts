@@ -871,7 +871,9 @@ export const BakedCharacterActionSchema = z.object({
   placement: CharacterActionPlacementSchema,
 }).strict();
 
-export const LayeredCharacterActionSchema = z.object({
+const ArmPointSchema = z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict();
+
+const LayeredCharacterActionV37Schema = z.object({
   id: IdSchema,
   name: NameSchema,
   kind: z.literal('layered'),
@@ -898,6 +900,20 @@ export const LayeredCharacterActionSchema = z.object({
   }
 });
 
+export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safeExtend({
+  partPivotOffsets: z.array(z.object({ partId: IdSchema, offset: ArmPointSchema }).strict()).optional(),
+}).superRefine(({ tracks, partPivotOffsets }, context) => {
+  const seen = new Set<string>();
+  partPivotOffsets?.forEach(({ partId }, index) => {
+    if (seen.has(partId) || !tracks.some(track => track.partId === partId &&
+      (track.property === 'transform.rotationDeg' || track.property === 'transform.scaleX' || track.property === 'transform.scaleY'))) {
+      context.addIssue({ code: 'custom', path: ['partPivotOffsets', index], message: 'Pivot calibration requires a mapped rotation or scale.' });
+    }
+    seen.add(partId);
+  });
+});
+
+const CharacterActionV37Schema = z.union([BakedCharacterActionSchema, LayeredCharacterActionV37Schema]);
 export const CharacterActionSchema = z.union([BakedCharacterActionSchema, LayeredCharacterActionSchema]);
 
 export const CharacterBodyPoseSchema = z.object({
@@ -920,7 +936,6 @@ export const CharacterBodyPoseSchema = z.object({
   });
 });
 
-const ArmPointSchema = z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict();
 export const CharacterArmChainSchema = z.object({
   segments: z.array(z.object({
     partId: IdSchema,
@@ -931,6 +946,25 @@ export const CharacterArmChainSchema = z.object({
   tip: ArmPointSchema,
 }).strict().refine(({ segments }) => new Set(segments.map(({ partId }) => partId)).size === segments.length &&
   segments.every(({ minDeg, maxDeg }) => minDeg <= maxDeg), 'Invalid rigid arm joints or limits.');
+
+export const CharacterMotionMappingRuleSchema = z.object({
+  sourcePartId: IdSchema,
+  targetPartId: IdSchema.optional(),
+  mirror: z.boolean(),
+  translationScale: FiniteNumberSchema.min(0.01).max(100),
+  pivotOffset: ArmPointSchema,
+  properties: z.array(AnimationPropertySchema).max(AnimationPropertySchema.options.length),
+}).strict().refine(({ properties }) => new Set(properties).size === properties.length, 'Duplicate mapped properties.');
+
+export const CharacterMotionMappingSchema = z.object({
+  sourceCharacterId: IdSchema,
+  sourceActionId: IdSchema,
+  generatedActionId: IdSchema,
+  rules: z.array(CharacterMotionMappingRuleSchema).min(1),
+}).strict().refine(({ rules }) => {
+  const targets = rules.flatMap(({ targetPartId }) => targetPartId ? [targetPartId] : []);
+  return new Set(rules.map(({ sourcePartId }) => sourcePartId)).size === rules.length && new Set(targets).size === targets.length;
+}, 'Each mapped source and selected target part must be unique.');
 
 const CharacterActionsShape = {
   actions: z.array(BakedCharacterActionSchema).max(64).optional(),
@@ -975,7 +1009,7 @@ const SingleImageCharacterWithTalkingSchema = SingleImageCharacterV28Schema.safe
 const CompositeCharacterWithTalkingSchema = CompositeCharacterV28Schema.safeExtend(ExpressionTalkingShape);
 const AdaptivePartsCharacterV34Schema = AdaptivePartsCharacterV28Schema.safeExtend(ExpressionTalkingShape);
 const CurrentCharacterActionsShape = {
-  actions: z.array(CharacterActionSchema).max(64).optional(),
+  actions: z.array(CharacterActionV37Schema).max(64).optional(),
 };
 const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
 const AdaptivePartsCharacterV35Schema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
@@ -985,8 +1019,14 @@ const AdaptivePartsCharacterV36Schema = AdaptivePartsCharacterV35Schema.safeExte
     new Set(poses.map(({ name }) => name.toLocaleLowerCase())).size === poses.length,
   'Body pose names and ids must be unique.').optional(),
 });
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV36Schema.safeExtend({
+const AdaptivePartsCharacterV37Schema = AdaptivePartsCharacterV36Schema.safeExtend({
   armChain: CharacterArmChainSchema.optional(),
+});
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV37Schema.safeExtend({
+  actions: z.array(CharacterActionSchema).max(64).optional(),
+  motionMappings: z.array(CharacterMotionMappingSchema).max(64).refine((entries) =>
+    new Set(entries.map(({ sourceCharacterId, sourceActionId }) => `${sourceCharacterId}:${sourceActionId}`)).size === entries.length,
+  'Each source action may have one reusable mapping.').optional(),
 });
 
 function validateExpressionTalkingSources(character: {
@@ -1022,6 +1062,12 @@ export const CharacterV36Schema = z.discriminatedUnion('mode', [
   AdaptivePartsCharacterV36Schema,
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
+export const CharacterV37Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV37Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
@@ -1030,6 +1076,8 @@ export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
 export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
 export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
+export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
+export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;

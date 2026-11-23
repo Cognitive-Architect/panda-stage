@@ -85,20 +85,27 @@ export function resolveLayeredCharacterPartTransforms(
     .map((track) => ({ target: { kind: 'character-part', layerId, partId: track.partId },
       property: track.property, value: evaluateAnimationTrackAtTime(track, layered.localTimeMs) }));
   const values = [...baseValues, ...actionValues];
+  const offsets = new Map(layered.action.partPivotOffsets?.map(({ partId, offset }) => [partId, offset]));
+  function calibratedBasis(basis: CharacterPartTargetBasis): CharacterPartTargetBasis {
+    const partId = basis.target.partId;
+    const offset = offsets.get(partId);
+    return offset && !protectedParts.has(partId) ? { ...basis,
+      pivot: { ...basis.pivot, x: basis.pivot.x + offset.x, y: basis.pivot.y + offset.y } } : basis;
+  }
   const anchor = clip.targetBases.find(({ target }) => target.partId === layered.action.headAnchorPartId);
   let headDelta: CharacterPartTransform | undefined;
   if (anchor && !protectedParts.has(anchor.target.partId)) {
     const before = composeAnimatedCharacterPartTransform(anchor, clip.fixedCharacterCenter, baseValues);
     const inverse = invertAffineMatrix(before);
     if (inverse) {
-      const after = composeAnimatedCharacterPartTransform(anchor, clip.fixedCharacterCenter, values);
+      const after = composeAnimatedCharacterPartTransform(calibratedBasis(anchor), clip.fixedCharacterCenter, values);
       headDelta = multiplyAffineMatrices(after, inverse);
     }
   }
   const followers = new Set([...protectedParts, ...(character.headMotionBinding?.partIds ?? [])]);
   return new Map(clip.targetBases.map((basis) => {
     const id = basis.target.partId;
-    const transform = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+    const transform = composeAnimatedCharacterPartTransform(calibratedBasis(basis), clip.fixedCharacterCenter, values);
     return [id, headDelta && id !== anchor?.target.partId && followers.has(id)
       ? multiplyAffineMatrices(headDelta, transform) : transform];
   }));
