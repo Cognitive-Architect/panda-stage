@@ -11,9 +11,14 @@ import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/Edi
 import { Button } from '../../ui/Button';
 import type { ThumbnailState } from '../assets/AssetCard';
 import { CharacterResourceSwapDialog, type ResourceSwapValue } from './CharacterResourceSwapDialog';
-import { GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
+import { GraphicFacePreview, TalkingAnimationPicker, type GraphicFacePreviewResult } from './GraphicFacePicker';
 
-type ExpressionDraft = { name: string; source?: CharacterFaceSource };
+type ExpressionDraft = {
+  name: string;
+  source?: CharacterFaceSource;
+  preview?: { snapshot: EditorProjectSnapshot; result: GraphicFacePreviewResult };
+  attempt?: number;
+};
 type ClaimDraft = {
   instance: number | null;
   expressions: ExpressionDraft[];
@@ -58,6 +63,14 @@ export function CharacterAssetClaimPanel({
       if (draft.instance !== editorProjectStore.getProjectInstanceId()) {
         throw new Error('项目已切换，请取消后重新认领。');
       }
+      const graphicProblem = draft.expressions.find(({ source, preview }) =>
+        source?.kind === 'fla-graphic' && (preview?.snapshot !== snapshot || preview.result !== 'ready'));
+      if (graphicProblem) {
+        const failed = graphicProblem.preview?.snapshot === snapshot && graphicProblem.preview.result === 'failed';
+        throw new Error(failed
+          ? `“${graphicProblem.name}”的元件预览失败，请重试或换一张。`
+          : `“${graphicProblem.name}”的元件正在准备预览，请稍后确认。`);
+      }
       const missing = expressions.find(({ source }) => source.kind === 'image' && thumbnails[source.assetId]?.status === 'missing');
       if (missing) throw new Error(`“${missing.name}”的图片不可用，请重新选择。`);
       characterStore.claimCharacterAssets(character.id, {
@@ -84,24 +97,48 @@ export function CharacterAssetClaimPanel({
     <section className="graphic-face-options" aria-label="认领到角色">
       <strong>认领到「{character.name}」</strong>
       {imageAssets.length === 0 && graphics.length === 0 ? <p>请先在素材库导入表情图片或 FLA 元件。</p> : null}
-      {draft.expressions.map(({ name, source }, index) => {
+      {draft.expressions.map(({ name, source, preview, attempt }, index) => {
         const image = source?.kind === 'image' ? imageAssets.find(asset => asset.id === source.assetId) : undefined;
         const graphic = source?.kind === 'fla-graphic' ? graphics.find(item => item.id === source.animationId) : undefined;
         const thumbnail = image ? thumbnails[image.id] : undefined;
         return (
-          <div key={index} className="character-claim-expression">
-            <div className="character-claim-preview">
-              {source?.kind === 'fla-graphic' && graphic ? <GraphicFacePreview source={source} label={name} /> : null}
-              {image && thumbnail?.status === 'ready' ? (
-                <img alt={name} src={thumbnail.dataUrl} onError={() => onThumbnailError(image.id)} />
-              ) : null}
+          <div key={index}>
+            <div className="character-claim-expression">
+              <div className="character-claim-preview">
+                {source?.kind === 'fla-graphic' ? (
+                  <GraphicFacePreview key={attempt ?? 0} source={source} label={name} onResult={(currentSnapshot, result) => {
+                    setDraft(current => {
+                      const slot = current?.expressions[index];
+                      if (!current || slot?.source !== source || slot.attempt !== attempt ||
+                          (slot.preview?.snapshot === currentSnapshot && slot.preview.result === result)) return current;
+                      return {
+                        ...current,
+                        expressions: current.expressions.map((item, itemIndex) => itemIndex === index
+                          ? { ...item, preview: { snapshot: currentSnapshot, result } }
+                          : item),
+                      };
+                    });
+                  }} />
+                ) : null}
+                {image && thumbnail?.status === 'ready' ? (
+                  <img alt={name} src={thumbnail.dataUrl} onError={() => onThumbnailError(image.id)} />
+                ) : null}
+              </div>
+              <input aria-label={`表情 ${index + 1} 名称`} disabled={disabled}
+                maxLength={200} value={name} onChange={event => updateExpression(index, { name: event.target.value })} />
+              <Button variant="secondary" disabled={disabled || (imageAssets.length === 0 && graphics.length === 0)}
+                aria-label={`选择表情 ${index + 1} 素材`} onClick={event => setPicker({ index, trigger: event.currentTarget })}>
+                {source?.kind === 'fla-graphic' && graphic ? `${graphic.name} · 第 ${source.firstFrame + 1} 帧` : image?.name ?? (source ? '素材不可用' : '选择表情')}
+              </Button>
             </div>
-            <input aria-label={`表情 ${index + 1} 名称`} disabled={disabled}
-              maxLength={200} value={name} onChange={event => updateExpression(index, { name: event.target.value })} />
-            <Button variant="secondary" disabled={disabled || (imageAssets.length === 0 && graphics.length === 0)}
-              aria-label={`选择表情 ${index + 1} 素材`} onClick={event => setPicker({ index, trigger: event.currentTarget })}>
-              {source?.kind === 'fla-graphic' && graphic ? `${graphic.name} · 第 ${source.firstFrame + 1} 帧` : image?.name ?? (source ? '素材不可用' : '选择表情')}
-            </Button>
+            {preview?.snapshot === snapshot && preview.result === 'failed' ? (
+              <div role="alert">
+                元件预览失败。可换一张，或
+                <Button variant="secondary" disabled={disabled} onClick={() => updateExpression(index, {
+                  preview: undefined, attempt: (attempt ?? 0) + 1,
+                })}>重试预览</Button>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -124,9 +161,9 @@ export function CharacterAssetClaimPanel({
           onThumbnailError={onThumbnailError} returnFocusTo={picker.trigger} onCancel={() => setPicker(null)}
           onConfirm={value => {
             if (value.kind === 'image') {
-              if (value.assetId) updateExpression(picker.index, { source: { kind: 'image', assetId: value.assetId } });
+              if (value.assetId) updateExpression(picker.index, { preview: undefined, source: { kind: 'image', assetId: value.assetId } });
             } else {
-              updateExpression(picker.index, { source: { ...value, firstFrame: value.firstFrame ?? 0 } });
+              updateExpression(picker.index, { preview: undefined, source: { ...value, firstFrame: value.firstFrame ?? 0 } });
             }
             setPicker(null);
           }} />
