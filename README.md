@@ -1,21 +1,44 @@
 # Panda Stage（熊猫片场）
 
-Panda Stage 是一款面向个人创作者的 Windows Electron 桌面编辑器，用于把角色图片、背景、对白、音频和简单动作组织成短篇 2D 纸片人动画。仓库当前的主产品面是项目管理、资源工作区、镜头编辑、Konva 画布、图层检查器、撤销/重做、保存与恢复。
+Panda Stage 是一款面向个人创作者的 Windows Electron 桌面编辑器，用于把角色图片、背景、对白、音频和简单动作组织成短篇 2D 纸片人动画。当前 `main` 已有项目中心、镜头与资源工作区、Konva 编辑画布、时间轴、角色与 FLA 相关工作流、产品预览及正式视频导出入口。
 
 ## 当前能力与开发状态
 
-当前 `main` 已包含一套连续的 Editor Shell：
+以下记录截至 **2026-11-23** `main` 已有的功能入口和代码实现。当前支持范围以源码、专项验收与 Issue/PR 为准；旧 Day、M3、Stage 计划是历史记录，不等于当前产品仍处在那个阶段。
 
-- 项目中心支持新建、打开、最近项目、项目切换、项目文件夹入口和应用内关闭确认；
-- 编辑器支持镜头、素材和角色资源工作区，正式画布支持背景、图层选择、位置/变换、锁定、排序和删除；
-- 右侧检查器承载背景管理、图层变换与排序控制；编辑历史支持撤销、重做和连续拖拽合并；
-- 项目保存使用版本与修订号保护，Main Process 提供 autosave、恢复候选和恢复文件管理；
-- 动作预设的领域逻辑、校验、历史和持久化桥接已经存在，当前 UI 仍从左侧“兼容编辑工具”入口进入；它后续迁移到正式检查器的工作尚未成为 `main` 的交付内容；
-- Main Process 仍保留隐藏 Renderer、帧写盘和 FFmpeg/ffprobe 的导出验证链，但这条链不等同于编辑器首页已经交付正式导出 UI 或安装包 sidecar。
+### 项目、画布与工作区
 
-M3 的正式背景、图层和选择合同已经进入当前 `main`；后续 Stage 3-B/3-C/4 仍按各自的授权、Draft 状态和人工验收推进。本文不把 M3、Stage 3-B、Stage 3-C 或 Stage 4 宣布为完成，也不把早期 Day 计划当作当前产品阶段。
+- **项目中心**：新建、打开、最近项目、切换项目、打开项目文件夹和未保存更改时的关闭确认。
+- **编辑器布局**：镜头、素材、角色资源工作区，Konva 画布、右侧检查器、底部时间轴；布局包括横向与窄屏／竖向自适应界面，产品仍是 Windows Electron 桌面应用。
+- **图层编辑**：背景、选择、拖拽、位置与变换、锁定、排序、删除，以及角色／Graphic 的部分结构与属性编辑。
+- **编辑历史与项目安全**：撤销／重做、连续编辑合并、版本／修订号保护、正式保存、autosave、恢复候选和恢复文件管理。
 
-项目文件固定使用 1920×1080、24 FPS 和当前正式 schema v5。保存的素材路径必须相对于项目目录，时间字段使用整数毫秒。
+### 时间轴、对白、音频与动作
+
+- **正式时间轴**（`TimelineDock`）：镜头时间标尺、播放头、定位、缩放／滚动；对白、独立音频、位置、图层动作和角色动作轨道。
+- **对白与字幕**：对白编辑、说话者关联、字幕样式与预览渲染。
+- **音频**：MP3/WAV 资源、音频片段、预览和正式导出混音相关逻辑；支持范围受素材及项目校验约束。
+- **动画**：角色部件／节点运动、关键帧相关能力；旧动作预设入口仍作为兼容工具保留，不代表新动作功能全部停留在旧 UI。
+
+### 角色、素材与 FLA
+
+- 素材导入、资源管理、元数据、缩略图及受控画布图片读取。
+- 角色、表情、组合角色和 Adaptive Parts（可适应部件）的管理与编辑。
+- **FLA（Adobe Animate）**：已有 FLA 检查／解析、预览、Graphic 元件／部件导入、角色创建、结构树、部分矢量形状／填充编辑、部件变换和布局复用相关代码与入口。
+- FLA 能力取决于可识别结构、具体目标和操作路径，**不代表任意 FLA 或全部动画语义都能完整导入与导出**。连续帧工作台提交的静态图片不会自动变成镜头动画。
+
+### 预览和正式视频导出
+
+- 编辑器已有产品预览（`ProductPreviewOverlay`）与导出视频（`QuickActionDrawer`）入口。
+- 正式导出链路包含输出位置选择、工程和素材预检查、候选快照、隐藏 Renderer 帧绘制、PNG 写盘、FFmpeg/ffprobe 编码与结果检查。
+- `ExportTaskSurface` 提供任务状态、进度、取消、结果与适用状态下的重试功能。
+- 当前正式 MP4 目标为 **1920×1080、24 FPS**；多镜头、音频、镜头模式、媒体类型与导出限制见 [导出支持矩阵](./docs/export-support-matrix.md)。已有产品 UI 和自动化证据，不等于所有 Windows 环境及安装包 sidecar 均已完成人工验收。
+
+### 项目数据约定
+
+- 正式项目版本已更新为 **`PROJECT_SCHEMA_VERSION = 23`**，见 [`src/domain/constants.ts`](./src/domain/constants.ts)。旧工程通过显式迁移与 Zod 校验进入当前模型；早期文档出现的 v5 或 v13 是历史版本。
+- 固定 1920×1080、24 FPS，时间字段采用整数毫秒，素材文件路径相对于项目目录。
+- `EditorProjectStore` 是 Renderer 正式项目、`dirty`、`revision` 的唯一 owner；镜头选择、图层选择和撤销历史属于会话状态，不直接存入 `project.json`。
 
 ## 技术栈
 
@@ -27,33 +50,36 @@ M3 的正式背景、图层和选择合同已经进入当前 `main`；后续 Sta
 - Zod
 - Vitest
 - ESLint
-- pnpm
+- pnpm 10
+- FFmpeg / ffprobe（媒体导出）
+- JSZip、pako（相关素材与 FLA 工作流）
 
 ## 当前架构总览
 
 ```text
-App
-└─ EditorShell                                  唯一项目会话与生命周期入口
-   ├─ ProjectCenterScreen / StartScreen          无项目或项目中心页
+App / Renderer
+└─ EditorShell                        唯一项目会话与生命周期入口
+   ├─ ProjectCenterScreen            项目中心
    └─ Editor layout
-      ├─ CompactProjectBar                       项目状态、保存、切换、预览、关闭
-      ├─ LeftWorkspace
-      │  └─ ResourceActivityDock                 镜头 / 素材 / 角色工作区
-      │     ├─ ProjectRecoveryPanel              最近项目与恢复相关入口
-      │     └─ LegacyCompatibilityActivity       暂留的动作预设兼容入口
+      ├─ QuickActionDrawer           保存、切换、预览、导出等快捷操作
+      ├─ ResourceActivityDock        镜头 / 素材 / 角色 / FLA 入口
       ├─ CanvasWorkspace
-      │  └─ features/canvas/CanvasStage           正式 Konva 编辑画布
-      │     └─ HistoryControls                    撤销 / 重做
-      └─ RightInspector                           背景、变换、排序检查器
+      │  └─ CanvasStage              Konva 画布、图层交互
+      ├─ RightInspector              图层、角色与 Graphic 属性
+      ├─ BottomWorkspace
+      │  └─ TimelineDock             时间轴、对白、音频与动作
+      ├─ ProductPreviewOverlay       产品预览
+      └─ ExportTaskSurface           导出任务与结果
 ```
+
+`CompactProjectBar.tsx` 仍是源码文件名，但当前产品快捷操作使用其中的 `QuickActionDrawer`；`AdaptiveWorkspaceSwitcher` 等组件负责自适应工作区切换。
 
 ### 项目、领域与渲染
 
-- `src/domain/` 是当前正式领域入口，包含 Project/Asset/Character/Shot/Layer/TimelineEvent 模型、schema、迁移、selector、service、validator、几何规则和动作预设。
-- `src/renderer/stores/EditorProjectStore.ts` 是 Renderer 中 Project、`dirty` 和 `revision` 的唯一 owner；`src/history/` 提供它所持有的内存命令历史。
-- `shotStore` 只保存当前镜头选择，`selectionStore` 只保存当前图层选择；这些会话状态不写入 `project.json`，并在项目或镜头改变时重新校验。
-- `CanvasStage` 从正式 `src/domain` 构建编辑渲染模型，使用项目素材的受控读取 API 和 1920×1080 逻辑坐标；画布只负责显示与交互提交，持久化变更经 domain service 和 Project store 完成。
-- `src/shared/domain/` 是早期渲染探针/兼容模型，仍被历史测试或脚本使用，但不是当前正式编辑器模型的推荐入口。
+- `src/domain/` 是正式领域入口，包含 Project/Asset/Character/Shot/Layer、动画、音频和 TimelineEvent 模型、schema、迁移、selector、service、validator 与几何逻辑。
+- `src/renderer/stores/EditorProjectStore.ts` 负责 Project、`dirty`、`revision` 和内存命令历史；`src/history/` 为历史命令提供实现。`shotStore` 和 `selectionStore` 分别维护当前镜头与图层选择。
+- `CanvasStage` 从正式领域模型构建渲染数据，使用项目素材的受控读取 API 和 1920×1080 逻辑坐标；持久化更改经 domain service 与 Project store 完成。
+- `src/shared/domain/` 是旧渲染 probe 的兼容模型，不是新编辑功能的推荐入口。
 
 ### Main、Preload、IPC 与项目生命周期
 
@@ -61,21 +87,21 @@ App
 Renderer stores / UI
         │
         ▼
-Preload allowlist + runtime Zod validation
+Preload 白名单 API + Zod 校验
         │
         ▼
-Trusted-window IPC handlers
+可信窗口 IPC handlers
         │
         ▼
 Main services
-  ProjectService       project.json 的创建、打开、迁移、校验、原子保存
-  AutosaveService      每个项目一个恢复调度会话
-  RecoveryService      恢复文件的检测、读取、保留与清理
-  Asset services       导入、元数据、缩略图和画布图片读取
-  ExportService        隐藏 Renderer、帧写盘与 FFmpeg/ffprobe
+  ProjectService             创建、打开、迁移、校验、原子保存
+  Autosave / Recovery        恢复候选与恢复文件管理
+  Asset / FLA services       素材、预览、Graphic 和角色创建
+  ExportPreparationService   内容预检查与候选快照
+  ExportService              隐藏 Renderer、帧写盘、FFmpeg/ffprobe
 ```
 
-`EditorShell` 只构造一个 `ProjectSessionController`，负责打开、切换、关闭、autosave 生命周期和 recovery candidate。正式保存由 Renderer 的 `saveCurrentProject()` 与 Main 的 `ProjectService` 共同完成；项目保存、恢复写入和清理按项目根目录共享协调器，不使用第二套项目 session。
+`EditorShell` 只构造一个 `ProjectSessionController`，负责打开、切换、关闭、autosave 生命周期与恢复候选。正式保存由 Renderer 的 `saveCurrentProject()` 和 Main 的 `ProjectService` 协作完成；项目保存、恢复写入及清理按项目根目录协调。
 
 ## 目录结构
 
@@ -85,8 +111,8 @@ src/
 ├── preload/               主窗口和隐藏窗口的白名单桥
 ├── export-renderer/        隐藏导出 Renderer 入口
 ├── renderer/
-│   ├── shell/             Project Center、EditorShell 和三栏编辑布局
-│   ├── features/          canvas、assets、characters、shots、properties 等功能
+│   ├── shell/             Project Center、EditorShell、时间轴与自适应工作区布局
+│   ├── features/          canvas、timeline、dialogue、assets、characters、fla-import 等功能
 │   ├── stores/            Project、Shot、Layer selection 等 Renderer store
 │   └── stage/             预览/验证用舞台入口
 ├── domain/                当前正式 schema、迁移、服务、校验和动作领域
@@ -117,9 +143,7 @@ pnpm dev
 
 ## 质量检查与验证
 
-### 核心命令
-
-以下命令均来自当前 `package.json`：
+核心命令均来自当前 `package.json`：
 
 ```powershell
 pnpm typecheck
@@ -129,31 +153,9 @@ pnpm test:integration
 pnpm build
 ```
 
-Electron 或专项门禁按改动范围选择当前脚本中的 verifier，例如：
+Electron 专项验证按改动范围选择，例如 `pnpm verify:gate-a`、`pnpm verify:issue606-product-preview`、`pnpm verify:issue816-dl01` 和 `pnpm verify:issue819-dl02`。具体可用脚本及执行范围以 [package.json](./package.json) 和 [AGENTS.md](./AGENTS.md) 为准，无需每次重跑全部历史 Day/Issue 验证。
 
-```powershell
-pnpm verify:gate-a
-pnpm verify:day13
-pnpm verify:day16
-pnpm verify:day17
-pnpm verify:day18
-pnpm verify:day19
-pnpm verify:day20
-pnpm verify:day21
-pnpm verify:day22
-pnpm verify:day23
-pnpm verify:day24
-pnpm verify:issue76
-pnpm verify:issue109-resource-workspace
-pnpm verify:issue125
-```
-
-验证选择原则：
-
-- Markdown-only 改动至少执行 `git diff --check`，核对仓库内相对链接、命令名、过期状态描述和授权文件范围；不因为文档改动虚构完整 Electron 人工验收；
-- Renderer/domain 改动执行 `typecheck`、`lint`、`test:unit`、`build`，涉及跨层或持久化时加 `test:integration`；
-- Main/Preload/IPC/autosave/recovery 改动执行核心检查、集成测试、构建和最相关的 Electron verifier；需要真人验收时，自动化结果不能替代 Windows Electron 运行；
-- 完整交付或 PR gate 以当前 `package.json` 中相关 `verify:*` 脚本和 CI 为准，不降低安全检查或测试门槛换取通过。
+Markdown-only 改动核对相对链接、脚本名、当前状态和 `git diff --check`；Renderer/domain、Main/IPC、持久化及导出改动执行相关类型检查、测试、构建与最相关的 verifier。自动化结果不冒充 Windows Electron 人工验收。
 
 ## Electron、IPC 与数据安全原则
 
@@ -171,6 +173,7 @@ pnpm verify:issue125
 - [docs/architecture.md](./docs/architecture.md)：进程边界、数据模型、渲染与生命周期的架构说明；遇到版本化历史章节时以当前代码为准。
 - [docs/development.md](./docs/development.md)：项目生命周期、autosave/recovery、素材和开发验证约束。
 - [docs/ipc.md](./docs/ipc.md)：IPC 通道、payload、可信 sender 和导出边界。
+- [docs/export-support-matrix.md](./docs/export-support-matrix.md)：媒体格式支持、预检查与正式导出证据。
 - [package.json](./package.json)：当前可用的开发、测试、构建和 verifier scripts。
 - [ROADMAP.md](./ROADMAP.md)：产品范围、架构原则和里程碑规划，不自动证明某阶段已交付。
 - [DAILY_PLAN.md](./DAILY_PLAN.md)：逐日计划，适合查历史任务背景，不是当前实现入口。
