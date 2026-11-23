@@ -30,6 +30,7 @@
  */
 
 import crypto from 'node:crypto';
+import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
 import type {
@@ -2942,6 +2943,9 @@ export async function buildRenderableTargetCatalog(
     }
 
     const prioritizedRootKeys = new Set<string>();
+    const listedLongTargets = new Set<string>();
+    const isLongSymbol = (symbol: typeof candidateSymbols[number]): boolean =>
+      symbol.frameCount > FLA_GRAPHIC_MAX_FRAMES;
     const appendRootReferences = async (): Promise<boolean> => {
       for (const reference of sceneRootReferences) {
         const frameIndex = reference.selectedFrameIndex;
@@ -2951,9 +2955,10 @@ export async function buildRenderableTargetCatalog(
         const authoredFrameIndices = authoredFramesBySymbol.get(symbol.sourceLibraryItemName) ?? [];
         if (!authoredFrameIndices.includes(frameIndex)) continue;
         const key = `${symbol.sourceLibraryItemName}\u0000${frameIndex}`;
-        if (prioritizedRootKeys.has(key)) continue;
+        if (prioritizedRootKeys.has(key) || listedLongTargets.has(symbol.sourceLibraryItemName)) continue;
         if (!appendCandidate(createGraphicTarget(symbol, frameIndex), 'scene-referenced-graphic')) break;
         prioritizedRootKeys.add(key);
+        if (isLongSymbol(symbol)) listedLongTargets.add(symbol.sourceLibraryItemName);
         if (execution) {
           await execution.yieldToEventLoop();
           if (!execution.shouldContinue()) return false;
@@ -2978,8 +2983,10 @@ export async function buildRenderableTargetCatalog(
 
     if (entries.length < MAX_TARGETS) {
       outer: for (const symbol of candidateSymbols) {
+        if (listedLongTargets.has(symbol.sourceLibraryItemName)) continue;
         const authoredFrameIndices = authoredFramesBySymbol.get(symbol.sourceLibraryItemName) ?? [];
-        for (const frameIndex of authoredFrameIndices) {
+        const coverIndices = isLongSymbol(symbol) ? authoredFrameIndices.slice(0, 1) : authoredFrameIndices;
+        for (const frameIndex of coverIndices) {
           const key = `${symbol.sourceLibraryItemName}\u0000${frameIndex}`;
           if (prioritizedRootKeys.has(key)) continue;
           appendCandidate(createGraphicTarget(symbol, frameIndex), 'graphic-state');

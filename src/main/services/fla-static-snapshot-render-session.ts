@@ -498,6 +498,11 @@ export class FlaStaticSnapshotRenderSession {
       return active.settledPromise;
     }
 
+    if (svgResult.composition.shapeCount === 0 && svgResult.composition.bitmapInstanceCount === 0) {
+      this.settleActive(active, this.previewError('TARGET_UNSUPPORTED', '此源帧没有可见内容，请选择其它帧。', requestId));
+      return active.settledPromise;
+    }
+
     if (!this.rasterizer) {
       this.settleActive(
         active,

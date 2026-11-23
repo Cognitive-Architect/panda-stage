@@ -92,6 +92,7 @@ export function FlaCompatibilityReviewSession({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rasterSelection, setRasterSelection] = useState(createFlaWorkbenchCandidateSelection);
   const [snapshotCandidates, setSnapshotCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
+  const [sourceSequenceStart, setSourceSequenceStart] = useState<{ renderTargetId: string; frameIndex: number }>();
   const [onDemandEntries, setOnDemandEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
   const [sequenceCandidates, setSequenceCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
   const [focusedCandidateIdentityKey, setFocusedCandidateIdentityKey] = useState<string | null>(null);
@@ -143,6 +144,7 @@ export function FlaCompatibilityReviewSession({
           setRasterSelection(createFlaWorkbenchCandidateSelection());
           setSnapshotCandidates([]);
           setOnDemandEntries([]);
+          setSourceSequenceStart(undefined);
           setSequenceCandidates([]);
           setFocusedCandidateIdentityKey(null);
           setSearchText('');
@@ -261,13 +263,14 @@ export function FlaCompatibilityReviewSession({
       : null;
   const focusedSequenceCandidate = focusedCandidate?.kind === 'sequence'
     ? focusedCandidate
-    : focusedCandidate?.kind === 'snapshot' && focusedCandidate.operation.target.frameCount > 1
+    : focusedCandidate?.kind === 'snapshot' && !onDemandKeys.has(focusedCandidate.identityKey) &&
+        focusedCandidate.operation.target.frameCount > 1
       ? visibleSequenceCandidates.find((candidate) => candidate.provenance.renderTargetId === focusedRenderTargetId) ?? null
       : null;
   const showSnapshotPreview = Boolean(focusedSnapshotCandidate &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable) &&
     !(focusedCandidate?.kind === 'sequence' && (!focusedCandidate.supported || focusedCandidate.blank || focusedCandidate.preview.status === 'error')));
-  const showSequencePreview = Boolean(!onDemandKeys.has(focusedCandidateIdentityKey ?? '') && focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
+  const showSequencePreview = Boolean(focusedSequenceCandidate?.supported && !focusedSequenceCandidate.blank &&
     !(focusedCandidate?.kind === 'sequence' && focusedCandidate.preview.status === 'error'));
   const showGeneratedSequencePreview = focusedCandidate?.kind === 'sequence' && focusedCandidate.selectable;
   const selectionLocked = unifiedImportRunning || graphicInstanceImporting || recoveryRequired;
@@ -381,14 +384,25 @@ export function FlaCompatibilityReviewSession({
       setSnapshotScanRequested(true);
     }
   };
+  const sourceSequence = (target: FlaRenderTarget) => visibleSequenceCandidates.find(candidate =>
+    candidate.operation.target.kind === target.kind &&
+    candidate.operation.target.sourceLibraryItemName === target.sourceLibraryItemName &&
+    candidate.operation.target.sourceTimelineIndex === target.sourceTimelineIndex);
+  const startSourceSequence = (target: FlaRenderTarget, frameIndex: number): void => {
+    const sequence = sourceSequence(target);
+    if (!sequence || selectionLocked) return;
+    setSourceSequenceStart({ renderTargetId: sequence.operation.target.renderTargetId, frameIndex });
+    focusUnifiedCandidate(sequence);
+  };
   const focusSourceFrame = (target: FlaRenderTarget, frame: number, suggestedFrameName?: string): void => {
-    if (!ir || !sessionId || selectionLocked) return;
+    if (!ir || !sessionId || selectionLocked || !Number.isInteger(frame) || frame < 0 || frame >= target.frameCount) return;
     const existing = snapshotCandidates.find(candidate => candidate.kind === 'snapshot' &&
       candidate.provenance.targetKind === target.kind &&
       candidate.provenance.sourceLibraryItemName === target.sourceLibraryItemName &&
       candidate.provenance.sourceTimelineIndex === target.sourceTimelineIndex &&
       candidate.provenance.selectedFrameIndex === frame);
-    const renderTargetId = existing?.kind === 'snapshot' ? existing.provenance.renderTargetId : target.renderTargetId;
+    const renderTargetId = existing?.kind === 'snapshot' ? existing.provenance.renderTargetId
+      : sourceSequence(target)?.operation.target.renderTargetId ?? target.renderTargetId;
     const entry: FlaRenderableTargetCatalogEntry = {
       target: {
         ...target, renderTargetId, selectedFrameIndex: frame, suggestedFrameName,
@@ -402,10 +416,13 @@ export function FlaCompatibilityReviewSession({
     };
     const context = { sessionId, source: ir.source };
     const key = flaWorkbenchSnapshotIdentityKey(context, entry);
-    setOnDemandEntries(current => [
-      ...current.filter(item => flaWorkbenchSnapshotIdentityKey(context, item) !== key),
-      entry,
-    ]);
+    const pinnedKeys = new Set([...checkedCandidates.values()].map(item => item.identityKey));
+    setOnDemandEntries(current => {
+      const others = current.filter(item => flaWorkbenchSnapshotIdentityKey(context, item) !== key);
+      const pinned = others.filter(item => pinnedKeys.has(flaWorkbenchSnapshotIdentityKey(context, item)));
+      const recent = others.filter(item => !pinnedKeys.has(flaWorkbenchSnapshotIdentityKey(context, item))).slice(-15);
+      return [...pinned, ...recent, entry];
+    });
     setFocusedCandidateIdentityKey(key);
   };
   const selectCurrentResults = (): void => {
@@ -808,6 +825,7 @@ export function FlaCompatibilityReviewSession({
       onTerminalStateChange={setRenderTerminalState}
       onCandidatesChange={setSequenceCandidates}
       focusedCandidateIdentityKey={focusedSequenceCandidate?.identityKey ?? null}
+      sourceSequenceStart={sourceSequenceStart}
       showUnifiedSequencePreview={showGeneratedSequencePreview}
       selectedOnlyView={selectedOnly}
       multiSelectMode={multiSelectMode}
@@ -920,6 +938,7 @@ export function FlaCompatibilityReviewSession({
               sessionId={sessionId}
               target={focusedCandidate.operation.target}
               onChooseFrame={focusSourceFrame}
+              onStartSequence={sourceSequence(focusedCandidate.operation.target)?.supported ? startSourceSequence : undefined}
             />
           ) : undefined}
           onSearchTextChange={(value) => {

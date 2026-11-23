@@ -146,6 +146,42 @@ describe('R2-H.1 frame sequence render IPC', () => {
     electronMocks.removeHandler.mockClear();
   });
 
+  it('samples only 60 requested frames at a late source address, even with a blank cover', async () => {
+    const bytes = await buildMultiFrameGraphicFla({ lateRange: true });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    const authored = await buildRenderableTargetCatalog(bytes, undefined, { includeAuthoredStates: true });
+    expect(catalog.ok).toBe(true);
+    expect(authored.ok).toBe(true);
+    if (!catalog.ok || !authored.ok) return;
+    const target = catalog.entries.find(entry => entry.target.kind === 'graphic-symbol')!.target;
+    expect(target.frameCount).toBe(1860);
+    expect(authored.entries.filter(entry => entry.target.kind === 'graphic-symbol')
+      .map(entry => entry.target.selectedFrameIndex)).toEqual([0]);
+    const openSource = { ...source, bytes };
+    const collected: Array<{ frameIndex: number; svg: string }> = [];
+    const mocks = makeMocks({ sourceLookup: { getSource: vi.fn(() => openSource) } });
+    mocks.sequenceService.renderSequence.mockImplementation(async (
+      _session: string,
+      _range: FlaFrameSequenceRange,
+      frames: AsyncIterable<{ frameIndex: number; svg: string }>,
+    ) => {
+      for await (const frame of frames) collected.push(frame);
+      return successResponse;
+    });
+    register(mocks);
+    const handler = electronMocks.handlers.get(IPC_CHANNELS.FLA_FRAME_SEQUENCE_RENDER)!;
+    const response = await handler(event(), {
+      ...validRenderRequest,
+      range: { renderTargetId: target.renderTargetId, startFrameIndex: 1800, endFrameIndex: 1859 },
+    });
+    expect(response).toMatchObject({ ok: true });
+    expect(collected.map(frame => frame.frameIndex)).toEqual(Array.from({ length: 60 }, (_, index) => 1800 + index));
+    const snapshot = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1800 });
+    expect(snapshot).toMatchObject({ ok: true, svg: collected[0]!.svg });
+    expect(collected[0]!.svg).toContain('#336699');
+    expect(collected.at(-1)!.svg).toContain('#cc3355');
+  });
+
   it('trusted sender + valid request invokes renderSequence with parsed request', async () => {
     const mocks = makeMocks();
     register(mocks);
