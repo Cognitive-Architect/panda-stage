@@ -70,3 +70,20 @@
   stroke: var(--ui-color-text-primary);
   stroke-width: 2px;
 }
+
+.animation-key-selection {
+  margin-block-start: var(--ui-space-2);
+}
+
+.animation-key-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.animation-key-targets label {
+  display: flex;
+  gap: var(--ui-space-1);
+  align-items: center;
+}

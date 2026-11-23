@@ -5,12 +5,42 @@ import {
   ProjectSchema, ProjectV20Schema, PROJECT_SCHEMA_VERSION,
   evaluateAnimationTrackAtTime, evaluateAnimationClipAtTime, migrateProject,
   editAnimationPropertyKey,
+  keySelectedAnimationTargets,
   type AnimationInterpolation,
 } from '../../../src/domain';
 import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
+  it('inserts one sampled key per selected track while preserving curved and stepped motion', () => {
+    const { project, layerId } = animationCoreFixture();
+    const layer = project.shots[0]!.layers.find(({ id }) => id === layerId)!;
+    const clip = layer.animationClip!;
+    const first = clip.tracks[0]!;
+    const target = first.target;
+    const last = first.keys[1]!.timeMs;
+    const at = 250;
+    expect(last).toBeGreaterThan(at);
+    first.keys[0]!.curveToNext = { bezier: { x1: 0.15, y1: 0.8, x2: 0.65, y2: 0.95 } };
+    if (clip.version !== 1 || target.kind !== 'character-part') throw new Error('Expected part clip fixture.');
+    clip.tracks.push({ target, property: 'transform.offsetY', keys: [
+      { timeMs: 0, value: 15, interpolationToNext: 'step' },
+      { timeMs: last, value: 140, interpolationToNext: 'linear' },
+    ] });
+    const second = { ...target, partId: '71000000-0000-4000-8000-000000000002' };
+    clip.targetBases.push({ ...clip.targetBases[0]!, target: second, drawOrder: 1 });
+    clip.tracks.push({ ...clip.tracks[0]!, target: second });
+    const skipped = { ...target, partId: IDS.layerAsset };
+    const result = keySelectedAnimationTargets(project, IDS.shot, layerId, [target, second, skipped], at);
+    expect(result).toMatchObject({ inserted: 3, skipped: 1 });
+    const edited = result.project.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!;
+    for (const time of [last, 18, 239, 250, 294, 0, last + 50]) {
+      const before = evaluateAnimationClipAtTime(clip, time);
+      const after = evaluateAnimationClipAtTime(edited, time);
+      before.forEach((entry, index) => expect(after[index]!.value).toBeCloseTo(entry.value, 4));
+    }
+    expect(keySelectedAnimationTargets(result.project, IDS.shot, layerId, [target, second], at).project).toBe(result.project);
+  });
   it('edits one property Bézier, round-trips it and preserves the strict previous schema', () => {
     const { project, clip, layerId } = animationCoreFixture();
     const propertyTrack = clip.tracks[0]!;

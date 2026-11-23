@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
-  animationTargetIdentity, editAnimationPropertyKey, evaluateAnimationEase, resolveTimelineFrameTime,
+  animationTargetIdentity, editAnimationPropertyKey, evaluateAnimationEase, keySelectedAnimationTargets, resolveTimelineFrameTime,
   type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type Shot,
   type AnimationTargetRef,
 } from '../../../domain';
@@ -10,6 +10,7 @@ import { shotStore } from '../../stores/shotStore';
 import { Button } from '../../ui';
 import type { AnimationCurveDraft } from './AnimationCurveDraft';
 import { formatTimecode } from './timeGeometry';
+import { useTimelineUi } from './timelineUiStore';
 
 const presets: Readonly<Record<AnimationInterpolation, string>> = {
   linear: '线性', 'ease-in': '缓入', 'ease-out': '缓出', 'ease-in-out': '缓入缓出', step: '保持',
@@ -45,11 +46,15 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const [keyTime, setKeyTime] = useState(0);
   const [handles, setHandles] = useState<AnimationBezier>();
   const [error, setError] = useState('');
+  const [selectedTargets, setSelectedTargets] = useState<readonly string[]>([]);
+  const { currentTimeMs } = useTimelineUi();
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const instance = editorProjectStore.getProjectInstanceId();
   const trackKey = (entry: (typeof tracks)[number]) => JSON.stringify([entry.property, animationTargetIdentity(entry.target)]);
   const track = tracks.find((entry) => trackKey(entry) === trackId) ?? tracks[0];
+  const targets = layer.animationClip?.targetBases.map(({ target }) => target) ?? [];
+  const selected = targets.filter((target) => selectedTargets.includes(animationTargetIdentity(target)));
   const index = Math.max(0, track?.keys.findIndex(({ timeMs }) => timeMs === keyTime) ?? 0);
   const key = track?.keys[index];
   const next = track?.keys[index + 1];
@@ -151,6 +156,22 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     drag.current = { pointer: event.pointerId, handle, revision: snapshot.revision, projectInstanceId: instance, handles: points };
   }
 
+  function keySelected(): void {
+    const state = current();
+    if (!state || !selected.length) return;
+    try {
+      const time = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
+      const result = keySelectedAnimationTargets(state.project, shot.id, layer.id, selected, time);
+      if (result.project !== state.project) {
+        editorProjectStore.updateProject(result.project, '记录所选部件的姿势');
+        setKeyTime(time);
+      }
+      setError(result.skipped ? `${result.skipped} 个所选部件没有可记录的属性轨。` : '');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法记录所选部件。');
+    }
+  }
+
   return <section className="animation-curve-panel" aria-label="属性曲线" onKeyDown={(event) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
@@ -198,6 +219,22 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         <circle cx={toX(points.x2)} cy={toY(points.y2)} r={7} data-curve-handle="second" tabIndex={-1} onPointerDown={(event) => begin(event, 'second')} />
       </svg> : null}
     </> : null}
+    {targets.length ? <details className="animation-key-selection">
+      <summary>所选部件落键</summary>
+      <div className="animation-key-targets">
+        {targets.map((target) => {
+          const identity = animationTargetIdentity(target);
+          return <label key={identity}><input type="checkbox" checked={selectedTargets.includes(identity)}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              setSelectedTargets((values) => checked ? [...values, identity] : values.filter((value) => value !== identity));
+            }} />{targetLabel(target)}</label>;
+        })}
+      </div>
+      <Button disabled={layer.locked || !selected.length} onClick={keySelected}>
+        在 {formatTimecode(currentTimeMs)} 落键
+      </Button>
+    </details> : null}
     {error ? <p role="alert">{error}</p> : null}
   </section>;
 }
