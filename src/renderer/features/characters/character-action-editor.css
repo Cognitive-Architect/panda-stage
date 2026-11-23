@@ -7,6 +7,16 @@
   background: var(--ui-color-surface-panel);
 }
 
+.adaptive-parts-assembly-list > .character-action-library {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--ui-space-2) 0;
+  border: 0;
+  background: transparent;
+}
+
+.character-action-library .animation-preview-controls { flex-wrap: wrap; }
+
 .character-action-library-heading,
 .character-action-item,
 .character-action-form footer {

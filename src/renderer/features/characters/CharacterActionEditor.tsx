@@ -1,5 +1,6 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { Character, CharacterAction, CharacterActionDraft, Project } from '../../../domain';
+import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { AnimationPreview } from '../assets/AnimationLibraryPanel';
 import './character-action-editor.css';
 
@@ -41,6 +42,11 @@ export function CharacterActionEditor({
   const previewAnimation = choosingSource
     ? animations.find((animation) => animation.id === previewId)
     : selectedAnimation;
+  const previewPlayback = useMemo(() => previewAnimation ? {
+    mode: 'play once' as const,
+    firstFrame: 0,
+    lastFrame: resolveFlaGraphicPreviewTimeline(previewAnimation, true).totalFrames - 1,
+  } : undefined, [previewAnimation]);
   const query = search.trim().toLocaleLowerCase('zh-CN');
   const visibleAnimations = animations.filter((animation) =>
     [animation.name, animation.source.basename, animation.source.targetName]
@@ -100,7 +106,7 @@ export function CharacterActionEditor({
 
   return (
     <section className="character-action-library" data-testid="character-action-library">
-      <header className="character-action-library-heading" id={titleId}>
+      <header className="character-action-library-heading">
         <h3>动作</h3>
         <button type="button" disabled={disabled || animations.length === 0} onClick={beginNew}>新增</button>
       </header>
@@ -120,7 +126,7 @@ export function CharacterActionEditor({
         <label>名称<input autoFocus maxLength={64} value={name} onChange={(event) => setName(event.target.value)} /></label>
         {choosingSource ? <>
           <input type="search" aria-label="搜索动作动画" placeholder="搜索动画" value={search}
-            onChange={(event) => setSearch(event.target.value)} />
+            onChange={(event) => { setSearch(event.target.value); setPreviewId(''); }} />
           {visibleAnimations.length ? <ul className="character-action-list character-action-sources">
             {visibleAnimations.map((animation) => <li key={animation.id}>
               <button type="button" className="character-action-item" aria-pressed={previewId === animation.id}
@@ -139,6 +145,7 @@ export function CharacterActionEditor({
           project={project}
           projectRoot={projectRoot}
           titleId={titleId}
+          playback={previewPlayback}
         /> : null}
         {choosingSource && previewAnimation ? <button type="button" onClick={() => {
           setAnimationId(previewAnimation.id); setChoosingSource(false);
