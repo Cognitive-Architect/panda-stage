@@ -305,20 +305,18 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
     const host = document.createElement('div');
     document.body.append(host);
     const root = createRoot(host);
-    const dispatchPointer = (target: EventTarget, type: string, pointerType: 'mouse' | 'touch', clientX: number) => {
-      const event = new Event(type, { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'pointerType', { configurable: true, value: pointerType });
-      Object.defineProperty(event, 'pointerId', { configurable: true, value: 1 });
-      Object.defineProperty(event, 'button', { configurable: true, value: 0 });
-      Object.defineProperty(event, 'clientX', { configurable: true, value: clientX });
-      target.dispatchEvent(event);
+    const dispatchPointer = (target: EventTarget, type: string, pointerType: 'mouse' | 'touch', clientX: number,
+      overrides: PointerEventInit = {}) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerType, pointerId: 1, isPrimary: true, button: 0, clientX,
+        ...overrides,
+      }));
     };
+    const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
     try {
       await act(async () => root.render(createElement(EditorTriadHarness, { layerId: fixture.layerId })));
 
-      const rulerScroll = host.querySelector<HTMLElement>('[data-testid="timeline-ruler-scroll"]')!;
       const rulerTrack = host.querySelector<HTMLElement>('[data-testid="timeline-ruler-track"]')!;
-      Object.defineProperty(rulerScroll, 'clientWidth', { configurable: true, value: 1000 });
       Object.defineProperty(rulerTrack, 'getBoundingClientRect', {
         configurable: true,
         value: () => new DOMRect(0, 0, 1000, 120),
@@ -373,8 +371,42 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
         dispatchPointer(ruler, 'pointerup', 'mouse', 0);
       });
       expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(0);
+
+      const time = () => timelineUiStore.getSnapshot().currentTimeMs;
+      for (const interruption of ['pointercancel', 'lostpointercapture', 'blur']) {
+        await act(async () => {
+          dispatchPointer(ruler, 'pointerdown', 'touch', 500, { isPrimary: false });
+          dispatchPointer(ruler, 'pointerdown', 'mouse', 500, { button: 2 });
+        });
+        expect(time()).toBe(0);
+        await act(async () => {
+          dispatchPointer(ruler, 'pointerdown', 'mouse', 0);
+          dispatchPointer(ruler, 'pointerdown', 'touch', 800, { pointerId: 2 });
+          dispatchPointer(ruler, 'pointermove', 'touch', 800, { pointerId: 2 });
+          dispatchPointer(ruler, 'pointerup', 'touch', 800, { pointerId: 2 });
+        });
+        expect(time()).toBe(0);
+        await act(async () => dispatchPointer(ruler, 'pointermove', 'mouse', 450));
+        expect(time()).toBeGreaterThan(0);
+        const beforeInterruption = time();
+        await act(async () => {
+          for (let repeat = 0; repeat < 2; repeat++) {
+            if (interruption === 'blur') window.dispatchEvent(new Event('blur'));
+            else dispatchPointer(ruler, interruption, 'mouse', 950);
+          }
+          dispatchPointer(ruler, 'pointermove', 'mouse', 950);
+          dispatchPointer(ruler, 'pointerup', 'mouse', 950);
+        });
+        expect(time()).toBe(beforeInterruption);
+        await act(async () => {
+          dispatchPointer(ruler, 'pointerdown', 'mouse', 0);
+          dispatchPointer(ruler, 'pointerup', 'mouse', 0);
+        });
+        expect(time()).toBe(0);
+      }
     } finally {
       await act(async () => root.unmount());
+      clientWidthSpy.mockRestore();
       host.remove();
     }
   });

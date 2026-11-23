@@ -130,7 +130,7 @@ export function TimelineDock({
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
+  const rulerDragRef = useRef<{ pointerId: number; element: HTMLDivElement } | null>(null);
   const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
@@ -162,6 +162,24 @@ export function TimelineDock({
     return bindTimelineRulerScroll(scrollRef.current);
   }, [currentShotId, hasShot, ui.expanded]);
 
+  const endRulerDrag = (): void => {
+    const drag = rulerDragRef.current;
+    if (!drag) return;
+    rulerDragRef.current = null;
+    if (drag.element.hasPointerCapture(drag.pointerId)) {
+      drag.element.releasePointerCapture(drag.pointerId);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (!hasShot || !ui.expanded) return;
+    window.addEventListener('blur', endRulerDrag);
+    return () => {
+      window.removeEventListener('blur', endRulerDrag);
+      endRulerDrag();
+    };
+  }, [currentShotId, hasShot, ui.expanded]);
+
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
@@ -186,22 +204,19 @@ export function TimelineDock({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!hasShot) return;
-    draggingRef.current = true;
+    if (!hasShot || !event.isPrimary || event.button !== 0 || rulerDragRef.current) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    rulerDragRef.current = { pointerId: event.pointerId, element: event.currentTarget };
     seekFromClientX(event.clientX);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!draggingRef.current) return;
+    if (rulerDragRef.current?.pointerId !== event.pointerId) return;
     seekFromClientX(event.clientX);
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
-    draggingRef.current = false;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (rulerDragRef.current?.pointerId === event.pointerId) endRulerDrag();
   };
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>): void => {
@@ -358,7 +373,9 @@ export function TimelineDock({
               data-testid="timeline-ruler-track"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
+              onPointerUp={handlePointerEnd}
+              onPointerCancel={handlePointerEnd}
+              onLostPointerCapture={handlePointerEnd}
             >
               <div
                 aria-label="时间标尺"
