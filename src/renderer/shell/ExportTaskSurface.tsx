@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Button, IconButton, PanelSurface } from '../ui';
 import type { ExportJobPhase } from '../../shared/export-types';
-import type { ExportPreparationCameraMode } from '../../shared/export-preparation-types';
+import type { ExportPreparationCameraMode, PngSequenceOptions } from '../../shared/export-preparation-types';
 import { shouldShowExportFrameProgress } from './exportTaskState';
 
 export type ExportTaskStatus =
@@ -41,6 +41,9 @@ export interface ExportTaskState {
   projectRoot?: string;
   durationMs?: number;
   cameraMode?: ExportPreparationCameraMode;
+  pngSequence?: PngSequenceOptions;
+  outputPath?: string;
+  incomplete?: boolean;
   snapshotRetryAvailable?: boolean;
   phase?: ExportJobPhase;
   completedFrames: number;
@@ -117,16 +120,18 @@ export function ExportTaskSurface({
   const isCompleted = task.status === 'completed';
   const isFailed = task.status === 'failed';
   const isCancelled = task.status === 'cancelled';
+  const png = Boolean(task.pngSequence);
+  const finalOutput = task.outputPath && (isCompleted || isFailed || isCancelled) ? task.outputPath : undefined;
   const failureReasonIsListed =
     isFailed &&
     Boolean(task.message) &&
     task.issues.some((issue) => issue.problem.trim() === task.message?.trim());
   const title = isCompleted
     ? '\u5bfc\u51fa\u5b8c\u6210'
-    : '\u5bfc\u51fa\u89c6\u9891';
+    : png ? '导出 PNG 序列' : '\u5bfc\u51fa\u89c6\u9891';
   const statusText =
     task.status === 'running'
-      ? phaseCopy(task.phase)
+      ? png && task.phase === 'committing' ? '正在完成 PNG 序列' : phaseCopy(task.phase)
       : isFailed
         ? failureReasonIsListed
           ? STATUS_COPY.failed
@@ -139,7 +144,7 @@ export function ExportTaskSurface({
 
   return (
     <aside
-      aria-label={'\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1'}
+      aria-label={png ? 'PNG 序列导出任务' : '\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1'}
       className="export-task-surface"
       data-task-status={task.status}
       data-task-phase={task.phase ?? ''}
@@ -187,7 +192,7 @@ export function ExportTaskSurface({
               </h2>
               {task.fileName ? (
                 <p
-                  aria-label={`\u5bfc\u51fa\u6587\u4ef6\uff1a${task.fileName}`}
+                  aria-label={png ? `导出目录：${task.fileName}` : `\u5bfc\u51fa\u6587\u4ef6\uff1a${task.fileName}`}
                   className="export-task-file-name"
                   title={task.fileName}
                 >
@@ -241,7 +246,7 @@ export function ExportTaskSurface({
 
         {task.status === 'running' && !hasFrameProgress ? (
           <div
-            aria-label={phaseCopy(task.phase)}
+            aria-label={statusText}
             className="export-task-indeterminate"
             role="progressbar"
           />
@@ -262,6 +267,11 @@ export function ExportTaskSurface({
         {showMessage && task.message ? (
           <p className="export-task-message">{task.message}</p>
         ) : null}
+
+        {finalOutput ? <div className="export-task-message" data-testid="export-sequence-output" title={finalOutput}>
+          <div>{task.incomplete ? '未完成 · 保留 ' : ''}{task.completedFrames.toLocaleString()} / {task.totalFrames.toLocaleString()} 帧</div>
+          <div className="export-task-file-name">{finalOutput}</div>
+        </div> : null}
 
         {canCancelPreparation ||
         canCancelExport ||
@@ -288,7 +298,7 @@ export function ExportTaskSurface({
                   variant="primary"
                 >
                   <FolderOpen aria-hidden="true" size={16} />
-                  {'\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'}
+                  {png ? '打开输出目录' : '\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'}
                 </Button>
                 <Button onClick={onStartNewExport} variant="secondary">
                   {'\u518d\u6b21\u5bfc\u51fa'}
@@ -297,6 +307,7 @@ export function ExportTaskSurface({
             ) : null}
             {isFailed || isCancelled ? (
               <>
+                {finalOutput ? <Button onClick={onRevealOutput} variant="secondary">打开未完成目录</Button> : null}
                 {task.snapshotId && task.snapshotRetryAvailable ? (
                   <Button onClick={onRetrySameSnapshot} variant="primary">
                     <RefreshCw aria-hidden="true" size={16} />

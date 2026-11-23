@@ -14,7 +14,8 @@ import type {
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
 import type { DialogueSilence } from '../../shared/dialogue-silence';
-import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
+import type { ExportPreparationResponse, PngSequenceOptions } from '../../shared/export-preparation-types';
+import { DEFAULT_EXPORT_PREFERENCES, type ExportPreferences } from '../../domain/models/exportPreferences';
 import type { ExportJobUpdate } from '../../shared/export-types';
 import {
   FlaPartPreviewResponseSchema,
@@ -76,6 +77,7 @@ import { FlaGraphicImportError, type ImportFlaGraphicInstance } from '../feature
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { ExportOptionsDialog } from './ExportOptionsDialog';
 import {
   ExportTaskSurface,
   type ExportTaskState,
@@ -752,6 +754,7 @@ export function EditorShell({
   });
   const exportTaskRef = useRef(exportTask);
   const [exportSurfaceOpen, setExportSurfaceOpen] = useState(false);
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false);
   const exportJobIdRef = useRef<string | null>(null);
   const latestExportUpdatesRef = useRef(new Map<string, ExportJobUpdate>());
   const mountedRef = useRef(true);
@@ -2013,6 +2016,7 @@ export function EditorShell({
     fileName: string;
     durationMs: number;
     cameraMode: 'static' | 'speaker-focus';
+    pngSequence?: PngSequenceOptions;
   }, reuseSnapshot = false): Promise<void> => {
     if (['starting', 'running', 'cancelling'].includes(exportTaskRef.current.status)) {
       return;
@@ -2028,6 +2032,7 @@ export function EditorShell({
       fileName: candidate.fileName,
       durationMs: candidate.durationMs,
       cameraMode: candidate.cameraMode,
+      pngSequence: candidate.pngSequence,
       completedFrames: 0,
       totalFrames: 0,
       issues: [],
@@ -2049,6 +2054,7 @@ export function EditorShell({
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
+        pngSequence: candidate.pngSequence,
         completedFrames: 0,
         totalFrames: 0,
         issues: [],
@@ -2070,6 +2076,7 @@ export function EditorShell({
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
+        pngSequence: candidate.pngSequence,
         completedFrames: 0,
         totalFrames: 0,
         message: safeExportFailureMessage(error),
@@ -2078,7 +2085,7 @@ export function EditorShell({
     }
   };
 
-  const beginFormalExportFlow = async (): Promise<void> => {
+  const beginFormalExportFlow = async (pngSequence?: PngSequenceOptions): Promise<void> => {
     if (exportTaskIsActive(exportTaskRef.current)) {
       setExportSurfaceOpen(true);
       return;
@@ -2094,6 +2101,9 @@ export function EditorShell({
       ...previousTask,
       status: 'selecting',
       projectRoot: initial.projectRoot,
+      pngSequence,
+      outputPath: undefined,
+      incomplete: undefined,
       message: undefined,
       issues: [],
     });
@@ -2103,6 +2113,7 @@ export function EditorShell({
         projectId: initial.project.id,
         projectName: initial.project.name,
         openInstanceId: initialInstanceId,
+        ...(pngSequence ? { pngSequence } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(previousTask);
@@ -2153,6 +2164,7 @@ export function EditorShell({
         projectId: captured.project.id,
         openInstanceId: capturedInstanceId,
         fileName: selection.fileName,
+        pngSequence,
         durationMs: projectDurationMs(captured.project),
         completedFrames: 0,
         totalFrames: 0,
@@ -2179,7 +2191,8 @@ export function EditorShell({
       let silenceAtCapture: DialogueSilence;
       try {
         silenceAtCapture = await captureDialogueSilence({
-          project: captured.project,
+          project: pngSequence ? { ...captured.project, shots: captured.project.shots.filter(shot => shot.id === pngSequence.shotId) }
+            : captured.project,
           projectRoot: captured.projectRoot,
           openInstanceId: capturedInstanceId,
           signal: waitController.signal,
@@ -2350,6 +2363,7 @@ export function EditorShell({
           fileName: result.candidate.outputIntent.fileName,
           durationMs: projectDurationMs(result.candidate.project),
           cameraMode: result.candidate.cameraMode,
+          pngSequence: result.candidate.pngSequence,
         },
         false,
       );
@@ -2364,12 +2378,32 @@ export function EditorShell({
     }
   };
 
+  const beginPreferredExport = (): void => {
+    const snapshot = editorProjectStore.getSnapshot();
+    const preferences = snapshot?.project.exportPreferences;
+    if (preferences?.format !== 'png-sequence') { void beginFormalExportFlow(); return; }
+    const shotId = shotStore.getCurrentShotId();
+    if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
+    void beginFormalExportFlow({ shotId, transparent: preferences.transparent });
+  };
+
+  const confirmExportOptions = (preferences: ExportPreferences, pngSequence?: PngSequenceOptions): void => {
+    const snapshot = editorProjectStore.getSnapshot();
+    if (!snapshot) return;
+    const previous = snapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES;
+    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent) {
+      editorProjectStore.updateProject({ ...snapshot.project, exportPreferences: preferences }, '更新导出设置');
+    }
+    setExportOptionsOpen(false);
+    void beginFormalExportFlow(pngSequence);
+  };
+
   const onExportVideo = (): void => {
     if (shouldRestoreExportTask(exportTaskRef.current)) {
       setExportSurfaceOpen(true);
       return;
     }
-    void beginFormalExportFlow();
+    beginPreferredExport();
   };
 
   const cancelExportTask = async (): Promise<void> => {
@@ -2482,6 +2516,7 @@ export function EditorShell({
         projectName: current.project.name,
         openInstanceId: task.openInstanceId,
         snapshotId: task.snapshotId,
+        ...(task.pngSequence ? { pngSequence: task.pngSequence } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(task);
@@ -2519,6 +2554,7 @@ export function EditorShell({
           fileName: selection.fileName,
           durationMs: task.durationMs ?? projectDurationMs(current.project),
           cameraMode: task.cameraMode ?? 'static',
+          pngSequence: task.pngSequence,
         },
         true,
       );
@@ -2533,7 +2569,7 @@ export function EditorShell({
 
   const retryCurrentExportContent = (): void => {
     if (!exportTaskIsActive(exportTaskRef.current)) {
-      void beginFormalExportFlow();
+      beginPreferredExport();
     }
   };
 
@@ -2546,7 +2582,7 @@ export function EditorShell({
         const current = exportTaskRef.current;
         setExportTaskState({
           ...current,
-          message:
+          message: current.pngSequence ? '无法打开 PNG 序列输出目录。' :
             '\u65e0\u6cd5\u663e\u793a\u89c6\u9891\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u5176\u4ed6\u4f4d\u7f6e\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
         });
       }
@@ -2955,6 +2991,7 @@ export function EditorShell({
                 exportSurfaceOpen={exportSurfaceOpen}
                 key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
                 onExportVideo={onExportVideo}
+                onOpenExportSettings={() => setExportOptionsOpen(true)}
                 onOpenProductPreview={openProductPreview}
                 onOpenProjectCenter={openProjectCenter}
                 onOpenProjectFolder={openProjectFolder}
@@ -3131,6 +3168,14 @@ export function EditorShell({
               surfaceActive={productPreviewSurfaceActive}
             />
           ) : null}
+          {exportOptionsOpen ? <ExportOptionsDialog
+            key={`${openInstanceId}:${currentShotId}`}
+            project={projectSnapshot.project}
+            shot={projectSnapshot.project.shots.find(({ id }) => id === currentShotId)}
+            initial={projectSnapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES}
+            playheadMs={timelineUiStore.getSnapshot().currentTimeMs}
+            onCancel={() => setExportOptionsOpen(false)} onExport={confirmExportOptions}
+          /> : null}
           {closeConfirmOpen ? (
             <CloseConfirmDialog
               busy={busy}

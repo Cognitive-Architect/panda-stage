@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ExportPreferencesSchema } from './exportPreferences';
 import {
   PROJECT_FPS,
   PROJECT_HEIGHT,
@@ -771,9 +772,18 @@ export const ProjectV37Schema = ProjectV37DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV37DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV38DataSchema = ProjectV37DataSchema.extend({
+  schemaVersion: z.literal(38),
   characters: z.array(CharacterSchema),
+});
+
+export const ProjectV38Schema = ProjectV38DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV38DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  exportPreferences: ExportPreferencesSchema.optional(),
 });
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */
