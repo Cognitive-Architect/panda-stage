@@ -13,6 +13,7 @@ import {
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   resolveTalkingHeadMotionTransform,
+  setManualMouthPose,
   upsertExpressionEventAtTime,
   upsertMouthCueEventAtTime,
   type AdaptivePartsCharacter,
@@ -235,6 +236,62 @@ afterEach(() => {
 });
 
 describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1211)', () => {
+  it('layers a bounded wave with the current expression and independent mouth on shuffled seeks', () => {
+    const setup = buildPhaseCProject();
+    const armId = 'd2000000-0000-4000-8000-000000000006';
+    const mouthId = 'd2000000-0000-4000-8000-000000000007';
+    const armAssetId = 'd1000000-0000-4000-8000-000000000009';
+    const poseId = 'd3000000-0000-4000-8000-000000000004';
+    const poseEventId = 'd3000000-0000-4000-8000-000000000005';
+    let project = ProjectSchema.parse({ ...setup.project,
+      assets: [...setup.project.assets, imageAsset(armAssetId, 'Wave arm', 60, 130)],
+      characters: setup.project.characters.map(character =>
+      character.id === setup.characterId && character.mode === 'adaptive-parts' ? {
+        ...character,
+        parts: [...character.parts.slice(0, 4),
+          makePart(mouthId, 'Independent mouth', ASSET_MOUTH, 120, 90, 4, -35, -95),
+          { ...character.parts[4]!, drawOrder: 5 },
+          makePart(armId, 'Wave arm', armAssetId, 60, 130, 6, 55, -25),
+        ],
+        mouthPoseSet: {
+          poses: [{ id: poseId, name: 'Open', target: { kind: 'mouth', partId: mouthId },
+            source: { kind: 'image', assetId: ASSET_MOUTH } }],
+          restPoseId: poseId,
+          analyzerMapping: { rest: poseId, open: poseId, closed: poseId, round: poseId, wide: poseId },
+          driveMode: 'mouth-poses',
+        },
+      } : character),
+    });
+    project = setManualMouthPose(project, IDS.shot, setup.layerId, poseEventId,
+      { poseId, startMs: 250, endMs: 1000 });
+    project = upsertExpressionEventAtTime(project, IDS.shot, setup.layerId, setup.graphicExprId, 500);
+    const motion = new CharacterMotionService();
+    for (const [timeMs, rotation] of [[500, 35], [250, 0], [750, -20], [1000, 0]] as const) {
+      project = motion.apply(project, { shotId: IDS.shot, layerId: setup.layerId, partId: armId, timeMs, autoKey: true },
+        { 'transform.rotationDeg': rotation });
+    }
+    project = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
+    const shot = project.shots[0]!;
+    const urls = Object.fromEntries(project.assets.filter(({ kind }) => kind === 'image').map(({ id }) => [id, `blob:${id}`]));
+    for (const [time, isWaving, expressionId] of [
+      [1100, false, setup.graphicExprId], [750, true, setup.graphicExprId],
+      [100, false, setup.smileExprId], [500, true, setup.graphicExprId],
+    ] as const) {
+      const evaluated = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, time, project));
+      const layer = evaluated.layers.find(({ id }) => id === setup.layerId)!;
+      const visual = resolveLayerVisualParts(project, shot, layer, time);
+      expect(layer.currentExpressionId).toBe(expressionId);
+      expect(visual.parts.filter(({ partId }) => partId === `${setup.layerId}:${mouthId}`)).toHaveLength(1);
+      expect(visual.parts.filter(({ partId }) => partId === `${setup.layerId}:${PART_FACE}`)).toHaveLength(1);
+      const arm = visual.parts.find(({ partId }) => partId === `${setup.layerId}:${armId}`)!;
+      expect(Math.abs(arm.imageTransform!.b) > 0.001).toBe(isWaving);
+      const mesh = buildStageRenderModel(project, evaluated, urls).layers;
+      expect(buildStageRenderModel(project, evaluateExportShotAtTime(project, shot, time), urls).layers).toEqual(mesh);
+      expect(buildStageRenderModel(project, projectProductPreviewDialogue(project, shot, evaluateShotAtTime(shot, time, project)), urls).layers)
+        .toEqual(mesh);
+    }
+  });
+
   it('moves only head-bound parts (including replaced face expressions/mouth) while preserving drawOrder (backHair behind body), neutral outside dialogue, and Stage/Export parity', () => {
     const setup = buildPhaseCProject({ withDialogue: true });
     let project = setup.project;
