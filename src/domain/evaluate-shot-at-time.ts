@@ -330,13 +330,7 @@ function resolveAnimationFrame(
   const selectedSample = selectedSourceFrameIndex !== undefined && isFlaGraphicDefinition(animation)
     ? resolveFlaGraphicPreviewTimeline(animation, true).sampleAtFrameIndex(selectedSourceFrameIndex - animation.source.startFrameIndex)
     : undefined;
-  const selectedFrame = selectedSample && animation.frames[selectedSample.frameOrdinal];
-  const state = selectedFrame ? {
-    frame: selectedFrame,
-    internalTimeMs: selectedSample.internalTimeMs,
-    elapsedMs: 0,
-    completedOnce: false,
-  } : resolveAnimationPlaybackFrameState(
+  const state = resolveAnimationPlaybackFrameState(
     animation,
     startTimeMs,
     firstFrameIndex,
@@ -350,7 +344,9 @@ function resolveAnimationFrame(
       animationVisible: false,
     };
   }
-  const { frame, internalTimeMs, elapsedMs, completedOnce } = state;
+  const { elapsedMs, completedOnce } = state;
+  const frame = selectedSample ? animation.frames[selectedSample.frameOrdinal] ?? state.frame : state.frame;
+  const internalTimeMs = selectedSample?.internalTimeMs ?? state.internalTimeMs;
   return {
     assetId: frame.assetId,
     currentExpressionId: null,

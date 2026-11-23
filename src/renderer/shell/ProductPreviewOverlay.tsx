@@ -606,14 +606,14 @@ export function ProductPreviewOverlay({
       ...currentStageImageFailures.filter(isExpressionFallbackFailure).map((failure) => failure.assetId),
     ]),
   ];
-  const failedExpressionKey = JSON.stringify(failedExpressionAssetIds.sort());
+  const failedVisualKey = JSON.stringify([...new Set([...failedExpressionAssetIds, ...stageMouthFailureAssetIds])].sort());
   const displayAssetUrls = useMemo(() => {
-    const failedIds: string[] = JSON.parse(failedExpressionKey);
+    const failedIds: string[] = JSON.parse(failedVisualKey);
     if (failedIds.length === 0) return assets.urls;
     const urls = { ...assets.urls };
     for (const id of failedIds) delete urls[id];
     return urls;
-  }, [assets.urls, failedExpressionKey]);
+  }, [assets.urls, failedVisualKey]);
   const degradedAssetIds = [
     ...new Set([
       ...(assets.degradedAssetIds ?? []).filter((id) => !failedExpressionAssetIds.includes(id)),

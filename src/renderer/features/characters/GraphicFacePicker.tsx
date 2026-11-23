@@ -247,14 +247,19 @@ export function GraphicFrameChoices({ definition, selectedIndex, onSelect, inclu
   const timeline = includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
   const count = timeline?.totalFrames ?? definition.frames.length;
   const firstAddress = definition.source.startFrameIndex + 1;
-  const offset = Number(address) - firstAddress;
+  const query = address.trim();
+  const labels = definition.sourceFrameLabels ?? [];
+  const labelMatch = query && !/^\d+$/u.test(query)
+    ? labels.find((label) => label.text.toLocaleLowerCase('zh-CN').includes(query.toLocaleLowerCase('zh-CN')))
+    : undefined;
+  const offset = (labelMatch ? labelMatch.sourceFrameIndex + 1 : Number(query)) - firstAddress;
   const validAddress = Number.isInteger(offset) && offset >= 0 && offset < count;
   return <>
-    {sourceAddresses && count > 12 ? <form className="graphic-face-pagination" onSubmit={(event) => {
+    {sourceAddresses && (count > 12 || labels.length > 0) ? <form className="graphic-face-pagination" onSubmit={(event) => {
       event.preventDefault();
       if (validAddress) setPage(Math.floor(offset / 12));
     }}>
-      <input type="number" aria-label="源帧号" placeholder="源帧号" min={firstAddress} max={firstAddress + count - 1}
+      <input type="search" aria-label="标签或源帧号" placeholder="标签或源帧号"
         value={address} onChange={(event) => setAddress(event.target.value)} />
       <Button variant="secondary" type="submit" disabled={!validAddress}>定位</Button>
     </form> : null}
@@ -265,10 +270,12 @@ export function GraphicFrameChoices({ definition, selectedIndex, onSelect, inclu
         const source: GraphicFrameSource = { kind: 'fla-graphic', animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
           ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
         const number = frameIndex + (sourceAddresses ? firstAddress : 1);
+        const label = sourceAddresses ? labels.find((entry) => entry.sourceFrameIndex === number - 1)?.text : undefined;
+        const frameLabel = label ? `${label} · 第 ${number} 帧` : `第 ${number} 帧`;
         return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled}
-          aria-label={`第 ${number} 帧`} aria-pressed={selectedIndex === frameIndex}
+          aria-label={frameLabel} title={frameLabel} aria-pressed={selectedIndex === frameIndex}
           data-testid={`${testId}-frame-${frameIndex}`} onClick={() => onSelect(source, frameIndex)}>
-          <GraphicFacePreview source={source} label={`第 ${number} 帧`} /><span>{number}</span>
+          <GraphicFacePreview source={source} label={frameLabel} /><span>{label ?? number}</span>
         </button>;
       })}
     </div>

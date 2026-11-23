@@ -2676,6 +2676,15 @@ export async function prepareFlaStaticSnapshotDisplaySource(
   };
 }
 
+export function readFlaSourceFrameLabel({ name, labelType }: {
+  name?: string;
+  labelType?: string;
+}): FlaSourceFrameSuggestion['label'] {
+  const text = name?.trim().slice(0, 120);
+  return text && (labelType === 'name' || labelType === 'comment' || labelType === 'anchor')
+    ? { text, type: labelType } : undefined;
+}
+
 /** Work on the selected source's authored spans without resolving any display lists. */
 function listSourceFrameSuggestions(
   source: FlaStaticSnapshotDisplaySource,
@@ -2688,11 +2697,7 @@ function listSourceFrameSuggestions(
   const search = query.search.trim().toLocaleLowerCase('en-US');
   for (const layer of index?.layers ?? []) {
     for (const span of layer.spans) {
-      const { name, labelType } = span.sourceFrame.attributes;
-      const text = name?.trim().slice(0, 120);
-      const label: FlaSourceFrameSuggestion['label'] = text && (labelType === 'name' || labelType === 'comment' || labelType === 'anchor')
-        ? { text, type: labelType }
-        : undefined;
+      const label = readFlaSourceFrameLabel(span.sourceFrame.attributes);
       if (!layer.visible && !label) continue;
       const sourceFrameIndex = span.index;
       if (search && !label?.text.toLocaleLowerCase('en-US').includes(search) &&

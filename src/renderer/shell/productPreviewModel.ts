@@ -25,6 +25,7 @@ import {
   type SubtitleStyle,
 } from '../../domain';
 import type { SubtitleCue } from '../../shared/preview/subtitle-engine';
+import { resolveTalkingAnimationFace } from '../../domain/selectors/characterFaceSource';
 import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
 
 export interface ProductPreviewTimeStep {
@@ -333,9 +334,8 @@ export function buildProductPreviewImagePlan(
 
   for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
     const activeFace = visual.activeFace;
-    const talking = evaluatedShot.layers.some(layer =>
-      layer.id === visual.ownerLayerId && layer.talkingAnimationElapsedMs !== undefined,
-    );
+    const evaluatedLayer = evaluatedShot.layers.find(layer => layer.id === visual.ownerLayerId);
+    const talking = evaluatedLayer?.talkingAnimationElapsedMs !== undefined;
     const expressionFallback = activeFace?.source === 'expression' && activeFace.originalPartsFallback;
     if (activeFace && expressionFallback) {
       expressionFallbacks.push({
@@ -367,7 +367,14 @@ export function buildProductPreviewImagePlan(
       ownerSource?.kind === 'character'
         ? project.characters.find((candidate) => candidate.id === ownerSource.characterId)
         : undefined;
-    const poseTarget = evaluatedShot.layers.find(layer => layer.id === visual.ownerLayerId)?.mouthPose?.target;
+    const expressionId = evaluatedLayer?.currentExpressionId ?? ownerCharacter?.defaultExpressionId;
+    if (talking && ownerCharacter && expressionId && ownerCharacter.expressionTalkingSources?.[expressionId]) {
+      const common = resolveTalkingAnimationFace(project, ownerCharacter.talkingAnimationId,
+        evaluatedLayer.talkingAnimationElapsedMs, ownerCharacter.talkingAnimationPlayback);
+      appendUnique(fallbackAssetIds, common?.asset.flaGraphic?.resourceAssetIds ??
+        (common?.asset.assetId ? [common.asset.assetId] : []));
+    }
+    const poseTarget = evaluatedLayer?.mouthPose?.target;
     const targetPartId = poseTarget?.kind === 'mouth' ? poseTarget.partId :
       ownerCharacter?.mode === 'adaptive-parts' ? ownerCharacter.faceBinding?.targetPartId : undefined;
     const adaptiveTargetPartId = targetPartId ? `${visual.ownerLayerId}:${targetPartId}` : null;
@@ -487,7 +494,8 @@ export function isProductPreviewMouthFallbackFailure(
 }
 
 /**
- * Removes only failed active Mouth projections. Clearing the projection lets
+ * Keeps the clock when the character's common animation can replace a failed
+ * dedicated source. Otherwise clearing the failed Mouth projection lets
  * the S03 resolver select the Expression that is current at this exact time;
  * it never invents a default or a previous-frame expression.
  */
@@ -513,6 +521,14 @@ export function applyProductPreviewMouthFallback(
     ) {
       return layer;
     }
+    const source = shot.layers.find((entry) => entry.id === layer.id)?.source;
+    const character = source?.kind === 'character'
+      ? project.characters.find((entry) => entry.id === source.characterId)
+      : undefined;
+    const expressionId = layer.currentExpressionId ?? character?.defaultExpressionId;
+    if (character && expressionId && character.expressionTalkingSources?.[expressionId] &&
+        resolveTalkingAnimationFace(project, character.talkingAnimationId, layer.talkingAnimationElapsedMs,
+          character.talkingAnimationPlayback, (id) => failedMouthAssetIds.has(id))) return layer;
     changed = true;
     return {
       ...layer,

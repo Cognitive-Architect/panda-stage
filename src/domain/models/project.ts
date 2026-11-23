@@ -11,6 +11,7 @@ import {
   isFlaGraphicDefinition,
   ProjectAnimationDefinitionLegacyCapacitySchema,
   ProjectAnimationDefinitionSchema,
+  ProjectAnimationDefinitionV28Schema,
   ProjectAnimationDefinitionV22Schema,
 } from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
@@ -716,6 +717,7 @@ export const ProjectV27Schema = CurrentProjectDataSchema.extend({
 
 export const ProjectV28Schema = CurrentProjectDataSchema.extend({
   schemaVersion: z.literal(28),
+  animations: z.array(ProjectAnimationDefinitionV28Schema),
   characters: z.array(CharacterV28Schema),
   shots: z.array(ShotV28Schema),
 }).strict().superRefine(validateProjectReferences)

@@ -16,7 +16,9 @@ import {
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
 import {
+  applyProductPreviewMouthFallback,
   buildProductPreviewCues,
+  buildProductPreviewImagePlan,
   listProductPreviewAssetIds,
   projectProductPreviewDialogue,
   projectProductPreviewMouth,
@@ -57,6 +59,12 @@ it('selects the effective expression talking source and falls back to the common
   expect(shot.layers).toEqual(mouth.shots[0]!.layers);
   expect(face(reopened, 100)).toMatchObject({ firstFrame: 0 });
   expect(face(reopened, 300)).toMatchObject({ firstFrame: 1 });
+  const talkingShot = projectProductPreviewDialogue(reopened, shot, evaluateShotAtTime(shot, 300, reopened), DIALOGUE_A_ID);
+  expect(buildProductPreviewImagePlan(reopened, shot, talkingShot).fallbackAssetIds).toContain(IDS.assetChar);
+  const degraded = applyProductPreviewMouthFallback(reopened, shot, talkingShot, new Set([IDS.assetChar2]));
+  const fallbackVisual = resolveLayerVisualParts(reopened, shot, degraded.layers.find((layer) => layer.id === IDS.layerChar)!,
+    300, (assetId) => assetId === IDS.assetChar2);
+  expect(fallbackVisual.activeFace?.visualSource).toMatchObject({ firstFrame: 0 });
   expect(face(reopened, 450, true)).toMatchObject({ firstFrame: 3 });
   expect(face(reopened, 950)).toMatchObject({ firstFrame: 3 });
   const missing = structuredClone(reopened);

@@ -51,3 +51,16 @@ it('holds each instance source frame until its next key and preserves same-sourc
       .toEqual(evaluateShotAtTime(initial.project.shots[0]!, time, initial.project).layers.find((entry) => entry.id === second.layer.id)?.animationFrame);
   }
 });
+
+it('keeps a keyed Graphic hidden outside its independently authored play window', () => {
+  const created = new LayerService().createFromAnimation(graphicFaceProject(), IDS.shot, {
+    animationId: FACE_GRAPHIC_ID, startTimeMs: 500, position: { x: 200, y: 100 },
+    playback: { mode: 'once', endBehavior: 'hide' },
+  });
+  const project = setGraphicFrameAtTime(created.project, IDS.shot, created.layer.id, FACE_GRAPHIC_ID, 10, 0);
+  const shot = project.shots[0]!;
+  const layerAt = (time: number) => evaluateShotAtTime(shot, time, project).layers.find((layer) => layer.id === created.layer.id);
+  expect(layerAt(0)?.visible).toBe(false);
+  expect(layerAt(500)).toMatchObject({ visible: true, animationFrame: { frameOrdinal: 3 } });
+  expect(layerAt(750)?.visible).toBe(false);
+});

@@ -199,15 +199,33 @@ export const AnimationDefinitionSchema = z
   })
   .strict()
   .superRefine(validateAnimationDefinition);
-export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionBaseObject
+const FlaGraphicDefinitionV28Schema = FlaGraphicDefinitionBaseObject
   .extend({
     flaGraphicSharedShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
   })
   .strict()
   .superRefine(validateFlaGraphicDefinition);
+export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionV28Schema.safeExtend({
+  sourceFrameLabels: z.array(z.object({
+    sourceFrameIndex: z.number().int().nonnegative(),
+    text: z.string().trim().min(1).max(120),
+  }).strict()).max(FLA_GRAPHIC_MAX_FRAMES).optional(),
+}).superRefine((definition, context) => {
+  const seen = new Set<number>();
+  for (const [index, label] of (definition.sourceFrameLabels ?? []).entries()) {
+    if (seen.has(label.sourceFrameIndex) || label.sourceFrameIndex < definition.source.startFrameIndex ||
+        label.sourceFrameIndex > definition.source.endFrameIndex) {
+      context.addIssue({ code: 'custom', path: ['sourceFrameLabels', index], message: 'Graphic label must identify a unique source frame.' });
+    }
+    seen.add(label.sourceFrameIndex);
+  }
+});
+export const ProjectAnimationDefinitionV28Schema = z.union([
+  AnimationDefinitionSchema, FlaGraphicDefinitionV28Schema,
+]);
 export const ProjectAnimationDefinitionLegacyCapacitySchema = z.union([
   AnimationDefinitionV22Schema,
-  FlaGraphicDefinitionSchema,
+  FlaGraphicDefinitionV28Schema,
 ]);
 export const ProjectAnimationDefinitionSchema = z.union([
   AnimationDefinitionSchema,

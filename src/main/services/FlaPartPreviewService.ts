@@ -67,6 +67,7 @@ import {
   buildSvgForResolvedDisplayList,
   buildSvgForRenderTarget,
   extractFlaGraphicMaskPathData,
+  readFlaSourceFrameLabel,
   stableRenderTargetId,
 } from './fla-static-snapshot-svg-builder';
 import {
@@ -978,6 +979,7 @@ export interface FlaGraphicInstancePlanIdentity {
 }
 
 export interface FlaGraphicDefinitionFrameBatch {
+  readonly sourceFrameLabels?: readonly { sourceFrameIndex: number; text: string }[];
   readonly plan: FlaPartPlan;
   readonly unit: FlaPartPreviewUnit;
   readonly source: {
@@ -1584,6 +1586,13 @@ export class FlaPartPreviewService {
     const media = source.loadMedia ? await source.loadMedia() : source.media;
     const mediaLookup = createFlaStaticSnapshotBitmapMediaLookup(media ?? []);
     const frames: FlaGraphicDefinitionFrameBatch['frames'][number][] = [];
+    const labels = new Map<number, string>();
+    for (const layer of descriptor.frameSpanIndex?.layers ?? []) {
+      for (const span of layer.spans) {
+        const label = readFlaSourceFrameLabel(span.sourceFrame.attributes);
+        if (label?.type === 'name' && !labels.has(span.index)) labels.set(span.index, label.text);
+      }
+    }
     let totalBytes = 0;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
       if (!execution.shouldContinue()) {
@@ -1855,6 +1864,7 @@ export class FlaPartPreviewService {
           documentHeight: session.ir.document.height > 0 ? session.ir.document.height : prepared.source.stageHeight,
         },
         frames,
+        ...(labels.size ? { sourceFrameLabels: [...labels].map(([sourceFrameIndex, text]) => ({ sourceFrameIndex, text })) } : {}),
         ...(groupEditPreview ? { groupEditPreview } : {}),
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
