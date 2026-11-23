@@ -4,12 +4,37 @@ import {
   AnimationTargetRefSchema, AnimationPropertySchema, LayerSchema,
   ProjectSchema, ProjectV20Schema, PROJECT_SCHEMA_VERSION,
   evaluateAnimationTrackAtTime, evaluateAnimationClipAtTime, migrateProject,
+  editAnimationPropertyKey,
   type AnimationInterpolation,
 } from '../../../src/domain';
 import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
+  it('edits one property Bézier, round-trips it and preserves the strict previous schema', () => {
+    const { project, clip, layerId } = animationCoreFixture();
+    const propertyTrack = clip.tracks[0]!;
+    const address = { shotId: IDS.shot, target: propertyTrack.target, property: propertyTrack.property, keyTimeMs: 0 };
+    const data = { ...project, schemaVersion: 32 };
+    const migrated = migrateProject(data);
+    const before = migrated.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!;
+    expect(before).toEqual(clip);
+    const next = editAnimationPropertyKey(migrated, address, {
+      curveToNext: { bezier: { x1: 1 / 3, y1: 0, x2: 2 / 3, y2: 1 / 3 } },
+    });
+    expect(() => migrateProject({ ...next, schemaVersion: 32 })).toThrow();
+    const parsed = migrateProject(JSON.parse(JSON.stringify(next)));
+    const track = parsed.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks[0]!;
+    const keys = track.keys;
+    const from = keys[0]!;
+    const to = keys[1]!;
+    const halfTime = (from.timeMs + to.timeMs) / 2;
+    const p = Math.round(halfTime) / (to.timeMs - from.timeMs);
+    expect(evaluateAnimationTrackAtTime(track, halfTime)).toBeCloseTo(from.value + (to.value - from.value) * p ** 2, 4);
+    expect(track.target).toEqual(propertyTrack.target);
+    expect(parsed.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks.slice(1)).toEqual(before.tracks.slice(1));
+    expect(() => editAnimationPropertyKey(next, address, { timeMs: 42 })).toThrow('起始键固定');
+  });
   it('parses the current Project and preserves the full container through JSON', () => {
     const { project, clip } = animationCoreFixture();
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(project)))).toEqual(project);

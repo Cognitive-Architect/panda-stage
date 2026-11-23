@@ -1,5 +1,5 @@
 import type {
-  AnimationClip, AnimationInterpolation, AnimationProperty,
+  AnimationBezier, AnimationClip, AnimationCurve, AnimationInterpolation, AnimationProperty,
   AnimationTargetRef, AnimationTrack,
 } from './models/animationCore';
 
@@ -22,6 +22,38 @@ function ease(progress: number, interpolation: AnimationInterpolation): number {
   }
 }
 
+function evaluateBezier(progress: number, handles: AnimationBezier): number {
+  if (progress <= 0 || progress >= 1) return progress;
+  const axis = (time: number, first: number, second: number): number =>
+    3 * (1 - time) ** 2 * time * first + 3 * (1 - time) * time ** 2 * second + time ** 3;
+  let min = 0;
+  let max = 1;
+  for (let iteration = 0; iteration < 24; iteration += 1) {
+    const midpoint = (min + max) / 2;
+    if (axis(midpoint, handles.x1, handles.x2) < progress) min = midpoint;
+    else max = midpoint;
+  }
+  return axis((min + max) / 2, handles.y1, handles.y2);
+}
+
+export function evaluateAnimationEase(progress: number, interpolation: AnimationInterpolation, curve?: AnimationCurve): number {
+  if (!curve) return ease(progress, interpolation);
+  if (progress <= 0 || progress >= 1) return progress;
+  const sample = (time: number): number => curve.bezier ? evaluateBezier(time, curve.bezier) : ease(time, interpolation);
+  if (!curve.window) return sample(progress);
+  const [start, end] = curve.window;
+  const startValue = sample(start);
+  const length = sample(end) - startValue;
+  return length > 0 ? (sample(start + progress * (end - start)) - startValue) / length : 0;
+}
+
+/** Compose windows of an existing easing without altering its original handle shape. */
+export function sliceAnimationCurve(curve: AnimationCurve | undefined, from: number, to: number): AnimationCurve {
+  const [start, end] = curve?.window ?? [0, 1];
+  const span = end - start;
+  return { ...curve, window: [start + from * span, start + to * span] };
+}
+
 /** Evaluate a validated track at absolute Shot time, without playback state. */
 export function evaluateAnimationTrackAtTime(track: AnimationTrack, requestedTimeMs: number): number {
   const timeMs = Number.isFinite(requestedTimeMs)
@@ -34,9 +66,9 @@ export function evaluateAnimationTrackAtTime(track: AnimationTrack, requestedTim
     if (timeMs > to.timeMs) continue;
     // Exact keys retain their authored value even across a step boundary.
     if (timeMs === to.timeMs) return to.value;
-    const progress = ease(Math.min(1, Math.max(0,
+    const progress = evaluateAnimationEase(Math.min(1, Math.max(0,
       (timeMs - from.timeMs) / Math.max(1, to.timeMs - from.timeMs),
-    )), from.interpolationToNext);
+    )), from.interpolationToNext, from.curveToNext);
     // Continuous authored rotation; never normalize to the shortest arc.
     return from.value + (to.value - from.value) * progress;
   }

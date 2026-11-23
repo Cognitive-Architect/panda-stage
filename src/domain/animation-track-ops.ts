@@ -457,12 +457,12 @@ export function setTargetKeyEasing<TTrack extends AnimationTrack>(
   const nextTracks = tracks.map((track, trackIndex) => {
     const keyIndex = outgoingByTrack.get(trackIndex);
     if (keyIndex === undefined) return track;
-    if (track.keys[keyIndex]!.interpolationToNext === easing) return track;
+    if (track.keys[keyIndex]!.interpolationToNext === easing && !track.keys[keyIndex]!.curveToNext) return track;
     changed = true;
     return AnimationTrackSchema.parse({
       ...track,
       keys: track.keys.map((key, index) =>
-        index === keyIndex ? { ...key, interpolationToNext: easing } : key,
+        index === keyIndex ? { timeMs: key.timeMs, value: key.value, interpolationToNext: easing } : key,
       ),
     }) as TTrack;
   });

@@ -32,6 +32,7 @@ import {
   ProjectV29Schema,
   ProjectV30Schema,
   ProjectV31Schema,
+  ProjectV32Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -55,6 +56,7 @@ export type DetectedSchemaVersion =
   | 29
   | 30
   | 31
+  | 32
   | 25
   | 24
   | 23
@@ -136,6 +138,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 29 ||
     version === 30 ||
     version === 31 ||
+    version === 32 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -458,6 +461,8 @@ export function migrateProject(input: unknown): Project {
       return ProjectSchema.parse({ ...ProjectV30Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case 31:
       return ProjectSchema.parse({ ...ProjectV31Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 32:
+      return ProjectSchema.parse({ ...ProjectV32Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case PROJECT_SCHEMA_VERSION:
       // Current projects are validated without an implicit compatibility rewrite.
       project = ProjectSchema.parse(input);

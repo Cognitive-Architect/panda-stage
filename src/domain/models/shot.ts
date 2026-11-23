@@ -6,6 +6,7 @@ import { DialogueSchema, DialogueV18Schema, DialogueV22Schema } from './dialogue
 import {
   LayerSchema,
   LayerV30Schema,
+  LayerV32Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -104,6 +105,11 @@ export const ShotV28Schema = ShotV20Schema.extend({
 export const ShotV30Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerV30Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV32Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
+  layers: z.array(LayerV32Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotSchema = ShotV20Schema.extend({

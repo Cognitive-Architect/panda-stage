@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
   AnimationClipSchema,
+  AnimationClipV32Schema,
   AnimationClipV0V22Schema,
   AnimationClipV22Schema,
   type AnimationClip,
@@ -312,16 +313,20 @@ export const LayerV22Schema = LayerV20Schema.safeExtend({
 }).superRefine(validateClipOwnership);
 
 export const LayerV30Schema = LayerV20Schema.safeExtend({
-  animationClip: AnimationClipSchema.optional(),
+  animationClip: AnimationClipV32Schema.optional(),
   flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
 }).superRefine(validateClipOwnership);
 
-export const LayerSchema = LayerV30Schema.safeExtend({
+export const LayerV32Schema = LayerV30Schema.safeExtend({
   animationSourceRange: AnimationSourceRangeSchema.optional(),
 }).superRefine((layer, context) => {
   if (layer.animationSourceRange && layer.source.kind !== 'animation') {
     context.addIssue({ code: 'custom', path: ['animationSourceRange'], message: 'Animation source ranges require an animation layer.' });
   }
+});
+
+export const LayerSchema = LayerV32Schema.safeExtend({
+  animationClip: AnimationClipSchema.optional(),
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

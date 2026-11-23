@@ -9,6 +9,7 @@ export * from './AudioClipService';
 export * from './DialogueService';
 export * from './ExpressionEventService';
 export * from './GraphicFrameEventService';
+export * from './AnimationPropertyCurveService';
 export * from './MouthCueEventService';
 export * from './LayerService';
 export * from './PositionProjectService';

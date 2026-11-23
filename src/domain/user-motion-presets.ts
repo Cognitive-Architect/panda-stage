@@ -1,4 +1,4 @@
-import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
+import { evaluateAnimationTrackAtTime, sliceAnimationCurve } from './evaluate-animation-core';
 import type { AnimationKey, AnimationProperty, AnimationTrack, LayerAnimationClip } from './models/animationCore';
 import { UserMotionPresetSchema, type UserMotionPreset } from './models/userMotionPreset';
 import { frameTimeMs, TIMELINE_FPS } from './timeline/frame-grid';
@@ -21,10 +21,10 @@ function captureTrack(track: AnimationTrack, startMs: number, endMs: number): Us
   const baseline = evaluateAnimationTrackAtTime(track, startMs);
   const scale = scaleProperty(track.property);
   const keys: UserMotionPreset['tracks'][number]['keys'] = [];
-  const capture = (timeMs: number, interpolationToNext: AnimationKey['interpolationToNext']): void => {
+  const capture = (timeMs: number, interpolationToNext: AnimationKey['interpolationToNext'], curveToNext?: AnimationKey['curveToNext']): void => {
     const value = evaluateAnimationTrackAtTime(track, timeMs);
     keys.push({ frameOffset: frameNumber(timeMs) - fromFrame, value: scale ? value / baseline : value - baseline,
-      interpolationToNext });
+      interpolationToNext, ...(curveToNext ? { curveToNext } : {}) });
   };
   let authoredIndex = 0;
   for (let index = 0; index < times.length - 1; index += 1) {
@@ -36,12 +36,13 @@ function captureTrack(track: AnimationTrack, startMs: number, endMs: number): Us
     const previous = track.keys[authoredIndex];
     const next = track.keys[authoredIndex + 1];
     const interpolation = previous?.interpolationToNext ?? 'linear';
-    if (!next || interpolation === 'linear' || interpolation === 'step' ||
-      (previous?.timeMs === from && next.timeMs === to)) {
-      capture(from, interpolation);
+    const curve = previous?.curveToNext;
+    if (!previous || !next || (!curve && (interpolation === 'linear' || interpolation === 'step')) ||
+      (previous.timeMs === from && next.timeMs === to)) {
+      capture(from, interpolation, next ? curve : undefined);
     } else {
-      // Cropping an easing changes its phase. Sample only these partial segments.
-      for (let frame = frameNumber(from); frame < frameNumber(to); frame += 1) capture(frameTimeMs(frame), 'linear');
+      const duration = next.timeMs - previous.timeMs;
+      capture(from, interpolation, sliceAnimationCurve(curve, (from - previous.timeMs) / duration, (to - previous.timeMs) / duration));
     }
   }
   capture(endMs, 'step');
@@ -81,10 +82,11 @@ export function applyUserMotionPresetTracks(
     const track = existing.get(property);
     const scale = scaleProperty(property);
     const baseline = track ? evaluateAnimationTrackAtTime(track, startMs) : scale ? 1 : 0;
-    const authored: AnimationKey[] = keys.map(({ frameOffset, value, interpolationToNext }) => ({
+    const authored: AnimationKey[] = keys.map(({ frameOffset, value, interpolationToNext, curveToNext }) => ({
       timeMs: frameTimeMs(startFrame + frameOffset),
       value: scale ? baseline * value : baseline + value,
       interpolationToNext,
+      ...(curveToNext ? { curveToNext } : {}),
     }));
     const earlier: AnimationKey[] = startMs === 0 ? [] : track?.keys ?? [{ timeMs: 0, value: baseline, interpolationToNext: 'step' }];
     const restore: AnimationKey[] = restoreAtMs === null ? [] : [{ timeMs: restoreAtMs, value: baseline, interpolationToNext: 'step' }];

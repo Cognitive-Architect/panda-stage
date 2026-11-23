@@ -51,6 +51,7 @@ import {
   ShotV27Schema,
   ShotV28Schema,
   ShotV30Schema,
+  ShotV32Schema,
   ShotV21Schema,
   ShotV22Schema,
   ShotV20Schema,
@@ -68,7 +69,7 @@ import {
 import { SubtitleStyleSchema, SubtitleStyleV22Schema } from './subtitle';
 import { DialogueV5Schema } from './dialogue';
 import { TimelineEventV26Schema } from './timeline-event';
-import { UserMotionPresetSchema } from './userMotionPreset';
+import { UserMotionPresetSchema, UserMotionPresetV32Schema } from './userMotionPreset';
 import { ReusableAnimationSegmentSchema } from './reusableAnimationSegment';
 import { ActionRecipeSchema } from './actionRecipe';
 
@@ -676,10 +677,13 @@ export const ProjectV29Schema = ProjectV29DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
+const uniquePresetIds = (entries: readonly { id: string }[]): boolean =>
+  new Set(entries.map(({ id }) => id)).size === entries.length;
+
 const ProjectV30DataSchema = ProjectV29DataSchema.extend({
   schemaVersion: z.literal(30),
-  userMotionPresets: z.array(UserMotionPresetSchema).refine(
-    (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
+  userMotionPresets: z.array(UserMotionPresetV32Schema).refine(
+    uniquePresetIds,
     'User motion preset IDs must be unique.',
   ).optional(),
 });
@@ -690,7 +694,7 @@ export const ProjectV30Schema = ProjectV30DataSchema.superRefine(validateProject
 
 const ProjectV31DataSchema = ProjectV30DataSchema.extend({
   schemaVersion: z.literal(31),
-  shots: z.array(ShotSchema),
+  shots: z.array(ShotV32Schema),
   animationSegments: z.array(ReusableAnimationSegmentSchema).refine(
     (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
     'Reusable animation segment IDs must be unique.',
@@ -701,11 +705,24 @@ export const ProjectV31Schema = ProjectV31DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV31DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV32DataSchema = ProjectV31DataSchema.extend({
+  schemaVersion: z.literal(32),
   actionRecipes: z.array(ActionRecipeSchema).refine(
     (entries) => new Set(entries.map(({ id }) => id)).size === entries.length,
     'Action recipe IDs must be unique.',
+  ).optional(),
+});
+
+export const ProjectV32Schema = ProjectV32DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV32DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  shots: z.array(ShotSchema),
+  userMotionPresets: z.array(UserMotionPresetSchema).refine(
+    uniquePresetIds,
+    'User motion preset IDs must be unique.',
   ).optional(),
 });
 
