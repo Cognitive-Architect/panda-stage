@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { HistoryControls } from '../features/editor/HistoryControls';
 import { TimelineDock } from '../features/timeline/TimelineDock';
-import { AnimationCurveDraftDispatch, type AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 import {
   clampTimelineHeight,
   getTimelineHeightBounds,
@@ -36,7 +35,6 @@ export interface BottomWorkspaceProps {
   presentation?: EditorShellLayoutMode;
   resizable?: boolean;
   showHistoryControls?: boolean;
-  onCurveDraftChange?: (draft: AnimationCurveDraft | null) => void;
 }
 
 interface TimelineResizePointer {
@@ -147,7 +145,6 @@ export function BottomWorkspace({
   presentation = 'landscape',
   resizable = false,
   showHistoryControls = presentation !== 'landscape',
-  onCurveDraftChange,
 }: BottomWorkspaceProps = {}): React.JSX.Element {
   const ui = useTimelineUi();
   const { expanded } = ui;
@@ -334,9 +331,7 @@ export function BottomWorkspace({
           <span className="timeline-resize-grip" aria-hidden="true" />
         </div>
       ) : null}
-      <AnimationCurveDraftDispatch.Provider value={onCurveDraftChange}>
-        <TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />
-      </AnimationCurveDraftDispatch.Provider>
+      <TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />
       {showHistoryControls ? <HistoryControls presentation="bottom" /> : null}
     </section>
   );

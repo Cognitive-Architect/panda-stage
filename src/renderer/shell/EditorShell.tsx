@@ -43,7 +43,7 @@ import { selectionStore } from '../stores/selectionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { characterStore } from '../stores/characterStore';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
-import type { AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
+import { AnimationCurveDraftDispatch, type AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
   createAdaptiveCharacterFromFlaGraphic,
@@ -2834,7 +2834,7 @@ export function EditorShell({
   const canvasToolbarVisible =
     !isPortrait || portraitWorkspace === 'canvas';
 
-  return (
+  const surface = (
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
@@ -3103,7 +3103,6 @@ export function EditorShell({
               presentation={layoutMode}
               resizable={layoutMode === 'landscape'}
               showHistoryControls={false}
-              onCurveDraftChange={setAnimationCurveDraft}
             />
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
@@ -3175,4 +3174,7 @@ export function EditorShell({
       ) : null}
     </main>
   );
+  return <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
+    {surface}
+  </AnimationCurveDraftDispatch.Provider>;
 }
