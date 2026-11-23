@@ -26,6 +26,7 @@ import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
   CharacterV34Schema,
+  CharacterV35Schema,
   CharacterV22Schema,
   CharacterV23Schema,
   CharacterV24Schema,
@@ -741,7 +742,16 @@ export const ProjectV34Schema = ProjectV34DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV34DataSchema.extend({
+const ProjectV35DataSchema = ProjectV34DataSchema.extend({
+  schemaVersion: z.literal(35),
+  characters: z.array(CharacterV35Schema),
+});
+
+export const ProjectV35Schema = ProjectV35DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV35DataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   characters: z.array(CharacterSchema),
 });

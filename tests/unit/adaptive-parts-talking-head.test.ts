@@ -10,11 +10,13 @@ import {
   ProjectSchema,
   evaluateShotAtTime,
   migrateProject,
+  planCharacterBodyPose,
   projectShotDialogueVisual,
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   resolveTalkingHeadMotionTransform,
   saveLayeredCharacterAction,
+  saveCharacterBodyPose,
   setManualMouthPose,
   upsertCharacterActionEvent,
   upsertExpressionEventAtTime,
@@ -334,6 +336,48 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(remaining.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)?.assetId).toBe(ASSET_MOUTH);
     expect(remaining.parts.find(({ partId }) => partId === `${instanceId}:${PART_HEAD}`)?.imageTransform?.tx)
       .toBeCloseTo(missingHeadBefore + 18);
+
+    const savedPoseId = 'd3000000-0000-4000-8000-000000000008';
+    const captureAddress = { shotId: shot.id, layerId: instanceId, timeMs: 500 };
+    const applyAddress = { ...captureAddress, timeMs: 1500 };
+    expect(migrateProject({ ...project, schemaVersion: 35 })).toEqual(project);
+    project = saveCharacterBodyPose(project, captureAddress, 'Wave pose', [PART_BODY, armId, PART_FACE, mouthId], () => savedPoseId);
+    expect(() => migrateProject({ ...project, schemaVersion: 35 })).toThrow();
+    project = setManualMouthPose(project, shot.id, instanceId, 'd3000000-0000-4000-8000-000000000009',
+      { poseId, startMs: 1400, endMs: 1650 });
+    project = migrateProject(JSON.parse(JSON.stringify(project)));
+    const beforePose = project;
+    const currentPose = beforePose.characters.find(({ id }) => id === setup.characterId);
+    expect(currentPose?.mode === 'adaptive-parts' && currentPose.bodyPoses?.[0]?.parts.map(({ partId }) => partId))
+      .toEqual([PART_BODY, armId]);
+    const partial = characters.applyAdaptivePartsDefinition(beforePose, setup.characterId,
+      removeAdaptivePartFromDefinition(characters.getAdaptivePartsDefinition(beforePose, setup.characterId), armId));
+    const partialPlan = planCharacterBodyPose(partial, applyAddress, savedPoseId);
+    expect(partialPlan.missingPartIds).toEqual([armId]);
+    expect(partialPlan.project).not.toBe(partial);
+    expect(planCharacterBodyPose(beforePose, captureAddress, savedPoseId).actionPartIds).toEqual([PART_BODY, armId]);
+
+    editorProjectStore.open('C:/temp/body-pose.pandastage', beforePose);
+    const beforeSnapshot = editorProjectStore.getSnapshot()!;
+    const preview = planCharacterBodyPose(beforePose, applyAddress, savedPoseId);
+    expect(editorProjectStore.getSnapshot()).toBe(beforeSnapshot);
+    editorProjectStore.updateProject(preview.project, '应用身体姿势');
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(beforeSnapshot.revision + 1);
+    const afterPose = migrateProject(JSON.parse(JSON.stringify(editorProjectStore.getSnapshot()!.project)));
+    const beforeShot = beforePose.shots[0]!;
+    const afterShot = afterPose.shots[0]!;
+    expect(afterShot.timelineEvents).toEqual(beforeShot.timelineEvents);
+    expect(afterShot.layers.find(({ id }) => id === setup.layerId)).toEqual(beforeShot.layers.find(({ id }) => id === setup.layerId));
+    expect(afterPose.characters).toEqual(beforePose.characters);
+    const appliedEvaluation = projectShotDialogueVisual(afterPose, afterShot, evaluateShotAtTime(afterShot, 1500, afterPose));
+    const applied = resolveLayerVisualParts(afterPose, afterShot, appliedEvaluation.layers.find(({ id }) => id === instanceId)!, 1500);
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${armId}`)?.imageTransform?.b).toBeCloseTo(Math.sin(35 * Math.PI / 180));
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${PART_FACE}`)?.flaGraphic?.frameOrdinal).toBe(1);
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)?.assetId).toBe(ASSET_MOUTH);
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(beforePose);
+    editorProjectStore.redo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(afterPose);
   });
 
   it('moves only head-bound parts (including replaced face expressions/mouth) while preserving drawOrder (backHair behind body), neutral outside dialogue, and Stage/Export parity', () => {

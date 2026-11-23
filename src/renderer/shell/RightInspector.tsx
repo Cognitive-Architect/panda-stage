@@ -41,6 +41,7 @@ import { useStructuredGraphicSelection } from '../features/properties/useStructu
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
+import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -725,12 +726,16 @@ export function RightInspector({
       {snapshot &&
       currentShot &&
       selection.layer?.source.kind === 'character' ? (
+        <>
         <CharacterActionAtTimeControl
           key={`action:${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           shot={currentShot}
           layer={selection.layer}
         />
+        <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        </>
       ) : null}
       {landscapeEmptyState ? null : (
         showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (

@@ -900,6 +900,26 @@ export const LayeredCharacterActionSchema = z.object({
 
 export const CharacterActionSchema = z.union([BakedCharacterActionSchema, LayeredCharacterActionSchema]);
 
+export const CharacterBodyPoseSchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  parts: z.array(z.object({
+    partId: IdSchema,
+    partName: NameSchema.optional(),
+    properties: z.partialRecord(AnimationPropertySchema, FiniteNumberSchema),
+  }).strict()).min(1),
+}).strict().superRefine(({ parts }, context) => {
+  const ids = new Set<string>();
+  parts.forEach(({ partId, properties }, index) => {
+    const scales = [properties['transform.scaleX'], properties['transform.scaleY']];
+    if (ids.has(partId) || !Object.keys(properties).length || scales.some((scale) =>
+      scale !== undefined && (scale < CHARACTER_PART_MIN_SCALE || scale > CHARACTER_PART_MAX_SCALE))) {
+      context.addIssue({ code: 'custom', path: ['parts', index], message: 'Invalid or duplicate body pose target.' });
+    }
+    ids.add(partId);
+  });
+});
+
 const CharacterActionsShape = {
   actions: z.array(BakedCharacterActionSchema).max(64).optional(),
 };
@@ -946,7 +966,13 @@ const CurrentCharacterActionsShape = {
   actions: z.array(CharacterActionSchema).max(64).optional(),
 };
 const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
+const AdaptivePartsCharacterV35Schema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV35Schema.safeExtend({
+  bodyPoses: z.array(CharacterBodyPoseSchema).max(64).refine((poses) =>
+    new Set(poses.map(({ id }) => id)).size === poses.length &&
+    new Set(poses.map(({ name }) => name.toLocaleLowerCase())).size === poses.length,
+  'Body pose names and ids must be unique.').optional(),
+});
 
 function validateExpressionTalkingSources(character: {
   expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
@@ -969,12 +995,19 @@ const CharacterCurrentSchema = z.discriminatedUnion('mode', [
   AdaptivePartsCharacterCurrentSchema,
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
+export const CharacterV35Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV35Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
 export type CharacterAction = z.infer<typeof CharacterActionSchema>;
 export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
 export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
+export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;
