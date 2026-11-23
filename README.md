@@ -1,189 +1,105 @@
-# Panda Stage（熊猫片场）
+<h1 align="center">Panda Stage · 熊猫片场</h1>
 
-Panda Stage 是一款面向个人创作者的 Windows Electron 桌面编辑器，用于把角色图片、背景、对白、音频和简单动作组织成短篇 2D 纸片人动画。仓库当前的主产品面是项目管理、资源工作区、镜头编辑、Konva 画布、图层检查器、撤销/重做、保存与恢复。
+<p align="center"><strong>一款面向个人创作者的开源 2D 纸片人动画编辑器。</strong></p>
 
-## 当前能力与开发状态
+<p align="center">
+  <a href="#功能概览">功能概览</a> ·
+  <a href="#开始使用">开始使用</a> ·
+  <a href="#开发状态">开发状态</a> ·
+  <a href="#参与项目">参与项目</a>
+</p>
 
-当前 `main` 已包含一套连续的 Editor Shell：
+Panda Stage 希望让制作动画短片这件事更直接：准备好角色和背景，在画布上安排镜头，加入对白、声音与动作，再把它们组合成一段视频。
 
-- 项目中心支持新建、打开、最近项目、项目切换、项目文件夹入口和应用内关闭确认；
-- 编辑器支持镜头、素材和角色资源工作区，正式画布支持背景、图层选择、位置/变换、锁定、排序和删除；
-- 右侧检查器承载背景管理、图层变换与排序控制；编辑历史支持撤销、重做和连续拖拽合并；
-- 项目保存使用版本与修订号保护，Main Process 提供 autosave、恢复候选和恢复文件管理；
-- 动作预设的领域逻辑、校验、历史和持久化桥接已经存在，当前 UI 仍从左侧“兼容编辑工具”入口进入；它后续迁移到正式检查器的工作尚未成为 `main` 的交付内容；
-- Main Process 仍保留隐藏 Renderer、帧写盘和 FFmpeg/ffprobe 的导出验证链，但这条链不等同于编辑器首页已经交付正式导出 UI 或安装包 sidecar。
+它主要面向想讲故事的个人创作者。你不必先搭建复杂的制作流程，就能在同一个编辑器里管理素材、编排场景并预览作品。
 
-M3 的正式背景、图层和选择合同已经进入当前 `main`；后续 Stage 3-B/3-C/4 仍按各自的授权、Draft 状态和人工验收推进。本文不把 M3、Stage 3-B、Stage 3-C 或 Stage 4 宣布为完成，也不把早期 Day 计划当作当前产品阶段。
+> **项目仍在开发中。** 目前以 Windows 桌面版为主，已实现不少编辑功能，但界面、操作体验和部分格式兼容性仍在持续完善。尚无公开的 GitHub Release 安装包，可按下文从源码运行。
 
-项目文件固定使用 1920×1080、24 FPS 和当前正式 schema v5。保存的素材路径必须相对于项目目录，时间字段使用整数毫秒。
+## 功能概览
 
-## 技术栈
+### 从素材到镜头
 
-- Electron
-- React 19
-- TypeScript
-- Vite
-- Konva / react-konva
-- Zod
-- Vitest
-- ESLint
-- pnpm
+- **管理动画项目**：新建、打开和切换项目，整理镜头与素材。
+- **搭建场景**：导入背景和角色图片，在画布上摆放、移动、缩放、调整图层顺序。
+- **创建角色**：使用单张图片、角色表情或组合部件，制作适合不同场景的角色。
 
-## 当前架构总览
+### 让画面动起来
 
-```text
-App
-└─ EditorShell                                  唯一项目会话与生命周期入口
-   ├─ ProjectCenterScreen / StartScreen          无项目或项目中心页
-   └─ Editor layout
-      ├─ CompactProjectBar                       项目状态、保存、切换、预览、关闭
-      ├─ LeftWorkspace
-      │  └─ ResourceActivityDock                 镜头 / 素材 / 角色工作区
-      │     ├─ ProjectRecoveryPanel              最近项目与恢复相关入口
-      │     └─ LegacyCompatibilityActivity       暂留的动作预设兼容入口
-      ├─ CanvasWorkspace
-      │  └─ features/canvas/CanvasStage           正式 Konva 编辑画布
-      │     └─ HistoryControls                    撤销 / 重做
-      └─ RightInspector                           背景、变换、排序检查器
-```
+- **时间轴编辑**：安排镜头中的对白、音频和动作，在时间轴上定位并调整内容。
+- **角色与图层动画**：为图层设置位置变化，编辑角色部件的动作和关键帧。
+- **对白与声音**：编辑台词、设置说话者、添加字幕，并安排对白音频和背景音乐。
 
-### 项目、领域与渲染
+### 使用已有动画素材
 
-- `src/domain/` 是当前正式领域入口，包含 Project/Asset/Character/Shot/Layer/TimelineEvent 模型、schema、迁移、selector、service、validator、几何规则和动作预设。
-- `src/renderer/stores/EditorProjectStore.ts` 是 Renderer 中 Project、`dirty` 和 `revision` 的唯一 owner；`src/history/` 提供它所持有的内存命令历史。
-- `shotStore` 只保存当前镜头选择，`selectionStore` 只保存当前图层选择；这些会话状态不写入 `project.json`，并在项目或镜头改变时重新校验。
-- `CanvasStage` 从正式 `src/domain` 构建编辑渲染模型，使用项目素材的受控读取 API 和 1920×1080 逻辑坐标；画布只负责显示与交互提交，持久化变更经 domain service 和 Project store 完成。
-- `src/shared/domain/` 是早期渲染探针/兼容模型，仍被历史测试或脚本使用，但不是当前正式编辑器模型的推荐入口。
+Panda Stage 正在完善对 **Adobe Animate FLA 文件**的支持。目前可以检查和预览部分 FLA 内容，导入受支持的 Graphic 元件与角色部件，并在相应编辑界面调整结构、形状和布局。
 
-### Main、Preload、IPC 与项目生命周期
+FLA 是一个仍在扩展的工作流：不同源文件、元件类型和动画效果的兼容程度会有差异，暂不适合作为所有 FLA 项目的无损替代编辑器。
 
-```text
-Renderer stores / UI
-        │
-        ▼
-Preload allowlist + runtime Zod validation
-        │
-        ▼
-Trusted-window IPC handlers
-        │
-        ▼
-Main services
-  ProjectService       project.json 的创建、打开、迁移、校验、原子保存
-  AutosaveService      每个项目一个恢复调度会话
-  RecoveryService      恢复文件的检测、读取、保留与清理
-  Asset services       导入、元数据、缩略图和画布图片读取
-  ExportService        隐藏 Renderer、帧写盘与 FFmpeg/ffprobe
-```
+### 预览并导出作品
 
-`EditorShell` 只构造一个 `ProjectSessionController`，负责打开、切换、关闭、autosave 生命周期和 recovery candidate。正式保存由 Renderer 的 `saveCurrentProject()` 与 Main 的 `ProjectService` 共同完成；项目保存、恢复写入和清理按项目根目录共享协调器，不使用第二套项目 session。
+编辑过程中可以预览镜头；完成后，可通过编辑器中的视频导出入口生成 **MP4（1920 × 1080，24 FPS）**。导出流程包含素材检查、进度显示、取消及失败后的重试操作。
 
-## 目录结构
+目前支持的图片、音频和动画内容有明确范围，详见[媒体与导出支持矩阵](./docs/export-support-matrix.md)。
 
-```text
-src/
-├── main/                  Electron Main、IPC handler、窗口和文件服务
-├── preload/               主窗口和隐藏窗口的白名单桥
-├── export-renderer/        隐藏导出 Renderer 入口
-├── renderer/
-│   ├── shell/             Project Center、EditorShell 和三栏编辑布局
-│   ├── features/          canvas、assets、characters、shots、properties 等功能
-│   ├── stores/            Project、Shot、Layer selection 等 Renderer store
-│   └── stage/             预览/验证用舞台入口
-├── domain/                当前正式 schema、迁移、服务、校验和动作领域
-├── history/               命令历史与 ProjectCommand
-└── shared/                IPC/API 合同、渲染合同和历史 probe 合同
-tests/                     unit、integration、contract 和 Electron verifier 测试
-scripts/                   Gate、Day/Issue verifier、fixture 和构建辅助脚本
-docs/                      架构、开发约束、设计、handoff、证据和历史回执
-```
+## 开始使用
 
-## 本地开发
+### 运行环境
 
-环境要求：Windows 10/11、Node.js `>=22.12.0 <25`、pnpm 10（版本由 `packageManager` 字段约束）。如果本机尚未启用 pnpm：
+- **系统**：Windows 10 / 11
+- **Node.js**：`>=22.12.0 <25`
+- **包管理器**：pnpm 10（项目锁定版本为 `pnpm@10.13.1`）
+- **Git**：用于克隆仓库
+
+### 从源码运行
+
+在 PowerShell 中依次执行：
 
 ```powershell
+git clone https://github.com/Cognitive-Architect/panda-stage.git
+cd panda-stage
 corepack enable
 corepack install
-```
-
-安装依赖并启动开发环境：
-
-```powershell
 pnpm install
 pnpm dev
 ```
 
-`pnpm dev` 会启动 Vite Renderer 和 Electron。Windows 路径、中文、空格和 Unicode 是正常支持场景；大体积验收数据优先放在 `D:\PandaStage-Acceptance\` 等专用目录。
+启动后可以在项目中心创建或打开工程，再从镜头、素材、角色等工作区开始编辑。
 
-## 质量检查与验证
+如需构建项目，可运行 `pnpm build`。涉及 FFmpeg/ffprobe 的环境配置与说明请参阅[媒体工具文档](./docs/ffmpeg.md)。
 
-### 核心命令
+## 开发状态
 
-以下命令均来自当前 `package.json`：
+Panda Stage 已有项目管理、画布编辑、时间轴、角色工作区、预览和视频导出等主要入口，但距离成熟的动画制作软件还有工作要做。
 
-```powershell
-pnpm typecheck
-pnpm lint
-pnpm test:unit
-pnpm test:integration
-pnpm build
-```
+当前仍在持续改进的重点包括：
 
-Electron 或专项门禁按改动范围选择当前脚本中的 verifier，例如：
+- **编辑体验**：让界面、工具组织和不同窗口尺寸下的操作更清晰、顺手。
+- **角色与动画**：继续完善角色编辑、动作表现和时间轴的协作体验。
+- **FLA 兼容性**：逐步扩大可解析、可编辑的元件与动画内容范围。
+- **导出可靠性**：完善复杂工程、媒体格式以及不同 Windows 环境下的实际验证。
 
-```powershell
-pnpm verify:gate-a
-pnpm verify:day13
-pnpm verify:day16
-pnpm verify:day17
-pnpm verify:day18
-pnpm verify:day19
-pnpm verify:day20
-pnpm verify:day21
-pnpm verify:day22
-pnpm verify:day23
-pnpm verify:day24
-pnpm verify:issue76
-pnpm verify:issue109-resource-workspace
-pnpm verify:issue125
-```
+本项目更适合希望尝试、反馈或参与开发的用户。导入重要的外部工程前，建议保留一份原始文件。具体工作方向见[路线图](./ROADMAP.md)，问题与进展见 [GitHub Issues](https://github.com/Cognitive-Architect/panda-stage/issues)。
 
-验证选择原则：
+## 技术与文档
 
-- Markdown-only 改动至少执行 `git diff --check`，核对仓库内相对链接、命令名、过期状态描述和授权文件范围；不因为文档改动虚构完整 Electron 人工验收；
-- Renderer/domain 改动执行 `typecheck`、`lint`、`test:unit`、`build`，涉及跨层或持久化时加 `test:integration`；
-- Main/Preload/IPC/autosave/recovery 改动执行核心检查、集成测试、构建和最相关的 Electron verifier；需要真人验收时，自动化结果不能替代 Windows Electron 运行；
-- 完整交付或 PR gate 以当前 `package.json` 中相关 `verify:*` 脚本和 CI 为准，不降低安全检查或测试门槛换取通过。
+Panda Stage 使用 **Electron、React、TypeScript、Vite 和 Konva** 构建桌面编辑器；通过 **Zod** 校验项目数据，使用 **FFmpeg/ffprobe** 处理视频输出。
 
-## Electron、IPC 与数据安全原则
+如果你想了解实现细节，可以从这里开始：
 
-- Main window 和隐藏 Renderer 使用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
-- Renderer 不直接访问 Node.js、`fs`、`path` 或子进程；文件系统和 FFmpeg 能力只在 Main Process。
-- Preload 只通过冻结的白名单 API 暴露能力；IPC 通道名集中在 `src/shared/ipc/channels.ts`。
-- IPC 请求和响应在 Preload 与 Main 两侧使用严格 Zod schema 校验，Main handler 还会核对发送窗口的 `webContents.id`。
-- 项目保存使用项目 ID、schema、revision 和原子写入保护；恢复文件是 autosave 的恢复证据，不是对 `project.json` 的静默替代。
-- 项目内素材路径必须保持相对路径，不允许通过路径遍历离开项目根目录。
+- [架构说明](./docs/architecture.md)：编辑器进程、领域模型与项目数据（部分章节记录历史版本，当前模型以源码为准）。
+- [开发说明](./docs/development.md)：项目生命周期、素材处理、保存与恢复。
+- [媒体与导出支持矩阵](./docs/export-support-matrix.md)：各种输入内容在预览和导出中的支持范围。
+- [设计原则](./DESIGN.md)：产品界面与交互约定。
+- [开发 Agent 指南](./AGENTS.md)：代码边界、协作规则及验证要求。
 
-## 文档导航
+当前项目文件格式版本由 [`src/domain/constants.ts`](./src/domain/constants.ts) 中的 `PROJECT_SCHEMA_VERSION` 定义。开发命令、依赖与测试脚本以 [`package.json`](./package.json) 为准。
 
-- [AGENTS.md](./AGENTS.md)：coding agent 的稳定工作规则和验证矩阵。
-- [DESIGN.md](./DESIGN.md)：repository-level UI/UX design guidance and design red lines。
-- [docs/architecture.md](./docs/architecture.md)：进程边界、数据模型、渲染与生命周期的架构说明；遇到版本化历史章节时以当前代码为准。
-- [docs/development.md](./docs/development.md)：项目生命周期、autosave/recovery、素材和开发验证约束。
-- [docs/ipc.md](./docs/ipc.md)：IPC 通道、payload、可信 sender 和导出边界。
-- [package.json](./package.json)：当前可用的开发、测试、构建和 verifier scripts。
-- [ROADMAP.md](./ROADMAP.md)：产品范围、架构原则和里程碑规划，不自动证明某阶段已交付。
-- [DAILY_PLAN.md](./DAILY_PLAN.md)：逐日计划，适合查历史任务背景，不是当前实现入口。
-- [agent task/README.md](./agent%20task/README.md)：逐日 Agent 工单；执行前仍需以当前 Issue/PR 和代码为准。
-- [M3 Editor Shell design](./docs/design/m3-editor-shell-design.md)：M3 设计与迁移合同，属于设计/交接材料，不能替代当前代码审计。
-- [FFmpeg 文档](./docs/ffmpeg.md)：媒体工具的配置、来源和许可证说明。
+## 参与项目
 
-Issue/PR 是当前任务范围和交付状态的事实来源；旧 handoff、设计稿、Day 计划和测试回执是有价值的上下文或证据，但与当前代码冲突时不自动优先。
+欢迎通过 [Issues](https://github.com/Cognitive-Architect/panda-stage/issues) 反馈错误、提出功能想法或讨论改进方向。反馈时附上复现步骤、操作环境以及预期与实际结果，会更容易定位问题。
 
-## 历史验证与 test receipts
+如果想提交代码，请先阅读 [AGENTS.md](./AGENTS.md)；涉及界面或交互修改时，也请参考 [DESIGN.md](./DESIGN.md)。
 
-Day 03–09 的 IPC、共享舞台、AudioContext 预览、隐藏窗口捕获、H.264/AAC 探针回执，以及后续 Day 11–24、M1、M2、M3 和 Gate A 记录都保留在 [`docs/test-receipts/`](./docs/test-receipts/) 中。它们用于追溯当时的验证范围、环境限制和回归证据，不代表当前项目仍处于对应的 Day 阶段。
+## 许可证
 
-尤其不要把 Day 08 或 Day 09 的媒体探针回执当成当前产品状态；当前状态应以本 README 的能力概览、当前源码、`package.json` 和活动 Issue/PR 为准。
-
-GitHub：<https://github.com/Cognitive-Architect/panda-stage>
+Panda Stage 基于 **Apache License 2.0** 开源，详见 [LICENSE](./LICENSE)。第三方组件及媒体工具可能适用各自的许可证，参见[第三方声明](./docs/THIRD_PARTY_NOTICES.md)。
