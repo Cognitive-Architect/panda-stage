@@ -11,6 +11,7 @@ import {
 import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
+import { CharacterArmHandle } from './CharacterArmHandle';
 import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
@@ -46,6 +47,7 @@ import {
   listShotRuntimeImageAssets,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
+  resolveTimelineFrameTime,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -1781,6 +1783,12 @@ export function CanvasStage({
                   ) : null}
                 </KonvaLayer>
               </Stage>
+              {snapshot && shot && selectedLayerId ? <CharacterArmHandle
+                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
+                snapshot={snapshot}
+                address={{ shotId: shot.id, layerId: selectedLayerId,
+                  timeMs: resolveTimelineFrameTime(timelineUi.currentTimeMs, shot.durationMs) }}
+              /> : null}
             </div>
             {dropPreview ? (
               <div

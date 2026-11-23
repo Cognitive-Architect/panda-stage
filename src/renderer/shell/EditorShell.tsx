@@ -44,6 +44,7 @@ import { characterAssemblySessionStore } from '../stores/characterAssemblySessio
 import { characterStore } from '../stores/characterStore';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
 import { AnimationCurveDraftDispatch, type AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
+import { CharacterArmToolProvider } from '../features/canvas/CharacterArmTool';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
   createAdaptiveCharacterFromFlaGraphic,
@@ -3175,6 +3176,6 @@ export function EditorShell({
     </main>
   );
   return <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
-    {surface}
+    <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
   </AnimationCurveDraftDispatch.Provider>;
 }

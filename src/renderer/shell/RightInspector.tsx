@@ -42,6 +42,7 @@ import { AnimationPlaybackControls } from '../features/properties/AnimationPlayb
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
+import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -734,6 +735,8 @@ export function RightInspector({
           layer={selection.layer}
         />
         <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         </>
       ) : null}
