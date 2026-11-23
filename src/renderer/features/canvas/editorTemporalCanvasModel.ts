@@ -155,7 +155,8 @@ export function buildEditorTemporalCanvasModel({
   const hasSilenceAnalysis = dialogueSilence !== undefined && Object.keys(dialogueSilence).length > 0;
   const hasConfiguredTalkingFace = !temporalInspection && shot.layers.some(({ source }) =>
     source.kind === 'character' && project.characters.some(character =>
-      character.id === source.characterId && character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback)),
+      character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
+        (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback)))),
   );
   const zeroTimeExpressionShot = hasConfiguredTalkingFace || shot.timelineEvents.some(
     (event) =>
@@ -171,7 +172,8 @@ export function buildEditorTemporalCanvasModel({
             const source = shot.layers.find((candidate) => candidate.id === layer.id)?.source;
             if (source?.kind !== 'character') return layer;
             const configured = project.characters.some(character =>
-              character.id === source.characterId && character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback));
+              character.id === source.characterId && (character.mouthPoseSet?.driveMode === 'mouth-poses' ||
+                (character.talkingAnimationId && (hasSilenceAnalysis || character.talkingAnimationPlayback))));
             const evaluated = (configured ? formal : atZero).layers.find(candidate => candidate.id === layer.id);
             return evaluated
               ? {
@@ -181,6 +183,7 @@ export function buildEditorTemporalCanvasModel({
                   mouthOverrideAssetId: evaluated.mouthOverrideAssetId ?? null,
                   ...(evaluated.mouthOpen ? { mouthOpen: true } : {}),
                   talkingAnimationElapsedMs: evaluated.talkingAnimationElapsedMs,
+                  ...(evaluated.mouthPose ? { mouthPose: evaluated.mouthPose } : {}),
                 }
               : layer;
           }),

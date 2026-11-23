@@ -5,6 +5,7 @@ import type {
 } from '../evaluate-shot-at-time';
 import { audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../audio-contract';
 import { resolveMouthPoseEvent } from '../services/mouthPoses';
+import { resolveCharacterFaceSourceOrNull } from './characterFaceSource';
 import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import {
   evaluateShotAtTime,
@@ -89,6 +90,22 @@ export function listShotRuntimeImageAssets(
   shot: Shot,
 ): ImageAsset[] {
   const assets = new Map<string, ImageAsset>();
+  const characterIds = new Set(shot.layers.flatMap(({ source }) => source.kind === 'character' ? [source.characterId] : []));
+  const eventPoseIds = new Set(shot.timelineEvents.flatMap((event) => event.type === 'mouth-pose' ? [event.poseId] : []));
+  const assetIndex = new Map(project.assets.map((asset) => [asset.id, asset]));
+  for (const character of project.characters) {
+    const set = character.mouthPoseSet;
+    if (!characterIds.has(character.id) || set?.driveMode !== 'mouth-poses') continue;
+    for (const pose of set.poses) {
+      if (pose.id !== set.restPoseId && !eventPoseIds.has(pose.id)) continue;
+      const face = resolveCharacterFaceSourceOrNull(project, pose.source);
+      const resourceIds = face?.flaGraphic?.resourceAssetIds ?? (face?.assetId ? [face.assetId] : []);
+      for (const id of resourceIds) {
+        const asset = assetIndex.get(id);
+        if (asset?.kind === 'image') assets.set(id, asset);
+      }
+    }
+  }
   const evaluated = evaluateShotAtTime(shot, 0, project);
   for (const layer of evaluated.layers) {
     const visual = resolveLayerVisualParts(project, shot, layer);
@@ -98,9 +115,7 @@ export function listShotRuntimeImageAssets(
       ...visual.resources.fallback,
     ];
     for (const resource of resources) {
-      const asset = project.assets.find(
-        (candidate) => candidate.id === resource.assetId,
-      );
+      const asset = assetIndex.get(resource.assetId);
       if (asset?.kind === 'image') assets.set(asset.id, asset);
     }
   }
@@ -167,6 +182,13 @@ export function projectShotMouth(
   );
   const hasAnyMouthCue = shot.timelineEvents.some(
     (event) => event.type === 'mouth-cue' || event.type === 'mouth-pose',
+  );
+  const dialoguePoseTargets = new Set(
+    speakingCharacter?.mouthPoseSet?.driveMode === 'mouth-poses'
+      ? shot.timelineEvents.flatMap((event) => event.type === 'mouth-pose' &&
+          event.dialogueId === dialogue?.id && event.startMs <= evaluatedShot.timeMs &&
+          evaluatedShot.timeMs < event.endMs ? [event.layerId] : [])
+      : [],
   );
   const talkingClips = new Map<string, { clip: AudioClip; silent: boolean }>();
   for (const voice of shot.dialogues) {
@@ -267,7 +289,8 @@ export function projectShotMouth(
     const shouldOpenFromDialogue =
       cue === 'none' &&
       dialogueOpenPhase &&
-      layerCharacterId === dialogue?.characterId;
+      layerCharacterId === dialogue?.characterId &&
+      (dialoguePoseTargets.size === 0 || dialoguePoseTargets.has(layer.id));
     if (!shouldOpenFromCue && !shouldOpenFromDialogue) {
       if (restPose) {
         changed = true;

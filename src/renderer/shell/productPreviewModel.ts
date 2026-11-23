@@ -367,10 +367,10 @@ export function buildProductPreviewImagePlan(
       ownerSource?.kind === 'character'
         ? project.characters.find((candidate) => candidate.id === ownerSource.characterId)
         : undefined;
-    const adaptiveTargetPartId =
-      ownerCharacter?.mode === 'adaptive-parts' && ownerCharacter.faceBinding
-        ? `${visual.ownerLayerId}:${ownerCharacter.faceBinding.targetPartId}`
-        : null;
+    const poseTarget = evaluatedShot.layers.find(layer => layer.id === visual.ownerLayerId)?.mouthPose?.target;
+    const targetPartId = poseTarget?.kind === 'mouth' ? poseTarget.partId :
+      ownerCharacter?.mode === 'adaptive-parts' ? ownerCharacter.faceBinding?.targetPartId : undefined;
+    const adaptiveTargetPartId = targetPartId ? `${visual.ownerLayerId}:${targetPartId}` : null;
     const activeMouthPart = visual.parts.find(
       (part) =>
         ((part.slot === 'face' || part.slot === 'single') &&
@@ -517,6 +517,7 @@ export function applyProductPreviewMouthFallback(
     return {
       ...layer,
       assetId: activeFace.fallbackAssetId ?? '',
+      mouthPose: undefined,
       talkingAnimationElapsedMs: undefined,
       mouthOverrideAssetId: null,
       ...(layer.mouthOpen === undefined ? {} : { mouthOpen: false }),

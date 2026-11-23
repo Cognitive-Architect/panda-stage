@@ -79,7 +79,7 @@ export function visualAssetIds(
       continue;
     }
     const resolved =
-      part.slot === 'face' || part.slot === 'single'
+      !evaluated.mouthPose && (part.slot === 'face' || part.slot === 'single')
         ? evaluated.assetId || part.assetId
         : part.assetId;
     if (resolved) {
@@ -229,6 +229,7 @@ function mouthExpressionFallback(
   return {
     ...evaluated,
     assetId: fallbackAssetId ?? '',
+    mouthPose: undefined,
     talkingAnimationElapsedMs: undefined,
     mouthOverrideAssetId: null,
     ...(evaluated.mouthOpen === undefined ? {} : { mouthOpen: false }),

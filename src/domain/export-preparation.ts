@@ -9,7 +9,7 @@ import {
 import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
-import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
+import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
 import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
@@ -216,7 +216,10 @@ function addShotVisualAssets(
   const restResourcesByCharacter = new Set<string>();
   for (const timeMs of shotVisualSampleTimes(shot)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
-    for (const evaluatedLayer of evaluatedShot.layers) {
+    const projected = projectShotMouth(project, shot, evaluatedShot, null);
+    for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
+      const poseLayer = projected.layers[layerIndex];
+      const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
       if (!evaluatedLayer.visible) continue;
       const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {

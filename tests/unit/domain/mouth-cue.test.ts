@@ -7,6 +7,7 @@ import {
   deleteMouthCueEvent,
   DialogueService,
   evaluateShotAtTime,
+  listShotRuntimeImageAssets,
   migrateProject,
   MouthCueEventSchema,
   ProjectSchema,
@@ -252,6 +253,35 @@ describe('Editable mouth poses (#1226)', () => {
       expect(resolveLayerVisualParts(project, shot, preview.layers.find((layer) => layer.id === IDS.layerChar)!, time)).toEqual(visual);
       expect(visual.parts.find((part) => part.slot === 'face')?.source).toMatchObject({ firstFrame });
     }
+  });
+
+  it('waits for the resolved pose image and keeps the second instance at rest under a targeted draft', () => {
+    const base = projectWithPoses();
+    const configured = ProjectSchema.parse({
+      ...base,
+      characters: base.characters.map(character => character.id === IDS.character ? {
+        ...character, mouthPoseSet: {
+          ...character.mouthPoseSet,
+          poses: character.mouthPoseSet!.poses.map(item => item.id === pose
+            ? { ...item, source: { kind: 'image', assetId: MOUTH_ASSET_ID } } : item),
+        },
+      } : character),
+    });
+    const project = applyMouthPoseDraft(configured, selection, draft, randomUUID);
+    const shot = project.shots[0]!;
+    expect(listShotRuntimeImageAssets(project, shot).map(asset => asset.id)).toContain(MOUTH_ASSET_ID);
+    expect(collectExportPreparationMedia(project).map(({ asset }) => asset.id)).toContain(MOUTH_ASSET_ID);
+    const time = 450;
+    const context = { project, shot, currentTimeMs: time, activeDialogueId: DIALOGUE_ID,
+      missingAssetIds: new Set<string>(), previousVisuals: new Map() };
+    const readyIds = new Set(project.assets.map(asset => asset.id));
+    readyIds.delete(MOUTH_ASSET_ID);
+    expect(buildEditorTemporalCanvasModel({ ...context, readyAssetIds: readyIds }).targetReadyLayerIds.has(IDS.layerChar)).toBe(false);
+    readyIds.add(MOUTH_ASSET_ID);
+    const editor = buildEditorTemporalCanvasModel({ ...context, readyAssetIds: readyIds });
+    expect(editor.targetReadyLayerIds.has(IDS.layerChar)).toBe(true);
+    expect(editor.visualsByLayer.get(IDS.layerChar)?.activeFace?.assetId).toBe(MOUTH_ASSET_ID);
+    expect(editor.visualsByLayer.get(other)?.activeFace?.visualSource).toMatchObject({ firstFrame: 0 });
   });
 
   it('keeps manual edits through a dialogue move, trim and audio unbind, and copies then removes associations', () => {
