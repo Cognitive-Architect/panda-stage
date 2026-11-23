@@ -2696,11 +2696,10 @@ export async function buildRenderableTargetCatalog(
   let candidateIndex = 0;
   const enumerationStartedAt = startIssue762Profile();
 
-  const appendCandidate = (
+  const evaluateCandidate = (
     target: FlaRenderTarget,
     catalogRole: FlaRenderableTargetCatalogRole,
-  ): boolean => {
-    if (entries.length >= MAX_TARGETS) return false;
+  ): BuildCatalogSuccess['entries'][number] => {
     const candidateStartedAt = startIssue762Profile();
     const currentCandidateIndex = candidateIndex++;
     const candidateDetails = {
@@ -2742,39 +2741,54 @@ export async function buildRenderableTargetCatalog(
       });
       if (!composed.ok) unsupportedReason = composed.message;
     }
-    entries.push({
+    const entry = {
       target,
       catalogRole,
       previewSupported: unsupportedReason === null,
       isBlank: check.isBlank,
       ...(unsupportedReason ? { unsupportedReason } : {}),
-    });
+    };
     finishIssue762Profile('fla.catalog.candidate.total', candidateStartedAt, {
       ...candidateDetails,
       previewSupported: unsupportedReason === null,
       isBlank: check.isBlank,
     });
+    return entry;
+  };
+  const appendCandidate = (target: FlaRenderTarget, role: FlaRenderableTargetCatalogRole): boolean => {
+    if (entries.length >= MAX_TARGETS) return false;
+    entries.push(evaluateCandidate(target, role));
     return true;
   };
 
-  // Normally use frame zero. A scene can lead with blank frames before its
-  // first Object Motion span, so use that span as its catalog cover if needed.
   const scene = source.sceneTimelines[0];
-  const sceneCoverIndex = scene?.frameContext.layers.some((layer) => layer.visible && layer.elements.length > 0)
-    ? 0 : scene?.firstObjectMotionFrameIndex;
-  const sceneTarget: FlaRenderTarget | null = scene && scene.frameCount > 0 && sceneCoverIndex !== undefined
-    ? {
-      renderTargetId: stableRenderTargetId(bytes, 'scene\u0000timeline\u0000' + scene.index),
-      kind: 'scene',
-      userLabel: `主场景 · 第 ${sceneCoverIndex + 1} 帧`,
-      sourceTimelineIndex: scene.index,
-      frameCount: Math.min(100_000, scene.playbackFrameCount ?? scene.frameCount),
-      selectedFrameIndex: sceneCoverIndex,
-      compatibility: ['degraded'],
+  let sceneEntry: BuildCatalogSuccess['entries'][number] | undefined;
+  if (scene && scene.frameCount > 0) {
+    const frameZeroHasElements = scene.frameContext.layers.some((layer) => layer.visible && layer.elements.length > 0);
+    const coverIndices = frameZeroHasElements ? [0] : scene.laterCoverFrameIndices ?? [];
+    for (const frameIndex of coverIndices) {
+      const entry = evaluateCandidate({
+        renderTargetId: stableRenderTargetId(bytes, 'scene\u0000timeline\u0000' + scene.index),
+        kind: 'scene',
+        userLabel: `主场景 · 第 ${frameIndex + 1} 帧`,
+        sourceTimelineIndex: scene.index,
+        frameCount: Math.min(100_000, scene.playbackFrameCount ?? scene.frameCount),
+        selectedFrameIndex: frameIndex,
+        compatibility: ['degraded'],
+      }, 'scene');
+      if (frameIndex === 0 || (entry.previewSupported && !entry.isBlank)) {
+        sceneEntry = entry;
+        break;
+      }
+      if (frameIndex === scene.firstObjectMotionFrameIndex && !entry.previewSupported) sceneEntry = entry;
+      if (execution) {
+        await execution.yieldToEventLoop();
+        if (!execution.shouldContinue()) return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+      }
     }
-    : null;
-  if (sceneTarget && !options.includeAuthoredStates) {
-    appendCandidate(sceneTarget, 'scene');
+  }
+  if (sceneEntry && !options.includeAuthoredStates) {
+    entries.push(sceneEntry);
     if (execution) {
       await execution.yieldToEventLoop();
       if (!execution.shouldContinue()) {
@@ -2903,8 +2917,8 @@ export async function buildRenderableTargetCatalog(
       return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
     }
 
-    if (sceneTarget && entries.length < MAX_TARGETS) {
-      appendCandidate(sceneTarget, 'scene');
+    if (sceneEntry && entries.length < MAX_TARGETS) {
+      entries.push(sceneEntry);
       if (execution) {
         await execution.yieldToEventLoop();
         if (!execution.shouldContinue()) {
@@ -2930,7 +2944,7 @@ export async function buildRenderableTargetCatalog(
         }
       }
     }
-    omittedCandidateCount = Number(sceneTarget !== null) + totalGraphicCandidateCount - entries.length;
+    omittedCandidateCount = Number(sceneEntry !== undefined) + totalGraphicCandidateCount - entries.length;
   }
 
   finishIssue762Profile('fla.catalog.enumeration', enumerationStartedAt, {

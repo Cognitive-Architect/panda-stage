@@ -105,6 +105,7 @@ export interface FlaXflTimelineDescriptor {
   /** Additional playback samples while a one-frame scene stays on frame zero. */
   readonly playbackFrameCount?: number;
   readonly firstObjectMotionFrameIndex?: number;
+  readonly laterCoverFrameIndices?: readonly number[];
   readonly frameSpanIndex?: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly xml: string;
   readonly frameContext: FlaDisplayListFrameContext;
@@ -2741,12 +2742,17 @@ function* adaptFlaXflDisplaySourceSteps(
       ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols)
       : 1;
     let firstObjectMotionFrameIndex: number | undefined;
+    const laterCoverFrames = new Set<number>();
+    const needsCover = !parsed.value.layers.some((layer) => layer.visible && layer.elements.length > 0);
     for (const layer of spans?.ok ? spans.value.layers : []) {
-      if (!layer.visible) continue;
-      const first = layer.spans.find((span) =>
-        span.tweenType === 'motion object' && frameHasPotentialDisplayElements(span.sourceFrame));
-      if (first && (firstObjectMotionFrameIndex === undefined || first.index < firstObjectMotionFrameIndex)) {
-        firstObjectMotionFrameIndex = first.index;
+      if (!needsCover || !layer.visible) continue;
+      for (const span of layer.spans) {
+        if (span.index === 0 || !frameHasPotentialDisplayElements(span.sourceFrame)) continue;
+        laterCoverFrames.add(span.index);
+        if (span.tweenType === 'motion object' &&
+            (firstObjectMotionFrameIndex === undefined || span.index < firstObjectMotionFrameIndex)) {
+          firstObjectMotionFrameIndex = span.index;
+        }
       }
     }
     sceneTimelines.push({
@@ -2754,6 +2760,7 @@ function* adaptFlaXflDisplaySourceSteps(
       frameCount,
       frameContext: parsed.value,
       ...(firstObjectMotionFrameIndex !== undefined ? { firstObjectMotionFrameIndex } : {}),
+      ...(laterCoverFrames.size ? { laterCoverFrameIndices: [...laterCoverFrames].sort((a, b) => a - b).slice(0, 16) } : {}),
       ...(playbackFrameCount > 1 ? { playbackFrameCount } : {}),
     });
   }

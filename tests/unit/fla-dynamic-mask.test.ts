@@ -83,3 +83,21 @@ describe('Animate dynamic masks', () => {
     expect(frame.svg).toMatch(/#f23544/iu);
   });
 });
+describe('scene cover with a blank lead-in', () => {
+  it('uses the first Shape Tween mask frame as cover without changing the source positions', async () => {
+    const bytes = await load('MASK-LEAD-IN');
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const entry = catalog.entries.find(({ target }) => target.kind === 'scene');
+    expect(entry).toMatchObject({ previewSupported: true, isBlank: false, target: {
+      frameCount: 11, selectedFrameIndex: 3,
+    } });
+    const cover = await buildSvgForRenderTarget(bytes, entry!.target, undefined, prepared.source);
+    const blank = await buildSvgForRenderTarget(bytes, { ...entry!.target, selectedFrameIndex: 0 }, undefined, prepared.source);
+    expect(cover).toMatchObject({ ok: true, hasRenderablePath: true });
+    expect(blank).toMatchObject({ ok: true, hasRenderablePath: false });
+    if (cover.ok) expect(clipIds(cover.svg)).toHaveLength(1);
+  });
+});
