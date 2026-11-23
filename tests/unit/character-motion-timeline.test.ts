@@ -501,8 +501,13 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
     };
 
     const clientWidthSpy = vi.spyOn(HTMLDivElement.prototype, 'clientWidth', 'get').mockReturnValue(3000);
+    const listenerSpy = vi.spyOn(window, 'addEventListener');
+    const activeKeyListeners = () => listenerSpy.mock.calls.filter(([name, , options]) =>
+      (name === 'blur' || name === 'keydown') && typeof options === 'object' &&
+      options.signal && !options.signal.aborted);
     try {
       await act(async () => root.render(createElement(EditorTriadHarness, { layerId: fixture.layerId })));
+      expect(activeKeyListeners()).toHaveLength(0);
 
       // Initially no key selected: next jumps to 0ms, then 500ms; prev returns to 0ms.
       const prevBtn = () => host.querySelector<HTMLButtonElement>('[data-testid="character-motion-prev-key"]')!;
@@ -633,23 +638,32 @@ describe('Character Motion multi-part Timeline & bidirectional selection (#1129)
       // Escape cancels an in-progress drag without modifying Project or History.
       const head750 = keyAt(headId, 750);
       const beforeEscape = editorProjectStore.getSnapshot()!.project;
-      await act(async () => dispatchPointer(head750, 'pointerdown', 750 * pxPerMs));
-      await act(async () => dispatchPointer(head750, 'pointermove', 500 * pxPerMs));
-      expect(host.querySelector('.character-motion-key-time-bubble')).not.toBeNull();
-      await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-      expect(host.querySelector('.character-motion-key-time-bubble')).toBeNull();
-      await act(async () => dispatchPointer(head750, 'pointerup', 500 * pxPerMs));
-      expect(editorProjectStore.getSnapshot()!.project).toBe(beforeEscape);
-      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(5);
+      expect(activeKeyListeners()).toHaveLength(0);
+      for (const interruption of [new KeyboardEvent('keydown', { key: 'Escape' }), new Event('blur')]) {
+        await act(async () => dispatchPointer(head750, 'pointerdown', 750 * pxPerMs));
+        expect(activeKeyListeners().map(([name]) => name)).toEqual(['blur', 'keydown']);
+        await act(async () => dispatchPointer(head750, 'pointermove', 500 * pxPerMs));
+        expect(host.querySelector('.character-motion-key-time-bubble')).not.toBeNull();
+        await act(async () => window.dispatchEvent(interruption));
+        expect(activeKeyListeners()).toHaveLength(0);
+        expect(host.querySelector('.character-motion-key-time-bubble')).toBeNull();
+        await act(async () => dispatchPointer(head750, 'pointerup', 500 * pxPerMs));
+        expect(editorProjectStore.getSnapshot()!.project).toBe(beforeEscape);
+        expect(editorProjectStore.history.getSnapshot().undoCount).toBe(5);
+      }
 
       // Stale context / locked layer safely rejects without mutating Project.
       await act(async () => keyAt(headId, 1250).click());
       await act(async () => copyBtn().click());
+      await act(async () => dispatchPointer(head750, 'pointerdown', 750 * pxPerMs));
+      expect(activeKeyListeners()).toHaveLength(2);
       const lockedProject = structuredClone(editorProjectStore.getSnapshot()!.project);
       lockedProject.shots[0]!.layers.find((l) => l.id === fixture.layerId)!.locked = true;
       await act(async () => editorProjectStore.open('D:/test-v1-02-locked', lockedProject));
       expect(host.querySelector('[data-testid="character-motion-toolbar"]')).toBeNull();
+      expect(activeKeyListeners()).toHaveLength(0);
     } finally {
+      listenerSpy.mockRestore();
       clientWidthSpy.mockRestore();
       await act(async () => root.unmount());
       host.remove();
