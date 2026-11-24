@@ -518,14 +518,14 @@ export function evaluateLayerPreTrackState(
   const motion = evaluateLayerMotionAtTime(
     { id: layer.id, x: basePose.x, y: basePose.y },
     events,
-    timeMs,
+    graphicTimeMs,
   );
   let controlledByMove = false;
   let controlledByScale = false;
 
   for (const event of events) {
     if (event.type === 'move') {
-      if (timeMs >= event.startMs) controlledByMove = true;
+      if (graphicTimeMs >= event.startMs) controlledByMove = true;
       // Position + Shake are resolved by the single formal motion seam above.
       continue;
     }
@@ -541,16 +541,16 @@ export function evaluateLayerPreTrackState(
     // (or the state produced by earlier events) instead of overwriting it
     // with `from`. Events whose start has passed keep contributing — for
     // timeMs > endMs `rawProgress` resolves to 1, applying the final state.
-    if (timeMs < event.startMs) {
+    if (graphicTimeMs < event.startMs) {
       continue;
     }
     const span = Math.max(1, event.endMs - event.startMs);
     const rawProgress =
-      timeMs < event.startMs
+      graphicTimeMs < event.startMs
         ? 0
-        : timeMs > event.endMs
+        : graphicTimeMs > event.endMs
           ? 1
-          : (timeMs - event.startMs) / span;
+          : (graphicTimeMs - event.startMs) / span;
     const progress = event.type === 'opacity'
       ? evaluateAnimationEase(rawProgress, event.easing, event.curveToNext)
       : evaluateAnimationEase(rawProgress, eventEasing(event));
@@ -837,8 +837,12 @@ export function evaluateShotAtTime(
         options?.graphicFrameTimeMs,
       );
       const clip = layer.animationClip;
+      const clipTimeMs =
+        clip?.version === 2 && options?.graphicFrameTimeMs !== undefined
+          ? options.graphicFrameTimeMs
+          : timeMs;
       const animationValues = clip
-        ? evaluateAnimationClipAtTime(clip, timeMs)
+        ? evaluateAnimationClipAtTime(clip, clipTimeMs)
         : undefined;
       const faceTransform =
         clip?.version === 3

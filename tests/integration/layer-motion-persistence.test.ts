@@ -28,6 +28,7 @@ import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
+import { planPngSequenceFrames } from '../../src/shared/export-types';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { animationCoreFixture } from '../helpers/animationCoreFixture';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
@@ -876,8 +877,7 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
         const exportMs = exportFrameTimeMs(frame);
         const stage = evaluateShotAtTime(shot, authoringMs, reopened.project);
         const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
-        const exportedAtAuthoring = evaluateExportShotAtTime(reopened.project, shot, authoringMs);
-        const exportedAtExportMs = evaluateExportShotAtTime(reopened.project, shot, exportMs);
+        const exported = evaluateExportShotAtTime(reopened.project, shot, exportMs);
         const editorModel = buildEditorTemporalCanvasModel({
           project: reopened.project,
           shot,
@@ -885,29 +885,21 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
           readyAssetIds: new Set(reopened.project.assets.map((a) => a.id)),
           previousVisuals: new Map(),
         });
-        const exportModel = buildStageRenderModel(reopened.project, exportedAtAuthoring, urls);
+        const exportModel = buildStageRenderModel(reopened.project, exported, urls);
 
         const stageLayer = stage.layers.find((l) => l.id === placed.layer.id)!;
         expect(preview.layers.find((l) => l.id === placed.layer.id)).toMatchObject({
           x: stageLayer.x,
           y: stageLayer.y,
         });
-        expect(exportedAtAuthoring.layers.find((l) => l.id === placed.layer.id)).toMatchObject({
-          x: stageLayer.x,
-          y: stageLayer.y,
-        });
+        expect(exported.layers.find((l) => l.id === placed.layer.id)!.x).toBeCloseTo(stageLayer.x, 4);
+        expect(exported.layers.find((l) => l.id === placed.layer.id)!.y).toBeCloseTo(stageLayer.y, 4);
         expect(editorModel.stageModel.layers.find((l) => l.layer.id === placed.layer.id)!.render).toMatchObject({
           x: stageLayer.x,
           y: stageLayer.y,
         });
-        expect(exportModel.layers.find((l) => l.id === placed.layer.id)!.render).toMatchObject({
-          x: stageLayer.x,
-          y: stageLayer.y,
-        });
-        // Non-integer-ms export frame time stays within 1ms linear interpolation of authoring frame.
-        const exportSample = exportedAtExportMs.layers.find((l) => l.id === placed.layer.id)!;
-        expect(Math.abs(exportSample.x - stageLayer.x)).toBeLessThan(1.5);
-        expect(Math.abs(exportSample.y - stageLayer.y)).toBeLessThan(1.5);
+        expect(exportModel.layers.find((l) => l.id === placed.layer.id)!.render.x).toBeCloseTo(stageLayer.x, 4);
+        expect(exportModel.layers.find((l) => l.id === placed.layer.id)!.render.y).toBeCloseTo(stageLayer.y, 4);
       }
       // Manual edit at frame 12 (500ms) persisted cleanly: y = 300 - 180 = 120.
       expect(
@@ -919,5 +911,81 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
+  });
+
+  it('aligns fast 1-frame Graphic motion (X=400->1600, 0->42ms) at export frame 1 (41ms) with authoring frame 42ms while keeping arbitrary off-grid & unaligned multi-shot times continuous (#1271 A02 P2-01)', () => {
+    const base = graphicFaceProject();
+    const layers = new LayerService();
+    const motion = new LayerMotionService();
+    const placed = layers.createFromAnimation(
+      ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 1_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      }),
+      IDS.shot,
+      { animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 400, y: 300 } },
+    );
+
+    // Non-default pivot + rotation/scale + fast 1-frame horizontal curve X=400->1600 (0->42ms).
+    let project = motion.recalibratePivot(
+      placed.project,
+      { shotId: IDS.shot, layerId: placed.layer.id },
+      { space: 'target-local', x: 140, y: 110 },
+    );
+    project = motion.applyKeys(
+      project,
+      { shotId: IDS.shot, layerId: placed.layer.id, timeMs: frameTimeMs(1) },
+      { 'transform.rotationDeg': 45, 'transform.scaleX': 1.5 },
+    );
+    project = motion.applyCurveMotion(project, {
+      shotId: IDS.shot,
+      layerId: placed.layer.id,
+      startFrame: 0,
+      endFrame: 1,
+      p1: { x: 800, y: 300 },
+      p2: { x: 1200, y: 300 },
+      p3: { x: 1600, y: 300 },
+      speedMode: 'constant',
+    });
+
+    const shot = project.shots[0]!;
+    const plannedFrames = [...planPngSequenceFrames(project, { shotId: shot.id, transparent: true }).frames()];
+    const exportFrame1 = plannedFrames[1]!;
+    expect(exportFrame1.shotLocalTimeMs).toBe(41);
+
+    const authoring42 = evaluateShotAtTime(shot, 42, project);
+    const exported41 = evaluateExportShotAtTime(project, shot, exportFrame1.shotLocalTimeMs);
+    const urls = Object.fromEntries(project.assets.map((a) => [a.id, `test:${a.id}`]));
+    const authoringRender = buildStageRenderModel(project, authoring42, urls).layers.find(
+      (l) => l.id === placed.layer.id,
+    )!;
+    const exportRender = buildStageRenderModel(project, exported41, urls).layers.find(
+      (l) => l.id === placed.layer.id,
+    )!;
+
+    expect(Math.abs(exported41.layers.find((l) => l.id === placed.layer.id)!.x - 1600)).toBeLessThan(0.1);
+    expect(Math.abs(exportRender.render.x - authoringRender.render.x)).toBeLessThan(0.1);
+    expect(Math.abs(exportRender.render.y - authoringRender.render.y)).toBeLessThan(0.1);
+    expect(exportRender.render.rotationDeg).toBeCloseTo(authoringRender.render.rotationDeg, 4);
+    expect(exportRender.render.scaleX).toBeCloseTo(authoringRender.render.scaleX, 4);
+
+    // Arbitrary off-grid time (21ms) and unaligned multi-shot local time (40ms) remain continuous (not snapped to 42ms).
+    const offGrid21 = evaluateExportShotAtTime(project, shot, 21).layers.find(
+      (l) => l.id === placed.layer.id,
+    )!;
+    expect(offGrid21.x).toBeGreaterThan(900);
+    expect(offGrid21.x).toBeLessThan(1100);
+    const unaligned40 = evaluateExportShotAtTime(project, shot, 40).layers.find(
+      (l) => l.id === placed.layer.id,
+    )!;
+    expect(unaligned40.x).toBeLessThan(1580);
   });
 });
