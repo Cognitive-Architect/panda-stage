@@ -794,4 +794,53 @@ describe('Day 22 layer stores', () => {
     expect(evalLast.opacity).toBeCloseTo(evalSrc.opacity);
     input.selection.dispose();
   });
+
+  it('commits curve motion in one History entry, preserves selection, supports atomic Undo/Redo, and leaves state clean on conflict (#1269 A02)', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 400, y: 300 },
+      startTimeMs: 0,
+    });
+    const input = harness(placed.project);
+    input.selection.select(placed.layer.id);
+
+    // Invalid zero-length curve throws and leaves History/dirty/revision untouched.
+    expect(() =>
+      input.layers.applyCurveMotion(placed.layer.id, {
+        startFrame: 0,
+        endFrame: 24,
+        p1: { x: 400, y: 300 },
+        p2: { x: 400, y: 300 },
+        p3: { x: 400, y: 300 },
+        speedMode: 'constant',
+      }),
+    ).toThrow(/长度为 0/);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+
+    // Valid curve commits once and retains source selection.
+    input.layers.applyCurveMotion(placed.layer.id, {
+      startFrame: 0,
+      endFrame: 24,
+      p1: { x: 450, y: 80 },
+      p2: { x: 850, y: 80 },
+      p3: { x: 900, y: 300 },
+      speedMode: 'ease-in-out',
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    const afterBake = input.editor.getSnapshot()!.project;
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(placed.project);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterBake);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+    input.selection.dispose();
+  });
 });

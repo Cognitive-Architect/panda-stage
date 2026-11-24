@@ -16,14 +16,19 @@ import {
   ProjectV21Schema,
   ShotService,
   editAnimationPropertyKey,
+  evaluateCubicBezier2D,
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
+  frameTimeMs,
+  isValidFrameTime,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
   hasLayerCompositeKeyOutgoingInterval,
   migrateProject,
   recognizePositionChain,
   resolveLayerVisualParts,
+  sampleCubicBezierBySteps,
+  type CubicBezier2D,
   type FlaGraphicDefinition,
   type Project,
   type TimelineEvent,
@@ -1863,5 +1868,381 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
     );
     expect(maxScale.layers).toHaveLength(99);
     expect(() => ProjectSchema.parse(maxScale.project)).not.toThrow();
+  });
+
+  it('samples cubic Bézier paths by arc-length independently verified against fine reference integration (#1269 A02 math)', () => {
+    // Independent fine polygonal arc-length reference (N = 20,000, not sharing the sampler's LUT).
+    function referenceArcProfile(curve: CubicBezier2D, samples = 20_000) {
+      const cum = new Float64Array(samples + 1);
+      let prev = evaluateCubicBezier2D(curve, 0);
+      for (let i = 1; i <= samples; i += 1) {
+        const pt = evaluateCubicBezier2D(curve, i / samples);
+        cum[i] = cum[i - 1]! + Math.hypot(pt.x - prev.x, pt.y - prev.y);
+        prev = pt;
+      }
+      const total = cum[samples]!;
+      const arcAtPoint = (target: { x: number; y: number }, minIdx: number) => {
+        let bestIdx = minIdx;
+        let bestDist = Infinity;
+        for (let i = minIdx; i <= samples; i += 1) {
+          const pt = evaluateCubicBezier2D(curve, i / samples);
+          const d = Math.hypot(pt.x - target.x, pt.y - target.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        return { idx: bestIdx, arc: cum[bestIdx]!, dist: bestDist };
+      };
+      return { total, arcAtPoint };
+    }
+
+    // 1. Standard arch: P0=(400,300), P1=(450,80), P2=(850,80), P3=(900,300), 24 intervals (25 samples).
+    const arch: CubicBezier2D = {
+      p0: { x: 400, y: 300 },
+      p1: { x: 450, y: 80 },
+      p2: { x: 850, y: 80 },
+      p3: { x: 900, y: 300 },
+    };
+    const archRef = referenceArcProfile(arch);
+    const archConst = sampleCubicBezierBySteps(arch, 24, 'constant');
+    expect(archConst.points).toHaveLength(25);
+    expect(archConst.points[0]).toEqual(arch.p0);
+    expect(archConst.points[24]).toEqual(arch.p3);
+    const targetStep = archRef.total / 24;
+    const tol = Math.max(0.5, targetStep * 0.02);
+    let cursor = 0;
+    let prevArc = 0;
+    for (let i = 1; i <= 24; i += 1) {
+      const hit = archRef.arcAtPoint(archConst.points[i]!, cursor);
+      expect(hit.dist).toBeLessThan(0.1);
+      const stepArc = hit.arc - prevArc;
+      expect(Math.abs(stepArc - targetStep)).toBeLessThanOrEqual(tol);
+      cursor = hit.idx;
+      prevArc = hit.arc;
+    }
+
+    // 2. Non-uniformly parameterized straight line (proves not uniform t!).
+    const skewedLine: CubicBezier2D = {
+      p0: { x: 200, y: 300 },
+      p1: { x: 201, y: 300 },
+      p2: { x: 202, y: 300 },
+      p3: { x: 1000, y: 300 },
+    };
+    const lineConst = sampleCubicBezierBySteps(skewedLine, 24, 'constant');
+    for (let i = 0; i <= 24; i += 1) {
+      expect(lineConst.points[i]!.x).toBeCloseTo(200 + (800 * i) / 24, 3);
+      expect(lineConst.points[i]!.y).toBeCloseTo(300, 3);
+    }
+
+    // 3. Closed non-zero-length loop is accepted and sampled evenly along its perimeter.
+    const loop: CubicBezier2D = {
+      p0: { x: 500, y: 500 },
+      p1: { x: 200, y: 100 },
+      p2: { x: 800, y: 100 },
+      p3: { x: 500, y: 500 },
+    };
+    const loopRef = referenceArcProfile(loop);
+    const loopConst = sampleCubicBezierBySteps(loop, 24, 'constant');
+    expect(loopConst.totalLength).toBeCloseTo(loopRef.total, 1);
+    expect(loopConst.points[0]).toEqual(loop.p0);
+    expect(loopConst.points[24]).toEqual(loop.p3);
+
+    // 4. Ease-in-out mode: same endpoints, strictly monotonic arc progress, clear accel/decel.
+    const archEase = sampleCubicBezierBySteps(arch, 24, 'ease-in-out');
+    expect(archEase.points[0]).toEqual(arch.p0);
+    expect(archEase.points[24]).toEqual(arch.p3);
+    const easeSteps: number[] = [];
+    cursor = 0;
+    prevArc = 0;
+    for (let i = 1; i <= 24; i += 1) {
+      const hit = archRef.arcAtPoint(archEase.points[i]!, cursor);
+      expect(hit.arc).toBeGreaterThan(prevArc);
+      easeSteps.push(hit.arc - prevArc);
+      cursor = hit.idx;
+      prevArc = hit.arc;
+    }
+    expect(easeSteps[11]!).toBeGreaterThan(easeSteps[0]! * 3);
+    expect(easeSteps[12]!).toBeGreaterThan(easeSteps[23]! * 3);
+  });
+
+  it('bakes single-segment cubic Bézier into native v2 offsetX/Y tracks with pivot/flipX/rotation/scale compensation, boundaries, conflicts, and editability (#1269 A02)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+
+    // Setup non-zero Base, flipX, non-default pivot, existing rotation/scale tracks, and non-conflicting opacity event.
+    let project = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((shot) => ({
+        ...shot,
+        durationMs: 2_000,
+        layers: shot.layers.map((l) =>
+          l.id === base.layerId
+            ? { ...l, x: 500, y: 400, scaleX: 1.5, scaleY: 1.2, rotationDeg: 20, flipX: true }
+            : l,
+        ),
+        timelineEvents: [
+          {
+            id: '93000000-0000-4000-8000-000000000881',
+            type: 'opacity',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: 1,
+            to: 0.6,
+            easing: 'linear',
+          },
+        ],
+      })),
+    });
+    project = service.recalibratePivot(
+      project,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 140, y: 110 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      { 'transform.rotationDeg': 70, 'transform.scaleX': 1.4 },
+    );
+
+    const beforeProject = structuredClone(project);
+    const p0AtStart = evaluateShotAtTime(project.shots[0]!, 0, project).layers.find(
+      (l) => l.id === base.layerId,
+    )!;
+    const p1 = { x: 450, y: 80 };
+    const p2 = { x: 850, y: 80 };
+    const p3 = { x: 900, y: 300 };
+
+    const baked = service.applyCurveMotion(project, {
+      shotId: base.shotId,
+      layerId: base.layerId,
+      startFrame: 0,
+      endFrame: 24,
+      p1,
+      p2,
+      p3,
+      speedMode: 'constant',
+    });
+    const bakedShot = baked.shots[0]!;
+    const bakedLayer = bakedShot.layers.find((l) => l.id === base.layerId)!;
+    expect(baked.animations).toEqual(beforeProject.animations);
+    expect(baked.assets).toEqual(beforeProject.assets);
+    expect(bakedShot.layers).toHaveLength(beforeProject.shots[0]!.layers.length);
+    expect(bakedShot.timelineEvents).toEqual(beforeProject.shots[0]!.timelineEvents);
+    expect({
+      x: bakedLayer.x,
+      y: bakedLayer.y,
+      scaleX: bakedLayer.scaleX,
+      scaleY: bakedLayer.scaleY,
+      rotationDeg: bakedLayer.rotationDeg,
+      flipX: bakedLayer.flipX,
+    }).toEqual({ x: 500, y: 400, scaleX: 1.5, scaleY: 1.2, rotationDeg: 20, flipX: true });
+
+    if (bakedLayer.animationClip?.version !== 2) throw new Error('Expected v2 Clip');
+    const offsetXTrack = bakedLayer.animationClip.tracks.find((t) => t.property === 'transform.offsetX')!;
+    const offsetYTrack = bakedLayer.animationClip.tracks.find((t) => t.property === 'transform.offsetY')!;
+    expect(offsetXTrack.target).toEqual({ kind: 'layer', layerId: base.layerId });
+    expect(offsetYTrack.target).toEqual({ kind: 'layer', layerId: base.layerId });
+    expect(offsetXTrack.keys).toHaveLength(25);
+    expect(offsetYTrack.keys).toHaveLength(25);
+    expect(offsetXTrack.keys.every((k) => isValidFrameTime(k.timeMs) && k.interpolationToNext === 'linear')).toBe(true);
+    expect(offsetYTrack.keys.every((k) => isValidFrameTime(k.timeMs) && k.interpolationToNext === 'linear')).toBe(true);
+    // Preserved existing rotation & scale tracks.
+    expect(bakedLayer.animationClip.tracks.some((t) => t.property === 'transform.rotationDeg')).toBe(true);
+    expect(bakedLayer.animationClip.tracks.some((t) => t.property === 'transform.scaleX')).toBe(true);
+
+    const expectedSamples = sampleCubicBezierBySteps(
+      { p0: { x: p0AtStart.x, y: p0AtStart.y }, p1, p2, p3 },
+      24,
+      'constant',
+    ).points;
+    for (const frame of [0, 1, 6, 12, 18, 24]) {
+      const ev = evaluateShotAtTime(bakedShot, frameTimeMs(frame), baked).layers.find(
+        (l) => l.id === base.layerId,
+      )!;
+      expect(Math.abs(ev.x - expectedSamples[frame]!.x)).toBeLessThan(0.1);
+      expect(Math.abs(ev.y - expectedSamples[frame]!.y)).toBeLessThan(0.1);
+    }
+
+    // Native editing: manual edit on generated key updates evaluation cleanly.
+    const handEdited = service.applyKeys(
+      baked,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: frameTimeMs(12) },
+      { 'transform.offsetX': 0 },
+    );
+    expect(
+      evaluateShotAtTime(handEdited.shots[0]!, frameTimeMs(12), handEdited).layers.find(
+        (l) => l.id === base.layerId,
+      )!.x,
+    ).not.toBeCloseTo(expectedSamples[12]!.x);
+
+    // Non-zero start frame (6..18): neutral before frame 6, exact P0/P3, holds final offset after frame 18.
+    const delayed = service.applyCurveMotion(base.project, {
+      shotId: base.shotId,
+      layerId: base.layerId,
+      startFrame: 6,
+      endFrame: 18,
+      p1: { x: 450, y: 120 },
+      p2: { x: 750, y: 120 },
+      p3: { x: 800, y: 300 },
+      speedMode: 'constant',
+    });
+    const delayedShot = delayed.shots[0]!;
+    expect(evaluateShotAtTime(delayedShot, 0, delayed).layers.find((l) => l.id === base.layerId)).toMatchObject({
+      x: 400,
+      y: 300,
+    });
+    expect(evaluateShotAtTime(delayedShot, frameTimeMs(3), delayed).layers.find((l) => l.id === base.layerId)).toMatchObject({
+      x: 400,
+      y: 300,
+    });
+    expect(evaluateShotAtTime(delayedShot, frameTimeMs(6), delayed).layers.find((l) => l.id === base.layerId)).toMatchObject({
+      x: 400,
+      y: 300,
+    });
+    const atEnd = evaluateShotAtTime(delayedShot, frameTimeMs(18), delayed).layers.find((l) => l.id === base.layerId)!;
+    expect(atEnd.x).toBeCloseTo(800, 3);
+    expect(atEnd.y).toBeCloseTo(300, 3);
+    const afterEnd = evaluateShotAtTime(delayedShot, 1_500, delayed).layers.find((l) => l.id === base.layerId)!;
+    expect(afterEnd.x).toBeCloseTo(800, 3);
+    expect(afterEnd.y).toBeCloseTo(300, 3);
+
+    // 1-frame span and very short horizontal curve keep explicit equal-Y keys.
+    const oneFrame = service.applyCurveMotion(base.project, {
+      shotId: base.shotId,
+      layerId: base.layerId,
+      startFrame: 0,
+      endFrame: 1,
+      p1: { x: 400, y: 300 },
+      p2: { x: 400.5, y: 300 },
+      p3: { x: 401, y: 300 },
+      speedMode: 'constant',
+    });
+    const oneFrameLayer = oneFrame.shots[0]!.layers.find((l) => l.id === base.layerId)!;
+    if (oneFrameLayer.animationClip?.version !== 2) throw new Error('Expected v2 Clip');
+    expect(
+      oneFrameLayer.animationClip.tracks.find((t) => t.property === 'transform.offsetY')!.keys,
+    ).toHaveLength(2);
+
+    // Rejections: degenerate zero-length path, off-grid shot tail, existing X/Y track, Move/Shake events, locked source.
+    expect(() =>
+      service.applyCurveMotion(base.project, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 0,
+        endFrame: 12,
+        p1: { x: 400, y: 300 },
+        p2: { x: 400, y: 300 },
+        p3: { x: 400, y: 300 },
+        speedMode: 'constant',
+      }),
+    ).toThrow(/长度为 0/);
+
+    const offGridShot = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({ ...s, durationMs: 1_010 })),
+    });
+    expect(() =>
+      service.applyCurveMotion(offGridShot, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 0,
+        endFrame: 25,
+        p1,
+        p2,
+        p3,
+        speedMode: 'constant',
+      }),
+    ).toThrow(/合法帧/);
+
+    expect(() =>
+      service.applyCurveMotion(baked, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 0,
+        endFrame: 12,
+        p1,
+        p2,
+        p3,
+        speedMode: 'constant',
+      }),
+    ).toThrow(/已有 X\/Y 位移关键帧/);
+
+    const withMove = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({
+        ...s,
+        timelineEvents: [
+          {
+            id: '93000000-0000-4000-8000-000000000882',
+            type: 'move',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 250,
+            from: { x: 400, y: 300 },
+            to: { x: 500, y: 300 },
+            easing: 'linear',
+          },
+        ],
+      })),
+    });
+    expect(() =>
+      service.applyCurveMotion(withMove, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 12,
+        endFrame: 24,
+        p1,
+        p2,
+        p3,
+        speedMode: 'constant',
+      }),
+    ).toThrow(/移动或抖动事件/);
+
+    const withShake = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({
+        ...s,
+        timelineEvents: [
+          {
+            id: '93000000-0000-4000-8000-000000000883',
+            type: 'shake',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 250,
+            amplitudeX: 10,
+            amplitudeY: 10,
+            frequencyHz: 1,
+          },
+        ],
+      })),
+    });
+    expect(() =>
+      service.applyCurveMotion(withShake, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 12,
+        endFrame: 24,
+        p1,
+        p2,
+        p3,
+        speedMode: 'constant',
+      }),
+    ).toThrow(/移动或抖动事件/);
+
+    const locked = layerService.setLocked(base.project, base.shotId, base.layerId, true);
+    expect(() =>
+      service.applyCurveMotion(locked, {
+        shotId: base.shotId,
+        layerId: base.layerId,
+        startFrame: 0,
+        endFrame: 24,
+        p1,
+        p2,
+        p3,
+        speedMode: 'constant',
+      }),
+    ).toThrow(/已锁定/);
   });
 });

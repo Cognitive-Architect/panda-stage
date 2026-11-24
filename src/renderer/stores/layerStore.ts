@@ -8,6 +8,7 @@ import {
   type FlaShapeVertexTarget,
   type GridArrayInput,
   type Layer,
+  type LayerCurveMotionInput,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
@@ -201,6 +202,22 @@ export class LayerStore {
       this.editorStore.updateProject(result.project, '排兵布阵');
     }
     return result.layers;
+  }
+
+  applyCurveMotion(
+    layerId: string,
+    input: Omit<LayerCurveMotionInput, 'shotId' | 'layerId'>,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.motionService.applyCurveMotion(project, {
+      ...input,
+      shotId,
+      layerId,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '生成曲线运动');
+    }
+    return next;
   }
 
   setLocked(layerId: string, locked: boolean): Project {

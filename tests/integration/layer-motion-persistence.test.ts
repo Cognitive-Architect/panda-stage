@@ -9,6 +9,8 @@ import {
   ProjectSchema,
   editAnimationPropertyKey,
   evaluateShotAtTime,
+  exportFrameTimeMs,
+  frameTimeMs,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
   migrateProject,
@@ -797,6 +799,122 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
           });
         }
       }
+      selection.dispose();
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('persists baked curve motion + manual key edit across save/reopen and agrees across Stage, Preview, and Export including non-integer-ms frame mappings (#1269 A02)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-curve-motion-'));
+    try {
+      const root = path.join(parent, 'curve-motion.pandastage');
+      await mkdir(root);
+      const base = graphicFaceProject();
+      const emptyProject = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const layers = new LayerService();
+      const placed = layers.createFromAnimation(emptyProject, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 400, y: 300 },
+      });
+
+      const store = new EditorProjectStore();
+      store.open(root, placed.project);
+      const shots = { getCurrentShotId: () => IDS.shot };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      selection.select(placed.layer.id);
+      const layerStore = new LayerStore(store, shots, layers, selection);
+
+      layerStore.applyCurveMotion(placed.layer.id, {
+        startFrame: 0,
+        endFrame: 24,
+        p1: { x: 450, y: 80 },
+        p2: { x: 850, y: 80 },
+        p3: { x: 900, y: 300 },
+        speedMode: 'constant',
+      });
+      expect(store.history.getSnapshot().undoCount).toBe(1);
+
+      // Manually edit one generated key at frame 12 (500ms) via native LayerMotionService.
+      const motion = new LayerMotionService();
+      const handEdited = motion.applyKeys(
+        store.getSnapshot()!.project,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: frameTimeMs(12) },
+        { 'transform.offsetY': -180 },
+      );
+      store.updateProject(handEdited, '微调曲线关键帧');
+
+      const projectService = new ProjectService();
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(placed.project));
+      await projectService.save(root, store.getSnapshot()!.project, 1);
+
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(store.getSnapshot()!.project);
+      expect(reopened.project.animations).toEqual(placed.project.animations);
+      expect(reopened.project.assets).toEqual(placed.project.assets);
+
+      const shot = reopened.project.shots[0]!;
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      // Check integer-ms frames (0, 12, 24) and non-integer-ms export frames (frame 1 -> 41ms vs 42ms, frame 13 -> 541ms vs 542ms).
+      for (const frame of [0, 1, 12, 13, 24]) {
+        const authoringMs = frameTimeMs(frame);
+        const exportMs = exportFrameTimeMs(frame);
+        const stage = evaluateShotAtTime(shot, authoringMs, reopened.project);
+        const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
+        const exportedAtAuthoring = evaluateExportShotAtTime(reopened.project, shot, authoringMs);
+        const exportedAtExportMs = evaluateExportShotAtTime(reopened.project, shot, exportMs);
+        const editorModel = buildEditorTemporalCanvasModel({
+          project: reopened.project,
+          shot,
+          currentTimeMs: authoringMs,
+          readyAssetIds: new Set(reopened.project.assets.map((a) => a.id)),
+          previousVisuals: new Map(),
+        });
+        const exportModel = buildStageRenderModel(reopened.project, exportedAtAuthoring, urls);
+
+        const stageLayer = stage.layers.find((l) => l.id === placed.layer.id)!;
+        expect(preview.layers.find((l) => l.id === placed.layer.id)).toMatchObject({
+          x: stageLayer.x,
+          y: stageLayer.y,
+        });
+        expect(exportedAtAuthoring.layers.find((l) => l.id === placed.layer.id)).toMatchObject({
+          x: stageLayer.x,
+          y: stageLayer.y,
+        });
+        expect(editorModel.stageModel.layers.find((l) => l.layer.id === placed.layer.id)!.render).toMatchObject({
+          x: stageLayer.x,
+          y: stageLayer.y,
+        });
+        expect(exportModel.layers.find((l) => l.id === placed.layer.id)!.render).toMatchObject({
+          x: stageLayer.x,
+          y: stageLayer.y,
+        });
+        // Non-integer-ms export frame time stays within 1ms linear interpolation of authoring frame.
+        const exportSample = exportedAtExportMs.layers.find((l) => l.id === placed.layer.id)!;
+        expect(Math.abs(exportSample.x - stageLayer.x)).toBeLessThan(1.5);
+        expect(Math.abs(exportSample.y - stageLayer.y)).toBeLessThan(1.5);
+      }
+      // Manual edit at frame 12 (500ms) persisted cleanly: y = 300 - 180 = 120.
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(12), reopened.project).layers.find(
+          (l) => l.id === placed.layer.id,
+        )!.y,
+      ).toBeCloseTo(120);
       selection.dispose();
     } finally {
       await rm(parent, { recursive: true, force: true });

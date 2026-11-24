@@ -24,7 +24,14 @@ import {
 import {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
+  evaluateShotAtTime,
 } from '../evaluate-shot-at-time';
+import {
+  MIN_CURVE_ARC_LENGTH,
+  sampleCubicBezierBySteps,
+  type CurveMotionSpeedMode,
+  type Point,
+} from '../geometry';
 import {
   createLayerAnimationClip,
   evaluateLayerRelativeMotionValues,
@@ -36,6 +43,7 @@ import {
 import { isFlaGraphicDefinition } from '../models/animation';
 import type {
   AnimationInterpolation,
+  AnimationKey,
   AnimationProperty,
   LayerAnimationClip,
   LayerTargetRef,
@@ -45,7 +53,11 @@ import type { Layer } from '../models/layer';
 import { ProjectSchema, type Project } from '../models/project';
 import type { Shot } from '../models/shot';
 import { recognizePositionChain } from '../position-chain';
-import { isValidFrameTime } from '../timeline/frame-grid';
+import {
+  frameTimeMs,
+  isValidFrameTime,
+  lastValidFrameTime,
+} from '../timeline/frame-grid';
 import { normalizeLayerRotation } from './LayerService';
 import { PositionProjectService } from './PositionProjectService';
 import { applyUserMotionPresetTracks, captureUserMotionPreset } from '../user-motion-presets';
@@ -86,6 +98,92 @@ export interface LayerDisplayTransformPatch {
   readonly scaleX?: number;
   readonly scaleY?: number;
   readonly rotationDeg?: number;
+}
+
+export interface LayerCurveMotionInput extends LayerMotionTargetInput {
+  readonly startFrame: number;
+  readonly endFrame: number;
+  readonly p1: Point;
+  readonly p2: Point;
+  readonly p3: Point;
+  readonly speedMode: CurveMotionSpeedMode;
+}
+
+export function getLayerCurveMotionConflict(
+  shot: Shot,
+  layer: Layer,
+): string | null {
+  if (shot.backgroundLayerId === layer.id) {
+    return '背景图层不能生成曲线运动。';
+  }
+  const existingClip = clipV2(layer);
+  if (
+    existingClip?.tracks.some(
+      (track) =>
+        track.property === 'transform.offsetX' ||
+        track.property === 'transform.offsetY',
+    )
+  ) {
+    return '当前图层已有 X/Y 位移关键帧，请先清除位移关键帧或选择无位移动画的图形图层。';
+  }
+  if (
+    shot.timelineEvents.some(
+      (event) =>
+        event.layerId === layer.id &&
+        (event.type === 'move' || event.type === 'shake'),
+    )
+  ) {
+    return '当前图层存在时间轴移动或抖动事件，请先移除相关位置事件后再生成曲线运动。';
+  }
+  return null;
+}
+
+function solveLayerRelativeOffsetForStagePoint(
+  localPivot: Point,
+  prePose: LayerBasePose,
+  flipX: boolean,
+  relRotationDeg: number,
+  relScaleX: number,
+  relScaleY: number,
+  stagePoint: { readonly x?: number; readonly y?: number },
+): { readonly offsetX?: number; readonly offsetY?: number } {
+  const vBase = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg,
+    prePose.scaleX,
+    prePose.scaleY,
+    flipX,
+  );
+  const vFinal = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg + relRotationDeg,
+    prePose.scaleX * relScaleX,
+    prePose.scaleY * relScaleY,
+    flipX,
+  );
+  return {
+    ...(stagePoint.x !== undefined
+      ? { offsetX: stagePoint.x - prePose.x + vFinal.x - vBase.x }
+      : {}),
+    ...(stagePoint.y !== undefined
+      ? { offsetY: stagePoint.y - prePose.y + vFinal.y - vBase.y }
+      : {}),
+  };
+}
+
+function assertStagePointInBounds(point: Point, label: string): void {
+  if (
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y) ||
+    point.x < 0 ||
+    point.x > PROJECT_WIDTH ||
+    point.y < 0 ||
+    point.y > PROJECT_HEIGHT
+  ) {
+    throw new Error(
+      `${label}坐标必须位于画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}）内。`,
+    );
+  }
 }
 
 function layerTargetRef(layerId: string): LayerTargetRef {
@@ -272,6 +370,130 @@ export class LayerMotionService {
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }
 
+  /**
+   * Bake a single-segment 2D cubic Bézier curve into explicit frame-grid
+   * `transform.offsetX` and `transform.offsetY` keys on the Layer's v2 Clip.
+   */
+  applyCurveMotion(project: Project, input: LayerCurveMotionInput): Project {
+    const { shot, layer, animation } = assertMutableLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const conflict = getLayerCurveMotionConflict(shot, layer);
+    if (conflict) {
+      throw new Error(conflict);
+    }
+
+    if (
+      !Number.isSafeInteger(input.startFrame) ||
+      !Number.isSafeInteger(input.endFrame) ||
+      input.startFrame < 0 ||
+      input.endFrame <= input.startFrame
+    ) {
+      throw new Error('起止帧必须是非负整数，且止帧必须晚于起帧至少 1 帧。');
+    }
+    const maxValidMs = lastValidFrameTime(shot.durationMs);
+    const startTimeMs = frameTimeMs(input.startFrame);
+    const endTimeMs = frameTimeMs(input.endFrame);
+    if (
+      !isValidFrameTime(startTimeMs) ||
+      !isValidFrameTime(endTimeMs) ||
+      endTimeMs > maxValidMs ||
+      endTimeMs > shot.durationMs
+    ) {
+      throw new Error('起止帧必须位于当前镜头的合法帧范围内。');
+    }
+    if (input.speedMode !== 'constant' && input.speedMode !== 'ease-in-out') {
+      throw new Error('请选择有效的曲线速度模式。');
+    }
+
+    const evaluatedAtStart = evaluateShotAtTime(shot, startTimeMs, project).layers.find(
+      (candidate) => candidate.id === layer.id,
+    );
+    if (!evaluatedAtStart) {
+      throw new Error(`找不到图层：${layer.id}`);
+    }
+    const p0: Point = { x: evaluatedAtStart.x, y: evaluatedAtStart.y };
+    assertStagePointInBounds(p0, '起点 P0');
+    assertStagePointInBounds(input.p1, '控制点 P1');
+    assertStagePointInBounds(input.p2, '控制点 P2');
+    assertStagePointInBounds(input.p3, '终点 P3');
+
+    const stepCount = input.endFrame - input.startFrame;
+    const sampled = sampleCubicBezierBySteps(
+      { p0, p1: input.p1, p2: input.p2, p3: input.p3 },
+      stepCount,
+      input.speedMode,
+    );
+    if (sampled.totalLength <= MIN_CURVE_ARC_LENGTH) {
+      throw new Error('曲线路径长度为 0，请调整控制点或终点后再生成。');
+    }
+
+    const existingClip = clipV2(layer);
+    const clip = existingClip
+      ? structuredClone(existingClip)
+      : createLayerAnimationClip(project, shot.id, layer.id);
+    const basis = clip.targetBases[0]!;
+    const sourceCanvas = basis.sourceCanvas ?? animation.source.canvas;
+    const localPivot = layerPivotLocalOffset(basis.pivot, sourceCanvas);
+
+    const offsetXKeys: AnimationKey[] = [];
+    const offsetYKeys: AnimationKey[] = [];
+    if (startTimeMs > 0) {
+      offsetXKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+      offsetYKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+    }
+
+    for (let step = 0; step <= stepCount; step += 1) {
+      const timeMs = frameTimeMs(input.startFrame + step);
+      const samplePoint = sampled.points[step]!;
+      const preTrack = evaluateLayerPreTrackState(shot, layer, timeMs, project);
+      const currentRel = evaluateLayerRelativeMotionValues(
+        existingClip,
+        layer.id,
+        timeMs,
+      );
+      const prePose: LayerBasePose = {
+        x: preTrack.motion.displayPosition.x,
+        y: preTrack.motion.displayPosition.y,
+        scaleX: preTrack.scaleX,
+        scaleY: preTrack.scaleY,
+        rotationDeg: preTrack.rotationDeg,
+      };
+      const solved = solveLayerRelativeOffsetForStagePoint(
+        localPivot,
+        prePose,
+        preTrack.flipX,
+        currentRel['transform.rotationDeg'],
+        currentRel['transform.scaleX'],
+        currentRel['transform.scaleY'],
+        samplePoint,
+      );
+      offsetXKeys.push({
+        timeMs,
+        value: solved.offsetX!,
+        interpolationToNext: 'linear',
+      });
+      offsetYKeys.push({
+        timeMs,
+        value: solved.offsetY!,
+        interpolationToNext: 'linear',
+      });
+    }
+
+    const target = layerTargetRef(layer.id);
+    const nextTracks: LayerAnimationClip['tracks'] = [
+      ...clip.tracks,
+      { target, property: 'transform.offsetX', keys: offsetXKeys },
+      { target, property: 'transform.offsetY', keys: offsetYKeys },
+    ];
+    return this.commitLayerClip(project, shot.id, layer.id, {
+      ...clip,
+      tracks: nextTracks,
+    });
+  }
+
   /** Write relative Property Track keys at `input.timeMs` (no static Layer write). */
   applyKeys(
     project: Project,
@@ -404,27 +626,20 @@ export class LayerMotionService {
         changes['transform.scaleY'] = nextRelScaleY;
       }
       if (patch.x !== undefined || patch.y !== undefined) {
-        const vBase = layerPivotStageVector(
+        const solved = solveLayerRelativeOffsetForStagePoint(
           localPivot,
-          prePose.rotationDeg,
-          prePose.scaleX,
-          prePose.scaleY,
+          prePose,
           preTrack.flipX,
+          nextRelRot,
+          nextRelScaleX,
+          nextRelScaleY,
+          { x: patch.x, y: patch.y },
         );
-        const vFinal = layerPivotStageVector(
-          localPivot,
-          prePose.rotationDeg + nextRelRot,
-          prePose.scaleX * nextRelScaleX,
-          prePose.scaleY * nextRelScaleY,
-          preTrack.flipX,
-        );
-        if (patch.x !== undefined) {
-          changes['transform.offsetX'] =
-            patch.x - prePose.x + vFinal.x - vBase.x;
+        if (solved.offsetX !== undefined) {
+          changes['transform.offsetX'] = solved.offsetX;
         }
-        if (patch.y !== undefined) {
-          changes['transform.offsetY'] =
-            patch.y - prePose.y + vFinal.y - vBase.y;
+        if (solved.offsetY !== undefined) {
+          changes['transform.offsetY'] = solved.offsetY;
         }
       }
       return this.applyKeys(

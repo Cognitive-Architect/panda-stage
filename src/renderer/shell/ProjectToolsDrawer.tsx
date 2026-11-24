@@ -1,8 +1,9 @@
-import { ArrowLeft, LayoutGrid, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
+import { CurveMotionPanel } from '../features/tools/CurveMotionPanel';
 import { GridArrayPanel } from '../features/tools/GridArrayPanel';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { DesktopAutomationCard } from './DesktopAutomationCard';
@@ -12,7 +13,7 @@ export interface ProjectToolsDrawerProps {
   onPreview?(project: Project): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets' | 'grid-array';
+type ProjectToolsView = 'home' | 'action-presets' | 'grid-array' | 'curve-motion';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -65,6 +66,8 @@ export function ProjectToolsDrawer({
           <h2 id="project-tools-heading">
             {view === 'grid-array' ? (
               '排兵布阵'
+            ) : view === 'curve-motion' ? (
+              '曲线运动'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -160,6 +163,25 @@ export function ProjectToolsDrawer({
               <span>打开排兵布阵</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-curve-motion-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-curve-motion-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-curve-motion-heading">曲线运动</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="curve-motion"
+              data-testid="project-tools-curve-motion"
+              onClick={() => setView('curve-motion')}
+              type="button"
+            >
+              <DecorativeIcon icon={Spline} size={18} />
+              <span>打开曲线运动</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -170,13 +192,21 @@ export function ProjectToolsDrawer({
         >
           <LegacyWorkspace onPreview={onPreview} />
         </section>
-      ) : (
+      ) : view === 'grid-array' ? (
         <section
           aria-label="排兵布阵"
           className="project-tools-grid-array-view"
           data-testid="project-tools-grid-array-view"
         >
           <GridArrayPanel onCancel={() => setView('home')} />
+        </section>
+      ) : (
+        <section
+          aria-label="曲线运动"
+          className="project-tools-grid-array-view"
+          data-testid="project-tools-curve-motion-view"
+        >
+          <CurveMotionPanel onCancel={() => setView('home')} />
         </section>
       )}
     </section>
