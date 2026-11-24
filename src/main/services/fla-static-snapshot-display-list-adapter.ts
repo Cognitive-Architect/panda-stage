@@ -42,6 +42,12 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
+import {
+  FLA_STATIC_TEXT_LIMITS,
+  type FlaStaticTextAlignment,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextRun,
+} from '../../shared/fla-static-text';
 import { ikContainerPlaybackLength, selectFlaGraphicFrameIndex } from './fla-nested-graphic-frame-selector';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
@@ -138,6 +144,7 @@ export interface FlaStaticSnapshotDisplaySource {
   readonly movieClipSymbols?: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>;
   readonly symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  readonly staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>;
   /** Restore base-source parsing state before resolving a cached frame-zero context. */
   resetFrameBuildState(): void;
   /** Build an already-selected Scene frame without changing symbol frame semantics. */
@@ -175,6 +182,7 @@ export type FlaStaticSnapshotDisplaySourceBuildResult =
 
 interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
+  readonly staticTextBlocks: Map<string, FlaStaticTextDescriptor>;
   readonly sourceFps: number;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
   readonly ikPoses: WeakMap<FlaXflElementBlock, LayerSampleResult<readonly FlaDisplayListMatrix[]>>;
@@ -677,6 +685,149 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
   };
 }
 
+function extractElementInnerText(blockXml: string, tagName: string): string {
+  const openEnd = blockXml.indexOf('>');
+  if (openEnd < 0 || blockXml[openEnd - 1] === '/') return '';
+  const closeToken = `</${tagName}>`;
+  const closeStart = blockXml.lastIndexOf(closeToken);
+  if (closeStart <= openEnd) return '';
+  const raw = blockXml.slice(openEnd + 1, closeStart);
+  const cdataMatch = /^\s*<!\[CDATA\[([\s\S]*)\]\]>\s*$/u.exec(raw);
+  if (cdataMatch) return cdataMatch[1] ?? '';
+  return decodeXmlEntities(raw);
+}
+
+function parseStaticTextColor(rawColor: string | undefined, rawAlpha: string | undefined): {
+  readonly fillColor: string;
+  readonly alpha: number;
+} | null {
+  let fillColor = '#000000';
+  let alpha = 1;
+  if (rawColor !== undefined && rawColor.trim() !== '') {
+    const trimmed = rawColor.trim();
+    if (/^#[0-9a-f]{6}$/iu.test(trimmed)) {
+      fillColor = trimmed.toLowerCase();
+    } else if (/^#[0-9a-f]{8}$/iu.test(trimmed)) {
+      fillColor = trimmed.slice(0, 7).toLowerCase();
+      alpha = Number.parseInt(trimmed.slice(7, 9), 16) / 255;
+    } else if (/^#[0-9a-f]{3}$/iu.test(trimmed)) {
+      fillColor = `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+    } else {
+      return null;
+    }
+  }
+  if (rawAlpha !== undefined && rawAlpha.trim() !== '') {
+    const parsedAlpha = Number(rawAlpha);
+    if (!Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) return null;
+    alpha *= parsedAlpha;
+  }
+  return { fillColor, alpha: Math.max(0, Math.min(1, alpha)) };
+}
+
+function parseStaticTextDescriptor(
+  element: FlaXflElementBlock,
+): { readonly ok: true; readonly value: FlaStaticTextDescriptor | null } | { readonly ok: false; readonly reason: string } {
+  const orientation = element.attributes.orientation?.trim().toLowerCase();
+  if (orientation && orientation !== 'horizontal') {
+    return { ok: false, reason: 'Vertical or non-horizontal static text is not supported yet' };
+  }
+  const left = element.attributes.left !== undefined ? Number(element.attributes.left) : 0;
+  const width = element.attributes.width !== undefined ? Number(element.attributes.width) : 100;
+  const height = element.attributes.height !== undefined ? Number(element.attributes.height) : 20;
+  if (
+    !Number.isFinite(left) || Math.abs(left) > FLA_STATIC_TEXT_LIMITS.maxBoxDimension ||
+    !Number.isFinite(width) || width <= 0 || width > FLA_STATIC_TEXT_LIMITS.maxBoxDimension ||
+    !Number.isFinite(height) || height <= 0 || height > FLA_STATIC_TEXT_LIMITS.maxBoxDimension
+  ) {
+    return { ok: false, reason: 'Static text box dimensions are invalid or exceed supported bounds' };
+  }
+
+  const textRunsContainer = directChild(element.xml, element.name, 'textRuns');
+  const runNodes = textRunsContainer
+    ? getFlaXflDirectChildren(textRunsContainer.xml, textRunsContainer.name).filter((n) => n.name === 'DOMTextRun')
+    : [];
+  if (runNodes.length > FLA_STATIC_TEXT_LIMITS.maxRunsPerText) {
+    return { ok: false, reason: `Static text exceeds ${FLA_STATIC_TEXT_LIMITS.maxRunsPerText} runs` };
+  }
+
+  const runs: FlaStaticTextRun[] = [];
+  let totalChars = 0;
+  for (const runNode of runNodes) {
+    const charactersNode = directChild(runNode.xml, runNode.name, 'characters');
+    const characters = charactersNode ? extractElementInnerText(charactersNode.xml, charactersNode.name) : '';
+    totalChars += characters.length;
+    if (totalChars > FLA_STATIC_TEXT_LIMITS.maxCharsPerText) {
+      return { ok: false, reason: `Static text exceeds ${FLA_STATIC_TEXT_LIMITS.maxCharsPerText} characters` };
+    }
+
+    const attrsContainer = directChild(runNode.xml, runNode.name, 'textAttrs');
+    const attrsNode = attrsContainer ? directChild(attrsContainer.xml, attrsContainer.name, 'DOMTextAttrs') : undefined;
+    const attrs = attrsNode?.attributes ?? {};
+
+    const rawAlign = attrs.alignment?.trim().toLowerCase() ?? 'left';
+    const alignment: FlaStaticTextAlignment =
+      rawAlign === 'center' || rawAlign === 'right' || rawAlign === 'justify' ? rawAlign : 'left';
+
+    const size = attrs.size !== undefined ? Number(attrs.size) : 12;
+    if (!Number.isFinite(size) || size < FLA_STATIC_TEXT_LIMITS.minFontSize || size > FLA_STATIC_TEXT_LIMITS.maxFontSize) {
+      return { ok: false, reason: 'Static text font size is invalid or exceeds supported bounds' };
+    }
+    const lineHeight = attrs.lineHeight !== undefined ? Number(attrs.lineHeight) : size * 1.2;
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0 || lineHeight > FLA_STATIC_TEXT_LIMITS.maxLineHeight) {
+      return { ok: false, reason: 'Static text lineHeight is invalid or exceeds supported bounds' };
+    }
+    const lineSpacing = attrs.lineSpacing !== undefined ? Number(attrs.lineSpacing) : 0;
+    if (!Number.isFinite(lineSpacing) || Math.abs(lineSpacing) > FLA_STATIC_TEXT_LIMITS.maxLineSpacing) {
+      return { ok: false, reason: 'Static text lineSpacing is invalid or exceeds supported bounds' };
+    }
+    const letterSpacing = attrs.letterSpacing !== undefined ? Number(attrs.letterSpacing) : 0;
+    if (!Number.isFinite(letterSpacing) || Math.abs(letterSpacing) > FLA_STATIC_TEXT_LIMITS.maxLetterSpacing) {
+      return { ok: false, reason: 'Static text letterSpacing is invalid or exceeds supported bounds' };
+    }
+
+    const color = parseStaticTextColor(attrs.fillColor, attrs.alpha);
+    if (!color) {
+      return { ok: false, reason: 'Static text fill color or alpha is invalid' };
+    }
+
+    const parseOptionalBound = (raw: string | undefined): number | undefined | null => {
+      if (raw === undefined || raw.trim() === '') return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && Math.abs(n) <= FLA_STATIC_TEXT_LIMITS.maxBoxDimension ? n : null;
+    };
+    const leftMargin = parseOptionalBound(attrs.leftMargin);
+    const rightMargin = parseOptionalBound(attrs.rightMargin);
+    const indent = parseOptionalBound(attrs.indent);
+    if (leftMargin === null || rightMargin === null || indent === null) {
+      return { ok: false, reason: 'Static text margin or indent is invalid' };
+    }
+
+    const rawFace = attrs.face?.trim();
+    runs.push({
+      characters,
+      alignment,
+      size,
+      lineHeight,
+      lineSpacing,
+      letterSpacing,
+      ...(rawFace ? { face: rawFace.slice(0, FLA_STATIC_TEXT_LIMITS.maxFontFaceLength) } : {}),
+      fillColor: color.fillColor,
+      alpha: color.alpha,
+      bold: attrs.bold === 'true',
+      italic: attrs.italic === 'true',
+      ...(attrs.underline === 'true' ? { underline: true } : {}),
+      ...(leftMargin !== undefined ? { leftMargin } : {}),
+      ...(rightMargin !== undefined ? { rightMargin } : {}),
+      ...(indent !== undefined ? { indent } : {}),
+    });
+  }
+
+  if (totalChars === 0) {
+    return { ok: true, value: null };
+  }
+  return { ok: true, value: { left, width, height, runs } };
+}
+
 function parseDisplayElements(
   container: FlaXflElementBlock,
   context: ElementParseContext,
@@ -694,7 +845,15 @@ function parseDisplayElements(
     if (!elementIsVisible(child.attributes)) continue;
 
     const path = `${context.path}/${index}`;
-    if (child.name !== 'DOMGroup' && child.name !== 'DOMShape' &&
+    if (child.name === 'DOMDynamicText' || child.name === 'DOMInputText' || child.name === 'DOMTLFText') {
+      if (context.unsupportedDisplayReasons.length === 0) {
+        context.unsupportedDisplayReasons.push(
+          `Static preview does not support ${child.name} yet`,
+        );
+      }
+      continue;
+    }
+    if (child.name !== 'DOMGroup' && child.name !== 'DOMShape' && child.name !== 'DOMStaticText' &&
         child.name !== 'DOMBitmapInstance' && child.name !== 'DOMSymbolInstance') {
       if (context.unsupportedDisplayReasons.length === 0) {
         context.unsupportedDisplayReasons.push(
@@ -768,6 +927,34 @@ function parseDisplayElements(
       children.push({
         kind: 'shape',
         shapeId,
+        sourceAddress: `${context.scope}/${path}`,
+        sourceParentFrameIndex: context.sourceParentFrameIndex,
+        sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+        ...(context.sourceParentSpanTweenType !== undefined
+          ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+          : {}),
+        ...(localTransform ? { localTransform } : {}),
+      });
+      continue;
+    }
+
+    if (child.name === 'DOMStaticText') {
+      const parsedText = parseStaticTextDescriptor(child);
+      if (!parsedText.ok) {
+        if (context.unsupportedDisplayReasons.length === 0) {
+          context.unsupportedDisplayReasons.push(parsedText.reason);
+        }
+        continue;
+      }
+      if (!parsedText.value) {
+        // Empty static text produces no drawable ink and no error.
+        continue;
+      }
+      const textId = `fla-text-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`;
+      context.state.staticTextBlocks.set(textId, parsedText.value);
+      children.push({
+        kind: 'text',
+        textId,
         sourceAddress: `${context.scope}/${path}`,
         sourceParentFrameIndex: context.sourceParentFrameIndex,
         sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
@@ -2828,6 +3015,7 @@ function oneFrameScenePlaybackCount(
       probeState = {
         ...state,
         shapeBlocks: new Map(),
+        staticTextBlocks: new Map(),
         visitedNodeCount: 0,
       };
     }
@@ -3027,12 +3215,14 @@ function* adaptFlaXflDisplaySourceSteps(
   libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
 ): Generator<void, FlaStaticSnapshotDisplaySourceBuildResult, void> {
   const shapeBlocks = new Map<string, string>();
+  const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>();
   const documentAttributes = firstElementToken(docXml, 'DOMDocument')?.attributes;
   const rawFps = documentAttributes?.frameRate;
   const sourceFps = rawFps === undefined && documentAttributes?.creatorInfo === 'Adobe Animate' &&
     /^Saved by Animate\b/u.test(documentAttributes.versionInfo ?? '') ? 24 : Number(rawFps);
   const state: SourceBuildState = {
     shapeBlocks,
+    staticTextBlocks,
     sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
     objectMotionCurves: new WeakMap(),
     ikPoses: new WeakMap(),
@@ -3177,6 +3367,7 @@ function* adaptFlaXflDisplaySourceSteps(
   // each resolution's node budget and shape table scoped to that frame so a
   // reused source behaves like a fresh adapter invocation.
   const baseShapeBlocks = new Map(shapeBlocks);
+  const baseStaticTextBlocks = new Map(staticTextBlocks);
   const baseVisitedNodeCount = state.visitedNodeCount;
   let frameBuildStateIsBase = true;
   const resetFrameBuildState = (): void => {
@@ -3184,6 +3375,8 @@ function* adaptFlaXflDisplaySourceSteps(
     state.visitedNodeCount = baseVisitedNodeCount;
     shapeBlocks.clear();
     for (const [shapeId, xml] of baseShapeBlocks) shapeBlocks.set(shapeId, xml);
+    staticTextBlocks.clear();
+    for (const [textId, descriptor] of baseStaticTextBlocks) staticTextBlocks.set(textId, descriptor);
     frameBuildStateIsBase = true;
   };
 
@@ -3197,6 +3390,7 @@ function* adaptFlaXflDisplaySourceSteps(
       movieClipSymbols,
       symbols,
       shapeBlocks,
+      staticTextBlocks,
       resetFrameBuildState,
       buildSceneFrameContext: (timelineXml, frameIndex, scope) => {
         resetFrameBuildState();

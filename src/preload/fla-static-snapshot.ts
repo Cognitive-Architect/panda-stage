@@ -10,10 +10,16 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
+import {
+  FLA_STATIC_TEXT_LIMITS,
+  isValidFlaStaticTextRenderItem,
+  type FlaStaticTextRenderItem,
+} from '../shared/fla-static-text';
 
 export interface FlaSnapshotRenderRequest {
   requestId: string;
   svg: string;
+  staticTexts?: readonly FlaStaticTextRenderItem[];
 }
 
 export interface FlaSnapshotRenderResult {
@@ -40,7 +46,19 @@ export interface FlaSnapshotRenderError {
 function isRenderRequest(value: unknown): value is FlaSnapshotRenderRequest {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.requestId === 'string' && typeof candidate.svg === 'string';
+  if (typeof candidate.requestId !== 'string' || typeof candidate.svg !== 'string') {
+    return false;
+  }
+  if (candidate.staticTexts !== undefined) {
+    if (
+      !Array.isArray(candidate.staticTexts) ||
+      candidate.staticTexts.length > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition ||
+      !candidate.staticTexts.every(isValidFlaStaticTextRenderItem)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isRenderResult(value: unknown): value is FlaSnapshotRenderResult {

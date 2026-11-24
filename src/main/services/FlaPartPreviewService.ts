@@ -245,6 +245,7 @@ function contextMaskDependencies(
 
 function adapterIdentity(element: FlaDisplayListElement): string | null {
   if (element.kind === 'shape') return element.shapeId;
+  if (element.kind === 'text') return element.textId;
   if (element.kind === 'group') return element.groupId;
   if (element.kind === 'symbol' || element.kind === 'bitmap') return element.libraryItemName;
   return null;
@@ -767,7 +768,7 @@ function buildGroupEditPreview(input: {
   const children: FlaGraphicGroupEditPreview['children'][number][] = [];
   let previewBytes = 0;
   for (const child of group.children) {
-    if (child.kind === 'group') return undefined;
+    if (child.kind === 'group' || child.kind === 'text') return undefined;
     const sourceIdentity = child.kind === 'shape' ? child.shapeId : child.libraryItemName;
     const localArtNode: FlaResolvedDisplayNode = {
       ...child,
@@ -1085,6 +1086,8 @@ function collectDisplayListProvenanceTokens(
     for (const node of nodes) {
       if (node.kind === 'shape') {
         tokens.add(`opaque:shape:${node.shapeId}`);
+      } else if (node.kind === 'text') {
+        tokens.add(`opaque:text:${node.textId}`);
       } else if (node.kind === 'bitmap') {
         tokens.add(`bitmap:${node.libraryItemName}`);
       } else if (node.opaque) {
@@ -1110,6 +1113,9 @@ function collectDisplayNodeDescendantTokens(
   }
   if (node.kind === 'shape') {
     return { tokens: [`opaque:shape:${node.shapeId}`], hasSourceless: false };
+  }
+  if (node.kind === 'text') {
+    return { tokens: [`opaque:text:${node.textId}`], hasSourceless: false };
   }
   if (node.opaque) {
     return node.opaque.sourceRef
@@ -1153,6 +1159,19 @@ function extractAuthorPoseNodesFromDisplayList(
           opaqueKind: 'shape',
           ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
           sourceRef: item.shapeId,
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        continue;
+      }
+      if (item.kind === 'text') {
+        matchedTokens.add(`opaque:text:${item.textId}`);
+        nodes.push({
+          kind: 'opaque',
+          opaqueKind: 'text',
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          sourceRef: item.textId,
           ancestorSymbolChain,
           authoredWorldTransform: { ...item.worldTransform },
           drawOrderRank: currentRank,

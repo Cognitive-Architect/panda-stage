@@ -62,6 +62,12 @@ import {
 } from './fla-display-list-resolver';
 import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
+  FLA_STATIC_TEXT_LIMITS,
+  layoutFlaStaticText,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
+import {
   buildVariableWidthStrokeOutline,
   type VariableWidthMarker,
 } from './fla-variable-width-stroke';
@@ -116,6 +122,8 @@ export interface BuildSvgSuccess {
   hasRenderablePath: boolean;
   readonly maskWarning?: string;
   readonly ikPoseWarning?: string;
+  /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
+  readonly staticTexts?: readonly FlaStaticTextRenderItem[];
 }
 
 export interface BuildSvgFailure {
@@ -2640,6 +2648,7 @@ function resolveTargetDisplayList(
   readonly ok: true;
   readonly displayList: FlaResolvedDisplayList;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  readonly staticTextBlocks: ReadonlyMap<string, FlaStaticTextDescriptor>;
 } | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
   let playbackFrameIndex: number | undefined;
@@ -2720,8 +2729,9 @@ function resolveTargetDisplayList(
   }
 
   // Selected-frame parsing resets the adapter's mutable source map each time.
-  // Keep only base blocks plus Shape blocks referenced by selected contexts.
+  // Keep only base blocks plus Shape/Text blocks referenced by selected contexts.
   const shapeBlocks = new Map(source.shapeBlocks);
+  const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>(source.staticTextBlocks ?? []);
   const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
   let shapeBlockBudgetExceeded = false;
   const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
@@ -2736,6 +2746,15 @@ function resolveTargetDisplayList(
           return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
         }
         shapeBlocks.set(element.shapeId, xml);
+      } else if (element.kind === 'text') {
+        if (staticTextBlocks.has(element.textId)) continue;
+        const descriptor = source.staticTextBlocks?.get(element.textId);
+        if (descriptor === undefined) return `Selected Graphic static text source not found: ${element.textId}`;
+        if (staticTextBlocks.size >= FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition * 4) {
+          shapeBlockBudgetExceeded = true;
+          return `Nested Graphic static text blocks exceeded budget`;
+        }
+        staticTextBlocks.set(element.textId, descriptor);
       } else if (element.kind === 'group') {
         const nestedError = captureShapeBlocks(element.elements);
         if (nestedError) return nestedError;
@@ -2792,7 +2811,7 @@ function resolveTargetDisplayList(
 
   const resolved = resolveFlaDisplayList(nested.resolverInput);
   if (!resolved.ok) return mapResolverFailure(resolved);
-  return { ok: true, displayList: resolved.displayList, shapeBlocks };
+  return { ok: true, displayList: resolved.displayList, shapeBlocks, staticTextBlocks };
 }
 
 function catalogSupportReason(
@@ -2800,6 +2819,7 @@ function catalogSupportReason(
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
+  staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>,
 ): { unsupportedReason: string | null; isBlank: boolean } {
   let drawableCount = 0;
   let reason: string | null = null;
@@ -2813,6 +2833,12 @@ function catalogSupportReason(
     if (node.kind === 'bitmap') {
       const media = resolveBitmapMedia(node.libraryItemName);
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
+      return;
+    }
+    if (node.kind === 'text') {
+      if (!staticTextBlocks?.has(node.textId)) {
+        reason = 'Static text source not found: ' + node.textId;
+      }
       return;
     }
     const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -2954,7 +2980,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true, resolved.staticTextBlocks)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,
@@ -2974,6 +3000,7 @@ export async function buildRenderableTargetCatalog(
         stageWidth: source.stageWidth,
         stageHeight: source.stageHeight,
         shapeBlocks: resolved.shapeBlocks,
+        staticTextBlocks: resolved.staticTextBlocks,
         resolveBitmapMedia,
         metadataOnlyBitmaps: options.metadataOnlyBitmaps,
       });
@@ -3254,6 +3281,7 @@ export async function buildSvgForRenderTarget(
     stageWidth: source.stageWidth,
     stageHeight: source.stageHeight,
     shapeBlocks: resolved.shapeBlocks,
+    staticTextBlocks: resolved.staticTextBlocks,
     resolveBitmapMedia,
     ...(budgetOverrides?.maxPathCommandsPerShape !== undefined
       ? { maxPathCommandsPerShape: budgetOverrides.maxPathCommandsPerShape }
@@ -3366,6 +3394,8 @@ export interface BuildComposedSvgInput {
   readonly stageHeight: number;
   /** C01 shape ids map to source DOMShape blocks held in the Main process. */
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  /** Classic DOMStaticText descriptors held in the Main process. */
+  readonly staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
   /** Optional tighter path-command caps (clamped to production ceilings) for deterministic budget tests. */
@@ -3648,6 +3678,19 @@ function includeTransformedBitmapBounds(
   ].every((point) => includePoint(bounds, point));
 }
 
+function includeTransformedRectBounds(
+  bounds: MutableBounds,
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  matrix: Matrix2D,
+): boolean {
+  return [
+    transformPoint(matrix, { x: rect.x, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y + rect.height }),
+    transformPoint(matrix, { x: rect.x, y: rect.y + rect.height }),
+  ].every((point) => includePoint(bounds, point));
+}
+
 function createGraphicViewport(
   bounds: MutableBounds,
   filterExpansion: { readonly x: number; readonly y: number } = { x: 0, y: 0 },
@@ -3800,7 +3843,7 @@ function flattenResolvedDisplayList(
  * back-to-front painter order, and SVG paints later siblings on top.
  */
 export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
-  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
+  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, staticTextBlocks, resolveBitmapMedia } = input;
   if (!displayList || !Array.isArray(displayList.layers) || !shapeBlocks ||
       typeof shapeBlocks.get !== 'function' ||
       typeof renderTargetId !== 'string' || renderTargetId.length === 0 || renderTargetId.length > 512 ||
@@ -3896,6 +3939,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let pathCommandCount = 0;
   let shapeCount = 0;
   let bitmapInstanceCount = 0;
+  let staticTextNodeCount = 0;
+  let staticTextCharCount = 0;
+  const staticTexts: FlaStaticTextRenderItem[] = [];
+  const staticTextIdsSeen = new Set<string>();
   let skippedBitmapFillCount = 0;
   const bitmapFillDiagnostics: BuildComposedSvgSuccess['composition']['bitmapFillDiagnostics'][number][] = [];
   let catalogHasUnknownBitmapDimensions = false;
@@ -4382,6 +4429,49 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       continue;
     }
 
+    if (node.kind === 'text') {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (!descriptor) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved static text source not found: ${node.textId}` };
+      }
+      staticTextNodeCount += 1;
+      if (staticTextNodeCount > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text node budget (${FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition}) exceeded` };
+      }
+      const nodeCharCount = descriptor.runs.reduce((sum, run) => sum + run.characters.length, 0);
+      staticTextCharCount += nodeCharCount;
+      if (staticTextCharCount > FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text character budget (${FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition}) exceeded` };
+      }
+      const estimatedLayout = layoutFlaStaticText(descriptor);
+      if (graphicBounds && !includeTransformedRectBounds(graphicBounds, estimatedLayout.bounds, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic static text bounds are not finite: ${node.textId}` };
+      }
+      const worldScale = Math.max(
+        Math.hypot(node.worldTransform.a, node.worldTransform.b),
+        Math.hypot(node.worldTransform.c, node.worldTransform.d),
+      );
+      const scaleHint = Math.min(4, Math.max(2, Math.ceil((Number.isFinite(worldScale) ? worldScale : 1) * 2) / 2));
+      const placeholderId = `fla-text-${crypto.createHash('sha256')
+        .update(`${node.textId}\u0000${scaleHint}`, 'utf8')
+        .digest('hex')
+        .slice(0, 24)}`;
+      if (!staticTextIdsSeen.has(placeholderId)) {
+        staticTextIdsSeen.add(placeholderId);
+        const placeholderTag =
+          `<image id="${placeholderId}" x="${formatSvgNumber(estimatedLayout.bounds.x)}" y="${formatSvgNumber(estimatedLayout.bounds.y)}" ` +
+          `width="${formatSvgNumber(estimatedLayout.bounds.width)}" height="${formatSvgNumber(estimatedLayout.bounds.height)}" ` +
+          `preserveAspectRatio="none" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="/>`;
+        const defFailure = registerBitmapDefinition(placeholderId, placeholderTag);
+        if (defFailure) return defFailure;
+        staticTexts.push({ placeholderId, descriptor, scaleHint });
+      }
+      const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
+      const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+      if (appendFailure) return appendFailure;
+      continue;
+    }
+
     bitmapInstanceCount += 1;
     const resolution = lookupBitmapMedia(node.libraryItemName);
     if (!resolution.ok) {
@@ -4475,6 +4565,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
+    ...(staticTexts.length > 0 ? { staticTexts } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

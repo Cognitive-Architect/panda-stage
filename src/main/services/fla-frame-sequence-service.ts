@@ -101,6 +101,7 @@ export interface SequenceFrameInput {
   sourceViewport?: { x: number; y: number; width: number; height: number };
   maskWarning?: string;
   ikPoseWarning?: string;
+  staticTexts?: FlaStaticSnapshotRasterizeInput['staticTexts'];
 }
 
 export type SequenceFrameSource = AsyncIterable<SequenceFrameInput> | Iterable<SequenceFrameInput>;
@@ -348,6 +349,7 @@ export class FlaFrameSequenceService {
           rasterOutput = await this.rasterizer.rasterize({
             requestId: frameRequestId,
             svg: frame.svg,
+            ...(frame.staticTexts?.length ? { staticTexts: frame.staticTexts } : {}),
           } as FlaStaticSnapshotRasterizeInput);
         } catch (error) {
           // R2-D: cancellation / close / supersede. The R1

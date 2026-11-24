@@ -29,6 +29,7 @@
 
 import crypto from 'node:crypto';
 import type { FlaInspectionIR } from '../../shared/fla-import-api';
+import type { FlaStaticTextRenderItem } from '../../shared/fla-static-text';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
@@ -67,6 +68,7 @@ export interface FlaStaticSnapshotRasterizeInput {
   width: number;
   height: number;
   pixelCount: number;
+  staticTexts?: readonly FlaStaticTextRenderItem[];
 }
 
 export class FlaStaticSnapshotRasterizerError extends Error {
@@ -523,6 +525,7 @@ export class FlaStaticSnapshotRenderSession {
         width: svgResult.width,
         height: svgResult.height,
         pixelCount: svgResult.pixelCount,
+        ...(svgResult.staticTexts?.length ? { staticTexts: svgResult.staticTexts } : {}),
       })
       .then(
         (raster) => {

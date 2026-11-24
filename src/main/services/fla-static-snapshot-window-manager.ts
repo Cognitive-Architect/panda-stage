@@ -112,7 +112,11 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (this.window !== window || window.isDestroyed() || this.activeRequestId !== requestId) {
       throw new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded');
     }
-    const payload = { requestId, svg: input.svg };
+    const payload = {
+      requestId,
+      svg: input.svg,
+      ...(input.staticTexts?.length ? { staticTexts: input.staticTexts } : {}),
+    };
     const sentAt = startIssue762Profile();
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
       this.pending.set(requestId, {

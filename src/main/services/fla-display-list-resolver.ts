@@ -92,6 +92,17 @@ export type FlaDisplayListElement =
       readonly visible?: boolean;
     }
   | {
+      readonly kind: 'text';
+      readonly textId: string;
+      readonly sourceAddress?: string;
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      readonly sourceParentSpanTweenType?: string;
+      /** Transform from this text node's local space into its immediate parent. */
+      readonly localTransform?: FlaDisplayListMatrix;
+      readonly visible?: boolean;
+    }
+  | {
       readonly kind: 'group';
       readonly groupId: string;
       readonly sourceAddress?: string;
@@ -205,6 +216,15 @@ export interface FlaResolvedBitmapNode {
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
+export interface FlaResolvedTextNode {
+  readonly kind: 'text';
+  readonly textId: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
+  readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
+}
+
 export interface FlaResolvedClipShape {
   readonly shapeId: string;
   readonly worldTransform: FlaDisplayListMatrix;
@@ -246,6 +266,7 @@ export interface FlaResolvedGroupNode {
 export type FlaResolvedDisplayNode =
   | FlaResolvedShapeNode
   | FlaResolvedBitmapNode
+  | FlaResolvedTextNode
   | FlaResolvedGroupNode;
 
 export interface FlaResolvedDisplayLayer {
@@ -381,7 +402,7 @@ function collectMaskShapes(
       });
       return null;
     }
-    if (node.kind === 'bitmap' || (node.kind === 'group' && node.opaque)) {
+    if (node.kind === 'bitmap' || node.kind === 'text' || (node.kind === 'group' && node.opaque)) {
       return failure(
         'UNSUPPORTED_DISPLAY_CONTENT',
         'Only filled vector geometry is supported as mask items',
@@ -542,7 +563,11 @@ function opaqueStandIn(
   const composed = composeTransforms(parentTransform, localTransform);
   const sourceRef = element.kind === 'symbol' || element.kind === 'bitmap'
     ? element.libraryItemName
-    : element.kind === 'shape' ? element.shapeId : element.groupId;
+    : element.kind === 'shape'
+      ? element.shapeId
+      : element.kind === 'text'
+        ? element.textId
+        : element.groupId;
   const symbolInstance =
     element.kind === 'symbol'
       ? {
@@ -563,7 +588,13 @@ function opaqueStandIn(
     children: [],
     ...(symbolInstance && Object.keys(symbolInstance).length > 0 ? { symbolInstance } : {}),
     opaque: {
-      kind: element.kind === 'symbol' ? 'symbol' : element.kind === 'shape' ? 'shape' : 'unknown',
+      kind: element.kind === 'symbol'
+        ? 'symbol'
+        : element.kind === 'shape'
+          ? 'shape'
+          : element.kind === 'text'
+            ? 'text'
+            : 'unknown',
       reason,
       ...(sourceRef ? { sourceRef } : {}),
     },
@@ -643,6 +674,25 @@ function resolveElements(
       nodes.push({
         kind: 'bitmap',
         libraryItemName: element.libraryItemName,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
+      continue;
+    }
+
+    if (element.kind === 'text') {
+      if (!element.textId) return failure('INVALID_INPUT', 'Text reference is empty', elementPath);
+      const budgetFailure = addResolvedNode(context, elementPath);
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
+      nodes.push({
+        kind: 'text',
+        textId: element.textId,
         ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
         localTransform,
         worldTransform,
