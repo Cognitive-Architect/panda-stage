@@ -1525,4 +1525,343 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
       expect(evalDup.y).toBeCloseTo(evalSrc.y + 24);
     }
   });
+
+  it('generates a 3x4 editable rectangular grid array preserving Clip, MoveEvent, same-startMs priority, single-axis layouts, 1x1 no-op, boundaries, and 100-instance scale (#1268 A01)', () => {
+    const base = zeroCharacterGraphicProject();
+    const positionService = new PositionProjectService();
+    const childPath = ['face', 'face-0'];
+    const childMatrix = { a: 0.3, b: 0, c: 0, d: 0.3, tx: 24, ty: 18 };
+    const defaultService = new LayerService();
+
+    let project = defaultService.updateAnimationPlayback(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { startTimeMs: 125, mode: 'loop', endBehavior: 'hide' },
+    );
+    project = defaultService.updateFlaGraphicInstanceTransform(
+      project,
+      base.shotId,
+      base.layerId,
+      0,
+      childPath,
+      childMatrix,
+    );
+    project = service.recalibratePivot(
+      project,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 125, y: 105 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 0 },
+      { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 500 },
+      { 'transform.offsetX': 40, 'transform.offsetY': -20, 'transform.rotationDeg': 30, 'transform.scaleX': 1.5 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      { 'transform.offsetX': 80, 'transform.offsetY': 10, 'transform.rotationDeg': 60, 'transform.scaleX': 2 },
+    );
+    project = editAnimationPropertyKey(
+      project,
+      {
+        shotId: base.shotId,
+        target: { kind: 'layer', layerId: base.layerId },
+        property: 'transform.offsetX',
+        keyTimeMs: 0,
+      },
+      {
+        interpolationToNext: 'ease-in-out',
+        curveToNext: {
+          bezier: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 },
+          window: [0, 1],
+        },
+      },
+    );
+    const moveEvent: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000801',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 0,
+      endMs: 1_000,
+      from: { x: 400, y: 300 },
+      to: { x: 520, y: 360 },
+      easing: 'linear',
+    };
+    const opacityLow: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000802',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: 1,
+      to: 0.2,
+      easing: 'linear',
+    };
+    const opacityHigh: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000803',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: 1,
+      to: 0.85,
+      easing: 'linear',
+    };
+    project = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) =>
+        shot.id === base.shotId
+          ? { ...shot, durationMs: 2_000, timelineEvents: [moveEvent, opacityLow, opacityHigh] }
+          : shot,
+      ),
+    });
+
+    const beforeProject = structuredClone(project);
+    const beforeSource = beforeProject.shots[0]!.layers.find((l) => l.id === base.layerId)!;
+
+    // Descending ID generator verifies same-startMs event priority across every grid replica.
+    let seq = 999_999;
+    const gridService = new LayerService({
+      createId: () => `f3000000-0000-4000-8000-${String(seq--).padStart(12, '0')}`,
+    });
+
+    const grid = gridService.duplicateAnimationLayerGrid(
+      project,
+      base.shotId,
+      base.layerId,
+      { rows: 3, cols: 4, spacingX: 100, spacingY: 80 },
+    );
+    const parsed = ProjectSchema.parse(grid.project);
+    const shot = parsed.shots[0]!;
+    expect(grid.layers).toHaveLength(11);
+    expect(shot.layers).toHaveLength(beforeProject.shots[0]!.layers.length + 11);
+    expect(parsed.animations).toEqual(beforeProject.animations);
+    expect(parsed.assets).toEqual(beforeProject.assets);
+    expect(shot.layers.find((l) => l.id === base.layerId)).toEqual(beforeSource);
+    expect(shot.timelineEvents.filter((e) => e.layerId === base.layerId)).toEqual(
+      beforeProject.shots[0]!.timelineEvents,
+    );
+
+    // Verify all 12 anchor coordinates in row-major order and monotonic zIndex.
+    const expectedGridPoints: { x: number; y: number }[] = [];
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 4; c += 1) {
+        if (r === 0 && c === 0) continue;
+        expectedGridPoints.push({ x: 400 + c * 100, y: 300 + r * 80 });
+      }
+    }
+    expect(grid.layers.map((l) => ({ x: l.x, y: l.y }))).toEqual(expectedGridPoints);
+    expect(new Set([base.layerId, ...grid.layers.map((l) => l.id)]).size).toBe(12);
+    expect(grid.layers.map((l) => l.zIndex)).toEqual(
+      Array.from({ length: 11 }, (_, idx) => beforeSource.zIndex + 1 + idx),
+    );
+
+    // Every replica owns its own v2 Clip, events, and preserves overrides/playback/pivot/curves.
+    const allEventIds = shot.timelineEvents.map((e) => e.id);
+    expect(new Set(allEventIds).size).toBe(allEventIds.length);
+    for (const replica of grid.layers) {
+      expect(replica.source).toEqual(beforeSource.source);
+      expect(replica.startTimeMs).toBe(125);
+      expect(replica.animationPlayback).toEqual({ mode: 'loop', endBehavior: 'hide' });
+      expect(replica.flaGraphicInstanceTransformOverrides).toEqual(
+        beforeSource.flaGraphicInstanceTransformOverrides,
+      );
+      expect(replica.animationClip?.version).toBe(2);
+      if (replica.animationClip?.version !== 2 || beforeSource.animationClip?.version !== 2) {
+        throw new Error('Expected v2 Clip');
+      }
+      expect(replica.animationClip.targetBases[0]!.target.layerId).toBe(replica.id);
+      expect(replica.animationClip.targetBases[0]!.baseTransform).toMatchObject({
+        x: replica.x,
+        y: replica.y,
+      });
+      expect(replica.animationClip.targetBases[0]!.pivot).toEqual(
+        beforeSource.animationClip.targetBases[0]!.pivot,
+      );
+      expect(replica.animationClip.tracks.every((t) => t.target.layerId === replica.id)).toBe(true);
+      expect(replica.animationClip.tracks.length).toBe(beforeSource.animationClip.tracks.length);
+      expect(recognizePositionChain({ shot, layer: replica }).status).toBe('editable');
+    }
+
+    // Evaluate two distinct grid positions: (r=0, c=3) -> (+300, 0) and (r=2, c=2) -> (+200, +160).
+    const cellTopRight = grid.layers[2]!; // (700, 300)
+    const cellBottomMid = grid.layers[9]!; // (600, 460)
+    for (const timeMs of [0, 500, 1_000, 1_500]) {
+      const evaluated = evaluateShotAtTime(shot, timeMs, parsed);
+      const evalSrc = evaluated.layers.find((l) => l.id === base.layerId)!;
+      const evalTR = evaluated.layers.find((l) => l.id === cellTopRight.id)!;
+      const evalBM = evaluated.layers.find((l) => l.id === cellBottomMid.id)!;
+      expect(evalTR.x).toBeCloseTo(evalSrc.x + 300);
+      expect(evalTR.y).toBeCloseTo(evalSrc.y);
+      expect(evalTR.rotationDeg).toBeCloseTo(evalSrc.rotationDeg);
+      expect(evalTR.scaleX).toBeCloseTo(evalSrc.scaleX);
+      expect(evalTR.opacity).toBeCloseTo(evalSrc.opacity);
+
+      expect(evalBM.x).toBeCloseTo(evalSrc.x + 200);
+      expect(evalBM.y).toBeCloseTo(evalSrc.y + 160);
+      expect(evalBM.rotationDeg).toBeCloseTo(evalSrc.rotationDeg);
+      expect(evalBM.scaleX).toBeCloseTo(evalSrc.scaleX);
+      expect(evalBM.opacity).toBeCloseTo(evalSrc.opacity);
+    }
+
+    // Independent editing: edit keyframe, edit editable PositionChain, and delete one replica.
+    const editedKey = service.applyKeys(
+      parsed,
+      { shotId: base.shotId, layerId: cellTopRight.id, timeMs: 500 },
+      { 'transform.offsetX': 240 },
+    );
+    expect(
+      evaluateShotAtTime(editedKey.shots[0]!, 500, editedKey).layers.find((l) => l.id === base.layerId)!.x,
+    ).toBeCloseTo(
+      evaluateShotAtTime(shot, 500, parsed).layers.find((l) => l.id === base.layerId)!.x,
+    );
+    const editedChain = positionService.applyOperation(
+      editedKey,
+      base.shotId,
+      cellBottomMid.id,
+      { type: 'update', input: { timeMs: 1_000, position: { x: 900, y: 600 } } },
+    ).project;
+    expect(
+      editedChain.shots[0]!.timelineEvents.filter((e) => e.layerId === base.layerId),
+    ).toEqual(beforeProject.shots[0]!.timelineEvents);
+    const afterDelete = defaultService.deleteLayer(editedChain, base.shotId, cellTopRight.id);
+    expect(afterDelete.shots[0]!.layers.some((l) => l.id === cellTopRight.id)).toBe(false);
+    expect(afterDelete.shots[0]!.layers.some((l) => l.id === base.layerId)).toBe(true);
+    expect(afterDelete.shots[0]!.layers.some((l) => l.id === cellBottomMid.id)).toBe(true);
+
+    // 1x1 is a no-op returning exact project reference.
+    const noop = defaultService.duplicateAnimationLayerGrid(
+      project,
+      base.shotId,
+      base.layerId,
+      { rows: 1, cols: 1, spacingX: 0, spacingY: 0 },
+    );
+    expect(noop.project).toBe(project);
+    expect(noop.layers).toEqual([]);
+
+    // Single-row (1x4) ignores spacingY; single-column (3x1) ignores spacingX.
+    const singleRow = defaultService.duplicateAnimationLayerGrid(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { rows: 1, cols: 4, spacingX: 100, spacingY: Number.NaN },
+    );
+    expect(singleRow.layers.map((l) => ({ x: l.x, y: l.y }))).toEqual([
+      { x: 500, y: 300 },
+      { x: 600, y: 300 },
+      { x: 700, y: 300 },
+    ]);
+    const singleCol = defaultService.duplicateAnimationLayerGrid(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { rows: 3, cols: 1, spacingX: 0, spacingY: 80 },
+    );
+    expect(singleCol.layers.map((l) => ({ x: l.x, y: l.y }))).toEqual([
+      { x: 400, y: 380 },
+      { x: 400, y: 460 },
+    ]);
+
+    // Exact legal canvas edge (1920, 1080) succeeds; 1px over rejects without clamping.
+    const edgeOkSource = defaultService.updatePosition(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { x: 1720, y: 920 },
+    );
+    const edgeOk = defaultService.duplicateAnimationLayerGrid(
+      edgeOkSource,
+      base.shotId,
+      base.layerId,
+      { rows: 3, cols: 3, spacingX: 100, spacingY: 80 },
+    );
+    expect(edgeOk.layers.at(-1)).toMatchObject({ x: 1920, y: 1080 });
+
+    const edgeOverSource = defaultService.updatePosition(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { x: 1721, y: 920 },
+    );
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(
+        edgeOverSource,
+        base.shotId,
+        base.layerId,
+        { rows: 3, cols: 3, spacingX: 100, spacingY: 80 },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_POSITION' }));
+
+    // Invalid parameters, count > 100, locked source, and non-Graphic animation layer are rejected.
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(base.project, base.shotId, base.layerId, {
+        rows: 1.5,
+        cols: 2,
+        spacingX: 100,
+        spacingY: 80,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_GRID_ARRAY' }));
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(base.project, base.shotId, base.layerId, {
+        rows: 10,
+        cols: 11,
+        spacingX: 10,
+        spacingY: 10,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_GRID_ARRAY' }));
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(base.project, base.shotId, base.layerId, {
+        rows: 2,
+        cols: 2,
+        spacingX: 0,
+        spacingY: 80,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_GRID_ARRAY' }));
+    const locked = defaultService.setLocked(base.project, base.shotId, base.layerId, true);
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(locked, base.shotId, base.layerId, {
+        rows: 2,
+        cols: 2,
+        spacingX: 100,
+        spacingY: 80,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+
+    const rasterProject = buildProjectWithAnimation();
+    const rasterPlaced = defaultService.createFromAnimation(rasterProject, IDS.shot, {
+      animationId: IDS.animation,
+      position: { x: 400, y: 300 },
+      startTimeMs: 0,
+    });
+    expect(() =>
+      defaultService.duplicateAnimationLayerGrid(
+        rasterPlaced.project,
+        IDS.shot,
+        rasterPlaced.layer.id,
+        { rows: 2, cols: 2, spacingX: 100, spacingY: 80 },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'FLA_GRAPHIC_REQUIRED' }));
+
+    // Max scale (10x10 = 100 total, 99 added) completes cleanly in one commit.
+    const maxScaleSource = defaultService.updatePosition(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { x: 100, y: 100 },
+    );
+    const maxScale = defaultService.duplicateAnimationLayerGrid(
+      maxScaleSource,
+      base.shotId,
+      base.layerId,
+      { rows: 10, cols: 10, spacingX: 100, spacingY: 80 },
+    );
+    expect(maxScale.layers).toHaveLength(99);
+    expect(() => ProjectSchema.parse(maxScale.project)).not.toThrow();
+  });
 });

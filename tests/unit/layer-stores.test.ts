@@ -681,4 +681,117 @@ describe('Day 22 layer stores', () => {
     expect(input.editor.history.getSnapshot()).toEqual(historyBeforeLocked);
     input.selection.dispose();
   });
+
+  it('commits a 3x4 grid array in one History entry, keeps source selected, supports atomic Undo/Redo, and treats 1x1 as no-op (#1268 A01)', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 400, y: 300 },
+      startTimeMs: 0,
+    });
+    const motion = new LayerMotionService();
+    let authored = motion.applyKeys(
+      placed.project,
+      { shotId, layerId: placed.layer.id, timeMs: 0 },
+      { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+    );
+    authored = motion.applyKeys(
+      authored,
+      { shotId, layerId: placed.layer.id, timeMs: 500 },
+      { 'transform.offsetX': 60, 'transform.offsetY': -20 },
+    );
+    const opacityLow: TimelineEvent = {
+      id: 'd2210000-0000-4000-8000-000000000951',
+      type: 'opacity',
+      layerId: placed.layer.id,
+      startMs: 125,
+      endMs: 625,
+      from: 1,
+      to: 0.2,
+      easing: 'linear',
+    };
+    const opacityHigh: TimelineEvent = {
+      id: 'd2210000-0000-4000-8000-000000000952',
+      type: 'opacity',
+      layerId: placed.layer.id,
+      startMs: 125,
+      endMs: 625,
+      from: 1,
+      to: 0.85,
+      easing: 'linear',
+    };
+    authored = ProjectSchema.parse({
+      ...authored,
+      shots: authored.shots.map((s) =>
+        s.id === shotId ? { ...s, timelineEvents: [...s.timelineEvents, opacityLow, opacityHigh] } : s,
+      ),
+    });
+
+    const input = harness(authored);
+    let seq = 99_999;
+    const gridStore = new LayerStore(
+      input.editor,
+      input.shots,
+      new LayerService({
+        createId: () => `f2210000-0000-4000-8000-${String(seq--).padStart(12, '0')}`,
+      }),
+      input.selection,
+    );
+    input.selection.select(placed.layer.id);
+
+    // 1x1 no-op produces zero History.
+    expect(
+      gridStore.duplicateAnimationLayerGrid(placed.layer.id, {
+        rows: 1,
+        cols: 1,
+        spacingX: 100,
+        spacingY: 80,
+      }),
+    ).toEqual([]);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+
+    // Out-of-bounds fails without dirtying or recording History.
+    expect(() =>
+      gridStore.duplicateAnimationLayerGrid(placed.layer.id, {
+        rows: 3,
+        cols: 4,
+        spacingX: 600,
+        spacingY: 80,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_POSITION' }));
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    // Valid 3x4 generates 11 layers in one History entry and keeps source selected.
+    const created = gridStore.duplicateAnimationLayerGrid(placed.layer.id, {
+      rows: 3,
+      cols: 4,
+      spacingX: 100,
+      spacingY: 80,
+    });
+    expect(created).toHaveLength(11);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    const afterGrid = input.editor.getSnapshot()!.project;
+    // Single Undo removes all 11 layers and their copied events cleanly.
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(authored);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    // Single Redo restores exact same 11 IDs, positions, zIndex, Clip, and event priority.
+    expect(input.editor.redo()).toBe(true);
+    const afterRedo = input.editor.getSnapshot()!.project;
+    expect(afterRedo).toEqual(afterGrid);
+    const evalRedo = evaluateShotAtTime(afterRedo.shots[0]!, 500, afterRedo);
+    const evalSrc = evalRedo.layers.find((l) => l.id === placed.layer.id)!;
+    const evalLast = evalRedo.layers.find((l) => l.id === created.at(-1)!.id)!;
+    expect(evalLast.x).toBeCloseTo(evalSrc.x + 300);
+    expect(evalLast.y).toBeCloseTo(evalSrc.y + 160);
+    expect(evalLast.opacity).toBeCloseTo(evalSrc.opacity);
+    input.selection.dispose();
+  });
 });

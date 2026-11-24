@@ -17,6 +17,7 @@ import {
   type Layer,
   type Project,
   type Shot,
+  type TimelineEvent,
 } from '../models';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
@@ -89,7 +90,8 @@ export type LayerServiceErrorCode =
   | 'SHAPE_AMBIGUOUS_STROKES'
   | 'SHAPE_REGION_NOT_FOUND'
   | 'SHAPE_REGION_REQUIRED'
-  | 'SHAPE_FILL_NOT_SOLID';
+  | 'SHAPE_FILL_NOT_SOLID'
+  | 'INVALID_GRID_ARRAY';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -110,6 +112,24 @@ export type CreateLayerInput = AssetDropPayload & {
 export interface LayerServiceOptions {
   createId?: () => string;
   now?: () => Date;
+}
+
+export const GRID_ARRAY_DEFAULT_ROWS = 3;
+export const GRID_ARRAY_DEFAULT_COLS = 4;
+export const GRID_ARRAY_DEFAULT_SPACING_X = 100;
+export const GRID_ARRAY_DEFAULT_SPACING_Y = 80;
+export const GRID_ARRAY_MAX_INSTANCES = 100;
+
+export interface GridArrayInput {
+  readonly rows: number;
+  readonly cols: number;
+  readonly spacingX: number;
+  readonly spacingY: number;
+}
+
+export interface DuplicateGridArrayResult {
+  readonly project: Project;
+  readonly layers: readonly Layer[];
 }
 
 export interface CreateLayerResult {
@@ -190,6 +210,16 @@ function validateLayerOpacity(opacity: number): number {
     );
   }
   return opacity;
+}
+
+function duplicateGridLayerName(
+  baseName: string,
+  row: number,
+  col: number,
+): string {
+  const suffix = ` 副本 ${row + 1}-${col + 1}`;
+  const maxBaseLength = Math.max(1, 200 - suffix.length);
+  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
 }
 
 export function clampLayerPosition(point: Point): Point {
@@ -1665,8 +1695,6 @@ export class LayerService {
     this.assertEditable(shot, layer);
 
     const usedIds = this.projectIds(project);
-    const duplicateId = this.nextUniqueId(usedIds);
-    usedIds.add(duplicateId);
     const offsetPosition = clampLayerPosition({
       x: layer.x + 24,
       y: layer.y + 24,
@@ -1675,6 +1703,146 @@ export class LayerService {
       offsetPosition.x === layer.x && offsetPosition.y === layer.y
         ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
         : offsetPosition;
+    const sourceEvents = shot.timelineEvents.filter(
+      (event) => event.layerId === layer.id,
+    );
+    const zIndex = Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1;
+    const { layer: duplicate, events: duplicatedEvents } =
+      this.buildDuplicatedAnimationLayer(
+        layer,
+        sourceEvents,
+        usedIds,
+        position,
+        zIndex,
+        `${layer.name} 副本`,
+      );
+    const nextShot = {
+      ...shot,
+      layers: [...shot.layers, duplicate],
+      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layer: duplicate,
+    };
+  }
+
+  duplicateAnimationLayerGrid(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: GridArrayInput,
+  ): DuplicateGridArrayResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        '只能对 FLA 图形动画图层执行排兵布阵。',
+      );
+    }
+    const animationId = layer.source.animationId;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!definition || !isFlaGraphicDefinition(definition)) {
+      throw new LayerServiceError(
+        'FLA_GRAPHIC_REQUIRED',
+        '排兵布阵仅支持 FLA 图形（Graphic）动画图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+
+    const { rows, cols, spacingX, spacingY } = input;
+    if (!Number.isSafeInteger(rows) || rows < 1 || !Number.isSafeInteger(cols) || cols < 1) {
+      throw new LayerServiceError(
+        'INVALID_GRID_ARRAY',
+        '行数和列数必须是大于等于 1 的整数。',
+      );
+    }
+    if (rows * cols > GRID_ARRAY_MAX_INSTANCES) {
+      throw new LayerServiceError(
+        'INVALID_GRID_ARRAY',
+        `排兵布阵总数不能超过 ${GRID_ARRAY_MAX_INSTANCES} 个（含源图层）。`,
+      );
+    }
+    if (cols > 1 && (!Number.isFinite(spacingX) || spacingX <= 0)) {
+      throw new LayerServiceError(
+        'INVALID_GRID_ARRAY',
+        '多列布局时，横向间距必须是大于 0 的有限数字。',
+      );
+    }
+    if (rows > 1 && (!Number.isFinite(spacingY) || spacingY <= 0)) {
+      throw new LayerServiceError(
+        'INVALID_GRID_ARRAY',
+        '多行布局时，纵向间距必须是大于 0 的有限数字。',
+      );
+    }
+    if (rows === 1 && cols === 1) {
+      return { project, layers: [] };
+    }
+
+    const targets: { readonly row: number; readonly col: number; readonly position: Point }[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        if (row === 0 && col === 0) continue;
+        const x = layer.x + (col === 0 ? 0 : col * spacingX);
+        const y = layer.y + (row === 0 ? 0 : row * spacingY);
+        const clamped = clampLayerPosition({ x, y });
+        if (clamped.x !== x || clamped.y !== y) {
+          throw new LayerServiceError(
+            'INVALID_POSITION',
+            `阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整行列、间距或源位置。`,
+          );
+        }
+        targets.push({ row, col, position: { x, y } });
+      }
+    }
+
+    const usedIds = this.projectIds(project);
+    const sourceEvents = shot.timelineEvents.filter(
+      (event) => event.layerId === layer.id,
+    );
+    let nextZIndex = Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1;
+    const createdLayers: Layer[] = [];
+    const createdEvents: TimelineEvent[] = [];
+
+    for (const target of targets) {
+      const built = this.buildDuplicatedAnimationLayer(
+        layer,
+        sourceEvents,
+        usedIds,
+        target.position,
+        nextZIndex,
+        duplicateGridLayerName(layer.name, target.row, target.col),
+      );
+      nextZIndex += 1;
+      createdLayers.push(built.layer);
+      createdEvents.push(...built.events);
+    }
+
+    const nextShot = {
+      ...shot,
+      layers: [...shot.layers, ...createdLayers],
+      timelineEvents: [...shot.timelineEvents, ...createdEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layers: createdLayers,
+    };
+  }
+
+  private buildDuplicatedAnimationLayer(
+    layer: Layer,
+    sourceEvents: readonly TimelineEvent[],
+    usedIds: Set<string>,
+    position: Point,
+    zIndex: number,
+    name: string,
+  ): { readonly layer: Layer; readonly events: readonly TimelineEvent[] } {
+    const duplicateId = this.nextUniqueId(usedIds);
+    usedIds.add(duplicateId);
     const deltaX = position.x - layer.x;
     const deltaY = position.y - layer.y;
     const duplicate: Layer = {
@@ -1710,14 +1878,11 @@ export class LayerService {
           }
         : {}),
       id: duplicateId,
-      name: `${layer.name} 副本`,
+      name,
       x: position.x,
       y: position.y,
-      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+      zIndex,
     };
-    const sourceEvents = shot.timelineEvents.filter(
-      (event) => event.layerId === layer.id,
-    );
     const sortedNewEventIds = sourceEvents
       .map(() => {
         const id = this.nextUniqueId(usedIds);
@@ -1730,7 +1895,7 @@ export class LayerService {
         .sort((left, right) => left.id.localeCompare(right.id))
         .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
     );
-    const duplicatedEvents = sourceEvents.map((event) => {
+    const events = sourceEvents.map((event) => {
       const cloned = structuredClone(event);
       const id = newEventIdBySourceId.get(event.id)!;
       if (cloned.type === 'move') {
@@ -1744,15 +1909,7 @@ export class LayerService {
       }
       return { ...cloned, id, layerId: duplicate.id };
     });
-    const nextShot = {
-      ...shot,
-      layers: [...shot.layers, duplicate],
-      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
-    };
-    return {
-      project: this.replaceShot(project, nextShot),
-      layer: duplicate,
-    };
+    return { layer: duplicate, events };
   }
 
   setLocked(

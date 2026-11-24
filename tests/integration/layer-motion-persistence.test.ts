@@ -626,4 +626,180 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
       await rm(parent, { recursive: true, force: true });
     }
   });
+
+  it('persists a 3x4 grid array with v2 Clip, MoveEvent, and same-startMs OpacityEvents across save/reopen and Stage/Preview/Export (#1268 A01)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-grid-array-'));
+    try {
+      const root = path.join(parent, 'grid-array.pandastage');
+      await mkdir(root);
+      const base = graphicFaceProject();
+      const emptyProject = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const layers = new LayerService();
+      const placed = layers.createFromAnimation(emptyProject, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 400, y: 300 },
+      });
+      const motion = new LayerMotionService();
+      let authored = motion.applyKeys(
+        placed.project,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 0 },
+        { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+      );
+      authored = motion.applyKeys(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 500 },
+        { 'transform.offsetX': 50, 'transform.offsetY': -20, 'transform.rotationDeg': 30 },
+      );
+      authored = motion.applyKeys(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 1_000 },
+        { 'transform.offsetX': 100, 'transform.offsetY': 0, 'transform.rotationDeg': 60 },
+      );
+      const moveEvent: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000751',
+        type: 'move',
+        layerId: placed.layer.id,
+        startMs: 0,
+        endMs: 1_000,
+        from: { x: 400, y: 300 },
+        to: { x: 520, y: 340 },
+        easing: 'linear',
+      };
+      const opacityLow: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000752',
+        type: 'opacity',
+        layerId: placed.layer.id,
+        startMs: 250,
+        endMs: 750,
+        from: 1,
+        to: 0.2,
+        easing: 'linear',
+      };
+      const opacityHigh: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000753',
+        type: 'opacity',
+        layerId: placed.layer.id,
+        startMs: 250,
+        endMs: 750,
+        from: 1,
+        to: 0.85,
+        easing: 'linear',
+      };
+      authored = ProjectSchema.parse({
+        ...authored,
+        shots: authored.shots.map((s) =>
+          s.id === IDS.shot ? { ...s, timelineEvents: [moveEvent, opacityLow, opacityHigh] } : s,
+        ),
+      });
+
+      const store = new EditorProjectStore();
+      store.open(root, authored);
+      const shots = { getCurrentShotId: () => IDS.shot };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      selection.select(placed.layer.id);
+      let seq = 999_999;
+      const gridService = new LayerService({
+        createId: () => `f3000000-0000-4000-8000-${String(seq--).padStart(12, '0')}`,
+      });
+      const layerStore = new LayerStore(store, shots, gridService, selection);
+      const created = layerStore.duplicateAnimationLayerGrid(placed.layer.id, {
+        rows: 3,
+        cols: 4,
+        spacingX: 100,
+        spacingY: 80,
+      });
+      expect(created).toHaveLength(11);
+      expect(store.history.getSnapshot().undoCount).toBe(1);
+      expect(selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+      const projectService = new ProjectService();
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(authored));
+      await projectService.save(root, store.getSnapshot()!.project, 1);
+
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(store.getSnapshot()!.project);
+      expect(reopened.project.animations).toEqual(authored.animations);
+      expect(reopened.project.assets).toEqual(authored.assets);
+
+      const shot = reopened.project.shots[0]!;
+      const cellTopRight = created[2]!; // (700, 300) => +300, +0
+      const cellBottomRight = created[10]!; // (700, 460) => +300, +160
+      expect(
+        recognizePositionChain({
+          shot,
+          layer: shot.layers.find((l) => l.id === cellBottomRight.id)!,
+        }).status,
+      ).toBe('editable');
+
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      for (const timeMs of [0, 500, 1_000, 1_500]) {
+        const stage = evaluateShotAtTime(shot, timeMs, reopened.project);
+        const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
+        const exported = evaluateExportShotAtTime(reopened.project, shot, timeMs);
+        const editorModel = buildEditorTemporalCanvasModel({
+          project: reopened.project,
+          shot,
+          currentTimeMs: timeMs,
+          readyAssetIds: new Set(reopened.project.assets.map((a) => a.id)),
+          previousVisuals: new Map(),
+        });
+        const exportModel = buildStageRenderModel(reopened.project, exported, urls);
+
+        const stageSrc = stage.layers.find((l) => l.id === placed.layer.id)!;
+        for (const [replicaId, dx, dy] of [
+          [cellTopRight.id, 300, 0],
+          [cellBottomRight.id, 300, 160],
+        ] as const) {
+          const stageRep = stage.layers.find((l) => l.id === replicaId)!;
+          expect(stageRep.x).toBeCloseTo(stageSrc.x + dx);
+          expect(stageRep.y).toBeCloseTo(stageSrc.y + dy);
+          expect(stageRep.rotationDeg).toBeCloseTo(stageSrc.rotationDeg);
+          expect(stageRep.opacity).toBeCloseTo(stageSrc.opacity);
+
+          expect(preview.layers.find((l) => l.id === replicaId)).toMatchObject({
+            x: stageRep.x,
+            y: stageRep.y,
+            rotationDeg: stageRep.rotationDeg,
+            opacity: stageRep.opacity,
+          });
+          expect(exported.layers.find((l) => l.id === replicaId)).toMatchObject({
+            x: stageRep.x,
+            y: stageRep.y,
+            rotationDeg: stageRep.rotationDeg,
+            opacity: stageRep.opacity,
+          });
+          expect(editorModel.stageModel.layers.find((l) => l.layer.id === replicaId)!.render).toMatchObject({
+            x: stageRep.x,
+            y: stageRep.y,
+            rotationDeg: stageRep.rotationDeg,
+            opacity: stageRep.opacity,
+          });
+          expect(exportModel.layers.find((l) => l.id === replicaId)!.render).toMatchObject({
+            x: stageRep.x,
+            y: stageRep.y,
+            rotationDeg: stageRep.rotationDeg,
+            opacity: stageRep.opacity,
+          });
+        }
+      }
+      selection.dispose();
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
 });

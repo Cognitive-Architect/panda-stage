@@ -1,8 +1,9 @@
-import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Maximize2, ScanLine, Sparkles } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
+import { GridArrayPanel } from '../features/tools/GridArrayPanel';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { DesktopAutomationCard } from './DesktopAutomationCard';
 
@@ -11,7 +12,7 @@ export interface ProjectToolsDrawerProps {
   onPreview?(project: Project): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets';
+type ProjectToolsView = 'home' | 'action-presets' | 'grid-array';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -49,7 +50,7 @@ export function ProjectToolsDrawer({
     >
       <header className="project-tools-drawer-header">
         <div className="project-tools-drawer-heading">
-          {view === 'action-presets' ? (
+          {view !== 'home' ? (
             <button
               aria-label="返回工具"
               className="project-tools-back"
@@ -62,7 +63,11 @@ export function ProjectToolsDrawer({
             </button>
           ) : null}
           <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '工具'}
+            {view === 'grid-array' ? (
+              '排兵布阵'
+            ) : (
+              <>{view === 'action-presets' ? '动作预设' : '工具'}</>
+            )}
           </h2>
         </div>
         <button
@@ -136,15 +141,42 @@ export function ProjectToolsDrawer({
               <span>打开动作预设</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-grid-array-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-grid-array-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-grid-array-heading">排兵布阵</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="grid-array"
+              data-testid="project-tools-grid-array"
+              onClick={() => setView('grid-array')}
+              type="button"
+            >
+              <DecorativeIcon icon={LayoutGrid} size={18} />
+              <span>打开排兵布阵</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
-      ) : (
+      ) : view === 'action-presets' ? (
         <section
           aria-label="动作预设"
           className="project-tools-action-presets-view"
           data-testid="project-tools-action-presets-view"
         >
           <LegacyWorkspace onPreview={onPreview} />
+        </section>
+      ) : (
+        <section
+          aria-label="排兵布阵"
+          className="project-tools-grid-array-view"
+          data-testid="project-tools-grid-array-view"
+        >
+          <GridArrayPanel onCancel={() => setView('home')} />
         </section>
       )}
     </section>

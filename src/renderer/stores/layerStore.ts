@@ -6,6 +6,7 @@ import {
   type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
   type FlaShapeVertexTarget,
+  type GridArrayInput,
   type Layer,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
@@ -183,6 +184,23 @@ export class LayerStore {
       },
     );
     return result.layer;
+  }
+
+  duplicateAnimationLayerGrid(
+    layerId: string,
+    input: GridArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerGrid(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '排兵布阵');
+    }
+    return result.layers;
   }
 
   setLocked(layerId: string, locked: boolean): Project {
