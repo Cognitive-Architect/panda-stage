@@ -7,6 +7,7 @@ import {
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  ShotService,
   editAnimationPropertyKey,
   evaluateShotAtTime,
   exportFrameTimeMs,
@@ -28,7 +29,10 @@ import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
-import { planPngSequenceFrames } from '../../src/shared/export-types';
+import {
+  iterateFormalProjectFrameSchedule,
+  planPngSequenceFrames,
+} from '../../src/shared/export-types';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { animationCoreFixture } from '../helpers/animationCoreFixture';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
@@ -1094,5 +1098,179 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
+  });
+
+  it('persists A04 radial burst + manual edit across save/reopen and agrees across Stage, Preview, and real Export frames (#1273 A04)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-radial-burst-'));
+    try {
+      const root = path.join(parent, 'radial-burst.pandastage');
+      await mkdir(root);
+      const base = graphicFaceProject();
+      const emptyProject = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const layers = new LayerService();
+      const placed = layers.createFromAnimation(emptyProject, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 960, y: 540 },
+      });
+
+      const store = new EditorProjectStore();
+      store.open(root, placed.project);
+      const shots = { getCurrentShotId: () => IDS.shot };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      selection.select(placed.layer.id);
+      const layerStore = new LayerStore(store, shots, layers, selection);
+      const created = layerStore.generateRadialBurst(placed.layer.id, {
+        count: 6,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 1,
+        seed: 42,
+        fadeOut: true,
+      });
+      expect(created).toHaveLength(6);
+      expect(store.history.getSnapshot().undoCount).toBe(1);
+
+      // Manually tweak replica 1 at non-integer-ms frame 7 (292ms vs export 291ms).
+      const rep1Id = created[1]!.id;
+      const rep5Id = created[5]!.id;
+      const motion = new LayerMotionService();
+      const edited = motion.applyKeys(
+        store.getSnapshot()!.project,
+        { shotId: IDS.shot, layerId: rep1Id, timeMs: frameTimeMs(7) },
+        { 'transform.rotationDeg': 45 },
+      );
+      store.updateProject(edited, '微调爆炸旋转');
+
+      const projectService = new ProjectService();
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(placed.project));
+      await projectService.save(root, store.getSnapshot()!.project, 1);
+
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(store.getSnapshot()!.project);
+      expect(reopened.project.animations).toEqual(placed.project.animations);
+      expect(reopened.project.assets).toEqual(placed.project.assets);
+
+      const shot = reopened.project.shots[0]!;
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      for (const frame of [0, 1, 7, 13, 17, 18]) {
+        const authoringMs = frameTimeMs(frame);
+        const exportMs = exportFrameTimeMs(frame);
+        const stage = evaluateShotAtTime(shot, authoringMs, reopened.project);
+        const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
+        const exported = evaluateExportShotAtTime(reopened.project, shot, exportMs);
+        const exportModel = buildStageRenderModel(reopened.project, exported, urls);
+
+        for (const repId of [rep1Id, rep5Id]) {
+          const sLayer = stage.layers.find((l) => l.id === repId)!;
+          const pLayer = preview.layers.find((l) => l.id === repId)!;
+          const eLayer = exported.layers.find((l) => l.id === repId)!;
+          expect(pLayer.visible).toBe(sLayer.visible);
+          expect(eLayer.visible).toBe(sLayer.visible);
+          expect(eLayer.opacity).toBeCloseTo(sLayer.opacity, 5);
+          expect(Math.abs(eLayer.x - sLayer.x)).toBeLessThan(0.1);
+          expect(Math.abs(eLayer.y - sLayer.y)).toBeLessThan(0.1);
+          expect(eLayer.rotationDeg).toBeCloseTo(sLayer.rotationDeg, 4);
+          if (sLayer.visible) {
+            const rLayer = exportModel.layers.find((l) => l.id === repId)!;
+            expect(Math.abs(rLayer.render.x - sLayer.x)).toBeLessThan(0.1);
+            expect(Math.abs(rLayer.render.y - sLayer.y)).toBeLessThan(0.1);
+            expect(rLayer.render.rotationDeg).toBeCloseTo(sLayer.rotationDeg, 4);
+            expect(rLayer.render.opacity).toBeCloseTo(sLayer.opacity, 5);
+          }
+        }
+      }
+      selection.dispose();
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('verifies dual-shot formal export schedule with unaligned Shot 1 (1001ms) vs aligned Shot 1 (1000ms) without false snapping (#1273 P3)', () => {
+    const base = graphicFaceProject();
+    const layers = new LayerService();
+    const motion = new LayerMotionService();
+    const shotService = new ShotService();
+
+    const buildDualShot = (shot1DurationMs: number) => {
+      const clean = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: shot1DurationMs,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const withShot2 = shotService.create(clean, { name: 'Shot 2', durationMs: 1_000 });
+      const shot2Id = withShot2.shots[1]!.id;
+      const placed = layers.createFromAnimation(withShot2, shot2Id, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 400, y: 300 },
+      });
+      const fastShot2 = motion.applyCurveMotion(placed.project, {
+        shotId: shot2Id,
+        layerId: placed.layer.id,
+        startFrame: 0,
+        endFrame: 1,
+        p1: { x: 800, y: 300 },
+        p2: { x: 1200, y: 300 },
+        p3: { x: 1600, y: 300 },
+        speedMode: 'constant',
+      });
+      return { project: fastShot2, shot2Id, layerId: placed.layer.id };
+    };
+
+    // Unaligned Shot 1 = 1001ms -> global frame 24 (1000ms) belongs to Shot 1; global frame 25 (1041ms) maps to Shot 2 local 40ms (off-grid!).
+    const unaligned = buildDualShot(1_001);
+    const unalignedSchedule = [...iterateFormalProjectFrameSchedule(unaligned.project, 24)];
+    const f24 = unalignedSchedule[24]!;
+    const f25 = unalignedSchedule[25]!;
+    expect(f24).toMatchObject({ timeMs: 1_000, shotIndex: 0, shotLocalTimeMs: 1_000 });
+    expect(f25).toMatchObject({ timeMs: 1_041, shotIndex: 1, shotId: unaligned.shot2Id, shotStartMs: 1_001, shotLocalTimeMs: 40 });
+    const unalignedShot2 = unaligned.project.shots[1]!;
+    const unalignedEval = evaluateExportShotAtTime(unaligned.project, unalignedShot2, f25.shotLocalTimeMs);
+    const unalignedUrls = Object.fromEntries(unaligned.project.assets.map((a) => [a.id, `test:${a.id}`]));
+    const unalignedRender = buildStageRenderModel(unaligned.project, unalignedEval, unalignedUrls).layers.find(
+      (l) => l.id === unaligned.layerId,
+    )!;
+    // Continuous off-grid evaluation at 40ms: 400 + 1200 * (40/42) = 1542.86 (NOT falsely snapped to 42ms / 1600!).
+    expect(unalignedRender.render.x).toBeCloseTo(400 + (1_200 * 40) / 42, 2);
+    expect(unalignedRender.render.x).toBeLessThan(1_580);
+
+    // Aligned Shot 1 = 1000ms -> global frame 25 (1041ms) maps to Shot 2 local 41ms -> resolves to authoring 42ms (X=1600!).
+    const aligned = buildDualShot(1_000);
+    const alignedSchedule = [...iterateFormalProjectFrameSchedule(aligned.project, 24)];
+    const alignedF25 = alignedSchedule[25]!;
+    expect(alignedF25).toMatchObject({ timeMs: 1_041, shotIndex: 1, shotId: aligned.shot2Id, shotStartMs: 1_000, shotLocalTimeMs: 41 });
+    const alignedShot2 = aligned.project.shots[1]!;
+    const alignedEval = evaluateExportShotAtTime(aligned.project, alignedShot2, alignedF25.shotLocalTimeMs);
+    const alignedUrls = Object.fromEntries(aligned.project.assets.map((a) => [a.id, `test:${a.id}`]));
+    const alignedRender = buildStageRenderModel(aligned.project, alignedEval, alignedUrls).layers.find(
+      (l) => l.id === aligned.layerId,
+    )!;
+    expect(Math.abs(alignedRender.render.x - 1_600)).toBeLessThan(0.1);
   });
 });

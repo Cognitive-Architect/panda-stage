@@ -15,6 +15,7 @@ import {
   type LayerTransformInput,
   type Point,
   type Project,
+  type RadialBurstInput,
 } from '../../domain';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
@@ -218,6 +219,23 @@ export class LayerStore {
     );
     if (result.project !== project) {
       this.editorStore.updateProject(result.project, '生成位置残影');
+    }
+    return result.layers;
+  }
+
+  generateRadialBurst(
+    layerId: string,
+    input: RadialBurstInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateRadialBurst(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成径向爆炸');
     }
     return result.layers;
   }

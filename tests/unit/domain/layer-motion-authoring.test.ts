@@ -16,6 +16,7 @@ import {
   ProjectV21Schema,
   ShotService,
   editAnimationPropertyKey,
+  evaluateAnimationEase,
   evaluateCubicBezier2D,
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
@@ -28,6 +29,7 @@ import {
   recognizePositionChain,
   resolveLayerVisualParts,
   sampleCubicBezierBySteps,
+  sampleRadialBurstInstances,
   type CubicBezier2D,
   type FlaGraphicDefinition,
   type Project,
@@ -2524,5 +2526,363 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
         endFrame: 24,
       }),
     ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+  });
+
+  it('samples deterministic radial burst distributions with stable per-index draws across seed/count/parameter variations (#1273 A04 math)', () => {
+    const a = sampleRadialBurstInstances({
+      count: 12,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+    const b = sampleRadialBurstInstances({
+      count: 12,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+    expect(a).toEqual(b);
+
+    const diffSeed = sampleRadialBurstInstances({
+      count: 12,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 43,
+    });
+    expect(diffSeed.map((s) => s.endPoint)).not.toEqual(a.map((s) => s.endPoint));
+
+    // Changing radius/center/angle/maxRotation preserves raw (u, v, w) draws.
+    const changedGeom = sampleRadialBurstInstances({
+      count: 12,
+      center: { x: 300, y: 200 },
+      radius: 500,
+      startAngleDeg: 45,
+      maxRotationDeg: 90,
+      seed: 42,
+    });
+    expect(changedGeom.map(({ u, v, w }) => ({ u, v, w }))).toEqual(
+      a.map(({ u, v, w }) => ({ u, v, w })),
+    );
+
+    // Changing count N keeps raw (u, v, w) identical for common indices while recomputing sectors.
+    const smaller = sampleRadialBurstInstances({
+      count: 6,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+    expect(smaller.map(({ u, v, w }) => ({ u, v, w }))).toEqual(
+      a.slice(0, 6).map(({ u, v, w }) => ({ u, v, w })),
+    );
+    expect(smaller[1]!.angleDeg).toBeCloseTo((360 * (1 + smaller[1]!.u)) / 6, 8);
+
+    // Seed=0 and max uint32 seed=4294967295 are valid and deterministic.
+    const zeroSeed = sampleRadialBurstInstances({
+      count: 4,
+      center: { x: 960, y: 540 },
+      radius: 200,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 0,
+    });
+    const maxSeed = sampleRadialBurstInstances({
+      count: 4,
+      center: { x: 960, y: 540 },
+      radius: 200,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 4_294_967_295,
+    });
+    expect(zeroSeed).toHaveLength(4);
+    expect(maxSeed).toHaveLength(4);
+    expect(zeroSeed.map((s) => s.u)).not.toEqual(maxSeed.map((s) => s.u));
+  });
+
+  it('generates radial burst replicas with exact sectors, ease-out trajectories, pivot compensation, clean appearance, fade/hold, and strict rejections (#1273 A04)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+
+    // Standard contract case: C=(960,540), N=12, R=240, θ0=0°, Ω=180°, S=0, D=12, K=1, seed=42.
+    const proj = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({ ...s, durationMs: 2_000 })),
+    });
+    const beforeProj = structuredClone(proj);
+    const burst = layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+      count: 12,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      startFrame: 0,
+      durationFrames: 12,
+      staggerFrames: 1,
+      seed: 42,
+      fadeOut: true,
+    });
+    const parsed = ProjectSchema.parse(burst.project);
+    const shot = parsed.shots[0]!;
+    expect(burst.layers).toHaveLength(12);
+    expect(parsed.animations).toEqual(beforeProj.animations);
+    expect(parsed.assets).toEqual(beforeProj.assets);
+    expect(shot.layers.find((l) => l.id === base.layerId)).toEqual(
+      beforeProj.shots[0]!.layers.find((l) => l.id === base.layerId),
+    );
+
+    const expectedSamples = sampleRadialBurstInstances({
+      count: 12,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+
+    for (let i = 0; i < 12; i += 1) {
+      const rep = burst.layers[i]!;
+      const sample = expectedSamples[i]!;
+      expect(sample.angleDeg).toBeGreaterThanOrEqual((360 * i) / 12);
+      expect(sample.angleDeg).toBeLessThan((360 * (i + 1)) / 12);
+      expect(sample.distance).toBeGreaterThanOrEqual(240 * 0.75);
+      expect(sample.distance).toBeLessThanOrEqual(240);
+      expect(Math.abs(sample.rotationDeltaDeg)).toBeLessThanOrEqual(180);
+
+      const launchFrame = i;
+      const midFrame = i + 6;
+      const endFrame = i + 12;
+      if (launchFrame > 0) {
+        expect(
+          evaluateShotAtTime(shot, frameTimeMs(launchFrame - 1), parsed).layers.find(
+            (l) => l.id === rep.id,
+          )!.visible,
+        ).toBe(false);
+      }
+      const atLaunch = evaluateShotAtTime(shot, frameTimeMs(launchFrame), parsed).layers.find(
+        (l) => l.id === rep.id,
+      )!;
+      expect(atLaunch.visible).toBe(true);
+      expect(Math.abs(atLaunch.x - 960)).toBeLessThan(0.1);
+      expect(Math.abs(atLaunch.y - 540)).toBeLessThan(0.1);
+      expect(atLaunch.opacity).toBeCloseTo(1, 5);
+
+      const midProgress = evaluateAnimationEase(6 / 12, 'ease-out');
+      const atMid = evaluateShotAtTime(shot, frameTimeMs(midFrame), parsed).layers.find(
+        (l) => l.id === rep.id,
+      )!;
+      expect(Math.abs(atMid.x - (960 + (sample.endPoint.x - 960) * midProgress))).toBeLessThan(0.1);
+      expect(Math.abs(atMid.y - (540 + (sample.endPoint.y - 540) * midProgress))).toBeLessThan(0.1);
+      expect(atMid.rotationDeg).toBeCloseTo(sample.rotationDeltaDeg * midProgress, 3);
+
+      const atEnd = evaluateShotAtTime(shot, frameTimeMs(endFrame), parsed).layers.find(
+        (l) => l.id === rep.id,
+      )!;
+      expect(Math.abs(atEnd.x - sample.endPoint.x)).toBeLessThan(0.1);
+      expect(Math.abs(atEnd.y - sample.endPoint.y)).toBeLessThan(0.1);
+      expect(atEnd.opacity).toBeCloseTo(0, 5);
+
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(endFrame + 1), parsed).layers.find(
+          (l) => l.id === rep.id,
+        )!.visible,
+      ).toBe(false);
+    }
+
+    // K=0, Ω=0, fadeOut=false, and max N=32.
+    const maxBurst = layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+      count: 32,
+      center: { x: 960, y: 540 },
+      radius: 200,
+      startAngleDeg: 0,
+      maxRotationDeg: 0,
+      startFrame: 4,
+      durationFrames: 10,
+      staggerFrames: 0,
+      seed: 7,
+      fadeOut: false,
+    });
+    expect(maxBurst.layers).toHaveLength(32);
+    const firstMax = maxBurst.layers[0]!;
+    if (firstMax.animationClip?.version !== 2) throw new Error('Expected v2 Clip');
+    expect(firstMax.animationClip.tracks.some((t) => t.property === 'transform.rotationDeg')).toBe(false);
+    // Holds endpoint & opacity after T_i when fadeOut=false.
+    const heldAfter = evaluateShotAtTime(
+      maxBurst.project.shots[0]!,
+      frameTimeMs(20),
+      maxBurst.project,
+    ).layers.find((l) => l.id === firstMax.id)!;
+    expect(heldAfter.visible).toBe(true);
+    expect(heldAfter.opacity).toBeCloseTo(1, 5);
+
+    // Dirty source (Move/Shake, v2 tracks, non-default pivot, flipX, dynamic opacity, graphic-frame, overrides) -> clean replicas & cross-edge trajectory without clamping!
+    let dirty = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({
+        ...s,
+        durationMs: 1_010, // off-grid tail, last legal frame = 24
+        layers: s.layers.map((l) =>
+          l.id === base.layerId ? { ...l, x: 400, y: 300, scaleX: 1.5, scaleY: 1.2, rotationDeg: 25, flipX: true } : l,
+        ),
+        timelineEvents: [
+          {
+            id: '93000000-0000-4000-8000-000000000971',
+            type: 'move',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: { x: 400, y: 300 },
+            to: { x: 800, y: 500 },
+            easing: 'linear',
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000972',
+            type: 'opacity',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: 0.8,
+            to: 0.2,
+            easing: 'linear',
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000973',
+            type: 'graphic-frame',
+            layerId: base.layerId,
+            animationId: base.definitionId,
+            startMs: 0,
+            endMs: 0,
+            sourceFrameIndex: 8,
+          },
+        ],
+      })),
+    });
+    dirty = layerService.updateFlaGraphicInstanceTransform(
+      dirty,
+      base.shotId,
+      base.layerId,
+      0,
+      ['face-0'],
+      { a: 0.3, b: 0, c: 0, d: 0.3, tx: 22, ty: 14 },
+    );
+    expect(
+      dirty.shots[0]!.layers.find((l) => l.id === base.layerId)!
+        .flaGraphicInstanceTransformOverrides,
+    ).toBeDefined();
+    dirty = service.recalibratePivot(
+      dirty,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 140, y: 110 },
+    );
+    dirty = service.applyKeys(
+      dirty,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      { 'transform.offsetX': 120, 'transform.rotationDeg': 90 },
+    );
+
+    const edgeBurst = layerService.generateRadialBurst(dirty, base.shotId, base.layerId, {
+      count: 4,
+      center: { x: 1860, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      startFrame: 9,
+      durationFrames: 12,
+      staggerFrames: 1, // last end frame = 9 + 3 + 12 = 24 (exact last legal frame of 1010ms shot!)
+      seed: 42,
+      fadeOut: true,
+    });
+    const edgeShot = edgeBurst.project.shots[0]!;
+    const rep0 = edgeBurst.layers[0]!;
+    expect(rep0.flaGraphicInstanceTransformOverrides).toBeDefined();
+    expect(edgeShot.timelineEvents.some((e) => e.layerId === rep0.id && e.type === 'graphic-frame')).toBe(true);
+    expect(edgeShot.timelineEvents.some((e) => e.layerId === rep0.id && e.type === 'move')).toBe(false);
+
+    // Verify exact straight radial line even with non-default pivot + flipX + rotation AND x > 1920 not clamped!
+    const edgeSample0 = sampleRadialBurstInstances({
+      count: 4,
+      center: { x: 1860, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      seed: 42,
+    })[0]!;
+    expect(edgeSample0.endPoint.x).toBeGreaterThan(1920);
+    const rep0End = evaluateShotAtTime(edgeShot, frameTimeMs(21), edgeBurst.project).layers.find(
+      (l) => l.id === rep0.id,
+    )!;
+    expect(Math.abs(rep0End.x - edgeSample0.endPoint.x)).toBeLessThan(0.1);
+    expect(Math.abs(rep0End.y - edgeSample0.endPoint.y)).toBeLessThan(0.1);
+
+    // Strict rejections: count=0/33, radius<=0, stagger<0, lastEndFrame>maxFrame, hidden source at S, locked source.
+    expect(() =>
+      layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+        count: 0,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 1,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_BURST' }));
+    expect(() =>
+      layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+        count: 33,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 0,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_BURST' }));
+    expect(() =>
+      layerService.generateRadialBurst(dirty, base.shotId, base.layerId, {
+        count: 4,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 10,
+        durationFrames: 12,
+        staggerFrames: 1, // 10 + 3 + 12 = 25 > 24
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_BURST' }));
+    const hiddenSource = ProjectSchema.parse({
+      ...proj,
+      shots: proj.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) => (l.id === base.layerId ? { ...l, visible: false } : l)),
+      })),
+    });
+    expect(() =>
+      layerService.generateRadialBurst(hiddenSource, base.shotId, base.layerId, {
+        count: 4,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 1,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(/不可见或完全透明/);
   });
 });

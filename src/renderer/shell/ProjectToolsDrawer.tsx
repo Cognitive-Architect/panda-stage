@@ -1,4 +1,4 @@
-import { ArrowLeft, Ghost, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
+import { ArrowLeft, Bomb, Ghost, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
@@ -6,6 +6,7 @@ import type { CanvasViewportMode, Project } from '../../domain';
 import { AfterimagePanel } from '../features/tools/AfterimagePanel';
 import { CurveMotionPanel } from '../features/tools/CurveMotionPanel';
 import { GridArrayPanel } from '../features/tools/GridArrayPanel';
+import { RadialBurstPanel } from '../features/tools/RadialBurstPanel';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { DesktopAutomationCard } from './DesktopAutomationCard';
 
@@ -14,7 +15,13 @@ export interface ProjectToolsDrawerProps {
   onPreview?(project: Project): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets' | 'grid-array' | 'curve-motion' | 'afterimage';
+type ProjectToolsView =
+  | 'home'
+  | 'action-presets'
+  | 'grid-array'
+  | 'curve-motion'
+  | 'afterimage'
+  | 'radial-burst';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -71,6 +78,8 @@ export function ProjectToolsDrawer({
               '曲线运动'
             ) : view === 'afterimage' ? (
               '残影'
+            ) : view === 'radial-burst' ? (
+              '径向爆炸'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -204,6 +213,25 @@ export function ProjectToolsDrawer({
               <span>打开残影</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-radial-burst-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-radial-burst-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-radial-burst-heading">径向爆炸</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="radial-burst"
+              data-testid="project-tools-radial-burst"
+              onClick={() => setView('radial-burst')}
+              type="button"
+            >
+              <DecorativeIcon icon={Bomb} size={18} />
+              <span>打开径向爆炸</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -230,13 +258,21 @@ export function ProjectToolsDrawer({
         >
           <CurveMotionPanel onCancel={() => setView('home')} />
         </section>
-      ) : (
+      ) : view === 'afterimage' ? (
         <section
           aria-label="残影"
           className="project-tools-grid-array-view"
           data-testid="project-tools-afterimage-view"
         >
           <AfterimagePanel onCancel={() => setView('home')} />
+        </section>
+      ) : (
+        <section
+          aria-label="径向爆炸"
+          className="project-tools-grid-array-view"
+          data-testid="project-tools-radial-burst-view"
+        >
+          <RadialBurstPanel onCancel={() => setView('home')} />
         </section>
       )}
     </section>

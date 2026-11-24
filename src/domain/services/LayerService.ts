@@ -6,8 +6,13 @@ import {
 } from '../constants';
 import {
   calculateCoverTransform,
+  RADIAL_BURST_MAX_COUNT,
+  RADIAL_BURST_MAX_SEED,
+  RADIAL_BURST_MIN_COUNT,
+  sampleRadialBurstInstances,
   type Point,
 } from '../geometry';
+import { evaluateAnimationEase } from '../evaluate-animation-core';
 import {
   isFlaGraphicDefinition,
   isFlaGraphicEditableSubtreeShapeNode,
@@ -109,7 +114,8 @@ export type LayerServiceErrorCode =
   | 'SHAPE_REGION_REQUIRED'
   | 'SHAPE_FILL_NOT_SOLID'
   | 'INVALID_GRID_ARRAY'
-  | 'INVALID_AFTERIMAGE';
+  | 'INVALID_AFTERIMAGE'
+  | 'INVALID_RADIAL_BURST';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -165,6 +171,24 @@ export interface AfterimageInput {
 }
 
 export interface GenerateAfterimagesResult {
+  readonly project: Project;
+  readonly layers: readonly Layer[];
+}
+
+export interface RadialBurstInput {
+  readonly count: number;
+  readonly center: Point;
+  readonly radius: number;
+  readonly startAngleDeg: number;
+  readonly maxRotationDeg: number;
+  readonly startFrame: number;
+  readonly durationFrames: number;
+  readonly staggerFrames: number;
+  readonly seed: number;
+  readonly fadeOut: boolean;
+}
+
+export interface GenerateRadialBurstResult {
   readonly project: Project;
   readonly layers: readonly Layer[];
 }
@@ -261,6 +285,12 @@ function duplicateGridLayerName(
 
 function afterimageLayerName(baseName: string, index: number): string {
   const suffix = ` 残影 ${index}`;
+  const maxBaseLength = Math.max(1, 200 - suffix.length);
+  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+}
+
+function radialBurstLayerName(baseName: string, index: number): string {
+  const suffix = ` 爆炸 ${index + 1}`;
   const maxBaseLength = Math.max(1, 200 - suffix.length);
   return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
 }
@@ -2061,24 +2091,10 @@ export class LayerService {
       );
 
       // Copy preserved non-position/non-opacity/non-visibility events with stable localeCompare ID ordering.
-      const sortedNewEventIds = preservedSourceEvents
-        .map(() => {
-          const id = this.nextUniqueId(usedIds);
-          usedIds.add(id);
-          return id;
-        })
-        .sort((left, right) => left.localeCompare(right));
-      const newEventIdBySourceId = new Map(
-        [...preservedSourceEvents]
-          .sort((left, right) => left.id.localeCompare(right.id))
-          .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
-      );
-      const replicaPreservedEvents: TimelineEvent[] = preservedSourceEvents.map(
-        (event) => ({
-          ...structuredClone(event),
-          id: newEventIdBySourceId.get(event.id)!,
-          layerId: replicaId,
-        }),
+      const replicaPreservedEvents = this.cloneEventsPreservingOrder(
+        preservedSourceEvents,
+        replicaId,
+        usedIds,
       );
 
       const firstActiveFrame = startFrame + i * delayFrames;
@@ -2297,6 +2313,395 @@ export class LayerService {
     };
   }
 
+  /**
+   * Generate N deterministic radial-burst replicas from one source FLA Graphic
+   * layer with staggered launch frames, ease-out straight radial trajectories,
+   * pivot-compensated rotation, and optional fade-out.
+   */
+  generateRadialBurst(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: RadialBurstInput,
+  ): GenerateRadialBurstResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        '只能对 FLA 图形动画图层生成径向爆炸。',
+      );
+    }
+    const animationId = layer.source.animationId;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!definition || !isFlaGraphicDefinition(definition)) {
+      throw new LayerServiceError(
+        'FLA_GRAPHIC_REQUIRED',
+        '径向爆炸仅支持 FLA 图形（Graphic）动画图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+
+    const {
+      count,
+      center,
+      radius,
+      startAngleDeg,
+      maxRotationDeg,
+      startFrame,
+      durationFrames,
+      staggerFrames,
+      seed,
+      fadeOut,
+    } = input;
+
+    if (
+      !Number.isSafeInteger(count) ||
+      count < RADIAL_BURST_MIN_COUNT ||
+      count > RADIAL_BURST_MAX_COUNT
+    ) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        `副本数量必须是 ${RADIAL_BURST_MIN_COUNT}–${RADIAL_BURST_MAX_COUNT} 之间的整数。`,
+      );
+    }
+    const safeCenter = validateLayerPosition(center);
+    if (!Number.isFinite(radius) || radius <= 0) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '爆炸半径必须是大于 0 的有限数字。',
+      );
+    }
+    if (!Number.isFinite(startAngleDeg)) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '起始角度必须是有限数字。',
+      );
+    }
+    if (!Number.isFinite(maxRotationDeg) || maxRotationDeg < 0) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '最大旋转幅度必须是大于等于 0 的有限数字。',
+      );
+    }
+    if (!Number.isSafeInteger(startFrame) || startFrame < 0) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '起帧必须是非负整数。',
+      );
+    }
+    if (!Number.isSafeInteger(durationFrames) || durationFrames < 1) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '持续帧数必须是大于等于 1 的整数。',
+      );
+    }
+    if (!Number.isSafeInteger(staggerFrames) || staggerFrames < 0) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '逐实例延迟必须是非负整数帧。',
+      );
+    }
+    if (
+      !Number.isSafeInteger(seed) ||
+      seed < 0 ||
+      seed > RADIAL_BURST_MAX_SEED
+    ) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        `随机种子必须是 0–${RADIAL_BURST_MAX_SEED} 之间的整数。`,
+      );
+    }
+
+    const maxValidMs = lastValidFrameTime(shot.durationMs);
+    const startTimeMs = frameTimeMs(startFrame);
+    const lastEndFrame = startFrame + (count - 1) * staggerFrames + durationFrames;
+    const lastEndTimeMs = frameTimeMs(lastEndFrame);
+    if (
+      !isValidFrameTime(startTimeMs) ||
+      !isValidFrameTime(lastEndTimeMs) ||
+      startTimeMs > maxValidMs ||
+      lastEndTimeMs > maxValidMs ||
+      lastEndTimeMs > shot.durationMs
+    ) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '最晚结束帧超出当前镜头合法帧范围，请缩短持续帧数、延迟、数量或提前起帧。',
+      );
+    }
+
+    const evaluatedAtStart = evaluateShotAtTime(shot, startTimeMs, project).layers.find(
+      (candidate) => candidate.id === layer.id,
+    );
+    if (!evaluatedAtStart) {
+      throw new LayerServiceError('LAYER_NOT_FOUND', `找不到图层：${layer.id}`);
+    }
+    if (!evaluatedAtStart.visible || evaluatedAtStart.opacity <= 1e-6) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_BURST',
+        '源图层在起帧不可见或完全透明，无法生成径向爆炸。',
+      );
+    }
+    const initScaleX = validateLayerScale(evaluatedAtStart.scaleX);
+    const initScaleY = validateLayerScale(evaluatedAtStart.scaleY);
+    const initRotationDeg = normalizeLayerRotation(evaluatedAtStart.rotationDeg);
+    const initFlipX = evaluatedAtStart.flipX;
+    const initOpacity = clampAlpha01(evaluatedAtStart.opacity);
+
+    const sourceCanvas =
+      layer.animationClip?.version === 2
+        ? { ...layer.animationClip.targetBases[0]!.sourceCanvas }
+        : {
+            width: definition.source.canvas.width,
+            height: definition.source.canvas.height,
+          };
+    const pivot =
+      layer.animationClip?.version === 2
+        ? { ...layer.animationClip.targetBases[0]!.pivot }
+        : {
+            space: 'target-local' as const,
+            x: sourceCanvas.width / 2,
+            y: sourceCanvas.height / 2,
+          };
+    const localPivot = layerPivotLocalOffset(pivot, sourceCanvas);
+    const basePose: LayerBasePose = {
+      x: safeCenter.x,
+      y: safeCenter.y,
+      scaleX: initScaleX,
+      scaleY: initScaleY,
+      rotationDeg: initRotationDeg,
+    };
+
+    const samples = sampleRadialBurstInstances({
+      count,
+      center: safeCenter,
+      radius,
+      startAngleDeg,
+      maxRotationDeg,
+      seed,
+    });
+
+    const usedIds = this.projectIds(project);
+    const internalGraphicEvents = shot.timelineEvents.filter(
+      (event) =>
+        event.layerId === layer.id &&
+        (event.type === 'graphic-frame' || event.type === 'graphic-playback'),
+    );
+    let nextZIndex = Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1;
+
+    const createdLayers: Layer[] = [];
+    const createdEvents: TimelineEvent[] = [];
+
+    for (const sample of samples) {
+      const replicaId = this.nextUniqueId(usedIds);
+      usedIds.add(replicaId);
+
+      const launchFrame = startFrame + sample.index * staggerFrames;
+      const endFrame = launchFrame + durationFrames;
+      const launchMs = frameTimeMs(launchFrame);
+      const endMs = frameTimeMs(endFrame);
+
+      const offsetXKeys: AnimationKey[] = [];
+      const offsetYKeys: AnimationKey[] = [];
+      const rotationKeys: AnimationKey[] = [];
+      const hasRotation = sample.rotationDeltaDeg !== 0;
+
+      if (launchMs > 0) {
+        offsetXKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+        offsetYKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+        if (hasRotation) {
+          rotationKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+        }
+      }
+
+      for (let step = 0; step <= durationFrames; step += 1) {
+        const timeMs = frameTimeMs(launchFrame + step);
+        const progress = evaluateAnimationEase(step / durationFrames, 'ease-out');
+        const stageX = safeCenter.x + (sample.endPoint.x - safeCenter.x) * progress;
+        const stageY = safeCenter.y + (sample.endPoint.y - safeCenter.y) * progress;
+        const relRotDeg = sample.rotationDeltaDeg * progress || 0;
+        const solved = solveLayerRelativeOffsetForStagePoint(
+          localPivot,
+          basePose,
+          initFlipX,
+          relRotDeg,
+          1,
+          1,
+          { x: stageX, y: stageY },
+        );
+        offsetXKeys.push({
+          timeMs,
+          value: solved.offsetX! || 0,
+          interpolationToNext: 'linear',
+        });
+        offsetYKeys.push({
+          timeMs,
+          value: solved.offsetY! || 0,
+          interpolationToNext: 'linear',
+        });
+        if (hasRotation) {
+          rotationKeys.push({
+            timeMs,
+            value: relRotDeg,
+            interpolationToNext: 'linear',
+          });
+        }
+      }
+
+      const target = { kind: 'layer' as const, layerId: replicaId };
+      const tracks: LayerAnimationClip['tracks'] = [
+        { target, property: 'transform.offsetX', keys: offsetXKeys },
+        { target, property: 'transform.offsetY', keys: offsetYKeys },
+        ...(hasRotation
+          ? [{ target, property: 'transform.rotationDeg' as const, keys: rotationKeys }]
+          : []),
+      ];
+      const clip: LayerAnimationClip = {
+        version: 2,
+        targetBases: [
+          {
+            target,
+            animationId,
+            baseTransform: { ...basePose },
+            sourceCanvas: { ...sourceCanvas },
+            pivot: { ...pivot },
+          },
+        ],
+        tracks,
+      };
+
+      const replica: Layer = {
+        ...layer,
+        ...(layer.flaGraphicInstanceTransformOverrides
+          ? {
+              flaGraphicInstanceTransformOverrides:
+                cloneFlaGraphicInstanceTransformOverrides(
+                  layer.flaGraphicInstanceTransformOverrides,
+                ),
+            }
+          : {}),
+        ...(layer.flaGraphicInstanceShapeOverrides
+          ? {
+              flaGraphicInstanceShapeOverrides: cloneFlaGraphicShapeOverrides(
+                layer.flaGraphicInstanceShapeOverrides,
+              ),
+            }
+          : {}),
+        id: replicaId,
+        name: radialBurstLayerName(layer.name, sample.index),
+        x: safeCenter.x,
+        y: safeCenter.y,
+        scaleX: initScaleX,
+        scaleY: initScaleY,
+        rotationDeg: initRotationDeg,
+        flipX: initFlipX,
+        opacity: initOpacity,
+        visible: false,
+        locked: false,
+        zIndex: nextZIndex,
+        animationClip: clip,
+      };
+      nextZIndex += 1;
+
+      const preservedEvents = this.cloneEventsPreservingOrder(
+        internalGraphicEvents,
+        replicaId,
+        usedIds,
+      );
+      const showEventId = this.nextUniqueId(usedIds);
+      usedIds.add(showEventId);
+      const replicaEvents: TimelineEvent[] = [
+        ...preservedEvents,
+        {
+          id: showEventId,
+          type: 'visibility',
+          layerId: replicaId,
+          startMs: launchMs,
+          endMs: launchMs,
+          visible: true,
+        },
+      ];
+
+      if (fadeOut) {
+        const opacityEventId = this.nextUniqueId(usedIds);
+        usedIds.add(opacityEventId);
+        replicaEvents.push({
+          id: opacityEventId,
+          type: 'opacity',
+          layerId: replicaId,
+          startMs: launchMs,
+          endMs,
+          from: initOpacity,
+          to: 0,
+          easing: 'linear',
+        });
+        const hideAfterMs = frameTimeMs(endFrame + 1);
+        if (hideAfterMs <= maxValidMs && hideAfterMs <= shot.durationMs) {
+          const hideEventId = this.nextUniqueId(usedIds);
+          usedIds.add(hideEventId);
+          replicaEvents.push({
+            id: hideEventId,
+            type: 'visibility',
+            layerId: replicaId,
+            startMs: hideAfterMs,
+            endMs: hideAfterMs,
+            visible: false,
+          });
+        }
+      }
+
+      createdLayers.push(replica);
+      createdEvents.push(...replicaEvents);
+    }
+
+    const nextShot = {
+      ...shot,
+      layers: [...shot.layers, ...createdLayers],
+      timelineEvents: [...shot.timelineEvents, ...createdEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layers: createdLayers,
+    };
+  }
+
+  private cloneEventsPreservingOrder(
+    sourceEvents: readonly TimelineEvent[],
+    targetLayerId: string,
+    usedIds: Set<string>,
+    moveDelta?: Point,
+  ): TimelineEvent[] {
+    const sortedNewEventIds = sourceEvents
+      .map(() => {
+        const id = this.nextUniqueId(usedIds);
+        usedIds.add(id);
+        return id;
+      })
+      .sort((left, right) => left.localeCompare(right));
+    const newEventIdBySourceId = new Map(
+      [...sourceEvents]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
+    );
+    return sourceEvents.map((event) => {
+      const cloned = structuredClone(event);
+      const id = newEventIdBySourceId.get(event.id)!;
+      if (cloned.type === 'move' && moveDelta) {
+        return {
+          ...cloned,
+          id,
+          layerId: targetLayerId,
+          from: { x: cloned.from.x + moveDelta.x, y: cloned.from.y + moveDelta.y },
+          to: { x: cloned.to.x + moveDelta.x, y: cloned.to.y + moveDelta.y },
+        };
+      }
+      return { ...cloned, id, layerId: targetLayerId };
+    });
+  }
+
   private buildDuplicatedAnimationLayer(
     layer: Layer,
     sourceEvents: readonly TimelineEvent[],
@@ -2347,32 +2752,12 @@ export class LayerService {
       y: position.y,
       zIndex,
     };
-    const sortedNewEventIds = sourceEvents
-      .map(() => {
-        const id = this.nextUniqueId(usedIds);
-        usedIds.add(id);
-        return id;
-      })
-      .sort((left, right) => left.localeCompare(right));
-    const newEventIdBySourceId = new Map(
-      [...sourceEvents]
-        .sort((left, right) => left.id.localeCompare(right.id))
-        .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
+    const events = this.cloneEventsPreservingOrder(
+      sourceEvents,
+      duplicate.id,
+      usedIds,
+      { x: deltaX, y: deltaY },
     );
-    const events = sourceEvents.map((event) => {
-      const cloned = structuredClone(event);
-      const id = newEventIdBySourceId.get(event.id)!;
-      if (cloned.type === 'move') {
-        return {
-          ...cloned,
-          id,
-          layerId: duplicate.id,
-          from: { x: cloned.from.x + deltaX, y: cloned.from.y + deltaY },
-          to: { x: cloned.to.x + deltaX, y: cloned.to.y + deltaY },
-        };
-      }
-      return { ...cloned, id, layerId: duplicate.id };
-    });
     return { layer: duplicate, events };
   }
 

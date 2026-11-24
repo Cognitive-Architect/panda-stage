@@ -901,4 +901,60 @@ describe('Day 22 layer stores', () => {
     expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
     input.selection.dispose();
   });
+
+  it('commits radial burst in one History entry, preserves selection, restores exact IDs/values on Undo/Redo, and leaves state clean on invalid input (#1273 A04)', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 960, y: 540 },
+      startTimeMs: 0,
+    });
+    const input = harness(placed.project);
+    input.selection.select(placed.layer.id);
+
+    expect(() =>
+      input.layers.generateRadialBurst(placed.layer.id, {
+        count: 12,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 180,
+        startFrame: 0,
+        durationFrames: 200, // exceeds shot
+        staggerFrames: 1,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(/超出当前镜头/);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+
+    const created = input.layers.generateRadialBurst(placed.layer.id, {
+      count: 6,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      maxRotationDeg: 180,
+      startFrame: 0,
+      durationFrames: 12,
+      staggerFrames: 1,
+      seed: 42,
+      fadeOut: true,
+    });
+    expect(created).toHaveLength(6);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    const afterBurst = input.editor.getSnapshot()!.project;
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(placed.project);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterBurst);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+    input.selection.dispose();
+  });
 });
