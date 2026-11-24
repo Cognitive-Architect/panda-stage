@@ -130,24 +130,14 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
   };
 }
 
-/**
- * Production Canvas seam for one Timeline time. It intentionally composes the
- * formal evaluator, the shared mouth projection, complete-visual continuity,
- * and the editor render model without creating another clock or evaluator.
- */
-export function buildEditorTemporalCanvasModel({
-  project,
-  shot,
-  currentTimeMs,
-  activeDialogueId = null,
-  dialogueSilence,
-  readyAssetIds,
-  readyAssetSourceKeys,
-  readyResourceKeys,
-  missingAssetIds,
-  previousVisuals,
-  positionDraft,
-}: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
+/** The visible pose at the playhead, including the Canvas reference view at 0:00. */
+export function evaluateEditorCanvasShot(
+  project: Project,
+  shot: Shot,
+  currentTimeMs: number,
+  activeDialogueId: string | null,
+  dialogueSilence?: DialogueSilence,
+): EvaluatedShot {
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
   // Keep base transform editing at 0:00, while showing any formally authored
@@ -194,7 +184,7 @@ export function buildEditorTemporalCanvasModel({
         };
       })()
     : baseEditorShot;
-  const evaluatedShot = temporalInspection
+  return temporalInspection
     ? projectShotDialogueVisual(
         project,
         shot,
@@ -203,6 +193,28 @@ export function buildEditorTemporalCanvasModel({
         dialogueSilence,
       )
     : zeroTimeExpressionShot;
+}
+
+/**
+ * Production Canvas seam for one Timeline time. It intentionally composes the
+ * formal evaluator, the shared mouth projection, complete-visual continuity,
+ * and the editor render model without creating another clock or evaluator.
+ */
+export function buildEditorTemporalCanvasModel({
+  project,
+  shot,
+  currentTimeMs,
+  activeDialogueId = null,
+  dialogueSilence,
+  readyAssetIds,
+  readyAssetSourceKeys,
+  readyResourceKeys,
+  missingAssetIds,
+  previousVisuals,
+  positionDraft,
+}: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
+  const temporalInspection = currentTimeMs !== 0;
+  const evaluatedShot = evaluateEditorCanvasShot(project, shot, currentTimeMs, activeDialogueId, dialogueSilence);
   // Base Edit View owns 0:00 transforms and the continuity resolver owns image
   // transitions. At 0:00 we retain the previous complete visual
   // until the new Face is ready.

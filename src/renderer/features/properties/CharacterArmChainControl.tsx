@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import {
-  characterArmTipOnStage, characterFaceAndMouthPartIds, createCharacterPartAnimationClip, resolveCharacterArmAssemblyParts, resolveTimelineFrameTime,
+  characterArmTipOnStage, characterFaceAndMouthPartIds, createCharacterPartAnimationClip, resolveTimelineFrameTime,
   saveCharacterArmChain, type AdaptivePartsCharacter, type CharacterArmChain, type Layer, type Shot,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { Button } from '../../ui/Button';
-import { updateArmAssemblyPart, useCharacterArmTool } from '../canvas/CharacterArmTool';
+import { replaceArmChainPart, updateArmAssemblyPart, useCharacterArmTool } from '../canvas/CharacterArmTool';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 
 interface CharacterArmChainControlProps {
@@ -60,8 +60,8 @@ function ArmChainForm({ snapshot, shot, layer, character }: CharacterArmChainCon
 
   function startAssembly(): void {
     try {
-      const available = resolveCharacterArmAssemblyParts(snapshot.project, address);
-      if (available.size < 2) throw new Error('当前帧可点选的部件不足。可换一帧或使用数值设置。');
+      const available = tool.readAssemblyParts?.current?.(snapshot, address);
+      if (!available || available.size < 2) throw new Error('当前帧可点选的部件不足。可换一帧或使用数值设置。');
       const existing = initialChain();
       const chain = {
         ...existing,
@@ -79,21 +79,14 @@ function ArmChainForm({ snapshot, shot, layer, character }: CharacterArmChainCon
 
   function updatePart(index: number, partId: string): void {
     if (!draft) return;
-    if (assembly && partId) {
+    if (assembly) {
       tool.setAssembly?.(updateArmAssemblyPart(assembly, index, partId));
       return;
     }
-    const segments = [...draft.segments];
     try {
       const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, layer.id);
       const pivot = clip.targetBases.find(({ target }) => target.partId === partId)?.pivot;
-      const joint = pivot ? { x: pivot.x, y: pivot.y } : { x: 0, y: 0 };
-      segments[index] = { ...segments[index]!, partId, joint };
-      if (assembly) {
-        tool.setAssembly?.({ ...assembly, nextPoint: 0, chain: { ...draft, segments } });
-        return;
-      }
-      setDraft({ segments, tip: index === segments.length - 1 && pivot ? { x: pivot.x + 40, y: pivot.y } : draft.tip });
+      setDraft(replaceArmChainPart(draft, index, partId, pivot));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '无法读取部件支点。');
     }
@@ -140,7 +133,7 @@ function ArmChainForm({ snapshot, shot, layer, character }: CharacterArmChainCon
           x: segments.at(-1)!.joint.x + 40, y: segments.at(-1)!.joint.y,
         };
         if (assembly) tool.setAssembly?.({ ...assembly, chain: { segments, tip }, nextPoint: 0 });
-        else setDraft({ segments, tip });
+        else setDraft({ ...draft, segments });
       }}><option value={2}>2</option><option value={3} disabled={(assembly?.parts.size ?? parts.length) < 3}>3</option></select></label>
       <details className="animation-key-selection" open={!assembly}>
         <summary>支点与限角</summary>

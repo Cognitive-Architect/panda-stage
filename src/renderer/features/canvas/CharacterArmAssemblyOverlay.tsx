@@ -6,6 +6,10 @@ import './character-arm-assembly.css';
 
 const PART_NAMES = ['上臂', '前臂', '手部'];
 const JOINT_NAMES = ['肩', '肘', '腕', '末端'];
+const KEYBOARD_OFFSET: Readonly<Record<string, Point>> = {
+  ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
+};
 
 export function characterArmAssemblyPrompt({ chain, nextPoint }: CharacterArmAssembly): string {
   const missing = chain.segments.findIndex(({ partId }) => !partId);
@@ -74,6 +78,10 @@ export function CharacterArmAssemblyOverlay({ assembly, scale, update }: {
     if (drag.index === undefined ? moved : !moved && drag.index !== nextPoint) return;
     const index = drag.index ?? nextPoint;
     const stagePosition = moved ? { x: point.x + drag.offset.x, y: point.y + drag.offset.y } : point;
+    setPoint(index, stagePosition, index === nextPoint);
+  }
+
+  function setPoint(index: number, stagePosition: Point, advance: boolean): void {
     const local = parts.get(owners[index]!)?.toPart(stagePosition);
     if (!local) return;
     update({
@@ -81,7 +89,7 @@ export function CharacterArmAssemblyOverlay({ assembly, scale, update }: {
       chain: index === chain.segments.length ? { ...chain, tip: local } : {
         ...chain, segments: chain.segments.map((segment, i) => i === index ? { ...segment, joint: local } : segment),
       },
-      nextPoint: index === nextPoint ? nextPoint + 1 : nextPoint,
+      nextPoint: advance ? nextPoint + 1 : nextPoint,
     });
   }
 
@@ -105,6 +113,14 @@ export function CharacterArmAssemblyOverlay({ assembly, scale, update }: {
       onPointerDown={event => start(event, index)} onPointerMove={move}
       onPointerUp={event => finish(event, true)} onPointerCancel={event => finish(event, false)}
       onLostPointerCapture={event => finish(event, false)}
+      onKeyDown={event => {
+        const offset = KEYBOARD_OFFSET[event.key];
+        if (!offset) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const step = event.shiftKey ? 10 : 1;
+        setPoint(index, { x: point.x + offset.x * step, y: point.y + offset.y * step }, false);
+      }}
       onClick={event => {
         if (event.detail === 0 && pendingPoint && index === nextPoint) update({ ...assembly, nextPoint: nextPoint + 1 });
       }} /> : null)}

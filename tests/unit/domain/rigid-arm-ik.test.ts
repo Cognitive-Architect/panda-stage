@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { solveRigidArm } from '../../../src/domain/geometry/rigidArmIk';
 import {
   CharacterMotionService, CharacterService, LayerService, ProjectSchema, characterArmTipOnStage, layerPivotStageVector, migrateProject,
-  planCharacterArmIk, resolveCharacterArmAssemblyParts, saveCharacterArmChain,
+  evaluateShotAtTime, planCharacterArmIk, upsertCharacterActionEvent, resolveCharacterArmAssemblyParts,
+  resolveLayerVisualParts, saveCharacterArmChain,
 } from '../../../src/domain';
+import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
+import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
+import { evaluateEditorCanvasShot } from '../../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { adaptivePartsFixture } from '../../helpers/adaptivePartsFixtures';
 import { IDS, buildProject } from './testProject';
 
@@ -57,8 +61,11 @@ describe('rigid arm IK', () => {
     })) });
     const moved = new CharacterMotionService().apply(project, { ...address, partId, autoKey: true },
       { 'transform.offsetX': 30, 'transform.offsetY': 20 });
-    const posed = resolveCharacterArmAssemblyParts(moved, address);
-    const reference = resolveCharacterArmAssemblyParts(moved, { ...address, timeMs: 0 });
+    const shot = moved.shots[0]!;
+    const displayed = (timeMs: number) =>
+      evaluateEditorCanvasShot(moved, shot, timeMs, null).layers.find(({ id }) => id === address.layerId)!;
+    const posed = resolveCharacterArmAssemblyParts(moved, address, displayed(address.timeMs));
+    const reference = resolveCharacterArmAssemblyParts(moved, { ...address, timeMs: 0 }, displayed(0));
     const shoulder = { x: 220, y: 145 };
     const unposed = reference.get(partId)!.toStage(shoulder);
     const clicked = { x: unposed.x - 30, y: unposed.y - 60 };
@@ -67,6 +74,34 @@ describe('rigid arm IK', () => {
     expect(stored.y).toBeCloseTo(shoulder.y);
     expect(posed.get(partId)!.toStage(stored)).toEqual(clicked);
     expect([...posed.keys()]).toEqual(parts.map(part => part.partId));
+  });
+
+
+  it('uses the reference drawing at zero even when a Part action starts there', () => {
+    const parts = adaptivePartsFixture(IDS.assetChar).slice(0, 2);
+    const base = new CharacterService().createAdaptiveParts(buildProject(), { name: 'Rigid arm', parts });
+    const characterId = base.characters.at(-1)!.id;
+    const placed = new LayerService().createFromAdaptiveCharacter(base, IDS.shot, characterId, { x: 650, y: 450 });
+    const address = { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 0 };
+    const partId = parts[0]!.partId;
+    const actionId = '71000000-0000-4000-8000-000000000020';
+    const project = upsertCharacterActionEvent(ProjectSchema.parse({
+      ...placed.project, characters: placed.project.characters.map(character => character.id !== characterId ? character : {
+        ...character, actions: [{ id: actionId, kind: 'layered', name: 'Reach',
+          tracks: [{ partId, property: 'transform.offsetX', keys: [0, 500].map(timeMs => ({
+            timeMs, value: 20, interpolationToNext: 'step',
+          })) }] }],
+      }),
+    }), IDS.shot, address.layerId, { actionId, startMs: 0, endMs: 500 });
+    const shot = project.shots[0]!;
+    const layerAt = (result: ReturnType<typeof evaluateShotAtTime>) => result.layers.find(({ id }) => id === address.layerId)!;
+    const pin = { x: 320, y: 320 };
+    const home = resolveCharacterArmAssemblyParts(project, address, layerAt(evaluateEditorCanvasShot(project, shot, 0, null))).get(partId)!;
+    const runtime = resolveCharacterArmAssemblyParts(project, address, layerAt(evaluateShotAtTime(shot, 0, project))).get(partId)!;
+    const clicked = home.toStage(pin);
+    expect(runtime.toStage(pin).x - clicked.x).toBeCloseTo(20);
+    expect(home.toPart(clicked)).toEqual(pin);
+    expect(runtime.toPart(clicked).x).toBeCloseTo(300);
   });
 
   it('converts a mirrored stage-space wrist to local keys and persists only the selected occurrence', () => {
@@ -101,5 +136,14 @@ describe('rigid arm IK', () => {
     expect(opened.shots[0]!.layers.find(({ id }) => id === two.layer.id)).toEqual(two.layer);
     expect(opened.shots[0]!.layers.find(({ id }) => id === one.layer.id)).toMatchObject(mirror);
     expect(project.shots[0]!.layers.find(({ id }) => id === one.layer.id)?.animationClip).toBeUndefined();
+
+    const shot = opened.shots[0]!;
+    const renderedParts = (frame: ReturnType<typeof evaluateShotAtTime>) =>
+      resolveLayerVisualParts(opened, shot, frame.layers.find(({ id }) => id === one.layer.id)!, frame.timeMs).parts;
+    for (const timeMs of [500, 750, 0, 500]) {
+      const stage = evaluateShotAtTime(shot, timeMs, opened);
+      expect(renderedParts(projectProductPreviewDialogue(opened, shot, stage))).toEqual(renderedParts(stage));
+      expect(renderedParts(evaluateExportShotAtTime(opened, shot, timeMs))).toEqual(renderedParts(stage));
+    }
   });
 });

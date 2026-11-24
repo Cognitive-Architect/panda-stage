@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import type { CharacterArmChain, resolveCharacterArmAssemblyParts } from '../../../domain';
+import { createContext, useContext, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react';
+import type { CharacterArmChain, CharacterArmIkAddress, resolveCharacterArmAssemblyParts } from '../../../domain';
+import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 
 export interface CharacterArmToolTarget {
   projectInstanceId: number | null;
@@ -17,17 +18,22 @@ export interface CharacterArmAssembly {
   nextPoint: number;
 }
 
+type ReadAssemblyParts = (snapshot: EditorProjectSnapshot, address: CharacterArmIkAddress) =>
+  ReturnType<typeof resolveCharacterArmAssemblyParts>;
+
 const CharacterArmToolContext = createContext<{
   target?: CharacterArmToolTarget;
   setTarget: (target?: CharacterArmToolTarget) => void;
   assembly?: CharacterArmAssembly;
   setAssembly: Dispatch<SetStateAction<CharacterArmAssembly | undefined>>;
+  readAssemblyParts: RefObject<ReadAssemblyParts | undefined>;
 } | null>(null);
 
 export function CharacterArmToolProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [target, setTarget] = useState<CharacterArmToolTarget>();
   const [assembly, setAssembly] = useState<CharacterArmAssembly>();
-  return <CharacterArmToolContext.Provider value={{ target, setTarget, assembly, setAssembly }}>
+  const readAssemblyParts = useRef<ReadAssemblyParts | undefined>(undefined);
+  return <CharacterArmToolContext.Provider value={{ target, setTarget, assembly, setAssembly, readAssemblyParts }}>
     {children}
   </CharacterArmToolContext.Provider>;
 }
@@ -46,6 +52,7 @@ export function useCharacterArmTool(address: CharacterArmToolTarget) {
     toggle: () => tool?.setTarget(active ? undefined : address),
     assembly,
     setAssembly: tool?.setAssembly,
+    readAssemblyParts: tool?.readAssemblyParts,
   };
 }
 
@@ -53,16 +60,20 @@ export function useCharacterArmAssembly() {
   return useContext(CharacterArmToolContext)?.assembly;
 }
 
+export function replaceArmChainPart(
+  chain: CharacterArmChain, index: number, partId: string, pivot?: { x: number; y: number },
+): CharacterArmChain {
+  if (partId && chain.segments.some((segment, i) => i !== index && segment.partId === partId)) return chain;
+  return {
+    segments: chain.segments.map((segment, i) => i === index
+      ? { ...segment, partId, joint: pivot ? { x: pivot.x, y: pivot.y } : { x: 0, y: 0 } } : segment),
+    tip: index === chain.segments.length - 1 && pivot ? { x: pivot.x + 40, y: pivot.y } : chain.tip,
+  };
+}
+
 export function updateArmAssemblyPart(assembly: CharacterArmAssembly, index: number, partId: string): CharacterArmAssembly {
   const part = assembly.parts.get(partId);
-  const { chain } = assembly;
-  if (!part || chain.segments.some((segment, i) => i !== index && segment.partId === partId)) return assembly;
-  return {
-    ...assembly,
-    chain: {
-      segments: chain.segments.map((segment, i) => i === index ? { ...segment, partId, joint: part.pivot } : segment),
-      tip: index === chain.segments.length - 1 ? { x: part.pivot.x + 40, y: part.pivot.y } : chain.tip,
-    },
-    nextPoint: 0,
-  };
+  if (partId && !part) return assembly;
+  const chain = replaceArmChainPart(assembly.chain, index, partId, part?.pivot);
+  return chain === assembly.chain ? assembly : { ...assembly, chain, nextPoint: 0 };
 }

@@ -3,7 +3,7 @@ import {
   characterFaceAndMouthPartIds, composeAnimatedCharacterPartTransform, createCharacterPartAnimationClip,
   resolveLayeredCharacterPartTransforms,
 } from '../character-part-animation';
-import { evaluateShotAtTime } from '../evaluate-shot-at-time';
+import { evaluateShotAtTime, type EvaluatedLayer } from '../evaluate-shot-at-time';
 import { solveRigidArm, type ArmPoint } from '../geometry/rigidArmIk';
 import { layerPivotStageVector } from '../layer-animation';
 import type { AnimationProperty } from '../models/animationCore';
@@ -22,14 +22,14 @@ function transformPoint(matrix: AffineMatrix2D, point: ArmPoint): ArmPoint {
   return { x: matrix.a * point.x + matrix.c * point.y + matrix.tx, y: matrix.b * point.x + matrix.d * point.y + matrix.ty };
 }
 
-function resolveArmInstance(project: Project, address: CharacterArmIkAddress) {
+function resolveArmInstance(project: Project, address: CharacterArmIkAddress, displayed?: EvaluatedLayer) {
   const shot = project.shots.find(({ id }) => id === address.shotId);
   const layer = shot?.layers.find(({ id }) => id === address.layerId);
   const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
   const character = project.characters.find(({ id }) => id === characterId);
   if (!shot || !layer || layer.locked || character?.mode !== 'adaptive-parts') throw new Error('请选择可编辑的分件角色。');
   if (!isValidFrameTime(address.timeMs) || address.timeMs > shot.durationMs) throw new Error('请选择镜头内的有效帧。');
-  const evaluated = evaluateShotAtTime(shot, address.timeMs, project).layers.find(({ id }) => id === layer.id)!;
+  const evaluated = displayed?.id === layer.id ? displayed : evaluateShotAtTime(shot, address.timeMs, project).layers.find(({ id }) => id === layer.id)!;
   const horizontal = layerPivotStageVector({ x: 1, y: 0 }, evaluated.rotationDeg, evaluated.scaleX, evaluated.scaleY, evaluated.flipX);
   const vertical = layerPivotStageVector({ x: 0, y: 1 }, evaluated.rotationDeg, evaluated.scaleX, evaluated.scaleY, evaluated.flipX);
   const localToStage = { a: horizontal.x, b: horizontal.y, c: vertical.x, d: vertical.y, tx: evaluated.x, ty: evaluated.y };
@@ -43,8 +43,10 @@ interface CharacterArmAssemblyPart {
 }
 
 /** Store attachment points in the source Part's coordinates, even when its instance is posed. */
-export function resolveCharacterArmAssemblyParts(project: Project, address: CharacterArmIkAddress): ReadonlyMap<string, CharacterArmAssemblyPart> {
-  const { character, evaluated, localToStage, clip } = resolveArmInstance(project, address);
+export function resolveCharacterArmAssemblyParts(
+  project: Project, address: CharacterArmIkAddress, displayed: EvaluatedLayer,
+): ReadonlyMap<string, CharacterArmAssemblyPart> {
+  const { character, evaluated, localToStage, clip } = resolveArmInstance(project, address, displayed);
   const parts = new Map<string, CharacterArmAssemblyPart>();
   if (evaluated.characterAction || !evaluated.visible) return parts;
   const excluded = characterFaceAndMouthPartIds(character);

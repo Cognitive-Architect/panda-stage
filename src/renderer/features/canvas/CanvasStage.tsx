@@ -50,6 +50,7 @@ import {
   listShotGraphicImageAssetsAtTime,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
+  resolveCharacterArmAssemblyParts,
   resolveTimelineFrameTime,
   type ImageAsset,
   type Shot,
@@ -100,6 +101,7 @@ import {
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
+  evaluateEditorCanvasShot,
 } from './editorTemporalCanvasModel';
 import { visualAssetIds } from './temporalVisualContinuity';
 import {
@@ -341,7 +343,7 @@ export function CanvasStage({
     selectionStore.getSelectedLayerId,
   );
   const armDraft = useCharacterArmAssembly();
-  const { setAssembly } = useCharacterArmTool({
+  const { setAssembly, readAssemblyParts } = useCharacterArmTool({
     projectInstanceId, shotId: currentShotId ?? '', layerId: selectedLayerId ?? '',
   });
   const armShot = armDraft && snapshot?.project.shots.find(({ id }) => id === currentShotId);
@@ -836,6 +838,17 @@ export function CanvasStage({
       );
     }
   }, [flaGraphicEditScope?.editMode, imageState.svgTexts, selectedFlaGraphicTarget]);
+  useLayoutEffect(() => {
+    if (!readAssemblyParts || !snapshot || !shot || positionAuthoringSession || flaGraphicEditScope) return;
+    readAssemblyParts.current = (sourceSnapshot, address) => {
+      if (sourceSnapshot !== snapshot || address.shotId !== shot.id || address.layerId !== selectedLayerId) return new Map();
+      const displayed = evaluateEditorCanvasShot(snapshot.project, shot, timelineUi.currentTimeMs, activeCue?.id ?? null, dialogueSilence)
+        .layers.find(({ id }) => id === address.layerId);
+      return displayed ? resolveCharacterArmAssemblyParts(snapshot.project, address, displayed) : new Map();
+    };
+    return () => { readAssemblyParts.current = undefined; };
+  }, [activeCue?.id, dialogueSilence, flaGraphicEditScope, positionAuthoringSession, readAssemblyParts, selectedLayerId, shot, snapshot, timelineUi.currentTimeMs]);
+
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
@@ -1209,7 +1222,7 @@ export function CanvasStage({
       },
       select: (targetId) => {
         const node = nodeForTarget(targetId);
-        if (armAssembly) {
+        if (armAssembly?.target.layerId === motionLayer.id) {
           if (node?.motion === 'character-clip-v1') pickArmPart(motionLayer.id, node.partId);
           return;
         }
@@ -1754,7 +1767,7 @@ export function CanvasStage({
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId, nodeId) => {
-                              if (armAssembly) {
+                              if (armAssembly?.target.layerId === layerId) {
                                 pickArmPart(layerId, adaptivePartIdForNodeId(nodeId ?? null));
                                 return;
                               }
