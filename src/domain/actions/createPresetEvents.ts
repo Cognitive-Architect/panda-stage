@@ -71,6 +71,8 @@ function propertyOfType(type: TimelineEvent['type']): string {
       return 'character-action';
     case 'graphic-frame':
       return 'graphic-frame';
+    case 'graphic-playback':
+      return 'graphic-playback';
   }
 }
 

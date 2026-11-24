@@ -724,6 +724,7 @@ export function validateProjectReferences(
     });
 
     const graphicFrameKeys = new Set<string>();
+    const graphicPlaybackRanges = new Map<string, { startMs: number; endMs: number; index: number }[]>();
     shot.timelineEvents.forEach((event, eventIndex) => {
       const layer = layers.get(event.layerId);
       if (!layer) {
@@ -740,21 +741,32 @@ export function validateProjectReferences(
           'Timeline event must end within the shot duration.',
         );
       }
-      if (event.type === 'graphic-frame') {
+      if (event.type === 'graphic-frame' || event.type === 'graphic-playback') {
         const path = ['shots', shotIndex, 'timelineEvents', eventIndex];
         const definition = animations.get(event.animationId);
         if (layer?.source.kind !== 'animation' || layer.source.animationId !== event.animationId ||
             !definition || !isFlaGraphicDefinition(definition)) {
-          addIssue(context, [...path, 'animationId'], 'Graphic frame switch must reference its layer definition.');
+          addIssue(context, [...path, 'animationId'], 'Graphic event must reference its layer definition.');
         } else {
-          const offset = event.sourceFrameIndex - definition.source.startFrameIndex;
-          if (offset < 0 || offset >= resolveFlaGraphicPreviewTimeline(definition, true).totalFrames) {
-            addIssue(context, [...path, 'sourceFrameIndex'], 'Graphic frame switch is outside its source timeline.');
+          const count = resolveFlaGraphicPreviewTimeline(definition, true).totalFrames;
+          if (event.type === 'graphic-frame') {
+            const offset = event.sourceFrameIndex - definition.source.startFrameIndex;
+            if (offset < 0 || offset >= count) {
+              addIssue(context, [...path, 'sourceFrameIndex'], 'Graphic frame switch is outside its source timeline.');
+            }
+          } else if (event.range.lastFrame >= count) {
+            addIssue(context, [...path, 'range', 'lastFrame'], 'Graphic playback range is outside its source timeline.');
           }
         }
-        const key = `${event.layerId}:${event.startMs}`;
-        if (graphicFrameKeys.has(key)) addIssue(context, [...path, 'startMs'], 'Only one Graphic frame switch per layer and time.');
-        graphicFrameKeys.add(key);
+        if (event.type === 'graphic-frame') {
+          const key = `${event.layerId}:${event.startMs}`;
+          if (graphicFrameKeys.has(key)) addIssue(context, [...path, 'startMs'], 'Only one Graphic frame switch per layer and time.');
+          graphicFrameKeys.add(key);
+        } else {
+          const ranges = graphicPlaybackRanges.get(event.layerId) ?? [];
+          ranges.push({ startMs: event.startMs, endMs: event.endMs, index: eventIndex });
+          graphicPlaybackRanges.set(event.layerId, ranges);
+        }
       }
       if (event.type === 'expression' && layer) {
         if (layer.source.kind !== 'character') {
@@ -833,5 +845,14 @@ export function validateProjectReferences(
         }
       }
     });
+    for (const ranges of graphicPlaybackRanges.values()) {
+      let previousEnd = 0;
+      for (const range of ranges.sort((left, right) => left.startMs - right.startMs)) {
+        if (range.startMs < previousEnd) {
+          addIssue(context, ['shots', shotIndex, 'timelineEvents', range.index, 'startMs'], 'Graphic playback ranges on one layer cannot overlap.');
+        }
+        previousEnd = Math.max(previousEnd, range.endMs);
+      }
+    }
   });
 }

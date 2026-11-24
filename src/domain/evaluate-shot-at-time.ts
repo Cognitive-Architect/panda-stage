@@ -8,6 +8,7 @@ import type {
   Project,
   Shot,
   TimelineEvent,
+  GraphicPlaybackEvent,
 } from './models';
 import type { MouthCueEvent, MouthCueState } from './models/timeline-event';
 import { isFlaGraphicDefinition, type ProjectAnimationDefinition } from './models/animation';
@@ -17,7 +18,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
+import { TIMELINE_FPS, exportFrameTimeMs, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, evaluateAnimationEase, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -312,6 +313,7 @@ function resolveAnimationFrame(
   timeMs: number,
   selectedSourceFrameIndex?: number,
   range?: Layer['animationSourceRange'],
+  rangeFirstFrame?: number,
 ): ResolvedLayerVisualState {
   const animation = project.animations.find(
     (candidate) => candidate.id === animationId,
@@ -327,7 +329,7 @@ function resolveAnimationFrame(
     ? resolveFlaGraphicPreviewTimeline(animation, true).sampleAtFrameIndex(selectedSourceFrameIndex - animation.source.startFrameIndex)
     : undefined;
   const state = range
-    ? resolveAnimationSegmentFrame(animation, range, startTimeMs, playback, timeMs)
+    ? resolveAnimationSegmentFrame(animation, range, startTimeMs, playback, timeMs, rangeFirstFrame)
     : resolveAnimationPlaybackFrameState(animation, startTimeMs, firstFrameIndex, playback, timeMs);
   if (!state) {
     return {
@@ -365,16 +367,18 @@ function resolveAnimationSegmentFrame(
   startTimeMs: number,
   playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
+  firstFrame = range.firstFrame,
 ): AnimationPlaybackFrameState<ProjectAnimationDefinition['frames'][number]> | null {
   const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
   if (range.lastFrame >= timeline.totalFrames) return null;
   const elapsedMs = timeMs - startTimeMs;
   const elapsedFrames = Math.max(0, elapsedAnimationSourcePosition(timeMs, startTimeMs, timeline.fps));
   const length = range.lastFrame - range.firstFrame + 1;
-  const completedOnce = elapsedFrames >= length;
-  const local = playback.mode === 'single-frame' ? 0
-    : playback.mode === 'loop' ? elapsedFrames % length
-    : completedOnce ? length - 1 : elapsedFrames;
+  const position = firstFrame - range.firstFrame + elapsedFrames;
+  const completedOnce = position >= length;
+  const local = playback.mode === 'single-frame' ? firstFrame - range.firstFrame
+    : playback.mode === 'loop' ? position % length
+    : completedOnce ? length - 1 : position;
   const sourceFrameIndex = range.firstFrame + Math.floor(local);
   const { frameOrdinal } = timeline.sampleAtFrameIndex(sourceFrameIndex);
   const frame = animation.frames[frameOrdinal];
@@ -383,6 +387,22 @@ function resolveAnimationSegmentFrame(
     frame, sourceFrameIndex, elapsedMs, completedOnce,
     internalTimeMs: (range.firstFrame + local) * 1_000 / timeline.fps,
   };
+}
+
+export function findGraphicPlaybackAtTime(
+  events: readonly TimelineEvent[],
+  layerId: string,
+  animationId: string,
+  timeMs: number,
+): GraphicPlaybackEvent | undefined {
+  return events.find((event): event is GraphicPlaybackEvent => event.type === 'graphic-playback' &&
+    event.layerId === layerId && event.animationId === animationId && event.startMs <= timeMs && timeMs < event.endMs);
+}
+
+function graphicEventSampleTime(timeMs: number, shotDurationMs: number): number {
+  const frame = Math.round(timeMs * TIMELINE_FPS / 1_000);
+  // The export clock floors a sample that the authoring clock rounds.
+  return timeMs === exportFrameTimeMs(frame) ? Math.min(shotDurationMs, frameTimeMs(frame)) : timeMs;
 }
 
 function resolveExpressionState(
@@ -475,9 +495,16 @@ export function evaluateLayerPreTrackState(
     (left, right) =>
       left.startMs - right.startMs || left.id.localeCompare(right.id),
   );
-  const frameSwitch = animationSource && events.filter((event) =>
-    event.type === 'graphic-frame' && event.animationId === animationSource.animationId && event.startMs <= timeMs).at(-1);
-  const initialVisual = animationSource
+  const graphicTimeMs = graphicEventSampleTime(timeMs, shot.durationMs);
+  const playbackRange = animationSource && timeMs >= (layer.startTimeMs ?? 0)
+    ? findGraphicPlaybackAtTime(events, layer.id, animationSource.animationId, graphicTimeMs)
+    : undefined;
+  const frameSwitch = !playbackRange && animationSource && events.filter((event) =>
+    event.type === 'graphic-frame' && event.animationId === animationSource.animationId && event.startMs <= graphicTimeMs).at(-1);
+  const initialVisual = animationSource && playbackRange
+    ? resolveAnimationFrame(project, animationSource.animationId, playbackRange.playbackStartMs,
+        playbackRange.firstFrame, playbackRange.playback, graphicTimeMs, undefined, playbackRange.range, playbackRange.firstFrame)
+    : animationSource
     ? resolveAnimationFrame(
         project,
         animationSource.animationId,

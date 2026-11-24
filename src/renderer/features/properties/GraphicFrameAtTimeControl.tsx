@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { clearGraphicFrameAtTime, findGraphicFrameKey, isFlaGraphicDefinition, setGraphicFrameAtTime, type FlaGraphicDefinition, type Layer, type Project, type Shot } from '../../../domain';
+import { clearGraphicFrameAtTime, findGraphicFrameKey, getGraphicPlaybackSyncContext, isFlaGraphicDefinition, setGraphicFrameAtTime,
+  syncGraphicPlaybackForward, type AnimationPlayback, type FlaGraphicDefinition, type Layer, type Project, type Shot } from '../../../domain';
+import { findGraphicPlaybackAtTime } from '../../../domain/evaluate-shot-at-time';
+import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
@@ -7,6 +10,7 @@ import { Button } from '../../ui/Button';
 import { GraphicFrameChoices } from '../characters/GraphicFacePicker';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode } from '../timeline/timeGeometry';
+import { parseAnimationStartTime } from './AnimationPlaybackControls';
 
 export function GraphicFrameAtTimeControl({ project, shot, selection }: {
   project: Project;
@@ -28,11 +32,12 @@ export function GraphicFrameAtTimeControl({ project, shot, selection }: {
   if (!layer || !definition || !isFlaGraphicDefinition(definition)) return null;
 
   return <GraphicFrameEditor key={JSON.stringify([layer.id, definition.id])}
-    definition={definition} shot={shot} layer={layer} fixed={targetIsFixed}
+    project={project} definition={definition} shot={shot} layer={layer} fixed={targetIsFixed}
     onToggleFixed={() => setFixed(targetIsFixed ? undefined : { layerId: layer.id, animationId: definition.id })} />;
 }
 
-function GraphicFrameEditor({ definition, shot, layer, fixed, onToggleFixed }: {
+function GraphicFrameEditor({ project, definition, shot, layer, fixed, onToggleFixed }: {
+  project: Project;
   definition: FlaGraphicDefinition;
   shot: Shot;
   layer: Layer;
@@ -44,7 +49,8 @@ function GraphicFrameEditor({ definition, shot, layer, fixed, onToggleFixed }: {
   const { currentTimeMs } = useTimelineUi();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
-  const key = findGraphicFrameKey(shot, layerId, definition.id, currentTimeMs);
+  const playbackRange = findGraphicPlaybackAtTime(shot.timelineEvents, layerId, definition.id, currentTimeMs);
+  const key = playbackRange ? undefined : findGraphicFrameKey(shot, layerId, definition.id, currentTimeMs);
 
   const edit = (description: string, change: (project: Project, timeMs: number) => Project): void => {
     const snapshot = editorProjectStore.getSnapshot();
@@ -82,7 +88,97 @@ function GraphicFrameEditor({ definition, shot, layer, fixed, onToggleFixed }: {
             clearGraphicFrameAtTime(project, shot.id, layerId, definition.id, time, key.id))
         }>清除这次切换</Button> : null}
       </div>
+      {!locked && resolveFlaGraphicPreviewTimeline(definition, true).totalFrames > 1
+        ? <GraphicPlaybackSync project={project} definition={definition} shot={shot} layer={layer}
+            timeMs={currentTimeMs} onCommit={edit} />
+        : null}
     </> : null}
     {error ? <p role="alert">{error}</p> : null}
   </section>;
+}
+
+function GraphicPlaybackSync({ project, definition, shot, layer, timeMs, onCommit }: {
+  project: Project;
+  definition: FlaGraphicDefinition;
+  shot: Shot;
+  layer: Layer;
+  timeMs: number;
+  onCommit: (description: string, change: (project: Project, timeMs: number) => Project) => void;
+}): React.JSX.Element | null {
+  const [expanded, setExpanded] = useState(false);
+  const [endDraft, setEndDraft] = useState<string>();
+  const [playbackDraft, setPlaybackDraft] = useState<AnimationPlayback>();
+  const [firstDraft, setFirstDraft] = useState<string>();
+  const [rangeStartDraft, setRangeStartDraft] = useState<string>();
+  const [rangeEndDraft, setRangeEndDraft] = useState<string>();
+  const [closingReference, setClosingReference] = useState(false);
+  const context = expanded ? getGraphicPlaybackSyncContext(project, shot, layer, timeMs) : null;
+  return <details data-testid="graphic-playback-sync" onToggle={(event) => setExpanded(event.currentTarget.open)}>
+    <summary>向后同步</summary>
+    {context && context.endMs > context.startMs ? renderSettings(context) : expanded
+      ? <p role="status">播放头处没有可同步的片段。</p>
+      : null}
+  </details>;
+
+  function renderSettings(context: NonNullable<ReturnType<typeof getGraphicPlaybackSyncContext>>): React.JSX.Element {
+  const { range, firstFrame, playback } = context.settings;
+  const firstAddress = definition.source.startFrameIndex + 1;
+  const startText = firstDraft ?? String(firstFrame + firstAddress);
+  const rangeStartText = rangeStartDraft ?? String(range.firstFrame + firstAddress);
+  const rangeEndText = rangeEndDraft ?? String(range.lastFrame + firstAddress);
+  const endText = endDraft ?? String(context.endMs / 1_000);
+  const selection = playbackDraft ?? playback;
+  const mode = selection.mode === 'once' ? `once-${selection.endBehavior}` : selection.mode;
+  const sourceStart = Number(rangeStartText) - firstAddress;
+  const sourceEnd = Number(rangeEndText) - firstAddress - Number(closingReference);
+  const sourceFirst = Number(startText) - firstAddress;
+  const endTime = parseAnimationStartTime(endText, shot.durationMs);
+  const valid = endTime.kind === 'valid' && endTime.startTimeMs > context.startMs &&
+    [sourceStart, sourceEnd, sourceFirst].every(Number.isSafeInteger) &&
+    sourceStart >= 0 && sourceStart <= sourceFirst && sourceFirst <= sourceEnd &&
+    Number(rangeEndText) - firstAddress < context.totalFrames;
+  const lastAddress = firstAddress + context.totalFrames - 1;
+  return <div className="graphic-face-picker">
+      <label className="animation-playback-field">结束时间（秒）
+        <input type="number" step="0.001" min={context.startMs / 1_000} max={shot.durationMs / 1_000}
+          value={endText} onChange={(event) => setEndDraft(event.target.value)} />
+      </label>
+      {endTime.kind === 'valid' && endTime.startTimeMs > context.endMs ? <time>{formatTimecode(context.endMs)} 停止</time> : null}
+      <label className="animation-playback-field">播放方式
+        <select value={mode} onChange={(event) => {
+          const value = event.target.value;
+          setPlaybackDraft(value === 'loop' || value === 'single-frame'
+            ? { mode: value, endBehavior: 'hold' }
+            : { mode: 'once', endBehavior: value === 'once-hide' ? 'hide' : 'hold' });
+        }}>
+          <option value="single-frame">单帧</option>
+          <option value="loop">循环</option>
+          <option value="once-hold">单次 · 定格</option>
+          <option value="once-hide">单次 · 隐藏</option>
+        </select>
+      </label>
+      <label className="animation-playback-field">起始帧
+        <input type="number" min={firstAddress} max={lastAddress} value={startText}
+          onChange={(event) => setFirstDraft(event.target.value)} />
+      </label>
+      <details>
+        <summary>源帧范围</summary>
+        <label className="animation-playback-field">首帧
+          <input type="number" min={firstAddress} max={lastAddress} value={rangeStartText}
+            onChange={(event) => setRangeStartDraft(event.target.value)} />
+        </label>
+        <label className="animation-playback-field">尾帧
+          <input type="number" min={firstAddress} max={lastAddress} value={rangeEndText}
+            onChange={(event) => setRangeEndDraft(event.target.value)} />
+        </label>
+        <label><input type="checkbox" checked={closingReference} onChange={(event) => setClosingReference(event.target.checked)} />尾帧仅作闭合参考</label>
+      </details>
+      <Button disabled={!valid} onClick={() => {
+        if (!valid || endTime.kind !== 'valid') return;
+        onCommit('同步元件播放范围', (latest, time) => syncGraphicPlaybackForward(latest, shot.id, layer.id, definition.id,
+          time, endTime.startTimeMs, { firstFrame: sourceFirst,
+            range: { firstFrame: sourceStart, lastFrame: sourceEnd }, playback: selection }));
+      }}>同步到结束时间</Button>
+    </div>;
+  }
 }

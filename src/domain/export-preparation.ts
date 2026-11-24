@@ -156,10 +156,11 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
       event.type === 'visibility' ||
       event.type === 'mouth-cue' ||
       event.type === 'graphic-frame' ||
+      event.type === 'graphic-playback' ||
       event.type === 'mouth-pose'
     ) {
       times.add(event.startMs);
-      if (event.type === 'mouth-pose') times.add(event.endMs);
+      if (event.type === 'mouth-pose' || event.type === 'graphic-playback') times.add(event.endMs);
     }
   }
   return [...times].sort((left, right) => left - right);

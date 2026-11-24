@@ -53,6 +53,7 @@ import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
 import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
+  ShotV40Schema,
   ShotV26Schema,
   ShotV27Schema,
   ShotV28Schema,
@@ -739,7 +740,7 @@ export const ProjectV33Schema = ProjectV33DataSchema.superRefine(validateProject
 
 const ProjectV34DataSchema = ProjectV33DataSchema.extend({
   schemaVersion: z.literal(34),
-  shots: z.array(ShotSchema),
+  shots: z.array(ShotV40Schema),
 });
 
 export const ProjectV34Schema = ProjectV34DataSchema.superRefine(validateProjectReferences)
@@ -791,9 +792,18 @@ export const ProjectV39Schema = ProjectV39DataSchema.superRefine(validateProject
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV39DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV40DataSchema = ProjectV39DataSchema.extend({
+  schemaVersion: z.literal(40),
   characters: z.array(CharacterSchema),
+});
+
+export const ProjectV40Schema = ProjectV40DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  shots: z.array(ShotSchema),
 });
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */

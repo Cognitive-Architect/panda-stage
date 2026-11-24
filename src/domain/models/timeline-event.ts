@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { AnimationCurveSchema, AnimationInterpolationSchema } from './animationCore';
+import { AnimationSourceRangeSchema } from './animationSourceRange';
+import { AnimationPlaybackSchema } from './layer';
 import {
   FiniteNumberSchema,
   IdSchema,
@@ -225,12 +227,39 @@ export const TimelineEventV33Schema = z.discriminatedUnion('type', [
   GraphicFrameEventSchema,
 ]).superRefine(validateRange);
 
-export const TimelineEventSchema = z.discriminatedUnion('type', [
+const timelineEventV40Options = [
   ...timelineEventOptionsBeforeOpacity,
   OpacityEventSchema,
   MouthPoseEventSchema,
   CharacterActionEventSchema,
   GraphicFrameEventSchema,
+] as const;
+
+export const TimelineEventV40Schema = z.discriminatedUnion('type', timelineEventV40Options).superRefine(validateRange);
+
+export const GraphicPlaybackEventSchema = z.object({
+  ...TimelineEventBaseShape,
+  type: z.literal('graphic-playback'),
+  animationId: IdSchema,
+  playbackStartMs: MillisecondsSchema,
+  firstFrame: z.number().int().nonnegative(),
+  range: AnimationSourceRangeSchema,
+  playback: AnimationPlaybackSchema,
+}).strict().superRefine((event, context) => {
+  if (event.startMs >= event.endMs) {
+    context.addIssue({ code: 'custom', path: ['endMs'], message: 'Graphic playback requires a nonempty range.' });
+  }
+  if (event.playbackStartMs > event.startMs) {
+    context.addIssue({ code: 'custom', path: ['playbackStartMs'], message: 'Graphic playback must start by the start of the range.' });
+  }
+  if (event.firstFrame < event.range.firstFrame || event.firstFrame > event.range.lastFrame) {
+    context.addIssue({ code: 'custom', path: ['firstFrame'], message: 'Graphic start frame must be inside its source range.' });
+  }
+});
+
+export const TimelineEventSchema = z.discriminatedUnion('type', [
+  ...timelineEventV40Options,
+  GraphicPlaybackEventSchema,
 ]).superRefine(validateRange);
 
 export type MoveEvent = z.infer<typeof MoveEventSchema>;
@@ -244,5 +273,6 @@ export type MouthCueEvent = z.infer<typeof MouthCueEventSchema>;
 export type MouthPoseEvent = z.infer<typeof MouthPoseEventSchema>;
 export type CharacterActionEvent = z.infer<typeof CharacterActionEventSchema>;
 export type GraphicFrameEvent = z.infer<typeof GraphicFrameEventSchema>;
+export type GraphicPlaybackEvent = z.infer<typeof GraphicPlaybackEventSchema>;
 export type TimelineEventV27 = z.infer<typeof TimelineEventV27Schema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;
