@@ -42,7 +42,7 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
-import { ikContainerPlaybackLength } from './fla-nested-graphic-frame-selector';
+import { ikContainerPlaybackLength, selectFlaGraphicFrameIndex } from './fla-nested-graphic-frame-selector';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
@@ -2797,14 +2797,129 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
   }
 }
 
+const MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT = 100_000;
+const MAX_STOPPED_SUBTREE_DEPTH = 64;
+const MAX_STOPPED_SUBTREE_PROBES = 256;
+
 function oneFrameScenePlaybackCount(
   frameContext: FlaDisplayListFrameContext,
   movieClips: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+  graphicSymbolsByName: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
   ikContainers: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+  state: SourceBuildState,
 ): number {
   let period = 1;
   let stopLength = 1;
   let ikLength = 1;
+  let probeCount = 0;
+  let probeState: SourceBuildState | undefined;
+
+  const getProbeState = (): SourceBuildState => {
+    if (!probeState) {
+      probeState = {
+        ...state,
+        shapeBlocks: new Map(),
+        visitedNodeCount: 0,
+      };
+    }
+    return probeState;
+  };
+
+  const probeSymbolFrame = (
+    descriptor: FlaXflGraphicSymbolDescriptor,
+    frameIndex: number,
+  ): FlaDisplayListFrameContext | undefined => {
+    if (frameIndex === 0) return descriptor.frameContext;
+    if (probeCount >= MAX_STOPPED_SUBTREE_PROBES) return undefined;
+    probeCount += 1;
+    const probed = buildGraphicFrameContext(
+      descriptor.timelineXml,
+      descriptor.frameSpanIndex,
+      frameIndex,
+      `probe:${descriptor.sourceLibraryItemName}@${frameIndex}`,
+      getProbeState(),
+    );
+    return probed.ok ? probed.value : undefined;
+  };
+
+  const inspectStoppedSubtree = (
+    context: FlaDisplayListFrameContext,
+    stopFrameIndex: number,
+    appearTick: number,
+    depth: number,
+    stack: ReadonlySet<string>,
+    parentIsLockedGraphic: boolean,
+  ): number => {
+    let maxEndTick = parentIsLockedGraphic
+      ? appearTick
+      : Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + stopFrameIndex + 1);
+    if (depth >= MAX_STOPPED_SUBTREE_DEPTH) return maxEndTick;
+
+    const visitSubtree = (elements: readonly FlaDisplayListElement[]): void => {
+      for (const element of elements) {
+        if (element.visible === false) continue;
+        if (element.kind === 'group') {
+          visitSubtree(element.elements);
+          continue;
+        }
+        if (element.kind !== 'symbol') continue;
+        if (stack.has(element.libraryItemName)) continue;
+
+        if (element.symbolType === 'movieclip') {
+          const childClip = movieClips.get(element.libraryItemName);
+          if (!childClip || childClip.movieClipHasScript) continue;
+          const rawRunStart = element.movieClipRun?.start ?? element.sourceParentFrameSpanStart ?? stopFrameIndex;
+          const childAppearTick = parentIsLockedGraphic
+            ? appearTick
+            : appearTick + Math.max(0, Math.min(rawRunStart, stopFrameIndex));
+          const childFirstStop = childClip.movieClipStopFrames?.[0];
+          if (childFirstStop !== undefined) {
+            const clampedStop = Math.min(childClip.frameCount - 1, Math.max(0, childFirstStop));
+            maxEndTick = Math.max(
+              maxEndTick,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childAppearTick + clampedStop + 1),
+            );
+            const childContext = probeSymbolFrame(childClip, clampedStop);
+            if (childContext) {
+              const nextStack = new Set(stack);
+              nextStack.add(childClip.sourceLibraryItemName);
+              maxEndTick = Math.max(
+                maxEndTick,
+                inspectStoppedSubtree(childContext, clampedStop, childAppearTick, depth + 1, nextStack, false),
+              );
+            }
+          } else {
+            maxEndTick = Math.max(
+              maxEndTick,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childAppearTick + childClip.frameCount),
+            );
+          }
+          continue;
+        }
+
+        if (element.symbolType === 'graphic' && movieClips.size > 0) {
+          const graphicDesc = graphicSymbolsByName.get(element.libraryItemName);
+          if (!graphicDesc) continue;
+          const selectedFrame = selectFlaGraphicFrameIndex(element, graphicDesc.frameCount);
+          if (selectedFrame === undefined) continue;
+          if (selectedFrame === 0 && !graphicDesc.hasNestedSymbol) continue;
+          const graphicContext = probeSymbolFrame(graphicDesc, selectedFrame);
+          if (!graphicContext) continue;
+          const nextStack = new Set(stack);
+          nextStack.add(graphicDesc.sourceLibraryItemName);
+          const lockedAtTick = parentIsLockedGraphic ? appearTick : appearTick + stopFrameIndex;
+          maxEndTick = Math.max(
+            maxEndTick,
+            inspectStoppedSubtree(graphicContext, selectedFrame, lockedAtTick, depth + 1, nextStack, true),
+          );
+        }
+      }
+    };
+
+    for (const layer of context.layers) if (layer.visible) visitSubtree(layer.elements);
+    return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, maxEndTick);
+  };
+
   const visit = (elements: readonly FlaDisplayListElement[]): void => {
     for (const element of elements) {
       if (element.visible === false) continue;
@@ -2819,13 +2934,22 @@ function oneFrameScenePlaybackCount(
       if (!clip || clip.movieClipHasScript) continue;
       const firstStop = clip.movieClipStopFrames?.[0];
       if (firstStop !== undefined) {
-        stopLength = Math.max(stopLength, Math.min(clip.frameCount, firstStop + 1));
+        const clampedStop = Math.min(clip.frameCount - 1, Math.max(0, firstStop));
+        let needed = clampedStop + 1;
+        const stopContext = probeSymbolFrame(clip, clampedStop);
+        if (stopContext) {
+          needed = Math.max(
+            needed,
+            inspectStoppedSubtree(stopContext, clampedStop, 0, 1, new Set([clip.sourceLibraryItemName]), false),
+          );
+        }
+        stopLength = Math.max(stopLength, needed);
         continue;
       }
       let a = period;
       let b = clip.frameCount;
       while (b !== 0) [a, b] = [b, a % b];
-      period = Math.min(100_000, period / a * clip.frameCount);
+      period = Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, period / a * clip.frameCount);
     }
   };
   for (const layer of frameContext.layers) if (layer.visible) visit(layer.elements);
@@ -2945,6 +3069,7 @@ function* adaptFlaXflDisplaySourceSteps(
   }
   yield;
 
+  const graphicSymbolsByName = new Map(graphicSymbols.map((symbol) => [symbol.sourceLibraryItemName, symbol]));
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
   for (const scene of sceneSources.value) {
@@ -2960,7 +3085,7 @@ function* adaptFlaXflDisplaySourceSteps(
     if (!parsed.ok) return parsed;
     const frameCount = spans?.ok ? spans.value.frameCount : scene.frameCount;
     const playbackFrameCount = spans?.ok && frameCount === 1
-      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols, ikContainers)
+      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols, graphicSymbolsByName, ikContainers, state)
       : 1;
     let firstObjectMotionFrameIndex: number | undefined;
     const laterCoverFrames = new Set<number>();

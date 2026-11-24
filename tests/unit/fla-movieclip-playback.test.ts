@@ -411,4 +411,198 @@ describe('FLA MovieClip deterministic stop() fidelity (#1257)', () => {
     expect(earlyStopScene.playbackFrameCount).toBe(3);
     expect(await earlyStopScene.render(2)).toContain('fill="#16a34a"');
   });
+
+  it('expands single-authored-scene-frame playback count for an independent looping child inside a frame-0 stopped parent (#1259)', async () => {
+    const movie = await buildSceneFixture(
+      [layer(scriptFrame(0, '<DOMSymbolInstance libraryItemName="StoppedParent" name="parent"/>'))],
+      [
+        {
+          name: 'StoppedParent',
+          layers: [
+            layer(scriptFrame(0, '', 'stop();', 2), 'name="actions"'),
+            layer(
+              scriptFrame(0, square('#111111') + '<DOMSymbolInstance libraryItemName="FanChild" name="fan"/>') +
+                scriptFrame(1, square('#999999') + '<DOMSymbolInstance libraryItemName="FanChild" name="fan"/>'),
+              'name="content"',
+            ),
+          ],
+        },
+        {
+          name: 'FanChild',
+          layers: [
+            layer(
+              scriptFrame(0, square('#e11d48')) +
+                scriptFrame(1, square('#2563eb')) +
+                scriptFrame(2, square('#16a34a')) +
+                scriptFrame(3, square('#f59e0b')),
+            ),
+          ],
+        },
+      ],
+    );
+
+    expect(movie.authoredFrameCount).toBe(1);
+    expect(movie.playbackFrameCount).toBe(4);
+
+    // Out-of-order seek across 0..3: parent stays on frame 0 (#111111), child plays all 4 frames
+    const f3 = await movie.render(3);
+    expect(f3).toContain('fill="#111111"');
+    expect(f3).toContain('fill="#f59e0b"');
+    const f0 = await movie.render(0);
+    expect(f0).toContain('fill="#111111"');
+    expect(f0).toContain('fill="#e11d48"');
+    const f2 = await movie.render(2);
+    expect(f2).toContain('fill="#111111"');
+    expect(f2).toContain('fill="#16a34a"');
+    const f1 = await movie.render(1);
+    expect(f1).toContain('fill="#111111"');
+    expect(f1).toContain('fill="#2563eb"');
+  });
+
+  it('covers delayed looping child and locked Graphic on a non-zero stop frame without advancing Graphic (#1259)', async () => {
+    const movie = await buildSceneFixture(
+      [layer(scriptFrame(0, '<DOMSymbolInstance libraryItemName="ParentStop2" name="parent"/>'))],
+      [
+        {
+          name: 'ParentStop2',
+          layers: [
+            layer(scriptFrame(0, '', undefined, 2) + scriptFrame(2, '', 'stop();'), 'name="actions"'),
+            layer(
+              scriptFrame(0, '<DOMSymbolInstance libraryItemName="LockedGfx" symbolType="graphic" loop="loop"/>', undefined, 3),
+              'name="gfx"',
+            ),
+            layer(
+              scriptFrame(0, '', undefined, 2) +
+                scriptFrame(2, '<DOMSymbolInstance libraryItemName="DelayedFan" name="fan"/>'),
+              'name="fan"',
+            ),
+          ],
+        },
+        {
+          name: 'DelayedFan',
+          layers: [
+            layer(
+              scriptFrame(0, square('#e11d48')) +
+                scriptFrame(1, square('#2563eb')) +
+                scriptFrame(2, square('#16a34a')) +
+                scriptFrame(3, square('#f59e0b')),
+            ),
+          ],
+        },
+        {
+          name: 'LockedGfx',
+          symbolType: 'graphic',
+          layers: [
+            layer(
+              scriptFrame(0, square('#a10000')) +
+                scriptFrame(1, square('#a20000')) +
+                scriptFrame(2, square('#a30000')) +
+                scriptFrame(3, square('#a40000')) +
+                scriptFrame(4, square('#a50000')) +
+                scriptFrame(5, square('#a60000')) +
+                scriptFrame(6, square('#a70000')),
+            ),
+          ],
+        },
+      ],
+    );
+
+    // Parent stops at frame 2; DelayedFan appears at tick 2 and loops 4 frames -> 2 + 4 = 6 (NOT 7 from LockedGfx)
+    expect(movie.authoredFrameCount).toBe(1);
+    expect(movie.playbackFrameCount).toBe(6);
+
+    // Frame 1: LockedGfx at #a20000, DelayedFan not yet present
+    const f1 = await movie.render(1);
+    expect(f1).toContain('fill="#a20000"');
+    expect(f1).not.toContain('fill="#e11d48"');
+
+    // Frame 2: Parent stops at 2 -> LockedGfx locks at #a30000, DelayedFan starts at frame 0 (#e11d48)
+    const f2 = await movie.render(2);
+    expect(f2).toContain('fill="#a30000"');
+    expect(f2).toContain('fill="#e11d48"');
+
+    // Frame 5 (out-of-order): LockedGfx STILL locked at #a30000 (not #a60000), DelayedFan reaches frame 3 (#f59e0b)
+    const f5 = await movie.render(5);
+    expect(f5).toContain('fill="#a30000"');
+    expect(f5).not.toContain('fill="#a60000"');
+    expect(f5).toContain('fill="#f59e0b"');
+  });
+
+  it('bounds delayed stopped child to its reachable stop frame and ignores disappeared, hidden, or unsupported children (#1259)', async () => {
+    // Delayed child with 5 frames stopping at frame 1 on parent stop frame 2 -> 2 + (1 + 1) = 4
+    const delayedStopChild = await buildSceneFixture(
+      [layer(scriptFrame(0, '<DOMSymbolInstance libraryItemName="ParentA" name="p"/>'))],
+      [
+        {
+          name: 'ParentA',
+          layers: [
+            layer(scriptFrame(0, '', undefined, 2) + scriptFrame(2, '', 'stop();'), 'name="actions"'),
+            layer(
+              scriptFrame(0, '', undefined, 2) +
+                scriptFrame(2, '<DOMSymbolInstance libraryItemName="ChildStop1" name="c"/>'),
+              'name="child"',
+            ),
+          ],
+        },
+        {
+          name: 'ChildStop1',
+          layers: [
+            layer(scriptFrame(0, '') + scriptFrame(1, '', 'stop();', 4), 'name="actions"'),
+            layer(
+              scriptFrame(0, square('#110000')) +
+                scriptFrame(1, square('#220000')) +
+                scriptFrame(2, square('#330000')) +
+                scriptFrame(3, square('#440000')) +
+                scriptFrame(4, square('#550000')),
+              'name="art"',
+            ),
+          ],
+        },
+      ],
+    );
+    expect(delayedStopChild.playbackFrameCount).toBe(4);
+    expect(await delayedStopChild.render(2)).toContain('fill="#110000"');
+    expect(await delayedStopChild.render(3)).toContain('fill="#220000"');
+
+    // Disappeared child (only on frame 0), hidden child, and unsupported-script child must NOT inflate length past 3
+    const nonInflating = await buildSceneFixture(
+      [layer(scriptFrame(0, '<DOMSymbolInstance libraryItemName="ParentB" name="p"/>'))],
+      [
+        {
+          name: 'ParentB',
+          layers: [
+            layer(scriptFrame(0, '', undefined, 2) + scriptFrame(2, '', 'stop();'), 'name="actions"'),
+            layer(
+              scriptFrame(0, '<DOMSymbolInstance libraryItemName="LongLoop" name="gone"/>') +
+                scriptFrame(1, '', undefined, 2),
+              'name="disappeared"',
+            ),
+            layer(
+              scriptFrame(0, '<DOMSymbolInstance libraryItemName="LongLoop" name="hidden"/>', undefined, 3),
+              'name="hiddenLayer" visible="false"',
+            ),
+            layer(
+              scriptFrame(0, '<DOMSymbolInstance libraryItemName="BadScriptChild" name="bad"/>', undefined, 3),
+              'name="badChild"',
+            ),
+          ],
+        },
+        {
+          name: 'LongLoop',
+          layers: [
+            layer(
+              scriptFrame(0, square('#010101'), undefined, 10),
+            ),
+          ],
+        },
+        {
+          name: 'BadScriptChild',
+          layers: [
+            layer(scriptFrame(0, square('#020202'), 'if (x) stop();', 8)),
+          ],
+        },
+      ],
+    );
+    expect(nonInflating.playbackFrameCount).toBe(3);
+  });
 });

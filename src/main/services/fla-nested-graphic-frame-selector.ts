@@ -252,6 +252,14 @@ export function ikContainerPlaybackLength(
   return selected.ok ? selected.playOnceFrameCount ?? 1 : 1;
 }
 
+export function selectFlaGraphicFrameIndex(
+  element: Extract<FlaDisplayListElement, { kind: 'symbol' }>,
+  frameCount: number,
+): number | undefined {
+  const selected = selectAuthoredChildFrame(element, frameCount);
+  return selected.ok ? selected.frameIndex : undefined;
+}
+
 /**
  * Select one authored state for each active nested Graphic instance. The
  * returned resolver map uses per-frame lookup keys; display-list nodes retain
