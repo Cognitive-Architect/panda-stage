@@ -35,6 +35,7 @@ import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { layerStore } from '../../src/renderer/stores/layerStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
+import { DesktopAutomationRendererRequestSchema } from '../../src/shared/desktop-automation-api';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from './domain/testProject';
 
@@ -249,12 +250,16 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     if (!state.ok) throw new Error(state.message);
     const data = { ...target, recipeId: recipe.id, startMs: 21, bindings: {}, session: state.data.session };
     const automationPreview = vi.fn(() => true);
-    expect(executeDesktopAutomation({ ...automationContext, command: { name: 'recipe.preview', ...data } }, automationPreview))
+    expect(executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+      ...automationContext, command: { name: 'recipe.preview', ...data },
+    }), automationPreview))
       .toMatchObject({ ok: true, data: { changed: false } });
     expect(automationPreview).toHaveBeenCalledWith(after, target.shotId);
     expect(editorProjectStore.getSnapshot()!.project).toEqual(before.project);
     await act(async () => {
-      const outcome = executeDesktopAutomation({ ...automationContext, command: { name: 'recipe.apply', ...data } }, () => false);
+      const outcome = executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+        ...automationContext, command: { name: 'recipe.apply', ...data },
+      }), () => false);
       expect(outcome).toMatchObject({ ok: true, data: { changed: true } });
     });
     expect(editorProjectStore.getSnapshot()!.project).toEqual(after);
