@@ -60,6 +60,7 @@ import {
 } from '../models/flaGraphicTimeline';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
+import { duplicateLayerAnimationClip } from '../layer-animation';
 import { PositionProjectService } from './PositionProjectService';
 
 export type LayerServiceErrorCode =
@@ -1688,6 +1689,21 @@ export class LayerService {
         ? {
             flaGraphicInstanceShapeOverrides: cloneFlaGraphicShapeOverrides(
               layer.flaGraphicInstanceShapeOverrides,
+            ),
+          }
+        : {}),
+      ...(layer.animationClip?.version === 2
+        ? {
+            animationClip: duplicateLayerAnimationClip(
+              layer.animationClip,
+              duplicateId,
+              {
+                x: position.x,
+                y: position.y,
+                scaleX: layer.scaleX,
+                scaleY: layer.scaleY,
+                rotationDeg: layer.rotationDeg,
+              },
             ),
           }
         : {}),

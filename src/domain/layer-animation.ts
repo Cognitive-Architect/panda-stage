@@ -148,6 +148,27 @@ export function syncLayerAnimationClipBasis(
   });
 }
 
+/** Deep-clone a Layer Clip v2 for a duplicated Layer, remapping target ownership and syncing its baseTransform. */
+export function duplicateLayerAnimationClip(
+  clip: LayerAnimationClip,
+  targetLayerId: string,
+  baseTransform: LayerBasePose,
+): LayerAnimationClip {
+  const cloned = structuredClone(clip);
+  const remapped: LayerAnimationClip = {
+    ...cloned,
+    targetBases: cloned.targetBases.map((basis) => ({
+      ...basis,
+      target: { ...basis.target, layerId: targetLayerId },
+    })),
+    tracks: cloned.tracks.map((track) => ({
+      ...track,
+      target: { ...track.target, layerId: targetLayerId },
+    })),
+  };
+  return syncLayerAnimationClipBasis(remapped, targetLayerId, baseTransform);
+}
+
 /** Center-anchor mapping from target-local source-canvas coordinates to Layer-local space. */
 export function layerPivotLocalOffset(
   pivot: TargetLocalPivot,

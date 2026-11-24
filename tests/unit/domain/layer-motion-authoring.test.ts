@@ -14,6 +14,7 @@ import {
   ProjectV20Schema,
   ProjectV21Schema,
   ShotService,
+  editAnimationPropertyKey,
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
   layerCompositeKeyEasing,
@@ -960,5 +961,241 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
     expect(service.setKeyEasing(unified, { shotId, layerId, timeMs: 500 }, 'ease-out')).toBe(
       unified,
     );
+  });
+
+  it('duplicates an FLA Graphic layer with v2 Clip ownership, basis offset, curves, overrides, events, and independent editing', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const childPath = ['face', 'face-0'];
+    const childMatrix = { a: 0.35, b: 0, c: 0, d: 0.35, tx: 36, ty: 24 };
+
+    let project = layerService.updateAnimationPlayback(
+      base.project,
+      base.shotId,
+      base.layerId,
+      { startTimeMs: 250, mode: 'loop', endBehavior: 'hide' },
+    );
+    project = layerService.updateFlaGraphicInstanceTransform(
+      project,
+      base.shotId,
+      base.layerId,
+      0,
+      childPath,
+      childMatrix,
+    );
+    project = service.recalibratePivot(
+      project,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 130, y: 110 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 0 },
+      { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 500 },
+      {
+        'transform.offsetX': 100,
+        'transform.offsetY': -40,
+        'transform.rotationDeg': 45,
+        'transform.scaleX': 1.5,
+      },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      {
+        'transform.offsetX': 220,
+        'transform.offsetY': 20,
+        'transform.rotationDeg': 90,
+        'transform.scaleX': 2,
+      },
+    );
+    project = editAnimationPropertyKey(
+      project,
+      {
+        shotId: base.shotId,
+        target: { kind: 'layer', layerId: base.layerId },
+        property: 'transform.offsetX',
+        keyTimeMs: 0,
+      },
+      {
+        interpolationToNext: 'ease-in-out',
+        curveToNext: {
+          bezier: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 },
+          window: [0, 1],
+        },
+      },
+    );
+    const sourceEvent: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000501',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: 1,
+      to: 0.4,
+      easing: 'ease-in-out',
+    };
+    project = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) =>
+        shot.id === base.shotId
+          ? { ...shot, timelineEvents: [...shot.timelineEvents, sourceEvent] }
+          : shot,
+      ),
+    });
+
+    const beforeProject = structuredClone(project);
+    const beforeSource = beforeProject.shots[0]!.layers.find((l) => l.id === base.layerId)!;
+
+    const duplicated = layerService.duplicateAnimationLayer(
+      project,
+      base.shotId,
+      base.layerId,
+    );
+    const parsed = ProjectSchema.parse(duplicated.project);
+    const shot = parsed.shots.find((s) => s.id === base.shotId)!;
+    const sourceAfter = shot.layers.find((l) => l.id === base.layerId)!;
+    const dupAfter = shot.layers.find((l) => l.id === duplicated.layer.id)!;
+
+    expect(shot.layers).toHaveLength(beforeProject.shots[0]!.layers.length + 1);
+    expect(dupAfter.id).not.toBe(base.layerId);
+    expect(dupAfter.source).toEqual(beforeSource.source);
+    expect(dupAfter.startTimeMs).toBe(250);
+    expect(dupAfter.animationPlayback).toEqual({ mode: 'loop', endBehavior: 'hide' });
+    expect(dupAfter.flaGraphicInstanceTransformOverrides).toEqual(
+      beforeSource.flaGraphicInstanceTransformOverrides,
+    );
+    expect(dupAfter.x).toBe(beforeSource.x + 24);
+    expect(dupAfter.y).toBe(beforeSource.y + 24);
+    expect(dupAfter.zIndex).toBe(beforeSource.zIndex + 1);
+
+    expect(dupAfter.animationClip?.version).toBe(2);
+    if (dupAfter.animationClip?.version !== 2 || beforeSource.animationClip?.version !== 2) {
+      throw new Error('Expected Layer Clip v2');
+    }
+    expect(dupAfter.animationClip.targetBases).toHaveLength(1);
+    expect(dupAfter.animationClip.targetBases[0]!.target).toEqual({
+      kind: 'layer',
+      layerId: dupAfter.id,
+    });
+    expect(dupAfter.animationClip.targetBases[0]!.animationId).toBe(base.definitionId);
+    expect(dupAfter.animationClip.targetBases[0]!.baseTransform).toEqual({
+      x: beforeSource.x + 24,
+      y: beforeSource.y + 24,
+      scaleX: beforeSource.scaleX,
+      scaleY: beforeSource.scaleY,
+      rotationDeg: beforeSource.rotationDeg,
+    });
+    expect(dupAfter.animationClip.targetBases[0]!.pivot).toEqual(
+      beforeSource.animationClip.targetBases[0]!.pivot,
+    );
+    expect(dupAfter.animationClip.tracks.length).toBe(beforeSource.animationClip.tracks.length);
+    expect(dupAfter.animationClip.tracks.every((t) => t.target.layerId === dupAfter.id)).toBe(true);
+    expect(
+      dupAfter.animationClip.tracks.find((t) => t.property === 'transform.offsetX')?.keys[0],
+    ).toEqual(
+      beforeSource.animationClip.tracks.find((t) => t.property === 'transform.offsetX')?.keys[0],
+    );
+
+    const dupEvents = shot.timelineEvents.filter((e) => e.layerId === dupAfter.id);
+    expect(dupEvents).toHaveLength(1);
+    expect(dupEvents[0]!.id).not.toBe(sourceEvent.id);
+    expect(shot.timelineEvents.filter((e) => e.layerId === base.layerId)).toEqual([sourceEvent]);
+
+    expect(sourceAfter).toEqual(beforeSource);
+    expect(parsed.animations).toEqual(beforeProject.animations);
+    expect(parsed.assets).toEqual(beforeProject.assets);
+
+    // Evaluate at start, middle, and end timestamps: duplicate matches source + (+24, +24) offset.
+    for (const timeMs of [0, 250, 500, 1_000]) {
+      const evaluated = evaluateShotAtTime(shot, timeMs, parsed);
+      const evalSource = evaluated.layers.find((l) => l.id === base.layerId)!;
+      const evalDup = evaluated.layers.find((l) => l.id === dupAfter.id)!;
+      expect(evalDup.x).toBeCloseTo(evalSource.x + 24);
+      expect(evalDup.y).toBeCloseTo(evalSource.y + 24);
+      expect(evalDup.rotationDeg).toBeCloseTo(evalSource.rotationDeg);
+      expect(evalDup.scaleX).toBeCloseTo(evalSource.scaleX);
+      expect(evalDup.scaleY).toBeCloseTo(evalSource.scaleY);
+      expect(evalDup.opacity).toBeCloseTo(evalSource.opacity);
+    }
+
+    // Independent editing: editing duplicate keyframe does not change source, and vice versa.
+    const dup500Before = evaluateShotAtTime(shot, 500, parsed).layers.find(
+      (l) => l.id === dupAfter.id,
+    )!;
+    const source500Before = evaluateShotAtTime(shot, 500, parsed).layers.find(
+      (l) => l.id === base.layerId,
+    )!;
+    const afterDupEdit = service.applyKeys(
+      parsed,
+      { shotId: base.shotId, layerId: dupAfter.id, timeMs: 500 },
+      { 'transform.offsetX': 300 },
+    );
+    expect(
+      evaluateShotAtTime(afterDupEdit.shots[0]!, 500, afterDupEdit).layers.find(
+        (l) => l.id === base.layerId,
+      )!.x,
+    ).toBeCloseTo(source500Before.x);
+    expect(
+      evaluateShotAtTime(afterDupEdit.shots[0]!, 500, afterDupEdit).layers.find(
+        (l) => l.id === dupAfter.id,
+      )!.x,
+    ).toBeCloseTo(dup500Before.x + 200);
+
+    const dup1000Before = evaluateShotAtTime(afterDupEdit.shots[0]!, 1_000, afterDupEdit).layers.find(
+      (l) => l.id === dupAfter.id,
+    )!;
+    const source1000Before = evaluateShotAtTime(afterDupEdit.shots[0]!, 1_000, afterDupEdit).layers.find(
+      (l) => l.id === base.layerId,
+    )!;
+    const afterSourceEdit = service.applyKeys(
+      afterDupEdit,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      { 'transform.offsetY': -150 },
+    );
+    expect(
+      evaluateShotAtTime(afterSourceEdit.shots[0]!, 1_000, afterSourceEdit).layers.find(
+        (l) => l.id === dupAfter.id,
+      )!.y,
+    ).toBeCloseTo(dup1000Before.y);
+    expect(
+      evaluateShotAtTime(afterSourceEdit.shots[0]!, 1_000, afterSourceEdit).layers.find(
+        (l) => l.id === base.layerId,
+      )!.y,
+    ).toBeCloseTo(source1000Before.y - 170);
+
+    // Boundary clamp fallback (-24, -24) syncs Clip baseTransform cleanly.
+    const cornerProject = layerService.updatePosition(
+      parsed,
+      base.shotId,
+      base.layerId,
+      { x: 1920, y: 1080 },
+    );
+    const cornerDup = layerService.duplicateAnimationLayer(
+      cornerProject,
+      base.shotId,
+      base.layerId,
+    );
+    expect(cornerDup.layer).toMatchObject({ x: 1896, y: 1056 });
+    expect(
+      cornerDup.layer.animationClip?.version === 2
+        ? cornerDup.layer.animationClip.targetBases[0]?.baseTransform
+        : null,
+    ).toMatchObject({ x: 1896, y: 1056 });
+    expect(
+      evaluateShotAtTime(cornerDup.project.shots[0]!, 0, cornerDup.project).layers.find(
+        (l) => l.id === cornerDup.layer.id,
+      ),
+    ).toMatchObject({ x: 1896, y: 1056 });
+
+    // Locked source layer fails without mutating project.
+    const lockedProject = layerService.setLocked(parsed, base.shotId, base.layerId, true);
+    expect(() =>
+      layerService.duplicateAnimationLayer(lockedProject, base.shotId, base.layerId),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
   });
 });

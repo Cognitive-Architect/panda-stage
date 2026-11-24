@@ -19,6 +19,8 @@ import {
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { LayerStore } from '../../src/renderer/stores/layerStore';
+import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
@@ -405,6 +407,158 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
       expect(opened.migrated).toBe(true);
       expect(opened.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
       expect(opened.project.shots[0]!.layers.find((l) => l.id === layerId)!.animationClip).toEqual(clip);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('persists a duplicated FLA Graphic v2 Clip layer across save/reopen and agrees across Stage, Preview, and Export', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-dup-clip-'));
+    try {
+      const root = path.join(parent, 'dup-clip.pandastage');
+      await mkdir(root);
+      const base = graphicFaceProject();
+      const emptyProject = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const layers = new LayerService();
+      const placed = layers.createFromAnimation(emptyProject, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 500, y: 300 },
+      });
+      const motion = new LayerMotionService();
+      let authored = motion.recalibratePivot(
+        placed.project,
+        { shotId: IDS.shot, layerId: placed.layer.id },
+        { space: 'target-local', x: 120, y: 100 },
+      );
+      authored = motion.applyKeys(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 0 },
+        { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+      );
+      authored = motion.applyKeys(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 500 },
+        { 'transform.offsetX': 140, 'transform.offsetY': -40, 'transform.rotationDeg': 30 },
+      );
+      authored = motion.applyKeys(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 1_000 },
+        { 'transform.offsetX': 280, 'transform.offsetY': 20, 'transform.rotationDeg': 90 },
+      );
+      authored = motion.setKeyEasing(
+        authored,
+        { shotId: IDS.shot, layerId: placed.layer.id, timeMs: 500 },
+        'ease-in-out',
+      );
+      authored = editAnimationPropertyKey(
+        authored,
+        {
+          shotId: IDS.shot,
+          target: { kind: 'layer', layerId: placed.layer.id },
+          property: 'transform.offsetX',
+          keyTimeMs: 500,
+        },
+        {
+          interpolationToNext: 'ease-in-out',
+          curveToNext: {
+            bezier: { x1: 0.25, y1: 0, x2: 0.8, y2: 0.2 },
+            window: [0.1, 0.8],
+          },
+        },
+      );
+
+      const store = new EditorProjectStore();
+      store.open(root, authored);
+      const shots = { getCurrentShotId: () => IDS.shot };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      const layerStore = new LayerStore(store, shots, layers, selection);
+      const duplicated = layerStore.duplicateAnimationLayer(placed.layer.id);
+      expect(store.history.getSnapshot().undoCount).toBe(1);
+
+      const projectService = new ProjectService();
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(authored));
+      await projectService.save(root, store.getSnapshot()!.project, 1);
+
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(store.getSnapshot()!.project);
+      expect(reopened.project.animations).toEqual(authored.animations);
+      expect(reopened.project.assets).toEqual(authored.assets);
+
+      const shot = reopened.project.shots[0]!;
+      const sourceLayer = shot.layers.find((l) => l.id === placed.layer.id)!;
+      const dupLayer = shot.layers.find((l) => l.id === duplicated.id)!;
+      expect(dupLayer.source).toEqual(sourceLayer.source);
+      expect(dupLayer.animationClip?.version).toBe(2);
+      expect(dupLayer.animationClip?.targetBases[0]?.target.layerId).toBe(duplicated.id);
+      expect(dupLayer.animationClip?.tracks.every((t) => t.target.layerId === duplicated.id)).toBe(true);
+      expect(layerCompositeKeyTimes(dupLayer)).toEqual([0, 500, 1_000]);
+      expect(layerCompositeKeyEasing(dupLayer, 500)).toBe('ease-in-out');
+      expect(
+        dupLayer.animationClip?.tracks
+          .find((t) => t.property === 'transform.offsetX')
+          ?.keys.find((k) => k.timeMs === 500)?.curveToNext,
+      ).toEqual({
+        bezier: { x1: 0.25, y1: 0, x2: 0.8, y2: 0.2 },
+        window: [0.1, 0.8],
+      });
+
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      for (const timeMs of [0, 500, 750, 1_000]) {
+        const stage = evaluateShotAtTime(shot, timeMs, reopened.project);
+        const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
+        const exported = evaluateExportShotAtTime(reopened.project, shot, timeMs);
+        const editorModel = buildEditorTemporalCanvasModel({
+          project: reopened.project,
+          shot,
+          currentTimeMs: timeMs,
+          readyAssetIds: new Set(reopened.project.assets.map((a) => a.id)),
+          previousVisuals: new Map(),
+        });
+        const exportModel = buildStageRenderModel(reopened.project, exported, urls);
+
+        const stageSrc = stage.layers.find((l) => l.id === placed.layer.id)!;
+        const stageDup = stage.layers.find((l) => l.id === duplicated.id)!;
+        expect(stageDup.x).toBeCloseTo(stageSrc.x + 24);
+        expect(stageDup.y).toBeCloseTo(stageSrc.y + 24);
+        expect(stageDup.rotationDeg).toBeCloseTo(stageSrc.rotationDeg);
+
+        expect(preview.layers.find((l) => l.id === duplicated.id)).toMatchObject({
+          x: stageDup.x,
+          y: stageDup.y,
+          rotationDeg: stageDup.rotationDeg,
+        });
+        expect(exported.layers.find((l) => l.id === duplicated.id)).toMatchObject({
+          x: stageDup.x,
+          y: stageDup.y,
+          rotationDeg: stageDup.rotationDeg,
+        });
+        expect(editorModel.stageModel.layers.find((l) => l.layer.id === duplicated.id)!.render).toMatchObject({
+          x: stageDup.x,
+          y: stageDup.y,
+          rotationDeg: stageDup.rotationDeg,
+        });
+        expect(exportModel.layers.find((l) => l.id === duplicated.id)!.render).toMatchObject({
+          x: stageDup.x,
+          y: stageDup.y,
+          rotationDeg: stageDup.rotationDeg,
+        });
+      }
+      selection.dispose();
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

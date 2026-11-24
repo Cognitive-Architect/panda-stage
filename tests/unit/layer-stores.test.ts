@@ -2,10 +2,14 @@ import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  LayerMotionService,
   LayerService,
+  ProjectSchema,
   migrateProject,
   type Project,
+  type TimelineEvent,
 } from '../../src/domain';
+import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { buildProjectWithAnimation, IDS } from './domain/testProject';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
@@ -532,6 +536,95 @@ describe('Day 22 layer stores', () => {
       input.editor.getSnapshot()!.project.shots[0]!.layers
         .some((candidate) => candidate.id === layer.id),
     ).toBe(false);
+    input.selection.dispose();
+  });
+
+  it('duplicates an FLA Graphic layer with v2 Clip in one History entry, supports Undo/Redo/selection, and rejects locked sources atomically', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 500, y: 360 },
+      startTimeMs: 0,
+    });
+    const motion = new LayerMotionService();
+    let authored = motion.applyKeys(
+      placed.project,
+      { shotId, layerId: placed.layer.id, timeMs: 0 },
+      { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+    );
+    authored = motion.applyKeys(
+      authored,
+      { shotId, layerId: placed.layer.id, timeMs: 500 },
+      { 'transform.offsetX': 120, 'transform.offsetY': -40 },
+    );
+    const sourceEvent: TimelineEvent = {
+      id: 'd2210000-0000-4000-8000-000000000901',
+      type: 'opacity',
+      layerId: placed.layer.id,
+      startMs: 125,
+      endMs: 625,
+      from: 1,
+      to: 0.5,
+      easing: 'linear',
+    };
+    authored = ProjectSchema.parse({
+      ...authored,
+      shots: authored.shots.map((shot) =>
+        shot.id === shotId
+          ? { ...shot, timelineEvents: [...shot.timelineEvents, sourceEvent] }
+          : shot,
+      ),
+    });
+
+    const input = harness(authored);
+    input.selection.select(placed.layer.id);
+
+    const duplicated = input.layers.duplicateAnimationLayer(placed.layer.id);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(input.editor.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: 1,
+    });
+    expect(input.selection.getSelectedLayerId()).toBe(duplicated.id);
+
+    const afterDuplicate = input.editor.getSnapshot()!.project;
+    expect(() => ProjectSchema.parse(afterDuplicate)).not.toThrow();
+    const afterShot = afterDuplicate.shots[0]!;
+    const dupLayer = afterShot.layers.find((l) => l.id === duplicated.id)!;
+    expect(dupLayer.animationClip?.version).toBe(2);
+    expect(dupLayer.animationClip?.targetBases[0]?.target.layerId).toBe(duplicated.id);
+    expect(dupLayer.animationClip?.tracks.every((t) => t.target.layerId === duplicated.id)).toBe(true);
+    const dupEvents = afterShot.timelineEvents.filter((e) => e.layerId === duplicated.id);
+    expect(dupEvents).toHaveLength(1);
+    expect(dupEvents[0]!.id).not.toBe(sourceEvent.id);
+
+    // Undo removes only the duplicated layer and its copied event.
+    expect(input.editor.undo()).toBe(true);
+    const afterUndo = input.editor.getSnapshot()!.project;
+    expect(afterUndo).toEqual(authored);
+    expect(afterUndo.shots[0]!.layers.some((l) => l.id === duplicated.id)).toBe(false);
+    expect(afterUndo.shots[0]!.timelineEvents.some((e) => e.layerId === duplicated.id)).toBe(false);
+    expect(input.selection.getSelectedLayerId()).toBeNull();
+
+    // Redo restores the exact same duplicate ID, valid Clip ownership, event ownership, and selection.
+    expect(input.editor.redo()).toBe(true);
+    const afterRedo = input.editor.getSnapshot()!.project;
+    expect(afterRedo).toEqual(afterDuplicate);
+    expect(input.selection.getSelectedLayerId()).toBe(duplicated.id);
+
+    // Locked source leaves no partial layers, dangling events, or extra History entry.
+    input.layers.setLocked(placed.layer.id, true);
+    const beforeLocked = input.editor.getSnapshot()!;
+    const historyBeforeLocked = input.editor.history.getSnapshot();
+    expect(() => input.layers.duplicateAnimationLayer(placed.layer.id)).toThrow(
+      expect.objectContaining({ code: 'LAYER_LOCKED' }),
+    );
+    expect(input.editor.getSnapshot()).toEqual(beforeLocked);
+    expect(input.editor.history.getSnapshot()).toEqual(historyBeforeLocked);
     input.selection.dispose();
   });
 });
