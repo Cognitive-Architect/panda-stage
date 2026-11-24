@@ -242,7 +242,7 @@ export function buildFlaTimelineFrameSpanIndex<T>(
   };
 }
 
-function findCoveringSpan<T>(
+export function findCoveringSpan<T>(
   spans: readonly FlaNormalizedFrameSpan<T>[],
   frameIndex: number,
 ): FlaNormalizedFrameSpan<T> | null {

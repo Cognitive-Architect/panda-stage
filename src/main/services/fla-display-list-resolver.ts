@@ -67,6 +67,8 @@ export function isValidFlaDisplayListRgbTransform(transform: FlaDisplayListRgbTr
 
 export interface FlaDisplayListLayer {
   readonly name: string;
+  readonly stageProjection?: FlaDisplayListMatrix;
+  readonly incompatibleStageMask?: boolean;
   readonly visible: boolean;
   readonly elements: readonly FlaDisplayListElement[];
   /** One source-supported DOMFrame BlurFilter scoped to this layer's contents. */
@@ -485,7 +487,7 @@ function resolveLayers(
     const layer = maskLayers.get(maskId);
     if (!layer) return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked layer references a missing mask', sourcePath);
     const maskPath = `${sourcePath}/mask(${layer.name})`;
-    if (layer.unsupportedMaskReason || layer.frameFilter) {
+    if (layer.unsupportedMaskReason || layer.frameFilter || layer.incompatibleStageMask) {
       return failure('UNSUPPORTED_DISPLAY_CONTENT', layer.unsupportedMaskReason ?? 'Mask filter is unsupported', maskPath);
     }
     const enclosing = layer.maskedBy ? resolveMask(layer.maskedBy, [...ancestry, maskId])
@@ -495,7 +497,7 @@ function resolveLayers(
     const diagnosticCount = context.maskFailureCount + context.ikPoseFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
-      parentTransform,
+      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
       symbolStack,
       nestingDepth,
       maskPath,
@@ -536,7 +538,9 @@ function resolveLayers(
       continue;
     }
 
-    const mask = layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
+    const mask = layer.incompatibleStageMask
+      ? failure('UNSUPPORTED_DISPLAY_CONTENT', 'Native depth differs between a mask and its content', layerPath)
+      : layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
     if (mask && !mask.ok) {
       if (mask.code === 'MAX_RESOLVED_NODES_EXCEEDED') return mask;
       context.maskFailureCount += 1;
@@ -551,7 +555,7 @@ function resolveLayers(
 
     const resolved = resolveElements(
       layer.elements,
-      parentTransform,
+      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
       symbolStack,
       nestingDepth,
       `${layerPath}:${layer.name}`,

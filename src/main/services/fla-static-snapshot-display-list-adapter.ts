@@ -11,6 +11,7 @@
 import crypto from 'node:crypto';
 import {
   buildFlaTimelineFrameSpanIndex,
+  findCoveringSpan,
   resolveFlaTimelineFrameSpan,
   type FlaNormalizedFrameSpan,
   type FlaTimelineFrameSpanMetadata,
@@ -67,6 +68,7 @@ const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenRotateTimes',
   'parentLayerIndex',
   'rigPropagationMatrix',
+  'frameZDepth',
 ]);
 const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
@@ -2489,18 +2491,140 @@ function buildIkPoseFrameElements(
   return { ok: true, value: elements };
 }
 
+type SceneStage = { readonly width: number; readonly height: number };
+type StageLayerView = { readonly matrix: FlaDisplayListMatrix | null; readonly depth: number };
+
+function authoredLayerDepth(span: FlaNormalizedFrameSpan<FlaXflElementBlock> | null): number {
+  const raw = span?.sourceFrame.attributes.frameZDepth;
+  if (raw === undefined) return 0;
+  const value = raw.trim() ? Number(raw) : Number.NaN;
+  return Math.abs(value) <= 65_536 ? value : Number.NaN;
+}
+
+function sceneStageViews(
+  layers: readonly FlaXflElementBlock[],
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+  frameIndex: number,
+  stage: SceneStage,
+  state: SourceBuildState,
+): RigCalculationResult<readonly StageLayerView[]> {
+  const isCamera = (layer: FlaXflElementBlock) => layer.attributes.layerType?.toLowerCase() === 'camera';
+  const cameraIndices = layers.flatMap((layer, index) => isCamera(layer) ? [index] : []);
+  const invalid = (message: string): RigCalculationResult<never> => ({ ok: false, message });
+  if (cameraIndices.length > 1) return invalid('Multiple native camera layers are unsupported');
+  const center = { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: stage.width / 2, ty: stage.height / 2 };
+  let view = FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  let cameraDepth = 0;
+  const cameraIndex = cameraIndices[0];
+
+  const sampleDepth = (spans: readonly FlaNormalizedFrameSpan<FlaXflElementBlock>[], span: FlaNormalizedFrameSpan<FlaXflElementBlock> | null) => {
+    const start = authoredLayerDepth(span);
+    if (span?.tweenType !== 'motion' || frameIndex === span.index) return start;
+    const end = findCoveringSpan(spans, span.endExclusive);
+    return end?.index === span.endExclusive
+      ? start + (authoredLayerDepth(end) - start) * ((frameIndex - span.index) / span.duration)
+      : start;
+  };
+
+  if (cameraIndex !== undefined) {
+    const spans = frameSpanIndex.layers[cameraIndex]?.spans ?? [];
+    const span = findCoveringSpan(spans, frameIndex);
+    if (span) {
+      const readCamera = (frame: FlaXflElementBlock) => {
+        const elements = frameDisplayElements(frame);
+        const camera = elements[0];
+        if (elements.length !== 1 || camera?.name !== 'DOMSymbolInstance' ||
+            camera.attributes.libraryItemName !== '__Camera__' ||
+            directChild(camera.xml, camera.name, 'matrix3D') || frame.attributes.parentLayerIndex !== undefined) return null;
+        const matrix = readDirectMatrix(camera);
+        const pivot = readDirectTransformationPoint(camera);
+        return matrix.ok && matrix.present && pivot ? { matrix: matrix.matrix, pivot } : null;
+      };
+      const start = readCamera(span.sourceFrame);
+      if (!start) return invalid('Invalid native __Camera__ instance or unsupported 3D camera');
+      let matrix = start.matrix;
+      if (span.tweenType === 'motion object') {
+        const sampled = sampleObjectMotion(span.sourceFrame, frameIndex - span.index, state);
+        if (!sampled.ok || sampled.value.pose.shadowDistances) return invalid('Unsupported native camera Object Motion');
+        matrix = sampled.value.pose.matrix;
+      } else if (span.tweenType === 'motion' && frameIndex > span.index) {
+        const endSpan = findCoveringSpan(spans, span.endExclusive);
+        const end = endSpan?.index === span.endExclusive ? readCamera(endSpan.sourceFrame) : null;
+        const ease = classicMotionEasesForFrame(span.sourceFrame);
+        const rotation = classicMotionRotationForFrame(span.sourceFrame);
+        if (!end || !ease.ok || !rotation.ok) return invalid('Unsupported native camera Classic Motion endpoints');
+        const timing = evaluateFlaViewerClassicTweenProgress(
+          (frameIndex - span.index) / span.duration, ease.acceleration, ease.eases,
+        );
+        if (!timing.ok) return invalid(timing.message);
+        const sampled = interpolateFlaClassicMotionInstanceTransform(
+          matrix, end.matrix, timing.progress, rotation.rotation, start.pivot, end.pivot,
+        );
+        if (!sampled.ok) return invalid(sampled.message);
+        matrix = sampled.matrix;
+      } else if (span.tweenType !== 'none' && span.tweenType !== 'motion') {
+        return invalid('Unsupported native camera tween type');
+      }
+      const inverted = inverse(matrix);
+      if (!inverted) return invalid('Native camera transform is singular');
+      view = compose(center, inverted);
+      cameraDepth = sampleDepth(spans, span);
+      if (!Number.isFinite(cameraDepth)) return invalid('Invalid native camera depth');
+    }
+  }
+
+  // Animate HTML5 Canvas native camera projection, cross-checked against the
+  // public runtime conventions documented in lifeart/fla-viewer @ b14fa1d.
+  const focalLength = 528.25;
+  const result: StageLayerView[] = [];
+  for (const [index, layer] of layers.entries()) {
+    if (isCamera(layer) || ['guide', 'folder'].includes(layer.attributes.layerType?.toLowerCase() ?? '')) {
+      result.push({ matrix: null, depth: 0 });
+      continue;
+    }
+    const spans = frameSpanIndex.layers[index]?.spans ?? [];
+    const depth = sampleDepth(spans, findCoveringSpan(spans, frameIndex));
+    if (!Number.isFinite(depth)) return invalid('Invalid native layer depth');
+    const attached = cameraIndex !== undefined && layer.attributes.attachedToCamera === 'true';
+    const relative = depth - (attached ? 0 : cameraDepth);
+    const stackDepth = attached && cameraDepth !== 0 ? 2 * depth + cameraDepth : depth;
+    if (relative <= -focalLength) {
+      result.push({ matrix: null, depth: stackDepth });
+      continue;
+    }
+    const scale = focalLength / (focalLength + relative);
+    const projection = { a: scale, d: scale, b: 0, c: 0, tx: (1 - scale) * center.tx, ty: (1 - scale) * center.ty };
+    const matrix = attached ? projection : compose(projection, view);
+    if (scale > 32 || [matrix.a, matrix.b, matrix.c, matrix.d].some((value) => !Number.isFinite(value) || Math.abs(value) > 32) ||
+        [matrix.tx, matrix.ty].some((value) => !Number.isFinite(value) || Math.abs(value) > 262_144)) {
+      return invalid('Native camera or layer depth exceeds the bounded projection range');
+    }
+    result.push({ matrix, depth: stackDepth });
+  }
+  return { ok: true, value: result };
+}
+
 function buildGraphicFrameContext(
   timelineXml: string,
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
   frameIndex: number,
   scope: string,
   state: SourceBuildState,
-  options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
+  options?: {
+    readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void;
+    readonly sceneStage?: SceneStage;
+  },
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext> {
   const resolution = resolveFlaTimelineFrameSpan(frameSpanIndex, frameIndex);
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
+  const stageViews = options?.sceneStage
+    ? sceneStageViews(layers, frameSpanIndex, frameIndex, options.sceneStage, state)
+    : undefined;
+  if (stageViews && !stageViews.ok) {
+    return { ok: true, value: { frameIndex, layers: [], unsupportedDisplayReason: stageViews.message } };
+  }
   const rigContext: RigEvaluationContext = {
     timelineXml,
     state,
@@ -2831,13 +2955,15 @@ function buildGraphicFrameContext(
     return { ok: true, value: { elements, ...(frameFilter ? { frameFilter } : {}) } };
   };
 
-  const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  const resolvedLayers: Array<FlaDisplayListFrameContext['layers'][number] & { depth?: number }> = [];
   const unsupportedDisplayReasons: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
     const isMask = maskLayerIds.has(selection.layerIndex);
+    const stageView = stageViews?.value[selection.layerIndex];
+    if (stageView?.matrix === null && !isMask) continue;
     const layerReasons: string[] = [];
     const sampled = sampleLayer(selection, layerReasons, isMask);
     const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
@@ -2846,7 +2972,7 @@ function buildGraphicFrameContext(
     if (!sampled.ok && sampled.code !== 'UNSUPPORTED_IK_POSE' &&
         (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
     const { elements, frameFilter } = sampled.ok ? sampled.value : { elements: [], frameFilter: undefined };
-    const maskReason = isMask ? (!sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
+    const maskReason = isMask ? (stageView?.matrix === null ? 'Native mask is behind the camera' : !sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
       (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
@@ -2860,11 +2986,23 @@ function buildGraphicFrameContext(
         maskedBy = maskLayerIds.get(parentLayerIndex);
       }
     }
+    const parentView = maskedBy && parentLayerIndexRaw !== undefined
+      ? stageViews?.value[Number(parentLayerIndexRaw)] : undefined;
+    const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
+      !Object.entries(parentView.matrix).every(([key, value]) =>
+        stageView.matrix?.[key as keyof FlaDisplayListMatrix] === value);
+    const stageProjection = stageView?.matrix &&
+      Object.entries(FLA_DISPLAY_LIST_IDENTITY_MATRIX).some(([key, value]) =>
+        stageView.matrix?.[key as keyof FlaDisplayListMatrix] !== value)
+      ? stageView.matrix : undefined;
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${selection.layerIndex + 1}`,
+      ...(stageProjection ? { stageProjection } : {}),
+      ...(stageView ? { depth: stageView.depth } : {}),
       visible: selection.visible,
       elements,
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
+      ...(mixedMaskProjection ? { incompatibleStageMask: true } : {}),
       ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
       ...(maskLayerIds.has(selection.layerIndex)
         ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
@@ -2877,7 +3015,9 @@ function buildGraphicFrameContext(
     ok: true,
     value: {
       frameIndex,
-      layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
+      layers: stageViews
+        ? [...resolvedLayers].reverse().sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
+        : normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
       ...(unsupportedDisplayReasons[0]
         ? { unsupportedDisplayReason: unsupportedDisplayReasons[0] }
         : {}),
@@ -3390,16 +3530,22 @@ function* adaptFlaXflDisplaySourceSteps(
   const graphicSymbolsByName = new Map(graphicSymbols.map((symbol) => [symbol.sourceLibraryItemName, symbol]));
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
+  const projectedScenes = new Set<string>();
+  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
   for (const scene of sceneSources.value) {
     yield;
     const scope = `scene:${scene.index}`;
-    const spans = needsIndexedSceneFrames(scene.xml, state, movieClipSymbols.size > 0)
+    const hasNativeView = /\blayerType\s*=\s*['"]camera['"]|\bframeZDepth\s*=/iu.test(scene.xml);
+    if (hasNativeView) projectedScenes.add(scope);
+    const spans = hasNativeView || needsIndexedSceneFrames(scene.xml, state, movieClipSymbols.size > 0)
       ? timelineFrameSpanIndex(scene.xml)
       : undefined;
     if (spans?.ok) indexedSceneSpans.set(scope, spans.value);
     const parsed = spans?.ok
-      ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state)
-      : buildFrameContext(scene.xml, 0, scope, state);
+      ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state, hasNativeView ? { sceneStage } : undefined)
+      : spans && hasNativeView
+        ? { ok: true as const, value: { frameIndex: 0, layers: [], unsupportedDisplayReason: spans.message } }
+        : buildFrameContext(scene.xml, 0, scope, state);
     if (!parsed.ok) return parsed;
     const frameCount = spans?.ok ? spans.value.frameCount : scene.frameCount;
     const playbackFrameCount = spans?.ok && frameCount === 1
@@ -3450,8 +3596,8 @@ function* adaptFlaXflDisplaySourceSteps(
   return {
     ok: true,
     source: {
-      stageWidth: parseStageDimension(docXml, 'width', 550),
-      stageHeight: parseStageDimension(docXml, 'height', 400),
+      stageWidth: sceneStage.width,
+      stageHeight: sceneStage.height,
       sceneTimelines,
       graphicSymbols,
       movieClipSymbols,
@@ -3463,7 +3609,8 @@ function* adaptFlaXflDisplaySourceSteps(
         resetFrameBuildState();
         frameBuildStateIsBase = false;
         const spans = indexedSceneSpans.get(scope);
-        if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state);
+        if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state,
+          projectedScenes.has(scope) ? { sceneStage } : undefined);
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },
       buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope, options) => {
