@@ -1,6 +1,7 @@
 import {
   LayerMotionService,
   LayerService,
+  type AfterimageInput,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
@@ -200,6 +201,23 @@ export class LayerStore {
     );
     if (result.project !== project) {
       this.editorStore.updateProject(result.project, '排兵布阵');
+    }
+    return result.layers;
+  }
+
+  generateAfterimages(
+    layerId: string,
+    input: AfterimageInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateAfterimages(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成位置残影');
     }
     return result.layers;
   }

@@ -61,7 +61,24 @@ import {
 } from '../models/flaGraphicTimeline';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
-import { duplicateLayerAnimationClip } from '../layer-animation';
+import {
+  createLayerAnimationClip,
+  duplicateLayerAnimationClip,
+  evaluateLayerRelativeMotionValues,
+  layerPivotLocalOffset,
+  solveLayerRelativeOffsetForStagePoint,
+  type LayerBasePose,
+} from '../layer-animation';
+import {
+  evaluateLayerPreTrackState,
+  evaluateShotAtTime,
+} from '../evaluate-shot-at-time';
+import {
+  frameTimeMs,
+  isValidFrameTime,
+  lastValidFrameTime,
+} from '../timeline/frame-grid';
+import type { AnimationKey, LayerAnimationClip } from '../models/animationCore';
 import { PositionProjectService } from './PositionProjectService';
 
 export type LayerServiceErrorCode =
@@ -91,7 +108,8 @@ export type LayerServiceErrorCode =
   | 'SHAPE_REGION_NOT_FOUND'
   | 'SHAPE_REGION_REQUIRED'
   | 'SHAPE_FILL_NOT_SOLID'
-  | 'INVALID_GRID_ARRAY';
+  | 'INVALID_GRID_ARRAY'
+  | 'INVALID_AFTERIMAGE';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -128,6 +146,25 @@ export interface GridArrayInput {
 }
 
 export interface DuplicateGridArrayResult {
+  readonly project: Project;
+  readonly layers: readonly Layer[];
+}
+
+export const AFTERIMAGE_MIN_COUNT = 3;
+export const AFTERIMAGE_MAX_COUNT = 8;
+export const AFTERIMAGE_DEFAULT_COUNT = 4;
+export const AFTERIMAGE_DEFAULT_DELAY_FRAMES = 2;
+export const AFTERIMAGE_DEFAULT_DECAY = 0.6;
+
+export interface AfterimageInput {
+  readonly count: number;
+  readonly delayFrames: number;
+  readonly decay: number;
+  readonly startFrame: number;
+  readonly endFrame: number;
+}
+
+export interface GenerateAfterimagesResult {
   readonly project: Project;
   readonly layers: readonly Layer[];
 }
@@ -220,6 +257,16 @@ function duplicateGridLayerName(
   const suffix = ` 副本 ${row + 1}-${col + 1}`;
   const maxBaseLength = Math.max(1, 200 - suffix.length);
   return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+}
+
+function afterimageLayerName(baseName: string, index: number): string {
+  const suffix = ` 残影 ${index}`;
+  const maxBaseLength = Math.max(1, 200 - suffix.length);
+  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+}
+
+function clampAlpha01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
 export function clampLayerPosition(point: Point): Point {
@@ -1830,6 +1877,423 @@ export class LayerService {
     return {
       project: this.replaceShot(project, nextShot),
       layers: createdLayers,
+    };
+  }
+
+  /**
+   * Generate N native editable position-afterimage replicas directly beneath the
+   * source FLA Graphic layer. Each replica i (1..N) samples the source's evaluated
+   * stage anchor, opacity, and visibility at historical frame h = f - i * Δ.
+   */
+  generateAfterimages(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: AfterimageInput,
+  ): GenerateAfterimagesResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        '只能对 FLA 图形动画图层生成残影。',
+      );
+    }
+    const animationId = layer.source.animationId;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!definition || !isFlaGraphicDefinition(definition)) {
+      throw new LayerServiceError(
+        'FLA_GRAPHIC_REQUIRED',
+        '位置残影仅支持 FLA 图形（Graphic）动画图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+
+    const { count, delayFrames, decay, startFrame, endFrame } = input;
+    if (
+      !Number.isSafeInteger(count) ||
+      count < AFTERIMAGE_MIN_COUNT ||
+      count > AFTERIMAGE_MAX_COUNT
+    ) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        `残影数量必须是 ${AFTERIMAGE_MIN_COUNT}–${AFTERIMAGE_MAX_COUNT} 之间的整数。`,
+      );
+    }
+    if (!Number.isSafeInteger(delayFrames) || delayFrames < 1) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        '时间间隔必须是大于等于 1 的整数帧。',
+      );
+    }
+    if (!Number.isFinite(decay) || decay <= 0 || decay >= 1) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        '透明度衰减系数必须是 0 到 1 之间（不含端点）的有限数字。',
+      );
+    }
+    if (
+      !Number.isSafeInteger(startFrame) ||
+      !Number.isSafeInteger(endFrame) ||
+      startFrame < 0 ||
+      endFrame <= startFrame
+    ) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        '起止帧必须是非负整数，且止帧必须晚于起帧。',
+      );
+    }
+    const maxValidMs = lastValidFrameTime(shot.durationMs);
+    const startTimeMs = frameTimeMs(startFrame);
+    const endTimeMs = frameTimeMs(endFrame);
+    if (
+      !isValidFrameTime(startTimeMs) ||
+      !isValidFrameTime(endTimeMs) ||
+      endTimeMs > maxValidMs ||
+      endTimeMs > shot.durationMs
+    ) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        '起止帧必须位于当前镜头的合法帧范围内。',
+      );
+    }
+    if (endFrame - startFrame < count * delayFrames) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        `时段长度不足：${count} 个残影 × ${delayFrames} 帧间隔至少需要 ${count * delayFrames} 帧。`,
+      );
+    }
+
+    // Sample source layer history once across [startFrame..endFrame] from the original snapshot.
+    const sourceSamples: {
+      readonly frame: number;
+      readonly timeMs: number;
+      readonly x: number;
+      readonly y: number;
+      readonly opacity: number;
+      readonly visible: boolean;
+    }[] = [];
+    for (let frame = startFrame; frame <= endFrame; frame += 1) {
+      const timeMs = frameTimeMs(frame);
+      const evaluated = evaluateShotAtTime(shot, timeMs, project).layers.find(
+        (candidate) => candidate.id === layer.id,
+      );
+      if (!evaluated) {
+        throw new LayerServiceError('LAYER_NOT_FOUND', `找不到图层：${layer.id}`);
+      }
+      sourceSamples.push({
+        frame,
+        timeMs,
+        x: evaluated.x,
+        y: evaluated.y,
+        opacity: evaluated.opacity,
+        visible: evaluated.visible,
+      });
+    }
+
+    const originSample = sourceSamples[0]!;
+    const maxDisplacement = sourceSamples.reduce(
+      (maxDist, sample) =>
+        Math.max(maxDist, Math.hypot(sample.x - originSample.x, sample.y - originSample.y)),
+      0,
+    );
+    if (maxDisplacement <= 1e-3) {
+      throw new LayerServiceError(
+        'INVALID_AFTERIMAGE',
+        '所选时段内源图层没有有效位移，无法生成位置残影。',
+      );
+    }
+
+    const usedIds = this.projectIds(project);
+    const preservedSourceEvents = shot.timelineEvents.filter(
+      (event) =>
+        event.layerId === layer.id &&
+        event.type !== 'move' &&
+        event.type !== 'shake' &&
+        event.type !== 'opacity' &&
+        event.type !== 'visibility',
+    );
+    const baseClipTemplate: LayerAnimationClip =
+      layer.animationClip?.version === 2
+        ? structuredClone(layer.animationClip)
+        : createLayerAnimationClip(project, shot.id, layer.id);
+    const nonPositionTracks = baseClipTemplate.tracks.filter(
+      (track) =>
+        track.property !== 'transform.offsetX' &&
+        track.property !== 'transform.offsetY',
+    );
+    const basisTemplate = baseClipTemplate.targetBases[0]!;
+    const localPivot = layerPivotLocalOffset(
+      basisTemplate.pivot,
+      basisTemplate.sourceCanvas,
+    );
+
+    const nextFrameAfterEndMs = frameTimeMs(endFrame + 1);
+    const hideAfterEndMs =
+      nextFrameAfterEndMs <= maxValidMs && nextFrameAfterEndMs <= shot.durationMs
+        ? nextFrameAfterEndMs
+        : null;
+
+    // Build replicas ordered farthest (i = count) to closest (i = 1) so zIndex rises toward the source layer.
+    const createdLayers: Layer[] = [];
+    const createdEvents: TimelineEvent[] = [];
+
+    for (let i = count; i >= 1; i -= 1) {
+      const replicaId = this.nextUniqueId(usedIds);
+      usedIds.add(replicaId);
+
+      const remappedClip = duplicateLayerAnimationClip(
+        {
+          ...baseClipTemplate,
+          tracks: nonPositionTracks,
+        },
+        replicaId,
+        {
+          x: layer.x,
+          y: layer.y,
+          scaleX: layer.scaleX,
+          scaleY: layer.scaleY,
+          rotationDeg: layer.rotationDeg,
+        },
+      );
+
+      // Copy preserved non-position/non-opacity/non-visibility events with stable localeCompare ID ordering.
+      const sortedNewEventIds = preservedSourceEvents
+        .map(() => {
+          const id = this.nextUniqueId(usedIds);
+          usedIds.add(id);
+          return id;
+        })
+        .sort((left, right) => left.localeCompare(right));
+      const newEventIdBySourceId = new Map(
+        [...preservedSourceEvents]
+          .sort((left, right) => left.id.localeCompare(right.id))
+          .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
+      );
+      const replicaPreservedEvents: TimelineEvent[] = preservedSourceEvents.map(
+        (event) => ({
+          ...structuredClone(event),
+          id: newEventIdBySourceId.get(event.id)!,
+          layerId: replicaId,
+        }),
+      );
+
+      const firstActiveFrame = startFrame + i * delayFrames;
+      const decayFactor = Math.pow(decay, i);
+
+      // Compute target alphas & visibility over [firstActiveFrame..endFrame].
+      const activeSamples: {
+        readonly frame: number;
+        readonly timeMs: number;
+        readonly x: number;
+        readonly y: number;
+        readonly alpha: number;
+        readonly visible: boolean;
+      }[] = [];
+      for (let frame = firstActiveFrame; frame <= endFrame; frame += 1) {
+        const hist = sourceSamples[frame - i * delayFrames - startFrame]!;
+        const alpha = clampAlpha01(hist.opacity * decayFactor);
+        activeSamples.push({
+          frame,
+          timeMs: frameTimeMs(frame),
+          x: hist.x,
+          y: hist.y,
+          alpha,
+          visible: hist.visible && alpha > 1e-6,
+        });
+      }
+
+      const initialAlpha = activeSamples[0]!.alpha;
+      const alphaDynamic = activeSamples.some(
+        (sample) => Math.abs(sample.alpha - initialAlpha) > 1e-6,
+      );
+
+      const replicaBaseLayer: Layer = {
+        ...layer,
+        ...(layer.flaGraphicInstanceTransformOverrides
+          ? {
+              flaGraphicInstanceTransformOverrides:
+                cloneFlaGraphicInstanceTransformOverrides(
+                  layer.flaGraphicInstanceTransformOverrides,
+                ),
+            }
+          : {}),
+        ...(layer.flaGraphicInstanceShapeOverrides
+          ? {
+              flaGraphicInstanceShapeOverrides: cloneFlaGraphicShapeOverrides(
+                layer.flaGraphicInstanceShapeOverrides,
+              ),
+            }
+          : {}),
+        id: replicaId,
+        name: afterimageLayerName(layer.name, i),
+        opacity: initialAlpha,
+        visible: false,
+        locked: false,
+        animationClip: remappedClip,
+      };
+
+      // Back-solve relative offsetX/Y for each active frame against the replica's own pre-track + non-position tracks.
+      const offsetXKeys: AnimationKey[] = [];
+      const offsetYKeys: AnimationKey[] = [];
+      if (activeSamples[0]!.timeMs > 0) {
+        offsetXKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+        offsetYKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
+      }
+      for (const sample of activeSamples) {
+        const preTrack = evaluateLayerPreTrackState(
+          shot,
+          replicaBaseLayer,
+          sample.timeMs,
+          project,
+          replicaPreservedEvents,
+        );
+        const currentRel = evaluateLayerRelativeMotionValues(
+          remappedClip,
+          replicaId,
+          sample.timeMs,
+        );
+        const prePose: LayerBasePose = {
+          x: preTrack.motion.displayPosition.x,
+          y: preTrack.motion.displayPosition.y,
+          scaleX: preTrack.scaleX,
+          scaleY: preTrack.scaleY,
+          rotationDeg: preTrack.rotationDeg,
+        };
+        const solved = solveLayerRelativeOffsetForStagePoint(
+          localPivot,
+          prePose,
+          preTrack.flipX,
+          currentRel['transform.rotationDeg'],
+          currentRel['transform.scaleX'],
+          currentRel['transform.scaleY'],
+          { x: sample.x, y: sample.y },
+        );
+        offsetXKeys.push({
+          timeMs: sample.timeMs,
+          value: solved.offsetX!,
+          interpolationToNext: 'linear',
+        });
+        offsetYKeys.push({
+          timeMs: sample.timeMs,
+          value: solved.offsetY!,
+          interpolationToNext: 'linear',
+        });
+      }
+
+      const target = { kind: 'layer' as const, layerId: replicaId };
+      const finalClip: LayerAnimationClip = {
+        ...remappedClip,
+        tracks: [
+          ...remappedClip.tracks,
+          { target, property: 'transform.offsetX', keys: offsetXKeys },
+          { target, property: 'transform.offsetY', keys: offsetYKeys },
+        ],
+      };
+
+      // Emit visibility gating events (initially hidden; show/hide on exact state transitions).
+      const gatingEvents: TimelineEvent[] = [];
+      let currentlyVisible = false;
+      for (const sample of activeSamples) {
+        if (sample.visible !== currentlyVisible) {
+          const eventId = this.nextUniqueId(usedIds);
+          usedIds.add(eventId);
+          gatingEvents.push({
+            id: eventId,
+            type: 'visibility',
+            layerId: replicaId,
+            startMs: sample.timeMs,
+            endMs: sample.timeMs,
+            visible: sample.visible,
+          });
+          currentlyVisible = sample.visible;
+        }
+      }
+      if (currentlyVisible && hideAfterEndMs !== null) {
+        const hideId = this.nextUniqueId(usedIds);
+        usedIds.add(hideId);
+        gatingEvents.push({
+          id: hideId,
+          type: 'visibility',
+          layerId: replicaId,
+          startMs: hideAfterEndMs,
+          endMs: hideAfterEndMs,
+          visible: false,
+        });
+      }
+
+      // Emit dynamic opacity events when source history opacity varies (merging constant runs).
+      const opacityEvents: TimelineEvent[] = [];
+      if (alphaDynamic) {
+        let segStart = 0;
+        while (segStart < activeSamples.length - 1) {
+          const fromSample = activeSamples[segStart]!;
+          const nextSample = activeSamples[segStart + 1]!;
+          if (Math.abs(nextSample.alpha - fromSample.alpha) <= 1e-6) {
+            let runEnd = segStart + 1;
+            while (
+              runEnd + 1 < activeSamples.length &&
+              Math.abs(activeSamples[runEnd + 1]!.alpha - fromSample.alpha) <= 1e-6
+            ) {
+              runEnd += 1;
+            }
+            segStart = runEnd;
+            continue;
+          }
+          const eventId = this.nextUniqueId(usedIds);
+          usedIds.add(eventId);
+          opacityEvents.push({
+            id: eventId,
+            type: 'opacity',
+            layerId: replicaId,
+            startMs: fromSample.timeMs,
+            endMs: nextSample.timeMs,
+            from: fromSample.alpha,
+            to: nextSample.alpha,
+            easing: 'linear',
+          });
+          segStart += 1;
+        }
+      }
+
+      createdLayers.push({
+        ...replicaBaseLayer,
+        animationClip: finalClip,
+      });
+      createdEvents.push(...replicaPreservedEvents, ...gatingEvents, ...opacityEvents);
+    }
+
+    // Insert replicas directly beneath the source layer while preserving all other layers' relative order.
+    const orderedContent = shot.layers
+      .filter((candidate) => candidate.id !== shot.backgroundLayerId)
+      .sort((left, right) => left.zIndex - right.zIndex);
+    const sourceOrderIndex = orderedContent.findIndex(
+      (candidate) => candidate.id === layer.id,
+    );
+    const nextOrderedContent = [
+      ...orderedContent.slice(0, sourceOrderIndex),
+      ...createdLayers,
+      ...orderedContent.slice(sourceOrderIndex),
+    ];
+    const normalizedLayers = this.normalizeLayerOrder(shot, nextOrderedContent);
+    const createdById = new Map(
+      normalizedLayers.map((candidate) => [candidate.id, candidate] as const),
+    );
+    const normalizedCreatedLayers = createdLayers.map(
+      (candidate) => createdById.get(candidate.id)!,
+    );
+
+    const nextShot = {
+      ...shot,
+      layers: normalizedLayers,
+      timelineEvents: [...shot.timelineEvents, ...createdEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layers: normalizedCreatedLayers,
     };
   }
 

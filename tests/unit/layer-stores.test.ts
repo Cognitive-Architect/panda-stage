@@ -843,4 +843,62 @@ describe('Day 22 layer stores', () => {
     expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
     input.selection.dispose();
   });
+
+  it('commits position afterimages in one History entry, restores exact zIndex/events on Undo/Redo, and leaves state clean on stationary rejection (#1271 A03)', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 400, y: 300 },
+      startTimeMs: 0,
+    });
+    const stationaryInput = harness(placed.project);
+    stationaryInput.selection.select(placed.layer.id);
+    expect(() =>
+      stationaryInput.layers.generateAfterimages(placed.layer.id, {
+        count: 4,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 24,
+      }),
+    ).toThrow(/没有有效位移/);
+    expect(stationaryInput.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(stationaryInput.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    stationaryInput.selection.dispose();
+
+    const moving = new LayerMotionService().applyCurveMotion(placed.project, {
+      shotId,
+      layerId: placed.layer.id,
+      startFrame: 0,
+      endFrame: 24,
+      p1: { x: 500, y: 150 },
+      p2: { x: 750, y: 150 },
+      p3: { x: 900, y: 300 },
+      speedMode: 'constant',
+    });
+    const input = harness(moving);
+    input.selection.select(placed.layer.id);
+    const created = input.layers.generateAfterimages(placed.layer.id, {
+      count: 4,
+      delayFrames: 2,
+      decay: 0.6,
+      startFrame: 0,
+      endFrame: 24,
+    });
+    expect(created).toHaveLength(4);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    const afterGen = input.editor.getSnapshot()!.project;
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(moving);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterGen);
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+    input.selection.dispose();
+  });
 });

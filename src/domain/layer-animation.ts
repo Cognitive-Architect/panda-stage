@@ -287,6 +287,40 @@ export function composeAnimatedLayerTransform(
   return { x, y, scaleX, scaleY, rotationDeg };
 }
 
+/** Back-solve relative Layer Track offsetX/Y for a desired stage anchor point under pivot/rotation/scale/flipX. */
+export function solveLayerRelativeOffsetForStagePoint(
+  localPivot: { readonly x: number; readonly y: number },
+  prePose: LayerBasePose,
+  flipX: boolean,
+  relRotationDeg: number,
+  relScaleX: number,
+  relScaleY: number,
+  stagePoint: { readonly x?: number; readonly y?: number },
+): { readonly offsetX?: number; readonly offsetY?: number } {
+  const vBase = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg,
+    prePose.scaleX,
+    prePose.scaleY,
+    flipX,
+  );
+  const vFinal = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg + relRotationDeg,
+    prePose.scaleX * relScaleX,
+    prePose.scaleY * relScaleY,
+    flipX,
+  );
+  return {
+    ...(stagePoint.x !== undefined
+      ? { offsetX: stagePoint.x - prePose.x + vFinal.x - vBase.x }
+      : {}),
+    ...(stagePoint.y !== undefined
+      ? { offsetY: stagePoint.y - prePose.y + vFinal.y - vBase.y }
+      : {}),
+  };
+}
+
 /** Read current relative Layer motion values at `timeMs` without allocating a Clip. */
 export function evaluateLayerRelativeMotionValues(
   clip: LayerAnimationClip | undefined,

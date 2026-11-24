@@ -38,6 +38,7 @@ import {
   layerPivotLocalOffset,
   layerPivotStageVector,
   recalibrateLayerAnimationPivot,
+  solveLayerRelativeOffsetForStagePoint,
   type LayerBasePose,
 } from '../layer-animation';
 import { isFlaGraphicDefinition } from '../models/animation';
@@ -136,39 +137,6 @@ export function getLayerCurveMotionConflict(
     return '当前图层存在时间轴移动或抖动事件，请先移除相关位置事件后再生成曲线运动。';
   }
   return null;
-}
-
-function solveLayerRelativeOffsetForStagePoint(
-  localPivot: Point,
-  prePose: LayerBasePose,
-  flipX: boolean,
-  relRotationDeg: number,
-  relScaleX: number,
-  relScaleY: number,
-  stagePoint: { readonly x?: number; readonly y?: number },
-): { readonly offsetX?: number; readonly offsetY?: number } {
-  const vBase = layerPivotStageVector(
-    localPivot,
-    prePose.rotationDeg,
-    prePose.scaleX,
-    prePose.scaleY,
-    flipX,
-  );
-  const vFinal = layerPivotStageVector(
-    localPivot,
-    prePose.rotationDeg + relRotationDeg,
-    prePose.scaleX * relScaleX,
-    prePose.scaleY * relScaleY,
-    flipX,
-  );
-  return {
-    ...(stagePoint.x !== undefined
-      ? { offsetX: stagePoint.x - prePose.x + vFinal.x - vBase.x }
-      : {}),
-    ...(stagePoint.y !== undefined
-      ? { offsetY: stagePoint.y - prePose.y + vFinal.y - vBase.y }
-      : {}),
-  };
 }
 
 function assertStagePointInBounds(point: Point, label: string): void {

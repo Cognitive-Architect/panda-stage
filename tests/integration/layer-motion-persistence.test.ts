@@ -988,4 +988,111 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
     )!;
     expect(unaligned40.x).toBeLessThan(1580);
   });
+
+  it('persists A03 afterimages + manual replica edit across save/reopen and agrees across Stage, Preview, and real Export frames (#1271 A03)', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-afterimage-'));
+    try {
+      const root = path.join(parent, 'afterimage.pandastage');
+      await mkdir(root);
+      const base = graphicFaceProject();
+      const emptyProject = ProjectSchema.parse({
+        ...base,
+        characters: [],
+        voiceProfiles: [],
+        shots: base.shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const layers = new LayerService();
+      const placed = layers.createFromAnimation(emptyProject, IDS.shot, {
+        animationId: FACE_GRAPHIC_ID,
+        startTimeMs: 0,
+        position: { x: 400, y: 300 },
+      });
+      const motion = new LayerMotionService();
+      const curved = motion.applyCurveMotion(placed.project, {
+        shotId: IDS.shot,
+        layerId: placed.layer.id,
+        startFrame: 0,
+        endFrame: 24,
+        p1: { x: 450, y: 80 },
+        p2: { x: 850, y: 80 },
+        p3: { x: 900, y: 300 },
+        speedMode: 'constant',
+      });
+
+      const store = new EditorProjectStore();
+      store.open(root, curved);
+      const shots = { getCurrentShotId: () => IDS.shot };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      selection.select(placed.layer.id);
+      const layerStore = new LayerStore(store, shots, layers, selection);
+      const created = layerStore.generateAfterimages(placed.layer.id, {
+        count: 4,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 24,
+      });
+      expect(created).toHaveLength(4);
+      expect(store.history.getSnapshot().undoCount).toBe(1);
+
+      // Manually edit closest replica (i=1) at frame 13 (non-integer-ms frame 542ms vs export 541ms).
+      const closestId = created[3]!.id;
+      const farthestId = created[0]!.id;
+      const edited = motion.applyKeys(
+        store.getSnapshot()!.project,
+        { shotId: IDS.shot, layerId: closestId, timeMs: frameTimeMs(13) },
+        { 'transform.offsetY': -140 },
+      );
+      store.updateProject(edited, '微调残影位置');
+
+      const projectService = new ProjectService();
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(curved));
+      await projectService.save(root, store.getSnapshot()!.project, 1);
+
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(store.getSnapshot()!.project);
+      expect(reopened.project.animations).toEqual(curved.animations);
+      expect(reopened.project.assets).toEqual(curved.assets);
+
+      const shot = reopened.project.shots[0]!;
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      for (const frame of [1, 2, 13, 24, 25]) {
+        const authoringMs = frameTimeMs(frame);
+        const exportMs = exportFrameTimeMs(frame);
+        const stage = evaluateShotAtTime(shot, authoringMs, reopened.project);
+        const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
+        const exported = evaluateExportShotAtTime(reopened.project, shot, exportMs);
+        const exportModel = buildStageRenderModel(reopened.project, exported, urls);
+
+        for (const repId of [closestId, farthestId]) {
+          const sLayer = stage.layers.find((l) => l.id === repId)!;
+          const pLayer = preview.layers.find((l) => l.id === repId)!;
+          const eLayer = exported.layers.find((l) => l.id === repId)!;
+          expect(pLayer.visible).toBe(sLayer.visible);
+          expect(eLayer.visible).toBe(sLayer.visible);
+          expect(eLayer.opacity).toBeCloseTo(sLayer.opacity, 5);
+          expect(Math.abs(eLayer.x - sLayer.x)).toBeLessThan(0.1);
+          expect(Math.abs(eLayer.y - sLayer.y)).toBeLessThan(0.1);
+          if (sLayer.visible) {
+            const renderLayer = exportModel.layers.find((l) => l.id === repId)!;
+            expect(Math.abs(renderLayer.render.x - sLayer.x)).toBeLessThan(0.1);
+            expect(Math.abs(renderLayer.render.y - sLayer.y)).toBeLessThan(0.1);
+            expect(renderLayer.render.opacity).toBeCloseTo(sLayer.opacity, 5);
+          }
+        }
+      }
+      selection.dispose();
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
 });

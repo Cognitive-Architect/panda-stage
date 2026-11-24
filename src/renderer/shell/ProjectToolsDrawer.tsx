@@ -1,8 +1,9 @@
-import { ArrowLeft, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
+import { ArrowLeft, Ghost, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
+import { AfterimagePanel } from '../features/tools/AfterimagePanel';
 import { CurveMotionPanel } from '../features/tools/CurveMotionPanel';
 import { GridArrayPanel } from '../features/tools/GridArrayPanel';
 import { LegacyWorkspace } from './LegacyWorkspace';
@@ -13,7 +14,7 @@ export interface ProjectToolsDrawerProps {
   onPreview?(project: Project): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets' | 'grid-array' | 'curve-motion';
+type ProjectToolsView = 'home' | 'action-presets' | 'grid-array' | 'curve-motion' | 'afterimage';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -68,6 +69,8 @@ export function ProjectToolsDrawer({
               '排兵布阵'
             ) : view === 'curve-motion' ? (
               '曲线运动'
+            ) : view === 'afterimage' ? (
+              '残影'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -182,6 +185,25 @@ export function ProjectToolsDrawer({
               <span>打开曲线运动</span>
             </button>
           </section>
+          <section
+            aria-labelledby="project-tools-afterimage-heading"
+            className="project-tools-action-preset-card"
+            data-testid="project-tools-afterimage-card"
+          >
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-afterimage-heading">残影</h3>
+            </div>
+            <button
+              className="project-tools-action-preset-launcher"
+              data-project-tools-action="afterimage"
+              data-testid="project-tools-afterimage"
+              onClick={() => setView('afterimage')}
+              type="button"
+            >
+              <DecorativeIcon icon={Ghost} size={18} />
+              <span>打开残影</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -200,13 +222,21 @@ export function ProjectToolsDrawer({
         >
           <GridArrayPanel onCancel={() => setView('home')} />
         </section>
-      ) : (
+      ) : view === 'curve-motion' ? (
         <section
           aria-label="曲线运动"
           className="project-tools-grid-array-view"
           data-testid="project-tools-curve-motion-view"
         >
           <CurveMotionPanel onCancel={() => setView('home')} />
+        </section>
+      ) : (
+        <section
+          aria-label="残影"
+          className="project-tools-grid-array-view"
+          data-testid="project-tools-afterimage-view"
+        >
+          <AfterimagePanel onCancel={() => setView('home')} />
         </section>
       )}
     </section>

@@ -2245,4 +2245,284 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
       }),
     ).toThrow(/已锁定/);
   });
+
+  it('generates native position afterimages with exact historical anchors, opacity decay, visibility gating, zIndex ordering, hybrid Move/Shake/pivot compensation, and strict rejections (#1271 A03)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+
+    // Add a sibling layer below and above source to verify relative layer order preservation.
+    const belowSibling = layerService.createFromAnimation(base.project, base.shotId, {
+      animationId: base.definitionId,
+      position: { x: 100, y: 100 },
+      startTimeMs: 0,
+    });
+    let project = layerService.reorder(belowSibling.project, base.shotId, belowSibling.layer.id, 'back');
+    const aboveSibling = layerService.createFromAnimation(project, base.shotId, {
+      animationId: base.definitionId,
+      position: { x: 1800, y: 900 },
+      startTimeMs: 0,
+    });
+    project = ProjectSchema.parse({
+      ...aboveSibling.project,
+      shots: aboveSibling.project.shots.map((s) => ({ ...s, durationMs: 2_000 })),
+    });
+
+    // Bake A02 curve motion on source (0..24 frames).
+    project = service.applyCurveMotion(project, {
+      shotId: base.shotId,
+      layerId: base.layerId,
+      startFrame: 0,
+      endFrame: 24,
+      p1: { x: 450, y: 80 },
+      p2: { x: 850, y: 80 },
+      p3: { x: 900, y: 300 },
+      speedMode: 'constant',
+    });
+
+    const beforeProject = structuredClone(project);
+    const result = layerService.generateAfterimages(project, base.shotId, base.layerId, {
+      count: 4,
+      delayFrames: 2,
+      decay: 0.6,
+      startFrame: 0,
+      endFrame: 24,
+    });
+    const parsed = ProjectSchema.parse(result.project);
+    const shot = parsed.shots[0]!;
+    expect(result.layers).toHaveLength(4);
+    expect(parsed.animations).toEqual(beforeProject.animations);
+    expect(parsed.assets).toEqual(beforeProject.assets);
+
+    // Ordering: background(0) < belowSibling < replica4 < replica3 < replica2 < replica1 < source < aboveSibling.
+    const orderedIds = [...shot.layers]
+      .sort((a, b) => a.zIndex - b.zIndex)
+      .map((l) => l.id);
+    const bgId = shot.backgroundLayerId!;
+    expect(orderedIds).toEqual([
+      bgId,
+      belowSibling.layer.id,
+      result.layers[0]!.id, // i=4 (farthest, lowest)
+      result.layers[1]!.id, // i=3
+      result.layers[2]!.id, // i=2
+      result.layers[3]!.id, // i=1 (closest to source)
+      base.layerId,
+      aboveSibling.layer.id,
+    ]);
+
+    // Static opacity=1 -> target alphas for i=1..4 are 0.6, 0.36, 0.216, 0.1296.
+    const replicaByIndex = [
+      result.layers[3]!, // i=1
+      result.layers[2]!, // i=2
+      result.layers[1]!, // i=3
+      result.layers[0]!, // i=4
+    ];
+    const expectedAlphas = [0.6, 0.36, 0.216, 0.1296];
+    replicaByIndex.forEach((replica, idx) => {
+      expect(replica.opacity).toBeCloseTo(expectedAlphas[idx]!, 6);
+    });
+
+    // Verify at f=12: replicas i=1,2,3,4 match source at f=10,8,6,4 within 0.1px and exact alpha.
+    const eval12 = evaluateShotAtTime(shot, frameTimeMs(12), parsed);
+    for (let idx = 0; idx < 4; idx += 1) {
+      const i = idx + 1;
+      const replica = replicaByIndex[idx]!;
+      const histSrc = evaluateShotAtTime(shot, frameTimeMs(12 - i * 2), parsed).layers.find(
+        (l) => l.id === base.layerId,
+      )!;
+      const repAt12 = eval12.layers.find((l) => l.id === replica.id)!;
+      expect(repAt12.visible).toBe(true);
+      expect(Math.abs(repAt12.x - histSrc.x)).toBeLessThan(0.1);
+      expect(Math.abs(repAt12.y - histSrc.y)).toBeLessThan(0.1);
+      expect(repAt12.opacity).toBeCloseTo(Math.pow(0.6, i), 5);
+
+      // Hidden before first active frame (2*i - 1), visible on first active frame (2*i) and end frame (24), hidden at f=25.
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(i * 2 - 1), parsed).layers.find((l) => l.id === replica.id)!.visible,
+      ).toBe(false);
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(i * 2), parsed).layers.find((l) => l.id === replica.id)!.visible,
+      ).toBe(true);
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(24), parsed).layers.find((l) => l.id === replica.id)!.visible,
+      ).toBe(true);
+      expect(
+        evaluateShotAtTime(shot, frameTimeMs(25), parsed).layers.find((l) => l.id === replica.id)!.visible,
+      ).toBe(false);
+    }
+
+    // Independent editing & deletion of one replica does not alter source or sibling replicas.
+    const editedReplica = service.applyKeys(
+      parsed,
+      { shotId: base.shotId, layerId: replicaByIndex[0]!.id, timeMs: frameTimeMs(12) },
+      { 'transform.offsetX': 0 },
+    );
+    expect(
+      evaluateShotAtTime(editedReplica.shots[0]!, frameTimeMs(12), editedReplica).layers.find(
+        (l) => l.id === base.layerId,
+      )!.x,
+    ).toBeCloseTo(eval12.layers.find((l) => l.id === base.layerId)!.x, 5);
+    const afterDelete = layerService.deleteLayer(editedReplica, base.shotId, replicaByIndex[0]!.id);
+    expect(afterDelete.shots[0]!.layers.some((l) => l.id === base.layerId)).toBe(true);
+    expect(afterDelete.shots[0]!.layers.some((l) => l.id === replicaByIndex[1]!.id)).toBe(true);
+
+    // Hybrid Move/Shake + non-default pivot + rotation/scale + flipX + competing same-startMs OpacityEvents + hidden gap.
+    let hybrid = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({
+        ...s,
+        durationMs: 1_010, // off-grid tail (last legal frame = 24 at 1000ms)
+        layers: s.layers.map((l) =>
+          l.id === base.layerId ? { ...l, x: 400, y: 300, scaleX: 1.4, scaleY: 1.2, rotationDeg: 15, flipX: true } : l,
+        ),
+        timelineEvents: [
+          {
+            id: '93000000-0000-4000-8000-000000000911',
+            type: 'move',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: { x: 400, y: 300 },
+            to: { x: 900, y: 500 },
+            easing: 'linear',
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000912',
+            type: 'shake',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            amplitudeX: 20,
+            amplitudeY: 12,
+            frequencyHz: 1,
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000913',
+            type: 'opacity',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: 1,
+            to: 0.1,
+            easing: 'linear',
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000914',
+            type: 'opacity',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: 1,
+            to: 0.5,
+            easing: 'linear',
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000915',
+            type: 'visibility',
+            layerId: base.layerId,
+            startMs: frameTimeMs(8),
+            endMs: frameTimeMs(8),
+            visible: false,
+          },
+          {
+            id: '93000000-0000-4000-8000-000000000916',
+            type: 'visibility',
+            layerId: base.layerId,
+            startMs: frameTimeMs(12),
+            endMs: frameTimeMs(12),
+            visible: true,
+          },
+        ],
+      })),
+    });
+    hybrid = service.recalibratePivot(
+      hybrid,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 135, y: 105 },
+    );
+    hybrid = service.applyKeys(
+      hybrid,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      { 'transform.rotationDeg': 60, 'transform.scaleX': 1.3 },
+    );
+
+    const hybridAfter = layerService.generateAfterimages(hybrid, base.shotId, base.layerId, {
+      count: 3,
+      delayFrames: 2,
+      decay: 0.5,
+      startFrame: 4,
+      endFrame: 24, // last legal frame of off-grid 1010ms shot
+    });
+    const hybridShot = hybridAfter.project.shots[0]!;
+    const closestHybridRep = hybridAfter.layers[2]!; // i=1
+    // At f=10 (hist h=8, where source was hidden) -> replica hidden; at f=16 (hist h=14, visible) -> visible, exact pos & winning opacity * 0.5.
+    expect(
+      evaluateShotAtTime(hybridShot, frameTimeMs(10), hybridAfter.project).layers.find(
+        (l) => l.id === closestHybridRep.id,
+      )!.visible,
+    ).toBe(false);
+    const repAt16 = evaluateShotAtTime(hybridShot, frameTimeMs(16), hybridAfter.project).layers.find(
+      (l) => l.id === closestHybridRep.id,
+    )!;
+    const srcAt14 = evaluateShotAtTime(hybridShot, frameTimeMs(14), hybridAfter.project).layers.find(
+      (l) => l.id === base.layerId,
+    )!;
+    expect(repAt16.visible).toBe(true);
+    expect(Math.abs(repAt16.x - srcAt14.x)).toBeLessThan(0.1);
+    expect(Math.abs(repAt16.y - srcAt14.y)).toBeLessThan(0.1);
+    expect(repAt16.opacity).toBeCloseTo(srcAt14.opacity * 0.5, 4);
+    // At last legal frame f=24 (1000ms) -> still visible through off-grid tail 1010ms.
+    expect(
+      evaluateShotAtTime(hybridShot, 1_000, hybridAfter.project).layers.find(
+        (l) => l.id === closestHybridRep.id,
+      )!.visible,
+    ).toBe(true);
+
+    // Rejections: stationary source, count out of 3..8, invalid decay, too-short span, off-grid end, locked source.
+    expect(() =>
+      layerService.generateAfterimages(base.project, base.shotId, base.layerId, {
+        count: 4,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 24,
+      }),
+    ).toThrow(/没有有效位移/);
+    expect(() =>
+      layerService.generateAfterimages(project, base.shotId, base.layerId, {
+        count: 2,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 24,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_AFTERIMAGE' }));
+    expect(() =>
+      layerService.generateAfterimages(project, base.shotId, base.layerId, {
+        count: 4,
+        delayFrames: 2,
+        decay: 1,
+        startFrame: 0,
+        endFrame: 24,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_AFTERIMAGE' }));
+    expect(() =>
+      layerService.generateAfterimages(project, base.shotId, base.layerId, {
+        count: 4,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 7, // 7 < 4*2=8
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_AFTERIMAGE' }));
+    const locked = layerService.setLocked(project, base.shotId, base.layerId, true);
+    expect(() =>
+      layerService.generateAfterimages(locked, base.shotId, base.layerId, {
+        count: 4,
+        delayFrames: 2,
+        decay: 0.6,
+        startFrame: 0,
+        endFrame: 24,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+  });
 });
