@@ -1621,6 +1621,7 @@ export class FlaPartPreviewService {
       }
     }
     let totalBytes = 0;
+    let hasStaticTextInAnyFrame = false;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
       if (!execution.shouldContinue()) {
         const timedOut = Date.now() - startedAt >= FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs;
@@ -1653,6 +1654,7 @@ export class FlaPartPreviewService {
       let finalHeight = rendered.height;
       let viewport = rendered.composition.framing.viewBox;
       if (rendered.staticTexts?.length) {
+        hasStaticTextInAnyFrame = true;
         let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
         try {
           resolvedRaster = await this.rasterizer.rasterize({
@@ -1721,7 +1723,11 @@ export class FlaPartPreviewService {
     let structure: FlaGraphicStructure | undefined;
     let authorPoseReferences: FlaGraphicAuthorPoseReference[] = [];
     const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
-    if (firstFrame && unit.sourceAddress) {
+    // When any frame of the Graphic definition contains static text, omit
+    // editable structure capture so Stage/Preview/Export consume the finalized
+    // full-frame SVG assets (which carry the rasterized text PNGs) instead of
+    // skipping unrenderable opaque text nodes in the structured canvas path.
+    if (firstFrame && unit.sourceAddress && !hasStaticTextInAnyFrame) {
       prepared.source.resetFrameBuildState();
       // Resolve display list in tolerant mode for structure capture so unsupported
       // subtrees degrade locally rather than dropping the whole structure.

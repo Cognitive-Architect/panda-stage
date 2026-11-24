@@ -581,6 +581,15 @@ export function hasUnresolvedFlaStaticTextPlaceholder(svg: string): boolean {
 export function computeAuthoritativeGraphicViewport(
   framing: FlaStaticTextGraphicFraming,
   measuredBoundsByPlaceholderId: ReadonlyMap<string, FlaStaticTextBounds>,
+  limits: {
+    readonly maxOutputWidth: number;
+    readonly maxOutputHeight: number;
+    readonly maxOutputPixels: number;
+  } = {
+    maxOutputWidth: 4_096,
+    maxOutputHeight: 4_096,
+    maxOutputPixels: 4_096 * 4_096,
+  },
 ): {
   readonly viewBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly outputWidth: number;
@@ -616,17 +625,41 @@ export function computeAuthoritativeGraphicViewport(
   }
 
   if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
-  const padX = Math.max(0, framing.padding) + Math.max(0, framing.filterExpansion.x);
-  const padY = Math.max(0, framing.padding) + Math.max(0, framing.filterExpansion.y);
-  const x = Math.floor(minX - padX);
-  const y = Math.floor(minY - padY);
-  const width = Math.max(1, Math.ceil(maxX + padX) - x);
-  const height = Math.max(1, Math.ceil(maxY + padY) - y);
-  return {
-    viewBox: { x, y, width, height },
-    outputWidth: width,
-    outputHeight: height,
+  const rawWidth = maxX - minX;
+  const rawHeight = maxY - minY;
+  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth < 0 || rawHeight < 0) {
+    return null;
+  }
+  const filterX = Math.max(0, framing.filterExpansion.x);
+  const filterY = Math.max(0, framing.filterExpansion.y);
+  const padding = Math.max(0, framing.padding);
+  const contentX = minX - filterX;
+  const contentY = minY - filterY;
+  const contentWidth = Math.max(1, rawWidth + filterX * 2);
+  const contentHeight = Math.max(1, rawHeight + filterY * 2);
+  const viewBox = {
+    x: contentX - padding,
+    y: contentY - padding,
+    width: contentWidth + padding * 2,
+    height: contentHeight + padding * 2,
   };
+  if (![viewBox.x, viewBox.y, viewBox.width, viewBox.height].every(Number.isFinite) ||
+      viewBox.width <= 0 || viewBox.height <= 0) {
+    return null;
+  }
+
+  // Match createGraphicViewport bounded output scaling while preserving source viewBox.
+  const pixelScale = Math.sqrt(limits.maxOutputPixels) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
+  const scale = Math.min(1, limits.maxOutputWidth / viewBox.width, limits.maxOutputHeight / viewBox.height, pixelScale);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  let outputWidth = Math.max(1, Math.min(limits.maxOutputWidth, Math.ceil(viewBox.width * scale)));
+  let outputHeight = Math.max(1, Math.min(limits.maxOutputHeight, Math.ceil(viewBox.height * scale)));
+  while (outputWidth * outputHeight > limits.maxOutputPixels) {
+    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
+    else if (outputHeight > 1) outputHeight -= 1;
+    else return null;
+  }
+  return { viewBox, outputWidth, outputHeight };
 }
 
 export function isValidFlaStaticTextGraphicFraming(value: unknown): value is FlaStaticTextGraphicFraming {

@@ -349,7 +349,7 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
     );
     expect(authoritative).not.toBeNull();
     expect(authoritative!.outputHeight).toBeGreaterThan(svg.height);
-    expect(authoritative!.viewBox.height).toBe(authoritative!.outputHeight);
+    expect(Math.ceil(authoritative!.viewBox.height)).toBe(authoritative!.outputHeight);
   });
 
   it('allows 256 explicit lines at boundary, rejects 257 explicit lines, and flags auto-wrap truncation (P2-03)', async () => {
@@ -400,5 +400,78 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
     });
     expect(autoWrapOverflow.truncated).toBe(true);
     expect(autoWrapOverflow.lines.length).toBe(FLA_STATIC_TEXT_LIMITS.maxLinesPerText);
+  });
+
+  it('includes A02 variable-width filledOutline bounds in graphicFraming.nonTextBounds (P2-02) and scales 5000px-wide text Graphics within output limits (P2-03)', async () => {
+    // P2-02: Graphic mixing a short static text + asymmetric variable-width stroke extending far below its centerline.
+    const mixedStrokeXml =
+      '<DOMSymbolItem name="TextPlusVarStroke" symbolType="graphic"><timeline><DOMTimeline name="TextPlusVarStroke"><layers>' +
+      '<DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMShape><matrix><Matrix tx="20" ty="30"/></matrix>' +
+      '<strokes><StrokeStyle index="1"><SolidStroke scaleMode="normal" weight="20" caps="butt" joints="round">' +
+      '<fill><SolidColor color="#16a34a"/></fill>' +
+      '<VariablePointWidth>' +
+      '<WidthMarker position="0" left="0.1" right="0.1"/>' +
+      '<WidthMarker position="0.5" left="0.1" right="4.0"/>' +
+      '<WidthMarker position="1" left="0.1" right="0.1"/>' +
+      '</VariablePointWidth></SolidStroke></StrokeStyle></strokes>' +
+      '<edges><Edge strokeStyle="1" edges="!0 1000|4000 1000"/></edges></DOMShape>' +
+      '<DOMStaticText left="0" width="120" height="30"><matrix><Matrix tx="10" ty="0"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>变宽标签</characters>' +
+      '<textAttrs><DOMTextAttrs size="18" lineHeight="22" fillColor="#e11d48"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    // P2-03: 5,000px-wide, 160px-tall vector Graphic with a short static text title.
+    const wideBannerXml =
+      '<DOMSymbolItem name="WideBanner5000" symbolType="graphic"><timeline><DOMTimeline name="WideBanner5000"><layers>' +
+      '<DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMShape><fills><FillStyle index="1"><SolidColor color="#fef3c7"/></FillStyle></fills>' +
+      '<edges><Edge fillStyle1="1" edges="!0 0|100000 0|100000 3200|0 3200|0 0"/></edges></DOMShape>' +
+      '<DOMStaticText left="0" width="240" height="40"><matrix><Matrix tx="40" ty="40"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>超宽横幅标题</characters>' +
+      '<textAttrs><DOMTextAttrs size="28" lineHeight="34" fillColor="#1d4ed8"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const docXml =
+      '<DOMDocument width="600" height="300" frameRate="24">' +
+      '<symbols><Include href="TextPlusVarStroke.xml"/><Include href="WideBanner5000.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="TextPlusVarStroke" symbolType="graphic"/>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+
+    const bytes = await buildFlaBytes(docXml, [
+      { name: 'LIBRARY/TextPlusVarStroke.xml', xml: mixedStrokeXml },
+      { name: 'LIBRARY/WideBanner5000.xml', xml: wideBannerXml },
+    ]);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+
+    // Verify P2-02: centerline is at y = 30 + 50 = 80, right="4.0" * weight=20 expands downward to y = 80 + 80 = 160!
+    const strokeEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'TextPlusVarStroke')!;
+    expect(strokeEntry.previewSupported).toBe(true);
+    const strokeSvg = await buildSvgForRenderTarget(bytes, strokeEntry.target, undefined, prepared.source);
+    if (!strokeSvg.ok) throw new Error(strokeSvg.message);
+    expect(strokeSvg.graphicFraming?.nonTextBounds).not.toBeNull();
+    expect(strokeSvg.graphicFraming!.nonTextBounds!.maxY).toBeGreaterThan(150);
+
+    // Verify P2-03: 5,000px-wide Graphic keeps source viewBox >= 5000 and scales outputWidth to <= 4096.
+    const wideEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'WideBanner5000')!;
+    expect(wideEntry.previewSupported).toBe(true);
+    const wideSvg = await buildSvgForRenderTarget(bytes, wideEntry.target, undefined, prepared.source);
+    if (!wideSvg.ok) throw new Error(wideSvg.message);
+    expect(wideSvg.width).toBe(4_096);
+    expect(wideSvg.height).toBeLessThan(200);
+    expect(wideSvg.composition.framing.viewBox.width).toBeGreaterThanOrEqual(5_000);
+    const wideText = wideSvg.staticTexts![0]!;
+    const measuredWide = computeAuthoritativeGraphicViewport(
+      wideSvg.graphicFraming!,
+      new Map([[wideText.placeholderId, layoutFlaStaticText(wideText.descriptor).bounds]]),
+    );
+    expect(measuredWide).not.toBeNull();
+    expect(measuredWide!.viewBox.width).toBeGreaterThanOrEqual(5_000);
+    expect(measuredWide!.outputWidth).toBe(4_096);
+    expect(measuredWide!.outputHeight).toBeLessThan(200);
   });
 });

@@ -4398,6 +4398,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             if (graphicBounds && !includeTransformedPathBounds(graphicBounds, path.commands, node.worldTransform)) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic variable-width stroke bounds are not finite: ${node.shapeId}` };
             }
+            if (nonTextGraphicBounds) {
+              includeTransformedPathBounds(nonTextGraphicBounds, path.commands, node.worldTransform);
+            }
             const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
             if (pathBytes > MAX_EDGE_CHARS) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
