@@ -5,6 +5,7 @@ import {
   actionRecipeStepLabel,
   applyActionRecipe,
   saveActionRecipe,
+  userMotionPresetContinuationSpanMs,
   type ActionPresetDefinition,
   type Layer,
   type Project,
@@ -117,15 +118,21 @@ export function ActionRecipeControls({ project, shot, layer, onPreview }: {
     setSteps(steps.map((step) => step.id === edited.id ? edited : step));
   const addStep = (): void => {
     const last = steps.at(-1);
-    const offsetMs = last ? last.offsetMs + ('durationMs' in last ? last.durationMs :
-      Math.round((project.userMotionPresets?.find(({ id }) => id === last.presetId)?.durationFrames ?? 0) * 1_000 / project.fps)) : 0;
+    const motionId = newType.startsWith('motion:') ? newType.slice('motion:'.length) : undefined;
+    const lastMotion = last?.kind === 'motion' ? project.userMotionPresets?.find(({ id }) => id === last.presetId) : undefined;
+    const nextMotion = motionId ? project.userMotionPresets?.find(({ id }) => id === motionId) : undefined;
+    const sharedProperties = lastMotion?.tracks.some(({ property }) => nextMotion?.tracks.some(track => track.property === property));
+    const span = lastMotion && sharedProperties ? userMotionPresetContinuationSpanMs(lastMotion)
+      : last && 'durationMs' in last ? last.durationMs
+      : Math.round((lastMotion?.durationFrames ?? 0) * 1_000 / project.fps);
+    const offsetMs = (last?.offsetMs ?? 0) + span;
     const base = { id: crypto.randomUUID(), offsetMs };
     if (newType === 'expression' || newType === 'action') {
       setSteps([...steps, { ...base, kind: newType, durationMs: 500 }]);
       return;
     }
-    if (newType.startsWith('motion:')) {
-      setSteps([...steps, { ...base, kind: 'motion', presetId: newType.slice('motion:'.length) }]);
+    if (motionId) {
+      setSteps([...steps, { ...base, kind: 'motion', presetId: motionId }]);
       return;
     }
     const preset = BUILTINS.find(({ id }) => id === newType);

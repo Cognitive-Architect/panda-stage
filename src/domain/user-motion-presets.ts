@@ -1,7 +1,7 @@
 import { evaluateAnimationTrackAtTime, sliceAnimationCurve } from './evaluate-animation-core';
 import type { AnimationKey, AnimationProperty, AnimationTrack, LayerAnimationClip } from './models/animationCore';
 import { UserMotionPresetSchema, type UserMotionPreset } from './models/userMotionPreset';
-import { frameTimeMs, TIMELINE_FPS } from './timeline/frame-grid';
+import { frameDurationMs, frameTimeMs, TIMELINE_FPS } from './timeline/frame-grid';
 
 export const MOTION_PROPERTY_LABELS: Readonly<Record<AnimationProperty, string>> = {
   'transform.offsetX': '水平位置',
@@ -12,6 +12,7 @@ export const MOTION_PROPERTY_LABELS: Readonly<Record<AnimationProperty, string>>
 };
 
 const frameNumber = (timeMs: number): number => Math.round(timeMs * TIMELINE_FPS / 1_000);
+const RESTORE_FRAME_OFFSET = 1;
 const scaleProperty = (property: AnimationProperty): boolean =>
   property === 'transform.scaleX' || property === 'transform.scaleY';
 
@@ -62,8 +63,14 @@ export function userMotionPresetRange(preset: UserMotionPreset, startMs: number,
   const frame = frameNumber(startMs);
   const endMs = frameTimeMs(frame + preset.durationFrames);
   if (endMs > shotDurationMs) throw new Error('预设时段超出当前镜头。');
-  const nextFrameMs = frameTimeMs(frame + preset.durationFrames + 1);
+  const nextFrameMs = frameTimeMs(frame + preset.durationFrames + RESTORE_FRAME_OFFSET);
   return { endMs, restoreAtMs: nextFrameMs <= shotDurationMs ? nextFrameMs : null };
+}
+
+/** A follow-up on the same properties must start strictly after the restore key. */
+export function userMotionPresetContinuationSpanMs(preset: UserMotionPreset): number {
+  // Round up so the gap survives snapping at any absolute recipe start time.
+  return Math.ceil((preset.durationFrames + RESTORE_FRAME_OFFSET + 1) * frameDurationMs());
 }
 
 export function applyUserMotionPresetTracks(
