@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { solveRigidArm } from '../../../src/domain/geometry/rigidArmIk';
 import {
-  CharacterService, LayerService, ProjectSchema, characterArmTipOnStage, layerPivotStageVector, migrateProject,
-  planCharacterArmIk, saveCharacterArmChain,
+  CharacterMotionService, CharacterService, LayerService, ProjectSchema, characterArmTipOnStage, layerPivotStageVector, migrateProject,
+  planCharacterArmIk, resolveCharacterArmAssemblyParts, saveCharacterArmChain,
 } from '../../../src/domain';
 import { adaptivePartsFixture } from '../../helpers/adaptivePartsFixtures';
 import { IDS, buildProject } from './testProject';
@@ -39,6 +39,34 @@ describe('rigid arm IK', () => {
     expect(result.distance).toBeLessThan(0.06);
     expect(result.joints).toHaveLength(4);
     expect(() => solveRigidArm([arm[0]!, arm[0]!, arm[2]!], arm[1]!, limits)).toThrow('distinct');
+  });
+
+
+  it('maps stage clicks on a posed mirror back to stable part coordinates', () => {
+    const parts = adaptivePartsFixture(IDS.assetChar).slice(0, 3).map((part, index) => ({
+      ...part, restTransform: { a: 1, b: 0, c: 0, d: 1, tx: index * 65, ty: 0 },
+    }));
+    const base = new CharacterService().createAdaptiveParts(buildProject(), { name: 'Rigid arm', parts });
+    const placement = new LayerService().createFromAdaptiveCharacter(base, IDS.shot, base.characters.at(-1)!.id, { x: 650, y: 450 });
+    const address = { shotId: IDS.shot, layerId: placement.layer.id, timeMs: 500 };
+    const partId = parts[0]!.partId;
+    const project = ProjectSchema.parse({ ...placement.project, shots: placement.project.shots.map(shot => ({ ...shot,
+      layers: shot.layers.map(layer => layer.id === address.layerId ? {
+        ...layer, x: 650, y: 450, flipX: true, rotationDeg: 90, scaleX: 2, scaleY: 1.5,
+      } : layer),
+    })) });
+    const moved = new CharacterMotionService().apply(project, { ...address, partId, autoKey: true },
+      { 'transform.offsetX': 30, 'transform.offsetY': 20 });
+    const posed = resolveCharacterArmAssemblyParts(moved, address);
+    const reference = resolveCharacterArmAssemblyParts(moved, { ...address, timeMs: 0 });
+    const shoulder = { x: 220, y: 145 };
+    const unposed = reference.get(partId)!.toStage(shoulder);
+    const clicked = { x: unposed.x - 30, y: unposed.y - 60 };
+    const stored = posed.get(partId)!.toPart(clicked);
+    expect(stored.x).toBeCloseTo(shoulder.x);
+    expect(stored.y).toBeCloseTo(shoulder.y);
+    expect(posed.get(partId)!.toStage(stored)).toEqual(clicked);
+    expect([...posed.keys()]).toEqual(parts.map(part => part.partId));
   });
 
   it('converts a mirrored stage-space wrist to local keys and persists only the selected occurrence', () => {

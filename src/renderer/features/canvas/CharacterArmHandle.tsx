@@ -1,8 +1,9 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { PROJECT_HEIGHT, PROJECT_WIDTH, characterArmTipOnStage, planCharacterArmIk, type CharacterArmIkAddress } from '../../../domain';
+import { characterArmTipOnStage, planCharacterArmIk, type CharacterArmIkAddress } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { AnimationCurveDraftDispatch } from '../timeline/AnimationCurveDraft';
 import { useCharacterArmTool } from './CharacterArmTool';
+import { canvasStagePointer } from './canvasStagePointer';
 import './character-arm-handle.css';
 
 type Point = ReturnType<typeof characterArmTipOnStage>;
@@ -73,18 +74,12 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
     };
   }, [clear, dragging]);
 
-  function stagePoint(stage: Element, event: { clientX: number; clientY: number }): Point | undefined {
-    const rect = stage.getBoundingClientRect();
-    if (!rect?.width || !rect.height) return undefined;
-    return { x: (event.clientX - rect.left) * PROJECT_WIDTH / rect.width, y: (event.clientY - rect.top) * PROJECT_HEIGHT / rect.height };
-  }
-
   function start(event: PointerEvent<HTMLButtonElement>): void {
     if (!formalTip || !event.isPrimary || event.button !== 0 || request.current) return;
     const handle = event.currentTarget;
     const stage = handle.closest('[data-testid="project-canvas-stage"]');
     if (!stage) return;
-    const point = stagePoint(stage, event);
+    const point = canvasStagePointer(stage, event);
     if (!point) return;
     event.stopPropagation();
     event.preventDefault();
@@ -111,7 +106,7 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
     const drag = request.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.stopPropagation();
-    drag.pendingPoint = stagePoint(stage, event);
+    drag.pendingPoint = canvasStagePointer(stage, event);
     if (drag.frame !== undefined) return;
     drag.frame = requestAnimationFrame(() => {
       drag.frame = undefined;
@@ -134,7 +129,7 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
     if (!drag || drag.pointerId !== event.pointerId) return;
     event.stopPropagation();
     try {
-      const point = commit ? stagePoint(stage, event) : undefined;
+      const point = commit ? canvasStagePointer(stage, event) : undefined;
       if (point && Math.hypot(point.x - drag.origin.x, point.y - drag.origin.y) >= 1 &&
         editorProjectStore.getSnapshot() === snapshot && editorProjectStore.getProjectInstanceId() === projectInstanceId) {
         const result = planCharacterArmIk(snapshot.project, address, { x: point.x + drag.delta.x, y: point.y + drag.delta.y }, drag.seed);

@@ -1,6 +1,7 @@
-import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import {
   characterFaceAndMouthPartIds, composeAnimatedCharacterPartTransform, createCharacterPartAnimationClip,
+  resolveLayeredCharacterPartTransforms,
 } from '../character-part-animation';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 import { solveRigidArm, type ArmPoint } from '../geometry/rigidArmIk';
@@ -33,6 +34,38 @@ function resolveArmInstance(project: Project, address: CharacterArmIkAddress) {
   const vertical = layerPivotStageVector({ x: 0, y: 1 }, evaluated.rotationDeg, evaluated.scaleX, evaluated.scaleY, evaluated.flipX);
   const localToStage = { a: horizontal.x, b: horizontal.y, c: vertical.x, d: vertical.y, tx: evaluated.x, ty: evaluated.y };
   return { character, evaluated, localToStage, clip: createCharacterPartAnimationClip(project, shot.id, layer.id) };
+}
+
+interface CharacterArmAssemblyPart {
+  pivot: ArmPoint;
+  toStage: (point: ArmPoint) => ArmPoint;
+  toPart: (point: ArmPoint) => ArmPoint;
+}
+
+/** Store attachment points in the source Part's coordinates, even when its instance is posed. */
+export function resolveCharacterArmAssemblyParts(project: Project, address: CharacterArmIkAddress): ReadonlyMap<string, CharacterArmAssemblyPart> {
+  const { character, evaluated, localToStage, clip } = resolveArmInstance(project, address);
+  const parts = new Map<string, CharacterArmAssemblyPart>();
+  if (evaluated.characterAction || !evaluated.visible) return parts;
+  const excluded = characterFaceAndMouthPartIds(character);
+  if (evaluated.headGroupTransform) character.headMotionBinding?.partIds.forEach(id => excluded.add(id));
+  const values = evaluated.animationValues ?? [];
+  const layered = evaluated.layeredCharacterAction
+    ? resolveLayeredCharacterPartTransforms(clip, character, values, evaluated.layeredCharacterAction)
+    : undefined;
+  for (const basis of clip.targetBases) {
+    const { partId } = basis.target;
+    if (!basis.visible || excluded.has(partId) || !character.parts.some(part => part.partId === partId && part.visible)) continue;
+    const local = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+    const toStage = multiplyAffineMatrices(localToStage, local);
+    const toPart = invertAffineMatrix(toStage);
+    if (toPart) parts.set(partId, {
+      pivot: { x: basis.pivot.x, y: basis.pivot.y },
+      toStage: point => transformPoint(toStage, point),
+      toPart: point => transformPoint(toPart, point),
+    });
+  }
+  return parts;
 }
 
 function calibrate(project: Project, address: CharacterArmIkAddress, instance: ReturnType<typeof resolveArmInstance>, chain: CharacterArmChain) {

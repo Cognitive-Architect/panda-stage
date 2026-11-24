@@ -11,6 +11,8 @@ import {
 import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
+import { CharacterArmAssemblyOverlay, characterArmAssemblyPrompt } from './CharacterArmAssemblyOverlay';
+import { updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
 import { CharacterArmHandle } from './CharacterArmHandle';
 import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
@@ -338,7 +340,40 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
-  const activeCurveDraft = curveDraft?.projectInstanceId === projectInstanceId &&
+  const armDraft = useCharacterArmAssembly();
+  const { setAssembly } = useCharacterArmTool({
+    projectInstanceId, shotId: currentShotId ?? '', layerId: selectedLayerId ?? '',
+  });
+  const armShot = armDraft && snapshot?.project.shots.find(({ id }) => id === currentShotId);
+  const armAssembly = armDraft && armDraft.target.projectInstanceId === projectInstanceId &&
+    armDraft.target.shotId === currentShotId && armDraft.target.layerId === selectedLayerId &&
+    armDraft.revision === snapshot?.revision && armShot &&
+    armDraft.timeMs === resolveTimelineFrameTime(timelineUi.currentTimeMs, armShot.durationMs) &&
+    !positionAuthoringSession && !flaGraphicEditScope ? armDraft : undefined;
+  useLayoutEffect(() => {
+    if (armDraft && !armAssembly) setAssembly?.(current => current === armDraft ? undefined : current);
+  }, [armAssembly, armDraft, setAssembly]);
+  const assemblingArm = Boolean(armAssembly);
+  useEffect(() => {
+    if (!assemblingArm) return;
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAssembly?.(undefined);
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [assemblingArm, setAssembly]);
+
+  function pickArmPart(layerId: string, partId: string | null): void {
+    if (!armAssembly || layerId !== armAssembly.target.layerId || !partId) return;
+    const index = armAssembly.chain.segments.findIndex(segment => !segment.partId);
+    if (index >= 0) setAssembly?.(current => current === armAssembly
+      ? updateArmAssemblyPart(current, index, partId) : current);
+  }
+
+  const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
@@ -1127,10 +1162,10 @@ export function CanvasStage({
         node.motion === 'character-clip-v1' ? node.partId === targetId : node.id === targetId,
       );
     return {
-      selectedPartId: selectedOnLayer ? selectedMotionPartId : null,
-      selectedTargetId: activeTargetId,
+      selectedPartId: selectedOnLayer && !armAssembly ? selectedMotionPartId : null,
+      selectedTargetId: armAssembly ? null : activeTargetId,
       contextKey: motionContextKey,
-      enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
+      enabled: !armAssembly && !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
       capabilities: (targetId) =>
         nodeForTarget(targetId)?.capabilities ?? {
           position: false,
@@ -1174,6 +1209,10 @@ export function CanvasStage({
       },
       select: (targetId) => {
         const node = nodeForTarget(targetId);
+        if (armAssembly) {
+          if (node?.motion === 'character-clip-v1') pickArmPart(motionLayer.id, node.partId);
+          return;
+        }
         selectionStore.select(motionLayer.id);
         if (node?.motion === 'character-clip-v3') {
           selectionStore.selectCharacterNode(node.id);
@@ -1273,7 +1312,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
-  const transformerVisible = structuredTransformerVisible || layerTransformerVisible;
+  const transformerVisible = !armAssembly && (structuredTransformerVisible || layerTransformerVisible);
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -1296,9 +1335,12 @@ export function CanvasStage({
         </div>
       ) : null}
       {motionError ? <div role="alert">{motionError}</div> : null}
+      {armAssembly ? <div className="character-arm-assembly-prompt" role="status" data-testid="character-arm-assembly-prompt">
+        {characterArmAssemblyPrompt(armAssembly)}
+      </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
-        dropInteractionDisabled={temporalInspection}
+        dropInteractionDisabled={temporalInspection || assemblingArm}
         animationDropTarget={
           snapshot && shot && projectInstanceId !== null
             ? {
@@ -1344,7 +1386,7 @@ export function CanvasStage({
           canvasViewportStore.recordStagePoint(point)
         }
         onTransform={setToolbarTransform}
-        onViewportChromePointerDown={() => selectionStore.clear()}
+        onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
           showToolbar || selectedFlaGraphicTarget ? (
@@ -1469,8 +1511,8 @@ export function CanvasStage({
                     fill="#111914"
                     height={PROJECT_HEIGHT}
                     listening
-                    onClick={() => selectionStore.clear()}
-                    onTap={() => selectionStore.clear()}
+                    onClick={() => { if (!armAssembly) selectionStore.clear(); }}
+                    onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
@@ -1525,7 +1567,7 @@ export function CanvasStage({
                             characterMotion={motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
-                            directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
+                            directEditingEnabled={!armAssembly && directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
@@ -1712,6 +1754,10 @@ export function CanvasStage({
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId, nodeId) => {
+                              if (armAssembly) {
+                                pickArmPart(layerId, adaptivePartIdForNodeId(nodeId ?? null));
+                                return;
+                              }
                               if (flaGraphicEditScope && selectedFlaGraphicTarget?.layerId !== layerId) {
                                 setFlaGraphicEditScope(null);
                                 setSelectedFlaGraphicNodePath(null);
@@ -1793,7 +1839,9 @@ export function CanvasStage({
                   ) : null}
                 </KonvaLayer>
               </Stage>
-              {snapshot && shot && selectedLayerId ? <CharacterArmHandle
+              {armAssembly ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
+                update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
+              {snapshot && shot && selectedLayerId && !armAssembly ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
                 address={{ shotId: shot.id, layerId: selectedLayerId,

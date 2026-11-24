@@ -1,10 +1,11 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useLayoutEffect, useRef, useState } from 'react';
 import {
   characterFaceAndMouthPartIds, deleteCharacterBodyPose, planCharacterBodyPose, resolveTimelineFrameTime, saveCharacterBodyPose,
   type AdaptivePartsCharacter, type CharacterBodyPose, type Layer, type Shot,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { Button } from '../../ui/Button';
+import { useCharacterArmTool } from '../canvas/CharacterArmTool';
 import { AnimationCurveDraftDispatch } from '../timeline/AnimationCurveDraft';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { CharacterBodyPoseGallery } from './CharacterBodyPoseGallery';
@@ -40,19 +41,23 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
   const instance = editorProjectStore.getProjectInstanceId();
   const timeMs = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
   const address = { shotId: shot.id, layerId: layer.id, timeMs };
+  const assemblingArm = Boolean(useCharacterArmTool({ ...address, projectInstanceId: instance }).assembly);
   const pose = character.bodyPoses?.find(({ id }) => id === activePoseId) ?? character.bodyPoses?.[0];
   const protectedParts = characterFaceAndMouthPartIds(character);
   const bodyParts = character.parts.filter(({ partId, visible }) => visible && !protectedParts.has(partId) &&
     (layer.animationClip?.version !== 1 || layer.animationClip.targetBases.some(({ target, visible }) => visible && target.partId === partId)));
-  const currentPreview = preview?.instance === instance && preview?.revision === snapshot.revision &&
+  const currentPreview = !assemblingArm && preview?.instance === instance && preview?.revision === snapshot.revision &&
     preview.timeMs === timeMs && preview.poseId === pose?.id ? preview : undefined;
 
-  useEffect(() => () => {
-    if (draftActive.current) {
-      draftActive.current = false;
-      onDraft?.(null);
-    }
-  }, [instance, onDraft, snapshot.revision, timeMs]);
+  useLayoutEffect(() => {
+    setPreview(undefined);
+    return () => {
+      if (draftActive.current) {
+        draftActive.current = false;
+        onDraft?.(null);
+      }
+    };
+  }, [assemblingArm, instance, layer.id, onDraft, shot.id, snapshot.revision, timeMs]);
 
   function cancelPreview(): void {
     if (draftActive.current) onDraft?.(null);
@@ -83,7 +88,7 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
   }
 
   function previewPose(selected: CharacterBodyPose): void {
-    if (!onDraft || editorProjectStore.getSnapshot() !== snapshot) return;
+    if (assemblingArm || !onDraft || editorProjectStore.getSnapshot() !== snapshot) return;
     cancelPreview();
     setActivePoseId(selected.id);
     try {
@@ -107,7 +112,7 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
   }
 
   function apply(): void {
-    if (!currentPreview || editorProjectStore.getSnapshot() !== snapshot || editorProjectStore.getProjectInstanceId() !== instance ||
+    if (!draftActive.current || !currentPreview || editorProjectStore.getSnapshot() !== snapshot || editorProjectStore.getProjectInstanceId() !== instance ||
         resolveTimelineFrameTime(timelineUiStore.getSnapshot().currentTimeMs, shot.durationMs) !== currentPreview.timeMs) return;
     editorProjectStore.updateProject(currentPreview.plan.project, '应用身体姿势');
     cancelPreview();
@@ -136,7 +141,7 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
     <summary>身体姿势</summary>
     {expanded && pose ? <>
       <CharacterBodyPoseGallery project={snapshot.project} projectRoot={snapshot.projectRoot} shot={shot}
-        layerId={layer.id} character={character} selectedId={pose.id} disabled={layer.locked || !onDraft} onSelect={previewPose} />
+        layerId={layer.id} character={character} selectedId={pose.id} disabled={layer.locked || !onDraft || assemblingArm} onSelect={previewPose} />
       <div className="animation-curve-fields">
       {currentPreview ? <>
         <Button onClick={apply} disabled={layer.locked}>应用并落键</Button>
