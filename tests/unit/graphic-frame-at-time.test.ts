@@ -2,12 +2,13 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-import { LayerService } from '../../src/domain';
+import { LayerService, ShotService } from '../../src/domain';
 import { RightInspector, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
+import { GraphicFrameTargetProvider } from '../../src/renderer/features/properties/GraphicFrameAtTimeControl';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from './domain/testProject';
 
@@ -41,6 +42,8 @@ it('commits ready thumbnails at the live playhead and keeps a fixed target acros
   const placement = { animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 200, y: 100 } };
   const first = service.createFromAnimation(graphicFaceProject(false), IDS.shot, placement);
   const second = service.createFromAnimation(first.project, IDS.shot, placement);
+  const project = new ShotService().create(second.project, { name: 'Another shot', durationMs: 3_000 });
+  const secondShotId = project.shots[1]!.id;
   const element = document.createElement('div');
   document.body.append(element);
   const root = createRoot(element);
@@ -50,13 +53,16 @@ it('commits ready thumbnails at the live playhead and keeps a fixed target acros
   const frame = (index: number) => control().querySelector<HTMLButtonElement>(`[data-testid="graphic-instance-frame-${index}"]`)!;
   const events = () => editorProjectStore.getSnapshot()!.project.shots[0]!.timelineEvents;
   const decode = () => act(async () => images.forEach((image) => image.onload?.(new Event('load'))));
+  const render = (showInspector: boolean) => root.render(createElement(GraphicFrameTargetProvider, {
+    children: showInspector ? createElement<RightInspectorProps>(RightInspector, { embedded: true, shellMode: 'landscape' }) : null,
+  }));
   try {
-    editorProjectStore.open('D:/graphic-frame-ui', second.project);
+    editorProjectStore.open('D:/graphic-frame-ui', project);
     shotStore.select(IDS.shot);
     selectionStore.select(first.layer.id);
     timelineUiStore.seek(0, 3_000);
     const before = editorProjectStore.getSnapshot()!;
-    await act(async () => root.render(createElement<RightInspectorProps>(RightInspector, { embedded: true, shellMode: 'landscape' })));
+    await act(async () => render(true));
     await act(async () => button('选择显示帧').click());
     expect(frame(0).dataset.thumbnailStatus).toBe('failed');
     expect(frame(2).disabled).toBe(true);
@@ -70,7 +76,10 @@ it('commits ready thumbnails at the live playhead and keeps a fixed target acros
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(0);
     await act(async () => button('固定目标').click());
     expect(control().querySelector('button[aria-pressed="true"]')?.textContent).toContain(first.layer.name);
+    await act(async () => render(false));
     await act(async () => selectionStore.select(second.layer.id));
+    await act(async () => render(true));
+    await decode();
     await act(async () => {
       timelineUiStore.seek(1_000, 3_000);
       frame(2).click();
@@ -107,6 +116,21 @@ it('commits ready thumbnails at the live playhead and keeps a fixed target acros
     });
     expect(events()).toHaveLength(4);
     expect(findButton(`取消固定 · ${second.layer.name}`)).toBeUndefined();
+
+    await act(async () => button('选择显示帧').click());
+    await act(async () => button('固定目标').click());
+    await act(async () => render(false));
+    await act(async () => { shotStore.select(secondShotId); });
+    await act(async () => { shotStore.select(IDS.shot); selectionStore.select(first.layer.id); });
+    await act(async () => render(true));
+    expect(findButton(`取消固定 · ${first.layer.name}`)).toBeUndefined();
+
+    await act(async () => button('选择显示帧').click());
+    await act(async () => button('固定目标').click());
+    await act(async () => { editorProjectStore.open('D:/graphic-frame-ui', project); });
+    await act(async () => selectionStore.select(first.layer.id));
+    expect(findButton(`取消固定 · ${first.layer.name}`)).toBeUndefined();
+    expect(events()).toHaveLength(0);
   } finally {
     await act(async () => root.unmount());
     element.remove();

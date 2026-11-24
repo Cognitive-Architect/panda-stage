@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { clearGraphicFrameAtTime, findGraphicFrameKey, getGraphicPlaybackSyncContext, isFlaGraphicDefinition, setGraphicFrameAtTime,
   syncGraphicPlaybackForward, type AnimationPlayback, type FlaGraphicDefinition, type Layer, type Project, type Shot } from '../../../domain';
 import { findGraphicPlaybackAtTime } from '../../../domain/evaluate-shot-at-time';
@@ -12,19 +12,39 @@ import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { parseAnimationStartTime } from './AnimationPlaybackControls';
 
+type GraphicTarget = { layerId: string; animationId: string };
+
+const GraphicTargetContext = createContext<{
+  fixed?: GraphicTarget;
+  setFixed: (target?: GraphicTarget) => void;
+}>({ setFixed: () => {} });
+
+export function GraphicFrameTargetProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
+  const shotId = useSyncExternalStore(shotStore.subscribe, shotStore.getCurrentShotId);
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
+  const [pin, setPin] = useState<{ projectInstanceId: number | null; shotId: string | null; target: GraphicTarget }>();
+  const shot = snapshot?.project.shots.find((entry) => entry.id === shotId);
+  const fixedLayer = pin && shot?.layers.find((entry) => entry.id === pin.target.layerId);
+  const definition = pin && snapshot?.project.animations.find((entry) => entry.id === pin.target.animationId);
+  const fixed = pin?.projectInstanceId === projectInstanceId && pin.shotId === shotId &&
+    fixedLayer && !fixedLayer.locked && fixedLayer.source.kind === 'animation' &&
+    fixedLayer.source.animationId === pin.target.animationId && definition && isFlaGraphicDefinition(definition)
+    ? pin.target : undefined;
+  if (pin && !fixed) setPin(undefined);
+  return <GraphicTargetContext.Provider value={{ fixed,
+    setFixed: (target) => setPin(target ? { projectInstanceId, shotId, target } : undefined) }}>
+    {children}
+  </GraphicTargetContext.Provider>;
+}
+
 export function GraphicFrameAtTimeControl({ project, shot, selection }: {
   project: Project;
   shot: Shot;
   selection: Layer | null;
 }): React.JSX.Element | null {
-  const [fixed, setFixed] = useState<{ layerId: string; animationId: string }>();
-  const fixedLayer = fixed && shot.layers.find((entry) => entry.id === fixed.layerId);
-  const fixedDefinition = fixed && project.animations.find((entry) => entry.id === fixed.animationId);
-  const targetIsFixed = Boolean(fixedLayer && !fixedLayer.locked && fixedLayer.source.kind === 'animation' &&
-    fixedLayer.source.animationId === fixed?.animationId && fixedDefinition && isFlaGraphicDefinition(fixedDefinition));
-  if (fixed && !targetIsFixed) setFixed(undefined);
-
-  const layer = targetIsFixed ? fixedLayer : selection;
+  const { fixed, setFixed } = useContext(GraphicTargetContext);
+  const layer = fixed ? shot.layers.find((entry) => entry.id === fixed.layerId) : selection;
   const source = layer?.source;
   const definition = source?.kind === 'animation'
     ? project.animations.find((entry) => entry.id === source.animationId)
@@ -32,8 +52,8 @@ export function GraphicFrameAtTimeControl({ project, shot, selection }: {
   if (!layer || !definition || !isFlaGraphicDefinition(definition)) return null;
 
   return <GraphicFrameEditor key={JSON.stringify([layer.id, definition.id])}
-    project={project} definition={definition} shot={shot} layer={layer} fixed={targetIsFixed}
-    onToggleFixed={() => setFixed(targetIsFixed ? undefined : { layerId: layer.id, animationId: definition.id })} />;
+    project={project} definition={definition} shot={shot} layer={layer} fixed={Boolean(fixed)}
+    onToggleFixed={() => setFixed(fixed ? undefined : { layerId: layer.id, animationId: definition.id })} />;
 }
 
 function GraphicFrameEditor({ project, definition, shot, layer, fixed, onToggleFixed }: {
@@ -47,7 +67,7 @@ function GraphicFrameEditor({ project, definition, shot, layer, fixed, onToggleF
   const { id: layerId, locked } = layer;
   const instance = editorProjectStore.getProjectInstanceId();
   const { currentTimeMs } = useTimelineUi();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(fixed);
   const [error, setError] = useState('');
   const playbackRange = findGraphicPlaybackAtTime(shot.timelineEvents, layerId, definition.id, currentTimeMs);
   const key = playbackRange ? undefined : findGraphicFrameKey(shot, layerId, definition.id, currentTimeMs);

@@ -76,6 +76,7 @@ import type {
 import { FlaGraphicImportError, type ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
+import { GraphicFrameTargetProvider } from '../features/properties/GraphicFrameAtTimeControl';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { ExportOptionsDialog } from './ExportOptionsDialog';
 import {
@@ -3111,6 +3112,7 @@ export function EditorShell({
               hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
               inert={Boolean(characterFloatMode) || assemblyActive || undefined}
             >
+              <GraphicFrameTargetProvider>
               {isPortrait ? (
                 <RightInspector
                 compact={isPortrait ? portraitPropertiesVisible : undefined}
@@ -3139,6 +3141,7 @@ export function EditorShell({
                   onPreviewDraft={openDraftPreview}
                 />
               )}
+              </GraphicFrameTargetProvider>
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
