@@ -442,6 +442,7 @@ function existingDefinition(
     return null;
   }
   const legacyMatch = semanticCandidates.find((match) =>
+    (!batch.requiresFullFrame || !match.structure) &&
     match.source.renderTargetId === batch.target.renderTargetId &&
     match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
   );

@@ -71,6 +71,12 @@ import {
   type FlaStaticTextRenderItem,
 } from '../../shared/fla-static-text';
 import {
+  computeBoundedFlaGraphicOutputSize,
+  FLA_SNAPSHOT_MAX_WIDTH as MAX_OUTPUT_WIDTH,
+  FLA_SNAPSHOT_MAX_HEIGHT as MAX_OUTPUT_HEIGHT,
+  FLA_SNAPSHOT_MAX_PIXELS as MAX_OUTPUT_PIXELS,
+} from '../../shared/fla-snapshot-output-size';
+import {
   buildVariableWidthStrokeOutline,
   type VariableWidthMarker,
 } from './fla-variable-width-stroke';
@@ -85,9 +91,6 @@ import {
 // ---- Limits (subset of FLA_IMPORT_LIMITS used by the R1 SVG builder) ----
 const MAX_SOURCE_BYTES = FLA_IMPORT_LIMITS.maxSourceBytes; // 256 MiB
 const MAX_XML_BYTES = FLA_IMPORT_LIMITS.maxXmlBytes; // 32 MiB
-const MAX_OUTPUT_WIDTH = 4_096;
-const MAX_OUTPUT_HEIGHT = 4_096;
-const MAX_OUTPUT_PIXELS = 16_777_216;
 const MAX_TARGETS = 64;
 const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
 const MAX_STYLE_ENTRIES_PER_SHAPE = 4_096;
@@ -3722,17 +3725,8 @@ function createGraphicViewport(
   if (![viewBox.x, viewBox.y, viewBox.width, viewBox.height].every(Number.isFinite) ||
       viewBox.width <= 0 || viewBox.height <= 0) return null;
 
-  const pixelScale = Math.sqrt(MAX_OUTPUT_PIXELS) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
-  const scale = Math.min(1, MAX_OUTPUT_WIDTH / viewBox.width, MAX_OUTPUT_HEIGHT / viewBox.height, pixelScale);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  let outputWidth = Math.max(1, Math.min(MAX_OUTPUT_WIDTH, Math.ceil(viewBox.width * scale)));
-  let outputHeight = Math.max(1, Math.min(MAX_OUTPUT_HEIGHT, Math.ceil(viewBox.height * scale)));
-  while (outputWidth * outputHeight > MAX_OUTPUT_PIXELS) {
-    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
-    else if (outputHeight > 1) outputHeight -= 1;
-    else return null;
-  }
-  return { contentBounds, viewBox, outputWidth, outputHeight };
+  const size = computeBoundedFlaGraphicOutputSize(viewBox.width, viewBox.height);
+  return size ? { contentBounds, viewBox, ...size } : null;
 }
 
 function formatSvgNumber(value: number): string {

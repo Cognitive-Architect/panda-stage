@@ -26,6 +26,11 @@ import {
   type FlaStaticTextMeasurer,
   type FlaStaticTextRenderItem,
 } from '../shared/fla-static-text';
+import {
+  FLA_SNAPSHOT_MAX_WIDTH,
+  FLA_SNAPSHOT_MAX_HEIGHT,
+  FLA_SNAPSHOT_MAX_PIXELS,
+} from '../shared/fla-snapshot-output-size';
 
 interface FlaSnapshotRenderRequest {
   requestId: string;
@@ -66,9 +71,6 @@ declare global {
     pandaStageFlaSnapshotRenderer: FlaSnapshotRendererApi;
   }
 }
-
-const MAX_SNAPSHOT_DIMENSION = 4_096;
-const MAX_SNAPSHOT_PIXELS = MAX_SNAPSHOT_DIMENSION * MAX_SNAPSHOT_DIMENSION;
 
 function formatNum(value: number): string {
   return Number.isFinite(value) ? Number(value.toFixed(3)).toString() : '0';
@@ -194,9 +196,9 @@ function resolveStaticTextPlaceholders(
       throw new Error('BUDGET_EXCEEDED: Graphic static text viewport is not finite');
     }
     if (
-      authoritative.outputWidth > MAX_SNAPSHOT_DIMENSION ||
-      authoritative.outputHeight > MAX_SNAPSHOT_DIMENSION ||
-      authoritative.outputWidth * authoritative.outputHeight > MAX_SNAPSHOT_PIXELS
+      authoritative.outputWidth > FLA_SNAPSHOT_MAX_WIDTH ||
+      authoritative.outputHeight > FLA_SNAPSHOT_MAX_HEIGHT ||
+      authoritative.outputWidth * authoritative.outputHeight > FLA_SNAPSHOT_MAX_PIXELS
     ) {
       throw new Error(
         `BUDGET_EXCEEDED: Measured Graphic viewport ${authoritative.outputWidth}x${authoritative.outputHeight} exceeds snapshot budget`,
@@ -258,8 +260,8 @@ function rasterizeSvg(
         height <= 0 ||
         !Number.isFinite(width) ||
         !Number.isFinite(height) ||
-        width > MAX_SNAPSHOT_DIMENSION ||
-        height > MAX_SNAPSHOT_DIMENSION
+        width > FLA_SNAPSHOT_MAX_WIDTH ||
+        height > FLA_SNAPSHOT_MAX_HEIGHT
       ) {
         URL.revokeObjectURL(url);
         reject(new Error('snapshot SVG produced out-of-bounds dimensions'));

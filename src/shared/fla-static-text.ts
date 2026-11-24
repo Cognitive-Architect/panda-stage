@@ -7,6 +7,8 @@
  * independent CJK/Unicode grapheme-safe wrapping and zero DOM/network access.
  */
 
+import { computeBoundedFlaGraphicOutputSize } from './fla-snapshot-output-size';
+
 export const FLA_STATIC_TEXT_LIMITS = {
   maxRunsPerText: 128,
   maxCharsPerText: 8_192,
@@ -581,15 +583,6 @@ export function hasUnresolvedFlaStaticTextPlaceholder(svg: string): boolean {
 export function computeAuthoritativeGraphicViewport(
   framing: FlaStaticTextGraphicFraming,
   measuredBoundsByPlaceholderId: ReadonlyMap<string, FlaStaticTextBounds>,
-  limits: {
-    readonly maxOutputWidth: number;
-    readonly maxOutputHeight: number;
-    readonly maxOutputPixels: number;
-  } = {
-    maxOutputWidth: 4_096,
-    maxOutputHeight: 4_096,
-    maxOutputPixels: 4_096 * 4_096,
-  },
 ): {
   readonly viewBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly outputWidth: number;
@@ -648,18 +641,8 @@ export function computeAuthoritativeGraphicViewport(
     return null;
   }
 
-  // Match createGraphicViewport bounded output scaling while preserving source viewBox.
-  const pixelScale = Math.sqrt(limits.maxOutputPixels) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
-  const scale = Math.min(1, limits.maxOutputWidth / viewBox.width, limits.maxOutputHeight / viewBox.height, pixelScale);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  let outputWidth = Math.max(1, Math.min(limits.maxOutputWidth, Math.ceil(viewBox.width * scale)));
-  let outputHeight = Math.max(1, Math.min(limits.maxOutputHeight, Math.ceil(viewBox.height * scale)));
-  while (outputWidth * outputHeight > limits.maxOutputPixels) {
-    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
-    else if (outputHeight > 1) outputHeight -= 1;
-    else return null;
-  }
-  return { viewBox, outputWidth, outputHeight };
+  const size = computeBoundedFlaGraphicOutputSize(viewBox.width, viewBox.height);
+  return size ? { viewBox, ...size } : null;
 }
 
 export function isValidFlaStaticTextGraphicFraming(value: unknown): value is FlaStaticTextGraphicFraming {

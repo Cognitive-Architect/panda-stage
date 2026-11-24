@@ -1022,6 +1022,8 @@ export interface FlaGraphicDefinitionFrameBatch {
     };
   }[];
   readonly groupEditPreview?: FlaGraphicGroupEditPreview;
+  /** Static text requires finalized frames instead of the authored object tree. */
+  readonly requiresFullFrame?: true;
   /** Source-backed authored object tree captured before SVG baking (E1). */
   readonly structure?: FlaGraphicStructure;
   /** Decoded bitmap media items referenced by the structure, ready for project commit/reuse. */
@@ -1936,6 +1938,7 @@ export class FlaPartPreviewService {
         frames,
         ...(labels.size ? { sourceFrameLabels: [...labels].map(([sourceFrameIndex, text]) => ({ sourceFrameIndex, text })) } : {}),
         ...(groupEditPreview ? { groupEditPreview } : {}),
+        ...(hasStaticTextInAnyFrame ? { requiresFullFrame: true } : {}),
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
         ...(isolatedFallbacks.size ? { fallbacks: [...isolatedFallbacks.values()] } : {}),
