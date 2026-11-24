@@ -215,7 +215,7 @@ interface StagePartImagesProps {
   resources?: readonly StageRenderResource[];
 }
 
-function StagePartImages({
+export function StagePartImages({
   ownerLayerId,
   parts,
   images,

@@ -1366,6 +1366,7 @@ export function resolveLayerVisualParts(
   evaluated: EvaluatedLayer,
   timeMs = 0,
   isImageUnavailable?: (assetId: string) => boolean,
+  options?: { collectCandidates: boolean },
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1698,57 +1699,59 @@ export function resolveLayerVisualParts(
         }
       }
     }
-    const collectCandidateFaceSourceAssets = (faceSource: CharacterFaceSource): void => {
-      const resolved = resolveCharacterFaceSourceOrNull(project, faceSource);
-      if (!resolved) return;
-      for (const id of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
-        if (validImageAssetIds.has(id) && !requiredAssetIds.has(id) && !faceProjection.fallbackAssetIds.has(id)) {
-          candidateAssetIds.add(id);
+    if (options?.collectCandidates !== false) {
+      const collectCandidateFaceSourceAssets = (faceSource: CharacterFaceSource): void => {
+        const resolved = resolveCharacterFaceSourceOrNull(project, faceSource);
+        if (!resolved) return;
+        for (const id of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
+          if (validImageAssetIds.has(id) && !requiredAssetIds.has(id) && !faceProjection.fallbackAssetIds.has(id)) {
+            candidateAssetIds.add(id);
+          }
+        }
+      };
+      for (const { animationId } of character.faceBinding ? listCharacterTalkingSources(character) : []) {
+        const talking = findTalkingAnimation(project, animationId);
+        if (!talking) continue;
+        for (const assetId of listTalkingAnimationImageIds(talking)) {
+          if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
         }
       }
-    };
-    for (const { animationId } of character.faceBinding ? listCharacterTalkingSources(character) : []) {
-      const talking = findTalkingAnimation(project, animationId);
-      if (!talking) continue;
-      for (const assetId of listTalkingAnimationImageIds(talking)) {
-        if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
+      for (const expression of character.expressions ?? []) {
+        collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
       }
-    }
-    for (const expression of character.expressions ?? []) {
-      collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
-    }
-    const configuredMouth = resolveMouthVisualSource(character);
-    if (configuredMouth) {
-      collectCandidateFaceSourceAssets(configuredMouth);
-    }
-    for (const part of visualDefinition.parts) {
-      const visualSource = resolveCharacterPartVisualSource(part);
-      if (
-        visualSource.kind !== 'fla-graphic' ||
-        visualSource.nodePath ||
-        visualSource.regionRef ||
-        visualSource.regionVector
-      ) continue;
-      const definition = project.animations.find(
-        (candidate): candidate is FlaGraphicDefinition =>
-          isFlaGraphicDefinition(candidate) &&
-          candidate.id === visualSource.animationId,
-      );
-      if (!definition || definition.frames.length <= 1) continue;
-      for (const frame of definition.frames) {
-        const evaluatedFrame = evaluateFlaGraphicVisual({
-          definition,
-          frameOrdinal: frame.ordinal,
-          mode: 'instance',
-          instanceTransformOverrides: visualSource.instanceTransformOverrides,
-        });
-        if (!evaluatedFrame) continue;
-        for (const assetId of evaluatedFrame.resourceAssetIds) {
-          if (
-            validImageAssetIds.has(assetId) &&
-            !requiredAssetIds.has(assetId)
-          ) {
-            candidateAssetIds.add(assetId);
+      const configuredMouth = resolveMouthVisualSource(character);
+      if (configuredMouth) {
+        collectCandidateFaceSourceAssets(configuredMouth);
+      }
+      for (const part of visualDefinition.parts) {
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (
+          visualSource.kind !== 'fla-graphic' ||
+          visualSource.nodePath ||
+          visualSource.regionRef ||
+          visualSource.regionVector
+        ) continue;
+        const definition = project.animations.find(
+          (candidate): candidate is FlaGraphicDefinition =>
+            isFlaGraphicDefinition(candidate) &&
+            candidate.id === visualSource.animationId,
+        );
+        if (!definition || definition.frames.length <= 1) continue;
+        for (const frame of definition.frames) {
+          const evaluatedFrame = evaluateFlaGraphicVisual({
+            definition,
+            frameOrdinal: frame.ordinal,
+            mode: 'instance',
+            instanceTransformOverrides: visualSource.instanceTransformOverrides,
+          });
+          if (!evaluatedFrame) continue;
+          for (const assetId of evaluatedFrame.resourceAssetIds) {
+            if (
+              validImageAssetIds.has(assetId) &&
+              !requiredAssetIds.has(assetId)
+            ) {
+              candidateAssetIds.add(assetId);
+            }
           }
         }
       }

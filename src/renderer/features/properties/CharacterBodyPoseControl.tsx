@@ -1,12 +1,13 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import {
   characterFaceAndMouthPartIds, deleteCharacterBodyPose, planCharacterBodyPose, resolveTimelineFrameTime, saveCharacterBodyPose,
-  type AdaptivePartsCharacter, type Layer, type Shot,
+  type AdaptivePartsCharacter, type CharacterBodyPose, type Layer, type Shot,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { Button } from '../../ui/Button';
 import { AnimationCurveDraftDispatch } from '../timeline/AnimationCurveDraft';
-import { useTimelineUi } from '../timeline/timelineUiStore';
+import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
+import { CharacterBodyPoseGallery } from './CharacterBodyPoseGallery';
 
 interface CharacterBodyPoseControlProps {
   snapshot: EditorProjectSnapshot;
@@ -17,7 +18,9 @@ interface CharacterBodyPoseControlProps {
 export function CharacterBodyPoseControl(props: CharacterBodyPoseControlProps): React.JSX.Element | null {
   const characterId = props.layer.source.kind === 'character' ? props.layer.source.characterId : undefined;
   const character = props.snapshot.project.characters.find(({ id }) => id === characterId);
-  return character?.mode === 'adaptive-parts' ? <BodyPoseForm {...props} character={character} /> : null;
+  return character?.mode === 'adaptive-parts'
+    ? <BodyPoseForm key={`${editorProjectStore.getProjectInstanceId()}:${character.id}`} {...props} character={character} />
+    : null;
 }
 
 function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseControlProps & {
@@ -26,6 +29,7 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
   const { currentTimeMs } = useTimelineUi();
   const onDraft = useContext(AnimationCurveDraftDispatch);
   const draftActive = useRef(false);
+  const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState('');
   const [activePoseId, setActivePoseId] = useState('');
   const [selectedParts, setSelectedParts] = useState<readonly string[]>([]);
@@ -69,6 +73,7 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
         selectedParts.includes(partId) && !saved?.parts.some(part => part.partId === partId)
           ? [displayName ?? `部件 ${index + 1}`] : []);
       editorProjectStore.updateProject(project, '保存身体姿势');
+      if (saved) setActivePoseId(saved.id);
       setName('');
       setError('');
       if (omitted.length) setNotice(`无法保存当前姿态的部件：${omitted.join('、')}。可换一帧单独保存。`);
@@ -77,19 +82,20 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
     }
   }
 
-  function previewPose(): void {
-    if (!pose || !onDraft) return;
+  function previewPose(selected: CharacterBodyPose): void {
+    if (!onDraft || editorProjectStore.getSnapshot() !== snapshot) return;
     cancelPreview();
+    setActivePoseId(selected.id);
     try {
-      const plan = planCharacterBodyPose(snapshot.project, address, pose.id);
-      const list = (ids: readonly string[]) => ids.map(id => pose.parts.find(part => part.partId === id)?.partName ?? id).join('、');
+      const plan = planCharacterBodyPose(snapshot.project, address, selected.id);
+      const list = (ids: readonly string[]) => ids.map(id => selected.parts.find(part => part.partId === id)?.partName ?? id).join('、');
       const feedback = [plan.missingPartIds.length ? `缺少部件：${list(plan.missingPartIds)}` : '',
         plan.actionPartIds.length ? `当前动作占用：${list(plan.actionPartIds)}` : ''].filter(Boolean);
       if (plan.project !== snapshot.project) {
         draftActive.current = true;
         onDraft({ project: plan.project, projectInstanceId: instance, revision: snapshot.revision,
           shotId: shot.id, layerId: layer.id, timeMs });
-        setPreview({ poseId: pose.id, timeMs, revision: snapshot.revision, instance, plan });
+        setPreview({ poseId: selected.id, timeMs, revision: snapshot.revision, instance, plan });
       } else if (!feedback.length) {
         feedback.push('当前姿势已一致。');
       }
@@ -101,7 +107,8 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
   }
 
   function apply(): void {
-    if (!currentPreview || editorProjectStore.getSnapshot() !== snapshot || editorProjectStore.getProjectInstanceId() !== instance) return;
+    if (!currentPreview || editorProjectStore.getSnapshot() !== snapshot || editorProjectStore.getProjectInstanceId() !== instance ||
+        resolveTimelineFrameTime(timelineUiStore.getSnapshot().currentTimeMs, shot.durationMs) !== currentPreview.timeMs) return;
     editorProjectStore.updateProject(currentPreview.plan.project, '应用身体姿势');
     cancelPreview();
   }
@@ -121,22 +128,22 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
     }
   }
 
-  return <details className="animation-key-selection" data-testid="character-body-pose">
+  return <details className="animation-key-selection" data-testid="character-body-pose" onToggle={(event) => {
+    const open = event.currentTarget.open;
+    setExpanded(open);
+    if (!open) cancelPreview();
+  }}>
     <summary>身体姿势</summary>
-    {pose ? <div className="animation-curve-fields">
-      <label>已保存姿势<select value={pose.id} disabled={layer.locked} onChange={event => {
-        cancelPreview(); setActivePoseId(event.target.value); setError('');
-      }}>
-        {character.bodyPoses?.map(entry => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-      </select></label>
+    {expanded && pose ? <>
+      <CharacterBodyPoseGallery project={snapshot.project} projectRoot={snapshot.projectRoot} shot={shot}
+        layerId={layer.id} character={character} selectedId={pose.id} disabled={layer.locked || !onDraft} onSelect={previewPose} />
+      <div className="animation-curve-fields">
       {currentPreview ? <>
         <Button onClick={apply} disabled={layer.locked}>应用并落键</Button>
         <Button onClick={cancelPreview} variant="secondary">取消预览</Button>
-      </> : <>
-        <Button onClick={previewPose} disabled={layer.locked || !onDraft}>预览姿势</Button>
-        <Button onClick={remove} disabled={layer.locked} variant="secondary">删除姿势</Button>
-      </>}
-    </div> : null}
+      </> : <Button onClick={remove} disabled={layer.locked} variant="secondary">删除姿势</Button>}
+      </div>
+    </> : null}
     {bodyParts.length ? <details className="animation-key-selection">
       <summary>保存当前姿势</summary>
       <div className="animation-key-targets">

@@ -5,7 +5,8 @@ import {
 } from '../character-part-animation';
 import { CHARACTER_PART_MAX_SCALE, CHARACTER_PART_MIN_SCALE } from '../constants';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
-import { CharacterBodyPoseSchema } from '../models/character';
+import { CharacterBodyPoseSchema, type CharacterBodyPose } from '../models/character';
+import type { AnimationClipV0 } from '../models/animationCore';
 import { composeAffineMatrix, decomposeAffineMatrix, isAffineMatrixTrsSafe } from '../models/flaGraphicTimeline';
 import { ProjectSchema, type Project } from '../models/project';
 import { isValidFrameTime } from '../timeline/frame-grid';
@@ -94,22 +95,13 @@ export function planCharacterBodyPose(project: Project, address: BodyPoseAddress
   const clip = pose.parts.some(({ referencePivot }) => referencePivot)
     ? createCharacterPartAnimationClip(project, address.shotId, address.layerId) : undefined;
   let next = project;
-  for (const { partId, properties, referencePivot } of pose.parts) {
+  for (const part of pose.parts) {
+    const { partId, properties } = part;
     if (!availableParts.has(partId)) {
       missingPartIds.push(partId);
       continue;
     }
-    const writable = { ...properties };
-    if (referencePivot && clip) {
-      const basis = clip.targetBases.find(entry => entry.target.partId === partId)!;
-      const pivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
-      const dx = pivot.x - referencePivot.x;
-      const dy = pivot.y - referencePivot.y;
-      const { a, b, c, d } = composeAffineMatrix({ tx: 0, ty: 0, rotationDeg: properties['transform.rotationDeg'] ?? 0,
-        scaleX: properties['transform.scaleX'] ?? 1, scaleY: properties['transform.scaleY'] ?? 1 });
-      writable['transform.offsetX'] = (properties['transform.offsetX'] ?? 0) + (a - 1) * dx + c * dy;
-      writable['transform.offsetY'] = (properties['transform.offsetY'] ?? 0) + b * dx + (d - 1) * dy;
-    }
+    const writable = resolveBodyPosePartProperties(part, clip);
     for (const track of overlays?.layeredCharacterAction?.action.tracks ?? []) {
       if (track.partId === partId) delete writable[track.property];
     }
@@ -117,6 +109,23 @@ export function planCharacterBodyPose(project: Project, address: BodyPoseAddress
     next = service.apply(next, { ...address, partId, autoKey: true }, writable);
   }
   return { project: next, missingPartIds, actionPartIds };
+}
+
+/** Express stored pose values around a destination part's pivot. */
+export function resolveBodyPosePartProperties({ partId, properties, referencePivot }: CharacterBodyPose['parts'][number],
+  clip: AnimationClipV0 | undefined,
+): CharacterBodyPose['parts'][number]['properties'] {
+  const writable = { ...properties };
+  const basis = clip?.targetBases.find((entry) => entry.target.partId === partId);
+  if (!referencePivot || !clip || !basis) return writable;
+  const pivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
+  const dx = pivot.x - referencePivot.x;
+  const dy = pivot.y - referencePivot.y;
+  const { a, b, c, d } = composeAffineMatrix({ tx: 0, ty: 0, rotationDeg: properties['transform.rotationDeg'] ?? 0,
+    scaleX: properties['transform.scaleX'] ?? 1, scaleY: properties['transform.scaleY'] ?? 1 });
+  writable['transform.offsetX'] = (properties['transform.offsetX'] ?? 0) + (a - 1) * dx + c * dy;
+  writable['transform.offsetY'] = (properties['transform.offsetY'] ?? 0) + b * dx + (d - 1) * dy;
+  return writable;
 }
 
 export function deleteCharacterBodyPose(project: Project, address: BodyPoseAddress, poseId: string): Project {

@@ -1,0 +1,58 @@
+.body-pose-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr));
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.body-pose-card[data-ui-button] {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-1);
+}
+
+.body-pose-card[aria-pressed='true'] {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: -2px;
+}
+
+.body-pose-card-art {
+  display: grid;
+  justify-items: center;
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.body-pose-thumbnail {
+  width: 100%;
+  max-width: 128px;
+}
+
+.body-pose-thumbnail > .konvajs-content {
+  display: grid;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 4 / 3;
+}
+
+.body-pose-thumbnail canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.body-pose-placeholder {
+  align-self: center;
+  color: var(--ui-color-text-secondary);
+}
+
+.body-pose-card-name {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
