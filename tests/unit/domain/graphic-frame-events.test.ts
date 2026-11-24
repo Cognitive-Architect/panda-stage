@@ -4,6 +4,7 @@ import { buildEditorStageRenderModel, clearGraphicFrameAtTime, evaluateShotAtTim
   setGraphicFrameAtTime, syncGraphicPlaybackForward, type Project } from '../../../src/domain';
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
+import { buildEditorTemporalCanvasModel } from '../../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../../src/renderer/stores/EditorProjectStore';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../../helpers/graphicFaceProject';
 import { IDS } from './testProject';
@@ -194,4 +195,14 @@ it('requests the target Graphic frame for Stage even when the zero-time assets o
   const synced = syncGraphicPlaybackForward(project, shot.id, created.layer.id, FACE_GRAPHIC_ID, 250, 750,
     { firstFrame: 1, range: { firstFrame: 0, lastFrame: 2 }, playback: { mode: 'loop', endBehavior: 'hold' } });
   expect(listShotGraphicImageAssetsAtTime(synced, synced.shots[0]!, 292).map(({ id }) => id)).toEqual([frames[2]!.assetId]);
+
+  const hidden = ProjectSchema.parse({ ...project, shots: [{ ...shot, timelineEvents: [
+    ...shot.timelineEvents,
+    { type: 'visibility', id: crypto.randomUUID(), layerId: created.layer.id, startMs: 500, endMs: 500, visible: false },
+  ] }] });
+  const scene = { project: hidden, shot: hidden.shots[0]!, readyAssetIds: new Set(initial) };
+  const visible = buildEditorTemporalCanvasModel({ ...scene, currentTimeMs: 0, previousVisuals: new Map() });
+  const gap = buildEditorTemporalCanvasModel({ ...scene, currentTimeMs: 500, previousVisuals: visible.lastValidVisuals });
+  expect(gap.evaluatedShot.layers.find((entry) => entry.id === created.layer.id)?.visible).toBe(false);
+  expect(gap.visualsByLayer.get(created.layer.id)).toBeNull();
 });
