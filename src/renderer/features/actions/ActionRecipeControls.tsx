@@ -119,13 +119,21 @@ export function ActionRecipeControls({ project, shot, layer, onPreview }: {
   const addStep = (): void => {
     const last = steps.at(-1);
     const motionId = newType.startsWith('motion:') ? newType.slice('motion:'.length) : undefined;
-    const lastMotion = last?.kind === 'motion' ? project.userMotionPresets?.find(({ id }) => id === last.presetId) : undefined;
-    const nextMotion = motionId ? project.userMotionPresets?.find(({ id }) => id === motionId) : undefined;
-    const sharedProperties = lastMotion?.tracks.some(({ property }) => nextMotion?.tracks.some(track => track.property === property));
-    const span = lastMotion && sharedProperties ? userMotionPresetContinuationSpanMs(lastMotion)
-      : last && 'durationMs' in last ? last.durationMs
+    const findMotion = (presetId: string) => project.userMotionPresets?.find(({ id }) => id === presetId);
+    const lastMotion = last?.kind === 'motion' ? findMotion(last.presetId) : undefined;
+    const nextMotion = motionId ? findMotion(motionId) : undefined;
+    const span = last && 'durationMs' in last ? last.durationMs
       : Math.round((lastMotion?.durationFrames ?? 0) * 1_000 / project.fps);
-    const offsetMs = (last?.offsetMs ?? 0) + span;
+    let offsetMs = (last?.offsetMs ?? 0) + span;
+    if (nextMotion) {
+      const properties = new Set(nextMotion.tracks.map(({ property }) => property));
+      for (const step of steps) {
+        const previous = step.kind === 'motion' ? findMotion(step.presetId) : undefined;
+        if (previous?.tracks.some(({ property }) => properties.has(property))) {
+          offsetMs = Math.max(offsetMs, step.offsetMs + userMotionPresetContinuationSpanMs(previous));
+        }
+      }
+    }
     const base = { id: crypto.randomUUID(), offsetMs };
     if (newType === 'expression' || newType === 'action') {
       setSteps([...steps, { ...base, kind: newType, durationMs: 500 }]);

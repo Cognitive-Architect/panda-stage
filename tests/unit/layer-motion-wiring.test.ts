@@ -191,7 +191,13 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     const target = { shotId: IDS.shot, layerId: secondGraphicLayerId! };
     const peak = motion.applyKeys(project, { ...source, timeMs: 500 }, { 'transform.offsetX': 40 });
     const authored = motion.applyKeys(peak, { ...source, timeMs: 1000 }, { 'transform.offsetX': 0 });
-    const library = motion.saveUserMotionPreset(authored, { ...source, name: '水平动作', startMs: 0, endMs: 1000 });
+    const horizontal = motion.saveUserMotionPreset(authored, { ...source, name: '水平动作', startMs: 0, endMs: 1000 });
+    const third = new LayerService().createFromAnimation(horizontal, IDS.shot, {
+      animationId: FACE_GRAPHIC_ID, position: { x: 200, y: 250 }, startTimeMs: 0,
+    });
+    const verticalSource = { shotId: IDS.shot, layerId: third.layer.id };
+    const vertical = motion.applyKeys(third.project, { ...verticalSource, timeMs: 42 }, { 'transform.offsetY': 10 });
+    const library = motion.saveUserMotionPreset(vertical, { ...verticalSource, name: '垂直动作', startMs: 0, endMs: 42 });
     editorProjectStore.open('D:/test-1251-recipe', library);
     shotStore.select(IDS.shot);
     selectionStore.select(target.layerId);
@@ -209,10 +215,13 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     };
     await act(async () => root.render(createElement(RecipeHarness)));
     await click('新建配方');
-    await act(async () => {
+    const chooseMotion = async (index: number) => await act(async () => {
       const select = container.querySelector('select')!;
-      select.value = `motion:${library.userMotionPresets![0]!.id}`;
+      select.value = `motion:${library.userMotionPresets![index]!.id}`;
       select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await chooseMotion(0);
+    await act(async () => {
       const name = container.querySelector('input')!;
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '连续水平动作');
       name.dispatchEvent(new Event('input', { bubbles: true }));
@@ -268,6 +277,24 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     expect(() => applyActionRecipe(conflict, recipe.id, { ...target, startMs: 21 }, {})).toThrow('水平位置');
     expect(layerAt(conflict, 1125).x).toBe(912);
     expect(layerAt(conflict, 542).x).toBeLessThan(912);
+
+    // A short, disjoint step between two horizontal motions must not hide the first restore key.
+    await click('新建配方');
+    await chooseMotion(0);
+    await act(async () => {
+      const name = container.querySelector('input')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '交错重用运动');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('添加步骤');
+    await chooseMotion(1);
+    await click('添加步骤');
+    await chooseMotion(0);
+    await click('添加步骤');
+    await click('保存配方');
+    const interleaved = editorProjectStore.getSnapshot()!.project.actionRecipes!.at(-1)!;
+    const planned = applyActionRecipe({ ...before.project, actionRecipes: [interleaved] }, interleaved.id, { ...target, startMs: 21 }, {});
+    expect(layerAt(planned, 1625).x).toBe(940);
   });
 
   it('exposes Inspector Auto-Key for Character=0 FLA Graphic Layer, writes relative keys without double-writing static, and syncs Basis when OFF', async () => {
