@@ -80,6 +80,15 @@ describe('uncompressed Animate XFL input', () => {
     await expect(readFlaSourceBytes(root)).rejects.toMatchObject({ code: 'MALFORMED_XFL', message: expect.stringContaining('outside') });
   });
 
+  it('rejects conflicting names after Unicode and case normalization', async () => {
+    const { root } = await project();
+    await writeFile(join(root, 'LIBRARY', 'A.xml'), '<DOMSymbolItem/>');
+    await writeFile(join(root, 'LIBRARY', 'Ａ.xml'), '<DOMSymbolItem/>');
+    await expect(readFlaSourceBytes(root)).rejects.toMatchObject({
+      code: 'MALFORMED_XFL', message: expect.stringContaining('conflicting filenames'),
+    });
+  });
+
   it('rejects redirected directories and bounded files, and honours cancellation', async () => {
     const { root, parent } = await project();
     const linked = join(root, 'Redirect');

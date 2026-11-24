@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { planSpriteSheetGrid } from '../../src/shared/export-types';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
@@ -24,6 +24,21 @@ import type {
 } from '../../src/shared/export-types';
 import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
 import { buildProject } from './domain/testProject';
+
+const spriteManifestWrite = vi.hoisted(() => ({ failPath: null as string | null }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    open: (...args: Parameters<typeof actual.open>) => {
+      if (spriteManifestWrite.failPath !== null && args[0] === spriteManifestWrite.failPath) {
+        return Promise.reject(new Error('simulated sprite manifest write failure'));
+      }
+      return actual.open(...args);
+    },
+  };
+});
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -249,6 +264,7 @@ it('assembles a pair from the formal ranged schedule, and leaves no output when 
   const service = new ExportService(renderer, fileSystem, encoder);
   const output = path.join(parent, 'sprites');
   const cancelledOutput = path.join(parent, 'sprites-cancelled');
+  const incompleteOutput = path.join(parent, 'sprites-incomplete');
   const frozen = (targetPath: string) => ({
     candidate: { project, pngSequence: { shotId: project.shots[0]!.id, spriteSheet: true, transparent: true,
       range: { startMs: 42, endMs: 290 } }, renderSettings: { width: 1920, height: 1080, fps: 24 },
@@ -267,6 +283,13 @@ it('assembles a pair from the formal ranged schedule, and leaves no output when 
     expect(manifest.frames[4]).toMatchObject({ index: 4, frame: { x: 0, y: 2160, w: 1920, h: 1080 }, trimmed: false, rotated: false });
     expect(renderer.formalLoads[0]?.solidClear).toBeUndefined();
 
+    spriteManifestWrite.failPath = path.join(incompleteOutput, 'sprite-sheet.json');
+    const failed = service.startPngSequenceExport(frozen(incompleteOutput), async () => {});
+    await expect(failed.completion).rejects.toThrow('simulated sprite manifest write failure');
+    expect(service.getJob(failed.jobId)).toMatchObject({ status: 'failed' });
+    expect(await readdir(parent)).toEqual(['sprites']);
+    spriteManifestWrite.failPath = null;
+
     const unsubscribe = service.subscribe((update) => {
       if (update.completedFrames === 1 && update.status === 'running') service.cancelJob(update.jobId);
     });
@@ -276,6 +299,7 @@ it('assembles a pair from the formal ranged schedule, and leaves no output when 
     expect(service.getJob(cancelled.jobId)?.status).toBe('cancelled');
     expect(await readdir(parent)).toEqual(['sprites']);
   } finally {
+    spriteManifestWrite.failPath = null;
     for (const file of await readdir(output).catch(() => [])) await unlink(path.join(output, file));
     await rmdir(output).catch(() => undefined);
     await rmdir(parent);

@@ -4,11 +4,12 @@ import type { AssetImportResponse } from '../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { Button } from '../ui/Button';
 
-export function FlaSoundReview({ sessionId, sounds, snapshot, importing, onImporting, onImported }: {
+export function FlaSoundReview({ sessionId, sounds, snapshot, importing, createPreviewUrl, onImporting, onImported }: {
   sessionId: string;
   sounds: readonly FlaSoundMetadata[];
   snapshot: EditorProjectSnapshot | null;
   importing: boolean;
+  createPreviewUrl: (bytes: Uint8Array<ArrayBuffer>, mimeType: string) => string;
   onImporting: (importing: boolean) => void;
   onImported: (response: AssetImportResponse) => Promise<void>;
 }): React.JSX.Element {
@@ -43,8 +44,7 @@ export function FlaSoundReview({ sessionId, sounds, snapshot, importing, onImpor
       const response = await window.pandaStage.fla.previewSound({ sessionId, requestId, soundId: selected.id });
       if (active.current?.requestId !== requestId) return;
       if (!response.ok) throw new Error(response.error.message);
-      const blob = new Blob([response.bytes], { type: response.mimeType });
-      const objectUrl = URL.createObjectURL(blob);
+      const objectUrl = createPreviewUrl(response.bytes, response.mimeType);
       active.current.url = objectUrl;
       setUrl(objectUrl);
     } catch (cause) {
