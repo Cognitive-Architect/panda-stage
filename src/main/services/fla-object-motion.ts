@@ -50,13 +50,62 @@ function pair(raw: string | undefined): [number, number] | undefined {
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : undefined;
 }
 
-// Standard Motion Editor power presets. Timing data and curve conventions
-// are cross-checked against lifeart/fla-viewer src/motion-object.ts @ b14fa1d1.
+// Standard Motion Editor power, bounce, and spring presets. Timing data and
+// curve conventions are cross-checked against lifeart/fla-viewer
+// src/motion-object.ts @ b14fa1d1 (PSM AnimationUtility public semantics).
+function bounceArc(count: number, firstArc: number, ratio: number): { readonly arc: number; readonly local: number } {
+  let arc = 0;
+  let start = 0;
+  let end = firstArc;
+  while (end < ratio && arc < count - 1) {
+    arc += 1;
+    start = end;
+    end += firstArc / (arc + 1);
+  }
+  return { arc, local: (ratio - start) / (firstArc / (arc + 1)) };
+}
+
+function createBounceEase(count: number, positive: boolean, bounceIn: boolean): Curve['ease'] {
+  let harmonic = 0;
+  for (let i = 1; i <= count; i += 1) harmonic += 1 / i;
+  const firstArc = 1 / harmonic;
+  const evaluate = (ratio: number): number => {
+    const { arc, local } = bounceArc(count, firstArc, ratio);
+    if (bounceIn) {
+      return arc === 0 ? local * local : 1 - 4 * Math.exp(-arc) * local * (1 - local);
+    }
+    return 4 * Math.exp(-arc) * local * (1 - local);
+  };
+  if (positive) return evaluate;
+  return bounceIn ? (ratio) => 1 - evaluate(1 - ratio) : (ratio) => evaluate(1 - ratio);
+}
+
+function createSpringEase(count: number): Curve['ease'] {
+  const startup = 0.4 / count;
+  const cycle = (1 - startup) / count;
+  return (ratio) => {
+    if (ratio < startup) return Math.sin((ratio * Math.PI) / (2 * startup));
+    const elapsed = ratio - startup;
+    return 0.7 + 0.3 * Math.exp(-elapsed / cycle) * Math.cos((2 * Math.PI * elapsed) / cycle);
+  };
+}
+
 function readEase(map: MotionXmlNode): Curve['ease'] | undefined {
   const type = map.attributes.type ?? 'Linear';
-  const strength = number(map.attributes.strength ?? '0') / 100;
-  if (!Number.isFinite(strength) || Math.abs(strength) > 1) return undefined;
+  const rawStrength = number(map.attributes.strength ?? '0');
+  if (!Number.isFinite(rawStrength) || Math.abs(rawStrength) > 100) return undefined;
   if (type === 'Linear') return linear;
+  if (type === 'Bounce' || type === 'BounceIn') {
+    const count = Math.abs(Math.trunc(rawStrength));
+    if (count === 0) return linear;
+    return createBounceEase(count, rawStrength > 0, type === 'BounceIn');
+  }
+  if (type === 'Spring') {
+    const count = Math.trunc(rawStrength);
+    if (count < 1) return linear;
+    return createSpringEase(count);
+  }
+  const strength = rawStrength / 100;
   const dual = type.startsWith('Dual');
   const power = powers.get(dual ? type.slice(4) : type);
   if (!power) return undefined;
@@ -168,10 +217,13 @@ function cubic(a: number, b: number, c: number, d: number, t: number): number {
 function sample(curve: Curve, at: number): number {
   const first = curve.keys[0]!;
   const last = curve.keys[curve.keys.length - 1]!;
-  if (at <= first.time) return first.value;
-  if (at >= last.time) return last.value;
+  if (curve.keys.length === 1 || at <= first.time) return first.value;
   const span = last.time - first.time;
-  const time = first.time + span * curve.ease((at - first.time) / span);
+  if (span <= 0) return last.value;
+  const ratio = curve.ease(Math.min((at - first.time) / span, 1));
+  if (ratio <= 0) return first.value;
+  if (ratio >= 1) return last.value;
+  const time = first.time + span * ratio;
   let low = 0;
   let high = curve.keys.length - 1;
   while (high - low > 1) {
