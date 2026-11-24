@@ -169,8 +169,8 @@ function defaultExportFileName(projectName: string): string {
   return baseName + '.mp4';
 }
 
-async function selectPngSequenceTarget(parent: string, projectName: string): Promise<string> {
-  const stem = `${defaultExportFileName(projectName).slice(0, -4).slice(0, 80)}-frames`;
+async function selectPngSequenceTarget(parent: string, projectName: string, spriteSheet = false): Promise<string> {
+  const stem = `${defaultExportFileName(projectName).slice(0, -4).slice(0, 80)}-${spriteSheet ? 'sprites' : 'frames'}`;
   for (let ordinal = 1; ordinal <= 1000; ordinal++) {
     const target = path.join(parent, ordinal === 1 ? stem : `${stem}-${ordinal}`);
     try { await lstat(target); }
@@ -179,7 +179,7 @@ async function selectPngSequenceTarget(parent: string, projectName: string): Pro
       throw error;
     }
   }
-  throw new Error('该位置已有过多同名 PNG 序列，请选择其他目录。');
+  throw new Error('该位置已有过多同名导出，请选择其他目录。');
 }
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
@@ -479,10 +479,11 @@ async function initialize(): Promise<void> {
       selectOutputPath: async (window, request) => {
         if (request.pngSequence) {
           const directory = await dialog.showOpenDialog(window, {
-            title: '选择 PNG 序列输出目录', defaultPath: request.projectRoot, properties: ['openDirectory', 'createDirectory'],
+            title: request.pngSequence.spriteSheet ? '选择精灵图输出目录' : '选择 PNG 序列输出目录',
+            defaultPath: request.projectRoot, properties: ['openDirectory', 'createDirectory'],
           });
           return directory.canceled || !directory.filePaths[0] ? null
-            : selectPngSequenceTarget(directory.filePaths[0], request.projectName);
+            : selectPngSequenceTarget(directory.filePaths[0], request.projectName, request.pngSequence.spriteSheet);
         }
         if (!exportFileSystem) {
           throw new Error('Formal export filesystem is unavailable.');

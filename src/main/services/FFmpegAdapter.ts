@@ -383,6 +383,30 @@ export class FFmpegAdapter {
     return { executable: this.ffmpegPath, versionLine, hasAac: true };
   }
 
+  async encodeSpriteSheet(request: {
+    framesDirectory: string;
+    outputPath: string;
+    frameCount: number;
+    columns: number;
+    rows: number;
+    fps: number;
+  }, signal?: AbortSignal): Promise<void> {
+    const frameCount = await this.inspectFrameSequence(request.framesDirectory);
+    if (frameCount !== request.frameCount) {
+      throw new Error('The sprite sheet input did not contain the scheduled frame count.');
+    }
+    const filter = `format=rgba,tile=layout=${request.columns}x${request.rows}:nb_frames=${frameCount}:color=black@0`;
+    const args = [
+      '-n', '-hide_banner', '-loglevel', 'error', '-framerate', String(request.fps),
+      '-start_number', '0', '-i', path.join(request.framesDirectory, 'frame_%06d.png'),
+      '-vf', filter, '-frames:v', '1', '-c:v', 'png', '-pix_fmt', 'rgba', '-threads', '1',
+      '-f', 'image2', '-update', '1', request.outputPath,
+    ];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal?.aborted) throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+    if (result.code !== 0) throw this.mapEncodeFailure(args, result);
+  }
+
   async encodePngSequence(
     rawRequest: EncodePngSequenceRequest,
     signal?: AbortSignal,

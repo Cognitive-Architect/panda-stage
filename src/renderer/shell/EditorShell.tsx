@@ -2382,10 +2382,12 @@ export function EditorShell({
   const beginPreferredExport = (): void => {
     const snapshot = editorProjectStore.getSnapshot();
     const preferences = snapshot?.project.exportPreferences;
-    if (preferences?.format !== 'png-sequence') { void beginFormalExportFlow(); return; }
+    if (!preferences || preferences.format === 'mp4') { void beginFormalExportFlow(); return; }
+    const spriteSheet = preferences.format === 'sprite-sheet';
     const shotId = shotStore.getCurrentShotId();
     if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
-    void beginFormalExportFlow({ shotId, transparent: preferences.transparent });
+    void beginFormalExportFlow({ shotId, transparent: spriteSheet || preferences.transparent,
+      ...(spriteSheet ? { spriteSheet: true } : {}) });
   };
 
   const confirmExportOptions = (preferences: ExportPreferences, pngSequence?: PngSequenceOptions): void => {
@@ -2583,7 +2585,7 @@ export function EditorShell({
         const current = exportTaskRef.current;
         setExportTaskState({
           ...current,
-          message: current.pngSequence ? '无法打开 PNG 序列输出目录。' :
+          message: current.pngSequence?.spriteSheet ? '无法打开精灵图输出目录。' : current.pngSequence ? '无法打开 PNG 序列输出目录。' :
             '\u65e0\u6cd5\u663e\u793a\u89c6\u9891\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u5176\u4ed6\u4f4d\u7f6e\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
         });
       }

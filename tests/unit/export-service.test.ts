@@ -2,6 +2,7 @@ import path from 'node:path';
 import { mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { planSpriteSheetGrid } from '../../src/shared/export-types';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
   ExportJobError,
@@ -204,6 +205,82 @@ class MemoryRenderer implements FrameRenderer {
     };
   }
 }
+
+it('bounds a single sprite sheet before preparing the renderer', () => {
+  expect(planSpriteSheetGrid(5, 1920, 1080)).toEqual({ columns: 2, rows: 3, width: 3840, height: 3240 });
+  expect(() => planSpriteSheetGrid(100, 1920, 1080)).toThrow('PNG');
+  expect(() => planSpriteSheetGrid(0, 100, 100)).toThrow();
+});
+
+it('assembles a pair from the formal ranged schedule, and leaves no output when cancelled', async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'panda-sprite-sheet-'));
+  const fileSystem = new MemoryFileSystem();
+  fileSystem.createJobDirectory = async (jobId) => {
+    const directory = await mkdtemp(path.join(parent, 'staging-'));
+    fileSystem.directories.set(directory, new Map([['job', Buffer.from(jobId)]]));
+    return directory;
+  };
+  const cleanMemory = fileSystem.cleanupJobDirectory.bind(fileSystem);
+  fileSystem.cleanupJobDirectory = async (directory) => {
+    await unlink(path.join(directory, 'sprite-sheet.png')).catch(() => undefined);
+    await rmdir(directory);
+    await cleanMemory(directory);
+  };
+  const header = (width: number, height: number) => {
+    const bytes = Buffer.alloc(26);
+    Buffer.from('89504e470d0a1a0a', 'hex').copy(bytes);
+    bytes.writeUInt32BE(width, 16);
+    bytes.writeUInt32BE(height, 20);
+    bytes[24] = 8;
+    bytes[25] = 6;
+    return bytes;
+  };
+  const renderer = new MemoryRenderer();
+  const render = renderer.renderFrame.bind(renderer);
+  renderer.renderFrame = async (request) => ({ ...await render(request), pngBytes: header(1920, 1080) });
+  const adapter = new MemoryMediaAdapter(fileSystem);
+  const encoder = Object.assign(adapter, {
+    async encodeSpriteSheet(request: { outputPath: string; columns: number; rows: number; frameCount: number }) {
+      expect(request).toMatchObject({ columns: 2, rows: 3, frameCount: 5 });
+      await writeFile(request.outputPath, header(3840, 3240));
+    },
+  });
+  const project = buildProject();
+  const service = new ExportService(renderer, fileSystem, encoder);
+  const output = path.join(parent, 'sprites');
+  const cancelledOutput = path.join(parent, 'sprites-cancelled');
+  const frozen = (targetPath: string) => ({
+    candidate: { project, pngSequence: { shotId: project.shots[0]!.id, spriteSheet: true, transparent: true,
+      range: { startMs: 42, endMs: 290 } }, renderSettings: { width: 1920, height: 1080, fps: 24 },
+      outputIntent: { targetPath }, cameraMode: 'static' }, media: [],
+  }) as unknown as FrozenExportInput;
+  try {
+    const job = service.startPngSequenceExport(frozen(output), async () => {});
+    await expect(job.completion).resolves.toEqual({ outputPath: output });
+    expect((await readdir(output)).sort()).toEqual(['sprite-sheet.json', 'sprite-sheet.png']);
+    const manifest = JSON.parse(await readFile(path.join(output, 'sprite-sheet.json'), 'utf8'));
+    expect(manifest.meta).toEqual({ image: 'sprite-sheet.png', size: { w: 3840, h: 3240 }, fps: 24, origin: 'top-left', units: 'px' });
+    expect(manifest.frames.map(({ timeMs }: { timeMs: number }) => timeMs)).toEqual(
+      renderer.requests.map(({ timeMs }) => timeMs),
+    );
+    expect(manifest.frames[0]).toMatchObject({ index: 0, timeMs: 83, frame: { x: 0, y: 0, w: 1920, h: 1080 } });
+    expect(manifest.frames[4]).toMatchObject({ index: 4, frame: { x: 0, y: 2160, w: 1920, h: 1080 }, trimmed: false, rotated: false });
+    expect(renderer.formalLoads[0]?.solidClear).toBeUndefined();
+
+    const unsubscribe = service.subscribe((update) => {
+      if (update.completedFrames === 1 && update.status === 'running') service.cancelJob(update.jobId);
+    });
+    const cancelled = service.startPngSequenceExport(frozen(cancelledOutput), async () => {});
+    await expect(cancelled.completion).rejects.toBeInstanceOf(ExportJobError);
+    unsubscribe();
+    expect(service.getJob(cancelled.jobId)?.status).toBe('cancelled');
+    expect(await readdir(parent)).toEqual(['sprites']);
+  } finally {
+    for (const file of await readdir(output).catch(() => [])) await unlink(path.join(output, file));
+    await rmdir(output).catch(() => undefined);
+    await rmdir(parent);
+  }
+});
 
 it('exports contiguous Shot-local PNG frames without FFmpeg and retains a marked partial sequence on cancel', async () => {
   const parent = await mkdtemp(path.join(tmpdir(), 'panda-png-sequence-'));
