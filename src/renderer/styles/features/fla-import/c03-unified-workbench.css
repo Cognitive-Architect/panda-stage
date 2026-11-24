@@ -237,6 +237,35 @@
   overflow: hidden;
 }
 
+.fla-sound-review {
+  display: grid;
+  align-content: start;
+  max-width: 640px;
+  padding: 20px;
+  gap: 16px;
+}
+
+.fla-sound-review label,
+.fla-sound-review > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fla-sound-review select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 4px 8px;
+  color-scheme: dark;
+  font: inherit;
+}
+
+.fla-sound-review audio {
+  max-width: 100%;
+}
+
 .fla-c03-review-route-panel[hidden],
 .fla-graphic-instance-workbench-content[hidden] {
   display: none;

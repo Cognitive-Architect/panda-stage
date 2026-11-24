@@ -132,7 +132,7 @@ function locateEndOfCentralDirectory(bytes: Uint8Array): number {
   fail('MALFORMED_ARCHIVE', 'ZIP end-of-central-directory record is missing');
 }
 
-function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
+function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry, maximum: number = FLA_IMPORT_LIMITS.maxXmlBytes): Uint8Array {
   if (!isWithin(bytes, entry.dataOffset, entry.compressedSize)) {
     fail('MALFORMED_ARCHIVE', `ZIP entry data exceeds the source boundary: ${entry.name}`);
   }
@@ -148,7 +148,7 @@ function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
     try {
       return new Uint8Array(
         inflateRawSync(compressed, {
-          maxOutputLength: FLA_IMPORT_LIMITS.maxXmlBytes + 1,
+          maxOutputLength: maximum + 1,
         }),
       );
     } catch (error) {
@@ -162,6 +162,17 @@ function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
     'MALFORMED_ARCHIVE',
     `Unsupported or unsafe ZIP compression method for ${entry.name}`,
   );
+}
+
+export function readSelectedFlaArchiveEntry(bytes: Uint8Array, entry: FlaArchiveEntry, maximum: number): Uint8Array {
+  if (entry.uncompressedSize > maximum || entry.compressedSize > maximum) {
+    fail('MEDIA_LIMIT_EXCEEDED', 'The selected embedded media exceeds the import byte limit.');
+  }
+  const data = readEntryData(bytes, entry, maximum);
+  if (data.byteLength !== entry.uncompressedSize) {
+    fail('MALFORMED_ARCHIVE', 'The selected embedded media has an incorrect stored length.');
+  }
+  return data;
 }
 
 function rejectExternalXmlMarkup(markup: string, entryName: string): void {

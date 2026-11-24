@@ -810,6 +810,14 @@ export class FFmpegAdapter {
     };
   }
 
+  async validateAudioDecode(filePath: string, signal: AbortSignal): Promise<void> {
+    const args = ['-hide_banner', '-loglevel', 'error', '-xerror', '-err_detect', 'explode',
+      '-i', filePath, '-map', '0:a:0', '-f', 'null', '-'];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal.aborted) throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+    if (result.code !== 0) throw new Error('The embedded MP3 stream could not be fully decoded.');
+  }
+
   async probeAudioFile(
     audioPath: string,
     signal?: AbortSignal,

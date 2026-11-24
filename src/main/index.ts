@@ -57,6 +57,7 @@ import { AssetPreviewAudioService } from './services/AssetPreviewAudioService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 import { FlaImportService } from './services/FlaImportService';
+import { FlaSoundService } from './services/FlaSoundService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
 import { FlaAssetCommitService } from './services/FlaAssetCommitService';
 import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-render-session';
@@ -616,10 +617,17 @@ async function initialize(): Promise<void> {
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     getSession: (sessionId) => flaImportService.getSession(sessionId),
   });
+  const flaSoundService = new FlaSoundService(
+    (sessionId, soundId) => flaImportService.getSoundSource(sessionId, soundId),
+    (filePath, signal) => ffmpegAdapter.probeAudioFile(filePath, signal),
+    assetImportService,
+    (filePath, signal) => ffmpegAdapter.validateAudioDecode(filePath, signal),
+  );
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,
     flaImportService,
     flaAssetCommitService,
+    flaSoundService,
     selectFlaSource,
     onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
@@ -679,6 +687,7 @@ async function initialize(): Promise<void> {
   });
   removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
     flaPartPreviewService?.invalidateSession(sessionId);
+    flaSoundService.cancelPreview(sessionId);
   });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,

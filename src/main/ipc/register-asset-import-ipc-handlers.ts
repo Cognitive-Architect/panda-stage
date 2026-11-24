@@ -38,7 +38,7 @@ function assertTrustedSender(
   return expectedWindow;
 }
 
-function failure(
+export function assetImportFailure(
   error: unknown,
   projectRoot: string,
 ): AssetImportResponse {
@@ -83,7 +83,7 @@ async function executeImport(
       ...operation,
     } satisfies AssetImportResponse);
   } catch (error) {
-    return failure(error, request.projectRoot);
+    return assetImportFailure(error, request.projectRoot);
   }
 }
 

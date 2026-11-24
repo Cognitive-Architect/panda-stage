@@ -29,6 +29,8 @@ import {
 } from './fla-inspection-lifecycle';
 import { FlaSourceFrameSuggestions } from './FlaSourceFrameSuggestions';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
+import { FlaSoundReview } from './FlaSoundReview';
+import type { AssetImportResponse } from '../../shared/asset-import-api';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
 import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
@@ -59,6 +61,7 @@ interface FlaCompatibilityReviewSessionProps {
   snapshot: EditorProjectSnapshot | null;
   onClose: () => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
+  onSoundImported?: (response: AssetImportResponse) => Promise<void>;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
   onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
@@ -80,6 +83,7 @@ export function FlaCompatibilityReviewSession({
   snapshot,
   onClose,
   onCommit,
+  onSoundImported,
   onSnapshotImported,
   onSequenceImported,
   onImportGraphicInstance,
@@ -111,7 +115,7 @@ export function FlaCompatibilityReviewSession({
   const [stopAfterCurrentAvailable, setStopAfterCurrentAvailable] = useState(false);
   const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
-  const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic'>('assets');
+  const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic' | 'sound'>('assets');
   const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
   const [recoveryRequired, setRecoveryRequired] = useState(false);
   const recoveryRequiredRef = useRef(false);
@@ -707,7 +711,7 @@ export function FlaCompatibilityReviewSession({
     onClose();
   };
 
-  const changeReviewRoute = (route: 'assets' | 'graphic'): void => {
+  const changeReviewRoute = (route: 'assets' | 'graphic' | 'sound'): void => {
     if (phase === 'committing' || unifiedImportRunningRef.current || graphicImportRunningRef.current ||
         renderTerminalState !== 'active') return;
     setReviewRoute(route);
@@ -884,6 +888,13 @@ export function FlaCompatibilityReviewSession({
             >
               元件
             </button>
+            {ir.sounds?.length ? (
+              <button aria-controls="fla-review-sound-panel" aria-selected={reviewRoute === 'sound'}
+                data-testid="fla-review-sound-tab" disabled={closeLocked} id="fla-review-sound-tab-control"
+                onClick={() => changeReviewRoute('sound')} role="tab" type="button">
+                声音
+              </button>
+            ) : null}
           </nav>
           <button
             aria-label="关闭"
@@ -968,6 +979,15 @@ export function FlaCompatibilityReviewSession({
           onStopAfterCurrent={requestStopAfterCurrent}
         />
         </div>
+        {reviewRoute === 'sound' && ir.sounds?.length ? (
+          <div aria-labelledby="fla-review-sound-tab-control" className="fla-c03-review-route-panel"
+            id="fla-review-sound-panel" role="tabpanel">
+            <FlaSoundReview key={sessionId} sessionId={sessionId} sounds={ir.sounds}
+              snapshot={snapshot} importing={phase === 'committing'}
+              onImporting={(importing) => setPhase(importing ? 'committing' : 'ready')}
+              onImported={async (result) => { await onSoundImported?.(result); }} />
+          </div>
+        ) : null}
         <div
           aria-labelledby="fla-review-graphic-tab-control"
           className="fla-c03-review-route-panel"

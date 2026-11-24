@@ -134,6 +134,8 @@ import {
   FlaRasterPreviewResponseSchema,
   type FlaInspectionStarted,
 } from '../shared/fla-import-api';
+import { FlaSoundCancelRequestSchema, FlaSoundImportRequestSchema, FlaSoundPreviewRequestSchema, FlaSoundPreviewResponseSchema,
+  type FlaSoundCancelRequest, type FlaSoundImportRequest, type FlaSoundPreviewRequest } from '../shared/fla-sound-api';
 import {
   FlaAssetCommitRequestSchema,
   FlaAssetCommitResponseSchema,
@@ -647,6 +649,18 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaCancelResponseSchema.parse(response);
+    },
+    previewSound: async (rawRequest: FlaSoundPreviewRequest) => {
+      const request = FlaSoundPreviewRequestSchema.parse(rawRequest);
+      return FlaSoundPreviewResponseSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.FLA_SOUND_PREVIEW, request));
+    },
+    cancelSoundPreview: async (rawRequest: FlaSoundCancelRequest) => {
+      const request = FlaSoundCancelRequestSchema.parse(rawRequest);
+      return FlaCancelResponseSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.FLA_SOUND_CANCEL, request));
+    },
+    importSound: async (rawRequest: FlaSoundImportRequest) => {
+      const request = FlaSoundImportRequestSchema.parse(rawRequest);
+      return AssetImportResponseSchema.parse(await ipcRenderer.invoke(IPC_CHANNELS.FLA_SOUND_IMPORT, request));
     },
     previewRaster: async (sessionId: string, mediaId: string) => {
       const request = FlaRasterPreviewRequestSchema.parse({ sessionId, mediaId });
