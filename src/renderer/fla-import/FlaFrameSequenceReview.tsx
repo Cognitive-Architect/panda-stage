@@ -239,11 +239,17 @@ export function FlaFrameSequenceReview({
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
   const maskedFrameWarning = displayedSequenceItems.find((item) => item.preview.maskWarning);
   const ikPoseFrameWarning = displayedSequenceItems.find((item) => item.preview.ikPoseWarning);
-  const sequenceWarnings = maskedFrameWarning || ikPoseFrameWarning ? (
+  const projectedFrameWarning = displayedSequenceItems.find((item) => item.preview.projectionWarning);
+  const sequenceWarnings = maskedFrameWarning || ikPoseFrameWarning || projectedFrameWarning ? (
     <div className="fla-frame-sequence-warnings">
       {maskedFrameWarning ? (
         <p className="fla-frame-sequence-unsupported" role="status">
           第 {maskedFrameWarning.frameIndex + 1} 帧的部分遮罩内容未显示。{maskedFrameWarning.preview.maskWarning}
+        </p>
+      ) : null}
+      {projectedFrameWarning ? (
+        <p className="fla-frame-sequence-unsupported" role="status">
+          第 {projectedFrameWarning.frameIndex + 1} 帧跳过了无法投影的图层。{projectedFrameWarning.preview.projectionWarning}
         </p>
       ) : null}
       {ikPoseFrameWarning ? (

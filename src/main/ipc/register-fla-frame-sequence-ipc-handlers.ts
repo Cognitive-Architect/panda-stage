@@ -143,6 +143,7 @@ const defaultBuildFrameSource = async function* buildFrameSource(
       sourceViewport: svg.composition.framing.viewBox,
       maskWarning: svg.maskWarning,
       ikPoseWarning: svg.ikPoseWarning,
+      projectionWarning: svg.projectionWarning,
       ...(svg.staticTexts?.length ? { staticTexts: svg.staticTexts } : {}),
       ...(svg.graphicFraming ? { graphicFraming: svg.graphicFraming } : {}),
     };

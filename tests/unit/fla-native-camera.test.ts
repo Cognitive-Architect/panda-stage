@@ -16,12 +16,12 @@ const instance = (libraryItemName: string, matrix: string) =>
   '<DOMSymbolInstance symbolType="graphic" libraryItemName="' + libraryItemName + '">' +
   '<matrix><Matrix ' + matrix + '/></matrix></DOMSymbolInstance>';
 const camera = (matrix: string, attr?: string) => frame(instance('__Camera__', matrix), attr);
-const doc = (layers: string) => '<DOMDocument frameRate="24" width="200" height="100">' +
-  '<symbols><Include href="Tile.xml"/></symbols><timelines><DOMTimeline name="Scene"><layers>' +
+const doc = (layers: string, attrs: string) => '<DOMDocument frameRate="24" width="200" height="100">' +
+  '<symbols><Include href="Tile.xml"/></symbols><timelines><DOMTimeline name="Scene" ' + attrs + '><layers>' +
   layers + '</layers></DOMTimeline></timelines></DOMDocument>';
 
-function prepare(layers: string) {
-  const result = adaptFlaXflDisplaySource(doc(layers), library);
+function prepare(layers: string, attrs = '') {
+  const result = adaptFlaXflDisplaySource(doc(layers, attrs), library);
   if (!result.ok) throw new Error(result.message);
   const { source } = result;
   const scene = source.sceneTimelines[0]!;
@@ -98,6 +98,29 @@ describe('native Animate Scene camera', () => {
         expect(result.displayList.maskDiagnostics?.join()).toContain('depth differs');
       }
     }
+  });
+
+  it('disables camera motion and camera depth while preserving layer depth', () => {
+    const content = layer('Artwork', frame(instance('Tile', 'tx="135" ty="62"'))) +
+      layer('HUD', frame(instance('Tile', 'tx="16"')), 'attachedToCamera="true"') +
+      layer('Far', frame(instance('Tile', 'tx="140"'), 'index="0" duration="5" frameZDepth="120"'));
+    const cameraLayer = layer('Camera', camera('tx="150" ty="50"', 'index="0" duration="5" frameZDepth="20"'),
+      'layerType="camera"');
+    expect(prepare(cameraLayer + content, 'cameraLayerEnabled="false"').layers(0)).toEqual(prepare(content).layers(0));
+    expect(new Map(prepare(cameraLayer + content, 'cameraLayerEnabled="true"').layers(0)).get('Artwork')?.tx).toBeLessThan(100);
+    const singular = layer('Camera', camera('a="0" d="0"', 'index="-1"'), 'layerType="camera"');
+    expect(prepare(singular + content, 'cameraLayerEnabled="false"').layers(0)).toEqual(prepare(content).layers(0));
+  });
+
+  it('keeps healthy layers when a hidden or visible layer would exceed the projection range', () => {
+    const content = layer('Artwork', frame(instance('Tile', 'tx="135" ty="62"')));
+    const near = frame(instance('Tile', ''), 'index="0" frameZDepth="-528"');
+    const hidden = prepare(layer('Too near', near, 'visible="false"') + content);
+    const visible = prepare(layer('Too near', near) + content);
+    expect(hidden.layers(0)).toEqual(prepare(content).layers(0));
+    expect(visible.layers(0)).toEqual(hidden.layers(0));
+    expect(hidden.frameContext(0).projectionDiagnostics).toBeUndefined();
+    expect(visible.frameContext(0).projectionDiagnostics).toEqual([expect.stringContaining('Too near')]);
   });
 
   it('applies inverse rotation and retains healthy Graphics when the camera is singular', () => {

@@ -128,6 +128,7 @@ export interface BuildSvgSuccess {
   hasRenderablePath: boolean;
   readonly maskWarning?: string;
   readonly ikPoseWarning?: string;
+  readonly projectionWarning?: string;
   /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
   readonly staticTexts?: readonly FlaStaticTextRenderItem[];
   readonly hasInstanceFilters?: boolean;
@@ -2997,7 +2998,8 @@ export async function buildRenderableTargetCatalog(
     });
     let unsupportedReason = check.unsupportedReason;
     if (resolved.ok && !unsupportedReason &&
-        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length)) {
+        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length ||
+          resolved.displayList.projectionDiagnostics?.length)) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
@@ -4665,8 +4667,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
   const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
-  if ((maskWarnings.size || ikPoseWarning) && emittedLeafCount === 0) {
-    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning].filter(Boolean).join('；').slice(0, 500) };
+  const projectionWarning = displayList.projectionDiagnostics?.join('；').slice(0, 500);
+  if ((maskWarnings.size || ikPoseWarning || projectionWarning) && emittedLeafCount === 0) {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning, projectionWarning].filter(Boolean).join('；').slice(0, 500) };
   }
   const graphicFraming: FlaStaticTextGraphicFraming | undefined =
     framingMode === 'content' && staticTexts.length > 0
@@ -4697,6 +4700,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
+    ...(projectionWarning ? { projectionWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
     ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
     ...(graphicFraming ? { graphicFraming } : {}),

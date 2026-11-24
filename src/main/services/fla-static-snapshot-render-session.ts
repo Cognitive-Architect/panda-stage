@@ -569,6 +569,7 @@ export class FlaStaticSnapshotRenderSession {
             bytes: raster.pngBytes,
             ...(svgResult.maskWarning ? { maskWarning: svgResult.maskWarning } : {}),
             ...(svgResult.ikPoseWarning ? { ikPoseWarning: svgResult.ikPoseWarning } : {}),
+            ...(svgResult.projectionWarning ? { projectionWarning: svgResult.projectionWarning } : {}),
             sha256,
             wallClockMs: active.startedAt
               ? Math.max(0, Date.now() - new Date(active.startedAt).getTime())

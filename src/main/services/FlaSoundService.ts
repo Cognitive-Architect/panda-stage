@@ -1,6 +1,7 @@
 import { mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { inspectEmbeddedMp3 } from './mp3-header';
 import { decodeADPCM } from '../../renderer/fla-import/parser-core/adpcm-decoder';
 import type { FlaSoundMetadata } from '../../shared/fla-import-api';
 import { sanitizeAssetFileName } from '../../shared/asset-name';
@@ -68,9 +69,10 @@ export function extractFlaSound({ sound, bytes, entries }: SoundSource): SoundPa
   }
   const data = stored.subarray(0, declared ?? stored.length);
   const header = Buffer.from(data.buffer, data.byteOffset, Math.min(12, data.length));
-  if (data.length >= 4 && (header.toString('ascii', 0, 3) === 'ID3' ||
-      (data[0] === 255 && ((data[1] ?? 0) & 0xe0) === 0xe0))) {
+  const mp3 = inspectEmbeddedMp3(data);
+  if (mp3 !== 'none') {
     if (embedded && declared === undefined) unsupported('The embedded MP3 stream is missing its cache boundary.');
+    if (mp3 === 'truncated') unsupported('The embedded MP3 stream has an invalid frame boundary.');
     return { bytes: data, mimeType: 'audio/mpeg' };
   }
   if (header.length === 12 && header.toString('ascii', 0, 4) === 'RIFF' && header.toString('ascii', 8, 12) === 'WAVE') {

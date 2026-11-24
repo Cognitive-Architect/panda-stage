@@ -419,13 +419,18 @@ function sourceLayerIsVisible(layer: FlaXflElementBlock): boolean {
     layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
 }
 
+function nativeCameraEnabled(timelineXml: string): boolean {
+  return !['false', '0'].includes(nextTagToken(timelineXml, 0)?.attributes.cameraLayerEnabled ?? '');
+}
+
 function timelineFrameSpanIndex(
   timelineXml: string,
 ): FlaStaticSnapshotDisplaySourceResult<FlaTimelineFrameSpanIndex<FlaXflElementBlock>> {
+  const cameraEnabled = nativeCameraEnabled(timelineXml);
   const result = buildFlaTimelineFrameSpanIndex(
     layersForTimeline(timelineXml).map((layer) => ({
       visible: sourceLayerIsVisible(layer),
-      frames: framesForLayer(layer.xml).map((frame) => ({
+      frames: (!cameraEnabled && layer.attributes.layerType?.toLowerCase() === 'camera' ? [] : framesForLayer(layer.xml)).map((frame) => ({
         index: frame.attributes.index,
         duration: frame.attributes.duration,
         tweenType: frame.attributes.tweenType,
@@ -841,7 +846,9 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
     const kind = node.name === 'BlurFilter' ? 'blur' : node.name === 'GlowFilter' ? 'glow'
       : node.name === 'DropShadowFilter' ? 'dropShadow' : undefined;
     const attributes = node.attributes;
-    const enabled = attributes.enabled !== 'false' && attributes.enabled !== '0';
+    const enabledValue = attributes.isEnabled ?? attributes.enabled;
+    if (![undefined, 'true', '1', 'false', '0'].includes(enabledValue)) return null;
+    const enabled = enabledValue !== 'false' && enabledValue !== '0';
     if (!kind) {
       if (enabled) return null;
       continue;
@@ -850,13 +857,12 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
       filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0 });
       continue;
     }
-    const allowed = ['enabled', 'blurX', 'blurY', 'quality'];
+    const allowed = ['isEnabled', 'enabled', 'blurX', 'blurY', 'quality'];
     if (kind !== 'blur') allowed.push('color', 'alpha', 'strength', 'inner', 'knockout');
     if (kind === 'dropShadow') allowed.push('distance', 'angle', 'hideObject');
     if (Object.keys(attributes).some((key) => !allowed.includes(key)) ||
         ['inner', 'knockout', 'hideObject'].some((key) =>
           attributes[key] !== undefined && attributes[key] !== 'false' && attributes[key] !== '0') ||
-        ![undefined, 'true', '1'].includes(attributes.enabled) ||
         ![undefined, '1'].includes(attributes.quality) ||
         getFlaXflDirectChildren(node.xml, node.name).length > 0) return null;
     const numeric = (key: string, fallback: number) => {
@@ -1906,7 +1912,9 @@ function sampleObjectMotion(
   if (!pivot) return { ok: false, message: '此帧的对象补间转轴无效', fromObjectMotion: true };
   let core = state.objectMotionCurves.get(frame);
   if (!core) {
-    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren);
+    const authoredFilters = readInstanceFilters(instance);
+    if (!authoredFilters) return { ok: false, message: 'Unsupported or out-of-budget XFL instance filters', fromObjectMotion: true };
+    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters.filter(({ kind }) => kind === 'dropShadow'));
     state.objectMotionCurves.set(frame, core);
   }
   const color = classicMotionColorTransform(instance, true);
@@ -2386,10 +2394,10 @@ function buildObjectMotionFrameElements(
   let shadowOrdinal = 0;
   const instanceFilters = element.instanceFilters?.map((filter) => {
     if (filter.kind !== 'dropShadow') return filter;
-    const distance = pose.shadowDistances?.[shadowOrdinal++];
-    return filter.enabled && distance !== undefined ? { ...filter, distance } : filter;
+    const parameters = pose.shadowFilters?.[shadowOrdinal++];
+    return filter.enabled && parameters ? { ...filter, ...parameters } : filter;
   });
-  if (pose.shadowDistances && pose.shadowDistances.length > shadowOrdinal) {
+  if (pose.shadowFilters?.slice(shadowOrdinal).some((parameters) => Object.keys(parameters).length > 0)) {
     return fail('RENDER_FAILED', 'Shadow distance animation has no matching authored filter');
   }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
@@ -2492,7 +2500,12 @@ function buildIkPoseFrameElements(
 }
 
 type SceneStage = { readonly width: number; readonly height: number };
-type StageLayerView = { readonly matrix: FlaDisplayListMatrix | null; readonly depth: number };
+type StageLayerView = { readonly matrix: FlaDisplayListMatrix | null; readonly depth: number; readonly warning?: string };
+
+function withinStageProjectionBudget(matrix: FlaDisplayListMatrix): boolean {
+  return [matrix.a, matrix.b, matrix.c, matrix.d].every((value) => Math.abs(value) <= 32) &&
+    [matrix.tx, matrix.ty].every((value) => Math.abs(value) <= 262_144);
+}
 
 function authoredLayerDepth(span: FlaNormalizedFrameSpan<FlaXflElementBlock> | null): number {
   const raw = span?.sourceFrame.attributes.frameZDepth;
@@ -2507,9 +2520,10 @@ function sceneStageViews(
   frameIndex: number,
   stage: SceneStage,
   state: SourceBuildState,
+  cameraEnabled: boolean,
 ): RigCalculationResult<readonly StageLayerView[]> {
   const isCamera = (layer: FlaXflElementBlock) => layer.attributes.layerType?.toLowerCase() === 'camera';
-  const cameraIndices = layers.flatMap((layer, index) => isCamera(layer) ? [index] : []);
+  const cameraIndices = cameraEnabled ? layers.flatMap((layer, index) => isCamera(layer) ? [index] : []) : [];
   const invalid = (message: string): RigCalculationResult<never> => ({ ok: false, message });
   if (cameraIndices.length > 1) return invalid('Multiple native camera layers are unsupported');
   const center = { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: stage.width / 2, ty: stage.height / 2 };
@@ -2545,7 +2559,7 @@ function sceneStageViews(
       let matrix = start.matrix;
       if (span.tweenType === 'motion object') {
         const sampled = sampleObjectMotion(span.sourceFrame, frameIndex - span.index, state);
-        if (!sampled.ok || sampled.value.pose.shadowDistances) return invalid('Unsupported native camera Object Motion');
+        if (!sampled.ok || sampled.value.pose.shadowFilters) return invalid('Unsupported native camera Object Motion');
         matrix = sampled.value.pose.matrix;
       } else if (span.tweenType === 'motion' && frameIndex > span.index) {
         const endSpan = findCoveringSpan(spans, span.endExclusive);
@@ -2568,6 +2582,7 @@ function sceneStageViews(
       const inverted = inverse(matrix);
       if (!inverted) return invalid('Native camera transform is singular');
       view = compose(center, inverted);
+      if (!Object.values(view).every(Number.isFinite)) return invalid('Native camera transform is not finite');
       cameraDepth = sampleDepth(spans, span);
       if (!Number.isFinite(cameraDepth)) return invalid('Invalid native camera depth');
     }
@@ -2578,13 +2593,22 @@ function sceneStageViews(
   const focalLength = 528.25;
   const result: StageLayerView[] = [];
   for (const [index, layer] of layers.entries()) {
-    if (isCamera(layer) || ['guide', 'folder'].includes(layer.attributes.layerType?.toLowerCase() ?? '')) {
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask';
+    if (!isMask && !sourceLayerIsVisible(layer)) {
       result.push({ matrix: null, depth: 0 });
       continue;
     }
     const spans = frameSpanIndex.layers[index]?.spans ?? [];
-    const depth = sampleDepth(spans, findCoveringSpan(spans, frameIndex));
-    if (!Number.isFinite(depth)) return invalid('Invalid native layer depth');
+    const span = findCoveringSpan(spans, frameIndex);
+    if (!isMask && (!span || !frameHasPotentialDisplayElements(span.sourceFrame))) {
+      result.push({ matrix: null, depth: 0 });
+      continue;
+    }
+    const depth = sampleDepth(spans, span);
+    if (!Number.isFinite(depth)) {
+      result.push({ matrix: null, depth: 0, warning: '无效的图层景深' });
+      continue;
+    }
     const attached = cameraIndex !== undefined && layer.attributes.attachedToCamera === 'true';
     const relative = depth - (attached ? 0 : cameraDepth);
     const stackDepth = attached && cameraDepth !== 0 ? 2 * depth + cameraDepth : depth;
@@ -2595,11 +2619,9 @@ function sceneStageViews(
     const scale = focalLength / (focalLength + relative);
     const projection = { a: scale, d: scale, b: 0, c: 0, tx: (1 - scale) * center.tx, ty: (1 - scale) * center.ty };
     const matrix = attached ? projection : compose(projection, view);
-    if (scale > 32 || [matrix.a, matrix.b, matrix.c, matrix.d].some((value) => !Number.isFinite(value) || Math.abs(value) > 32) ||
-        [matrix.tx, matrix.ty].some((value) => !Number.isFinite(value) || Math.abs(value) > 262_144)) {
-      return invalid('Native camera or layer depth exceeds the bounded projection range');
-    }
-    result.push({ matrix, depth: stackDepth });
+    result.push(scale > 32 || !withinStageProjectionBudget(matrix)
+      ? { matrix: null, depth: stackDepth, warning: '图层超出相机投影范围' }
+      : { matrix, depth: stackDepth });
   }
   return { ok: true, value: result };
 }
@@ -2620,7 +2642,8 @@ function buildGraphicFrameContext(
 
   const layers = layersForTimeline(timelineXml);
   const stageViews = options?.sceneStage
-    ? sceneStageViews(layers, frameSpanIndex, frameIndex, options.sceneStage, state)
+    ? sceneStageViews(layers, frameSpanIndex, frameIndex, options.sceneStage, state,
+      nativeCameraEnabled(timelineXml))
     : undefined;
   if (stageViews && !stageViews.ok) {
     return { ok: true, value: { frameIndex, layers: [], unsupportedDisplayReason: stageViews.message } };
@@ -2957,22 +2980,30 @@ function buildGraphicFrameContext(
 
   const resolvedLayers: Array<FlaDisplayListFrameContext['layers'][number] & { depth?: number }> = [];
   const unsupportedDisplayReasons: string[] = [];
+  const projectionDiagnostics: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
     const isMask = maskLayerIds.has(selection.layerIndex);
     const stageView = stageViews?.value[selection.layerIndex];
-    if (stageView?.matrix === null && !isMask) continue;
+    if (stageView?.matrix === null && !isMask) {
+      if (stageView.warning && projectionDiagnostics.length < 32) {
+        projectionDiagnostics.push(`${layer.attributes.name ?? selection.layerIndex + 1}：${stageView.warning}`.slice(0, 500));
+      }
+      continue;
+    }
     const layerReasons: string[] = [];
-    const sampled = sampleLayer(selection, layerReasons, isMask);
+    const sampled = stageView?.matrix === null
+      ? { ok: true as const, value: { elements: [], frameFilter: undefined } }
+      : sampleLayer(selection, layerReasons, isMask);
     const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
       ? `第 ${selection.span.index + 1}–${selection.span.endExclusive} 帧：${sampled.message}`
       : undefined;
     if (!sampled.ok && sampled.code !== 'UNSUPPORTED_IK_POSE' &&
         (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
     const { elements, frameFilter } = sampled.ok ? sampled.value : { elements: [], frameFilter: undefined };
-    const maskReason = isMask ? (stageView?.matrix === null ? 'Native mask is behind the camera' : !sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
+    const maskReason = isMask ? (stageView?.matrix === null ? (stageView.warning ?? 'Native mask is behind the camera') : !sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
       (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
@@ -3015,6 +3046,7 @@ function buildGraphicFrameContext(
     ok: true,
     value: {
       frameIndex,
+      ...(projectionDiagnostics.length ? { projectionDiagnostics } : {}),
       layers: stageViews
         ? [...resolvedLayers].reverse().sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
         : normalizeXflTimelineLayersForPainterOrder(resolvedLayers),

@@ -22,6 +22,7 @@ export const FLA_DISPLAY_LIST_IDENTITY_MATRIX: FlaDisplayListMatrix =
  */
 export interface FlaDisplayListFrameContext {
   readonly frameIndex: number;
+  readonly projectionDiagnostics?: readonly string[];
   /** Layers are supplied back-to-front in painter order; the resolver preserves it. */
   readonly layers: readonly FlaDisplayListLayer[];
   /** Set when visible authored content was found outside the safe display subset. */
@@ -299,6 +300,7 @@ export interface FlaResolvedDisplayList {
   readonly layers: readonly FlaResolvedDisplayLayer[];
   readonly resolvedNodeCount: number;
   readonly maskDiagnostics?: readonly string[];
+  readonly projectionDiagnostics?: readonly string[];
   readonly ikPoseDiagnostics?: readonly string[];
 }
 
@@ -929,6 +931,7 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
+      ...(input.root.frameContext.projectionDiagnostics?.length ? { projectionDiagnostics: input.root.frameContext.projectionDiagnostics } : {}),
       ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
       ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },

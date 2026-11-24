@@ -1,3 +1,4 @@
+import { readId3AudioOffset, readMpegAudioHeader } from './mp3-header';
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -247,20 +248,7 @@ export class MediaInspectionService {
 
   private async inspectMp3(sourcePath: string, size: number): Promise<void> {
     const initial = await this.readRange(sourcePath, 0, Math.min(size, 10));
-    let audioOffset = 0;
-    if (initial.toString('ascii', 0, 3) === 'ID3') {
-      if (initial.length < 10) throw new Error('Truncated ID3 header.');
-      const bytes = initial.subarray(6, 10);
-      if ([...bytes].some((value) => value > 0x7f)) {
-        throw new Error('Invalid ID3 synchsafe size.');
-      }
-      audioOffset =
-        10 +
-        ((bytes[0] ?? 0) << 21) +
-        ((bytes[1] ?? 0) << 14) +
-        ((bytes[2] ?? 0) << 7) +
-        (bytes[3] ?? 0);
-    }
+    const audioOffset = readId3AudioOffset(initial);
     if (audioOffset >= size) throw new Error('MP3 has no audio frames.');
     const frameBytes = await this.readRange(
       sourcePath,
@@ -268,24 +256,7 @@ export class MediaInspectionService {
       Math.min(65_536, size - audioOffset),
     );
     for (let index = 0; index + 3 < frameBytes.length; index += 1) {
-      const first = frameBytes[index] ?? 0;
-      const second = frameBytes[index + 1] ?? 0;
-      const third = frameBytes[index + 2] ?? 0;
-      const sync = first === 0xff && (second & 0xe0) === 0xe0;
-      const versionValid = ((second >> 3) & 0x03) !== 0x01;
-      const layerValid = ((second >> 1) & 0x03) !== 0;
-      const bitrateIndex = (third >> 4) & 0x0f;
-      const sampleRateIndex = (third >> 2) & 0x03;
-      if (
-        sync &&
-        versionValid &&
-        layerValid &&
-        bitrateIndex !== 0 &&
-        bitrateIndex !== 0x0f &&
-        sampleRateIndex !== 0x03
-      ) {
-        return;
-      }
+      if (readMpegAudioHeader(frameBytes, index)) return;
     }
     throw new Error('MP3 frame header was not found.');
   }

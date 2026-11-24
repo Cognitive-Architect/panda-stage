@@ -2372,7 +2372,7 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning ??
+    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning ?? nativeComposition.projectionWarning ??
       (frameContext.layers.some((layer) => layer.stageProjection)
         ? 'Native camera and depth are retained in the composed scene. Use a snapshot or frame sequence.'
         : undefined);

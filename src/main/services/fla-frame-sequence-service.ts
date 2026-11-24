@@ -101,6 +101,7 @@ export interface SequenceFrameInput {
   /** Source-space crop used by the renderer to frame this particular PNG. */
   sourceViewport?: { x: number; y: number; width: number; height: number };
   maskWarning?: string;
+  projectionWarning?: string;
   ikPoseWarning?: string;
   staticTexts?: FlaStaticSnapshotRasterizeInput['staticTexts'];
   graphicFraming?: FlaStaticSnapshotRasterizeInput['graphicFraming'];
@@ -151,6 +152,7 @@ interface SequenceInFlightItem {
   sequenceOrdinal: number;
   sourceViewport?: { x: number; y: number; width: number; height: number };
   maskWarning?: string;
+  projectionWarning?: string;
   ikPoseWarning?: string;
   rasterOutput: FlaStaticSnapshotRasterizeOutput;
   frameWallClockMs: number;
@@ -412,6 +414,7 @@ export class FlaFrameSequenceService {
           ...(effectiveViewport ? { sourceViewport: effectiveViewport } : {}),
           maskWarning: frame.maskWarning,
           ikPoseWarning: frame.ikPoseWarning,
+          projectionWarning: frame.projectionWarning,
           rasterOutput,
           frameWallClockMs,
           receivedAt: this.now(),
@@ -598,6 +601,7 @@ export class FlaFrameSequenceService {
         pixelCount: it.rasterOutput.pixelCount,
         ...(it.maskWarning ? { maskWarning: it.maskWarning } : {}),
         ...(it.ikPoseWarning ? { ikPoseWarning: it.ikPoseWarning } : {}),
+        ...(it.projectionWarning ? { projectionWarning: it.projectionWarning } : {}),
       };
       return {
         frameIndex: it.frameIndex,

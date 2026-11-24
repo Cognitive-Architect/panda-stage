@@ -21,22 +21,29 @@ describe('Animate Object Motion', () => {
           <TimeMap type="Quadratic" strength="-100"/>
           <PropertyContainer id="headContainer"><Property id="Motion_X" value="3"/>
             <PropertyContainer id="Filters">
-              <PropertyContainer><Property id="DropShadow_Distance" value="9"/></PropertyContainer>
-              <PropertyContainer><Property id="DropShadow_Distance">
-                <Keyframe timevalue="0" anchor="0,4"/><Keyframe timevalue="4000" anchor="0,20"/>
-              </Property></PropertyContainer>
+              <PropertyContainer><Property id="DropShadow_Quality" value="3"/><Property id="DropShadow_Distance" value="9"/></PropertyContainer>
+              <PropertyContainer id="DropShadow_Filter">
+                <Property id="DropShadow_Distance"><Keyframe timevalue="0" anchor="0,5"/><Keyframe timevalue="4000" anchor="0,20"/></Property>
+                <Property enabled="1" id="DropShadow_BlurX" ignoreTimeMap="0"><Keyframe anchor="0,6" next="0,6" previous="0,6" timevalue="0"/></Property>
+                <Property enabled="1" id="DropShadow_BlurY" value="0"/>
+                <Property enabled="1" id="DropShadow_Strength" value="60"/>
+                <Property enabled="1" id="DropShadow_Quality" value="1"/>
+                <Property enabled="1" id="DropShadow_Angle" value="0"/>
+                <Property enabled="1" id="DropShadow_InnerShadow" value="0"/>
+                <Property enabled="1" id="DropShadow_Color"><Keyframe timevalue="0" value="0x123456ff"/></Property>
+              </PropertyContainer>
             </PropertyContainer>
           </PropertyContainer>
         </AnimationCore></motionObjectXML>
         <elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
-          <filters><DropShadowFilter enabled="false"/><GlowFilter blurX="0" strength="0"/>
-            <DropShadowFilter blurX="5" blurY="0" angle="0" color="#123456"/></filters>
+          <filters><DropShadowFilter isEnabled="false" enabled="true"/><GlowFilter blurX="0" strength="0"/>
+            <DropShadowFilter isEnabled="1" blurX="5" blurY="0" angle="0" color="#123456"/></filters>
         </DOMSymbolInstance></elements>
       </DOMFrame></frames></DOMLayer>
       </layers></DOMTimeline></timelines></DOMDocument>`, []);
     if (!source.ok) throw new Error(source.message);
     const scene = source.source.sceneTimelines[0]!;
-    for (const [frame, distance] of [[0, 4], [2, 8], [4, 20], [5, 20], [2, 8]]) {
+    for (const [frame, distance] of [[0, 5], [2, 8.75], [4, 20], [5, 20], [2, 8.75]]) {
       const sampled = source.source.buildSceneFrameContext(scene.xml, frame!, 'scene:0');
       if (!sampled.ok) throw new Error(sampled.message);
       expect(sampled.value.unsupportedDisplayReason).toBeUndefined();
@@ -46,10 +53,25 @@ describe('Animate Object Motion', () => {
       expect(element.instanceFilters).toMatchObject([
         { kind: 'dropShadow', enabled: false, distance: 0 },
         { kind: 'glow', blurX: 0, strength: 0 },
-        { kind: 'dropShadow', color: '#123456', blurX: 5, blurY: 0 },
+        { kind: 'dropShadow', enabled: true, color: '#123456', alpha: 1, strength: 0.6, blurX: 6, blurY: 0 },
       ]);
       expect(element.instanceFilters?.[2]?.distance).toBeCloseTo(distance!);
     }
+  });
+
+  it.each([
+    '<Keyframe timevalue="2000" anchor="0,6"/>',
+    '<Keyframe timevalue="2000" anchor="0,5" previous="-500,12" next="500,5"/>',
+  ])('diagnoses a non-constant companion despite equal endpoints', (middle) => {
+    const xml = `<DOMFrame><motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
+      <PropertyContainer id="Filters"><PropertyContainer id="DropShadow_Filter">
+        <Property id="DropShadow_Distance" value="5"/>
+        <Property id="DropShadow_BlurX"><Keyframe timevalue="0" anchor="0,5"/>${middle}
+          <Keyframe timevalue="4000" anchor="0,5"/></Property>
+      </PropertyContainer></PropertyContainer>
+      </AnimationCore></motionObjectXML></DOMFrame>`;
+    expect(parseFlaObjectMotion({ name: 'DOMFrame', xml, attributes: {} }, getFlaXflDirectChildren))
+      .toMatchObject({ ok: false, message: expect.stringContaining('DropShadow_BlurX') });
   });
 
   it('discovers a scene with a blank lead-in and samples its authored axes and off-centre pivot', async () => {

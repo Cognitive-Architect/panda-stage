@@ -18,14 +18,34 @@ async function source(sound: Partial<Entry['sound']>, artifact: string, payload:
 }
 
 describe('selected FLA sound extraction', () => {
-  it('preserves the declared MP3 stream and excludes Adobe appended cache', async () => {
-    const mp3 = Uint8Array.from([255, 251, 144, 100, 42, 72]);
+  it.each([false, true])('preserves complete MP3 frames and excludes appended cache (ID3 %s)', async (id3) => {
+    // MPEG-1 Layer III, 128 kb/s at 44.1 kHz gives 417-byte unpadded frames.
+    const frame = new Uint8Array(417);
+    frame.set([255, 251, 144, 100]);
+    const tag = id3 ? [73, 68, 51, 4, 0, 0, 0, 0, 0, 0] : [];
+    const mp3 = Uint8Array.from([...tag, ...frame, ...frame]);
     const fixture = await source({
       format: '44kHz 16bit Stereo', dataLength: mp3.length,
     }, 'bin/voice.dat', Uint8Array.from([...mp3, 12, 24, 42]));
     expect(extractFlaSound(fixture)).toEqual({ mimeType: 'audio/mpeg', bytes: mp3 });
-    expect(() => extractFlaSound({ ...fixture, sound: { ...fixture.sound, dataLength: 10 } })).toThrow('invalid data length');
+    expect(() => extractFlaSound({ ...fixture, sound: { ...fixture.sound, dataLength: mp3.length + 5 } })).toThrow('invalid data length');
     expect(() => extractFlaSound({ ...fixture, sound: { ...fixture.sound, dataLength: undefined } })).toThrow('cache boundary');
+  });
+
+  it.each([0, -1])('treats a PCM first sample of %i as PCM with and without a cache boundary', async (first) => {
+    const pcm = Buffer.alloc(8820, 0);
+    pcm.writeInt16LE(first);
+    pcm.writeInt16LE(12345, 2);
+    for (const dataLength of [undefined, pcm.length]) {
+      const fixture = await source({ format: '44kHz 16bit Mono', sampleCount: 4410, dataLength }, 'bin/voice.dat', pcm);
+      const result = extractFlaSound(fixture);
+      expect(result.mimeType).toBe('audio/wav');
+      const wav = Buffer.from(result.bytes);
+      expect(wav.readUInt32LE(24)).toBe(44100);
+      expect(wav.readUInt16LE(22)).toBe(1);
+      expect(wav.readUInt32LE(40)).toBe(8820);
+      expect(wav.subarray(44)).toEqual(pcm);
+    }
   });
 
   it('preserves 16-bit little-endian PCM and writes the standard sample rate and channel count', async () => {
