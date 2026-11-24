@@ -1,6 +1,6 @@
 .body-pose-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 5rem), 1fr));
   gap: var(--ui-space-2);
   margin-block: var(--ui-space-2);
 }
@@ -16,6 +16,11 @@
 .body-pose-card[aria-pressed='true'] {
   outline: 2px solid var(--ui-color-selected-border);
   outline-offset: -2px;
+}
+
+.body-pose-card[data-ui-button]:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
 }
 
 .body-pose-card-art {

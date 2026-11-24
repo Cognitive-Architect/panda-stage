@@ -28,6 +28,12 @@ it('projects stored poses through the shared renderer in a clean character scene
 
   const pose = character.bodyPoses![0]!;
   expect(evaluateBodyPoseThumbnail(scene, { ...pose, parts: [{ ...pose.parts[0]!, partId: IDS.character }] })).toBeNull();
+  const edited = evaluateBodyPoseThumbnail(scene, { ...pose, parts: [
+    { ...pose.parts[0]!, properties: { ...pose.parts[0]!.properties, 'transform.rotationDeg': 45 } },
+  ] })!;
+  expect(edited.evaluated.layers[0]!.animationValues).toContainEqual(expect.objectContaining({
+    property: 'transform.rotationDeg', value: 45,
+  }));
   expect(character.bodyPoses?.map(({ name }) => name)).toEqual(['Stand', 'Point', 'Hands on hips']);
 
   const movedShot = { ...shot, name: 'New shot name', layers: shot.layers.map((layer) => ({ ...layer, x: layer.x + 10 })) };
