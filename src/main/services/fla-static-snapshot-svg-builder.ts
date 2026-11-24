@@ -62,6 +62,10 @@ import {
 } from './fla-display-list-resolver';
 import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
+  buildVariableWidthStrokeOutline,
+  type VariableWidthMarker,
+} from './fla-variable-width-stroke';
+import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
   getFlaXflDirectChildren,
@@ -1251,6 +1255,7 @@ function hasClosedLinearStrokeStructure(
   solidStrokeXml: string,
   fillBlock: string,
   gradientBlock: string,
+  variableWidthBlock: string | null = null,
 ): boolean {
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
   const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
@@ -1258,8 +1263,9 @@ function hasClosedLinearStrokeStructure(
     ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
     : [];
   if (matrixBlocks.length !== 1 || matrixTags.length !== 1) return false;
+  const expectedSolidStrokeChildren = variableWidthBlock ? [fillBlock, variableWidthBlock] : [fillBlock];
   return hasOnlyExpectedChildElements(style.sourceXml, 'StrokeStyle', [solidStrokeXml]) &&
-    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', [fillBlock]) &&
+    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', expectedSolidStrokeChildren) &&
     hasOnlyExpectedChildElements(fillBlock, 'fill', [gradientBlock]) &&
     hasOnlyExpectedChildElements(gradientBlock, 'LinearGradient', [
       matrixBlocks[0] as string,
@@ -1378,7 +1384,6 @@ function hasExplicitSafeLinearStrokeSemantics(
       strokeAttributes.joints !== 'round' || strokeAttributes.pixelHinting !== 'false') return false;
   const weight = Number(strokeAttributes.weight);
   if (!Number.isFinite(weight) || weight <= 0) return false;
-  if (/<VariablePointWidth\b/u.test(solidStrokeXml)) return false;
 
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
@@ -1901,6 +1906,7 @@ interface ParsedSolidStrokeStyle {
   readonly join: StrokeJoin;
   readonly miterLimit: number;
   readonly scaleMode: StrokeScaleMode;
+  readonly variableWidthMarkers?: readonly VariableWidthMarker[];
 }
 
 interface StrokeBoundarySegment {
@@ -1908,6 +1914,7 @@ interface StrokeBoundarySegment {
   readonly to: Point2D;
   readonly command: StrokeDrawCommand;
   readonly order: number;
+  readonly edgeIndex: number;
   readonly sourceSubpathId: number;
   readonly closesSourceSubpath: boolean;
 }
@@ -1916,6 +1923,7 @@ interface ReconstructedStrokePath {
   readonly commands: DecodedEdges['commands'];
   readonly pathD: string;
   readonly segmentCount: number;
+  readonly filledOutline?: boolean;
 }
 
 interface ReconstructedSolidStroke {
@@ -1923,6 +1931,92 @@ interface ReconstructedSolidStroke {
   readonly rendererStyle: ParsedSolidStrokeStyle;
   readonly paths: readonly ReconstructedStrokePath[];
   readonly segmentCount: number;
+}
+
+const MAX_VARIABLE_WIDTH_MARKERS = 256;
+const MAX_VARIABLE_WIDTH_MULTIPLIER = 100;
+
+function parseVariablePointWidthMarkers(
+  solidStrokeXml: string,
+  shapeId: string,
+  styleIndex: number,
+):
+  | { readonly ok: true; readonly markers: readonly VariableWidthMarker[] | null; readonly block: string | null }
+  | BuildSvgFailure {
+  const directChildren = getFlaXflDirectChildren(solidStrokeXml, 'SolidStroke');
+  const vpBlocks = directChildren.filter((child) => child.name === 'VariablePointWidth');
+  if (vpBlocks.length === 0) {
+    if (/<VariablePointWidth\b/u.test(solidStrokeXml)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has a malformed VariablePointWidth block`,
+      };
+    }
+    return { ok: true, markers: null, block: null };
+  }
+  if (vpBlocks.length !== 1) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} has multiple VariablePointWidth blocks`,
+    };
+  }
+  const vpBlock = vpBlocks[0]!;
+  const block = vpBlock.xml;
+  const children = getFlaXflDirectChildren(block, 'VariablePointWidth');
+  for (const child of children) {
+    if (child.name !== 'WidthMarker') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported child <${child.name}> inside VariablePointWidth`,
+      };
+    }
+  }
+  if (children.length === 0) {
+    return { ok: true, markers: null, block };
+  }
+  if (children.length > MAX_VARIABLE_WIDTH_MARKERS) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} exceeds VariablePointWidth marker budget`,
+    };
+  }
+  const parsed: Array<VariableWidthMarker & { readonly index: number }> = [];
+  for (let i = 0; i < children.length; i += 1) {
+    const attrs = children[i]!.attributes;
+    const position = attrs.position === undefined ? 0 : Number(attrs.position);
+    const left = attrs.left === undefined ? 0 : Number(attrs.left);
+    const right = attrs.right === undefined ? 0 : Number(attrs.right);
+    if (
+      !Number.isFinite(position) || position < 0 || position > 1 ||
+      !Number.isFinite(left) || left < 0 || left > MAX_VARIABLE_WIDTH_MULTIPLIER ||
+      !Number.isFinite(right) || right < 0 || right > MAX_VARIABLE_WIDTH_MULTIPLIER
+    ) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has out-of-range WidthMarker values`,
+      };
+    }
+    const rawType = attrs.type;
+    if (rawType !== undefined && rawType !== 'corner' && rawType !== 'normal') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported WidthMarker type "${rawType}"`,
+      };
+    }
+    parsed.push({ position, left, right, corner: rawType === 'corner', index: i });
+  }
+  parsed.sort((a, b) => (a.position !== b.position ? a.position - b.position : a.index - b.index));
+  return {
+    ok: true,
+    markers: parsed.map(({ position, left, right, corner }) => ({ position, left, right, corner })),
+    block,
+  };
 }
 
 function parseSolidStrokeStyle(
@@ -1944,6 +2038,8 @@ function parseSolidStrokeStyle(
   const solidStrokeBlocks = extractBalancedBlocks(style.sourceXml, 'SolidStroke');
   if (solidStrokeBlocks.length !== 1) return unsupported('non-SolidStroke construct');
   const solidStrokeXml = solidStrokeBlocks[0] as string;
+  const variableWidth = parseVariablePointWidthMarkers(solidStrokeXml, shapeId, style.index);
+  if (!variableWidth.ok) return variableWidth;
   const fillBlocks = extractBalancedBlocks(solidStrokeXml, 'fill');
   if (fillBlocks.length !== 1) return malformed('SolidStroke fill');
   const fillBlock = fillBlocks[0] as string;
@@ -1961,7 +2057,6 @@ function parseSolidStrokeStyle(
     color = parsedPaint.paint.firstColor;
     opacity = parsedPaint.paint.opacity;
   } else if (style.type === 'linear') {
-    if (/<VariablePointWidth\b/u.test(style.sourceXml)) return unsupported('VariablePointWidth');
     if (paintTags.length !== 1 || !/^<LinearGradient\b/u.test(paintTags[0] ?? '')) {
       return malformed('single linear-gradient stroke fill');
     }
@@ -1969,7 +2064,13 @@ function parseSolidStrokeStyle(
     if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
     const matchesEvidence = matchesEvidenceBoundLinearStroke(style, solidStrokeXml);
     const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
-    const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
+    const closedStructure = hasClosedLinearStrokeStructure(
+      style,
+      solidStrokeXml,
+      fillBlock,
+      gradientBlock,
+      variableWidth.block,
+    );
     if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
       const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
       const matrixTags = matrixBlocks.length === 1
@@ -2055,6 +2156,9 @@ function parseSolidStrokeStyle(
   const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
   if (gradientPaint && scaleMode !== 'normal') return unsupported(`gradient scaleMode "${scaleMode}"`);
+  if (variableWidth.markers && scaleMode !== 'normal') {
+    return unsupported(`variable-width stroke scaleMode "${scaleMode}"`);
+  }
   const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
@@ -2065,7 +2169,20 @@ function parseSolidStrokeStyle(
   }
   if (pixelHinting === 'true') return unsupported('pixelHinting');
 
-  return { ok: true, result: { color, opacity, gradientPaint, width, cap, join, miterLimit, scaleMode } };
+  return {
+    ok: true,
+    result: {
+      color,
+      opacity,
+      gradientPaint,
+      width,
+      cap,
+      join,
+      miterLimit,
+      scaleMode,
+      ...(variableWidth.markers ? { variableWidthMarkers: variableWidth.markers } : {}),
+    },
+  };
 }
 
 function stitchSolidStrokeSegments(
@@ -2235,6 +2352,60 @@ function stitchSolidStrokeSegments(
   return { ok: true, paths };
 }
 
+function buildVariableWidthStrokePaths(
+  segments: readonly StrokeBoundarySegment[],
+  closedSourceSubpaths: ReadonlySet<number>,
+  style: ParsedSolidStrokeStyle,
+): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
+  const markers = style.variableWidthMarkers!;
+  // Group directed segments in exact authored order within each original <Edge>,
+  // splitting whenever a segment starts a new Edge, a new sourceSubpath, or
+  // disconnects from the previous segment's endpoint.
+  const subpaths: Array<{ readonly subpathId: number; readonly segments: StrokeBoundarySegment[] }> = [];
+  for (const seg of segments) {
+    const prev = subpaths[subpaths.length - 1];
+    const prevSeg = prev?.segments[prev.segments.length - 1];
+    if (
+      prev &&
+      prevSeg &&
+      prevSeg.edgeIndex === seg.edgeIndex &&
+      prev.subpathId === seg.sourceSubpathId &&
+      pointKey(prevSeg.to) === pointKey(seg.from)
+    ) {
+      prev.segments.push(seg);
+    } else {
+      subpaths.push({ subpathId: seg.sourceSubpathId, segments: [seg] });
+    }
+  }
+
+  const paths: ReconstructedStrokePath[] = [];
+  for (const subpath of subpaths) {
+    const first = subpath.segments[0]!;
+    const last = subpath.segments[subpath.segments.length - 1]!;
+    const closed =
+      closedSourceSubpaths.has(subpath.subpathId) ||
+      (subpath.segments.length >= 2 && pointKey(first.from) === pointKey(last.to));
+    const outline = buildVariableWidthStrokeOutline(subpath.segments, {
+      weight: style.width,
+      markers,
+      cap: style.cap,
+      join: style.join,
+      miterLimit: style.miterLimit,
+      closed,
+    });
+    if (!outline.ok) return outline;
+    if (outline.pathD) {
+      paths.push({
+        commands: [...outline.commands],
+        pathD: outline.pathD,
+        segmentCount: subpath.segments.length,
+        filledOutline: true,
+      });
+    }
+  }
+  return { ok: true, paths };
+}
+
 function reconstructSolidStrokes(
   representation: StyleAwareShapeRepresentation,
   shapeId: string,
@@ -2256,6 +2427,7 @@ function reconstructSolidStrokes(
     from: Point2D,
     to: Point2D,
     command: StrokeDrawCommand,
+    edgeIndex: number,
     sourceSubpathId: number,
     closesSourceSubpath = false,
   ): BuildSvgFailure | null => {
@@ -2272,6 +2444,7 @@ function reconstructSolidStrokes(
       to,
       command,
       order: nextOrder,
+      edgeIndex,
       sourceSubpathId,
       closesSourceSubpath,
     });
@@ -2312,6 +2485,7 @@ function reconstructSolidStrokes(
             current,
             subpathStart,
             { type: 'L', x: subpathStart.x, y: subpathStart.y },
+            run.edgeIndex,
             currentSourceSubpathId,
             true,
           );
@@ -2342,7 +2516,7 @@ function reconstructSolidStrokes(
           message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} has a non-finite endpoint`,
         };
       }
-      const failure = addSegment(run.strokeStyle, current, end, command, currentSourceSubpathId);
+      const failure = addSegment(run.strokeStyle, current, end, command, run.edgeIndex, currentSourceSubpathId);
       if (failure) return failure;
       current = end;
     }
@@ -2355,8 +2529,10 @@ function reconstructSolidStrokes(
     if (!segments || segments.length === 0) continue;
     const parsed = parseSolidStrokeStyle(style, shapeId, renderTargetId, frameIndex);
     if (!parsed.ok) return parsed;
-    const stitched = stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
-    if (!stitched.ok) return stitched;
+    const builtPaths = parsed.result.variableWidthMarkers
+      ? buildVariableWidthStrokePaths(segments, closedSourceSubpaths, parsed.result)
+      : stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
+    if (!builtPaths.ok) return builtPaths;
     if (!stylesByIndex.has(style.index)) {
       return {
         ok: false,
@@ -2367,7 +2543,7 @@ function reconstructSolidStrokes(
     strokes.push({
       style,
       rendererStyle: parsed.result,
-      paths: stitched.paths,
+      paths: builtPaths.paths,
       segmentCount: segments.length,
     });
   }
@@ -4116,6 +4292,22 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
         }
         for (const path of stroke.paths) {
+          if (path.filledOutline) {
+            if (graphicBounds && !includeTransformedPathBounds(graphicBounds, path.commands, node.worldTransform)) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic variable-width stroke bounds are not finite: ${node.shapeId}` };
+            }
+            const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
+            if (pathBytes > MAX_EDGE_CHARS) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
+            }
+            const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
+            const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${strokePaint}" fill-opacity="${formatSvgNumber(style.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+            const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+            if (appendFailure) return appendFailure;
+            pathCommandCount += path.commands.length;
+            strokePathCount += 1;
+            continue;
+          }
           if (graphicBounds) {
             const strokePathBounds = createBounds();
             if (!includeTransformedPathBounds(strokePathBounds, path.commands, node.worldTransform) ||

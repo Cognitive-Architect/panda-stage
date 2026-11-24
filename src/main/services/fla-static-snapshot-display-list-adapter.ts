@@ -2800,6 +2800,7 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
 const MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT = 100_000;
 const MAX_STOPPED_SUBTREE_DEPTH = 64;
 const MAX_STOPPED_SUBTREE_PROBES = 256;
+const MAX_STOPPED_SUBTREE_VISITS = 4_096;
 
 function oneFrameScenePlaybackCount(
   frameContext: FlaDisplayListFrameContext,
@@ -2812,7 +2813,15 @@ function oneFrameScenePlaybackCount(
   let stopLength = 1;
   let ikLength = 1;
   let probeCount = 0;
+  let totalVisits = 0;
   let probeState: SourceBuildState | undefined;
+  const relativeEndTickCache = new Map<string, number>();
+
+  const consumeVisit = (): boolean => {
+    if (totalVisits >= MAX_STOPPED_SUBTREE_VISITS) return false;
+    totalVisits += 1;
+    return true;
+  };
 
   const getProbeState = (): SourceBuildState => {
     if (!probeState) {
@@ -2829,6 +2838,7 @@ function oneFrameScenePlaybackCount(
     descriptor: FlaXflGraphicSymbolDescriptor,
     frameIndex: number,
   ): FlaDisplayListFrameContext | undefined => {
+    if (!consumeVisit()) return undefined;
     if (frameIndex === 0) return descriptor.frameContext;
     if (probeCount >= MAX_STOPPED_SUBTREE_PROBES) return undefined;
     probeCount += 1;
@@ -2843,6 +2853,7 @@ function oneFrameScenePlaybackCount(
   };
 
   const inspectStoppedSubtree = (
+    symbolName: string,
     context: FlaDisplayListFrameContext,
     stopFrameIndex: number,
     appearTick: number,
@@ -2850,48 +2861,72 @@ function oneFrameScenePlaybackCount(
     stack: ReadonlySet<string>,
     parentIsLockedGraphic: boolean,
   ): number => {
-    let maxEndTick = parentIsLockedGraphic
+    const baseEndTick = parentIsLockedGraphic
       ? appearTick
       : Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + stopFrameIndex + 1);
-    if (depth >= MAX_STOPPED_SUBTREE_DEPTH) return maxEndTick;
+    if (depth >= MAX_STOPPED_SUBTREE_DEPTH || !consumeVisit()) return baseEndTick;
+
+    const cacheKey = `${parentIsLockedGraphic ? 'g' : 'm'}:${symbolName}@${stopFrameIndex}`;
+    const cachedRelative = relativeEndTickCache.get(cacheKey);
+    if (cachedRelative !== undefined) {
+      return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + cachedRelative);
+    }
+
+    let maxRelativeEnd = parentIsLockedGraphic ? 0 : Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, stopFrameIndex + 1);
+    let canCache = true;
 
     const visitSubtree = (elements: readonly FlaDisplayListElement[]): void => {
       for (const element of elements) {
+        if (!consumeVisit()) {
+          canCache = false;
+          return;
+        }
         if (element.visible === false) continue;
         if (element.kind === 'group') {
           visitSubtree(element.elements);
           continue;
         }
         if (element.kind !== 'symbol') continue;
-        if (stack.has(element.libraryItemName)) continue;
+        if (stack.has(element.libraryItemName)) {
+          canCache = false;
+          continue;
+        }
 
         if (element.symbolType === 'movieclip') {
           const childClip = movieClips.get(element.libraryItemName);
           if (!childClip || childClip.movieClipHasScript) continue;
           const rawRunStart = element.movieClipRun?.start ?? element.sourceParentFrameSpanStart ?? stopFrameIndex;
-          const childAppearTick = parentIsLockedGraphic
-            ? appearTick
-            : appearTick + Math.max(0, Math.min(rawRunStart, stopFrameIndex));
+          const childRelativeAppear = parentIsLockedGraphic
+            ? 0
+            : Math.max(0, Math.min(rawRunStart, stopFrameIndex));
           const childFirstStop = childClip.movieClipStopFrames?.[0];
           if (childFirstStop !== undefined) {
             const clampedStop = Math.min(childClip.frameCount - 1, Math.max(0, childFirstStop));
-            maxEndTick = Math.max(
-              maxEndTick,
-              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childAppearTick + clampedStop + 1),
+            maxRelativeEnd = Math.max(
+              maxRelativeEnd,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childRelativeAppear + clampedStop + 1),
             );
             const childContext = probeSymbolFrame(childClip, clampedStop);
             if (childContext) {
               const nextStack = new Set(stack);
               nextStack.add(childClip.sourceLibraryItemName);
-              maxEndTick = Math.max(
-                maxEndTick,
-                inspectStoppedSubtree(childContext, clampedStop, childAppearTick, depth + 1, nextStack, false),
+              const nestedEnd = inspectStoppedSubtree(
+                childClip.sourceLibraryItemName,
+                childContext,
+                clampedStop,
+                childRelativeAppear,
+                depth + 1,
+                nextStack,
+                false,
               );
+              maxRelativeEnd = Math.max(maxRelativeEnd, nestedEnd);
+            } else {
+              canCache = false;
             }
           } else {
-            maxEndTick = Math.max(
-              maxEndTick,
-              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childAppearTick + childClip.frameCount),
+            maxRelativeEnd = Math.max(
+              maxRelativeEnd,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childRelativeAppear + childClip.frameCount),
             );
           }
           continue;
@@ -2904,20 +2939,38 @@ function oneFrameScenePlaybackCount(
           if (selectedFrame === undefined) continue;
           if (selectedFrame === 0 && !graphicDesc.hasNestedSymbol) continue;
           const graphicContext = probeSymbolFrame(graphicDesc, selectedFrame);
-          if (!graphicContext) continue;
+          if (!graphicContext) {
+            canCache = false;
+            continue;
+          }
           const nextStack = new Set(stack);
           nextStack.add(graphicDesc.sourceLibraryItemName);
-          const lockedAtTick = parentIsLockedGraphic ? appearTick : appearTick + stopFrameIndex;
-          maxEndTick = Math.max(
-            maxEndTick,
-            inspectStoppedSubtree(graphicContext, selectedFrame, lockedAtTick, depth + 1, nextStack, true),
+          const lockedRelativeTick = parentIsLockedGraphic ? 0 : stopFrameIndex;
+          const nestedEnd = inspectStoppedSubtree(
+            graphicDesc.sourceLibraryItemName,
+            graphicContext,
+            selectedFrame,
+            lockedRelativeTick,
+            depth + 1,
+            nextStack,
+            true,
           );
+          maxRelativeEnd = Math.max(maxRelativeEnd, nestedEnd);
         }
       }
     };
 
-    for (const layer of context.layers) if (layer.visible) visitSubtree(layer.elements);
-    return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, maxEndTick);
+    for (const layer of context.layers) {
+      if (layer.visible) visitSubtree(layer.elements);
+      if (totalVisits >= MAX_STOPPED_SUBTREE_VISITS) {
+        canCache = false;
+        break;
+      }
+    }
+
+    const boundedRelative = Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, maxRelativeEnd);
+    if (canCache) relativeEndTickCache.set(cacheKey, boundedRelative);
+    return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + boundedRelative);
   };
 
   const visit = (elements: readonly FlaDisplayListElement[]): void => {
@@ -2940,7 +2993,15 @@ function oneFrameScenePlaybackCount(
         if (stopContext) {
           needed = Math.max(
             needed,
-            inspectStoppedSubtree(stopContext, clampedStop, 0, 1, new Set([clip.sourceLibraryItemName]), false),
+            inspectStoppedSubtree(
+              clip.sourceLibraryItemName,
+              stopContext,
+              clampedStop,
+              0,
+              1,
+              new Set([clip.sourceLibraryItemName]),
+              false,
+            ),
           );
         }
         stopLength = Math.max(stopLength, needed);

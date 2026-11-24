@@ -605,4 +605,72 @@ describe('FLA MovieClip deterministic stop() fidelity (#1257)', () => {
     );
     expect(nonInflating.playbackFrameCount).toBe(3);
   });
+
+  it('bounds traversal across shared frame-0 stopped DAG references (#1259 P2 in #1260)', async () => {
+    // 14-level binary DAG: 2^14 = 16,384 paths through cached frame-0 stopped symbols,
+    // terminating at a 4-frame looping leaf MovieClip.
+    const buildDagZip = async (levels: number) => {
+      const zip = new JSZip();
+      zip.file(
+        'DOMDocument.xml',
+        `<DOMDocument width="200" height="120" frameRate="24"><timelines>${multiLayerTimeline([
+          layer(scriptFrame(0, '<DOMSymbolInstance libraryItemName="DagNode0" name="root"/>')),
+        ])}</timelines></DOMDocument>`,
+      );
+      for (let i = 0; i < levels; i += 1) {
+        const childName = i === levels - 1 ? 'DagFanLeaf' : `DagNode${i + 1}`;
+        zip.file(
+          `LIBRARY/DagNode${i}.xml`,
+          `<DOMSymbolItem name="DagNode${i}"><timeline>${multiLayerTimeline([
+            layer(scriptFrame(0, '', 'stop();'), 'name="actions"'),
+            layer(
+              scriptFrame(
+                0,
+                `<DOMSymbolInstance libraryItemName="${childName}" name="a"/>` +
+                  `<DOMSymbolInstance libraryItemName="${childName}" name="b"/>`,
+              ),
+              'name="refs"',
+            ),
+          ])}</timeline></DOMSymbolItem>`,
+        );
+      }
+      zip.file(
+        'LIBRARY/DagFanLeaf.xml',
+        `<DOMSymbolItem name="DagFanLeaf"><timeline>${multiLayerTimeline([
+          layer(
+            scriptFrame(0, square('#e11d48')) +
+              scriptFrame(1, square('#2563eb')) +
+              scriptFrame(2, square('#16a34a')) +
+              scriptFrame(3, square('#f59e0b')),
+          ),
+        ])}</timeline></DOMSymbolItem>`,
+      );
+      return zip.generateAsync({ type: 'uint8array' });
+    };
+
+    // Large 14-level DAG (16,384 paths) completes instantaneously in prepareFlaStaticSnapshotDisplaySource
+    // thanks to shared visit budget + subtree memoization.
+    const dag14Bytes = await buildDagZip(14);
+    const startedAt = Date.now();
+    const prepared14 = await prepareFlaStaticSnapshotDisplaySource(dag14Bytes, 'preview');
+    const elapsedMs = Date.now() - startedAt;
+    expect(prepared14.ok).toBe(true);
+    if (prepared14.ok) {
+      expect(prepared14.source.sceneTimelines[0]?.frameCount).toBe(1);
+      expect(prepared14.source.sceneTimelines[0]?.playbackFrameCount).toBe(4);
+    }
+    expect(elapsedMs).toBeLessThan(2_000);
+
+    // Smaller 6-level DAG (64 leaves, within nested selector budget) renders end-to-end across 0..3
+    const dag6Bytes = await buildDagZip(6);
+    const prepared6 = await prepareFlaStaticSnapshotDisplaySource(dag6Bytes, 'preview');
+    expect(prepared6.ok).toBe(true);
+    if (!prepared6.ok) return;
+    const catalog6 = await buildRenderableTargetCatalog(dag6Bytes, undefined, {}, prepared6.source);
+    expect(catalog6.ok).toBe(true);
+    if (!catalog6.ok) return;
+    const scene6 = catalog6.entries.find((e) => e.target.kind === 'scene');
+    expect(scene6?.previewSupported).toBe(true);
+    expect(scene6?.target.frameCount).toBe(4);
+  });
 });
