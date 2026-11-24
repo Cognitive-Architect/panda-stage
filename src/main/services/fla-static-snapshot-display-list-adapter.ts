@@ -23,6 +23,11 @@ import {
 } from './fla-motion-tween-transform-interpolator';
 import { evaluateFlaObjectMotion, parseFlaObjectMotion, type ObjectMotionPose } from './fla-object-motion';
 import {
+  analyzeMovieClipFrameScript,
+  extractFlaXflScriptText,
+  type MovieClipSymbolScriptAnalysis,
+} from './fla-movieclip-script-analyzer';
+import {
   evaluateFlaViewerClassicTweenProgress,
   type FlaViewerEasePoint,
   type FlaViewerTweenEase,
@@ -122,6 +127,7 @@ export interface FlaXflGraphicSymbolDescriptor extends FlaGraphicSymbolDefinitio
   readonly hasPotentialDisplayElements: boolean;
   readonly timelineXml: string;
   readonly movieClipHasScript?: boolean;
+  readonly movieClipStopFrames?: readonly number[];
 }
 
 export interface FlaStaticSnapshotDisplaySource {
@@ -2692,6 +2698,82 @@ interface GraphicSymbolShell {
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly symbolType?: string;
   readonly movieClipHasScript?: boolean;
+  readonly movieClipStopFrames?: readonly number[];
+}
+
+function analyzeMovieClipSymbolScripts(
+  libraryXml: string,
+  timelineXml: string,
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+  frameCount: number,
+): MovieClipSymbolScriptAnalysis {
+  let totalActionScriptTags = 0;
+  let totalScriptTags = 0;
+  let cursor = 0;
+  for (;;) {
+    const token = nextTagToken(libraryXml, cursor);
+    if (!token) break;
+    cursor = token.end;
+    if (token.closing) continue;
+    const lowered = token.name.toLowerCase();
+    if (lowered === 'actionscript') totalActionScriptTags += 1;
+    else if (lowered === 'script') totalScriptTags += 1;
+  }
+
+  if (totalActionScriptTags === 0 && totalScriptTags === 0) {
+    return { kind: 'none' };
+  }
+
+  const layers = layersForTimeline(timelineXml);
+  if (layers.length !== frameSpanIndex.layers.length) {
+    return { kind: 'unsupported' };
+  }
+
+  let accountedActionScriptTags = 0;
+  let accountedScriptTags = 0;
+  const stopFrames = new Set<number>();
+
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex]!;
+    const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
+    const isAuthoringOnlyLayer = layerType === 'guide' || layerType === 'folder' || layerType === 'camera';
+    const indexedLayer = frameSpanIndex.layers[layerIndex]!;
+
+    for (const span of indexedLayer.spans) {
+      const frameChildren = getFlaXflDirectChildren(span.sourceFrame.xml, span.sourceFrame.name);
+      for (const child of frameChildren) {
+        if (child.name.toLowerCase() !== 'actionscript') continue;
+        accountedActionScriptTags += 1;
+        const scriptChildren = getFlaXflDirectChildren(child.xml, child.name);
+        for (const scriptChild of scriptChildren) {
+          if (scriptChild.name.toLowerCase() !== 'script') {
+            return { kind: 'unsupported' };
+          }
+          accountedScriptTags += 1;
+          if (isAuthoringOnlyLayer) continue;
+          const scriptText = extractFlaXflScriptText(scriptChild.xml);
+          if (scriptText === null) return { kind: 'unsupported' };
+          const classification = analyzeMovieClipFrameScript(scriptText);
+          if (classification === 'unsupported') return { kind: 'unsupported' };
+          if (classification === 'stop' && span.index >= 0 && span.index < frameCount) {
+            stopFrames.add(span.index);
+          }
+        }
+      }
+    }
+  }
+
+  if (accountedActionScriptTags !== totalActionScriptTags || accountedScriptTags !== totalScriptTags) {
+    return { kind: 'unsupported' };
+  }
+
+  if (stopFrames.size > 0) {
+    return {
+      kind: 'stop-frames',
+      stopFrames: [...stopFrames].sort((a, b) => a - b),
+    };
+  }
+  return { kind: 'none' };
 }
 
 function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieClips: boolean): boolean {
@@ -2721,6 +2803,7 @@ function oneFrameScenePlaybackCount(
   ikContainers: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
 ): number {
   let period = 1;
+  let stopLength = 1;
   let ikLength = 1;
   const visit = (elements: readonly FlaDisplayListElement[]): void => {
     for (const element of elements) {
@@ -2734,6 +2817,11 @@ function oneFrameScenePlaybackCount(
       if (element.symbolType !== 'movieclip') continue;
       const clip = movieClips.get(element.libraryItemName);
       if (!clip || clip.movieClipHasScript) continue;
+      const firstStop = clip.movieClipStopFrames?.[0];
+      if (firstStop !== undefined) {
+        stopLength = Math.max(stopLength, Math.min(clip.frameCount, firstStop + 1));
+        continue;
+      }
       let a = period;
       let b = clip.frameCount;
       while (b !== 0) [a, b] = [b, a % b];
@@ -2741,7 +2829,7 @@ function oneFrameScenePlaybackCount(
     }
   };
   for (const layer of frameContext.layers) if (layer.visible) visit(layer.elements);
-  return Math.max(period, ikLength);
+  return Math.max(period, stopLength, ikLength);
 }
 
 export interface FlaStaticSnapshotDisplaySourceExecution {
@@ -2790,6 +2878,10 @@ function* adaptFlaXflDisplaySourceSteps(
     }
     const timeline = timelines.value[0];
     if (!timeline || !timeline.frameSpanIndex || timeline.frameCount <= 0) continue;
+    const scriptAnalysis: MovieClipSymbolScriptAnalysis =
+      symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
+        ? analyzeMovieClipSymbolScripts(library.xml, timeline.xml, timeline.frameSpanIndex, timeline.frameCount)
+        : { kind: 'none' };
     shells.push({
       sourceLibraryItemName,
       userLabel,
@@ -2797,9 +2889,8 @@ function* adaptFlaXflDisplaySourceSteps(
       frameCount: timeline.frameCount,
       frameSpanIndex: timeline.frameSpanIndex,
       ...(symbolType ? { symbolType } : {}),
-      ...(symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
-        ? { movieClipHasScript: true }
-        : {}),
+      ...(scriptAnalysis.kind === 'unsupported' ? { movieClipHasScript: true } : {}),
+      ...(scriptAnalysis.kind === 'stop-frames' ? { movieClipStopFrames: scriptAnalysis.stopFrames } : {}),
     });
     if (symbolType === 'ik container') state.ikContainerNames.add(sourceLibraryItemName);
     else if (symbolType !== 'graphic') state.movieClipNames.add(sourceLibraryItemName);
@@ -2841,6 +2932,7 @@ function* adaptFlaXflDisplaySourceSteps(
       hasPotentialDisplayElements: timelineHasPotentialDisplayElements(shell.frameSpanIndex),
       timelineXml: shell.timelineXml,
       ...(shell.movieClipHasScript ? { movieClipHasScript: true } : {}),
+      ...(shell.movieClipStopFrames ? { movieClipStopFrames: shell.movieClipStopFrames } : {}),
     };
     if (shell.symbolType !== 'graphic' && shell.symbolType !== 'ik container') {
       movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
