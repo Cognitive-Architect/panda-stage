@@ -13,20 +13,23 @@ import './graphic-face-picker.css';
 export type GraphicFacePreviewResult = 'pending' | 'ready' | 'failed';
 
 /** Uses the same structured renderer and decoded-image cache contract as Stage. */
-export function GraphicFacePreview({ source, label = '表情预览', onResult }: {
+export function GraphicFacePreview({ source, label = '表情预览', onResult, onThumbnailResult }: {
   source: Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
   label?: string;
   onResult?: (snapshot: EditorProjectSnapshot, result: GraphicFacePreviewResult) => void;
+  onThumbnailResult?: (result: GraphicFacePreviewResult) => void;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
-  const [loaded, setLoaded] = useState<{ resolved: NonNullable<typeof resolved>; images: typeof EMPTY_CANVAS_IMAGE_STATE }>();
+  const [loaded, setLoaded] = useState<{ root: string; images: typeof EMPTY_CANVAS_IMAGE_STATE }>();
+  const resources = useRef<CanvasImageResourceSession>(null);
   const [failed, setFailed] = useState(false);
   const resolved = useMemo(() => snapshot ? resolveCharacterFaceSourceOrNull(snapshot.project, source) : null,
     [snapshot, source.animationId, source.firstFrame, source.internalTimeMs]);
   const report = useEffectEvent((result: GraphicFacePreviewResult) => {
     if (snapshot) onResult?.(snapshot, result);
+    onThumbnailResult?.(result);
   });
   const checkPreview = Boolean(onResult);
   useEffect(() => {
@@ -43,15 +46,19 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
     ...(resolved?.assetId ? [resolved.assetId] : []),
   ]), [resolved, graphic]);
   useEffect(() => {
-    if (!active || !snapshot || !resolved || requiredIds.size === 0) return;
-    const resourceSession = new CanvasImageResourceSession();
-    resourceSession.reconcile({
-      contextKey: snapshot.projectRoot,
-      projectRoot: snapshot.projectRoot,
-      assets: snapshot.project.assets.filter(asset => asset.kind === 'image' && requiredIds.has(asset.id)),
-    }, images => setLoaded({ resolved, images }));
-    return () => resourceSession.dispose();
-  }, [active, snapshot, resolved, requiredIds]);
+    const session = new CanvasImageResourceSession();
+    resources.current = session;
+    return () => session.dispose();
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    const root = snapshot?.projectRoot;
+    resources.current?.reconcile({
+      contextKey: root ?? null,
+      projectRoot: root ?? null,
+      assets: snapshot?.project.assets.filter(asset => asset.kind === 'image' && requiredIds.has(asset.id)) ?? [],
+    }, images => { if (root) setLoaded({ root, images }); });
+  }, [active, snapshot, requiredIds]);
   useEffect(() => {
     const target = canvas.current;
     const context = target?.getContext('2d');
@@ -65,14 +72,15 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
       return;
     }
     context.clearRect(0, 0, target.width, target.height);
-    const images = loaded?.resolved === resolved ? loaded.images : EMPTY_CANVAS_IMAGE_STATE;
+    const images = loaded && loaded.root === snapshot?.projectRoot ? loaded.images : EMPTY_CANVAS_IMAGE_STATE;
     if (images.missing.size > 0 || [...requiredIds].some(id => !snapshot?.project.assets.some(
       asset => asset.kind === 'image' && asset.id === id,
     ))) {
       finish('failed');
       return;
     }
-    if ([...requiredIds].some(id => !images.images.has(id))) {
+    if ([...requiredIds].some(id => !images.images.has(id) ||
+      images.sourceKeys.get(id) !== snapshot?.project.assets.find(asset => asset.id === id)?.sha256)) {
       finish('pending');
       return;
     }
@@ -83,7 +91,7 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
         const rendered = renderFlaGraphicCanvas(graphic, images.images);
         if (rendered?.visibleRect) {
           context.drawImage(rendered.canvas, left + (rendered.rect.x + resolved.width / 2) * scale, top + (rendered.rect.y + resolved.height / 2) * scale, rendered.rect.width * scale, rendered.rect.height * scale);
-        } else {
+        } else if (!rendered || checkPreview) {
           finish('failed');
           return;
         }
@@ -233,13 +241,46 @@ export function ExpressionTalkingAnimationPicker({ character, disabled, onApply 
 
 type GraphicFrameSource = Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
 
-export function GraphicFrameChoices({ definition, selectedIndex, onSelect, includeInternalFrames, sourceAddresses, disabled, testId }: {
+function GraphicFrameChoice({ source, index, selected, disabled, label, caption, testId, requireReady, onSelect }: {
+  source: GraphicFrameSource;
+  index: number;
+  selected: boolean;
+  disabled?: boolean;
+  label: string;
+  caption: string | number;
+  testId: string;
+  requireReady?: boolean;
+  onSelect: (source: GraphicFrameSource, frameIndex: number) => void;
+}): React.JSX.Element {
+  const [result, setResult] = useState<GraphicFacePreviewResult>('pending');
+  const [attempt, setAttempt] = useState(0);
+  const actionLabel = requireReady && result === 'failed' ? `${label}：重试加载` : label;
+  return <button type="button" className="graphic-face-frame" disabled={disabled || (requireReady && result === 'pending')}
+    aria-label={actionLabel} title={actionLabel} aria-pressed={selected}
+    data-testid={`${testId}-frame-${index}`} data-thumbnail-status={requireReady ? result : undefined}
+    onClick={() => {
+      if (requireReady && result !== 'ready') {
+        if (result === 'failed') {
+          setResult('pending');
+          setAttempt(attempt + 1);
+        }
+        return;
+      }
+      onSelect(source, index);
+    }}>
+    <GraphicFacePreview key={attempt} source={source} label={label} onThumbnailResult={requireReady ? setResult : undefined} />
+    <span>{caption}</span>
+  </button>;
+}
+
+export function GraphicFrameChoices({ definition, selectedIndex, onSelect, includeInternalFrames, sourceAddresses, disabled, requireReady, testId }: {
   definition: FlaGraphicDefinition;
   selectedIndex: number;
   onSelect: (source: GraphicFrameSource, frameIndex: number) => void;
   includeInternalFrames?: boolean;
   sourceAddresses?: boolean;
   disabled?: boolean;
+  requireReady?: boolean;
   testId: string;
 }): React.JSX.Element {
   const [page, setPage] = useState(0);
@@ -272,11 +313,9 @@ export function GraphicFrameChoices({ definition, selectedIndex, onSelect, inclu
         const number = frameIndex + (sourceAddresses ? firstAddress : 1);
         const label = sourceAddresses ? labels.find((entry) => entry.sourceFrameIndex === number - 1)?.text : undefined;
         const frameLabel = label ? `${label} · 第 ${number} 帧` : `第 ${number} 帧`;
-        return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled}
-          aria-label={frameLabel} title={frameLabel} aria-pressed={selectedIndex === frameIndex}
-          data-testid={`${testId}-frame-${frameIndex}`} onClick={() => onSelect(source, frameIndex)}>
-          <GraphicFacePreview source={source} label={frameLabel} /><span>{label ?? number}</span>
-        </button>;
+        return <GraphicFrameChoice key={frameIndex} source={source} index={frameIndex} label={frameLabel}
+          selected={selectedIndex === frameIndex} caption={label ?? number} disabled={disabled}
+          requireReady={requireReady} testId={testId} onSelect={onSelect} />;
       })}
     </div>
     {count > 12 ? <div className="graphic-face-pagination">

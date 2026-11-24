@@ -5,7 +5,6 @@ import {
   useSyncExternalStore,
 } from 'react';
 import {
-  isFlaGraphicDefinition,
   isLegacyCharacterImageLayer,
   resolveCharacterPartVisualSource,
   type Asset,
@@ -650,10 +649,6 @@ export function RightInspector({
     />
   );
 
-  const selectedSource = selection.layer?.source;
-  const selectedGraphic = selectedSource?.kind === 'animation'
-    ? snapshot?.project.animations.find((entry) => entry.id === selectedSource.animationId)
-    : undefined;
   const motionSection = snapshot && currentShot ? <CharacterMotionInspectorSection project={snapshot.project} shot={currentShot} layerId={selectedLayerId} /> : null;
   const motionPanelInput = motionNode && currentShot && selection.layer
     ? motionNode.motion === 'character-clip-v1'
@@ -706,9 +701,9 @@ export function RightInspector({
         </>
       )}
       {motionSection}
-      {currentShot && selection.layer && selectedGraphic && isFlaGraphicDefinition(selectedGraphic) ? (
-        <GraphicFrameAtTimeControl key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id, selection.layer.id, selectedGraphic.id])}
-          definition={selectedGraphic} shot={currentShot} layerId={selection.layer.id} locked={selection.layer.locked} />
+      {currentShot && snapshot ? (
+        <GraphicFrameAtTimeControl key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id])}
+          project={snapshot.project} shot={currentShot} selection={selection.layer} />
       ) : null}
       {showMotionInspector && motionNode?.motion === 'character-clip-v1' ? null : (
         <FlaGraphicStructureTree />
