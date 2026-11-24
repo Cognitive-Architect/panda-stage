@@ -2,21 +2,90 @@ import { readFileSync } from 'node:fs';
 import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
+  CharacterService,
   ProjectSchema,
   evaluateShotAtTime,
   mapProjectTime,
+  migrateProject,
+  resolveLayerVisualParts,
+  upsertExpressionEventAtTime,
+  upsertMouthCueEventAtTime,
   prepareSpeakerFocusCamera,
   evaluateSpeakerFocusCamera,
   type Project,
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
 import {
+  applyProductPreviewMouthFallback,
   buildProductPreviewCues,
+  buildProductPreviewImagePlan,
   listProductPreviewAssetIds,
+  projectProductPreviewDialogue,
   projectProductPreviewMouth,
 } from '../../src/renderer/shell/productPreviewModel';
 import { resolveProductPreviewAudio } from '../../src/renderer/shell/productPreviewAudio';
 import { buildProject, IDS } from './domain/testProject';
+import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
+
+it('selects the effective expression talking source and falls back to the common source after reopening', () => {
+  const mouth = buildMouthProject();
+  const graphic = graphicFaceProject();
+  const service = new CharacterService();
+  const playback = { mode: 'single frame' as const, firstFrame: 0, lastFrame: 0, restFrame: 2 };
+  let project = ProjectSchema.parse({
+    ...mouth,
+    animations: graphic.animations,
+    assets: [...mouth.assets.map((asset) => asset.id === AUDIO_ID ? { ...asset, sha256: 'b'.repeat(64) } : asset),
+      ...graphic.assets.filter((asset) => !mouth.assets.some((entry) => entry.id === asset.id))],
+  });
+  project = service.setTalkingAnimation(project, IDS.character, FACE_GRAPHIC_ID, playback);
+  project = service.setExpressionTalkingAnimation(project, IDS.character, IDS.expressionAngry, FACE_GRAPHIC_ID, {
+    ...playback, firstFrame: 1, lastFrame: 1, restFrame: 3,
+  });
+  project = upsertExpressionEventAtTime(project, IDS.shot, IDS.layerChar, IDS.expressionAngry, 250);
+  const reopened = migrateProject(JSON.parse(JSON.stringify(project)));
+  const shot = reopened.shots[0]!;
+  function face(current: Project, time: number, quiet = false) {
+    const currentShot = current.shots[0]!;
+    const silence = quiet ? { [AUDIO_ID]: { sha256: 'b'.repeat(64), intervals: [[400, 500] as [number, number]] } } : undefined;
+    const projected = projectProductPreviewDialogue(current, currentShot, evaluateShotAtTime(currentShot, time, current), DIALOGUE_A_ID, silence);
+    const exported = evaluateExportShotAtTime(current, currentShot, time, DIALOGUE_A_ID, silence);
+    const display = (layers: typeof exported.layers) => resolveLayerVisualParts(current, currentShot,
+      layers.find((layer) => layer.id === IDS.layerChar)!, time).activeFace?.visualSource;
+    expect(display(projected.layers)).toEqual(display(exported.layers));
+    return display(exported.layers);
+  }
+  expect(shot.layers).toEqual(mouth.shots[0]!.layers);
+  expect(face(reopened, 100)).toMatchObject({ firstFrame: 0 });
+  expect(face(reopened, 300)).toMatchObject({ firstFrame: 1 });
+  const talkingShot = projectProductPreviewDialogue(reopened, shot, evaluateShotAtTime(shot, 300, reopened), DIALOGUE_A_ID);
+  expect(buildProductPreviewImagePlan(reopened, shot, talkingShot).fallbackAssetIds).toContain(IDS.assetChar);
+  const degraded = applyProductPreviewMouthFallback(reopened, shot, talkingShot, new Set([IDS.assetChar2]));
+  const fallbackVisual = resolveLayerVisualParts(reopened, shot, degraded.layers.find((layer) => layer.id === IDS.layerChar)!,
+    300, (assetId) => assetId === IDS.assetChar2);
+  expect(fallbackVisual.activeFace?.visualSource).toMatchObject({ firstFrame: 0 });
+  expect(face(reopened, 450, true)).toMatchObject({ firstFrame: 3 });
+  expect(face(reopened, 950)).toMatchObject({ firstFrame: 3 });
+  const missing = structuredClone(reopened);
+  missing.characters[0]!.expressionTalkingSources![IDS.expressionAngry]!.animationId = '91000000-0000-4000-8000-000000009999';
+  const fallback = migrateProject(JSON.parse(JSON.stringify(missing)));
+  expect(face(fallback, 300)).toMatchObject({ firstFrame: 0 });
+  expect(face(fallback, 450, true)).toMatchObject({ firstFrame: 2 });
+  const manuallyOpen = upsertMouthCueEventAtTime(reopened, IDS.shot, IDS.layerChar, 'open', 500);
+  const manualShot = manuallyOpen.shots[0]!;
+  const manual = evaluateExportShotAtTime(manuallyOpen, manualShot, 550, DIALOGUE_A_ID);
+  const manualLayer = manual.layers.find((layer) => layer.id === IDS.layerChar)!;
+  expect(manualLayer.talkingAnimationElapsedMs).toBeUndefined();
+  const visual = resolveLayerVisualParts(manuallyOpen, manualShot, manualLayer, 550);
+  expect(visual.activeFace?.assetId).toBe(MOUTH_A_ID);
+  const duplicate = structuredClone(reopened);
+  const duplicateShot = duplicate.shots[0]!;
+  duplicateShot.layers.push({ ...duplicateShot.layers.find((layer) => layer.id === IDS.layerChar)!,
+    id: '60000000-0000-4000-8000-000000000099', zIndex: 8 });
+  expect(evaluateExportShotAtTime(duplicate, duplicateShot, 300, DIALOGUE_A_ID).layers
+    .filter((layer) => layer.talkingAnimationElapsedMs !== undefined)).toHaveLength(0);
+});
 
 const MOUTH_A_ID = '10000000-0000-4000-8000-000000000301';
 const MOUTH_B_ID = '10000000-0000-4000-8000-000000000302';

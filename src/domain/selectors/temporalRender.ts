@@ -5,11 +5,12 @@ import type {
 } from '../evaluate-shot-at-time';
 import { audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../audio-contract';
 import { resolveMouthPoseEvent } from '../services/mouthPoses';
-import { resolveCharacterFaceSourceOrNull } from './characterFaceSource';
+import { isCharacterTalkingSourceAvailable, listCharacterTalkingSources, resolveCharacterFaceSourceOrNull, resolveCharacterTalkingFace } from './characterFaceSource';
 import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
 import {
+  evaluateLayerPreTrackState,
   evaluateShotAtTime,
   resolveEffectiveMouthCue,
 } from '../evaluate-shot-at-time';
@@ -36,7 +37,9 @@ export function listCharacterActionVisualAssetIds(project: Project, shot: Shot):
     const characterId = layer?.source.kind === 'character' ? layer.source.characterId : undefined;
     const character = project.characters.find((candidate) => candidate.id === characterId);
     const action = character?.actions?.find((candidate) => candidate.id === event.actionId);
-    const animation = project.animations.find((candidate) => candidate.id === action?.animationId);
+    const animation = action && 'animationId' in action
+      ? project.animations.find((candidate) => candidate.id === action.animationId)
+      : undefined;
     if (!animation) continue;
     for (const frame of animation.frames) assetIds.add(frame.assetId);
     if (isFlaGraphicDefinition(animation)) {
@@ -170,6 +173,29 @@ export function listShotRuntimeImageAssets(
   return [...assets.values()];
 }
 
+/** The Graphic assets actually needed at the editor's current scrub position. */
+export function listShotGraphicImageAssetsAtTime(project: Project, shot: Shot, timeMs: number): ImageAsset[] {
+  const graphics = new Map(project.animations.filter(isFlaGraphicDefinition).map((entry) => [entry.id, entry]));
+  const needed = new Set<string>();
+  for (const layer of shot.layers) {
+    const definition = layer.source.kind === 'animation' ? graphics.get(layer.source.animationId) : undefined;
+    if (!definition) continue;
+    const evaluated = evaluateLayerPreTrackState(shot, layer, timeMs, project);
+    const frame = evaluated.animationFrame;
+    if (!frame || !evaluated.visible || !evaluated.animationVisible) continue;
+    const visual = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: frame.frameOrdinal,
+      internalTimeMs: frame.internalTimeMs,
+      mode: 'instance',
+      instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+      instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+    });
+    for (const assetId of visual?.resourceAssetIds ?? []) needed.add(assetId);
+  }
+  return project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image' && needed.has(asset.id));
+}
+
 /** Shared speaker targeting. A null entry means multiple visible occurrences. */
 function uniqueVisibleCharacterLayerIds(
   shot: Shot,
@@ -223,7 +249,6 @@ export function projectShotMouth(
       speakingCharacter &&
       (speakingCharacter.mode !== 'adaptive-parts' ||
         Boolean(speakingCharacter.faceBinding)) &&
-      !speakingCharacter.talkingAnimationId &&
       (speakingCharacter.mouthOpenAssetId ||
         speakingCharacter.mouthOpenVisualSource),
   );
@@ -237,10 +262,13 @@ export function projectShotMouth(
           evaluatedShot.timeMs < event.endMs ? [event.layerId] : [])
       : [],
   );
+  const talkingCharacters = new Set(project.characters.filter((character) =>
+    listCharacterTalkingSources(character).some(({ animationId, playback }) =>
+      isCharacterTalkingSourceAvailable(project, animationId, playback))).map((character) => character.id));
   const talkingClips = new Map<string, { clip: AudioClip; silent: boolean }>();
   for (const voice of shot.dialogues) {
     if (!voice.characterId || !voice.audioClipId ||
-      !project.characters.some(character => character.id === voice.characterId && character.talkingAnimationId)) continue;
+      !talkingCharacters.has(voice.characterId)) continue;
     const clip = shot.audioClips.find((candidate) => candidate.id === voice.audioClipId);
     if (clip?.role !== 'dialogue' || !isAudioClipActiveAtTime(clip, evaluatedShot.timeMs)) continue;
     const asset = project.assets.find((candidate) => candidate.id === clip.assetId);
@@ -255,7 +283,8 @@ export function projectShotMouth(
       talkingClips.set(voice.characterId, { clip, silent });
     }
   }
-  const hasRestFrames = project.characters.some(character => character.talkingAnimationPlayback?.restFrame !== undefined);
+  const hasRestFrames = project.characters.some(character =>
+    listCharacterTalkingSources(character).some(({ playback }) => playback?.restFrame !== undefined));
   const hasPoseRest = project.characters.some((character) => character.mouthPoseSet?.driveMode === 'mouth-poses');
   if (!dialogueOpenPhase && !hasAnyMouthCue && talkingClips.size === 0 && !hasRestFrames && !hasPoseRest) return evaluatedShot;
   const talkingTargets = talkingClips.size > 0 || hasRestFrames
@@ -293,9 +322,14 @@ export function projectShotMouth(
       return layer;
     }
 
-    const restFrame = layerCharacter.talkingAnimationPlayback?.restFrame;
+    const expressionId = layer.currentExpressionId ?? layerCharacter.defaultExpressionId;
+    const talking = talkingClips.get(layerCharacterId);
+    const dedicated = expressionId ? layerCharacter.expressionTalkingSources?.[expressionId] : undefined;
+    const hasTalkingSource = Boolean(layerCharacter.talkingAnimationId ||
+      (dedicated && isCharacterTalkingSourceAvailable(project, dedicated.animationId, dedicated.playback)));
+    const hasRestFrame = () => resolveCharacterTalkingFace(project, layerCharacter, expressionId, 'rest') !== null;
     if (cue === 'rest') {
-      if (restFrame !== undefined) {
+      if (hasRestFrame()) {
         changed = true;
         return { ...layer, talkingAnimationElapsedMs: 'rest' };
       }
@@ -319,13 +353,12 @@ export function projectShotMouth(
       return layer;
     }
 
-    const talking = talkingClips.get(layerCharacterId);
     if (cue === 'none' && talkingTargets?.get(layerCharacterId) === layer.id) {
-      if (talking && !talking.silent) {
+      if (talking && !talking.silent && hasTalkingSource) {
         changed = true;
         return { ...layer, talkingAnimationElapsedMs: evaluatedShot.timeMs - talking.clip.startMs };
       }
-      if (restFrame !== undefined) {
+      if (hasRestFrame()) {
         changed = true;
         return { ...layer, talkingAnimationElapsedMs: 'rest' };
       }
@@ -335,6 +368,7 @@ export function projectShotMouth(
     const shouldOpenFromDialogue =
       cue === 'none' &&
       dialogueOpenPhase &&
+      !hasTalkingSource &&
       layerCharacterId === dialogue?.characterId &&
       (dialoguePoseTargets.size === 0 || dialoguePoseTargets.has(layer.id));
     if (!shouldOpenFromCue && !shouldOpenFromDialogue) {
@@ -343,6 +377,12 @@ export function projectShotMouth(
         return { ...layer, mouthPose: restPose };
       }
       return layer;
+    }
+
+    if (shouldOpenFromDialogue && restPose?.target.kind === 'mouth') {
+      const openPose = poseSet?.poses.find(({ id }) => id === poseSet.analyzerMapping.open);
+      changed = true;
+      return { ...layer, mouthPose: openPose?.target.kind === 'mouth' ? openPose : restPose };
     }
 
     if (

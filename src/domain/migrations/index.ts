@@ -28,6 +28,19 @@ import {
   ProjectV25Schema,
   ProjectV26Schema,
   ProjectV27Schema,
+  ProjectV28Schema,
+  ProjectV29Schema,
+  ProjectV30Schema,
+  ProjectV31Schema,
+  ProjectV32Schema,
+  ProjectV33Schema,
+  ProjectV34Schema,
+  ProjectV35Schema,
+  ProjectV36Schema,
+  ProjectV37Schema,
+  ProjectV38Schema,
+  ProjectV39Schema,
+  ProjectV40Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -47,6 +60,19 @@ export type { LegacyProbeProjectV1, ProjectV0 };
 export type DetectedSchemaVersion =
   | 26
   | 27
+  | 28
+  | 29
+  | 30
+  | 31
+  | 32
+  | 33
+  | 34
+  | 35
+  | 36
+  | 37
+  | 38
+  | 39
+  | 40
   | 25
   | 24
   | 23
@@ -124,6 +150,19 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 25 ||
     version === 26 ||
     version === 27 ||
+    version === 28 ||
+    version === 29 ||
+    version === 30 ||
+    version === 31 ||
+    version === 32 ||
+    version === 33 ||
+    version === 34 ||
+    version === 35 ||
+    version === 36 ||
+    version === 37 ||
+    version === 38 ||
+    version === 39 ||
+    version === 40 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -438,6 +477,32 @@ export function migrateProject(input: unknown): Project {
       return ProjectSchema.parse({ ...ProjectV26Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case 27:
       return ProjectSchema.parse({ ...ProjectV27Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 28:
+      return ProjectSchema.parse({ ...ProjectV28Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 29:
+      return ProjectSchema.parse({ ...ProjectV29Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 30:
+      return ProjectSchema.parse({ ...ProjectV30Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 31:
+      return ProjectSchema.parse({ ...ProjectV31Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 32:
+      return ProjectSchema.parse({ ...ProjectV32Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 33:
+      return ProjectSchema.parse({ ...ProjectV33Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 34:
+      return ProjectSchema.parse({ ...ProjectV34Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 35:
+      return ProjectSchema.parse({ ...ProjectV35Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 36:
+      return ProjectSchema.parse({ ...ProjectV36Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 37:
+      return ProjectSchema.parse({ ...ProjectV37Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 38:
+      return ProjectSchema.parse({ ...ProjectV38Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 39:
+      return ProjectSchema.parse({ ...ProjectV39Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 40:
+      return ProjectSchema.parse({ ...ProjectV40Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case PROJECT_SCHEMA_VERSION:
       // Current projects are validated without an implicit compatibility rewrite.
       project = ProjectSchema.parse(input);

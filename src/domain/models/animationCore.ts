@@ -5,8 +5,13 @@ import {
   CharacterPartVisualSourceSchema,
   CharacterPartVisualSourceV22Schema,
 } from './character';
-import { isValidFrameTime } from '../timeline/frame-grid';
+import {
+  AnimationBezierSchema, AnimationCurveSchema, AnimationInterpolationSchema, AnimationKeySchema,
+  AnimationKeyV32Schema, AnimationPropertySchema,
+} from './animationKeys';
 import { CHARACTER_PART_MIN_SCALE, CHARACTER_PART_MAX_SCALE } from '../constants';
+
+export { AnimationKeySchema, AnimationPropertySchema, AnimationInterpolationSchema, AnimationCurveSchema, AnimationBezierSchema } from './animationKeys';
 
 export const LayerTargetRefSchema = z.object({
   kind: z.literal('layer'),
@@ -35,25 +40,6 @@ export const AnimationTargetRefSchema = z.discriminatedUnion('kind', [
   CharacterPartTargetRefSchema,
   CharacterNodeTargetRefSchema,
 ]);
-
-export const AnimationPropertySchema = z.enum([
-  'transform.offsetX', 'transform.offsetY', 'transform.rotationDeg',
-  'transform.scaleX', 'transform.scaleY',
-]);
-
-export const AnimationInterpolationSchema = z.enum([
-  'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step',
-]);
-
-export const AnimationKeySchema = z.object({
-  /** Persisted integer milliseconds on the Project FPS grid (#979). */
-  timeMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-    .refine((timeMs) => isValidFrameTime(timeMs), {
-      message: 'Animation key time must be on the Project frame grid.',
-    }),
-  value: FiniteNumberSchema,
-  interpolationToNext: AnimationInterpolationSchema,
-}).strict();
 
 function validateAnimationTrack(
   track: {
@@ -219,7 +205,7 @@ export const AnimationClipV0V22Schema = z.object({
   version: z.literal(1),
   fixedCharacterCenter: z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict(),
   targetBases: z.array(CharacterPartTargetBasisV22Schema),
-  tracks: z.array(CharacterPartAnimationTrackSchema),
+  tracks: z.array(CharacterPartAnimationTrackSchema.safeExtend({ keys: z.array(AnimationKeyV32Schema).min(1) })),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
 export const AnimationClipV0Schema = z.object({
@@ -235,10 +221,14 @@ export const LayerAnimationClipSchema = z.object({
   tracks: z.array(LayerAnimationTrackSchema),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
+const LayerAnimationClipV32Schema = LayerAnimationClipSchema.safeExtend({
+  tracks: z.array(LayerAnimationTrackSchema.safeExtend({ keys: z.array(AnimationKeyV32Schema).min(1) })),
+});
+
 /** Frozen v22 clip union. */
 export const AnimationClipV22Schema = z.discriminatedUnion('version', [
   AnimationClipV0V22Schema,
-  LayerAnimationClipSchema,
+  LayerAnimationClipV32Schema,
 ]);
 
 export const CharacterNodeAnimationClipSchema = z.object({
@@ -246,6 +236,16 @@ export const CharacterNodeAnimationClipSchema = z.object({
   targetBases: z.array(CharacterNodeTargetBasisSchema),
   tracks: z.array(CharacterNodeAnimationTrackSchema),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
+
+export const AnimationClipV32Schema = z.discriminatedUnion('version', [
+  AnimationClipV0Schema.safeExtend({
+    tracks: z.array(CharacterPartAnimationTrackSchema.safeExtend({ keys: z.array(AnimationKeyV32Schema).min(1) })),
+  }),
+  LayerAnimationClipV32Schema,
+  CharacterNodeAnimationClipSchema.safeExtend({
+    tracks: z.array(CharacterNodeAnimationTrackSchema.safeExtend({ keys: z.array(AnimationKeyV32Schema).min(1) })),
+  }),
+]);
 
 export const AnimationClipSchema = z.discriminatedUnion('version', [
   AnimationClipV0Schema,
@@ -262,6 +262,8 @@ export type CharacterPartTargetRef = z.infer<typeof CharacterPartTargetRefSchema
 export type AnimationTargetRef = z.infer<typeof AnimationTargetRefSchema>;
 export type AnimationProperty = z.infer<typeof AnimationPropertySchema>;
 export type AnimationInterpolation = z.infer<typeof AnimationInterpolationSchema>;
+export type AnimationBezier = z.infer<typeof AnimationBezierSchema>;
+export type AnimationCurve = z.infer<typeof AnimationCurveSchema>;
 export type AnimationKey = z.infer<typeof AnimationKeySchema>;
 export type AnimationTrack = z.infer<typeof AnimationTrackSchema>;
 export type CharacterPartAnimationTrack = z.infer<typeof CharacterPartAnimationTrackSchema>;

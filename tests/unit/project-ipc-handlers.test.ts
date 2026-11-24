@@ -44,6 +44,7 @@ function projectService(): ProjectService {
   return {
     create: vi.fn(),
     createAt: vi.fn(),
+    saveAsTemplate: vi.fn(),
     open: vi.fn(),
     save: vi.fn(),
   } as unknown as ProjectService;
@@ -56,7 +57,7 @@ describe('project IPC handlers', () => {
     electronMocks.removeHandler.mockClear();
   });
 
-  it('registers only the seven allowlisted project operations', () => {
+  it('registers only the allowlisted project operations', () => {
     const remove = registerProjectIpcHandlers({
       getMainWindow: () => mainWindow(),
       projectService: projectService(),
@@ -68,12 +69,35 @@ describe('project IPC handlers', () => {
       IPC_CHANNELS.PROJECT_CONFIRM_SWITCH,
       IPC_CHANNELS.PROJECT_CREATE,
       IPC_CHANNELS.PROJECT_CREATE_AT,
+      IPC_CHANNELS.PROJECT_SAVE_TEMPLATE,
       IPC_CHANNELS.PROJECT_OPEN,
       IPC_CHANNELS.PROJECT_SAVE,
     ]);
 
     remove();
     expect(electronMocks.handlers.size).toBe(0);
+  });
+
+  it('validates template saves and leaves the active project context alone', async () => {
+    const service = projectService();
+    const project = migrateProject(exampleProject);
+    const projectRoot = 'D:/projects/Series.pandastage-template';
+    const document = { projectRoot, projectFilePath: projectRoot + '/project.json', project, migrated: false, sourceVersion: 1 as const };
+    vi.spyOn(service, 'saveAsTemplate').mockResolvedValue(document);
+    const onProjectAccessed = vi.fn();
+    const onProjectContextChanged = vi.fn();
+    registerProjectIpcHandlers({ getMainWindow: () => mainWindow(), projectService: service,
+      onProjectAccessed, onProjectContextChanged });
+    const handler = electronMocks.handlers.get(IPC_CHANNELS.PROJECT_SAVE_TEMPLATE)!;
+    const request = { projectRoot: 'D:/projects/Episode.pandastage', project, revision: 4,
+      parentDirectory: 'D:/projects', templateName: 'Series' };
+    await expect(handler(event(41), request)).rejects.toThrow('untrusted sender');
+    await expect(handler(event(), { ...request, templateName: '../Series' })).rejects.toThrow();
+    expect(service.saveAsTemplate).not.toHaveBeenCalled();
+    await expect(handler(event(), request)).resolves.toEqual({ ok: true, value: document });
+    expect(service.saveAsTemplate).toHaveBeenCalledWith(request);
+    expect(onProjectAccessed).not.toHaveBeenCalled();
+    expect(onProjectContextChanged).not.toHaveBeenCalled();
   });
 
   it('opens only the validated current project folder through the main process', async () => {

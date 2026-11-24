@@ -251,6 +251,7 @@ function buildFormalStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
+  options?: { collectCandidates: boolean },
 ): StageRenderModel {
   const shot = project.shots.find(
     (candidate) => candidate.id === evaluatedShot.shotId,
@@ -269,6 +270,7 @@ function buildFormalStageRenderModel(
       layer,
       evaluatedShot.timeMs,
       (assetId) => !assetUrls[assetId] || (failedImageAssetIds?.has(assetId) ?? false),
+      options,
     );
     const primaryPart = visual.parts[0];
     if (!primaryPart) {
@@ -385,6 +387,7 @@ export function buildStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
+  options?: { collectCandidates: boolean },
 ): StageRenderModel {
   if (!project.shots.some((shot) => shot.id === evaluatedShot.shotId)) {
     throw new StageAssetError(
@@ -394,6 +397,6 @@ export function buildStageRenderModel(
   }
 
   return isFormalCompositeProject(project, evaluatedShot)
-    ? buildFormalStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds)
+    ? buildFormalStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds, options)
     : buildLegacyStageRenderModel(project, evaluatedShot, assetUrls);
 }

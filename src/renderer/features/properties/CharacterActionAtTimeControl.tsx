@@ -19,8 +19,8 @@ interface CharacterActionAtTimeControlProps {
   layer: Layer;
 }
 
-function defaultActionEnd(startMs: number, shotDuration: number, animation?: ProjectAnimationDefinition): number {
-  let duration = animation?.durationMs ?? 1_000;
+function defaultActionEnd(startMs: number, shotDuration: number, animation?: ProjectAnimationDefinition, layeredDuration?: number): number {
+  let duration = layeredDuration ?? animation?.durationMs ?? 1_000;
   if (animation && isFlaGraphicDefinition(animation) && animation.frames.length === 1) {
     const timeline = resolveFlaGraphicPreviewTimeline(animation, true);
     if (timeline.hasInternalTimeline) duration = Math.max(duration, timeline.totalFrames * 1_000 / timeline.fps);
@@ -48,11 +48,12 @@ export function CharacterActionAtTimeControl({
     .filter((event): event is CharacterActionEvent => event.type === 'character-action' && event.layerId === layer.id)
     .sort((left, right) => left.startMs - right.startMs || left.id.localeCompare(right.id));
   const selectedAction = actions.find((action) => action.id === (editing?.actionId ?? selectedActionId)) ?? actions[0]!;
-  const animation = project.animations.find((entry) => entry.id === selectedAction.animationId);
+  const animation = 'animationId' in selectedAction ? project.animations.find((entry) => entry.id === selectedAction.animationId) : undefined;
+  const layeredDuration = 'kind' in selectedAction ? Math.max(...selectedAction.tracks.map(({ keys }) => keys.at(-1)!.timeMs)) : undefined;
   const playhead = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
   const { startMs, endMs } = manualRange ?? {
     startMs: playhead,
-    endMs: defaultActionEnd(playhead, shot.durationMs, animation),
+    endMs: defaultActionEnd(playhead, shot.durationMs, animation, layeredDuration),
   };
   const validRange = Number.isSafeInteger(startMs) && Number.isSafeInteger(endMs) && startMs >= 0 && startMs < endMs && endMs <= shot.durationMs;
 

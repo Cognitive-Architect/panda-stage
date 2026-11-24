@@ -1,6 +1,7 @@
 import {
   evaluateShotAtTime,
   projectShotDialogueVisual,
+  resolveExportFrameAuthoringTime,
   type EvaluatedShot,
   type Project,
   type Shot,
@@ -19,7 +20,9 @@ export function evaluateExportShotAtTime(
   return projectShotDialogueVisual(
     project,
     shot,
-    evaluateShotAtTime(shot, requestedTimeMs, project),
+    evaluateShotAtTime(shot, requestedTimeMs, project, {
+      graphicFrameTimeMs: resolveExportFrameAuthoringTime(requestedTimeMs, shot.durationMs),
+    }),
     activeDialogueId,
     dialogueSilence,
   );

@@ -14,6 +14,15 @@ export interface ProductPreviewAudioSelection {
   dialogue?: Dialogue;
 }
 
+type ProjectAudioAssetContext = Pick<ProductPreviewAudioSyncInput, 'projectRoot' | 'project'>;
+
+export interface EditorAudioClipSamples {
+  buffer: AudioBuffer;
+  sourceStartMs: number;
+  audition(shotTimeMs: number): Promise<void>;
+  stop(): void;
+}
+
 function selectionFor(project: Project, clip: AudioClip): ProductPreviewAudioSelection | null {
   const asset = project.assets.find((candidate) => candidate.id === clip.assetId);
   if (!asset || asset.kind !== 'audio' || asset.durationMs === undefined || !asset.sha256 ||
@@ -310,6 +319,73 @@ export class ProductPreviewAudioTransport {
     this.hasAudioInfoProvider = typeof getAudioInfo === 'function';
     this.getAudioInfo = getAudioInfo ?? (() => Promise.resolve(null));
     this.onWarning = options.onWarning ?? (() => undefined);
+  }
+
+  /** A scoped lease for the editor's selected clip, using the preview decoder and working set. */
+  async readEditorClip(
+    input: ProjectAudioAssetContext,
+    clip: AudioClip,
+    signal: AbortSignal,
+  ): Promise<EditorAudioClipSamples | null> {
+    const selection = selectionFor(input.project, clip);
+    if (!selection || signal.aborted || this.disposed) return null;
+    const consumer = `editor-clip:${this.readTaskSequence++}`;
+    let generation = 0;
+    let source: AudioBufferSourceNode | null = null;
+    let gain: GainNode | null = null;
+    const stop = (): void => {
+      generation += 1;
+      if (source) {
+        source.onended = null;
+        try { source.stop(); } catch { /* The short audition may have ended. */ }
+        source.disconnect();
+        source.buffer = null;
+        source = null;
+      }
+      gain?.disconnect();
+      gain = null;
+    };
+    const release = (): void => {
+      stop();
+      this.detachConsumer(consumer);
+    };
+    signal.addEventListener('abort', release, { once: true });
+    let record: DecodedAudioBufferRecord;
+    try {
+      record = await this.requestBuffer(selection, input, consumer, CURRENT_PLAYBACK_PRIORITY);
+    } catch (error) {
+      signal.removeEventListener('abort', release);
+      release();
+      if (signal.aborted) return null;
+      throw error;
+    }
+    if (signal.aborted || this.disposed) return null;
+
+    return {
+      buffer: record.buffer,
+      sourceStartMs: record.sourceStartMs,
+      stop,
+      audition: async (shotTimeMs) => {
+        stop();
+        const context = this.context;
+        if (!context || signal.aborted || this.disposed ||
+          !isAudioClipActiveAtTime(clip, shotTimeMs) || audioClipGain(clip.volume) === 0) return;
+        const intent = generation;
+        if (context.state === 'suspended') await context.resume();
+        if (signal.aborted || this.disposed || intent !== generation || context.state !== 'running') return;
+        const offset = Math.max(0, (audioClipSourceTimeMs(clip, shotTimeMs) - record.sourceStartMs) / 1_000);
+        const duration = Math.min(0.12, record.buffer.duration - offset, (clip.endMs - shotTimeMs) / 1_000);
+        if (duration <= 0) return;
+        source = context.createBufferSource();
+        gain = context.createGain();
+        gain.gain.value = audioClipGain(clip.volume);
+        source.buffer = record.buffer;
+        source.connect(gain);
+        gain.connect(context.destination);
+        source.onended = stop;
+        source.start(context.currentTime, offset, duration);
+      },
+    };
   }
 
   /**
@@ -792,7 +868,7 @@ export class ProductPreviewAudioTransport {
 
   private requestBuffer(
     selection: ProductPreviewAudioSelection,
-    input: ProductPreviewAudioSyncInput,
+    input: ProjectAudioAssetContext,
     consumerId: string,
     priority: number,
   ): Promise<DecodedAudioBufferRecord> {
@@ -1540,7 +1616,7 @@ export class ProductPreviewAudioTransport {
 
   private waveProxyRange(
     selection: ProductPreviewAudioSelection,
-    input: ProductPreviewAudioSyncInput,
+    input: ProjectAudioAssetContext,
   ): WaveProxyRange | null {
     const { asset, clip } = selection;
     const durationMs = clip.endMs - clip.startMs;
@@ -1948,11 +2024,11 @@ export class ProductPreviewAudioTransport {
       clip.startMs, clip.endMs, clip.offsetMs, clip.volume].join('\u0000');
   }
 
-  private assetKey(selection: ProductPreviewAudioSelection, input: ProductPreviewAudioSyncInput): string {
+  private assetKey(selection: ProductPreviewAudioSelection, input: ProjectAudioAssetContext): string {
     return [input.projectRoot, input.project.id, selection.asset.id, selection.asset.sha256].join('\u0000');
   }
 
-  private decodedBufferKey(selection: ProductPreviewAudioSelection, input: ProductPreviewAudioSyncInput): string {
+  private decodedBufferKey(selection: ProductPreviewAudioSelection, input: ProjectAudioAssetContext): string {
     const assetKey = this.assetKey(selection, input);
     const range = this.waveProxyRange(selection, input);
     if (!range) return assetKey;

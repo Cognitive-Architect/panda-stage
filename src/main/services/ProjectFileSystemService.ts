@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  copyFile,
   mkdir,
   open,
   readFile,
@@ -8,6 +9,7 @@ import {
   stat,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { resolveProjectAssetPath } from './project-asset-path';
 
 export const PROJECT_FILE_NAME = 'project.json' as const;
 export const PROJECT_DIRECTORIES = [
@@ -105,6 +107,21 @@ export class ProjectFileSystemService {
 
   async removeNewProjectRoot(projectRoot: string): Promise<void> {
     await rm(projectRoot, { recursive: true, force: true });
+  }
+
+  async copyProjectAssets(sourceRoot: string, targetRoot: string, paths: readonly string[]): Promise<void> {
+    const copied = new Set<string>();
+    for (const relativePath of paths) {
+      // A persisted reference can be missing or unsafe in a legacy project.
+      if (relativePath.includes(':')) continue;
+      const source = await resolveProjectAssetPath(sourceRoot, relativePath, { preservePermissionErrors: true });
+      if (!source || !(await stat(source)).isFile()) continue;
+      const target = path.resolve(targetRoot, relativePath);
+      if (copied.has(target)) continue;
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(source, target);
+      copied.add(target);
+    }
   }
 
   async writeProjectFileAtomically(

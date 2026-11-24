@@ -4,7 +4,11 @@ import {
   UnsavedCloseController,
   createUnsavedCloseDialogOptions,
 } from '../../src/main/services/UnsavedCloseController';
-import { UnsavedCloseGuard } from '../../src/main/windows/unsaved-close-guard';
+import {
+  UnsavedCloseGuard,
+  createCloseSyncFailureDialogOptions,
+  promptRendererSyncFailureAction,
+} from '../../src/main/windows/unsaved-close-guard';
 import type { AutosaveTrackRequest } from '../../src/shared/recovery-api';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -351,5 +355,254 @@ describe('UnsavedCloseController', () => {
     await guard.waitForIdle();
     expect(save).toHaveBeenCalledOnce();
     expect(closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('builds an actionable native close-failure dialog defaulting to continue editing', async () => {
+    const options = createCloseSyncFailureDialogOptions();
+    expect(options.title).toBe('Panda Stage 暂时无法正常关闭');
+    expect(options.message).toBe('编辑器没有响应，部分未保存内容可能尚未同步。');
+    expect(options.detail).toContain('未保存的修改可能丢失');
+    expect(options.buttons).toEqual(['继续编辑', '强制退出']);
+    expect(options.defaultId).toBe(0);
+    expect(options.cancelId).toBe(0);
+
+    await expect(
+      promptRendererSyncFailureAction(async () => ({ response: 0 })),
+    ).resolves.toBe('continue');
+    await expect(
+      promptRendererSyncFailureAction(async () => ({ response: 1 })),
+    ).resolves.toBe('force-quit');
+  });
+
+  it.each(['window', 'application'] as const)(
+    'keeps the app open without retry loop when user chooses continue on %s close failure',
+    async (intent) => {
+      const value = new UnsavedCloseController({
+        getDirtyProject: () => null,
+        prompt: vi.fn(),
+        save: vi.fn(),
+        discard: vi.fn(),
+        reportSaveFailure: vi.fn(),
+        reportDiscardFailure: vi.fn(),
+      });
+      let shouldFailSync = true;
+      const synchronize = vi.fn(async () =>
+        shouldFailSync
+          ? {
+              ok: false as const,
+              error: 'Renderer close synchronization timed out.',
+            }
+          : { ok: true as const },
+      );
+      const reportRendererSyncFailure = vi.fn(async () => 'continue' as const);
+      const closeWindow = vi.fn();
+      const quitApplication = vi.fn();
+      const forceQuitApplication = vi.fn();
+      const guard = new UnsavedCloseGuard({
+        controller: value,
+        synchronizeRenderer: synchronize,
+        reportRendererSyncFailure,
+        closeWindow,
+        quitApplication,
+        forceQuitApplication,
+      });
+
+      const trigger = () => {
+        const event = { preventDefault: vi.fn() };
+        if (intent === 'window') {
+          guard.handleWindowClose(event);
+        } else {
+          guard.handleBeforeQuit(event);
+        }
+        return event;
+      };
+
+      const firstEvent = trigger();
+      await guard.waitForIdle();
+
+      expect(firstEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(synchronize).toHaveBeenCalledTimes(1);
+      expect(reportRendererSyncFailure).toHaveBeenCalledTimes(1);
+      expect(closeWindow).not.toHaveBeenCalled();
+      expect(quitApplication).not.toHaveBeenCalled();
+      expect(forceQuitApplication).not.toHaveBeenCalled();
+
+      // Next explicit close after recovery proceeds normally without stuck state.
+      shouldFailSync = false;
+      trigger();
+      await guard.waitForIdle();
+
+      expect(synchronize).toHaveBeenCalledTimes(2);
+      expect(reportRendererSyncFailure).toHaveBeenCalledTimes(1);
+      if (intent === 'window') {
+        expect(closeWindow).toHaveBeenCalledOnce();
+        expect(quitApplication).not.toHaveBeenCalled();
+      } else {
+        expect(quitApplication).toHaveBeenCalledOnce();
+        expect(closeWindow).not.toHaveBeenCalled();
+      }
+      expect(forceQuitApplication).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['window', 'application'] as const)(
+    'force-quits directly and bypasses guard re-entry on %s close failure',
+    async (intent) => {
+      const value = new UnsavedCloseController({
+        getDirtyProject: () => dirtyProject,
+        prompt: vi.fn(),
+        save: vi.fn(),
+        discard: vi.fn(),
+        reportSaveFailure: vi.fn(),
+        reportDiscardFailure: vi.fn(),
+      });
+      const synchronize = vi.fn(async () => {
+        throw new Error('Injected IPC exception.');
+      });
+      const reportRendererSyncFailure = vi.fn(
+        async () => 'force-quit' as const,
+      );
+      const closeWindow = vi.fn();
+      const quitApplication = vi.fn();
+      const forceQuitApplication = vi.fn(() => {
+        // Simulate any synchronous close/quit event arriving during exit.
+        const followUpClose = { preventDefault: vi.fn() };
+        const followUpQuit = { preventDefault: vi.fn() };
+        guard.handleWindowClose(followUpClose);
+        guard.handleBeforeQuit(followUpQuit);
+        expect(followUpClose.preventDefault).not.toHaveBeenCalled();
+        expect(followUpQuit.preventDefault).not.toHaveBeenCalled();
+      });
+      const guard = new UnsavedCloseGuard({
+        controller: value,
+        synchronizeRenderer: synchronize,
+        reportRendererSyncFailure,
+        closeWindow,
+        quitApplication,
+        forceQuitApplication,
+      });
+
+      const event = { preventDefault: vi.fn() };
+      if (intent === 'window') {
+        guard.handleWindowClose(event);
+      } else {
+        guard.handleBeforeQuit(event);
+      }
+      await guard.waitForIdle();
+
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(synchronize).toHaveBeenCalledOnce();
+      expect(reportRendererSyncFailure).toHaveBeenCalledWith(
+        'Injected IPC exception.',
+        intent,
+      );
+      expect(forceQuitApplication).toHaveBeenCalledOnce();
+      expect(closeWindow).not.toHaveBeenCalled();
+      expect(quitApplication).not.toHaveBeenCalled();
+    },
+  );
+
+  it('converges pending-work exceptions onto the same failure decision exit', async () => {
+    const value = new UnsavedCloseController({
+      getDirtyProject: () => null,
+      prompt: vi.fn(),
+      save: vi.fn(),
+      discard: vi.fn(),
+      reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
+    });
+    const reportRendererSyncFailure = vi.fn(async () => 'force-quit' as const);
+    const forceQuitApplication = vi.fn();
+    const guard = new UnsavedCloseGuard({
+      controller: value,
+      confirmPendingWork: vi.fn(async () => {
+        throw new Error('Injected pending-work confirmation failure.');
+      }),
+      synchronizeRenderer: vi.fn(),
+      reportRendererSyncFailure,
+      closeWindow: vi.fn(),
+      quitApplication: vi.fn(),
+      forceQuitApplication,
+    });
+
+    guard.handleWindowClose({ preventDefault: vi.fn() });
+    await guard.waitForIdle();
+
+    expect(reportRendererSyncFailure).toHaveBeenCalledWith(
+      'Injected pending-work confirmation failure.',
+      'window',
+    );
+    expect(forceQuitApplication).toHaveBeenCalledOnce();
+  });
+
+  it('shows at most one failure dialog when close and quit events re-enter during sync or dialog', async () => {
+    let releaseSync!: () => void;
+    const syncGate = new Promise<void>((resolve) => {
+      releaseSync = resolve;
+    });
+    let releaseDialog!: () => void;
+    const dialogGate = new Promise<void>((resolve) => {
+      releaseDialog = resolve;
+    });
+    const value = new UnsavedCloseController({
+      getDirtyProject: () => null,
+      prompt: vi.fn(),
+      save: vi.fn(),
+      discard: vi.fn(),
+      reportSaveFailure: vi.fn(),
+      reportDiscardFailure: vi.fn(),
+    });
+    const synchronize = vi.fn(async () => {
+      await syncGate;
+      return {
+        ok: false as const,
+        error: 'Renderer close synchronization timed out.',
+      };
+    });
+    const reportRendererSyncFailure = vi.fn(async () => {
+      await dialogGate;
+      return 'continue' as const;
+    });
+    const guard = new UnsavedCloseGuard({
+      controller: value,
+      synchronizeRenderer: synchronize,
+      reportRendererSyncFailure,
+      closeWindow: vi.fn(),
+      quitApplication: vi.fn(),
+      forceQuitApplication: vi.fn(),
+    });
+
+    const firstWindowClose = { preventDefault: vi.fn() };
+    const secondWindowClose = { preventDefault: vi.fn() };
+    const duringSyncQuit = { preventDefault: vi.fn() };
+    const duringDialogWindowClose = { preventDefault: vi.fn() };
+    const duringDialogQuit = { preventDefault: vi.fn() };
+
+    guard.handleWindowClose(firstWindowClose);
+    guard.handleWindowClose(secondWindowClose);
+    guard.handleBeforeQuit(duringSyncQuit);
+    expect(synchronize).toHaveBeenCalledOnce();
+    expect(reportRendererSyncFailure).not.toHaveBeenCalled();
+
+    releaseSync();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reportRendererSyncFailure).toHaveBeenCalledOnce();
+
+    guard.handleWindowClose(duringDialogWindowClose);
+    guard.handleBeforeQuit(duringDialogQuit);
+    expect(synchronize).toHaveBeenCalledOnce();
+    expect(reportRendererSyncFailure).toHaveBeenCalledOnce();
+
+    releaseDialog();
+    await guard.waitForIdle();
+
+    expect(firstWindowClose.preventDefault).toHaveBeenCalledOnce();
+    expect(secondWindowClose.preventDefault).toHaveBeenCalledOnce();
+    expect(duringSyncQuit.preventDefault).toHaveBeenCalledOnce();
+    expect(duringDialogWindowClose.preventDefault).toHaveBeenCalledOnce();
+    expect(duringDialogQuit.preventDefault).toHaveBeenCalledOnce();
+    expect(synchronize).toHaveBeenCalledOnce();
+    expect(reportRendererSyncFailure).toHaveBeenCalledOnce();
   });
 });

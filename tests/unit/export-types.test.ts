@@ -13,6 +13,7 @@ import {
   iterateFormalFrameSchedule,
 } from '../../src/shared/export-types';
 import { buildProject } from './domain/testProject';
+import { migrateProject } from '../../src/domain';
 
 describe('export frame schedule', () => {
   it.each([
@@ -106,6 +107,15 @@ describe('export frame schedule', () => {
     expect(mapProjectTime(project, 1_000).shotIndex).toBe(0);
     expect(mapProjectTime(project, 1_001).shotIndex).toBe(1);
     expect(mapProjectTime(project, 1_002).shotLocalTimeMs).toBe(1);
+  });
+
+  it('round-trips portable output preferences independently from an output location or Shot', () => {
+    const project = buildProject();
+    expect(migrateProject({ ...project, schemaVersion: 38 })).toEqual(project);
+    const changed = { ...project, exportPreferences: { format: 'png-sequence', rangeMode: 'range', transparent: true } };
+    expect(migrateProject(JSON.parse(JSON.stringify(changed)))).toEqual(changed);
+    expect(() => migrateProject({ ...changed, schemaVersion: 38 })).toThrow();
+    expect(() => migrateProject({ ...changed, exportPreferences: { ...changed.exportPreferences, directory: 'D:/output' } })).toThrow();
   });
 
   it('requires formal Shot identity and local time to travel together', () => {

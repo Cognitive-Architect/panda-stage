@@ -55,6 +55,7 @@ describe('IPC channel registry', () => {
       'export-preparation:snapshot-status',
       'project:create',
       'project:create-at',
+      'project:save-template',
       'project:choose-directory',
       'project:open-folder',
       'project:confirm-switch',
@@ -114,6 +115,9 @@ describe('IPC channel registry', () => {
       'fla:frame-sequence-commit',
       'fla:frame-sequence-progress',
       'fla:graphic-instance-commit',
+      'desktop-automation:status',
+      'desktop-automation:request',
+      'desktop-automation:response',
     ]);
   });
 });

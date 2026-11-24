@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
-import { resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
+import { isFlaGraphicDefinition, TalkingAnimationPlaybackSchema, type Character, type FlaGraphicDefinition, type TalkingAnimationPlayback, type CharacterFaceGraphicSource, type MouthPoseSource } from '../../../domain';
+import { isCharacterTalkingSourceAvailable, resolveCharacterFaceSourceOrNull } from '../../../domain/selectors/characterFaceSource';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { hasFlaGraphicTemporalPlayback } from '../../../domain/evaluate-shot-at-time';
 import { Button } from '../../ui/Button';
@@ -13,20 +13,23 @@ import './graphic-face-picker.css';
 export type GraphicFacePreviewResult = 'pending' | 'ready' | 'failed';
 
 /** Uses the same structured renderer and decoded-image cache contract as Stage. */
-export function GraphicFacePreview({ source, label = '表情预览', onResult }: {
+export function GraphicFacePreview({ source, label = '表情预览', onResult, onThumbnailResult }: {
   source: Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
   label?: string;
   onResult?: (snapshot: EditorProjectSnapshot, result: GraphicFacePreviewResult) => void;
+  onThumbnailResult?: (result: GraphicFacePreviewResult) => void;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [visible, setVisible] = useState(false);
-  const [loaded, setLoaded] = useState<{ resolved: NonNullable<typeof resolved>; images: typeof EMPTY_CANVAS_IMAGE_STATE }>();
+  const [loaded, setLoaded] = useState<{ root: string; images: typeof EMPTY_CANVAS_IMAGE_STATE }>();
+  const resources = useRef<CanvasImageResourceSession>(null);
   const [failed, setFailed] = useState(false);
   const resolved = useMemo(() => snapshot ? resolveCharacterFaceSourceOrNull(snapshot.project, source) : null,
     [snapshot, source.animationId, source.firstFrame, source.internalTimeMs]);
   const report = useEffectEvent((result: GraphicFacePreviewResult) => {
     if (snapshot) onResult?.(snapshot, result);
+    onThumbnailResult?.(result);
   });
   const checkPreview = Boolean(onResult);
   useEffect(() => {
@@ -43,15 +46,19 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
     ...(resolved?.assetId ? [resolved.assetId] : []),
   ]), [resolved, graphic]);
   useEffect(() => {
-    if (!active || !snapshot || !resolved || requiredIds.size === 0) return;
-    const resourceSession = new CanvasImageResourceSession();
-    resourceSession.reconcile({
-      contextKey: snapshot.projectRoot,
-      projectRoot: snapshot.projectRoot,
-      assets: snapshot.project.assets.filter(asset => asset.kind === 'image' && requiredIds.has(asset.id)),
-    }, images => setLoaded({ resolved, images }));
-    return () => resourceSession.dispose();
-  }, [active, snapshot, resolved, requiredIds]);
+    const session = new CanvasImageResourceSession();
+    resources.current = session;
+    return () => session.dispose();
+  }, []);
+  useEffect(() => {
+    if (!active) return;
+    const root = snapshot?.projectRoot;
+    resources.current?.reconcile({
+      contextKey: root ?? null,
+      projectRoot: root ?? null,
+      assets: snapshot?.project.assets.filter(asset => asset.kind === 'image' && requiredIds.has(asset.id)) ?? [],
+    }, images => { if (root) setLoaded({ root, images }); });
+  }, [active, snapshot, requiredIds]);
   useEffect(() => {
     const target = canvas.current;
     const context = target?.getContext('2d');
@@ -65,14 +72,15 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
       return;
     }
     context.clearRect(0, 0, target.width, target.height);
-    const images = loaded?.resolved === resolved ? loaded.images : EMPTY_CANVAS_IMAGE_STATE;
+    const images = loaded && loaded.root === snapshot?.projectRoot ? loaded.images : EMPTY_CANVAS_IMAGE_STATE;
     if (images.missing.size > 0 || [...requiredIds].some(id => !snapshot?.project.assets.some(
       asset => asset.kind === 'image' && asset.id === id,
     ))) {
       finish('failed');
       return;
     }
-    if ([...requiredIds].some(id => !images.images.has(id))) {
+    if ([...requiredIds].some(id => !images.images.has(id) ||
+      images.sourceKeys.get(id) !== snapshot?.project.assets.find(asset => asset.id === id)?.sha256)) {
       finish('pending');
       return;
     }
@@ -83,7 +91,7 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
         const rendered = renderFlaGraphicCanvas(graphic, images.images);
         if (rendered?.visibleRect) {
           context.drawImage(rendered.canvas, left + (rendered.rect.x + resolved.width / 2) * scale, top + (rendered.rect.y + resolved.height / 2) * scale, rendered.rect.width * scale, rendered.rect.height * scale);
-        } else {
+        } else if (!rendered || checkPreview) {
           finish('failed');
           return;
         }
@@ -109,10 +117,11 @@ export function GraphicFacePreview({ source, label = '表情预览', onResult }:
   return <canvas ref={canvas} width={width} height={height} role="img" aria-label={failed || !resolved ? `${label}：素材不可用` : label} data-first-frame={source.firstFrame} />;
 }
 
-export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false }: {
+export function TalkingAnimationPicker({ animationId, playback, onApply, disabled, forClaim = false, forExpression = false }: {
   animationId?: string;
   playback?: TalkingAnimationPlayback;
   forClaim?: boolean;
+  forExpression?: boolean;
   onApply: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   disabled?: boolean;
 }): React.JSX.Element {
@@ -120,7 +129,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   const [draft, setDraft] = useState<string | null>(null);
   const [draftPlayback, setDraftPlayback] = useState<TalkingAnimationPlayback>();
   const [previewRest, setPreviewRest] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(forExpression);
   const titleId = useId();
   const animations = snapshot?.project.animations.filter(animation =>
     isFlaGraphicDefinition(animation) ? hasFlaGraphicTemporalPlayback(animation) : animation.frames.length > 1,
@@ -129,18 +138,19 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
   const selectedPlayback = draftPlayback ?? (selected?.id === animationId ? playback : undefined);
   const total = selected ? resolveFlaGraphicPreviewTimeline(selected, true).totalFrames : 1;
   const settings = selectedPlayback ?? { firstFrame: 0, lastFrame: total - 1, mode: 'loop' as const };
+  const appliedPlayback = forClaim || forExpression ? settings : selectedPlayback;
   const update = (value: Partial<TalkingAnimationPlayback>): void => {
     setDraftPlayback({ ...settings, ...value });
     setPreviewRest(false);
   };
   return (
     <div className="graphic-face-picker">
-      <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
+      {!forExpression ? <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => {
         setDraft(null);
         setDraftPlayback(undefined);
         setPreviewRest(false);
         setOpen(!open);
-      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button>
+      }}>{forClaim ? '选择说话片段' : '说话动画'}</Button> : null}
       {open && snapshot ? (
         <div className="graphic-face-options">
           <label>
@@ -150,7 +160,7 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
               setDraftPlayback(undefined);
               setPreviewRest(false);
             }}>
-              <option value="">未配置</option>
+              <option value="">{forExpression ? '沿用角色通用来源' : '未配置'}</option>
               {animations.map(animation => <option key={animation.id} value={animation.id}>{animation.name}</option>)}
             </select>
           </label>
@@ -190,17 +200,129 @@ export function TalkingAnimationPicker({ animationId, playback, onApply, disable
                 onClick={() => setPreviewRest(!previewRest)}>查看静止帧</Button> : null}
             </div>
             <AnimationPreview key={selected.id} animation={selected} project={snapshot.project} projectRoot={snapshot.projectRoot}
-              titleId={titleId} playback={forClaim ? settings : selectedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
+              titleId={titleId} playback={appliedPlayback} stillFrame={previewRest ? settings.restFrame : undefined} />
           </> : null}
           <Button disabled={disabled || ((selected?.id ?? undefined) === animationId &&
-            JSON.stringify(selectedPlayback) === JSON.stringify(playback))} onClick={() => {
-            onApply(selected?.id ?? null, forClaim && selected ? settings : selectedPlayback);
-            setOpen(false);
+            JSON.stringify(selected ? appliedPlayback : undefined) === JSON.stringify(playback))} onClick={() => {
+            onApply(selected?.id ?? null, selected ? appliedPlayback : undefined);
+            if (!forExpression) setOpen(false);
           }}>{forClaim ? '选用这段' : '应用说话动画'}</Button>
         </div>
       ) : null}
     </div>
   );
+}
+
+export function ExpressionTalkingAnimationPicker({ character, disabled, onApply }: {
+  character: Character;
+  disabled?: boolean;
+  onApply: (expressionId: string, animationId: string | null, playback?: TalkingAnimationPlayback) => void;
+}): React.JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>();
+  const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
+  const expressions = character.expressions ?? [];
+  const expression = expressions.find((entry) => entry.id === selectedId) ?? expressions[0];
+  if (!expression) return null;
+  const source = character.expressionTalkingSources?.[expression.id];
+  return <div className="graphic-face-picker">
+    <Button variant="secondary" aria-expanded={open} disabled={disabled} onClick={() => setOpen(!open)}>表情专属说话</Button>
+    {open ? <>
+      <label>表情 <select value={expression.id} onChange={(event) => setSelectedId(event.target.value)}>
+        {expressions.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+      </select></label>
+      {source && snapshot && !isCharacterTalkingSourceAvailable(snapshot.project, source.animationId, source.playback)
+        ? <p role="status">专属说话动画不可用。{character.talkingAnimationId ? '当前沿用角色通用来源。' : '当前沿用原表情与口型。'}</p> : null}
+      <TalkingAnimationPicker key={expression.id} forExpression animationId={source?.animationId} playback={source?.playback}
+        disabled={disabled} onApply={(id, playback) => onApply(expression.id, id, playback)} />
+    </> : null}
+  </div>;
+}
+
+type GraphicFrameSource = Extract<MouthPoseSource, { kind: 'fla-graphic' }>;
+
+function GraphicFrameChoice({ source, index, selected, disabled, label, caption, testId, requireReady, onSelect }: {
+  source: GraphicFrameSource;
+  index: number;
+  selected: boolean;
+  disabled?: boolean;
+  label: string;
+  caption: string | number;
+  testId: string;
+  requireReady?: boolean;
+  onSelect: (source: GraphicFrameSource, frameIndex: number) => void;
+}): React.JSX.Element {
+  const [result, setResult] = useState<GraphicFacePreviewResult>('pending');
+  const [attempt, setAttempt] = useState(0);
+  const actionLabel = requireReady && result === 'failed' ? `${label}：重试加载` : label;
+  return <button type="button" className="graphic-face-frame" disabled={disabled || (requireReady && result === 'pending')}
+    aria-label={actionLabel} title={actionLabel} aria-pressed={selected}
+    data-testid={`${testId}-frame-${index}`} data-thumbnail-status={requireReady ? result : undefined}
+    onClick={() => {
+      if (requireReady && result !== 'ready') {
+        if (result === 'failed') {
+          setResult('pending');
+          setAttempt(attempt + 1);
+        }
+        return;
+      }
+      onSelect(source, index);
+    }}>
+    <GraphicFacePreview key={attempt} source={source} label={label} onThumbnailResult={requireReady ? setResult : undefined} />
+    <span>{caption}</span>
+  </button>;
+}
+
+export function GraphicFrameChoices({ definition, selectedIndex, onSelect, includeInternalFrames, sourceAddresses, disabled, requireReady, testId }: {
+  definition: FlaGraphicDefinition;
+  selectedIndex: number;
+  onSelect: (source: GraphicFrameSource, frameIndex: number) => void;
+  includeInternalFrames?: boolean;
+  sourceAddresses?: boolean;
+  disabled?: boolean;
+  requireReady?: boolean;
+  testId: string;
+}): React.JSX.Element {
+  const [page, setPage] = useState(0);
+  const [address, setAddress] = useState('');
+  const timeline = includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
+  const count = timeline?.totalFrames ?? definition.frames.length;
+  const firstAddress = definition.source.startFrameIndex + 1;
+  const query = address.trim();
+  const labels = definition.sourceFrameLabels ?? [];
+  const labelMatch = query && !/^\d+$/u.test(query)
+    ? labels.find((label) => label.text.toLocaleLowerCase('zh-CN').includes(query.toLocaleLowerCase('zh-CN')))
+    : undefined;
+  const offset = (labelMatch ? labelMatch.sourceFrameIndex + 1 : Number(query)) - firstAddress;
+  const validAddress = Number.isInteger(offset) && offset >= 0 && offset < count;
+  return <>
+    {sourceAddresses && (count > 12 || labels.length > 0) ? <form className="graphic-face-pagination" onSubmit={(event) => {
+      event.preventDefault();
+      if (validAddress) setPage(Math.floor(offset / 12));
+    }}>
+      <input type="search" aria-label="标签或源帧号" placeholder="标签或源帧号"
+        value={address} onChange={(event) => setAddress(event.target.value)} />
+      <Button variant="secondary" type="submit" disabled={!validAddress}>定位</Button>
+    </form> : null}
+    <div className="graphic-face-frames" aria-label={sourceAddresses ? '选择元件帧' : '选择表情帧'}>
+      {Array.from({ length: Math.max(0, Math.min(12, count - page * 12)) }, (_, index) => {
+        const frameIndex = page * 12 + index;
+        const sample = timeline?.sampleAtFrameIndex(frameIndex);
+        const source: GraphicFrameSource = { kind: 'fla-graphic', animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
+          ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
+        const number = frameIndex + (sourceAddresses ? firstAddress : 1);
+        const label = sourceAddresses ? labels.find((entry) => entry.sourceFrameIndex === number - 1)?.text : undefined;
+        const frameLabel = label ? `${label} · 第 ${number} 帧` : `第 ${number} 帧`;
+        return <GraphicFrameChoice key={frameIndex} source={source} index={frameIndex} label={frameLabel}
+          selected={selectedIndex === frameIndex} caption={label ?? number} disabled={disabled}
+          requireReady={requireReady} testId={testId} onSelect={onSelect} />;
+      })}
+    </div>
+    {count > 12 ? <div className="graphic-face-pagination">
+      <button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button>
+      <button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= count} onClick={() => setPage(page + 1)}>下一页</button>
+    </div> : null}
+  </>;
 }
 
 export function GraphicFacePicker({ source, onChange, onClear, disabled, testId, children, includeInternalFrames, excludeAnimationId }: {
@@ -216,18 +338,15 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot, editorProjectStore.getSnapshot);
   const [open, setOpen] = useState(false);
   const [showImages, setShowImages] = useState(false);
-  const [page, setPage] = useState(0);
   useEffect(() => {
     setOpen(false);
     setShowImages(false);
-    setPage(0);
   }, [testId]);
   useEffect(() => { setShowImages(false); }, [source?.animationId, source?.firstFrame]);
   const definitions = snapshot?.project.animations.filter(isFlaGraphicDefinition)
     .filter((definition) => definition.id !== excludeAnimationId) ?? [];
   const definition = definitions.find(candidate => candidate.id === source?.animationId);
   const timeline = definition && includeInternalFrames ? resolveFlaGraphicPreviewTimeline(definition, true) : null;
-  const frameCount = timeline?.totalFrames ?? definition?.frames.length ?? 0;
   const selectedIndex = timeline && source?.internalTimeMs !== undefined
     ? Math.round(source.internalTimeMs * timeline.fps / 1_000) : source?.firstFrame ?? 0;
   return <div className="graphic-face-picker" data-testid={`${testId}-visual-source`}>
@@ -239,17 +358,11 @@ export function GraphicFacePicker({ source, onChange, onClear, disabled, testId,
     {source && !showImages ? <button type="button" className="graphic-face-switch" disabled={disabled} onClick={() => setShowImages(true)}>更换图片</button> : children}
     {onChange && definitions.length && !source ? <button type="button" className="graphic-face-toggle" disabled={disabled} aria-expanded={open} data-testid={`${testId}-graphic-toggle`} onClick={() => setOpen(!open)}>选择元件</button> : null}
     {open && onChange ? <div className="graphic-face-options">
-      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" className="graphic-face-definition" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setPage(0); setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
-      {definition ? <>
-        <div className="graphic-face-frames" aria-label="选择表情帧">{Array.from({ length: Math.max(0, Math.min(12, frameCount - page * 12)) }, (_, index) => {
-          const frameIndex = page * 12 + index;
-          const sample = timeline?.sampleAtFrameIndex(frameIndex);
-          const selected = { kind: 'fla-graphic' as const, animationId: definition.id, firstFrame: sample?.frameOrdinal ?? frameIndex,
-            ...(sample?.internalTimeMs !== undefined ? { internalTimeMs: sample.internalTimeMs } : {}) };
-          return <button type="button" className="graphic-face-frame" key={frameIndex} disabled={disabled} aria-label={`第 ${frameIndex + 1} 帧`} aria-pressed={selectedIndex === frameIndex} data-testid={`${testId}-frame-${frameIndex}`} onClick={() => { setShowImages(false); onChange(selected); }}><GraphicFacePreview source={selected} label={`第 ${frameIndex + 1} 帧`} /><span>{frameIndex + 1}</span></button>;
-        })}</div>
-        {frameCount > 12 ? <div className="graphic-face-pagination"><button type="button" className="graphic-face-page-button" disabled={page === 0} onClick={() => setPage(page - 1)}>上一页</button><button type="button" className="graphic-face-page-button" disabled={(page + 1) * 12 >= frameCount} onClick={() => setPage(page + 1)}>下一页</button></div> : null}
-      </> : null}
+      <div className="graphic-face-definitions">{definitions.map(candidate => <button type="button" className="graphic-face-definition" key={candidate.id} disabled={disabled} aria-pressed={candidate.id === source?.animationId} onClick={() => { setShowImages(false); onChange({ kind: 'fla-graphic', animationId: candidate.id, firstFrame: 0 }); }}>{candidate.name}</button>)}</div>
+      {definition ? <GraphicFrameChoices key={`${testId}:${definition.id}`} definition={definition} selectedIndex={selectedIndex}
+        includeInternalFrames={includeInternalFrames} disabled={disabled} testId={testId} onSelect={(next) => {
+          setShowImages(false); onChange(next);
+        }} /> : null}
     </div> : null}
   </div>;
 }

@@ -11,6 +11,7 @@ import {
   type Project,
   type Shot,
 } from '../../../domain';
+import { listCharacterTalkingSources } from '../../../domain/selectors/characterFaceSource';
 import { thumbnailStateFromResponse } from '../assets/AssetCard';
 import { GraphicFacePreview } from '../characters/GraphicFacePicker';
 import { formatTimecode } from '../timeline/timeGeometry';
@@ -183,7 +184,7 @@ export function ExpressionAtTimeControl({
           </ul>
         </div>
       ) : null}
-      {hasMouthOpenVisual || character.talkingAnimationId ? (
+      {hasMouthOpenVisual || listCharacterTalkingSources(character).length > 0 ? (
         <div className="mouth-cue-at-time" data-testid="mouth-cue-at-time">
           <div className="mouth-cue-at-time-row" role="group" aria-label="嘴型">
             <span className="mouth-cue-at-time-label">嘴型</span>

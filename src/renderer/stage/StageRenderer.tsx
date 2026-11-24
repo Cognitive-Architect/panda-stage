@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import type Konva from 'konva';
-import { Group, Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
+import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
@@ -61,6 +61,7 @@ import {
 import { drawStageLayersSynchronously } from './stage-draw-completion';
 
 interface StageRendererProps {
+  solidClear?: boolean;
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
@@ -214,7 +215,7 @@ interface StagePartImagesProps {
   resources?: readonly StageRenderResource[];
 }
 
-function StagePartImages({
+export function StagePartImages({
   ownerLayerId,
   parts,
   images,
@@ -458,6 +459,7 @@ export function StageRenderer({
   degraded = false,
   showStageLabel = true,
   drawMode = 'legacy-raf',
+  solidClear = false,
 }: StageRendererProps): React.JSX.Element {
   const renderStartedAt = previewDiagnosticNow();
   const [failedExpressionUrls, setFailedExpressionUrls] = useState<ReadonlyMap<string, string>>(
@@ -756,6 +758,7 @@ export function StageRenderer({
         width={displayModel!.width}
       >
         <Layer listening={false} ref={configurePreviewLayer}>
+          {solidClear ? <Rect width={displayModel!.width} height={displayModel!.height} fill="black" listening={false} /> : null}
           <Group
             name="camera-world"
             listening={false}

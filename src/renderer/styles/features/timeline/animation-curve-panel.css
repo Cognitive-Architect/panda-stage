@@ -1,0 +1,89 @@
+.animation-curve-toggle {
+  display: grid;
+  place-items: center;
+}
+
+.animation-curve-panel {
+  position: fixed;
+  z-index: 25;
+  inset: auto 1rem 4rem auto;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(31rem, calc(100vh - 5rem));
+  overflow: auto;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-color-separator);
+  border-radius: 0.75rem;
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.animation-curve-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.animation-curve-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.animation-curve-fields label:first-child {
+  grid-column: 1 / -1;
+}
+
+.animation-curve-fields :is(input, select) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.animation-curve-graph {
+  width: 100%;
+  touch-action: none;
+}
+
+.animation-curve-graph rect {
+  fill: var(--ui-color-surface-app);
+  stroke: var(--ui-color-separator);
+}
+
+.animation-curve-graph polyline {
+  fill: none;
+  stroke: var(--ui-color-selected-border);
+  stroke-width: 2px;
+}
+
+.animation-curve-graph line {
+  stroke: var(--ui-color-text-secondary);
+}
+
+.animation-curve-graph circle {
+  fill: var(--ui-color-selected-border);
+  cursor: grab;
+}
+
+.animation-curve-graph circle:focus {
+  outline: none;
+  stroke: var(--ui-color-text-primary);
+  stroke-width: 2px;
+}
+
+.animation-key-selection {
+  margin-block-start: var(--ui-space-2);
+}
+
+.animation-key-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.animation-key-targets label {
+  display: flex;
+  gap: var(--ui-space-1);
+  align-items: center;
+}

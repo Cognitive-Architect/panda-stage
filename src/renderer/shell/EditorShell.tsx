@@ -14,7 +14,8 @@ import type {
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
 import type { DialogueSilence } from '../../shared/dialogue-silence';
-import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
+import type { ExportPreparationResponse, PngSequenceOptions } from '../../shared/export-preparation-types';
+import { DEFAULT_EXPORT_PREFERENCES, type ExportPreferences } from '../../domain/models/exportPreferences';
 import type { ExportJobUpdate } from '../../shared/export-types';
 import {
   FlaPartPreviewResponseSchema,
@@ -43,6 +44,8 @@ import { selectionStore } from '../stores/selectionStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { characterStore } from '../stores/characterStore';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
+import { AnimationCurveDraftDispatch, type AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
+import { CharacterArmToolProvider } from '../features/canvas/CharacterArmTool';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import {
   createAdaptiveCharacterFromFlaGraphic,
@@ -73,7 +76,9 @@ import type {
 import { FlaGraphicImportError, type ImportFlaGraphicInstance } from '../features/fla-import/fla-graphic-instance-import';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
+import { GraphicFrameTargetProvider } from '../features/properties/GraphicFrameAtTimeControl';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { ExportOptionsDialog } from './ExportOptionsDialog';
 import {
   ExportTaskSurface,
   type ExportTaskState,
@@ -93,6 +98,7 @@ import {
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { useDialogueSilence } from './useDialogueSilence';
+import { useDesktopAutomation } from './useDesktopAutomation';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
@@ -120,6 +126,7 @@ import {
   projectCreateErrorMessage,
   validateNewProjectInput,
 } from './projectCreateFlow';
+import { PROJECT_TEMPLATE_EXTENSION } from '../../shared/project-api';
 import {
   projectOpenErrorMessage,
   validateProjectOpenCandidate,
@@ -665,6 +672,9 @@ export function EditorShell({
   const [busy, setBusy] = useState(false);
   const [recentRefreshToken, setRecentRefreshToken] = useState(0);
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false);
+  const [projectTemplateMode, setProjectTemplateMode] = useState<
+    { kind: 'save-template' } | { kind: 'from-template'; templateRoot: string } | null
+  >(null);
   const [newProjectParentDirectory, setNewProjectParentDirectory] =
     useState('');
   const [newProjectParentDirectoryTouched, setNewProjectParentDirectoryTouched] =
@@ -673,6 +683,8 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const [productPreviewDraft, setProductPreviewDraft] = useState<Project | null>(null);
+  const [animationCurveDraft, setAnimationCurveDraft] = useState<AnimationCurveDraft | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
   const productPreviewFocusRestoreFrameRef = useRef<number | null>(null);
@@ -719,6 +731,7 @@ export function EditorShell({
     cancelProductPreviewFocusRestore();
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    setProductPreviewDraft(null);
   };
   useEffect(
     () => () => {
@@ -742,6 +755,7 @@ export function EditorShell({
   });
   const exportTaskRef = useRef(exportTask);
   const [exportSurfaceOpen, setExportSurfaceOpen] = useState(false);
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false);
   const exportJobIdRef = useRef<string | null>(null);
   const latestExportUpdatesRef = useRef(new Map<string, ExportJobUpdate>());
   const mountedRef = useRef(true);
@@ -1812,6 +1826,7 @@ export function EditorShell({
   };
 
   const requestNewProject = (): void => {
+    setProjectTemplateMode(null);
     setNewProjectParentDirectoryTouched(false);
     setNewProjectNameTouched(false);
     setNewProjectStatus('');
@@ -1820,7 +1835,35 @@ export function EditorShell({
 
   const cancelNewProject = (): void => {
     setNewProjectDialogOpen(false);
+    setProjectTemplateMode(null);
     setNewProjectStatus('');
+  };
+
+  const requestSaveTemplate = (): void => {
+    requestNewProject();
+    setProjectTemplateMode({ kind: 'save-template' });
+    setNewProjectName('');
+  };
+
+  const requestCreateFromTemplate = async (): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
+    setBusy(true);
+    try {
+      const response = await window.pandaStage.project.chooseDirectory();
+      if (response.status === 'cancelled') return;
+      if (!response.projectRoot.replace(/[\\/]+$/u, '').toLowerCase().endsWith(PROJECT_TEMPLATE_EXTENSION)) {
+        setStatus('请选择 Panda Stage 模板文件夹。');
+        return;
+      }
+      requestNewProject();
+      setProjectTemplateMode({ kind: 'from-template', templateRoot: response.projectRoot });
+      setNewProjectName('');
+      setStatus('');
+    } catch {
+      setStatus('无法选择模板文件夹，请重试。');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const chooseNewProjectParentDirectory = async (): Promise<void> => {
@@ -1835,7 +1878,7 @@ export function EditorShell({
       // For creation that folder is only the parent: the Main Process appends
       // the project directory name and performs the join.
       setNewProjectParentDirectory(response.projectRoot);
-      setNewProjectStatus('已选择存放文件夹，请填写项目名称。');
+      setNewProjectStatus(projectTemplateMode ? '' : '已选择存放文件夹，请填写项目名称。');
     } catch (error) {
       setNewProjectStatus(
         error instanceof Error
@@ -1864,10 +1907,45 @@ export function EditorShell({
     }
     setBusy(true);
     try {
+      if (projectTemplateMode?.kind === 'save-template') {
+        setNewProjectStatus('正在保存模板…');
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) {
+          setNewProjectStatus('请先打开要保存为模板的工程。');
+          return;
+        }
+        const synced = await session.syncAutosave(snapshot);
+        if (synced && !synced.ok) {
+          setNewProjectStatus(synced.error.message);
+          return;
+        }
+        const response = await window.pandaStage.project.saveTemplate({
+          projectRoot: snapshot.projectRoot,
+          project: snapshot.project,
+          revision: snapshot.revision,
+          parentDirectory,
+          templateName: projectName,
+        });
+        if (!response.ok) {
+          const message = response.error.code === 'PROJECT_ALREADY_EXISTS'
+            ? '该文件夹已存在同名模板，请更换名称。'
+            : response.error.code === 'PROJECT_SAVE_STALE_REVISION'
+              ? '项目已有更新，请重试以保存最新内容。'
+              : '无法保存模板，请检查项目和存放文件夹后重试。';
+          setNewProjectStatus(message);
+          return;
+        }
+        cancelNewProject();
+        setNewProjectName('');
+        setStatus('模板已保存。');
+        return;
+      }
+      if (projectTemplateMode?.kind === 'from-template') setNewProjectStatus('正在从模板创建工程…');
       const response = await window.pandaStage.project.createAt({
         parentDirectory,
         projectName,
         metadata: { name: projectName },
+        ...(projectTemplateMode?.kind === 'from-template' ? { templateRoot: projectTemplateMode.templateRoot } : {}),
       });
       if (!response.ok) {
         setNewProjectStatus(projectCreateErrorMessage(response.error));
@@ -1885,12 +1963,15 @@ export function EditorShell({
         return;
       }
       setNewProjectDialogOpen(false);
+      setProjectTemplateMode(null);
       setNewProjectName('');
       setNewProjectParentDirectoryTouched(false);
       setNewProjectNameTouched(false);
       setNewProjectStatus('');
     } catch (error) {
-      setNewProjectStatus(projectCreateErrorMessage(error));
+      setNewProjectStatus(projectTemplateMode?.kind === 'save-template'
+        ? '无法保存模板，请检查项目和存放文件夹后重试。'
+        : projectCreateErrorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -1919,6 +2000,14 @@ export function EditorShell({
     setProductPreviewOpen(true);
   };
 
+  const openDraftPreview = (draft: Project): void => {
+    if (productPreviewOpenRef.current) return;
+    const activeShot = draft.shots.find((shot) => shot.id === shotStore.getCurrentShotId());
+    if (!activeShot) return;
+    setProductPreviewDraft({ ...draft, shots: [activeShot] });
+    openProductPreview();
+  };
+
   const startCandidateExport = async (candidate: {
     attemptId: string;
     snapshotId: string;
@@ -1928,6 +2017,7 @@ export function EditorShell({
     fileName: string;
     durationMs: number;
     cameraMode: 'static' | 'speaker-focus';
+    pngSequence?: PngSequenceOptions;
   }, reuseSnapshot = false): Promise<void> => {
     if (['starting', 'running', 'cancelling'].includes(exportTaskRef.current.status)) {
       return;
@@ -1943,6 +2033,7 @@ export function EditorShell({
       fileName: candidate.fileName,
       durationMs: candidate.durationMs,
       cameraMode: candidate.cameraMode,
+      pngSequence: candidate.pngSequence,
       completedFrames: 0,
       totalFrames: 0,
       issues: [],
@@ -1964,6 +2055,7 @@ export function EditorShell({
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
+        pngSequence: candidate.pngSequence,
         completedFrames: 0,
         totalFrames: 0,
         issues: [],
@@ -1985,6 +2077,7 @@ export function EditorShell({
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
+        pngSequence: candidate.pngSequence,
         completedFrames: 0,
         totalFrames: 0,
         message: safeExportFailureMessage(error),
@@ -1993,7 +2086,7 @@ export function EditorShell({
     }
   };
 
-  const beginFormalExportFlow = async (): Promise<void> => {
+  const beginFormalExportFlow = async (pngSequence?: PngSequenceOptions): Promise<void> => {
     if (exportTaskIsActive(exportTaskRef.current)) {
       setExportSurfaceOpen(true);
       return;
@@ -2009,6 +2102,9 @@ export function EditorShell({
       ...previousTask,
       status: 'selecting',
       projectRoot: initial.projectRoot,
+      pngSequence,
+      outputPath: undefined,
+      incomplete: undefined,
       message: undefined,
       issues: [],
     });
@@ -2018,6 +2114,7 @@ export function EditorShell({
         projectId: initial.project.id,
         projectName: initial.project.name,
         openInstanceId: initialInstanceId,
+        ...(pngSequence ? { pngSequence } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(previousTask);
@@ -2068,6 +2165,7 @@ export function EditorShell({
         projectId: captured.project.id,
         openInstanceId: capturedInstanceId,
         fileName: selection.fileName,
+        pngSequence,
         durationMs: projectDurationMs(captured.project),
         completedFrames: 0,
         totalFrames: 0,
@@ -2094,7 +2192,8 @@ export function EditorShell({
       let silenceAtCapture: DialogueSilence;
       try {
         silenceAtCapture = await captureDialogueSilence({
-          project: captured.project,
+          project: pngSequence ? { ...captured.project, shots: captured.project.shots.filter(shot => shot.id === pngSequence.shotId) }
+            : captured.project,
           projectRoot: captured.projectRoot,
           openInstanceId: capturedInstanceId,
           signal: waitController.signal,
@@ -2265,6 +2364,7 @@ export function EditorShell({
           fileName: result.candidate.outputIntent.fileName,
           durationMs: projectDurationMs(result.candidate.project),
           cameraMode: result.candidate.cameraMode,
+          pngSequence: result.candidate.pngSequence,
         },
         false,
       );
@@ -2279,12 +2379,32 @@ export function EditorShell({
     }
   };
 
+  const beginPreferredExport = (): void => {
+    const snapshot = editorProjectStore.getSnapshot();
+    const preferences = snapshot?.project.exportPreferences;
+    if (preferences?.format !== 'png-sequence') { void beginFormalExportFlow(); return; }
+    const shotId = shotStore.getCurrentShotId();
+    if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
+    void beginFormalExportFlow({ shotId, transparent: preferences.transparent });
+  };
+
+  const confirmExportOptions = (preferences: ExportPreferences, pngSequence?: PngSequenceOptions): void => {
+    const snapshot = editorProjectStore.getSnapshot();
+    if (!snapshot) return;
+    const previous = snapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES;
+    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent) {
+      editorProjectStore.updateProject({ ...snapshot.project, exportPreferences: preferences }, '更新导出设置');
+    }
+    setExportOptionsOpen(false);
+    void beginFormalExportFlow(pngSequence);
+  };
+
   const onExportVideo = (): void => {
     if (shouldRestoreExportTask(exportTaskRef.current)) {
       setExportSurfaceOpen(true);
       return;
     }
-    void beginFormalExportFlow();
+    beginPreferredExport();
   };
 
   const cancelExportTask = async (): Promise<void> => {
@@ -2397,6 +2517,7 @@ export function EditorShell({
         projectName: current.project.name,
         openInstanceId: task.openInstanceId,
         snapshotId: task.snapshotId,
+        ...(task.pngSequence ? { pngSequence: task.pngSequence } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(task);
@@ -2434,6 +2555,7 @@ export function EditorShell({
           fileName: selection.fileName,
           durationMs: task.durationMs ?? projectDurationMs(current.project),
           cameraMode: task.cameraMode ?? 'static',
+          pngSequence: task.pngSequence,
         },
         true,
       );
@@ -2448,7 +2570,7 @@ export function EditorShell({
 
   const retryCurrentExportContent = (): void => {
     if (!exportTaskIsActive(exportTaskRef.current)) {
-      void beginFormalExportFlow();
+      beginPreferredExport();
     }
   };
 
@@ -2461,7 +2583,7 @@ export function EditorShell({
         const current = exportTaskRef.current;
         setExportTaskState({
           ...current,
-          message:
+          message: current.pngSequence ? '无法打开 PNG 序列输出目录。' :
             '\u65e0\u6cd5\u663e\u793a\u89c6\u9891\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u5176\u4ed6\u4f4d\u7f6e\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
         });
       }
@@ -2504,6 +2626,7 @@ export function EditorShell({
     cancelProductPreviewFocusRestore();
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    setProductPreviewDraft(null);
     if (!opener) return;
     productPreviewFocusRestoreFrameRef.current = window.requestAnimationFrame(() => {
       productPreviewFocusRestoreFrameRef.current = null;
@@ -2750,7 +2873,16 @@ export function EditorShell({
   const canvasToolbarVisible =
     !isPortrait || portraitWorkspace === 'canvas';
 
-  return (
+  useDesktopAutomation({
+    isBusy: () => busy || closeConfirmOpen || flaCharacterCommitActiveRef.current,
+    previewDraft: (project, shotId) => {
+      if (productPreviewOpenRef.current || shotId !== shotStore.getCurrentShotId()) return false;
+      openDraftPreview(project);
+      return true;
+    },
+  });
+
+  const surface = (
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
@@ -2775,6 +2907,8 @@ export function EditorShell({
           onOpenRecentProject={switchToRecentProject}
           onOpenCandidatePathChange={setOpenCandidatePath}
           onRequestNewProject={requestNewProject}
+          onCreateFromTemplate={requestCreateFromTemplate}
+          onRequestSaveTemplate={requestSaveTemplate}
           onReturnToEditor={returnToEditor}
           openCandidatePath={openCandidatePath}
           recentRefreshToken={recentRefreshToken}
@@ -2858,6 +2992,7 @@ export function EditorShell({
                 exportSurfaceOpen={exportSurfaceOpen}
                 key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
                 onExportVideo={onExportVideo}
+                onOpenExportSettings={() => setExportOptionsOpen(true)}
                 onOpenProductPreview={openProductPreview}
                 onOpenProjectCenter={openProjectCenter}
                 onOpenProjectFolder={openProjectFolder}
@@ -2955,6 +3090,7 @@ export function EditorShell({
                   showToolbar={canvasToolbarVisible}
                   dialogueSilence={dialogueSilence}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
+                  curveDraft={animationCurveDraft}
                 />
               </div>
               <div className="character-float-host" ref={setCharacterFloatTarget} />
@@ -2976,6 +3112,7 @@ export function EditorShell({
               hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
               inert={Boolean(characterFloatMode) || assemblyActive || undefined}
             >
+              <GraphicFrameTargetProvider>
               {isPortrait ? (
                 <RightInspector
                 compact={isPortrait ? portraitPropertiesVisible : undefined}
@@ -3001,8 +3138,10 @@ export function EditorShell({
                   autoCameraEnabled={autoCameraEnabled}
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
+                  onPreviewDraft={openDraftPreview}
                 />
               )}
+              </GraphicFrameTargetProvider>
             </div>
             {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
             </div>
@@ -3026,11 +3165,20 @@ export function EditorShell({
               onClose={closeProductPreview}
               onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}
+              draftProject={productPreviewDraft}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
               surfaceActive={productPreviewSurfaceActive}
             />
           ) : null}
+          {exportOptionsOpen ? <ExportOptionsDialog
+            key={`${openInstanceId}:${currentShotId}`}
+            project={projectSnapshot.project}
+            shot={projectSnapshot.project.shots.find(({ id }) => id === currentShotId)}
+            initial={projectSnapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES}
+            playheadMs={timelineUiStore.getSnapshot().currentTimeMs}
+            onCancel={() => setExportOptionsOpen(false)} onExport={confirmExportOptions}
+          /> : null}
           {closeConfirmOpen ? (
             <CloseConfirmDialog
               busy={busy}
@@ -3047,6 +3195,7 @@ export function EditorShell({
         newProjectDialogOpen ? (
         <NewProjectDialog
           busy={busy}
+          mode={projectTemplateMode?.kind}
           onCancel={cancelNewProject}
           onChooseParentDirectory={chooseNewProjectParentDirectory}
           onCreateProject={createProject}
@@ -3084,4 +3233,7 @@ export function EditorShell({
       ) : null}
     </main>
   );
+  return <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
+    <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
+  </AnimationCurveDraftDispatch.Provider>;
 }

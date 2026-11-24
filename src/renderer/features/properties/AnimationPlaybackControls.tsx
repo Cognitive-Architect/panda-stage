@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Copy } from 'lucide-react';
+import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { Button, DecorativeIcon, SegmentedTabs } from '../../ui';
+import { AnimationSourceLoopControls } from './AnimationSourceLoopControls';
 
 export interface AnimationStartEditContext {
   projectInstanceId: number | null;
@@ -133,6 +135,7 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     formatStartSeconds(startTimeMs),
   );
   const [status, setStatus] = useState('');
+  const [loopStatus, setLoopStatus] = useState<{ layerId: string; message: string }>();
   const activeStartEditRef = useRef<{
     id: number;
     context: AnimationStartEditContext;
@@ -304,6 +307,9 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
   };
 
   const locked = layer.locked;
+  const animationId = layer.source.animationId;
+  const definition = snapshot.project.animations.find(({ id }) => id === animationId);
+  const frameCount = definition ? resolveFlaGraphicPreviewTimeline(definition, true).totalFrames : 0;
   return (
     <section
       aria-label="动画播放设置"
@@ -410,6 +416,18 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
           </div>
         ) : null}
       </div>
+      {frameCount > 1 ? <AnimationSourceLoopControls key={JSON.stringify([projectInstanceId, shot.id, layer.id])}
+        layer={layer} orderedLayers={[...shot.layers].sort((left, right) => left.zIndex - right.zIndex)
+          .filter((entry) => entry.zIndex >= layer.zIndex)} frameCount={frameCount} onApply={(range) => {
+            try {
+              assertCurrentSelection();
+              const stoppedAt = layerStore.applySourceLoop(layer.id, range);
+              setLoopStatus(stoppedAt ? { layerId: layer.id, message: `循环同步在「${stoppedAt}」处停止。` } : undefined);
+            } catch (cause) {
+              setLoopStatus({ layerId: layer.id, message: cause instanceof Error ? cause.message : '无法设置循环范围。' });
+            }
+          }} /> : null}
+      {loopStatus?.layerId === layer.id ? <output role="alert">{loopStatus.message}</output> : null}
       {status ? <output role="alert">{status}</output> : null}
     </section>
   );

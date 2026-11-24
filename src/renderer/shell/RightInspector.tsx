@@ -34,11 +34,15 @@ import {
 import { VisibleBoundsThumbnail } from '../features/characters/VisibleBoundsThumbnail';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import { FlaGraphicInspectorPreview } from '../features/properties/FlaGraphicInspectorPreview';
+import { GraphicFrameAtTimeControl } from '../features/properties/GraphicFrameAtTimeControl';
 import { FlaGraphicStructureTree } from '../features/properties/FlaGraphicStructureTree';
 import { useStructuredGraphicSelection } from '../features/properties/useStructuredGraphicSelection';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
+import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
+import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
+import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -697,6 +701,10 @@ export function RightInspector({
         </>
       )}
       {motionSection}
+      {currentShot && snapshot ? (
+        <GraphicFrameAtTimeControl key={JSON.stringify([editorProjectStore.getProjectInstanceId(), currentShot.id])}
+          project={snapshot.project} shot={currentShot} selection={selection.layer} />
+      ) : null}
       {showMotionInspector && motionNode?.motion === 'character-clip-v1' ? null : (
         <FlaGraphicStructureTree />
       )}
@@ -705,7 +713,7 @@ export function RightInspector({
       selection.layer?.source.kind === 'character' &&
       motionNode?.motion !== 'character-clip-v1' ? (
         <ExpressionAtTimeControl
-          key={`${currentShot.id}:${selection.layer.id}`}
+          key={`expression:${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           projectRoot={snapshot.projectRoot}
           shot={currentShot}
@@ -715,12 +723,20 @@ export function RightInspector({
       {snapshot &&
       currentShot &&
       selection.layer?.source.kind === 'character' ? (
+        <>
         <CharacterActionAtTimeControl
-          key={`${currentShot.id}:${selection.layer.id}`}
+          key={`action:${currentShot.id}:${selection.layer.id}`}
           project={snapshot.project}
           shot={currentShot}
           layer={selection.layer}
         />
+        <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterMotionMappingControl key={`motion-mapping:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        </>
       ) : null}
       {landscapeEmptyState ? null : (
         showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (

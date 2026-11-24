@@ -270,6 +270,11 @@ export function resolveEditorTemporalAssetResolution(
       layer,
       evaluatedShot.timeMs,
     );
+    if (!layer.visible && currentVisual?.kind === 'fla-graphic') {
+      // An authored visibility gap takes effect without decoding the hidden pose.
+      visualsByLayer.set(layer.id, null);
+      return layer;
+    }
     const currentReady = isCompleteVisualReady(
       project,
       currentVisual,

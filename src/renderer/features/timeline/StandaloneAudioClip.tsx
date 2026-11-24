@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { AudioClip, Project } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
@@ -18,8 +18,9 @@ interface Drag {
   draft: AudioClip;
 }
 
-export function StandaloneAudioClip({ clip, displayName, shotId, pixelsPerMs, selected }: {
+export function StandaloneAudioClip({ clip, displayName, shotId, pixelsPerMs, selected, waveform }: {
   clip: AudioClip; displayName: string; shotId: string; pixelsPerMs: number; selected: boolean;
+  waveform?: ReactNode;
 }): React.JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -116,6 +117,7 @@ export function StandaloneAudioClip({ clip, displayName, shotId, pixelsPerMs, se
       } else handleKey(event, 'move');
     }}
   >
+    {waveform}
     <span className="timeline-audio-clip-label">{displayName}</span>
     {selected ? (['start', 'end'] as const).map(kind => <span
       key={kind} role="button" tabIndex={0} aria-label={kind === 'start' ? '裁剪音频起点' : '裁剪音频终点'}

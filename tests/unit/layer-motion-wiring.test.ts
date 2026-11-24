@@ -6,13 +6,16 @@ import {
   LayerMotionService,
   LayerService,
   ProjectSchema,
+  applyActionRecipe,
   evaluateShotAtTime,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
   layerMotionValues,
+  migrateProject,
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
+import { ActionRecipeControls } from '../../src/renderer/features/actions/ActionRecipeControls';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import {
@@ -27,10 +30,12 @@ import {
 import { TimelineDock } from '../../src/renderer/features/timeline/TimelineDock';
 import { PendingDialoguePlacementProvider } from '../../src/renderer/features/timeline/PendingDialoguePlacement';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
+import { executeDesktopAutomation } from '../../src/renderer/shell/desktopAutomationCommands';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { layerStore } from '../../src/renderer/stores/layerStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
+import { DesktopAutomationRendererRequestSchema } from '../../src/shared/desktop-automation-api';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProject';
 import { IDS } from './domain/testProject';
 
@@ -177,6 +182,119 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     timelineUiStore.setLayerMotionAutoKey(false);
     timelineUiStore.seek(0, 3_000);
     vi.restoreAllMocks();
+  });
+
+  it('previews and applies consecutive custom motion steps at the recipe editor defaults', async () => {
+    const { project, graphicLayerId, secondGraphicLayerId } = createStandaloneGraphicProject({ secondGraphic: true });
+    const motion = new LayerMotionService();
+    const source = { shotId: IDS.shot, layerId: graphicLayerId };
+    const target = { shotId: IDS.shot, layerId: secondGraphicLayerId! };
+    const peak = motion.applyKeys(project, { ...source, timeMs: 500 }, { 'transform.offsetX': 40 });
+    const authored = motion.applyKeys(peak, { ...source, timeMs: 1000 }, { 'transform.offsetX': 0 });
+    const horizontal = motion.saveUserMotionPreset(authored, { ...source, name: '水平动作', startMs: 0, endMs: 1000 });
+    const third = new LayerService().createFromAnimation(horizontal, IDS.shot, {
+      animationId: FACE_GRAPHIC_ID, position: { x: 200, y: 250 }, startTimeMs: 0,
+    });
+    const verticalSource = { shotId: IDS.shot, layerId: third.layer.id };
+    const vertical = motion.applyKeys(third.project, { ...verticalSource, timeMs: 42 }, { 'transform.offsetY': 10 });
+    const library = motion.saveUserMotionPreset(vertical, { ...verticalSource, name: '垂直动作', startMs: 0, endMs: 42 });
+    editorProjectStore.open('D:/test-1251-recipe', library);
+    shotStore.select(IDS.shot);
+    selectionStore.select(target.layerId);
+    timelineUiStore.seek(21, 3000);
+    const onPreview = vi.fn();
+    function RecipeHarness() {
+      const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot)!;
+      const shot = snapshot.project.shots[0]!;
+      return createElement(ActionRecipeControls, { project: snapshot.project, shot, onPreview,
+        layer: shot.layers.find(({ id }) => id === target.layerId)! });
+    }
+    const click = async (label: string) => {
+      const button = [...container.querySelectorAll('button')].find(item => item.textContent === label)!;
+      await act(async () => button.click());
+    };
+    await act(async () => root.render(createElement(RecipeHarness)));
+    await click('新建配方');
+    const chooseMotion = async (index: number) => await act(async () => {
+      const select = container.querySelector('select')!;
+      select.value = `motion:${library.userMotionPresets![index]!.id}`;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await chooseMotion(0);
+    await act(async () => {
+      const name = container.querySelector('input')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '连续水平动作');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('添加步骤');
+    await click('添加步骤');
+    await click('保存配方');
+    const before = editorProjectStore.getSnapshot()!;
+    const recipe = before.project.actionRecipes![0]!;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    await click('预览配方');
+    expect(container.querySelector('[role="alert"]')?.textContent).toBeUndefined();
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+    await click('执行配方');
+    const after = editorProjectStore.getSnapshot()!.project;
+    expect(after).toEqual(onPreview.mock.calls[0]![0]);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount + 1);
+    const reopened = migrateProject(JSON.parse(JSON.stringify(after)));
+    const layerAt = (candidate: Project, timeMs: number) => evaluateShotAtTime(candidate.shots[0]!, timeMs, candidate)
+      .layers.find(({ id }) => id === target.layerId)!;
+    expect(layerAt(reopened, 542).x).toBe(940);
+    expect(layerAt(reopened, 1625).x).toBe(940);
+    const edited = motion.applyKeys(reopened, { ...target, timeMs: 1625 }, { 'transform.offsetX': 25 });
+    expect(layerAt(edited, 1625).x).toBe(925);
+    await act(async () => { editorProjectStore.undo(); });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(before.project);
+    await act(async () => { editorProjectStore.redo(); });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(after);
+
+    await act(async () => { editorProjectStore.undo(); });
+    const automationContext = { sessionId: crypto.randomUUID(), requestId: crypto.randomUUID(),
+      deadlineMs: Date.now() + 5_000, appVersion: '0.1.0' };
+    const state = executeDesktopAutomation({ ...automationContext, command: { name: 'state' } }, () => false);
+    if (!state.ok) throw new Error(state.message);
+    const data = { ...target, recipeId: recipe.id, startMs: 21, bindings: {}, session: state.data.session };
+    const automationPreview = vi.fn(() => true);
+    expect(executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+      ...automationContext, command: { name: 'recipe.preview', ...data },
+    }), automationPreview))
+      .toMatchObject({ ok: true, data: { changed: false } });
+    expect(automationPreview).toHaveBeenCalledWith(after, target.shotId);
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(before.project);
+    await act(async () => {
+      const outcome = executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+        ...automationContext, command: { name: 'recipe.apply', ...data },
+      }), () => false);
+      expect(outcome).toMatchObject({ ok: true, data: { changed: true } });
+    });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(after);
+
+    const conflict = motion.applyKeys(before.project, { ...target, timeMs: 1125 }, { 'transform.offsetX': 12 });
+    expect(() => applyActionRecipe(conflict, recipe.id, { ...target, startMs: 21 }, {})).toThrow('水平位置');
+    expect(layerAt(conflict, 1125).x).toBe(912);
+    expect(layerAt(conflict, 542).x).toBeLessThan(912);
+
+    // A short, disjoint step between two horizontal motions must not hide the first restore key.
+    await click('新建配方');
+    await chooseMotion(0);
+    await act(async () => {
+      const name = container.querySelector('input')!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, '交错重用运动');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('添加步骤');
+    await chooseMotion(1);
+    await click('添加步骤');
+    await chooseMotion(0);
+    await click('添加步骤');
+    await click('保存配方');
+    const interleaved = editorProjectStore.getSnapshot()!.project.actionRecipes!.at(-1)!;
+    const planned = applyActionRecipe({ ...before.project, actionRecipes: [interleaved] }, interleaved.id, { ...target, startMs: 21 }, {});
+    expect(layerAt(planned, 1625).x).toBe(940);
   });
 
   it('exposes Inspector Auto-Key for Character=0 FLA Graphic Layer, writes relative keys without double-writing static, and syncs Basis when OFF', async () => {

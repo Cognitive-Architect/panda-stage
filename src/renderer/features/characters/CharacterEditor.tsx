@@ -30,7 +30,7 @@ import {
 import { CompactRowOverflowMenu } from './CompactRowOverflowMenu';
 import { CharacterAssetClaimPanel } from './CharacterAssetClaimPanel';
 import { ExpressionEditor } from './ExpressionEditor';
-import { GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
+import { ExpressionTalkingAnimationPicker, GraphicFacePicker, GraphicFacePreview, TalkingAnimationPicker } from './GraphicFacePicker';
 import type { CharacterFaceSource, CharacterFaceGraphicSource, TalkingAnimationPlayback } from '../../../domain';
 import {
   ImageAssetPicker,
@@ -359,6 +359,7 @@ export interface CharacterEditorProps {
   onSetExpressionSource?: (expressionId: string, source: CharacterFaceSource) => void;
   onAddGraphicExpression?: (name: string, source: CharacterFaceGraphicSource) => void;
   onSetTalkingAnimation?: (animationId: string | null, playback?: TalkingAnimationPlayback) => void;
+  onSetExpressionTalkingAnimation?: (expressionId: string, animationId: string | null, playback?: TalkingAnimationPlayback) => void;
   onSetMouthSource?: (source: CharacterFaceSource | null) => void;
   onRemoveExpression: (expressionId: string) => void;
   onSetDefaultExpression: (expressionId: string) => void;
@@ -406,6 +407,7 @@ export function CharacterEditor({
   onAddGraphicExpression,
   onSetMouthSource,
   onSetTalkingAnimation,
+  onSetExpressionTalkingAnimation,
   onRemoveExpression,
   onSetDefaultExpression,
   onSetMouthOpenAsset,
@@ -618,9 +620,12 @@ export function CharacterEditor({
 
   const expressionCharacter = character;
   const talkingAnimationPicker = expressionCharacter && onSetTalkingAnimation ? (
-    <TalkingAnimationPicker key={expressionCharacter.id} animationId={expressionCharacter.talkingAnimationId}
+    <><TalkingAnimationPicker key={expressionCharacter.id} animationId={expressionCharacter.talkingAnimationId}
       playback={expressionCharacter.talkingAnimationPlayback}
       disabled={disabled || assemblyPending} onApply={onSetTalkingAnimation} />
+      {onSetExpressionTalkingAnimation ? <ExpressionTalkingAnimationPicker key={expressionCharacter.id + ':expression-talking'}
+        character={expressionCharacter} disabled={disabled || assemblyPending} onApply={onSetExpressionTalkingAnimation} /> : null}
+    </>
   ) : null;
   const headedCompositeCharacter: HeadedCompositeCharacter | null =
     character.mode === 'composite' && character.head

@@ -27,6 +27,7 @@ interface CanvasStageProps {
   degraded?: boolean;
   showStageLabel?: boolean;
   drawMode?: ExportDrawMode;
+  solidClear?: boolean;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {

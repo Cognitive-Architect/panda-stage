@@ -14,11 +14,13 @@ import {
 } from '../../domain';
 import {
   PROJECT_ROOT_EXTENSION,
+  PROJECT_TEMPLATE_EXTENSION,
   ProjectCreateMetadataSchema,
   projectNameIssue,
   type ProjectCreateMetadata,
   type ProjectDocument,
   type ProjectErrorCode,
+  type ProjectSaveTemplateRequest,
 } from '../../shared/project-api';
 import {
   AtomicWriteCommitRejectedError,
@@ -125,58 +127,42 @@ export class ProjectService {
     rawMetadata: ProjectCreateMetadata,
   ): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
-    let treeCreated = false;
     try {
       const metadata = ProjectCreateMetadataSchema.parse(rawMetadata);
-      await this.fileSystem.createProjectTree(projectRoot);
-      treeCreated = true;
-      const timestamp = this.now().toISOString();
-      const project = ProjectSchema.parse({
-        schemaVersion: PROJECT_SCHEMA_VERSION,
-        id: this.createId(),
-        name: metadata.name,
-        width: PROJECT_WIDTH,
-        height: PROJECT_HEIGHT,
-        fps: PROJECT_FPS,
-        assets: [],
-        animations: [],
-        characters: [],
-        voiceProfiles: [],
-        subtitleStyles: [
-          {
-            id: this.createId(),
-            name: 'Default subtitles',
-            fontFamily: 'Microsoft YaHei',
-            fontSize: 44,
-            textColor: '#fffdf6',
-            // Issue #467 R4: new projects start with a text-only subtitle
-            // presentation while retaining the persisted style field.
-            backgroundColor: '#0a141100',
-            position: 'bottom',
-            align: 'center',
-            maxWidth: 1600,
-          },
-        ],
-        shots: [],
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      return await this.writeNewProject(projectRoot, () => {
+        const timestamp = this.now().toISOString();
+        return ProjectSchema.parse({
+          schemaVersion: PROJECT_SCHEMA_VERSION,
+          id: this.createId(),
+          name: metadata.name,
+          width: PROJECT_WIDTH,
+          height: PROJECT_HEIGHT,
+          fps: PROJECT_FPS,
+          assets: [],
+          animations: [],
+          characters: [],
+          voiceProfiles: [],
+          subtitleStyles: [
+            {
+              id: this.createId(),
+              name: 'Default subtitles',
+              fontFamily: 'Microsoft YaHei',
+              fontSize: 44,
+              textColor: '#fffdf6',
+              // Issue #467 R4: new projects start with a text-only subtitle
+              // presentation while retaining the persisted style field.
+              backgroundColor: '#0a141100',
+              position: 'bottom',
+              align: 'center',
+              maxWidth: 1600,
+            },
+          ],
+          shots: [],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
       });
-      await this.fileSystem.writeProjectFileAtomically(
-        projectRoot,
-        this.serialize(project),
-      );
-      return this.document(
-        projectRoot,
-        project,
-        false,
-        PROJECT_SCHEMA_VERSION,
-      );
     } catch (error) {
-      if (treeCreated) {
-        await this.fileSystem
-          .removeNewProjectRoot(projectRoot)
-          .catch(() => undefined);
-      }
       throw this.mapError('create', projectRoot, error);
     }
   }
@@ -186,23 +172,76 @@ export class ProjectService {
    *
    * The Renderer is never allowed to assemble the final project root, so this
    * method owns the path join, the containment check, and the `.pandastage`
-   * suffix. The actual tree creation and duplicate rejection are delegated to
-   * {@link ProjectService.create}, which keeps a single creation code path.
+   * suffix. Blank and template-based projects share the same directory
+   * reservation and atomic document write.
    *
    * @param rawParentDirectory - Directory that will contain the project root.
    * @param rawProjectName - Bare project name without the `.pandastage` suffix.
    * @param rawMetadata - Project metadata used to seed `project.json`.
+   * @param templateRoot - Optional source template directory.
    * @returns The freshly created project document.
    */
   async createAt(
     rawParentDirectory: string,
     rawProjectName: string,
     rawMetadata: ProjectCreateMetadata,
+    templateRoot?: string,
   ): Promise<ProjectDocument> {
-    return this.create(
-      this.resolveNewProjectRoot(rawParentDirectory, rawProjectName),
-      rawMetadata,
-    );
+    const projectRoot = this.resolveNewProjectRoot(rawParentDirectory, rawProjectName);
+    if (!templateRoot) return this.create(projectRoot, rawMetadata);
+    const source = this.pathService.resolve(templateRoot);
+    if (!this.pathService.basename(source).toLowerCase().endsWith(PROJECT_TEMPLATE_EXTENSION)) {
+      throw new ProjectServiceError('INVALID_TEMPLATE', source, '请选择 Panda Stage 模板文件夹。');
+    }
+    return this.coordinator.runExclusive(source, async () => {
+      let template: Project;
+      try {
+        template = migrateProject(JSON.parse(await this.fileSystem.readProjectFile(source)));
+      } catch (error) {
+        throw new ProjectServiceError('INVALID_TEMPLATE', source, '无法读取模板，请选择有效的 Panda Stage 模板。', { cause: error });
+      }
+      try {
+        const { name } = ProjectCreateMetadataSchema.parse(rawMetadata);
+        return await this.writeNewProject(projectRoot, () => this.createCopySnapshot(template, name), source);
+      } catch (error) {
+        throw this.mapError('create', projectRoot, error);
+      }
+    });
+  }
+
+  async saveAsTemplate(request: ProjectSaveTemplateRequest): Promise<ProjectDocument> {
+    const source = this.resolveProjectRoot(request.projectRoot);
+    const destination = this.resolveNewProjectRoot(request.parentDirectory, request.templateName, PROJECT_TEMPLATE_EXTENSION);
+    return this.coordinator.runExclusive(source, async () => {
+      try {
+        const project = ProjectSchema.parse(request.project);
+        if (this.getCurrentProjectSnapshot) this.assertAuthoritativeSaveSnapshot(source, project, request.revision);
+        await this.fileSystem.assertProjectRoot(source);
+        return await this.writeNewProject(destination, () => this.createCopySnapshot(project, request.templateName), source);
+      } catch (error) {
+        throw this.mapError('create', destination, error);
+      }
+    });
+  }
+
+  private createCopySnapshot(project: Project, name: string): Project {
+    const timestamp = this.now().toISOString();
+    return ProjectSchema.parse({ ...project, id: this.createId(), name, createdAt: timestamp, updatedAt: timestamp });
+  }
+
+  private async writeNewProject(projectRoot: string, snapshot: () => Project, copyFrom?: string): Promise<ProjectDocument> {
+    await this.fileSystem.createProjectTree(projectRoot);
+    try {
+      const project = snapshot();
+      if (copyFrom) {
+        await this.fileSystem.copyProjectAssets(copyFrom, projectRoot, project.assets.map((asset) => asset.relativePath));
+      }
+      await this.fileSystem.writeProjectFileAtomically(projectRoot, this.serialize(project));
+      return this.document(projectRoot, project, false, PROJECT_SCHEMA_VERSION);
+    } catch (error) {
+      await this.fileSystem.removeNewProjectRoot(projectRoot).catch(() => undefined);
+      throw error;
+    }
   }
 
   async open(rawProjectRoot: string): Promise<ProjectDocument> {
@@ -411,6 +450,7 @@ export class ProjectService {
   private resolveNewProjectRoot(
     rawParentDirectory: string,
     rawProjectName: string,
+    extension = PROJECT_ROOT_EXTENSION,
   ): string {
     const trimmedParent = rawParentDirectory.trim();
     if (!trimmedParent) {
@@ -430,7 +470,7 @@ export class ProjectService {
         `Cannot create project in ${parentDirectory}: the project name is rejected (${issue}).`,
       );
     }
-    const expectedDirectoryName = `${projectName}${PROJECT_ROOT_EXTENSION}`;
+    const expectedDirectoryName = `${projectName}${extension}`;
     const projectRoot = this.pathService.join(
       parentDirectory,
       expectedDirectoryName,

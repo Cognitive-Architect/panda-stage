@@ -31,7 +31,9 @@ import {
   composeAdaptiveFaceReplacementMatrix,
   stripCropTransformFromAdaptivePartMatrix,
 } from '../geometry/characterPartLayout';
-import { composeAnimatedCharacterPartTransform } from '../character-part-animation';
+import {
+  captureCharacterPartAnimationBasis, composeAnimatedCharacterPartTransform, resolveLayeredCharacterPartTransforms,
+} from '../character-part-animation';
 import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
@@ -41,8 +43,9 @@ import {
   resolveCharacterFaceSource,
   resolveCharacterFaceSourceOrNull,
   findTalkingAnimation,
+  listCharacterTalkingSources,
   listTalkingAnimationImageIds,
-  resolveTalkingAnimationFace,
+  resolveCharacterTalkingFace,
 } from './characterFaceSource';
 
 export type LayerVisualKind =
@@ -562,8 +565,9 @@ function characterResources(
     }
   }
 
-  const talking = findTalkingAnimation(project, character.talkingAnimationId);
-  if (talking) {
+  for (const { animationId } of listCharacterTalkingSources(character)) {
+    const talking = findTalkingAnimation(project, animationId);
+    if (!talking) continue;
     for (const assetId of listTalkingAnimationImageIds(talking)) {
       if (!required.has(assetId) && !fallback.has(assetId) && resolveImageAsset(project, assetId)) {
         addResource(candidates, assetId, 'mouth-override');
@@ -602,7 +606,7 @@ function resolveCharacterFace(
   const expressionAsset = resolveCharacterFaceSource(project, expressionSource);
   const poseSource = evaluated.mouthPose?.source;
   const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
+  const talking = resolveCharacterTalkingFace(project, character, expression.id, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
   const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? { kind: 'image' as const, assetId: evaluated.mouthOverrideAssetId }
     : evaluated.mouthOpen ? resolveMouthVisualSource(character) : null);
@@ -767,6 +771,8 @@ function projectAdaptivePartsFaceVisual(input: {
   readonly sourceExpressionId?: string;
   readonly validImageAssetIds: ReadonlySet<string>;
   readonly isImageUnavailable?: (assetId: string) => boolean;
+  readonly expressionOnly?: boolean;
+  readonly preservePartId?: string;
 }): {
   readonly parts: LayerVisualPart[];
   readonly activeFace: ActiveCharacterFace | null;
@@ -776,18 +782,24 @@ function projectAdaptivePartsFaceVisual(input: {
     project,
     character,
     visualDefinition,
-    parts,
+    parts: inputParts,
     evaluated,
     sourceExpressionId,
     validImageAssetIds,
     isImageUnavailable,
   } = input;
-  const fallbackAssetIds = new Set<string>();
   const faceBinding = character.faceBinding;
-  const poseSource = evaluated.mouthPose?.source;
-  const poseAsset = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
+  const poseSource = input.expressionOnly ? undefined : evaluated.mouthPose?.source;
+  const resolvedPose = poseSource ? resolveCharacterFaceSourceOrNull(project, poseSource) : null;
+  const poseAsset = resolvedPose?.assetId && isImageUnavailable?.(resolvedPose.assetId) ? null : resolvedPose;
   const independentTarget = evaluated.mouthPose?.target.kind === 'mouth' &&
-    isResolvedFaceRenderable(poseAsset, validImageAssetIds) ? evaluated.mouthPose.target.partId : undefined;
+    isResolvedFaceRenderable(poseAsset, validImageAssetIds)
+    ? evaluated.mouthPose.target.partId : undefined;
+  const expressionProjection = independentTarget && independentTarget !== faceBinding?.targetPartId &&
+    inputParts.some((part) => adaptivePartIdOfSource(part.source) === independentTarget)
+    ? projectAdaptivePartsFaceVisual({ ...input, expressionOnly: true, preservePartId: independentTarget }) : undefined;
+  const parts = expressionProjection?.parts ?? inputParts;
+  const fallbackAssetIds = new Set(expressionProjection?.fallbackAssetIds);
   const targetPartId = independentTarget ?? faceBinding?.targetPartId;
   if (!targetPartId) {
     return { parts, activeFace: null, fallbackAssetIds };
@@ -821,8 +833,8 @@ function projectAdaptivePartsFaceVisual(input: {
     ? rawExpressionAsset
     : null;
 
-  const talking = resolveTalkingAnimationFace(project, character.talkingAnimationId, evaluated.talkingAnimationElapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
-  const requestedMouth = (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
+  const talking = input.expressionOnly ? null : resolveCharacterTalkingFace(project, character, expression?.id, evaluated.talkingAnimationElapsedMs, isImageUnavailable);
+  const requestedMouth = input.expressionOnly ? null : (poseAsset ? poseSource : undefined) ?? talking?.source ?? (evaluated.mouthOverrideAssetId
     ? ({ kind: 'image', assetId: evaluated.mouthOverrideAssetId } as const)
     : evaluated.mouthOpen
       ? resolveMouthVisualSource(character)
@@ -859,6 +871,7 @@ function projectAdaptivePartsFaceVisual(input: {
     collectAssetIds(expressionAsset);
   }
   const replaceSet = new Set(independentTarget ? [] : faceBinding?.replacePartIds ?? []);
+  if (input.preservePartId) replaceSet.delete(input.preservePartId);
   for (const part of parts) {
     const partCharId = adaptivePartIdOfSource(part.source);
     if (partCharId === targetPartId || (partCharId !== undefined && replaceSet.has(partCharId))) {
@@ -1353,6 +1366,7 @@ export function resolveLayerVisualParts(
   evaluated: EvaluatedLayer,
   timeMs = 0,
   isImageUnavailable?: (assetId: string) => boolean,
+  options?: { collectCandidates: boolean },
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1562,19 +1576,22 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
   }
   if (character.mode === 'adaptive-parts') {
-    const clip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+    const authoredClip = layer.animationClip?.version === 1 ? layer.animationClip : undefined;
+    const layeredAction = evaluated.layeredCharacterAction;
+    const clip = authoredClip ?? (layeredAction ? captureCharacterPartAnimationBasis(project, character, layer.id) : undefined);
     let parts: LayerVisualPart[];
     let visualDefinition: AdaptivePartVisualDefinition = character;
     if (clip) {
-      const values = evaluated.animationValues;
-      if (!values || values.length !== clip.tracks.length || clip.tracks.some(track =>
+      const values = evaluated.animationValues ?? [];
+      if (values.length !== clip.tracks.length || clip.tracks.some(track =>
         !values.some(value => sameAnimationTarget(value.target, track.target) && value.property === track.property),
       )) throw new Error('Animation Clip requires complete Shot-time evaluation.');
+      const layeredTransforms = layeredAction ? resolveLayeredCharacterPartTransforms(clip, character, values, layeredAction) : undefined;
       visualDefinition = {
         sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
         parts: clip.targetBases.map(basis => ({
           partId: basis.target.partId, visualSource: basis.visualSource,
-          restTransform: composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values),
+          restTransform: layeredTransforms?.get(basis.target.partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values),
           visible: basis.visible, drawOrder: basis.drawOrder,
         })),
       };
@@ -1682,56 +1699,59 @@ export function resolveLayerVisualParts(
         }
       }
     }
-    const collectCandidateFaceSourceAssets = (faceSource: CharacterFaceSource): void => {
-      const resolved = resolveCharacterFaceSourceOrNull(project, faceSource);
-      if (!resolved) return;
-      for (const id of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
-        if (validImageAssetIds.has(id) && !requiredAssetIds.has(id) && !faceProjection.fallbackAssetIds.has(id)) {
-          candidateAssetIds.add(id);
+    if (options?.collectCandidates !== false) {
+      const collectCandidateFaceSourceAssets = (faceSource: CharacterFaceSource): void => {
+        const resolved = resolveCharacterFaceSourceOrNull(project, faceSource);
+        if (!resolved) return;
+        for (const id of resolved.flaGraphic?.resourceAssetIds ?? (resolved.assetId ? [resolved.assetId] : [])) {
+          if (validImageAssetIds.has(id) && !requiredAssetIds.has(id) && !faceProjection.fallbackAssetIds.has(id)) {
+            candidateAssetIds.add(id);
+          }
+        }
+      };
+      for (const { animationId } of character.faceBinding ? listCharacterTalkingSources(character) : []) {
+        const talking = findTalkingAnimation(project, animationId);
+        if (!talking) continue;
+        for (const assetId of listTalkingAnimationImageIds(talking)) {
+          if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
         }
       }
-    };
-    const talking = findTalkingAnimation(project, character.talkingAnimationId);
-    if (talking && character.faceBinding) {
-      for (const assetId of listTalkingAnimationImageIds(talking)) {
-        if (validImageAssetIds.has(assetId) && !requiredAssetIds.has(assetId)) candidateAssetIds.add(assetId);
+      for (const expression of character.expressions ?? []) {
+        collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
       }
-    }
-    for (const expression of character.expressions ?? []) {
-      collectCandidateFaceSourceAssets(resolveExpressionVisualSource(expression));
-    }
-    const configuredMouth = resolveMouthVisualSource(character);
-    if (configuredMouth) {
-      collectCandidateFaceSourceAssets(configuredMouth);
-    }
-    for (const part of visualDefinition.parts) {
-      const visualSource = resolveCharacterPartVisualSource(part);
-      if (
-        visualSource.kind !== 'fla-graphic' ||
-        visualSource.nodePath ||
-        visualSource.regionRef ||
-        visualSource.regionVector
-      ) continue;
-      const definition = project.animations.find(
-        (candidate): candidate is FlaGraphicDefinition =>
-          isFlaGraphicDefinition(candidate) &&
-          candidate.id === visualSource.animationId,
-      );
-      if (!definition || definition.frames.length <= 1) continue;
-      for (const frame of definition.frames) {
-        const evaluatedFrame = evaluateFlaGraphicVisual({
-          definition,
-          frameOrdinal: frame.ordinal,
-          mode: 'instance',
-          instanceTransformOverrides: visualSource.instanceTransformOverrides,
-        });
-        if (!evaluatedFrame) continue;
-        for (const assetId of evaluatedFrame.resourceAssetIds) {
-          if (
-            validImageAssetIds.has(assetId) &&
-            !requiredAssetIds.has(assetId)
-          ) {
-            candidateAssetIds.add(assetId);
+      const configuredMouth = resolveMouthVisualSource(character);
+      if (configuredMouth) {
+        collectCandidateFaceSourceAssets(configuredMouth);
+      }
+      for (const part of visualDefinition.parts) {
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (
+          visualSource.kind !== 'fla-graphic' ||
+          visualSource.nodePath ||
+          visualSource.regionRef ||
+          visualSource.regionVector
+        ) continue;
+        const definition = project.animations.find(
+          (candidate): candidate is FlaGraphicDefinition =>
+            isFlaGraphicDefinition(candidate) &&
+            candidate.id === visualSource.animationId,
+        );
+        if (!definition || definition.frames.length <= 1) continue;
+        for (const frame of definition.frames) {
+          const evaluatedFrame = evaluateFlaGraphicVisual({
+            definition,
+            frameOrdinal: frame.ordinal,
+            mode: 'instance',
+            instanceTransformOverrides: visualSource.instanceTransformOverrides,
+          });
+          if (!evaluatedFrame) continue;
+          for (const assetId of evaluatedFrame.resourceAssetIds) {
+            if (
+              validImageAssetIds.has(assetId) &&
+              !requiredAssetIds.has(assetId)
+            ) {
+              candidateAssetIds.add(assetId);
+            }
           }
         }
       }

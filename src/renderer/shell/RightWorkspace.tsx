@@ -17,6 +17,7 @@ import { DialogueSheet } from '../features/dialogue/DialogueSheet';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer } from './ProjectToolsDrawer';
 import { RightInspector } from './RightInspector';
+import type { Project } from '../../domain';
 
 export type RightActivity = 'subtitles' | 'properties' | 'tools';
 
@@ -45,12 +46,14 @@ export interface RightWorkspaceProps {
   ref?: Ref<RightWorkspaceHandle>;
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
+  onPreviewDraft?(project: Project): void;
 }
 
 export function RightWorkspace({
   ref,
   autoCameraEnabled,
   onAutoCameraChange,
+  onPreviewDraft,
 }: RightWorkspaceProps): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
@@ -129,6 +132,7 @@ export function RightWorkspace({
           ) : (
             <ProjectToolsDrawer
               onClose={closeSurface}
+              onPreview={onPreviewDraft}
             />
           )}
         </div>

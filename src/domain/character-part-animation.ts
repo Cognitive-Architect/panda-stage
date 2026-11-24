@@ -1,18 +1,25 @@
-import { multiplyAffineMatrices } from '../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices } from '../shared/affine-matrix';
 import { characterPartSourceBounds } from './geometry/characterPartLayout';
 import {
   AnimationClipV0Schema, TargetLocalPivotSchema, sameAnimationTarget,
   type AnimationClipV0, type CharacterPartTargetBasis, type CharacterPartTargetRef,
   type TargetLocalPivot,
 } from './models/animationCore';
-import { resolveCharacterPartVisualSource, type CharacterPartTransform } from './models/character';
+import {
+  resolveCharacterPartVisualSource, type AdaptivePartsCharacter, type CharacterPartTransform, type LayeredCharacterAction,
+} from './models/character';
 import type { Project } from './models/project';
-import type { EvaluatedAnimationValue } from './evaluate-animation-core';
+import { evaluateAnimationTrackAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
 
 const IDENTITY: CharacterPartTransform = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 
 function point(matrix: CharacterPartTransform, x: number, y: number) {
   return { x: matrix.a * x + matrix.c * y + matrix.tx, y: matrix.b * x + matrix.d * y + matrix.ty };
+}
+
+export function characterPartPivotInClip(basis: CharacterPartTargetBasis, fixedCenter: AnimationClipV0['fixedCharacterCenter']) {
+  const pivot = point(basis.baseTransform, basis.pivot.x, basis.pivot.y);
+  return { x: pivot.x - fixedCenter.x, y: pivot.y - fixedCenter.y };
 }
 
 function sameTarget(left: CharacterPartTargetRef, right: { kind: string; layerId: string; partId?: string }): boolean {
@@ -31,6 +38,10 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
     if (layer.animationClip.version !== 1) throw new Error('Character Layer requires a Character Animation Clip v1.');
     return structuredClone(layer.animationClip);
   }
+  return captureCharacterPartAnimationBasis(project, character, layerId);
+}
+
+export function captureCharacterPartAnimationBasis(project: Project, character: AdaptivePartsCharacter, layerId: string): AnimationClipV0 {
   const sourcePosePoints: { x: number; y: number }[] = [];
   const targetBases = character.parts.map((part): CharacterPartTargetBasis => {
     const bounds = characterPartSourceBounds(part, project.animations, project.assets);
@@ -54,6 +65,55 @@ export function createCharacterPartAnimationClip(project: Project, shotId: strin
     fixedCharacterCenter: { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 },
     targetBases, tracks: [],
   });
+}
+
+export function characterFaceAndMouthPartIds(character: AdaptivePartsCharacter): Set<string> {
+  const binding = character.faceBinding;
+  return new Set([
+    ...(binding ? [binding.targetPartId, ...binding.replacePartIds] : []),
+    ...(character.mouthPoseSet?.poses.flatMap(({ target }) => target.kind === 'mouth' ? [target.partId] : []) ?? []),
+  ]);
+}
+
+/** Overlay owned properties on the instance pose, then carry the head with the authored anchor. */
+export function resolveLayeredCharacterPartTransforms(
+  clip: AnimationClipV0,
+  character: AdaptivePartsCharacter,
+  baseValues: readonly EvaluatedAnimationValue[],
+  layered: { action: LayeredCharacterAction; localTimeMs: number },
+): ReadonlyMap<string, CharacterPartTransform> {
+  const layerId = clip.targetBases[0]?.target.layerId;
+  if (!layerId) return new Map();
+  const protectedParts = characterFaceAndMouthPartIds(character);
+  const actionValues: EvaluatedAnimationValue[] = layered.action.tracks
+    .filter(({ partId }) => !protectedParts.has(partId))
+    .map((track) => ({ target: { kind: 'character-part', layerId, partId: track.partId },
+      property: track.property, value: evaluateAnimationTrackAtTime(track, layered.localTimeMs) }));
+  const values = [...baseValues, ...actionValues];
+  const offsets = new Map(layered.action.partPivotOffsets?.map(({ partId, offset }) => [partId, offset]));
+  function calibratedBasis(basis: CharacterPartTargetBasis): CharacterPartTargetBasis {
+    const partId = basis.target.partId;
+    const offset = offsets.get(partId);
+    return offset && !protectedParts.has(partId) ? { ...basis,
+      pivot: { ...basis.pivot, x: basis.pivot.x + offset.x, y: basis.pivot.y + offset.y } } : basis;
+  }
+  const anchor = clip.targetBases.find(({ target }) => target.partId === layered.action.headAnchorPartId);
+  let headDelta: CharacterPartTransform | undefined;
+  if (anchor && !protectedParts.has(anchor.target.partId)) {
+    const before = composeAnimatedCharacterPartTransform(anchor, clip.fixedCharacterCenter, baseValues);
+    const inverse = invertAffineMatrix(before);
+    if (inverse) {
+      const after = composeAnimatedCharacterPartTransform(calibratedBasis(anchor), clip.fixedCharacterCenter, values);
+      headDelta = multiplyAffineMatrices(after, inverse);
+    }
+  }
+  const followers = new Set([...protectedParts, ...(character.headMotionBinding?.partIds ?? [])]);
+  return new Map(clip.targetBases.map((basis) => {
+    const id = basis.target.partId;
+    const transform = composeAnimatedCharacterPartTransform(calibratedBasis(basis), clip.fixedCharacterCenter, values);
+    return [id, headDelta && id !== anchor?.target.partId && followers.has(id)
+      ? multiplyAffineMatrices(headDelta, transform) : transform];
+  }));
 }
 
 /** Resolve only the frozen instance identity, never current Library Part membership. */
@@ -98,7 +158,7 @@ export function composeAnimatedCharacterPartTransform(
     }
   }
   const base = { ...basis.baseTransform, tx: basis.baseTransform.tx - fixedCenter.x, ty: basis.baseTransform.ty - fixedCenter.y };
-  const pivot = point(base, basis.pivot.x, basis.pivot.y);
+  const pivot = characterPartPivotInClip(basis, fixedCenter);
   const radians = rotationDeg * Math.PI / 180;
   const a = Math.cos(radians) * scaleX, b = Math.sin(radians) * scaleX;
   const c = -Math.sin(radians) * scaleY, d = Math.cos(radians) * scaleY;

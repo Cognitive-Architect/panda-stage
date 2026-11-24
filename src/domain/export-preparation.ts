@@ -12,7 +12,7 @@ import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { listCharacterActionVisualAssetIds, MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
-import { findTalkingAnimation, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
+import { findTalkingAnimation, listCharacterTalkingSources, listTalkingAnimationImageIds, resolveCharacterFaceSource, resolveTalkingAnimationFace } from './selectors/characterFaceSource';
 import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
@@ -155,10 +155,12 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
       event.type === 'expression' ||
       event.type === 'visibility' ||
       event.type === 'mouth-cue' ||
+      event.type === 'graphic-frame' ||
+      event.type === 'graphic-playback' ||
       event.type === 'mouth-pose'
     ) {
       times.add(event.startMs);
-      if (event.type === 'mouth-pose') times.add(event.endMs);
+      if (event.type === 'mouth-pose' || event.type === 'graphic-playback') times.add(event.endMs);
     }
   }
   return [...times].sort((left, right) => left - right);
@@ -229,13 +231,16 @@ function addShotVisualAssets(
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);
         const character = project.characters.find(candidate => candidate.id === source.characterId);
-        if (character?.talkingAnimationPlayback?.restFrame !== undefined &&
+        if (character &&
           (character.mode !== 'adaptive-parts' || character.faceBinding)) {
-          const rest = resolveTalkingAnimationFace(project, character.talkingAnimationId, 'rest', character.talkingAnimationPlayback);
-          const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
-          for (const assetId of assetIds) {
-            const asset = project.assets.find(candidate => candidate.id === assetId);
-            if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+          for (const { animationId, playback } of listCharacterTalkingSources(character)) {
+            if (playback?.restFrame === undefined) continue;
+            const rest = resolveTalkingAnimationFace(project, animationId, 'rest', playback);
+            const assetIds = rest?.asset.flaGraphic?.resourceAssetIds ?? (rest?.asset.assetId ? [rest.asset.assetId] : []);
+            for (const assetId of assetIds) {
+              const asset = project.assets.find(candidate => candidate.id === assetId);
+              if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
+            }
           }
         }
       }
@@ -286,7 +291,7 @@ function addShotVisualAssets(
     if (
       !character ||
       (character.mode === 'adaptive-parts' && !character.faceBinding) ||
-      (!character.talkingAnimationId && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
+      (listCharacterTalkingSources(character).length === 0 && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
       shot.layers
@@ -298,8 +303,9 @@ function addShotVisualAssets(
         .map((layer) => layer.id),
     );
     if (characterLayerIds.size === 0) continue;
-    const talking = findTalkingAnimation(project, character.talkingAnimationId);
-    if (talking) {
+    for (const { animationId } of listCharacterTalkingSources(character)) {
+      const talking = findTalkingAnimation(project, animationId);
+      if (!talking) continue;
       for (const assetId of listTalkingAnimationImageIds(talking)) {
         const asset = project.assets.find(candidate => candidate.id === assetId);
         if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage, true);
@@ -560,6 +566,7 @@ function issue(
 export function evaluateExportPreparationSupport(
   project: Project,
   cameraMode: ExportPreparationCameraMode,
+  options?: { imagesOnly: boolean },
 ): ExportPreparationIssue[] {
   const issues: ExportPreparationIssue[] = [];
   if (project.shots.length === 0) {
@@ -595,7 +602,7 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
-    if (shot.backgroundLayerId === null) {
+    if (shot.backgroundLayerId === null && !options?.imagesOnly) {
       issues.push(
         issue(
           location,
@@ -603,7 +610,7 @@ export function evaluateExportPreparationSupport(
           '为镜头指定并显示图像背景后重新检查。',
         ),
       );
-    } else {
+    } else if (shot.backgroundLayerId !== null) {
       const background = shot.layers.find(
         (layer) => layer.id === shot.backgroundLayerId,
       );
@@ -622,7 +629,7 @@ export function evaluateExportPreparationSupport(
           problem: '镜头引用的背景图层或背景视觉源无效。',
           nextStep: '修复镜头的背景图层引用后重新检查。',
         });
-      } else if (!background.visible) {
+      } else if (!background.visible && !options?.imagesOnly) {
         issues.push(
           issue(
             location,
@@ -631,7 +638,7 @@ export function evaluateExportPreparationSupport(
           ),
         );
       } else if (
-        backgroundAsset?.kind === 'image' &&
+        background?.visible && backgroundAsset?.kind === 'image' &&
         !isSupportedFormalImageAsset(backgroundAsset)
       ) {
         issues.push(
@@ -643,6 +650,7 @@ export function evaluateExportPreparationSupport(
         );
       }
     }
+    if (options?.imagesOnly) return;
     shot.audioClips.forEach((clip) => {
       const clipLocation =
         '镜头“' + shot.name + '”的音频片段“' + clip.name + '”';

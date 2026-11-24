@@ -16,6 +16,8 @@ extraResources:
     to: probe/preview-tone.wav
   - from: resources/licenses
     to: licenses
+  - from: scripts/panda-live.cjs
+    to: automation/panda-live.cjs
 win:
   target:
     - target: nsis

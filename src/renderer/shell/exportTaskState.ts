@@ -77,8 +77,10 @@ export function applyExportJobUpdate(
     phase: update.phase,
     completedFrames: update.completedFrames,
     totalFrames: update.totalFrames,
+    ...(update.outputPath ? { outputPath: update.outputPath, incomplete: update.incomplete } : {}),
     message:
-      update.status === 'failed'
+      current.pngSequence && (update.status === 'cancelled' || update.status === 'failed') ? update.error ?? undefined
+      : update.status === 'failed'
         ? safeExportFailureMessage(
             update.originalError === undefined
               ? update.error

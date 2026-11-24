@@ -5,6 +5,7 @@ export interface NewProjectDialogProps {
   projectName: string;
   status: string;
   busy: boolean;
+  mode?: 'project' | 'from-template' | 'save-template';
   parentDirectoryTouched?: boolean;
   projectNameTouched?: boolean;
   onParentDirectoryChange(value: string): void;
@@ -28,6 +29,7 @@ export function NewProjectDialog({
   projectName,
   status,
   busy,
+  mode = 'project',
   parentDirectoryTouched = false,
   projectNameTouched = false,
   onParentDirectoryChange,
@@ -39,6 +41,8 @@ export function NewProjectDialog({
   onCancel,
 }: NewProjectDialogProps): React.JSX.Element {
   const validation = validateNewProjectInput(parentDirectory, projectName);
+  const savingTemplate = mode === 'save-template';
+  const heading = savingTemplate ? '存为模板' : mode === 'from-template' ? '从模板创建工程' : '新建项目';
   const showParentDirectoryValidation =
     parentDirectoryTouched && !validation.parentDirectory.valid;
   const showProjectNameValidation =
@@ -53,7 +57,7 @@ export function NewProjectDialog({
       role="dialog"
     >
       <div className="new-project-dialog-body">
-        <h3 id="new-project-heading">新建项目</h3>
+        <h3 id="new-project-heading">{heading}</h3>
         <div
           aria-labelledby="new-project-parent-field-label"
           className="new-project-field"
@@ -75,7 +79,7 @@ export function NewProjectDialog({
               disabled={busy}
               onBlur={onParentDirectoryBlur}
               onChange={(event) => onParentDirectoryChange(event.target.value)}
-              placeholder="选择或输入新项目的存放文件夹"
+              placeholder={savingTemplate ? '选择或输入模板的存放文件夹' : '选择或输入新项目的存放文件夹'}
               value={parentDirectory}
             />
             <button
@@ -100,7 +104,7 @@ export function NewProjectDialog({
           ) : null}
         </div>
         <label className="new-project-field">
-          <span>项目名称</span>
+          <span>{savingTemplate ? '模板名称' : '项目名称'}</span>
           <input
             aria-invalid={showProjectNameValidation || undefined}
             aria-describedby={
@@ -110,7 +114,7 @@ export function NewProjectDialog({
             disabled={busy}
             onBlur={onProjectNameBlur}
             onChange={(event) => onProjectNameChange(event.target.value)}
-            placeholder="输入项目名称，无需填写后缀"
+            placeholder={savingTemplate ? '输入模板名称' : '输入项目名称，无需填写后缀'}
             value={projectName}
           />
           {showProjectNameValidation ? (
@@ -135,7 +139,7 @@ export function NewProjectDialog({
             onClick={() => void onCreateProject()}
             type="button"
           >
-            创建项目
+            {savingTemplate ? '保存模板' : '创建项目'}
           </button>
           <button
             className="task4-hit-target"

@@ -1,0 +1,46 @@
+.user-motion-preset {
+  margin-block-start: var(--ui-space-3);
+  padding-block-start: var(--ui-space-2);
+  border-block-start: 1px solid var(--ui-color-separator);
+}
+
+.user-motion-preset > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.user-motion-preset > :is(label, output) {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.user-motion-preset > label > :is(input, select) {
+  flex: 1;
+  min-width: 0;
+  min-height: 2rem;
+}
+
+.user-motion-preset > button {
+  margin-block-end: var(--ui-space-2);
+  margin-inline-end: var(--ui-space-1);
+}
+
+.action-recipe-steps {
+  display: grid;
+  gap: var(--ui-space-2);
+  padding-inline-start: var(--ui-space-5);
+}
+
+.action-recipe-steps label {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-1);
+}
+
+.action-recipe-steps label > :is(input, select) {
+  flex: 1;
+  min-width: 0;
+}

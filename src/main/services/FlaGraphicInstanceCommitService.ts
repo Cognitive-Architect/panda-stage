@@ -250,6 +250,7 @@ function buildGraphicDefinition(
       },
     },
     durationMs: batch.target.frameCount * frameDurationMs,
+    ...(batch.sourceFrameLabels?.length ? { sourceFrameLabels: batch.sourceFrameLabels } : {}),
     ...(boundStructure ? { structure: boundStructure } : {}),
     frames: batch.frames.map((frame, index) => ({
       ordinal: index,

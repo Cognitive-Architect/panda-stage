@@ -4,6 +4,7 @@ import {
   CHARACTER_PART_MIN_SCALE,
 } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { AnimationKeySchema, AnimationPropertySchema } from './animationKeys';
 import {
   cloneFlaEditableShapeRegion,
   FlaEditableShapeRegionSchema,
@@ -863,26 +864,125 @@ export const CharacterActionPlacementSchema = z.object({
   scale: FiniteNumberSchema.min(CHARACTER_PART_MIN_SCALE).max(CHARACTER_PART_MAX_SCALE),
 }).strict();
 
-export const CharacterActionSchema = z.object({
+export const BakedCharacterActionSchema = z.object({
   id: IdSchema,
   name: NameSchema,
   animationId: IdSchema,
   placement: CharacterActionPlacementSchema,
 }).strict();
 
+const ArmPointSchema = z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict();
+
+const LayeredCharacterActionV37Schema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  kind: z.literal('layered'),
+  tracks: z.array(z.object({
+    partId: IdSchema,
+    property: AnimationPropertySchema,
+    keys: z.array(AnimationKeySchema).min(2),
+  }).strict()).min(1),
+  headAnchorPartId: IdSchema.optional(),
+}).strict().superRefine(({ tracks, headAnchorPartId }, context) => {
+  const addresses = new Set<string>();
+  tracks.forEach(({ partId, property, keys }, index) => {
+    const address = `${partId}:${property}`;
+    const scale = property === 'transform.scaleX' || property === 'transform.scaleY';
+    if (addresses.has(address) || keys[0]?.timeMs !== 0 || keys.some((key, keyIndex) =>
+      (keyIndex > 0 && key.timeMs <= keys[keyIndex - 1]!.timeMs) ||
+      (scale && (key.value < CHARACTER_PART_MIN_SCALE || key.value > CHARACTER_PART_MAX_SCALE)))) {
+      context.addIssue({ code: 'custom', path: ['tracks', index], message: 'Invalid or duplicate layered action track.' });
+    }
+    addresses.add(address);
+  });
+  if (headAnchorPartId && !tracks.some(({ partId }) => partId === headAnchorPartId)) {
+    context.addIssue({ code: 'custom', path: ['headAnchorPartId'], message: 'The head anchor must have an action track.' });
+  }
+});
+
+export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safeExtend({
+  partPivotOffsets: z.array(z.object({ partId: IdSchema, offset: ArmPointSchema }).strict()).optional(),
+}).superRefine(({ tracks, partPivotOffsets }, context) => {
+  const seen = new Set<string>();
+  partPivotOffsets?.forEach(({ partId }, index) => {
+    if (seen.has(partId) || !tracks.some(track => track.partId === partId &&
+      (track.property === 'transform.rotationDeg' || track.property === 'transform.scaleX' || track.property === 'transform.scaleY'))) {
+      context.addIssue({ code: 'custom', path: ['partPivotOffsets', index], message: 'Pivot calibration requires a mapped rotation or scale.' });
+    }
+    seen.add(partId);
+  });
+});
+
+const CharacterActionV37Schema = z.union([BakedCharacterActionSchema, LayeredCharacterActionV37Schema]);
+export const CharacterActionSchema = z.union([BakedCharacterActionSchema, LayeredCharacterActionSchema]);
+
+const BodyPosePartV39Schema = z.strictObject({
+  partId: IdSchema,
+  partName: NameSchema.optional(),
+  properties: z.partialRecord(AnimationPropertySchema, FiniteNumberSchema),
+});
+const BodyPosePartSchema = BodyPosePartV39Schema.extend({
+  /** Center-local pivot used to encode a pose captured from a layered action. */
+  referencePivot: ArmPointSchema.optional(),
+});
+
+function bodyPoseSchema<Part extends typeof BodyPosePartV39Schema>(part: Part) {
+  return z.strictObject({ id: IdSchema, name: NameSchema, parts: z.array(part).min(1) }).superRefine(({ parts }, context) => {
+    const ids = new Set<string>();
+    parts.forEach(({ partId, properties }, index) => {
+      const scales = [properties['transform.scaleX'], properties['transform.scaleY']];
+      if (ids.has(partId) || !Object.keys(properties).length || scales.some((scale) =>
+        scale !== undefined && (scale < CHARACTER_PART_MIN_SCALE || scale > CHARACTER_PART_MAX_SCALE))) {
+        context.addIssue({ code: 'custom', path: ['parts', index], message: 'Invalid or duplicate body pose target.' });
+      }
+      ids.add(partId);
+    });
+  });
+}
+
+const CharacterBodyPoseV39Schema = bodyPoseSchema(BodyPosePartV39Schema);
+export const CharacterBodyPoseSchema = bodyPoseSchema(BodyPosePartSchema);
+
+export const CharacterArmChainSchema = z.object({
+  segments: z.array(z.object({
+    partId: IdSchema,
+    joint: ArmPointSchema,
+    minDeg: FiniteNumberSchema.min(-360).max(360),
+    maxDeg: FiniteNumberSchema.min(-360).max(360),
+  }).strict()).min(2).max(3),
+  tip: ArmPointSchema,
+}).strict().refine(({ segments }) => new Set(segments.map(({ partId }) => partId)).size === segments.length &&
+  segments.every(({ minDeg, maxDeg }) => minDeg <= maxDeg), 'Invalid rigid arm joints or limits.');
+
+export const CharacterMotionMappingRuleSchema = z.object({
+  sourcePartId: IdSchema,
+  targetPartId: IdSchema.optional(),
+  mirror: z.boolean(),
+  translationScale: FiniteNumberSchema.min(0.01).max(100),
+  pivotOffset: ArmPointSchema,
+  properties: z.array(AnimationPropertySchema).max(AnimationPropertySchema.options.length),
+}).strict().refine(({ properties }) => new Set(properties).size === properties.length, 'Duplicate mapped properties.');
+
+export const CharacterMotionMappingSchema = z.object({
+  sourceCharacterId: IdSchema,
+  sourceActionId: IdSchema,
+  generatedActionId: IdSchema,
+  rules: z.array(CharacterMotionMappingRuleSchema).min(1),
+}).strict().refine(({ rules }) => {
+  const targets = rules.flatMap(({ targetPartId }) => targetPartId ? [targetPartId] : []);
+  return new Set(rules.map(({ sourcePartId }) => sourcePartId)).size === rules.length && new Set(targets).size === targets.length;
+}, 'Each mapped source and selected target part must be unique.');
+
 const CharacterActionsShape = {
-  actions: z.array(CharacterActionSchema).max(64).optional(),
+  actions: z.array(BakedCharacterActionSchema).max(64).optional(),
 };
 
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV26Schema.safeExtend({
-  ...MouthPoseShape,
-  ...CharacterActionsShape,
-});
-const CharacterCurrentSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
-  CompositeCharacterV26Schema.safeExtend({ ...MouthPoseShape, ...CharacterActionsShape }),
-  AdaptivePartsCharacterCurrentSchema,
-]).superRefine(validateMouthSource).superRefine((character, context) => {
+const CharacterV28Fields = { ...MouthPoseShape, ...CharacterActionsShape };
+const SingleImageCharacterV28Schema = SingleImageCharacterV26Schema.safeExtend(CharacterV28Fields);
+const CompositeCharacterV28Schema = CompositeCharacterV26Schema.safeExtend(CharacterV28Fields);
+const AdaptivePartsCharacterV28Schema = AdaptivePartsCharacterV26Schema.safeExtend(CharacterV28Fields);
+
+function validateNamedActions(character: { actions?: CharacterAction[] }, context: z.RefinementCtx): void {
   const actions = character.actions ?? [];
   const actionIds = new Set<string>();
   const actionNames = new Set<string>();
@@ -897,12 +997,106 @@ const CharacterCurrentSchema = z.discriminatedUnion('mode', [
     actionIds.add(action.id);
     actionNames.add(normalizedName);
   });
+}
+
+export const CharacterV28Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV28Schema, CompositeCharacterV28Schema, AdaptivePartsCharacterV28Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions);
+
+const ExpressionTalkingSourceSchema = z.object({
+  animationId: IdSchema,
+  playback: TalkingAnimationPlaybackSchema,
+}).strict();
+export type ExpressionTalkingSource = z.infer<typeof ExpressionTalkingSourceSchema>;
+
+const ExpressionTalkingShape = {
+  expressionTalkingSources: z.record(IdSchema, ExpressionTalkingSourceSchema).optional(),
+};
+const SingleImageCharacterWithTalkingSchema = SingleImageCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const CompositeCharacterWithTalkingSchema = CompositeCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const AdaptivePartsCharacterV34Schema = AdaptivePartsCharacterV28Schema.safeExtend(ExpressionTalkingShape);
+const CurrentCharacterActionsShape = {
+  actions: z.array(CharacterActionV37Schema).max(64).optional(),
+};
+const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
+const AdaptivePartsCharacterV35Schema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
+function bodyPoseLibrary<Schema extends typeof CharacterBodyPoseV39Schema>(schema: Schema) {
+  return z.array(schema).max(64).refine((poses) =>
+    new Set(poses.map(({ id }) => id)).size === poses.length &&
+    new Set(poses.map(({ name }) => name.toLocaleLowerCase())).size === poses.length,
+  'Body pose names and ids must be unique.').optional();
+}
+const AdaptivePartsCharacterV36Schema = AdaptivePartsCharacterV35Schema.safeExtend({
+  bodyPoses: bodyPoseLibrary(CharacterBodyPoseV39Schema),
 });
+const AdaptivePartsCharacterV37Schema = AdaptivePartsCharacterV36Schema.safeExtend({
+  armChain: CharacterArmChainSchema.optional(),
+});
+const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExtend({
+  actions: z.array(CharacterActionSchema).max(64).optional(),
+  motionMappings: z.array(CharacterMotionMappingSchema).max(64).refine((entries) =>
+    new Set(entries.map(({ sourceCharacterId, sourceActionId }) => `${sourceCharacterId}:${sourceActionId}`)).size === entries.length,
+  'Each source action may have one reusable mapping.').optional(),
+});
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
+  bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
+});
+
+function validateExpressionTalkingSources(character: {
+  expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
+  expressions?: readonly { id: string }[];
+}, context: z.RefinementCtx): void {
+  for (const expressionId of Object.keys(character.expressionTalkingSources ?? {})) {
+    if (!(character.expressions ?? []).some((entry) => entry.id === expressionId)) {
+      context.addIssue({ code: 'custom', path: ['expressionTalkingSources', expressionId], message: 'Unknown expression.' });
+    }
+  }
+}
+
+export const CharacterV34Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterWithTalkingSchema, CompositeCharacterWithTalkingSchema, AdaptivePartsCharacterV34Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+const CharacterCurrentSchema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+export const CharacterV39Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV39Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+export const CharacterV35Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV35Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+export const CharacterV36Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV36Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+export const CharacterV37Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV37Schema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
 export type CharacterFaceGraphicSource = z.infer<typeof CharacterFaceGraphicSourceSchema>;
 export type CharacterFaceSource = { kind: 'image'; assetId: string } | CharacterFaceGraphicSource;
 export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSchema>;
 export type CharacterAction = z.infer<typeof CharacterActionSchema>;
+export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
+export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
+export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
+export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
+export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
+export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;

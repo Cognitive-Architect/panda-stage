@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Music2, Volume2 } from 'lucide-react';
 import type { Project, StandaloneAudioRole } from '../../../domain';
 import { ASSET_DRAG_MIME, parseAssetDropPayload } from '../assets/AssetDropPayload';
@@ -13,9 +13,10 @@ export function standaloneAudioDrop(serialized: string, clientX: number, content
   return { assetId: payload.assetId, startMs: Math.round(clampTime(pxToTime(clientX - contentLeft, pixelsPerMs), durationMs)) };
 }
 
-export function StandaloneAudioLane({ role, project, shotId, trackWidth, pixelsPerMs, selectedClipId }: {
+export function StandaloneAudioLane({ role, project, shotId, trackWidth, pixelsPerMs, selectedClipId, selectedWaveform }: {
   role: StandaloneAudioRole; project: Project; shotId: string; trackWidth: number;
   pixelsPerMs: number; selectedClipId: string | null;
+  selectedWaveform?: ReactNode;
 }): React.JSX.Element {
   const [hover, setHover] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,8 @@ export function StandaloneAudioLane({ role, project, shotId, trackWidth, pixelsP
       }}
     >
       {clips.map(clip => <StandaloneAudioClip key={clip.id} clip={clip} displayName={project.assets.find(asset => asset.id === clip.assetId)?.name ?? clip.name}
-        shotId={shotId} pixelsPerMs={pixelsPerMs} selected={clip.id === selectedClipId} />)}
+        shotId={shotId} pixelsPerMs={pixelsPerMs} selected={clip.id === selectedClipId}
+        waveform={clip.id === selectedClipId ? selectedWaveform : null} />)}
       {clips.length === 0 ? <span className="timeline-audio-empty">拖入{title}</span> : null}
       {error ? <span role="alert" className="standalone-audio-drop-error">{error}</span> : null}
     </div>

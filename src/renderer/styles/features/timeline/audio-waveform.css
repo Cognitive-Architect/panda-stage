@@ -1,0 +1,24 @@
+.timeline-audio-waveform {
+  position: absolute;
+  top: 50%;
+  height: 90%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--ui-color-selected-border);
+  opacity: 0.72;
+}
+
+.timeline-audio-notice {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.timeline-audio-waveform + .timeline-audio-clip-label {
+  position: relative;
+  text-shadow: 0 1px 3px var(--ui-color-surface-app);
+}
+
+.timeline-scrub-audio[aria-pressed='true'] {
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}

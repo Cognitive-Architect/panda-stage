@@ -64,9 +64,10 @@ describe('Character actions', () => {
     });
     const savedAction = saved.characters[0]!.actions?.[0];
     expect(savedAction).toMatchObject(action);
+    if (!savedAction || !('animationId' in savedAction)) throw new Error('Expected a baked action.');
 
     const renamed = service.setAction(saved, IDS.character, {
-      ...savedAction!,
+      ...savedAction,
       name: '招手',
     });
     expect(renamed.characters[0]!.actions).toEqual([

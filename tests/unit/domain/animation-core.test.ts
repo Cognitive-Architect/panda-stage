@@ -4,12 +4,111 @@ import {
   AnimationTargetRefSchema, AnimationPropertySchema, LayerSchema,
   ProjectSchema, ProjectV20Schema, PROJECT_SCHEMA_VERSION,
   evaluateAnimationTrackAtTime, evaluateAnimationClipAtTime, migrateProject,
+  editAnimationPropertyKey, editOpacityEventKey, evaluateShotAtTime,
+  keySelectedAnimationTargets,
+  retimeAnimationPropertyRange,
   type AnimationInterpolation,
 } from '../../../src/domain';
 import { animationCoreFixture } from '../../helpers/animationCoreFixture';
 import { IDS } from './testProject';
 
 describe('Animation Core V0 persisted contract', () => {
+  it('round-trips an opacity curve while preserving legacy interval evaluation', () => {
+    const { project, layerId } = animationCoreFixture();
+    const shot = project.shots[0]!;
+    const id = '71000000-0000-4000-8000-000000000003';
+    shot.timelineEvents.push({ id, layerId, type: 'opacity', startMs: 0, endMs: 1000,
+      from: 0, to: 1, easing: 'ease-in-out' });
+    const opacity = (snapshot: typeof project, timeMs: number) =>
+      evaluateShotAtTime(snapshot.shots[0]!, timeMs, snapshot).layers.find(layer => layer.id === layerId)?.opacity;
+    const migrated = migrateProject({ ...project, schemaVersion: 33 });
+    expect(opacity(migrated, 500)).toBeCloseTo(0.5);
+    const edited = editOpacityEventKey(migrated, shot.id, layerId, id, 0, {
+      curveToNext: { bezier: { x1: 1 / 3, y1: 0, x2: 2 / 3, y2: 1 / 3 } },
+    });
+    expect(() => migrateProject({ ...edited, schemaVersion: 33 })).toThrow();
+    const reloaded = migrateProject(JSON.parse(JSON.stringify(edited)));
+    expect(reloaded.shots[0]!.timelineEvents.at(-1)?.id).toBe(id);
+    expect(opacity(reloaded, 1000)).toBeCloseTo(1);
+    expect(opacity(reloaded, 500)).toBeCloseTo(0.25);
+    expect(opacity(reloaded, 0)).toBeCloseTo(0);
+  });
+  it('moves, scales and extends hold for one property without moving surrounding keys', () => {
+    const { project, clip, layerId } = animationCoreFixture();
+    const track = clip.tracks[0]!;
+    track.keys = [0, 500, 750, 1000, 2000].map((timeMs, index) => ({
+      timeMs, value: index * 10, interpolationToNext: 'linear',
+    }));
+    const layer = project.shots[0]!.layers.find(({ id }) => id === layerId)!;
+    layer.animationClip = clip;
+    const address = { shotId: IDS.shot, target: track.target, property: track.property };
+    const range = { startMs: 500, endMs: 1000 };
+    function keys(mode: 'move' | 'scale' | 'hold', frames: number) {
+      const edited = retimeAnimationPropertyRange(project, address, { ...range, mode, frames });
+      return edited.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks[0]!.keys;
+    }
+    expect(keys('move', 6).map(({ timeMs }) => timeMs)).toEqual([0, 750, 1000, 1250, 2000]);
+    expect(keys('scale', 24).map(({ timeMs }) => timeMs)).toEqual([0, 500, 1000, 1500, 2000]);
+    expect(keys('hold', 6).map(({ timeMs, value }) => [timeMs, value])).toEqual([
+      [0, 0], [500, 10], [750, 20], [1000, 30], [1250, 30], [2000, 40],
+    ]);
+    expect(keys('hold', 6)[3]!.interpolationToNext).toBe('step');
+    expect(() => keys('scale', 36)).toThrow('遇到其他关键帧');
+    expect(track.keys.map(({ timeMs }) => timeMs)).toEqual([0, 500, 750, 1000, 2000]);
+  });
+  it('inserts one sampled key per selected track while preserving curved and stepped motion', () => {
+    const { project, layerId } = animationCoreFixture();
+    const layer = project.shots[0]!.layers.find(({ id }) => id === layerId)!;
+    const clip = layer.animationClip!;
+    const first = clip.tracks[0]!;
+    const target = first.target;
+    const last = first.keys[1]!.timeMs;
+    const at = 250;
+    expect(last).toBeGreaterThan(at);
+    first.keys[0]!.curveToNext = { bezier: { x1: 0.15, y1: 0.8, x2: 0.65, y2: 0.95 } };
+    if (clip.version !== 1 || target.kind !== 'character-part') throw new Error('Expected part clip fixture.');
+    clip.tracks.push({ target, property: 'transform.offsetY', keys: [
+      { timeMs: 0, value: 15, interpolationToNext: 'step' },
+      { timeMs: last, value: 140, interpolationToNext: 'linear' },
+    ] });
+    const second = { ...target, partId: '71000000-0000-4000-8000-000000000002' };
+    clip.targetBases.push({ ...clip.targetBases[0]!, target: second, drawOrder: 1 });
+    clip.tracks.push({ ...clip.tracks[0]!, target: second });
+    const skipped = { ...target, partId: IDS.layerAsset };
+    const result = keySelectedAnimationTargets(project, IDS.shot, layerId, [target, second, skipped], at);
+    expect(result).toMatchObject({ inserted: 3, skipped: 1 });
+    const edited = result.project.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!;
+    for (const time of [last, 18, 239, 250, 294, 0, last + 50]) {
+      const before = evaluateAnimationClipAtTime(clip, time);
+      const after = evaluateAnimationClipAtTime(edited, time);
+      before.forEach((entry, index) => expect(after[index]!.value).toBeCloseTo(entry.value, 4));
+    }
+    expect(keySelectedAnimationTargets(result.project, IDS.shot, layerId, [target, second], at).project).toBe(result.project);
+  });
+  it('edits one property Bézier, round-trips it and preserves the strict previous schema', () => {
+    const { project, clip, layerId } = animationCoreFixture();
+    const propertyTrack = clip.tracks[0]!;
+    const address = { shotId: IDS.shot, target: propertyTrack.target, property: propertyTrack.property, keyTimeMs: 0 };
+    const data = { ...project, schemaVersion: 32 };
+    const migrated = migrateProject(data);
+    const before = migrated.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!;
+    expect(before).toEqual(clip);
+    const next = editAnimationPropertyKey(migrated, address, {
+      curveToNext: { bezier: { x1: 1 / 3, y1: 0, x2: 2 / 3, y2: 1 / 3 } },
+    });
+    expect(() => migrateProject({ ...next, schemaVersion: 32 })).toThrow();
+    const parsed = migrateProject(JSON.parse(JSON.stringify(next)));
+    const track = parsed.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks[0]!;
+    const keys = track.keys;
+    const from = keys[0]!;
+    const to = keys[1]!;
+    const halfTime = (from.timeMs + to.timeMs) / 2;
+    const p = Math.round(halfTime) / (to.timeMs - from.timeMs);
+    expect(evaluateAnimationTrackAtTime(track, halfTime)).toBeCloseTo(from.value + (to.value - from.value) * p ** 2, 4);
+    expect(track.target).toEqual(propertyTrack.target);
+    expect(parsed.shots[0]!.layers.find(({ id }) => id === layerId)!.animationClip!.tracks.slice(1)).toEqual(before.tracks.slice(1));
+    expect(() => editAnimationPropertyKey(next, address, { timeMs: 42 })).toThrow('起始键固定');
+  });
   it('parses the current Project and preserves the full container through JSON', () => {
     const { project, clip } = animationCoreFixture();
     expect(ProjectSchema.parse(JSON.parse(JSON.stringify(project)))).toEqual(project);

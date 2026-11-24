@@ -88,6 +88,7 @@ Panda Stage 使用 **Electron、React、TypeScript、Vite 和 Konva** 构建桌�
 
 - [架构说明](./docs/architecture.md)：编辑器进程、领域模型与项目数据（部分章节记录历史版本，当前模型以源码为准）。
 - [开发说明](./docs/development.md)：项目生命周期、素材处理、保存与恢复。
+- [桌面自动化](./docs/desktop-automation.md)：从命令行读取当前工程、改台词、应用动作及撤销。
 - [媒体与导出支持矩阵](./docs/export-support-matrix.md)：各种输入内容在预览和导出中的支持范围。
 - [设计原则](./DESIGN.md)：产品界面与交互约定。
 - [开发 Agent 指南](./AGENTS.md)：代码边界、协作规则及验证要求。

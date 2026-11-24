@@ -19,6 +19,9 @@ import {
   type Shot,
 } from '../models';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
+import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
+import { resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
 import {
   cloneFlaEditableShapeRegion,
   cloneFlaGraphicShapeNodeOverride,
@@ -134,6 +137,7 @@ export interface CreateAnimationLayerInput {
   startTimeMs: number;
   firstFrameIndex?: number;
   playback?: AnimationPlayback;
+  sourceRange?: AnimationSourceRange;
   transform?: {
     scaleX?: number;
     scaleY?: number;
@@ -143,6 +147,8 @@ export interface CreateAnimationLayerInput {
   };
   flaOccurrence?: Extract<Layer['source'], { kind: 'animation' }>['flaOccurrence'];
 }
+
+export type SaveAnimationSegmentInput = Omit<ReusableAnimationSegment, 'id'> & { replaceId?: string };
 
 export type LayerOrderAction =
   | 'forward'
@@ -353,6 +359,10 @@ export class LayerService {
       );
     }
     const firstFrameIndex = input.firstFrameIndex ?? 0;
+    const range = input.sourceRange && AnimationSourceRangeSchema.parse(input.sourceRange);
+    if (range && range.lastFrame >= resolveFlaGraphicPreviewTimeline(animation, true).totalFrames) {
+      throw new LayerServiceError('ANIMATION_FRAME_INVALID', '片段超出源动画的帧范围。');
+    }
     if (
       !Number.isSafeInteger(firstFrameIndex) ||
       firstFrameIndex < 0 ||
@@ -391,6 +401,7 @@ export class LayerService {
       startTimeMs: input.startTimeMs,
       animationFirstFrame: firstFrameIndex,
       animationPlayback: input.playback ?? { mode: 'once', endBehavior: 'hold' },
+      ...(range ? { animationSourceRange: range } : {}),
       anchor: 'center',
       x: position.x,
       y: position.y,
@@ -407,6 +418,39 @@ export class LayerService {
       project: this.replaceShot(project, { ...shot, layers: [...shot.layers, layer] }),
       layer,
     };
+  }
+
+  saveAnimationSegment(project: Project, input: SaveAnimationSegmentInput): Project {
+    const animation = project.animations.find((entry) => entry.id === input.animationId);
+    if (!animation) throw new LayerServiceError('ANIMATION_NOT_FOUND', '请选择存在的源动画。');
+    if (input.range.lastFrame >= resolveFlaGraphicPreviewTimeline(animation, true).totalFrames) {
+      throw new LayerServiceError('ANIMATION_FRAME_INVALID', '片段超出源动画的帧范围。');
+    }
+    const library = project.animationSegments ?? [];
+    const { replaceId, ...segment } = input;
+    if (replaceId && !library.some((entry) => entry.id === replaceId)) {
+      throw new LayerServiceError('ANIMATION_NOT_FOUND', '找不到要更新的片段。');
+    }
+    const saved = ReusableAnimationSegmentSchema.parse({
+      ...segment,
+      id: replaceId ?? this.nextUniqueId(this.projectIds(project)),
+      position: validateLayerPosition(segment.position),
+    });
+    return ProjectSchema.parse({ ...project, animationSegments: replaceId
+      ? library.map((entry) => entry.id === replaceId ? saved : entry)
+      : [...library, saved] });
+  }
+
+  placeAnimationSegment(project: Project, shotId: string, segmentId: string, startTimeMs: number): CreateLayerResult {
+    const segment = project.animationSegments?.find((entry) => entry.id === segmentId);
+    if (!segment) throw new LayerServiceError('ANIMATION_NOT_FOUND', '找不到选择的动画片段。');
+    return this.createFromAnimation(project, shotId, {
+      animationId: segment.animationId,
+      position: segment.position,
+      startTimeMs,
+      playback: segment.playback,
+      sourceRange: segment.range,
+    });
   }
 
   createFromAdaptiveCharacter(
@@ -1501,6 +1545,44 @@ export class LayerService {
     return this.replaceShot(project, { ...shot, layers });
   }
 
+  applySourceLoop(
+    project: Project, shotId: string, layerId: string,
+    input: { firstFrame: number; lastFrame: number; closingReference: boolean; throughLayerId: string },
+  ): { project: Project; stoppedAt?: string } {
+    const shot = this.shot(project, shotId);
+    const ordered = [...shot.layers].sort((left, right) => left.zIndex - right.zIndex);
+    const startIndex = ordered.findIndex(({ id }) => id === layerId);
+    const endIndex = ordered.findIndex(({ id }) => id === input.throughLayerId);
+    const start = ordered[startIndex];
+    if (!start || start.source.kind !== 'animation' || endIndex < startIndex) {
+      throw new LayerServiceError('ANIMATION_LAYER_REQUIRED', '请选择从当前动画图层开始的连续范围。');
+    }
+    this.assertEditable(shot, start);
+    const animationId = start.source.animationId;
+    const definition = project.animations.find(({ id }) => id === animationId);
+    if (!definition || input.lastFrame >= resolveFlaGraphicPreviewTimeline(definition, true).totalFrames) {
+      throw new LayerServiceError('ANIMATION_FRAME_INVALID', '尾帧必须位于源动画内。');
+    }
+    const range = AnimationSourceRangeSchema.safeParse({
+      firstFrame: input.firstFrame,
+      lastFrame: input.lastFrame - Number(input.closingReference),
+    });
+    if (!range.success) throw new LayerServiceError('ANIMATION_FRAME_INVALID', '循环至少保留一个播放帧。');
+    const edits = new Map<string, Layer>();
+    let stoppedAt: string | undefined;
+    for (const layer of ordered.slice(startIndex, endIndex + 1)) {
+      if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId || layer.locked || !layer.animationPlayback) {
+        stoppedAt = layer.name;
+        break;
+      }
+      if (layer.animationSourceRange?.firstFrame === range.data.firstFrame &&
+        layer.animationSourceRange.lastFrame === range.data.lastFrame && layer.animationPlayback.mode === 'loop') continue;
+      edits.set(layer.id, { ...layer, animationSourceRange: range.data, animationPlayback: { ...layer.animationPlayback, mode: 'loop' } });
+    }
+    const next = edits.size ? this.replaceShot(project, { ...shot, layers: shot.layers.map((layer) => edits.get(layer.id) ?? layer) }) : project;
+    return { project: next, stoppedAt };
+  }
+
   reorder(
     project: Project,
     shotId: string,
@@ -1785,6 +1867,7 @@ export class LayerService {
       project.id,
       ...project.assets.map((asset) => asset.id),
       ...project.animations.map((animation) => animation.id),
+      ...(project.animationSegments ?? []).map((segment) => segment.id),
       ...project.characters.flatMap((character) => [
         character.id,
         ...(character.mode === 'adaptive-parts'

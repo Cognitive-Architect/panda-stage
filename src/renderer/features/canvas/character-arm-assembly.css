@@ -1,0 +1,71 @@
+.character-arm-assembly,
+.character-arm-placement,
+.character-arm-assembly svg {
+  position: absolute;
+  inset: 0;
+}
+
+.character-arm-assembly {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.character-arm-placement {
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+.character-arm-assembly line {
+  stroke: var(--ui-color-selected-border);
+  stroke-width: 2px;
+}
+
+.character-arm-joint {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.character-arm-joint::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--ui-color-selected-border);
+  border-radius: 50%;
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 0 0 1px var(--ui-color-surface-app);
+}
+
+.character-arm-joint[data-current='true']::before {
+  width: 15px;
+  height: 15px;
+  background: var(--ui-color-selected-border);
+}
+
+.character-arm-joint:disabled {
+  pointer-events: none;
+}
+
+.character-arm-joint:active {
+  cursor: grabbing;
+}
+
+.character-arm-assembly-prompt {
+  position: absolute;
+  z-index: 5;
+  top: var(--ui-space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--ui-space-1) var(--ui-space-2);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  pointer-events: none;
+}

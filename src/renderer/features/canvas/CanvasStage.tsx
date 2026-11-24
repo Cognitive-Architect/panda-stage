@@ -11,6 +11,10 @@ import {
 import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
+import { CharacterArmAssemblyOverlay, characterArmAssemblyPrompt } from './CharacterArmAssemblyOverlay';
+import { updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
+import { CharacterArmHandle } from './CharacterArmHandle';
+import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
 import {
   adaptivePartIdForNodeId,
@@ -43,8 +47,11 @@ import {
   getFlaGraphicInstanceTransformOverride,
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
+  listShotGraphicImageAssetsAtTime,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
+  resolveCharacterArmAssemblyParts,
+  resolveTimelineFrameTime,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -94,6 +101,7 @@ import {
 } from './canvasImageResources';
 import {
   buildEditorTemporalCanvasModel,
+  evaluateEditorCanvasShot,
 } from './editorTemporalCanvasModel';
 import { visualAssetIds } from './temporalVisualContinuity';
 import {
@@ -160,14 +168,23 @@ function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
   shot: Shot | null,
   retainedAssets: readonly CanvasImageAssetSource[],
+  timeMs: number,
 ): CanvasImageState {
-  const assets = useMemo(
+  const initialAssets = useMemo(
     () =>
       snapshot && shot
         ? listShotRuntimeImageAssets(snapshot.project, shot)
         : [],
     [shot, snapshot],
   );
+  const assets = useMemo(() => {
+    if (!snapshot || !shot || timeMs === 0) return initialAssets;
+    const requested = listShotGraphicImageAssetsAtTime(snapshot.project, shot, timeMs);
+    if (!requested.length) return initialAssets;
+    const byId = new Map(initialAssets.map((asset) => [asset.id, asset]));
+    for (const asset of requested) byId.set(asset.id, asset);
+    return [...byId.values()];
+  }, [initialAssets, shot, snapshot, timeMs]);
   const sourceKey = assets
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .sort()
@@ -253,6 +270,7 @@ function isCurrentCanvasAssetReady(
 }
 
 export interface CanvasStageProps {
+  curveDraft?: AnimationCurveDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -260,6 +278,7 @@ export interface CanvasStageProps {
 }
 
 export function CanvasStage({
+  curveDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -323,6 +342,35 @@ export function CanvasStage({
     selectionStore.subscribe,
     selectionStore.getSelectedLayerId,
   );
+  const armDraft = useCharacterArmAssembly();
+  const { setAssembly, readAssemblyParts } = useCharacterArmTool({
+    projectInstanceId, shotId: currentShotId ?? '', layerId: selectedLayerId ?? '',
+  });
+  const armShot = armDraft && snapshot?.project.shots.find(({ id }) => id === currentShotId);
+  const armAssembly = armDraft && armDraft.target.projectInstanceId === projectInstanceId &&
+    armDraft.target.shotId === currentShotId && armDraft.target.layerId === selectedLayerId &&
+    armDraft.revision === snapshot?.revision && armShot &&
+    armDraft.timeMs === resolveTimelineFrameTime(timelineUi.currentTimeMs, armShot.durationMs) &&
+    !positionAuthoringSession && !flaGraphicEditScope ? armDraft : undefined;
+  useLayoutEffect(() => {
+    if (armDraft && !armAssembly) setAssembly?.(current => current === armDraft ? undefined : current);
+  }, [armAssembly, armDraft, setAssembly]);
+  const assemblingArm = Boolean(armAssembly);
+  useEffect(() => {
+    if (!assemblingArm) return;
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAssembly?.(undefined);
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [assemblingArm, setAssembly]);
+
+  const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
+    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
+    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
   const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
@@ -739,7 +787,7 @@ export function CanvasStage({
     }
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
-  const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets, activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs);
   const handleMoveFlaShapeVertex = useCallback((
     nodePath: readonly string[],
     regionRef: string,
@@ -783,20 +831,31 @@ export function CanvasStage({
       );
     }
   }, [flaGraphicEditScope?.editMode, imageState.svgTexts, selectedFlaGraphicTarget]);
+  useLayoutEffect(() => {
+    if (!readAssemblyParts || !snapshot || !shot || positionAuthoringSession || flaGraphicEditScope) return;
+    readAssemblyParts.current = (sourceSnapshot, address) => {
+      if (sourceSnapshot !== snapshot || address.shotId !== shot.id || address.layerId !== selectedLayerId) return new Map();
+      const displayed = evaluateEditorCanvasShot(snapshot.project, shot, timelineUi.currentTimeMs, activeCue?.id ?? null, dialogueSilence)
+        .layers.find(({ id }) => id === address.layerId);
+      return displayed ? resolveCharacterArmAssemblyParts(snapshot.project, address, displayed) : new Map();
+    };
+    return () => { readAssemblyParts.current = undefined; };
+  }, [activeCue?.id, dialogueSilence, flaGraphicEditScope, positionAuthoringSession, readAssemblyParts, selectedLayerId, shot, snapshot, timelineUi.currentTimeMs]);
+
   const temporalCanvasModel = useMemo(
     () =>
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
             dialogueSilence,
-            currentTimeMs: timelineUi.currentTimeMs,
+            currentTimeMs: activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
-            project: snapshot.project,
+            project: activeCurveDraft?.project ?? snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
             readyAssetSourceKeys: imageState.sourceKeys,
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
-            shot,
+            shot: activeCurveDraft?.project.shots.find(({ id }) => id === shot.id) ?? shot,
             positionDraft: positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -807,6 +866,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      activeCurveDraft,
       dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,
@@ -833,6 +893,17 @@ export function CanvasStage({
     );
   }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const armVisualStatus = armAssembly && temporalCanvasModel?.visualStatusByLayer.get(armAssembly.target.layerId);
+  // Continuity may display the previous pose while this frame's art loads.
+  const waitingForArmVisual = armVisualStatus === 'previous-complete' || armVisualStatus === 'pending';
+  const armVisualUnavailable = armVisualStatus === 'required-failed';
+
+  function pickArmPart(layerId: string, partId: string | null): void {
+    if (!armAssembly || waitingForArmVisual || armVisualUnavailable || layerId !== armAssembly.target.layerId || !partId) return;
+    const index = armAssembly.chain.segments.findIndex(segment => !segment.partId);
+    if (index >= 0) setAssembly?.(current => current === armAssembly
+      ? updateArmAssemblyPart(current, index, partId) : current);
+  }
   const currentReadyImages = useMemo(() => {
     if (!snapshot) return new Map<string, HTMLImageElement>();
     return new Map(
@@ -1108,10 +1179,10 @@ export function CanvasStage({
         node.motion === 'character-clip-v1' ? node.partId === targetId : node.id === targetId,
       );
     return {
-      selectedPartId: selectedOnLayer ? selectedMotionPartId : null,
-      selectedTargetId: activeTargetId,
+      selectedPartId: selectedOnLayer && !armAssembly ? selectedMotionPartId : null,
+      selectedTargetId: armAssembly ? null : activeTargetId,
       contextKey: motionContextKey,
-      enabled: !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
+      enabled: !armAssembly && !motionLayer.locked && isValidFrameTime(timelineUi.currentTimeMs),
       capabilities: (targetId) =>
         nodeForTarget(targetId)?.capabilities ?? {
           position: false,
@@ -1155,6 +1226,10 @@ export function CanvasStage({
       },
       select: (targetId) => {
         const node = nodeForTarget(targetId);
+        if (armAssembly?.target.layerId === motionLayer.id) {
+          if (node?.motion === 'character-clip-v1') pickArmPart(motionLayer.id, node.partId);
+          return;
+        }
         selectionStore.select(motionLayer.id);
         if (node?.motion === 'character-clip-v3') {
           selectionStore.selectCharacterNode(node.id);
@@ -1254,7 +1329,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
-  const transformerVisible = structuredTransformerVisible || layerTransformerVisible;
+  const transformerVisible = !armAssembly && (structuredTransformerVisible || layerTransformerVisible);
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -1277,9 +1352,12 @@ export function CanvasStage({
         </div>
       ) : null}
       {motionError ? <div role="alert">{motionError}</div> : null}
+      {armAssembly && !armVisualUnavailable ? <div className="character-arm-assembly-prompt" role="status" data-testid="character-arm-assembly-prompt">
+        {waitingForArmVisual ? '等待角色画面更新…' : characterArmAssemblyPrompt(armAssembly)}
+      </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
-        dropInteractionDisabled={temporalInspection}
+        dropInteractionDisabled={temporalInspection || assemblingArm}
         animationDropTarget={
           snapshot && shot && projectInstanceId !== null
             ? {
@@ -1325,7 +1403,7 @@ export function CanvasStage({
           canvasViewportStore.recordStagePoint(point)
         }
         onTransform={setToolbarTransform}
-        onViewportChromePointerDown={() => selectionStore.clear()}
+        onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
           showToolbar || selectedFlaGraphicTarget ? (
@@ -1450,8 +1528,8 @@ export function CanvasStage({
                     fill="#111914"
                     height={PROJECT_HEIGHT}
                     listening
-                    onClick={() => selectionStore.clear()}
-                    onTap={() => selectionStore.clear()}
+                    onClick={() => { if (!armAssembly) selectionStore.clear(); }}
+                    onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
                   {stageModel
@@ -1506,7 +1584,7 @@ export function CanvasStage({
                             characterMotion={motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
-                            directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
+                            directEditingEnabled={!armAssembly && directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
@@ -1693,6 +1771,10 @@ export function CanvasStage({
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId, nodeId) => {
+                              if (armAssembly?.target.layerId === layerId) {
+                                pickArmPart(layerId, adaptivePartIdForNodeId(nodeId ?? null));
+                                return;
+                              }
                               if (flaGraphicEditScope && selectedFlaGraphicTarget?.layerId !== layerId) {
                                 setFlaGraphicEditScope(null);
                                 setSelectedFlaGraphicNodePath(null);
@@ -1774,6 +1856,14 @@ export function CanvasStage({
                   ) : null}
                 </KonvaLayer>
               </Stage>
+              {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
+                update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
+              {snapshot && shot && selectedLayerId && !armAssembly ? <CharacterArmHandle
+                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
+                snapshot={snapshot}
+                address={{ shotId: shot.id, layerId: selectedLayerId,
+                  timeMs: resolveTimelineFrameTime(timelineUi.currentTimeMs, shot.durationMs) }}
+              /> : null}
             </div>
             {dropPreview ? (
               <div

@@ -2,9 +2,9 @@ import { evaluateFlaGraphicFrame } from '../../shared/fla-graphic-playback';
 import { resolveAnimationPlaybackFrameState } from '../evaluate-shot-at-time';
 import { reconstructFlaGraphicStructure } from '../models/flaGraphicStructure';
 import type { AnimationFrame, ProjectAnimationDefinition } from '../models/animation';
-import { resolveConfiguredAnimationFrameIndex, resolveFlaGraphicPreviewTimeline } from './animationSourceTimeline';
+import { isTalkingAnimationPlaybackInRange, resolveConfiguredAnimationFrameIndex, resolveFlaGraphicPreviewTimeline } from './animationSourceTimeline';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
-import { isFlaGraphicDefinition, type CharacterFaceSource, type MouthPoseSource, type Project, type TalkingAnimationPlayback } from '../models';
+import { isFlaGraphicDefinition, type Character, type CharacterFaceSource, type MouthPoseSource, type Project, type TalkingAnimationPlayback } from '../models';
 
 type ResolvedFace = {
   width: number;
@@ -17,6 +17,32 @@ type ResolvedFace = {
 export function findTalkingAnimation(project: Project, animationId: string | undefined): ProjectAnimationDefinition | undefined {
   if (!animationId) return undefined;
   return project.animations.find((animation) => animation.id === animationId);
+}
+
+export function isCharacterTalkingSourceAvailable(project: Project, animationId: string, playback?: TalkingAnimationPlayback): boolean {
+  const animation = findTalkingAnimation(project, animationId);
+  return !!animation && animation.frames.length > 0 && (!playback || isTalkingAnimationPlaybackInRange(animation, playback));
+}
+
+export function listCharacterTalkingSources(character: Character) {
+  return [
+    ...Object.values(character.expressionTalkingSources ?? {}),
+    ...(character.talkingAnimationId ? [{
+      animationId: character.talkingAnimationId, playback: character.talkingAnimationPlayback,
+    }] : []),
+  ];
+}
+
+export function resolveCharacterTalkingFace(
+  project: Project, character: Character, expressionId: string | undefined,
+  elapsedMs: number | 'rest' | undefined, isImageUnavailable?: (id: string) => boolean,
+): ReturnType<typeof resolveTalkingAnimationFace> {
+  const dedicated = expressionId ? character.expressionTalkingSources?.[expressionId] : undefined;
+  if (dedicated && isCharacterTalkingSourceAvailable(project, dedicated.animationId, dedicated.playback)) {
+    const face = resolveTalkingAnimationFace(project, dedicated.animationId, elapsedMs, dedicated.playback, isImageUnavailable);
+    if (face) return face;
+  }
+  return resolveTalkingAnimationFace(project, character.talkingAnimationId, elapsedMs, character.talkingAnimationPlayback, isImageUnavailable);
 }
 
 export function resolveTalkingAnimationFace(

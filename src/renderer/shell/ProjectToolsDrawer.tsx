@@ -2,11 +2,13 @@ import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
-import type { CanvasViewportMode } from '../../domain';
+import type { CanvasViewportMode, Project } from '../../domain';
 import { LegacyWorkspace } from './LegacyWorkspace';
+import { DesktopAutomationCard } from './DesktopAutomationCard';
 
 export interface ProjectToolsDrawerProps {
   onClose(): void;
+  onPreview?(project: Project): void;
 }
 
 type ProjectToolsView = 'home' | 'action-presets';
@@ -30,6 +32,7 @@ const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
  */
 export function ProjectToolsDrawer({
   onClose,
+  onPreview,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
   const viewportMode = useSyncExternalStore(
@@ -133,6 +136,7 @@ export function ProjectToolsDrawer({
               <span>打开动作预设</span>
             </button>
           </section>
+          <DesktopAutomationCard />
         </div>
       ) : (
         <section
@@ -140,7 +144,7 @@ export function ProjectToolsDrawer({
           className="project-tools-action-presets-view"
           data-testid="project-tools-action-presets-view"
         >
-          <LegacyWorkspace />
+          <LegacyWorkspace onPreview={onPreview} />
         </section>
       )}
     </section>

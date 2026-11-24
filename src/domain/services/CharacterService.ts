@@ -4,7 +4,7 @@ import {
   AnimationClipV0Schema,
   BodyPlacementSchema,
   CharacterActionPlacementSchema,
-  CharacterActionSchema,
+  BakedCharacterActionSchema,
   CharacterHeadSchema,
   CharacterPartSchema,
   DEFAULT_BODY_PLACEMENT,
@@ -24,7 +24,6 @@ import {
   type CharacterFaceSource,
   type CharacterFaceGraphicSource,
   type Character,
-  type CharacterAction,
   type CharacterActionPlacement,
   type CharacterExpression,
   type TalkingAnimationPlayback,
@@ -985,7 +984,8 @@ export class CharacterService {
       );
     }
 
-    const action: CharacterAction = CharacterActionSchema.parse({
+    if (existing && 'kind' in existing) throw new Error('请从分件动作入口编辑此动作。');
+    const action = BakedCharacterActionSchema.parse({
       id: existing?.id ?? this.createId(),
       name: parsedName.data,
       animationId: draft.animationId,
@@ -1137,13 +1137,20 @@ export class CharacterService {
     const nextExpressions = currentExpressions.filter(
       (candidate) => candidate.id !== expression.id,
     );
+    const next = { ...character };
+    if (next.expressionTalkingSources?.[expressionId]) {
+      const sources = { ...next.expressionTalkingSources };
+      delete sources[expressionId];
+      if (Object.keys(sources).length) next.expressionTalkingSources = sources;
+      else delete next.expressionTalkingSources;
+    }
     if (character.mode === 'adaptive-parts' && nextExpressions.length === 0) {
-      const nextAdaptive = { ...character };
+      const nextAdaptive = { ...character, expressionTalkingSources: next.expressionTalkingSources };
       delete nextAdaptive.expressions;
       return this.replaceCharacter(project, nextAdaptive);
     }
     return this.replaceCharacter(project, {
-      ...character,
+      ...next,
       expressions: nextExpressions,
     });
   }
@@ -1189,6 +1196,31 @@ export class CharacterService {
     else delete next.talkingAnimationId;
     if (animationId && playback) next.talkingAnimationPlayback = { ...playback };
     else delete next.talkingAnimationPlayback;
+    return this.replaceCharacter(project, next);
+  }
+
+  setExpressionTalkingAnimation(
+    project: Project, characterId: string, expressionId: string,
+    animationId: string | null, playback?: TalkingAnimationPlayback,
+  ): Project {
+    const character = this.expressionHostCharacter(project, characterId, { requireFaceBinding: Boolean(animationId) });
+    this.expression(character, expressionId);
+    const sources = { ...character.expressionTalkingSources };
+    if (animationId) {
+      const animation = project.animations.find((entry) => entry.id === animationId);
+      if (!animation || !playback || !isTalkingAnimationPlaybackInRange(animation, playback)) {
+        throw new Error('请重新选择可用的说话动画与帧范围。');
+      }
+      if (sources[expressionId]?.animationId === animationId &&
+          JSON.stringify(sources[expressionId]?.playback) === JSON.stringify(playback)) return project;
+      sources[expressionId] = { animationId, playback };
+    } else {
+      if (!sources[expressionId]) return project;
+      delete sources[expressionId];
+    }
+    const next = { ...character };
+    if (Object.keys(sources).length) next.expressionTalkingSources = sources;
+    else delete next.expressionTalkingSources;
     return this.replaceCharacter(project, next);
   }
 

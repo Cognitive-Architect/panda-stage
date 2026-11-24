@@ -332,6 +332,11 @@ export class CharacterStore {
     return this.apply(project => this.service.setTalkingAnimation(project, characterId, animationId, playback), 'Change talking animation');
   }
 
+  setExpressionTalkingAnimation(characterId: string, expressionId: string, animationId: string | null,
+    playback?: Parameters<CharacterService['setExpressionTalkingAnimation']>[4]): Project {
+    return this.apply(project => this.service.setExpressionTalkingAnimation(project, characterId, expressionId, animationId, playback), '设置表情说话来源');
+  }
+
   setAction(characterId: string, draft: CharacterActionDraft): Project {
     return this.apply(project => this.service.setAction(project, characterId, draft), 'Save character action');
   }

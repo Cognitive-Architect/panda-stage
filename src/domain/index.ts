@@ -1,5 +1,6 @@
 export * from './constants';
 export * from './audio-contract';
+export * from './audio-motion';
 export * from './export-audio-mix-plan';
 export * from './assetDropPayload';
 export * from './geometry';
@@ -11,6 +12,7 @@ export * from './services';
 export * from './validators';
 export * from './actions';
 export * from './timeline/frame-grid';
+export * from './user-motion-presets';
 export * from './evaluate-layer-motion';
 export * from './evaluate-fla-graphic';
 export * from './fla-graphic-subtree';

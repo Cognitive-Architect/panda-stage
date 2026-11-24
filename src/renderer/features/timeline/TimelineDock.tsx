@@ -3,6 +3,7 @@ import { CharacterMotionLane } from './CharacterMotionLane';
 import { LayerMotionLane } from './LayerMotionLane';
 import {
   useLayoutEffect,
+  useContext,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,12 +13,14 @@ import {
   ChevronUp,
   Clock3,
   MessageSquareText,
+  Spline,
+  Search,
   SkipBack,
   Volume2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { getBoundAudioEndRange } from '../../../domain';
+import { getBoundAudioEndRange, type DialogueTextMatch } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
@@ -34,11 +37,16 @@ import { AudioClip } from './AudioClip';
 import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { usePendingDialoguePlacement } from './PendingDialoguePlacement';
 import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
+import { DialogueFindReplace } from '../dialogue/DialogueFindReplace';
 import { PositionLane, recognizeSelectedPositionLane } from './PositionLane';
 import { audioClipSelectionStore } from '../../stores/audioClipSelectionStore';
 import { StandaloneAudioLane } from './StandaloneAudioLane';
 import { StandaloneAudioControls } from './StandaloneAudioControls';
 import { FlaGraphicInternalTimelineBar } from './FlaGraphicInternalTimelineBar';
+import { TimelineAudioWaveform } from './TimelineAudioWaveform';
+import { useTimelineAudio } from './useTimelineAudio';
+import { AnimationCurveDraftDispatch } from './AnimationCurveDraft';
+import { AnimationCurvePanel } from './AnimationCurvePanel';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -108,9 +116,19 @@ export function TimelineDock({
     ? snapshot?.project.shots.find((candidate) => candidate.id === currentShotId) ?? null
     : null;
   const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
+  const motionLayer = shot?.layers.find(({ id }) => id === selectedLayerId);
+  const hasCurveTracks = Boolean(motionLayer && (motionLayer.animationClip?.tracks.length ||
+    shot?.timelineEvents.some((event) => event.layerId === motionLayer.id && event.type === 'opacity' && event.endMs > event.startMs)));
+  const [curveOpen, setCurveOpen] = useState(false);
+  const onAnimationCurveDraft = useContext(AnimationCurveDraftDispatch);
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
   const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
+  const selectedDialogueAudioId = shot?.dialogues.find(({ id }) => id === selectedDialogueId)?.audioClipId;
+  const focusedAudio = selectedAudioClip ?? audioClips.find(({ id }) => id === selectedDialogueAudioId);
+  const timelineAudio = useTimelineAudio(currentShotId, focusedAudio, ui.expanded && !productPreviewOpen);
+  const [scrubAudio, setScrubAudio] = useState(true);
+  const lastAudition = useRef<number | null>(null);
   const laneLabelWidth =
     presentation === 'portrait'
       ? PORTRAIT_TIMELINE_LANE_LABEL_WIDTH
@@ -130,10 +148,16 @@ export function TimelineDock({
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
+  const rulerDragRef = useRef<{
+    pointerId: number;
+    element: HTMLDivElement;
+    stopAudition?: () => void;
+  } | null>(null);
   const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const findButton = useRef<HTMLButtonElement>(null);
   const {
     drag: pendingDrag,
     registerDropTarget,
@@ -162,10 +186,34 @@ export function TimelineDock({
     return bindTimelineRulerScroll(scrollRef.current);
   }, [currentShotId, hasShot, ui.expanded]);
 
+  const endRulerDrag = (interrupted: boolean): void => {
+    const drag = rulerDragRef.current;
+    if (!drag) return;
+    rulerDragRef.current = null;
+    if (interrupted) drag.stopAudition?.();
+    if (drag.element.hasPointerCapture(drag.pointerId)) {
+      drag.element.releasePointerCapture(drag.pointerId);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (!hasShot || !ui.expanded) return;
+    const cancelRulerDrag = (): void => endRulerDrag(true);
+    window.addEventListener('blur', cancelRulerDrag);
+    return () => {
+      window.removeEventListener('blur', cancelRulerDrag);
+      cancelRulerDrag();
+    };
+  }, [currentShotId, hasShot, ui.expanded]);
+
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
   const ticks = generateRulerTicks(durationMs, pixelsPerMs);
+  const selectedWaveform = focusedAudio && timelineAudio.samples ? (
+    <TimelineAudioWaveform clip={focusedAudio} samples={timelineAudio.samples} pixelsPerMs={pixelsPerMs}
+      scrollPx={ui.scrollPx} viewportWidth={viewportWidth} laneLabelWidth={laneLabelWidth} />
+  ) : null;
 
   useLayoutEffect(() => {
     const element = subtitleLaneContentRef.current;
@@ -181,26 +229,34 @@ export function TimelineDock({
     const track = trackRef.current;
     if (!track || !hasShot) return;
     const rect = track.getBoundingClientRect();
-    const time = pxToTime(clientX - rect.left, pixelsPerMs);
+    const time = pxToTime(clientX - rect.left - laneLabelWidth, pixelsPerMs);
     timelineUiStore.seek(time, durationMs);
+    const position = timelineUiStore.getSnapshot().currentTimeMs;
+    if (!scrubAudio || productPreviewOpen || position === lastAudition.current) return;
+    lastAudition.current = position;
+    const samples = timelineAudio.samples;
+    if (samples && rulerDragRef.current) {
+      rulerDragRef.current.stopAudition = () => samples.stop();
+    }
+    void samples?.audition(position).catch(() => undefined);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!hasShot) return;
-    draggingRef.current = true;
+    if (!hasShot || !event.isPrimary || event.button !== 0 || rulerDragRef.current) return;
+    lastAudition.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
+    rulerDragRef.current = { pointerId: event.pointerId, element: event.currentTarget };
     seekFromClientX(event.clientX);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!draggingRef.current) return;
+    if (rulerDragRef.current?.pointerId !== event.pointerId) return;
     seekFromClientX(event.clientX);
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
-    draggingRef.current = false;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (rulerDragRef.current?.pointerId === event.pointerId) {
+      endRulerDrag(event.type !== 'pointerup');
     }
   };
 
@@ -212,6 +268,7 @@ export function TimelineDock({
     if (event.pointerType !== 'touch' ||
         getComputedStyle(event.currentTarget).overflowY !== 'auto') return;
     event.stopPropagation();
+    lastAudition.current = null;
     mediaGestureRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: 'pending' };
   };
 
@@ -231,6 +288,18 @@ export function TimelineDock({
     if (mediaGestureRef.current?.pointerId !== event.pointerId) return;
     event.stopPropagation();
     mediaGestureRef.current = null;
+  };
+
+  const locateDialogue = (match: DialogueTextMatch): void => {
+    const targetShot = editorProjectStore.getSnapshot()?.project.shots.find((entry) => entry.id === match.shotId);
+    const target = targetShot?.dialogues.find((entry) => entry.id === match.dialogueId);
+    if (!targetShot || !target || target.text !== match.text) return;
+    shotStore.select(targetShot.id);
+    dialogueSelectionStore.select(target.id);
+    timelineUiStore.setExpanded(true);
+    timelineUiStore.seek(target.startMs, targetShot.durationMs);
+    const scale = computePixelsPerMs(viewportWidth, targetShot.durationMs, timelineUiStore.getSnapshot().zoom);
+    timelineUiStore.setScrollPx(Math.max(0, timeToPx(target.startMs, scale) - viewportWidth / 4));
   };
 
   return (
@@ -298,11 +367,35 @@ export function TimelineDock({
         >
           <SkipBack aria-hidden="true" focusable="false" size={18} />
         </button>
+        <button type="button" className="timeline-dialogue-find" ref={findButton}
+          aria-label="台词查找替换" title="台词查找替换" aria-expanded={findOpen && !productPreviewOpen}
+          disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
+          <Search aria-hidden="true" focusable="false" size={16} />
+        </button>
+        {hasCurveTracks && !productPreviewOpen ? (
+          <button type="button" className="animation-curve-toggle" aria-label="属性曲线" title="属性曲线"
+            aria-expanded={curveOpen && ui.expanded} onClick={() => {
+              if (!ui.expanded) timelineUiStore.setExpanded(true);
+              setCurveOpen(!(curveOpen && ui.expanded));
+            }}>
+            <Spline aria-hidden="true" focusable="false" size={16} />
+          </button>
+        ) : null}
         <div
           className="character-motion-toolbar-host"
           data-testid="character-motion-toolbar-host"
           ref={setMotionToolbarHost}
         />
+        {focusedAudio && ui.expanded && !productPreviewOpen ? (timelineAudio.unavailable ? (
+          <span role="status" className="timeline-audio-notice">这段音频无法解码</span>
+        ) : (
+          <button type="button" className="timeline-scrub-audio" aria-pressed={scrubAudio}
+            title="拖动播放头时试听附近声音"
+            onClick={() => {
+              timelineAudio.samples?.stop();
+              setScrubAudio(!scrubAudio);
+            }}>擦听</button>
+        )) : null}
         {selectedAudioClip && ui.expanded && !productPreviewOpen ? (
           <StandaloneAudioControls
             key={`${editorProjectStore.getProjectInstanceId()}:${selectedAudioClip.id}`}
@@ -338,6 +431,17 @@ export function TimelineDock({
           </button>
         </div>
       </header>
+      {curveOpen && ui.expanded && !productPreviewOpen && snapshot && shot && motionLayer && hasCurveTracks ? (
+        <AnimationCurvePanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, motionLayer.id])}
+          snapshot={snapshot} shot={shot} layer={motionLayer} onDraft={onAnimationCurveDraft} onClose={() => setCurveOpen(false)} />
+      ) : null}
+      {findOpen && !productPreviewOpen && snapshot && currentShotId ? (
+        <DialogueFindReplace key={editorProjectStore.getProjectInstanceId()} project={snapshot.project} shotId={currentShotId}
+          onLocate={locateDialogue} onClose={() => {
+            setFindOpen(false);
+            findButton.current?.focus();
+          }} />
+      ) : null}
       {ui.expanded ? (
         hasShot ? (
           <div
@@ -358,7 +462,9 @@ export function TimelineDock({
               data-testid="timeline-ruler-track"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
+              onPointerUp={handlePointerEnd}
+              onPointerCancel={handlePointerEnd}
+              onLostPointerCapture={handlePointerEnd}
             >
               <div
                 aria-label="时间标尺"
@@ -594,6 +700,7 @@ export function TimelineDock({
                             projectRoot={snapshot?.projectRoot ?? ''}
                             selected={dialogue?.id === selectedDialogueId}
                             shotId={shot!.id}
+                            waveform={clip.id === focusedAudio?.id ? selectedWaveform : null}
                           />
                         );
                       })}
@@ -609,7 +716,7 @@ export function TimelineDock({
                   </div>
                   {shot && snapshot ? (['sfx', 'bgm'] as const).map(role => (
                     <StandaloneAudioLane key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}:${role}`} role={role} project={snapshot.project} shotId={shot.id}
-                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} />
+                      trackWidth={trackWidth} pixelsPerMs={pixelsPerMs} selectedClipId={selectedAudioClipId} selectedWaveform={selectedWaveform} />
                   )) : null}
                   </div>
                 </div>

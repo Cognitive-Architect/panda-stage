@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, open, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
@@ -13,6 +14,7 @@ import {
   formalFrameCount,
   iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
+  planPngSequenceFrames,
   type ExportFrameReady,
   type ExportJobPhase,
   type ExportJobStatus,
@@ -77,6 +79,8 @@ export interface ExportJobRecord {
   error: string | null;
   originalError?: string | null;
   cleanupError?: string | null;
+  outputPath?: string;
+  incomplete?: boolean;
 }
 
 interface FrameExportMetrics {
@@ -340,6 +344,83 @@ export class ExportService {
       jobId: active.jobId,
       completion,
     };
+  }
+
+  startPngSequenceExport(input: FrozenExportInput, assertOutputTargetUnchanged: () => Promise<void>): {
+    jobId: string;
+    completion: Promise<{ outputPath: string }>;
+  } {
+    const settings = input.candidate.pngSequence;
+    if (!settings || !this.renderer.loadFormal) throw new Error('PNG export requires a frozen Shot and the formal renderer.');
+    const schedule = planPngSequenceFrames(input.candidate.project, settings);
+    const active = this.createJob({ durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps,
+      totalFrames: schedule.totalFrames, attemptId: input.candidate.attemptId, snapshotId: input.candidate.snapshotId });
+    const completion = this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
+    active.completion = completion;
+    return { jobId: active.jobId, completion };
+  }
+
+  private async executePngSequence(active: ActiveJob, input: FrozenExportInput, schedule: ReturnType<typeof planPngSequenceFrames>,
+    assertOutputTargetUnchanged: () => Promise<void>): Promise<{ outputPath: string }> {
+    const record = this.requireJob(active.jobId);
+    const outputPath = input.candidate.outputIntent.targetPath;
+    const marker = path.join(outputPath, 'incomplete.json');
+    let ownsOutput = false;
+    let ownsMarker = false;
+    let rendererPrepared = false;
+    try {
+      await assertOutputTargetUnchanged();
+      this.throwIfCancelled(active);
+      await mkdir(outputPath);
+      ownsOutput = true;
+      record.outputPath = outputPath;
+      record.incomplete = true;
+      await writeFile(marker, JSON.stringify({ status: 'incomplete', totalFrames: record.totalFrames }), { flag: 'wx' });
+      ownsMarker = true;
+      this.throwIfCancelled(active);
+      await this.renderer.prepareJob?.('formal');
+      rendererPrepared = true;
+      const project = { ...input.candidate.project, shots: [schedule.shot] };
+      await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
+        outputPath, () => this.renderer.loadFormal!({
+          jobId: active.jobId, project, cameraMode: input.candidate.cameraMode,
+          ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
+          ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
+          media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+        }), project, {
+          frames: schedule.frames(), totalFrames: schedule.totalFrames, maxPendingWrites: 1,
+          write: (fileName, bytes) => writeNewPngFrame(path.join(outputPath, fileName), bytes),
+        });
+      this.throwIfCancelled(active);
+      active.acceptsCancellation = false;
+      record.phase = 'committing';
+      this.emit(record);
+      await unlink(marker);
+      record.incomplete = false;
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.completedOutputPaths.set(active.jobId, outputPath);
+      this.emit(record);
+      return { outputPath };
+    } catch (error) {
+      const cancelled = active.controller.signal.aborted;
+      record.status = cancelled ? 'cancelled' : 'failed';
+      record.phase = 'finished';
+      record.error = cancelled ? 'PNG 序列导出已取消。' : `PNG 序列导出失败：${this.errorMessage(error)}`;
+      if (ownsOutput) {
+        this.completedOutputPaths.set(active.jobId, outputPath);
+        record.error += `保留 ${record.completedFrames}/${record.totalFrames} 帧。`;
+      }
+      if (ownsMarker) {
+        await writeFile(marker, JSON.stringify({ status: record.status, completedFrames: record.completedFrames,
+          totalFrames: record.totalFrames }, null, 2)).catch(() => undefined);
+      }
+      this.emit(record);
+      throw new ExportJobError(active.jobId, record.error, { cause: error });
+    } finally {
+      try { if (rendererPrepared) this.renderer.releaseJob?.(active.jobId); }
+      finally { this.clearActiveJob(active); }
+    }
   }
 
   async runFullProbe(
@@ -828,8 +909,10 @@ export class ExportService {
     jobDirectory: string,
     loadProject: () => Promise<unknown>,
     project?: FrozenExportInput['candidate']['project'],
+    schedule?: { frames: Iterable<ProjectFrameScheduleEntry>; totalFrames: number; maxPendingWrites: number;
+      write: (fileName: string, bytes: Uint8Array) => Promise<void> },
   ): Promise<FrameExportMetrics> {
-    const totalFrames = formalFrameCount(config.durationMs, config.fps);
+    const totalFrames = schedule?.totalFrames ?? formalFrameCount(config.durationMs, config.fps);
     if (totalFrames !== record.totalFrames) {
       throw new Error('Export frame schedule did not match the task record.');
     }
@@ -845,7 +928,7 @@ export class ExportService {
     const waitForWriteSlot = async (): Promise<void> => {
       this.throwIfCancelled(active);
       if (writeFailure) throw writeFailure;
-      while (pendingWrites.size >= MAX_PENDING_FRAMES) {
+      while (pendingWrites.size >= (schedule?.maxPendingWrites ?? MAX_PENDING_FRAMES)) {
         record.phase = 'writing';
         this.emit(record);
         await Promise.race(pendingWrites);
@@ -861,9 +944,9 @@ export class ExportService {
       await loadProject();
       this.throwIfCancelled(active);
 
-      const frames = project
+      const frames = schedule?.frames ?? (project
         ? iterateFormalProjectFrameSchedule(project, config.fps)
-        : iterateFormalFrameSchedule(config.durationMs, config.fps);
+        : iterateFormalFrameSchedule(config.durationMs, config.fps));
       for (const frame of frames) {
         await waitForWriteSlot();
         record.phase = 'rendering';
@@ -895,8 +978,8 @@ export class ExportService {
         }
 
         totalBytes += rendered.pngBytes.byteLength;
-        const writeTask = this.fileSystem
-          .writeFrame(jobDirectory, frame.fileName, rendered.pngBytes)
+        const writeTask = (schedule ? schedule.write(frame.fileName, rendered.pngBytes)
+          : this.fileSystem.writeFrame(jobDirectory, frame.fileName, rendered.pngBytes))
           .then(
             () => {
               record.completedFrames += 1;
@@ -954,6 +1037,7 @@ export class ExportService {
     fps: 24;
     attemptId?: string;
     snapshotId?: string;
+    totalFrames?: number;
   }): ActiveJob {
     if (this.activeJob) {
       throw new ExportJobError(
@@ -969,7 +1053,7 @@ export class ExportService {
       status: 'running',
       phase: 'preparing',
       durationMs: config.durationMs,
-      totalFrames: formalFrameCount(config.durationMs, config.fps),
+      totalFrames: config.totalFrames ?? formalFrameCount(config.durationMs, config.fps),
       completedFrames: 0,
       outputDirectory: null,
       error: null,
@@ -1092,6 +1176,7 @@ export class ExportService {
       completedFrames: record.completedFrames,
       totalFrames: record.totalFrames,
       error: record.error,
+      ...(record.outputPath ? { outputPath: record.outputPath, incomplete: record.incomplete } : {}),
       ...(record.originalError !== undefined
         ? { originalError: record.originalError }
         : {}),
@@ -1104,5 +1189,17 @@ export class ExportService {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function writeNewPngFrame(filePath: string, bytes: Uint8Array): Promise<void> {
+  const file = await open(filePath, 'wx');
+  try {
+    await file.writeFile(bytes);
+    await file.close();
+  } catch (error) {
+    await file.close().catch(() => undefined);
+    await unlink(filePath).catch(() => undefined);
+    throw error;
   }
 }

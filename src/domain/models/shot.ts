@@ -5,6 +5,8 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema, DialogueV22Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV30Schema,
+  LayerV32Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -15,7 +17,7 @@ import {
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
-import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema } from './timeline-event';
+import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema, TimelineEventV33Schema, TimelineEventV40Schema } from './timeline-event';
 
 const ShotIdentityShape = {
   id: IdSchema,
@@ -86,12 +88,37 @@ export const ShotV22Schema = z.object({
 
 export const ShotV26Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV26Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV30Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 /** Frozen v27 Shot reader before bounded Character action events. */
 export const ShotV27Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV27Schema).default([]),
+  layers: z.array(LayerV30Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV28Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV28Schema).default([]),
+  layers: z.array(LayerV30Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV30Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
+  layers: z.array(LayerV30Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV32Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
+  layers: z.array(LayerV32Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV33Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV33Schema).default([]),
+  layers: z.array(LayerSchema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV40Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventV40Schema).default([]),
   layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
 

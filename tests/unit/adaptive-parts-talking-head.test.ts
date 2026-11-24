@@ -8,11 +8,21 @@ import {
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  createCharacterPartAnimationClip,
   evaluateShotAtTime,
+  migrateProject,
+  planCharacterBodyPose,
+  planMappedCharacterMotion,
   projectShotDialogueVisual,
+  recalibrateCharacterPartAnimationPivot,
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   resolveTalkingHeadMotionTransform,
+  saveLayeredCharacterAction,
+  saveCharacterBodyPose,
+  setManualMouthPose,
+  suggestCharacterMotionMapping,
+  upsertCharacterActionEvent,
   upsertExpressionEventAtTime,
   upsertMouthCueEventAtTime,
   type AdaptivePartsCharacter,
@@ -235,6 +245,276 @@ afterEach(() => {
 });
 
 describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1211)', () => {
+  it('layers a bounded wave with the current expression and independent mouth on shuffled seeks', () => {
+    const setup = buildPhaseCProject();
+    const armId = 'd2000000-0000-4000-8000-000000000006';
+    const mouthId = 'd2000000-0000-4000-8000-000000000007';
+    const armAssetId = 'd1000000-0000-4000-8000-000000000009';
+    const restMouthAssetId = 'd1000000-0000-4000-8000-000000000010';
+    const poseId = 'd3000000-0000-4000-8000-000000000004';
+    const poseEventId = 'd3000000-0000-4000-8000-000000000005';
+    const actionId = 'd3000000-0000-4000-8000-000000000006';
+    const restPose = 'd3000000-0000-4000-8000-000000000007';
+    let project = ProjectSchema.parse({ ...setup.project,
+      assets: [...setup.project.assets, imageAsset(armAssetId, 'Wave arm', 60, 130), imageAsset(restMouthAssetId, 'Rest mouth', 120, 90)],
+      characters: setup.project.characters.map(character =>
+      character.id === setup.characterId && character.mode === 'adaptive-parts' ? {
+        ...character,
+        parts: [...character.parts.slice(0, 4),
+          makePart(mouthId, 'Independent mouth', restMouthAssetId, 120, 90, 4, -35, -95),
+          { ...character.parts[4]!, drawOrder: 5 },
+          makePart(armId, 'Wave arm', armAssetId, 60, 130, 6, 55, -25),
+        ],
+        mouthPoseSet: {
+          poses: [
+            { id: poseId, name: 'Open', target: { kind: 'mouth', partId: mouthId }, source: { kind: 'image', assetId: ASSET_MOUTH } },
+            { id: restPose, name: 'Rest', target: { kind: 'mouth', partId: mouthId }, source: { kind: 'image', assetId: restMouthAssetId } },
+          ],
+          restPoseId: restPose,
+          analyzerMapping: { rest: restPose, open: poseId, closed: restPose, round: poseId, wide: poseId },
+          driveMode: 'mouth-poses',
+        },
+      } : character),
+    });
+    const motion = new CharacterMotionService();
+    for (const [timeMs, rotation, offsetX] of [[500, 35, 18], [250, 0, 0], [750, -20, -12], [1000, 0, 0]] as const) {
+      project = motion.apply(project, { shotId: IDS.shot, layerId: setup.layerId, partId: armId, timeMs, autoKey: true },
+        { 'transform.rotationDeg': rotation });
+      project = motion.apply(project, { shotId: IDS.shot, layerId: setup.layerId, partId: PART_BODY, timeMs, autoKey: true },
+        { 'transform.offsetX': offsetX });
+    }
+    expect(migrateProject({ ...project, schemaVersion: 34 })).toEqual(project);
+    project = saveLayeredCharacterAction(project, IDS.shot, setup.layerId, {
+      name: 'Wave', startMs: 250, endMs: 1000, partIds: [armId, PART_BODY, PART_FACE, mouthId], headAnchorPartId: PART_BODY,
+    }, () => actionId);
+    expect(() => migrateProject({ ...project, schemaVersion: 34 })).toThrow();
+    const second = new LayerService().createFromAdaptiveCharacter(project, IDS.shot, setup.characterId, { x: 600, y: 540 });
+    const instanceId = second.layer.id;
+    project = new CharacterService().setTalkingHeadMotionIntensityPercent(second.project, setup.characterId, 0);
+    project = setManualMouthPose(project, IDS.shot, instanceId, poseEventId, { poseId, startMs: 250, endMs: 1000 });
+    project = upsertExpressionEventAtTime(project, IDS.shot, instanceId, setup.graphicExprId, 500);
+    project = upsertCharacterActionEvent(project, IDS.shot, instanceId, { actionId, startMs: 250, endMs: 1000 });
+    project = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
+    const shot = project.shots[0]!;
+    const urls = Object.fromEntries(project.assets.filter(({ kind }) => kind === 'image').map(({ id }) => [id, `blob:${id}`]));
+    const beforeHead = resolveLayerVisualParts(project, shot,
+      evaluateShotAtTime(shot, 100, project).layers.find(({ id }) => id === instanceId)!, 100)
+      .parts.find(({ partId }) => partId === `${instanceId}:${PART_HEAD}`)!.imageTransform!.tx;
+    for (const [time, isWaving, expressionId, headShift, mouthAsset] of [
+      [1350, false, setup.graphicExprId, 0, restMouthAssetId], [750, true, setup.graphicExprId, -12, ASSET_MOUTH],
+      [50, false, setup.smileExprId, 0, restMouthAssetId], [500, true, setup.graphicExprId, 18, ASSET_MOUTH],
+      [100, false, setup.smileExprId, 0, ASSET_MOUTH],
+    ] as const) {
+      const evaluated = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, time, project));
+      const layer = evaluated.layers.find(({ id }) => id === instanceId)!;
+      const visual = resolveLayerVisualParts(project, shot, layer, time);
+      expect(layer.currentExpressionId).toBe(expressionId);
+      expect(evaluated.layers.find(({ id }) => id === setup.layerId)?.layeredCharacterAction).toBeUndefined();
+      expect(visual.parts.map(({ partId }) => partId)).toEqual([PART_BACK_HAIR, PART_BODY, PART_HEAD, PART_FACE,
+        mouthId, PART_FRONT_HAIR, armId].map(id => `${instanceId}:${id}`));
+      const face = visual.parts.find(({ partId }) => partId === `${instanceId}:${PART_FACE}`)!;
+      expect(face.assetId).not.toBe(ASSET_FACE);
+      if (expressionId === setup.graphicExprId) expect(face.flaGraphic?.frameOrdinal).toBe(1);
+      else expect(face.assetId).toBe(ASSET_SMILE);
+      const mouth = visual.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)!;
+      expect(mouth.assetId).toBe(mouthAsset);
+      const head = visual.parts.find(({ partId }) => partId === `${instanceId}:${PART_HEAD}`)!;
+      expect(head.imageTransform!.tx - beforeHead).toBeCloseTo(headShift);
+      const arm = visual.parts.find(({ partId }) => partId === `${instanceId}:${armId}`)!;
+      expect(Math.abs(arm.imageTransform!.b) > 0.001).toBe(isWaving);
+      const mesh = buildStageRenderModel(project, evaluated, urls).layers;
+      expect(buildStageRenderModel(project, evaluateExportShotAtTime(project, shot, time), urls).layers).toEqual(mesh);
+      expect(buildStageRenderModel(project, projectProductPreviewDialogue(project, shot, evaluateShotAtTime(shot, time, project)), urls).layers)
+        .toEqual(mesh);
+    }
+    const characters = new CharacterService();
+    const definition = characters.getAdaptivePartsDefinition(project, setup.characterId);
+    const missingArm = characters.applyAdaptivePartsDefinition(project, setup.characterId, removeAdaptivePartFromDefinition(definition, armId));
+    const missingArmShot = missingArm.shots[0]!;
+    const evaluated = projectShotDialogueVisual(missingArm, missingArmShot, evaluateShotAtTime(missingArmShot, 500, missingArm));
+    const remaining = resolveLayerVisualParts(missingArm, missingArmShot, evaluated.layers.find(({ id }) => id === instanceId)!, 500);
+    const missingHeadBefore = resolveLayerVisualParts(missingArm, missingArmShot,
+      evaluateShotAtTime(missingArmShot, 50, missingArm).layers.find(({ id }) => id === instanceId)!, 50)
+      .parts.find(({ partId }) => partId === `${instanceId}:${PART_HEAD}`)!.imageTransform!.tx;
+    expect(remaining.parts.some(({ partId }) => partId === `${instanceId}:${armId}`)).toBe(false);
+    expect(remaining.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)?.assetId).toBe(ASSET_MOUTH);
+    expect(remaining.parts.find(({ partId }) => partId === `${instanceId}:${PART_HEAD}`)?.imageTransform?.tx)
+      .toBeCloseTo(missingHeadBefore + 18);
+
+    const savedPoseId = 'd3000000-0000-4000-8000-000000000008';
+    const captureAddress = { shotId: shot.id, layerId: instanceId, timeMs: 500 };
+    const applyAddress = { ...captureAddress, timeMs: 1500 };
+    expect(migrateProject({ ...project, schemaVersion: 35 })).toEqual(project);
+    project = saveCharacterBodyPose(project, captureAddress, 'Wave pose',
+      [PART_BODY, armId, PART_HEAD, PART_FRONT_HAIR, PART_FACE, mouthId], () => savedPoseId);
+    expect(() => migrateProject({ ...project, schemaVersion: 35 })).toThrow();
+    project = setManualMouthPose(project, shot.id, instanceId, 'd3000000-0000-4000-8000-000000000009',
+      { poseId, startMs: 1400, endMs: 1650 });
+    project = migrateProject(JSON.parse(JSON.stringify(project)));
+    const beforePose = project;
+    const currentPose = beforePose.characters.find(({ id }) => id === setup.characterId);
+    expect(currentPose?.mode === 'adaptive-parts' && currentPose.bodyPoses?.[0]?.parts.map(({ partId }) => partId))
+      .toEqual([PART_BODY, armId, PART_HEAD, PART_FRONT_HAIR]);
+    const partial = characters.applyAdaptivePartsDefinition(beforePose, setup.characterId,
+      removeAdaptivePartFromDefinition(characters.getAdaptivePartsDefinition(beforePose, setup.characterId), armId));
+    const partialPlan = planCharacterBodyPose(partial, applyAddress, savedPoseId);
+    expect(partialPlan.missingPartIds).toEqual([armId]);
+    expect(partialPlan.project).not.toBe(partial);
+    expect(planCharacterBodyPose(beforePose, captureAddress, savedPoseId).actionPartIds).toEqual([PART_BODY, armId]);
+
+    editorProjectStore.open('C:/temp/body-pose.pandastage', beforePose);
+    const beforeSnapshot = editorProjectStore.getSnapshot()!;
+    const preview = planCharacterBodyPose(beforePose, applyAddress, savedPoseId);
+    expect(editorProjectStore.getSnapshot()).toBe(beforeSnapshot);
+    editorProjectStore.updateProject(preview.project, '应用身体姿势');
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(beforeSnapshot.revision + 1);
+    const afterPose = migrateProject(JSON.parse(JSON.stringify(editorProjectStore.getSnapshot()!.project)));
+    const beforeShot = beforePose.shots[0]!;
+    const afterShot = afterPose.shots[0]!;
+    expect(afterShot.timelineEvents).toEqual(beforeShot.timelineEvents);
+    expect(afterShot.layers.find(({ id }) => id === setup.layerId)).toEqual(beforeShot.layers.find(({ id }) => id === setup.layerId));
+    expect(afterPose.characters).toEqual(beforePose.characters);
+    const appliedEvaluation = projectShotDialogueVisual(afterPose, afterShot, evaluateShotAtTime(afterShot, 1500, afterPose));
+    const applied = resolveLayerVisualParts(afterPose, afterShot, appliedEvaluation.layers.find(({ id }) => id === instanceId)!, 1500);
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${armId}`)?.imageTransform?.b).toBeCloseTo(Math.sin(35 * Math.PI / 180));
+    const captured = resolveLayerVisualParts(beforePose, beforeShot,
+      evaluateShotAtTime(beforeShot, 500, beforePose).layers.find(({ id }) => id === instanceId)!, 500);
+    for (const partId of [PART_HEAD, PART_FRONT_HAIR]) {
+      const id = `${instanceId}:${partId}`;
+      expect(applied.parts.find(part => part.partId === id)?.imageTransform?.tx)
+        .toBeCloseTo(captured.parts.find(part => part.partId === id)!.imageTransform!.tx);
+    }
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${PART_FACE}`)?.flaGraphic?.frameOrdinal).toBe(1);
+    expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)?.assetId).toBe(ASSET_MOUTH);
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(beforePose);
+    editorProjectStore.redo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(afterPose);
+
+    const rotated = motion.apply(beforePose, { ...captureAddress, partId: PART_HEAD, autoKey: true },
+      { 'transform.rotationDeg': 45 });
+    const skewed = ProjectSchema.parse({ ...rotated, characters: rotated.characters.map(character =>
+      character.id !== setup.characterId ? character : { ...character, actions: character.actions?.map(action =>
+        action.id !== actionId || !('kind' in action) ? action : { ...action, tracks: [...action.tracks, {
+          partId: PART_BODY, property: 'transform.scaleX', keys: [0, 750].map(timeMs =>
+            ({ timeMs, value: 2, interpolationToNext: 'step' })),
+        }] }) }) });
+    const partialCapture = saveCharacterBodyPose(skewed, captureAddress, 'Capture writable parts', [PART_BODY, PART_HEAD]);
+    const capturedCharacter = partialCapture.characters.find(({ id }) => id === setup.characterId)!;
+    expect(capturedCharacter.mode === 'adaptive-parts' && capturedCharacter.bodyPoses?.at(-1)?.parts.map(({ partId }) => partId))
+      .toEqual([PART_BODY]);
+    expect(() => saveCharacterBodyPose(skewed, captureAddress, 'Skewed head only', [PART_HEAD])).toThrow('改选一帧');
+  });
+
+  it('maps a layered action between two characters with an adjusted pivot and a missing part', () => {
+    const setup = buildPhaseCProject();
+    const characters = new CharacterService();
+    const motion = new CharacterMotionService();
+    const id = 'd3000000-0000-4000-8000-000000000015';
+    const key = { shotId: IDS.shot, layerId: setup.layerId, timeMs: 250, autoKey: true };
+    let project = motion.apply(setup.project, { ...key, partId: PART_BODY },
+      { 'transform.rotationDeg': 55, 'transform.offsetX': 20, 'transform.offsetY': 13 });
+    project = motion.apply(project, { ...key, partId: PART_FRONT_HAIR }, { 'transform.rotationDeg': 14 });
+    project = saveLayeredCharacterAction(project, IDS.shot, setup.layerId, {
+      name: 'Wave', startMs: 0, endMs: 500, partIds: [PART_BODY, PART_FRONT_HAIR], headAnchorPartId: PART_BODY,
+    }, () => id);
+    const source = project.characters.find(({ id: characterId }) => characterId === setup.characterId)!;
+    if (source.mode !== 'adaptive-parts') throw new Error('Expected a source Adaptive Parts Character.');
+    const sourceAction = source.actions![0]!;
+    if (!('kind' in sourceAction)) throw new Error('Expected a layered action.');
+    const targetParts = source.parts.filter(({ partId }) => partId !== PART_FRONT_HAIR).map((part, index) => ({
+      ...part, partId: `d2300000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    }));
+    const bodyId = targetParts[1]!.partId;
+    const faceId = targetParts[3]!.partId;
+    project = characters.createAdaptiveParts(project, { name: 'Second Character', parts: targetParts });
+    const targetId = project.characters.at(-1)!.id;
+    project = characters.setAdaptivePartsFaceBinding(project, targetId, { targetPartId: faceId });
+    project = characters.addExpression(project, targetId, { name: 'Target face', visualSource: faceSource(1) });
+    project = characters.setMouthOpenAsset(project, targetId, ASSET_MOUTH);
+    const target = project.characters.at(-1)!;
+    if (target.mode !== 'adaptive-parts') throw new Error('Expected a target Adaptive Parts Character.');
+    const targetExpression = target.expressions![0]!.id;
+    const layerService = new LayerService();
+    const one = layerService.createFromAdaptiveCharacter(project, IDS.shot, targetId, { x: 1350, y: 570 });
+    const two = layerService.createFromAdaptiveCharacter(one.project, IDS.shot, targetId, { x: 1560, y: 410 });
+    const oneId = one.layer.id;
+    project = upsertExpressionEventAtTime(two.project, IDS.shot, oneId, targetExpression, 625);
+    project = upsertMouthCueEventAtTime(project, IDS.shot, oneId, 'open', 700);
+    const suggested = suggestCharacterMotionMapping(source, sourceAction, target);
+    expect(suggested.find(rule => rule.sourcePartId === PART_BODY)?.targetPartId).toBe(bodyId);
+    expect(suggested.find(rule => rule.sourcePartId === PART_FRONT_HAIR)?.targetPartId).toBeUndefined();
+    const rules = suggested.map(rule => rule.sourcePartId !== PART_BODY ? rule : {
+      ...rule, mirror: true, translationScale: 2, pivotOffset: { x: 12, y: 0 },
+      properties: rule.properties.filter(property => property !== 'transform.offsetY'),
+    });
+    const mapping = { sourceCharacterId: source.id, sourceActionId: id, rules };
+    const noPivot = planMappedCharacterMotion(project, IDS.shot, oneId, 500, { ...mapping,
+      rules: rules.map(rule => ({ ...rule, pivotOffset: { x: 0, y: 0 } })),
+    });
+    const planned = planMappedCharacterMotion(project, IDS.shot, oneId, 500, mapping);
+    expect(planned.missingSourcePartIds).toEqual([PART_FRONT_HAIR]);
+    expect(migrateProject({ ...project, schemaVersion: 37 })).toEqual(project);
+    expect(() => migrateProject({ ...planned.project, schemaVersion: 37 })).toThrow();
+    const opened = migrateProject(JSON.parse(JSON.stringify(planned.project)));
+    expect(migrateProject({ ...opened, schemaVersion: 39 })).toEqual(opened);
+    const sameSource = opened.characters.find(({ id: characterId }) => characterId === source.id);
+    expect(sameSource).toEqual(source);
+    const mappedTarget = opened.characters.find(({ id: characterId }) => characterId === target.id)!;
+    if (mappedTarget.mode !== 'adaptive-parts') throw new Error('Expected a mapped Adaptive Parts Character.');
+    expect(mappedTarget.motionMappings?.[0]?.rules).toEqual(rules);
+    const action = mappedTarget.actions?.[0];
+    expect(action && 'kind' in action && action.tracks.map(track => [track.partId, track.property, track.keys[1]?.value]))
+      .toEqual([[bodyId, 'transform.rotationDeg', -55], [bodyId, 'transform.offsetX', -40]]);
+
+    function at(snapshot: Project, timeMs: number, instanceId = oneId) {
+      const shot = snapshot.shots[0]!;
+      const evaluated = projectShotDialogueVisual(snapshot, shot, evaluateShotAtTime(shot, timeMs, snapshot));
+      const layer = evaluated.layers.find(({ id: layerId }) => layerId === instanceId)!;
+      const visual = resolveLayerVisualParts(snapshot, shot, layer, timeMs);
+      const body = visual.parts.find(({ partId }) => partId === `${instanceId}:${bodyId}`)!;
+      return { shot, layer, body, evaluated, visual };
+    }
+    const mid = at(opened, 750);
+    expect(mid.layer.x).toBe(one.layer.x);
+    expect(mid.layer.y).toBe(one.layer.y);
+    expect(mid.visual.activeFace).toMatchObject({ currentExpressionId: targetExpression, assetId: ASSET_MOUTH });
+    expect(mid.body.imageTransform!.tx - at(noPivot.project, 750).body.imageTransform!.tx)
+      .toBeCloseTo(12 * (1 - Math.cos(55 * Math.PI / 180)));
+    expect(at(opened, 1050).layer.layeredCharacterAction).toBeUndefined();
+    expect(at(opened, 400).layer.layeredCharacterAction).toBeUndefined();
+    const urls = Object.fromEntries(opened.assets.filter(({ kind }) => kind === 'image').map(({ id: assetId }) => [assetId, `blob:${assetId}`]));
+    expect(buildStageRenderModel(opened, evaluateExportShotAtTime(opened, mid.shot, 750), urls).layers)
+      .toEqual(buildStageRenderModel(opened, mid.evaluated, urls).layers);
+    expect(mid.evaluated.layers.find(({ id: layerId }) => layerId === two.layer.id)?.layeredCharacterAction).toBeUndefined();
+    const clip = createCharacterPartAnimationClip(opened, IDS.shot, two.layer.id);
+    const basis = clip.targetBases.find(({ target: partTarget }) => partTarget.partId === bodyId)!;
+    const destinationClip = recalibrateCharacterPartAnimationPivot(clip, basis.target, { ...basis.pivot, x: basis.pivot.x + 6 });
+    const withDestinationPivot = ProjectSchema.parse({ ...opened, shots: opened.shots.map(shot => ({ ...shot,
+      layers: shot.layers.map(layer => layer.id === two.layer.id ? { ...layer, animationClip: destinationClip } : layer),
+    })) });
+    const withPose = saveCharacterBodyPose(withDestinationPivot, { shotId: IDS.shot, layerId: oneId, timeMs: 750 },
+      'Calibrated pose', [bodyId]);
+    expect(() => migrateProject({ ...withPose, schemaVersion: 39 })).toThrow();
+    const poseCharacter = withPose.characters.find(({ id: characterId }) => characterId === target.id)!;
+    if (poseCharacter.mode !== 'adaptive-parts') throw new Error('Expected an Adaptive Parts Character.');
+    const posed = planCharacterBodyPose(migrateProject(JSON.parse(JSON.stringify(withPose))),
+      { shotId: IDS.shot, layerId: two.layer.id, timeMs: 1250 }, poseCharacter.bodyPoses![0]!.id).project;
+    const appliedTransform = at(posed, 1250, two.layer.id).body.imageTransform!;
+    for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty'] as const) {
+      expect(appliedTransform[key]).toBeCloseTo(mid.body.imageTransform![key]);
+    }
+    const repeat = planMappedCharacterMotion(opened, IDS.shot, oneId, 1250, mapping).project;
+    expect(repeat.characters).toEqual(opened.characters);
+    expect(repeat.shots[0]!.timelineEvents.filter(event => event.type === 'character-action')).toHaveLength(2);
+    editorProjectStore.open('C:/temp/body-mapping.pandastage', project);
+    editorProjectStore.updateProject(planned.project, '应用跨角色动作');
+    editorProjectStore.undo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(project);
+    editorProjectStore.redo();
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(planned.project);
+  });
+
   it('moves only head-bound parts (including replaced face expressions/mouth) while preserving drawOrder (backHair behind body), neutral outside dialogue, and Stage/Export parity', () => {
     const setup = buildPhaseCProject({ withDialogue: true });
     let project = setup.project;

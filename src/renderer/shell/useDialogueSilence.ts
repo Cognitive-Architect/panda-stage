@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Project } from '../../domain';
+import { listCharacterTalkingSources } from '../../domain/selectors/characterFaceSource';
 import type { AssetDialogueSilenceRequest } from '../../shared/asset-preview-audio-api';
 import {
   DialogueSilenceIntervalsSchema,
@@ -63,7 +64,7 @@ export function collectTalkingDialogueAudioAssets(
     project.characters
       .filter(
         (character) =>
-          character.talkingAnimationId &&
+          listCharacterTalkingSources(character).length > 0 &&
           (character.mode !== 'adaptive-parts' || character.faceBinding),
       )
       .map((character) => character.id),

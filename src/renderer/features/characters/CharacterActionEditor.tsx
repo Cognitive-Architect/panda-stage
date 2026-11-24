@@ -37,6 +37,8 @@ export function CharacterActionEditor({
   const [scale, setScale] = useState('1');
   const [error, setError] = useState('');
   const actions = character?.actions ?? [];
+  const currentAction = actions.find(({ id }) => id === editingId);
+  const editingLayered = currentAction && 'kind' in currentAction;
   const animations = project?.animations.filter((animation) => animation.frames.length > 0) ?? [];
   const selectedAnimation = animations.find((animation) => animation.id === animationId);
   const previewAnimation = choosingSource
@@ -68,6 +70,11 @@ export function CharacterActionEditor({
   const beginEdit = (action: CharacterAction): void => {
     setEditingId(action.id);
     setName(action.name);
+    if ('kind' in action) {
+      setError('');
+      setEditing(true);
+      return;
+    }
     setAnimationId(action.animationId);
     setPreviewId('');
     setSearch('');
@@ -111,16 +118,32 @@ export function CharacterActionEditor({
       {disabledReason ? <p className="character-action-empty" role="status">{disabledReason}</p> : null}
       {actions.length > 0 ? <ul className="character-action-list">
         {actions.map((action) => {
-          const source = project.animations.find((animation) => animation.id === action.animationId);
+          const sourceName = 'kind' in action ? '分件动作'
+            : project.animations.find((animation) => animation.id === action.animationId)?.name ?? '未知动画';
           return <li key={action.id}><button type="button"
             aria-pressed={editing && editingId === action.id}
             className="character-action-item" onClick={() => beginEdit(action)}>
-            <span>{action.name}</span><small>{source?.name ?? '未知动画'}</small>
+            <span>{action.name}</span><small>{sourceName}</small>
           </button></li>;
         })}
       </ul> : null}
       {animations.length === 0 ? <p className="character-action-empty">暂无可用动画素材</p> : null}
-      {editing ? <form className="character-action-form" onSubmit={save}>
+      {editing && editingLayered ? <div className="character-action-form">
+        <strong>{currentAction.name}</strong>
+        {error ? <p role="alert">{error}</p> : null}
+        <footer>
+          <button type="button" disabled={disabled} onClick={() => {
+            try {
+              onDelete(currentAction.id);
+              setEditing(false);
+              setEditingId(null);
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : '无法删除动作。');
+            }
+          }}>删除</button>
+          <button type="button" onClick={() => setEditing(false)}>关闭</button>
+        </footer>
+      </div> : editing ? <form className="character-action-form" onSubmit={save}>
         <label>名称<input autoFocus maxLength={64} value={name} onChange={(event) => setName(event.target.value)} /></label>
         {choosingSource ? <>
           <input type="search" aria-label="搜索动作动画" placeholder="搜索动画" value={search}

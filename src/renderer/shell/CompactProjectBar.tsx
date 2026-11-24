@@ -9,6 +9,7 @@ import {
   Download,
   Play,
   Save,
+  Settings2,
   X,
 } from 'lucide-react';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
@@ -40,6 +41,7 @@ export interface CompactProjectBarProps {
   onSaveProject(): Promise<void>;
   onOpenProductPreview(): void;
   onExportVideo?(): void;
+  onOpenExportSettings?(): void;
   onRequestCloseProject(): void;
   presentation?: EditorShellLayoutMode;
 }
@@ -84,10 +86,12 @@ export function QuickActionDrawer({
   onSaveProject,
   onOpenProductPreview,
   onExportVideo = () => undefined,
+  onOpenExportSettings,
   onRequestCloseProject,
   presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const exportLabel = projectSnapshot.project.exportPreferences?.format === 'png-sequence' ? '导出 PNG 序列' : '导出视频';
   const panelId = `quick-action-drawer-panel-${useId()}`;
   const statusText = status.trim();
   const showFeedback =
@@ -247,7 +251,7 @@ export function QuickActionDrawer({
             aria-label={
               exportBusy || exportSurfaceOpen
                 ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : '\u5bfc\u51fa\u89c6\u9891'
+                : exportLabel
             }
             aria-busy={exportBusy}
             aria-pressed={exportSurfaceOpen}
@@ -277,10 +281,14 @@ export function QuickActionDrawer({
             title={
               exportBusy || exportSurfaceOpen
                 ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : '\u5bfc\u51fa\u89c6\u9891'
+                : exportLabel
             }
             variant="primary"
           />
+          {onOpenExportSettings ? <IconButton aria-label="导出设置" title="导出设置"
+            className="quick-action-drawer-action" data-testid="quick-action-export-settings"
+            disabled={busy || exportBusy || productPreviewOpen}
+            icon={<Settings2 aria-hidden="true" size={18} />} onClick={onOpenExportSettings} variant="secondary" /> : null}
           <div
             className="quick-action-drawer-history"
             data-testid="quick-action-history"
