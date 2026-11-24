@@ -13,6 +13,45 @@ import { getFlaXflDirectChildren } from '../../src/main/services/fla-static-snap
 const fixture = new URL('../fixtures/fla-object-motion/OM-2D.fla', import.meta.url);
 
 describe('Animate Object Motion', () => {
+
+  it('matches shadow distance curves by authored order and holds the eased end on seek', () => {
+    const source = adaptFlaXflDisplaySource(`<DOMDocument frameRate="24"><timelines><DOMTimeline><layers>
+      <DOMLayer><frames><DOMFrame index="0" duration="6" tweenType="motion object">
+        <motionObjectXML><AnimationCore TimeScale="24000" duration="6000">
+          <TimeMap type="Quadratic" strength="-100"/>
+          <PropertyContainer id="headContainer"><Property id="Motion_X" value="3"/>
+            <PropertyContainer id="Filters">
+              <PropertyContainer><Property id="DropShadow_Distance" value="9"/></PropertyContainer>
+              <PropertyContainer><Property id="DropShadow_Distance">
+                <Keyframe timevalue="0" anchor="0,4"/><Keyframe timevalue="4000" anchor="0,20"/>
+              </Property></PropertyContainer>
+            </PropertyContainer>
+          </PropertyContainer>
+        </AnimationCore></motionObjectXML>
+        <elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
+          <filters><DropShadowFilter enabled="false"/><GlowFilter blurX="0" strength="0"/>
+            <DropShadowFilter blurX="5" blurY="0" angle="0" color="#123456"/></filters>
+        </DOMSymbolInstance></elements>
+      </DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timelines></DOMDocument>`, []);
+    if (!source.ok) throw new Error(source.message);
+    const scene = source.source.sceneTimelines[0]!;
+    for (const [frame, distance] of [[0, 4], [2, 8], [4, 20], [5, 20], [2, 8]]) {
+      const sampled = source.source.buildSceneFrameContext(scene.xml, frame!, 'scene:0');
+      if (!sampled.ok) throw new Error(sampled.message);
+      expect(sampled.value.unsupportedDisplayReason).toBeUndefined();
+      const element = sampled.value.layers[0]?.elements[0];
+      if (element?.kind !== 'symbol') throw new Error('Missing sampled symbol');
+      expect(element.localTransform?.tx).toBeCloseTo(3);
+      expect(element.instanceFilters).toMatchObject([
+        { kind: 'dropShadow', enabled: false, distance: 0 },
+        { kind: 'glow', blurX: 0, strength: 0 },
+        { kind: 'dropShadow', color: '#123456', blurX: 5, blurY: 0 },
+      ]);
+      expect(element.instanceFilters?.[2]?.distance).toBeCloseTo(distance!);
+    }
+  });
+
   it('discovers a scene with a blank lead-in and samples its authored axes and off-centre pivot', async () => {
     const bytes = await readFile(fixture);
     const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'catalog');

@@ -478,7 +478,10 @@ function makeCandidateCollection(
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
         const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
+        const hasOccurrenceEffects = element.instanceFilters?.some((filter) => filter.enabled);
         if (graphicInstances) {
+          // The shared definition cannot carry filters authored on this occurrence.
+          if (hasOccurrenceEffects) continue;
           if (descriptor && element.sourceAddress && definition?.kind === 'graphic' && element.symbolType === 'graphic' &&
               matrixFacts(worldTransform).invertible &&
               definition.frameContext.layers.some((childLayer) => childLayer?.visible &&
@@ -525,7 +528,7 @@ function makeCandidateCollection(
           definition.frameContext,
           `graphic:${definition.libraryItemName}`,
         );
-        const canDescend = childSymbols.length > 0 && childOtherContent.length === 0 &&
+        const canDescend = !hasOccurrenceEffects && childSymbols.length > 0 && childOtherContent.length === 0 &&
           definitionMasks.length === 0 && !definition.frameContext.unsupportedDisplayReason;
         if (canDescend) {
           walk(
@@ -538,6 +541,7 @@ function makeCandidateCollection(
           continue;
         }
         const reasons: string[] = [];
+        if (hasOccurrenceEffects) reasons.push('Instance effects require a single composited Part.');
         if (childSymbols.length > 0 && childOtherContent.length > 0) {
           reasons.push('nested Graphic occurrences are interleaved with vector, bitmap, or group content');
         }
@@ -1623,7 +1627,7 @@ export class FlaPartPreviewService {
       }
     }
     let totalBytes = 0;
-    let hasStaticTextInAnyFrame = false;
+    let requiresFullFrame = false;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
       if (!execution.shouldContinue()) {
         const timedOut = Date.now() - startedAt >= FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs;
@@ -1655,8 +1659,8 @@ export class FlaPartPreviewService {
       let finalWidth = rendered.width;
       let finalHeight = rendered.height;
       let viewport = rendered.composition.framing.viewBox;
+      if (rendered.hasInstanceFilters || rendered.staticTexts?.length) requiresFullFrame = true;
       if (rendered.staticTexts?.length) {
-        hasStaticTextInAnyFrame = true;
         let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
         try {
           resolvedRaster = await this.rasterizer.rasterize({
@@ -1725,11 +1729,9 @@ export class FlaPartPreviewService {
     let structure: FlaGraphicStructure | undefined;
     let authorPoseReferences: FlaGraphicAuthorPoseReference[] = [];
     const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
-    // When any frame of the Graphic definition contains static text, omit
-    // editable structure capture so Stage/Preview/Export consume the finalized
-    // full-frame SVG assets (which carry the rasterized text PNGs) instead of
-    // skipping unrenderable opaque text nodes in the structured canvas path.
-    if (firstFrame && unit.sourceAddress && !hasStaticTextInAnyFrame) {
+    // Stage, Preview, and Export consume the finalized full-frame SVG when
+    // any frame uses static text or composited instance effects.
+    if (firstFrame && unit.sourceAddress && !requiresFullFrame) {
       prepared.source.resetFrameBuildState();
       // Resolve display list in tolerant mode for structure capture so unsupported
       // subtrees degrade locally rather than dropping the whole structure.
@@ -1938,7 +1940,7 @@ export class FlaPartPreviewService {
         frames,
         ...(labels.size ? { sourceFrameLabels: [...labels].map(([sourceFrameIndex, text]) => ({ sourceFrameIndex, text })) } : {}),
         ...(groupEditPreview ? { groupEditPreview } : {}),
-        ...(hasStaticTextInAnyFrame ? { requiresFullFrame: true } : {}),
+        ...(requiresFullFrame ? { requiresFullFrame: true } : {}),
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
         ...(isolatedFallbacks.size ? { fallbacks: [...isolatedFallbacks.values()] } : {}),

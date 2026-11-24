@@ -130,6 +130,7 @@ export interface BuildSvgSuccess {
   readonly ikPoseWarning?: string;
   /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
   readonly staticTexts?: readonly FlaStaticTextRenderItem[];
+  readonly hasInstanceFilters?: boolean;
   /** Graphic content-framing metadata so the rasterizer can recompute authoritative viewport from real font metrics. */
   readonly graphicFraming?: FlaStaticTextGraphicFraming;
 }
@@ -3809,7 +3810,7 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
-      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined
+      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined || node.instanceFilters !== undefined
         ? [...compositeGroups, node]
         : compositeGroups;
       for (const child of node.children) {
@@ -3885,6 +3886,72 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     maxFrameBlurExpansionX = Math.max(maxFrameBlurExpansionX, Math.ceil(layer.frameFilter.blurX * 3));
     maxFrameBlurExpansionY = Math.max(maxFrameBlurExpansionY, Math.ceil(layer.frameFilter.blurY * 3));
   }
+
+  type CompositeGroup = Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+  const instanceFilterByGroup = new Map<CompositeGroup, { id: string; x: number; y: number }>();
+  const instancePrimitivesById = new Map<string, string>();
+  let instanceExpansionX = 0;
+  let instanceExpansionY = 0;
+  for (const { compositeGroups } of flattened.leaves) {
+    let x = 0;
+    let y = 0;
+    for (const group of compositeGroups) {
+      if (!group.instanceFilters) continue;
+      let effect = instanceFilterByGroup.get(group);
+      if (!effect) {
+        if (instanceFilterByGroup.size >= 128) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
+        }
+        let expansionX = 0;
+        let expansionY = 0;
+        let source = 'SourceGraphic';
+        const primitives: string[] = [];
+        for (const [index, filter] of group.instanceFilters.entries()) {
+          if (!filter.enabled) continue;
+          const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+          // Animate's screen-space blur radii are approximated as twice the SVG sigma.
+          const sigmaX = blurX / 2;
+          const sigmaY = blurY / 2;
+          const radians = angle * Math.PI / 180;
+          const dx = distance * Math.cos(radians);
+          const dy = distance * Math.sin(radians);
+          expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
+          expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
+          const blur = 'blur' + index;
+          const output = 'effect' + index;
+          if (filter.kind === 'blur') {
+            primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+          } else {
+            const offset = 'offset' + index;
+            primitives.push(
+              `<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+              `<feOffset in="${blur}" dx="${formatSvgNumber(dx)}" dy="${formatSvgNumber(dy)}" result="${offset}"/>`,
+              `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+              `<feComposite in2="${offset}" operator="in" result="shadow${index}"/>`,
+              `<feMerge result="${output}"><feMergeNode in="shadow${index}"/><feMergeNode in="${source}"/></feMerge>`,
+            );
+          }
+          source = output;
+        }
+        const markup = primitives.join('');
+        const id = `fla-instance-filter-${crypto.createHash('sha256').update(markup).digest('hex').slice(0, 24)}`;
+        instancePrimitivesById.set(id, markup);
+        effect = { id, x: expansionX, y: expansionY };
+        instanceFilterByGroup.set(group, effect);
+      }
+      x += effect.x;
+      y += effect.y;
+    }
+    instanceExpansionX = Math.max(instanceExpansionX, x);
+    instanceExpansionY = Math.max(instanceExpansionY, y);
+  }
+  if (instanceExpansionX > 2048 || instanceExpansionY > 2048) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the cumulative instance filter expansion budget' };
+  }
+  const filterExpansion = {
+    x: maxFrameBlurExpansionX + instanceExpansionX,
+    y: maxFrameBlurExpansionY + instanceExpansionY,
+  };
 
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
   const nonTextGraphicBounds = framingMode === 'content' ? createBounds() : null;
@@ -4193,15 +4260,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  const openCompositeGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
+  const openCompositeGroups: Array<{ group: CompositeGroup; close: string; coveredClips: number }> = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
   for (const { layer, node, compositeGroups } of flattened.leaves) {
     if (openLayer !== layer) {
       while (openCompositeGroups.length > 0) {
-        const closeFailure = appendCompositeGroupTag('</g>');
+        const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
         if (closeFailure) return closeFailure;
-        openCompositeGroups.pop();
       }
       if (openLayerFilter) {
         const closeFailure = appendCompositeGroupTag('</g>');
@@ -4219,24 +4285,40 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     let sharedGroupCount = 0;
     while (sharedGroupCount < openCompositeGroups.length &&
         sharedGroupCount < compositeGroups.length &&
-        openCompositeGroups[sharedGroupCount] === compositeGroups[sharedGroupCount]) {
+        openCompositeGroups[sharedGroupCount]?.group === compositeGroups[sharedGroupCount]) {
       sharedGroupCount += 1;
     }
     for (let index = openCompositeGroups.length - 1; index >= sharedGroupCount; index -= 1) {
-      const closeFailure = appendCompositeGroupTag('</g>');
+      const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
       if (closeFailure) return closeFailure;
-      openCompositeGroups.pop();
     }
     for (let index = sharedGroupCount; index < compositeGroups.length; index += 1) {
       const group = compositeGroups[index]!;
       const attributes: string[] = [];
-      if (group.opacity !== undefined) attributes.push(`opacity="${formatSvgNumber(group.opacity)}"`);
+      const opacity = group.opacity === undefined ? '' : ` opacity="${formatSvgNumber(group.opacity)}"`;
       const colorFilterId = colorTransformFilterIdByGroup.get(group);
       if (colorFilterId) attributes.push(`filter="url(#${colorFilterId})"`);
-      const openFailure = appendCompositeGroupTag(`<g ${attributes.join(' ')}>`);
+      const effect = instanceFilterByGroup.get(group);
+      let tags = 1;
+      let markup = `<g${effect ? '' : opacity}${attributes.length ? ' ' + attributes.join(' ') : ''}>`;
+      let coveredClips = openCompositeGroups.at(-1)?.coveredClips ?? 0;
+      if (effect) {
+        markup = `<g${opacity} filter="url(#${effect.id})">${markup}`;
+        tags += 1;
+        const externalClips = group.instanceFilterClips ?? [];
+        for (const clip of externalClips.slice(coveredClips)) {
+          const registered = registerClipPath(clip);
+          if (!registered.ok) return registered;
+          markup = `<g clip-path="url(#${registered.id})">${markup}`;
+          tags += 1;
+        }
+        coveredClips = Math.max(coveredClips, externalClips.length);
+      }
+      const openFailure = appendCompositeGroupTag(markup);
       if (openFailure) return openFailure;
-      openCompositeGroups.push(group);
+      openCompositeGroups.push({ group, close: '</g>'.repeat(tags), coveredClips });
     }
+    const leafClips = node.clipPaths?.slice(openCompositeGroups.at(-1)?.coveredClips ?? 0);
 
     if (node.kind === 'shape') {
       const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -4318,7 +4400,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           if (input.metadataOnlyBitmaps && !media.pngBytes) {
             // The catalog can validate fill geometry before the bitmap is decoded.
             const outline = `<path d="${fill.pathD}" fill="none"/>`;
-            const failure = appendEmittedNode(outline, node.clipPaths);
+            const failure = appendEmittedNode(outline, leafClips);
             if (failure) return failure;
             fillRegionCount += 1;
             continue;
@@ -4343,7 +4425,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             if (failure) return failure;
             markup = `<path d="${fill.pathD}" transform="${shapeTransform}" fill="url(#${patternId})" stroke="none" fill-rule="nonzero"/>`;
           }
-          const failure = appendEmittedNode(markup, node.clipPaths);
+          const failure = appendEmittedNode(markup, leafClips);
           if (failure) return failure;
           fillRegionCount += 1;
           continue;
@@ -4351,7 +4433,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         const gradientFailure = registerGradientPaint(paint);
         if (gradientFailure) return gradientFailure;
         const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+        const appendFailure = appendEmittedNode(pathNode, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
@@ -4401,7 +4483,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             }
             const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
             const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${strokePaint}" fill-opacity="${formatSvgNumber(style.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-            const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+            const appendFailure = appendEmittedNode(pathNode, leafClips);
             if (appendFailure) return appendFailure;
             pathCommandCount += path.commands.length;
             strokePathCount += 1;
@@ -4432,7 +4514,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             : '';
           const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
           const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${strokePaint}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
-          const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+          const appendFailure = appendEmittedNode(pathNode, leafClips);
           if (appendFailure) return appendFailure;
           strokePathCount += 1;
         }
@@ -4486,7 +4568,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         staticTextTransforms.push({ placeholderId, worldTransform: node.worldTransform });
       }
       const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-      const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+      const appendFailure = appendEmittedNode(useNode, leafClips);
       if (appendFailure) return appendFailure;
       continue;
     }
@@ -4509,7 +4591,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       } else if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Graphic bitmap bounds are not finite' };
       }
-      const appendFailure = appendEmittedNode('<g/>', node.clipPaths);
+      const appendFailure = appendEmittedNode('<g/>', leafClips);
       if (appendFailure) return appendFailure;
       continue;
     }
@@ -4522,14 +4604,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       includeTransformedBitmapBounds(nonTextGraphicBounds, media.width, media.height, node.worldTransform);
     }
     const useNode = `<use href="#${image.id}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-    const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+    const appendFailure = appendEmittedNode(useNode, leafClips);
     if (appendFailure) return appendFailure;
   }
 
   while (openCompositeGroups.length > 0) {
-    const closeFailure = appendCompositeGroupTag('</g>');
+    const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
     if (closeFailure) return closeFailure;
-    openCompositeGroups.pop();
   }
 
   if (openLayerFilter) {
@@ -4538,7 +4619,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   const graphicViewport = graphicBounds
-    ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
+    ? createGraphicViewport(graphicBounds, filterExpansion)
     : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
   if (framingMode === 'content' && !graphicViewport && !blankGraphic && !catalogHasUnknownBitmapDimensions) {
@@ -4561,7 +4642,18 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     `width="${formatSvgNumber(viewBox.width)}" height="${formatSvgNumber(viewBox.height)}" ` +
     `color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" ` +
     `stdDeviation="${formatSvgNumber(filter.blurX)} ${formatSvgNumber(filter.blurY)}"/></filter>`);
-  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions];
+  const instanceRegion = framingMode === 'content' ? viewBox : {
+    x: viewBox.x - instanceExpansionX,
+    y: viewBox.y - instanceExpansionY,
+    width: viewBox.width + 2 * instanceExpansionX,
+    height: viewBox.height + 2 * instanceExpansionY,
+  };
+  const instanceDefinitions = [...instancePrimitivesById].map(([id, primitives]) =>
+    `<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" ` +
+    `x="${formatSvgNumber(instanceRegion.x)}" y="${formatSvgNumber(instanceRegion.y)}" ` +
+    `width="${formatSvgNumber(instanceRegion.width)}" height="${formatSvgNumber(instanceRegion.height)}" ` +
+    `color-interpolation-filters="sRGB">${primitives}</filter>`);
+  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions, ...instanceDefinitions];
   const defs = allDefinitions.length > 0 ? `<defs>${allDefinitions.join('')}</defs>` : '';
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
@@ -4590,7 +4682,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
                 }
               : null,
           textTransforms: staticTextTransforms,
-          filterExpansion: { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY },
+          filterExpansion,
           padding: GRAPHIC_CONTENT_PADDING,
         }
       : undefined;
@@ -4606,6 +4698,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
+    ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
     ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,

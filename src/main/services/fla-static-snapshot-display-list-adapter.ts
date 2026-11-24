@@ -36,6 +36,7 @@ import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
   type FlaDisplayListBlurFilter,
+  type FlaInstanceFilter,
   type FlaDisplayListFrameContext,
   type FlaDisplayListMatrix,
   type FlaDisplayListRgbTransform,
@@ -828,6 +829,56 @@ function parseStaticTextDescriptor(
   return { ok: true, value: { left, width, height, runs } };
 }
 
+function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstanceFilter[] | null {
+  const container = directChild(instance.xml, instance.name, 'filters');
+  if (!container) return [];
+  const nodes = getFlaXflDirectChildren(container.xml, container.name);
+  if (nodes.length > 8) return null;
+  const filters: FlaInstanceFilter[] = [];
+  for (const node of nodes) {
+    const kind = node.name === 'BlurFilter' ? 'blur' : node.name === 'GlowFilter' ? 'glow'
+      : node.name === 'DropShadowFilter' ? 'dropShadow' : undefined;
+    const attributes = node.attributes;
+    const enabled = attributes.enabled !== 'false' && attributes.enabled !== '0';
+    if (!kind) {
+      if (enabled) return null;
+      continue;
+    }
+    if (!enabled) {
+      filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0 });
+      continue;
+    }
+    const allowed = ['enabled', 'blurX', 'blurY', 'quality'];
+    if (kind !== 'blur') allowed.push('color', 'alpha', 'strength', 'inner', 'knockout');
+    if (kind === 'dropShadow') allowed.push('distance', 'angle', 'hideObject');
+    if (Object.keys(attributes).some((key) => !allowed.includes(key)) ||
+        ['inner', 'knockout', 'hideObject'].some((key) =>
+          attributes[key] !== undefined && attributes[key] !== 'false' && attributes[key] !== '0') ||
+        ![undefined, 'true', '1'].includes(attributes.enabled) ||
+        ![undefined, '1'].includes(attributes.quality) ||
+        getFlaXflDirectChildren(node.xml, node.name).length > 0) return null;
+    const numeric = (key: string, fallback: number) => {
+      const raw = attributes[key];
+      return raw === undefined ? fallback :
+        /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(raw) ? Number(raw) : Number.NaN;
+    };
+    const blurX = numeric('blurX', 5);
+    const blurY = numeric('blurY', 5);
+    const alpha = numeric('alpha', 1);
+    const strength = numeric('strength', 1);
+    const distance = numeric('distance', kind === 'dropShadow' ? 5 : 0);
+    const angle = numeric('angle', 45);
+    const color = attributes.color ?? (kind === 'glow' ? '#FF0000' : '#000000');
+    if (![blurX, blurY, alpha, strength, distance, angle].every(Number.isFinite) ||
+        blurX < 0 || blurX > 255 || blurY < 0 || blurY > 255 ||
+        alpha < 0 || alpha > 1 || strength < 0 || strength > 255 ||
+        distance < 0 || distance > 255 || Math.abs(angle) > 360 ||
+        !/^#[0-9a-f]{6}$/iu.test(color)) return null;
+    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle });
+  }
+  return filters;
+}
+
 function parseDisplayElements(
   container: FlaXflElementBlock,
   context: ElementParseContext,
@@ -992,8 +1043,14 @@ function parseDisplayElements(
       : undefined;
     let alphaMultiplier: number | undefined;
     let rgbTransform: FlaDisplayListRgbTransform | undefined;
-    if (context.motionTweenEndpoint) {
-      const colorResult = classicMotionColorTransform(child);
+    const instanceFilters = readInstanceFilters(child);
+    if (!instanceFilters || (instanceFilters.some((filter) => filter.enabled) &&
+        child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+      context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL instance filters');
+      continue;
+    }
+    if (context.motionTweenEndpoint || instanceFilters.some((filter) => filter.enabled)) {
+      const colorResult = classicMotionColorTransform(child, !context.motionTweenEndpoint);
       if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
       alphaMultiplier = colorResult.transform?.alphaMultiplier;
       rgbTransform = colorResult.transform?.rgbTransform;
@@ -1008,6 +1065,7 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
       ...(context.sourceParentSpanTweenType !== undefined
@@ -1865,7 +1923,6 @@ function readObjectMotionTarget(frame: FlaXflElementBlock): RigCalculationResult
     return { ok: false, message: '此帧的对象补间需要一个可见的元件实例' };
   }
   if (directChild(instance.xml, instance.name, 'matrix3D') ||
-      directChild(instance.xml, instance.name, 'filters') ||
       (instance.attributes.blendMode && instance.attributes.blendMode !== 'normal')) {
     return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换、滤镜或混合模式' };
   }
@@ -2324,9 +2381,19 @@ function buildObjectMotionFrameElements(
   if (element?.kind !== 'symbol') return fail('RENDER_FAILED', '此帧的对象补间元件无法读取');
   const alpha = pose.alphaMultiplier ?? color.transform?.alphaMultiplier;
   const rgb = pose.rgbTransform ?? color.transform?.rgbTransform;
+  let shadowOrdinal = 0;
+  const instanceFilters = element.instanceFilters?.map((filter) => {
+    if (filter.kind !== 'dropShadow') return filter;
+    const distance = pose.shadowDistances?.[shadowOrdinal++];
+    return filter.enabled && distance !== undefined ? { ...filter, distance } : filter;
+  });
+  if (pose.shadowDistances && pose.shadowDistances.length > shadowOrdinal) {
+    return fail('RENDER_FAILED', 'Shadow distance animation has no matching authored filter');
+  }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
     ...element,
     localTransform: pose.matrix,
+    ...(instanceFilters ? { instanceFilters } : {}),
     ...(alpha !== undefined ? { alphaMultiplier: alpha } : {}),
     ...(rgb ? { rgbTransform: rgb } : {}),
   }]);

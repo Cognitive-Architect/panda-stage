@@ -28,6 +28,18 @@ export interface FlaDisplayListFrameContext {
   readonly unsupportedDisplayReason?: string;
 }
 
+export interface FlaInstanceFilter {
+  readonly kind: 'blur' | 'glow' | 'dropShadow';
+  readonly enabled: boolean;
+  readonly blurX: number;
+  readonly blurY: number;
+  readonly color: string;
+  readonly alpha: number;
+  readonly strength: number;
+  readonly distance: number;
+  readonly angle: number;
+}
+
 export interface FlaDisplayListBlurFilter {
   readonly kind: 'blur';
   readonly blurX: number;
@@ -130,6 +142,7 @@ export type FlaDisplayListElement =
       readonly alphaMultiplier?: number;
       /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
       readonly rgbTransform?: FlaDisplayListRgbTransform;
+      readonly instanceFilters?: readonly FlaInstanceFilter[];
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
@@ -245,6 +258,8 @@ export interface FlaResolvedGroupNode {
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly opacity?: number;
+  readonly instanceFilters?: readonly FlaInstanceFilter[];
+  readonly instanceFilterClips?: readonly FlaResolvedClipPath[];
   readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly symbolInstance?: {
     readonly sourceFrameCount?: number;
@@ -402,7 +417,7 @@ function collectMaskShapes(
       });
       return null;
     }
-    if (node.kind === 'bitmap' || node.kind === 'text' || (node.kind === 'group' && node.opaque)) {
+    if (node.kind === 'bitmap' || node.kind === 'text' || (node.kind === 'group' && (node.opaque || node.instanceFilters))) {
       return failure(
         'UNSUPPORTED_DISPLAY_CONTENT',
         'Only filled vector geometry is supported as mask items',
@@ -857,6 +872,8 @@ function resolveElements(
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
+        ? { instanceFilters: element.instanceFilters, instanceFilterClips: clipPaths } : {}),
       ...(Object.keys(symbolInstance).length ? { symbolInstance } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });

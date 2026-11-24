@@ -26,6 +26,7 @@ export interface ObjectMotionPose {
   readonly matrix: FlaDisplayListMatrix;
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly shadowDistances?: readonly (number | undefined)[];
 }
 
 const supportedProperties = new Set([
@@ -177,12 +178,39 @@ export function parseFlaObjectMotion(frame: MotionXmlNode, children: Children): 
   const maps = root.filter((node) => node.name === 'TimeMap').map(readEase);
   const curves = new Map<string, Curve>();
   const pending = root.filter((node) => node.name === 'PropertyContainer');
+  let shadowFilterCount = 0;
   let visited = 0;
   while (pending.length > 0) {
     const node = pending.pop()!;
     if (++visited > 128) return invalid('属性数量超出支持范围');
     if (node.name === 'PropertyContainer') {
       const nested = children(node.xml, node.name);
+      if (node.attributes.id === 'Filters') {
+        if (nested.length > 8) return invalid('Too many instance filter curves');
+        for (const filter of nested) {
+          const properties = children(filter.xml, filter.name);
+          if (filter.name !== 'PropertyContainer' || properties.length > 16 ||
+              properties.some((property) => property.name !== 'Property' || !property.attributes.id?.startsWith('DropShadow_'))) {
+            return invalid('Unsupported instance filter animation');
+          }
+          const key = `DropShadow_Distance:${shadowFilterCount++}`;
+          for (const property of properties) {
+            if (property.attributes.enabled === '0') continue;
+            if (property.attributes.id !== 'DropShadow_Distance') {
+              return invalid('Unsupported instance filter channel ' + property.attributes.id);
+            }
+            const frames = children(property.xml, property.name).filter((child) => child.name === 'Keyframe');
+            if (frames.length === 0 && property.attributes.value !== undefined) frames.push(property);
+            const mapIndex = number(property.attributes.TimeMapIndex ?? '0');
+            const ease = property.attributes.ignoreTimeMap === '1' || (maps.length === 0 && mapIndex === 0)
+              ? linear : maps[mapIndex];
+            const curve = ease && readCurve(property, frames, ease, duration);
+            if (!curve || curves.has(key)) return invalid('Invalid shadow distance curve');
+            curves.set(key, curve);
+          }
+        }
+        continue;
+      }
       if (visited + pending.length + nested.length > 128) return invalid('属性数量超出支持范围');
       for (const child of nested) pending.push(child);
       continue;
@@ -299,8 +327,17 @@ export function evaluateFlaObjectMotion(
       ],
     };
   }
+  const shadowDistances: Array<number | undefined> = [];
+  for (let ordinal = 0; ordinal < 8; ordinal += 1) {
+    const curve = core.curves.get(`DropShadow_Distance:${ordinal}`);
+    if (!curve) continue;
+    const distance = sample(curve, ticks);
+    if (!Number.isFinite(distance) || distance < 0 || distance > 255) return invalid('Shadow distance exceeds supported range');
+    shadowDistances[ordinal] = distance;
+  }
   return { ok: true, value: {
     matrix,
+    ...(shadowDistances.length ? { shadowDistances } : {}),
     ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
     ...(rgbTransform ? { rgbTransform } : {}),
   } };
