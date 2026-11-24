@@ -17,6 +17,11 @@ function point(matrix: CharacterPartTransform, x: number, y: number) {
   return { x: matrix.a * x + matrix.c * y + matrix.tx, y: matrix.b * x + matrix.d * y + matrix.ty };
 }
 
+export function characterPartPivotInClip(basis: CharacterPartTargetBasis, fixedCenter: AnimationClipV0['fixedCharacterCenter']) {
+  const pivot = point(basis.baseTransform, basis.pivot.x, basis.pivot.y);
+  return { x: pivot.x - fixedCenter.x, y: pivot.y - fixedCenter.y };
+}
+
 function sameTarget(left: CharacterPartTargetRef, right: { kind: string; layerId: string; partId?: string }): boolean {
   return right.kind === 'character-part' && sameAnimationTarget(left, right as CharacterPartTargetRef);
 }
@@ -153,7 +158,7 @@ export function composeAnimatedCharacterPartTransform(
     }
   }
   const base = { ...basis.baseTransform, tx: basis.baseTransform.tx - fixedCenter.x, ty: basis.baseTransform.ty - fixedCenter.y };
-  const pivot = point(base, basis.pivot.x, basis.pivot.y);
+  const pivot = characterPartPivotInClip(basis, fixedCenter);
   const radians = rotationDeg * Math.PI / 180;
   const a = Math.cos(radians) * scaleX, b = Math.sin(radians) * scaleX;
   const c = -Math.sin(radians) * scaleY, d = Math.cos(radians) * scaleY;

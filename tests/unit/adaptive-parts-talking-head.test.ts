@@ -8,11 +8,13 @@ import {
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  createCharacterPartAnimationClip,
   evaluateShotAtTime,
   migrateProject,
   planCharacterBodyPose,
   planMappedCharacterMotion,
   projectShotDialogueVisual,
+  recalibrateCharacterPartAnimationPivot,
   removeAdaptivePartFromDefinition,
   resolveLayerVisualParts,
   resolveTalkingHeadMotionTransform,
@@ -343,7 +345,8 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     const captureAddress = { shotId: shot.id, layerId: instanceId, timeMs: 500 };
     const applyAddress = { ...captureAddress, timeMs: 1500 };
     expect(migrateProject({ ...project, schemaVersion: 35 })).toEqual(project);
-    project = saveCharacterBodyPose(project, captureAddress, 'Wave pose', [PART_BODY, armId, PART_FACE, mouthId], () => savedPoseId);
+    project = saveCharacterBodyPose(project, captureAddress, 'Wave pose',
+      [PART_BODY, armId, PART_HEAD, PART_FRONT_HAIR, PART_FACE, mouthId], () => savedPoseId);
     expect(() => migrateProject({ ...project, schemaVersion: 35 })).toThrow();
     project = setManualMouthPose(project, shot.id, instanceId, 'd3000000-0000-4000-8000-000000000009',
       { poseId, startMs: 1400, endMs: 1650 });
@@ -351,7 +354,7 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     const beforePose = project;
     const currentPose = beforePose.characters.find(({ id }) => id === setup.characterId);
     expect(currentPose?.mode === 'adaptive-parts' && currentPose.bodyPoses?.[0]?.parts.map(({ partId }) => partId))
-      .toEqual([PART_BODY, armId]);
+      .toEqual([PART_BODY, armId, PART_HEAD, PART_FRONT_HAIR]);
     const partial = characters.applyAdaptivePartsDefinition(beforePose, setup.characterId,
       removeAdaptivePartFromDefinition(characters.getAdaptivePartsDefinition(beforePose, setup.characterId), armId));
     const partialPlan = planCharacterBodyPose(partial, applyAddress, savedPoseId);
@@ -374,6 +377,13 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     const appliedEvaluation = projectShotDialogueVisual(afterPose, afterShot, evaluateShotAtTime(afterShot, 1500, afterPose));
     const applied = resolveLayerVisualParts(afterPose, afterShot, appliedEvaluation.layers.find(({ id }) => id === instanceId)!, 1500);
     expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${armId}`)?.imageTransform?.b).toBeCloseTo(Math.sin(35 * Math.PI / 180));
+    const captured = resolveLayerVisualParts(beforePose, beforeShot,
+      evaluateShotAtTime(beforeShot, 500, beforePose).layers.find(({ id }) => id === instanceId)!, 500);
+    for (const partId of [PART_HEAD, PART_FRONT_HAIR]) {
+      const id = `${instanceId}:${partId}`;
+      expect(applied.parts.find(part => part.partId === id)?.imageTransform?.tx)
+        .toBeCloseTo(captured.parts.find(part => part.partId === id)!.imageTransform!.tx);
+    }
     expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${PART_FACE}`)?.flaGraphic?.frameOrdinal).toBe(1);
     expect(applied.parts.find(({ partId }) => partId === `${instanceId}:${mouthId}`)?.assetId).toBe(ASSET_MOUTH);
     editorProjectStore.undo();
@@ -442,12 +452,12 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(action && 'kind' in action && action.tracks.map(track => [track.partId, track.property, track.keys[1]?.value]))
       .toEqual([[bodyId, 'transform.rotationDeg', -55], [bodyId, 'transform.offsetX', -40]]);
 
-    function at(snapshot: Project, timeMs: number) {
+    function at(snapshot: Project, timeMs: number, instanceId = oneId) {
       const shot = snapshot.shots[0]!;
       const evaluated = projectShotDialogueVisual(snapshot, shot, evaluateShotAtTime(shot, timeMs, snapshot));
-      const layer = evaluated.layers.find(({ id: layerId }) => layerId === oneId)!;
+      const layer = evaluated.layers.find(({ id: layerId }) => layerId === instanceId)!;
       const visual = resolveLayerVisualParts(snapshot, shot, layer, timeMs);
-      const body = visual.parts.find(({ partId }) => partId === `${oneId}:${bodyId}`)!;
+      const body = visual.parts.find(({ partId }) => partId === `${instanceId}:${bodyId}`)!;
       return { shot, layer, body, evaluated, visual };
     }
     const mid = at(opened, 750);
@@ -462,6 +472,22 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(buildStageRenderModel(opened, evaluateExportShotAtTime(opened, mid.shot, 750), urls).layers)
       .toEqual(buildStageRenderModel(opened, mid.evaluated, urls).layers);
     expect(mid.evaluated.layers.find(({ id: layerId }) => layerId === two.layer.id)?.layeredCharacterAction).toBeUndefined();
+    const clip = createCharacterPartAnimationClip(opened, IDS.shot, two.layer.id);
+    const basis = clip.targetBases.find(({ target: partTarget }) => partTarget.partId === bodyId)!;
+    const destinationClip = recalibrateCharacterPartAnimationPivot(clip, basis.target, { ...basis.pivot, x: basis.pivot.x + 6 });
+    const withDestinationPivot = ProjectSchema.parse({ ...opened, shots: opened.shots.map(shot => ({ ...shot,
+      layers: shot.layers.map(layer => layer.id === two.layer.id ? { ...layer, animationClip: destinationClip } : layer),
+    })) });
+    const withPose = saveCharacterBodyPose(withDestinationPivot, { shotId: IDS.shot, layerId: oneId, timeMs: 750 },
+      'Calibrated pose', [bodyId]);
+    const poseCharacter = withPose.characters.find(({ id: characterId }) => characterId === target.id)!;
+    if (poseCharacter.mode !== 'adaptive-parts') throw new Error('Expected an Adaptive Parts Character.');
+    const posed = planCharacterBodyPose(migrateProject(JSON.parse(JSON.stringify(withPose))),
+      { shotId: IDS.shot, layerId: two.layer.id, timeMs: 1250 }, poseCharacter.bodyPoses![0]!.id).project;
+    const appliedTransform = at(posed, 1250, two.layer.id).body.imageTransform!;
+    for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty'] as const) {
+      expect(appliedTransform[key]).toBeCloseTo(mid.body.imageTransform![key]);
+    }
     const repeat = planMappedCharacterMotion(opened, IDS.shot, oneId, 1250, mapping).project;
     expect(repeat.characters).toEqual(opened.characters);
     expect(repeat.shots[0]!.timelineEvents.filter(event => event.type === 'character-action')).toHaveLength(2);

@@ -923,6 +923,8 @@ export const CharacterBodyPoseSchema = z.object({
     partId: IdSchema,
     partName: NameSchema.optional(),
     properties: z.partialRecord(AnimationPropertySchema, FiniteNumberSchema),
+    /** Center-local pivot used to encode a pose captured from a layered action. */
+    referencePivot: ArmPointSchema.optional(),
   }).strict()).min(1),
 }).strict().superRefine(({ parts }, context) => {
   const ids = new Set<string>();

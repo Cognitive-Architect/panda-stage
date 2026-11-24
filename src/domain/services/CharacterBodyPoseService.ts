@@ -1,7 +1,12 @@
-import { characterFaceAndMouthPartIds } from '../character-part-animation';
-import { evaluateAnimationTrackAtTime } from '../evaluate-animation-core';
+import { invertAffineMatrix, multiplyAffineMatrices } from '../../shared/affine-matrix';
+import {
+  characterFaceAndMouthPartIds, characterPartPivotInClip, composeAnimatedCharacterPartTransform,
+  createCharacterPartAnimationClip, resolveLayeredCharacterPartTransforms,
+} from '../character-part-animation';
+import { CHARACTER_PART_MAX_SCALE, CHARACTER_PART_MIN_SCALE } from '../constants';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 import { CharacterBodyPoseSchema } from '../models/character';
+import { composeAffineMatrix, decomposeAffineMatrix, isAffineMatrixTrsSafe } from '../models/flaGraphicTimeline';
 import { ProjectSchema, type Project } from '../models/project';
 import { isValidFrameTime } from '../timeline/frame-grid';
 import { CharacterMotionService, characterMotionValues } from './CharacterMotionService';
@@ -24,12 +29,12 @@ function resolveBodyPoseTarget(project: Project, address: BodyPoseAddress) {
   const availableParts = new Set(character.parts.filter(({ partId, visible }) => visible && !protectedIds.has(partId) &&
     (layer.animationClip?.version !== 1 || layer.animationClip.targetBases.some(basis => basis.visible && basis.target.partId === partId)))
     .map(({ partId }) => partId));
-  return { character, overlays, availableParts };
+  return { character, layer, overlays, availableParts };
 }
 
 export function saveCharacterBodyPose(project: Project, address: BodyPoseAddress, nameInput: string, partIds: readonly string[],
   createId: () => string = () => crypto.randomUUID()): Project {
-  const { character, overlays, availableParts } = resolveBodyPoseTarget(project, address);
+  const { character, layer, overlays, availableParts } = resolveBodyPoseTarget(project, address);
   if (overlays?.characterAction) throw new Error('请在整人动作段外保存身体姿势。');
   const name = nameInput.trim();
   const saved = character.bodyPoses ?? [];
@@ -37,15 +42,34 @@ export function saveCharacterBodyPose(project: Project, address: BodyPoseAddress
   if (!name || name.length > 64 || saved.some(pose => pose.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
     throw new Error('请输入 1 到 64 个字符的未使用姿势名称。');
   }
+  const layered = overlays?.layeredCharacterAction;
+  const clip = layered ? layer.animationClip ?? createCharacterPartAnimationClip(project, address.shotId, layer.id) : undefined;
+  const transforms = layered && clip?.version === 1
+    ? resolveLayeredCharacterPartTransforms(clip, character, overlays.animationValues ?? [], layered) : undefined;
   const parts = [...new Set(partIds)].filter(id => availableParts.has(id)).map(partId => {
-    const properties = characterMotionValues(project, { ...address, partId, autoKey: true });
-    const layered = overlays?.layeredCharacterAction;
-    if (layered) {
-      for (const track of layered.action.tracks) {
-        if (track.partId === partId) properties[track.property] = evaluateAnimationTrackAtTime(track, layered.localTimeMs);
-      }
+    const partName = character.parts.find(part => part.partId === partId)?.displayName;
+    if (!transforms || clip?.version !== 1) {
+      return { partId, partName, properties: characterMotionValues(project, { ...address, partId, autoKey: true }) };
     }
-    return { partId, partName: character.parts.find(part => part.partId === partId)?.displayName, properties };
+    const basis = clip.targetBases.find(entry => entry.target.partId === partId)!;
+    const referencePivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
+    const rest = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, []);
+    const inverse = invertAffineMatrix(rest)!;
+    // Remove source geometry so the pose can be written as motion on another instance.
+    const delta = multiplyAffineMatrices(transforms.get(partId)!, inverse);
+    const { tx, ty, rotationDeg, scaleX, scaleY } = decomposeAffineMatrix(delta);
+    if (!isAffineMatrixTrsSafe(delta) || [scaleX, scaleY].some(scale =>
+      scale < CHARACTER_PART_MIN_SCALE - 1e-9 || scale > CHARACTER_PART_MAX_SCALE + 1e-9)) {
+      throw new Error(`「${partName ?? '所选部件'}」的姿态超出身体姿势可保存的变换范围。请改选一帧，或取消勾选此部件。`);
+    }
+    const { x, y } = referencePivot;
+    return { partId, partName, referencePivot, properties: {
+      'transform.offsetX': tx + (delta.a - 1) * x + delta.c * y,
+      'transform.offsetY': ty + delta.b * x + (delta.d - 1) * y,
+      'transform.rotationDeg': rotationDeg,
+      'transform.scaleX': Math.min(CHARACTER_PART_MAX_SCALE, Math.max(CHARACTER_PART_MIN_SCALE, scaleX)),
+      'transform.scaleY': Math.min(CHARACTER_PART_MAX_SCALE, Math.max(CHARACTER_PART_MIN_SCALE, scaleY)),
+    } };
   });
   if (!parts.length) throw new Error('请至少选择一个可用身体部件。');
   const pose = CharacterBodyPoseSchema.parse({ id: createId(), name, parts });
@@ -65,13 +89,25 @@ export function planCharacterBodyPose(project: Project, address: BodyPoseAddress
   const missingPartIds: string[] = [];
   const actionPartIds: string[] = [];
   const service = new CharacterMotionService();
+  const clip = pose.parts.some(({ referencePivot }) => referencePivot)
+    ? createCharacterPartAnimationClip(project, address.shotId, address.layerId) : undefined;
   let next = project;
-  for (const { partId, properties } of pose.parts) {
+  for (const { partId, properties, referencePivot } of pose.parts) {
     if (!availableParts.has(partId)) {
       missingPartIds.push(partId);
       continue;
     }
     const writable = { ...properties };
+    if (referencePivot && clip) {
+      const basis = clip.targetBases.find(entry => entry.target.partId === partId)!;
+      const pivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
+      const dx = pivot.x - referencePivot.x;
+      const dy = pivot.y - referencePivot.y;
+      const { a, b, c, d } = composeAffineMatrix({ tx: 0, ty: 0, rotationDeg: properties['transform.rotationDeg'] ?? 0,
+        scaleX: properties['transform.scaleX'] ?? 1, scaleY: properties['transform.scaleY'] ?? 1 });
+      writable['transform.offsetX'] = (properties['transform.offsetX'] ?? 0) + (a - 1) * dx + c * dy;
+      writable['transform.offsetY'] = (properties['transform.offsetY'] ?? 0) + b * dx + (d - 1) * dy;
+    }
     for (const track of overlays?.layeredCharacterAction?.action.tracks ?? []) {
       if (track.partId === partId) delete writable[track.property];
     }
