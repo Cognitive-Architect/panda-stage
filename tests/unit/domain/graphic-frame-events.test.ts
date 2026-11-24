@@ -1,13 +1,89 @@
 import { expect, it } from 'vitest';
 import { buildEditorStageRenderModel, clearGraphicFrameAtTime, evaluateShotAtTime, LayerService, listShotGraphicImageAssetsAtTime,
-  listShotRuntimeImageAssets, migrateProject, ProjectSchema,
+  frameTimeMs, listShotRuntimeImageAssets, migrateProject, ProjectSchema,
   setGraphicFrameAtTime, syncGraphicPlaybackForward, type Project } from '../../../src/domain';
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
+import { planPngSequenceFrames } from '../../../src/shared/export-types';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
 import { buildEditorTemporalCanvasModel } from '../../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../../src/renderer/stores/EditorProjectStore';
 import { FACE_GRAPHIC_ID, graphicFaceProject } from '../../helpers/graphicFaceProject';
 import { IDS } from './testProject';
+
+it('keeps Graphic lifetime, hidden gaps and sync endpoints on the same frames in Stage, Preview and PNG', () => {
+  const service = new LayerService();
+  const { layer, project } = service.createFromAnimation(graphicFaceProject(false), IDS.shot, {
+    animationId: FACE_GRAPHIC_ID, startTimeMs: 292, position: { x: 200, y: 100 },
+    playback: { mode: 'loop', endBehavior: 'hold' },
+  });
+  const baseShot = project.shots[0]!;
+  const timelineEvents = [{ timeMs: 542, visible: false }, { timeMs: 667, visible: true }].map(({ timeMs, visible }) => ({
+    type: 'visibility', id: crypto.randomUUID(), layerId: layer.id, startMs: timeMs, endMs: timeMs, visible,
+  }));
+  const withGap = ProjectSchema.parse({ ...project, shots: [{ ...baseShot, timelineEvents }] });
+  const before = setGraphicFrameAtTime(withGap, baseShot.id, layer.id, FACE_GRAPHIC_ID, 10, 458);
+  const sync = (base: Project, start: number, end: number, mode: 'loop' | 'single-frame') =>
+    syncGraphicPlaybackForward(base, baseShot.id, layer.id, FACE_GRAPHIC_ID, start, end,
+      { firstFrame: 1, range: { firstFrame: 0, lastFrame: 2 }, playback: { mode, endBehavior: 'hold' } });
+  const synced = sync(sync(before, 292, 792, 'loop'), 667, 792, 'single-frame');
+  const shot = synced.shots[0]!;
+  expect(shot.timelineEvents.filter(({ type }) => type === 'graphic-playback')).toMatchObject([
+    { startMs: 292, endMs: 542 }, { startMs: 667, endMs: 792 },
+  ]);
+  const frames = [...planPngSequenceFrames(synced, { shotId: shot.id, transparent: true,
+    range: { startMs: 250, endMs: 875 } }).frames()];
+  expect(frames.map(({ shotLocalTimeMs }) => shotLocalTimeMs)).toContain(291);
+  const projection = (value: ReturnType<typeof evaluateShotAtTime>) => {
+    const entry = value.layers.find(({ id }) => id === layer.id)!;
+    return { visible: entry.visible, animationFrame: entry.animationFrame };
+  };
+  const evaluate = (timeMs: number) => evaluateShotAtTime(shot, timeMs, synced);
+  const readyAssetIds = new Set(synced.assets.map(({ id }) => id));
+  for (const index of [19, 7, 16, 6, 13, 12, 18, 15, 8]) {
+    const stageTime = frameTimeMs(index);
+    const floor = frames.find(({ timeMs }) => Math.round(timeMs * 24 / 1_000) === index)!;
+    const stage = buildEditorTemporalCanvasModel({
+      project: synced, shot, currentTimeMs: stageTime, readyAssetIds, previousVisuals: new Map(),
+    }).evaluatedShot;
+    const preview = projectProductPreviewDialogue(synced, shot, evaluate(stageTime));
+    const exported = evaluateExportShotAtTime(synced, shot, floor.shotLocalTimeMs);
+    expect(projection(exported), `export ${floor.timeMs} / editor ${stageTime}`).toEqual(projection(preview));
+    expect(projection(stage)).toEqual(projection(preview));
+  }
+  expect(projection(evaluate(250)).visible).toBe(false);
+  expect(projection(evaluate(292))).toMatchObject({ visible: true, animationFrame: { frameOrdinal: 1 } });
+  expect(projection(evaluate(542)).visible).toBe(false);
+  expect(projection(evaluate(667))).toMatchObject({ visible: true, animationFrame: { frameOrdinal: 1 } });
+  expect(projection(evaluate(792))).toMatchObject({ visible: true, animationFrame: { frameOrdinal: 3 } });
+  expect(projection(evaluate(291)).visible).toBe(false);
+  expect(projection(evaluate(541)).visible).toBe(true);
+  expect(projection(evaluate(666)).visible).toBe(false);
+  expect(projection(evaluate(791)).animationFrame?.frameOrdinal).toBe(1);
+});
+
+it('keeps once/hide boundaries exact and leaves unrelated events on the original sample clock', () => {
+  const { project, layer } = new LayerService().createFromAnimation(graphicFaceProject(false), IDS.shot, {
+    animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 200, y: 100 },
+    playback: { mode: 'once', endBehavior: 'hide' },
+  });
+  const shot = project.shots[0]!;
+  const otherLayer = shot.layers.find((entry) => entry.id !== layer.id)!;
+  const timelineEvents = [{ type: 'visibility', id: crypto.randomUUID(), layerId: otherLayer.id,
+    startMs: 167, endMs: 167, visible: false }];
+  const withVisibility = ProjectSchema.parse({ ...project, shots: [{ ...shot, timelineEvents }] });
+  const synced = syncGraphicPlaybackForward(withVisibility, shot.id, layer.id, FACE_GRAPHIC_ID, 0, 250,
+    { firstFrame: 1, range: { firstFrame: 0, lastFrame: 2 }, playback: { mode: 'loop', endBehavior: 'hold' } });
+  const syncedShot = synced.shots[0]!;
+  expect(syncedShot.timelineEvents.find(({ type }) => type === 'graphic-playback')).toMatchObject({ endMs: 167 });
+  const at = (id: string, output: ReturnType<typeof evaluateShotAtTime>) => output.layers.find((entry) => entry.id === id);
+  const exact = evaluateShotAtTime(syncedShot, 166, synced);
+  const exported = evaluateExportShotAtTime(synced, syncedShot, 166);
+  expect(at(layer.id, exact)?.visible).toBe(true);
+  expect(at(layer.id, exported)?.visible).toBe(false);
+  expect(at(otherLayer.id, exported)).toEqual(at(otherLayer.id, exact));
+  expect(at(layer.id, evaluateExportShotAtTime(synced, syncedShot, 166)))
+    .toEqual(at(layer.id, evaluateShotAtTime(syncedShot, 167, synced)));
+});
 
 it('holds each instance source frame until its next key and preserves same-source playback, history and reopen', () => {
   const layers = new LayerService();

@@ -18,7 +18,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, exportFrameTimeMs, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
+import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, evaluateAnimationEase, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -305,8 +305,7 @@ export function hasFlaGraphicTemporalPlayback(
 }
 
 function resolveAnimationFrame(
-  project: Project,
-  animationId: string,
+  animation: ProjectAnimationDefinition | undefined,
   startTimeMs: number,
   firstFrameIndex: number,
   playback: NonNullable<Layer['animationPlayback']>,
@@ -315,9 +314,6 @@ function resolveAnimationFrame(
   range?: Layer['animationSourceRange'],
   rangeFirstFrame?: number,
 ): ResolvedLayerVisualState {
-  const animation = project.animations.find(
-    (candidate) => candidate.id === animationId,
-  );
   if (!animation || animation.frames.length === 0) {
     return {
       assetId: null,
@@ -399,12 +395,6 @@ export function findGraphicPlaybackAtTime(
     event.layerId === layerId && event.animationId === animationId && event.startMs <= timeMs && timeMs < event.endMs);
 }
 
-function graphicEventSampleTime(timeMs: number, shotDurationMs: number): number {
-  const frame = Math.round(timeMs * TIMELINE_FPS / 1_000);
-  // The export clock floors a sample that the authoring clock rounds.
-  return timeMs === exportFrameTimeMs(frame) ? Math.min(shotDurationMs, frameTimeMs(frame)) : timeMs;
-}
-
 function resolveExpressionState(
   project: Project,
   characterId: string,
@@ -462,6 +452,7 @@ export function evaluateLayerPreTrackState(
   requestedTimeMs: number,
   project: Project,
   eventsOverride?: readonly TimelineEvent[],
+  graphicFrameTimeMs?: number,
 ): EvaluatedLayerPreTrackState {
   const timeMs = Math.max(
     0,
@@ -491,27 +482,31 @@ export function evaluateLayerPreTrackState(
   let visible = layer.visible;
   const animationSource =
     layer.source.kind === 'animation' ? layer.source : null;
+  const animation = animationSource
+    ? project.animations.find((entry) => entry.id === animationSource.animationId)
+    : undefined;
+  const graphicTimeMs = animation && isFlaGraphicDefinition(animation)
+    ? graphicFrameTimeMs ?? timeMs
+    : timeMs;
   const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
     (left, right) =>
       left.startMs - right.startMs || left.id.localeCompare(right.id),
   );
-  const graphicTimeMs = graphicEventSampleTime(timeMs, shot.durationMs);
-  const playbackRange = animationSource && timeMs >= (layer.startTimeMs ?? 0)
+  const playbackRange = animationSource && graphicTimeMs >= (layer.startTimeMs ?? 0)
     ? findGraphicPlaybackAtTime(events, layer.id, animationSource.animationId, graphicTimeMs)
     : undefined;
   const frameSwitch = !playbackRange && animationSource && events.filter((event) =>
     event.type === 'graphic-frame' && event.animationId === animationSource.animationId && event.startMs <= graphicTimeMs).at(-1);
   const initialVisual = animationSource && playbackRange
-    ? resolveAnimationFrame(project, animationSource.animationId, playbackRange.playbackStartMs,
+    ? resolveAnimationFrame(animation, playbackRange.playbackStartMs,
         playbackRange.firstFrame, playbackRange.playback, graphicTimeMs, undefined, playbackRange.range, playbackRange.firstFrame)
     : animationSource
     ? resolveAnimationFrame(
-        project,
-        animationSource.animationId,
+        animation,
         layer.startTimeMs ?? 0,
         layer.animationFirstFrame ?? 0,
         layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
-        timeMs,
+        graphicTimeMs,
         frameSwitch && frameSwitch.type === 'graphic-frame' ? frameSwitch.sourceFrameIndex : undefined,
         layer.animationSourceRange,
       )
@@ -535,6 +530,10 @@ export function evaluateLayerPreTrackState(
       continue;
     }
     if (event.type === 'shake') {
+      continue;
+    }
+    if (event.type === 'visibility') {
+      if (graphicTimeMs >= event.startMs) visible = event.visible;
       continue;
     }
     // Future events (timeMs before the event starts) must not participate
@@ -584,10 +583,6 @@ export function evaluateLayerPreTrackState(
       }
       case 'flip': {
         flipX = event.flipped;
-        break;
-      }
-      case 'visibility': {
-        visible = event.visible;
         break;
       }
     }
@@ -781,6 +776,7 @@ export function evaluateShotAtTime(
   shot: Shot,
   requestedTimeMs: number,
   project: Project,
+  options?: { graphicFrameTimeMs: number },
 ): EvaluatedShot {
   const timeMs = Math.max(
     0,
@@ -838,6 +834,7 @@ export function evaluateShotAtTime(
         timeMs,
         project,
         eventsByLayer.get(layer.id) ?? [],
+        options?.graphicFrameTimeMs,
       );
       const clip = layer.animationClip;
       const animationValues = clip

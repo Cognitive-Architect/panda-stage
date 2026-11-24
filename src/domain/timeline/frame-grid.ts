@@ -28,6 +28,14 @@ export function exportFrameTimeMs(frameIndex: number, fps: number = TIMELINE_FPS
   return Math.floor((frameIndex / safeFps(fps)) * 1_000);
 }
 
+/** Match an output sample to its authoring frame, leaving off-grid samples intact. */
+export function resolveExportFrameAuthoringTime(timeMs: number, durationMs: number): number {
+  const frameIndex = Math.round(timeMs * TIMELINE_FPS / 1_000);
+  return timeMs === exportFrameTimeMs(frameIndex)
+    ? Math.min(durationMs, frameTimeMs(frameIndex))
+    : timeMs;
+}
+
 /** First export sample at or after an absolute time. */
 export function firstExportFrameTimeAtOrAfter(timeMs: number, fps: number = TIMELINE_FPS): number {
   if (!Number.isFinite(timeMs) || timeMs <= 0) return 0;
