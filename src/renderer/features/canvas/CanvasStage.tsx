@@ -368,13 +368,6 @@ export function CanvasStage({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [assemblingArm, setAssembly]);
 
-  function pickArmPart(layerId: string, partId: string | null): void {
-    if (!armAssembly || layerId !== armAssembly.target.layerId || !partId) return;
-    const index = armAssembly.chain.segments.findIndex(segment => !segment.partId);
-    if (index >= 0) setAssembly?.(current => current === armAssembly
-      ? updateArmAssemblyPart(current, index, partId) : current);
-  }
-
   const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
@@ -900,6 +893,17 @@ export function CanvasStage({
     );
   }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  const armVisualStatus = armAssembly && temporalCanvasModel?.visualStatusByLayer.get(armAssembly.target.layerId);
+  // Continuity may display the previous pose while this frame's art loads.
+  const waitingForArmVisual = armVisualStatus === 'previous-complete' || armVisualStatus === 'pending';
+  const armVisualUnavailable = armVisualStatus === 'required-failed';
+
+  function pickArmPart(layerId: string, partId: string | null): void {
+    if (!armAssembly || waitingForArmVisual || armVisualUnavailable || layerId !== armAssembly.target.layerId || !partId) return;
+    const index = armAssembly.chain.segments.findIndex(segment => !segment.partId);
+    if (index >= 0) setAssembly?.(current => current === armAssembly
+      ? updateArmAssemblyPart(current, index, partId) : current);
+  }
   const currentReadyImages = useMemo(() => {
     if (!snapshot) return new Map<string, HTMLImageElement>();
     return new Map(
@@ -1348,8 +1352,8 @@ export function CanvasStage({
         </div>
       ) : null}
       {motionError ? <div role="alert">{motionError}</div> : null}
-      {armAssembly ? <div className="character-arm-assembly-prompt" role="status" data-testid="character-arm-assembly-prompt">
-        {characterArmAssemblyPrompt(armAssembly)}
+      {armAssembly && !armVisualUnavailable ? <div className="character-arm-assembly-prompt" role="status" data-testid="character-arm-assembly-prompt">
+        {waitingForArmVisual ? '等待角色画面更新…' : characterArmAssemblyPrompt(armAssembly)}
       </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
@@ -1852,7 +1856,7 @@ export function CanvasStage({
                   ) : null}
                 </KonvaLayer>
               </Stage>
-              {armAssembly ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
+              {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
               {snapshot && shot && selectedLayerId && !armAssembly ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
