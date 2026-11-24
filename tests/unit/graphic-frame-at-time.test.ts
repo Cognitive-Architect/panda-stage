@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
-import { LayerService, ShotService } from '../../src/domain';
+import { LayerService, ProjectSchema, ShotService } from '../../src/domain';
 import { RightInspector, type RightInspectorProps } from '../../src/renderer/shell/RightInspector';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
@@ -131,6 +131,36 @@ it('commits ready thumbnails at the live playhead and keeps a fixed target acros
     await act(async () => selectionStore.select(first.layer.id));
     expect(findButton(`取消固定 · ${first.layer.name}`)).toBeUndefined();
     expect(events()).toHaveLength(0);
+
+    const pinFirst = async () => {
+      await act(async () => selectionStore.select(first.layer.id));
+      await act(async () => button('选择显示帧').click());
+      await act(async () => button('固定目标').click());
+      await decode();
+      await act(async () => selectionStore.select(second.layer.id));
+    };
+    await pinFirst();
+    await act(async () => {
+      const live = editorProjectStore.getSnapshot()!.project;
+      const shot = live.shots[0]!;
+      const image = shot.layers.find((entry) => entry.source.kind === 'asset')!;
+      editorProjectStore.updateProject(ProjectSchema.parse({ ...live, shots: [
+        { ...shot, layers: shot.layers.map((entry) => entry.id === first.layer.id ?
+          { ...image, id: entry.id, zIndex: entry.zIndex } : entry) }, ...live.shots.slice(1),
+      ] }), 'Replace source');
+      frame(2).click();
+    });
+    expect(events()).toHaveLength(0);
+    expect(findButton(`取消固定 · ${first.layer.name}`)).toBeUndefined();
+    await act(async () => { editorProjectStore.undo(); });
+    await pinFirst();
+    await act(async () => {
+      const live = editorProjectStore.getSnapshot()!.project;
+      editorProjectStore.updateProject(service.deleteLayer(live, IDS.shot, first.layer.id), 'Delete');
+      frame(2).click();
+    });
+    expect(events()).toHaveLength(0);
+    expect(findButton(`取消固定 · ${first.layer.name}`)).toBeUndefined();
   } finally {
     await act(async () => root.unmount());
     element.remove();

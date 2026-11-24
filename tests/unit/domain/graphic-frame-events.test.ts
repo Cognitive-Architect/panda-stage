@@ -139,6 +139,14 @@ it('syncs one Graphic across time, preserves the surrounding state, and survives
   const keyedAgain = setGraphicFrameAtTime(replacement, IDS.shot, layer.id, FACE_GRAPHIC_ID, 10, 625);
   expect(evaluate(keyedAgain, 625)?.animationFrame?.frameOrdinal).toBe(3);
   expect(evaluate(keyedAgain, 600)).toEqual(evaluate(replacement, 600));
+  const layerBatch = layers.applySourceLoop(reopened, IDS.shot, layer.id, {
+    firstFrame: 0, lastFrame: 2, closingReference: true, throughLayerId: second.layer.id,
+  }).project.shots[0]!;
+  expect(layerBatch.layers.filter(({ id }) => id === layer.id || id === second.layer.id)
+    .map(({ animationSourceRange }) => animationSourceRange)).toEqual([
+    { firstFrame: 0, lastFrame: 1 }, { firstFrame: 0, lastFrame: 1 },
+  ]);
+  expect(layerBatch.timelineEvents).toEqual(shot.timelineEvents);
 });
 
 it('caps Graphic sync at the first visibility gap and respects the single lifetime of once/hide layers', () => {
