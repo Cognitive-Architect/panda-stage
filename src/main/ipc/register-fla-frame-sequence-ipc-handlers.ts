@@ -144,6 +144,7 @@ const defaultBuildFrameSource = async function* buildFrameSource(
       maskWarning: svg.maskWarning,
       ikPoseWarning: svg.ikPoseWarning,
       ...(svg.staticTexts?.length ? { staticTexts: svg.staticTexts } : {}),
+      ...(svg.graphicFraming ? { graphicFraming: svg.graphicFraming } : {}),
     };
   }
 };

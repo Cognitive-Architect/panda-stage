@@ -2,8 +2,13 @@ import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import {
   FLA_STATIC_TEXT_LIMITS,
+  FLA_STATIC_TEXT_PLACEHOLDER_BASE64,
   buildCanvasFontSpec,
   buildSafeOfflineFontFamily,
+  computeAuthoritativeGraphicViewport,
+  countExplicitStaticTextLines,
+  hasUnresolvedFlaStaticTextPlaceholder,
+  isValidFlaStaticTextGraphicFraming,
   isValidFlaStaticTextRenderItem,
   layoutFlaStaticText,
   splitGraphemes,
@@ -297,5 +302,103 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
       unsupportedReason: expect.stringContaining('mask'),
     });
     expect(maskCatalog.entries.find((e) => e.target.kind === 'graphic-symbol')).toMatchObject({ previewSupported: true });
+  });
+
+  it('recomputes authoritative Graphic viewport from real measured text metrics (P2-02) and detects unresolved placeholders (P2-01)', async () => {
+    // Narrow box with wide Latin letters 'WWWWWWWW' where real font width exceeds approximate estimate,
+    // causing an extra wrapped line.
+    const narrowSymbolXml =
+      '<DOMSymbolItem name="NarrowWide" symbolType="graphic"><timeline><DOMTimeline name="NarrowWide"><layers>' +
+      '<DOMLayer name="Txt"><frames><DOMFrame index="0"><elements>' +
+      '<DOMStaticText left="0" width="90" height="30">' +
+      '<textRuns><DOMTextRun><characters>WWWWWWWWWWWW</characters>' +
+      '<textAttrs><DOMTextAttrs size="24" lineHeight="30" fillColor="#111111"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+    const docXml =
+      '<DOMDocument width="400" height="240" frameRate="24">' +
+      '<symbols><Include href="NarrowWide.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="NarrowWide" symbolType="graphic"/>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+    const bytes = await buildFlaBytes(docXml, [{ name: 'LIBRARY/NarrowWide.xml', xml: narrowSymbolXml }]);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const symEntry = catalog.entries.find((e) => e.target.kind === 'graphic-symbol')!;
+    const svg = await buildSvgForRenderTarget(bytes, symEntry.target, undefined, prepared.source);
+    if (!svg.ok) throw new Error(svg.message);
+
+    // P2-01: placeholder detector flags unresolved SVG and clears once replaced with real PNG.
+    expect(hasUnresolvedFlaStaticTextPlaceholder(svg.svg)).toBe(true);
+    const resolvedSvg = svg.svg.replace(FLA_STATIC_TEXT_PLACEHOLDER_BASE64, 'REALPNGDATA');
+    expect(hasUnresolvedFlaStaticTextPlaceholder(resolvedSvg)).toBe(false);
+
+    // P2-02: graphicFraming is valid and recomputes larger authoritative height when real font is wider.
+    expect(svg.graphicFraming).toBeDefined();
+    expect(isValidFlaStaticTextGraphicFraming(svg.graphicFraming)).toBe(true);
+    const textItem = svg.staticTexts![0]!;
+    const wideLayout = layoutFlaStaticText(textItem.descriptor, (t, run) => ({
+      width: splitGraphemes(t).length * run.size * 1.15,
+      ascent: run.size * 0.9,
+      descent: run.size * 0.3,
+    }));
+    const authoritative = computeAuthoritativeGraphicViewport(
+      svg.graphicFraming!,
+      new Map([[textItem.placeholderId, wideLayout.bounds]]),
+    );
+    expect(authoritative).not.toBeNull();
+    expect(authoritative!.outputHeight).toBeGreaterThan(svg.height);
+    expect(authoritative!.viewBox.height).toBe(authoritative!.outputHeight);
+  });
+
+  it('allows 256 explicit lines at boundary, rejects 257 explicit lines, and flags auto-wrap truncation (P2-03)', async () => {
+    const lines256 = Array.from({ length: 256 }, () => 'a').join('&#xD;');
+    const lines257 = Array.from({ length: 257 }, () => 'a').join('&#xD;');
+    const makeDoc = (chars: string) =>
+      '<DOMDocument width="300" height="300" frameRate="24">' +
+      '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L"><frames><DOMFrame index="0"><elements>' +
+      `<DOMStaticText width="200" height="200"><textRuns><DOMTextRun><characters>${chars}</characters>` +
+      '<textAttrs><DOMTextAttrs size="4" lineHeight="5" fillColor="#000000"/></textAttrs></DOMTextRun></textRuns></DOMStaticText>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+
+    const bytes256 = await buildFlaBytes(makeDoc(lines256));
+    const cat256 = await buildRenderableTargetCatalog(bytes256);
+    if (!cat256.ok) throw new Error(cat256.message);
+    const scene256 = cat256.entries.find((e) => e.target.kind === 'scene')!;
+    expect(scene256.previewSupported).toBe(true);
+    const svg256 = await buildSvgForRenderTarget(bytes256, scene256.target);
+    expect(svg256.ok).toBe(true);
+    if (svg256.ok) {
+      expect(countExplicitStaticTextLines(svg256.staticTexts![0]!.descriptor)).toBe(256);
+    }
+
+    const bytes257 = await buildFlaBytes(makeDoc(lines257));
+    const cat257 = await buildRenderableTargetCatalog(bytes257);
+    if (!cat257.ok) throw new Error(cat257.message);
+    const scene257 = cat257.entries.find((e) => e.target.kind === 'scene')!;
+    expect(scene257.previewSupported).toBe(false);
+    expect(scene257.unsupportedReason).toContain('256');
+
+    // Auto-wrap exceeding 256 lines in a narrow box sets truncated=true so the renderer rejects with BUDGET_EXCEEDED.
+    const autoWrapOverflow = layoutFlaStaticText({
+      left: 0,
+      width: 12,
+      height: 100,
+      runs: [{
+        characters: '中'.repeat(300),
+        alignment: 'left',
+        size: 12,
+        lineHeight: 14,
+        lineSpacing: 0,
+        letterSpacing: 0,
+        fillColor: '#000000',
+        alpha: 1,
+        bold: false,
+        italic: false,
+      }],
+    });
+    expect(autoWrapOverflow.truncated).toBe(true);
+    expect(autoWrapOverflow.lines.length).toBe(FLA_STATIC_TEXT_LIMITS.maxLinesPerText);
   });
 });

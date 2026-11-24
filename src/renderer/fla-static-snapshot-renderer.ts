@@ -18,8 +18,11 @@
 import {
   FLA_STATIC_TEXT_LIMITS,
   buildCanvasFontSpec,
+  computeAuthoritativeGraphicViewport,
   layoutFlaStaticText,
   splitGraphemes,
+  type FlaStaticTextBounds,
+  type FlaStaticTextGraphicFraming,
   type FlaStaticTextMeasurer,
   type FlaStaticTextRenderItem,
 } from '../shared/fla-static-text';
@@ -28,6 +31,8 @@ interface FlaSnapshotRenderRequest {
   requestId: string;
   svg: string;
   staticTexts?: readonly FlaStaticTextRenderItem[];
+  graphicFraming?: FlaStaticTextGraphicFraming;
+  returnResolvedSvg?: boolean;
 }
 
 interface FlaSnapshotRenderResult {
@@ -36,6 +41,8 @@ interface FlaSnapshotRenderResult {
   width: number;
   height: number;
   pixelCount: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
+  resolvedSvg?: string;
   profile?: {
     imageLoadMs: number;
     canvasDrawMs: number;
@@ -61,6 +68,7 @@ declare global {
 }
 
 const MAX_SNAPSHOT_DIMENSION = 4_096;
+const MAX_SNAPSHOT_PIXELS = MAX_SNAPSHOT_DIMENSION * MAX_SNAPSHOT_DIMENSION;
 
 function formatNum(value: number): string {
   return Number.isFinite(value) ? Number(value.toFixed(3)).toString() : '0';
@@ -69,8 +77,12 @@ function formatNum(value: number): string {
 function resolveStaticTextPlaceholders(
   svg: string,
   staticTexts?: readonly FlaStaticTextRenderItem[],
-): string {
-  if (!staticTexts || staticTexts.length === 0) return svg;
+  graphicFraming?: FlaStaticTextGraphicFraming,
+): {
+  readonly svg: string;
+  readonly sourceViewport?: { x: number; y: number; width: number; height: number };
+} {
+  if (!staticTexts || staticTexts.length === 0) return { svg };
 
   const measureCanvas = document.createElement('canvas');
   measureCanvas.width = 1;
@@ -105,9 +117,16 @@ function resolveStaticTextPlaceholders(
 
   let resolvedSvg = svg;
   let totalRasterPixels = 0;
+  const measuredBoundsByPlaceholderId = new Map<string, FlaStaticTextBounds>();
 
   for (const item of staticTexts) {
     const layout = layoutFlaStaticText(item.descriptor, measure);
+    if (layout.truncated) {
+      throw new Error(
+        `BUDGET_EXCEEDED: Static text line count exceeds maximum ${FLA_STATIC_TEXT_LIMITS.maxLinesPerText} lines`,
+      );
+    }
+    measuredBoundsByPlaceholderId.set(item.placeholderId, layout.bounds);
     const { x: bx, y: by, width: bw, height: bh } = layout.bounds;
     const desiredScale = Math.min(4, Math.max(1, item.scaleHint));
     const maxScaleX = FLA_STATIC_TEXT_LIMITS.maxRasterDimension / Math.max(1, bw);
@@ -118,7 +137,7 @@ function resolveStaticTextPlaceholders(
 
     totalRasterPixels += pixelWidth * pixelHeight;
     if (totalRasterPixels > FLA_STATIC_TEXT_LIMITS.maxTotalRasterPixels) {
-      throw new Error('snapshot static text raster pixel budget exceeded');
+      throw new Error('BUDGET_EXCEEDED: snapshot static text raster pixel budget exceeded');
     }
 
     const textCanvas = document.createElement('canvas');
@@ -168,7 +187,51 @@ function resolveStaticTextPlaceholders(
     resolvedSvg = resolvedSvg.replace(placeholderPattern, () => replacement);
   }
 
-  return resolvedSvg;
+  let sourceViewport: { x: number; y: number; width: number; height: number } | undefined;
+  if (graphicFraming) {
+    const authoritative = computeAuthoritativeGraphicViewport(graphicFraming, measuredBoundsByPlaceholderId);
+    if (!authoritative) {
+      throw new Error('BUDGET_EXCEEDED: Graphic static text viewport is not finite');
+    }
+    if (
+      authoritative.outputWidth > MAX_SNAPSHOT_DIMENSION ||
+      authoritative.outputHeight > MAX_SNAPSHOT_DIMENSION ||
+      authoritative.outputWidth * authoritative.outputHeight > MAX_SNAPSHOT_PIXELS
+    ) {
+      throw new Error(
+        `BUDGET_EXCEEDED: Measured Graphic viewport ${authoritative.outputWidth}x${authoritative.outputHeight} exceeds snapshot budget`,
+      );
+    }
+    const vb = authoritative.viewBox;
+    const vbAttr = `${formatNum(vb.x)} ${formatNum(vb.y)} ${formatNum(vb.width)} ${formatNum(vb.height)}`;
+    resolvedSvg = resolvedSvg.replace(
+      /<svg\b([^>]*)>/u,
+      (_match, attrs: string) => {
+        const updated = attrs
+          .replace(/\bviewBox="[^"]*"/u, `viewBox="${vbAttr}"`)
+          .replace(/\bwidth="[^"]*"/u, `width="${authoritative.outputWidth}"`)
+          .replace(/\bheight="[^"]*"/u, `height="${authoritative.outputHeight}"`);
+        return `<svg${updated}>`;
+      },
+    );
+    resolvedSvg = resolvedSvg.replace(
+      /<filter\b([^>]*filterUnits="userSpaceOnUse"[^>]*)>/gu,
+      (_match, attrs: string) => {
+        const updated = attrs
+          .replace(/\bx="[^"]*"/u, `x="${formatNum(vb.x)}"`)
+          .replace(/\by="[^"]*"/u, `y="${formatNum(vb.y)}"`)
+          .replace(/\bwidth="[^"]*"/u, `width="${formatNum(vb.width)}"`)
+          .replace(/\bheight="[^"]*"/u, `height="${formatNum(vb.height)}"`);
+        return `<filter${updated}>`;
+      },
+    );
+    sourceViewport = vb;
+  }
+
+  return {
+    svg: resolvedSvg,
+    ...(sourceViewport ? { sourceViewport } : {}),
+  };
 }
 
 function rasterizeSvg(
@@ -267,8 +330,12 @@ function rasterizeSvg(
 async function handleRender(request: FlaSnapshotRenderRequest): Promise<void> {
   const renderer = window.pandaStageFlaSnapshotRenderer;
   try {
-    const resolvedSvg = resolveStaticTextPlaceholders(request.svg, request.staticTexts);
-    const rasterized = await rasterizeSvg(resolvedSvg, renderer.issue762ProfileEnabled);
+    const resolved = resolveStaticTextPlaceholders(
+      request.svg,
+      request.staticTexts,
+      request.graphicFraming,
+    );
+    const rasterized = await rasterizeSvg(resolved.svg, renderer.issue762ProfileEnabled);
     const pngArraySerializeStartedAt = renderer.issue762ProfileEnabled ? performance.now() : 0;
     const png = Array.from(rasterized.bytes);
     const pngArraySerializeMs = renderer.issue762ProfileEnabled
@@ -280,6 +347,8 @@ async function handleRender(request: FlaSnapshotRenderRequest): Promise<void> {
       width: rasterized.width,
       height: rasterized.height,
       pixelCount: rasterized.width * rasterized.height,
+      ...(resolved.sourceViewport ? { sourceViewport: resolved.sourceViewport } : {}),
+      ...(request.returnResolvedSvg ? { resolvedSvg: resolved.svg } : {}),
       ...(rasterized.profile ? {
         profile: {
           ...rasterized.profile,

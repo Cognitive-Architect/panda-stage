@@ -31,6 +31,7 @@ import {
   assetDisplayName,
   sanitizeAssetFileName,
 } from './AssetImportService';
+import { hasUnresolvedFlaStaticTextPlaceholder } from '../../shared/fla-static-text';
 import { isSafeGeneratedFlaSvg } from './AssetCanvasImageService';
 import {
   AssetImportFileSystemService,
@@ -575,6 +576,7 @@ export class FlaGraphicInstanceCommitService {
           return bytes.byteLength !== frame.byteLength ||
             this.hashService.hashBytes(bytes).hex !== frame.sha256 ||
             !isSafeGeneratedFlaSvg(bytes, frame.width, frame.height) ||
+            hasUnresolvedFlaStaticTextPlaceholder(frame.svg) ||
             bytes.byteLength > FLA_IMPORT_LIMITS.maxSingleEntryBytes;
         })) {
       return this.failure('FRAME_RENDER_FAILED', transaction.projectRoot, 'A generated SVG frame failed content validation.', request);

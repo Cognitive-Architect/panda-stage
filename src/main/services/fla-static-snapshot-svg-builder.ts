@@ -63,8 +63,11 @@ import {
 import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
   FLA_STATIC_TEXT_LIMITS,
+  FLA_STATIC_TEXT_PLACEHOLDER_BASE64,
+  countExplicitStaticTextLines,
   layoutFlaStaticText,
   type FlaStaticTextDescriptor,
+  type FlaStaticTextGraphicFraming,
   type FlaStaticTextRenderItem,
 } from '../../shared/fla-static-text';
 import {
@@ -124,6 +127,8 @@ export interface BuildSvgSuccess {
   readonly ikPoseWarning?: string;
   /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
   readonly staticTexts?: readonly FlaStaticTextRenderItem[];
+  /** Graphic content-framing metadata so the rasterizer can recompute authoritative viewport from real font metrics. */
+  readonly graphicFraming?: FlaStaticTextGraphicFraming;
 }
 
 export interface BuildSvgFailure {
@@ -3888,6 +3893,11 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
+  const nonTextGraphicBounds = framingMode === 'content' ? createBounds() : null;
+  const staticTextTransforms: Array<{
+    readonly placeholderId: string;
+    readonly worldTransform: Matrix2D;
+  }> = [];
   const definitions = new Map<string, string>();
   const colorTransformFilterIdByGroup = new Map<
     Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
@@ -4278,6 +4288,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
+      if (nonTextGraphicBounds) {
+        includeTransformedPathBounds(nonTextGraphicBounds, commands, node.worldTransform);
+      }
       const reconstructed = reconstructFills(
         representation,
         node.shapeId,
@@ -4403,6 +4416,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
                 !includeExpandedStrokeBounds(graphicBounds, strokePathBounds, expansion)) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
             }
+            if (nonTextGraphicBounds) {
+              includeExpandedStrokeBounds(nonTextGraphicBounds, strokePathBounds, expansion);
+            }
           }
           const pathD = style.scaleMode === 'horizontal'
             ? transformCommandsForHorizontalStroke(path.commands, node.worldTransform)
@@ -4443,6 +4459,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (staticTextCharCount > FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text character budget (${FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition}) exceeded` };
       }
+      if (countExplicitStaticTextLines(descriptor) > FLA_STATIC_TEXT_LIMITS.maxLinesPerText) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Static text exceeds maximum ${FLA_STATIC_TEXT_LIMITS.maxLinesPerText} lines` };
+      }
       const estimatedLayout = layoutFlaStaticText(descriptor);
       if (graphicBounds && !includeTransformedRectBounds(graphicBounds, estimatedLayout.bounds, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic static text bounds are not finite: ${node.textId}` };
@@ -4461,10 +4480,13 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         const placeholderTag =
           `<image id="${placeholderId}" x="${formatSvgNumber(estimatedLayout.bounds.x)}" y="${formatSvgNumber(estimatedLayout.bounds.y)}" ` +
           `width="${formatSvgNumber(estimatedLayout.bounds.width)}" height="${formatSvgNumber(estimatedLayout.bounds.height)}" ` +
-          `preserveAspectRatio="none" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="/>`;
+          `preserveAspectRatio="none" href="data:image/png;base64,${FLA_STATIC_TEXT_PLACEHOLDER_BASE64}"/>`;
         const defFailure = registerBitmapDefinition(placeholderId, placeholderTag);
         if (defFailure) return defFailure;
         staticTexts.push({ placeholderId, descriptor, scaleHint });
+      }
+      if (framingMode === 'content') {
+        staticTextTransforms.push({ placeholderId, worldTransform: node.worldTransform });
       }
       const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
       const appendFailure = appendEmittedNode(useNode, node.clipPaths);
@@ -4498,6 +4520,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     if (!image.ok) return image;
     if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic bitmap bounds are not finite: ${node.libraryItemName}` };
+    }
+    if (nonTextGraphicBounds) {
+      includeTransformedBitmapBounds(nonTextGraphicBounds, media.width, media.height, node.worldTransform);
     }
     const useNode = `<use href="#${image.id}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
     const appendFailure = appendEmittedNode(useNode, node.clipPaths);
@@ -4554,6 +4579,24 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   if ((maskWarnings.size || ikPoseWarning) && emittedLeafCount === 0) {
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning].filter(Boolean).join('；').slice(0, 500) };
   }
+  const graphicFraming: FlaStaticTextGraphicFraming | undefined =
+    framingMode === 'content' && staticTexts.length > 0
+      ? {
+          nonTextBounds:
+            nonTextGraphicBounds &&
+            [nonTextGraphicBounds.minX, nonTextGraphicBounds.minY, nonTextGraphicBounds.maxX, nonTextGraphicBounds.maxY].every(Number.isFinite)
+              ? {
+                  minX: nonTextGraphicBounds.minX,
+                  minY: nonTextGraphicBounds.minY,
+                  maxX: nonTextGraphicBounds.maxX,
+                  maxY: nonTextGraphicBounds.maxY,
+                }
+              : null,
+          textTransforms: staticTextTransforms,
+          filterExpansion: { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY },
+          padding: GRAPHIC_CONTENT_PADDING,
+        }
+      : undefined;
   return {
     ok: true,
     svg,
@@ -4566,6 +4609,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
+    ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

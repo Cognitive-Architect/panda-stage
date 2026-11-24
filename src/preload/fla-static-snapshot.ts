@@ -12,7 +12,9 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import {
   FLA_STATIC_TEXT_LIMITS,
+  isValidFlaStaticTextGraphicFraming,
   isValidFlaStaticTextRenderItem,
+  type FlaStaticTextGraphicFraming,
   type FlaStaticTextRenderItem,
 } from '../shared/fla-static-text';
 
@@ -20,6 +22,8 @@ export interface FlaSnapshotRenderRequest {
   requestId: string;
   svg: string;
   staticTexts?: readonly FlaStaticTextRenderItem[];
+  graphicFraming?: FlaStaticTextGraphicFraming;
+  returnResolvedSvg?: boolean;
 }
 
 export interface FlaSnapshotRenderResult {
@@ -28,6 +32,8 @@ export interface FlaSnapshotRenderResult {
   width: number;
   height: number;
   pixelCount: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
+  resolvedSvg?: string;
   profile?: {
     imageLoadMs: number;
     canvasDrawMs: number;
@@ -58,7 +64,24 @@ function isRenderRequest(value: unknown): value is FlaSnapshotRenderRequest {
       return false;
     }
   }
+  if (candidate.graphicFraming !== undefined && !isValidFlaStaticTextGraphicFraming(candidate.graphicFraming)) {
+    return false;
+  }
+  if (candidate.returnResolvedSvg !== undefined && typeof candidate.returnResolvedSvg !== 'boolean') {
+    return false;
+  }
   return true;
+}
+
+function isViewport(value: unknown): value is NonNullable<FlaSnapshotRenderResult['sourceViewport']> {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.x === 'number' && Number.isFinite(v.x) &&
+    typeof v.y === 'number' && Number.isFinite(v.y) &&
+    typeof v.width === 'number' && Number.isFinite(v.width) && v.width > 0 &&
+    typeof v.height === 'number' && Number.isFinite(v.height) && v.height > 0
+  );
 }
 
 function isRenderResult(value: unknown): value is FlaSnapshotRenderResult {
@@ -70,6 +93,8 @@ function isRenderResult(value: unknown): value is FlaSnapshotRenderResult {
     candidate.png.every((item) => typeof item === 'number') &&
     typeof candidate.width === 'number' &&
     typeof candidate.height === 'number' &&
+    (candidate.sourceViewport === undefined || isViewport(candidate.sourceViewport)) &&
+    (candidate.resolvedSvg === undefined || typeof candidate.resolvedSvg === 'string') &&
     (candidate.profile === undefined || isProfile(candidate.profile))
   );
 }

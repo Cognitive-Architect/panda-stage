@@ -29,7 +29,10 @@
 
 import crypto from 'node:crypto';
 import type { FlaInspectionIR } from '../../shared/fla-import-api';
-import type { FlaStaticTextRenderItem } from '../../shared/fla-static-text';
+import type {
+  FlaStaticTextGraphicFraming,
+  FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
@@ -69,11 +72,13 @@ export interface FlaStaticSnapshotRasterizeInput {
   height: number;
   pixelCount: number;
   staticTexts?: readonly FlaStaticTextRenderItem[];
+  graphicFraming?: FlaStaticTextGraphicFraming;
+  returnResolvedSvg?: boolean;
 }
 
 export class FlaStaticSnapshotRasterizerError extends Error {
   constructor(
-    readonly code: 'RENDER_CANCELLED' | 'RENDER_TIMEOUT' | 'RENDER_FAILED' | 'RENDERER_CRASH',
+    readonly code: 'RENDER_CANCELLED' | 'RENDER_TIMEOUT' | 'RENDER_FAILED' | 'RENDERER_CRASH' | 'BUDGET_EXCEEDED',
     message: string,
   ) {
     super(message);
@@ -86,6 +91,8 @@ export interface FlaStaticSnapshotRasterizeOutput {
   width: number;
   height: number;
   pixelCount: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
+  resolvedSvg?: string;
 }
 
 export interface FlaStaticSnapshotRasterizer {
@@ -526,6 +533,7 @@ export class FlaStaticSnapshotRenderSession {
         height: svgResult.height,
         pixelCount: svgResult.pixelCount,
         ...(svgResult.staticTexts?.length ? { staticTexts: svgResult.staticTexts } : {}),
+        ...(svgResult.graphicFraming ? { graphicFraming: svgResult.graphicFraming } : {}),
       })
       .then(
         (raster) => {

@@ -51,6 +51,33 @@ export interface FlaStaticTextDescriptor {
   readonly runs: readonly FlaStaticTextRun[];
 }
 
+export const FLA_STATIC_TEXT_PLACEHOLDER_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+export interface FlaStaticTextMatrix2D {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
+  readonly d: number;
+  readonly tx: number;
+  readonly ty: number;
+}
+
+export interface FlaStaticTextGraphicFraming {
+  readonly nonTextBounds: {
+    readonly minX: number;
+    readonly minY: number;
+    readonly maxX: number;
+    readonly maxY: number;
+  } | null;
+  readonly textTransforms: readonly {
+    readonly placeholderId: string;
+    readonly worldTransform: FlaStaticTextMatrix2D;
+  }[];
+  readonly filterExpansion: { readonly x: number; readonly y: number };
+  readonly padding: number;
+}
+
 export interface FlaStaticTextRenderItem {
   readonly placeholderId: string;
   readonly descriptor: FlaStaticTextDescriptor;
@@ -531,6 +558,115 @@ export function layoutFlaStaticText(
   };
 
   return { lines: laidOutLines, bounds, truncated };
+}
+
+export function countExplicitStaticTextLines(descriptor: FlaStaticTextDescriptor): number {
+  let lines = 1;
+  for (const run of descriptor.runs) {
+    const normalized = run.characters.replace(/\r\n/gu, '\n').replace(/\r/gu, '\n');
+    for (let i = 0; i < normalized.length; i += 1) {
+      if (normalized.charCodeAt(i) === 10) lines += 1;
+    }
+  }
+  return lines;
+}
+
+export function hasUnresolvedFlaStaticTextPlaceholder(svg: string): boolean {
+  return (
+    svg.includes(FLA_STATIC_TEXT_PLACEHOLDER_BASE64) &&
+    /<image\b[^>]*\bid=["']fla-text-[a-f0-9]{16,40}["'][^>]*iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=/u.test(svg)
+  );
+}
+
+export function computeAuthoritativeGraphicViewport(
+  framing: FlaStaticTextGraphicFraming,
+  measuredBoundsByPlaceholderId: ReadonlyMap<string, FlaStaticTextBounds>,
+): {
+  readonly viewBox: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly outputWidth: number;
+  readonly outputHeight: number;
+} | null {
+  let minX = framing.nonTextBounds ? framing.nonTextBounds.minX : Number.POSITIVE_INFINITY;
+  let minY = framing.nonTextBounds ? framing.nonTextBounds.minY : Number.POSITIVE_INFINITY;
+  let maxX = framing.nonTextBounds ? framing.nonTextBounds.maxX : Number.NEGATIVE_INFINITY;
+  let maxY = framing.nonTextBounds ? framing.nonTextBounds.maxY : Number.NEGATIVE_INFINITY;
+
+  const include = (x: number, y: number): boolean => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    return true;
+  };
+
+  for (const entry of framing.textTransforms) {
+    const rect = measuredBoundsByPlaceholderId.get(entry.placeholderId);
+    if (!rect) return null;
+    const m = entry.worldTransform;
+    const corners: readonly [number, number][] = [
+      [rect.x, rect.y],
+      [rect.x + rect.width, rect.y],
+      [rect.x + rect.width, rect.y + rect.height],
+      [rect.x, rect.y + rect.height],
+    ];
+    for (const [cx, cy] of corners) {
+      if (!include(m.a * cx + m.c * cy + m.tx, m.b * cx + m.d * cy + m.ty)) return null;
+    }
+  }
+
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+  const padX = Math.max(0, framing.padding) + Math.max(0, framing.filterExpansion.x);
+  const padY = Math.max(0, framing.padding) + Math.max(0, framing.filterExpansion.y);
+  const x = Math.floor(minX - padX);
+  const y = Math.floor(minY - padY);
+  const width = Math.max(1, Math.ceil(maxX + padX) - x);
+  const height = Math.max(1, Math.ceil(maxY + padY) - y);
+  return {
+    viewBox: { x, y, width, height },
+    outputWidth: width,
+    outputHeight: height,
+  };
+}
+
+export function isValidFlaStaticTextGraphicFraming(value: unknown): value is FlaStaticTextGraphicFraming {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.nonTextBounds !== null) {
+    if (typeof candidate.nonTextBounds !== 'object' || candidate.nonTextBounds === null) return false;
+    const b = candidate.nonTextBounds as Record<string, unknown>;
+    if (![b.minX, b.minY, b.maxX, b.maxY].every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      return false;
+    }
+  }
+  if (
+    !Array.isArray(candidate.textTransforms) ||
+    candidate.textTransforms.length > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition
+  ) {
+    return false;
+  }
+  for (const item of candidate.textTransforms) {
+    if (typeof item !== 'object' || item === null) return false;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.placeholderId !== 'string' || !/^fla-text-[a-f0-9]{16,40}$/u.test(entry.placeholderId)) {
+      return false;
+    }
+    if (typeof entry.worldTransform !== 'object' || entry.worldTransform === null) return false;
+    const m = entry.worldTransform as Record<string, unknown>;
+    if (![m.a, m.b, m.c, m.d, m.tx, m.ty].every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      return false;
+    }
+  }
+  if (typeof candidate.filterExpansion !== 'object' || candidate.filterExpansion === null) return false;
+  const f = candidate.filterExpansion as Record<string, unknown>;
+  if (
+    typeof f.x !== 'number' || !Number.isFinite(f.x) || f.x < 0 || f.x > 4_096 ||
+    typeof f.y !== 'number' || !Number.isFinite(f.y) || f.y < 0 || f.y > 4_096 ||
+    typeof candidate.padding !== 'number' || !Number.isFinite(candidate.padding) || candidate.padding < 0 || candidate.padding > 256
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** Strict runtime validator for preload/renderer IPC boundary. */
