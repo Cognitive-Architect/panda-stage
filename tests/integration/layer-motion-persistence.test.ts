@@ -7,6 +7,7 @@ import {
   LayerService,
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
+  editAnimationPropertyKey,
   evaluateShotAtTime,
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
@@ -74,7 +75,12 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
       for (const [timeMs, y] of [[500, 20], [750, 30], [1_500, 20], [2_000, 40]] as const) {
         project = motion.applyKeys(project, { ...target, timeMs }, { 'transform.offsetY': y });
       }
-      project = motion.setKeyEasing(project, { ...target, timeMs: 1_500 }, 'ease-in-out');
+      project = editAnimationPropertyKey(project, {
+        shotId: target.shotId, target: { kind: 'layer', layerId: target.layerId },
+        property: 'transform.offsetY', keyTimeMs: 1_500,
+      }, { interpolationToNext: 'step', curveToNext: {
+        bezier: { x1: 0.25, y1: 0, x2: 0.8, y2: 0.2 }, window: [0.1, 0.8],
+      } });
       const levels = smoothAudioMotionLevels([
         { timeMs: 625, level: 0.01 }, { timeMs: 750, level: 0.6 },
         { timeMs: 875, level: 0.01 }, { timeMs: 1_250, level: 0.55 },
@@ -83,12 +89,19 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
       expect(() => motion.applyAudioMotion(project, target, { ...range, replaceExisting: false })).toThrow('手工关键帧');
       expect(() => motion.applyAudioMotion(project, target, { ...range, startMs: 542, replaceExisting: true })).toThrow('穿过已有缓动');
       const draft = motion.applyAudioMotion(project, target, { ...range, replaceExisting: true });
+      expect(() => motion.applyAudioMotion(project, target, {
+        ...range, startMs: 1_583, endMs: 1_917, levels: [{ timeMs: 1_750, level: 1 }], replaceExisting: true,
+      })).toThrow('穿过已有缓动');
       const oldShot = project.shots[0]!;
       const newShot = draft.shots[0]!;
       const layerAt = (snapshot: Project, time: number) => evaluateShotAtTime(snapshot.shots[0]!, time, snapshot)
         .layers.find(({ id }) => id === placed.layer.id)!;
-      for (const time of [2_700, 1_750, 500, 0, 875, 1_500]) expect(layerAt(draft, time)).toEqual(layerAt(project, time));
+      for (const time of [2_700, 1_917, 1_750, 1_583, 250, 500, 0, 875, 1_500]) {
+        expect(layerAt(draft, time)).toEqual(layerAt(project, time));
+      }
       expect(layerAt(draft, 750).y).toBeLessThan(layerAt(project, 750).y);
+      const edited = motion.applyKeys(draft, { ...target, timeMs: 750 }, { 'transform.offsetY': 12 });
+      expect(layerAt(edited, 750).y).toBe(462);
       expect(newShot.timelineEvents).toEqual(oldShot.timelineEvents);
       expect(newShot.layers.filter(({ id }) => id !== placed.layer.id)).toEqual(oldShot.layers.filter(({ id }) => id !== placed.layer.id));
       expect(newShot.audioClips).toEqual(oldShot.audioClips);

@@ -37,14 +37,16 @@ export function audioMotionSampleTimes(startMs: number, endMs: number): number[]
   return times;
 }
 
-function boundaryInterpolation(keys: readonly AnimationKey[], timeMs: number) {
+function boundaryKey(keys: readonly AnimationKey[], timeMs: number, value: number): AnimationKey {
   const exact = keys.find((key) => key.timeMs === timeMs);
-  if (exact) return exact.interpolationToNext;
+  if (exact) return exact;
   const later = keys.findIndex((key) => key.timeMs > timeMs);
-  if (later === -1) return 'step' as const;
-  const prior = keys[later - 1];
-  if (prior?.interpolationToNext === 'step' || prior?.value === keys[later]?.value) return 'step' as const;
-  return null;
+  const prior = later > 0 ? keys[later - 1]! : undefined;
+  if (prior && prior.value !== keys[later]!.value &&
+    (prior.interpolationToNext !== 'step' || prior.curveToNext?.bezier)) {
+    throw new Error('所选边界穿过已有缓动。请把边界移到已有关键帧或平稳段，以保留范围外的运动。');
+  }
+  return { timeMs, value, interpolationToNext: 'step' };
 }
 
 export function buildAudioMotionTracks(clip: LayerAnimationClip, layerId: string, draft: AudioMotionDraft): LayerAnimationClip['tracks'] {
@@ -57,14 +59,11 @@ export function buildAudioMotionTracks(clip: LayerAnimationClip, layerId: string
     if (!draft.replaceExisting && keys.some(({ timeMs }) => timeMs > draft.startMs && timeMs < draft.endMs)) {
       throw new Error('选定时段已有手工关键帧。请选择空闲时段，或确认替换时段内的关键帧。');
     }
-    const before = boundaryInterpolation(keys, draft.startMs);
-    const after = boundaryInterpolation(keys, draft.endMs);
-    if (before === null || after === null) {
-      throw new Error('所选边界穿过已有缓动。请把边界移到已有关键帧或平稳段，以保留范围外的运动。');
-    }
     const scale = draft.property === 'uniform-scale';
     const baseAt = (timeMs: number): number => track
       ? evaluateAnimationTrackAtTime(track, timeMs) : scale ? 1 : 0;
+    const start = boundaryKey(keys, draft.startMs, baseAt(draft.startMs));
+    const end = boundaryKey(keys, draft.endMs, baseAt(draft.endMs));
     const earlier: AnimationKey[] = keys.filter(({ timeMs }) => timeMs < draft.startMs);
     if (draft.startMs > 0 && !earlier.length) earlier.push({ timeMs: 0, value: baseAt(0), interpolationToNext: 'step' });
     const samples: AnimationKey[] = draft.levels.map(({ timeMs, level }) => ({
@@ -73,9 +72,9 @@ export function buildAudioMotionTracks(clip: LayerAnimationClip, layerId: string
     }));
     tracks.set(property, { target: { kind: 'layer', layerId }, property, keys: [
       ...earlier,
-      { timeMs: draft.startMs, value: baseAt(draft.startMs), interpolationToNext: 'linear' },
+      { timeMs: start.timeMs, value: start.value, interpolationToNext: 'linear' },
       ...samples,
-      { timeMs: draft.endMs, value: baseAt(draft.endMs), interpolationToNext: after },
+      end,
       ...keys.filter(({ timeMs }) => timeMs > draft.endMs),
     ] });
   }
