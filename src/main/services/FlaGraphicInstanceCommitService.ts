@@ -601,7 +601,7 @@ export class FlaGraphicInstanceCommitService {
       const occupiedNames = new Set(
         current.project.assets.map((asset) => path.basename(asset.relativePath).toLowerCase()),
       );
-      const sourceStem = path.basename(batch.source.basename).replace(/\.fla$/iu, '') || 'fla-graphic';
+      const sourceStem = path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '') || 'fla-graphic';
 
       const resources = [
         ...(batch.bitmaps ?? []).map((item) => ({
@@ -721,7 +721,7 @@ export class FlaGraphicInstanceCommitService {
         batch,
         assets.filter((asset) => asset.flaGraphicFrame?.definitionId === definitionId).map((asset) => asset.id),
         definitionId,
-        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.fla$/iu, '')} ${batch.target.name}`),
+        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '')} ${batch.target.name}`),
         bitmapAssetMap,
         isolatedAssetMap,
       );

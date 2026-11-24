@@ -129,11 +129,23 @@ async function selectProjectDirectory(
 async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   const acceptanceSource = process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE?.trim();
   if (acceptanceSource && !app.isPackaged) return acceptanceSource;
-  const selection = await dialog.showOpenDialog(window, {
-    title: '选择 FLA 文件',
+  const { response } = await dialog.showMessageBox(window, {
+    message: '打开 Animate 工程',
+    buttons: ['FLA / XFL 文件', 'XFL 文件夹', '取消'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  if (response === 2) return null;
+  const selection = await dialog.showOpenDialog(window, response === 1 ? {
+    title: '选择 XFL 文件夹',
+    buttonLabel: '打开',
+    properties: ['openDirectory'],
+  } : {
+    title: '选择 FLA 或 XFL 文件',
     buttonLabel: '打开',
     properties: ['openFile'],
-    filters: [{ name: 'Adobe Animate FLA', extensions: ['fla'] }],
+    filters: [{ name: 'Adobe Animate FLA / XFL', extensions: ['fla', 'xfl'] }],
   });
   return selection.canceled ? null : selection.filePaths[0] ?? null;
 }

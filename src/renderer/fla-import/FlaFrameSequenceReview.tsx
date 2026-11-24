@@ -148,7 +148,7 @@ export function FlaFrameSequenceReview({
   const [endFrameIndex, setEndFrameIndex] = useState(0);
   const [importAsAnimation, setImportAsAnimation] = useState(presentation === 'unified-preview');
   const [animationName, setAnimationName] = useState(() =>
-    source.basename.replace(/\.fla$/iu, ''),
+    source.basename.replace(/\.(?:fla|xfl)$/iu, ''),
   );
   const [completedFrameCount, setCompletedFrameCount] = useState(0);
   const [success, setSuccess] = useState<FlaFrameSequenceSuccess | null>(null);
@@ -331,7 +331,7 @@ export function FlaFrameSequenceReview({
     if (presentation === 'unified-preview') setImportAsAnimation(true);
     setAnimationName(presentation === 'unified-preview'
       ? entry.target.userLabel
-      : source.basename.replace(/\.fla$/iu, ''));
+      : source.basename.replace(/\.(?:fla|xfl)$/iu, ''));
   }, [entries, presentation, selectedTargetId, source.basename]);
   const sequenceCandidateById = useMemo(
     () => new Map(sequenceCandidates.map((candidate) => [candidate.id, candidate])),

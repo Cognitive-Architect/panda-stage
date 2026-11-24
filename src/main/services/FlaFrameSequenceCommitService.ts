@@ -722,7 +722,7 @@ export class FlaFrameSequenceCommitService {
 function stripFlaExtension(basename: string): string {
   // .fla files are the only accepted source for R2; strip the
   // .fla extension so the asset name reads naturally.
-  return basename.replace(/\.fla$/iu, '');
+  return basename.replace(/\.(?:fla|xfl)$/iu, '');
 }
 
 function uniqueAnimationName(project: Project, requestedName: string): string {
