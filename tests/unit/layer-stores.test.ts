@@ -5,7 +5,9 @@ import {
   LayerMotionService,
   LayerService,
   ProjectSchema,
+  evaluateShotAtTime,
   migrateProject,
+  recognizePositionChain,
   type Project,
   type TimelineEvent,
 } from '../../src/domain';
@@ -558,29 +560,65 @@ describe('Day 22 layer stores', () => {
       { shotId, layerId: placed.layer.id, timeMs: 500 },
       { 'transform.offsetX': 120, 'transform.offsetY': -40 },
     );
-    const sourceEvent: TimelineEvent = {
+    const moveEvent: TimelineEvent = {
+      id: 'd2210000-0000-4000-8000-000000000900',
+      type: 'move',
+      layerId: placed.layer.id,
+      startMs: 0,
+      endMs: 500,
+      from: { x: 500, y: 360 },
+      to: { x: 620, y: 420 },
+      easing: 'linear',
+    };
+    const opacityLow: TimelineEvent = {
       id: 'd2210000-0000-4000-8000-000000000901',
       type: 'opacity',
       layerId: placed.layer.id,
       startMs: 125,
       endMs: 625,
       from: 1,
-      to: 0.5,
+      to: 0.25,
+      easing: 'linear',
+    };
+    const opacityHigh: TimelineEvent = {
+      id: 'd2210000-0000-4000-8000-000000000902',
+      type: 'opacity',
+      layerId: placed.layer.id,
+      startMs: 125,
+      endMs: 625,
+      from: 1,
+      to: 0.85,
       easing: 'linear',
     };
     authored = ProjectSchema.parse({
       ...authored,
       shots: authored.shots.map((shot) =>
         shot.id === shotId
-          ? { ...shot, timelineEvents: [...shot.timelineEvents, sourceEvent] }
+          ? {
+              ...shot,
+              timelineEvents: [...shot.timelineEvents, moveEvent, opacityLow, opacityHigh],
+            }
           : shot,
       ),
     });
 
     const input = harness(authored);
+    const descendingIds = [
+      'f2210000-0000-4000-8000-000000000099',
+      'f2210000-0000-4000-8000-000000000009',
+      'f2210000-0000-4000-8000-000000000008',
+      'f2210000-0000-4000-8000-000000000007',
+    ];
+    let nextId = 0;
+    const descendingLayerStore = new LayerStore(
+      input.editor,
+      input.shots,
+      new LayerService({ createId: () => descendingIds[nextId++]! }),
+      input.selection,
+    );
     input.selection.select(placed.layer.id);
 
-    const duplicated = input.layers.duplicateAnimationLayer(placed.layer.id);
+    const duplicated = descendingLayerStore.duplicateAnimationLayer(placed.layer.id);
     expect(input.editor.history.getSnapshot()).toMatchObject({
       undoCount: 1,
       redoCount: 0,
@@ -599,10 +637,22 @@ describe('Day 22 layer stores', () => {
     expect(dupLayer.animationClip?.targetBases[0]?.target.layerId).toBe(duplicated.id);
     expect(dupLayer.animationClip?.tracks.every((t) => t.target.layerId === duplicated.id)).toBe(true);
     const dupEvents = afterShot.timelineEvents.filter((e) => e.layerId === duplicated.id);
-    expect(dupEvents).toHaveLength(1);
-    expect(dupEvents[0]!.id).not.toBe(sourceEvent.id);
+    expect(dupEvents).toHaveLength(3);
+    expect(new Set(dupEvents.map((e) => e.id)).size).toBe(3);
+    expect(dupEvents.find((e) => e.type === 'move')).toMatchObject({
+      from: { x: 524, y: 384 },
+      to: { x: 644, y: 444 },
+    });
+    expect(recognizePositionChain({ shot: afterShot, layer: dupLayer }).status).toBe('editable');
+    const evalAfterDup = evaluateShotAtTime(afterShot, 500, afterDuplicate);
+    expect(evalAfterDup.layers.find((l) => l.id === duplicated.id)!.x).toBeCloseTo(
+      evalAfterDup.layers.find((l) => l.id === placed.layer.id)!.x + 24,
+    );
+    expect(evalAfterDup.layers.find((l) => l.id === duplicated.id)!.opacity).toBeCloseTo(
+      evalAfterDup.layers.find((l) => l.id === placed.layer.id)!.opacity,
+    );
 
-    // Undo removes only the duplicated layer and its copied event.
+    // Undo removes only the duplicated layer and its copied events.
     expect(input.editor.undo()).toBe(true);
     const afterUndo = input.editor.getSnapshot()!.project;
     expect(afterUndo).toEqual(authored);
@@ -610,11 +660,15 @@ describe('Day 22 layer stores', () => {
     expect(afterUndo.shots[0]!.timelineEvents.some((e) => e.layerId === duplicated.id)).toBe(false);
     expect(input.selection.getSelectedLayerId()).toBeNull();
 
-    // Redo restores the exact same duplicate ID, valid Clip ownership, event ownership, and selection.
+    // Redo restores the exact same duplicate ID, valid Clip ownership, event ordering, and selection.
     expect(input.editor.redo()).toBe(true);
     const afterRedo = input.editor.getSnapshot()!.project;
     expect(afterRedo).toEqual(afterDuplicate);
     expect(input.selection.getSelectedLayerId()).toBe(duplicated.id);
+    const evalAfterRedo = evaluateShotAtTime(afterRedo.shots[0]!, 500, afterRedo);
+    expect(evalAfterRedo.layers.find((l) => l.id === duplicated.id)!.opacity).toBeCloseTo(
+      evalAfterRedo.layers.find((l) => l.id === placed.layer.id)!.opacity,
+    );
 
     // Locked source leaves no partial layers, dangling events, or extra History entry.
     input.layers.setLocked(placed.layer.id, true);

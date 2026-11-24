@@ -10,6 +10,7 @@ import {
   LayerSchema,
   LayerService,
   PROJECT_SCHEMA_VERSION,
+  PositionProjectService,
   ProjectSchema,
   ProjectV20Schema,
   ProjectV21Schema,
@@ -21,6 +22,7 @@ import {
   layerCompositeKeyTimes,
   hasLayerCompositeKeyOutgoingInterval,
   migrateProject,
+  recognizePositionChain,
   resolveLayerVisualParts,
   type FlaGraphicDefinition,
   type Project,
@@ -1197,5 +1199,330 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
     expect(() =>
       layerService.duplicateAnimationLayer(lockedProject, base.shotId, base.layerId),
     ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+  });
+
+  it('translates duplicated MoveEvents by the actual Base delta, preserves editable/playback-only PositionChain semantics, and handles canvas-edge clamps (#1266 P2-01)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const positionService = new PositionProjectService();
+
+    // Build an editable 2-segment Move chain starting from Base (400, 300) + v2 Clip + Shake + Scale + Opacity.
+    const move1: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000601',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 0,
+      endMs: 500,
+      from: { x: 400, y: 300 },
+      to: { x: 600, y: 380 },
+      easing: 'linear',
+    };
+    const move2: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000602',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 500,
+      endMs: 1_000,
+      from: { x: 600, y: 380 },
+      to: { x: 700, y: 420 },
+      easing: 'linear',
+    };
+    const shakeEvent: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000603',
+      type: 'shake',
+      layerId: base.layerId,
+      startMs: 0,
+      endMs: 1_000,
+      amplitudeX: 16,
+      amplitudeY: 8,
+      frequencyHz: 0.5,
+    };
+    const opacityEvent: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000604',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 0,
+      endMs: 1_000,
+      from: 1,
+      to: 0.5,
+      easing: 'linear',
+    };
+    let project = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((shot) =>
+        shot.id === base.shotId
+          ? {
+              ...shot,
+              durationMs: 2_000,
+              timelineEvents: [move1, move2, shakeEvent, opacityEvent],
+            }
+          : shot,
+      ),
+    });
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 0 },
+      { 'transform.offsetX': 0, 'transform.offsetY': 0 },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 500 },
+      {
+        'transform.offsetX': 40,
+        'transform.offsetY': -20,
+        'transform.rotationDeg': 30,
+        'transform.scaleX': 1.5,
+      },
+    );
+    project = service.applyKeys(
+      project,
+      { shotId: base.shotId, layerId: base.layerId, timeMs: 1_000 },
+      {
+        'transform.offsetX': 80,
+        'transform.offsetY': 10,
+        'transform.rotationDeg': 60,
+        'transform.scaleX': 2,
+      },
+    );
+
+    const beforeProject = structuredClone(project);
+    expect(
+      recognizePositionChain({
+        shot: project.shots[0]!,
+        layer: project.shots[0]!.layers.find((l) => l.id === base.layerId)!,
+      }).status,
+    ).toBe('editable');
+
+    const duplicated = layerService.duplicateAnimationLayer(
+      project,
+      base.shotId,
+      base.layerId,
+    );
+    const shot = duplicated.project.shots[0]!;
+    const srcLayer = shot.layers.find((l) => l.id === base.layerId)!;
+    const dupLayer = shot.layers.find((l) => l.id === duplicated.layer.id)!;
+
+    // Source layer, source Clip, and source events remain untouched.
+    expect(srcLayer).toEqual(beforeProject.shots[0]!.layers.find((l) => l.id === base.layerId)!);
+    expect(shot.timelineEvents.filter((e) => e.layerId === base.layerId)).toEqual(
+      beforeProject.shots[0]!.timelineEvents,
+    );
+
+    // Duplicated MoveEvents shifted by actual Base delta (+24, +24); Shake/Opacity semantics preserved.
+    const dupMoves = shot.timelineEvents
+      .filter((e): e is Extract<TimelineEvent, { type: 'move' }> => e.layerId === dupLayer.id && e.type === 'move')
+      .sort((a, b) => a.startMs - b.startMs);
+    expect(dupMoves).toHaveLength(2);
+    expect(dupMoves[0]).toMatchObject({
+      startMs: 0,
+      endMs: 500,
+      from: { x: 424, y: 324 },
+      to: { x: 624, y: 404 },
+      easing: 'linear',
+    });
+    expect(dupMoves[1]).toMatchObject({
+      startMs: 500,
+      endMs: 1_000,
+      from: { x: 624, y: 404 },
+      to: { x: 724, y: 444 },
+      easing: 'linear',
+    });
+
+    // Evaluate at start, middle, end, and post-end hold: duplicate stays offset by (+24, +24).
+    for (const timeMs of [0, 250, 500, 1_000, 1_500]) {
+      const evaluated = evaluateShotAtTime(shot, timeMs, duplicated.project);
+      const evalSrc = evaluated.layers.find((l) => l.id === base.layerId)!;
+      const evalDup = evaluated.layers.find((l) => l.id === dupLayer.id)!;
+      expect(evalDup.x).toBeCloseTo(evalSrc.x + 24);
+      expect(evalDup.y).toBeCloseTo(evalSrc.y + 24);
+      expect(evalDup.rotationDeg).toBeCloseTo(evalSrc.rotationDeg);
+      expect(evalDup.scaleX).toBeCloseTo(evalSrc.scaleX);
+      expect(evalDup.scaleY).toBeCloseTo(evalSrc.scaleY);
+      expect(evalDup.opacity).toBeCloseTo(evalSrc.opacity);
+    }
+
+    // Duplicated PositionChain remains editable (no base-mismatch) and edits independently.
+    expect(recognizePositionChain({ shot, layer: dupLayer }).status).toBe('editable');
+    const editedDupChain = positionService.applyOperation(
+      duplicated.project,
+      base.shotId,
+      dupLayer.id,
+      { type: 'update', input: { timeMs: 500, position: { x: 800, y: 500 } } },
+    ).project;
+    expect(
+      editedDupChain.shots[0]!.timelineEvents.filter((e) => e.layerId === base.layerId),
+    ).toEqual(beforeProject.shots[0]!.timelineEvents);
+    expect(
+      editedDupChain.shots[0]!.timelineEvents.find(
+        (e) => e.layerId === dupLayer.id && e.type === 'move' && e.startMs === 0,
+      ),
+    ).toMatchObject({ to: { x: 800, y: 500 } });
+
+    // Single-axis edge clamp: (1910, 300) -> (1920, 324), actual delta = (+10, +24).
+    const edgeProject = layerService.updatePosition(
+      project,
+      base.shotId,
+      base.layerId,
+      { x: 1910, y: 300 },
+    );
+    const edgeDup = layerService.duplicateAnimationLayer(
+      edgeProject,
+      base.shotId,
+      base.layerId,
+    );
+    expect(edgeDup.layer).toMatchObject({ x: 1920, y: 324 });
+    const edgeDupMoves = edgeDup.project.shots[0]!.timelineEvents
+      .filter((e): e is Extract<TimelineEvent, { type: 'move' }> => e.layerId === edgeDup.layer.id && e.type === 'move')
+      .sort((a, b) => a.startMs - b.startMs);
+    expect(edgeDupMoves[0]).toMatchObject({
+      from: { x: 1920, y: 324 },
+      to: { x: 610, y: 404 },
+    });
+    expect(edgeDupMoves[1]).toMatchObject({
+      from: { x: 610, y: 404 },
+      to: { x: 710, y: 444 },
+    });
+    expect(
+      recognizePositionChain({
+        shot: edgeDup.project.shots[0]!,
+        layer: edgeDup.layer,
+      }).status,
+    ).toBe('editable');
+    for (const timeMs of [0, 500, 1_500]) {
+      const evaluated = evaluateShotAtTime(edgeDup.project.shots[0]!, timeMs, edgeDup.project);
+      const evalSrc = evaluated.layers.find((l) => l.id === base.layerId)!;
+      const evalDup = evaluated.layers.find((l) => l.id === edgeDup.layer.id)!;
+      expect(evalDup.x).toBeCloseTo(evalSrc.x + 10);
+      expect(evalDup.y).toBeCloseTo(evalSrc.y + 24);
+    }
+
+    // Playback-only MoveEvent (non-linear easing, startMs > 0) stays playback-only while still translating by delta.
+    const playbackOnlyMove: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000605',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: { x: 300, y: 200 },
+      to: { x: 500, y: 350 },
+      easing: 'ease-in-out',
+    };
+    const playbackOnlyProject = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) =>
+        s.id === base.shotId ? { ...s, timelineEvents: [playbackOnlyMove] } : s,
+      ),
+    });
+    const playbackOnlyDup = layerService.duplicateAnimationLayer(
+      playbackOnlyProject,
+      base.shotId,
+      base.layerId,
+    );
+    expect(
+      recognizePositionChain({
+        shot: playbackOnlyDup.project.shots[0]!,
+        layer: playbackOnlyDup.layer,
+      }).status,
+    ).toBe('playback-only');
+    expect(
+      playbackOnlyDup.project.shots[0]!.timelineEvents.find(
+        (e) => e.layerId === playbackOnlyDup.layer.id && e.type === 'move',
+      ),
+    ).toMatchObject({
+      startMs: 250,
+      endMs: 750,
+      from: { x: 324, y: 224 },
+      to: { x: 524, y: 374 },
+      easing: 'ease-in-out',
+    });
+  });
+
+  it('preserves same-startMs event tie-break priority for Opacity and Move events even when createId emits descending IDs (#1266 P2-02)', () => {
+    const base = zeroCharacterGraphicProject();
+    const opacityLow: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000001',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: 1,
+      to: 0.2,
+      easing: 'linear',
+    };
+    const opacityHigh: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000002',
+      type: 'opacity',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: 1,
+      to: 0.85,
+      easing: 'linear',
+    };
+    const moveFirst: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000003',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: { x: 400, y: 300 },
+      to: { x: 500, y: 320 },
+      easing: 'linear',
+    };
+    const moveSecond: TimelineEvent = {
+      id: '93000000-0000-4000-8000-000000000004',
+      type: 'move',
+      layerId: base.layerId,
+      startMs: 250,
+      endMs: 750,
+      from: { x: 400, y: 300 },
+      to: { x: 760, y: 460 },
+      easing: 'linear',
+    };
+    const project = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((shot) =>
+        shot.id === base.shotId
+          ? { ...shot, timelineEvents: [opacityLow, opacityHigh, moveFirst, moveSecond] }
+          : shot,
+      ),
+    });
+
+    // Inject descending IDs so naive sequential allocation reverses localeCompare order.
+    const generatedIds = [
+      'f3000000-0000-4000-8000-000000000099', // duplicate layer ID
+      'f3000000-0000-4000-8000-000000000009',
+      'f3000000-0000-4000-8000-000000000008',
+      'f3000000-0000-4000-8000-000000000007',
+      'f3000000-0000-4000-8000-000000000006',
+    ];
+    let index = 0;
+    const layerService = new LayerService({
+      createId: () => generatedIds[index++]!,
+    });
+
+    const duplicated = layerService.duplicateAnimationLayer(
+      project,
+      base.shotId,
+      base.layerId,
+    );
+    const shot = duplicated.project.shots[0]!;
+    const dupEvents = shot.timelineEvents.filter((e) => e.layerId === duplicated.layer.id);
+    expect(dupEvents).toHaveLength(4);
+    expect(new Set(dupEvents.map((e) => e.id)).size).toBe(4);
+    for (const dupEvent of dupEvents) {
+      expect([opacityLow.id, opacityHigh.id, moveFirst.id, moveSecond.id]).not.toContain(
+        dupEvent.id,
+      );
+    }
+
+    for (const timeMs of [500, 750, 1_000]) {
+      const evaluated = evaluateShotAtTime(shot, timeMs, duplicated.project);
+      const evalSrc = evaluated.layers.find((l) => l.id === base.layerId)!;
+      const evalDup = evaluated.layers.find((l) => l.id === duplicated.layer.id)!;
+      expect(evalDup.opacity).toBeCloseTo(evalSrc.opacity);
+      expect(evalDup.x).toBeCloseTo(evalSrc.x + 24);
+      expect(evalDup.y).toBeCloseTo(evalSrc.y + 24);
+    }
   });
 });

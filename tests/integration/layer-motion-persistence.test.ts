@@ -12,10 +12,12 @@ import {
   layerCompositeKeyEasing,
   layerCompositeKeyTimes,
   migrateProject,
+  recognizePositionChain,
   scanAssetReferences,
   smoothAudioMotionLevels,
   type FlaGraphicDefinition,
   type Project,
+  type TimelineEvent,
 } from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -479,6 +481,45 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
         },
       );
 
+      const moveEvent: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000701',
+        type: 'move',
+        layerId: placed.layer.id,
+        startMs: 0,
+        endMs: 1_000,
+        from: { x: 500, y: 300 },
+        to: { x: 650, y: 380 },
+        easing: 'linear',
+      };
+      const opacityLow: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000702',
+        type: 'opacity',
+        layerId: placed.layer.id,
+        startMs: 250,
+        endMs: 750,
+        from: 1,
+        to: 0.2,
+        easing: 'linear',
+      };
+      const opacityHigh: TimelineEvent = {
+        id: '93000000-0000-4000-8000-000000000703',
+        type: 'opacity',
+        layerId: placed.layer.id,
+        startMs: 250,
+        endMs: 750,
+        from: 1,
+        to: 0.8,
+        easing: 'linear',
+      };
+      authored = ProjectSchema.parse({
+        ...authored,
+        shots: authored.shots.map((s) =>
+          s.id === IDS.shot
+            ? { ...s, timelineEvents: [moveEvent, opacityLow, opacityHigh] }
+            : s,
+        ),
+      });
+
       const store = new EditorProjectStore();
       store.open(root, authored);
       const shots = { getCurrentShotId: () => IDS.shot };
@@ -486,7 +527,17 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
         ...shots,
         subscribe: () => () => undefined,
       });
-      const layerStore = new LayerStore(store, shots, layers, selection);
+      const descendingIds = [
+        'f3000000-0000-4000-8000-000000000099',
+        'f3000000-0000-4000-8000-000000000009',
+        'f3000000-0000-4000-8000-000000000008',
+        'f3000000-0000-4000-8000-000000000007',
+      ];
+      let nextId = 0;
+      const descendingLayers = new LayerService({
+        createId: () => descendingIds[nextId++]!,
+      });
+      const layerStore = new LayerStore(store, shots, descendingLayers, selection);
       const duplicated = layerStore.duplicateAnimationLayer(placed.layer.id);
       expect(store.history.getSnapshot().undoCount).toBe(1);
 
@@ -516,9 +567,16 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
         bezier: { x1: 0.25, y1: 0, x2: 0.8, y2: 0.2 },
         window: [0.1, 0.8],
       });
+      expect(recognizePositionChain({ shot, layer: dupLayer }).status).toBe('editable');
+      expect(
+        shot.timelineEvents.find((e) => e.layerId === duplicated.id && e.type === 'move'),
+      ).toMatchObject({
+        from: { x: 524, y: 324 },
+        to: { x: 674, y: 404 },
+      });
 
       const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
-      for (const timeMs of [0, 500, 750, 1_000]) {
+      for (const timeMs of [0, 500, 750, 1_000, 1_500]) {
         const stage = evaluateShotAtTime(shot, timeMs, reopened.project);
         const preview = projectProductPreviewDialogue(reopened.project, shot, stage);
         const exported = evaluateExportShotAtTime(reopened.project, shot, timeMs);
@@ -536,26 +594,31 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
         expect(stageDup.x).toBeCloseTo(stageSrc.x + 24);
         expect(stageDup.y).toBeCloseTo(stageSrc.y + 24);
         expect(stageDup.rotationDeg).toBeCloseTo(stageSrc.rotationDeg);
+        expect(stageDup.opacity).toBeCloseTo(stageSrc.opacity);
 
         expect(preview.layers.find((l) => l.id === duplicated.id)).toMatchObject({
           x: stageDup.x,
           y: stageDup.y,
           rotationDeg: stageDup.rotationDeg,
+          opacity: stageDup.opacity,
         });
         expect(exported.layers.find((l) => l.id === duplicated.id)).toMatchObject({
           x: stageDup.x,
           y: stageDup.y,
           rotationDeg: stageDup.rotationDeg,
+          opacity: stageDup.opacity,
         });
         expect(editorModel.stageModel.layers.find((l) => l.layer.id === duplicated.id)!.render).toMatchObject({
           x: stageDup.x,
           y: stageDup.y,
           rotationDeg: stageDup.rotationDeg,
+          opacity: stageDup.opacity,
         });
         expect(exportModel.layers.find((l) => l.id === duplicated.id)!.render).toMatchObject({
           x: stageDup.x,
           y: stageDup.y,
           rotationDeg: stageDup.rotationDeg,
+          opacity: stageDup.opacity,
         });
       }
       selection.dispose();

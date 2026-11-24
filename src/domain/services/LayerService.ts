@@ -1675,6 +1675,8 @@ export class LayerService {
       offsetPosition.x === layer.x && offsetPosition.y === layer.y
         ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
         : offsetPosition;
+    const deltaX = position.x - layer.x;
+    const deltaY = position.y - layer.y;
     const duplicate: Layer = {
       ...layer,
       ...(layer.flaGraphicInstanceTransformOverrides
@@ -1713,13 +1715,35 @@ export class LayerService {
       y: position.y,
       zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
     };
-    const duplicatedEvents = shot.timelineEvents
-      .filter((event) => event.layerId === layer.id)
-      .map((event) => {
+    const sourceEvents = shot.timelineEvents.filter(
+      (event) => event.layerId === layer.id,
+    );
+    const sortedNewEventIds = sourceEvents
+      .map(() => {
         const id = this.nextUniqueId(usedIds);
         usedIds.add(id);
-        return { ...event, id, layerId: duplicate.id };
-      });
+        return id;
+      })
+      .sort((left, right) => left.localeCompare(right));
+    const newEventIdBySourceId = new Map(
+      [...sourceEvents]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((event, index) => [event.id, sortedNewEventIds[index]!] as const),
+    );
+    const duplicatedEvents = sourceEvents.map((event) => {
+      const cloned = structuredClone(event);
+      const id = newEventIdBySourceId.get(event.id)!;
+      if (cloned.type === 'move') {
+        return {
+          ...cloned,
+          id,
+          layerId: duplicate.id,
+          from: { x: cloned.from.x + deltaX, y: cloned.from.y + deltaY },
+          to: { x: cloned.to.x + deltaX, y: cloned.to.y + deltaY },
+        };
+      }
+      return { ...cloned, id, layerId: duplicate.id };
+    });
     const nextShot = {
       ...shot,
       layers: [...shot.layers, duplicate],
