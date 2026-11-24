@@ -10,6 +10,7 @@ import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
 import {
+  evaluateLayerPreTrackState,
   evaluateShotAtTime,
   resolveEffectiveMouthCue,
 } from '../evaluate-shot-at-time';
@@ -170,6 +171,29 @@ export function listShotRuntimeImageAssets(
   }
 
   return [...assets.values()];
+}
+
+/** The Graphic assets actually needed at the editor's current scrub position. */
+export function listShotGraphicImageAssetsAtTime(project: Project, shot: Shot, timeMs: number): ImageAsset[] {
+  const graphics = new Map(project.animations.filter(isFlaGraphicDefinition).map((entry) => [entry.id, entry]));
+  const needed = new Set<string>();
+  for (const layer of shot.layers) {
+    const definition = layer.source.kind === 'animation' ? graphics.get(layer.source.animationId) : undefined;
+    if (!definition) continue;
+    const evaluated = evaluateLayerPreTrackState(shot, layer, timeMs, project);
+    const frame = evaluated.animationFrame;
+    if (!frame || !evaluated.visible || !evaluated.animationVisible) continue;
+    const visual = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: frame.frameOrdinal,
+      internalTimeMs: frame.internalTimeMs,
+      mode: 'instance',
+      instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
+      instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+    });
+    for (const assetId of visual?.resourceAssetIds ?? []) needed.add(assetId);
+  }
+  return project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image' && needed.has(asset.id));
 }
 
 /** Shared speaker targeting. A null entry means multiple visible occurrences. */

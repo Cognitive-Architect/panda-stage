@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { buildEditorStageRenderModel, clearGraphicFrameAtTime, evaluateShotAtTime, LayerService, migrateProject, ProjectSchema,
+import { buildEditorStageRenderModel, clearGraphicFrameAtTime, evaluateShotAtTime, LayerService, listShotGraphicImageAssetsAtTime,
+  listShotRuntimeImageAssets, migrateProject, ProjectSchema,
   setGraphicFrameAtTime, syncGraphicPlaybackForward, type Project } from '../../../src/domain';
 import { evaluateExportShotAtTime } from '../../../src/export-renderer/evaluateExportShotAtTime';
 import { projectProductPreviewDialogue } from '../../../src/renderer/shell/productPreviewModel';
@@ -176,4 +177,21 @@ it('caps Graphic sync at the first visibility gap and respects the single lifeti
   expect(sync(once, 500, 2_000).shots[0]!.timelineEvents).toMatchObject([
     { type: 'graphic-playback', startMs: 500, endMs: 667 },
   ]);
+});
+
+it('requests the target Graphic frame for Stage even when the zero-time assets only include another frame', () => {
+  const created = new LayerService().createFromAnimation(graphicFaceProject(false), IDS.shot, {
+    animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 200, y: 100 },
+    playback: { mode: 'loop', endBehavior: 'hold' },
+  });
+  const project = setGraphicFrameAtTime(created.project, IDS.shot, created.layer.id, FACE_GRAPHIC_ID, 10, 500);
+  const shot = project.shots[0]!;
+  const frames = project.animations[0]!.frames;
+  const initial = listShotRuntimeImageAssets(project, shot).map(({ id }) => id);
+  expect(initial).toContain(frames[0]!.assetId);
+  expect(initial).not.toContain(frames[3]!.assetId);
+  expect(listShotGraphicImageAssetsAtTime(project, shot, 500).map(({ id }) => id)).toEqual([frames[3]!.assetId]);
+  const synced = syncGraphicPlaybackForward(project, shot.id, created.layer.id, FACE_GRAPHIC_ID, 250, 750,
+    { firstFrame: 1, range: { firstFrame: 0, lastFrame: 2 }, playback: { mode: 'loop', endBehavior: 'hold' } });
+  expect(listShotGraphicImageAssetsAtTime(synced, synced.shots[0]!, 292).map(({ id }) => id)).toEqual([frames[2]!.assetId]);
 });

@@ -45,6 +45,7 @@ import {
   getFlaGraphicInstanceTransformOverride,
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
+  listShotGraphicImageAssetsAtTime,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
   resolveTimelineFrameTime,
@@ -163,14 +164,23 @@ function useCanvasImages(
   snapshot: EditorProjectSnapshot | null,
   shot: Shot | null,
   retainedAssets: readonly CanvasImageAssetSource[],
+  timeMs: number,
 ): CanvasImageState {
-  const assets = useMemo(
+  const initialAssets = useMemo(
     () =>
       snapshot && shot
         ? listShotRuntimeImageAssets(snapshot.project, shot)
         : [],
     [shot, snapshot],
   );
+  const assets = useMemo(() => {
+    if (!snapshot || !shot || timeMs === 0) return initialAssets;
+    const requested = listShotGraphicImageAssetsAtTime(snapshot.project, shot, timeMs);
+    if (!requested.length) return initialAssets;
+    const byId = new Map(initialAssets.map((asset) => [asset.id, asset]));
+    for (const asset of requested) byId.set(asset.id, asset);
+    return [...byId.values()];
+  }, [initialAssets, shot, snapshot, timeMs]);
   const sourceKey = assets
     .map((asset) => `${asset.id}:${asset.sha256 ?? 'missing'}`)
     .sort()
@@ -747,7 +757,7 @@ export function CanvasStage({
     }
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
-  const imageState = useCanvasImages(snapshot, shot, retainedAssets);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets, activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs);
   const handleMoveFlaShapeVertex = useCallback((
     nodePath: readonly string[],
     regionRef: string,
