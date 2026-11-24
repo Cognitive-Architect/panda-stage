@@ -2356,6 +2356,7 @@ function buildVariableWidthStrokePaths(
   segments: readonly StrokeBoundarySegment[],
   closedSourceSubpaths: ReadonlySet<number>,
   style: ParsedSolidStrokeStyle,
+  remainingCommandBudget: { remaining: number },
 ): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
   const markers = style.variableWidthMarkers!;
   // Group directed segments in exact authored order within each original <Edge>,
@@ -2392,9 +2393,18 @@ function buildVariableWidthStrokePaths(
       join: style.join,
       miterLimit: style.miterLimit,
       closed,
+      maxOutlineCommands: remainingCommandBudget.remaining,
     });
     if (!outline.ok) return outline;
     if (outline.pathD) {
+      if (outline.commands.length > remainingCommandBudget.remaining) {
+        return {
+          ok: false,
+          code: 'BUDGET_EXCEEDED',
+          message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+        };
+      }
+      remainingCommandBudget.remaining -= outline.commands.length;
       paths.push({
         commands: [...outline.commands],
         pathD: outline.pathD,
@@ -2411,6 +2421,7 @@ function reconstructSolidStrokes(
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  remainingCommandBudget: { remaining: number },
 ): { readonly ok: true; readonly result: readonly ReconstructedSolidStroke[] } | BuildSvgFailure {
   const boundaryByStyle = new Map<number, StrokeBoundarySegment[]>();
   let currentEdgeIndex = -1;
@@ -2530,7 +2541,7 @@ function reconstructSolidStrokes(
     const parsed = parseSolidStrokeStyle(style, shapeId, renderTargetId, frameIndex);
     if (!parsed.ok) return parsed;
     const builtPaths = parsed.result.variableWidthMarkers
-      ? buildVariableWidthStrokePaths(segments, closedSourceSubpaths, parsed.result)
+      ? buildVariableWidthStrokePaths(segments, closedSourceSubpaths, parsed.result, remainingCommandBudget)
       : stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
     if (!builtPaths.ok) return builtPaths;
     if (!stylesByIndex.has(style.index)) {
@@ -3216,6 +3227,10 @@ export async function buildSvgForRenderTarget(
   target: FlaRenderTarget,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
+  budgetOverrides?: {
+    readonly maxPathCommandsPerShape?: number;
+    readonly maxPathCommandsPerComposition?: number;
+  },
 ): Promise<BuildComposedSvgResult> {
   const previewStartedAt = startIssue762Profile();
   const details = {
@@ -3240,6 +3255,12 @@ export async function buildSvgForRenderTarget(
     stageHeight: source.stageHeight,
     shapeBlocks: resolved.shapeBlocks,
     resolveBitmapMedia,
+    ...(budgetOverrides?.maxPathCommandsPerShape !== undefined
+      ? { maxPathCommandsPerShape: budgetOverrides.maxPathCommandsPerShape }
+      : {}),
+    ...(budgetOverrides?.maxPathCommandsPerComposition !== undefined
+      ? { maxPathCommandsPerComposition: budgetOverrides.maxPathCommandsPerComposition }
+      : {}),
   });
   finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {
     ...details,
@@ -3347,6 +3368,9 @@ export interface BuildComposedSvgInput {
   readonly shapeBlocks: ReadonlyMap<string, string>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+  /** Optional tighter path-command caps (clamped to production ceilings) for deterministic budget tests. */
+  readonly maxPathCommandsPerShape?: number;
+  readonly maxPathCommandsPerComposition?: number;
   /** Only the catalog capability check may compose without the actual pixels. */
   readonly metadataOnlyBitmaps?: boolean;
 }
@@ -3855,6 +3879,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     colorTransformFilterIdByGroup.set(group, id);
   }
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
+  const maxPathCommandsPerShape = Math.min(
+    MAX_PATH_COMMANDS_PER_SHAPE,
+    Math.max(0, input.maxPathCommandsPerShape ?? MAX_PATH_COMMANDS_PER_SHAPE),
+  );
+  const maxPathCommandsPerComposition = Math.min(
+    MAX_PATH_COMMANDS_PER_COMPOSITION,
+    Math.max(0, input.maxPathCommandsPerComposition ?? MAX_PATH_COMMANDS_PER_COMPOSITION),
+  );
   const emittedNodes: string[] = [];
   let bitmapDefinitionBytes = 0;
   let gradientDefinitionBytes = 0;
@@ -4190,7 +4222,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-source budget exceeded' };
       }
-      if (pathCommandCount + commands.length > MAX_PATH_COMMANDS_PER_COMPOSITION) {
+      if (commands.length > maxPathCommandsPerShape) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Shape ${node.shapeId} path-command budget exceeded` };
+      }
+      if (pathCommandCount + commands.length > maxPathCommandsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
@@ -4267,11 +4302,18 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
+      const strokeCommandBudget = {
+        remaining: Math.min(
+          maxPathCommandsPerShape - commands.length,
+          maxPathCommandsPerComposition - (pathCommandCount + commands.length),
+        ),
+      };
       const reconstructedStrokes = reconstructSolidStrokes(
         representation,
         node.shapeId,
         renderTargetId,
         displayList.frameIndex,
+        strokeCommandBudget,
       );
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
       uniqueEffectiveStyleCount += reconstructed.result.fills.length + reconstructedStrokes.result.length;

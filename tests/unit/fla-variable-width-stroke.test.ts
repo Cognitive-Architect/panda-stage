@@ -35,7 +35,14 @@ function extractContours(commands: readonly { type: string; x?: number; y?: numb
   return contours;
 }
 
-async function renderSingleShapeFla(shapeXml: string, targetKind: 'scene' | 'graphic-symbol' = 'scene') {
+async function renderSingleShapeFla(
+  shapeXml: string,
+  targetKind: 'scene' | 'graphic-symbol' = 'scene',
+  budgetOverrides?: {
+    readonly maxPathCommandsPerShape?: number;
+    readonly maxPathCommandsPerComposition?: number;
+  },
+) {
   const zip = new JSZip();
   if (targetKind === 'scene') {
     zip.file(
@@ -62,11 +69,17 @@ async function renderSingleShapeFla(shapeXml: string, targetKind: 'scene' | 'gra
   if (!entry.previewSupported) {
     return { ok: false as const, reason: entry.unsupportedReason ?? 'unsupported' };
   }
-  const rendered = await buildSvgForRenderTarget(bytes, entry.target, undefined, prepared.source);
+  const rendered = await buildSvgForRenderTarget(
+    bytes,
+    entry.target,
+    undefined,
+    prepared.source,
+    budgetOverrides,
+  );
   if (!rendered.ok) {
     return { ok: false as const, code: rendered.code, reason: rendered.message };
   }
-  return { ok: true as const, svg: rendered.svg };
+  return { ok: true as const, svg: rendered.svg, composition: rendered.composition };
 }
 
 describe('fla-variable-width-stroke geometry (#1260)', () => {
@@ -153,6 +166,88 @@ describe('fla-variable-width-stroke geometry (#1260)', () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('BUDGET_EXCEEDED');
+  });
+
+  it('samples narrow local WidthMarker peaks on long straight lines instead of skipping them (#1263 P2-01)', () => {
+    // 1,000px straight line: uniform 32-step sampling starts at t=0.03125, which would skip a peak at 0.01..0.03
+    const markers: VariableWidthMarker[] = [
+      { position: 0, left: 0.2, right: 0.2, corner: false },
+      { position: 0.01, left: 0.2, right: 0.2, corner: false },
+      { position: 0.02, left: 0.4, right: 2.0, corner: false },
+      { position: 0.03, left: 0.2, right: 0.2, corner: false },
+      { position: 1, left: 0.2, right: 0.2, corner: false },
+    ];
+    const result = buildVariableWidthStrokeOutline(
+      [{ from: { x: 0, y: 50 }, to: { x: 1000, y: 50 }, command: { type: 'L', x: 1000, y: 50 } }],
+      { weight: 10, markers, cap: 'butt', join: 'round', miterLimit: 3, closed: false },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const pts = extractContours(result.commands)[0]!;
+    // At x=20 (t=0.02): left = 4px (y=46), right = 20px (y=70)
+    const atPeak = pts.filter((p) => Math.abs(p.x - 20) < 0.5);
+    expect(atPeak.length).toBeGreaterThanOrEqual(2);
+    expect(Math.min(...atPeak.map((p) => p.y))).toBeCloseTo(46, 1);
+    expect(Math.max(...atPeak.map((p) => p.y))).toBeCloseTo(70, 1);
+    // Flanking markers at x=10 (t=0.01) and x=30 (t=0.03) return to baseline (y=48..52)
+    const atLeftFlank = pts.filter((p) => Math.abs(p.x - 10) < 0.5);
+    const atRightFlank = pts.filter((p) => Math.abs(p.x - 30) < 0.5);
+    expect(Math.max(...atLeftFlank.map((p) => p.y))).toBeCloseTo(52, 1);
+    expect(Math.max(...atRightFlank.map((p) => p.y))).toBeCloseTo(52, 1);
+  });
+
+  it('inserts markers cleanly on closed-ring closing segments, handles duplicates, and charges marker samples to budget (#1263 P2-01)', () => {
+    // 400px square perimeter: side 4 runs from (20, 120) -> (20, 20) over t in [0.75, 1.0].
+    // Peak at t=0.975 lands at (20, 30) on the closing segment, traveling -y (left is -x, right is +x).
+    const markers: VariableWidthMarker[] = [
+      { position: 0, left: 0.2, right: 0.2, corner: false },
+      { position: 0.5, left: 0.2, right: 0.2, corner: false },
+      { position: 0.5, left: 0.2, right: 0.2, corner: false }, // duplicate marker
+      { position: 0.96, left: 0.2, right: 0.2, corner: false },
+      { position: 0.975, left: 1.5, right: 0.3, corner: false },
+      { position: 0.99, left: 0.2, right: 0.2, corner: false },
+      { position: 1, left: 0.2, right: 0.2, corner: false },
+    ];
+    const segs = [
+      { from: { x: 20, y: 20 }, to: { x: 120, y: 20 }, command: { type: 'L' as const, x: 120, y: 20 } },
+      { from: { x: 120, y: 20 }, to: { x: 120, y: 120 }, command: { type: 'L' as const, x: 120, y: 120 } },
+      { from: { x: 120, y: 120 }, to: { x: 20, y: 120 }, command: { type: 'L' as const, x: 20, y: 120 } },
+      { from: { x: 20, y: 120 }, to: { x: 20, y: 20 }, command: { type: 'L' as const, x: 20, y: 20 } },
+    ];
+    const result = buildVariableWidthStrokeOutline(segs, {
+      weight: 10,
+      markers,
+      cap: 'butt',
+      join: 'round',
+      miterLimit: 3,
+      closed: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const contours = extractContours(result.commands);
+    expect(contours).toHaveLength(2);
+    expect(Math.sign(signedArea(contours[0]!))).toBe(-Math.sign(signedArea(contours[1]!)));
+    // At y=30 on closing segment: outer left (-x) reaches 20 - 15 = 5, inner right (+x) reaches 20 + 3 = 23
+    const outerAtPeak = contours[0]!.filter((p) => Math.abs(p.y - 30) < 0.5);
+    const innerAtPeak = contours[1]!.filter((p) => Math.abs(p.y - 30) < 0.5);
+    expect(outerAtPeak.length).toBeGreaterThanOrEqual(1);
+    expect(innerAtPeak.length).toBeGreaterThanOrEqual(1);
+    expect(Math.min(...outerAtPeak.map((p) => p.x))).toBeCloseTo(5, 1);
+    expect(Math.max(...innerAtPeak.map((p) => p.x))).toBeCloseTo(23, 1);
+
+    // Marker insertion pushes sample count over a tight sample budget -> BUDGET_EXCEEDED
+    const denseMarkers: VariableWidthMarker[] = Array.from({ length: 20 }, (_, i) => ({
+      position: (i + 1) / 21,
+      left: 0.5,
+      right: 0.5,
+      corner: false,
+    }));
+    const overBudget = buildVariableWidthStrokeOutline(
+      [{ from: { x: 0, y: 0 }, to: { x: 10, y: 0 }, command: { type: 'L', x: 10, y: 0 } }],
+      { weight: 4, markers: denseMarkers, cap: 'butt', join: 'round', miterLimit: 3, closed: false, maxSamplePoints: 10 },
+    );
+    expect(overBudget.ok).toBe(false);
+    if (!overBudget.ok) expect(overBudget.code).toBe('BUDGET_EXCEEDED');
   });
 });
 
@@ -291,5 +386,77 @@ describe('FLA VariablePointWidth SVG integration (#1260)', () => {
         <edges><Edge strokeStyle="1" edges="!0 0|1000 0"/></edges>
       </DOMShape>`);
     expect(horizontalVar.ok).toBe(false);
+  });
+
+  it('enforces cumulative shape and composition path-command budgets across subpaths, styles, and the final shape (#1263 P2-02)', async () => {
+    const multiStrokeShape = (yOffsetTwips: number) => `
+      <DOMShape>
+        <strokes>
+          <StrokeStyle index="1">
+            <SolidStroke scaleMode="normal" weight="8" caps="butt" joints="round">
+              <fill><SolidColor color="#dc2626"/></fill>
+              <VariablePointWidth>
+                <WidthMarker position="0" left="0" right="0"/>
+                <WidthMarker position="0.5" left="0.8" right="0.8"/>
+                <WidthMarker position="1" left="0" right="0"/>
+              </VariablePointWidth>
+            </SolidStroke>
+          </StrokeStyle>
+          <StrokeStyle index="2">
+            <SolidStroke scaleMode="normal" weight="6" caps="butt" joints="round">
+              <fill><SolidColor color="#2563eb"/></fill>
+              <VariablePointWidth>
+                <WidthMarker position="0" left="0.2" right="0.2"/>
+                <WidthMarker position="0.5" left="1.0" right="1.0"/>
+                <WidthMarker position="1" left="0.2" right="0.2"/>
+              </VariablePointWidth>
+            </SolidStroke>
+          </StrokeStyle>
+        </strokes>
+        <edges>
+          <Edge strokeStyle="1" edges="!200 ${yOffsetTwips}|2200 ${yOffsetTwips}"/>
+          <Edge strokeStyle="1" edges="!200 ${yOffsetTwips + 200}|2200 ${yOffsetTwips + 200}"/>
+          <Edge strokeStyle="2" edges="!200 ${yOffsetTwips + 400}|2200 ${yOffsetTwips + 400}"/>
+        </edges>
+      </DOMShape>`;
+
+    // Single shape with 3 subpaths across 2 variable-width styles: exact budget passes, exact-1 fails with BUDGET_EXCEEDED
+    const baselineSingle = await renderSingleShapeFla(multiStrokeShape(400), 'scene');
+    expect(baselineSingle.ok).toBe(true);
+    if (!baselineSingle.ok) return;
+    const singleCommands = baselineSingle.composition.pathCommandCount;
+    expect(singleCommands).toBeGreaterThan(20);
+
+    const exactSingle = await renderSingleShapeFla(multiStrokeShape(400), 'scene', {
+      maxPathCommandsPerShape: singleCommands,
+    });
+    expect(exactSingle.ok).toBe(true);
+
+    const overSingle = await renderSingleShapeFla(multiStrokeShape(400), 'scene', {
+      maxPathCommandsPerShape: singleCommands - 1,
+    });
+    expect(overSingle.ok).toBe(false);
+    if (!overSingle.ok) expect(overSingle.code).toBe('BUDGET_EXCEEDED');
+
+    // Two shapes in one composition: each fits maxPathCommandsPerShape, but the 2nd (final) shape overflows composition budget
+    const twoShapes = multiStrokeShape(200) + multiStrokeShape(1200);
+    const baselineTwo = await renderSingleShapeFla(twoShapes, 'scene');
+    expect(baselineTwo.ok).toBe(true);
+    if (!baselineTwo.ok) return;
+    const totalCommands = baselineTwo.composition.pathCommandCount;
+    expect(totalCommands).toBe(singleCommands * 2);
+
+    const exactComposition = await renderSingleShapeFla(twoShapes, 'scene', {
+      maxPathCommandsPerShape: singleCommands,
+      maxPathCommandsPerComposition: totalCommands,
+    });
+    expect(exactComposition.ok).toBe(true);
+
+    const overCompositionLastShape = await renderSingleShapeFla(twoShapes, 'scene', {
+      maxPathCommandsPerShape: singleCommands,
+      maxPathCommandsPerComposition: totalCommands - 1,
+    });
+    expect(overCompositionLastShape.ok).toBe(false);
+    if (!overCompositionLastShape.ok) expect(overCompositionLastShape.code).toBe('BUDGET_EXCEEDED');
   });
 });

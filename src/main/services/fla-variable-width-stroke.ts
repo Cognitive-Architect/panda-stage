@@ -55,6 +55,7 @@ export interface VariableWidthOutlineOptions {
   readonly closed: boolean;
   readonly maxSamplePoints?: number;
   readonly maxOutlinePoints?: number;
+  readonly maxOutlineCommands?: number;
 }
 
 export type VariableWidthOutlineCommand =
@@ -399,6 +400,78 @@ function encodeContour(
   return true;
 }
 
+function mergeMarkerArcLengthSamples(
+  pts: readonly VariableWidthPoint[],
+  cumLen: readonly number[],
+  totalLength: number,
+  isClosed: boolean,
+  markers: readonly VariableWidthMarker[],
+  maxSamplePoints: number,
+):
+  | { readonly ok: true; readonly points: readonly VariableWidthPoint[]; readonly cumLen: readonly number[] }
+  | { readonly ok: false; readonly message: string } {
+  const targetDists: number[] = [];
+  for (const marker of markers) {
+    if (marker.position <= 0 || marker.position >= 1) continue;
+    const dist = marker.position * totalLength;
+    if (dist <= EPSILON || totalLength - dist <= EPSILON) continue;
+    if (targetDists.length === 0 || dist - targetDists[targetDists.length - 1]! > EPSILON) {
+      targetDists.push(dist);
+    }
+  }
+  if (targetDists.length === 0) {
+    return { ok: true, points: pts, cumLen };
+  }
+
+  const count = pts.length;
+  const segCount = isClosed ? count : count - 1;
+  const mergedPts: VariableWidthPoint[] = [];
+  const mergedCumLen: number[] = [];
+  let markerIdx = 0;
+
+  for (let i = 0; i < segCount; i += 1) {
+    const segStart = cumLen[i]!;
+    const segEnd = cumLen[i + 1]!;
+    const segSpan = segEnd - segStart;
+    if (mergedPts.length >= maxSamplePoints) {
+      return { ok: false, message: 'Variable-width stroke sample point budget exceeded' };
+    }
+    mergedPts.push(pts[i]!);
+    mergedCumLen.push(segStart);
+
+    while (markerIdx < targetDists.length && targetDists[markerIdx]! <= segStart + EPSILON) {
+      markerIdx += 1;
+    }
+    const a = pts[i]!;
+    const b = pts[(i + 1) % count]!;
+    while (markerIdx < targetDists.length && targetDists[markerIdx]! < segEnd - EPSILON) {
+      if (mergedPts.length >= maxSamplePoints) {
+        return { ok: false, message: 'Variable-width stroke sample point budget exceeded' };
+      }
+      const dist = targetDists[markerIdx]!;
+      const alpha = segSpan > EPSILON ? (dist - segStart) / segSpan : 0;
+      mergedPts.push({
+        x: a.x + (b.x - a.x) * alpha,
+        y: a.y + (b.y - a.y) * alpha,
+      });
+      mergedCumLen.push(dist);
+      markerIdx += 1;
+    }
+  }
+
+  if (!isClosed) {
+    if (mergedPts.length >= maxSamplePoints) {
+      return { ok: false, message: 'Variable-width stroke sample point budget exceeded' };
+    }
+    mergedPts.push(pts[count - 1]!);
+    mergedCumLen.push(totalLength);
+  } else {
+    mergedCumLen.push(totalLength);
+  }
+
+  return { ok: true, points: mergedPts, cumLen: mergedCumLen };
+}
+
 /**
  * Expands a single directed connected subpath with a `VariablePointWidth` profile
  * into a closed filled SVG outline (`fill-rule="nonzero"`).
@@ -407,8 +480,22 @@ export function buildVariableWidthStrokeOutline(
   segments: readonly VariableWidthDirectedSegment[],
   options: VariableWidthOutlineOptions,
 ): VariableWidthOutlineResult {
-  const maxSamplePoints = options.maxSamplePoints ?? DEFAULT_MAX_SAMPLE_POINTS;
-  const maxOutlinePoints = options.maxOutlinePoints ?? DEFAULT_MAX_OUTLINE_POINTS;
+  const rawMaxOutlinePoints = options.maxOutlinePoints ?? DEFAULT_MAX_OUTLINE_POINTS;
+  const maxOutlineCommands = options.maxOutlineCommands;
+  if (maxOutlineCommands !== undefined && maxOutlineCommands < 4) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+    };
+  }
+  const preliminaryMaxOutlinePoints = maxOutlineCommands !== undefined
+    ? Math.min(rawMaxOutlinePoints, maxOutlineCommands - 1)
+    : rawMaxOutlinePoints;
+  const maxSamplePoints = Math.min(
+    options.maxSamplePoints ?? DEFAULT_MAX_SAMPLE_POINTS,
+    preliminaryMaxOutlinePoints,
+  );
 
   const flattened = flattenDirectedSegments(segments, maxSamplePoints);
   if (!flattened.ok) {
@@ -421,6 +508,18 @@ export function buildVariableWidthStrokeOutline(
     pts.length >= 3 &&
     Math.hypot(pts[pts.length - 1]!.x - pts[0]!.x, pts[pts.length - 1]!.y - pts[0]!.y) <= 1e-3;
 
+  const contourOverhead = isClosed ? 2 : 1;
+  const maxOutlinePoints = maxOutlineCommands !== undefined
+    ? Math.min(rawMaxOutlinePoints, maxOutlineCommands - contourOverhead)
+    : rawMaxOutlinePoints;
+  if (maxOutlinePoints < (isClosed ? 6 : 3)) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+    };
+  }
+
   // For closed loops, drop the duplicate closing vertex while keeping total arc length accurate.
   if (isClosed && pts.length > 3) {
     pts = pts.slice(0, pts.length - 1);
@@ -430,24 +529,45 @@ export function buildVariableWidthStrokeOutline(
     return { ok: true, commands: [], pathD: '', pointCount: 0 };
   }
 
+  const rawCount = pts.length;
+  const rawSegCount = isClosed ? rawCount : rawCount - 1;
+  const rawCumLen = new Array<number>(rawSegCount + 1);
+  rawCumLen[0] = 0;
+
+  for (let i = 0; i < rawSegCount; i += 1) {
+    const a = pts[i]!;
+    const b = pts[(i + 1) % rawCount]!;
+    rawCumLen[i + 1] = rawCumLen[i]! + Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  const totalLength = rawCumLen[rawSegCount]!;
+  if (totalLength <= EPSILON) {
+    return { ok: true, commands: [], pathD: '', pointCount: 0 };
+  }
+
+  const merged = mergeMarkerArcLengthSamples(
+    pts,
+    rawCumLen,
+    totalLength,
+    isClosed,
+    options.markers,
+    maxSamplePoints,
+  );
+  if (!merged.ok) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: merged.message };
+  }
+
+  pts = merged.points;
+  const cumLen = merged.cumLen;
   const count = pts.length;
   const segCount = isClosed ? count : count - 1;
-  const cumLen = new Array<number>(segCount + 1);
-  cumLen[0] = 0;
   const tangents: VariableWidthPoint[] = [];
 
   for (let i = 0; i < segCount; i += 1) {
     const a = pts[i]!;
     const b = pts[(i + 1) % count]!;
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    cumLen[i + 1] = cumLen[i]! + len;
     const t = unitVector(b.x - a.x, b.y - a.y);
     tangents.push(t ?? (tangents[tangents.length - 1] ?? { x: 1, y: 0 }));
-  }
-
-  const totalLength = cumLen[segCount]!;
-  if (totalLength <= EPSILON) {
-    return { ok: true, commands: [], pathD: '', pointCount: 0 };
   }
 
   const leftPts: VariableWidthPoint[] = [];
@@ -475,6 +595,13 @@ export function buildVariableWidthStrokeOutline(
     const parts: string[] = [];
     if (!encodeContour(leftPts, commands, parts) || !encodeContour(reversedRight, commands, parts)) {
       return { ok: false, code: 'RENDER_FAILED', message: 'Variable-width stroke produced non-finite coordinates' };
+    }
+    if (maxOutlineCommands !== undefined && commands.length > maxOutlineCommands) {
+      return {
+        ok: false,
+        code: 'BUDGET_EXCEEDED',
+        message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+      };
     }
     return {
       ok: true,
@@ -536,6 +663,13 @@ export function buildVariableWidthStrokeOutline(
   const parts: string[] = [];
   if (!encodeContour(outline, commands, parts)) {
     return { ok: false, code: 'RENDER_FAILED', message: 'Variable-width stroke produced non-finite coordinates' };
+  }
+  if (maxOutlineCommands !== undefined && commands.length > maxOutlineCommands) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+    };
   }
   return {
     ok: true,
