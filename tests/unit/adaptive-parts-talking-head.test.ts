@@ -390,6 +390,20 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(editorProjectStore.getSnapshot()!.project).toEqual(beforePose);
     editorProjectStore.redo();
     expect(editorProjectStore.getSnapshot()!.project).toEqual(afterPose);
+
+    const rotated = motion.apply(beforePose, { ...captureAddress, partId: PART_HEAD, autoKey: true },
+      { 'transform.rotationDeg': 45 });
+    const skewed = ProjectSchema.parse({ ...rotated, characters: rotated.characters.map(character =>
+      character.id !== setup.characterId ? character : { ...character, actions: character.actions?.map(action =>
+        action.id !== actionId || !('kind' in action) ? action : { ...action, tracks: [...action.tracks, {
+          partId: PART_BODY, property: 'transform.scaleX', keys: [0, 750].map(timeMs =>
+            ({ timeMs, value: 2, interpolationToNext: 'step' })),
+        }] }) }) });
+    const partialCapture = saveCharacterBodyPose(skewed, captureAddress, 'Capture writable parts', [PART_BODY, PART_HEAD]);
+    const capturedCharacter = partialCapture.characters.find(({ id }) => id === setup.characterId)!;
+    expect(capturedCharacter.mode === 'adaptive-parts' && capturedCharacter.bodyPoses?.at(-1)?.parts.map(({ partId }) => partId))
+      .toEqual([PART_BODY]);
+    expect(() => saveCharacterBodyPose(skewed, captureAddress, 'Skewed head only', [PART_HEAD])).toThrow('改选一帧');
   });
 
   it('maps a layered action between two characters with an adjusted pivot and a missing part', () => {
@@ -443,6 +457,7 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(migrateProject({ ...project, schemaVersion: 37 })).toEqual(project);
     expect(() => migrateProject({ ...planned.project, schemaVersion: 37 })).toThrow();
     const opened = migrateProject(JSON.parse(JSON.stringify(planned.project)));
+    expect(migrateProject({ ...opened, schemaVersion: 39 })).toEqual(opened);
     const sameSource = opened.characters.find(({ id: characterId }) => characterId === source.id);
     expect(sameSource).toEqual(source);
     const mappedTarget = opened.characters.find(({ id: characterId }) => characterId === target.id)!;
@@ -480,6 +495,7 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     })) });
     const withPose = saveCharacterBodyPose(withDestinationPivot, { shotId: IDS.shot, layerId: oneId, timeMs: 750 },
       'Calibrated pose', [bodyId]);
+    expect(() => migrateProject({ ...withPose, schemaVersion: 39 })).toThrow();
     const poseCharacter = withPose.characters.find(({ id: characterId }) => characterId === target.id)!;
     if (poseCharacter.mode !== 'adaptive-parts') throw new Error('Expected an Adaptive Parts Character.');
     const posed = planCharacterBodyPose(migrateProject(JSON.parse(JSON.stringify(withPose))),

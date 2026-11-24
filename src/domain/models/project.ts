@@ -30,6 +30,7 @@ import {
   CharacterV35Schema,
   CharacterV36Schema,
   CharacterV37Schema,
+  CharacterV39Schema,
   CharacterV22Schema,
   CharacterV23Schema,
   CharacterV24Schema,
@@ -774,16 +775,25 @@ export const ProjectV37Schema = ProjectV37DataSchema.superRefine(validateProject
 
 const ProjectV38DataSchema = ProjectV37DataSchema.extend({
   schemaVersion: z.literal(38),
-  characters: z.array(CharacterSchema),
+  characters: z.array(CharacterV39Schema),
 });
 
 export const ProjectV38Schema = ProjectV38DataSchema.superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 
-const CurrentProjectDataSchema = ProjectV38DataSchema.extend({
-  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+const ProjectV39DataSchema = ProjectV38DataSchema.extend({
+  schemaVersion: z.literal(39),
   exportPreferences: ExportPreferencesSchema.optional(),
+});
+
+export const ProjectV39Schema = ProjectV39DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+const CurrentProjectDataSchema = ProjectV39DataSchema.extend({
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+  characters: z.array(CharacterSchema),
 });
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */

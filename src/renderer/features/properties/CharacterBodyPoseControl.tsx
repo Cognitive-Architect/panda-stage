@@ -63,9 +63,15 @@ function BodyPoseForm({ snapshot, shot, layer, character }: CharacterBodyPoseCon
       const state = editorProjectStore.getSnapshot();
       if (!state) return;
       const project = saveCharacterBodyPose(state.project, address, name, selectedParts);
+      const updated = project.characters.find(({ id }) => id === character.id);
+      const saved = updated?.mode === 'adaptive-parts' ? updated.bodyPoses?.at(-1) : undefined;
+      const omitted = bodyParts.flatMap(({ partId, displayName }, index) =>
+        selectedParts.includes(partId) && !saved?.parts.some(part => part.partId === partId)
+          ? [displayName ?? `部件 ${index + 1}`] : []);
       editorProjectStore.updateProject(project, '保存身体姿势');
       setName('');
       setError('');
+      if (omitted.length) setNotice(`无法保存当前姿态的部件：${omitted.join('、')}。可换一帧单独保存。`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '无法保存身体姿势。');
     }

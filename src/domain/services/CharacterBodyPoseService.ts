@@ -46,10 +46,12 @@ export function saveCharacterBodyPose(project: Project, address: BodyPoseAddress
   const clip = layered ? layer.animationClip ?? createCharacterPartAnimationClip(project, address.shotId, layer.id) : undefined;
   const transforms = layered && clip?.version === 1
     ? resolveLayeredCharacterPartTransforms(clip, character, overlays.animationValues ?? [], layered) : undefined;
-  const parts = [...new Set(partIds)].filter(id => availableParts.has(id)).map(partId => {
+  const selected = [...new Set(partIds)].filter(id => availableParts.has(id));
+  if (!selected.length) throw new Error('请至少选择一个可用身体部件。');
+  const parts = selected.flatMap(partId => {
     const partName = character.parts.find(part => part.partId === partId)?.displayName;
     if (!transforms || clip?.version !== 1) {
-      return { partId, partName, properties: characterMotionValues(project, { ...address, partId, autoKey: true }) };
+      return [{ partId, partName, properties: characterMotionValues(project, { ...address, partId, autoKey: true }) }];
     }
     const basis = clip.targetBases.find(entry => entry.target.partId === partId)!;
     const referencePivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
@@ -60,18 +62,18 @@ export function saveCharacterBodyPose(project: Project, address: BodyPoseAddress
     const { tx, ty, rotationDeg, scaleX, scaleY } = decomposeAffineMatrix(delta);
     if (!isAffineMatrixTrsSafe(delta) || [scaleX, scaleY].some(scale =>
       scale < CHARACTER_PART_MIN_SCALE - 1e-9 || scale > CHARACTER_PART_MAX_SCALE + 1e-9)) {
-      throw new Error(`「${partName ?? '所选部件'}」的姿态超出身体姿势可保存的变换范围。请改选一帧，或取消勾选此部件。`);
+      return [];
     }
     const { x, y } = referencePivot;
-    return { partId, partName, referencePivot, properties: {
+    return [{ partId, partName, referencePivot, properties: {
       'transform.offsetX': tx + (delta.a - 1) * x + delta.c * y,
       'transform.offsetY': ty + delta.b * x + (delta.d - 1) * y,
       'transform.rotationDeg': rotationDeg,
       'transform.scaleX': Math.min(CHARACTER_PART_MAX_SCALE, Math.max(CHARACTER_PART_MIN_SCALE, scaleX)),
       'transform.scaleY': Math.min(CHARACTER_PART_MAX_SCALE, Math.max(CHARACTER_PART_MIN_SCALE, scaleY)),
-    } };
+    } }];
   });
-  if (!parts.length) throw new Error('请至少选择一个可用身体部件。');
+  if (!parts.length) throw new Error('所选部件的姿态超出可保存的变换范围。请改选一帧，或选择其他部件。');
   const pose = CharacterBodyPoseSchema.parse({ id: createId(), name, parts });
   return ProjectSchema.parse({ ...project, characters: project.characters.map(entry => entry === character
     ? { ...character, bodyPoses: [...saved, pose] } : entry) });

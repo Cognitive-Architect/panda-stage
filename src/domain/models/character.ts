@@ -916,27 +916,32 @@ export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safe
 const CharacterActionV37Schema = z.union([BakedCharacterActionSchema, LayeredCharacterActionV37Schema]);
 export const CharacterActionSchema = z.union([BakedCharacterActionSchema, LayeredCharacterActionSchema]);
 
-export const CharacterBodyPoseSchema = z.object({
-  id: IdSchema,
-  name: NameSchema,
-  parts: z.array(z.object({
-    partId: IdSchema,
-    partName: NameSchema.optional(),
-    properties: z.partialRecord(AnimationPropertySchema, FiniteNumberSchema),
-    /** Center-local pivot used to encode a pose captured from a layered action. */
-    referencePivot: ArmPointSchema.optional(),
-  }).strict()).min(1),
-}).strict().superRefine(({ parts }, context) => {
-  const ids = new Set<string>();
-  parts.forEach(({ partId, properties }, index) => {
-    const scales = [properties['transform.scaleX'], properties['transform.scaleY']];
-    if (ids.has(partId) || !Object.keys(properties).length || scales.some((scale) =>
-      scale !== undefined && (scale < CHARACTER_PART_MIN_SCALE || scale > CHARACTER_PART_MAX_SCALE))) {
-      context.addIssue({ code: 'custom', path: ['parts', index], message: 'Invalid or duplicate body pose target.' });
-    }
-    ids.add(partId);
-  });
+const BodyPosePartV39Schema = z.strictObject({
+  partId: IdSchema,
+  partName: NameSchema.optional(),
+  properties: z.partialRecord(AnimationPropertySchema, FiniteNumberSchema),
 });
+const BodyPosePartSchema = BodyPosePartV39Schema.extend({
+  /** Center-local pivot used to encode a pose captured from a layered action. */
+  referencePivot: ArmPointSchema.optional(),
+});
+
+function bodyPoseSchema<Part extends typeof BodyPosePartV39Schema>(part: Part) {
+  return z.strictObject({ id: IdSchema, name: NameSchema, parts: z.array(part).min(1) }).superRefine(({ parts }, context) => {
+    const ids = new Set<string>();
+    parts.forEach(({ partId, properties }, index) => {
+      const scales = [properties['transform.scaleX'], properties['transform.scaleY']];
+      if (ids.has(partId) || !Object.keys(properties).length || scales.some((scale) =>
+        scale !== undefined && (scale < CHARACTER_PART_MIN_SCALE || scale > CHARACTER_PART_MAX_SCALE))) {
+        context.addIssue({ code: 'custom', path: ['parts', index], message: 'Invalid or duplicate body pose target.' });
+      }
+      ids.add(partId);
+    });
+  });
+}
+
+const CharacterBodyPoseV39Schema = bodyPoseSchema(BodyPosePartV39Schema);
+export const CharacterBodyPoseSchema = bodyPoseSchema(BodyPosePartSchema);
 
 export const CharacterArmChainSchema = z.object({
   segments: z.array(z.object({
@@ -1015,20 +1020,26 @@ const CurrentCharacterActionsShape = {
 };
 const CurrentCharacterFields = { ...MouthPoseShape, ...ExpressionTalkingShape, ...CurrentCharacterActionsShape };
 const AdaptivePartsCharacterV35Schema = AdaptivePartsCharacterV26Schema.safeExtend(CurrentCharacterFields);
-const AdaptivePartsCharacterV36Schema = AdaptivePartsCharacterV35Schema.safeExtend({
-  bodyPoses: z.array(CharacterBodyPoseSchema).max(64).refine((poses) =>
+function bodyPoseLibrary<Schema extends typeof CharacterBodyPoseV39Schema>(schema: Schema) {
+  return z.array(schema).max(64).refine((poses) =>
     new Set(poses.map(({ id }) => id)).size === poses.length &&
     new Set(poses.map(({ name }) => name.toLocaleLowerCase())).size === poses.length,
-  'Body pose names and ids must be unique.').optional(),
+  'Body pose names and ids must be unique.').optional();
+}
+const AdaptivePartsCharacterV36Schema = AdaptivePartsCharacterV35Schema.safeExtend({
+  bodyPoses: bodyPoseLibrary(CharacterBodyPoseV39Schema),
 });
 const AdaptivePartsCharacterV37Schema = AdaptivePartsCharacterV36Schema.safeExtend({
   armChain: CharacterArmChainSchema.optional(),
 });
-const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV37Schema.safeExtend({
+const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExtend({
   actions: z.array(CharacterActionSchema).max(64).optional(),
   motionMappings: z.array(CharacterMotionMappingSchema).max(64).refine((entries) =>
     new Set(entries.map(({ sourceCharacterId, sourceActionId }) => `${sourceCharacterId}:${sourceActionId}`)).size === entries.length,
   'Each source action may have one reusable mapping.').optional(),
+});
+const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
+  bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
 });
 
 function validateExpressionTalkingSources(character: {
@@ -1050,6 +1061,12 @@ const CharacterCurrentSchema = z.discriminatedUnion('mode', [
   SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
   CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
   AdaptivePartsCharacterCurrentSchema,
+]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
+
+export const CharacterV39Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  AdaptivePartsCharacterV39Schema,
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
 export const CharacterV35Schema = z.discriminatedUnion('mode', [
