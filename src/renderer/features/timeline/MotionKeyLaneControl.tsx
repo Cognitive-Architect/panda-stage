@@ -288,28 +288,33 @@ function MotionKeyMarker({
 }: MotionKeyMarkerProps): React.JSX.Element {
   const dragRef = useRef<KeyDragSession | null>(null);
   const blockedBaseRef = useRef<{ pointerId: number; startX: number } | null>(null);
+  const dragListenersRef = useRef<AbortController | null>(null);
   const suppressClickRef = useRef(false);
   const displayTime = dragPreviewTimeMs ?? timeMs;
 
+  const stopListening = (): void => {
+    dragListenersRef.current?.abort();
+    dragListenersRef.current = null;
+  };
+
   const cancelDrag = (): void => {
+    stopListening();
     blockedBaseRef.current = null;
     if (!dragRef.current) return;
     dragRef.current = null;
     onDragPreview(null);
   };
 
-  useEffect(() => {
-    const cancelOnBlur = (): void => cancelDrag();
-    const cancelOnEscape = (event: KeyboardEvent): void => {
+  const listenWhileDragging = (): void => {
+    const controller = new AbortController();
+    dragListenersRef.current = controller;
+    window.addEventListener('blur', cancelDrag, { signal: controller.signal });
+    window.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') cancelDrag();
-    };
-    window.addEventListener('blur', cancelOnBlur);
-    window.addEventListener('keydown', cancelOnEscape);
-    return () => {
-      window.removeEventListener('blur', cancelOnBlur);
-      window.removeEventListener('keydown', cancelOnEscape);
-    };
-  }, []);
+    }, { signal: controller.signal });
+  };
+
+  useLayoutEffect(() => stopListening, []);
 
   useEffect(() => {
     const drag = dragRef.current;
@@ -320,7 +325,7 @@ function MotionKeyMarker({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
-    if (event.button !== 0 || event.pointerType === 'touch') return;
+    if (event.button !== 0 || event.pointerType === 'touch' || dragRef.current || blockedBaseRef.current) return;
     onPointerDownKeyArea?.();
     if (event.shiftKey || !editable) return;
     const prepared = prepareKeyDragSession({
@@ -337,13 +342,13 @@ function MotionKeyMarker({
       return;
     }
     if (prepared.kind === 'ignore') return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    listenWhileDragging();
     if (prepared.kind === 'blocked-base') {
       blockedBaseRef.current = { pointerId: event.pointerId, startX: event.clientX };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
       return;
     }
     dragRef.current = prepared.session;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -352,6 +357,7 @@ function MotionKeyMarker({
     if (blocked && blocked.pointerId === event.pointerId) {
       if (Math.abs(event.clientX - blocked.startX) >= 3) {
         blockedBaseRef.current = null;
+        stopListening();
         suppressClickRef.current = true;
         onBlockedBaseDrag();
       }
@@ -373,6 +379,7 @@ function MotionKeyMarker({
     const blocked = blockedBaseRef.current;
     if (blocked && blocked.pointerId === event.pointerId) {
       blockedBaseRef.current = null;
+      stopListening();
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -390,6 +397,7 @@ function MotionKeyMarker({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
+    stopListening();
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -404,15 +412,13 @@ function MotionKeyMarker({
 
   const handleCancel = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.stopPropagation();
-    if (blockedBaseRef.current?.pointerId === event.pointerId) {
-      blockedBaseRef.current = null;
-    }
     if (suppressClickRef.current) {
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
     }
-    if (dragRef.current?.pointerId === event.pointerId) cancelDrag();
+    if (dragRef.current?.pointerId === event.pointerId ||
+        blockedBaseRef.current?.pointerId === event.pointerId) cancelDrag();
   };
 
   return (

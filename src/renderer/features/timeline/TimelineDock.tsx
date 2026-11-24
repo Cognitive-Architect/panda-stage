@@ -148,7 +148,11 @@ export function TimelineDock({
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const subtitleLaneContentRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
+  const rulerDragRef = useRef<{
+    pointerId: number;
+    element: HTMLDivElement;
+    stopAudition?: () => void;
+  } | null>(null);
   const mediaGestureRef = useRef<{ pointerId: number; x: number; y: number; axis: 'pending' | 'horizontal' | 'vertical' } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
@@ -182,6 +186,26 @@ export function TimelineDock({
     return bindTimelineRulerScroll(scrollRef.current);
   }, [currentShotId, hasShot, ui.expanded]);
 
+  const endRulerDrag = (interrupted: boolean): void => {
+    const drag = rulerDragRef.current;
+    if (!drag) return;
+    rulerDragRef.current = null;
+    if (interrupted) drag.stopAudition?.();
+    if (drag.element.hasPointerCapture(drag.pointerId)) {
+      drag.element.releasePointerCapture(drag.pointerId);
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (!hasShot || !ui.expanded) return;
+    const cancelRulerDrag = (): void => endRulerDrag(true);
+    window.addEventListener('blur', cancelRulerDrag);
+    return () => {
+      window.removeEventListener('blur', cancelRulerDrag);
+      cancelRulerDrag();
+    };
+  }, [currentShotId, hasShot, ui.expanded]);
+
   const pixelsPerMs = computePixelsPerMs(viewportWidth, durationMs, ui.zoom);
   const trackWidth = durationMs * pixelsPerMs;
   const playheadPx = timeToPx(ui.currentTimeMs, pixelsPerMs);
@@ -210,26 +234,29 @@ export function TimelineDock({
     const position = timelineUiStore.getSnapshot().currentTimeMs;
     if (!scrubAudio || productPreviewOpen || position === lastAudition.current) return;
     lastAudition.current = position;
-    void timelineAudio.samples?.audition(position).catch(() => undefined);
+    const samples = timelineAudio.samples;
+    if (samples && rulerDragRef.current) {
+      rulerDragRef.current.stopAudition = () => samples.stop();
+    }
+    void samples?.audition(position).catch(() => undefined);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!hasShot) return;
+    if (!hasShot || !event.isPrimary || event.button !== 0 || rulerDragRef.current) return;
     lastAudition.current = null;
-    draggingRef.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
+    rulerDragRef.current = { pointerId: event.pointerId, element: event.currentTarget };
     seekFromClientX(event.clientX);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (!draggingRef.current) return;
+    if (rulerDragRef.current?.pointerId !== event.pointerId) return;
     seekFromClientX(event.clientX);
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>): void => {
-    draggingRef.current = false;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (rulerDragRef.current?.pointerId === event.pointerId) {
+      endRulerDrag(event.type !== 'pointerup');
     }
   };
 
@@ -435,11 +462,9 @@ export function TimelineDock({
               data-testid="timeline-ruler-track"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={() => {
-                draggingRef.current = false;
-                timelineAudio.samples?.stop();
-              }}
+              onPointerUp={handlePointerEnd}
+              onPointerCancel={handlePointerEnd}
+              onLostPointerCapture={handlePointerEnd}
             >
               <div
                 aria-label="时间标尺"
