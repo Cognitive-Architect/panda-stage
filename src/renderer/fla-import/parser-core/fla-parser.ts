@@ -70,6 +70,7 @@ const DEFAULT_DASH_SPACE_LENGTH = 4;
 // Ported from lifeart/fla-viewer ParseOptions.structureOnly (b14fa1d).
 export interface ParseOptions {
   structureOnly?: boolean;
+  skipAudio?: boolean;
 }
 
 export class FLAParser {
@@ -143,7 +144,7 @@ export class FLAParser {
 
     // Parse sound items from media section and load audio
     progress('Loading audio...');
-    const sounds = await this.parseSounds(root, options.structureOnly);
+    const sounds = await this.parseSounds(root, options.structureOnly || options.skipAudio);
 
     // Parse video items from media section and load FLV data
     progress('Loading videos...');
@@ -2217,13 +2218,13 @@ export class FLAParser {
       const soundDataHRef = soundEl.getAttribute('soundDataHRef') || undefined;
       const format = soundEl.getAttribute('format') || undefined;
       const sampleCount = soundEl.getAttribute('sampleCount')
-        ? parseInt(soundEl.getAttribute('sampleCount')!)
+        ? Number(soundEl.getAttribute('sampleCount'))
         : undefined;
       // Byte length of the actual stored (e.g. MP3) stream. Adobe appends a
       // low-rate PCM "cache" after the compressed frames inside the same .dat,
       // so this lets us hand only the real stream to the decoder.
       const dataLength = soundEl.getAttribute('dataLength')
-        ? parseInt(soundEl.getAttribute('dataLength')!)
+        ? Number(soundEl.getAttribute('dataLength'))
         : undefined;
 
       // Parse format string to extract sample rate, bit depth, and channels

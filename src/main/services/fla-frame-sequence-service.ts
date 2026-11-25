@@ -82,6 +82,7 @@ import type {
   FlaStaticSnapshotRasterizeOutput,
   FlaStaticSnapshotRasterizer,
 } from './fla-static-snapshot-render-session';
+import { FlaStaticSnapshotRasterizerError } from './fla-static-snapshot-render-session';
 
 // ---- Frame source contract ----
 //
@@ -100,7 +101,10 @@ export interface SequenceFrameInput {
   /** Source-space crop used by the renderer to frame this particular PNG. */
   sourceViewport?: { x: number; y: number; width: number; height: number };
   maskWarning?: string;
+  projectionWarning?: string;
   ikPoseWarning?: string;
+  staticTexts?: FlaStaticSnapshotRasterizeInput['staticTexts'];
+  graphicFraming?: FlaStaticSnapshotRasterizeInput['graphicFraming'];
 }
 
 export type SequenceFrameSource = AsyncIterable<SequenceFrameInput> | Iterable<SequenceFrameInput>;
@@ -148,6 +152,7 @@ interface SequenceInFlightItem {
   sequenceOrdinal: number;
   sourceViewport?: { x: number; y: number; width: number; height: number };
   maskWarning?: string;
+  projectionWarning?: string;
   ikPoseWarning?: string;
   rasterOutput: FlaStaticSnapshotRasterizeOutput;
   frameWallClockMs: number;
@@ -348,6 +353,8 @@ export class FlaFrameSequenceService {
           rasterOutput = await this.rasterizer.rasterize({
             requestId: frameRequestId,
             svg: frame.svg,
+            ...(frame.staticTexts?.length ? { staticTexts: frame.staticTexts } : {}),
+            ...(frame.graphicFraming ? { graphicFraming: frame.graphicFraming } : {}),
           } as FlaStaticSnapshotRasterizeInput);
         } catch (error) {
           // R2-D: cancellation / close / supersede. The R1
@@ -358,7 +365,15 @@ export class FlaFrameSequenceService {
             // been called by settleInFlightAsCancelled.
             break;
           }
-          this.settleInFlightAsFailed(sequence, 'RENDERER_CRASH', `Rasterizer error: ${String(error)}`);
+          const failureCode =
+            error instanceof FlaStaticSnapshotRasterizerError && error.code === 'BUDGET_EXCEEDED'
+              ? 'BUDGET_EXCEEDED'
+              : 'RENDERER_CRASH';
+          this.settleInFlightAsFailed(
+            sequence,
+            failureCode,
+            error instanceof Error ? error.message : `Rasterizer error: ${String(error)}`,
+          );
           break;
         }
         if (sequence.cancelled) {
@@ -392,12 +407,14 @@ export class FlaFrameSequenceService {
           break;
         }
 
+        const effectiveViewport = rasterOutput.sourceViewport ?? frame.sourceViewport;
         const item: SequenceInFlightItem = {
           frameIndex: frame.frameIndex,
           sequenceOrdinal: ordinal,
-          ...(frame.sourceViewport ? { sourceViewport: frame.sourceViewport } : {}),
+          ...(effectiveViewport ? { sourceViewport: effectiveViewport } : {}),
           maskWarning: frame.maskWarning,
           ikPoseWarning: frame.ikPoseWarning,
+          projectionWarning: frame.projectionWarning,
           rasterOutput,
           frameWallClockMs,
           receivedAt: this.now(),
@@ -584,6 +601,7 @@ export class FlaFrameSequenceService {
         pixelCount: it.rasterOutput.pixelCount,
         ...(it.maskWarning ? { maskWarning: it.maskWarning } : {}),
         ...(it.ikPoseWarning ? { ikPoseWarning: it.ikPoseWarning } : {}),
+        ...(it.projectionWarning ? { projectionWarning: it.projectionWarning } : {}),
       };
       return {
         frameIndex: it.frameIndex,

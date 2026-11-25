@@ -159,7 +159,7 @@ function pngObjectUrl(bytes: Uint8Array): string {
 }
 
 function getSuggestedName(basename: string): string {
-  return basename.replace(/\.fla$/iu, '').trim().slice(0, 100);
+  return basename.replace(/\.(?:fla|xfl)$/iu, '').trim().slice(0, 100);
 }
 
 interface GraphicCharacterTarget {

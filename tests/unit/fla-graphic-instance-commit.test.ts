@@ -751,6 +751,33 @@ describe('FLA Graphic structured Definition (E1)', () => {
     expect(second.project.shots[0]!.layers).toHaveLength(2); // Two layers referencing the same animationId!
   });
 
+  it('places a full-frame Graphic without reusing a legacy structured Definition with identical SVGs', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+
+    const batch: FlaGraphicDefinitionFrameBatch = {
+      ...frameBatch({
+        occurrenceId: SECOND_OCCURRENCE_ID,
+        sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[1]',
+      }),
+      requiresFullFrame: true,
+    };
+    vi.mocked(h.partPreviewService.buildGraphicDefinitionFrameBatch).mockResolvedValueOnce({ ok: true, batch });
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+
+    expect(second.animationId).not.toBe(first.animationId);
+    const reopened = await h.projectService.open(h.projectRoot);
+    expect(reopened.project.animations.find(({ id }) => id === first.animationId)).toHaveProperty('structure');
+    expect(reopened.project.animations.find(({ id }) => id === second.animationId)).not.toHaveProperty('structure');
+    expect(reopened.project.shots[0]!.layers.map(({ source }) => source)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ animationId: first.animationId }),
+      expect.objectContaining({ animationId: second.animationId }),
+    ]));
+  });
+
   it('preserves real structure differences (playbackMode, localTransform) and does not merge definitions', async () => {
     const h = await harness();
     h.batchStructure.current = sampleStructure();

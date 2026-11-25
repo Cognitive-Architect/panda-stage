@@ -34,7 +34,7 @@ import {
   thumbnailStateFromResponse,
   type ThumbnailState,
 } from './AssetCard';
-import { AssetImportPanel } from './AssetImportPanel';
+import { AssetImportPanel, selectImportedAudioAssetIds } from './AssetImportPanel';
 import {
   refreshImportedAudioMetadata,
   type AssetMetadataProjectIdentity,
@@ -45,6 +45,7 @@ import {
   paginateAssetLibraryEntries,
 } from './assetLibraryPagination';
 import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
+import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { applyFlaFrameSequenceCommitResponse } from './applyFlaFrameSequenceCommitResponse';
 import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
@@ -925,6 +926,13 @@ export function AssetLibrary({
           }}
           graphicImportDisabledReason={graphicImportDisabledReason}
           snapshot={snapshot}
+          onSoundImported={async (response) => {
+            const outcome = applyAssetImportResponse(response, editorProjectStore);
+            setStatus(outcome.status);
+            const metadata = await refreshAudioMetadataBatch(selectImportedAudioAssetIds(response));
+            const failure = metadata.failures[0];
+            if (failure) throw new Error(failure.message);
+          }}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(
               response,

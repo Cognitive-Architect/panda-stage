@@ -206,6 +206,18 @@ export function captureFlaGraphicStructure(
           ...(options.sourceBasename ? { sourceBasename: options.sourceBasename } : {}),
         };
       }
+      if (node.kind === 'text') {
+        return {
+          ...base,
+          type: 'opaque',
+          opaqueKind: 'text',
+          sourceRef: node.textId,
+          reason: 'Static text uses rasterized snapshot fallback',
+          ...(fallbackScope ? { fallbackScope } : {}),
+          ...(fallbackAssetId ? { fallbackAssetId } : {}),
+          ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
+        };
+      }
       if (node.opaque) {
         return {
           ...base,

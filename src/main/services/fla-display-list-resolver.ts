@@ -22,10 +22,23 @@ export const FLA_DISPLAY_LIST_IDENTITY_MATRIX: FlaDisplayListMatrix =
  */
 export interface FlaDisplayListFrameContext {
   readonly frameIndex: number;
+  readonly projectionDiagnostics?: readonly string[];
   /** Layers are supplied back-to-front in painter order; the resolver preserves it. */
   readonly layers: readonly FlaDisplayListLayer[];
   /** Set when visible authored content was found outside the safe display subset. */
   readonly unsupportedDisplayReason?: string;
+}
+
+export interface FlaInstanceFilter {
+  readonly kind: 'blur' | 'glow' | 'dropShadow';
+  readonly enabled: boolean;
+  readonly blurX: number;
+  readonly blurY: number;
+  readonly color: string;
+  readonly alpha: number;
+  readonly strength: number;
+  readonly distance: number;
+  readonly angle: number;
 }
 
 export interface FlaDisplayListBlurFilter {
@@ -55,6 +68,8 @@ export function isValidFlaDisplayListRgbTransform(transform: FlaDisplayListRgbTr
 
 export interface FlaDisplayListLayer {
   readonly name: string;
+  readonly stageProjection?: FlaDisplayListMatrix;
+  readonly incompatibleStageMask?: boolean;
   readonly visible: boolean;
   readonly elements: readonly FlaDisplayListElement[];
   /** One source-supported DOMFrame BlurFilter scoped to this layer's contents. */
@@ -92,6 +107,17 @@ export type FlaDisplayListElement =
       readonly visible?: boolean;
     }
   | {
+      readonly kind: 'text';
+      readonly textId: string;
+      readonly sourceAddress?: string;
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      readonly sourceParentSpanTweenType?: string;
+      /** Transform from this text node's local space into its immediate parent. */
+      readonly localTransform?: FlaDisplayListMatrix;
+      readonly visible?: boolean;
+    }
+  | {
       readonly kind: 'group';
       readonly groupId: string;
       readonly sourceAddress?: string;
@@ -119,6 +145,7 @@ export type FlaDisplayListElement =
       readonly alphaMultiplier?: number;
       /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
       readonly rgbTransform?: FlaDisplayListRgbTransform;
+      readonly instanceFilters?: readonly FlaInstanceFilter[];
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
@@ -205,6 +232,15 @@ export interface FlaResolvedBitmapNode {
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
+export interface FlaResolvedTextNode {
+  readonly kind: 'text';
+  readonly textId: string;
+  readonly sourceAddress?: string;
+  readonly localTransform: FlaDisplayListMatrix;
+  readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
+}
+
 export interface FlaResolvedClipShape {
   readonly shapeId: string;
   readonly worldTransform: FlaDisplayListMatrix;
@@ -225,6 +261,8 @@ export interface FlaResolvedGroupNode {
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
   readonly opacity?: number;
+  readonly instanceFilters?: readonly FlaInstanceFilter[];
+  readonly instanceFilterClips?: readonly FlaResolvedClipPath[];
   readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly symbolInstance?: {
     readonly sourceFrameCount?: number;
@@ -246,6 +284,7 @@ export interface FlaResolvedGroupNode {
 export type FlaResolvedDisplayNode =
   | FlaResolvedShapeNode
   | FlaResolvedBitmapNode
+  | FlaResolvedTextNode
   | FlaResolvedGroupNode;
 
 export interface FlaResolvedDisplayLayer {
@@ -261,6 +300,7 @@ export interface FlaResolvedDisplayList {
   readonly layers: readonly FlaResolvedDisplayLayer[];
   readonly resolvedNodeCount: number;
   readonly maskDiagnostics?: readonly string[];
+  readonly projectionDiagnostics?: readonly string[];
   readonly ikPoseDiagnostics?: readonly string[];
 }
 
@@ -381,7 +421,7 @@ function collectMaskShapes(
       });
       return null;
     }
-    if (node.kind === 'bitmap' || (node.kind === 'group' && node.opaque)) {
+    if (node.kind === 'bitmap' || node.kind === 'text' || (node.kind === 'group' && (node.opaque || node.instanceFilters))) {
       return failure(
         'UNSUPPORTED_DISPLAY_CONTENT',
         'Only filled vector geometry is supported as mask items',
@@ -449,7 +489,7 @@ function resolveLayers(
     const layer = maskLayers.get(maskId);
     if (!layer) return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked layer references a missing mask', sourcePath);
     const maskPath = `${sourcePath}/mask(${layer.name})`;
-    if (layer.unsupportedMaskReason || layer.frameFilter) {
+    if (layer.unsupportedMaskReason || layer.frameFilter || layer.incompatibleStageMask) {
       return failure('UNSUPPORTED_DISPLAY_CONTENT', layer.unsupportedMaskReason ?? 'Mask filter is unsupported', maskPath);
     }
     const enclosing = layer.maskedBy ? resolveMask(layer.maskedBy, [...ancestry, maskId])
@@ -459,7 +499,7 @@ function resolveLayers(
     const diagnosticCount = context.maskFailureCount + context.ikPoseFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
-      parentTransform,
+      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
       symbolStack,
       nestingDepth,
       maskPath,
@@ -500,7 +540,9 @@ function resolveLayers(
       continue;
     }
 
-    const mask = layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
+    const mask = layer.incompatibleStageMask
+      ? failure('UNSUPPORTED_DISPLAY_CONTENT', 'Native depth differs between a mask and its content', layerPath)
+      : layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
     if (mask && !mask.ok) {
       if (mask.code === 'MAX_RESOLVED_NODES_EXCEEDED') return mask;
       context.maskFailureCount += 1;
@@ -515,7 +557,7 @@ function resolveLayers(
 
     const resolved = resolveElements(
       layer.elements,
-      parentTransform,
+      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
       symbolStack,
       nestingDepth,
       `${layerPath}:${layer.name}`,
@@ -542,7 +584,11 @@ function opaqueStandIn(
   const composed = composeTransforms(parentTransform, localTransform);
   const sourceRef = element.kind === 'symbol' || element.kind === 'bitmap'
     ? element.libraryItemName
-    : element.kind === 'shape' ? element.shapeId : element.groupId;
+    : element.kind === 'shape'
+      ? element.shapeId
+      : element.kind === 'text'
+        ? element.textId
+        : element.groupId;
   const symbolInstance =
     element.kind === 'symbol'
       ? {
@@ -563,7 +609,13 @@ function opaqueStandIn(
     children: [],
     ...(symbolInstance && Object.keys(symbolInstance).length > 0 ? { symbolInstance } : {}),
     opaque: {
-      kind: element.kind === 'symbol' ? 'symbol' : element.kind === 'shape' ? 'shape' : 'unknown',
+      kind: element.kind === 'symbol'
+        ? 'symbol'
+        : element.kind === 'shape'
+          ? 'shape'
+          : element.kind === 'text'
+            ? 'text'
+            : 'unknown',
       reason,
       ...(sourceRef ? { sourceRef } : {}),
     },
@@ -643,6 +695,25 @@ function resolveElements(
       nodes.push({
         kind: 'bitmap',
         libraryItemName: element.libraryItemName,
+        ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
+        localTransform,
+        worldTransform,
+        ...(clipPaths.length ? { clipPaths } : {}),
+      });
+      continue;
+    }
+
+    if (element.kind === 'text') {
+      if (!element.textId) return failure('INVALID_INPUT', 'Text reference is empty', elementPath);
+      const budgetFailure = addResolvedNode(context, elementPath);
+      if (budgetFailure) {
+        if (!context.limits.tolerant) return budgetFailure;
+        nodes.push(opaqueStandIn(element, parentTransform, budgetFailure.message));
+        continue;
+      }
+      nodes.push({
+        kind: 'text',
+        textId: element.textId,
         ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
         localTransform,
         worldTransform,
@@ -807,6 +878,8 @@ function resolveElements(
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
+        ? { instanceFilters: element.instanceFilters, instanceFilterClips: clipPaths } : {}),
       ...(Object.keys(symbolInstance).length ? { symbolInstance } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });
@@ -858,6 +931,7 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
+      ...(input.root.frameContext.projectionDiagnostics?.length ? { projectionDiagnostics: input.root.frameContext.projectionDiagnostics } : {}),
       ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
       ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },

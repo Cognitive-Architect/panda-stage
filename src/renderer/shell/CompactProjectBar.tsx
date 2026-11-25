@@ -91,7 +91,12 @@ export function QuickActionDrawer({
   presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const exportLabel = projectSnapshot.project.exportPreferences?.format === 'png-sequence' ? '导出 PNG 序列' : '导出视频';
+  const exportFormat = projectSnapshot.project.exportPreferences?.format ?? 'mp4';
+  const exportLabel = {
+    mp4: '导出视频',
+    'png-sequence': '导出 PNG 序列',
+    'sprite-sheet': '导出精灵图',
+  }[exportFormat];
   const panelId = `quick-action-drawer-panel-${useId()}`;
   const statusText = status.trim();
   const showFeedback =

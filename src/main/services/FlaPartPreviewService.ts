@@ -37,6 +37,13 @@ import {
 } from '../../shared/affine-matrix';
 import type { FlaGraphicGroupEditPreview } from '../../shared/fla-graphic-instance-api';
 import { isR05SafeGraphicSource } from '../../shared/fla-character-import-safe-graphic-targets';
+import {
+  FLA_STATIC_TEXT_LIMITS,
+  hasUnresolvedFlaStaticTextPlaceholder,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextGraphicFraming,
+  type FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
 import type {
   FlaDisplayListElement,
   FlaDisplayListFrameContext,
@@ -79,6 +86,7 @@ import type {
   FlaStaticSnapshotSource,
   FlaStaticSnapshotRenderSession,
 } from './fla-static-snapshot-render-session';
+import { FlaStaticSnapshotRasterizerError } from './fla-static-snapshot-render-session';
 import { FlaImportService } from './FlaImportService';
 import { validatePngEncodedImage } from './PngThumbnailValidator';
 
@@ -245,6 +253,7 @@ function contextMaskDependencies(
 
 function adapterIdentity(element: FlaDisplayListElement): string | null {
   if (element.kind === 'shape') return element.shapeId;
+  if (element.kind === 'text') return element.textId;
   if (element.kind === 'group') return element.groupId;
   if (element.kind === 'symbol' || element.kind === 'bitmap') return element.libraryItemName;
   return null;
@@ -469,7 +478,10 @@ function makeCandidateCollection(
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
         const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
+        const hasOccurrenceEffects = element.instanceFilters?.some((filter) => filter.enabled);
         if (graphicInstances) {
+          // The shared definition cannot carry filters authored on this occurrence.
+          if (hasOccurrenceEffects) continue;
           if (descriptor && element.sourceAddress && definition?.kind === 'graphic' && element.symbolType === 'graphic' &&
               matrixFacts(worldTransform).invertible &&
               definition.frameContext.layers.some((childLayer) => childLayer?.visible &&
@@ -516,7 +528,7 @@ function makeCandidateCollection(
           definition.frameContext,
           `graphic:${definition.libraryItemName}`,
         );
-        const canDescend = childSymbols.length > 0 && childOtherContent.length === 0 &&
+        const canDescend = !hasOccurrenceEffects && childSymbols.length > 0 && childOtherContent.length === 0 &&
           definitionMasks.length === 0 && !definition.frameContext.unsupportedDisplayReason;
         if (canDescend) {
           walk(
@@ -529,6 +541,7 @@ function makeCandidateCollection(
           continue;
         }
         const reasons: string[] = [];
+        if (hasOccurrenceEffects) reasons.push('Instance effects require a single composited Part.');
         if (childSymbols.length > 0 && childOtherContent.length > 0) {
           reasons.push('nested Graphic occurrences are interleaved with vector, bitmap, or group content');
         }
@@ -767,7 +780,7 @@ function buildGroupEditPreview(input: {
   const children: FlaGraphicGroupEditPreview['children'][number][] = [];
   let previewBytes = 0;
   for (const child of group.children) {
-    if (child.kind === 'group') return undefined;
+    if (child.kind === 'group' || child.kind === 'text') return undefined;
     const sourceIdentity = child.kind === 'shape' ? child.shapeId : child.libraryItemName;
     const localArtNode: FlaResolvedDisplayNode = {
       ...child,
@@ -1013,6 +1026,8 @@ export interface FlaGraphicDefinitionFrameBatch {
     };
   }[];
   readonly groupEditPreview?: FlaGraphicGroupEditPreview;
+  /** Static text requires finalized frames instead of the authored object tree. */
+  readonly requiresFullFrame?: true;
   /** Source-backed authored object tree captured before SVG baking (E1). */
   readonly structure?: FlaGraphicStructure;
   /** Decoded bitmap media items referenced by the structure, ready for project commit/reuse. */
@@ -1085,6 +1100,8 @@ function collectDisplayListProvenanceTokens(
     for (const node of nodes) {
       if (node.kind === 'shape') {
         tokens.add(`opaque:shape:${node.shapeId}`);
+      } else if (node.kind === 'text') {
+        tokens.add(`opaque:text:${node.textId}`);
       } else if (node.kind === 'bitmap') {
         tokens.add(`bitmap:${node.libraryItemName}`);
       } else if (node.opaque) {
@@ -1110,6 +1127,9 @@ function collectDisplayNodeDescendantTokens(
   }
   if (node.kind === 'shape') {
     return { tokens: [`opaque:shape:${node.shapeId}`], hasSourceless: false };
+  }
+  if (node.kind === 'text') {
+    return { tokens: [`opaque:text:${node.textId}`], hasSourceless: false };
   }
   if (node.opaque) {
     return node.opaque.sourceRef
@@ -1153,6 +1173,19 @@ function extractAuthorPoseNodesFromDisplayList(
           opaqueKind: 'shape',
           ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
           sourceRef: item.shapeId,
+          ancestorSymbolChain,
+          authoredWorldTransform: { ...item.worldTransform },
+          drawOrderRank: currentRank,
+        });
+        continue;
+      }
+      if (item.kind === 'text') {
+        matchedTokens.add(`opaque:text:${item.textId}`);
+        nodes.push({
+          kind: 'opaque',
+          opaqueKind: 'text',
+          ...(item.sourceAddress ? { sourceAddress: item.sourceAddress } : {}),
+          sourceRef: item.textId,
           ancestorSymbolChain,
           authoredWorldTransform: { ...item.worldTransform },
           drawOrderRank: currentRank,
@@ -1594,6 +1627,7 @@ export class FlaPartPreviewService {
       }
     }
     let totalBytes = 0;
+    let requiresFullFrame = false;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
       if (!execution.shouldContinue()) {
         const timedOut = Date.now() - startedAt >= FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs;
@@ -1621,16 +1655,56 @@ export class FlaPartPreviewService {
       if (!rendered.ok) {
         return { ok: false, code: 'RENDER_FAILED', message: `Graphic frame ${ordinal} could not be rendered: ${rendered.message}`.slice(0, 1_000) };
       }
-      const svgBytes = Buffer.from(rendered.svg, 'utf8');
+      let finalSvg = rendered.svg;
+      let finalWidth = rendered.width;
+      let finalHeight = rendered.height;
+      let viewport = rendered.composition.framing.viewBox;
+      if (rendered.hasInstanceFilters || rendered.hasPerChannelColorTransform || rendered.staticTexts?.length) {
+        requiresFullFrame = true;
+      }
+      if (rendered.staticTexts?.length) {
+        let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
+        try {
+          resolvedRaster = await this.rasterizer.rasterize({
+            requestId: crypto.randomUUID(),
+            svg: rendered.svg,
+            width: rendered.width,
+            height: rendered.height,
+            pixelCount: rendered.pixelCount,
+            staticTexts: rendered.staticTexts,
+            ...(rendered.graphicFraming ? { graphicFraming: rendered.graphicFraming } : {}),
+            returnResolvedSvg: true,
+          });
+        } catch (error) {
+          return {
+            ok: false,
+            code: 'RENDER_FAILED',
+            message: `Graphic frame ${ordinal} static text rasterization failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1_000),
+          };
+        }
+        if (!resolvedRaster.resolvedSvg || hasUnresolvedFlaStaticTextPlaceholder(resolvedRaster.resolvedSvg)) {
+          return {
+            ok: false,
+            code: 'RENDER_FAILED',
+            message: `Graphic frame ${ordinal} static text could not be resolved into a finalized asset. Use PNG snapshot or frame-sequence import instead.`,
+          };
+        }
+        finalSvg = resolvedRaster.resolvedSvg;
+        finalWidth = resolvedRaster.width;
+        finalHeight = resolvedRaster.height;
+        if (resolvedRaster.sourceViewport) {
+          viewport = resolvedRaster.sourceViewport;
+        }
+      }
+      const svgBytes = Buffer.from(finalSvg, 'utf8');
       totalBytes += svgBytes.byteLength;
-      const viewport = rendered.composition.framing.viewBox;
       if (
         svgBytes.byteLength <= 0 ||
         totalBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
-        !Number.isSafeInteger(rendered.width) ||
-        !Number.isSafeInteger(rendered.height) ||
-        rendered.width <= 0 ||
-        rendered.height <= 0 ||
+        !Number.isSafeInteger(finalWidth) ||
+        !Number.isSafeInteger(finalHeight) ||
+        finalWidth <= 0 ||
+        finalHeight <= 0 ||
         !Number.isFinite(viewport.x) ||
         !Number.isFinite(viewport.y) ||
         !Number.isFinite(viewport.width) ||
@@ -1643,11 +1717,11 @@ export class FlaPartPreviewService {
       frames.push({
         ordinal,
         sourceFrameIndex: ordinal,
-        svg: rendered.svg,
+        svg: finalSvg,
         sha256: crypto.createHash('sha256').update(svgBytes).digest('hex'),
         byteLength: svgBytes.byteLength,
-        width: rendered.width,
-        height: rendered.height,
+        width: finalWidth,
+        height: finalHeight,
         sourceViewport: { ...viewport },
       });
       await execution.yieldToEventLoop();
@@ -1657,7 +1731,9 @@ export class FlaPartPreviewService {
     let structure: FlaGraphicStructure | undefined;
     let authorPoseReferences: FlaGraphicAuthorPoseReference[] = [];
     const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
-    if (firstFrame && unit.sourceAddress) {
+    // Stage, Preview, and Export consume the finalized full-frame SVG when
+    // any frame uses static text or composited instance effects.
+    if (firstFrame && unit.sourceAddress && !requiresFullFrame) {
       prepared.source.resetFrameBuildState();
       // Resolve display list in tolerant mode for structure capture so unsupported
       // subtrees degrade locally rather than dropping the whole structure.
@@ -1866,6 +1942,7 @@ export class FlaPartPreviewService {
         frames,
         ...(labels.size ? { sourceFrameLabels: [...labels].map(([sourceFrameIndex, text]) => ({ sourceFrameIndex, text })) } : {}),
         ...(groupEditPreview ? { groupEditPreview } : {}),
+        ...(requiresFullFrame ? { requiresFullFrame: true } : {}),
         ...(structure ? { structure } : {}),
         ...(batchBitmaps.length ? { bitmaps: batchBitmaps } : {}),
         ...(isolatedFallbacks.size ? { fallbacks: [...isolatedFallbacks.values()] } : {}),
@@ -2097,6 +2174,7 @@ export class FlaPartPreviewService {
     // adapter's mutable frame map. Retain only the base blocks plus blocks
     // referenced by each selected child context, under the resolver node cap.
     const shapeBlocks = new Map(prepared.source.shapeBlocks);
+    const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>(prepared.source.staticTextBlocks ?? []);
     const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
     let shapeBlockBudgetExceeded = false;
     const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
@@ -2111,6 +2189,15 @@ export class FlaPartPreviewService {
             return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
           }
           shapeBlocks.set(element.shapeId, xml);
+        } else if (element.kind === 'text') {
+          if (staticTextBlocks.has(element.textId)) continue;
+          const descriptor = prepared.source.staticTextBlocks?.get(element.textId);
+          if (descriptor === undefined) return `Selected Graphic static text source not found: ${element.textId}`;
+          if (staticTextBlocks.size >= FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition * 4) {
+            shapeBlockBudgetExceeded = true;
+            return 'Nested Graphic static text blocks exceeded budget';
+          }
+          staticTextBlocks.set(element.textId, descriptor);
         } else if (element.kind === 'group') {
           const nestedError = captureShapeBlocks(element.elements);
           if (nestedError) return nestedError;
@@ -2198,6 +2285,7 @@ export class FlaPartPreviewService {
       stageWidth: prepared.source.stageWidth,
       stageHeight: prepared.source.stageHeight,
       shapeBlocks,
+      staticTextBlocks,
       resolveBitmapMedia: mediaLookup,
     });
     if (!nativeComposition.ok) {
@@ -2225,7 +2313,7 @@ export class FlaPartPreviewService {
       .every(Number.isFinite)) {
       return this.failure('RENDER_FAILED', 'Graphic root viewport transform is not finite', active.request);
     }
-    const nativeFacts: NativeRenderFacts = {
+    let nativeFacts: NativeRenderFacts = {
       source: prepared.source,
       targetKind,
       targetName,
@@ -2245,10 +2333,39 @@ export class FlaPartPreviewService {
     let nativePreview: FlaPartPreviewPng;
     try {
       rasterCount += 1;
-      nativePreview = await this.rasterize(active, nativeFacts.svg, nativeFacts.width, nativeFacts.height, nativeFacts.pixelCount);
+      const nativeRaster = await this.rasterize(
+        active,
+        nativeFacts.svg,
+        nativeFacts.width,
+        nativeFacts.height,
+        nativeFacts.pixelCount,
+        nativeComposition.staticTexts,
+        nativeComposition.graphicFraming,
+      );
+      nativePreview = nativeRaster.image;
+      if (targetKind === 'graphic-symbol' && nativeRaster.sourceViewport) {
+        const vb = nativeRaster.sourceViewport;
+        nativeFacts = {
+          ...nativeFacts,
+          width: nativePreview.width,
+          height: nativePreview.height,
+          pixelCount: nativePreview.width * nativePreview.height,
+          rootTransform: {
+            a: nativePreview.width / vb.width,
+            b: 0,
+            c: 0,
+            d: nativePreview.height / vb.height,
+            tx: -vb.x * nativePreview.width / vb.width,
+            ty: -vb.y * nativePreview.height / vb.height,
+          },
+        };
+      }
     } catch (error) {
+      const code = error instanceof FlaStaticSnapshotRasterizerError && error.code === 'BUDGET_EXCEEDED'
+        ? 'BUDGET_EXCEEDED'
+        : active.cancelCode ?? (Date.now() - startedAt >= this.wallTimeMs ? 'RENDER_TIMEOUT' : 'RENDER_FAILED');
       return this.failure(
-        active.cancelCode ?? (Date.now() - startedAt >= this.wallTimeMs ? 'RENDER_TIMEOUT' : 'RENDER_FAILED'),
+        code,
         error instanceof Error ? error.message : String(error),
         active.request,
       );
@@ -2257,7 +2374,10 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning;
+    const wholeImageReason = selectionFallbackReason ?? nativeComposition.maskWarning ?? nativeComposition.ikPoseWarning ?? nativeComposition.projectionWarning ??
+      (frameContext.layers.some((layer) => layer.stageProjection)
+        ? 'Native camera and depth are retained in the composed scene. Use a snapshot or frame sequence.'
+        : undefined);
     if (wholeImageReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, wholeImageReason, {
         sourcePreparationCountForRequest,
@@ -2337,6 +2457,7 @@ export class FlaPartPreviewService {
           stageWidth: nativeFacts.targetKind === 'scene' ? prepared.source.stageWidth : nativeFacts.width,
           stageHeight: nativeFacts.targetKind === 'scene' ? prepared.source.stageHeight : nativeFacts.height,
           shapeBlocks,
+          staticTextBlocks,
           resolveBitmapMedia: mediaLookup,
         });
         if (!composition.ok) {
@@ -2350,7 +2471,14 @@ export class FlaPartPreviewService {
           );
         }
         rasterCount += 1;
-        const image = await this.rasterize(active, composition.svg, composition.width, composition.height, composition.pixelCount);
+        const { image } = await this.rasterize(
+          active,
+          composition.svg,
+          composition.width,
+          composition.height,
+          composition.pixelCount,
+          composition.staticTexts,
+        );
         partPngBytes += image.byteLength;
         if (partPngBytes > FLA_PART_PREVIEW_LIMITS.maxCompositionInputBytes) {
           return this.wholeImageOnly(
@@ -2417,13 +2545,13 @@ export class FlaPartPreviewService {
       }
       try {
         rasterCount += 1;
-        reassembledPreview = await this.rasterize(
+        reassembledPreview = (await this.rasterize(
           active,
           reassemblySvg,
           nativeFacts.width,
           nativeFacts.height,
           nativeFacts.pixelCount,
-        );
+        )).image;
       } catch (error) {
         if (active.cancelled || active.settled) {
           return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview was cancelled', active.request);
@@ -2516,7 +2644,12 @@ export class FlaPartPreviewService {
     width: number,
     height: number,
     pixelCount: number,
-  ): Promise<FlaPartPreviewPng> {
+    staticTexts?: readonly FlaStaticTextRenderItem[],
+    graphicFraming?: FlaStaticTextGraphicFraming,
+  ): Promise<{
+    readonly image: FlaPartPreviewPng;
+    readonly sourceViewport?: { x: number; y: number; width: number; height: number };
+  }> {
     if (!this.ensureCurrentAndWithinBudget(active)) {
       throw new Error(active.cancelCode === 'RENDER_TIMEOUT' ? 'Batch wall time exceeded' : 'Preview was cancelled');
     }
@@ -2524,14 +2657,31 @@ export class FlaPartPreviewService {
     active.currentRasterRequestId = requestId;
     let raster: FlaStaticSnapshotRasterizeOutput;
     try {
-      raster = await this.rasterizer.rasterize({ requestId, svg, width, height, pixelCount });
+      raster = await this.rasterizer.rasterize({
+        requestId,
+        svg,
+        width,
+        height,
+        pixelCount,
+        ...(staticTexts?.length ? { staticTexts } : {}),
+        ...(graphicFraming ? { graphicFraming } : {}),
+      });
     } finally {
       if (active.currentRasterRequestId === requestId) active.currentRasterRequestId = null;
     }
     if (!this.ensureCurrentAndWithinBudget(active)) {
       throw new Error(active.cancelCode === 'RENDER_TIMEOUT' ? 'Batch wall time exceeded' : 'Preview was cancelled');
     }
-    if (raster.width !== width || raster.height !== height || raster.pixelCount !== pixelCount ||
+    const allowMeasuredResize = Boolean(graphicFraming && staticTexts?.length);
+    const dimensionsOk = allowMeasuredResize
+      ? raster.width > 0 &&
+        raster.height > 0 &&
+        raster.width <= FLA_STATIC_SNAPSHOT_LIMITS.maxOutputWidth &&
+        raster.height <= FLA_STATIC_SNAPSHOT_LIMITS.maxOutputHeight &&
+        raster.pixelCount === raster.width * raster.height &&
+        raster.pixelCount <= FLA_STATIC_SNAPSHOT_LIMITS.maxOutputPixels
+      : raster.width === width && raster.height === height && raster.pixelCount === pixelCount;
+    if (!dimensionsOk ||
         raster.pngBytes.byteLength <= 0 || raster.pngBytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       throw new Error('Sandbox rasterizer returned out-of-budget dimensions or bytes');
     }
@@ -2541,10 +2691,13 @@ export class FlaPartPreviewService {
       maxPixels: FLA_STATIC_SNAPSHOT_LIMITS.maxOutputPixels,
       maxEncodedBytes: FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes,
     });
-    if (!dimensions || dimensions.width !== width || dimensions.height !== height) {
+    if (!dimensions || dimensions.width !== raster.width || dimensions.height !== raster.height) {
       throw new Error('Sandbox rasterizer returned an invalid PNG');
     }
-    return this.pngRecord(raster.pngBytes, width, height, pixelCount);
+    return {
+      image: this.pngRecord(raster.pngBytes, raster.width, raster.height, raster.pixelCount),
+      ...(raster.sourceViewport ? { sourceViewport: raster.sourceViewport } : {}),
+    };
   }
 
   private pngRecord(bytes: Uint8Array, width: number, height: number, pixelCount: number): FlaPartPreviewPng {

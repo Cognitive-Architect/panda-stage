@@ -112,7 +112,13 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (this.window !== window || window.isDestroyed() || this.activeRequestId !== requestId) {
       throw new FlaStaticSnapshotRasterizerError('RENDER_CANCELLED', 'Snapshot rasterization superseded');
     }
-    const payload = { requestId, svg: input.svg };
+    const payload = {
+      requestId,
+      svg: input.svg,
+      ...(input.staticTexts?.length ? { staticTexts: input.staticTexts } : {}),
+      ...(input.graphicFraming ? { graphicFraming: input.graphicFraming } : {}),
+      ...(input.returnResolvedSvg ? { returnResolvedSvg: true } : {}),
+    };
     const sentAt = startIssue762Profile();
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
       this.pending.set(requestId, {
@@ -159,6 +165,8 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       width?: number;
       height?: number;
       pixelCount?: number;
+      sourceViewport?: { x: number; y: number; width: number; height: number };
+      resolvedSvg?: string;
       profile?: {
         imageLoadMs?: number;
         canvasDrawMs?: number;
@@ -223,11 +231,26 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
         requestId,
       });
     }
+    const validViewport =
+      payload.sourceViewport &&
+      typeof payload.sourceViewport.x === 'number' && Number.isFinite(payload.sourceViewport.x) &&
+      typeof payload.sourceViewport.y === 'number' && Number.isFinite(payload.sourceViewport.y) &&
+      typeof payload.sourceViewport.width === 'number' && Number.isFinite(payload.sourceViewport.width) && payload.sourceViewport.width > 0 &&
+      typeof payload.sourceViewport.height === 'number' && Number.isFinite(payload.sourceViewport.height) && payload.sourceViewport.height > 0
+        ? payload.sourceViewport
+        : undefined;
+    const validResolvedSvg =
+      typeof payload.resolvedSvg === 'string' &&
+      Buffer.byteLength(payload.resolvedSvg, 'utf8') <= FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes
+        ? payload.resolvedSvg
+        : undefined;
     pending.resolve({
       pngBytes,
       width: payload.width,
       height: payload.height,
       pixelCount: payload.pixelCount ?? payload.width * payload.height,
+      ...(validViewport ? { sourceViewport: validViewport } : {}),
+      ...(validResolvedSvg ? { resolvedSvg: validResolvedSvg } : {}),
     });
   }
 
@@ -249,7 +272,9 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       requestId,
       outcome: 'error',
     });
-    pending.reject(new FlaStaticSnapshotRasterizerError('RENDER_FAILED', payload.message ?? 'Snapshot rasterization failed'));
+    const message = payload.message ?? 'Snapshot rasterization failed';
+    const errorCode = message.startsWith('BUDGET_EXCEEDED:') ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED';
+    pending.reject(new FlaStaticSnapshotRasterizerError(errorCode, message));
   }
 
   /**

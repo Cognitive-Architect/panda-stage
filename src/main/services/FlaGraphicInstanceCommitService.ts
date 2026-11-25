@@ -31,6 +31,7 @@ import {
   assetDisplayName,
   sanitizeAssetFileName,
 } from './AssetImportService';
+import { hasUnresolvedFlaStaticTextPlaceholder } from '../../shared/fla-static-text';
 import { isSafeGeneratedFlaSvg } from './AssetCanvasImageService';
 import {
   AssetImportFileSystemService,
@@ -441,6 +442,7 @@ function existingDefinition(
     return null;
   }
   const legacyMatch = semanticCandidates.find((match) =>
+    (!batch.requiresFullFrame || !match.structure) &&
     match.source.renderTargetId === batch.target.renderTargetId &&
     match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
   );
@@ -575,6 +577,7 @@ export class FlaGraphicInstanceCommitService {
           return bytes.byteLength !== frame.byteLength ||
             this.hashService.hashBytes(bytes).hex !== frame.sha256 ||
             !isSafeGeneratedFlaSvg(bytes, frame.width, frame.height) ||
+            hasUnresolvedFlaStaticTextPlaceholder(frame.svg) ||
             bytes.byteLength > FLA_IMPORT_LIMITS.maxSingleEntryBytes;
         })) {
       return this.failure('FRAME_RENDER_FAILED', transaction.projectRoot, 'A generated SVG frame failed content validation.', request);
@@ -598,7 +601,7 @@ export class FlaGraphicInstanceCommitService {
       const occupiedNames = new Set(
         current.project.assets.map((asset) => path.basename(asset.relativePath).toLowerCase()),
       );
-      const sourceStem = path.basename(batch.source.basename).replace(/\.fla$/iu, '') || 'fla-graphic';
+      const sourceStem = path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '') || 'fla-graphic';
 
       const resources = [
         ...(batch.bitmaps ?? []).map((item) => ({
@@ -718,7 +721,7 @@ export class FlaGraphicInstanceCommitService {
         batch,
         assets.filter((asset) => asset.flaGraphicFrame?.definitionId === definitionId).map((asset) => asset.id),
         definitionId,
-        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.fla$/iu, '')} ${batch.target.name}`),
+        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '')} ${batch.target.name}`),
         bitmapAssetMap,
         isolatedAssetMap,
       );

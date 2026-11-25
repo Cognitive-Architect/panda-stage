@@ -52,6 +52,7 @@ interface ActiveInspection {
 
 type InspectionSession = Extract<FlaInspectionResponse, { ok: true }> & {
   workerSource: FlaWorkerStartRequest['source'];
+  archiveEntries: FlaPreflightResult['entries'];
   mediaLoad?: Promise<AnimationImportIR['media']>;
   hydratedMedia: Map<string, Promise<FlaBitmapMedia>>;
   hydratedBytes: number;
@@ -283,6 +284,7 @@ export class FlaImportService {
       this.sessions.set(sessionId, {
         ...response,
         workerSource: request.source,
+        archiveEntries: preflight.entries,
         hydratedMedia: new Map(),
         hydratedBytes: 0,
       });
@@ -340,6 +342,12 @@ export class FlaImportService {
       loadMedia: () => this.loadMedia(session),
       hydrateMedia: (mediaId) => this.hydrateMedia(session, mediaId),
     };
+  }
+
+  getSoundSource(sessionId: string, soundId: string) {
+    const session = this.sessions.get(sessionId);
+    const sound = session?.ir.sounds?.find(({ id }) => id === soundId);
+    return session && sound ? { sound, bytes: session.workerSource.bytes, entries: session.archiveEntries } : null;
   }
 
   async previewRaster(sessionId: string, mediaId: string): Promise<FlaRasterPreviewResponse> {

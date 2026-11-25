@@ -235,6 +235,7 @@ export const FlaStaticSnapshotPreviewSuccessSchema = z
     bytes: EncodedPngBytesSchema,
     maskWarning: z.string().trim().min(1).max(500).optional(),
     ikPoseWarning: z.string().trim().min(1).max(500).optional(),
+    projectionWarning: z.string().trim().min(1).max(500).optional(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
     // Wall-clock time for THIS preview, in ms. R1-B requires this to
     // be honest (no estimates).

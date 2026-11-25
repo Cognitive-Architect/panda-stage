@@ -1,4 +1,4 @@
-import type { FlaDisplayListMatrix, FlaDisplayListRgbTransform } from './fla-display-list-resolver';
+import type { FlaDisplayListMatrix, FlaDisplayListRgbTransform, FlaInstanceFilter } from './fla-display-list-resolver';
 
 interface MotionXmlNode {
   readonly name: string;
@@ -18,14 +18,19 @@ interface Curve {
   readonly keys: readonly Key[];
   readonly ease: (unitTime: number) => number;
 }
+type ShadowField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha';
+type ShadowParameters = { -readonly [K in ShadowField]?: FlaInstanceFilter[K] };
+
 interface AnimationCore {
   readonly timeScale: number;
   readonly curves: ReadonlyMap<string, Curve>;
+  readonly shadows: readonly { readonly parameters: ShadowParameters; readonly distance?: Curve }[];
 }
 export interface ObjectMotionPose {
   readonly matrix: FlaDisplayListMatrix;
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly shadowFilters?: readonly ShadowParameters[];
 }
 
 const supportedProperties = new Set([
@@ -50,13 +55,62 @@ function pair(raw: string | undefined): [number, number] | undefined {
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : undefined;
 }
 
-// Standard Motion Editor power presets. Timing data and curve conventions
-// are cross-checked against lifeart/fla-viewer src/motion-object.ts @ b14fa1d1.
+// Standard Motion Editor power, bounce, and spring presets. Timing data and
+// curve conventions are cross-checked against lifeart/fla-viewer
+// src/motion-object.ts @ b14fa1d1 (PSM AnimationUtility public semantics).
+function bounceArc(count: number, firstArc: number, ratio: number): { readonly arc: number; readonly local: number } {
+  let arc = 0;
+  let start = 0;
+  let end = firstArc;
+  while (end < ratio && arc < count - 1) {
+    arc += 1;
+    start = end;
+    end += firstArc / (arc + 1);
+  }
+  return { arc, local: (ratio - start) / (firstArc / (arc + 1)) };
+}
+
+function createBounceEase(count: number, positive: boolean, bounceIn: boolean): Curve['ease'] {
+  let harmonic = 0;
+  for (let i = 1; i <= count; i += 1) harmonic += 1 / i;
+  const firstArc = 1 / harmonic;
+  const evaluate = (ratio: number): number => {
+    const { arc, local } = bounceArc(count, firstArc, ratio);
+    if (bounceIn) {
+      return arc === 0 ? local * local : 1 - 4 * Math.exp(-arc) * local * (1 - local);
+    }
+    return 4 * Math.exp(-arc) * local * (1 - local);
+  };
+  if (positive) return evaluate;
+  return bounceIn ? (ratio) => 1 - evaluate(1 - ratio) : (ratio) => evaluate(1 - ratio);
+}
+
+function createSpringEase(count: number): Curve['ease'] {
+  const startup = 0.4 / count;
+  const cycle = (1 - startup) / count;
+  return (ratio) => {
+    if (ratio < startup) return Math.sin((ratio * Math.PI) / (2 * startup));
+    const elapsed = ratio - startup;
+    return 0.7 + 0.3 * Math.exp(-elapsed / cycle) * Math.cos((2 * Math.PI * elapsed) / cycle);
+  };
+}
+
 function readEase(map: MotionXmlNode): Curve['ease'] | undefined {
   const type = map.attributes.type ?? 'Linear';
-  const strength = number(map.attributes.strength ?? '0') / 100;
-  if (!Number.isFinite(strength) || Math.abs(strength) > 1) return undefined;
+  const rawStrength = number(map.attributes.strength ?? '0');
+  if (!Number.isFinite(rawStrength) || Math.abs(rawStrength) > 100) return undefined;
   if (type === 'Linear') return linear;
+  if (type === 'Bounce' || type === 'BounceIn') {
+    const count = Math.abs(Math.trunc(rawStrength));
+    if (count === 0) return linear;
+    return createBounceEase(count, rawStrength > 0, type === 'BounceIn');
+  }
+  if (type === 'Spring') {
+    const count = Math.trunc(rawStrength);
+    if (count < 1) return linear;
+    return createSpringEase(count);
+  }
+  const strength = rawStrength / 100;
   const dual = type.startsWith('Dual');
   const power = powers.get(dual ? type.slice(4) : type);
   if (!power) return undefined;
@@ -108,7 +162,29 @@ function readCurve(
   return { keys, ease };
 }
 
-export function parseFlaObjectMotion(frame: MotionXmlNode, children: Children): MotionResult<AnimationCore> {
+function constantCurveValue(curve: Curve): number | undefined {
+  const value = curve.keys[0]!.value;
+  return curve.keys.every((key, index) => key.value === value &&
+    (index === 0 || key.previous[1] === value) &&
+    (index === curve.keys.length - 1 || key.next[1] === value)) ? value : undefined;
+}
+
+const shadowNumericParameters = new Map<string, readonly ['blurX' | 'blurY' | 'angle' | 'strength', number, number, number]>([
+  ['DropShadow_BlurX', ['blurX', 0, 255, 1]],
+  ['DropShadow_BlurY', ['blurY', 0, 255, 1]],
+  ['DropShadow_Angle', ['angle', -360, 360, 1]],
+  ['DropShadow_Strength', ['strength', 0, 255, 100]],
+]);
+
+const shadowNeutralParameters = new Map([
+  ['DropShadow_Quality', 1], ['DropShadow_Knockout', 0], ['DropShadow_InnerShadow', 0], ['DropShadow_HideObject', 0],
+]);
+
+export function parseFlaObjectMotion(
+  frame: MotionXmlNode,
+  children: Children,
+  authoredShadows: readonly FlaInstanceFilter[] = [],
+): MotionResult<AnimationCore> {
   const wrapper = children(frame.xml, frame.name).find((node) => node.name === 'motionObjectXML');
   const core = wrapper && children(wrapper.xml, wrapper.name).find((node) => node.name === 'AnimationCore');
   if (!core) return invalid('缺少 AnimationCore 数据');
@@ -128,12 +204,70 @@ export function parseFlaObjectMotion(frame: MotionXmlNode, children: Children): 
   const maps = root.filter((node) => node.name === 'TimeMap').map(readEase);
   const curves = new Map<string, Curve>();
   const pending = root.filter((node) => node.name === 'PropertyContainer');
+  const shadows: AnimationCore['shadows'][number][] = [];
   let visited = 0;
   while (pending.length > 0) {
     const node = pending.pop()!;
     if (++visited > 128) return invalid('属性数量超出支持范围');
     if (node.name === 'PropertyContainer') {
       const nested = children(node.xml, node.name);
+      if (node.attributes.id === 'Filters') {
+        if (shadows.length + nested.length > 8) return invalid('Too many instance filter curves');
+        for (const filter of nested) {
+          const properties = children(filter.xml, filter.name);
+          if (filter.name !== 'PropertyContainer' || properties.length > 16 ||
+              properties.some((property) => property.name !== 'Property' || !property.attributes.id?.startsWith('DropShadow_'))) {
+            return invalid('Unsupported instance filter animation');
+          }
+          const parameters: ShadowParameters = {};
+          if (authoredShadows[shadows.length]?.enabled === false) {
+            shadows.push({ parameters });
+            continue;
+          }
+          let distance: Curve | undefined;
+          const seen = new Set<string>();
+          for (const property of properties) {
+            if (property.attributes.enabled === '0') continue;
+            const id = property.attributes.id!;
+            if (seen.has(id)) return invalid('Duplicate instance filter channel ' + id);
+            seen.add(id);
+            const frames = children(property.xml, property.name).filter((child) => child.name === 'Keyframe');
+            if (frames.length === 0 && property.attributes.value !== undefined) frames.push(property);
+            const mapIndex = number(property.attributes.TimeMapIndex ?? '0');
+            const ease = property.attributes.ignoreTimeMap === '1' || (maps.length === 0 && mapIndex === 0)
+              ? linear : maps[mapIndex];
+            if (!ease) return invalid('Invalid instance filter TimeMap ' + id);
+            if (id === 'DropShadow_Color') {
+              const rgba = [24, 16, 8, 0].map((shift) => {
+                const curve = readCurve(property, frames, ease, duration, shift);
+                return curve && constantCurveValue(curve);
+              });
+              if (rgba.some((value) => value === undefined)) return invalid('Unsupported instance filter channel ' + id);
+              parameters.color = '#' + rgba.slice(0, 3).map((value) => value!.toString(16).padStart(2, '0')).join('');
+              parameters.alpha = rgba[3]! / 255;
+              continue;
+            }
+            const curve = readCurve(property, frames, ease, duration);
+            if (!curve) return invalid('Invalid instance filter curve ' + id);
+            if (id === 'DropShadow_Distance') {
+              distance = curve;
+              continue;
+            }
+            const constant = constantCurveValue(curve);
+            const numeric = shadowNumericParameters.get(id);
+            if (constant !== undefined && numeric) {
+              const [key, min, max, divisor] = numeric;
+              const value = constant / divisor;
+              if (value < min || value > max) return invalid('Instance filter value out of range ' + id);
+              parameters[key] = value;
+            } else if (constant === undefined || shadowNeutralParameters.get(id) !== constant) {
+              return invalid('Unsupported instance filter channel ' + id);
+            }
+          }
+          shadows.push({ parameters, ...(distance ? { distance } : {}) });
+        }
+        continue;
+      }
       if (visited + pending.length + nested.length > 128) return invalid('属性数量超出支持范围');
       for (const child of nested) pending.push(child);
       continue;
@@ -157,7 +291,9 @@ export function parseFlaObjectMotion(frame: MotionXmlNode, children: Children): 
       curves.set(channel, curve);
     }
   }
-  return curves.size > 0 ? { ok: true, value: { timeScale, curves } } : invalid('没有可读取的对象曲线');
+  return curves.size > 0 || shadows.some(({ parameters, distance }, ordinal) =>
+    distance || Object.keys(parameters).length || authoredShadows[ordinal]?.enabled === false)
+    ? { ok: true, value: { timeScale, curves, shadows } } : invalid('没有可读取的对象曲线');
 }
 
 function cubic(a: number, b: number, c: number, d: number, t: number): number {
@@ -168,10 +304,13 @@ function cubic(a: number, b: number, c: number, d: number, t: number): number {
 function sample(curve: Curve, at: number): number {
   const first = curve.keys[0]!;
   const last = curve.keys[curve.keys.length - 1]!;
-  if (at <= first.time) return first.value;
-  if (at >= last.time) return last.value;
+  if (curve.keys.length === 1 || at <= first.time) return first.value;
   const span = last.time - first.time;
-  const time = first.time + span * curve.ease((at - first.time) / span);
+  if (span <= 0) return last.value;
+  const ratio = curve.ease(Math.min((at - first.time) / span, 1));
+  if (ratio <= 0) return first.value;
+  if (ratio >= 1) return last.value;
+  const time = first.time + span * ratio;
   let low = 0;
   let high = curve.keys.length - 1;
   while (high - low > 1) {
@@ -247,8 +386,17 @@ export function evaluateFlaObjectMotion(
       ],
     };
   }
+  const shadowFilters: ShadowParameters[] = [];
+  for (const { parameters, distance: curve } of core.shadows) {
+    const distance = curve && sample(curve, ticks);
+    if (distance !== undefined && (!Number.isFinite(distance) || distance < 0 || distance > 255)) {
+      return invalid('Shadow distance exceeds supported range');
+    }
+    shadowFilters.push(distance === undefined ? parameters : { ...parameters, distance });
+  }
   return { ok: true, value: {
     matrix,
+    ...(shadowFilters.length ? { shadowFilters } : {}),
     ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
     ...(rgbTransform ? { rgbTransform } : {}),
   } };

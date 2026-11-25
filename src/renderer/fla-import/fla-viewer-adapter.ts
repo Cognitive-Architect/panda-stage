@@ -338,7 +338,7 @@ export async function adaptFlaDocument(
       sourceFile(source),
       onProgress,
       isCancelled,
-      { structureOnly },
+      { structureOnly, skipAudio: true },
     );
   } catch (error) {
     if (error instanceof FlaAdapterError) throw error;
@@ -519,6 +519,23 @@ export async function adaptFlaDocument(
       backgroundColor: document.backgroundColor,
     },
     media,
+    ...(document.sounds?.size > 0 ? {
+      sounds: [...document.sounds.values()].slice(0, FLA_IMPORT_LIMITS.maxMediaCount).flatMap((sound) => {
+        const name = sound.name.trim().slice(0, 260);
+        if (!name) return [];
+        const boundedCount = (value: number | undefined) =>
+          value === undefined || Number.isSafeInteger(value) ? value : 0;
+        return [{
+          id: stableId('fla-sound', [sound.name, sound.href, sound.soundDataHRef ?? '']),
+          name,
+          href: sound.href.length <= 2048 ? sound.href : '',
+          ...(sound.soundDataHRef ? { dataHref: sound.soundDataHRef.length <= 2048 ? sound.soundDataHRef : '' } : {}),
+          ...(sound.format ? { format: sound.format.slice(0, 200) } : {}),
+          ...(sound.sampleCount === undefined ? {} : { sampleCount: boundedCount(sound.sampleCount) }),
+          ...(sound.dataLength === undefined ? {} : { dataLength: boundedCount(sound.dataLength) }),
+        }];
+      }),
+    } : {}),
     timelines,
     compatibility,
     summary: {

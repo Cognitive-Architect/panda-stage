@@ -90,9 +90,10 @@ export const ExportPreparationCameraModeSchema = z.enum([
 export const PngSequenceOptionsSchema = z.object({
   shotId: z.uuid(),
   transparent: z.boolean(),
+  spriteSheet: z.literal(true).optional(),
   range: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
     .strict().refine(({ startMs, endMs }) => startMs < endMs, 'PNG range must have positive length.').optional(),
-}).strict();
+}).strict().refine(({ spriteSheet, transparent }) => !spriteSheet || transparent, 'Sprite sheets require transparent frames.');
 
 export type PngSequenceOptions = z.infer<typeof PngSequenceOptionsSchema>;
 

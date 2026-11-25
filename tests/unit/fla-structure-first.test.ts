@@ -73,6 +73,17 @@ describe('FLA structure-first parsing and adaptation', () => {
     expect(full).toEqual(structure);
   });
 
+  it('keeps sound loads out of the visual raster compatibility fallback', async () => {
+    const loaders = spyOnMediaLoading();
+    const bytes = new Uint8Array(await archive());
+    const ir = await adaptFlaDocument({
+      basename: 'media.fla', byteLength: bytes.length, sha256: 'a'.repeat(64),
+      bytes, containsActionScript: false,
+    }, () => undefined, () => false, 'raster-compatibility');
+    expect(loaders.sound).not.toHaveBeenCalled();
+    expect(ir.sounds).toHaveLength(1);
+  });
+
   it('emits distinct stable raster candidates and placement references without a Canvas or PNG payload', async () => {
     const bytes = new Uint8Array(await archive());
     const source = {
@@ -89,6 +100,9 @@ describe('FLA structure-first parsing and adaptation', () => {
     expect(catalog.media.map(({ sourceReference }) => sourceReference)).toEqual(['left/icon.png', 'right/icon.png']);
     expect(catalog.media[1]).toMatchObject({ width: 0, height: 0 });
     expect(catalog.media.every((item) => !('payload' in item))).toBe(true);
+    expect(catalog.sounds).toEqual([expect.objectContaining({
+      id: expect.stringContaining('fla-sound'), name: 'audio/track', href: 'library/track.wav', format: '44kHz 16bit Stereo',
+    })]);
     const ids = catalog.media.map(({ id }) => id);
     expect(new Set(ids).size).toBe(2);
     expect(catalog.timelines[0]?.layers[0]?.frames[0]?.instances.map(({ mediaId }) => mediaId)).toEqual(ids);

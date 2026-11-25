@@ -62,6 +62,25 @@ import {
 } from './fla-display-list-resolver';
 import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
+  FLA_STATIC_TEXT_LIMITS,
+  FLA_STATIC_TEXT_PLACEHOLDER_BASE64,
+  countExplicitStaticTextLines,
+  layoutFlaStaticText,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextGraphicFraming,
+  type FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
+import {
+  computeBoundedFlaGraphicOutputSize,
+  FLA_SNAPSHOT_MAX_WIDTH as MAX_OUTPUT_WIDTH,
+  FLA_SNAPSHOT_MAX_HEIGHT as MAX_OUTPUT_HEIGHT,
+  FLA_SNAPSHOT_MAX_PIXELS as MAX_OUTPUT_PIXELS,
+} from '../../shared/fla-snapshot-output-size';
+import {
+  buildVariableWidthStrokeOutline,
+  type VariableWidthMarker,
+} from './fla-variable-width-stroke';
+import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
   getFlaXflDirectChildren,
@@ -72,9 +91,6 @@ import {
 // ---- Limits (subset of FLA_IMPORT_LIMITS used by the R1 SVG builder) ----
 const MAX_SOURCE_BYTES = FLA_IMPORT_LIMITS.maxSourceBytes; // 256 MiB
 const MAX_XML_BYTES = FLA_IMPORT_LIMITS.maxXmlBytes; // 32 MiB
-const MAX_OUTPUT_WIDTH = 4_096;
-const MAX_OUTPUT_HEIGHT = 4_096;
-const MAX_OUTPUT_PIXELS = 16_777_216;
 const MAX_TARGETS = 64;
 const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
 const MAX_STYLE_ENTRIES_PER_SHAPE = 4_096;
@@ -112,6 +128,13 @@ export interface BuildSvgSuccess {
   hasRenderablePath: boolean;
   readonly maskWarning?: string;
   readonly ikPoseWarning?: string;
+  readonly projectionWarning?: string;
+  /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
+  readonly staticTexts?: readonly FlaStaticTextRenderItem[];
+  readonly hasInstanceFilters?: boolean;
+  readonly hasPerChannelColorTransform?: boolean;
+  /** Graphic content-framing metadata so the rasterizer can recompute authoritative viewport from real font metrics. */
+  readonly graphicFraming?: FlaStaticTextGraphicFraming;
 }
 
 export interface BuildSvgFailure {
@@ -1251,6 +1274,7 @@ function hasClosedLinearStrokeStructure(
   solidStrokeXml: string,
   fillBlock: string,
   gradientBlock: string,
+  variableWidthBlock: string | null = null,
 ): boolean {
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
   const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
@@ -1258,8 +1282,9 @@ function hasClosedLinearStrokeStructure(
     ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
     : [];
   if (matrixBlocks.length !== 1 || matrixTags.length !== 1) return false;
+  const expectedSolidStrokeChildren = variableWidthBlock ? [fillBlock, variableWidthBlock] : [fillBlock];
   return hasOnlyExpectedChildElements(style.sourceXml, 'StrokeStyle', [solidStrokeXml]) &&
-    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', [fillBlock]) &&
+    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', expectedSolidStrokeChildren) &&
     hasOnlyExpectedChildElements(fillBlock, 'fill', [gradientBlock]) &&
     hasOnlyExpectedChildElements(gradientBlock, 'LinearGradient', [
       matrixBlocks[0] as string,
@@ -1378,7 +1403,6 @@ function hasExplicitSafeLinearStrokeSemantics(
       strokeAttributes.joints !== 'round' || strokeAttributes.pixelHinting !== 'false') return false;
   const weight = Number(strokeAttributes.weight);
   if (!Number.isFinite(weight) || weight <= 0) return false;
-  if (/<VariablePointWidth\b/u.test(solidStrokeXml)) return false;
 
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
@@ -1901,6 +1925,7 @@ interface ParsedSolidStrokeStyle {
   readonly join: StrokeJoin;
   readonly miterLimit: number;
   readonly scaleMode: StrokeScaleMode;
+  readonly variableWidthMarkers?: readonly VariableWidthMarker[];
 }
 
 interface StrokeBoundarySegment {
@@ -1908,6 +1933,7 @@ interface StrokeBoundarySegment {
   readonly to: Point2D;
   readonly command: StrokeDrawCommand;
   readonly order: number;
+  readonly edgeIndex: number;
   readonly sourceSubpathId: number;
   readonly closesSourceSubpath: boolean;
 }
@@ -1916,6 +1942,7 @@ interface ReconstructedStrokePath {
   readonly commands: DecodedEdges['commands'];
   readonly pathD: string;
   readonly segmentCount: number;
+  readonly filledOutline?: boolean;
 }
 
 interface ReconstructedSolidStroke {
@@ -1923,6 +1950,92 @@ interface ReconstructedSolidStroke {
   readonly rendererStyle: ParsedSolidStrokeStyle;
   readonly paths: readonly ReconstructedStrokePath[];
   readonly segmentCount: number;
+}
+
+const MAX_VARIABLE_WIDTH_MARKERS = 256;
+const MAX_VARIABLE_WIDTH_MULTIPLIER = 100;
+
+function parseVariablePointWidthMarkers(
+  solidStrokeXml: string,
+  shapeId: string,
+  styleIndex: number,
+):
+  | { readonly ok: true; readonly markers: readonly VariableWidthMarker[] | null; readonly block: string | null }
+  | BuildSvgFailure {
+  const directChildren = getFlaXflDirectChildren(solidStrokeXml, 'SolidStroke');
+  const vpBlocks = directChildren.filter((child) => child.name === 'VariablePointWidth');
+  if (vpBlocks.length === 0) {
+    if (/<VariablePointWidth\b/u.test(solidStrokeXml)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has a malformed VariablePointWidth block`,
+      };
+    }
+    return { ok: true, markers: null, block: null };
+  }
+  if (vpBlocks.length !== 1) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} has multiple VariablePointWidth blocks`,
+    };
+  }
+  const vpBlock = vpBlocks[0]!;
+  const block = vpBlock.xml;
+  const children = getFlaXflDirectChildren(block, 'VariablePointWidth');
+  for (const child of children) {
+    if (child.name !== 'WidthMarker') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported child <${child.name}> inside VariablePointWidth`,
+      };
+    }
+  }
+  if (children.length === 0) {
+    return { ok: true, markers: null, block };
+  }
+  if (children.length > MAX_VARIABLE_WIDTH_MARKERS) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} exceeds VariablePointWidth marker budget`,
+    };
+  }
+  const parsed: Array<VariableWidthMarker & { readonly index: number }> = [];
+  for (let i = 0; i < children.length; i += 1) {
+    const attrs = children[i]!.attributes;
+    const position = attrs.position === undefined ? 0 : Number(attrs.position);
+    const left = attrs.left === undefined ? 0 : Number(attrs.left);
+    const right = attrs.right === undefined ? 0 : Number(attrs.right);
+    if (
+      !Number.isFinite(position) || position < 0 || position > 1 ||
+      !Number.isFinite(left) || left < 0 || left > MAX_VARIABLE_WIDTH_MULTIPLIER ||
+      !Number.isFinite(right) || right < 0 || right > MAX_VARIABLE_WIDTH_MULTIPLIER
+    ) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has out-of-range WidthMarker values`,
+      };
+    }
+    const rawType = attrs.type;
+    if (rawType !== undefined && rawType !== 'corner' && rawType !== 'normal') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported WidthMarker type "${rawType}"`,
+      };
+    }
+    parsed.push({ position, left, right, corner: rawType === 'corner', index: i });
+  }
+  parsed.sort((a, b) => (a.position !== b.position ? a.position - b.position : a.index - b.index));
+  return {
+    ok: true,
+    markers: parsed.map(({ position, left, right, corner }) => ({ position, left, right, corner })),
+    block,
+  };
 }
 
 function parseSolidStrokeStyle(
@@ -1944,6 +2057,8 @@ function parseSolidStrokeStyle(
   const solidStrokeBlocks = extractBalancedBlocks(style.sourceXml, 'SolidStroke');
   if (solidStrokeBlocks.length !== 1) return unsupported('non-SolidStroke construct');
   const solidStrokeXml = solidStrokeBlocks[0] as string;
+  const variableWidth = parseVariablePointWidthMarkers(solidStrokeXml, shapeId, style.index);
+  if (!variableWidth.ok) return variableWidth;
   const fillBlocks = extractBalancedBlocks(solidStrokeXml, 'fill');
   if (fillBlocks.length !== 1) return malformed('SolidStroke fill');
   const fillBlock = fillBlocks[0] as string;
@@ -1961,7 +2076,6 @@ function parseSolidStrokeStyle(
     color = parsedPaint.paint.firstColor;
     opacity = parsedPaint.paint.opacity;
   } else if (style.type === 'linear') {
-    if (/<VariablePointWidth\b/u.test(style.sourceXml)) return unsupported('VariablePointWidth');
     if (paintTags.length !== 1 || !/^<LinearGradient\b/u.test(paintTags[0] ?? '')) {
       return malformed('single linear-gradient stroke fill');
     }
@@ -1969,7 +2083,13 @@ function parseSolidStrokeStyle(
     if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
     const matchesEvidence = matchesEvidenceBoundLinearStroke(style, solidStrokeXml);
     const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
-    const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
+    const closedStructure = hasClosedLinearStrokeStructure(
+      style,
+      solidStrokeXml,
+      fillBlock,
+      gradientBlock,
+      variableWidth.block,
+    );
     if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
       const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
       const matrixTags = matrixBlocks.length === 1
@@ -2055,6 +2175,9 @@ function parseSolidStrokeStyle(
   const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
   if (gradientPaint && scaleMode !== 'normal') return unsupported(`gradient scaleMode "${scaleMode}"`);
+  if (variableWidth.markers && scaleMode !== 'normal') {
+    return unsupported(`variable-width stroke scaleMode "${scaleMode}"`);
+  }
   const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
@@ -2065,7 +2188,20 @@ function parseSolidStrokeStyle(
   }
   if (pixelHinting === 'true') return unsupported('pixelHinting');
 
-  return { ok: true, result: { color, opacity, gradientPaint, width, cap, join, miterLimit, scaleMode } };
+  return {
+    ok: true,
+    result: {
+      color,
+      opacity,
+      gradientPaint,
+      width,
+      cap,
+      join,
+      miterLimit,
+      scaleMode,
+      ...(variableWidth.markers ? { variableWidthMarkers: variableWidth.markers } : {}),
+    },
+  };
 }
 
 function stitchSolidStrokeSegments(
@@ -2235,11 +2371,76 @@ function stitchSolidStrokeSegments(
   return { ok: true, paths };
 }
 
+function buildVariableWidthStrokePaths(
+  segments: readonly StrokeBoundarySegment[],
+  closedSourceSubpaths: ReadonlySet<number>,
+  style: ParsedSolidStrokeStyle,
+  remainingCommandBudget: { remaining: number },
+): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
+  const markers = style.variableWidthMarkers!;
+  // Group directed segments in exact authored order within each original <Edge>,
+  // splitting whenever a segment starts a new Edge, a new sourceSubpath, or
+  // disconnects from the previous segment's endpoint.
+  const subpaths: Array<{ readonly subpathId: number; readonly segments: StrokeBoundarySegment[] }> = [];
+  for (const seg of segments) {
+    const prev = subpaths[subpaths.length - 1];
+    const prevSeg = prev?.segments[prev.segments.length - 1];
+    if (
+      prev &&
+      prevSeg &&
+      prevSeg.edgeIndex === seg.edgeIndex &&
+      prev.subpathId === seg.sourceSubpathId &&
+      pointKey(prevSeg.to) === pointKey(seg.from)
+    ) {
+      prev.segments.push(seg);
+    } else {
+      subpaths.push({ subpathId: seg.sourceSubpathId, segments: [seg] });
+    }
+  }
+
+  const paths: ReconstructedStrokePath[] = [];
+  for (const subpath of subpaths) {
+    const first = subpath.segments[0]!;
+    const last = subpath.segments[subpath.segments.length - 1]!;
+    const closed =
+      closedSourceSubpaths.has(subpath.subpathId) ||
+      (subpath.segments.length >= 2 && pointKey(first.from) === pointKey(last.to));
+    const outline = buildVariableWidthStrokeOutline(subpath.segments, {
+      weight: style.width,
+      markers,
+      cap: style.cap,
+      join: style.join,
+      miterLimit: style.miterLimit,
+      closed,
+      maxOutlineCommands: remainingCommandBudget.remaining,
+    });
+    if (!outline.ok) return outline;
+    if (outline.pathD) {
+      if (outline.commands.length > remainingCommandBudget.remaining) {
+        return {
+          ok: false,
+          code: 'BUDGET_EXCEEDED',
+          message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+        };
+      }
+      remainingCommandBudget.remaining -= outline.commands.length;
+      paths.push({
+        commands: [...outline.commands],
+        pathD: outline.pathD,
+        segmentCount: subpath.segments.length,
+        filledOutline: true,
+      });
+    }
+  }
+  return { ok: true, paths };
+}
+
 function reconstructSolidStrokes(
   representation: StyleAwareShapeRepresentation,
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  remainingCommandBudget: { remaining: number },
 ): { readonly ok: true; readonly result: readonly ReconstructedSolidStroke[] } | BuildSvgFailure {
   const boundaryByStyle = new Map<number, StrokeBoundarySegment[]>();
   let currentEdgeIndex = -1;
@@ -2256,6 +2457,7 @@ function reconstructSolidStrokes(
     from: Point2D,
     to: Point2D,
     command: StrokeDrawCommand,
+    edgeIndex: number,
     sourceSubpathId: number,
     closesSourceSubpath = false,
   ): BuildSvgFailure | null => {
@@ -2272,6 +2474,7 @@ function reconstructSolidStrokes(
       to,
       command,
       order: nextOrder,
+      edgeIndex,
       sourceSubpathId,
       closesSourceSubpath,
     });
@@ -2312,6 +2515,7 @@ function reconstructSolidStrokes(
             current,
             subpathStart,
             { type: 'L', x: subpathStart.x, y: subpathStart.y },
+            run.edgeIndex,
             currentSourceSubpathId,
             true,
           );
@@ -2342,7 +2546,7 @@ function reconstructSolidStrokes(
           message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} has a non-finite endpoint`,
         };
       }
-      const failure = addSegment(run.strokeStyle, current, end, command, currentSourceSubpathId);
+      const failure = addSegment(run.strokeStyle, current, end, command, run.edgeIndex, currentSourceSubpathId);
       if (failure) return failure;
       current = end;
     }
@@ -2355,8 +2559,10 @@ function reconstructSolidStrokes(
     if (!segments || segments.length === 0) continue;
     const parsed = parseSolidStrokeStyle(style, shapeId, renderTargetId, frameIndex);
     if (!parsed.ok) return parsed;
-    const stitched = stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
-    if (!stitched.ok) return stitched;
+    const builtPaths = parsed.result.variableWidthMarkers
+      ? buildVariableWidthStrokePaths(segments, closedSourceSubpaths, parsed.result, remainingCommandBudget)
+      : stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
+    if (!builtPaths.ok) return builtPaths;
     if (!stylesByIndex.has(style.index)) {
       return {
         ok: false,
@@ -2367,7 +2573,7 @@ function reconstructSolidStrokes(
     strokes.push({
       style,
       rendererStyle: parsed.result,
-      paths: stitched.paths,
+      paths: builtPaths.paths,
       segmentCount: segments.length,
     });
   }
@@ -2453,6 +2659,7 @@ function resolveTargetDisplayList(
   readonly ok: true;
   readonly displayList: FlaResolvedDisplayList;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  readonly staticTextBlocks: ReadonlyMap<string, FlaStaticTextDescriptor>;
 } | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
   let playbackFrameIndex: number | undefined;
@@ -2533,8 +2740,9 @@ function resolveTargetDisplayList(
   }
 
   // Selected-frame parsing resets the adapter's mutable source map each time.
-  // Keep only base blocks plus Shape blocks referenced by selected contexts.
+  // Keep only base blocks plus Shape/Text blocks referenced by selected contexts.
   const shapeBlocks = new Map(source.shapeBlocks);
+  const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>(source.staticTextBlocks ?? []);
   const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
   let shapeBlockBudgetExceeded = false;
   const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
@@ -2549,6 +2757,15 @@ function resolveTargetDisplayList(
           return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
         }
         shapeBlocks.set(element.shapeId, xml);
+      } else if (element.kind === 'text') {
+        if (staticTextBlocks.has(element.textId)) continue;
+        const descriptor = source.staticTextBlocks?.get(element.textId);
+        if (descriptor === undefined) return `Selected Graphic static text source not found: ${element.textId}`;
+        if (staticTextBlocks.size >= FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition * 4) {
+          shapeBlockBudgetExceeded = true;
+          return `Nested Graphic static text blocks exceeded budget`;
+        }
+        staticTextBlocks.set(element.textId, descriptor);
       } else if (element.kind === 'group') {
         const nestedError = captureShapeBlocks(element.elements);
         if (nestedError) return nestedError;
@@ -2605,7 +2822,7 @@ function resolveTargetDisplayList(
 
   const resolved = resolveFlaDisplayList(nested.resolverInput);
   if (!resolved.ok) return mapResolverFailure(resolved);
-  return { ok: true, displayList: resolved.displayList, shapeBlocks };
+  return { ok: true, displayList: resolved.displayList, shapeBlocks, staticTextBlocks };
 }
 
 function catalogSupportReason(
@@ -2613,6 +2830,7 @@ function catalogSupportReason(
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
+  staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>,
 ): { unsupportedReason: string | null; isBlank: boolean } {
   let drawableCount = 0;
   let reason: string | null = null;
@@ -2626,6 +2844,12 @@ function catalogSupportReason(
     if (node.kind === 'bitmap') {
       const media = resolveBitmapMedia(node.libraryItemName);
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
+      return;
+    }
+    if (node.kind === 'text') {
+      if (!staticTextBlocks?.has(node.textId)) {
+        reason = 'Static text source not found: ' + node.textId;
+      }
       return;
     }
     const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -2767,7 +2991,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true, resolved.staticTextBlocks)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,
@@ -2775,7 +2999,8 @@ export async function buildRenderableTargetCatalog(
     });
     let unsupportedReason = check.unsupportedReason;
     if (resolved.ok && !unsupportedReason &&
-        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length)) {
+        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length ||
+          resolved.displayList.projectionDiagnostics?.length)) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
@@ -2787,6 +3012,7 @@ export async function buildRenderableTargetCatalog(
         stageWidth: source.stageWidth,
         stageHeight: source.stageHeight,
         shapeBlocks: resolved.shapeBlocks,
+        staticTextBlocks: resolved.staticTextBlocks,
         resolveBitmapMedia,
         metadataOnlyBitmaps: options.metadataOnlyBitmaps,
       });
@@ -3040,6 +3266,10 @@ export async function buildSvgForRenderTarget(
   target: FlaRenderTarget,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
+  budgetOverrides?: {
+    readonly maxPathCommandsPerShape?: number;
+    readonly maxPathCommandsPerComposition?: number;
+  },
 ): Promise<BuildComposedSvgResult> {
   const previewStartedAt = startIssue762Profile();
   const details = {
@@ -3063,7 +3293,14 @@ export async function buildSvgForRenderTarget(
     stageWidth: source.stageWidth,
     stageHeight: source.stageHeight,
     shapeBlocks: resolved.shapeBlocks,
+    staticTextBlocks: resolved.staticTextBlocks,
     resolveBitmapMedia,
+    ...(budgetOverrides?.maxPathCommandsPerShape !== undefined
+      ? { maxPathCommandsPerShape: budgetOverrides.maxPathCommandsPerShape }
+      : {}),
+    ...(budgetOverrides?.maxPathCommandsPerComposition !== undefined
+      ? { maxPathCommandsPerComposition: budgetOverrides.maxPathCommandsPerComposition }
+      : {}),
   });
   finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {
     ...details,
@@ -3169,8 +3406,13 @@ export interface BuildComposedSvgInput {
   readonly stageHeight: number;
   /** C01 shape ids map to source DOMShape blocks held in the Main process. */
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  /** Classic DOMStaticText descriptors held in the Main process. */
+  readonly staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+  /** Optional tighter path-command caps (clamped to production ceilings) for deterministic budget tests. */
+  readonly maxPathCommandsPerShape?: number;
+  readonly maxPathCommandsPerComposition?: number;
   /** Only the catalog capability check may compose without the actual pixels. */
   readonly metadataOnlyBitmaps?: boolean;
 }
@@ -3448,6 +3690,19 @@ function includeTransformedBitmapBounds(
   ].every((point) => includePoint(bounds, point));
 }
 
+function includeTransformedRectBounds(
+  bounds: MutableBounds,
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  matrix: Matrix2D,
+): boolean {
+  return [
+    transformPoint(matrix, { x: rect.x, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y + rect.height }),
+    transformPoint(matrix, { x: rect.x, y: rect.y + rect.height }),
+  ].every((point) => includePoint(bounds, point));
+}
+
 function createGraphicViewport(
   bounds: MutableBounds,
   filterExpansion: { readonly x: number; readonly y: number } = { x: 0, y: 0 },
@@ -3474,17 +3729,8 @@ function createGraphicViewport(
   if (![viewBox.x, viewBox.y, viewBox.width, viewBox.height].every(Number.isFinite) ||
       viewBox.width <= 0 || viewBox.height <= 0) return null;
 
-  const pixelScale = Math.sqrt(MAX_OUTPUT_PIXELS) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
-  const scale = Math.min(1, MAX_OUTPUT_WIDTH / viewBox.width, MAX_OUTPUT_HEIGHT / viewBox.height, pixelScale);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  let outputWidth = Math.max(1, Math.min(MAX_OUTPUT_WIDTH, Math.ceil(viewBox.width * scale)));
-  let outputHeight = Math.max(1, Math.min(MAX_OUTPUT_HEIGHT, Math.ceil(viewBox.height * scale)));
-  while (outputWidth * outputHeight > MAX_OUTPUT_PIXELS) {
-    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
-    else if (outputHeight > 1) outputHeight -= 1;
-    else return null;
-  }
-  return { contentBounds, viewBox, outputWidth, outputHeight };
+  const size = computeBoundedFlaGraphicOutputSize(viewBox.width, viewBox.height);
+  return size ? { contentBounds, viewBox, ...size } : null;
 }
 
 function formatSvgNumber(value: number): string {
@@ -3567,7 +3813,7 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
-      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined
+      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined || node.instanceFilters !== undefined
         ? [...compositeGroups, node]
         : compositeGroups;
       for (const child of node.children) {
@@ -3600,7 +3846,7 @@ function flattenResolvedDisplayList(
  * back-to-front painter order, and SVG paints later siblings on top.
  */
 export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
-  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
+  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, staticTextBlocks, resolveBitmapMedia } = input;
   if (!displayList || !Array.isArray(displayList.layers) || !shapeBlocks ||
       typeof shapeBlocks.get !== 'function' ||
       typeof renderTargetId !== 'string' || renderTargetId.length === 0 || renderTargetId.length > 512 ||
@@ -3644,7 +3890,78 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     maxFrameBlurExpansionY = Math.max(maxFrameBlurExpansionY, Math.ceil(layer.frameFilter.blurY * 3));
   }
 
+  type CompositeGroup = Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+  const instanceFilterByGroup = new Map<CompositeGroup, { id: string; x: number; y: number }>();
+  const instancePrimitivesById = new Map<string, string>();
+  let instanceExpansionX = 0;
+  let instanceExpansionY = 0;
+  for (const { compositeGroups } of flattened.leaves) {
+    let x = 0;
+    let y = 0;
+    for (const group of compositeGroups) {
+      if (!group.instanceFilters) continue;
+      let effect = instanceFilterByGroup.get(group);
+      if (!effect) {
+        if (instanceFilterByGroup.size >= 128) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
+        }
+        let expansionX = 0;
+        let expansionY = 0;
+        let source = 'SourceGraphic';
+        const primitives: string[] = [];
+        for (const [index, filter] of group.instanceFilters.entries()) {
+          if (!filter.enabled) continue;
+          const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+          // Animate's screen-space blur radii are approximated as twice the SVG sigma.
+          const sigmaX = blurX / 2;
+          const sigmaY = blurY / 2;
+          const radians = angle * Math.PI / 180;
+          const dx = distance * Math.cos(radians);
+          const dy = distance * Math.sin(radians);
+          expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
+          expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
+          const blur = 'blur' + index;
+          const output = 'effect' + index;
+          if (filter.kind === 'blur') {
+            primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+          } else {
+            const offset = 'offset' + index;
+            primitives.push(
+              `<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+              `<feOffset in="${blur}" dx="${formatSvgNumber(dx)}" dy="${formatSvgNumber(dy)}" result="${offset}"/>`,
+              `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+              `<feComposite in2="${offset}" operator="in" result="shadow${index}"/>`,
+              `<feMerge result="${output}"><feMergeNode in="shadow${index}"/><feMergeNode in="${source}"/></feMerge>`,
+            );
+          }
+          source = output;
+        }
+        const markup = primitives.join('');
+        const id = `fla-instance-filter-${crypto.createHash('sha256').update(markup).digest('hex').slice(0, 24)}`;
+        instancePrimitivesById.set(id, markup);
+        effect = { id, x: expansionX, y: expansionY };
+        instanceFilterByGroup.set(group, effect);
+      }
+      x += effect.x;
+      y += effect.y;
+    }
+    instanceExpansionX = Math.max(instanceExpansionX, x);
+    instanceExpansionY = Math.max(instanceExpansionY, y);
+  }
+  if (instanceExpansionX > 2048 || instanceExpansionY > 2048) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the cumulative instance filter expansion budget' };
+  }
+  const filterExpansion = {
+    x: maxFrameBlurExpansionX + instanceExpansionX,
+    y: maxFrameBlurExpansionY + instanceExpansionY,
+  };
+
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
+  const nonTextGraphicBounds = framingMode === 'content' ? createBounds() : null;
+  const staticTextTransforms: Array<{
+    readonly placeholderId: string;
+    readonly worldTransform: Matrix2D;
+  }> = [];
   const definitions = new Map<string, string>();
   const colorTransformFilterIdByGroup = new Map<
     Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
@@ -3679,6 +3996,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     colorTransformFilterIdByGroup.set(group, id);
   }
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
+  const maxPathCommandsPerShape = Math.min(
+    MAX_PATH_COMMANDS_PER_SHAPE,
+    Math.max(0, input.maxPathCommandsPerShape ?? MAX_PATH_COMMANDS_PER_SHAPE),
+  );
+  const maxPathCommandsPerComposition = Math.min(
+    MAX_PATH_COMMANDS_PER_COMPOSITION,
+    Math.max(0, input.maxPathCommandsPerComposition ?? MAX_PATH_COMMANDS_PER_COMPOSITION),
+  );
   const emittedNodes: string[] = [];
   let bitmapDefinitionBytes = 0;
   let gradientDefinitionBytes = 0;
@@ -3688,6 +4013,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let pathCommandCount = 0;
   let shapeCount = 0;
   let bitmapInstanceCount = 0;
+  let staticTextNodeCount = 0;
+  let staticTextCharCount = 0;
+  const staticTexts: FlaStaticTextRenderItem[] = [];
+  const staticTextIdsSeen = new Set<string>();
   let skippedBitmapFillCount = 0;
   const bitmapFillDiagnostics: BuildComposedSvgSuccess['composition']['bitmapFillDiagnostics'][number][] = [];
   let catalogHasUnknownBitmapDimensions = false;
@@ -3934,15 +4263,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  const openCompositeGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
+  const openCompositeGroups: Array<{ group: CompositeGroup; close: string; coveredClips: number }> = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
   for (const { layer, node, compositeGroups } of flattened.leaves) {
     if (openLayer !== layer) {
       while (openCompositeGroups.length > 0) {
-        const closeFailure = appendCompositeGroupTag('</g>');
+        const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
         if (closeFailure) return closeFailure;
-        openCompositeGroups.pop();
       }
       if (openLayerFilter) {
         const closeFailure = appendCompositeGroupTag('</g>');
@@ -3960,24 +4288,40 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     let sharedGroupCount = 0;
     while (sharedGroupCount < openCompositeGroups.length &&
         sharedGroupCount < compositeGroups.length &&
-        openCompositeGroups[sharedGroupCount] === compositeGroups[sharedGroupCount]) {
+        openCompositeGroups[sharedGroupCount]?.group === compositeGroups[sharedGroupCount]) {
       sharedGroupCount += 1;
     }
     for (let index = openCompositeGroups.length - 1; index >= sharedGroupCount; index -= 1) {
-      const closeFailure = appendCompositeGroupTag('</g>');
+      const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
       if (closeFailure) return closeFailure;
-      openCompositeGroups.pop();
     }
     for (let index = sharedGroupCount; index < compositeGroups.length; index += 1) {
       const group = compositeGroups[index]!;
       const attributes: string[] = [];
-      if (group.opacity !== undefined) attributes.push(`opacity="${formatSvgNumber(group.opacity)}"`);
+      const opacity = group.opacity === undefined ? '' : ` opacity="${formatSvgNumber(group.opacity)}"`;
       const colorFilterId = colorTransformFilterIdByGroup.get(group);
       if (colorFilterId) attributes.push(`filter="url(#${colorFilterId})"`);
-      const openFailure = appendCompositeGroupTag(`<g ${attributes.join(' ')}>`);
+      const effect = instanceFilterByGroup.get(group);
+      let tags = 1;
+      let markup = `<g${effect ? '' : opacity}${attributes.length ? ' ' + attributes.join(' ') : ''}>`;
+      let coveredClips = openCompositeGroups.at(-1)?.coveredClips ?? 0;
+      if (effect) {
+        markup = `<g${opacity} filter="url(#${effect.id})">${markup}`;
+        tags += 1;
+        const externalClips = group.instanceFilterClips ?? [];
+        for (const clip of externalClips.slice(coveredClips)) {
+          const registered = registerClipPath(clip);
+          if (!registered.ok) return registered;
+          markup = `<g clip-path="url(#${registered.id})">${markup}`;
+          tags += 1;
+        }
+        coveredClips = Math.max(coveredClips, externalClips.length);
+      }
+      const openFailure = appendCompositeGroupTag(markup);
       if (openFailure) return openFailure;
-      openCompositeGroups.push(group);
+      openCompositeGroups.push({ group, close: '</g>'.repeat(tags), coveredClips });
     }
+    const leafClips = node.clipPaths?.slice(openCompositeGroups.at(-1)?.coveredClips ?? 0);
 
     if (node.kind === 'shape') {
       const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -4014,11 +4358,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-source budget exceeded' };
       }
-      if (pathCommandCount + commands.length > MAX_PATH_COMMANDS_PER_COMPOSITION) {
+      if (commands.length > maxPathCommandsPerShape) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Shape ${node.shapeId} path-command budget exceeded` };
+      }
+      if (pathCommandCount + commands.length > maxPathCommandsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
       if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
+      }
+      if (nonTextGraphicBounds) {
+        includeTransformedPathBounds(nonTextGraphicBounds, commands, node.worldTransform);
       }
       const reconstructed = reconstructFills(
         representation,
@@ -4053,7 +4403,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           if (input.metadataOnlyBitmaps && !media.pngBytes) {
             // The catalog can validate fill geometry before the bitmap is decoded.
             const outline = `<path d="${fill.pathD}" fill="none"/>`;
-            const failure = appendEmittedNode(outline, node.clipPaths);
+            const failure = appendEmittedNode(outline, leafClips);
             if (failure) return failure;
             fillRegionCount += 1;
             continue;
@@ -4078,7 +4428,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             if (failure) return failure;
             markup = `<path d="${fill.pathD}" transform="${shapeTransform}" fill="url(#${patternId})" stroke="none" fill-rule="nonzero"/>`;
           }
-          const failure = appendEmittedNode(markup, node.clipPaths);
+          const failure = appendEmittedNode(markup, leafClips);
           if (failure) return failure;
           fillRegionCount += 1;
           continue;
@@ -4086,16 +4436,23 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         const gradientFailure = registerGradientPaint(paint);
         if (gradientFailure) return gradientFailure;
         const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+        const appendFailure = appendEmittedNode(pathNode, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
+      const strokeCommandBudget = {
+        remaining: Math.min(
+          maxPathCommandsPerShape - commands.length,
+          maxPathCommandsPerComposition - (pathCommandCount + commands.length),
+        ),
+      };
       const reconstructedStrokes = reconstructSolidStrokes(
         representation,
         node.shapeId,
         renderTargetId,
         displayList.frameIndex,
+        strokeCommandBudget,
       );
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
       uniqueEffectiveStyleCount += reconstructed.result.fills.length + reconstructedStrokes.result.length;
@@ -4116,11 +4473,33 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
         }
         for (const path of stroke.paths) {
+          if (path.filledOutline) {
+            if (graphicBounds && !includeTransformedPathBounds(graphicBounds, path.commands, node.worldTransform)) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic variable-width stroke bounds are not finite: ${node.shapeId}` };
+            }
+            if (nonTextGraphicBounds) {
+              includeTransformedPathBounds(nonTextGraphicBounds, path.commands, node.worldTransform);
+            }
+            const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
+            if (pathBytes > MAX_EDGE_CHARS) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
+            }
+            const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
+            const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${strokePaint}" fill-opacity="${formatSvgNumber(style.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+            const appendFailure = appendEmittedNode(pathNode, leafClips);
+            if (appendFailure) return appendFailure;
+            pathCommandCount += path.commands.length;
+            strokePathCount += 1;
+            continue;
+          }
           if (graphicBounds) {
             const strokePathBounds = createBounds();
             if (!includeTransformedPathBounds(strokePathBounds, path.commands, node.worldTransform) ||
                 !includeExpandedStrokeBounds(graphicBounds, strokePathBounds, expansion)) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
+            }
+            if (nonTextGraphicBounds) {
+              includeExpandedStrokeBounds(nonTextGraphicBounds, strokePathBounds, expansion);
             }
           }
           const pathD = style.scaleMode === 'horizontal'
@@ -4138,13 +4517,62 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             : '';
           const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
           const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${strokePaint}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
-          const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+          const appendFailure = appendEmittedNode(pathNode, leafClips);
           if (appendFailure) return appendFailure;
           strokePathCount += 1;
         }
       }
       pathCommandCount += commands.length;
       shapeCount += 1;
+      continue;
+    }
+
+    if (node.kind === 'text') {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (!descriptor) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved static text source not found: ${node.textId}` };
+      }
+      staticTextNodeCount += 1;
+      if (staticTextNodeCount > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text node budget (${FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition}) exceeded` };
+      }
+      const nodeCharCount = descriptor.runs.reduce((sum, run) => sum + run.characters.length, 0);
+      staticTextCharCount += nodeCharCount;
+      if (staticTextCharCount > FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text character budget (${FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition}) exceeded` };
+      }
+      if (countExplicitStaticTextLines(descriptor) > FLA_STATIC_TEXT_LIMITS.maxLinesPerText) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Static text exceeds maximum ${FLA_STATIC_TEXT_LIMITS.maxLinesPerText} lines` };
+      }
+      const estimatedLayout = layoutFlaStaticText(descriptor);
+      if (graphicBounds && !includeTransformedRectBounds(graphicBounds, estimatedLayout.bounds, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic static text bounds are not finite: ${node.textId}` };
+      }
+      const worldScale = Math.max(
+        Math.hypot(node.worldTransform.a, node.worldTransform.b),
+        Math.hypot(node.worldTransform.c, node.worldTransform.d),
+      );
+      const scaleHint = Math.min(4, Math.max(2, Math.ceil((Number.isFinite(worldScale) ? worldScale : 1) * 2) / 2));
+      const placeholderId = `fla-text-${crypto.createHash('sha256')
+        .update(`${node.textId}\u0000${scaleHint}`, 'utf8')
+        .digest('hex')
+        .slice(0, 24)}`;
+      if (!staticTextIdsSeen.has(placeholderId)) {
+        staticTextIdsSeen.add(placeholderId);
+        const placeholderTag =
+          `<image id="${placeholderId}" x="${formatSvgNumber(estimatedLayout.bounds.x)}" y="${formatSvgNumber(estimatedLayout.bounds.y)}" ` +
+          `width="${formatSvgNumber(estimatedLayout.bounds.width)}" height="${formatSvgNumber(estimatedLayout.bounds.height)}" ` +
+          `preserveAspectRatio="none" href="data:image/png;base64,${FLA_STATIC_TEXT_PLACEHOLDER_BASE64}"/>`;
+        const defFailure = registerBitmapDefinition(placeholderId, placeholderTag);
+        if (defFailure) return defFailure;
+        staticTexts.push({ placeholderId, descriptor, scaleHint });
+      }
+      if (framingMode === 'content') {
+        staticTextTransforms.push({ placeholderId, worldTransform: node.worldTransform });
+      }
+      const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
+      const appendFailure = appendEmittedNode(useNode, leafClips);
+      if (appendFailure) return appendFailure;
       continue;
     }
 
@@ -4166,7 +4594,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       } else if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Graphic bitmap bounds are not finite' };
       }
-      const appendFailure = appendEmittedNode('<g/>', node.clipPaths);
+      const appendFailure = appendEmittedNode('<g/>', leafClips);
       if (appendFailure) return appendFailure;
       continue;
     }
@@ -4175,15 +4603,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic bitmap bounds are not finite: ${node.libraryItemName}` };
     }
+    if (nonTextGraphicBounds) {
+      includeTransformedBitmapBounds(nonTextGraphicBounds, media.width, media.height, node.worldTransform);
+    }
     const useNode = `<use href="#${image.id}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-    const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+    const appendFailure = appendEmittedNode(useNode, leafClips);
     if (appendFailure) return appendFailure;
   }
 
   while (openCompositeGroups.length > 0) {
-    const closeFailure = appendCompositeGroupTag('</g>');
+    const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
     if (closeFailure) return closeFailure;
-    openCompositeGroups.pop();
   }
 
   if (openLayerFilter) {
@@ -4192,7 +4622,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   const graphicViewport = graphicBounds
-    ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
+    ? createGraphicViewport(graphicBounds, filterExpansion)
     : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
   if (framingMode === 'content' && !graphicViewport && !blankGraphic && !catalogHasUnknownBitmapDimensions) {
@@ -4215,7 +4645,18 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     `width="${formatSvgNumber(viewBox.width)}" height="${formatSvgNumber(viewBox.height)}" ` +
     `color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" ` +
     `stdDeviation="${formatSvgNumber(filter.blurX)} ${formatSvgNumber(filter.blurY)}"/></filter>`);
-  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions];
+  const instanceRegion = framingMode === 'content' ? viewBox : {
+    x: viewBox.x - instanceExpansionX,
+    y: viewBox.y - instanceExpansionY,
+    width: viewBox.width + 2 * instanceExpansionX,
+    height: viewBox.height + 2 * instanceExpansionY,
+  };
+  const instanceDefinitions = [...instancePrimitivesById].map(([id, primitives]) =>
+    `<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" ` +
+    `x="${formatSvgNumber(instanceRegion.x)}" y="${formatSvgNumber(instanceRegion.y)}" ` +
+    `width="${formatSvgNumber(instanceRegion.width)}" height="${formatSvgNumber(instanceRegion.height)}" ` +
+    `color-interpolation-filters="sRGB">${primitives}</filter>`);
+  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions, ...instanceDefinitions];
   const defs = allDefinitions.length > 0 ? `<defs>${allDefinitions.join('')}</defs>` : '';
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
@@ -4227,9 +4668,28 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
   const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
-  if ((maskWarnings.size || ikPoseWarning) && emittedLeafCount === 0) {
-    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning].filter(Boolean).join('；').slice(0, 500) };
+  const projectionWarning = displayList.projectionDiagnostics?.join('；').slice(0, 500);
+  if ((maskWarnings.size || ikPoseWarning || projectionWarning) && emittedLeafCount === 0) {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning, projectionWarning].filter(Boolean).join('；').slice(0, 500) };
   }
+  const graphicFraming: FlaStaticTextGraphicFraming | undefined =
+    framingMode === 'content' && staticTexts.length > 0
+      ? {
+          nonTextBounds:
+            nonTextGraphicBounds &&
+            [nonTextGraphicBounds.minX, nonTextGraphicBounds.minY, nonTextGraphicBounds.maxX, nonTextGraphicBounds.maxY].every(Number.isFinite)
+              ? {
+                  minX: nonTextGraphicBounds.minX,
+                  minY: nonTextGraphicBounds.minY,
+                  maxX: nonTextGraphicBounds.maxX,
+                  maxY: nonTextGraphicBounds.maxY,
+                }
+              : null,
+          textTransforms: staticTextTransforms,
+          filterExpansion,
+          padding: GRAPHIC_CONTENT_PADDING,
+        }
+      : undefined;
   return {
     ok: true,
     svg,
@@ -4241,6 +4701,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
+    ...(projectionWarning ? { projectionWarning } : {}),
+    ...(staticTexts.length > 0 ? { staticTexts } : {}),
+    ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
+    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined)
+      ? { hasPerChannelColorTransform: true } : {}),
+    ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

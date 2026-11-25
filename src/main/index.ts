@@ -57,6 +57,7 @@ import { AssetPreviewAudioService } from './services/AssetPreviewAudioService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 import { FlaImportService } from './services/FlaImportService';
+import { FlaSoundService } from './services/FlaSoundService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
 import { FlaAssetCommitService } from './services/FlaAssetCommitService';
 import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-render-session';
@@ -129,11 +130,23 @@ async function selectProjectDirectory(
 async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   const acceptanceSource = process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE?.trim();
   if (acceptanceSource && !app.isPackaged) return acceptanceSource;
-  const selection = await dialog.showOpenDialog(window, {
-    title: '选择 FLA 文件',
+  const { response } = await dialog.showMessageBox(window, {
+    message: '打开 Animate 工程',
+    buttons: ['FLA / XFL 文件', 'XFL 文件夹', '取消'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  if (response === 2) return null;
+  const selection = await dialog.showOpenDialog(window, response === 1 ? {
+    title: '选择 XFL 文件夹',
+    buttonLabel: '打开',
+    properties: ['openDirectory'],
+  } : {
+    title: '选择 FLA 或 XFL 文件',
     buttonLabel: '打开',
     properties: ['openFile'],
-    filters: [{ name: 'Adobe Animate FLA', extensions: ['fla'] }],
+    filters: [{ name: 'Adobe Animate FLA / XFL', extensions: ['fla', 'xfl'] }],
   });
   return selection.canceled ? null : selection.filePaths[0] ?? null;
 }
@@ -157,8 +170,8 @@ function defaultExportFileName(projectName: string): string {
   return baseName + '.mp4';
 }
 
-async function selectPngSequenceTarget(parent: string, projectName: string): Promise<string> {
-  const stem = `${defaultExportFileName(projectName).slice(0, -4).slice(0, 80)}-frames`;
+async function selectPngSequenceTarget(parent: string, projectName: string, spriteSheet = false): Promise<string> {
+  const stem = `${defaultExportFileName(projectName).slice(0, -4).slice(0, 80)}-${spriteSheet ? 'sprites' : 'frames'}`;
   for (let ordinal = 1; ordinal <= 1000; ordinal++) {
     const target = path.join(parent, ordinal === 1 ? stem : `${stem}-${ordinal}`);
     try { await lstat(target); }
@@ -167,7 +180,7 @@ async function selectPngSequenceTarget(parent: string, projectName: string): Pro
       throw error;
     }
   }
-  throw new Error('该位置已有过多同名 PNG 序列，请选择其他目录。');
+  throw new Error('该位置已有过多同名导出，请选择其他目录。');
 }
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
@@ -467,10 +480,11 @@ async function initialize(): Promise<void> {
       selectOutputPath: async (window, request) => {
         if (request.pngSequence) {
           const directory = await dialog.showOpenDialog(window, {
-            title: '选择 PNG 序列输出目录', defaultPath: request.projectRoot, properties: ['openDirectory', 'createDirectory'],
+            title: request.pngSequence.spriteSheet ? '选择精灵图输出目录' : '选择 PNG 序列输出目录',
+            defaultPath: request.projectRoot, properties: ['openDirectory', 'createDirectory'],
           });
           return directory.canceled || !directory.filePaths[0] ? null
-            : selectPngSequenceTarget(directory.filePaths[0], request.projectName);
+            : selectPngSequenceTarget(directory.filePaths[0], request.projectName, request.pngSequence.spriteSheet);
         }
         if (!exportFileSystem) {
           throw new Error('Formal export filesystem is unavailable.');
@@ -603,10 +617,17 @@ async function initialize(): Promise<void> {
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
     getSession: (sessionId) => flaImportService.getSession(sessionId),
   });
+  const flaSoundService = new FlaSoundService(
+    (sessionId, soundId) => flaImportService.getSoundSource(sessionId, soundId),
+    (filePath, signal) => ffmpegAdapter.probeAudioFile(filePath, signal),
+    assetImportService,
+    (filePath, signal) => ffmpegAdapter.validateAudioDecode(filePath, signal),
+  );
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,
     flaImportService,
     flaAssetCommitService,
+    flaSoundService,
     selectFlaSource,
     onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
@@ -666,6 +687,7 @@ async function initialize(): Promise<void> {
   });
   removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
     flaPartPreviewService?.invalidateSession(sessionId);
+    flaSoundService.cancelPreview(sessionId);
   });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,

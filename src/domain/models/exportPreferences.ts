@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const ExportPreferencesSchema = z.object({
-  format: z.enum(['mp4', 'png-sequence']),
+  format: z.enum(['mp4', 'png-sequence', 'sprite-sheet']),
   rangeMode: z.enum(['shot', 'range']),
   transparent: z.boolean(),
 }).strict();

@@ -11,6 +11,7 @@
 import crypto from 'node:crypto';
 import {
   buildFlaTimelineFrameSpanIndex,
+  findCoveringSpan,
   resolveFlaTimelineFrameSpan,
   type FlaNormalizedFrameSpan,
   type FlaTimelineFrameSpanMetadata,
@@ -23,6 +24,11 @@ import {
 } from './fla-motion-tween-transform-interpolator';
 import { evaluateFlaObjectMotion, parseFlaObjectMotion, type ObjectMotionPose } from './fla-object-motion';
 import {
+  analyzeMovieClipFrameScript,
+  extractFlaXflScriptText,
+  type MovieClipSymbolScriptAnalysis,
+} from './fla-movieclip-script-analyzer';
+import {
   evaluateFlaViewerClassicTweenProgress,
   type FlaViewerEasePoint,
   type FlaViewerTweenEase,
@@ -31,16 +37,24 @@ import {
   FLA_DISPLAY_LIST_IDENTITY_MATRIX,
   type FlaDisplayListElement,
   type FlaDisplayListBlurFilter,
+  type FlaInstanceFilter,
   type FlaDisplayListFrameContext,
   type FlaDisplayListMatrix,
   type FlaDisplayListRgbTransform,
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
-import { ikContainerPlaybackLength } from './fla-nested-graphic-frame-selector';
+import {
+  FLA_STATIC_TEXT_LIMITS,
+  type FlaStaticTextAlignment,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextRun,
+} from '../../shared/fla-static-text';
+import { ikContainerPlaybackLength, selectFlaGraphicFrameIndex } from './fla-nested-graphic-frame-selector';
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
+const MAX_SHAPE_TWEEN_CURVES = 8_192;
 const MAX_RIG_PARENT_DEPTH = 8;
 const MAX_CLASSIC_MOTION_ROTATION_TURNS = 1_000_000;
 const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
@@ -55,6 +69,7 @@ const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenRotateTimes',
   'parentLayerIndex',
   'rigPropagationMatrix',
+  'frameZDepth',
 ]);
 const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
@@ -122,6 +137,7 @@ export interface FlaXflGraphicSymbolDescriptor extends FlaGraphicSymbolDefinitio
   readonly hasPotentialDisplayElements: boolean;
   readonly timelineXml: string;
   readonly movieClipHasScript?: boolean;
+  readonly movieClipStopFrames?: readonly number[];
 }
 
 export interface FlaStaticSnapshotDisplaySource {
@@ -132,6 +148,7 @@ export interface FlaStaticSnapshotDisplaySource {
   readonly movieClipSymbols?: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>;
   readonly symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  readonly staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>;
   /** Restore base-source parsing state before resolving a cached frame-zero context. */
   resetFrameBuildState(): void;
   /** Build an already-selected Scene frame without changing symbol frame semantics. */
@@ -169,6 +186,7 @@ export type FlaStaticSnapshotDisplaySourceBuildResult =
 
 interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
+  readonly staticTextBlocks: Map<string, FlaStaticTextDescriptor>;
   readonly sourceFps: number;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
   readonly ikPoses: WeakMap<FlaXflElementBlock, LayerSampleResult<readonly FlaDisplayListMatrix[]>>;
@@ -342,10 +360,11 @@ function firstElementToken(xml: string, name?: string): XmlToken | null {
   return null;
 }
 
-/** Returns only immediate children and skips each child's complete subtree. */
+/** Returns up to maxChildren immediate children, skipping each complete subtree. */
 export function getFlaXflDirectChildren(
   elementXml: string,
   parentName: string,
+  maxChildren = Infinity,
 ): readonly FlaXflElementBlock[] {
   const opening = firstElementToken(elementXml, parentName);
   if (!opening) return [];
@@ -353,7 +372,7 @@ export function getFlaXflDirectChildren(
   if (parentEnd < 0) return [];
   const children: FlaXflElementBlock[] = [];
   let cursor = opening.end;
-  while (cursor < parentEnd) {
+  while (cursor < parentEnd && children.length < maxChildren) {
     const token = nextTagToken(elementXml, cursor);
     if (!token || token.start >= parentEnd) break;
     if (token.closing) {
@@ -395,19 +414,29 @@ function framesForLayer(layerXml: string): readonly FlaXflElementBlock[] {
   return wrapper ? getFlaXflDirectChildren(wrapper.xml, 'frames').filter((child) => child.name === 'DOMFrame') : [];
 }
 
-function sourceLayerIsVisible(layer: FlaXflElementBlock): boolean {
-  const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
-  return layer.attributes.visible !== 'false' &&
-    layer.attributes.isVisible !== 'false' &&
+function sourceLayerIsHidden(attributes: FlaXflElementBlock['attributes']): boolean {
+  return attributes.visible === 'false' || attributes.isVisible === 'false';
+}
+
+function sourceLayerIsVisible(layer: FlaXflElementBlock, hierarchy: SourceLayerHierarchy): boolean {
+  const layerType = layer.attributes.layerType?.toLowerCase();
+  return !hierarchy.hiddenByFolder && !sourceLayerIsHidden(layer.attributes) &&
     layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
+}
+
+function nativeCameraEnabled(timelineXml: string): boolean {
+  return !['false', '0'].includes(nextTagToken(timelineXml, 0)?.attributes.cameraLayerEnabled ?? '');
 }
 
 function timelineFrameSpanIndex(
   timelineXml: string,
 ): FlaStaticSnapshotDisplaySourceResult<FlaTimelineFrameSpanIndex<FlaXflElementBlock>> {
+  const cameraEnabled = nativeCameraEnabled(timelineXml);
+  const layers = layersForTimeline(timelineXml);
   const result = buildFlaTimelineFrameSpanIndex(
-    layersForTimeline(timelineXml).map((layer) => ({
-      visible: sourceLayerIsVisible(layer),
+    layers.map((layer, index) => ({
+      visible: sourceLayerIsVisible(layer, sourceLayerHierarchy(layers, index)),
+      timingOnly: !cameraEnabled && layer.attributes.layerType?.toLowerCase() === 'camera',
       frames: framesForLayer(layer.xml).map((frame) => ({
         index: frame.attributes.index,
         duration: frame.attributes.duration,
@@ -594,14 +623,18 @@ type ClassicMotionColorParseResult =
   | { readonly ok: true; readonly transform: ClassicMotionColorTransform | null }
   | { readonly ok: false; readonly message: string };
 
-function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = false): ClassicMotionColorParseResult {
+function readSymbolColorTransform(
+  target: FlaXflElementBlock,
+  mode: 'classic-motion' | 'object-motion' | 'static',
+): ClassicMotionColorParseResult {
+  const supportsTint = mode !== 'classic-motion';
   const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
     .filter((child) => child.name === 'color');
   if (colorWrappers.length === 0) return { ok: true, transform: null };
   const unsupported = (reason: string): ClassicMotionColorParseResult => ({
     ok: false,
-    message: objectMotion ? `对象补间的初始色彩无法读取（${reason}）`
-      : `Classic Motion contains unsupported Color data: ${reason}`,
+    message: mode === 'object-motion' ? `对象补间的初始色彩无法读取（${reason}）`
+      : `${mode === 'static' ? 'Static symbol' : 'Classic Motion'} contains unsupported Color data: ${reason}`,
   });
   if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
   const wrapper = colorWrappers[0]!;
@@ -616,7 +649,7 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
   if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness' &&
-      !(objectMotion && (name === 'tintMultiplier' || name === 'tintColor')))) {
+      !(supportsTint && (name === 'tintMultiplier' || name === 'tintColor')))) {
     return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
   }
   let alphaMultiplier: number | undefined;
@@ -641,8 +674,9 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
       ? { multiplier: 1 - brightness, offset: brightness * 255 }
       : { multiplier: 1 + brightness, offset: 0 };
   }
-  if (objectMotion && (attributes.tintMultiplier !== undefined || attributes.tintColor !== undefined)) {
-    const amount = Number(attributes.tintMultiplier);
+  if (supportsTint && (attributes.tintMultiplier !== undefined || attributes.tintColor !== undefined)) {
+    const rawAmount = attributes.tintMultiplier?.trim();
+    const amount = rawAmount ? Number(rawAmount) : Number.NaN;
     const tint = attributes.tintColor;
     if (rgbTransform || !Number.isFinite(amount) || amount < 0 || amount > 1 || !/^#[\da-f]{6}$/iu.test(tint ?? '')) {
       return unsupported('invalid tint');
@@ -654,7 +688,7 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
       channelOffsets: [tintRgb[0] * amount, tintRgb[1] * amount, tintRgb[2] * amount],
     };
   }
-  if (!objectMotion && names.length === 0) return unsupported('Color has no supported attributes');
+  if (mode === 'classic-motion' && names.length === 0) return unsupported('Color has no supported attributes');
   const effectiveAlpha = alphaMultiplier === 1 ? undefined : alphaMultiplier;
   const effectiveRgb = rgbTransform?.multiplier === 1 && rgbTransform.offset === 0
     ? undefined
@@ -669,6 +703,200 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
           ...(tintRgb ? { tintRgb } : {}),
         },
   };
+}
+
+function extractElementInnerText(blockXml: string, tagName: string): string {
+  const openEnd = blockXml.indexOf('>');
+  if (openEnd < 0 || blockXml[openEnd - 1] === '/') return '';
+  const closeToken = `</${tagName}>`;
+  const closeStart = blockXml.lastIndexOf(closeToken);
+  if (closeStart <= openEnd) return '';
+  const raw = blockXml.slice(openEnd + 1, closeStart);
+  const cdataMatch = /^\s*<!\[CDATA\[([\s\S]*)\]\]>\s*$/u.exec(raw);
+  if (cdataMatch) return cdataMatch[1] ?? '';
+  return decodeXmlEntities(raw);
+}
+
+function parseStaticTextColor(rawColor: string | undefined, rawAlpha: string | undefined): {
+  readonly fillColor: string;
+  readonly alpha: number;
+} | null {
+  let fillColor = '#000000';
+  let alpha = 1;
+  if (rawColor !== undefined && rawColor.trim() !== '') {
+    const trimmed = rawColor.trim();
+    if (/^#[0-9a-f]{6}$/iu.test(trimmed)) {
+      fillColor = trimmed.toLowerCase();
+    } else if (/^#[0-9a-f]{8}$/iu.test(trimmed)) {
+      fillColor = trimmed.slice(0, 7).toLowerCase();
+      alpha = Number.parseInt(trimmed.slice(7, 9), 16) / 255;
+    } else if (/^#[0-9a-f]{3}$/iu.test(trimmed)) {
+      fillColor = `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+    } else {
+      return null;
+    }
+  }
+  if (rawAlpha !== undefined && rawAlpha.trim() !== '') {
+    const parsedAlpha = Number(rawAlpha);
+    if (!Number.isFinite(parsedAlpha) || parsedAlpha < 0 || parsedAlpha > 1) return null;
+    alpha *= parsedAlpha;
+  }
+  return { fillColor, alpha: Math.max(0, Math.min(1, alpha)) };
+}
+
+function parseStaticTextDescriptor(
+  element: FlaXflElementBlock,
+): { readonly ok: true; readonly value: FlaStaticTextDescriptor | null } | { readonly ok: false; readonly reason: string } {
+  const orientation = element.attributes.orientation?.trim().toLowerCase();
+  if (orientation && orientation !== 'horizontal') {
+    return { ok: false, reason: 'Vertical or non-horizontal static text is not supported yet' };
+  }
+  const left = element.attributes.left !== undefined ? Number(element.attributes.left) : 0;
+  const width = element.attributes.width !== undefined ? Number(element.attributes.width) : 100;
+  const height = element.attributes.height !== undefined ? Number(element.attributes.height) : 20;
+  if (
+    !Number.isFinite(left) || Math.abs(left) > FLA_STATIC_TEXT_LIMITS.maxBoxDimension ||
+    !Number.isFinite(width) || width <= 0 || width > FLA_STATIC_TEXT_LIMITS.maxBoxDimension ||
+    !Number.isFinite(height) || height <= 0 || height > FLA_STATIC_TEXT_LIMITS.maxBoxDimension
+  ) {
+    return { ok: false, reason: 'Static text box dimensions are invalid or exceed supported bounds' };
+  }
+
+  const textRunsContainer = directChild(element.xml, element.name, 'textRuns');
+  const runNodes = textRunsContainer
+    ? getFlaXflDirectChildren(textRunsContainer.xml, textRunsContainer.name).filter((n) => n.name === 'DOMTextRun')
+    : [];
+  if (runNodes.length > FLA_STATIC_TEXT_LIMITS.maxRunsPerText) {
+    return { ok: false, reason: `Static text exceeds ${FLA_STATIC_TEXT_LIMITS.maxRunsPerText} runs` };
+  }
+
+  const runs: FlaStaticTextRun[] = [];
+  let totalChars = 0;
+  for (const runNode of runNodes) {
+    const charactersNode = directChild(runNode.xml, runNode.name, 'characters');
+    const characters = charactersNode ? extractElementInnerText(charactersNode.xml, charactersNode.name) : '';
+    totalChars += characters.length;
+    if (totalChars > FLA_STATIC_TEXT_LIMITS.maxCharsPerText) {
+      return { ok: false, reason: `Static text exceeds ${FLA_STATIC_TEXT_LIMITS.maxCharsPerText} characters` };
+    }
+
+    const attrsContainer = directChild(runNode.xml, runNode.name, 'textAttrs');
+    const attrsNode = attrsContainer ? directChild(attrsContainer.xml, attrsContainer.name, 'DOMTextAttrs') : undefined;
+    const attrs = attrsNode?.attributes ?? {};
+
+    const rawAlign = attrs.alignment?.trim().toLowerCase() ?? 'left';
+    const alignment: FlaStaticTextAlignment =
+      rawAlign === 'center' || rawAlign === 'right' || rawAlign === 'justify' ? rawAlign : 'left';
+
+    const size = attrs.size !== undefined ? Number(attrs.size) : 12;
+    if (!Number.isFinite(size) || size < FLA_STATIC_TEXT_LIMITS.minFontSize || size > FLA_STATIC_TEXT_LIMITS.maxFontSize) {
+      return { ok: false, reason: 'Static text font size is invalid or exceeds supported bounds' };
+    }
+    const lineHeight = attrs.lineHeight !== undefined ? Number(attrs.lineHeight) : size * 1.2;
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0 || lineHeight > FLA_STATIC_TEXT_LIMITS.maxLineHeight) {
+      return { ok: false, reason: 'Static text lineHeight is invalid or exceeds supported bounds' };
+    }
+    const lineSpacing = attrs.lineSpacing !== undefined ? Number(attrs.lineSpacing) : 0;
+    if (!Number.isFinite(lineSpacing) || Math.abs(lineSpacing) > FLA_STATIC_TEXT_LIMITS.maxLineSpacing) {
+      return { ok: false, reason: 'Static text lineSpacing is invalid or exceeds supported bounds' };
+    }
+    const letterSpacing = attrs.letterSpacing !== undefined ? Number(attrs.letterSpacing) : 0;
+    if (!Number.isFinite(letterSpacing) || Math.abs(letterSpacing) > FLA_STATIC_TEXT_LIMITS.maxLetterSpacing) {
+      return { ok: false, reason: 'Static text letterSpacing is invalid or exceeds supported bounds' };
+    }
+
+    const color = parseStaticTextColor(attrs.fillColor, attrs.alpha);
+    if (!color) {
+      return { ok: false, reason: 'Static text fill color or alpha is invalid' };
+    }
+
+    const parseOptionalBound = (raw: string | undefined): number | undefined | null => {
+      if (raw === undefined || raw.trim() === '') return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && Math.abs(n) <= FLA_STATIC_TEXT_LIMITS.maxBoxDimension ? n : null;
+    };
+    const leftMargin = parseOptionalBound(attrs.leftMargin);
+    const rightMargin = parseOptionalBound(attrs.rightMargin);
+    const indent = parseOptionalBound(attrs.indent);
+    if (leftMargin === null || rightMargin === null || indent === null) {
+      return { ok: false, reason: 'Static text margin or indent is invalid' };
+    }
+
+    const rawFace = attrs.face?.trim();
+    runs.push({
+      characters,
+      alignment,
+      size,
+      lineHeight,
+      lineSpacing,
+      letterSpacing,
+      ...(rawFace ? { face: rawFace.slice(0, FLA_STATIC_TEXT_LIMITS.maxFontFaceLength) } : {}),
+      fillColor: color.fillColor,
+      alpha: color.alpha,
+      bold: attrs.bold === 'true',
+      italic: attrs.italic === 'true',
+      ...(attrs.underline === 'true' ? { underline: true } : {}),
+      ...(leftMargin !== undefined ? { leftMargin } : {}),
+      ...(rightMargin !== undefined ? { rightMargin } : {}),
+      ...(indent !== undefined ? { indent } : {}),
+    });
+  }
+
+  if (totalChars === 0) {
+    return { ok: true, value: null };
+  }
+  return { ok: true, value: { left, width, height, runs } };
+}
+
+function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstanceFilter[] | null {
+  const container = directChild(instance.xml, instance.name, 'filters');
+  if (!container) return [];
+  const nodes = getFlaXflDirectChildren(container.xml, container.name);
+  if (nodes.length > 8) return null;
+  const filters: FlaInstanceFilter[] = [];
+  for (const node of nodes) {
+    const kind = node.name === 'BlurFilter' ? 'blur' : node.name === 'GlowFilter' ? 'glow'
+      : node.name === 'DropShadowFilter' ? 'dropShadow' : undefined;
+    const attributes = node.attributes;
+    const enabledValue = attributes.isEnabled ?? attributes.enabled;
+    if (![undefined, 'true', '1', 'false', '0'].includes(enabledValue)) return null;
+    const enabled = enabledValue !== 'false' && enabledValue !== '0';
+    if (!kind) {
+      if (enabled) return null;
+      continue;
+    }
+    if (!enabled) {
+      filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0 });
+      continue;
+    }
+    const allowed = ['isEnabled', 'enabled', 'blurX', 'blurY', 'quality'];
+    if (kind !== 'blur') allowed.push('color', 'alpha', 'strength', 'inner', 'knockout');
+    if (kind === 'dropShadow') allowed.push('distance', 'angle', 'hideObject');
+    if (Object.keys(attributes).some((key) => !allowed.includes(key)) ||
+        ['inner', 'knockout', 'hideObject'].some((key) =>
+          attributes[key] !== undefined && attributes[key] !== 'false' && attributes[key] !== '0') ||
+        ![undefined, '1'].includes(attributes.quality) ||
+        getFlaXflDirectChildren(node.xml, node.name).length > 0) return null;
+    const numeric = (key: string, fallback: number) => {
+      const raw = attributes[key];
+      return raw === undefined ? fallback :
+        /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(raw) ? Number(raw) : Number.NaN;
+    };
+    const blurX = numeric('blurX', 5);
+    const blurY = numeric('blurY', 5);
+    const alpha = numeric('alpha', 1);
+    const strength = numeric('strength', 1);
+    const distance = numeric('distance', kind === 'dropShadow' ? 5 : 0);
+    const angle = numeric('angle', 45);
+    const color = attributes.color ?? (kind === 'glow' ? '#FF0000' : '#000000');
+    if (![blurX, blurY, alpha, strength, distance, angle].every(Number.isFinite) ||
+        blurX < 0 || blurX > 255 || blurY < 0 || blurY > 255 ||
+        alpha < 0 || alpha > 1 || strength < 0 || strength > 255 ||
+        distance < 0 || distance > 255 || Math.abs(angle) > 360 ||
+        !/^#[0-9a-f]{6}$/iu.test(color)) return null;
+    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle });
+  }
+  return filters;
 }
 
 function parseDisplayElements(
@@ -688,7 +916,15 @@ function parseDisplayElements(
     if (!elementIsVisible(child.attributes)) continue;
 
     const path = `${context.path}/${index}`;
-    if (child.name !== 'DOMGroup' && child.name !== 'DOMShape' &&
+    if (child.name === 'DOMDynamicText' || child.name === 'DOMInputText' || child.name === 'DOMTLFText') {
+      if (context.unsupportedDisplayReasons.length === 0) {
+        context.unsupportedDisplayReasons.push(
+          `Static preview does not support ${child.name} yet`,
+        );
+      }
+      continue;
+    }
+    if (child.name !== 'DOMGroup' && child.name !== 'DOMShape' && child.name !== 'DOMStaticText' &&
         child.name !== 'DOMBitmapInstance' && child.name !== 'DOMSymbolInstance') {
       if (context.unsupportedDisplayReasons.length === 0) {
         context.unsupportedDisplayReasons.push(
@@ -773,6 +1009,34 @@ function parseDisplayElements(
       continue;
     }
 
+    if (child.name === 'DOMStaticText') {
+      const parsedText = parseStaticTextDescriptor(child);
+      if (!parsedText.ok) {
+        if (context.unsupportedDisplayReasons.length === 0) {
+          context.unsupportedDisplayReasons.push(parsedText.reason);
+        }
+        continue;
+      }
+      if (!parsedText.value) {
+        // Empty static text produces no drawable ink and no error.
+        continue;
+      }
+      const textId = `fla-text-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`;
+      context.state.staticTextBlocks.set(textId, parsedText.value);
+      children.push({
+        kind: 'text',
+        textId,
+        sourceAddress: `${context.scope}/${path}`,
+        sourceParentFrameIndex: context.sourceParentFrameIndex,
+        sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+        ...(context.sourceParentSpanTweenType !== undefined
+          ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+          : {}),
+        ...(localTransform ? { localTransform } : {}),
+      });
+      continue;
+    }
+
     const libraryItemName = child.attributes.libraryItemName?.trim();
     if (!libraryItemName) {
       return fail('RENDER_FAILED', `${child.name} is missing libraryItemName`);
@@ -797,14 +1061,19 @@ function parseDisplayElements(
     const movieClipRun = symbolType === 'movieclip' && context.layerSpans
       ? findMovieClipRun(context, path, child, resolvedName)
       : undefined;
-    let alphaMultiplier: number | undefined;
-    let rgbTransform: FlaDisplayListRgbTransform | undefined;
-    if (context.motionTweenEndpoint) {
-      const colorResult = classicMotionColorTransform(child);
-      if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
-      alphaMultiplier = colorResult.transform?.alphaMultiplier;
-      rgbTransform = colorResult.transform?.rgbTransform;
+    const instanceFilters = readInstanceFilters(child);
+    if (!instanceFilters || (instanceFilters.some((filter) => filter.enabled) &&
+        child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+      context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL instance filters');
+      continue;
     }
+    const colorResult = readSymbolColorTransform(child, context.motionTweenEndpoint ? 'classic-motion' : 'static');
+    if (!colorResult.ok) {
+      if (context.motionTweenEndpoint) return fail('RENDER_FAILED', colorResult.message);
+      context.unsupportedDisplayReasons.push(colorResult.message);
+      continue;
+    }
+    const { alphaMultiplier, rgbTransform } = colorResult.transform ?? {};
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
@@ -815,6 +1084,7 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
       ...(context.sourceParentSpanTweenType !== undefined
@@ -831,6 +1101,48 @@ function parseDisplayElements(
   return { ok: true, value: children };
 }
 
+interface SourceLayerHierarchy {
+  readonly hiddenByFolder: boolean;
+  readonly parentMaskIndex?: number | 'unresolved';
+}
+
+/**
+ * The nearest mask is reached through folders only. Continue through the
+ * mask group to inherit outer folder visibility while ignoring mask visibility.
+ */
+function sourceLayerHierarchy(
+  layers: readonly FlaXflElementBlock[],
+  layerIndex: number,
+): SourceLayerHierarchy {
+  const layer = layers[layerIndex]!;
+  const type = layer.attributes.layerType?.toLowerCase();
+  if (type === 'guide' || type === 'folder' || type === 'camera') return { hiddenByFolder: false };
+
+  let rawParent = layer.attributes.parentLayerIndex;
+  let parentMaskIndex: SourceLayerHierarchy['parentMaskIndex'] = type === 'masked' ? 'unresolved' : undefined;
+  if (rawParent === undefined) return { hiddenByFolder: false, parentMaskIndex };
+
+  const visited = new Set([layerIndex]);
+  while (rawParent !== undefined) {
+    const parentIndex: number = /^\d+$/u.test(rawParent) ? Number(rawParent) : -1;
+    const parent: FlaXflElementBlock | undefined = layers[parentIndex];
+    if (!parent || visited.has(parentIndex) || visited.size > MAX_SOURCE_GROUP_DEPTH) {
+      return { hiddenByFolder: false, parentMaskIndex: parentMaskIndex ?? 'unresolved' };
+    }
+    const parentType = parent.attributes.layerType?.toLowerCase();
+    if (parentType === 'mask') {
+      if (typeof parentMaskIndex !== 'number') parentMaskIndex = parentIndex;
+    } else if (parentType === 'folder') {
+      if (sourceLayerIsHidden(parent.attributes)) return { hiddenByFolder: true, parentMaskIndex };
+    } else {
+      break;
+    }
+    visited.add(parentIndex);
+    rawParent = parent.attributes.parentLayerIndex;
+  }
+  return { hiddenByFolder: false, parentMaskIndex };
+}
+
 function buildFrameContext(
   timelineXml: string,
   frameIndex: number,
@@ -841,20 +1153,18 @@ function buildFrameContext(
     return fail('RENDER_FAILED', 'Selected frame index must be a non-negative integer');
   }
   const layers = layersForTimeline(timelineXml);
-  const maskLayerIds = new Map<number, string>();
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
-      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
-    }
-  }
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
   const unsupportedDisplayReasons: string[] = [];
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     if (!layer) continue;
-    const frames = framesForLayer(layer.xml);
-    const frame = frames[frameIndex];
+    const hierarchy = sourceLayerHierarchy(layers, layerIndex);
+    const { parentMaskIndex } = hierarchy;
+    const visible = sourceLayerIsVisible(layer, hierarchy);
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !hierarchy.hiddenByFolder;
+    const frame = (visible || isMask) && parentMaskIndex !== 'unresolved'
+      ? framesForLayer(layer.xml)[frameIndex]
+      : undefined;
     let elements: readonly FlaDisplayListElement[] = [];
     if (frame) {
       const declaredFrameIndex = Number(frame.attributes.index ?? frameIndex);
@@ -880,25 +1190,13 @@ function buildFrameContext(
         elements = parsed.value;
       }
     }
-    const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
-    const visible = layer.attributes.visible !== 'false' &&
-      layer.attributes.isVisible !== 'false' &&
-      layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
-    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
-    let maskedBy: string | undefined;
-    if (parentLayerIndexRaw !== undefined) {
-      const parentLayerIndex = Number(parentLayerIndexRaw);
-      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
-        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
-      } else {
-        maskedBy = maskLayerIds.get(parentLayerIndex);
-      }
-    }
+    const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
+      : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${layerIndex + 1}`,
       visible,
       elements,
-      ...(layerType === 'mask' ? { maskLayerId: maskLayerIds.get(layerIndex) } : {}),
+      ...(isMask ? { maskLayerId: `${scope}/mask-layer-${layerIndex}` } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
   }
@@ -1141,40 +1439,14 @@ function readMorphFill(shape: FlaXflElementBlock, mask: boolean): readonly numbe
   return [...color.slice(1).map((hex) => Number.parseInt(hex, 16)), alpha];
 }
 
-function sampleSolidShapeTween(
-  startFrame: FlaXflElementBlock,
-  start: FlaXflElementBlock,
-  end: FlaXflElementBlock,
-  linearProgress: number,
-  mask = false,
+function sampleMorphContour(
+  contour: FlaXflElementBlock,
+  curves: readonly FlaXflElementBlock[],
+  interpolatePoint: (a: readonly [number, number], b: readonly [number, number]) => string,
 ): string | null {
-  const startFill = readMorphFill(start, mask);
-  const endFill = readMorphFill(end, mask);
-  const startMatrix = readDirectMatrix(start);
-  const endMatrix = readDirectMatrix(end);
-  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
-      !Object.entries(startMatrix.matrix).every(([key, value]) =>
-        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
-
-  const ease = classicMotionEasesForFrame(startFrame);
-  if (!ease.ok) return null;
-  const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
-  if (!timing.ok) return null;
-  const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
-  const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
-  const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
-  if (!segments) return null;
-  const contours = getFlaXflDirectChildren(segments.xml, segments.name);
-  const contour = contours[0];
-  if (contours.length !== 1 || contour?.name !== 'MorphSegment' ||
-      contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
-      (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
   const originA = readMorphPoint(contour.attributes.startPointA);
   const originB = readMorphPoint(contour.attributes.startPointB);
-  const curves = getFlaXflDirectChildren(contour.xml, contour.name);
-  if (!originA || !originB || curves.length === 0 || curves.length > 8_192) return null;
-  const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
-    lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  if (!originA || !originB) return null;
   const commands = ['!' + interpolatePoint(originA, originB)];
   let lastA = originA;
   let lastB = originB;
@@ -1198,6 +1470,57 @@ function sampleSolidShapeTween(
   }
   if (lastA[0] !== originA[0] || lastA[1] !== originA[1] ||
       lastB[0] !== originB[0] || lastB[1] !== originB[1]) return null;
+  return commands.join('');
+}
+
+function sampleSolidShapeTween(
+  startFrame: FlaXflElementBlock,
+  start: FlaXflElementBlock,
+  end: FlaXflElementBlock,
+  linearProgress: number,
+  mask = false,
+): string | null {
+  const startFill = readMorphFill(start, mask);
+  const endFill = readMorphFill(end, mask);
+  const startMatrix = readDirectMatrix(start);
+  const endMatrix = readDirectMatrix(end);
+  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
+      !Object.entries(startMatrix.matrix).every(([key, value]) =>
+        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
+
+  const ease = classicMotionEasesForFrame(startFrame);
+  if (!ease.ok) return null;
+  const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
+  if (!timing.ok) return null;
+  const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
+  const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
+  const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
+  if (!segments) return null;
+  const contours = getFlaXflDirectChildren(segments.xml, segments.name, MAX_SHAPE_TWEEN_CURVES + 1);
+  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) return null;
+
+  // Every segment needs at least one curve. Budget the entire tween before
+  // interpolating any geometry or constructing the compound path.
+  let remainingCurves = MAX_SHAPE_TWEEN_CURVES;
+  const boundedContours: Array<{ contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] }> = [];
+  for (const contour of contours) {
+    if (contour.name !== 'MorphSegment' ||
+        contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
+        (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
+    const curves = getFlaXflDirectChildren(contour.xml, contour.name, remainingCurves + 1);
+    if (curves.length === 0 || curves.length > remainingCurves) return null;
+    remainingCurves -= curves.length;
+    boundedContours.push({ contour, curves });
+  }
+
+  const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
+    lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  const commands: string[] = [];
+  for (const { contour, curves } of boundedContours) {
+    const sampled = sampleMorphContour(contour, curves, interpolatePoint);
+    if (sampled === null) return null;
+    commands.push(sampled);
+  }
 
   const color = startFill.slice(0, 3).map((value, i) =>
     Math.round(lerp(value, endFill[i]!)).toString(16).padStart(2, '0')).join('');
@@ -1460,9 +1783,9 @@ function classicMotionFramePairRejectionReason(
         }
       }
     }
-    const startColor = classicMotionColorTransform(startTarget);
+    const startColor = readSymbolColorTransform(startTarget, 'classic-motion');
     if (!startColor.ok) return startColor.message;
-    const endColor = classicMotionColorTransform(endTarget);
+    const endColor = readSymbolColorTransform(endTarget, 'classic-motion');
     if (!endColor.ok) return endColor.message;
   }
 
@@ -1653,10 +1976,12 @@ function sampleObjectMotion(
   if (!pivot) return { ok: false, message: '此帧的对象补间转轴无效', fromObjectMotion: true };
   let core = state.objectMotionCurves.get(frame);
   if (!core) {
-    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren);
+    const authoredFilters = readInstanceFilters(instance);
+    if (!authoredFilters) return { ok: false, message: 'Unsupported or out-of-budget XFL instance filters', fromObjectMotion: true };
+    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters.filter(({ kind }) => kind === 'dropShadow'));
     state.objectMotionCurves.set(frame, core);
   }
-  const color = classicMotionColorTransform(instance, true);
+  const color = readSymbolColorTransform(instance, 'object-motion');
   const sampled = core.ok
     ? evaluateFlaObjectMotion(core.value, offset, state.sourceFps, matrix, pivot, color.ok ? color.transform?.tintRgb : undefined)
     : core;
@@ -1672,7 +1997,6 @@ function readObjectMotionTarget(frame: FlaXflElementBlock): RigCalculationResult
     return { ok: false, message: '此帧的对象补间需要一个可见的元件实例' };
   }
   if (directChild(instance.xml, instance.name, 'matrix3D') ||
-      directChild(instance.xml, instance.name, 'filters') ||
       (instance.attributes.blendMode && instance.attributes.blendMode !== 'normal')) {
     return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换、滤镜或混合模式' };
   }
@@ -2131,9 +2455,19 @@ function buildObjectMotionFrameElements(
   if (element?.kind !== 'symbol') return fail('RENDER_FAILED', '此帧的对象补间元件无法读取');
   const alpha = pose.alphaMultiplier ?? color.transform?.alphaMultiplier;
   const rgb = pose.rgbTransform ?? color.transform?.rgbTransform;
+  let shadowOrdinal = 0;
+  const instanceFilters = element.instanceFilters?.map((filter) => {
+    if (filter.kind !== 'dropShadow') return filter;
+    const parameters = pose.shadowFilters?.[shadowOrdinal++];
+    return filter.enabled && parameters ? { ...filter, ...parameters } : filter;
+  });
+  if (pose.shadowFilters?.slice(shadowOrdinal).some((parameters) => Object.keys(parameters).length > 0)) {
+    return fail('RENDER_FAILED', 'Shadow distance animation has no matching authored filter');
+  }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
     ...element,
     localTransform: pose.matrix,
+    ...(instanceFilters ? { instanceFilters } : {}),
     ...(alpha !== undefined ? { alphaMultiplier: alpha } : {}),
     ...(rgb ? { rgbTransform: rgb } : {}),
   }]);
@@ -2229,18 +2563,157 @@ function buildIkPoseFrameElements(
   return { ok: true, value: elements };
 }
 
+type SceneStage = { readonly width: number; readonly height: number };
+type StageLayerView = { readonly matrix: FlaDisplayListMatrix | null; readonly depth: number; readonly warning?: string };
+
+function withinStageProjectionBudget(matrix: FlaDisplayListMatrix): boolean {
+  return [matrix.a, matrix.b, matrix.c, matrix.d].every((value) => Math.abs(value) <= 32) &&
+    [matrix.tx, matrix.ty].every((value) => Math.abs(value) <= 262_144);
+}
+
+function authoredLayerDepth(span: FlaNormalizedFrameSpan<FlaXflElementBlock> | null): number {
+  const raw = span?.sourceFrame.attributes.frameZDepth;
+  if (raw === undefined) return 0;
+  const value = raw.trim() ? Number(raw) : Number.NaN;
+  return Math.abs(value) <= 65_536 ? value : Number.NaN;
+}
+
+function sceneStageViews(
+  layers: readonly FlaXflElementBlock[],
+  layerHierarchy: readonly SourceLayerHierarchy[],
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+  frameIndex: number,
+  stage: SceneStage,
+  state: SourceBuildState,
+  cameraEnabled: boolean,
+): RigCalculationResult<readonly StageLayerView[]> {
+  const isCamera = (layer: FlaXflElementBlock) => layer.attributes.layerType?.toLowerCase() === 'camera';
+  const cameraIndices = cameraEnabled ? layers.flatMap((layer, index) => isCamera(layer) ? [index] : []) : [];
+  const invalid = (message: string): RigCalculationResult<never> => ({ ok: false, message });
+  if (cameraIndices.length > 1) return invalid('Multiple native camera layers are unsupported');
+  const center = { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: stage.width / 2, ty: stage.height / 2 };
+  let view = FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  let cameraDepth = 0;
+  const cameraIndex = cameraIndices[0];
+
+  const sampleDepth = (spans: readonly FlaNormalizedFrameSpan<FlaXflElementBlock>[], span: FlaNormalizedFrameSpan<FlaXflElementBlock> | null) => {
+    const start = authoredLayerDepth(span);
+    if (span?.tweenType !== 'motion' || frameIndex === span.index) return start;
+    const end = findCoveringSpan(spans, span.endExclusive);
+    return end?.index === span.endExclusive
+      ? start + (authoredLayerDepth(end) - start) * ((frameIndex - span.index) / span.duration)
+      : start;
+  };
+
+  if (cameraIndex !== undefined) {
+    const spans = frameSpanIndex.layers[cameraIndex]?.spans ?? [];
+    const span = findCoveringSpan(spans, frameIndex);
+    if (span) {
+      const readCamera = (frame: FlaXflElementBlock) => {
+        const elements = frameDisplayElements(frame);
+        const camera = elements[0];
+        if (elements.length !== 1 || camera?.name !== 'DOMSymbolInstance' ||
+            camera.attributes.libraryItemName !== '__Camera__' ||
+            directChild(camera.xml, camera.name, 'matrix3D') || frame.attributes.parentLayerIndex !== undefined) return null;
+        const matrix = readDirectMatrix(camera);
+        const pivot = readDirectTransformationPoint(camera);
+        return matrix.ok && matrix.present && pivot ? { matrix: matrix.matrix, pivot } : null;
+      };
+      const start = readCamera(span.sourceFrame);
+      if (!start) return invalid('Invalid native __Camera__ instance or unsupported 3D camera');
+      let matrix = start.matrix;
+      if (span.tweenType === 'motion object') {
+        const sampled = sampleObjectMotion(span.sourceFrame, frameIndex - span.index, state);
+        if (!sampled.ok || sampled.value.pose.shadowFilters) return invalid('Unsupported native camera Object Motion');
+        matrix = sampled.value.pose.matrix;
+      } else if (span.tweenType === 'motion' && frameIndex > span.index) {
+        const endSpan = findCoveringSpan(spans, span.endExclusive);
+        const end = endSpan?.index === span.endExclusive ? readCamera(endSpan.sourceFrame) : null;
+        const ease = classicMotionEasesForFrame(span.sourceFrame);
+        const rotation = classicMotionRotationForFrame(span.sourceFrame);
+        if (!end || !ease.ok || !rotation.ok) return invalid('Unsupported native camera Classic Motion endpoints');
+        const timing = evaluateFlaViewerClassicTweenProgress(
+          (frameIndex - span.index) / span.duration, ease.acceleration, ease.eases,
+        );
+        if (!timing.ok) return invalid(timing.message);
+        const sampled = interpolateFlaClassicMotionInstanceTransform(
+          matrix, end.matrix, timing.progress, rotation.rotation, start.pivot, end.pivot,
+        );
+        if (!sampled.ok) return invalid(sampled.message);
+        matrix = sampled.matrix;
+      } else if (span.tweenType !== 'none' && span.tweenType !== 'motion') {
+        return invalid('Unsupported native camera tween type');
+      }
+      const inverted = inverse(matrix);
+      if (!inverted) return invalid('Native camera transform is singular');
+      view = compose(center, inverted);
+      if (!Object.values(view).every(Number.isFinite)) return invalid('Native camera transform is not finite');
+      cameraDepth = sampleDepth(spans, span);
+      if (!Number.isFinite(cameraDepth)) return invalid('Invalid native camera depth');
+    }
+  }
+
+  // Animate HTML5 Canvas native camera projection, cross-checked against the
+  // public runtime conventions documented in lifeart/fla-viewer @ b14fa1d.
+  const focalLength = 528.25;
+  const result: StageLayerView[] = [];
+  for (const [index, layer] of layers.entries()) {
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !layerHierarchy[index]?.hiddenByFolder;
+    if (!isMask && !frameSpanIndex.layers[index]?.visible) {
+      result.push({ matrix: null, depth: 0 });
+      continue;
+    }
+    const spans = frameSpanIndex.layers[index]?.spans ?? [];
+    const span = findCoveringSpan(spans, frameIndex);
+    if (!isMask && (!span || !frameHasPotentialDisplayElements(span.sourceFrame))) {
+      result.push({ matrix: null, depth: 0 });
+      continue;
+    }
+    const depth = sampleDepth(spans, span);
+    if (!Number.isFinite(depth)) {
+      result.push({ matrix: null, depth: 0, warning: '无效的图层景深' });
+      continue;
+    }
+    const attached = cameraIndex !== undefined && layer.attributes.attachedToCamera === 'true';
+    const relative = depth - (attached ? 0 : cameraDepth);
+    const stackDepth = attached && cameraDepth !== 0 ? 2 * depth + cameraDepth : depth;
+    if (relative <= -focalLength) {
+      result.push({ matrix: null, depth: stackDepth });
+      continue;
+    }
+    const scale = focalLength / (focalLength + relative);
+    const projection = { a: scale, d: scale, b: 0, c: 0, tx: (1 - scale) * center.tx, ty: (1 - scale) * center.ty };
+    const matrix = attached ? projection : compose(projection, view);
+    result.push(scale > 32 || !withinStageProjectionBudget(matrix)
+      ? { matrix: null, depth: stackDepth, warning: '图层超出相机投影范围' }
+      : { matrix, depth: stackDepth });
+  }
+  return { ok: true, value: result };
+}
+
 function buildGraphicFrameContext(
   timelineXml: string,
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
   frameIndex: number,
   scope: string,
   state: SourceBuildState,
-  options?: { readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void },
+  options?: {
+    readonly onRigMatrixComputed?: (layerIndex: number, frameIndex: number) => void;
+    readonly sceneStage?: SceneStage;
+  },
 ): FlaStaticSnapshotDisplaySourceResult<FlaDisplayListFrameContext> {
   const resolution = resolveFlaTimelineFrameSpan(frameSpanIndex, frameIndex);
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
+  const layerHierarchy = layers.map((_, index) => sourceLayerHierarchy(layers, index));
+  const stageViews = options?.sceneStage
+    ? sceneStageViews(layers, layerHierarchy, frameSpanIndex, frameIndex, options.sceneStage, state,
+      nativeCameraEnabled(timelineXml))
+    : undefined;
+  if (stageViews && !stageViews.ok) {
+    return { ok: true, value: { frameIndex, layers: [], unsupportedDisplayReason: stageViews.message } };
+  }
   const rigContext: RigEvaluationContext = {
     timelineXml,
     state,
@@ -2249,13 +2722,6 @@ function buildGraphicFrameContext(
     matrixCache: new Map(),
     ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
   };
-  const maskLayerIds = new Map<number, string>();
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
-      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
-    }
-  }
   const sampleLayer = (
     selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
     layerReasons: string[],
@@ -2571,44 +3037,57 @@ function buildGraphicFrameContext(
     return { ok: true, value: { elements, ...(frameFilter ? { frameFilter } : {}) } };
   };
 
-  const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  const resolvedLayers: Array<FlaDisplayListFrameContext['layers'][number] & { depth?: number }> = [];
   const unsupportedDisplayReasons: string[] = [];
+  const projectionDiagnostics: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
-    const isMask = maskLayerIds.has(selection.layerIndex);
+    const hierarchy = layerHierarchy[selection.layerIndex]!;
+    const { parentMaskIndex } = hierarchy;
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !hierarchy.hiddenByFolder;
+    const stageView = stageViews?.value[selection.layerIndex];
+    if (stageView?.matrix === null && !isMask) {
+      if (stageView.warning && projectionDiagnostics.length < 32) {
+        projectionDiagnostics.push(`${layer.attributes.name ?? selection.layerIndex + 1}：${stageView.warning}`.slice(0, 500));
+      }
+      continue;
+    }
     const layerReasons: string[] = [];
-    const sampled = sampleLayer(selection, layerReasons, isMask);
+    const sampled = (!selection.visible && !isMask) || stageView?.matrix === null || parentMaskIndex === 'unresolved'
+      ? { ok: true as const, value: { elements: [], frameFilter: undefined } }
+      : sampleLayer(selection, layerReasons, isMask);
     const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
       ? `第 ${selection.span.index + 1}–${selection.span.endExclusive} 帧：${sampled.message}`
       : undefined;
     if (!sampled.ok && sampled.code !== 'UNSUPPORTED_IK_POSE' &&
         (!isMask || sampled.code === 'BUDGET_EXCEEDED')) return sampled;
     const { elements, frameFilter } = sampled.ok ? sampled.value : { elements: [], frameFilter: undefined };
-    const maskReason = isMask ? (!sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
+    const maskReason = isMask ? (stageView?.matrix === null ? (stageView.warning ?? 'Native mask is behind the camera') : !sampled.ok ? (ikPoseReason ?? sampled.message) : layerReasons[0] ??
       (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
-    let maskedBy: string | undefined;
-    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
-    if (parentLayerIndexRaw !== undefined) {
-      const parentLayerIndex = Number(parentLayerIndexRaw);
-      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
-        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
-      } else {
-        maskedBy = maskLayerIds.get(parentLayerIndex);
-      }
-    }
+    const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
+      : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
+    const parentView = typeof parentMaskIndex === 'number' ? stageViews?.value[parentMaskIndex] : undefined;
+    const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
+      !Object.entries(parentView.matrix).every(([key, value]) =>
+        stageView.matrix?.[key as keyof FlaDisplayListMatrix] === value);
+    const stageProjection = stageView?.matrix &&
+      Object.entries(FLA_DISPLAY_LIST_IDENTITY_MATRIX).some(([key, value]) =>
+        stageView.matrix?.[key as keyof FlaDisplayListMatrix] !== value)
+      ? stageView.matrix : undefined;
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${selection.layerIndex + 1}`,
+      ...(stageProjection ? { stageProjection } : {}),
+      ...(stageView ? { depth: stageView.depth } : {}),
       visible: selection.visible,
       elements,
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
+      ...(mixedMaskProjection ? { incompatibleStageMask: true } : {}),
       ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
-      ...(maskLayerIds.has(selection.layerIndex)
-        ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
-        : {}),
+      ...(isMask ? { maskLayerId: `${scope}/mask-layer-${selection.layerIndex}` } : {}),
       ...(frameFilter ? { frameFilter } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
@@ -2617,7 +3096,10 @@ function buildGraphicFrameContext(
     ok: true,
     value: {
       frameIndex,
-      layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
+      ...(projectionDiagnostics.length ? { projectionDiagnostics } : {}),
+      layers: stageViews
+        ? [...resolvedLayers].reverse().sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
+        : normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
       ...(unsupportedDisplayReasons[0]
         ? { unsupportedDisplayReason: unsupportedDisplayReasons[0] }
         : {}),
@@ -2692,6 +3174,82 @@ interface GraphicSymbolShell {
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly symbolType?: string;
   readonly movieClipHasScript?: boolean;
+  readonly movieClipStopFrames?: readonly number[];
+}
+
+function analyzeMovieClipSymbolScripts(
+  libraryXml: string,
+  timelineXml: string,
+  frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
+  frameCount: number,
+): MovieClipSymbolScriptAnalysis {
+  let totalActionScriptTags = 0;
+  let totalScriptTags = 0;
+  let cursor = 0;
+  for (;;) {
+    const token = nextTagToken(libraryXml, cursor);
+    if (!token) break;
+    cursor = token.end;
+    if (token.closing) continue;
+    const lowered = token.name.toLowerCase();
+    if (lowered === 'actionscript') totalActionScriptTags += 1;
+    else if (lowered === 'script') totalScriptTags += 1;
+  }
+
+  if (totalActionScriptTags === 0 && totalScriptTags === 0) {
+    return { kind: 'none' };
+  }
+
+  const layers = layersForTimeline(timelineXml);
+  if (layers.length !== frameSpanIndex.layers.length) {
+    return { kind: 'unsupported' };
+  }
+
+  let accountedActionScriptTags = 0;
+  let accountedScriptTags = 0;
+  const stopFrames = new Set<number>();
+
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex]!;
+    const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
+    const isAuthoringOnlyLayer = layerType === 'guide' || layerType === 'folder' || layerType === 'camera';
+    const indexedLayer = frameSpanIndex.layers[layerIndex]!;
+
+    for (const span of indexedLayer.spans) {
+      const frameChildren = getFlaXflDirectChildren(span.sourceFrame.xml, span.sourceFrame.name);
+      for (const child of frameChildren) {
+        if (child.name.toLowerCase() !== 'actionscript') continue;
+        accountedActionScriptTags += 1;
+        const scriptChildren = getFlaXflDirectChildren(child.xml, child.name);
+        for (const scriptChild of scriptChildren) {
+          if (scriptChild.name.toLowerCase() !== 'script') {
+            return { kind: 'unsupported' };
+          }
+          accountedScriptTags += 1;
+          if (isAuthoringOnlyLayer) continue;
+          const scriptText = extractFlaXflScriptText(scriptChild.xml);
+          if (scriptText === null) return { kind: 'unsupported' };
+          const classification = analyzeMovieClipFrameScript(scriptText);
+          if (classification === 'unsupported') return { kind: 'unsupported' };
+          if (classification === 'stop' && span.index >= 0 && span.index < frameCount) {
+            stopFrames.add(span.index);
+          }
+        }
+      }
+    }
+  }
+
+  if (accountedActionScriptTags !== totalActionScriptTags || accountedScriptTags !== totalScriptTags) {
+    return { kind: 'unsupported' };
+  }
+
+  if (stopFrames.size > 0) {
+    return {
+      kind: 'stop-frames',
+      stopFrames: [...stopFrames].sort((a, b) => a - b),
+    };
+  }
+  return { kind: 'none' };
 }
 
 function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieClips: boolean): boolean {
@@ -2701,7 +3259,11 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
     if (!token) return false;
     cursor = token.end;
     if (token.closing) continue;
-    if (token.name === 'DOMLayer' && token.attributes.layerType?.toLowerCase() === 'mask') return true;
+    if (token.name === 'DOMLayer') {
+      const type = token.attributes.layerType?.toLowerCase();
+      // Use authored span timing for scenes containing hidden Folder content.
+      if (type === 'mask' || (type === 'folder' && sourceLayerIsHidden(token.attributes))) return true;
+    }
     if (token.name === 'DOMFrame' && ['motion object', 'ik pose'].includes(token.attributes.tweenType?.trim().toLowerCase() ?? '')) return true;
     if (token.name !== 'DOMSymbolInstance') continue;
     const name = token.attributes.libraryItemName?.trim();
@@ -2715,13 +3277,183 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
   }
 }
 
+const MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT = 100_000;
+const MAX_STOPPED_SUBTREE_DEPTH = 64;
+const MAX_STOPPED_SUBTREE_PROBES = 256;
+const MAX_STOPPED_SUBTREE_VISITS = 4_096;
+
 function oneFrameScenePlaybackCount(
   frameContext: FlaDisplayListFrameContext,
   movieClips: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+  graphicSymbolsByName: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
   ikContainers: ReadonlyMap<string, FlaXflGraphicSymbolDescriptor>,
+  state: SourceBuildState,
 ): number {
   let period = 1;
+  let stopLength = 1;
   let ikLength = 1;
+  let probeCount = 0;
+  let totalVisits = 0;
+  let probeState: SourceBuildState | undefined;
+  const relativeEndTickCache = new Map<string, number>();
+
+  const consumeVisit = (): boolean => {
+    if (totalVisits >= MAX_STOPPED_SUBTREE_VISITS) return false;
+    totalVisits += 1;
+    return true;
+  };
+
+  const getProbeState = (): SourceBuildState => {
+    if (!probeState) {
+      probeState = {
+        ...state,
+        shapeBlocks: new Map(),
+        staticTextBlocks: new Map(),
+        visitedNodeCount: 0,
+      };
+    }
+    return probeState;
+  };
+
+  const probeSymbolFrame = (
+    descriptor: FlaXflGraphicSymbolDescriptor,
+    frameIndex: number,
+  ): FlaDisplayListFrameContext | undefined => {
+    if (!consumeVisit()) return undefined;
+    if (frameIndex === 0) return descriptor.frameContext;
+    if (probeCount >= MAX_STOPPED_SUBTREE_PROBES) return undefined;
+    probeCount += 1;
+    const probed = buildGraphicFrameContext(
+      descriptor.timelineXml,
+      descriptor.frameSpanIndex,
+      frameIndex,
+      `probe:${descriptor.sourceLibraryItemName}@${frameIndex}`,
+      getProbeState(),
+    );
+    return probed.ok ? probed.value : undefined;
+  };
+
+  const inspectStoppedSubtree = (
+    symbolName: string,
+    context: FlaDisplayListFrameContext,
+    stopFrameIndex: number,
+    appearTick: number,
+    depth: number,
+    stack: ReadonlySet<string>,
+    parentIsLockedGraphic: boolean,
+  ): number => {
+    const baseEndTick = parentIsLockedGraphic
+      ? appearTick
+      : Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + stopFrameIndex + 1);
+    if (depth >= MAX_STOPPED_SUBTREE_DEPTH || !consumeVisit()) return baseEndTick;
+
+    const cacheKey = `${parentIsLockedGraphic ? 'g' : 'm'}:${symbolName}@${stopFrameIndex}`;
+    const cachedRelative = relativeEndTickCache.get(cacheKey);
+    if (cachedRelative !== undefined) {
+      return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + cachedRelative);
+    }
+
+    let maxRelativeEnd = parentIsLockedGraphic ? 0 : Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, stopFrameIndex + 1);
+    let canCache = true;
+
+    const visitSubtree = (elements: readonly FlaDisplayListElement[]): void => {
+      for (const element of elements) {
+        if (!consumeVisit()) {
+          canCache = false;
+          return;
+        }
+        if (element.visible === false) continue;
+        if (element.kind === 'group') {
+          visitSubtree(element.elements);
+          continue;
+        }
+        if (element.kind !== 'symbol') continue;
+        if (stack.has(element.libraryItemName)) {
+          canCache = false;
+          continue;
+        }
+
+        if (element.symbolType === 'movieclip') {
+          const childClip = movieClips.get(element.libraryItemName);
+          if (!childClip || childClip.movieClipHasScript) continue;
+          const rawRunStart = element.movieClipRun?.start ?? element.sourceParentFrameSpanStart ?? stopFrameIndex;
+          const childRelativeAppear = parentIsLockedGraphic
+            ? 0
+            : Math.max(0, Math.min(rawRunStart, stopFrameIndex));
+          const childFirstStop = childClip.movieClipStopFrames?.[0];
+          if (childFirstStop !== undefined) {
+            const clampedStop = Math.min(childClip.frameCount - 1, Math.max(0, childFirstStop));
+            maxRelativeEnd = Math.max(
+              maxRelativeEnd,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childRelativeAppear + clampedStop + 1),
+            );
+            const childContext = probeSymbolFrame(childClip, clampedStop);
+            if (childContext) {
+              const nextStack = new Set(stack);
+              nextStack.add(childClip.sourceLibraryItemName);
+              const nestedEnd = inspectStoppedSubtree(
+                childClip.sourceLibraryItemName,
+                childContext,
+                clampedStop,
+                childRelativeAppear,
+                depth + 1,
+                nextStack,
+                false,
+              );
+              maxRelativeEnd = Math.max(maxRelativeEnd, nestedEnd);
+            } else {
+              canCache = false;
+            }
+          } else {
+            maxRelativeEnd = Math.max(
+              maxRelativeEnd,
+              Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, childRelativeAppear + childClip.frameCount),
+            );
+          }
+          continue;
+        }
+
+        if (element.symbolType === 'graphic' && movieClips.size > 0) {
+          const graphicDesc = graphicSymbolsByName.get(element.libraryItemName);
+          if (!graphicDesc) continue;
+          const selectedFrame = selectFlaGraphicFrameIndex(element, graphicDesc.frameCount);
+          if (selectedFrame === undefined) continue;
+          if (selectedFrame === 0 && !graphicDesc.hasNestedSymbol) continue;
+          const graphicContext = probeSymbolFrame(graphicDesc, selectedFrame);
+          if (!graphicContext) {
+            canCache = false;
+            continue;
+          }
+          const nextStack = new Set(stack);
+          nextStack.add(graphicDesc.sourceLibraryItemName);
+          const lockedRelativeTick = parentIsLockedGraphic ? 0 : stopFrameIndex;
+          const nestedEnd = inspectStoppedSubtree(
+            graphicDesc.sourceLibraryItemName,
+            graphicContext,
+            selectedFrame,
+            lockedRelativeTick,
+            depth + 1,
+            nextStack,
+            true,
+          );
+          maxRelativeEnd = Math.max(maxRelativeEnd, nestedEnd);
+        }
+      }
+    };
+
+    for (const layer of context.layers) {
+      if (layer.visible) visitSubtree(layer.elements);
+      if (totalVisits >= MAX_STOPPED_SUBTREE_VISITS) {
+        canCache = false;
+        break;
+      }
+    }
+
+    const boundedRelative = Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, maxRelativeEnd);
+    if (canCache) relativeEndTickCache.set(cacheKey, boundedRelative);
+    return Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, appearTick + boundedRelative);
+  };
+
   const visit = (elements: readonly FlaDisplayListElement[]): void => {
     for (const element of elements) {
       if (element.visible === false) continue;
@@ -2734,14 +3466,36 @@ function oneFrameScenePlaybackCount(
       if (element.symbolType !== 'movieclip') continue;
       const clip = movieClips.get(element.libraryItemName);
       if (!clip || clip.movieClipHasScript) continue;
+      const firstStop = clip.movieClipStopFrames?.[0];
+      if (firstStop !== undefined) {
+        const clampedStop = Math.min(clip.frameCount - 1, Math.max(0, firstStop));
+        let needed = clampedStop + 1;
+        const stopContext = probeSymbolFrame(clip, clampedStop);
+        if (stopContext) {
+          needed = Math.max(
+            needed,
+            inspectStoppedSubtree(
+              clip.sourceLibraryItemName,
+              stopContext,
+              clampedStop,
+              0,
+              1,
+              new Set([clip.sourceLibraryItemName]),
+              false,
+            ),
+          );
+        }
+        stopLength = Math.max(stopLength, needed);
+        continue;
+      }
       let a = period;
       let b = clip.frameCount;
       while (b !== 0) [a, b] = [b, a % b];
-      period = Math.min(100_000, period / a * clip.frameCount);
+      period = Math.min(MAX_ONE_FRAME_SCENE_PLAYBACK_COUNT, period / a * clip.frameCount);
     }
   };
   for (const layer of frameContext.layers) if (layer.visible) visit(layer.elements);
-  return Math.max(period, ikLength);
+  return Math.max(period, stopLength, ikLength);
 }
 
 export interface FlaStaticSnapshotDisplaySourceExecution {
@@ -2754,12 +3508,14 @@ function* adaptFlaXflDisplaySourceSteps(
   libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
 ): Generator<void, FlaStaticSnapshotDisplaySourceBuildResult, void> {
   const shapeBlocks = new Map<string, string>();
+  const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>();
   const documentAttributes = firstElementToken(docXml, 'DOMDocument')?.attributes;
   const rawFps = documentAttributes?.frameRate;
   const sourceFps = rawFps === undefined && documentAttributes?.creatorInfo === 'Adobe Animate' &&
     /^Saved by Animate\b/u.test(documentAttributes.versionInfo ?? '') ? 24 : Number(rawFps);
   const state: SourceBuildState = {
     shapeBlocks,
+    staticTextBlocks,
     sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
     objectMotionCurves: new WeakMap(),
     ikPoses: new WeakMap(),
@@ -2790,6 +3546,10 @@ function* adaptFlaXflDisplaySourceSteps(
     }
     const timeline = timelines.value[0];
     if (!timeline || !timeline.frameSpanIndex || timeline.frameCount <= 0) continue;
+    const scriptAnalysis: MovieClipSymbolScriptAnalysis =
+      symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
+        ? analyzeMovieClipSymbolScripts(library.xml, timeline.xml, timeline.frameSpanIndex, timeline.frameCount)
+        : { kind: 'none' };
     shells.push({
       sourceLibraryItemName,
       userLabel,
@@ -2797,9 +3557,8 @@ function* adaptFlaXflDisplaySourceSteps(
       frameCount: timeline.frameCount,
       frameSpanIndex: timeline.frameSpanIndex,
       ...(symbolType ? { symbolType } : {}),
-      ...(symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
-        ? { movieClipHasScript: true }
-        : {}),
+      ...(scriptAnalysis.kind === 'unsupported' ? { movieClipHasScript: true } : {}),
+      ...(scriptAnalysis.kind === 'stop-frames' ? { movieClipStopFrames: scriptAnalysis.stopFrames } : {}),
     });
     if (symbolType === 'ik container') state.ikContainerNames.add(sourceLibraryItemName);
     else if (symbolType !== 'graphic') state.movieClipNames.add(sourceLibraryItemName);
@@ -2841,6 +3600,7 @@ function* adaptFlaXflDisplaySourceSteps(
       hasPotentialDisplayElements: timelineHasPotentialDisplayElements(shell.frameSpanIndex),
       timelineXml: shell.timelineXml,
       ...(shell.movieClipHasScript ? { movieClipHasScript: true } : {}),
+      ...(shell.movieClipStopFrames ? { movieClipStopFrames: shell.movieClipStopFrames } : {}),
     };
     if (shell.symbolType !== 'graphic' && shell.symbolType !== 'ik container') {
       movieClipSymbols.set(shell.sourceLibraryItemName, descriptor);
@@ -2853,22 +3613,29 @@ function* adaptFlaXflDisplaySourceSteps(
   }
   yield;
 
+  const graphicSymbolsByName = new Map(graphicSymbols.map((symbol) => [symbol.sourceLibraryItemName, symbol]));
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
+  const projectedScenes = new Set<string>();
+  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
   for (const scene of sceneSources.value) {
     yield;
     const scope = `scene:${scene.index}`;
-    const spans = needsIndexedSceneFrames(scene.xml, state, movieClipSymbols.size > 0)
+    const hasNativeView = /\blayerType\s*=\s*['"]camera['"]|\bframeZDepth\s*=/iu.test(scene.xml);
+    if (hasNativeView) projectedScenes.add(scope);
+    const spans = hasNativeView || needsIndexedSceneFrames(scene.xml, state, movieClipSymbols.size > 0)
       ? timelineFrameSpanIndex(scene.xml)
       : undefined;
     if (spans?.ok) indexedSceneSpans.set(scope, spans.value);
     const parsed = spans?.ok
-      ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state)
-      : buildFrameContext(scene.xml, 0, scope, state);
+      ? buildGraphicFrameContext(scene.xml, spans.value, 0, scope, state, hasNativeView ? { sceneStage } : undefined)
+      : spans && hasNativeView
+        ? { ok: true as const, value: { frameIndex: 0, layers: [], unsupportedDisplayReason: spans.message } }
+        : buildFrameContext(scene.xml, 0, scope, state);
     if (!parsed.ok) return parsed;
     const frameCount = spans?.ok ? spans.value.frameCount : scene.frameCount;
     const playbackFrameCount = spans?.ok && frameCount === 1
-      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols, ikContainers)
+      ? oneFrameScenePlaybackCount(parsed.value, movieClipSymbols, graphicSymbolsByName, ikContainers, state)
       : 1;
     let firstObjectMotionFrameIndex: number | undefined;
     const laterCoverFrames = new Set<number>();
@@ -2899,6 +3666,7 @@ function* adaptFlaXflDisplaySourceSteps(
   // each resolution's node budget and shape table scoped to that frame so a
   // reused source behaves like a fresh adapter invocation.
   const baseShapeBlocks = new Map(shapeBlocks);
+  const baseStaticTextBlocks = new Map(staticTextBlocks);
   const baseVisitedNodeCount = state.visitedNodeCount;
   let frameBuildStateIsBase = true;
   const resetFrameBuildState = (): void => {
@@ -2906,25 +3674,29 @@ function* adaptFlaXflDisplaySourceSteps(
     state.visitedNodeCount = baseVisitedNodeCount;
     shapeBlocks.clear();
     for (const [shapeId, xml] of baseShapeBlocks) shapeBlocks.set(shapeId, xml);
+    staticTextBlocks.clear();
+    for (const [textId, descriptor] of baseStaticTextBlocks) staticTextBlocks.set(textId, descriptor);
     frameBuildStateIsBase = true;
   };
 
   return {
     ok: true,
     source: {
-      stageWidth: parseStageDimension(docXml, 'width', 550),
-      stageHeight: parseStageDimension(docXml, 'height', 400),
+      stageWidth: sceneStage.width,
+      stageHeight: sceneStage.height,
       sceneTimelines,
       graphicSymbols,
       movieClipSymbols,
       symbols,
       shapeBlocks,
+      staticTextBlocks,
       resetFrameBuildState,
       buildSceneFrameContext: (timelineXml, frameIndex, scope) => {
         resetFrameBuildState();
         frameBuildStateIsBase = false;
         const spans = indexedSceneSpans.get(scope);
-        if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state);
+        if (spans) return buildGraphicFrameContext(timelineXml, spans, frameIndex, scope, state,
+          projectedScenes.has(scope) ? { sceneStage } : undefined);
         return buildFrameContext(timelineXml, frameIndex, scope, state);
       },
       buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope, options) => {

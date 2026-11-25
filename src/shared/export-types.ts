@@ -366,6 +366,29 @@ export function* iterateFormalProjectFrameSchedule(
 }
 
 /** Shot-local formal frame samples in a half-open interval, with contiguous output names. */
+export function planSpriteSheetGrid(frameCount: number, frameWidth: number, frameHeight: number) {
+  const maxDimension = 8192;
+  const maxPixels = 32 * 1024 * 1024;
+  if (![frameCount, frameWidth, frameHeight].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('没有可排入精灵图的有效帧。');
+  }
+  let best: { columns: number; rows: number; width: number; height: number } | undefined;
+  let bestAspect = Infinity;
+  for (let columns = 1; columns <= Math.min(frameCount, Math.floor(maxDimension / frameWidth)); columns += 1) {
+    const rows = Math.ceil(frameCount / columns);
+    const width = frameWidth * columns;
+    const height = frameHeight * rows;
+    if (height > maxDimension || width * height > maxPixels) continue;
+    const aspect = Math.max(width, height) / Math.min(width, height);
+    if (aspect < bestAspect) {
+      bestAspect = aspect;
+      best = { columns, rows, width, height };
+    }
+  }
+  if (!best) throw new Error('这些帧超出单张精灵图的容量。请缩短导出时间段，或改用 PNG 序列。');
+  return best;
+}
+
 export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
   const shot = project.shots.find(({ id }) => id === settings.shotId);
   if (!shot) throw new Error('请选择一个可导出的镜头。');

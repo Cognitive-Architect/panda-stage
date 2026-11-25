@@ -222,11 +222,24 @@ export const FlaStructuralSummaryIRSchema = z
   })
   .strict();
 
+export const FlaSoundMetadataSchema = z.object({
+  id: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(260),
+  href: z.string().max(2048),
+  dataHref: z.string().max(2048).optional(),
+  format: z.string().max(200).optional(),
+  sampleCount: z.number().int().optional(),
+  dataLength: z.number().int().optional(),
+}).strict();
+
+export type FlaSoundMetadata = z.infer<typeof FlaSoundMetadataSchema>;
+
 export const AnimationImportIRSchema = z
   .object({
     source: FlaSourceIRSchema,
     document: FlaDocumentIRSchema,
     media: z.array(FlaBitmapMediaIRSchema).max(FLA_IMPORT_LIMITS.maxMediaCount),
+    sounds: z.array(FlaSoundMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
     timelines: z.array(FlaTimelineIRSchema).max(10_000),
     compatibility: z.array(FlaCompatibilityEntryIRSchema).max(10_000),
     summary: z

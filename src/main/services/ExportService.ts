@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, open, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
@@ -15,6 +16,7 @@ import {
   iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
   planPngSequenceFrames,
+  planSpriteSheetGrid,
   type ExportFrameReady,
   type ExportJobPhase,
   type ExportJobStatus,
@@ -54,6 +56,14 @@ export interface FullProbeMediaAdapter {
     },
     signal?: AbortSignal,
   ): Promise<unknown>;
+  encodeSpriteSheet?(request: {
+    framesDirectory: string;
+    outputPath: string;
+    frameCount: number;
+    columns: number;
+    rows: number;
+    fps: number;
+  }, signal?: AbortSignal): Promise<void>;
   probeAudioFile?(
     audioPath: string,
     signal?: AbortSignal,
@@ -353,9 +363,13 @@ export class ExportService {
     const settings = input.candidate.pngSequence;
     if (!settings || !this.renderer.loadFormal) throw new Error('PNG export requires a frozen Shot and the formal renderer.');
     const schedule = planPngSequenceFrames(input.candidate.project, settings);
+    const { width, height } = input.candidate.renderSettings;
+    const grid = settings.spriteSheet ? planSpriteSheetGrid(schedule.totalFrames, width, height) : undefined;
     const active = this.createJob({ durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps,
       totalFrames: schedule.totalFrames, attemptId: input.candidate.attemptId, snapshotId: input.candidate.snapshotId });
-    const completion = this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
+    const completion = grid
+      ? this.executeSpriteSheet(active, input, schedule, grid, assertOutputTargetUnchanged)
+      : this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
     active.completion = completion;
     return { jobId: active.jobId, completion };
   }
@@ -380,17 +394,8 @@ export class ExportService {
       this.throwIfCancelled(active);
       await this.renderer.prepareJob?.('formal');
       rendererPrepared = true;
-      const project = { ...input.candidate.project, shots: [schedule.shot] };
-      await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
-        outputPath, () => this.renderer.loadFormal!({
-          jobId: active.jobId, project, cameraMode: input.candidate.cameraMode,
-          ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
-          ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-          media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
-        }), project, {
-          frames: schedule.frames(), totalFrames: schedule.totalFrames, maxPendingWrites: 1,
-          write: (fileName, bytes) => writeNewPngFrame(path.join(outputPath, fileName), bytes),
-        });
+      await this.renderPngExportFrames(active, record, input, schedule, outputPath,
+        (fileName, bytes) => writeNewPngFrame(path.join(outputPath, fileName), bytes));
       this.throwIfCancelled(active);
       active.acceptsCancellation = false;
       record.phase = 'committing';
@@ -417,6 +422,97 @@ export class ExportService {
       }
       this.emit(record);
       throw new ExportJobError(active.jobId, record.error, { cause: error });
+    } finally {
+      try { if (rendererPrepared) this.renderer.releaseJob?.(active.jobId); }
+      finally { this.clearActiveJob(active); }
+    }
+  }
+
+  private async renderPngExportFrames(
+    active: ActiveJob,
+    record: ExportJobRecord,
+    input: FrozenExportInput,
+    schedule: ReturnType<typeof planPngSequenceFrames>,
+    directory: string,
+    write: (fileName: string, bytes: Uint8Array) => Promise<void>,
+  ): Promise<void> {
+    const project = { ...input.candidate.project, shots: [schedule.shot] };
+    await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
+      directory, () => this.renderer.loadFormal!({
+        jobId: active.jobId, project, cameraMode: input.candidate.cameraMode,
+        ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
+        ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
+        media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+      }), project, {
+        frames: schedule.frames(), totalFrames: schedule.totalFrames, maxPendingWrites: 1, write,
+      });
+  }
+
+  private async executeSpriteSheet(
+    active: ActiveJob,
+    input: FrozenExportInput,
+    schedule: ReturnType<typeof planPngSequenceFrames>,
+    grid: ReturnType<typeof planSpriteSheetGrid>,
+    assertOutputTargetUnchanged: () => Promise<void>,
+  ): Promise<{ outputPath: string }> {
+    const record = this.requireJob(active.jobId);
+    const outputPath = input.candidate.outputIntent.targetPath;
+    const { width, height, fps } = input.candidate.renderSettings;
+    let jobDirectory: string | null = null;
+    let rendererPrepared = false;
+    try {
+      if (!this.mediaAdapter?.encodeSpriteSheet) throw new Error('精灵图编码器当前不可用。');
+      await assertOutputTargetUnchanged();
+      this.throwIfCancelled(active);
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+      await this.renderer.prepareJob?.('formal');
+      rendererPrepared = true;
+      const directory = jobDirectory;
+      await this.renderPngExportFrames(active, record, input, schedule, directory,
+        (fileName, bytes) => {
+          assertExportPngSize(bytes, width, height);
+          return this.fileSystem.writeFrame(directory, fileName, bytes);
+        });
+      this.throwIfCancelled(active);
+      record.phase = 'encoding';
+      this.emit(record);
+
+      const pngName = 'sprite-sheet.png';
+      const stagedPng = path.join(jobDirectory, pngName);
+      await this.mediaAdapter.encodeSpriteSheet({
+        framesDirectory: jobDirectory, outputPath: stagedPng,
+        frameCount: schedule.totalFrames, columns: grid.columns, rows: grid.rows, fps,
+      }, active.controller.signal);
+      this.throwIfCancelled(active);
+      await assertSpriteSheetPng(stagedPng, grid.width, grid.height);
+      const manifest = {
+        frames: Array.from(schedule.frames(), ({ frameIndex, timeMs }) => ({
+          index: frameIndex,
+          timeMs,
+          frame: { x: (frameIndex % grid.columns) * width, y: Math.floor(frameIndex / grid.columns) * height, w: width, h: height },
+          rotated: false,
+          trimmed: false,
+          sourceSize: { w: width, h: height },
+        })),
+        meta: { image: pngName, fps, size: { w: grid.width, h: grid.height }, origin: 'top-left', units: 'px' },
+      };
+      await assertOutputTargetUnchanged();
+      this.throwIfCancelled(active);
+      active.acceptsCancellation = false;
+      record.phase = 'committing';
+      this.emit(record);
+      await publishSpriteSheet(outputPath, stagedPng, pngName, JSON.stringify(manifest, null, 2) + '\n');
+      record.outputPath = outputPath;
+      this.completedOutputPaths.set(active.jobId, outputPath);
+      await this.cleanupDirectory(record, jobDirectory);
+      jobDirectory = null;
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return { outputPath };
+    } catch (error) {
+      throw await this.finishFailedJob(active, record, jobDirectory, error);
     } finally {
       try { if (rendererPrepared) this.renderer.releaseJob?.(active.jobId); }
       finally { this.clearActiveJob(active); }
@@ -1189,6 +1285,46 @@ export class ExportService {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function assertExportPngSize(bytes: Uint8Array, width: number, height: number): void {
+  const header = Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(26, bytes.byteLength));
+  if (header.length !== 26 || header.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' ||
+      header.readUInt32BE(16) !== width || header.readUInt32BE(20) !== height) {
+    throw new Error('A PNG did not match the scheduled export dimensions.');
+  }
+}
+
+async function assertSpriteSheetPng(filePath: string, width: number, height: number): Promise<void> {
+  const handle = await open(filePath, 'r');
+  try {
+    const { bytesRead, buffer } = await handle.read(Buffer.alloc(26), 0, 26, 0);
+    assertExportPngSize(buffer.subarray(0, bytesRead), width, height);
+    if (buffer[24] !== 8 || buffer[25] !== 6) {
+      throw new Error('The sprite sheet encoder did not produce the expected RGBA PNG.');
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function publishSpriteSheet(outputPath: string, stagedPng: string, pngName: string, json: string): Promise<void> {
+  await mkdir(outputPath);
+  const pngPath = path.join(outputPath, pngName);
+  let pngPublished = false;
+  try {
+    await copyFile(stagedPng, pngPath, constants.COPYFILE_EXCL);
+    pngPublished = true;
+    await writeNewPngFrame(path.join(outputPath, 'sprite-sheet.json'), Buffer.from(json));
+  } catch (error) {
+    const rollbackFailures: unknown[] = [];
+    if (pngPublished) await unlink(pngPath).catch((failure: unknown) => rollbackFailures.push(failure));
+    await rmdir(outputPath).catch((failure: unknown) => rollbackFailures.push(failure));
+    if (rollbackFailures.length > 0) {
+      throw new AggregateError([error, ...rollbackFailures], '精灵图未完整写入，且无法清理输出目录。', { cause: error });
+    }
+    throw error;
   }
 }
 
