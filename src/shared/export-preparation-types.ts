@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
 import { DialogueSilenceSchema } from './dialogue-silence';
+import { ExportRenderSettingsSchema, ExportVideoOptionsSchema } from './export-output-profile';
 import supportSource from './export-preparation-support-source.json';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION = supportSource.version;
@@ -191,6 +192,7 @@ export const ExportPreparationRequestSchema = z
     dirty: z.boolean(),
     cameraMode: ExportPreparationCameraModeSchema,
     dialogueSilence: DialogueSilenceSchema.optional(),
+    videoOutput: ExportVideoOptionsSchema.optional(),
     project: z.unknown(),
   })
   .strict();
@@ -372,13 +374,7 @@ export const ExportPreparationCandidateSchema = z
     pngSequence: PngSequenceOptionsSchema.optional(),
     capturedAt: z.string().datetime(),
     project: z.unknown(),
-    renderSettings: z
-      .object({
-        width: z.literal(1_920),
-        height: z.literal(1_080),
-        fps: z.literal(24),
-      })
-      .strict(),
+    renderSettings: ExportRenderSettingsSchema,
     cameraMode: ExportPreparationCameraModeSchema,
     dialogueSilence: DialogueSilenceSchema.optional(),
     supportProfileVersion: z.literal(

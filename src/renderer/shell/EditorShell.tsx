@@ -2292,6 +2292,8 @@ export function EditorShell({
         revision: captured.revision,
         dirty: captured.dirty,
         cameraMode,
+        ...(!pngSequence && captured.project.exportPreferences?.videoOutput
+          ? { videoOutput: captured.project.exportPreferences.videoOutput } : {}),
         ...(Object.keys(silenceAtCapture).length > 0 ? { dialogueSilence: silenceAtCapture } : {}),
         project: structuredClone(captured.project),
       });
@@ -2394,7 +2396,8 @@ export function EditorShell({
     const snapshot = editorProjectStore.getSnapshot();
     if (!snapshot) return;
     const previous = snapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES;
-    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent) {
+    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent ||
+        previous.videoOutput?.width !== preferences.videoOutput?.width || previous.videoOutput?.fps !== preferences.videoOutput?.fps) {
       editorProjectStore.updateProject({ ...snapshot.project, exportPreferences: preferences }, '更新导出设置');
     }
     setExportOptionsOpen(false);

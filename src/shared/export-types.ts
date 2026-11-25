@@ -6,6 +6,7 @@ import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
 import { ExportPreparationCameraModeSchema, type PngSequenceOptions } from './export-preparation-types';
 import { DialogueSilenceSchema } from './dialogue-silence';
 import { ExportAudioClipInputSchema } from './audio-mix-types';
+import { ExportOutputFpsSchema, ExportRenderSettingsSchema } from './export-output-profile';
 
 export const EXPORT_FPS = 24 as const;
 export const MAX_PENDING_FRAMES = 3 as const;
@@ -56,6 +57,7 @@ export const ExportLoadFormalRequestSchema = z
     jobId: JobIdSchema,
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
+    renderSettings: ExportRenderSettingsSchema.optional(),
     solidClear: z.literal(true).optional(),
     outputLayerId: z.uuid().optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
@@ -112,14 +114,18 @@ export const ExportFrameReadySchema = z
     timeMs: FrameTimeSchema,
     shotId: z.uuid().optional(),
     shotLocalTimeMs: FrameTimeSchema.optional(),
-    width: z.literal(1_920),
-    height: z.literal(1_080),
+    width: z.union([z.literal(1_920), z.literal(1_280)]),
+    height: z.union([z.literal(1_080), z.literal(720)]),
     pngBytes: z
       .instanceof(Uint8Array)
       .refine((bytes) => bytes.byteLength > 8, 'PNG payload is empty.'),
   })
   .strict()
   .superRefine((frame, context) => {
+    if (!((frame.width === 1920 && frame.height === 1080) ||
+        (frame.shotId && frame.width === 1280 && frame.height === 720))) {
+      context.addIssue({ code: 'custom', message: 'Frame does not match a supported export resolution.', path: ['width'] });
+    }
     if ((frame.shotId === undefined) !== (frame.shotLocalTimeMs === undefined)) {
       context.addIssue({
         code: 'custom',
@@ -289,9 +295,9 @@ export interface ProjectFrameScheduleEntry extends FrameScheduleEntry {
   shotLocalTimeMs: number;
 }
 
-export function frameTimeMs(frameIndex: number, fps = EXPORT_FPS): number {
+export function frameTimeMs(frameIndex: number, fps: number = EXPORT_FPS): number {
   const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
-  const parsedFps = z.literal(EXPORT_FPS).parse(fps);
+  const parsedFps = ExportOutputFpsSchema.parse(fps);
   return exportFrameTimeMs(parsedFrameIndex, parsedFps);
 }
 
@@ -313,10 +319,10 @@ export function createFrameSchedule(
   }));
 }
 
-export function formalFrameCount(durationMs: number, fps = EXPORT_FPS): number {
+export function formalFrameCount(durationMs: number, fps: number = EXPORT_FPS): number {
   const parsedDuration = FormalDurationSchema.parse(durationMs);
-  const parsedFps = z.literal(EXPORT_FPS).parse(fps);
-  const count = Math.ceil((parsedDuration / 1_000) * parsedFps);
+  const parsedFps = ExportOutputFpsSchema.parse(fps);
+  const count = Math.ceil(parsedDuration * parsedFps / 1_000);
   if (!Number.isSafeInteger(count) || count > MAX_FORMAL_EXPORT_FRAMES) {
     throw new Error('Formal export duration exceeds the frame budget.');
   }
@@ -325,7 +331,7 @@ export function formalFrameCount(durationMs: number, fps = EXPORT_FPS): number {
 
 export function* iterateFormalFrameSchedule(
   durationMs: number,
-  fps = EXPORT_FPS,
+  fps: number = EXPORT_FPS,
 ): Generator<FrameScheduleEntry> {
   const count = formalFrameCount(durationMs, fps);
   for (let frameIndex = 0; frameIndex < count; frameIndex += 1) {
@@ -344,7 +350,7 @@ export function* iterateFormalFrameSchedule(
  */
 export function* iterateFormalProjectFrameSchedule(
   project: Project,
-  fps = EXPORT_FPS,
+  fps: number = EXPORT_FPS,
 ): Generator<ProjectFrameScheduleEntry> {
   const durationMs = projectDurationMs(project);
   const count = formalFrameCount(durationMs, fps);

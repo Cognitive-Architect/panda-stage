@@ -3,6 +3,7 @@ import type { Project, Shot } from '../../domain';
 import type { ExportPreferences } from '../../domain/models/exportPreferences';
 import { EXPORT_PREPARATION_RENDER_SETTINGS, type PngSequenceOptions } from '../../shared/export-preparation-types';
 import { planPngSequenceFrames, planSpriteSheetPages } from '../../shared/export-types';
+import { DEFAULT_EXPORT_VIDEO_OPTIONS, ExportOutputFpsSchema, ExportVideoOptionsSchema } from '../../shared/export-output-profile';
 import { Button } from '../ui/Button';
 import './export-options-dialog.css';
 
@@ -33,6 +34,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
   const [error, setError] = useState('');
   const spriteSheet = preferences.format === 'sprite-sheet';
   const png = preferences.format !== 'mp4';
+  const videoOutput = preferences.videoOutput ?? DEFAULT_EXPORT_VIDEO_OPTIONS;
   const ranged = preferences.rangeMode === 'range';
 
   useLayoutEffect(() => {
@@ -133,7 +135,23 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
             onChange={event => setTrimAlpha(event.target.checked)} />透明裁边（2px 留白 / 1px 边缘扩展）</label>
         </> : <label className="export-options-alpha"><input type="checkbox" checked={preferences.transparent}
           onChange={event => setPreferences(value => ({ ...value, transparent: event.target.checked }))} />透明底</label>}
-      </> : null}
+      </> : <>
+        <label>分辨率<select value={videoOutput.width} onChange={event => {
+          const next = ExportVideoOptionsSchema.parse({ ...videoOutput, width: Number(event.target.value) });
+          setPreferences(value => ({ ...value, videoOutput: next })); setError('');
+        }}>
+          <option value="1920">1920 × 1080</option>
+          <option value="1280">1280 × 720</option>
+        </select></label>
+        <label>帧率<select value={videoOutput.fps} onChange={event => {
+          const fps = ExportOutputFpsSchema.parse(Number(event.target.value));
+          setPreferences(value => ({ ...value, videoOutput: { ...videoOutput, fps } })); setError('');
+        }}>
+          <option value="24">24 fps</option>
+          <option value="30">30 fps</option>
+          <option value="60">60 fps</option>
+        </select></label>
+      </>}
       {error ? <p role="alert">{error}</p> : null}
       <div className="export-options-actions">
         <Button type="button" onClick={onCancel} variant="secondary">取消</Button>

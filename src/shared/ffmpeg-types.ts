@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ExportAudioMixPlanSchema } from './audio-mix-types';
 import { EXPORT_FPS } from './export-types';
+import { ExportOutputFpsSchema } from './export-output-profile';
 
 const Mp4OutputPathSchema = z
   .string()
@@ -14,7 +15,7 @@ export const EncodePngSequenceRequestSchema = z
   .object({
     framesDirectory: z.string().trim().min(1),
     outputPath: Mp4OutputPathSchema,
-    fps: z.literal(EXPORT_FPS),
+    fps: ExportOutputFpsSchema,
     overwrite: z.boolean().default(true),
   })
   .strict();

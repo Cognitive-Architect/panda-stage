@@ -7,6 +7,7 @@ import {
   unlink,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { freezeMp4OutputProfile } from '../../shared/export-output-profile';
 import {
   ProjectSchema,
   type Asset,
@@ -739,7 +740,7 @@ export class ExportPreparationService {
         ...(selection.pngSequence ? { pngSequence: selection.pngSequence } : {}),
         capturedAt: this.now().toISOString(),
         project,
-        renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
+        renderSettings: selection.pngSequence ? EXPORT_PREPARATION_RENDER_SETTINGS : freezeMp4OutputProfile(request.videoOutput),
         cameraMode: request.cameraMode,
         ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
