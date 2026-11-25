@@ -54,6 +54,7 @@ import { ikContainerPlaybackLength, selectFlaGraphicFrameIndex } from './fla-nes
 
 const MAX_SOURCE_DISPLAY_NODES = 100_000;
 const MAX_SOURCE_GROUP_DEPTH = 64;
+const MAX_SHAPE_TWEEN_CURVES = 8_192;
 const MAX_RIG_PARENT_DEPTH = 8;
 const MAX_CLASSIC_MOTION_ROTATION_TURNS = 1_000_000;
 const CLASSIC_MOTION_FRAME_ATTRIBUTES = new Set([
@@ -359,10 +360,11 @@ function firstElementToken(xml: string, name?: string): XmlToken | null {
   return null;
 }
 
-/** Returns only immediate children and skips each child's complete subtree. */
+/** Returns up to maxChildren immediate children, skipping each complete subtree. */
 export function getFlaXflDirectChildren(
   elementXml: string,
   parentName: string,
+  maxChildren = Infinity,
 ): readonly FlaXflElementBlock[] {
   const opening = firstElementToken(elementXml, parentName);
   if (!opening) return [];
@@ -370,7 +372,7 @@ export function getFlaXflDirectChildren(
   if (parentEnd < 0) return [];
   const children: FlaXflElementBlock[] = [];
   let cursor = opening.end;
-  while (cursor < parentEnd) {
+  while (cursor < parentEnd && children.length < maxChildren) {
     const token = nextTagToken(elementXml, cursor);
     if (!token || token.start >= parentEnd) break;
     if (token.closing) {
@@ -1424,40 +1426,14 @@ function readMorphFill(shape: FlaXflElementBlock, mask: boolean): readonly numbe
   return [...color.slice(1).map((hex) => Number.parseInt(hex, 16)), alpha];
 }
 
-function sampleSolidShapeTween(
-  startFrame: FlaXflElementBlock,
-  start: FlaXflElementBlock,
-  end: FlaXflElementBlock,
-  linearProgress: number,
-  mask = false,
+function sampleMorphContour(
+  contour: FlaXflElementBlock,
+  curves: readonly FlaXflElementBlock[],
+  interpolatePoint: (a: readonly [number, number], b: readonly [number, number]) => string,
 ): string | null {
-  const startFill = readMorphFill(start, mask);
-  const endFill = readMorphFill(end, mask);
-  const startMatrix = readDirectMatrix(start);
-  const endMatrix = readDirectMatrix(end);
-  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
-      !Object.entries(startMatrix.matrix).every(([key, value]) =>
-        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
-
-  const ease = classicMotionEasesForFrame(startFrame);
-  if (!ease.ok) return null;
-  const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
-  if (!timing.ok) return null;
-  const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
-  const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
-  const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
-  if (!segments) return null;
-  const contours = getFlaXflDirectChildren(segments.xml, segments.name);
-  const contour = contours[0];
-  if (contours.length !== 1 || contour?.name !== 'MorphSegment' ||
-      contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
-      (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
   const originA = readMorphPoint(contour.attributes.startPointA);
   const originB = readMorphPoint(contour.attributes.startPointB);
-  const curves = getFlaXflDirectChildren(contour.xml, contour.name);
-  if (!originA || !originB || curves.length === 0 || curves.length > 8_192) return null;
-  const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
-    lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  if (!originA || !originB) return null;
   const commands = ['!' + interpolatePoint(originA, originB)];
   let lastA = originA;
   let lastB = originB;
@@ -1481,6 +1457,57 @@ function sampleSolidShapeTween(
   }
   if (lastA[0] !== originA[0] || lastA[1] !== originA[1] ||
       lastB[0] !== originB[0] || lastB[1] !== originB[1]) return null;
+  return commands.join('');
+}
+
+function sampleSolidShapeTween(
+  startFrame: FlaXflElementBlock,
+  start: FlaXflElementBlock,
+  end: FlaXflElementBlock,
+  linearProgress: number,
+  mask = false,
+): string | null {
+  const startFill = readMorphFill(start, mask);
+  const endFill = readMorphFill(end, mask);
+  const startMatrix = readDirectMatrix(start);
+  const endMatrix = readDirectMatrix(end);
+  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
+      !Object.entries(startMatrix.matrix).every(([key, value]) =>
+        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
+
+  const ease = classicMotionEasesForFrame(startFrame);
+  if (!ease.ok) return null;
+  const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
+  if (!timing.ok) return null;
+  const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
+  const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
+  const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
+  if (!segments) return null;
+  const contours = getFlaXflDirectChildren(segments.xml, segments.name, MAX_SHAPE_TWEEN_CURVES + 1);
+  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) return null;
+
+  // Every segment needs at least one curve. Budget the entire tween before
+  // interpolating any geometry or constructing the compound path.
+  let remainingCurves = MAX_SHAPE_TWEEN_CURVES;
+  const boundedContours: Array<{ contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] }> = [];
+  for (const contour of contours) {
+    if (contour.name !== 'MorphSegment' ||
+        contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
+        (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
+    const curves = getFlaXflDirectChildren(contour.xml, contour.name, remainingCurves + 1);
+    if (curves.length === 0 || curves.length > remainingCurves) return null;
+    remainingCurves -= curves.length;
+    boundedContours.push({ contour, curves });
+  }
+
+  const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
+    lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  const commands: string[] = [];
+  for (const { contour, curves } of boundedContours) {
+    const sampled = sampleMorphContour(contour, curves, interpolatePoint);
+    if (sampled === null) return null;
+    commands.push(sampled);
+  }
 
   const color = startFill.slice(0, 3).map((value, i) =>
     Math.round(lerp(value, endFill[i]!)).toString(16).padStart(2, '0')).join('');

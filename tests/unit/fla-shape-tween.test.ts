@@ -34,6 +34,10 @@ async function buildFixture(unsupportedPair: boolean) {
     solidShape(0, '#00ff00') + '</elements></DOMFrame><DOMFrame index="2" duration="3"><elements>' +
     solidShape(0, '#ffff00') + '</elements></DOMFrame></frames></DOMLayer>' +
     '</layers></DOMTimeline></timeline></DOMSymbolItem>');
+  return renderShapeTween(zip);
+}
+
+async function renderShapeTween(zip: JSZip) {
   const bytes = await zip.generateAsync({ type: 'uint8array' });
   const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
   if (!prepared.ok) throw new Error(prepared.message);
@@ -54,7 +58,80 @@ async function buildFixture(unsupportedPair: boolean) {
   };
 }
 
+const rectangle = (x: number, y: number, size: number, reverse = false) => {
+  const points = [[x, y], [x + size, y], [x + size, y + size], [x, y + size], [x, y]];
+  return reverse ? points.reverse() : points;
+};
+
+async function buildCompoundFixture(variant: 'separate' | 'hole' | 'open' | 'missing-pair' | 'over-budget') {
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', '<DOMDocument width="200" height="150"/>');
+  const hole = variant === 'hole';
+  const start = [rectangle(0, 0, 4), rectangle(hole ? 1 : 6, 1, 2, hole)];
+  const end = [rectangle(2, 1, 6), rectangle(hole ? 4 : 12, 2, 3, hole)];
+  const morph = start.map((contour, index) => {
+    const target = end[index]!;
+    const pair = (pointA: number[], pointB: number[]) => `anchorPointA="${pointA.join(', ')}" anchorPointB="${pointB.join(', ')}"`;
+    const curves = contour.slice(1).map((point, ordinal) => {
+      const targetPoint = index === 1 && ordinal === 3 && variant === 'open'
+        ? target[1]! : target[ordinal + 1]!;
+      const attributes = index === 1 && ordinal === 1 && variant === 'missing-pair'
+        ? `anchorPointA="${point.join(', ')}"` : pair(point, targetPoint);
+      return `<MorphCurves ${attributes} isLine="true"/>`;
+    }).join('');
+    const repeated = variant === 'over-budget' ? curves.repeat(1025) : curves;
+    return `<MorphSegment startPointA="${contour[0]!.join(', ')}" startPointB="${target[0]!.join(', ')}" ` +
+      `fillIndex1="0" fillIndex2="0" strokeIndex1="0" strokeIndex2="0">${repeated}</MorphSegment>`;
+  }).join('');
+  const shape = (contours: number[][][], color: string, alpha: number) => {
+    const edges = contours.map((contour) => '!' + contour
+      .map((point) => point.map((coordinate) => coordinate * 256).join(' ')).join('|')).join('');
+    return `<DOMShape><fills><FillStyle index="1"><SolidColor color="${color}" alpha="${alpha}"/></FillStyle></fills>` +
+      `<edges><Edge fillStyle0="1" edges="${edges}"/></edges></DOMShape>`;
+  };
+  zip.file('LIBRARY/shape-tween.xml',
+    '<DOMSymbolItem name="shape-tween" symbolType="graphic"><timeline><DOMTimeline><layers>' +
+    '<DOMLayer name="Compound"><frames><DOMFrame index="0" duration="4" tweenType="shape">' +
+    '<MorphShape><morphSegments>' + morph + '</morphSegments></MorphShape><elements>' +
+    shape(start, '#ff0000', 0.25) + '</elements></DOMFrame><DOMFrame index="4"><elements>' +
+    shape(end, '#0000ff', 0.75) + '</elements></DOMFrame></frames></DOMLayer>' +
+    '<DOMLayer name="Witness"><frames><DOMFrame index="0" duration="5"><elements>' + solidShape(-128, '#00ff00') +
+    '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>');
+  return renderShapeTween(zip);
+}
+
 describe('FLA Shape Tween display-list sampling', () => {
+  it.each(['separate', 'hole'] as const)('samples both paired contours in one nonzero fill (%s)', async (variant) => {
+    const render = await buildCompoundFixture(variant);
+    const middle = await render(2);
+    const paint = (svg: string, color: string) => svg.match(new RegExp(`<path d="([^"]+)"[^>]*fill="${color}"[^>]*>`, 'u'));
+    const start = paint(await render(0), '#ff0000');
+    const end = paint(await render(4), '#0000ff');
+    const tween = paint(middle, '#800080');
+    for (const match of [start, tween, end]) expect(match?.[1]?.match(/M /gu)).toHaveLength(2);
+    expect(start?.[0]).toContain('fill-opacity="0.25"');
+    expect(tween?.[0]).toContain('fill-opacity="0.5"');
+    expect(end?.[0]).toContain('fill-opacity="0.75"');
+    expect(tween?.[0]).toContain('fill-rule="nonzero"');
+    expect(start?.[1]).toContain('M 51.2000 0.0000 L 0.0000 0.0000');
+    expect(end?.[1]).toContain('M 102.4000 12.8000 L 25.6000 12.8000');
+    expect(tween?.[1]).toContain('M 76.8000 6.4000 L 12.8000 6.4000');
+    expect(tween?.[1]).toContain(variant === 'hole'
+      ? 'M 32.0000 51.2000 L 32.0000 19.2000 L 64.0000 19.2000'
+      : 'M 147.2000 19.2000 L 115.2000 19.2000 L 115.2000 51.2000');
+    expect(await render(2)).toBe(middle);
+  });
+
+  it.each(['open', 'missing-pair', 'over-budget'] as const)(
+    'holds all authored contours while keeping healthy layers for a %s morph', async (variant) => {
+      const render = await buildCompoundFixture(variant);
+      const frame = await render(2);
+      expect(frame).toContain('fill="#ff0000" fill-opacity="0.25"');
+      expect(frame).toContain('fill="#00ff00"');
+      expect(await render(4)).toContain('fill="#0000ff" fill-opacity="0.75"');
+    },
+  );
+
   it('uses the paired line and quadratic points at the requested time and preserves authored end frames', async () => {
     const render = await buildFixture(false);
     const middle = await render(2);
