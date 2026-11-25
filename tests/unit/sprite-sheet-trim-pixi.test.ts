@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import {
   StreamingSpriteSheetPacker,
+  buildPixiPageManifest,
   decodeRgbaPng,
   encodeRgbaPng,
   scaleRgbaImage,
@@ -11,6 +12,12 @@ import {
   type PixiSpritesheetData,
   type RgbaImage,
 } from '../../src/main/services/sprite-sheet-atlas';
+import {
+  TESTED_PIXI_JS_VERSION,
+  assemblePixiMultiPackTextures,
+  resolvePixiMultiPackAnimation,
+  type PixiLikeSpritesheet,
+} from '../../src/shared/pixi-spritesheet-consumer';
 import {
   ExportJobError,
   ExportService,
@@ -299,7 +306,17 @@ describe('S03-B transparent trim, output scale, padding/extrusion, and PixiJS mu
       expect(master.pixiEntry).toBe('sprite-sheet-000.json');
       expect(master.pixiSheets).toHaveLength(pageCount);
 
-      // Verify PixiJS v8 multi-pack chain: root sheet links related_multi_packs, disjoint frame maps cover all 48 frames.
+      // Verify PixiJS v8 multi-pack chain: root sheet links related_multi_packs, omits cross-page
+      // `animations` so PixiJS v8 `Spritesheet._processAnimations` never produces undefined textures,
+      // and Panda master manifest carries the ordered cross-page animation sequence.
+      const expectedAllFrameNames = Array.from(
+        { length: 48 },
+        (_, i) => `frame_${String(i).padStart(6, '0')}`,
+      );
+      expect(master.pixiTargetVersion).toBe(TESTED_PIXI_JS_VERSION);
+      expect(master.animationName).toBe('walk');
+      expect(master.animations?.walk).toEqual(expectedAllFrameNames);
+
       const rootPixi = JSON.parse(
         await readFile(path.join(output, 'sprite-sheet-000.json'), 'utf8'),
       ) as PixiSpritesheetData;
@@ -307,11 +324,10 @@ describe('S03-B transparent trim, output scale, padding/extrusion, and PixiJS mu
       expect(rootPixi.meta.related_multi_packs).toEqual(
         Array.from({ length: pageCount - 1 }, (_, i) => `sprite-sheet-${String(i + 1).padStart(3, '0')}.json`),
       );
-      expect(rootPixi.animations?.walk).toEqual(
-        Array.from({ length: 48 }, (_, i) => `frame_${String(i).padStart(6, '0')}`),
-      );
+      expect(rootPixi.animations).toBeUndefined();
 
       const seenFrames = new Set<string>();
+      const parsedSheets: PixiLikeSpritesheet<{ name: string; page: number; data: PixiSpritesheetData['frames'][string] }>[] = [];
       for (let p = 0; p < pageCount; p += 1) {
         const jsonName = `sprite-sheet-${String(p).padStart(3, '0')}.json`;
         const pngName = `sprite-sheet-${String(p).padStart(3, '0')}.png`;
@@ -319,6 +335,7 @@ describe('S03-B transparent trim, output scale, padding/extrusion, and PixiJS mu
         expect(files).toContain(pngName);
 
         const sheet = JSON.parse(await readFile(path.join(output, jsonName), 'utf8')) as PixiSpritesheetData;
+        expect(sheet.animations).toBeUndefined();
         expect(sheet.meta.image).toBe(pngName);
         expect(sheet.meta.size.w).toBeLessThanOrEqual(8192);
         expect(sheet.meta.size.h).toBeLessThanOrEqual(8192);
@@ -328,6 +345,7 @@ describe('S03-B transparent trim, output scale, padding/extrusion, and PixiJS mu
         expect(pagePng.width).toBe(sheet.meta.size.w);
         expect(pagePng.height).toBe(sheet.meta.size.h);
 
+        const textures: Record<string, { name: string; page: number; data: PixiSpritesheetData['frames'][string] }> = {};
         for (const [name, entry] of Object.entries(sheet.frames)) {
           expect(seenFrames.has(name)).toBe(false);
           seenFrames.add(name);
@@ -336,9 +354,38 @@ describe('S03-B transparent trim, output scale, padding/extrusion, and PixiJS mu
           expect(entry.anchor).toEqual({ x: 0.5, y: 0.5 });
           expect(entry.frame.x + entry.frame.w).toBeLessThanOrEqual(pagePng.width);
           expect(entry.frame.y + entry.frame.h).toBeLessThanOrEqual(pagePng.height);
+          textures[name] = { name, page: p, data: entry };
         }
+        parsedSheets.push({ textures });
       }
       expect(seenFrames.size).toBe(48);
+
+      // Simulate PixiJS v8 linkedSheets attachment and verify consumer helper assembles all 48 frames in order.
+      const linkedRoot: PixiLikeSpritesheet<{ name: string; page: number; data: PixiSpritesheetData['frames'][string] }> = {
+        textures: parsedSheets[0]!.textures,
+        linkedSheets: parsedSheets.slice(1),
+      };
+      const resolved = resolvePixiMultiPackAnimation(linkedRoot, master);
+      expect(resolved.animationName).toBe('walk');
+      expect(resolved.textures).toHaveLength(48);
+      expect(resolved.textures.every((t) => t !== undefined)).toBe(true);
+      expect(resolved.textures.map((t) => t.name)).toEqual(expectedAllFrameNames);
+      expect(new Set(resolved.textures.map((t) => t.page)).size).toBe(pageCount);
+      expect(() => assemblePixiMultiPackTextures(linkedRoot, ['frame_999999'])).toThrow(/missing 1 frame/i);
+
+      // Verify single-page PixiJS manifest keeps native `animations` referencing only local textures.
+      const singlePageManifest = buildPixiPageManifest({
+        pageIndex: 0,
+        pageCount: 1,
+        imageName: 'sprite-sheet.png',
+        width: 100,
+        height: 100,
+        pageFrames: [master.frames[0]],
+        allFrameNames: [master.frames[0].name],
+        animationName: 'idle',
+      });
+      expect(singlePageManifest.animations).toEqual({ idle: ['frame_000000'] });
+      expect(singlePageManifest.meta.related_multi_packs).toBeUndefined();
 
       // Verify empty frames (10 and 35) preserved duration & trimmed to 1x1 transparent tile.
       const frame10 = master.frames[10];

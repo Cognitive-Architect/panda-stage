@@ -819,9 +819,14 @@ export class ExportService {
         if (pageCount > 1) {
           const masterManifest = {
             format: 'panda-sprite-sheet-master',
+            pixiTargetVersion: '8.0.5',
             ...(targetMeta ? { target: targetMeta } : {}),
             pixiEntry: pixiSheetNames[0]!,
             pixiSheets: pixiSheetNames,
+            animationName,
+            animations: {
+              [animationName]: allFrameNames,
+            },
             frames: allFrames,
             pages: stagedPages.map((page, idx) => ({
               index: page.pageIndex,

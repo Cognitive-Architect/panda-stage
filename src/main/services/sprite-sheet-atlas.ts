@@ -768,10 +768,18 @@ export function buildPixiPageManifest(args: {
         )
       : undefined;
 
+  // PixiJS v8 (verified against v8.0.5 `Spritesheet._processAnimations`) resolves
+  // `animations` strictly from `this.textures` before `spritesheetAsset` links
+  // `meta.related_multi_packs` into `linkedSheets`. Only emit native `animations`
+  // when every referenced frame lives on this sheet (single-page); multi-page
+  // animations are assembled across `[rootSheet, ...linkedSheets]` from the
+  // Panda master manifest's ordered frame list (`resolvePixiMultiPackAnimation`).
+  const includeSinglePageAnimations = args.pageCount <= 1 && args.pageIndex === 0;
+
   return {
     frames,
-    ...(args.pageIndex === 0
-      ? { animations: { [args.animationName]: [...args.allFrameNames] } }
+    ...(includeSinglePageAnimations
+      ? { animations: { [args.animationName]: args.pageFrames.map((entry) => entry.name) } }
       : {}),
     meta: {
       app: 'Panda Stage',

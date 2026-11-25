@@ -259,7 +259,12 @@ describe('S03-C selected Graphic / action object sprite sheet export', () => {
       const rootPixi = JSON.parse(
         await readFile(path.join(output, 'sprite-sheet-000.json'), 'utf8'),
       ) as PixiSpritesheetData;
-      expect(rootPixi.animations?.PandaJump).toHaveLength(48);
+      // Multi-page PixiJS sheets omit cross-page `animations` (PixiJS v8 _processAnimations only reads local textures);
+      // Panda master manifest carries the ordered 48-frame `PandaJump` animation across all linkedSheets.
+      expect(rootPixi.animations).toBeUndefined();
+      expect(master.pixiTargetVersion).toBe('8.0.5');
+      expect(master.animationName).toBe('PandaJump');
+      expect(master.animations?.PandaJump).toHaveLength(48);
       expect(rootPixi.frames.frame_000000?.anchor).toEqual({ x: 0.5, y: 0.75 });
       expect(rootPixi.meta.related_multi_packs?.length).toBe(master.meta.pageCount - 1);
     } finally {
