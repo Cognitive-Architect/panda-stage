@@ -93,6 +93,7 @@ describe('IPC channel registry', () => {
       'fla:sound-preview',
       'fla:sound-cancel',
       'fla:sound-import',
+      'fla:sound-import-timeline',
       'fla:commit-selected',
       'fla:worker-ready',
       'fla:worker-start',
