@@ -125,6 +125,10 @@ describe('FLA Static Text layout & sanitizer (A04)', () => {
     expect(wrapped[1]!.baselineY - wrapped[0]!.baselineY).toBe(17);
     expect(layout('熊猫', 21).map(({ width }) => width)).toEqual([10, 10]);
     expect(layout('ABC', 21).map(({ width }) => width)).toEqual([10, 10, 10]);
+    const [reversed] = layout('ABC', 40, -20, 'center');
+    expect(reversed!.width).toBe(30);
+    expect(reversed!.fragments[0]!.x).toBe(25);
+    expect(layout('ABC', 21, -20).map(({ width }) => width)).toEqual([20, 10]);
     const [tight] = layout('AB CD', 50, -2, 'right');
     expect(tight!.width).toBe(42);
     expect(tight!.fragments.map(({ x }) => x)).toEqual([8, 24, 32]);

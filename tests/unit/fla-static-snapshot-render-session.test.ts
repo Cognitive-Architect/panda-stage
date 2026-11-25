@@ -221,16 +221,20 @@ describe('FlaStaticSnapshotRenderSession', () => {
     ['graphic-symbol', 'Panda Stage', true],
     ['scene', '   ', false],
     ['graphic-symbol', '', false],
+    ['scene', 'Hidden by its parent', false, true],
   ] as const)(
     'checks drawable content in a %s containing only "%s"',
-    async (kind, characters, drawable) => {
+    async (kind, characters, drawable, transparent = false) => {
       const zip = await JSZip.loadAsync(await buildMinimalFla());
       const text = '<DOMStaticText width="100" height="30"><textRuns><DOMTextRun>' +
         `<characters>${characters}</characters><textAttrs><DOMTextAttrs size="16"/></textAttrs>` +
         '</DOMTextRun></textRuns></DOMStaticText>';
       for (const name of ['DOMDocument.xml', 'LIBRARY/MyGraphic.xml']) {
         const xml = await zip.file(name)!.async('string');
-        zip.file(name, xml.replace(/<DOMGroup>[\s\S]*?<\/DOMGroup>/gu, text));
+        const content = transparent && name === 'DOMDocument.xml'
+          ? '<DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic"><color><Color alphaMultiplier="0"/></color></DOMSymbolInstance>'
+          : text;
+        zip.file(name, xml.replace(/<DOMGroup>[\s\S]*?<\/DOMGroup>/gu, content));
       }
       const rasterizer = resolvingRasterizer();
       const rasterize = vi.spyOn(rasterizer, 'rasterize');

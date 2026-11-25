@@ -2825,6 +2825,10 @@ function resolveTargetDisplayList(
   return { ok: true, displayList: resolved.displayList, shapeBlocks, staticTextBlocks };
 }
 
+function hasDrawableStaticText(descriptor: FlaStaticTextDescriptor): boolean {
+  return descriptor.runs.some((run) => run.alpha > 0 && run.characters.trim().length > 0);
+}
+
 function catalogSupportReason(
   shapeBlocks: ReadonlyMap<string, string>,
   displayList: FlaResolvedDisplayList,
@@ -2834,22 +2838,25 @@ function catalogSupportReason(
 ): { unsupportedReason: string | null; isBlank: boolean } {
   let drawableCount = 0;
   let reason: string | null = null;
-  const visit = (node: FlaResolvedDisplayNode): void => {
+  const visit = (node: FlaResolvedDisplayNode, textVisible: boolean): void => {
     if (reason) return;
     if (node.kind === 'group') {
-      for (const child of node.children) visit(child);
+      for (const child of node.children) visit(child, textVisible && node.opacity !== 0);
+      return;
+    }
+    if (node.kind === 'text') {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (!descriptor) {
+        reason = 'Static text source not found: ' + node.textId;
+      } else if (textVisible && hasDrawableStaticText(descriptor)) {
+        drawableCount += 1;
+      }
       return;
     }
     drawableCount += 1;
     if (node.kind === 'bitmap') {
       const media = resolveBitmapMedia(node.libraryItemName);
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
-      return;
-    }
-    if (node.kind === 'text') {
-      if (!staticTextBlocks?.has(node.textId)) {
-        reason = 'Static text source not found: ' + node.textId;
-      }
       return;
     }
     const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -2867,7 +2874,7 @@ function catalogSupportReason(
     }
   };
   for (const layer of displayList.layers) {
-    for (const node of layer.children) visit(node);
+    for (const node of layer.children) visit(node, true);
   }
   if (reason) return { unsupportedReason: reason, isBlank: false };
   const isBlank = drawableCount === 0;
@@ -4532,6 +4539,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (!descriptor) {
         return { ok: false, code: 'RENDER_FAILED', message: `Resolved static text source not found: ${node.textId}` };
       }
+      if (!hasDrawableStaticText(descriptor) || compositeGroups.some((group) => group.opacity === 0)) continue;
       staticTextNodeCount += 1;
       if (staticTextNodeCount > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text node budget (${FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition}) exceeded` };

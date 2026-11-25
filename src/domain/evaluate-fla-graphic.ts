@@ -398,7 +398,7 @@ function resolveNestedSymbolInternalTimeMs(
 
 /**
  * The one formal FLA Graphic evaluator. Definition mode ignores Layer state;
- * Instance mode applies only sparse node-local matrices from the owning Layer.
+ * Instance mode carries the owning Layer’s sparse edits and occurrence color.
  * Stale paths are never visited and therefore cannot affect the output.
  */
 export function evaluateFlaGraphicVisual(input: {

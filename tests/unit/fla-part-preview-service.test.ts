@@ -24,6 +24,9 @@ import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canv
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
 import { FlaGraphicInstanceCommitService } from '../../src/main/services/FlaGraphicInstanceCommitService';
+import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
+import { buildStageRenderModel } from '../../src/shared/stage/render-model';
+import { evaluateFlaGraphicProjectionVisual } from '../../src/renderer/features/canvas/FlaGraphicStructureProjection';
 import { CanvasToolbar } from '../../src/renderer/features/canvas/CanvasToolbar';
 import { getFlaGraphicScopeNodes, resolveFlaGraphicEditTarget } from '../../src/renderer/features/canvas/flaGraphicEditScope';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -882,17 +885,39 @@ describe('F1-02 Main part preview service', () => {
       for (const { source } of legacy.shots[0]!.layers) {
         if (source.kind === 'animation' && source.flaOccurrence) delete source.flaOccurrence.instanceColor;
       }
+      const legacyDefinition = legacy.animations[0]!;
+      if (!('kind' in legacyDefinition) || legacyDefinition.kind !== 'fla-graphic') throw new Error('Expected Graphic definition');
+      const editedNode = legacyDefinition.structure!.frames[0]!.layers[0]!.nodes[0]!;
+      editedNode.localTransform = { ...editedNode.localTransform, tx: editedNode.localTransform.tx + 9 };
       const legacyProject = migrateProject({ ...legacy, schemaVersion: 41 });
       await projectService.save(root, legacyProject, revision + 1);
       const alphaUnit = held.units.find((unit) => unit.worldTransform.tx === 10)!;
       const alphaLayer = legacyProject.shots[0]!.layers.find((layer) =>
         layer.source.kind === 'animation' && layer.source.flaOccurrence?.occurrenceId === alphaUnit.occurrenceId)!;
       const restored = await importUnit(alphaUnit.unitId);
-      expect(restored).toMatchObject({ ok: true, layerId: alphaLayer.id });
+      expect(restored).toMatchObject({ ok: true, layerId: alphaLayer.id, animationId: definition.id });
       const restoredProject = (await projectService.open(root)).project;
       const restoredLayer = restoredProject.shots[0]!.layers.find((layer) => layer.id === alphaLayer.id)!;
       expect(restoredLayer).toMatchObject({ ...alphaLayer, source: { flaOccurrence: { instanceColor: cases[1]!.effect } } });
       expect(restoredProject.shots[0]!.layers).toHaveLength(cases.length);
+      expect(restoredProject.animations).toEqual(legacyProject.animations);
+      expect(restoredProject.assets).toEqual(legacyProject.assets);
+
+      const editInput = { definition, frameOrdinal: 0, draftMatrices: {},
+        instanceColor: { opacity: 0.5 } };
+      expect(evaluateFlaGraphicProjectionVisual({ ...editInput, editMode: 'instance' })?.instanceColor)
+        .toEqual(editInput.instanceColor);
+      expect(evaluateFlaGraphicProjectionVisual({ ...editInput, editMode: 'definition' })?.instanceColor)
+        .toBeUndefined();
+
+      // Hidden Export receives only the assets frozen into its export snapshot.
+      const exportUrls = Object.fromEntries(collectExportPreparationMedia(reopened)
+        .map(({ asset }) => [asset.id, 'export-asset:' + asset.id]));
+      expect(exportUrls[definition.frames[0]!.assetId]).toBeUndefined();
+      const exportStage = buildStageRenderModel(reopened, evaluated, exportUrls);
+      for (const layer of exportStage.layers) {
+        expect(layer.visual?.flaGraphic?.instanceColor).toEqual(importedLayers.get(layer.id)!.effect);
+      }
     } finally {
       previewService.close();
       await rm(parent, { recursive: true, force: true });
