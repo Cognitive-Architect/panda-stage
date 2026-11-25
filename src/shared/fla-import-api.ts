@@ -276,12 +276,25 @@ export const FlaSoundMetadataSchema = z.object({
 
 export type FlaSoundMetadata = z.infer<typeof FlaSoundMetadataSchema>;
 
+export const FlaVideoMetadataSchema = z.object({
+  name: z.string().trim().min(1).max(500),
+  href: z.string().max(2048),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
+  fps: z.number().finite().positive().optional(),
+  duration: z.number().finite().nonnegative().optional(),
+  videoType: z.string().max(200).optional(),
+}).strict();
+
+export type FlaVideoMetadata = z.infer<typeof FlaVideoMetadataSchema>;
+
 export const AnimationImportIRSchema = z
   .object({
     source: FlaSourceIRSchema,
     document: FlaDocumentIRSchema,
     media: z.array(FlaBitmapMediaIRSchema).max(FLA_IMPORT_LIMITS.maxMediaCount),
     sounds: z.array(FlaSoundMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
+    videos: z.array(FlaVideoMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
     timelines: z.array(FlaTimelineIRSchema).max(10_000),
     symbolTimelines: z.array(FlaSymbolTimelineIRSchema).max(10_000).optional(),
     compatibility: z.array(FlaCompatibilityEntryIRSchema).max(10_000),

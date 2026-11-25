@@ -21,15 +21,49 @@ import {
   type FlaVideoClockSample,
   type FlaVideoNestedHostClock,
 } from '../../shared/fla-video-clock';
+import {
+  FlaVideoImportRequestSchema,
+  FlaVideoImportResponseSchema,
+  type FlaVideoImportErrorCode,
+  type FlaVideoImportResponse,
+} from '../../shared/fla-video-api';
 import type { FFmpegAdapter } from './FFmpegAdapter';
 import type { FlaImportService } from './FlaImportService';
-import type { ProjectService } from './ProjectService';
+import { ProjectServiceError, type ProjectService, type ProjectTransaction } from './ProjectService';
 import { resolveProjectAssetPath } from './project-asset-path';
+
+export interface FlaEmbeddedVideoProjectSnapshot {
+  readonly project: Project;
+  readonly revision: number;
+}
+
+export class FlaEmbeddedVideoImportError extends Error {
+  readonly currentProject?: Project;
+  readonly currentRevision?: number;
+
+  constructor(
+    readonly code: FlaVideoImportErrorCode,
+    readonly projectRoot: string,
+    message: string,
+    details: {
+      cause?: unknown;
+      currentProject?: Project;
+      currentRevision?: number;
+    } = {},
+  ) {
+    super(message, { cause: details.cause });
+    this.name = 'FlaEmbeddedVideoImportError';
+    this.currentProject = details.currentProject;
+    this.currentRevision = details.currentRevision;
+  }
+}
 
 export interface ImportEmbeddedVideoInput {
   readonly sessionId: string;
   readonly videoName: string;
   readonly projectRoot: string;
+  readonly project?: Project;
+  readonly baseRevision?: number;
   readonly shotId: string;
   readonly startTimeMs?: number;
   readonly playbackMode?: 'play-once' | 'loop' | 'single-frame';
@@ -46,6 +80,8 @@ export interface ImportEmbeddedVideoInput {
 export interface ImportEmbeddedVideoResult {
   readonly ok: true;
   readonly project: Project;
+  readonly baseRevision: number;
+  readonly savedRevision: number;
   readonly videoAsset: VideoAsset;
   readonly layer: Layer;
   readonly audioAsset?: AudioAsset;
@@ -95,7 +131,7 @@ async function writeUniqueProjectAsset(
   baseName: string,
   extension: '.mp4' | '.mov' | '.webm' | '.wav',
   bytes: Uint8Array,
-): Promise<string> {
+): Promise<{ readonly relativePath: string; readonly fullPath: string }> {
   const assetsDir = path.join(projectRoot, 'assets');
   await mkdir(assetsDir, { recursive: true });
   const sanitizedBase = sanitizeAssetFileName(baseName, '.wav' as AssetFileExtension);
@@ -111,7 +147,7 @@ async function writeUniqueProjectAsset(
     try {
       await writeFile(tempPath, bytes, { flag: 'wx' });
       await rename(tempPath, candidatePath);
-      return `assets/${candidateName}`;
+      return { relativePath: `assets/${candidateName}`, fullPath: candidatePath };
     } catch (error) {
       await rm(tempPath, { force: true }).catch(() => undefined);
       throw error;
@@ -120,10 +156,24 @@ async function writeUniqueProjectAsset(
   throw new Error('Unable to allocate a unique asset path in project assets directory.');
 }
 
+function requestProjectRootFromRaw(rawRequest: unknown): string {
+  if (
+    typeof rawRequest === 'object' &&
+    rawRequest !== null &&
+    'projectRoot' in rawRequest &&
+    typeof rawRequest.projectRoot === 'string' &&
+    rawRequest.projectRoot.trim()
+  ) {
+    return rawRequest.projectRoot;
+  }
+  return '(unknown project)';
+}
+
 /**
- * Formal embedded-video lifecycle owner (E-F04 / E07-A):
+ * Formal embedded-video lifecycle owner (E-F04 / E-F06 / E-F07 / E-F10 / E-F11):
  * - Ingests native FLA embedded video into formal project assets + Video Layer
- *   (and optional synchronized AudioAsset/AudioClip when hasAudio).
+ *   (and optional synchronized AudioAsset/AudioClip when hasAudio) against the
+ *   active in-memory project snapshot & revision with atomic rollback.
  * - Decodes frames sequentially in ONE FFmpeg call per asset (never per-frame
  *   FFmpeg spawning) with bounded cache, cancellation, stale-seek protection,
  *   and local failure isolation.
@@ -133,11 +183,13 @@ export class FlaEmbeddedVideoService {
   private readonly inFlightDecodes = new Map<string, Promise<DecodedSequenceEntry>>();
   private readonly framePngCache = new Map<string, { readonly bytes: Uint8Array; lastUsedAt: number }>();
   private readonly latestTokenByAsset = new Map<string, number>();
+  private readonly activeImportsBySession = new Map<string, Set<AbortController>>();
 
   constructor(
     private readonly deps: {
       readonly flaImportService?: Pick<FlaImportService, 'prepareEmbeddedVideo'>;
-      readonly projectService?: Pick<ProjectService, 'open' | 'save'>;
+      readonly projectService?: Pick<ProjectService, 'open' | 'save'> & Partial<Pick<ProjectService, 'transact'>>;
+      readonly getCurrentProjectSnapshot?: (projectRoot: string) => FlaEmbeddedVideoProjectSnapshot | null;
       readonly ffmpegAdapter: Pick<
         FFmpegAdapter,
         'probeFlaNativeVideo' | 'decodeFlaVideoFramesSequential' | 'extractFlaVideoAudioTrack' | 'probeAudioFile'
@@ -146,237 +198,518 @@ export class FlaEmbeddedVideoService {
     },
   ) {}
 
+  cancelImportsForSession(sessionId: string): boolean {
+    const active = this.activeImportsBySession.get(sessionId);
+    if (!active || active.size === 0) return false;
+    for (const controller of active) {
+      controller.abort();
+    }
+    this.activeImportsBySession.delete(sessionId);
+    return true;
+  }
+
+  /**
+   * Formal IPC entry point (E-F06): validates the strict request schema, runs the
+   * revision-checked transactional import against the live in-memory project
+   * snapshot, and returns a validated discriminated union response.
+   */
+  async importFromFlaSessionRequest(rawRequest: unknown): Promise<FlaVideoImportResponse> {
+    const fallbackRoot = requestProjectRootFromRaw(rawRequest);
+    const parsed = FlaVideoImportRequestSchema.safeParse(rawRequest);
+    if (!parsed.success) {
+      return FlaVideoImportResponseSchema.parse({
+        ok: false,
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'FLA embedded video import request is invalid.',
+          projectRoot: fallbackRoot,
+        },
+      });
+    }
+    const request = parsed.data;
+    try {
+      const result = await this.importFromFlaSession({
+        sessionId: request.sessionId,
+        videoName: request.videoName,
+        projectRoot: request.projectRoot,
+        project: request.project,
+        baseRevision: request.baseRevision,
+        shotId: request.shotId,
+        ...(request.startTimeMs !== undefined ? { startTimeMs: request.startTimeMs } : {}),
+        ...(request.playbackMode !== undefined ? { playbackMode: request.playbackMode } : {}),
+        ...(request.trimStartMs !== undefined ? { trimStartMs: request.trimStartMs } : {}),
+        ...(request.trimEndMs !== undefined ? { trimEndMs: request.trimEndMs } : {}),
+        ...(request.heldFrameIndex !== undefined ? { heldFrameIndex: request.heldFrameIndex } : {}),
+        ...(request.sourceFps !== undefined ? { sourceFps: request.sourceFps } : {}),
+        ...(request.includeAudio !== undefined ? { includeAudio: request.includeAudio } : {}),
+        ...(request.x !== undefined ? { x: request.x } : {}),
+        ...(request.y !== undefined ? { y: request.y } : {}),
+      });
+      return FlaVideoImportResponseSchema.parse({
+        ok: true,
+        status: 'completed',
+        project: result.project,
+        baseRevision: result.baseRevision,
+        savedRevision: result.savedRevision,
+        videoAsset: result.videoAsset,
+        layer: result.layer,
+        ...(result.audioAsset ? { audioAsset: result.audioAsset } : {}),
+        ...(result.audioClipId ? { audioClipId: result.audioClipId } : {}),
+        ...(result.audioClipIds ? { audioClipIds: [...result.audioClipIds] } : {}),
+        ...(result.diagnostics ? { diagnostics: [...result.diagnostics] } : {}),
+        reusedVideoAsset: result.reusedVideoAsset,
+      });
+    } catch (error) {
+      if (error instanceof FlaEmbeddedVideoImportError) {
+        return FlaVideoImportResponseSchema.parse({
+          ok: false,
+          error: {
+            code: error.code,
+            message: error.message.trim().slice(0, 1_000) || 'Unable to import FLA embedded video.',
+            projectRoot: error.projectRoot,
+            ...(error.currentProject ? { currentProject: error.currentProject } : {}),
+            ...(error.currentRevision !== undefined ? { currentRevision: error.currentRevision } : {}),
+          },
+        });
+      }
+      const message =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim().slice(0, 1_000)
+          : 'Unable to import FLA embedded video.';
+      return FlaVideoImportResponseSchema.parse({
+        ok: false,
+        error: {
+          code: 'VIDEO_IMPORT_FAILED',
+          message,
+          projectRoot: request.projectRoot,
+        },
+      });
+    }
+  }
+
+  private assertTrackedSnapshotCurrent(
+    projectRoot: string,
+    requestedProject: Project | undefined,
+    expectedRevision: number | undefined,
+  ): FlaEmbeddedVideoProjectSnapshot | null {
+    const tracked = this.deps.getCurrentProjectSnapshot?.(projectRoot) ?? null;
+    if (!tracked) return null;
+    if (expectedRevision !== undefined && tracked.revision !== expectedRevision) {
+      throw new FlaEmbeddedVideoImportError(
+        'STALE_PROJECT_REVISION',
+        projectRoot,
+        'The Project changed before the FLA embedded video could be imported. Refresh and retry.',
+        {
+          currentProject: tracked.project,
+          currentRevision: tracked.revision,
+        },
+      );
+    }
+    if (requestedProject && tracked.project.id !== requestedProject.id) {
+      throw new FlaEmbeddedVideoImportError(
+        'STALE_PROJECT_REVISION',
+        projectRoot,
+        'The Project identity changed before the FLA embedded video could be imported.',
+        {
+          currentProject: tracked.project,
+          currentRevision: tracked.revision,
+        },
+      );
+    }
+    return tracked;
+  }
+
   /**
    * Formal product loop: extract native embedded video from an active FLA session,
    * persist the original media into <projectRoot>/assets/, register VideoAsset +
-   * optional AudioAsset/AudioClip + Video Layer, and save project.json atomically.
+   * optional AudioAsset/AudioClip + Video Layer against the active in-memory
+   * project snapshot (preserving unsaved edits), and save project.json atomically
+   * with full file rollback on failure or cancellation.
    */
   async importFromFlaSession(
     input: ImportEmbeddedVideoInput,
   ): Promise<ImportEmbeddedVideoResult> {
-    const signal = input.signal ?? new AbortController().signal;
-    signal.throwIfAborted();
-    if (!this.deps.flaImportService || !this.deps.projectService) {
-      throw new Error('FlaImportService and ProjectService are required for FLA embedded video import.');
+    const sessionController = new AbortController();
+    let sessionControllers = this.activeImportsBySession.get(input.sessionId);
+    if (!sessionControllers) {
+      sessionControllers = new Set();
+      this.activeImportsBySession.set(input.sessionId, sessionControllers);
     }
-    const prepared = await this.deps.flaImportService.prepareEmbeddedVideo(
-      input.sessionId,
-      input.videoName,
-      this.deps.ffmpegAdapter,
-      signal,
-    );
-    if (!prepared) {
-      throw new Error(`Embedded video "${input.videoName}" could not be extracted from FLA session.`);
-    }
-    signal.throwIfAborted();
+    sessionControllers.add(sessionController);
+    const signal = input.signal
+      ? AbortSignal.any([input.signal, sessionController.signal])
+      : sessionController.signal;
 
-    const opened = await this.deps.projectService.open(input.projectRoot);
-    const project = ProjectSchema.parse(opened.project);
-    const shotIndex = project.shots.findIndex((shot) => shot.id === input.shotId);
-    if (shotIndex < 0) {
-      throw new Error(`Target Shot "${input.shotId}" was not found in project.`);
-    }
-    const shot = project.shots[shotIndex]!;
-    const mediaSha256 = sha256Hex(prepared.bytes);
-    const ext = extensionForVideoMime(prepared.mimeType);
-    const firstTick = prepared.metadata.presentationTicks[0]!;
-    const durationMs = Math.max(
-      1,
-      Math.round(
-        ((prepared.metadata.endTick - firstTick) * prepared.metadata.timeBase.numerator * 1_000) /
-          prepared.metadata.timeBase.denominator,
-      ),
-    );
+    const throwIfCancelled = () => {
+      if (signal.aborted) {
+        throw new FlaEmbeddedVideoImportError(
+          'VIDEO_IMPORT_CANCELLED',
+          input.projectRoot,
+          'FLA embedded video import was cancelled.',
+        );
+      }
+    };
 
-    const existingVideo = project.assets.find(
-      (asset): asset is VideoAsset => asset.kind === 'video' && asset.sha256 === mediaSha256,
-    );
-    let videoAsset: VideoAsset;
-    let reusedVideoAsset = false;
-    let nextAssets = [...project.assets];
+    try {
+      throwIfCancelled();
+      if (!this.deps.flaImportService || !this.deps.projectService) {
+        throw new FlaEmbeddedVideoImportError(
+          'VIDEO_IMPORT_FAILED',
+          input.projectRoot,
+          'FlaImportService and ProjectService are required for FLA embedded video import.',
+        );
+      }
 
-    if (existingVideo) {
-      videoAsset = existingVideo;
-      reusedVideoAsset = true;
-    } else {
-      const relativePath = await writeUniqueProjectAsset(
-        input.projectRoot,
+      // Fail fast on stale revision before running ffprobe or touching disk.
+      this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+
+      const prepared = await this.deps.flaImportService.prepareEmbeddedVideo(
+        input.sessionId,
         input.videoName,
-        ext,
-        prepared.bytes,
+        this.deps.ffmpegAdapter,
+        signal,
       );
-      videoAsset = {
-        id: randomUUID(),
-        kind: 'video',
-        name: input.videoName.trim() || 'Embedded Video',
-        relativePath,
-        mimeType: prepared.mimeType,
-        sha256: mediaSha256,
-        width: prepared.metadata.width,
-        height: prepared.metadata.height,
-        durationMs,
-        videoTiming: {
-          codec: prepared.metadata.codec,
-          streamIndex: prepared.metadata.streamIndex,
-          ...(prepared.metadata.audioStreamIndex !== undefined
-            ? { audioStreamIndex: prepared.metadata.audioStreamIndex }
-            : {}),
-          ...(prepared.metadata.audioStartOffsetMs !== undefined
-            ? { audioStartOffsetMs: prepared.metadata.audioStartOffsetMs }
-            : {}),
-          timeBase: { ...prepared.metadata.timeBase },
-          startTick: prepared.metadata.startTick,
-          endTick: prepared.metadata.endTick,
-          presentationTicks: [...prepared.metadata.presentationTicks],
-          hasAudio: prepared.metadata.hasAudio,
-        },
-        flaVideoSource: {
-          sourceBasename: path.basename(prepared.originalEntryName),
-          sourceSha256: prepared.sourceSha256,
-          videoItemName: input.videoName,
-          originalEntryName: prepared.originalEntryName,
-        },
-      };
-      nextAssets.push(videoAsset);
-    }
-
-    let audioAsset: AudioAsset | undefined;
-    let audioClipId: string | undefined;
-    const audioClipIds: string[] = [];
-    const importDiagnostics: string[] = [];
-    let nextProject: Project = { ...project, assets: nextAssets };
-
-    if (prepared.metadata.hasAudio && input.includeAudio !== false) {
-      const videoFullPath = await resolveProjectAssetPath(input.projectRoot, videoAsset.relativePath);
-      if (!videoFullPath) {
-        throw new Error(`Persisted video asset "${videoAsset.relativePath}" could not be resolved.`);
+      throwIfCancelled();
+      if (!prepared) {
+        throw new FlaEmbeddedVideoImportError(
+          'SESSION_NOT_FOUND',
+          input.projectRoot,
+          `Embedded video "${input.videoName}" could not be extracted from FLA session.`,
+        );
       }
-      const tempAudioDir = await mkdtemp(path.join(tmpdir(), 'panda-stage-video-audio-'));
-      try {
-        const tempWavPath = path.join(tempAudioDir, 'track.wav');
-        await this.deps.ffmpegAdapter.extractFlaVideoAudioTrack(
-          {
-            videoPath: videoFullPath,
-            outputWavPath: tempWavPath,
-            audioStreamIndex: videoAsset.videoTiming.audioStreamIndex,
-          },
-          signal,
+
+      const executeMutation = async (
+        diskProject: Project,
+        saveProject: (project: Project, savedRevision: number) => Promise<Project>,
+      ): Promise<ImportEmbeddedVideoResult> => {
+        throwIfCancelled();
+        const tracked = this.assertTrackedSnapshotCurrent(
+          input.projectRoot,
+          input.project,
+          input.baseRevision,
         );
-        const wavBytes = await readFile(tempWavPath);
-        const wavSha256 = sha256Hex(wavBytes);
-        const existingAudio = nextAssets.find(
-          (asset): asset is AudioAsset => asset.kind === 'audio' && asset.sha256 === wavSha256,
-        );
-        if (existingAudio) {
-          audioAsset = existingAudio;
-        } else {
-          const probeAudio = await this.deps.ffmpegAdapter.probeAudioFile(tempWavPath, signal);
-          const audioDurationMs = Math.max(1, Math.round(probeAudio.durationSeconds * 1_000));
-          const audioRelativePath = await writeUniqueProjectAsset(
+        const authoritativeBase = input.project
+          ? ProjectSchema.parse(input.project)
+          : tracked
+            ? ProjectSchema.parse(tracked.project)
+            : ProjectSchema.parse(diskProject);
+        if (diskProject.id !== authoritativeBase.id) {
+          throw new FlaEmbeddedVideoImportError(
+            'STALE_PROJECT_REVISION',
             input.projectRoot,
-            `${input.videoName}-audio`,
-            '.wav',
-            wavBytes,
+            'The Project identity on disk does not match the active editor session.',
+            tracked
+              ? { currentProject: tracked.project, currentRevision: tracked.revision }
+              : undefined,
           );
-          audioAsset = {
-            id: randomUUID(),
-            kind: 'audio',
-            name: `${input.videoName.trim() || 'Embedded Video'} 音轨`,
-            relativePath: audioRelativePath,
-            mimeType: 'audio/wav',
-            sha256: wavSha256,
-            durationMs: audioDurationMs,
-          };
-          nextAssets = [...nextAssets, audioAsset];
-          nextProject = { ...nextProject, assets: nextAssets };
         }
-        const plannedAudio = planEmbeddedVideoAudioClips({
-          shotDurationMs: shot.durationMs,
-          layerStartTimeMs: input.startTimeMs,
-          videoDurationMs: durationMs,
-          audioDurationMs: audioAsset.durationMs ?? durationMs,
-          audioStartOffsetMs: videoAsset.videoTiming.audioStartOffsetMs,
-          playbackMode: input.playbackMode,
-          trimStartMs: input.trimStartMs,
-          trimEndMs: input.trimEndMs,
-        });
-        importDiagnostics.push(...plannedAudio.diagnostics);
-        if (plannedAudio.clips.length > 0) {
-          const audioClipService = this.deps.audioClipService ?? new AudioClipService();
-          for (let clipIndex = 0; clipIndex < plannedAudio.clips.length; clipIndex += 1) {
-            const planned = plannedAudio.clips[clipIndex]!;
-            nextProject = audioClipService.create(nextProject, {
-              shotId: shot.id,
-              assetId: audioAsset.id,
-              name: plannedAudio.clips.length > 1
-                ? `${audioAsset.name} #${clipIndex + 1}`
-                : audioAsset.name,
-              role: 'sfx',
-              startMs: planned.startMs,
-              endMs: planned.endMs,
-              offsetMs: planned.offsetMs,
-            });
-            const createdId = nextProject.shots[shotIndex]!.audioClips.at(-1)?.id;
-            if (createdId) audioClipIds.push(createdId);
+
+        const baseRevision = input.baseRevision ?? tracked?.revision ?? 0;
+        const savedRevision = baseRevision + 1;
+
+        const shotIndex = authoritativeBase.shots.findIndex((shot) => shot.id === input.shotId);
+        if (shotIndex < 0) {
+          throw new FlaEmbeddedVideoImportError(
+            'VIDEO_IMPORT_FAILED',
+            input.projectRoot,
+            `Target Shot "${input.shotId}" was not found in project.`,
+          );
+        }
+        const shot = authoritativeBase.shots[shotIndex]!;
+        const mediaSha256 = sha256Hex(prepared.bytes);
+        const ext = extensionForVideoMime(prepared.mimeType);
+        const firstTick = prepared.metadata.presentationTicks[0]!;
+        const durationMs = Math.max(
+          1,
+          Math.round(
+            ((prepared.metadata.endTick - firstTick) * prepared.metadata.timeBase.numerator * 1_000) /
+              prepared.metadata.timeBase.denominator,
+          ),
+        );
+
+        const writtenAssetFullPaths: string[] = [];
+        let projectSaved = false;
+        try {
+          const existingVideo = authoritativeBase.assets.find(
+            (asset): asset is VideoAsset => asset.kind === 'video' && asset.sha256 === mediaSha256,
+          );
+          let videoAsset: VideoAsset;
+          let reusedVideoAsset = false;
+          let nextAssets = [...authoritativeBase.assets];
+
+          if (existingVideo) {
+            videoAsset = existingVideo;
+            reusedVideoAsset = true;
+          } else {
+            const written = await writeUniqueProjectAsset(
+              input.projectRoot,
+              input.videoName,
+              ext,
+              prepared.bytes,
+            );
+            writtenAssetFullPaths.push(written.fullPath);
+            videoAsset = {
+              id: randomUUID(),
+              kind: 'video',
+              name: input.videoName.trim() || 'Embedded Video',
+              relativePath: written.relativePath,
+              mimeType: prepared.mimeType,
+              sha256: mediaSha256,
+              width: prepared.metadata.width,
+              height: prepared.metadata.height,
+              durationMs,
+              videoTiming: {
+                codec: prepared.metadata.codec,
+                streamIndex: prepared.metadata.streamIndex,
+                ...(prepared.metadata.audioStreamIndex !== undefined
+                  ? { audioStreamIndex: prepared.metadata.audioStreamIndex }
+                  : {}),
+                ...(prepared.metadata.audioStartOffsetMs !== undefined
+                  ? { audioStartOffsetMs: prepared.metadata.audioStartOffsetMs }
+                  : {}),
+                timeBase: { ...prepared.metadata.timeBase },
+                startTick: prepared.metadata.startTick,
+                endTick: prepared.metadata.endTick,
+                presentationTicks: [...prepared.metadata.presentationTicks],
+                hasAudio: prepared.metadata.hasAudio,
+              },
+              flaVideoSource: {
+                sourceBasename: path.basename(prepared.originalEntryName),
+                sourceSha256: prepared.sourceSha256,
+                videoItemName: input.videoName,
+                originalEntryName: prepared.originalEntryName,
+              },
+            };
+            nextAssets.push(videoAsset);
           }
-          audioClipId = audioClipIds[0];
+
+          throwIfCancelled();
+
+          let audioAsset: AudioAsset | undefined;
+          let audioClipId: string | undefined;
+          const audioClipIds: string[] = [];
+          const importDiagnostics: string[] = [];
+          let nextProject: Project = { ...authoritativeBase, assets: nextAssets };
+
+          if (prepared.metadata.hasAudio && input.includeAudio !== false) {
+            const videoFullPath = await resolveProjectAssetPath(input.projectRoot, videoAsset.relativePath);
+            if (!videoFullPath) {
+              throw new FlaEmbeddedVideoImportError(
+                'VIDEO_IMPORT_FAILED',
+                input.projectRoot,
+                `Persisted video asset "${videoAsset.relativePath}" could not be resolved.`,
+              );
+            }
+            const tempAudioDir = await mkdtemp(path.join(tmpdir(), 'panda-stage-video-audio-'));
+            try {
+              const tempWavPath = path.join(tempAudioDir, 'track.wav');
+              await this.deps.ffmpegAdapter.extractFlaVideoAudioTrack(
+                {
+                  videoPath: videoFullPath,
+                  outputWavPath: tempWavPath,
+                  audioStreamIndex: videoAsset.videoTiming.audioStreamIndex,
+                },
+                signal,
+              );
+              throwIfCancelled();
+              const wavBytes = await readFile(tempWavPath);
+              const wavSha256 = sha256Hex(wavBytes);
+              const existingAudio = nextAssets.find(
+                (asset): asset is AudioAsset => asset.kind === 'audio' && asset.sha256 === wavSha256,
+              );
+              if (existingAudio) {
+                audioAsset = existingAudio;
+              } else {
+                const probeAudio = await this.deps.ffmpegAdapter.probeAudioFile(tempWavPath, signal);
+                throwIfCancelled();
+                const audioDurationMs = Math.max(1, Math.round(probeAudio.durationSeconds * 1_000));
+                const writtenAudio = await writeUniqueProjectAsset(
+                  input.projectRoot,
+                  `${input.videoName}-audio`,
+                  '.wav',
+                  wavBytes,
+                );
+                writtenAssetFullPaths.push(writtenAudio.fullPath);
+                audioAsset = {
+                  id: randomUUID(),
+                  kind: 'audio',
+                  name: `${input.videoName.trim() || 'Embedded Video'} 音轨`,
+                  relativePath: writtenAudio.relativePath,
+                  mimeType: 'audio/wav',
+                  sha256: wavSha256,
+                  durationMs: audioDurationMs,
+                };
+                nextAssets = [...nextAssets, audioAsset];
+                nextProject = { ...nextProject, assets: nextAssets };
+              }
+              const plannedAudio = planEmbeddedVideoAudioClips({
+                shotDurationMs: shot.durationMs,
+                layerStartTimeMs: input.startTimeMs,
+                videoDurationMs: durationMs,
+                audioDurationMs: audioAsset.durationMs ?? durationMs,
+                audioStartOffsetMs: videoAsset.videoTiming.audioStartOffsetMs,
+                playbackMode: input.playbackMode,
+                trimStartMs: input.trimStartMs,
+                trimEndMs: input.trimEndMs,
+              });
+              importDiagnostics.push(...plannedAudio.diagnostics);
+              if (plannedAudio.clips.length > 0) {
+                const audioClipService = this.deps.audioClipService ?? new AudioClipService();
+                for (let clipIndex = 0; clipIndex < plannedAudio.clips.length; clipIndex += 1) {
+                  const planned = plannedAudio.clips[clipIndex]!;
+                  nextProject = audioClipService.create(nextProject, {
+                    shotId: shot.id,
+                    assetId: audioAsset.id,
+                    name: plannedAudio.clips.length > 1
+                      ? `${audioAsset.name} #${clipIndex + 1}`
+                      : audioAsset.name,
+                    role: 'sfx',
+                    startMs: planned.startMs,
+                    endMs: planned.endMs,
+                    offsetMs: planned.offsetMs,
+                  });
+                  const createdId = nextProject.shots[shotIndex]!.audioClips.at(-1)?.id;
+                  if (createdId) audioClipIds.push(createdId);
+                }
+                audioClipId = audioClipIds[0];
+              }
+            } finally {
+              await rm(tempAudioDir, { recursive: true, force: true }).catch(() => undefined);
+            }
+          }
+
+          throwIfCancelled();
+          // Re-verify tracked revision immediately before committing project.json (TOCTOU guard).
+          this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+
+          const updatedShot = nextProject.shots[shotIndex]!;
+          const maxZ = updatedShot.layers.reduce((max, item) => Math.max(max, item.zIndex), -1);
+          const layer: Layer = {
+            id: randomUUID(),
+            name: input.videoName.trim() || 'Embedded Video',
+            source: {
+              kind: 'video',
+              assetId: videoAsset.id,
+              ...(input.playbackMode ? { playbackMode: input.playbackMode } : {}),
+              ...(input.trimStartMs !== undefined ? { trimStartMs: input.trimStartMs } : {}),
+              ...(input.trimEndMs !== undefined ? { trimEndMs: input.trimEndMs } : {}),
+              ...(input.heldFrameIndex !== undefined ? { heldFrameIndex: input.heldFrameIndex } : {}),
+              ...(input.sourceFps !== undefined ? { sourceFps: input.sourceFps } : {}),
+              ...(audioAsset ? { audioAssetId: audioAsset.id } : {}),
+            },
+            anchor: 'center',
+            x: input.x ?? authoritativeBase.width / 2,
+            y: input.y ?? authoritativeBase.height / 2,
+            scaleX: 1,
+            scaleY: 1,
+            rotationDeg: 0,
+            opacity: 1,
+            visible: true,
+            locked: false,
+            flipX: false,
+            zIndex: maxZ + 1,
+            startTimeMs: input.startTimeMs ?? 0,
+          };
+
+          const nextShots = [...nextProject.shots];
+          nextShots[shotIndex] = {
+            ...updatedShot,
+            layers: [...updatedShot.layers, layer],
+          };
+          const finalProject = ProjectSchema.parse({
+            ...nextProject,
+            shots: nextShots,
+            updatedAt: new Date().toISOString(),
+          });
+          const savedProject = await saveProject(finalProject, savedRevision);
+          projectSaved = true;
+          return {
+            ok: true,
+            project: savedProject,
+            baseRevision,
+            savedRevision,
+            videoAsset,
+            layer,
+            ...(audioAsset ? { audioAsset } : {}),
+            ...(audioClipId ? { audioClipId } : {}),
+            ...(audioClipIds.length > 0 ? { audioClipIds } : {}),
+            ...(importDiagnostics.length > 0 ? { diagnostics: importDiagnostics } : {}),
+            reusedVideoAsset,
+          };
+        } catch (error) {
+          if (!projectSaved) {
+            for (const filePath of writtenAssetFullPaths) {
+              await rm(filePath, { force: true }).catch(() => undefined);
+            }
+          }
+          throw error;
         }
-      } finally {
-        await rm(tempAudioDir, { recursive: true, force: true }).catch(() => undefined);
+      };
+
+      const projectService = this.deps.projectService;
+      if (typeof projectService.transact === 'function') {
+        try {
+          return await projectService.transact(
+            input.projectRoot,
+            async (transaction: ProjectTransaction) =>
+              executeMutation(transaction.existingDocument.project, async (project, savedRevision) => {
+                const saved = await transaction.save(project, savedRevision, () => {
+                  throwIfCancelled();
+                  this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+                });
+                return saved.project;
+              }),
+          );
+        } catch (error) {
+          if (error instanceof FlaEmbeddedVideoImportError) throw error;
+          if (error instanceof ProjectServiceError && error.code === 'PROJECT_SAVE_STALE_REVISION') {
+            const tracked = this.deps.getCurrentProjectSnapshot?.(input.projectRoot) ?? null;
+            throw new FlaEmbeddedVideoImportError(
+              'STALE_PROJECT_REVISION',
+              input.projectRoot,
+              'The Project changed before the FLA embedded video could be saved. Refresh and retry.',
+              {
+                cause: error,
+                currentProject: tracked?.project,
+                currentRevision: tracked?.revision,
+              },
+            );
+          }
+          if (signal.aborted) {
+            throw new FlaEmbeddedVideoImportError(
+              'VIDEO_IMPORT_CANCELLED',
+              input.projectRoot,
+              'FLA embedded video import was cancelled.',
+              { cause: error },
+            );
+          }
+          throw error;
+        }
+      }
+
+      const opened = await projectService.open(input.projectRoot);
+      return await executeMutation(opened.project, async (project) => {
+        const saved = await projectService.save(input.projectRoot, project);
+        return saved.project;
+      });
+    } catch (error) {
+      if (error instanceof FlaEmbeddedVideoImportError) throw error;
+      if (signal.aborted) {
+        throw new FlaEmbeddedVideoImportError(
+          'VIDEO_IMPORT_CANCELLED',
+          input.projectRoot,
+          'FLA embedded video import was cancelled.',
+          { cause: error },
+        );
+      }
+      throw error;
+    } finally {
+      const remaining = this.activeImportsBySession.get(input.sessionId);
+      remaining?.delete(sessionController);
+      if (remaining && remaining.size === 0) {
+        this.activeImportsBySession.delete(input.sessionId);
       }
     }
-
-    const updatedShot = nextProject.shots[shotIndex]!;
-    const maxZ = updatedShot.layers.reduce((max, item) => Math.max(max, item.zIndex), -1);
-    const layer: Layer = {
-      id: randomUUID(),
-      name: input.videoName.trim() || 'Embedded Video',
-      source: {
-        kind: 'video',
-        assetId: videoAsset.id,
-        ...(input.playbackMode ? { playbackMode: input.playbackMode } : {}),
-        ...(input.trimStartMs !== undefined ? { trimStartMs: input.trimStartMs } : {}),
-        ...(input.trimEndMs !== undefined ? { trimEndMs: input.trimEndMs } : {}),
-        ...(input.heldFrameIndex !== undefined ? { heldFrameIndex: input.heldFrameIndex } : {}),
-        ...(input.sourceFps !== undefined ? { sourceFps: input.sourceFps } : {}),
-        ...(audioAsset ? { audioAssetId: audioAsset.id } : {}),
-      },
-      anchor: 'center',
-      x: input.x ?? project.width / 2,
-      y: input.y ?? project.height / 2,
-      scaleX: 1,
-      scaleY: 1,
-      rotationDeg: 0,
-      opacity: 1,
-      visible: true,
-      locked: false,
-      flipX: false,
-      zIndex: maxZ + 1,
-      startTimeMs: input.startTimeMs ?? 0,
-    };
-
-    const nextShots = [...nextProject.shots];
-    nextShots[shotIndex] = {
-      ...updatedShot,
-      layers: [...updatedShot.layers, layer],
-    };
-    const finalProject = ProjectSchema.parse({
-      ...nextProject,
-      shots: nextShots,
-      updatedAt: new Date().toISOString(),
-    });
-    const saved = await this.deps.projectService.save(input.projectRoot, finalProject);
-    return {
-      ok: true,
-      project: saved.project,
-      videoAsset,
-      layer,
-      ...(audioAsset ? { audioAsset } : {}),
-      ...(audioClipId ? { audioClipId } : {}),
-      ...(audioClipIds.length > 0 ? { audioClipIds } : {}),
-      ...(importDiagnostics.length > 0 ? { diagnostics: importDiagnostics } : {}),
-      reusedVideoAsset,
-    };
   }
 
   /**

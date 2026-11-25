@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -27,6 +27,13 @@ import {
   prepareExportVideoFrameMedia,
 } from '../../src/main/services/FlaEmbeddedVideoService';
 import { applyExportJobUpdate } from '../../src/renderer/shell/exportTaskState';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { importFlaEmbeddedVideoToEditor } from '../../src/renderer/features/fla-import/importFlaEmbeddedVideo';
+import { CanvasImageResourceSession } from '../../src/renderer/features/canvas/canvasImageResources';
+import {
+  FlaVideoImportRequestSchema,
+  FlaVideoImportResponseSchema,
+} from '../../src/shared/fla-video-api';
 import type { ExportJobUpdate } from '../../src/shared/export-types';
 import { preflightFlaBytes } from '../../src/main/services/fla-import-preflight-service';
 import { readFlaEmbeddedVideo } from '../../src/main/services/fla-native-video';
@@ -981,6 +988,320 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     } finally {
       unsubscribe();
       await prepService.dispose();
+    }
+  }, 60_000);
+
+  it('imports embedded video through the formal IPC/editor-store path preserving unsaved edits, Undo/Redo, stale-revision rejection, failure rollback, and Stage/Preview stale-seek safety (E-F06)', async () => {
+    const workDir = await makeTempDir('panda-ef06-');
+    const mp4Path = path.join(workDir, 'live.mp4');
+    await execFileAsync(bundledFfmpegPath, [
+      '-y',
+      '-f', 'lavfi', '-i', 'testsrc2=size=64x48:rate=10:duration=0.6',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=0.6',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest',
+      mp4Path,
+    ]);
+    const mp4Bytes = await readFile(mp4Path);
+    const flaZip = await buildFlaWithEmbeddedVideo('LiveClip', mp4Bytes);
+    const flaPath = path.join(workDir, 'live.fla');
+    await writeFile(flaPath, flaZip);
+    const preflight = preflightFlaBytes(flaZip, 'live.fla', flaPath);
+    const sessionId = randomUUID();
+
+    const projectRoot = path.join(workDir, 'live-project.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(projectRoot, {
+      name: 'live-project',
+    });
+    const shotId = randomUUID();
+    const bgAssetId = randomUUID();
+    const bgLayerId = randomUUID();
+    await writeFile(path.join(projectRoot, 'assets', 'bg.png'), TINY_PNG);
+    const seededProject = ProjectSchema.parse({
+      ...created.project,
+      assets: [
+        {
+          id: bgAssetId,
+          kind: 'image',
+          name: 'bg.png',
+          relativePath: 'assets/bg.png',
+          mimeType: 'image/png',
+          sha256: createHash('sha256').update(TINY_PNG).digest('hex'),
+          width: 1,
+          height: 1,
+          usage: 'background',
+          keywords: [],
+        },
+      ],
+      shots: [
+        {
+          id: shotId,
+          name: 'Shot 1',
+          durationMs: 1_000,
+          defaultSubtitleStyleId: created.project.subtitleStyles[0]!.id,
+          backgroundLayerId: bgLayerId,
+          layers: [
+            {
+              id: bgLayerId,
+              name: 'Background',
+              source: { kind: 'asset', assetId: bgAssetId },
+              anchor: 'center',
+              x: 960,
+              y: 540,
+              scaleX: 1,
+              scaleY: 1,
+              rotationDeg: 0,
+              opacity: 1,
+              visible: true,
+              locked: false,
+              flipX: false,
+              zIndex: 0,
+            },
+          ],
+          timelineEvents: [],
+          audioClips: [],
+          dialogues: [],
+        },
+      ],
+    });
+    await projectService.save(projectRoot, seededProject);
+
+    // 1. Open in real EditorProjectStore and create unsaved in-memory edits (dirty=true, revision=1):
+    const store = new EditorProjectStore();
+    store.open(projectRoot, seededProject);
+    const unsavedProject: Project = {
+      ...seededProject,
+      name: 'Unsaved User Draft',
+      shots: seededProject.shots.map((s) =>
+        s.id === shotId ? { ...s, name: 'Unsaved Shot Edit' } : s,
+      ),
+    };
+    store.updateProject(unsavedProject, 'Unsaved edit before FLA video import');
+    expect(store.getSnapshot()?.dirty).toBe(true);
+    expect(store.getSnapshot()?.revision).toBe(1);
+
+    // Track in-memory snapshot in Main (mirrors AutosaveService):
+    let trackedSnapshot: { project: Project; revision: number } | null = {
+      project: seededProject,
+      revision: 0,
+    };
+
+    const flaImportService = {
+      prepareEmbeddedVideo: async (
+        reqSessionId: string,
+        videoName: string,
+        adapter: Pick<FFmpegAdapter, 'probeFlaNativeVideo'>,
+        signal: AbortSignal,
+      ) => {
+        if (reqSessionId !== sessionId) return null;
+        const extracted = readFlaEmbeddedVideo(preflight.bytes, preflight.entries, videoName);
+        if (!extracted) return null;
+        const tmpDir = await makeTempDir('panda-ef06-probe-');
+        const tmpFile = path.join(tmpDir, 'source.mp4');
+        await writeFile(tmpFile, extracted.bytes);
+        const metadata = await adapter.probeFlaNativeVideo(tmpFile, signal);
+        return { ...extracted, metadata, sourceSha256: preflight.sha256 };
+      },
+    };
+
+    const ffmpegAdapter = new FFmpegAdapter({
+      ffmpegPath: bundledFfmpegPath,
+      ffprobePath: bundledFfprobePath,
+    });
+    const videoService = new FlaEmbeddedVideoService({
+      flaImportService,
+      projectService,
+      getCurrentProjectSnapshot: (root) => (root === projectRoot ? trackedSnapshot : null),
+      ffmpegAdapter,
+    });
+
+    try {
+      // 2. Stale revision rejection BEFORE touching disk or writing any asset file:
+      const staleResponse = await videoService.importFromFlaSessionRequest(
+        FlaVideoImportRequestSchema.parse({
+          sessionId,
+          videoName: 'LiveClip',
+          projectRoot,
+          project: store.getSnapshot()!.project,
+          baseRevision: 1, // Main still tracks revision 0 -> stale!
+          shotId,
+          playbackMode: 'play-once',
+        }),
+      );
+      expect(staleResponse.ok).toBe(false);
+      if (!staleResponse.ok) {
+        expect(staleResponse.error.code).toBe('STALE_PROJECT_REVISION');
+        expect(staleResponse.error.currentRevision).toBe(0);
+      }
+      const assetsAfterStale = await readdir(path.join(projectRoot, 'assets')).catch(() => []);
+      expect(assetsAfterStale).toEqual(['bg.png']);
+
+      // 3. Failure rollback: simulate audio extraction crash -> newly written .mp4 must be cleaned up!
+      const failingVideoService = new FlaEmbeddedVideoService({
+        flaImportService,
+        projectService,
+        getCurrentProjectSnapshot: () => ({
+          project: store.getSnapshot()!.project,
+          revision: store.getSnapshot()!.revision,
+        }),
+        ffmpegAdapter: {
+          probeFlaNativeVideo: (p, s) => ffmpegAdapter.probeFlaNativeVideo(p, s),
+          decodeFlaVideoFramesSequential: (i, s) => ffmpegAdapter.decodeFlaVideoFramesSequential(i, s),
+          extractFlaVideoAudioTrack: async () => {
+            throw new Error('simulated audio extraction failure');
+          },
+          probeAudioFile: (p, s) => ffmpegAdapter.probeAudioFile(p, s),
+        },
+      });
+      const failedResp = await failingVideoService.importFromFlaSessionRequest({
+        sessionId,
+        videoName: 'LiveClip',
+        projectRoot,
+        project: store.getSnapshot()!.project,
+        baseRevision: 1,
+        shotId,
+        includeAudio: true,
+      });
+      expect(failedResp.ok).toBe(false);
+      const assetsAfterRollback = await readdir(path.join(projectRoot, 'assets')).catch(() => []);
+      expect(assetsAfterRollback).toEqual(['bg.png']);
+
+      // 4. Real product editor flow via importFlaEmbeddedVideoToEditor (syncAutosave + lease + IPC + HistoryStore):
+      let selectedLayerId: string | null = null;
+      const imported = await importFlaEmbeddedVideoToEditor({
+        sessionId,
+        videoName: 'LiveClip',
+        shotId,
+        playbackMode: 'play-once',
+        includeAudio: true,
+        store,
+        syncAutosave: async (snap) => {
+          trackedSnapshot = { project: snap.project, revision: snap.revision };
+          return { ok: true };
+        },
+        importVideo: async (req) => {
+          const validatedReq = FlaVideoImportRequestSchema.parse(req);
+          return FlaVideoImportResponseSchema.parse(
+            await videoService.importFromFlaSessionRequest(validatedReq),
+          );
+        },
+        selectLayer: (layerId) => {
+          selectedLayerId = layerId;
+        },
+      });
+      expect(imported.ok).toBe(true);
+      if (!imported.ok) throw new Error(imported.error.message);
+      expect(selectedLayerId).toBe(imported.layer.id);
+
+      // Unsaved edits were PRESERVED (not overwritten by stale disk open!), and video+audio were added:
+      const liveSnapshot = store.getSnapshot()!;
+      expect(liveSnapshot.revision).toBe(2);
+      expect(liveSnapshot.dirty).toBe(false);
+      expect(liveSnapshot.project.name).toBe('Unsaved User Draft');
+      expect(liveSnapshot.project.shots[0]!.name).toBe('Unsaved Shot Edit');
+      expect(liveSnapshot.project.assets.some((a) => a.id === imported.videoAsset.id && a.kind === 'video')).toBe(true);
+      expect(liveSnapshot.project.shots[0]!.layers.some((l) => l.id === imported.layer.id)).toBe(true);
+      expect(liveSnapshot.project.shots[0]!.audioClips.length).toBeGreaterThan(0);
+
+      // Undo restores exact pre-import unsaved draft; Redo restores the imported video:
+      expect(store.undo()).toBe(true);
+      expect(store.getSnapshot()!.project.name).toBe('Unsaved User Draft');
+      expect(store.getSnapshot()!.project.shots[0]!.layers.some((l) => l.id === imported.layer.id)).toBe(false);
+      expect(store.getSnapshot()!.dirty).toBe(true);
+      expect(store.redo()).toBe(true);
+      expect(store.getSnapshot()!.project.shots[0]!.layers.some((l) => l.id === imported.layer.id)).toBe(true);
+
+      // Disk save matches reopened project:
+      const reopened = await projectService.open(projectRoot);
+      expect(reopened.project.name).toBe('Unsaved User Draft');
+      expect(reopened.project.shots[0]!.name).toBe('Unsaved Shot Edit');
+      expect(reopened.project.assets.some((a) => a.id === imported.videoAsset.id)).toBe(true);
+
+      // 5. Real Stage consumption path (AssetCanvasImageService + CanvasImageResourceSession) stale-seek discard:
+      trackedSnapshot = { project: reopened.project, revision: 2 };
+      const canvasImageService = new AssetCanvasImageService({
+        getCurrentProjectSnapshot: () => ({ project: reopened.project }),
+        embeddedVideoService: videoService,
+      });
+      const frame0Key = evaluateShotAtTime(reopened.project.shots[0]!, 0, reopened.project).layers.find(
+        (l) => l.id === imported.layer.id,
+      )!.assetId!;
+      const frame4Key = evaluateShotAtTime(reopened.project.shots[0]!, 400, reopened.project).layers.find(
+        (l) => l.id === imported.layer.id,
+      )!.assetId!;
+      expect(frame0Key).not.toBe(frame4Key);
+
+      let resolveSlowFrame0!: (resp: Awaited<ReturnType<AssetCanvasImageService['read']>>) => void;
+      const slowFrame0Promise = new Promise<Awaited<ReturnType<AssetCanvasImageService['read']>>>((resolve) => {
+        resolveSlowFrame0 = resolve;
+      });
+      const frame0Actual = await canvasImageService.read({
+        projectRoot,
+        assetId: frame0Key,
+        sha256: imported.videoAsset.sha256!,
+      });
+      const frame4Actual = await canvasImageService.read({
+        projectRoot,
+        assetId: frame4Key,
+        sha256: imported.videoAsset.sha256!,
+      });
+      expect(frame0Actual.ok && frame4Actual.ok).toBe(true);
+
+      const revokedUrls: string[] = [];
+      let nextUrlId = 0;
+      const session = new CanvasImageResourceSession({
+        readCanvasImage: async (req) =>
+          req.assetId === frame0Key ? slowFrame0Promise : frame4Actual,
+        createImage: () => {
+          const fakeImg = {
+            onload: null as null | (() => void),
+            onerror: null as null | (() => void),
+            _src: '',
+            get src() {
+              return this._src;
+            },
+            set src(value: string) {
+              this._src = value;
+              queueMicrotask(() => this.onload?.());
+            },
+          };
+          return fakeImg as unknown as HTMLImageElement;
+        },
+        createObjectUrl: () => `blob:video-${++nextUrlId}`,
+        revokeObjectUrl: (url) => {
+          revokedUrls.push(url);
+        },
+      });
+      const observedStates: Array<ReadonlyMap<string, HTMLImageElement>> = [];
+      session.reconcile(
+        {
+          contextKey: 'ctx-1',
+          projectRoot,
+          assets: [{ id: frame0Key, sha256: imported.videoAsset.sha256 }],
+        },
+        (s) => observedStates.push(s.images),
+      );
+      // Rapid seek to frame 4 BEFORE frame 0 resolves:
+      session.reconcile(
+        {
+          contextKey: 'ctx-1',
+          projectRoot,
+          assets: [{ id: frame4Key, sha256: imported.videoAsset.sha256 }],
+        },
+        (s) => observedStates.push(s.images),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Now slow stale frame 0 resolves late -> MUST be discarded!
+      resolveSlowFrame0(frame0Actual);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const finalImages = session.getSnapshot().images;
+      expect(finalImages.has(frame4Key)).toBe(true);
+      expect(finalImages.has(frame0Key)).toBe(false);
+      session.dispose();
+      expect(revokedUrls.length).toBeGreaterThan(0);
+    } finally {
+      await videoService.dispose();
     }
   }, 60_000);
 });

@@ -454,7 +454,10 @@ async function initialize(): Promise<void> {
     onRecentProjectError: (error) => {
       console.error('Recent project update failed.', error);
     },
-    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
+    onProjectContextChanged: () => {
+      flaPartPreviewService?.invalidateAll();
+      void flaEmbeddedVideoService?.dispose();
+    },
   });
   exportPreparationService = new ExportPreparationService({
     getCurrentProjectSnapshot: (projectRoot) => {
@@ -539,7 +542,10 @@ async function initialize(): Promise<void> {
     projectService,
     recoveryService,
     autosaveService,
-    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
+    onProjectContextChanged: () => {
+      flaPartPreviewService?.invalidateAll();
+      void flaEmbeddedVideoService?.dispose();
+    },
   });
   removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
     getMainWindow: () => mainWindow,
@@ -612,6 +618,8 @@ async function initialize(): Promise<void> {
       embeddedVideoService: (flaEmbeddedVideoService = new FlaEmbeddedVideoService({
         flaImportService,
         projectService,
+        getCurrentProjectSnapshot: (projectRoot) =>
+          autosaveService?.getProjectSnapshot(projectRoot) ?? null,
         ffmpegAdapter,
       })),
     }),
@@ -643,6 +651,7 @@ async function initialize(): Promise<void> {
     flaImportService,
     flaAssetCommitService,
     flaSoundService,
+    flaEmbeddedVideoService: flaEmbeddedVideoService ?? undefined,
     selectFlaSource,
     onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
@@ -703,6 +712,7 @@ async function initialize(): Promise<void> {
   removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
     flaPartPreviewService?.invalidateSession(sessionId);
     flaSoundService.cancelPreview(sessionId);
+    flaEmbeddedVideoService?.cancelImportsForSession(sessionId);
   });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,
