@@ -55,6 +55,7 @@ import type {
   VideoProbeResult,
 } from '../../shared/ffmpeg-types';
 import type { FrozenExportInput } from './ExportPreparationService';
+import { freezeMp4OutputProfile, type ExportOutputFps, type ExportRenderSettings } from '../../shared/export-output-profile';
 import type { FrameFileSystem } from './FileSystemService';
 
 export interface FrameRenderer {
@@ -71,7 +72,7 @@ export interface FullProbeMediaAdapter {
     request: {
       framesDirectory: string;
       outputPath: string;
-      fps: 24;
+      fps: ExportOutputFps;
       overwrite: boolean;
     },
     signal?: AbortSignal,
@@ -1102,7 +1103,7 @@ export class ExportService {
         record,
         {
           durationMs,
-          fps: input.candidate.renderSettings.fps,
+          ...input.candidate.renderSettings,
         },
         jobDirectory,
         () =>
@@ -1110,6 +1111,7 @@ export class ExportService {
             jobId: active.jobId,
             project: input.candidate.project,
             cameraMode: input.candidate.cameraMode,
+            renderSettings: input.candidate.renderSettings,
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
             media: input.media
               .filter((entry) => entry.kind === 'image')
@@ -1126,7 +1128,8 @@ export class ExportService {
       record.phase = 'encoding';
       this.emit(record);
       const silentVideoPath = audioMixPlan
-        ? path.join(jobDirectory, 'formal-silent.mp4')
+        ? path.join(jobDirectory, 'formal-silent.' + ('format' in input.candidate.renderSettings
+          ? input.candidate.renderSettings.format : 'mp4'))
         : finalOutputStagingPath;
       await adapter.encodePngSequence(
         {
@@ -1162,7 +1165,7 @@ export class ExportService {
       );
       this.assertFormalProbeMatches(
         probe,
-        input.candidate.renderSettings.fps,
+        input.candidate.renderSettings,
         record.totalFrames,
         audioMixPlan,
       );
@@ -1228,14 +1231,16 @@ export class ExportService {
 
   private assertFormalProbeMatches(
     probe: VideoProbeResult,
-    fps: 24,
+    settings: ExportRenderSettings,
     frameCount: number,
     audioMixPlan: ExportAudioMixPlan | null,
   ): void {
     const failures: string[] = [];
-    if (probe.codecName !== 'h264') failures.push('codec');
+    const { fps, width, height } = settings;
+    const profile = 'videoCodec' in settings ? settings : freezeMp4OutputProfile();
+    if (probe.codecName !== profile.videoCodec) failures.push('codec');
     if (probe.pixelFormat !== 'yuv420p') failures.push('pixel format');
-    if (probe.width !== 1_920 || probe.height !== 1_080) {
+    if (probe.width !== width || probe.height !== height) {
       failures.push('frame size');
     }
     if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001) {
@@ -1245,10 +1250,17 @@ export class ExportService {
     if (audioMixPlan) {
       if (!probe.hasAudio) failures.push('audio stream missing');
       if (probe.audioStreamCount !== 1) failures.push('audio stream count');
-      if (probe.audioCodecName !== 'aac') failures.push('audio codec');
+      if (probe.audioCodecName !== profile.audioCodec) failures.push('audio codec');
       if (probe.audioSampleRate !== 48_000) failures.push('audio sample rate');
       if (!probe.audioChannels || probe.audioChannels <= 0) {
         failures.push('audio channels');
+      }
+      if (profile.format === 'webm') {
+        // Opus decoder preroll can place the first audio timestamp just before the video.
+        const startDifference = (probe.videoStartSeconds ?? Number.NaN) - (probe.audioStartSeconds ?? Number.NaN);
+        if (!Number.isFinite(startDifference) || Math.abs(startDifference) > 0.025) {
+          failures.push('audio/video start alignment');
+        }
       }
       const expectedAudioDurationSeconds = audioMixPlan.durationMs / 1_000;
       if (
@@ -1271,7 +1283,7 @@ export class ExportService {
       failures.push('duration');
     }
     if (failures.length > 0) {
-      throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
+      throw new Error('Formal ' + profile.format.toUpperCase() + ' verification failed: ' + failures.join(', '));
     }
   }
 
@@ -1396,7 +1408,7 @@ export class ExportService {
   private async renderFrames(
     active: ActiveJob,
     record: ExportJobRecord,
-    config: { durationMs: number; fps: 24 },
+    config: { durationMs: number; fps: ExportOutputFps; width?: number; height?: number },
     jobDirectory: string,
     loadProject: () => Promise<unknown>,
     project?: FrozenExportInput['candidate']['project'],
@@ -1468,11 +1480,16 @@ export class ExportService {
           rendered.frameIndex !== frame.frameIndex ||
           rendered.timeMs !== frame.timeMs ||
           rendered.shotId !== request.shotId ||
-          rendered.shotLocalTimeMs !== request.shotLocalTimeMs
+          rendered.shotLocalTimeMs !== request.shotLocalTimeMs ||
+          rendered.width !== (config.width ?? 1920) ||
+          rendered.height !== (config.height ?? 1080)
         ) {
           throw new Error(
             `Renderer returned mismatched frame ${rendered.frameIndex}.`,
           );
+        }
+        if (config.width !== undefined && config.height !== undefined) {
+          assertExportPngSize(rendered.pngBytes, config.width, config.height);
         }
 
         totalBytes += rendered.pngBytes.byteLength;
@@ -1532,7 +1549,7 @@ export class ExportService {
 
   private createJob(config: {
     durationMs: number;
-    fps: 24;
+    fps: ExportOutputFps;
     attemptId?: string;
     snapshotId?: string;
     totalFrames?: number;

@@ -7,6 +7,7 @@ import {
   unlink,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { freezeVideoOutputProfile, type ExportVideoFormat } from '../../shared/export-output-profile';
 import {
   ProjectSchema,
   type Asset,
@@ -88,6 +89,7 @@ interface OutputSelection {
   overwriteApproved: boolean;
   targetIdentity: ExportOutputTargetIdentity | null;
   pngSequence?: PngSequenceOptions;
+  videoFormat?: ExportVideoFormat;
 }
 
 interface ActivePreparation {
@@ -266,6 +268,10 @@ export class ExportPreparationService {
     }
 
     try {
+      const videoFormat = request.videoFormat ?? 'mp4';
+      if (!request.pngSequence && path.extname(selectedPath).toLowerCase() !== '.' + videoFormat) {
+        return { status: 'blocked', issue: this.outputChangedIssue() };
+      }
       const target = await captureTargetIdentity(selectedPath, Boolean(request.pngSequence));
       if (target.identity !== null) {
         return { status: 'blocked', issue: this.outputExistsIssue() };
@@ -295,6 +301,7 @@ export class ExportPreparationService {
         overwriteApproved: false,
         targetIdentity: target.identity,
         pngSequence: request.pngSequence,
+        videoFormat,
       };
       if (request.snapshotId) {
         const stored = this.candidates.get(request.snapshotId);
@@ -306,6 +313,9 @@ export class ExportPreparationService {
         }
         const candidate = stored.candidate;
         if (Boolean(candidate.pngSequence) !== Boolean(selection.pngSequence)) {
+          return { status: 'blocked', issue: this.outputChangedIssue() };
+        }
+        if (!candidate.pngSequence && ('format' in candidate.renderSettings ? candidate.renderSettings.format : 'mp4') !== videoFormat) {
           return { status: 'blocked', issue: this.outputChangedIssue() };
         }
         if (
@@ -739,7 +749,8 @@ export class ExportPreparationService {
         ...(selection.pngSequence ? { pngSequence: selection.pngSequence } : {}),
         capturedAt: this.now().toISOString(),
         project,
-        renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
+        renderSettings: selection.pngSequence ? EXPORT_PREPARATION_RENDER_SETTINGS
+          : freezeVideoOutputProfile(selection.videoFormat ?? 'mp4', request.videoOutput),
         cameraMode: request.cameraMode,
         ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
@@ -1443,8 +1454,8 @@ async function captureTargetIdentity(
     throw new Error('The selected output path exceeds the supported length.');
   }
   const absoluteTargetPath = path.resolve(rawTargetPath);
-  if (!directoryTarget && path.extname(absoluteTargetPath).toLocaleLowerCase() !== '.mp4') {
-    throw new Error('The selected output must use the .mp4 extension.');
+  if (!directoryTarget && !['.mp4', '.webm'].includes(path.extname(absoluteTargetPath).toLocaleLowerCase())) {
+    throw new Error('The selected output must use a supported video extension.');
   }
   const parentDirectory = await realpath(path.dirname(absoluteTargetPath));
   await assertOutputDirectoryWritable(parentDirectory);

@@ -39,7 +39,7 @@ import {
   isExactExportFrameReady,
   readExportStageReadiness,
 } from './export-frame-readiness';
-import { captureExportStageCanvas } from './stage-capture';
+import { captureExportStageCanvas, resizeExportOutputCanvas } from './stage-capture';
 import { WorkerPngEncoder } from './worker-png-encoder';
 
 const exportStageDrawMode = parseExportDrawMode(
@@ -484,6 +484,15 @@ export function ExportRendererApp(): React.JSX.Element {
       return;
     }
 
+    const outputWidth = formalRequest?.renderSettings?.width ?? 1920;
+    const outputHeight = formalRequest?.renderSettings?.height ?? 1080;
+    let outputCanvas: HTMLCanvasElement;
+    try {
+      outputCanvas = resizeExportOutputCanvas(canvas, outputWidth, outputHeight);
+    } catch (error) {
+      failFrame(activeFrame, error);
+      return;
+    }
     const pngEncodingStartedAt = performance.now();
     const activePngMode = formalRequest ? exportPngMode : 'legacy-blob';
     const pngEncoder =
@@ -493,11 +502,11 @@ export function ExportRendererApp(): React.JSX.Element {
       return;
     }
     const encoding = pngEncoder
-      ? pngEncoder.encode(canvas, activeFrame).then((result) => ({
+      ? pngEncoder.encode(outputCanvas, activeFrame).then((result) => ({
           pngBytes: result.pngBytes,
           timing: result.timing,
         }))
-      : canvasToPngBytes(canvas).then((pngBytes) => ({
+      : canvasToPngBytes(outputCanvas).then((pngBytes) => ({
           pngBytes,
           timing: null,
         }));
@@ -555,8 +564,8 @@ export function ExportRendererApp(): React.JSX.Element {
                 shotId: activeFrame.shotId,
                 shotLocalTimeMs: activeFrame.shotLocalTimeMs,
               }),
-          width: 1_920,
-          height: 1_080,
+          width: outputWidth,
+          height: outputHeight,
           pngBytes,
         });
         activeFrameRef.current = null;
