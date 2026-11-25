@@ -5,5 +5,6 @@ export * from './convergingFlight';
 export * from './characterPartLayout';
 export * from './cubicBezierPath';
 export * from './radialBurst';
+export * from './richEasing';
 export * from './staticArrayLayout';
 export * from './viewportTransform';

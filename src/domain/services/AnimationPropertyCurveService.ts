@@ -1,5 +1,19 @@
-import { assertLayerClipFinalScalesInBounds } from '../evaluate-shot-at-time';
+import {
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
+  LAYER_MAX_SCALE,
+  LAYER_MIN_SCALE,
+} from '../constants';
+import {
+  assertLayerClipFinalScalesInBounds,
+  evaluateLayerPreTrackState,
+} from '../evaluate-shot-at-time';
 import { evaluateAnimationTrackAtTime, sliceAnimationCurve } from '../evaluate-animation-core';
+import {
+  evaluateRichEasing,
+  isRichEasingPresetId,
+  type RichEasingPresetId,
+} from '../geometry/richEasing';
 import {
   AnimationKeySchema, sameAnimationTarget,
   type AnimationKey, type AnimationProperty, type AnimationTargetRef,
@@ -14,6 +28,56 @@ export interface AnimationPropertyKeyAddress {
   target: AnimationTargetRef;
   property: AnimationProperty;
   keyTimeMs: number;
+}
+
+export type CurveEditableProperty = AnimationProperty | 'opacity';
+
+export interface RichEasingPropertyApplicability {
+  readonly applicable: boolean;
+  readonly reason?: string;
+}
+
+export interface BakeRichEasingInput {
+  readonly shotId: string;
+  readonly target: AnimationTargetRef;
+  readonly property: CurveEditableProperty;
+  readonly presetId: RichEasingPresetId;
+  /**
+   * Two or more existing keyframe timestamps on the target property track.
+   * Each adjacent segment spanning the selected keyframes is baked separately
+   * on the 24 FPS Shot-local frame grid while preserving all existing manual
+   * anchor keyframes.
+   */
+  readonly keyTimesMs: readonly number[];
+}
+
+export interface BakeRichEasingResult {
+  readonly project: Project;
+  readonly bakedSegments: number;
+  readonly insertedKeys: number;
+  readonly preservedAnchorTimesMs: readonly number[];
+  readonly clampedScaleSamples: number;
+}
+
+const OPACITY_INAPPLICABLE_REASON =
+  '透明度使用单段事件而非属性关键帧轨，暂不支持烘焙高级缓动关键帧。';
+
+/**
+ * Determine whether a curve-panel property supports rich easing native keyframe
+ * baking. Opacity is modeled as a single `OpacityEvent` interval rather than a
+ * multi-keyframe `AnimationTrack`, so it is explicitly locally inapplicable.
+ */
+export function getRichEasingPropertyApplicability(
+  property: CurveEditableProperty,
+  presetId?: RichEasingPresetId,
+): RichEasingPropertyApplicability {
+  if (presetId !== undefined && !isRichEasingPresetId(presetId)) {
+    return { applicable: false, reason: '不支持的高级缓动预设。' };
+  }
+  if (property === 'opacity') {
+    return { applicable: false, reason: OPACITY_INAPPLICABLE_REASON };
+  }
+  return { applicable: true };
 }
 
 /** Edit an endpoint of the existing opacity interval, preserving its event identity and ownership. */
@@ -166,4 +230,182 @@ export function retimeAnimationPropertyRange(
   if (range.mode !== 'hold' && keys.every((key, index) => key.timeMs === track.keys[index]?.timeMs)) return project;
   return commitTrackChanges(project, shot, layer, clip.tracks.map((candidate) =>
     candidate === track ? { ...track, keys } : candidate), keys.slice(start, end + 2).map(({ timeMs }) => timeMs));
+}
+
+/**
+ * Bake a rich easing preset into native linear keyframes on the formal 24 FPS
+ * Shot-local frame grid across the selected keyframe span of one transform track.
+ *
+ * - Preserves all existing manual anchor keyframes and external adjacent segments.
+ * - Clears replaced curve metadata only on baked segments.
+ * - Preserves `back` overshoot on position/rotation; clamps scale samples to
+ *   the target's legal scale range per property without mutating endpoints.
+ * - Rejects opacity, locked layers, missing/stale keys, or invalid targets atomically.
+ */
+export function bakeRichEasingToPropertySegments(
+  project: Project,
+  input: BakeRichEasingInput,
+): BakeRichEasingResult {
+  if (!isRichEasingPresetId(input.presetId)) {
+    throw new Error('不支持的高级缓动预设。');
+  }
+  const applicability = getRichEasingPropertyApplicability(input.property, input.presetId);
+  if (!applicability.applicable) {
+    throw new Error(applicability.reason ?? '该属性不支持烘焙高级缓动。');
+  }
+
+  const shot = project.shots.find(({ id }) => id === input.shotId);
+  const layer = shot?.layers.find(({ id }) => id === input.target.layerId);
+  const clip = layer?.animationClip;
+  if (!shot || !layer || !clip || layer.locked) {
+    throw new Error('所选对象动作已不可编辑。');
+  }
+  const track = clip.tracks.find(
+    (candidate) =>
+      candidate.property === input.property &&
+      sameAnimationTarget(candidate.target, input.target),
+  );
+  if (!track) {
+    throw new Error('所选属性轨道已不存在。');
+  }
+
+  if (input.keyTimesMs.length < 2) {
+    throw new Error('请至少选择两个关键帧以确定可烘焙区段。');
+  }
+
+  const seenTimes = new Set<number>();
+  const selectedIndices: number[] = [];
+  for (const timeMs of input.keyTimesMs) {
+    if (!isValidFrameTime(timeMs) || timeMs > shot.durationMs) {
+      throw new Error('所选关键帧时间不在镜头有效帧网格内。');
+    }
+    if (seenTimes.has(timeMs)) {
+      throw new Error('所选关键帧不能包含重复时间戳。');
+    }
+    seenTimes.add(timeMs);
+    const keyIndex = track.keys.findIndex((key) => key.timeMs === timeMs);
+    if (keyIndex < 0) {
+      throw new Error('所选属性关键帧已不存在。');
+    }
+    selectedIndices.push(keyIndex);
+  }
+
+  selectedIndices.sort((left, right) => left - right);
+  const startIndex = selectedIndices[0]!;
+  const endIndex = selectedIndices[selectedIndices.length - 1]!;
+  if (endIndex <= startIndex) {
+    throw new Error('请至少选择两个关键帧以确定可烘焙区段。');
+  }
+  if (track.keys[endIndex]!.timeMs > shot.durationMs) {
+    throw new Error('所选关键帧时间超出镜头时长。');
+  }
+
+  const isScaleProperty =
+    track.property === 'transform.scaleX' || track.property === 'transform.scaleY';
+  const layerEvents =
+    isScaleProperty && track.target.kind === 'layer'
+      ? shot.timelineEvents.filter((event) => event.layerId === layer.id)
+      : undefined;
+
+  const nextKeys: AnimationKey[] = track.keys.slice(0, startIndex);
+  const preservedAnchorTimesMs: number[] = [];
+  const checkTimes: number[] = [];
+  let insertedKeys = 0;
+  let clampedScaleSamples = 0;
+
+  for (let seg = startIndex; seg < endIndex; seg += 1) {
+    const fromKey = track.keys[seg]!;
+    const toKey = track.keys[seg + 1]!;
+    preservedAnchorTimesMs.push(fromKey.timeMs);
+    checkTimes.push(fromKey.timeMs);
+    // Preserve start anchor timestamp & value; clear replaced curve metadata on this segment.
+    nextKeys.push({
+      timeMs: fromKey.timeMs,
+      value: fromKey.value,
+      interpolationToNext: 'linear',
+    });
+
+    const startFrame = Math.round((fromKey.timeMs * TIMELINE_FPS) / 1_000);
+    const endFrame = Math.round((toKey.timeMs * TIMELINE_FPS) / 1_000);
+    const spanMs = toKey.timeMs - fromKey.timeMs;
+
+    for (let frameIndex = startFrame + 1; frameIndex < endFrame; frameIndex += 1) {
+      const timeMs = frameTimeMs(frameIndex, TIMELINE_FPS);
+      if (timeMs <= fromKey.timeMs || timeMs >= toKey.timeMs || timeMs > shot.durationMs) {
+        continue;
+      }
+      const progress = (timeMs - fromKey.timeMs) / spanMs;
+      const eased = evaluateRichEasing(input.presetId, progress);
+      let value = fromKey.value + (toKey.value - fromKey.value) * eased;
+      if (!Number.isFinite(value)) {
+        throw new Error('高级缓动烘焙产生了非法数值。');
+      }
+
+      if (isScaleProperty) {
+        let minLegal: number;
+        let maxLegal: number;
+        if (track.target.kind === 'layer') {
+          const preTrack = evaluateLayerPreTrackState(shot, layer, timeMs, project, layerEvents);
+          const preScale =
+            track.property === 'transform.scaleX' ? preTrack.scaleX : preTrack.scaleY;
+          if (!Number.isFinite(preScale) || preScale <= 0) {
+            throw new Error('图层基础缩放无效，无法烘焙缩放缓动。');
+          }
+          minLegal = LAYER_MIN_SCALE / preScale;
+          maxLegal = LAYER_MAX_SCALE / preScale;
+        } else {
+          minLegal = CHARACTER_PART_MIN_SCALE;
+          maxLegal = CHARACTER_PART_MAX_SCALE;
+        }
+        if (value < minLegal) {
+          value = minLegal;
+          clampedScaleSamples += 1;
+        } else if (value > maxLegal) {
+          value = maxLegal;
+          clampedScaleSamples += 1;
+        }
+      }
+
+      const normalizedValue = value === 0 ? 0 : value;
+      nextKeys.push({
+        timeMs,
+        value: normalizedValue,
+        interpolationToNext: 'linear',
+      });
+      checkTimes.push(timeMs);
+      insertedKeys += 1;
+    }
+  }
+
+  const endAnchor = track.keys[endIndex]!;
+  preservedAnchorTimesMs.push(endAnchor.timeMs);
+  checkTimes.push(endAnchor.timeMs);
+  // End anchor and all subsequent keys keep their exact values, interpolationToNext, and curveToNext.
+  nextKeys.push(...track.keys.slice(endIndex));
+
+  const bakedSegments = endIndex - startIndex;
+  const unchanged =
+    nextKeys.length === track.keys.length &&
+    nextKeys.every((key, index) => JSON.stringify(key) === JSON.stringify(track.keys[index]));
+  if (unchanged) {
+    return {
+      project,
+      bakedSegments,
+      insertedKeys: 0,
+      preservedAnchorTimesMs,
+      clampedScaleSamples: 0,
+    };
+  }
+
+  const nextTracks = clip.tracks.map((candidate) =>
+    candidate === track ? { ...track, keys: nextKeys } : candidate,
+  );
+  const edited = commitTrackChanges(project, shot, layer, nextTracks, checkTimes);
+  return {
+    project: edited,
+    bakedSegments,
+    insertedKeys,
+    preservedAnchorTimesMs,
+    clampedScaleSamples,
+  };
 }

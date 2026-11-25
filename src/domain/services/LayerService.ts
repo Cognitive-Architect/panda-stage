@@ -348,26 +348,25 @@ function validateLayerOpacity(opacity: number): number {
   return opacity;
 }
 
+function suffixedLayerName(baseName: string, suffix: string): string {
+  const maxBaseLength = Math.max(1, 200 - suffix.length);
+  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+}
+
 function duplicateGridLayerName(
   baseName: string,
   row: number,
   col: number,
 ): string {
-  const suffix = ` 副本 ${row + 1}-${col + 1}`;
-  const maxBaseLength = Math.max(1, 200 - suffix.length);
-  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+  return suffixedLayerName(baseName, ` 副本 ${row + 1}-${col + 1}`);
 }
 
 function afterimageLayerName(baseName: string, index: number): string {
-  const suffix = ` 残影 ${index}`;
-  const maxBaseLength = Math.max(1, 200 - suffix.length);
-  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+  return suffixedLayerName(baseName, ` 残影 ${index}`);
 }
 
 function radialBurstLayerName(baseName: string, index: number): string {
-  const suffix = ` 爆炸 ${index + 1}`;
-  const maxBaseLength = Math.max(1, 200 - suffix.length);
-  return `${baseName.trim().slice(0, maxBaseLength)}${suffix}`;
+  return suffixedLayerName(baseName, ` 爆炸 ${index + 1}`);
 }
 
 function clampAlpha01(value: number): number {
@@ -2205,7 +2204,14 @@ export class LayerService {
           y: plan.vertical ? PROJECT_HEIGHT / 2 : PROJECT_HEIGHT / 2 + (row - (plan.rows - 1) / 2) * plan.height,
         });
         if (!center) throw new Error('铺排坐标无效，请调整素材比例。');
-        const { layer } = this.buildDuplicatedAnimationLayer(source, [], usedIds, center, 0, `${source.name} 铺排 ${createdLayers.length + 1}`);
+        const { layer } = this.buildDuplicatedAnimationLayer(
+          source,
+          [],
+          usedIds,
+          center,
+          0,
+          suffixedLayerName(source.name, ` 铺排 ${createdLayers.length + 1}`),
+        );
         if (input.mode === 'static' || !basis) {
           createdLayers.push(layer);
           continue;
@@ -2293,7 +2299,12 @@ export class LayerService {
         }
         const hideFrame = startFrame + durationFrames + 1;
         if (visible && hideFrame <= lastFrame) visibility.push(bakedVisibility(hideFrame, false));
-        const baked = this.buildBakedGraphic(context, `${layer.name} 环绕 ${index + 1} · ${labels[band]}`, samples, visibility);
+        const baked = this.buildBakedGraphic(
+          context,
+          suffixedLayerName(layer.name, ` 环绕 ${index + 1} · ${labels[band]}`),
+          samples,
+          visibility,
+        );
         layers.push(baked.layer);
         events.push(...baked.events);
       });
@@ -2330,7 +2341,12 @@ export class LayerService {
       const visibility = [bakedVisibility(launchFrame, true)];
       const hideFrame = launchFrame + durationFrames + 1;
       if (input.hideAfterArrival && hideFrame <= lastFrame) visibility.push(bakedVisibility(hideFrame, false));
-      const baked = this.buildBakedGraphic(context, `${layer.name} 汇聚 ${sample.index + 1}`, samples, visibility);
+      const baked = this.buildBakedGraphic(
+        context,
+        suffixedLayerName(layer.name, ` 汇聚 ${sample.index + 1}`),
+        samples,
+        visibility,
+      );
       created.push(baked.layer);
       events.push(...baked.events);
     }
@@ -2377,7 +2393,12 @@ export class LayerService {
         });
       }
       visibilityAndFade.push(bakedVisibility(end, false));
-      const baked = this.buildBakedGraphic(context, `${layer.name} 虚影 ${index + 1}`, samples, visibilityAndFade);
+      const baked = this.buildBakedGraphic(
+        context,
+        suffixedLayerName(layer.name, ` 虚影 ${index + 1}`),
+        samples,
+        visibilityAndFade,
+      );
       created.push(baked.layer);
       events.push(...baked.events);
     }

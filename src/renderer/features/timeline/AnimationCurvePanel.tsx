@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
-  animationTargetIdentity, characterFaceAndMouthPartIds, editAnimationPropertyKey, editOpacityEventKey, evaluateAnimationEase, keySelectedAnimationTargets,
-  resolveTimelineFrameTime, retimeAnimationPropertyRange, saveLayeredCharacterAction,
-  type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type Shot,
-  type AnimationTargetRef, type AnimationTrack,
+  RICH_EASING_DIRECTIONS, RICH_EASING_FAMILIES, animationTargetIdentity, bakeRichEasingToPropertySegments,
+  characterFaceAndMouthPartIds, editAnimationPropertyKey, editOpacityEventKey, evaluateAnimationEase,
+  evaluateRichEasing, getRichEasingPropertyApplicability, keySelectedAnimationTargets,
+  resolveTimelineFrameTime, retimeAnimationPropertyRange, richEasingPresetId, saveLayeredCharacterAction,
+  type AnimationBezier, type AnimationInterpolation, type AnimationKey, type Layer, type RichEasingDirection,
+  type RichEasingFamily, type Shot, type AnimationTargetRef, type AnimationTrack,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -15,6 +17,12 @@ import { useTimelineUi } from './timelineUiStore';
 
 const presets: Readonly<Record<AnimationInterpolation, string>> = {
   linear: '线性', 'ease-in': '缓入', 'ease-out': '缓出', 'ease-in-out': '缓入缓出', step: '保持',
+};
+const richFamilyLabels: Readonly<Record<RichEasingFamily, string>> = {
+  sin: '正弦', cubic: '三次方', circle: '圆形', quint: '五次方', back: '过冲', bounce: '弹跳',
+};
+const richDirectionLabels: Readonly<Record<RichEasingDirection, string>> = {
+  in: '缓入', out: '缓出', 'in-out': '缓入缓出',
 };
 const properties = {
   'transform.offsetX': '位置 X', 'transform.offsetY': '位置 Y',
@@ -71,6 +79,11 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const [rangeFrames, setRangeFrames] = useState(1);
   const [actionName, setActionName] = useState('');
   const [headAnchor, setHeadAnchor] = useState('');
+  const [richFamily, setRichFamily] = useState<RichEasingFamily>('cubic');
+  const [richDirection, setRichDirection] = useState<RichEasingDirection>('in-out');
+  const [richStartMs, setRichStartMs] = useState<number>();
+  const [richEndMs, setRichEndMs] = useState<number>();
+  const [richDraftActive, setRichDraftActive] = useState(false);
   const { currentTimeMs } = useTimelineUi();
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -86,6 +99,21 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   const rangeKeys = track?.keys ?? [];
   const startMs = rangeKeys.some(({ timeMs }) => timeMs === rangeStart) ? rangeStart : 0;
   const endMs = rangeKeys.some(({ timeMs }) => timeMs === rangeEnd) ? rangeEnd! : (rangeKeys.at(-1)?.timeMs ?? 0);
+  const defaultRichStart = next ? key!.timeMs : (rangeKeys[Math.max(0, index - 1)]?.timeMs ?? 0);
+  const defaultRichEnd = next ? next.timeMs : (rangeKeys[Math.max(1, index)]?.timeMs ?? defaultRichStart);
+  const effectiveRichStart = richStartMs !== undefined && rangeKeys.some(({ timeMs }) => timeMs === richStartMs)
+    ? richStartMs : defaultRichStart;
+  const effectiveRichEnd = richEndMs !== undefined && rangeKeys.some(({ timeMs }) => timeMs === richEndMs)
+    ? richEndMs : defaultRichEnd;
+  const richKeyTimes = effectiveRichEnd > effectiveRichStart
+    ? rangeKeys.filter(({ timeMs }) => timeMs >= effectiveRichStart && timeMs <= effectiveRichEnd).map(({ timeMs }) => timeMs)
+    : [];
+  const richSegmentCount = Math.max(0, richKeyTimes.length - 1);
+  const richPresetId = richEasingPresetId(richFamily, richDirection);
+  const richApplicability = track
+    ? getRichEasingPropertyApplicability(track.property, richPresetId)
+    : { applicable: false, reason: '当前没有可编辑轨道。' };
+  const canApplyRichEasing = Boolean(track && !layer.locked && richApplicability.applicable && richSegmentCount > 0);
   const curve = handles ? { bezier: handles } : key?.curveToNext;
   const points = handles ?? key?.curveToNext?.bezier ?? defaults;
   const characterId = layer.source.kind === 'character' ? layer.source.characterId : null;
@@ -107,10 +135,18 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     const partIndex = layer.animationClip?.targetBases.findIndex((basis) => animationTargetIdentity(basis.target) === animationTargetIdentity(target)) ?? -1;
     return `部件 ${partIndex + 1}`;
   }
-  const polyline = Array.from({ length: 65 }, (_, i) => {
+  const curveSamples = Array.from({ length: 65 }, (_, i) => {
     const x = i / 64;
-    return `${toX(x)},${toY(evaluateAnimationEase(x, key?.interpolationToNext ?? 'linear', curve))}`;
-  }).join(' ');
+    const y = richDraftActive
+      ? evaluateRichEasing(richPresetId, x)
+      : evaluateAnimationEase(x, key?.interpolationToNext ?? 'linear', curve);
+    return { x, y };
+  });
+  const minY = Math.min(0, ...curveSamples.map(({ y }) => y));
+  const maxY = Math.max(1, ...curveSamples.map(({ y }) => y));
+  const ySpan = Math.max(1, maxY - minY);
+  const toPreviewY = (y: number) => chart.top + (1 - (y - minY) / ySpan) * chart.height;
+  const polyline = curveSamples.map(({ x, y }) => `${toX(x)},${toPreviewY(y)}`).join(' ');
 
   useEffect(() => () => onDraft?.(null), [onDraft]);
 
@@ -120,6 +156,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     if (active && svg.current?.hasPointerCapture(active.pointer)) svg.current.releasePointerCapture(active.pointer);
     onDraft?.(null);
     setHandles(undefined);
+    setRichDraftActive(false);
   }
 
   function current(revision = snapshot.revision, owner = instance) {
@@ -205,6 +242,74 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     }
   }
 
+  function previewRichEasing(
+    family: RichEasingFamily,
+    direction: RichEasingDirection,
+    scopeStart: number,
+    scopeEnd: number,
+  ): void {
+    const state = current();
+    if (!state || !track || layer.locked) return;
+    const presetId = richEasingPresetId(family, direction);
+    const applicability = getRichEasingPropertyApplicability(track.property, presetId);
+    const keyTimesMs = scopeEnd > scopeStart
+      ? track.keys.filter(({ timeMs }) => timeMs >= scopeStart && timeMs <= scopeEnd).map(({ timeMs }) => timeMs)
+      : [];
+    if (!applicability.applicable || keyTimesMs.length < 2) {
+      setRichDraftActive(false);
+      onDraft?.(null);
+      return;
+    }
+    try {
+      const result = bakeRichEasingToPropertySegments(state.project, {
+        shotId: shot.id,
+        target: track.target,
+        property: track.property,
+        presetId,
+        keyTimesMs,
+      });
+      const previewTimeMs = currentTimeMs >= keyTimesMs[0]! && currentTimeMs <= keyTimesMs.at(-1)!
+        ? currentTimeMs
+        : Math.round((keyTimesMs[0]! + keyTimesMs.at(-1)!) / 2);
+      setRichDraftActive(true);
+      onDraft?.({
+        project: result.project,
+        projectInstanceId: instance,
+        revision: state.revision,
+        shotId: shot.id,
+        layerId: layer.id,
+        timeMs: previewTimeMs,
+      });
+      setError('');
+    } catch (cause) {
+      setRichDraftActive(false);
+      onDraft?.(null);
+      setError(cause instanceof Error ? cause.message : '无法预览丰富缓动。');
+    }
+  }
+
+  function applyRichEasing(): void {
+    const state = current();
+    if (!state || !track || !canApplyRichEasing) return;
+    try {
+      const result = bakeRichEasingToPropertySegments(state.project, {
+        shotId: shot.id,
+        target: track.target,
+        property: track.property,
+        presetId: richPresetId,
+        keyTimesMs: richKeyTimes,
+      });
+      setRichDraftActive(false);
+      onDraft?.(null);
+      if (result.project !== state.project) {
+        editorProjectStore.updateProject(result.project, '应用丰富缓动');
+      }
+      setError('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '无法应用丰富缓动。');
+    }
+  }
+
   function retime(): void {
     const state = current();
     if (!state || !track || track.property === 'opacity') return;
@@ -222,18 +327,22 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   return <section className="animation-curve-panel" aria-label="属性曲线" onKeyDown={(event) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
-    if (drag.current) cancel(); else onClose();
+    if (drag.current || richDraftActive) cancel(); else onClose();
   }}>
     <header><strong>属性曲线</strong><Button variant="secondary" onClick={() => { cancel(); onClose(); }}>关闭</Button></header>
     {track && key ? <>
       <div className="animation-curve-fields">
-        <label>属性<select value={trackKey(track)} onChange={(event) => { cancel(); setTrackId(event.target.value); setKeyTime(0); }}>
+        <label>属性<select value={trackKey(track)} onChange={(event) => {
+          cancel(); setTrackId(event.target.value); setKeyTime(0); setRichStartMs(undefined); setRichEndMs(undefined);
+        }}>
           {tracks.map((entry) => <option key={trackKey(entry)} value={trackKey(entry)}>
             {targetLabel(entry.target)} · {properties[entry.property]}
             {entry.property === 'opacity' ? ` ${formatTimecode(entry.keys[0]!.timeMs)}` : ''}
           </option>)}
         </select></label>
-        <label>关键帧<select value={key.timeMs} onChange={(event) => { cancel(); setKeyTime(Number(event.target.value)); }}>
+        <label>关键帧<select value={key.timeMs} onChange={(event) => {
+          cancel(); setKeyTime(Number(event.target.value)); setRichStartMs(undefined); setRichEndMs(undefined);
+        }}>
           {track.keys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
         </select></label>
         <label>帧时间 (ms)<input key={`time-${key.timeMs}`} type="number" min={0} max={shot.durationMs}
@@ -266,6 +375,66 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         <circle cx={toX(points.x1)} cy={toY(points.y1)} r={7} data-curve-handle="first" tabIndex={-1} onPointerDown={(event) => begin(event, 'first')} />
         <circle cx={toX(points.x2)} cy={toY(points.y2)} r={7} data-curve-handle="second" tabIndex={-1} onPointerDown={(event) => begin(event, 'second')} />
       </svg> : null}
+      {rangeKeys.length > 1 ? <details className="animation-key-selection" open data-testid="rich-easing-section"
+        data-rich-easing-draft={richDraftActive ? 'active' : 'idle'}>
+        <summary>丰富缓动</summary>
+        {!richApplicability.applicable ? (
+          <p className="animation-rich-easing-meta" data-testid="rich-easing-inapplicable">
+            {richApplicability.reason ?? '当前属性不支持丰富缓动。'}
+          </p>
+        ) : layer.locked ? (
+          <p className="animation-rich-easing-meta" data-testid="rich-easing-locked">
+            当前图层已锁定，解锁后可应用丰富缓动。
+          </p>
+        ) : (
+          <p className="animation-rich-easing-meta" data-testid="rich-easing-scope">
+            {richSegmentCount > 0
+              ? `替换 ${richSegmentCount} 段（${formatTimecode(effectiveRichStart)} → ${formatTimecode(effectiveRichEnd)}），保留原有关键帧`
+              : '请选择结束帧晚于起始帧的区段'}
+          </p>
+        )}
+        <div className="animation-rich-easing-fields">
+          <label>缓动类型<select data-testid="rich-easing-family" disabled={layer.locked || !richApplicability.applicable}
+            value={richFamily} onChange={(event) => {
+              const nextFamily = event.target.value as RichEasingFamily;
+              setRichFamily(nextFamily);
+              previewRichEasing(nextFamily, richDirection, effectiveRichStart, effectiveRichEnd);
+            }}>
+            {RICH_EASING_FAMILIES.map((family) => <option key={family} value={family}>{richFamilyLabels[family]}</option>)}
+          </select></label>
+          <label>方向<select data-testid="rich-easing-direction" disabled={layer.locked || !richApplicability.applicable}
+            value={richDirection} onChange={(event) => {
+              const nextDirection = event.target.value as RichEasingDirection;
+              setRichDirection(nextDirection);
+              previewRichEasing(richFamily, nextDirection, effectiveRichStart, effectiveRichEnd);
+            }}>
+            {RICH_EASING_DIRECTIONS.map((direction) => <option key={direction} value={direction}>{richDirectionLabels[direction]}</option>)}
+          </select></label>
+          <label>起始帧<select data-testid="rich-easing-start" disabled={layer.locked || !richApplicability.applicable}
+            value={effectiveRichStart} onChange={(event) => {
+              const nextStart = Number(event.target.value);
+              setRichStartMs(nextStart);
+              if (richDraftActive) previewRichEasing(richFamily, richDirection, nextStart, effectiveRichEnd);
+            }}>
+            {rangeKeys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
+          </select></label>
+          <label>结束帧<select data-testid="rich-easing-end" disabled={layer.locked || !richApplicability.applicable}
+            value={effectiveRichEnd} onChange={(event) => {
+              const nextEnd = Number(event.target.value);
+              setRichEndMs(nextEnd);
+              if (richDraftActive) previewRichEasing(richFamily, richDirection, effectiveRichStart, nextEnd);
+            }}>
+            {rangeKeys.map(({ timeMs }) => <option key={timeMs} value={timeMs}>{formatTimecode(timeMs)}</option>)}
+          </select></label>
+        </div>
+        <div className="animation-rich-easing-actions">
+          <Button data-testid="rich-easing-apply" disabled={!canApplyRichEasing} onClick={applyRichEasing}>应用</Button>
+          <Button variant="secondary" data-testid="rich-easing-cancel" disabled={!richDraftActive} onClick={() => {
+            cancel();
+            setError('');
+          }}>取消</Button>
+        </div>
+      </details> : null}
     </> : null}
     {targets.length ? <details className="animation-key-selection">
       <summary>所选部件落键</summary>
