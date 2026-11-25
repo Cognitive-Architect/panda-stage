@@ -1654,6 +1654,25 @@ function rigPropagationMatrixRejectionReason(frame: FlaXflElementBlock): string 
   return null;
 }
 
+function classicMotionStaticFiltersMatch(
+  startFilters: readonly FlaInstanceFilter[],
+  endFilters: readonly FlaInstanceFilter[],
+): boolean {
+  if (startFilters.length !== endFilters.length) return false;
+  return startFilters.every((start, index) => {
+    const end = endFilters[index]!;
+    if (start.kind !== end.kind || start.enabled !== end.enabled) return false;
+    if (!start.enabled) return true;
+    return start.blurX === end.blurX &&
+      start.blurY === end.blurY &&
+      start.color.toLowerCase() === end.color.toLowerCase() &&
+      start.alpha === end.alpha &&
+      start.strength === end.strength &&
+      start.distance === end.distance &&
+      start.angle === end.angle;
+  });
+}
+
 function classicMotionFramePairRejectionReason(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
@@ -1787,6 +1806,13 @@ function classicMotionFramePairRejectionReason(
     if (!startColor.ok) return startColor.message;
     const endColor = readSymbolColorTransform(endTarget, 'classic-motion');
     if (!endColor.ok) return endColor.message;
+    const startFilters = readInstanceFilters(startTarget);
+    if (!startFilters) return `Classic Motion symbol instance ${index} contains unsupported filters`;
+    const endFilters = readInstanceFilters(endTarget);
+    if (!endFilters) return `Classic Motion symbol instance ${index} contains unsupported filters`;
+    if (!classicMotionStaticFiltersMatch(startFilters, endFilters)) {
+      return `Classic Motion symbol instance ${index} filters must remain identical in type, order, and values between endpoint keyframes`;
+    }
   }
 
   const hasSupportedTransformChildren = (
@@ -1797,9 +1823,10 @@ function classicMotionFramePairRejectionReason(
     const matrices = children.filter((child) => child.name === 'matrix');
     const points = children.filter((child) => child.name === 'transformationPoint');
     const colors = children.filter((child) => child.name === 'color');
-    if (matrices.length > 1 || points.length > 1 || colors.length > 1 ||
+    const filters = children.filter((child) => child.name === 'filters');
+    if (matrices.length > 1 || points.length > 1 || colors.length > 1 || filters.length > 1 ||
         children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
-          !(allowColorTransform && child.name === 'color'))) {
+          child.name !== 'filters' && !(allowColorTransform && child.name === 'color'))) {
       return false;
     }
     const matrixWrapper = matrices[0];
@@ -1978,7 +2005,7 @@ function sampleObjectMotion(
   if (!core) {
     const authoredFilters = readInstanceFilters(instance);
     if (!authoredFilters) return { ok: false, message: 'Unsupported or out-of-budget XFL instance filters', fromObjectMotion: true };
-    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters.filter(({ kind }) => kind === 'dropShadow'));
+    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters);
     state.objectMotionCurves.set(frame, core);
   }
   const color = readSymbolColorTransform(instance, 'object-motion');
@@ -2455,14 +2482,28 @@ function buildObjectMotionFrameElements(
   if (element?.kind !== 'symbol') return fail('RENDER_FAILED', '此帧的对象补间元件无法读取');
   const alpha = pose.alphaMultiplier ?? color.transform?.alphaMultiplier;
   const rgb = pose.rgbTransform ?? color.transform?.rgbTransform;
-  let shadowOrdinal = 0;
-  const instanceFilters = element.instanceFilters?.map((filter) => {
-    if (filter.kind !== 'dropShadow') return filter;
-    const parameters = pose.shadowFilters?.[shadowOrdinal++];
-    return filter.enabled && parameters ? { ...filter, ...parameters } : filter;
-  });
-  if (pose.shadowFilters?.slice(shadowOrdinal).some((parameters) => Object.keys(parameters).length > 0)) {
-    return fail('RENDER_FAILED', 'Shadow distance animation has no matching authored filter');
+  // Match evaluated filter curves to authored instance filters by type and occurrence order,
+  // preserving unanimated fields, duplicate same-type filters, and disabled filter slots.
+  // Adapted from lifeart/fla-viewer src/motion-object.ts @ b14fa1d1 (ISC).
+  let instanceFilters = element.instanceFilters;
+  if (pose.filters?.length) {
+    const merged = [...(element.instanceFilters ?? [])];
+    const used = new Set<number>();
+    for (const { kind, parameters } of pose.filters) {
+      const matchIndex = merged.findIndex((candidate, index) => candidate.kind === kind && !used.has(index));
+      if (matchIndex < 0) {
+        if (Object.keys(parameters).length > 0) {
+          return fail('RENDER_FAILED', 'Instance filter animation has no matching authored filter');
+        }
+        continue;
+      }
+      used.add(matchIndex);
+      const authored = merged[matchIndex]!;
+      if (authored.enabled) {
+        merged[matchIndex] = { ...authored, ...parameters };
+      }
+    }
+    instanceFilters = merged;
   }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
     ...element,
@@ -2624,7 +2665,7 @@ function sceneStageViews(
       let matrix = start.matrix;
       if (span.tweenType === 'motion object') {
         const sampled = sampleObjectMotion(span.sourceFrame, frameIndex - span.index, state);
-        if (!sampled.ok || sampled.value.pose.shadowFilters) return invalid('Unsupported native camera Object Motion');
+        if (!sampled.ok || sampled.value.pose.filters) return invalid('Unsupported native camera Object Motion');
         matrix = sampled.value.pose.matrix;
       } else if (span.tweenType === 'motion' && frameIndex > span.index) {
         const endSpan = findCoveringSpan(spans, span.endExclusive);
