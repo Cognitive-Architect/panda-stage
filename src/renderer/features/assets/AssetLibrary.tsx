@@ -933,6 +933,36 @@ export function AssetLibrary({
             const failure = metadata.failures[0];
             if (failure) throw new Error(failure.message);
           }}
+          onSceneSoundTimelineImported={(response) => {
+            if (!response.ok) {
+              setStatus(response.error.message);
+              return;
+            }
+            if (!response.projectChanged) return;
+            const currentSnapshot = editorProjectStore.getSnapshot();
+            if (!currentSnapshot) return;
+            const importedSet = new Set(response.importedAssetIds);
+            const importedAssets = response.project.assets.filter((asset) => importedSet.has(asset.id));
+            if (importedAssets.length > 0) {
+              const assetsOnlyProject = {
+                ...currentSnapshot.project,
+                assets: response.project.assets,
+              };
+              editorProjectStore.applyAssetImport(
+                assetsOnlyProject,
+                importedAssets,
+                response.baseRevision,
+                response.savedRevision,
+              );
+            }
+            if (response.createdClipIds.length > 0) {
+              editorProjectStore.updateProject(response.project, 'Recover FLA Scene audio');
+              const updated = editorProjectStore.getSnapshot();
+              if (updated) {
+                editorProjectStore.markSaved(response.project, updated.revision);
+              }
+            }
+          }}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(
               response,

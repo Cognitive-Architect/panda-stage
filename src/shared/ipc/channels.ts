@@ -59,6 +59,7 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_SOUND_PREVIEW: 'fla:sound-preview',
   FLA_SOUND_CANCEL: 'fla:sound-cancel',
   FLA_SOUND_IMPORT: 'fla:sound-import',
+  FLA_SOUND_IMPORT_TIMELINE: 'fla:sound-import-timeline',
   FLA_COMMIT_SELECTED: 'fla:commit-selected',
   FLA_WORKER_READY: 'fla:worker-ready',
   FLA_WORKER_START: 'fla:worker-start',

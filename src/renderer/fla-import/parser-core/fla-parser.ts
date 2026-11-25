@@ -712,6 +712,7 @@ export class FLAParser {
 
       // Parse sound reference
       const sound = this.parseFrameSound(frameEl);
+      const hasActionScript = Boolean(frameEl.querySelector(':scope > Actionscript'));
 
       // Parse morph shape for shape tweens
       const morphShape = tweenType === 'shape' ? this.parseMorphShape(frameEl) : undefined;
@@ -730,6 +731,7 @@ export class FLAParser {
         elements,
         tweens,
         sound,
+        ...(hasActionScript && { hasActionScript: true }),
         ...(morphShape && { morphShape }),
         ...(label && { label }),
         ...(labelType && { labelType }),
@@ -747,19 +749,29 @@ export class FLAParser {
     const soundName = frame.getAttribute('soundName');
     if (!soundName) return undefined;
 
-    const soundSync = (frame.getAttribute('soundSync') || 'event') as FrameSound['sync'];
-    const inPoint44 = frame.getAttribute('inPoint44');
-    const outPoint44 = frame.getAttribute('outPoint44');
-    const loopCount = frame.getAttribute('soundLoopMode') === 'loop'
-      ? parseInt(frame.getAttribute('soundLoop') || '1')
-      : undefined;
+    const rawSync = frame.getAttribute('soundSync');
+    const soundSync: FrameSound['sync'] =
+      rawSync === 'event' || rawSync === 'start' || rawSync === 'stop' || rawSync === 'stream'
+        ? rawSync
+        : 'event';
+    const inPoint44Attr = frame.getAttribute('inPoint44');
+    const outPoint44Attr = frame.getAttribute('outPoint44');
+    const parsedIn = inPoint44Attr !== null ? parseInt(inPoint44Attr, 10) : undefined;
+    const parsedOut = outPoint44Attr !== null ? parseInt(outPoint44Attr, 10) : undefined;
+    const rawLoopMode = frame.getAttribute('soundLoopMode');
+    const loopMode: FrameSound['loopMode'] =
+      rawLoopMode === 'repeat' || rawLoopMode === 'loop' ? rawLoopMode : undefined;
+    const loopAttr = frame.getAttribute('soundLoop');
+    const parsedLoop = loopAttr !== null ? parseInt(loopAttr, 10) : undefined;
+    const loopCount = parsedLoop !== undefined && Number.isFinite(parsedLoop) ? parsedLoop : undefined;
 
     return {
       name: soundName,
       sync: soundSync,
-      inPoint44: inPoint44 ? parseInt(inPoint44) : undefined,
-      outPoint44: outPoint44 ? parseInt(outPoint44) : undefined,
-      loopCount
+      inPoint44: parsedIn !== undefined && Number.isFinite(parsedIn) ? parsedIn : undefined,
+      outPoint44: parsedOut !== undefined && Number.isFinite(parsedOut) ? parsedOut : undefined,
+      ...(loopMode ? { loopMode } : {}),
+      ...(loopCount !== undefined ? { loopCount } : {}),
     };
   }
 

@@ -97,6 +97,7 @@ export interface Frame {
   elements: DisplayElement[];
   tweens?: Tween[];
   sound?: FrameSound;
+  hasActionScript?: boolean;
   morphShape?: MorphShape; // For shape tweens
   label?: string; // Frame label name
   labelType?: 'name' | 'comment' | 'anchor'; // Type of frame label
@@ -112,6 +113,7 @@ export interface FrameSound {
   sync: 'event' | 'start' | 'stop' | 'stream';
   inPoint44?: number; // Start point in samples at 44kHz
   outPoint44?: number; // End point in samples at 44kHz
+  loopMode?: 'repeat' | 'loop';
   loopCount?: number;
 }
 
