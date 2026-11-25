@@ -4,7 +4,7 @@ import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
 
 const MAX_PREFIX_BYTES = 64;
 const MAX_ISO_BOXES = 4096;
-const allowedBrand = /^(?:isom|iso[2-9]|mp4[12]|avc1|M4V |qt  )$/u;
+const allowedBrand = /^(?:isom|iso[2-9]|mp4[12]|avc1|M4V |qt {2})$/u;
 
 export function extractFlaNativeIsoVideo(dat: Uint8Array): { bytes: Uint8Array; mimeType: 'video/mp4' | 'video/quicktime' } | null {
   if (dat.byteLength > FLA_IMPORT_LIMITS.maxSingleEntryBytes) return null;
@@ -51,7 +51,8 @@ export function readFlaEmbeddedVideo(source: Uint8Array, entries: readonly FlaAr
     .filter((item) => item.name === 'DOMVideoItem' && item.attributes.name === videoName);
   if (declared.length !== 1) return null;
   const href = declared[0]?.attributes.videoDataHRef;
-  if (!href || !/^[^\\/:\u0000-\u001F]+\.dat$/iu.test(href) || href.startsWith('.')) return null;
+  if (!href || !/^[^\\/:]+\.dat$/iu.test(href) || href.startsWith('.') ||
+      Array.from(href).some((character) => character.charCodeAt(0) < 32)) return null;
   const matched = entries.filter(({ name }) => name === 'bin/' + href || name === 'LIBRARY/' + href);
   if (matched.length !== 1) return null;
   const entry = matched[0]!;
