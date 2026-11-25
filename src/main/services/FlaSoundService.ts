@@ -1,21 +1,36 @@
-import { mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import {
+  AudioClipService,
+  ProjectSchema,
+  applyFlaSceneAudioClips,
+  extractFlaTimelineSoundEvents,
+  type FlaResolvedSoundAsset,
+  type FlaSoundTimelineDiagnostic,
+} from '../../domain';
 import { inspectEmbeddedMp3 } from './mp3-header';
 import { decodeADPCM } from '../../renderer/fla-import/parser-core/adpcm-decoder';
-import type { FlaSoundMetadata } from '../../shared/fla-import-api';
+import type { FlaInspectionIR, FlaSoundMetadata } from '../../shared/fla-import-api';
 import { sanitizeAssetFileName } from '../../shared/asset-name';
 import type { AssetImportResponse } from '../../shared/asset-import-api';
 import type { AudioProbeResult } from '../../shared/ffmpeg-types';
 import {
   FLA_SOUND_MAX_BYTES, FLA_SOUND_MAX_SECONDS,
   type FlaSoundImportRequest, type FlaSoundPreviewRequest, type FlaSoundPreviewResponse,
+  type FlaSoundTimelineImportRequest, type FlaSoundTimelineImportResponse,
 } from '../../shared/fla-sound-api';
-import type { AssetImportService } from './AssetImportService';
+import { AssetImportServiceError, type AssetImportService } from './AssetImportService';
 import type { FlaImportService } from './FlaImportService';
 import { FlaPreflightError, readSelectedFlaArchiveEntry } from './fla-import-preflight-service';
+import type { ProjectService } from './ProjectService';
 
 type SoundSource = NonNullable<ReturnType<FlaImportService['getSoundSource']>>;
+type SoundTimelineSession = {
+  ir: FlaInspectionIR;
+  bytes: SoundSource['bytes'];
+  entries: SoundSource['entries'];
+};
 type SoundPayload = { bytes: Uint8Array; mimeType: 'audio/mpeg' | 'audio/wav' };
 
 function unsupported(message: string): never {
@@ -135,6 +150,11 @@ export class FlaSoundService {
     private readonly probe: (filePath: string, signal: AbortSignal) => Promise<AudioProbeResult>,
     private readonly assetImport: Pick<AssetImportService, 'importCandidates'>,
     private readonly validateMp3?: (filePath: string, signal: AbortSignal) => Promise<void>,
+    private readonly timelineDeps?: {
+      getTimelineSession: (sessionId: string) => SoundTimelineSession | null;
+      projectService: ProjectService;
+      audioClipService?: AudioClipService;
+    },
   ) {}
 
   cancelPreview(sessionId: string, requestId?: string): boolean {
@@ -171,6 +191,245 @@ export class FlaSoundService {
         ...project, candidates: [{ sourcePath, declaredMimeType: payload.mimeType }],
       }),
     }));
+  }
+
+  async importSceneTimeline(
+    request: FlaSoundTimelineImportRequest,
+  ): Promise<FlaSoundTimelineImportResponse> {
+    if (!this.timelineDeps) {
+      throw new AssetImportServiceError(
+        'ASSET_IMPORT_OPERATION_FAILED',
+        request.projectRoot,
+        'FLA scene sound timeline recovery is not configured.',
+      );
+    }
+    const session = this.timelineDeps.getTimelineSession(request.sessionId);
+    if (!session) {
+      throw new AssetImportServiceError(
+        'ASSET_IMPORT_OPERATION_FAILED',
+        request.projectRoot,
+        'The FLA inspection session is unavailable. Reopen the FLA to continue.',
+      );
+    }
+    const timeline = session.ir.timelines[request.timelineIndex];
+    if (!timeline) {
+      throw new AssetImportServiceError(
+        'ASSET_IMPORT_PROJECT_INVALID',
+        request.projectRoot,
+        `Selected FLA Scene timeline #${request.timelineIndex} was not found.`,
+      );
+    }
+    const targetShot = request.project.shots.find((shot) => shot.id === request.shotId);
+    if (!targetShot) {
+      throw new AssetImportServiceError(
+        'ASSET_IMPORT_PROJECT_INVALID',
+        request.projectRoot,
+        `Target Shot ${request.shotId} was not found in the open project.`,
+      );
+    }
+
+    const events = extractFlaTimelineSoundEvents(timeline);
+    const soundById = new Map((session.ir.sounds ?? []).map((sound) => [sound.id, sound]));
+    const uniqueSoundIds: string[] = [];
+    const seenSoundIds = new Set<string>();
+    for (const event of events) {
+      const id = event.sound.soundId;
+      if (id && soundById.has(id) && !seenSoundIds.has(id)) {
+        seenSoundIds.add(id);
+        uniqueSoundIds.push(id);
+      }
+    }
+
+    const extractionDiagnostics: FlaSoundTimelineDiagnostic[] = [];
+    const folder = await mkdtemp(path.join(tmpdir(), 'panda-stage-fla-scene-audio-'));
+    const signal = AbortSignal.timeout(30_000);
+    try {
+      const prepared: Array<{
+        sound: FlaSoundMetadata;
+        filePath: string;
+        mimeType: SoundPayload['mimeType'];
+        probedDurationMs: number;
+      }> = [];
+
+      for (let index = 0; index < uniqueSoundIds.length; index += 1) {
+        const soundId = uniqueSoundIds[index]!;
+        const sound = soundById.get(soundId)!;
+        try {
+          signal.throwIfAborted();
+          const payload = extractFlaSound({
+            sound,
+            bytes: session.bytes,
+            entries: session.entries,
+          });
+          const baseName = audioFileName(sound, payload.mimeType);
+          const filePath = path.join(folder, `${index}-${baseName}`);
+          await writeFile(filePath, payload.bytes, { flag: 'wx', signal });
+          const { codecName, durationSeconds, sampleRate, channels } = await this.probe(filePath, signal);
+          if (
+            (payload.mimeType === 'audio/mpeg' ? codecName !== 'mp3' : !/^pcm_(?:s16le|u8|s24le|s32le)$/u.test(codecName)) ||
+            !Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > FLA_SOUND_MAX_SECONDS ||
+            !Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 96000 ||
+            (channels !== 1 && channels !== 2)
+          ) {
+            unsupported('The embedded audio codec, duration, or sample parameters are unsupported.');
+          }
+          if (payload.mimeType === 'audio/mpeg') await this.validateMp3?.(filePath, signal);
+          prepared.push({
+            sound,
+            filePath,
+            mimeType: payload.mimeType,
+            probedDurationMs: Math.max(1, Math.round(durationSeconds * 1000)),
+          });
+        } catch (error) {
+          const firstEvent = events.find((event) => event.sound.soundId === soundId);
+          extractionDiagnostics.push({
+            code: 'missing-audio-asset',
+            soundName: sound.name,
+            frameIndex: firstEvent?.frameIndex ?? 0,
+            ...(firstEvent ? { layerIndex: firstEvent.layerIndex, sync: firstEvent.sound.sync } : {}),
+            message: error instanceof Error ? error.message : `Failed to extract audio "${sound.name}".`,
+          });
+        }
+      }
+
+      let currentProject = request.project;
+      let assetsChanged = false;
+      const importedAssetIds: string[] = [];
+      const resolvedBySoundId = new Map<string, FlaResolvedSoundAsset>();
+
+      if (prepared.length > 0) {
+        const importOperation = await this.assetImport.importCandidates({
+          projectRoot: request.projectRoot,
+          project: request.project,
+          baseRevision: request.baseRevision,
+          candidates: prepared.map((entry) => ({
+            sourcePath: entry.filePath,
+            declaredMimeType: entry.mimeType,
+          })),
+        });
+        currentProject = importOperation.project;
+        assetsChanged = importOperation.projectChanged;
+
+        for (let index = 0; index < prepared.length; index += 1) {
+          const entry = prepared[index]!;
+          const result = importOperation.results[index];
+          if (!result || (result.status !== 'imported' && result.status !== 'duplicate')) {
+            continue;
+          }
+          const assetId = result.asset?.id ?? result.duplicateOfAssetId;
+          if (!assetId) continue;
+          if (result.status === 'imported') importedAssetIds.push(assetId);
+          const existingAsset = currentProject.assets.find((asset) => asset.id === assetId);
+          const durationMs =
+            existingAsset?.kind === 'audio' &&
+            existingAsset.metadata?.status === 'ready' &&
+            existingAsset.durationMs !== undefined
+              ? existingAsset.durationMs
+              : entry.probedDurationMs;
+          resolvedBySoundId.set(entry.sound.id, {
+            assetId,
+            name: entry.sound.name,
+            durationMs,
+          });
+        }
+      }
+
+      const audioClipService = this.timelineDeps.audioClipService ?? new AudioClipService();
+      const transactionResult = await this.timelineDeps.projectService.transact(
+        request.projectRoot,
+        async (transaction) => {
+          const diskProject = transaction.existingDocument.project;
+          if (diskProject.id !== request.project.id) {
+            throw new AssetImportServiceError(
+              'ASSET_IMPORT_PROJECT_MISMATCH',
+              transaction.projectRoot,
+              `Cannot recover FLA scene audio: project identity at ${transaction.projectRoot} does not match the open project.`,
+            );
+          }
+
+          let workingProject = currentProject;
+          let metadataUpdated = false;
+          const durationByAssetId = new Map<string, number>();
+          for (const resolved of resolvedBySoundId.values()) {
+            durationByAssetId.set(resolved.assetId, resolved.durationMs);
+          }
+          const nextAssets = workingProject.assets.map((asset) => {
+            if (asset.kind !== 'audio') return asset;
+            const probedDurationMs = durationByAssetId.get(asset.id);
+            if (
+              probedDurationMs !== undefined &&
+              (asset.durationMs === undefined || asset.metadata?.status !== 'ready')
+            ) {
+              metadataUpdated = true;
+              return {
+                ...asset,
+                durationMs: probedDurationMs,
+                metadata: { status: 'ready' as const, warnings: [] },
+              };
+            }
+            return asset;
+          });
+          if (metadataUpdated) {
+            workingProject = ProjectSchema.parse({
+              ...workingProject,
+              assets: nextAssets,
+            });
+          }
+
+          const shot = workingProject.shots.find((candidate) => candidate.id === request.shotId);
+          if (!shot) {
+            throw new AssetImportServiceError(
+              'ASSET_IMPORT_PROJECT_INVALID',
+              transaction.projectRoot,
+              `Target Shot ${request.shotId} was not found in the project.`,
+            );
+          }
+
+          const sourceFps = session.ir.document.frameRate > 0 ? session.ir.document.frameRate : workingProject.fps;
+          const applied = applyFlaSceneAudioClips(
+            workingProject,
+            {
+              sourceFps,
+              shotId: shot.id,
+              shotDurationMs: shot.durationMs,
+              ...(request.role ? { role: request.role } : {}),
+              events,
+              resolveAsset: (sound) => (sound.soundId ? resolvedBySoundId.get(sound.soundId) : undefined),
+            },
+            audioClipService,
+          );
+
+          const clipsChanged = applied.createdClipIds.length > 0;
+          const projectChanged = assetsChanged || metadataUpdated || clipsChanged;
+          const savedRevision = projectChanged ? request.baseRevision + 1 : request.baseRevision;
+          if (metadataUpdated || clipsChanged) {
+            await transaction.save(applied.project, savedRevision);
+          }
+
+          return {
+            project: applied.project,
+            savedRevision,
+            projectChanged,
+            createdClipIds: applied.createdClipIds,
+            diagnostics: [...extractionDiagnostics, ...applied.diagnostics],
+          };
+        },
+      );
+
+      return {
+        ok: true,
+        status: 'completed',
+        project: transactionResult.project,
+        baseRevision: request.baseRevision,
+        savedRevision: transactionResult.savedRevision,
+        projectChanged: transactionResult.projectChanged,
+        importedAssetIds,
+        createdClipIds: transactionResult.createdClipIds,
+        diagnostics: transactionResult.diagnostics,
+      };
+    } finally {
+      await rm(folder, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   private async withAudio<T>(

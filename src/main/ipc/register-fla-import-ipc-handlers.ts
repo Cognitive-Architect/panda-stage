@@ -16,7 +16,14 @@ import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import { FlaImportService } from '../services/FlaImportService';
 import type { FlaSoundService } from '../services/FlaSoundService';
 import { AssetImportResponseSchema } from '../../shared/asset-import-api';
-import { FlaSoundCancelRequestSchema, FlaSoundImportRequestSchema, FlaSoundPreviewRequestSchema, FlaSoundPreviewResponseSchema } from '../../shared/fla-sound-api';
+import {
+  FlaSoundCancelRequestSchema,
+  FlaSoundImportRequestSchema,
+  FlaSoundPreviewRequestSchema,
+  FlaSoundPreviewResponseSchema,
+  FlaSoundTimelineImportRequestSchema,
+  FlaSoundTimelineImportResponseSchema,
+} from '../../shared/fla-sound-api';
 import { assetImportFailure } from './register-asset-import-ipc-handlers';
 import {
   FlaAssetCommitService,
@@ -205,6 +212,15 @@ export function registerFlaImportIpcHandlers(
         return assetImportFailure(error, request.projectRoot);
       }
     });
+    ipcMain.handle(IPC_CHANNELS.FLA_SOUND_IMPORT_TIMELINE, async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const request = FlaSoundTimelineImportRequestSchema.parse(rawRequest);
+      try {
+        return FlaSoundTimelineImportResponseSchema.parse(await sound.importSceneTimeline(request));
+      } catch (error) {
+        return FlaSoundTimelineImportResponseSchema.parse(assetImportFailure(error, request.projectRoot));
+      }
+    });
   }
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_READY, onReady);
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);
@@ -220,6 +236,7 @@ export function registerFlaImportIpcHandlers(
       ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_PREVIEW);
       ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_CANCEL);
       ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_IMPORT);
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_IMPORT_TIMELINE);
     }
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_READY, onReady);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);

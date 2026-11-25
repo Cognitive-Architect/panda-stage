@@ -152,6 +152,21 @@ export const FlaFrameInstanceIRSchema = z
   })
   .strict();
 
+export const FlaFrameSoundSyncSchema = z.enum(['event', 'start', 'stop', 'stream']);
+export const FlaFrameSoundLoopModeSchema = z.enum(['repeat', 'loop']);
+
+export const FlaFrameSoundIRSchema = z
+  .object({
+    soundId: z.string().min(1).max(200).optional(),
+    name: z.string().trim().min(1).max(260),
+    sync: FlaFrameSoundSyncSchema,
+    inPoint44: z.number().int().nonnegative().optional(),
+    outPoint44: z.number().int().nonnegative().optional(),
+    loopMode: FlaFrameSoundLoopModeSchema.optional(),
+    loopCount: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const FlaFrameIRSchema = z
   .object({
     id: z.string().regex(/^fla-frame-[a-z0-9-]{8,160}$/u),
@@ -159,6 +174,7 @@ export const FlaFrameIRSchema = z
     startFrame: z.number().int().nonnegative(),
     duration: z.number().int().positive(),
     instances: z.array(FlaFrameInstanceIRSchema).max(100_000),
+    sound: FlaFrameSoundIRSchema.optional(),
   })
   .strict();
 
@@ -491,3 +507,6 @@ export type FlaWorkerError = z.infer<typeof FlaWorkerErrorSchema>;
 export type FlaDiagnosticCategory = z.infer<typeof FlaDiagnosticCategorySchema>;
 export type FlaDiagnostic = z.infer<typeof FlaDiagnosticSchema>;
 export type FlaStructuralSummary = z.infer<typeof FlaStructuralSummaryIRSchema>;
+export type FlaFrameSoundSync = z.infer<typeof FlaFrameSoundSyncSchema>;
+export type FlaFrameSoundLoopMode = z.infer<typeof FlaFrameSoundLoopModeSchema>;
+export type FlaFrameSoundIR = z.infer<typeof FlaFrameSoundIRSchema>;

@@ -427,6 +427,30 @@ export async function adaptFlaDocument(
     addCompatibility(compatibility, 'basic-tweens', 'not-present', 'No basic tween semantics were detected');
   }
 
+  const sounds = document.sounds?.size > 0
+    ? [...document.sounds.values()].slice(0, FLA_IMPORT_LIMITS.maxMediaCount).flatMap((sound) => {
+        const name = sound.name.trim().slice(0, 260);
+        if (!name) return [];
+        const boundedCount = (value: number | undefined) =>
+          value === undefined || Number.isSafeInteger(value) ? value : 0;
+        return [{
+          id: stableId('fla-sound', [sound.name, sound.href, sound.soundDataHRef ?? '']),
+          name,
+          href: sound.href.length <= 2048 ? sound.href : '',
+          ...(sound.soundDataHRef ? { dataHref: sound.soundDataHRef.length <= 2048 ? sound.soundDataHRef : '' } : {}),
+          ...(sound.format ? { format: sound.format.slice(0, 200) } : {}),
+          ...(sound.sampleCount === undefined ? {} : { sampleCount: boundedCount(sound.sampleCount) }),
+          ...(sound.dataLength === undefined ? {} : { dataLength: boundedCount(sound.dataLength) }),
+        }];
+      })
+    : [];
+  const soundIdByName = new Map<string, string>();
+  for (const sound of sounds) {
+    soundIdByName.set(sound.name, sound.id);
+    const normalizedName = normalizeReference(sound.name).toLowerCase();
+    if (!soundIdByName.has(normalizedName)) soundIdByName.set(normalizedName, sound.id);
+  }
+
   const timelines: AnimationImportIR['timelines'] = [];
   const referencedItems = new Set<BitmapItem>();
   let placedInstanceCount = 0;
@@ -457,12 +481,35 @@ export async function adaptFlaDocument(
       let frameStart = 0;
       for (const frame of layer.frames) {
         ensureNotCancelled(isCancelled);
+        const rawFrameSound = layer.layerType === 'guide' ? undefined : frame.sound;
+        const soundName = rawFrameSound?.name.trim().slice(0, 260);
+        const soundId = soundName
+          ? soundIdByName.get(soundName) ?? soundIdByName.get(normalizeReference(soundName).toLowerCase())
+          : undefined;
+        const frameSound = rawFrameSound && soundName
+          ? {
+              ...(soundId ? { soundId } : {}),
+              name: soundName,
+              sync: rawFrameSound.sync,
+              ...(rawFrameSound.inPoint44 !== undefined && Number.isSafeInteger(rawFrameSound.inPoint44) && rawFrameSound.inPoint44 >= 0
+                ? { inPoint44: rawFrameSound.inPoint44 }
+                : {}),
+              ...(rawFrameSound.outPoint44 !== undefined && Number.isSafeInteger(rawFrameSound.outPoint44) && rawFrameSound.outPoint44 >= 0
+                ? { outPoint44: rawFrameSound.outPoint44 }
+                : {}),
+              ...(rawFrameSound.loopMode ? { loopMode: rawFrameSound.loopMode } : {}),
+              ...(rawFrameSound.loopCount !== undefined && Number.isSafeInteger(rawFrameSound.loopCount) && rawFrameSound.loopCount >= 0
+                ? { loopCount: rawFrameSound.loopCount }
+                : {}),
+            }
+          : undefined;
         const frameIR: AnimationImportIR['timelines'][number]['layers'][number]['frames'][number] = {
           id: stableId('fla-frame', [String(timelineIndex), String(layerIndex), String(frame.index), String(frameStart)]),
           sourceFrameIndex: Math.max(0, frame.index),
           startFrame: Math.max(0, frame.index || frameStart),
           duration: Math.max(1, frame.duration),
           instances: [],
+          ...(frameSound ? { sound: frameSound } : {}),
         };
         for (const element of frame.elements) {
           if (element.type !== 'bitmap') {
@@ -519,23 +566,7 @@ export async function adaptFlaDocument(
       backgroundColor: document.backgroundColor,
     },
     media,
-    ...(document.sounds?.size > 0 ? {
-      sounds: [...document.sounds.values()].slice(0, FLA_IMPORT_LIMITS.maxMediaCount).flatMap((sound) => {
-        const name = sound.name.trim().slice(0, 260);
-        if (!name) return [];
-        const boundedCount = (value: number | undefined) =>
-          value === undefined || Number.isSafeInteger(value) ? value : 0;
-        return [{
-          id: stableId('fla-sound', [sound.name, sound.href, sound.soundDataHRef ?? '']),
-          name,
-          href: sound.href.length <= 2048 ? sound.href : '',
-          ...(sound.soundDataHRef ? { dataHref: sound.soundDataHRef.length <= 2048 ? sound.soundDataHRef : '' } : {}),
-          ...(sound.format ? { format: sound.format.slice(0, 200) } : {}),
-          ...(sound.sampleCount === undefined ? {} : { sampleCount: boundedCount(sound.sampleCount) }),
-          ...(sound.dataLength === undefined ? {} : { dataLength: boundedCount(sound.dataLength) }),
-        }];
-      }),
-    } : {}),
+    ...(sounds.length > 0 ? { sounds } : {}),
     timelines,
     compatibility,
     summary: {

@@ -13,6 +13,10 @@ export interface CreateAudioClipInput {
   assetId: string;
   role: StandaloneAudioRole;
   startMs: number;
+  endMs?: number;
+  offsetMs?: number;
+  name?: string;
+  volume?: number;
 }
 
 /** Pure Shot-local standalone authoring. Dialogue audio remains DialogueService-owned. */
@@ -24,27 +28,50 @@ export class AudioClipService {
 
   create(project: Project, input: CreateAudioClipInput): Project {
     const shot = this.shot(project, input.shotId);
+    const clip = this.buildClip(project, shot, input);
+    return this.commit(project, shot, [...shot.audioClips, clip]);
+  }
+
+  createMany(project: Project, shotId: string, inputs: readonly Omit<CreateAudioClipInput, 'shotId'>[]): Project {
+    if (inputs.length === 0) return project;
+    const shot = this.shot(project, shotId);
+    const clips = inputs.map((input) => this.buildClip(project, shot, { ...input, shotId }));
+    return this.commit(project, shot, [...shot.audioClips, ...clips]);
+  }
+
+  private buildClip(project: Project, shot: Shot, input: CreateAudioClipInput): AudioClip {
     if (input.role !== 'bgm' && input.role !== 'sfx') {
       throw new Error('Standalone audio requires bgm or sfx role.');
     }
     const asset = this.readyAsset(project, input.assetId);
     this.integer(input.startMs);
+    const offsetMs = input.offsetMs ?? 0;
+    this.integer(offsetMs);
+    if (offsetMs < 0 || offsetMs >= asset.durationMs!) {
+      throw new Error('Audio source offset must be within the audio asset duration.');
+    }
     const startMs = Math.max(0, Math.min(input.startMs, shot.durationMs));
-    const endMs = Math.min(startMs + asset.durationMs!, shot.durationMs);
+    const maxEndMs = Math.min(startMs + asset.durationMs! - offsetMs, shot.durationMs);
+    let endMs = maxEndMs;
+    if (input.endMs !== undefined) {
+      this.integer(input.endMs);
+      endMs = Math.min(input.endMs, maxEndMs);
+    }
     if (endMs <= startMs) {
       throw new Error('No positive audio duration is available at this Shot time.');
     }
-    const clip: AudioClip = {
+    const volume = input.volume !== undefined ? audioClipGain(input.volume) : 1;
+    const name = input.name?.trim() || asset.name;
+    return {
       id: (this.options.createId ?? (() => crypto.randomUUID()))(),
-      name: asset.name,
+      name,
       assetId: asset.id,
       role: input.role,
       startMs,
       endMs,
-      offsetMs: 0,
-      volume: 1,
+      offsetMs,
+      volume,
     };
-    return this.commit(project, shot, [...shot.audioClips, clip]);
   }
 
   move(project: Project, input: AudioClipTarget & { startMs: number }): Project {

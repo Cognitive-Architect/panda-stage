@@ -112,6 +112,7 @@ export interface FrameSound {
   sync: 'event' | 'start' | 'stop' | 'stream';
   inPoint44?: number; // Start point in samples at 44kHz
   outPoint44?: number; // End point in samples at 44kHz
+  loopMode?: 'repeat' | 'loop';
   loopCount?: number;
 }
 
