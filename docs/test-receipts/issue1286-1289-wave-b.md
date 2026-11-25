@@ -15,5 +15,6 @@
 
 - **SOURCE** · 工具入口与 Domain 定向测试通过，共 37 项。覆盖边缘坐标归一化、四向循环含屏外回收、环绕遮挡、固定种子汇聚、固定中心虚影及正式入口一次提交。四工具保存重开、手改键、Undo/Redo、Stage / Product Preview / Export 正式帧序列及 off-grid 对照的定向集成测试通过。见 [交付回归提交](https://github.com/Cognitive-Architect/panda-stage/commit/117be62)。
 - **本地命令** · `pnpm build` 含 `pnpm typecheck` 已通过，`pnpm lint` 与最终改动文件的 ESLint 检查已通过。首次并行执行时，`pnpm test:unit` 有 6 项超时，`pnpm test:integration` 有 5 项超时，部分超时伴随临时文件清理错误。涉及 FLA 导入、导出服务、媒体元数据和桌面自动化。
-- **CI** · 上一版的测试用例有 TypeScript 元组推断错误，已在回归提交中修正。当前结果见 [PR Checks](https://github.com/Cognitive-Architect/panda-stage/pull/1265/checks)。
-- **Windows 执行者与 OWNER UAT** · 尚待 Windows Electron 可见舞台和成品输出抽查、OWNER 实机验收。
+- **CI** · [代码基线 `d64868d` 的自动 Core CI](https://github.com/Cognitive-Architect/panda-stage/actions/runs/45536359985) 已通过 typecheck、lint、unit、integration、build。当前结果见 [PR Checks](https://github.com/Cognitive-Architect/panda-stage/pull/1265/checks)。
+- **Windows 执行者** · 在 Windows Electron 43.1.1 正式构建中，通过项目中心打开含 640×360 不透明条纹 Graphic 的项目，在画布选中模板，经工具生成 15 个向左循环副本。通过时间轴采样第 0、6、23、24 帧，舞台像素匹配预期方向与相位，第 24 帧恢复第 0 帧图案。截图保存在执行机的 `D:\PandaStage-Acceptance\issues-1286-1289-an-demo\windows-89b6db4f-16e2-4607-8bd9-f77d5fa0127b`。其余工具的证据来自 SOURCE 和 CI，成品文件的 Windows 检查未纳入本次抽查。
+- **OWNER UAT** · 待 OWNER 实机验收。
