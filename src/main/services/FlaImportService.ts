@@ -25,6 +25,7 @@ import {
   startIssue762Profile,
 } from '../../shared/issue762-performance-profile';
 import type { FlaAssetCommitSession } from './FlaAssetCommitService';
+import { readFlaEmbeddedVideo } from './fla-native-video';
 import {
   FlaPreflightError,
   preflightFlaBytes,
@@ -348,6 +349,11 @@ export class FlaImportService {
     const session = this.sessions.get(sessionId);
     const sound = session?.ir.sounds?.find(({ id }) => id === soundId);
     return session && sound ? { sound, bytes: session.workerSource.bytes, entries: session.archiveEntries } : null;
+  }
+
+  readEmbeddedVideo(sessionId: string, videoName: string) {
+    const session = this.sessions.get(sessionId);
+    return session ? readFlaEmbeddedVideo(session.workerSource.bytes, session.archiveEntries, videoName) : null;
   }
 
   getSoundTimelineSession(sessionId: string) {
