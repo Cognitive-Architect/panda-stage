@@ -1387,10 +1387,128 @@ function readMorphFill(shape: FlaXflElementBlock, mask: boolean): readonly numbe
   const paints = getFlaXflDirectChildren(style.xml, style.name);
   const paint = paints[0];
   if (paints.length !== 1 || paint?.name !== 'SolidColor') return null;
+  return readMorphSolidColor(paint);
+}
+
+function readMorphSolidColor(paint: FlaXflElementBlock): readonly number[] | null {
   const color = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(paint.attributes.color ?? '#000000');
   const alpha = Number(paint.attributes.alpha ?? '1');
   if (!color || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
   return [...color.slice(1).map((hex) => Number.parseInt(hex, 16)), alpha];
+}
+
+type MorphPoint = readonly [number, number];
+type MorphEdgeStyles = readonly [fill0: number, fill1: number, stroke: number];
+type MorphContour = { contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] };
+
+function morphEdgeKey(start: MorphPoint, control: MorphPoint | null, end: MorphPoint): string {
+  return JSON.stringify([start, control, end]);
+}
+
+/** Read exact authored quadratic/line geometry so style sides come from the
+ * endpoint Edge, not from interpreting a MorphSegment index as a fill side. */
+function readMorphEndpointEdges(shape: FlaXflElementBlock) {
+  const edges = directChild(shape.xml, shape.name, 'edges');
+  if (!edges) return null;
+  const blocks = getFlaXflDirectChildren(edges.xml, edges.name, MAX_SHAPE_TWEEN_CURVES + 1);
+  if (blocks.length > MAX_SHAPE_TWEEN_CURVES) return null;
+  const result = new Map<string, { styles: MorphEdgeStyles; id: number }>();
+  let count = 0;
+  for (const block of blocks) {
+    if (block.name !== 'Edge') return null;
+    const raw = block.attributes.edges;
+    if (!raw || raw.length > MAX_SHAPE_TWEEN_CURVES * 96) return null;
+    const styles = ['fillStyle0', 'fillStyle1', 'strokeStyle'].map((key) => Number(block.attributes[key] ?? '0'));
+    if (styles.some((index) => !Number.isSafeInteger(index) || index < 0)) return null;
+    const [left, right, stroke] = styles as [number, number, number];
+    const tokens = raw.match(/[!|\[]|[^!|\[\s,]+/gu) ?? [];
+    let current: MorphPoint | null = null;
+    const readPoint = (i: number): MorphPoint | null => {
+      const point = [tokens[i], tokens[i + 1]].map((coordinate) => {
+        if (!coordinate) return NaN;
+        if (coordinate.startsWith('#')) return morphCoordinateInTwips(coordinate) / 256;
+        return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(coordinate) ? Number(coordinate) : NaN;
+      });
+      return point.every(Number.isFinite) ? [point[0]!, point[1]!] : null;
+    };
+    for (let index = 0; index < tokens.length;) {
+      const command = tokens[index++];
+      if (command !== '!' && command !== '|' && command !== '[') return null;
+      const first = readPoint(index);
+      const control = command === '[' ? first : null;
+      const next = command === '[' ? readPoint(index + 2) : first;
+      index += command === '[' ? 4 : 2;
+      if (!first || !next) return null;
+      if (command !== '!') {
+        if (!current || count >= MAX_SHAPE_TWEEN_CURVES) return null;
+        const forward = morphEdgeKey(current, control, next);
+        const reverse = morphEdgeKey(next, control, current);
+        if (forward === reverse || result.has(forward) || result.has(reverse)) return null;
+        result.set(forward, { id: count, styles: [left, right, stroke] });
+        result.set(reverse, { id: count, styles: [right, left, stroke] });
+        count += 1;
+      }
+      current = next;
+    }
+  }
+  return { result, count };
+}
+
+function readMorphStyleBlocks(shape: FlaXflElementBlock, wrapper: 'fills' | 'strokes') {
+  const tag = wrapper === 'fills' ? 'FillStyle' : 'StrokeStyle';
+  const container = directChild(shape.xml, shape.name, wrapper);
+  const styles = new Map<number, FlaXflElementBlock>();
+  if (!container) return styles;
+  const entries = getFlaXflDirectChildren(container.xml, container.name, 257);
+  if (entries.length > 256) return null;
+  for (const entry of entries) {
+    const index = Number(entry.attributes.index);
+    if (entry.name !== tag || !Number.isSafeInteger(index) || index <= 0 || styles.has(index)) return null;
+    styles.set(index, entry);
+  }
+  return styles;
+}
+
+function sampleMorphSolidPaint(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name !== 'SolidColor' || b.name !== 'SolidColor') return null;
+  const left = readMorphSolidColor(a);
+  const right = readMorphSolidColor(b);
+  if (!left || !right) return null;
+  const color = left.slice(0, 3).map((value, i) =>
+    Math.round(lerp(value, right[i]!)).toString(16).padStart(2, '0')).join('');
+  return `<SolidColor color="#${color}" alpha="${lerp(left[3]!, right[3]!)}"/>`;
+}
+
+function sampleMorphSolidStroke(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name !== 'SolidStroke' || b.name !== 'SolidStroke') return null;
+  const discrete = (stroke: FlaXflElementBlock) => ({
+    caps: stroke.attributes.caps ?? 'round',
+    joints: stroke.attributes.joints ?? 'round',
+    scaleMode: stroke.attributes.scaleMode ?? 'normal',
+    miterLimit: Number(stroke.attributes.miterLimit ?? '3'),
+    pixelHinting: stroke.attributes.pixelHinting ?? 'false',
+  });
+  const props = discrete(a);
+  if (JSON.stringify(props) !== JSON.stringify(discrete(b)) ||
+      !['none', 'butt', 'round', 'square'].includes(props.caps) ||
+      !['miter', 'round', 'bevel'].includes(props.joints) ||
+      props.scaleMode !== 'normal' ||
+      !Number.isFinite(props.miterLimit) || props.miterLimit < 1 ||
+      !['true', 'false'].includes(props.pixelHinting)) return null;
+  const readStroke = (stroke: FlaXflElementBlock) => {
+    const children = getFlaXflDirectChildren(stroke.xml, stroke.name);
+    if (children.length !== 1 || children[0]?.name !== 'fill') return null;
+    const fills = getFlaXflDirectChildren(children[0].xml, 'fill');
+    const weight = Number(stroke.attributes.weight ?? '1');
+    return fills.length === 1 && Number.isFinite(weight) && weight > 0 ? { fill: fills[0]!, weight } : null;
+  };
+  const left = readStroke(a);
+  const right = readStroke(b);
+  if (!left || !right) return null;
+  const paint = sampleMorphSolidPaint(left.fill, right.fill, lerp);
+  if (!paint) return null;
+  const attrs = Object.entries(props).map(([key, value]) => `${key}="${value}"`).join(' ');
+  return `<SolidStroke ${attrs} weight="${lerp(left.weight, right.weight)}"><fill>${paint}</fill></SolidStroke>`;
 }
 
 function sampleMorphContour(
@@ -1427,6 +1545,87 @@ function sampleMorphContour(
   return commands.join('');
 }
 
+function samplePairedMorphStyles(
+  start: FlaXflElementBlock,
+  end: FlaXflElementBlock,
+  contours: readonly MorphContour[],
+  lerp: (a: number, b: number) => number,
+  interpolatePoint: (a: MorphPoint, b: MorphPoint) => string,
+): string | null {
+  const startEdges = readMorphEndpointEdges(start);
+  const endEdges = readMorphEndpointEdges(end);
+  if (!startEdges || !endEdges || startEdges.count !== endEdges.count) return null;
+  const startFills = readMorphStyleBlocks(start, 'fills');
+  const endFills = readMorphStyleBlocks(end, 'fills');
+  const startStrokes = readMorphStyleBlocks(start, 'strokes');
+  const endStrokes = readMorphStyleBlocks(end, 'strokes');
+  if (!startFills || !endFills || !startStrokes || !endStrokes) return null;
+  const usedStart = new Set<number>();
+  const usedEnd = new Set<number>();
+  const fillIds = new Map<string, number>();
+  const strokeIds = new Map<string, number>();
+  const fills: string[] = [];
+  const strokes: string[] = [];
+  const edges: string[] = [];
+  const pairedStyle = (a: number, b: number, stroke: boolean): number | null => {
+    if (!a || !b) return a === b ? 0 : null;
+    const ids = stroke ? strokeIds : fillIds;
+    const key = `${a}/${b}`;
+    const prior = ids.get(key);
+    if (prior) return prior;
+    const first = (stroke ? startStrokes : startFills).get(a);
+    const last = (stroke ? endStrokes : endFills).get(b);
+    if (!first || !last) return null;
+    const firstChildren = getFlaXflDirectChildren(first.xml, first.name, 2);
+    const lastChildren = getFlaXflDirectChildren(last.xml, last.name, 2);
+    if (firstChildren.length !== 1 || lastChildren.length !== 1) return null;
+    const paint = stroke ? sampleMorphSolidStroke(firstChildren[0]!, lastChildren[0]!, lerp)
+      : sampleMorphSolidPaint(firstChildren[0]!, lastChildren[0]!, lerp);
+    if (!paint || ids.size >= 256) return null;
+    const id = ids.size + 1;
+    ids.set(key, id);
+    const tag = stroke ? 'StrokeStyle' : 'FillStyle';
+    (stroke ? strokes : fills).push(`<${tag} index="${id}">${paint}</${tag}>`);
+    return id;
+  };
+  for (const { contour, curves } of contours) {
+    let pointA = readMorphPoint(contour.attributes.startPointA);
+    let pointB = readMorphPoint(contour.attributes.startPointB);
+    if (!pointA || !pointB) return null;
+    for (const curve of curves) {
+      if (curve.name !== 'MorphCurves' || ![undefined, 'true', 'false'].includes(curve.attributes.isLine)) return null;
+      const isLine = curve.attributes.isLine === 'true';
+      const endA = readMorphPoint(curve.attributes.anchorPointA);
+      const endB = readMorphPoint(curve.attributes.anchorPointB);
+      const controlA = isLine ? null : readMorphPoint(curve.attributes.controlPointA);
+      const controlB = isLine ? null : readMorphPoint(curve.attributes.controlPointB);
+      if (!endA || !endB || (!isLine && (!controlA || !controlB))) return null;
+      const a = startEdges.result.get(morphEdgeKey(pointA, controlA, endA));
+      const b = endEdges.result.get(morphEdgeKey(pointB, controlB, endB));
+      if (!a || !b || usedStart.has(a.id) || usedEnd.has(b.id)) return null;
+      usedStart.add(a.id);
+      usedEnd.add(b.id);
+      const [fill0, fill1, stroke] = a.styles.map((style, i) => pairedStyle(style, b.styles[i]!, i === 2));
+      if (fill0 === null || fill1 === null || stroke === null) return null;
+      const attributes = [
+        fill0 ? `fillStyle0="${fill0}"` : '',
+        fill1 ? `fillStyle1="${fill1}"` : '',
+        stroke ? `strokeStyle="${stroke}"` : '',
+      ].filter(Boolean).join(' ');
+      const origin = interpolatePoint(pointA, pointB);
+      const target = interpolatePoint(endA, endB);
+      const command = controlA && controlB ? '[' + interpolatePoint(controlA, controlB) + ' ' + target : '|' + target;
+      edges.push(`<Edge ${attributes} edges="!${origin}${command}"/>`);
+      pointA = endA;
+      pointB = endB;
+    }
+  }
+  if (usedStart.size !== startEdges.count || usedEnd.size !== endEdges.count) return null;
+  const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
+  return `<DOMShape>${matrix}${fills.length ? `<fills>${fills.join('')}</fills>` : ''}` +
+    `${strokes.length ? `<strokes>${strokes.join('')}</strokes>` : ''}<edges>${edges.join('')}</edges></DOMShape>`;
+}
+
 function sampleSolidShapeTween(
   startFrame: FlaXflElementBlock,
   start: FlaXflElementBlock,
@@ -1438,7 +1637,7 @@ function sampleSolidShapeTween(
   const endFill = readMorphFill(end, mask);
   const startMatrix = readDirectMatrix(start);
   const endMatrix = readDirectMatrix(end);
-  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
+  if (!startMatrix.ok || !endMatrix.ok ||
       !Object.entries(startMatrix.matrix).every(([key, value]) =>
         endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
 
@@ -1456,11 +1655,9 @@ function sampleSolidShapeTween(
   // Every segment needs at least one curve. Budget the entire tween before
   // interpolating any geometry or constructing the compound path.
   let remainingCurves = MAX_SHAPE_TWEEN_CURVES;
-  const boundedContours: Array<{ contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] }> = [];
+  const boundedContours: MorphContour[] = [];
   for (const contour of contours) {
-    if (contour.name !== 'MorphSegment' ||
-        contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
-        (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
+    if (contour.name !== 'MorphSegment') return null;
     const curves = getFlaXflDirectChildren(contour.xml, contour.name, remainingCurves + 1);
     if (curves.length === 0 || curves.length > remainingCurves) return null;
     remainingCurves -= curves.length;
@@ -1469,6 +1666,11 @@ function sampleSolidShapeTween(
 
   const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
     lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  const hasLegacyIndices = contours.every(({ attributes }) => attributes.fillIndex1 === '0' &&
+    attributes.fillIndex2 === '0' && (mask || (attributes.strokeIndex1 === '0' && attributes.strokeIndex2 === '0')));
+  if (!startFill || !endFill || !hasLegacyIndices) {
+    return mask ? null : samplePairedMorphStyles(start, end, boundedContours, lerp, interpolatePoint);
+  }
   const commands: string[] = [];
   for (const { contour, curves } of boundedContours) {
     const sampled = sampleMorphContour(contour, curves, interpolatePoint);

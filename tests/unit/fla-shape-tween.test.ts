@@ -101,6 +101,51 @@ async function buildCompoundFixture(variant: 'separate' | 'hole' | 'open' | 'mis
 }
 
 describe('FLA Shape Tween display-list sampling', () => {
+  it('pairs different endpoint style indices on both sides of an adjacent edge and interpolates its stroke', async () => {
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', '<DOMDocument width="200" height="150"/>');
+    const vertices = [
+      [0, 0, 4, 0, 'a'], [4, 0, 4, 4, 'shared'], [4, 4, 0, 4, 'a'], [0, 4, 0, 0, 'a'],
+      [4, 0, 8, 0, 'b'], [8, 0, 8, 4, 'b'], [8, 4, 4, 4, 'b'],
+    ] as const;
+    const shape = (destination: boolean) => {
+      const a = destination ? 11 : 2;
+      const b = destination ? 17 : 7;
+      const s = destination ? 5 : 3;
+      const draw = (x: number, y: number) => `${(x + (destination ? 2 : 0)) * 256} ${y * 256}`;
+      const edges = vertices.map(([x, y, endX, endY, side]) => {
+        const styles = side === 'shared' ? `fillStyle0="${a}" fillStyle1="${b}" strokeStyle="${s}"`
+          : `fillStyle0="${side === 'a' ? a : b}"`;
+        return `<Edge ${styles} edges="!${draw(x, y)}|${draw(endX, endY)}"/>`;
+      });
+      return `<DOMShape><fills>
+        <FillStyle index="${a}"><SolidColor color="${destination ? '#0000ff' : '#ff0000'}" alpha="${destination ? 0.75 : 0.25}"/></FillStyle>
+        <FillStyle index="${b}"><SolidColor color="${destination ? '#00ffff' : '#00ff00'}"/></FillStyle>
+        </fills><strokes><StrokeStyle index="${s}"><SolidStroke weight="${destination ? 4 : 2}" caps="round" joints="bevel"><fill>
+        <SolidColor color="${destination ? '#ffffff' : '#000000'}"/></fill></SolidStroke></StrokeStyle></strokes>
+        <edges>${edges.join('')}</edges></DOMShape>`;
+    };
+    const segments = vertices.map(([x, y, endX, endY]) => `
+      <MorphSegment startPointA="${x}, ${y}" startPointB="${x + 2}, ${y}" fillIndex1="1" fillIndex2="2">
+        <MorphCurves anchorPointA="${endX}, ${endY}" anchorPointB="${endX + 2}, ${endY}" isLine="true"/>
+      </MorphSegment>`).join('');
+    zip.file('LIBRARY/shape-tween.xml', `<DOMSymbolItem name="shape-tween" symbolType="graphic"><timeline><DOMTimeline><layers>
+      <DOMLayer><frames><DOMFrame index="0" duration="4" tweenType="shape">
+        <MorphShape><morphSegments>${segments}</morphSegments></MorphShape>
+        <elements>${shape(false)}</elements></DOMFrame>
+        <DOMFrame index="4"><elements>${shape(true)}</elements></DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    const render = await renderShapeTween(zip);
+    const middle = await render(2);
+    expect(await render(0)).toContain('stroke-width="2"');
+    expect(await render(4)).toContain('stroke-width="4"');
+    expect(middle).toContain('fill="#800080" fill-opacity="0.5"');
+    expect(middle).toContain('fill="#00ff80"');
+    expect(middle).toContain('stroke="#808080" stroke-opacity="1" stroke-width="3"');
+    expect(middle).toContain('stroke-linejoin="bevel"');
+    expect(middle).toContain('64.0000 51.2000');
+  });
+
   it.each(['separate', 'hole'] as const)('samples both paired contours in one nonzero fill (%s)', async (variant) => {
     const render = await buildCompoundFixture(variant);
     const middle = await render(2);
