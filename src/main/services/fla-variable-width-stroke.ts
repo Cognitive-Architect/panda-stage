@@ -2,14 +2,20 @@
  * Pure geometric variable-width stroke outline builder for Adobe Animate XFL
  * `SolidStroke` / `VariablePointWidth` / `WidthMarker` definitions.
  *
- * Independent clean-room implementation of the public arc-length width-profile
- * geometry (informed by the documented XFL `WidthMarker` semantics in
- * `lifeart/fla-viewer@b14fa1d`):
+ * Geometry and upstream attribution:
  *  - Operates on directed, author-ordered subpaths within each original `<Edge>`
- *    (never reversing or stitching across `<Edge>` boundaries).
- *  - Evaluates asymmetric left/right half-widths along normalized arc length
- *    using smooth cubic Hermite interpolation (and crisp transitions at
- *    `type="corner"` markers).
+ *    (never reversing or stitching across `<Edge>` boundaries), keeping Panda
+ *    Stage's exact arc-length sampling, binary marker lookup, closed-loop
+ *    opposite-winding inner/outer contours, paint/opacity handling, and
+ *    cumulative command/point budgets.
+ *  - Profile evaluation (`markerSlope` + cubic Hermite with corner one-sided
+ *    secants and non-negative clamp) and asymmetric quarter-ellipse round cap
+ *    (`appendCapPoints`) are adapted from `lifeart/fla-viewer` at pinned commit
+ *    `b14fa1d1e3e2d2b035e174bde472a7941d385b17` (`src/variable-width-stroke.ts`
+ *    L39-78 and L285-303). Upstream `README.md` (L161-163) and `package.json`
+ *    (L21) declare the ISC license (no standalone `LICENSE` file is present in
+ *    that pinned tree). Note that upstream's Catmull-Rom/Hermite inter-marker
+ *    curve is inferred rather than an official Adobe Animate formula.
  *  - Emits bounded closed polygon contours (`M`/`L`/`Z`) with `nonzero` winding
  *    (opposite-winding inner/outer contours for closed loops so hollow rings
  *    retain their interior hole).
@@ -89,25 +95,66 @@ function formatCoord(value: number): string {
 }
 
 /**
+ * Neighborhood finite-difference slope for one side at marker `index`, for the
+ * span leaving (`out`) or arriving (`in`). Corner markers and the two endpoints
+ * use the span's own one-sided secant; interior smooth markers use the
+ * Catmull-Rom chord across `(prev, next)`.
+ *
+ * Adapted from `lifeart/fla-viewer@b14fa1d` (`markerSlope`, ISC per upstream
+ * README.md / package.json).
+ */
+function markerSlope(
+  markers: readonly VariableWidthMarker[],
+  index: number,
+  side: 'left' | 'right',
+  dir: 'in' | 'out',
+): number {
+  const m = markers[index]!;
+  const prev = markers[index - 1];
+  const next = markers[index + 1];
+  if (m.corner || !prev || !next) {
+    const other = dir === 'out' ? next : prev;
+    if (!other) return 0;
+    const delta = other.position - m.position;
+    if (Math.abs(delta) <= 1e-9) return 0;
+    return (other[side] - m[side]) / delta;
+  }
+  const span = next.position - prev.position;
+  return span > 1e-9 ? (next[side] - prev[side]) / span : 0;
+}
+
+/**
  * Evaluates left and right half-widths (in pixels) at normalized arc-length `t` in `[0, 1]`.
+ *
+ * Uses Panda's binary search with neighborhood-slope cubic Hermite interpolation
+ * (non-negative clamped ratio multiplied by stroke `weight` once), adapted from
+ * `lifeart/fla-viewer@b14fa1d` (`widthProfileAt`, ISC per upstream README.md /
+ * package.json).
  */
 export function evaluateVariableWidthProfile(
   t: number,
   markers: readonly VariableWidthMarker[],
   weight: number,
 ): { readonly left: number; readonly right: number } {
+  const safeWeight = Number.isFinite(weight) && weight > 0 ? weight : 0;
   if (markers.length === 0) {
-    const half = weight * 0.5;
+    const half = safeWeight * 0.5;
     return { left: half, right: half };
   }
   const clamped = Math.max(0, Math.min(1, t));
   const first = markers[0]!;
   if (clamped <= first.position || markers.length === 1) {
-    return { left: first.left * weight, right: first.right * weight };
+    return {
+      left: Math.max(0, first.left) * safeWeight,
+      right: Math.max(0, first.right) * safeWeight,
+    };
   }
   const last = markers[markers.length - 1]!;
   if (clamped >= last.position) {
-    return { left: last.left * weight, right: last.right * weight };
+    return {
+      left: Math.max(0, last.left) * safeWeight,
+      right: Math.max(0, last.right) * safeWeight,
+    };
   }
 
   let lo = 0;
@@ -121,22 +168,29 @@ export function evaluateVariableWidthProfile(
   const m1 = markers[hi]!;
   const span = m1.position - m0.position;
   if (span <= 1e-9) {
-    return { left: m1.left * weight, right: m1.right * weight };
+    return {
+      left: Math.max(0, m1.left) * safeWeight,
+      right: Math.max(0, m1.right) * safeWeight,
+    };
   }
   const u = (clamped - m0.position) / span;
-  let factor: number;
-  if (m0.corner && m1.corner) {
-    factor = u;
-  } else if (m0.corner) {
-    factor = 1 - (1 - u) * (1 - u);
-  } else if (m1.corner) {
-    factor = u * u;
-  } else {
-    factor = u * u * (3 - 2 * u);
-  }
+  const u2 = u * u;
+  const u3 = u2 * u;
+  const h00 = 2 * u3 - 3 * u2 + 1;
+  const h10 = (u3 - 2 * u2 + u) * span;
+  const h01 = -2 * u3 + 3 * u2;
+  const h11 = (u3 - u2) * span;
+  const evalSide = (side: 'left' | 'right'): number => {
+    const ratio =
+      h00 * m0[side] +
+      h10 * markerSlope(markers, lo, side, 'out') +
+      h01 * m1[side] +
+      h11 * markerSlope(markers, hi, side, 'in');
+    return Math.max(0, ratio) * safeWeight;
+  };
   return {
-    left: (m0.left + (m1.left - m0.left) * factor) * weight,
-    right: (m0.right + (m1.right - m0.right) * factor) * weight,
+    left: evalSide('left'),
+    right: evalSide('right'),
   };
 }
 
@@ -344,38 +398,49 @@ function appendJoinPoints(
   out.push(pOut);
 }
 
+/**
+ * Appends cap points at an open endpoint `anchor`, sweeping from the `from` edge
+ * (offset by `fromNormal * fromHalfWidth`) to the opposite edge (offset by
+ * `-fromNormal * toHalfWidth`), projecting along `outwardTangent` by the average
+ * half-width `(fromHalfWidth + toHalfWidth) * 0.5`.
+ *
+ * For `round` caps, each side uses a quarter-ellipse anchored at `anchor`
+ * (degenerating to a semicircle when `fromHalfWidth === toHalfWidth`), adapted
+ * from `lifeart/fla-viewer@b14fa1d` (`capPoints`, ISC per upstream README.md /
+ * package.json). The two edge points themselves are not duplicated.
+ */
 function appendCapPoints(
   out: VariableWidthPoint[],
-  fromPt: VariableWidthPoint,
-  toPt: VariableWidthPoint,
+  anchor: VariableWidthPoint,
+  fromNormal: VariableWidthPoint,
   outwardTangent: VariableWidthPoint,
+  fromHalfWidth: number,
+  toHalfWidth: number,
   cap: 'butt' | 'round' | 'square',
 ): void {
-  const dx = toPt.x - fromPt.x;
-  const dy = toPt.y - fromPt.y;
-  const diameter = Math.hypot(dx, dy);
+  const diameter = fromHalfWidth + toHalfWidth;
   if (diameter <= 1e-3 || cap === 'butt') return;
-  const radius = diameter * 0.5;
+  const forwardExt = diameter * 0.5;
   if (cap === 'square') {
-    out.push({ x: fromPt.x + outwardTangent.x * radius, y: fromPt.y + outwardTangent.y * radius });
-    out.push({ x: toPt.x + outwardTangent.x * radius, y: toPt.y + outwardTangent.y * radius });
+    out.push({
+      x: anchor.x + fromNormal.x * fromHalfWidth + outwardTangent.x * forwardExt,
+      y: anchor.y + fromNormal.y * fromHalfWidth + outwardTangent.y * forwardExt,
+    });
+    out.push({
+      x: anchor.x - fromNormal.x * toHalfWidth + outwardTangent.x * forwardExt,
+      y: anchor.y - fromNormal.y * toHalfWidth + outwardTangent.y * forwardExt,
+    });
     return;
   }
-  // Round cap centered at midpoint between fromPt and toPt
-  const cx = (fromPt.x + toPt.x) * 0.5;
-  const cy = (fromPt.y + toPt.y) * 0.5;
-  const startAngle = Math.atan2(fromPt.y - cy, fromPt.x - cx);
-  const endAngle = Math.atan2(toPt.y - cy, toPt.x - cx);
-  let delta = endAngle - startAngle;
-  // Choose the half-circle pointing along outwardTangent
-  const midA = startAngle + delta * 0.5;
-  const dot = Math.cos(midA) * outwardTangent.x + Math.sin(midA) * outwardTangent.y;
-  if (dot < 0) {
-    delta = delta > 0 ? delta - Math.PI * 2 : delta + Math.PI * 2;
-  }
   for (let i = 1; i < ROUND_ARC_SEGMENTS; i += 1) {
-    const a = startAngle + (delta * i) / ROUND_ARC_SEGMENTS;
-    out.push({ x: cx + Math.cos(a) * radius, y: cy + Math.sin(a) * radius });
+    const phi = (Math.PI * i) / ROUND_ARC_SEGMENTS;
+    const c = Math.cos(phi);
+    const lateral = c * (c >= 0 ? fromHalfWidth : toHalfWidth);
+    const forward = Math.sin(phi) * forwardExt;
+    out.push({
+      x: anchor.x + fromNormal.x * lateral + outwardTangent.x * forward,
+      y: anchor.y + fromNormal.y * lateral + outwardTangent.y * forward,
+    });
   }
 }
 
@@ -612,17 +677,22 @@ export function buildVariableWidthStrokeOutline(
   }
 
   // Open path
+  let startProfile = { left: 0, right: 0 };
+  let endProfile = { left: 0, right: 0 };
   for (let i = 0; i < count; i += 1) {
     const p = pts[i]!;
     const tNorm = cumLen[i]! / totalLength;
-    const { left, right } = evaluateVariableWidthProfile(tNorm, options.markers, options.weight);
+    const profile = evaluateVariableWidthProfile(tNorm, options.markers, options.weight);
+    const { left, right } = profile;
     if (i === 0) {
+      startProfile = profile;
       const t0 = tangents[0]!;
       const nl = leftNormal(t0);
       const nr = rightNormal(t0);
       leftPts.push({ x: p.x + nl.x * left, y: p.y + nl.y * left });
       rightPts.push({ x: p.x + nr.x * right, y: p.y + nr.y * right });
     } else if (i === count - 1) {
+      endProfile = profile;
       const tLast = tangents[segCount - 1]!;
       const nl = leftNormal(tLast);
       const nr = rightNormal(tLast);
@@ -642,16 +712,26 @@ export function buildVariableWidthStrokeOutline(
 
   const outline: VariableWidthPoint[] = [...leftPts];
   const endTangent = tangents[segCount - 1]!;
-  appendCapPoints(outline, leftPts[leftPts.length - 1]!, rightPts[rightPts.length - 1]!, endTangent, options.cap);
+  appendCapPoints(
+    outline,
+    pts[count - 1]!,
+    leftNormal(endTangent),
+    endTangent,
+    endProfile.left,
+    endProfile.right,
+    options.cap,
+  );
   for (let i = rightPts.length - 1; i >= 0; i -= 1) {
     outline.push(rightPts[i]!);
   }
   const startTangent = tangents[0]!;
   appendCapPoints(
     outline,
-    rightPts[0]!,
-    leftPts[0]!,
+    pts[0]!,
+    rightNormal(startTangent),
     { x: -startTangent.x, y: -startTangent.y },
+    startProfile.right,
+    startProfile.left,
     options.cap,
   );
 

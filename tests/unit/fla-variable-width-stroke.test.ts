@@ -93,9 +93,12 @@ describe('fla-variable-width-stroke geometry (#1260)', () => {
     expect(evaluateVariableWidthProfile(0.5, smooth, 10)).toEqual({ left: 5, right: 15 });
     expect(evaluateVariableWidthProfile(1, smooth, 10)).toEqual({ left: 0, right: 0 });
 
+    // Neighborhood-slope cubic Hermite (#1303): end marker at t=0 uses one-sided secant
+    // slope (0.5/0.5 = 1 for left, 1.5/0.5 = 3 for right) while interior peak at t=0.5 has
+    // zero Catmull-Rom chord slope, yielding 0.3125 * 10 = 3.125 and 0.9375 * 10 = 9.375 at t=0.25.
     const mid = evaluateVariableWidthProfile(0.25, smooth, 10);
-    expect(mid.left).toBeCloseTo(2.5, 4);
-    expect(mid.right).toBeCloseTo(7.5, 4);
+    expect(mid.left).toBeCloseTo(3.125, 4);
+    expect(mid.right).toBeCloseTo(9.375, 4);
 
     const cornerProfile: VariableWidthMarker[] = [
       { position: 0, left: 0, right: 0, corner: true },
@@ -248,6 +251,192 @@ describe('fla-variable-width-stroke geometry (#1260)', () => {
     );
     expect(overBudget.ok).toBe(false);
     if (!overBudget.ok) expect(overBudget.code).toBe('BUDGET_EXCEEDED');
+  });
+
+  it('maintains C1 slope continuity across multi-marker smooth profiles and scales by weight once (#1303)', () => {
+    // Collinear multi-marker ramp: neighborhood-slope Hermite reproduces the exact linear ramp
+    // without the flat-plateau staircase wobble produced by local smoothstep.
+    const ramp: VariableWidthMarker[] = [
+      { position: 0, left: 0.1, right: 0.2, corner: false },
+      { position: 0.25, left: 0.35, right: 0.7, corner: false },
+      { position: 0.75, left: 0.85, right: 1.7, corner: false },
+      { position: 1, left: 1.1, right: 2.2, corner: false },
+    ];
+    for (const t of [0.1, 0.25, 0.4, 0.6, 0.75, 0.9]) {
+      const p10 = evaluateVariableWidthProfile(t, ramp, 10);
+      const p20 = evaluateVariableWidthProfile(t, ramp, 20);
+      expect(p10.left).toBeCloseTo((0.1 + t) * 10, 4);
+      expect(p10.right).toBeCloseTo((0.2 + 2 * t) * 10, 4);
+      // Weight is multiplied once: doubling weight doubles output exactly.
+      expect(p20.left).toBeCloseTo(p10.left * 2, 4);
+      expect(p20.right).toBeCloseTo(p10.right * 2, 4);
+    }
+
+    // Interior smooth marker at t=0.4 has matching left and right numerical derivatives (C1).
+    const multi: VariableWidthMarker[] = [
+      { position: 0, left: 0.1, right: 0.1, corner: false },
+      { position: 0.4, left: 0.6, right: 0.9, corner: false },
+      { position: 0.8, left: 0.9, right: 0.3, corner: false },
+      { position: 1, left: 0.2, right: 0.2, corner: false },
+    ];
+    const eps = 1e-5;
+    const at = evaluateVariableWidthProfile(0.4, multi, 10);
+    const before = evaluateVariableWidthProfile(0.4 - eps, multi, 10);
+    const after = evaluateVariableWidthProfile(0.4 + eps, multi, 10);
+    const dLeftIn = (at.left - before.left) / eps;
+    const dLeftOut = (after.left - at.left) / eps;
+    const dRightIn = (at.right - before.right) / eps;
+    const dRightOut = (after.right - at.right) / eps;
+    expect(dLeftIn).toBeCloseTo(dLeftOut, 2);
+    expect(dRightIn).toBeCloseTo(dRightOut, 2);
+  });
+
+  it('uses one-sided secants at corner markers to preserve crisp width kinks (#1303)', () => {
+    const cornerPeak: VariableWidthMarker[] = [
+      { position: 0, left: 0.2, right: 0.2, corner: false },
+      { position: 0.5, left: 1.0, right: 1.0, corner: true },
+      { position: 1, left: 0.2, right: 0.2, corner: false },
+    ];
+    const eps = 1e-5;
+    const at = evaluateVariableWidthProfile(0.5, cornerPeak, 10);
+    const before = evaluateVariableWidthProfile(0.5 - eps, cornerPeak, 10);
+    const after = evaluateVariableWidthProfile(0.5 + eps, cornerPeak, 10);
+    const dIn = (at.left - before.left) / eps;
+    const dOut = (after.left - at.left) / eps;
+    // Incoming slope = (1.0 - 0.2) / 0.5 * 10 = +16; outgoing slope = (0.2 - 1.0) / 0.5 * 10 = -16
+    expect(dIn).toBeCloseTo(16, 1);
+    expect(dOut).toBeCloseTo(-16, 1);
+    // Linear on each half because both endpoints and the corner use the span secant
+    expect(evaluateVariableWidthProfile(0.25, cornerPeak, 10).left).toBeCloseTo(6, 4);
+    expect(evaluateVariableWidthProfile(0.75, cornerPeak, 10).left).toBeCloseTo(6, 4);
+  });
+
+  it('handles zero-width, non-negative clamping, coincident markers, and short strokes safely (#1303)', () => {
+    // Zero weight -> zero profile everywhere
+    const markers: VariableWidthMarker[] = [
+      { position: 0, left: 0.5, right: 1.5, corner: false },
+      { position: 1, left: 0.5, right: 1.5, corner: false },
+    ];
+    expect(evaluateVariableWidthProfile(0.5, markers, 0)).toEqual({ left: 0, right: 0 });
+
+    // Non-negative clamp prevents negative widths when Catmull-Rom undershoots a low baseline
+    const steepUndershoot: VariableWidthMarker[] = [
+      { position: 0, left: 0.05, right: 0.05, corner: false },
+      { position: 0.05, left: 2.0, right: 2.0, corner: false },
+      { position: 0.1, left: 0.05, right: 0.05, corner: false },
+      { position: 1, left: 0.05, right: 0.05, corner: false },
+    ];
+    for (let i = 0; i <= 50; i += 1) {
+      const p = evaluateVariableWidthProfile(i / 50, steepUndershoot, 10);
+      expect(p.left).toBeGreaterThanOrEqual(0);
+      expect(p.right).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(p.left)).toBe(true);
+      expect(Number.isFinite(p.right)).toBe(true);
+    }
+
+    // Coincident markers (duplicate & step jump at position=0.5) never produce NaN/Infinity
+    const coincident: VariableWidthMarker[] = [
+      { position: 0, left: 0.2, right: 0.2, corner: false },
+      { position: 0.5, left: 0.2, right: 0.2, corner: false },
+      { position: 0.5, left: 1.0, right: 0.4, corner: false },
+      { position: 1, left: 1.0, right: 0.4, corner: false },
+    ];
+    for (const t of [0, 0.25, 0.499, 0.5, 0.501, 0.75, 1]) {
+      const p = evaluateVariableWidthProfile(t, coincident, 10);
+      expect(Number.isFinite(p.left)).toBe(true);
+      expect(Number.isFinite(p.right)).toBe(true);
+      expect(p.left).toBeGreaterThanOrEqual(0);
+      expect(p.right).toBeGreaterThanOrEqual(0);
+    }
+    expect(evaluateVariableWidthProfile(0.5, coincident, 10)).toEqual({ left: 10, right: 4 });
+
+    // All-zero markers outline remains finite and valid
+    const zeroWidthOutline = buildVariableWidthStrokeOutline(
+      [{ from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, command: { type: 'L', x: 40, y: 0 } }],
+      {
+        weight: 10,
+        markers: [
+          { position: 0, left: 0, right: 0, corner: false },
+          { position: 1, left: 0, right: 0, corner: false },
+        ],
+        cap: 'round',
+        join: 'round',
+        miterLimit: 3,
+        closed: false,
+      },
+    );
+    expect(zeroWidthOutline.ok).toBe(true);
+
+    // Short stroke (0.5px) and degenerate zero-length stroke
+    const shortStroke = buildVariableWidthStrokeOutline(
+      [{ from: { x: 10, y: 10 }, to: { x: 10.5, y: 10 }, command: { type: 'L', x: 10.5, y: 10 } }],
+      { weight: 10, markers, cap: 'round', join: 'round', miterLimit: 3, closed: false },
+    );
+    expect(shortStroke.ok).toBe(true);
+    if (shortStroke.ok) expect(shortStroke.commands.length).toBeGreaterThan(3);
+
+    const zeroLenStroke = buildVariableWidthStrokeOutline(
+      [{ from: { x: 10, y: 10 }, to: { x: 10, y: 10 }, command: { type: 'L', x: 10, y: 10 } }],
+      { weight: 10, markers, cap: 'round', join: 'round', miterLimit: 3, closed: false },
+    );
+    expect(zeroLenStroke.ok).toBe(true);
+    if (zeroLenStroke.ok) expect(zeroLenStroke.commands).toEqual([]);
+  });
+
+  it('anchors asymmetric round caps at original path endpoints with per-side quarter-ellipses (#1303)', () => {
+    // Traveling +x from (0, 50) to (100, 50): left is -y (2px), right is +y (14px), avg forward = 8px.
+    const asymMarkers: VariableWidthMarker[] = [
+      { position: 0, left: 0.2, right: 1.4, corner: false },
+      { position: 1, left: 0.2, right: 1.4, corner: false },
+    ];
+    const result = buildVariableWidthStrokeOutline(
+      [{ from: { x: 0, y: 50 }, to: { x: 100, y: 50 }, command: { type: 'L', x: 100, y: 50 } }],
+      { weight: 10, markers: asymMarkers, cap: 'round', join: 'round', miterLimit: 3, closed: false },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const pts = extractContours(result.commands)[0]!;
+
+    // End cap apex lies on the original centerline y=50 at x = 100 + (2 + 14) / 2 = 108
+    // (old midpoint-semicircle shifted the apex off-centerline to y=56).
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const endApex = pts.find((p) => Math.abs(p.x - maxX) < 1e-3)!;
+    expect(endApex.x).toBeCloseTo(108, 3);
+    expect(endApex.y).toBeCloseTo(50, 3);
+
+    // Start cap apex lies on the original centerline y=50 at x = 0 - 8 = -8.
+    const minX = Math.min(...pts.map((p) => p.x));
+    const startApex = pts.find((p) => Math.abs(p.x - minX) < 1e-3)!;
+    expect(startApex.x).toBeCloseTo(-8, 3);
+    expect(startApex.y).toBeCloseTo(50, 3);
+
+    // Quarter-ellipse on the narrow left side (-y) never bulges beyond y = 50 - 2 = 48,
+    // and wide right side (+y) reaches y = 50 + 14 = 64.
+    expect(Math.min(...pts.map((p) => p.y))).toBeCloseTo(48, 3);
+    expect(Math.max(...pts.map((p) => p.y))).toBeCloseTo(64, 3);
+
+    // One-sided zero-width cap (left=0, right=16): no bulge past y=50 on the zero side, apex at (108, 50).
+    const oneSided = buildVariableWidthStrokeOutline(
+      [{ from: { x: 0, y: 50 }, to: { x: 100, y: 50 }, command: { type: 'L', x: 100, y: 50 } }],
+      {
+        weight: 10,
+        markers: [
+          { position: 0, left: 0, right: 1.6, corner: false },
+          { position: 1, left: 0, right: 1.6, corner: false },
+        ],
+        cap: 'round',
+        join: 'round',
+        miterLimit: 3,
+        closed: false,
+      },
+    );
+    expect(oneSided.ok).toBe(true);
+    if (!oneSided.ok) return;
+    const oneSidedPts = extractContours(oneSided.commands)[0]!;
+    expect(Math.min(...oneSidedPts.map((p) => p.y))).toBeCloseTo(50, 3);
+    expect(Math.max(...oneSidedPts.map((p) => p.x))).toBeCloseTo(108, 3);
+    const oneSidedEndApex = oneSidedPts.find((p) => Math.abs(p.x - 108) < 1e-3)!;
+    expect(oneSidedEndApex.y).toBeCloseTo(50, 3);
   });
 });
 
