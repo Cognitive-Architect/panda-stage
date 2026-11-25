@@ -34,7 +34,7 @@ export interface FlaDisplayListFrameContext {
 }
 
 export interface FlaInstanceFilter {
-  readonly kind: 'blur' | 'glow' | 'dropShadow';
+  readonly kind: 'blur' | 'glow' | 'dropShadow' | 'colorMatrix';
   readonly enabled: boolean;
   readonly blurX: number;
   readonly blurY: number;
@@ -43,6 +43,10 @@ export interface FlaInstanceFilter {
   readonly strength: number;
   readonly distance: number;
   readonly angle: number;
+  readonly inner?: boolean;
+  readonly knockout?: boolean;
+  /** AIR 4×5 matrix, with additive terms in byte units. */
+  readonly matrix?: readonly number[];
 }
 
 export interface FlaDisplayListBlurFilter {

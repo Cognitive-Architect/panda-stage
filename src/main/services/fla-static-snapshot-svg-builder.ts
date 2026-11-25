@@ -3975,6 +3975,15 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     for (const [index, filter] of filters.entries()) {
       if (!filter.enabled) continue;
       const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+      const output = 'effect' + index;
+      if (filter.kind === 'colorMatrix') {
+        if (!filter.matrix || filter.matrix.length !== 20 ||
+            !filter.matrix.every((value) => Number.isFinite(value) && Math.abs(value) <= 1024) || filter.matrix[19]! > 0) continue;
+        const values = filter.matrix.map((value, i) => formatSvgNumber(i % 5 === 4 ? value / 255 : value)).join(' ');
+        primitives.push(`<feColorMatrix in="${source}" type="matrix" values="${values}" result="${output}"/>`);
+        source = output;
+        continue;
+      }
       // Animate's screen-space blur radii are approximated as twice the SVG sigma.
       const sigmaX = blurX / 2;
       const sigmaY = blurY / 2;
@@ -3984,9 +3993,23 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
       expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
       const blur = 'blur' + index;
-      const output = 'effect' + index;
       if (filter.kind === 'blur') {
         primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+      } else if (filter.kind === 'glow' && (filter.inner || filter.knockout)) {
+        let glowInput = source;
+        if (filter.inner) {
+          glowInput = 'inverse' + index;
+          primitives.push(`<feComponentTransfer in="${source}" result="${glowInput}"><feFuncA type="linear" slope="-1" intercept="1"/></feComponentTransfer>`);
+        }
+        const silhouette = 'silhouette' + index;
+        const effect = filter.knockout ? output : 'glow' + index;
+        primitives.push(
+          `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+          `<feComposite in="${blur}" in2="${source}" operator="${filter.inner ? 'in' : 'out'}" result="${silhouette}"/>`,
+          `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+          `<feComposite in2="${silhouette}" operator="in" result="${effect}"/>`,
+        );
+        if (!filter.knockout) primitives.push(`<feMerge result="${output}"><feMergeNode in="${source}"/><feMergeNode in="${effect}"/></feMerge>`);
       } else {
         const offset = 'offset' + index;
         primitives.push(

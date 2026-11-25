@@ -18,7 +18,7 @@ interface Curve {
   readonly keys: readonly Key[];
   readonly ease: (unitTime: number) => number;
 }
-type FilterField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha';
+type FilterField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha' | 'inner' | 'knockout';
 type FilterNumericField = 'blurX' | 'blurY' | 'strength' | 'distance' | 'angle';
 type FilterNumericSpec = readonly [FilterNumericField, number, number, number];
 export type ObjectMotionFilterParameters = { -readonly [K in FilterField]?: FlaInstanceFilter[K] };
@@ -234,8 +234,6 @@ const filterColorParameters = new Set(['Glow_Color', 'DropShadow_Color']);
 const filterNeutralParameters = new Map<string, number>([
   ['Blur_Quality', 1],
   ['Glow_Quality', 1],
-  ['Glow_Knockout', 0],
-  ['Glow_InnerGlow', 0],
   ['DropShadow_Quality', 1],
   ['DropShadow_Knockout', 0],
   ['DropShadow_InnerShadow', 0],
@@ -348,6 +346,12 @@ export function parseFlaObjectMotion(
               } else {
                 filterCurves[field] = [curve, numeric];
               }
+            } else if (id === 'Glow_Knockout' || id === 'Glow_InnerGlow') {
+              const constant = constantCurveValue(curve);
+              if (constant !== 0 && constant !== 1) return invalid('Unsupported instance filter channel ' + id);
+              const authored = matchIndex >= 0 ? authoredFilters[matchIndex] : undefined;
+              const field = id === 'Glow_Knockout' ? 'knockout' : 'inner';
+              if (constant === 1 || authored?.[field]) parameters[field] = constant === 1;
             } else {
               const constant = constantCurveValue(curve);
               if (constant === undefined || filterNeutralParameters.get(id) !== constant) {
