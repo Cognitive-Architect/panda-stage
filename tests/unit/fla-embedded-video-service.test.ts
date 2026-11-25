@@ -34,7 +34,8 @@ import {
   FlaVideoImportRequestSchema,
   FlaVideoImportResponseSchema,
 } from '../../src/shared/fla-video-api';
-import type { ExportJobUpdate } from '../../src/shared/export-types';
+import { ExportRenderFrameRequestSchema, type ExportJobUpdate } from '../../src/shared/export-types';
+import { storeExportVideoFrame, touchExportVideoFrame } from '../../src/shared/export-video-frame-cache';
 import { preflightFlaBytes } from '../../src/main/services/fla-import-preflight-service';
 import { readFlaEmbeddedVideo } from '../../src/main/services/fla-native-video';
 import { ProjectService } from '../../src/main/services/ProjectService';
@@ -859,15 +860,50 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     const shot = project.shots[0]!;
     // Simulate 30 frames at 60fps (~16.67ms step) — consecutive frames reuse same 24fps sample with 0 transferred bytes!
     const batch0 = await supply.collectVideoFramesForShotTime(project, shot, 0);
-    expect(batch0).toHaveLength(2);
+    expect(batch0.videoFrames).toHaveLength(2);
     const batch16 = await supply.collectVideoFramesForShotTime(project, shot, 17); // still sample 0!
-    expect(batch16).toHaveLength(0);
+    expect(batch16.videoFrames).toHaveLength(0);
+    expect(batch16.videoFrameCacheTouches).toHaveLength(2);
     for (let f = 2; f < 30; f += 1) {
       await supply.collectVideoFramesForShotTime(project, shot, Math.round((f * 1_000) / 60));
     }
     const stats = supply.getTransferStats();
     expect(stats.peakFramesPerTransfer).toBeLessThanOrEqual(2);
     expect(stats.cachedEntries).toBeLessThanOrEqual(16);
+
+    // Reuse an old sample across Shots while adding a new one in the same render.
+    supply.resetRendererCacheMirror();
+    const rendererCache = new Map<string, Uint8Array>();
+    const alternate = ProjectSchema.shape.shots.element.parse({
+      ...shot,
+      id: randomUUID(),
+      layers: shot.layers.map((layer) => layer.source.kind === 'video' && layer.source.assetId === videoBId
+        ? { ...layer, source: { ...layer.source, trimStartMs: 340 } }
+        : layer),
+    });
+    const deliver = async (target: typeof shot, timeMs: number) => {
+      const update = await supply.collectVideoFramesForShotTime(project, target, timeMs);
+      const request = ExportRenderFrameRequestSchema.parse({
+        ...update, jobId: randomUUID(), frameIndex: 0, timeMs, shotId: target.id, shotLocalTimeMs: timeMs,
+      });
+      for (const key of request.videoFrameCacheTouches ?? []) {
+        expect(touchExportVideoFrame(rendererCache, key)).toBe(true);
+      }
+      for (const frame of request.videoFrames ?? []) {
+        storeExportVideoFrame(rendererCache, frame.assetId, frame.bytes);
+      }
+      const samples = evaluateShotAtTime(target, timeMs, project).layers
+        .filter((layer) => layer.visible && layer.assetId?.includes('#frame:'));
+      expect(samples).toHaveLength(2);
+      for (const sample of samples) expect(rendererCache.has(sample.assetId!)).toBe(true);
+      return update;
+    };
+    for (let index = 0; index < 8; index += 1) await deliver(shot, Math.ceil(index * 1_000 / 24));
+    expect(rendererCache.size).toBe(16);
+    const earliest = [...rendererCache.keys()][0]!;
+    expect((await deliver(alternate, 0)).videoFrameCacheTouches).toEqual([earliest]);
+    expect((await deliver(shot, 0)).videoFrameCacheTouches).toEqual([earliest]);
+    expect(rendererCache.size).toBe(16);
 
     // 2. E-F11 visible diagnostics: corrupt video + healthy sibling exports cleanly & surfaces visible warning in ExportTaskState:
     const corruptBytes = Buffer.from('CORRUPT_MP4_PAYLOAD');

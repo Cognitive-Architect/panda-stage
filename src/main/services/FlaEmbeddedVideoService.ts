@@ -13,6 +13,7 @@ import {
   type VideoAsset,
 } from '../../domain';
 import { sanitizeAssetFileName } from '../../shared/asset-name';
+import { EXPORT_VIDEO_FRAME_CACHE_LIMIT, storeExportVideoFrame, touchExportVideoFrame } from '../../shared/export-video-frame-cache';
 import type { AssetFileExtension } from '../../shared/asset-name';
 import {
   evaluateFlaVideoClock,
@@ -939,9 +940,7 @@ export class FlaEmbeddedVideoService {
   }
 }
 
-export const EXPORT_RENDERER_VIDEO_FRAME_CACHE_LIMIT = 16;
 const MAX_MAIN_EXPORT_PNG_CACHE_BYTES = 32 * 1024 * 1024;
-const MAX_EXPORT_VIDEO_FRAMES_PER_RENDER = 16;
 const MAX_EXPORT_DIAGNOSTICS = 32;
 
 export interface ExportVideoFramePayload {
@@ -960,7 +959,7 @@ export interface ExportVideoFramePayload {
 export class ExportVideoFrameSupply {
   private readonly pngCache = new Map<string, Uint8Array<ArrayBuffer>>();
   private pngCacheBytes = 0;
-  private readonly rendererCacheOrder: string[] = [];
+  private readonly rendererCache = new Map<string, true>();
   private readonly diagnostics = new Set<string>();
   private totalFramesTransferred = 0;
   private peakFramesPerTransfer = 0;
@@ -1001,7 +1000,7 @@ export class ExportVideoFrameSupply {
 
   /** Resets the mirrored renderer cache when a new formal load starts (e.g., sprite sheet). */
   resetRendererCacheMirror(): void {
-    this.rendererCacheOrder.length = 0;
+    this.rendererCache.clear();
   }
 
   async collectVideoFramesForShotTime(
@@ -1010,8 +1009,11 @@ export class ExportVideoFrameSupply {
     shotLocalTimeMs: number,
     signal?: AbortSignal,
     outputLayerId?: string,
-  ): Promise<ExportVideoFramePayload[]> {
-    if (!this.hasVideoAssets) return [];
+  ): Promise<{ videoFrames: ExportVideoFramePayload[]; videoFrameCacheTouches: string[] }> {
+    const videoFrames: ExportVideoFramePayload[] = [];
+    const videoFrameCacheTouches: string[] = [];
+    const update = { videoFrames, videoFrameCacheTouches };
+    if (!this.hasVideoAssets) return update;
     const evaluated = evaluateShotAtTime(shot, shotLocalTimeMs, project);
     const neededKeys: string[] = [];
     for (const layer of evaluated.layers) {
@@ -1021,11 +1023,20 @@ export class ExportVideoFrameSupply {
       if (!parsed) continue;
       if (!neededKeys.includes(layer.assetId)) neededKeys.push(layer.assetId);
     }
-    if (neededKeys.length === 0) return [];
-
-    const payloads: ExportVideoFramePayload[] = [];
+    if (neededKeys.length > EXPORT_VIDEO_FRAME_CACHE_LIMIT) {
+      this.addDiagnostic(
+        `单帧导出视频样本数超出 ${EXPORT_VIDEO_FRAME_CACHE_LIMIT} 帧预算，已跳过多余视频画面。`,
+      );
+      neededKeys.length = EXPORT_VIDEO_FRAME_CACHE_LIMIT;
+    }
+    // Touch current hits before adding any misses so a frame being drawn cannot be evicted by this update.
+    const misses = neededKeys.filter((key) => {
+      if (!touchExportVideoFrame(this.rendererCache, key)) return true;
+      videoFrameCacheTouches.push(key);
+      return false;
+    });
     let batchBytes = 0;
-    for (const frameKey of neededKeys) {
+    for (const frameKey of misses) {
       signal?.throwIfAborted();
       const parsed = parseFlaVideoFrameAssetKey(frameKey);
       if (!parsed) continue;
@@ -1047,20 +1058,7 @@ export class ExportVideoFrameSupply {
         );
         continue;
       }
-      // If the hidden renderer's bounded LRU already holds this exact assetId+sha256+sample, touch LRU and send 0 bytes.
       const rendererKey = `${entry.sha256}\u0000${frameKey}`;
-      const existingIdx = this.rendererCacheOrder.indexOf(rendererKey);
-      if (existingIdx >= 0) {
-        this.rendererCacheOrder.splice(existingIdx, 1);
-        this.rendererCacheOrder.push(rendererKey);
-        continue;
-      }
-      if (payloads.length >= MAX_EXPORT_VIDEO_FRAMES_PER_RENDER) {
-        this.addDiagnostic(
-          `单帧导出视频样本数超出 ${MAX_EXPORT_VIDEO_FRAMES_PER_RENDER} 帧预算，已跳过多余视频画面。`,
-        );
-        break;
-      }
       const bytes = await this.readFramePng(rendererKey, entry.framePaths[parsed.sampleIndex]!, entry.assetName);
       if (!bytes) continue;
       if (batchBytes + bytes.byteLength > 64 * 1024 * 1024) {
@@ -1070,21 +1068,18 @@ export class ExportVideoFrameSupply {
         continue;
       }
       batchBytes += bytes.byteLength;
-      payloads.push({
+      videoFrames.push({
         assetId: frameKey,
         mimeType: 'image/png',
         bytes,
       });
-      this.rendererCacheOrder.push(rendererKey);
-      while (this.rendererCacheOrder.length > EXPORT_RENDERER_VIDEO_FRAME_CACHE_LIMIT) {
-        this.rendererCacheOrder.shift();
-      }
+      storeExportVideoFrame(this.rendererCache, frameKey, true);
     }
-    this.totalFramesTransferred += payloads.length;
-    if (payloads.length > this.peakFramesPerTransfer) {
-      this.peakFramesPerTransfer = payloads.length;
+    this.totalFramesTransferred += videoFrames.length;
+    if (videoFrames.length > this.peakFramesPerTransfer) {
+      this.peakFramesPerTransfer = videoFrames.length;
     }
-    return payloads;
+    return update;
   }
 
   private async readFramePng(
@@ -1104,7 +1099,7 @@ export class ExportVideoFrameSupply {
       const bytes = Uint8Array.from(raw);
       if (bytes.byteLength <= MAX_MAIN_EXPORT_PNG_CACHE_BYTES) {
         while (
-          this.pngCache.size >= EXPORT_RENDERER_VIDEO_FRAME_CACHE_LIMIT ||
+          this.pngCache.size >= EXPORT_VIDEO_FRAME_CACHE_LIMIT ||
           this.pngCacheBytes + bytes.byteLength > MAX_MAIN_EXPORT_PNG_CACHE_BYTES
         ) {
           const oldest = this.pngCache.keys().next().value;

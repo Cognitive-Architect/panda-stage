@@ -7,6 +7,7 @@ import { ExportPreparationCameraModeSchema, type PngSequenceOptions } from './ex
 import { DialogueSilenceSchema } from './dialogue-silence';
 import { ExportAudioClipInputSchema } from './audio-mix-types';
 import { ExportOutputFpsSchema, ExportRenderSettingsSchema } from './export-output-profile';
+import { EXPORT_VIDEO_FRAME_CACHE_LIMIT } from './export-video-frame-cache';
 
 export const EXPORT_FPS = 24 as const;
 export const MAX_PENDING_FRAMES = 3 as const;
@@ -52,9 +53,10 @@ export const ExportLoadFormalMediaSchema = z
   })
   .strict();
 
+const ExportVideoFrameKeySchema = z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu);
 export const ExportVideoFrameMediaSchema = z
   .object({
-    assetId: z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu),
+    assetId: ExportVideoFrameKeySchema,
     mimeType: z.literal('image/png'),
     bytes: z.instanceof(Uint8Array).refine(
       (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
@@ -107,7 +109,8 @@ export const ExportRenderFrameRequestSchema = z
     timeMs: FrameTimeSchema,
     shotId: z.uuid().optional(),
     shotLocalTimeMs: FrameTimeSchema.optional(),
-    videoFrames: z.array(ExportVideoFrameMediaSchema).max(16).optional(),
+    videoFrames: z.array(ExportVideoFrameMediaSchema).max(EXPORT_VIDEO_FRAME_CACHE_LIMIT).optional(),
+    videoFrameCacheTouches: z.array(ExportVideoFrameKeySchema).max(EXPORT_VIDEO_FRAME_CACHE_LIMIT).optional(),
   })
   .strict()
   .superRefine((frame, context) => {
@@ -116,6 +119,11 @@ export const ExportRenderFrameRequestSchema = z
         code: 'custom',
         message: 'Shot identity and Shot-local time must be supplied together.',
       });
+    }
+    const keys = [...(frame.videoFrameCacheTouches ?? []), ...(frame.videoFrames ?? []).map(({ assetId }) => assetId)];
+    if ((keys.length > 0 && frame.shotId === undefined) || keys.length > EXPORT_VIDEO_FRAME_CACHE_LIMIT ||
+        new Set(keys).size !== keys.length) {
+      context.addIssue({ code: 'custom', message: 'Invalid formal video frame cache update.' });
     }
     if (frame.videoFrames) {
       const totalBytes = frame.videoFrames.reduce((sum, item) => sum + item.bytes.byteLength, 0);

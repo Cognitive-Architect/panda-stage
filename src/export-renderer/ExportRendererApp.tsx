@@ -41,6 +41,7 @@ import {
 } from './export-frame-readiness';
 import { captureExportStageCanvas, resizeExportOutputCanvas } from './stage-capture';
 import { WorkerPngEncoder } from './worker-png-encoder';
+import { storeExportVideoFrame, touchExportVideoFrame } from '../shared/export-video-frame-cache';
 
 const exportStageDrawMode = parseExportDrawMode(
   new URLSearchParams(window.location.search).get(EXPORT_DRAW_MODE_QUERY_PARAM),
@@ -363,25 +364,14 @@ export function ExportRendererApp(): React.JSX.Element {
           });
           return;
         }
-        if (request.videoFrames && request.videoFrames.length > 0) {
-          const cache = videoFrameUrlsRef.current;
+        const cache = videoFrameUrlsRef.current;
+        for (const key of request.videoFrameCacheTouches ?? []) touchExportVideoFrame(cache, key);
+        if (request.videoFrames?.length) {
           for (const entry of request.videoFrames) {
-            const existingUrl = cache.get(entry.assetId);
-            if (existingUrl) {
-              cache.delete(entry.assetId);
-              URL.revokeObjectURL(existingUrl);
-            }
             const nextUrl = URL.createObjectURL(
               new Blob([entry.bytes], { type: entry.mimeType }),
             );
-            cache.set(entry.assetId, nextUrl);
-            while (cache.size > 16) {
-              const oldestKey = cache.keys().next().value;
-              if (!oldestKey) break;
-              const evictedUrl = cache.get(oldestKey);
-              cache.delete(oldestKey);
-              if (evictedUrl) URL.revokeObjectURL(evictedUrl);
-            }
+            storeExportVideoFrame(cache, entry.assetId, nextUrl, (url) => URL.revokeObjectURL(url));
           }
           setVideoFrameUrls(Object.fromEntries(cache.entries()));
         }

@@ -1539,6 +1539,7 @@ export class ExportService {
         record.phase = 'preparing';
         this.emit(record);
         await loadProject();
+        activeVideoSupply?.resetRendererCacheMirror();
         this.throwIfCancelled(active);
       }
 
@@ -1549,7 +1550,7 @@ export class ExportService {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
-        let videoFrames: ExportRenderFrameRequest['videoFrames'];
+        let videoUpdate: Pick<ExportRenderFrameRequest, 'videoFrames' | 'videoFrameCacheTouches'> = {};
         if (project && activeVideoSupply) {
           const entry = frame as ProjectFrameScheduleEntry;
           const shot = project.shots.find((candidate) => candidate.id === entry.shotId);
@@ -1561,7 +1562,8 @@ export class ExportService {
               active.controller.signal,
               schedule?.outputLayerId,
             );
-            if (supplied.length > 0) videoFrames = supplied;
+            if (supplied.videoFrames.length > 0) videoUpdate.videoFrames = supplied.videoFrames;
+            if (supplied.videoFrameCacheTouches.length > 0) videoUpdate.videoFrameCacheTouches = supplied.videoFrameCacheTouches;
             const diagnostics = activeVideoSupply.getDiagnostics();
             if (diagnostics.length > 0) record.diagnostics = diagnostics;
           }
@@ -1577,7 +1579,7 @@ export class ExportService {
                   .shotLocalTimeMs,
               }
             : {}),
-          ...(videoFrames ? { videoFrames } : {}),
+          ...videoUpdate,
         };
         const rendered = await this.renderer.renderFrame(request);
         this.throwIfCancelled(active);
