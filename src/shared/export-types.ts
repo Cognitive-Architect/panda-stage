@@ -43,14 +43,22 @@ export const ExportStartFormalRequestSchema = z
 
 export const ExportLoadFormalMediaSchema = z
   .object({
-    assetId: z.union([
-      z.uuid(),
-      z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu),
-    ]),
+    assetId: z.uuid(),
     mimeType: z.enum(['image/png', 'image/jpeg', 'image/svg+xml']),
     bytes: z.instanceof(Uint8Array).refine(
       (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
       'Formal export image exceeds its media budget.',
+    ),
+  })
+  .strict();
+
+export const ExportVideoFrameMediaSchema = z
+  .object({
+    assetId: z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu),
+    mimeType: z.literal('image/png'),
+    bytes: z.instanceof(Uint8Array).refine(
+      (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
+      'Formal export video frame exceeds its single-frame byte budget.',
     ),
   })
   .strict();
@@ -99,6 +107,7 @@ export const ExportRenderFrameRequestSchema = z
     timeMs: FrameTimeSchema,
     shotId: z.uuid().optional(),
     shotLocalTimeMs: FrameTimeSchema.optional(),
+    videoFrames: z.array(ExportVideoFrameMediaSchema).max(16).optional(),
   })
   .strict()
   .superRefine((frame, context) => {
@@ -107,6 +116,16 @@ export const ExportRenderFrameRequestSchema = z
         code: 'custom',
         message: 'Shot identity and Shot-local time must be supplied together.',
       });
+    }
+    if (frame.videoFrames) {
+      const totalBytes = frame.videoFrames.reduce((sum, item) => sum + item.bytes.byteLength, 0);
+      if (totalBytes > 64 * 1024 * 1024) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Per-frame video payload exceeds 64 MiB budget.',
+          path: ['videoFrames'],
+        });
+      }
     }
   });
 
@@ -242,6 +261,7 @@ export const ExportJobUpdateSchema = z
     cleanupError: z.string().trim().min(1).max(2_000).nullable().optional(),
     outputPath: FileSystemPathSchema.optional(),
     incomplete: z.boolean().optional(),
+    diagnostics: z.array(z.string().trim().min(1).max(500)).max(32).optional(),
   })
   .strict();
 

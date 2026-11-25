@@ -22,9 +22,12 @@ import { ExportService, type FrameRenderer } from '../../src/main/services/Expor
 import { FFmpegAdapter } from '../../src/main/services/FFmpegAdapter';
 import { FileSystemService } from '../../src/main/services/FileSystemService';
 import {
+  ExportVideoFrameSupply,
   FlaEmbeddedVideoService,
   prepareExportVideoFrameMedia,
 } from '../../src/main/services/FlaEmbeddedVideoService';
+import { applyExportJobUpdate } from '../../src/renderer/shell/exportTaskState';
+import type { ExportJobUpdate } from '../../src/shared/export-types';
 import { preflightFlaBytes } from '../../src/main/services/fla-import-preflight-service';
 import { readFlaEmbeddedVideo } from '../../src/main/services/fla-native-video';
 import { ProjectService } from '../../src/main/services/ProjectService';
@@ -549,17 +552,24 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
       ]);
       const solid720pPng = new Uint8Array(await readFile(sample720PngPath));
 
-      let loadedFrameKeys: string[] = [];
+      let loadFormalIds: string[] = [];
+      const rendererVideoCache = new Set<string>();
+      let maxVideoFramesPerRender = 0;
       const mockFrameRenderer: FrameRenderer = {
         loadProbe: async () => { throw new Error('unused'); },
         loadFormal: async (req) => {
-          loadedFrameKeys = req.media.map((m) => m.assetId);
+          loadFormalIds = req.media.map((m) => m.assetId);
+          rendererVideoCache.clear();
           return { jobId: req.jobId, acknowledged: true };
         },
         renderFrame: async (req) => {
+          if (req.videoFrames) {
+            maxVideoFramesPerRender = Math.max(maxVideoFramesPerRender, req.videoFrames.length);
+            for (const vf of req.videoFrames) rendererVideoCache.add(vf.assetId);
+          }
           const ev = evaluateShotAtTime(shot, req.shotLocalTimeMs ?? req.timeMs, reopened.project);
           const expectedKey = ev.layers.find((l) => l.id === imported.layer.id)!.assetId;
-          expect(loadedFrameKeys).toContain(expectedKey);
+          expect(rendererVideoCache.has(expectedKey!)).toBe(true);
           return {
             jobId: req.jobId,
             frameIndex: req.frameIndex,
@@ -584,6 +594,9 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
       );
       const exported = await exportHandle.completion;
       expect(exported.status).toBe('completed');
+      // E-F07: loadFormal NEVER bulk-loads video frames; frames are supplied on-demand per renderFrame:
+      expect(loadFormalIds.some((id) => id.includes('#frame:'))).toBe(false);
+      expect(maxVideoFramesPerRender).toBeLessThanOrEqual(1);
       expect(decodeSpy).toHaveBeenCalledTimes(1);
       expect(exported.probe.width).toBe(1280);
       expect(exported.probe.height).toBe(720);
@@ -737,5 +750,237 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     });
     expect(nestedPlan.clips).toHaveLength(0);
     expect(nestedPlan.diagnostics.length).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('supplies two 1200-frame videos on demand within bounded cache/IPC budgets and surfaces corrupt-video diagnostics to export task state (E-F07 / E-F11)', async () => {
+    const workDir = await makeTempDir('panda-ef07-ef11-');
+    const framePng = path.join(workDir, 'tiny.png');
+    await writeFile(framePng, TINY_PNG);
+
+    // 1. E-F07 budget proof: two 1,200-frame videos (2,400 total frames > 2048 loadFormal limit)
+    // supply at most 2 frames per renderFrame and keep Main cache <= 16 entries!
+    const videoAId = randomUUID();
+    const videoBId = randomUUID();
+    const ticks1200 = Array.from({ length: 1_200 }, (_, i) => i * 1_000);
+    const paths1200 = Array.from({ length: 1_200 }, () => framePng);
+    const supply = new ExportVideoFrameSupply(
+      new Map([
+        [videoAId, { assetName: 'LongClipA', sha256: 'a'.repeat(64), framePaths: paths1200 }],
+        [videoBId, { assetName: 'LongClipB', sha256: 'b'.repeat(64), framePaths: paths1200 }],
+      ]),
+      [],
+    );
+    const projectService = new ProjectService();
+    const projectRoot = path.join(workDir, 'ef07.pandastage');
+    const created = await projectService.create(projectRoot, { name: 'EF07 Project' });
+    const bgAssetId = randomUUID();
+    const bgLayerId = randomUUID();
+    const shotId = randomUUID();
+    const bgSha = createHash('sha256').update(TINY_PNG).digest('hex');
+    const makeVideoAsset = (id: string, name: string): VideoAsset => ({
+      id,
+      kind: 'video',
+      name,
+      relativePath: `assets/${name}.mp4`,
+      mimeType: 'video/mp4',
+      sha256: bgSha,
+      width: 64,
+      height: 64,
+      durationMs: 50_000,
+      videoTiming: {
+        codec: 'h264',
+        streamIndex: 0,
+        timeBase: { numerator: 1, denominator: 24_000 },
+        startTick: 0,
+        endTick: 1_200_000,
+        presentationTicks: ticks1200,
+        hasAudio: false,
+      },
+    });
+    const project: Project = ProjectSchema.parse({
+      ...created.project,
+      assets: [
+        {
+          id: bgAssetId,
+          kind: 'image',
+          name: 'bg.png',
+          relativePath: 'assets/bg.png',
+          mimeType: 'image/png',
+          sha256: bgSha,
+          width: 1,
+          height: 1,
+          usage: 'background',
+          keywords: [],
+        },
+        makeVideoAsset(videoAId, 'LongClipA'),
+        makeVideoAsset(videoBId, 'LongClipB'),
+      ],
+      shots: [{
+        id: shotId,
+        name: 'Shot 1',
+        durationMs: 2_000,
+        defaultSubtitleStyleId: created.project.subtitleStyles[0]!.id,
+        backgroundLayerId: bgLayerId,
+        layers: [
+          {
+            id: bgLayerId,
+            name: 'Bg',
+            source: { kind: 'asset', assetId: bgAssetId },
+            anchor: 'center', x: 960, y: 540, scaleX: 1, scaleY: 1,
+            rotationDeg: 0, opacity: 1, visible: true, locked: false, flipX: false, zIndex: 0,
+          },
+          {
+            id: randomUUID(),
+            name: 'Video A',
+            source: { kind: 'video', assetId: videoAId, playbackMode: 'play-once' },
+            anchor: 'center', x: 400, y: 300, scaleX: 1, scaleY: 1,
+            rotationDeg: 0, opacity: 1, visible: true, locked: false, flipX: false, zIndex: 1, startTimeMs: 0,
+          },
+          {
+            id: randomUUID(),
+            name: 'Video B',
+            source: { kind: 'video', assetId: videoBId, playbackMode: 'play-once' },
+            anchor: 'center', x: 800, y: 300, scaleX: 1, scaleY: 1,
+            rotationDeg: 0, opacity: 1, visible: true, locked: false, flipX: false, zIndex: 2, startTimeMs: 0,
+          },
+        ],
+        timelineEvents: [],
+        audioClips: [],
+        dialogues: [],
+      }],
+    });
+    const shot = project.shots[0]!;
+    // Simulate 30 frames at 60fps (~16.67ms step) — consecutive frames reuse same 24fps sample with 0 transferred bytes!
+    const batch0 = await supply.collectVideoFramesForShotTime(project, shot, 0);
+    expect(batch0).toHaveLength(2);
+    const batch16 = await supply.collectVideoFramesForShotTime(project, shot, 17); // still sample 0!
+    expect(batch16).toHaveLength(0);
+    for (let f = 2; f < 30; f += 1) {
+      await supply.collectVideoFramesForShotTime(project, shot, Math.round((f * 1_000) / 60));
+    }
+    const stats = supply.getTransferStats();
+    expect(stats.peakFramesPerTransfer).toBeLessThanOrEqual(2);
+    expect(stats.cachedEntries).toBeLessThanOrEqual(16);
+
+    // 2. E-F11 visible diagnostics: corrupt video + healthy sibling exports cleanly & surfaces visible warning in ExportTaskState:
+    const corruptBytes = Buffer.from('CORRUPT_MP4_PAYLOAD');
+    const corruptSha = createHash('sha256').update(corruptBytes).digest('hex');
+    const corruptAssetId = randomUUID();
+    const corruptProjectRoot = path.join(workDir, 'ef11.pandastage');
+    const createdCorrupt = await projectService.create(corruptProjectRoot, { name: 'EF11 Corrupt Project' });
+    const cBgId = randomUUID();
+    const cBgLayerId = randomUUID();
+    const cShotId = randomUUID();
+    const corruptProject: Project = ProjectSchema.parse({
+      ...createdCorrupt.project,
+      assets: [
+        {
+          id: cBgId, kind: 'image', name: 'bg.png', relativePath: 'assets/bg.png',
+          mimeType: 'image/png', sha256: bgSha, width: 1, height: 1, usage: 'background', keywords: [],
+        },
+        {
+          id: corruptAssetId, kind: 'video', name: 'BrokenClip', relativePath: 'assets/broken.mp4',
+          mimeType: 'video/mp4', sha256: corruptSha, width: 64, height: 64, durationMs: 500,
+          videoTiming: {
+            codec: 'h264', streamIndex: 0, timeBase: { numerator: 1, denominator: 24_000 },
+            startTick: 0, endTick: 6_000, presentationTicks: [0, 1_000, 2_000, 3_000, 4_000, 5_000], hasAudio: false,
+          },
+        },
+      ],
+      shots: [{
+        id: cShotId, name: 'Shot 1', durationMs: 500,
+        defaultSubtitleStyleId: createdCorrupt.project.subtitleStyles[0]!.id,
+        backgroundLayerId: cBgLayerId,
+        layers: [
+          {
+            id: cBgLayerId, name: 'HealthyBg', source: { kind: 'asset', assetId: cBgId },
+            anchor: 'center', x: 960, y: 540, scaleX: 1, scaleY: 1,
+            rotationDeg: 0, opacity: 1, visible: true, locked: false, flipX: false, zIndex: 0,
+          },
+          {
+            id: randomUUID(), name: 'BrokenVideoLayer', source: { kind: 'video', assetId: corruptAssetId },
+            anchor: 'center', x: 400, y: 300, scaleX: 1, scaleY: 1,
+            rotationDeg: 0, opacity: 1, visible: true, locked: false, flipX: false, zIndex: 1, startTimeMs: 0,
+          },
+        ],
+        timelineEvents: [], audioClips: [], dialogues: [],
+      }],
+    });
+    await writeFile(path.join(corruptProjectRoot, 'assets', 'bg.png'), TINY_PNG);
+    await writeFile(path.join(corruptProjectRoot, 'assets', 'broken.mp4'), corruptBytes);
+    await projectService.save(corruptProjectRoot, corruptProject);
+
+    const outMp4 = path.join(workDir, 'ef11-degraded.mp4');
+    const prepService = new ExportPreparationService({
+      getCurrentProjectSnapshot: (root) =>
+        root === corruptProjectRoot ? { project: corruptProject, revision: 1, dirty: false, openInstanceId: 1 } : null,
+    });
+    const sel = await prepService.selectOutput({
+      projectRoot: corruptProjectRoot, projectId: corruptProject.id, projectName: corruptProject.name,
+      openInstanceId: 1, videoFormat: 'mp4',
+    }, outMp4);
+    expect(sel.status).toBe('selected');
+    if (sel.status !== 'selected') throw new Error('select failed');
+    const prep = await prepService.prepare({
+      selectionId: sel.selectionId, attemptId: randomUUID(), projectRoot: corruptProjectRoot,
+      projectId: corruptProject.id, openInstanceId: 1, revision: 1, dirty: false,
+      cameraMode: 'static', videoOutput: { width: 1280, fps: 24 }, project: corruptProject,
+    });
+    expect(prep.status).toBe('PREPARATION_READY');
+    if (prep.status !== 'PREPARATION_READY') throw new Error('prep failed');
+    const frozen = await prepService.acquireCandidateForExport(prep.candidate.snapshotId);
+
+    const sample720Path = path.join(workDir, 'ef11-720.png');
+    await execFileAsync(bundledFfmpegPath, [
+      '-y', '-f', 'lavfi', '-i', 'color=c=0x115522:s=1280x720:d=0.05', '-frames:v', '1', sample720Path,
+    ]);
+    const solid720 = Uint8Array.from(await readFile(sample720Path));
+
+    const ffmpegAdapter = new FFmpegAdapter({ ffmpegPath: bundledFfmpegPath, ffprobePath: bundledFfprobePath });
+    const exportService = new ExportService(
+      {
+        loadProbe: async () => { throw new Error('unused'); },
+        loadFormal: async (req) => ({ jobId: req.jobId, acknowledged: true }),
+        renderFrame: async (req) => ({
+          jobId: req.jobId, frameIndex: req.frameIndex, timeMs: req.timeMs,
+          shotId: req.shotId, shotLocalTimeMs: req.shotLocalTimeMs, width: 1280, height: 720, pngBytes: solid720,
+        }),
+        cancelJob: () => true,
+      },
+      new FileSystemService(path.join(workDir, 'ef11-tmp'), {
+        inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+      }),
+      ffmpegAdapter,
+    );
+    const updates: ExportJobUpdate[] = [];
+    const unsubscribe = exportService.subscribe((u) => updates.push(u));
+    try {
+      const result = await exportService.startFormalExport(
+        frozen,
+        () => prepService.assertOutputTargetUnchanged(prep.candidate.snapshotId),
+      ).completion;
+      expect(result.status).toBe('completed');
+      expect(result.diagnostics?.length).toBeGreaterThan(0);
+      expect(result.diagnostics![0]).toContain('BrokenClip');
+
+      const finalUpdate = updates.find((u) => u.status === 'completed');
+      expect(finalUpdate?.diagnostics?.length).toBeGreaterThan(0);
+      const taskState = applyExportJobUpdate(
+        {
+          status: 'running', jobId: result.jobId, attemptId: prep.candidate.attemptId,
+          snapshotId: prep.candidate.snapshotId, completedFrames: 0, totalFrames: 12, issues: [],
+        },
+        finalUpdate!,
+      );
+      expect(taskState.status).toBe('completed');
+      expect(taskState.issues.length).toBeGreaterThan(0);
+      expect(taskState.issues[0]!.problem).toContain('BrokenClip');
+      expect(taskState.message).toContain('缺失');
+      // Original corrupt source file in project assets is preserved intact:
+      expect((await readFile(path.join(corruptProjectRoot, 'assets', 'broken.mp4'))).toString('utf8')).toBe('CORRUPT_MP4_PAYLOAD');
+    } finally {
+      unsubscribe();
+      await prepService.dispose();
+    }
   }, 60_000);
 });

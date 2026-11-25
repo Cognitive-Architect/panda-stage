@@ -127,8 +127,9 @@ export function ExportTaskSurface({
     isFailed &&
     Boolean(task.message) &&
     task.issues.some((issue) => issue.problem.trim() === task.message?.trim());
+  const hasCompletionWarnings = isCompleted && task.issues.length > 0;
   const title = isCompleted
-    ? '\u5bfc\u51fa\u5b8c\u6210'
+    ? hasCompletionWarnings ? '导出完成（含提示）' : '\u5bfc\u51fa\u5b8c\u6210'
     : spriteSheet ? '导出精灵图' : png ? '导出 PNG 序列' : '\u5bfc\u51fa\u89c6\u9891';
   const statusText =
     task.status === 'running'
@@ -170,7 +171,11 @@ export function ExportTaskSurface({
               }`}
             >
               {isCompleted ? (
-                <Check focusable="false" size={18} />
+                hasCompletionWarnings ? (
+                  <AlertTriangle focusable="false" size={18} />
+                ) : (
+                  <Check focusable="false" size={18} />
+                )
               ) : isFailed ? (
                 <AlertTriangle focusable="false" size={18} />
               ) : isCancelled ? (

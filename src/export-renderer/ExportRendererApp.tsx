@@ -120,6 +120,18 @@ export function ExportRendererApp(): React.JSX.Element {
   const [formalAssetUrls, setFormalAssetUrls] = useState<
     Readonly<Record<string, string>>
   >({});
+  const [videoFrameUrls, setVideoFrameUrls] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const videoFrameUrlsRef = useRef<Map<string, string>>(new Map());
+  const clearVideoFrameUrls = useCallback(() => {
+    if (videoFrameUrlsRef.current.size === 0) return;
+    for (const url of videoFrameUrlsRef.current.values()) {
+      URL.revokeObjectURL(url);
+    }
+    videoFrameUrlsRef.current.clear();
+    setVideoFrameUrls({});
+  }, []);
   const project: Project = formalRequest?.project ?? probeProject;
   const [probeDurationMs, setProbeDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
@@ -168,7 +180,11 @@ export function ExportRendererApp(): React.JSX.Element {
     return () => Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
   }, [formalRequest]);
   const exportAssetUrls = useMemo(() => {
-    if (formalRequest) return formalAssetUrls;
+    if (formalRequest) {
+      return Object.keys(videoFrameUrls).length > 0
+        ? { ...formalAssetUrls, ...videoFrameUrls }
+        : formalAssetUrls;
+    }
     if (!issue573ExactFrameProbe) return PROBE_ASSET_URLS;
     const characterUrl = PROBE_ASSET_URLS[PROBE_CHARACTER_ASSET_ID];
     if (!characterUrl) return PROBE_ASSET_URLS;
@@ -177,7 +193,7 @@ export function ExportRendererApp(): React.JSX.Element {
       ...PROBE_ASSET_URLS,
       [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
     };
-  }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs]);
+  }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs, videoFrameUrls]);
   const evaluatedBaseShot = useMemo(
     () => evaluateShotAtTime(shot, shotLocalTimeMs, project),
     [shotLocalTimeMs, shot, project],
@@ -258,6 +274,7 @@ export function ExportRendererApp(): React.JSX.Element {
 
   useEffect(() => {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
+      clearVideoFrameUrls();
       workerPngEncoderRef.current?.close('PNG encoder released for probe export.');
       workerPngEncoderRef.current = null;
       cancelledJobIdsRef.current.delete(request.jobId);
@@ -274,6 +291,7 @@ export function ExportRendererApp(): React.JSX.Element {
     });
     const removeFormalLoadListener = window.pandaStageHidden.onLoadFormal(
       (request) => {
+        clearVideoFrameUrls();
         workerPngEncoderRef.current?.close('PNG encoder replaced for formal export.');
         workerPngEncoderRef.current =
           exportPngMode === 'worker-png'
@@ -345,6 +363,28 @@ export function ExportRendererApp(): React.JSX.Element {
           });
           return;
         }
+        if (request.videoFrames && request.videoFrames.length > 0) {
+          const cache = videoFrameUrlsRef.current;
+          for (const entry of request.videoFrames) {
+            const existingUrl = cache.get(entry.assetId);
+            if (existingUrl) {
+              cache.delete(entry.assetId);
+              URL.revokeObjectURL(existingUrl);
+            }
+            const nextUrl = URL.createObjectURL(
+              new Blob([entry.bytes], { type: entry.mimeType }),
+            );
+            cache.set(entry.assetId, nextUrl);
+            while (cache.size > 16) {
+              const oldestKey = cache.keys().next().value;
+              if (!oldestKey) break;
+              const evictedUrl = cache.get(oldestKey);
+              cache.delete(oldestKey);
+              if (evictedUrl) URL.revokeObjectURL(evictedUrl);
+            }
+          }
+          setVideoFrameUrls(Object.fromEntries(cache.entries()));
+        }
         activeFrameRef.current = request;
         activeFrameStartedAtRef.current = performance.now();
         stageReadyRef.current = false;
@@ -356,6 +396,7 @@ export function ExportRendererApp(): React.JSX.Element {
         cancelledJobIdsRef.current.add(jobId);
         const cancellingLoadedJob = loadedJobIdRef.current === jobId;
         if (cancellingLoadedJob) {
+          clearVideoFrameUrls();
           workerPngEncoderRef.current?.close(
             `Export Job ${jobId}: PNG encoding cancelled.`,
           );
@@ -387,6 +428,7 @@ export function ExportRendererApp(): React.JSX.Element {
     window.addEventListener('pagehide', closeEncoderOnPageHide, { once: true });
 
     return () => {
+      clearVideoFrameUrls();
       window.removeEventListener('pagehide', closeEncoderOnPageHide);
       workerPngEncoderRef.current?.close('Hidden export renderer unmounted.');
       workerPngEncoderRef.current = null;
@@ -395,7 +437,7 @@ export function ExportRendererApp(): React.JSX.Element {
       removeFrameListener();
       removeCancelListener();
     };
-  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame]);
+  }, [acknowledgeFormalLoad, acknowledgeLoad, clearVideoFrameUrls, failFrame]);
 
   const handleStageError = useCallback(
     (error: Error) => {
