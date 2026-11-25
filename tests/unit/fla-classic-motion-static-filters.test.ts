@@ -48,6 +48,23 @@ async function buildClassicMotionFla(options: {
 }
 
 describe('Classic Motion static instance filter preservation (S01-A)', () => {
+  it('keeps inner knockout Glow and an explicit AIR color matrix in authored order', async () => {
+    const filters = '<GlowFilter inner="true" knockout="true" blurX="6" blurY="8"/>' +
+      '<AdjustColorFilter matrix="1 0 0 0 51 0 0.5 0 0 0 0 0 1 0 -51 0 0 0 1 0"/>';
+    const bytes = await buildClassicMotionFla({ startFilters: filters, endFilters: filters });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const target = catalog.entries.find((entry) => entry.target.sourceLibraryItemName === 'MotionRoot')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 }, undefined, prepared.source);
+    if (!rendered.ok) throw new Error(rendered.message);
+    expect(rendered.svg).toContain('slope="-1" intercept="1"');
+    expect(rendered.svg).toContain('in="blur0" in2="SourceGraphic" operator="in" result="silhouette0"');
+    expect(rendered.svg).not.toContain('<feMerge result="effect0">');
+    expect(rendered.svg).toContain('<feColorMatrix in="effect0" type="matrix" values="1 0 0 0 0.2 0 0.5 0 0 0 0 0 1 0 -0.2 0 0 0 1 0" result="effect1"/>');
+  });
+
   it('preserves static Blur, Glow, and DropShadow filters in order across start, mid, and end frames during move/rotate/scale and color tween', async () => {
     const filters =
       '<BlurFilter blurX="4" blurY="6"/>' +
@@ -142,7 +159,7 @@ describe('Classic Motion static instance filter preservation (S01-A)', () => {
     ['filter on start endpoint only', '<DropShadowFilter distance="6"/>', ''],
     ['changing enabled state', '<DropShadowFilter isEnabled="true" distance="6"/>', '<DropShadowFilter isEnabled="false" distance="6"/>'],
     ['unsupported BevelFilter', '<BevelFilter blurX="4" blurY="4"/>', '<BevelFilter blurX="4" blurY="4"/>'],
-    ['unsupported inner GlowFilter', '<GlowFilter inner="true"/>', '<GlowFilter inner="true"/>'],
+    ['invalid inner GlowFilter flag', '<GlowFilter inner="unknown"/>', '<GlowFilter inner="unknown"/>'],
   ])('rejects unsupported Classic Motion filter combinations without arbitrary interpolation: %s', async (_label, startFilters, endFilters) => {
     const bytes = await buildClassicMotionFla({ startFilters, endFilters });
     const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');

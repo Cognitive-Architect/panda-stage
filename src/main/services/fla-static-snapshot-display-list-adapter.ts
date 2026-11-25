@@ -799,7 +799,8 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
   const filters: FlaInstanceFilter[] = [];
   for (const node of nodes) {
     const kind = node.name === 'BlurFilter' ? 'blur' : node.name === 'GlowFilter' ? 'glow'
-      : node.name === 'DropShadowFilter' ? 'dropShadow' : undefined;
+      : node.name === 'DropShadowFilter' ? 'dropShadow'
+        : node.name === 'ColorMatrixFilter' || node.name === 'AdjustColorFilter' ? 'colorMatrix' : undefined;
     const attributes = node.attributes;
     const enabledValue = attributes.isEnabled ?? attributes.enabled;
     if (![undefined, 'true', '1', 'false', '0'].includes(enabledValue)) return null;
@@ -812,12 +813,21 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
       filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0 });
       continue;
     }
+    if (kind === 'colorMatrix') {
+      const values = attributes.matrix?.trim().split(/[\s,]+/u).map(Number);
+      if (Object.keys(attributes).some((name) => !['matrix', 'enabled', 'isEnabled'].includes(name)) ||
+          getFlaXflDirectChildren(node.xml, node.name).length > 0 ||
+          values?.length !== 20 || !values.every((value) => Number.isFinite(value) && Math.abs(value) <= 1024) ||
+          values[19]! > 0) return null;
+      filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0, matrix: values });
+      continue;
+    }
     const allowed = ['isEnabled', 'enabled', 'blurX', 'blurY', 'quality'];
     if (kind !== 'blur') allowed.push('color', 'alpha', 'strength', 'inner', 'knockout');
     if (kind === 'dropShadow') allowed.push('distance', 'angle', 'hideObject');
     if (Object.keys(attributes).some((key) => !allowed.includes(key)) ||
         ['inner', 'knockout', 'hideObject'].some((key) =>
-          attributes[key] !== undefined && attributes[key] !== 'false' && attributes[key] !== '0') ||
+          ![undefined, 'false', '0', ...(kind === 'glow' && key !== 'hideObject' ? ['true', '1'] : [])].includes(attributes[key])) ||
         ![undefined, '1'].includes(attributes.quality) ||
         getFlaXflDirectChildren(node.xml, node.name).length > 0) return null;
     const numeric = (key: string, fallback: number) => {
@@ -837,7 +847,10 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
         alpha < 0 || alpha > 1 || strength < 0 || strength > 255 ||
         distance < 0 || distance > 255 || Math.abs(angle) > 360 ||
         !/^#[0-9a-f]{6}$/iu.test(color)) return null;
-    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle });
+    const inner = kind === 'glow' && ['true', '1'].includes(attributes.inner ?? '');
+    const knockout = kind === 'glow' && ['true', '1'].includes(attributes.knockout ?? '');
+    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle,
+      ...(inner ? { inner } : {}), ...(knockout ? { knockout } : {}) });
   }
   return filters;
 }

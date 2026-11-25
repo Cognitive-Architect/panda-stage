@@ -689,7 +689,7 @@ describe('FLA Static Text own Shadow / Glow filters (S01-B / #1295)', () => {
     const unsupportedFilterMarkups = [
       '<BevelFilter blurX="4" blurY="4"/>',
       '<DropShadowFilter blurX="4" blurY="4" inner="true"/>',
-      '<GlowFilter blurX="4" blurY="4" knockout="true"/>',
+      '<GlowFilter blurX="4" blurY="4" knockout="unknown"/>',
       '<DropShadowFilter blurX="4" blurY="4" hideObject="true"/>',
       '<DropShadowFilter blurX="4" blurY="4" quality="2"/>',
     ];

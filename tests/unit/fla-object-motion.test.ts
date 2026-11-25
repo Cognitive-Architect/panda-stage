@@ -206,7 +206,7 @@ describe('Animate Object Motion', () => {
 
   it.each([
     ['unsupported filter kind', '<PropertyContainer id="Bevel_Filter"><Property id="Bevel_BlurX" value="4"/></PropertyContainer>', '<BlurFilter/>'],
-    ['non-neutral Glow_InnerGlow', '<PropertyContainer id="Glow_Filter"><Property id="Glow_InnerGlow" value="1"/></PropertyContainer>', '<GlowFilter/>'],
+    ['invalid Glow_InnerGlow', '<PropertyContainer id="Glow_Filter"><Property id="Glow_InnerGlow" value="2"/></PropertyContainer>', '<GlowFilter/>'],
     ['non-neutral Blur_Quality', '<PropertyContainer id="Blur_Filter"><Property id="Blur_Quality" value="2"/></PropertyContainer>', '<BlurFilter/>'],
     ['out-of-range BlurX curve', '<PropertyContainer id="Blur_Filter"><Property id="Blur_BlurX"><Keyframe timevalue="0" anchor="0,5"/><Keyframe timevalue="4000" anchor="0,300"/></Property></PropertyContainer>', '<BlurFilter/>'],
     ['unmatched authored filter', '<PropertyContainer id="Glow_Filter"><Property id="Glow_BlurX" value="8"/></PropertyContainer>', '<BlurFilter/>'],
