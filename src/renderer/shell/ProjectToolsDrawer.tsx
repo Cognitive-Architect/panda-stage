@@ -25,6 +25,7 @@ type ProjectToolsView =
   | 'background-tiles'
   | 'orbit-flight'
   | 'converging-flight'
+  | 'diffusion-ghost'
   | 'afterimage'
   | 'radial-burst';
 
@@ -91,6 +92,8 @@ export function ProjectToolsDrawer({
               '环绕飞行'
             ) : view === 'converging-flight' ? (
               '万剑归宗'
+            ) : view === 'diffusion-ghost' ? (
+              '扩散虚影'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -270,6 +273,15 @@ export function ProjectToolsDrawer({
               <span>打开万剑归宗</span>
             </button>
           </section>
+          <section className="project-tools-action-preset-card" aria-labelledby="project-tools-diffusion-ghost-heading">
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-diffusion-ghost-heading">扩散虚影</h3>
+            </div>
+            <button className="project-tools-action-preset-launcher" data-testid="project-tools-diffusion-ghost" onClick={() => setView('diffusion-ghost')} type="button">
+              <DecorativeIcon icon={Ghost} size={18} />
+              <span>打开扩散虚影</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -292,8 +304,8 @@ export function ProjectToolsDrawer({
         <section aria-label="背景铺排 / 循环" className="project-tools-grid-array-view">
           <BackgroundTilesPanel onCancel={() => setView('home')} />
         </section>
-      ) : view === 'orbit-flight' || view === 'converging-flight' ? (
-        <section aria-label={view === 'orbit-flight' ? '环绕飞行' : '万剑归宗'} className="project-tools-grid-array-view">
+      ) : view === 'orbit-flight' || view === 'converging-flight' || view === 'diffusion-ghost' ? (
+        <section className="project-tools-grid-array-view">
           <GraphicBakePanel mode={view} onCancel={() => setView('home')} />
         </section>
       ) : view === 'curve-motion' ? (

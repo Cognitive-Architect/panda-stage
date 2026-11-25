@@ -245,6 +245,41 @@ describe('native converging flight (#1288)', () => {
   });
 });
 
+describe('native diffusion ghosts (#1289)', () => {
+  it('holds a common anchor under pivot-compensated scaling, with phased fades and layer order', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const source = project.shots[0]!.layers.find((layer) => layer.id === layerId)!;
+    source.scaleX = 2;
+    source.scaleY = 1.3;
+    source.flipX = true;
+    source.rotationDeg = 35;
+    const withPivot = service.recalibratePivot(project, { shotId, layerId }, { space: 'target-local', x: 140, y: 104 });
+    const layerService = new LayerService();
+    const input = { count: 4, startFrame: 1, durationFrames: 12, staggerFrames: 2, maxScale: 1.8, decay: 0.7 };
+    const result = layerService.generateDiffusionGhosts(withPivot, shotId, layerId, input);
+    const shot = result.project.shots[0]!;
+    expect(result.layers).toHaveLength(4);
+    expect(result.layers.map((layer) => layer.zIndex)).toEqual([4, 3, 2, 1]);
+    for (const [index, layer] of result.layers.entries()) {
+      const start = 1 + index * 2;
+      const alpha = 0.7 ** (index + 1);
+      const at = (timeMs: number) => evaluateShotAtTime(shot, timeMs, result.project).layers.find((entry) => entry.id === layer.id)!;
+      expect(at(frameTimeMs(start) - 1).visible).toBe(false);
+      for (const [step, multiplier, expectedAlpha] of [[0, 1, alpha], [6, 1.4, alpha / 2], [12, 1.8, 0]] as const) {
+        const evaluated = at(frameTimeMs(start + step));
+        expect(evaluated.x).toBeCloseTo(source.x, 5);
+        expect(evaluated.y).toBeCloseTo(source.y, 5);
+        expect(evaluated.scaleX).toBeCloseTo(multiplier * 2, 5);
+        expect(evaluated.scaleY).toBeCloseTo(multiplier * 1.3, 5);
+        expect(evaluated.opacity).toBeCloseTo(expectedAlpha, 5);
+        expect(evaluated.visible).toBe(step !== 12);
+      }
+      expect(at(frameTimeMs(start + 13)).visible).toBe(false);
+    }
+    expect(() => layerService.generateDiffusionGhosts(withPivot, shotId, layerId, { ...input, maxScale: 11 })).toThrow();
+  });
+});
+
 describe('AnimationTargetRef and v21 migration contract (#1140)', () => {
   it('supports layer targets without partId and prevents mixing v1/v2 targets', () => {
     expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerAsset })).toEqual({

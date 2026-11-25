@@ -33,7 +33,7 @@ interface BakeTarget {
   readonly layerId: string;
 }
 
-type GraphicBakeMode = 'orbit-flight' | 'converging-flight';
+type GraphicBakeMode = 'orbit-flight' | 'converging-flight' | 'diffusion-ghost';
 
 export function GraphicBakePanel({ mode, onCancel }: { mode: GraphicBakeMode; onCancel(): void }) {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
@@ -55,9 +55,45 @@ export function GraphicBakePanel({ mode, onCancel }: { mode: GraphicBakeMode; on
     );
   }
   const frame = Math.min(lastValidFrameTime(shot.durationMs), Math.max(0, currentTimeMs));
-  const Draft = mode === 'orbit-flight' ? OrbitDraft : ConvergingDraft;
+  const Draft = mode === 'orbit-flight' ? OrbitDraft : mode === 'converging-flight' ? ConvergingDraft : DiffusionGhostDraft;
   return <Draft key={targetKey()} target={{ project, shot, layerId: source.id }}
     initialFrame={Math.round(frame * TIMELINE_FPS / 1000)} onCancel={onCancel} />;
+}
+
+function DiffusionGhostDraft({ target, initialFrame, onCancel }: { target: BakeTarget; initialFrame: number; onCancel(): void }) {
+  const key = targetKey();
+  const [error, setError] = useState('');
+  const lastFrame = Math.round(lastValidFrameTime(target.shot.durationMs) * TIMELINE_FPS / 1000);
+  return (
+    <form aria-label="扩散虚影" className="grid-array-panel" onChange={() => setError('')} onSubmit={(event) => {
+      event.preventDefault();
+      if (targetKey() !== key) return;
+      const fields = new FormData(event.currentTarget);
+      const number = (name: string) => Number(fields.get(name));
+      try {
+        layerStore.generateDiffusionGhosts(target.layerId, {
+          count: number('count'), maxScale: number('scale'), decay: number('decay'),
+          startFrame: number('start'), durationFrames: number('duration'), staggerFrames: number('stagger'),
+        });
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : '生成扩散虚影失败。');
+      }
+    }}>
+      <div className="grid-array-fields">
+        <NumberField label="虚影数量" name="count" value={4} min={3} max={8} />
+        <NumberField label="最大放大倍数" name="scale" value={1.8} min={1} step="any" />
+        <NumberField label="透明度衰减系数" name="decay" value={0.7} min={0} max={1} step="any" />
+        <NumberField label="起帧" name="start" value={initialFrame} min={0} max={lastFrame} />
+        <NumberField label="持续帧数" name="duration" value={12} min={1} />
+        <NumberField label="相位间隔（帧）" name="stagger" value={2} min={0} />
+      </div>
+      <div className="grid-array-status" role="status">{error}</div>
+      <div className="grid-array-actions">
+        <Button type="button" onClick={onCancel}>取消</Button>
+        <Button type="submit">生成</Button>
+      </div>
+    </form>
+  );
 }
 
 function ConvergingDraft({ target, initialFrame, onCancel }: { target: BakeTarget; initialFrame: number; onCancel(): void }) {

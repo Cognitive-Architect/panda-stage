@@ -109,6 +109,15 @@ interface BakedGraphicSample {
   readonly scaleMultiplier?: number;
 }
 
+export interface DiffusionGhostInput {
+  readonly count: number;
+  readonly maxScale: number;
+  readonly decay: number;
+  readonly startFrame: number;
+  readonly durationFrames: number;
+  readonly staggerFrames: number;
+}
+
 type BakedGraphicEvent =
   | Omit<Extract<TimelineEvent, { type: 'visibility' }>, 'id' | 'layerId'>
   | Omit<Extract<TimelineEvent, { type: 'opacity' }>, 'id' | 'layerId'>;
@@ -2327,6 +2336,54 @@ export class LayerService {
     }
     const layers = [...shot.layers].sort((a, b) => a.zIndex - b.zIndex);
     return this.commitGraphicBake(project, shot, [...layers, ...created], created, events);
+  }
+
+  generateDiffusionGhosts(project: Project, shotId: string, layerId: string, input: DiffusionGhostInput): DuplicateStaticArrayResult {
+    const { shot, layer } = this.assertFlaGraphicArraySource(project, shotId, layerId, '扩散虚影');
+    const { count, startFrame, durationFrames, staggerFrames, maxScale, decay } = input;
+    if (!Number.isInteger(count) || count < 3 || count > 8 ||
+      !Number.isFinite(maxScale) || maxScale <= 1 ||
+      !Number.isFinite(decay) || decay <= 0 || decay > 1) {
+      throw new Error('请使用 3–8 个虚影、大于 1 的放大倍数及 0 到 1 之间的非零衰减系数。');
+    }
+    validateBakeFrames(shot, startFrame, durationFrames, staggerFrames, count);
+    const context = this.prepareGraphicBake(project, shot, layer, startFrame);
+    validateLayerScale(context.pose.scaleX * maxScale);
+    validateLayerScale(context.pose.scaleY * maxScale);
+    const position = { x: context.pose.x, y: context.pose.y };
+    const created: Layer[] = [];
+    const events: TimelineEvent[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const launch = startFrame + index * staggerFrames;
+      const end = launch + durationFrames;
+      const alpha = context.pose.opacity * decay ** (index + 1);
+      if (alpha <= 0) throw new Error('虚影透明度过低，请增大衰减系数。');
+      const samples = Array.from({ length: durationFrames + 1 }, (_, step) => ({
+        frame: launch + step,
+        position,
+        scaleMultiplier: step === durationFrames ? maxScale : 1 + (maxScale - 1) * step / durationFrames,
+      }));
+      const visibilityAndFade = [bakedVisibility(launch, true)];
+      // Persisted frame intervals alternate between 41 and 42 ms. Per-frame
+      // segments keep the fade tied to frame progress and continuous between keys.
+      for (let step = 0; step < durationFrames; step += 1) {
+        visibilityAndFade.push({
+          type: 'opacity',
+          startMs: frameTimeMs(launch + step),
+          endMs: frameTimeMs(launch + step + 1),
+          from: alpha * (1 - step / durationFrames),
+          to: alpha * (1 - (step + 1) / durationFrames),
+          easing: 'linear',
+        });
+      }
+      visibilityAndFade.push(bakedVisibility(end, false));
+      const baked = this.buildBakedGraphic(context, `${layer.name} 虚影 ${index + 1}`, samples, visibilityAndFade);
+      created.push(baked.layer);
+      events.push(...baked.events);
+    }
+    const layers = [...shot.layers].sort((a, b) => a.zIndex - b.zIndex);
+    layers.splice(layers.findIndex((entry) => entry.id === layerId), 0, ...[...created].reverse());
+    return this.commitGraphicBake(project, shot, layers, created, events);
   }
 
   private prepareGraphicBake(project: Project, shot: Shot, source: Layer, startFrame: number) {

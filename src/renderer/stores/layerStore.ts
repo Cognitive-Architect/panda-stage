@@ -4,6 +4,7 @@ import {
   type AfterimageInput,
   type BackgroundTileInput,
   type ConvergingFlightInput,
+  type DiffusionGhostInput,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
@@ -268,6 +269,13 @@ export class LayerStore {
     const { project, shotId } = this.context();
     const result = this.service.generateConvergingFlight(project, shotId, layerId, input);
     this.editorStore.updateProject(result.project, '万剑归宗');
+    return result.layers;
+  }
+
+  generateDiffusionGhosts(layerId: string, input: DiffusionGhostInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateDiffusionGhosts(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '扩散虚影');
     return result.layers;
   }
 
