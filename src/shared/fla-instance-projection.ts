@@ -23,9 +23,10 @@ export function projectFlaInstance(
   const px = projection.pivotX ?? authored.tx;
   const py = projection.pivotY ?? authored.ty;
   const radians = Math.PI / 180;
-  const matrixAngle = Math.atan2(authored.b, authored.a) / radians;
-  const delta = ((matrixAngle - projection.rotationZ) % 180 + 180) % 180;
-  const hasAuthoredZ = Math.min(delta, 180 - delta) <= 1e-4;
+  const det = authored.a * authored.d - authored.b * authored.c;
+  const matrixAngle = (det < 0 ? Math.atan2(-authored.c, authored.d) : Math.atan2(authored.b, authored.a)) / radians;
+  const delta = ((matrixAngle - projection.rotationZ) % 360 + 360) % 360;
+  const hasAuthoredZ = Math.min(delta, 360 - delta) <= 1e-4;
   const z = (hasAuthoredZ ? 0 : projection.rotationZ) * radians;
   const x = projection.rotationX * radians;
   const y = projection.rotationY * radians;

@@ -882,10 +882,13 @@ function readInstanceProjection(
   local: FlaDisplayListMatrix,
 ): FlaInstanceProjection | null | undefined {
   const attrs = instance.attributes;
-  const names = ['rotationX', 'rotationY', 'rotationZ', 'centerPoint3DX', 'centerPoint3DY', 'z'];
+  // centerPoint3DX/Y are ordinary 2D pivot metadata written by Animate on normal
+  // 2D instances (including Classic Motion); only explicit 3D transform attributes
+  // or a <matrix3D> child indicate a 3D instance projection.
+  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z'] as const;
   const hasMatrix3D = Boolean(directChild(instance.xml, instance.name, 'matrix3D'));
-  if (!names.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
-  if (context.motionTweenEndpoint) return null;
+  if (!transform3DNames.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
+  if (hasMatrix3D) return null;
   const read = (key: string, fallback: number) => {
     const value = attrs[key];
     return value === undefined ? fallback : value.trim() ? Number(value) : NaN;
@@ -896,6 +899,8 @@ function readInstanceProjection(
   const depth = read('z', 0);
   if (![rotationX, rotationY, rotationZ].every((value) => Number.isFinite(value) && Math.abs(value) <= 36000) ||
       !Number.isFinite(depth)) return null;
+  if (rotationX === 0 && rotationY === 0 && rotationZ === 0 && depth === 0) return undefined;
+  if (context.motionTweenEndpoint) return null;
   let pivot: { pivotX: number; pivotY: number } | undefined;
   if (attrs.centerPoint3DX !== undefined || attrs.centerPoint3DY !== undefined) {
     const matrix = context.parentWorld;
@@ -2785,9 +2790,38 @@ function buildObjectMotionFrameElements(
     }
     instanceFilters = merged;
   }
+  let projection3D = element.projection3D;
+  if (projection3D !== null && (projection3D !== undefined || pose.projection3D !== undefined)) {
+    const baseMatrix = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const dx = pose.matrix.tx - baseMatrix.tx;
+    const dy = pose.matrix.ty - baseMatrix.ty;
+    const rotationX = pose.projection3D?.rotationX ?? projection3D?.rotationX ?? 0;
+    const rotationY = pose.projection3D?.rotationY ?? projection3D?.rotationY ?? 0;
+    const depth = (projection3D?.depth ?? 0) + (pose.projection3D?.depthDelta ?? 0);
+    if (rotationX === 0 && rotationY === 0 && depth === 0) {
+      projection3D = undefined;
+    } else {
+      const baseProj = projection3D ?? context.state.perspective;
+      const pivotX = projection3D?.pivotX !== undefined ? projection3D.pivotX + dx : pose.matrix.tx;
+      const pivotY = projection3D?.pivotY !== undefined ? projection3D.pivotY + dy : pose.matrix.ty;
+      projection3D = {
+        focalLength: baseProj.focalLength,
+        vanishingX: baseProj.vanishingX,
+        vanishingY: baseProj.vanishingY,
+        pivotX,
+        pivotY,
+        depth,
+        rotationX,
+        rotationY,
+        // Object Motion already bakes Rotation_Z into pose.matrix; never apply Z twice.
+        rotationZ: 0,
+      };
+    }
+  }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
     ...element,
     localTransform: pose.matrix,
+    ...(projection3D !== undefined ? { projection3D } : {}),
     ...(instanceFilters ? { instanceFilters } : {}),
     ...(alpha !== undefined ? { alphaMultiplier: alpha } : {}),
     ...(rgb ? { rgbTransform: rgb } : {}),

@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
+import JSZip from 'jszip';
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
-import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+import {
+  adaptFlaXflDisplaySource,
+} from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+import {
+  buildSvgForRenderTarget,
+  prepareFlaStaticSnapshotDisplaySource,
+} from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
+import { evaluateFlaGraphicVisual } from '../../src/domain/evaluate-fla-graphic';
 import { projectFlaInstance } from '../../src/shared/fla-instance-projection';
+import type { FlaRenderTarget } from '../../src/shared/fla-static-snapshot-api';
 
 const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 const perspective = { focalLength: 100, vanishingX: 0, vanishingY: 0, depth: 0, rotationX: 0, rotationY: 0, rotationZ: 0 };
+
+const cardSymbol = {
+  name: 'Card.xml',
+  xml: `<DOMSymbolItem name="Card" symbolType="graphic"><timeline><DOMTimeline><layers><DOMLayer><frames>
+    <DOMFrame index="0"><elements><DOMShape><fills><FillStyle index="1"><SolidColor color="#2266cc"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!0 0|400 0|400 200|0 200|0 0"/></edges></DOMShape></elements></DOMFrame>
+    <DOMFrame index="1"><elements><DOMShape><fills><FillStyle index="1"><SolidColor color="#cc6622"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!0 0|400 0|400 200|0 200|0 0"/></edges></DOMShape></elements></DOMFrame>
+    <DOMFrame index="2"><elements><DOMShape><fills><FillStyle index="1"><SolidColor color="#22aa44"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!0 0|400 0|400 200|0 200|0 0"/></edges></DOMShape></elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`,
+};
 
 describe('XFL instance affine projection', () => {
   it('foreshortens each axis, retains mirrored transforms and avoids a second authored Z rotation', () => {
@@ -16,14 +38,14 @@ describe('XFL instance affine projection', () => {
     expect(y.d).toBeCloseTo(1);
     const rotated = { ...identity, a: 0, b: 1, c: -1, d: 0 };
     expect(projectFlaInstance(rotated, identity, { ...perspective, rotationZ: 90 })).toEqual(rotated);
+    // Mirrored + 180deg Z should still apply Z instead of aliasing with 0deg.
+    const mirrored180 = projectFlaInstance({ ...identity, a: -1 }, identity, { ...perspective, rotationZ: 180 })!;
+    expect(mirrored180.a).toBeCloseTo(1);
+    expect(mirrored180.d).toBeCloseTo(-1);
     expect(projectFlaInstance(identity, identity, { ...perspective, depth: -100 })).toBeNull();
   });
 
   it('resolves authored XFL under parent and document perspective, skipping a behind-viewer sibling', () => {
-    const symbols = [{
-      name: 'Card.xml',
-      xml: '<DOMSymbolItem name="Card" symbolType="graphic"><timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements><DOMShape/></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>',
-    }];
     const doc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="20" vanishingPoint3DY="30">
       <timelines><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>
         <DOMGroup><matrix><Matrix a="2" d="2" tx="20" ty="30"/></matrix><members>
@@ -31,9 +53,10 @@ describe('XFL instance affine projection', () => {
             <matrix><Matrix a="2" d="2" tx="20" ty="30"/></matrix>
           </DOMSymbolInstance>
           <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" z="-101"/>
+          <DOMSymbolInstance libraryItemName="Card" symbolType="graphic"><matrix3D><Matrix3D/></matrix3D></DOMSymbolInstance>
         </members></DOMGroup>
       </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
-    const source = adaptFlaXflDisplaySource(doc, symbols);
+    const source = adaptFlaXflDisplaySource(doc, [cardSymbol]);
     if (!source.ok) throw new Error(source.message);
     const scene = source.source.sceneTimelines[0]!;
     const resolved = resolveFlaDisplayList({ root: { kind: 'scene', name: scene.name, frameContext: scene.frameContext }, symbols: source.source.symbols });
@@ -45,6 +68,192 @@ describe('XFL instance affine projection', () => {
     expect(card.worldTransform.a).toBeCloseTo(2 * Math.SQRT1_2);
     expect(card.worldTransform.tx).toBeCloseTo(20);
     expect(card.worldTransform.ty).toBeCloseTo(30);
-    expect(resolved.displayList.projectionDiagnostics?.[0]).toContain('3D instance projection');
+    expect(resolved.displayList.projectionDiagnostics?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps normal 2D Classic Motion instances with centerPoint3DX/Y visible across start, interior, end and next keyframe (E-F01)', async () => {
+    const hostXml = `<DOMSymbolItem name="MotionHost" symbolType="graphic"><timeline><DOMTimeline><layers>
+      <DOMLayer name="Mover"><frames>
+        <DOMFrame index="0" duration="4" tweenType="motion" keyMode="24065" motionTweenSync="true" motionTweenRotate="clockwise" motionTweenRotateTimes="0">
+          <elements>
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="30" centerPoint3DY="40">
+              <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="20"/></matrix>
+              <transformationPoint><Point x="0" y="0"/></transformationPoint>
+            </DOMSymbolInstance>
+          </elements>
+        </DOMFrame>
+        <DOMFrame index="4" duration="2" keyMode="9728">
+          <elements>
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="110" centerPoint3DY="60">
+              <matrix><Matrix a="0" b="1" c="-1" d="0" tx="90" ty="60"/></matrix>
+              <transformationPoint><Point x="0" y="0"/></transformationPoint>
+            </DOMSymbolInstance>
+          </elements>
+        </DOMFrame>
+        <DOMFrame index="6" duration="2">
+          <elements>
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="single frame" firstFrame="2" centerPoint3DX="150" centerPoint3DY="80">
+              <matrix><Matrix a="1" b="0" c="0" d="1" tx="150" ty="80"/></matrix>
+            </DOMSymbolInstance>
+          </elements>
+        </DOMFrame>
+      </frames></DOMLayer>
+      <DOMLayer name="Sibling"><frames>
+        <DOMFrame index="0" duration="8"><elements>
+          <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" centerPoint3DX="5" centerPoint3DY="5">
+            <matrix><Matrix tx="5" ty="5"/></matrix>
+          </DOMSymbolInstance>
+        </elements></DOMFrame>
+      </frames></DOMLayer>
+    </layers></DOMTimeline></timeline></DOMSymbolItem>`;
+    const doc = '<DOMDocument width="300" height="200" frameRate="24"/>';
+    const adapted = adaptFlaXflDisplaySource(doc, [cardSymbol, { name: 'MotionHost.xml', xml: hostXml }]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const { source } = adapted;
+    const hostSym = source.graphicSymbols.find((s) => s.libraryItemName === 'MotionHost')!;
+    for (const [frameIndex, expectedTx, expectedTy] of [[0, 10, 20], [2, 50, 40], [4, 90, 60], [6, 150, 80]] as const) {
+      const ctx = source.buildGraphicFrameContext(hostSym.timelineXml, hostSym.frameSpanIndex, frameIndex, `graphic:${hostSym.libraryItemName}`);
+      if (!ctx.ok) throw new Error(ctx.message);
+      const resolved = resolveFlaDisplayList({
+        root: { kind: 'graphic', name: 'MotionHost', frameContext: ctx.value },
+        symbols: source.symbols,
+      });
+      if (!resolved.ok) throw new Error(resolved.message);
+      expect(resolved.displayList.projectionDiagnostics).toBeUndefined();
+      // Sibling layer is at index 0 (bottom), Mover layer is at index 1 (top)
+      expect(resolved.displayList.layers[0]?.children).toHaveLength(1);
+      const mover = resolved.displayList.layers[1]?.children[0];
+      expect(mover?.kind).toBe('group');
+      expect(mover?.worldTransform.tx).toBeCloseTo(expectedTx);
+      expect(mover?.worldTransform.ty).toBeCloseTo(expectedTy);
+      if (frameIndex === 2) {
+        // Halfway through 90-degree clockwise rotation => 45 degrees
+        expect(mover?.worldTransform.a).toBeCloseTo(Math.SQRT1_2);
+        expect(mover?.worldTransform.b).toBeCloseTo(Math.SQRT1_2);
+      }
+      // Verify formal Graphic structure capture + evaluation round-trip preserves the moving node
+      const captured = captureFlaGraphicStructure(resolved.displayList);
+      const evalVisual = evaluateFlaGraphicVisual({
+        definition: {
+          id: 'def-motion-host',
+          name: 'MotionHost',
+          source: {
+            sourceName: 'motion.fla',
+            sourceSha256: 'a'.repeat(64),
+            renderTargetId: 'rt-motion',
+            targetKind: 'graphic-symbol',
+            libraryItemName: 'MotionHost',
+            sourceFps: 24,
+            startFrameIndex: 0,
+            canvas: { width: 300, height: 200 },
+            anchor: { x: 0, y: 0 },
+          },
+          frames: [{ ordinal: 0, sourceFrameIndex: frameIndex, assetId: 'asset-frame', offset: { x: 0, y: 0 }, sourceViewport: { x: 0, y: 0, width: 300, height: 200 } }],
+          structure: captured,
+        },
+        frameOrdinal: 0,
+        mode: 'instance',
+      });
+      expect(evalVisual?.layers?.[1]?.nodes[0]?.worldTransform.tx).toBeCloseTo(expectedTx);
+      expect(evalVisual?.layers?.[1]?.nodes[0]?.worldTransform.ty).toBeCloseTo(expectedTy);
+    }
+
+    // Verify end-to-end SVG render for the same Classic Motion FLA
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', doc);
+    zip.file('LIBRARY/Card.xml', cardSymbol.xml);
+    zip.file('LIBRARY/MotionHost.xml', hostXml);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const target: FlaRenderTarget = {
+      renderTargetId: 'rt-motion',
+      kind: 'graphic-symbol',
+      userLabel: 'MotionHost',
+      sourceLibraryItemName: 'MotionHost',
+      frameCount: 8,
+      compatibility: [],
+    };
+    const midSvg = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 }, undefined, prepared.source);
+    if (!midSvg.ok) throw new Error(midSvg.message);
+    expect(midSvg.svg).toContain('#22aa44'); // motionTweenSync advances Card frame 0 -> frame 2
+    expect(midSvg.projectionWarning).toBeUndefined();
+  });
+
+  it('evaluates dynamic 2.5D Object Motion curves and diagnoses unsupported 3D channels explicitly', () => {
+    const validDoc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="100" vanishingPoint3DY="100">
+      <timelines><DOMTimeline name="Scene 1"><layers>
+        <DOMLayer name="Spin3D"><frames>
+          <DOMFrame index="0" duration="5" tweenType="motion object">
+            <motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
+              <PropertyContainer id="Motion">
+                <Property id="Motion_X"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,40"/></Property>
+                <Property id="Rotation_Y"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,45"/></Property>
+                <Property id="Motion_Z"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,100"/></Property>
+              </PropertyContainer>
+            </AnimationCore></motionObjectXML>
+            <elements>
+              <DOMSymbolInstance libraryItemName="Card" symbolType="graphic">
+                <matrix><Matrix tx="100" ty="100"/></matrix>
+                <transformationPoint><Point x="0" y="0"/></transformationPoint>
+              </DOMSymbolInstance>
+            </elements>
+          </DOMFrame>
+        </frames></DOMLayer>
+        <DOMLayer name="Healthy2D"><frames>
+          <DOMFrame index="0" duration="5"><elements>
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" centerPoint3DX="20" centerPoint3DY="20">
+              <matrix><Matrix tx="20" ty="20"/></matrix>
+            </DOMSymbolInstance>
+          </elements></DOMFrame>
+        </frames></DOMLayer>
+      </layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(validDoc, [cardSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+    const sceneCtx = adapted.source.buildSceneFrameContext(scene.xml, 4, `scene:${scene.index}`);
+    if (!sceneCtx.ok) throw new Error(sceneCtx.message);
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: 'Scene 1', frameContext: sceneCtx.value },
+      symbols: adapted.source.symbols,
+    });
+    if (!resolved.ok) throw new Error(resolved.message);
+    const spinLayer = resolved.displayList.layers.find((layer) => layer.name === 'Spin3D');
+    const spinNode = spinLayer?.children[0];
+    expect(spinNode?.kind).toBe('group');
+    // At frame 4: focalLength=100, depth=100 => distance=200, ratio=0.5, rotationY=45 => cos=sin=SQRT1_2
+    // tx shifted to 140 => vx=40, stageX = 100 + 40 * 0.5 = 120
+    // Jacobian a = ratio * (cos(45) - vx * (-sin(45)) / distance) = 0.5 * (1 + 40/200) * SQRT1_2 = 0.6 * SQRT1_2
+    expect(spinNode?.worldTransform.a).toBeCloseTo(0.6 * Math.SQRT1_2, 5);
+    expect(spinNode?.worldTransform.tx).toBeCloseTo(120, 3);
+    expect(spinNode?.worldTransform.ty).toBeCloseTo(100, 3);
+    const healthyLayer = resolved.displayList.layers.find((layer) => layer.name === 'Healthy2D');
+    expect(healthyLayer?.children[0]?.worldTransform.tx).toBeCloseTo(20);
+
+    // Unsupported dynamic 3D channel (Skew_Z) reports explicit diagnostic instead of silent ignore.
+    const unsupportedDoc = `<DOMDocument width="200" height="200" frameRate="24">
+      <timelines><DOMTimeline name="Scene 1"><layers>
+        <DOMLayer name="Unsupported3D"><frames>
+          <DOMFrame index="0" duration="5" tweenType="motion object">
+            <motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
+              <PropertyContainer id="Motion">
+                <Property id="Skew_Z"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,30"/></Property>
+              </PropertyContainer>
+            </AnimationCore></motionObjectXML>
+            <elements>
+              <DOMSymbolInstance libraryItemName="Card" symbolType="graphic">
+                <matrix><Matrix tx="20" ty="20"/></matrix>
+                <transformationPoint><Point x="0" y="0"/></transformationPoint>
+              </DOMSymbolInstance>
+            </elements>
+          </DOMFrame>
+        </frames></DOMLayer>
+      </layers></DOMTimeline></timelines></DOMDocument>`;
+    const badAdapted = adaptFlaXflDisplaySource(unsupportedDoc, [cardSymbol]);
+    if (!badAdapted.ok) throw new Error(badAdapted.message);
+    const badScene = badAdapted.source.sceneTimelines[0]!;
+    const badCtx = badAdapted.source.buildSceneFrameContext(badScene.xml, 2, `scene:${badScene.index}`);
+    if (!badCtx.ok) throw new Error(badCtx.message);
+    expect(badCtx.value.unsupportedDisplayReason).toContain('Skew_Z');
   });
 });
