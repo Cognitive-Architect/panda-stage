@@ -132,6 +132,21 @@ function readEase(map: MotionXmlNode): Curve['ease'] | undefined {
     if (count < 1) return linear;
     return createSpringEase(count);
   }
+  const intervals = Math.trunc(rawStrength);
+  switch (type) {
+    case 'SineWave':
+      return intervals < 1 ? linear : (ratio) => Math.sin(Math.PI * intervals * ratio / 2) ** 2;
+    case 'SawtoothWave':
+      // Animate's preset traverses a triangle, rather than jumping at its peak.
+      return (ratio) => 1 - Math.abs((ratio * Math.max(1, intervals)) % 2 - 1);
+    case 'SquareWave':
+      return (ratio) => Number((ratio * Math.max(2, intervals)) % 2 > 1);
+    case 'DampedWave':
+      return intervals < 1 ? linear : (ratio) => {
+        const phase = intervals * ratio;
+        return -0.5 * Math.exp(-phase) * Math.cos(2 * Math.PI * phase);
+      };
+  }
   const strength = rawStrength / 100;
   const dual = type.startsWith('Dual');
   const power = powers.get(dual ? type.slice(4) : type);
