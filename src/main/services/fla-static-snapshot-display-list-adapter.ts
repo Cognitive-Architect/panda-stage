@@ -1091,6 +1091,34 @@ function parseDisplayElements(
   return { ok: true, value: children };
 }
 
+/**
+ * Resolve the DOMLayer relationship through folders only. A missing mask
+ * dependency keeps affected content out of the display list and reports it
+ * through the same diagnostic path as any other unavailable mask.
+ */
+function sourceMaskParentIndex(
+  layers: readonly FlaXflElementBlock[],
+  layerIndex: number,
+): number | 'unresolved' | undefined {
+  const layer = layers[layerIndex]!;
+  const type = layer.attributes.layerType?.toLowerCase();
+  if (type === 'guide' || type === 'folder' || type === 'camera') return undefined;
+
+  const visited = new Set([layerIndex]);
+  let rawParent = layer.attributes.parentLayerIndex;
+  while (rawParent !== undefined) {
+    const parentIndex = /^\d+$/u.test(rawParent) ? Number(rawParent) : -1;
+    const parent = layers[parentIndex];
+    if (!parent || visited.has(parentIndex) || visited.size > MAX_SOURCE_GROUP_DEPTH) return 'unresolved';
+    const parentType = parent.attributes.layerType?.toLowerCase();
+    if (parentType === 'mask') return parentIndex;
+    if (parentType !== 'folder') break;
+    visited.add(parentIndex);
+    rawParent = parent.attributes.parentLayerIndex;
+  }
+  return type === 'masked' ? 'unresolved' : undefined;
+}
+
 function buildFrameContext(
   timelineXml: string,
   frameIndex: number,
@@ -1113,8 +1141,9 @@ function buildFrameContext(
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     if (!layer) continue;
+    const parentMaskIndex = sourceMaskParentIndex(layers, layerIndex);
     const frames = framesForLayer(layer.xml);
-    const frame = frames[frameIndex];
+    const frame = parentMaskIndex === 'unresolved' ? undefined : frames[frameIndex];
     let elements: readonly FlaDisplayListElement[] = [];
     if (frame) {
       const declaredFrameIndex = Number(frame.attributes.index ?? frameIndex);
@@ -1141,19 +1170,9 @@ function buildFrameContext(
       }
     }
     const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
-    const visible = layer.attributes.visible !== 'false' &&
-      layer.attributes.isVisible !== 'false' &&
-      layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
-    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
-    let maskedBy: string | undefined;
-    if (parentLayerIndexRaw !== undefined) {
-      const parentLayerIndex = Number(parentLayerIndexRaw);
-      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
-        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
-      } else {
-        maskedBy = maskLayerIds.get(parentLayerIndex);
-      }
-    }
+    const visible = sourceLayerIsVisible(layer);
+    const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
+      : parentMaskIndex !== undefined ? maskLayerIds.get(parentMaskIndex) : undefined;
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${layerIndex + 1}`,
       visible,
@@ -2987,6 +3006,7 @@ function buildGraphicFrameContext(
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
     const isMask = maskLayerIds.has(selection.layerIndex);
+    const parentMaskIndex = sourceMaskParentIndex(layers, selection.layerIndex);
     const stageView = stageViews?.value[selection.layerIndex];
     if (stageView?.matrix === null && !isMask) {
       if (stageView.warning && projectionDiagnostics.length < 32) {
@@ -2995,7 +3015,7 @@ function buildGraphicFrameContext(
       continue;
     }
     const layerReasons: string[] = [];
-    const sampled = stageView?.matrix === null
+    const sampled = stageView?.matrix === null || parentMaskIndex === 'unresolved'
       ? { ok: true as const, value: { elements: [], frameFilter: undefined } }
       : sampleLayer(selection, layerReasons, isMask);
     const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
@@ -3008,18 +3028,9 @@ function buildGraphicFrameContext(
       (frameFilter ? '遮罩图层上的滤镜超出支持范围' : undefined)) : undefined;
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
-    let maskedBy: string | undefined;
-    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
-    if (parentLayerIndexRaw !== undefined) {
-      const parentLayerIndex = Number(parentLayerIndexRaw);
-      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
-        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
-      } else {
-        maskedBy = maskLayerIds.get(parentLayerIndex);
-      }
-    }
-    const parentView = maskedBy && parentLayerIndexRaw !== undefined
-      ? stageViews?.value[Number(parentLayerIndexRaw)] : undefined;
+    const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
+      : parentMaskIndex !== undefined ? maskLayerIds.get(parentMaskIndex) : undefined;
+    const parentView = typeof parentMaskIndex === 'number' ? stageViews?.value[parentMaskIndex] : undefined;
     const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
       !Object.entries(parentView.matrix).every(([key, value]) =>
         stageView.matrix?.[key as keyof FlaDisplayListMatrix] === value);

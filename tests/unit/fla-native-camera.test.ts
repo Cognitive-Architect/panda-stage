@@ -78,13 +78,14 @@ describe('native Animate Scene camera', () => {
     expect(scene.layers(2)).toEqual(mid);
   });
 
-  it('keeps matching mask geometry in camera space and diagnoses different mask depth locally', () => {
-    const content = layer('Masked', frame(instance('Tile', 'tx="130"')), 'parentLayerIndex="0"');
+  it.each([false, true])('keeps mask projection local (folder parent: %s)', (inFolder) => {
+    const content = layer('Masked', frame(instance('Tile', 'tx="130"')), `parentLayerIndex="${inFolder ? 1 : 0}"`);
+    const folder = inFolder ? layer('Mask folder', '', 'layerType="folder" parentLayerIndex="0"') : '';
     const background = layer('Background', frame(instance('Tile', '')));
     const cameraLayer = layer('Camera', camera('tx="120" ty="50"'), 'layerType="camera"');
     for (const [maskDepth, visible] of [['0', true], ['100', false]] as const) {
       const scene = prepare(layer('Mask', frame(tile, 'index="0" frameZDepth="' + maskDepth + '"'), 'layerType="mask"') +
-        content + background + cameraLayer);
+        folder + content + background + cameraLayer);
       const result = resolveFlaDisplayList({
         root: { kind: 'scene', name: 'Scene', frameContext: scene.frameContext(0) },
         symbols: scene.source.symbols,

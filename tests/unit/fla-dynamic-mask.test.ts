@@ -69,6 +69,34 @@ describe('Animate dynamic masks', () => {
     expect((await sample(3)).svg).toEqual(middle.svg);
   });
 
+  it('clips through nested folders without changing geometry or crossing mask groups', async () => {
+    const original = await load('MASK');
+    const zip = await JSZip.loadAsync(original);
+    const doc = await zip.file('DOMDocument.xml')!.async('string');
+    const folder = (name: string, parent?: number) =>
+      `<DOMLayer name="${name}" layerType="folder"${parent === undefined ? '' : ` parentLayerIndex="${parent}"`}/>`;
+    zip.file('DOMDocument.xml', doc
+      .replace('<DOMLayer name="Orange"', folder('Orange folder', 0) + '<DOMLayer name="Orange"')
+      .replace('<DOMLayer name="Red"', folder('Outer folder', 3) + folder('Inner folder', 4) + '<DOMLayer name="Red"')
+      .replace(/(<DOMLayer name="Orange"[^>]*parentLayerIndex=")0"/u, '$11"')
+      .replace(/(<DOMLayer name="Red"[^>]*parentLayerIndex=")2"/u, '$15"')
+      .replace(/(<DOMLayer name="Blue"[^>]*parentLayerIndex=")2"/u, '$13"')
+      .replace('<DOMLayer name="Witness"', '<DOMLayer name="Witness" parentLayerIndex="9"')
+      .replace('</layers>', folder('Ordinary folder') + '</layers>'));
+    const [direct, nested] = await Promise.all([
+      sceneSampler(original), sceneSampler(await zip.generateAsync({ type: 'uint8array' })),
+    ]);
+    const normalize = (svg: string) => {
+      const ids = clipIds(svg);
+      return ids.reduce((value, id, index) => value.replaceAll(id!, `clip-${index}`), svg);
+    };
+    for (const index of [0, 3, 7]) {
+      const actual = await nested(index);
+      expect(actual.maskWarning).toBeUndefined();
+      expect(normalize(actual.svg)).toBe(normalize((await direct(index)).svg));
+    }
+  });
+
   it('preserves nested intersections, mirror transforms and both symbol clocks', async () => {
     const sample = await sceneSampler(await load('MASK-NESTED'));
     const [end, start, middle] = [await sample(7), await sample(0), await sample(3)];

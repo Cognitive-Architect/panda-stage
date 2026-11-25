@@ -43,6 +43,35 @@ function graphic(name: string, layers: string[]): string {
   return `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(`${name}-timeline`, layers)}</timeline></DOMSymbolItem>`;
 }
 
+it('resolves folders in raw scene frames and isolates malformed mask relationships', () => {
+  const parented = (name: string, parent: number, type = 'normal', drawing = '') =>
+    `<DOMLayer name="${name}" layerType="${type}" parentLayerIndex="${parent}"><frames>${frame(0, drawing)}</frames></DOMLayer>`;
+  const source = adaptFlaXflDisplaySource('<DOMDocument><timelines>' + timeline('Scene', [
+    '<DOMLayer name="Hidden mask" layerType="mask" visible="false"><frames>' + frame(0, shape()) + '</frames></DOMLayer>',
+    parented('Mask folder', 0, 'folder'),
+    parented('Clipped', 1, 'normal', bitmap('clipped')),
+    parented('Cycle', 3, 'folder'),
+    parented('Cyclic content', 3, 'masked', bitmap('cycle')),
+    parented('Missing mask', 99, 'masked', bitmap('missing')),
+    '<DOMLayer layerType="folder"/>',
+    parented('Ordinary content', 6, 'normal', bitmap('ordinary')),
+  ]) + '</timelines></DOMDocument>', []);
+  if (!source.ok) throw new Error(source.message);
+  const scene = source.source.sceneTimelines[0]!;
+  const selected = source.source.buildSceneFrameContext(scene.xml, 0, 'raw');
+  if (!selected.ok) throw new Error(selected.message);
+  for (const frameContext of [scene.frameContext, selected.value]) {
+    const result = resolveFlaDisplayList({
+      root: { kind: 'scene', name: scene.name, frameContext },
+      symbols: source.source.symbols,
+    });
+    if (!result.ok) throw new Error(result.message);
+    expect(result.displayList.layers.map(({ name }) => name)).toEqual(['Ordinary content', 'Clipped']);
+    expect(result.displayList.layers[1]?.children[0]?.clipPaths?.[0]?.shapes).toHaveLength(1);
+    expect(result.displayList.maskDiagnostics).toHaveLength(2);
+  }
+});
+
 describe('baked IK display sampling', () => {
   const ink = (name: string, poses: string) => timeline(name, [
     layer('armature', `<DOMFrame index="3" duration="3" tweenType="IK pose"><elements>${
