@@ -3898,59 +3898,89 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   type CompositeGroup = Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+  type ResolvedTextNode = Extract<FlaResolvedDisplayNode, { readonly kind: 'text' }>;
   const instanceFilterByGroup = new Map<CompositeGroup, { id: string; x: number; y: number }>();
+  const instanceFilterByTextNode = new Map<ResolvedTextNode, { id: string; x: number; y: number }>();
   const instancePrimitivesById = new Map<string, string>();
+  const compileInstanceFilters = (
+    filters: NonNullable<CompositeGroup['instanceFilters']>,
+  ): { id: string; x: number; y: number } | null => {
+    let expansionX = 0;
+    let expansionY = 0;
+    let source = 'SourceGraphic';
+    const primitives: string[] = [];
+    for (const [index, filter] of filters.entries()) {
+      if (!filter.enabled) continue;
+      const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+      // Animate's screen-space blur radii are approximated as twice the SVG sigma.
+      const sigmaX = blurX / 2;
+      const sigmaY = blurY / 2;
+      const radians = angle * Math.PI / 180;
+      const dx = distance * Math.cos(radians);
+      const dy = distance * Math.sin(radians);
+      expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
+      expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
+      const blur = 'blur' + index;
+      const output = 'effect' + index;
+      if (filter.kind === 'blur') {
+        primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+      } else {
+        const offset = 'offset' + index;
+        primitives.push(
+          `<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+          `<feOffset in="${blur}" dx="${formatSvgNumber(dx)}" dy="${formatSvgNumber(dy)}" result="${offset}"/>`,
+          `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+          `<feComposite in2="${offset}" operator="in" result="shadow${index}"/>`,
+          `<feMerge result="${output}"><feMergeNode in="shadow${index}"/><feMergeNode in="${source}"/></feMerge>`,
+        );
+      }
+      source = output;
+    }
+    if (primitives.length === 0) return null;
+    const markup = primitives.join('');
+    const id = `fla-instance-filter-${crypto.createHash('sha256').update(markup).digest('hex').slice(0, 24)}`;
+    instancePrimitivesById.set(id, markup);
+    return { id, x: expansionX, y: expansionY };
+  };
   let instanceExpansionX = 0;
   let instanceExpansionY = 0;
-  for (const { compositeGroups } of flattened.leaves) {
+  for (const { node, compositeGroups } of flattened.leaves) {
     let x = 0;
     let y = 0;
     for (const group of compositeGroups) {
       if (!group.instanceFilters) continue;
       let effect = instanceFilterByGroup.get(group);
       if (!effect) {
-        if (instanceFilterByGroup.size >= 128) {
+        if (instanceFilterByGroup.size + instanceFilterByTextNode.size >= 128) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
         }
-        let expansionX = 0;
-        let expansionY = 0;
-        let source = 'SourceGraphic';
-        const primitives: string[] = [];
-        for (const [index, filter] of group.instanceFilters.entries()) {
-          if (!filter.enabled) continue;
-          const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
-          // Animate's screen-space blur radii are approximated as twice the SVG sigma.
-          const sigmaX = blurX / 2;
-          const sigmaY = blurY / 2;
-          const radians = angle * Math.PI / 180;
-          const dx = distance * Math.cos(radians);
-          const dy = distance * Math.sin(radians);
-          expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
-          expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
-          const blur = 'blur' + index;
-          const output = 'effect' + index;
-          if (filter.kind === 'blur') {
-            primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
-          } else {
-            const offset = 'offset' + index;
-            primitives.push(
-              `<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
-              `<feOffset in="${blur}" dx="${formatSvgNumber(dx)}" dy="${formatSvgNumber(dy)}" result="${offset}"/>`,
-              `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
-              `<feComposite in2="${offset}" operator="in" result="shadow${index}"/>`,
-              `<feMerge result="${output}"><feMergeNode in="shadow${index}"/><feMergeNode in="${source}"/></feMerge>`,
-            );
-          }
-          source = output;
-        }
-        const markup = primitives.join('');
-        const id = `fla-instance-filter-${crypto.createHash('sha256').update(markup).digest('hex').slice(0, 24)}`;
-        instancePrimitivesById.set(id, markup);
-        effect = { id, x: expansionX, y: expansionY };
+        const compiled = compileInstanceFilters(group.instanceFilters);
+        if (!compiled) continue;
+        effect = compiled;
         instanceFilterByGroup.set(group, effect);
       }
       x += effect.x;
       y += effect.y;
+    }
+    if (node.kind === 'text' && node.instanceFilters) {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (descriptor && hasDrawableStaticText(descriptor) && !compositeGroups.some((group) => group.opacity === 0)) {
+        let textEffect = instanceFilterByTextNode.get(node);
+        if (!textEffect) {
+          if (instanceFilterByGroup.size + instanceFilterByTextNode.size >= 128) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
+          }
+          const compiled = compileInstanceFilters(node.instanceFilters);
+          if (compiled) {
+            textEffect = compiled;
+            instanceFilterByTextNode.set(node, textEffect);
+          }
+        }
+        if (textEffect) {
+          x += textEffect.x;
+          y += textEffect.y;
+        }
+      }
     }
     instanceExpansionX = Math.max(instanceExpansionX, x);
     instanceExpansionY = Math.max(instanceExpansionY, y);
@@ -4579,7 +4609,9 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         staticTextTransforms.push({ placeholderId, worldTransform: node.worldTransform });
       }
       const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-      const appendFailure = appendEmittedNode(useNode, leafClips);
+      const textEffect = instanceFilterByTextNode.get(node);
+      const emittedTextNode = textEffect ? `<g filter="url(#${textEffect.id})">${useNode}</g>` : useNode;
+      const appendFailure = appendEmittedNode(emittedTextNode, leafClips);
       if (appendFailure) return appendFailure;
       continue;
     }

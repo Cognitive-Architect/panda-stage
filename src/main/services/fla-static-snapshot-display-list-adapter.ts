@@ -1021,6 +1021,12 @@ function parseDisplayElements(
         // Empty static text produces no drawable ink and no error.
         continue;
       }
+      const textFilters = readInstanceFilters(child);
+      if (!textFilters || (textFilters.some((filter) => filter.enabled) &&
+          child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+        context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL static text filters');
+        continue;
+      }
       const textId = `fla-text-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`;
       context.state.staticTextBlocks.set(textId, parsedText.value);
       children.push({
@@ -1032,6 +1038,7 @@ function parseDisplayElements(
         ...(context.sourceParentSpanTweenType !== undefined
           ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
           : {}),
+        ...(textFilters.length ? { instanceFilters: textFilters } : {}),
         ...(localTransform ? { localTransform } : {}),
       });
       continue;

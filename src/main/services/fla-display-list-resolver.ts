@@ -113,6 +113,7 @@ export type FlaDisplayListElement =
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
       readonly sourceParentSpanTweenType?: string;
+      readonly instanceFilters?: readonly FlaInstanceFilter[];
       /** Transform from this text node's local space into its immediate parent. */
       readonly localTransform?: FlaDisplayListMatrix;
       readonly visible?: boolean;
@@ -238,6 +239,7 @@ export interface FlaResolvedTextNode {
   readonly sourceAddress?: string;
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly instanceFilters?: readonly FlaInstanceFilter[];
   readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
@@ -717,6 +719,8 @@ function resolveElements(
         ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
         localTransform,
         worldTransform,
+        ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
+          ? { instanceFilters: element.instanceFilters } : {}),
         ...(clipPaths.length ? { clipPaths } : {}),
       });
       continue;
