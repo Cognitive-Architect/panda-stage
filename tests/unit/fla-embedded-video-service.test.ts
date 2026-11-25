@@ -573,7 +573,9 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
         cancelJob: () => true,
       };
 
-      const exportFs = new FileSystemService(path.join(workDir, 'export-temp'));
+      const exportFs = new FileSystemService(path.join(workDir, 'export-temp'), {
+        inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+      });
       const exportService = new ExportService(mockFrameRenderer, exportFs, ffmpegAdapter);
       const exportHandle = exportService.startFormalExport(
         frozen,

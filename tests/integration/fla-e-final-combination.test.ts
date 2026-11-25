@@ -895,7 +895,9 @@ describe('Issue #1350 E-I02 targeted combination acceptance', () => {
         expect(prep.status).toBe('PREPARATION_READY');
         if (prep.status !== 'PREPARATION_READY') throw new Error(JSON.stringify(prep));
         const frozen = await prepService.acquireCandidateForExport(prep.candidate.snapshotId);
-        const exportFs = new FileSystemService(path.join(workDir, `tmp-${fileName}`));
+        const exportFs = new FileSystemService(path.join(workDir, `tmp-${fileName}`), {
+          inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+        });
         const exportService = new ExportService(
           makeMockRenderer(width, width === 1280 ? 720 : 1080),
           exportFs,
@@ -996,7 +998,9 @@ describe('Issue #1350 E-I02 targeted combination acceptance', () => {
         });
         cancelService = new ExportService(
           cancelRenderer,
-          new FileSystemService(path.join(workDir, 'tmp-cancel')),
+          new FileSystemService(path.join(workDir, 'tmp-cancel'), {
+            inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+          }),
           ffmpegAdapter,
         );
         const handle = cancelService.startFormalExport(
@@ -1040,7 +1044,9 @@ describe('Issue #1350 E-I02 targeted combination acceptance', () => {
           const frozen = await prepService.acquireCandidateForExport(prep.candidate.snapshotId);
           const exportService = new ExportService(
             makeMockRenderer(1920, 1080),
-            new FileSystemService(path.join(workDir, `tmp-${dirName}`)),
+            new FileSystemService(path.join(workDir, `tmp-${dirName}`), {
+              inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+            }),
             ffmpegAdapter,
           );
           const res = await exportService.startPngSequenceExport(
