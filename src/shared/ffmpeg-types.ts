@@ -10,11 +10,15 @@ const Mp4OutputPathSchema = z
   .refine((value) => /\.mp4$/iu.test(value), {
     message: '视频输出路径必须使用 .mp4 扩展名。',
   });
+const VideoOutputPathSchema = z.string().trim().min(1).refine(
+  (value) => /\.(?:mp4|webm)$/iu.test(value),
+  '视频输出路径必须使用 .mp4 或 .webm 扩展名。',
+);
 
 export const EncodePngSequenceRequestSchema = z
   .object({
     framesDirectory: z.string().trim().min(1),
-    outputPath: Mp4OutputPathSchema,
+    outputPath: VideoOutputPathSchema,
     fps: ExportOutputFpsSchema,
     overwrite: z.boolean().default(true),
   })
@@ -34,7 +38,7 @@ export const MuxAudioMixRequestSchema = z
   .object({
     videoPath: z.string().trim().min(1),
     audioMixPlan: ExportAudioMixPlanSchema,
-    outputPath: Mp4OutputPathSchema,
+    outputPath: VideoOutputPathSchema,
     overwrite: z.boolean().default(true),
   })
   .strict();

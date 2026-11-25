@@ -255,7 +255,7 @@ function technicalTail(stderr: string): string {
 function createTemporaryOutputPath(outputPath: string): string {
   return path.join(
     path.dirname(outputPath),
-    `.panda-stage-${randomUUID()}.mp4`,
+    `.panda-stage-${randomUUID()}${path.extname(outputPath).toLowerCase()}`,
   );
 }
 
@@ -351,6 +351,21 @@ export class FFmpegAdapter {
     return { executable: this.ffmpegPath, versionLine, hasLibx264: true };
   }
 
+  private async validateWebmExecutable(encoder: 'libvpx-vp9' | 'libopus', signal?: AbortSignal) {
+    const versionLine = await this.getVersion(signal);
+    for (const [flag, capability] of [['-encoders', encoder], ['-muxers', 'webm']] as const) {
+      const args = ['-hide_banner', flag];
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      if (result.code !== 0 || !`${result.stdout}\n${result.stderr}`.split(/\s+/u).includes(capability)) {
+        throw new FFmpegAdapterError('ENCODER_UNAVAILABLE', `FFmpeg 缺少 WebM 所需的 ${capability}。`, {
+          executable: this.ffmpegPath, args, exitCode: result.code, signal: result.signal, stderr: technicalTail(result.stderr),
+        });
+      }
+    }
+    return { versionLine };
+  }
+
   async validateAudioMuxExecutable(
     signal?: AbortSignal,
   ): Promise<FFmpegAudioValidationResult> {
@@ -420,7 +435,8 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
-    const validation = await this.validateExecutable(signal);
+    const webm = path.extname(outputPath).toLowerCase() === '.webm';
+    const validation = webm ? await this.validateWebmExecutable('libvpx-vp9', signal) : await this.validateExecutable(signal);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
@@ -635,7 +651,8 @@ export class FFmpegAdapter {
 
     let versionLine: string | null = null;
     if (audioInputs.length > 0) {
-      const validation = await this.validateAudioMuxExecutable(signal);
+      const validation = path.extname(outputPath).toLowerCase() === '.webm'
+        ? await this.validateWebmExecutable('libopus', signal) : await this.validateAudioMuxExecutable(signal);
       versionLine = validation.versionLine;
       if (signal?.aborted) {
         throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
@@ -792,7 +809,7 @@ export class FFmpegAdapter {
       pixelFormat: String(video.pix_fmt ?? ''),
       width: Number(video.width),
       height: Number(video.height),
-      fps: parseRational(video.avg_frame_rate ?? video.r_frame_rate),
+      fps: parseRational(video.avg_frame_rate) || parseRational(video.r_frame_rate),
       frameCount: Number.isInteger(frameCount) ? frameCount : null,
       durationSeconds,
       hasAudio: Boolean(audio),
@@ -1071,6 +1088,7 @@ export class FFmpegAdapter {
     overwrite: boolean;
     frameCount: number;
   }): readonly string[] {
+    const webm = path.extname(request.outputPath).toLowerCase() === '.webm';
     return [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
@@ -1086,13 +1104,12 @@ export class FFmpegAdapter {
       String(request.frameCount),
       '-an',
       '-c:v',
-      'libx264',
+      webm ? 'libvpx-vp9' : 'libx264',
       '-pix_fmt',
       'yuv420p',
       '-r',
       String(request.fps),
-      '-movflags',
-      '+faststart',
+      ...(webm ? [] : ['-movflags', '+faststart']),
       request.outputPath,
     ];
   }
@@ -1148,6 +1165,7 @@ export class FFmpegAdapter {
     outputPath: string;
     overwrite: boolean;
   }): readonly string[] {
+    const webm = path.extname(request.outputPath).toLowerCase() === '.webm';
     const args = [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
@@ -1167,8 +1185,7 @@ export class FFmpegAdapter {
         '-c:v',
         'copy',
         '-an',
-        '-movflags',
-        '+faststart',
+        ...(webm ? [] : ['-movflags', '+faststart']),
         request.outputPath,
       );
       return args;
@@ -1211,11 +1228,10 @@ export class FFmpegAdapter {
       '-c:v',
       'copy',
       '-c:a',
-      'aac',
+      webm ? 'libopus' : 'aac',
       '-b:a',
       '192k',
-      '-movflags',
-      '+faststart',
+      ...(webm ? [] : ['-movflags', '+faststart']),
       request.outputPath,
     );
     return args;

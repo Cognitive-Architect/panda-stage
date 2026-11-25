@@ -1128,7 +1128,8 @@ export class ExportService {
       record.phase = 'encoding';
       this.emit(record);
       const silentVideoPath = audioMixPlan
-        ? path.join(jobDirectory, 'formal-silent.mp4')
+        ? path.join(jobDirectory, 'formal-silent.' + ('format' in input.candidate.renderSettings
+          ? input.candidate.renderSettings.format : 'mp4'))
         : finalOutputStagingPath;
       await adapter.encodePngSequence(
         {
@@ -1275,7 +1276,7 @@ export class ExportService {
       failures.push('duration');
     }
     if (failures.length > 0) {
-      throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
+      throw new Error('Formal ' + profile.format.toUpperCase() + ' verification failed: ' + failures.join(', '));
     }
   }
 

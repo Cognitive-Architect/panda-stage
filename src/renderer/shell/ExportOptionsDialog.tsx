@@ -33,7 +33,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
   const [targetLayerId, setTargetLayerId] = useState<string>('');
   const [error, setError] = useState('');
   const spriteSheet = preferences.format === 'sprite-sheet';
-  const png = preferences.format !== 'mp4';
+  const png = preferences.format === 'png-sequence' || spriteSheet;
   const videoOutput = preferences.videoOutput ?? DEFAULT_EXPORT_VIDEO_OPTIONS;
   const ranged = preferences.rangeMode === 'range';
 
@@ -88,6 +88,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
         setPreferences(value => ({ ...value, format: event.target.value as ExportPreferences['format'] })); setError('');
       }}>
         <option value="mp4">MP4 视频</option>
+        <option value="webm">WebM 视频</option>
         <option value="png-sequence">PNG 序列</option>
         <option value="sprite-sheet">精灵图（PNG + JSON）</option>
       </select></label>

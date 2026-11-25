@@ -2115,6 +2115,7 @@ export function EditorShell({
         projectName: initial.project.name,
         openInstanceId: initialInstanceId,
         ...(pngSequence ? { pngSequence } : {}),
+        ...(!pngSequence && initial.project.exportPreferences?.format === 'webm' ? { videoFormat: 'webm' as const } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(previousTask);
@@ -2384,7 +2385,7 @@ export function EditorShell({
   const beginPreferredExport = (): void => {
     const snapshot = editorProjectStore.getSnapshot();
     const preferences = snapshot?.project.exportPreferences;
-    if (!preferences || preferences.format === 'mp4') { void beginFormalExportFlow(); return; }
+    if (!preferences || preferences.format === 'mp4' || preferences.format === 'webm') { void beginFormalExportFlow(); return; }
     const spriteSheet = preferences.format === 'sprite-sheet';
     const shotId = shotStore.getCurrentShotId();
     if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
@@ -2523,6 +2524,7 @@ export function EditorShell({
         openInstanceId: task.openInstanceId,
         snapshotId: task.snapshotId,
         ...(task.pngSequence ? { pngSequence: task.pngSequence } : {}),
+        ...(!task.pngSequence && /\.webm$/iu.test(task.fileName ?? '') ? { videoFormat: 'webm' as const } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(task);

@@ -191,6 +191,31 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('stages WebM as WebM and encodes with VP9', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'output.webm');
+    await writeFrames(framesDirectory, [0]);
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      { ...ENCODERS_RESULT, stdout: ' V..... libvpx-vp9 VP9 encoder' },
+      { ...ENCODERS_RESULT, stdout: ' E webm WebM' },
+      async (_executable, args) => {
+        await writeFile(args.at(-1)!, new Uint8Array([1]));
+        return { ...VERSION_RESULT, stdout: '' };
+      },
+    ]);
+
+    await new FFmpegAdapter({ runner }).encodePngSequence({
+      framesDirectory, outputPath, fps: 24, overwrite: false,
+    });
+
+    const encodeArgs = runner.calls[3]?.args;
+    expect(encodeArgs).toContain('libvpx-vp9');
+    expect(encodeArgs).not.toContain('-movflags');
+    expect(encodeArgs?.at(-1)).toMatch(/\.webm$/u);
+    await expect(stat(outputPath)).resolves.toMatchObject({ size: 1 });
+  });
+
   it('uses a short temporary encode name when the target is itself a staged file', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
     const outputDirectory = path.join(temporaryRoot, 'output with spaces');
