@@ -112,6 +112,57 @@ function zeroCharacterGraphicProject(nestedTimeline = false): {
   };
 }
 
+describe('native background tiles (#1286)', () => {
+  it('bakes static tiles and covers the stage through off-grid screen-off recycling in four directions', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const shot = project.shots[0]!;
+    const source = shot.layers.find((layer) => layer.id === layerId)!;
+    source.animationPlayback = { mode: 'single-frame', endBehavior: 'hold' };
+    source.scaleX = 3.2;
+    source.scaleY = 2;
+    const staticResult = layerService.generateBackgroundTiles(project, shotId, layerId, { mode: 'static' });
+    expect(staticResult.layers.map(({ x, y, animationClip }) => [x, y, animationClip])).toEqual(
+      [180, 540, 900].flatMap((y) => [320, 960, 1600].map((x) => [x, y, undefined])),
+    );
+    expect(staticResult.project.shots[0]!.layers.find((layer) => layer.id === layerId)).toEqual(source);
+    expect(staticResult.project.shots[0]!.backgroundLayerId).toBe(shot.backgroundLayerId);
+    for (const direction of ['left', 'right', 'up', 'down'] as const) {
+      const horizontal = direction === 'left' || direction === 'right';
+      const length = horizontal ? 1920 : 1080;
+      const reverse = direction === 'right' || direction === 'down';
+      for (const periodFrames of [1, 24]) {
+        const result = layerService.generateBackgroundTiles(project, shotId, layerId, { mode: 'loop', direction, periodFrames });
+        expect(result.layers).toHaveLength(15);
+        const loopShot = result.project.shots[0]!;
+        const frames = [0, 1, 6, 12, 23, 24, 25].map((frame) => frameTimeMs(frame));
+        const firstStrip = new Set(result.layers.filter((layer) => horizontal ? layer.y === 180 : layer.x === 320).map((layer) => layer.id));
+        for (const timeMs of [...frames, frameTimeMs(periodFrames) - 6, loopShot.durationMs]) {
+          const evaluated = evaluateShotAtTime(loopShot, timeMs, result.project);
+          const intervals = evaluated.layers.filter((layer) => firstStrip.has(layer.id)).map((layer) => {
+            const bounds = resolveLayerVisualParts(result.project, loopShot, layer, timeMs).combinedLocalBounds;
+            const start = horizontal ? layer.x + bounds.x * layer.scaleX : layer.y + bounds.y * layer.scaleY;
+            const span = horizontal ? bounds.width * layer.scaleX : bounds.height * layer.scaleY;
+            return { start, end: start + span };
+          }).filter(({ start, end }) => start < length - 1e-6 && end > 1e-6).sort((a, b) => a.start - b.start);
+          expect(intervals[0]!.start).toBeLessThanOrEqual(1e-6);
+          expect(intervals.at(-1)!.end).toBeGreaterThanOrEqual(length - 1e-6);
+          for (let index = 1; index < intervals.length; index += 1) {
+            expect(intervals[index]!.start).toBeCloseTo(intervals[index - 1]!.end, 5);
+          }
+        }
+        const firstTile = result.layers[0]!;
+        const beforeRecycle = evaluateShotAtTime(loopShot, frameTimeMs(periodFrames) - 6, result.project).layers.find((layer) => layer.id === firstTile.id)!;
+        const afterRecycle = evaluateShotAtTime(loopShot, frameTimeMs(periodFrames), result.project).layers.find((layer) => layer.id === firstTile.id)!;
+        const axis = horizontal ? 'x' : 'y';
+        const edge = (horizontal ? 640 : 360) / 2;
+        expect(reverse ? beforeRecycle[axis] - edge : -beforeRecycle[axis] - edge).toBeGreaterThanOrEqual(length * Number(reverse) - 1e-6);
+        expect(reverse ? -afterRecycle[axis] - edge : afterRecycle[axis] - edge).toBeGreaterThanOrEqual(length * Number(!reverse) - 1e-6);
+      }
+    }
+  });
+});
+
 describe('AnimationTargetRef and v21 migration contract (#1140)', () => {
   it('supports layer targets without partId and prevents mixing v1/v2 targets', () => {
     expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerAsset })).toEqual({

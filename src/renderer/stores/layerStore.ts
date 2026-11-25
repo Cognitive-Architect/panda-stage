@@ -2,6 +2,7 @@ import {
   LayerMotionService,
   LayerService,
   type AfterimageInput,
+  type BackgroundTileInput,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
@@ -239,6 +240,18 @@ export class LayerStore {
     if (result.project !== project) {
       this.editorStore.updateProject(result.project, '沿路径阵列');
     }
+    return result.layers;
+  }
+
+  planBackgroundTiles(layerId: string, input: BackgroundTileInput) {
+    const { project, shotId } = this.context();
+    return this.service.planBackgroundTiles(project, shotId, layerId, input);
+  }
+
+  generateBackgroundTiles(layerId: string, input: BackgroundTileInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateBackgroundTiles(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '背景铺排 / 循环');
     return result.layers;
   }
 

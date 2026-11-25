@@ -4,6 +4,7 @@ import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
 import { AfterimagePanel } from '../features/tools/AfterimagePanel';
+import { BackgroundTilesPanel } from '../features/tools/BackgroundTilesPanel';
 import { CurveMotionPanel } from '../features/tools/CurveMotionPanel';
 import { GridArrayPanel } from '../features/tools/GridArrayPanel';
 import { RadialBurstPanel } from '../features/tools/RadialBurstPanel';
@@ -20,6 +21,7 @@ type ProjectToolsView =
   | 'action-presets'
   | 'grid-array'
   | 'curve-motion'
+  | 'background-tiles'
   | 'afterimage'
   | 'radial-burst';
 
@@ -80,6 +82,8 @@ export function ProjectToolsDrawer({
               '残影'
             ) : view === 'radial-burst' ? (
               '径向爆炸'
+            ) : view === 'background-tiles' ? (
+              '背景铺排 / 循环'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -232,6 +236,15 @@ export function ProjectToolsDrawer({
               <span>打开径向爆炸</span>
             </button>
           </section>
+          <section className="project-tools-action-preset-card" aria-labelledby="project-tools-background-tiles-heading">
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-background-tiles-heading">背景铺排 / 循环</h3>
+            </div>
+            <button className="project-tools-action-preset-launcher" data-testid="project-tools-background-tiles" onClick={() => setView('background-tiles')} type="button">
+              <DecorativeIcon icon={LayoutGrid} size={18} />
+              <span>打开背景铺排 / 循环</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -249,6 +262,10 @@ export function ProjectToolsDrawer({
           data-testid="project-tools-grid-array-view"
         >
           <GridArrayPanel onCancel={() => setView('home')} />
+        </section>
+      ) : view === 'background-tiles' ? (
+        <section aria-label="背景铺排 / 循环" className="project-tools-grid-array-view">
+          <BackgroundTilesPanel onCancel={() => setView('home')} />
         </section>
       ) : view === 'curve-motion' ? (
         <section

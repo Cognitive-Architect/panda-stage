@@ -7,6 +7,9 @@ import {
 import {
   calculateCoverTransform,
   normalizeGeneratedStagePoint,
+  planBackgroundTiles,
+  sampleScrollingTile,
+  type BackgroundTileInput,
   normalizeNegativeZero,
   RADIAL_BURST_MAX_COUNT,
   RADIAL_BURST_MAX_SEED,
@@ -2109,6 +2112,102 @@ export class LayerService {
       targets,
       (index) => `${layer.name} 路径 ${index + 1}`,
     );
+  }
+
+  planBackgroundTiles(project: Project, shotId: string, layerId: string, input: BackgroundTileInput) {
+    const { shot, layer } = this.assertFlaGraphicArraySource(project, shotId, layerId, '背景铺排');
+    if (shot.layers.some((candidate) => candidate.id !== shot.backgroundLayerId && candidate.zIndex < layer.zIndex)) {
+      throw new Error('请先将模板移到普通图层的最底部。');
+    }
+    if (
+      layer.animationPlayback?.mode !== 'single-frame' ||
+      layer.animationPlayback.endBehavior !== 'hold' ||
+      layer.startTimeMs !== 0 ||
+      normalizeLayerRotation(layer.rotationDeg) !== 0 ||
+      !layer.visible ||
+      layer.opacity !== 1 ||
+      (layer.animationClip && (layer.animationClip.version !== 2 || layer.animationClip.tracks.length > 0)) ||
+      shot.timelineEvents.some((event) => event.layerId === layerId)
+    ) {
+      throw new Error('请使用从第 0 帧开始、可见且不透明的单帧保持素材，清除外部动作并将旋转设为 0°。');
+    }
+    const dimensions = resolveBackgroundSourceDimensions(project, layer);
+    if (!dimensions) throw new Error('无法读取模板画布，请选择有效的 Graphic 素材。');
+    return planBackgroundTiles(
+      dimensions.width * validateLayerScale(layer.scaleX),
+      dimensions.height * validateLayerScale(layer.scaleY),
+      shot.durationMs,
+      input,
+    );
+  }
+
+  generateBackgroundTiles(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: BackgroundTileInput,
+  ): DuplicateStaticArrayResult {
+    const plan = this.planBackgroundTiles(project, shotId, layerId, input);
+    const shot = this.shot(project, shotId);
+    const source = shot.layers[this.layerIndex(shot, layerId)]!;
+    const usedIds = this.projectIds(project);
+    const basis = input.mode === 'loop' ? createLayerAnimationClip(project, shotId, layerId).targetBases[0]! : null;
+    const createdLayers: Layer[] = [];
+    const reverse = input.mode === 'loop' && (input.direction === 'right' || input.direction === 'down');
+
+    for (let row = 0; row < plan.rows; row += 1) {
+      for (let column = 0; column < plan.columns; column += 1) {
+        const center = normalizeGeneratedStagePoint({
+          x: plan.horizontal ? PROJECT_WIDTH / 2 : PROJECT_WIDTH / 2 + (column - (plan.columns - 1) / 2) * plan.width,
+          y: plan.vertical ? PROJECT_HEIGHT / 2 : PROJECT_HEIGHT / 2 + (row - (plan.rows - 1) / 2) * plan.height,
+        });
+        if (!center) throw new Error('铺排坐标无效，请调整素材比例。');
+        const { layer } = this.buildDuplicatedAnimationLayer(source, [], usedIds, center, 0, `${source.name} 铺排 ${createdLayers.length + 1}`);
+        if (input.mode === 'static' || !basis) {
+          createdLayers.push(layer);
+          continue;
+        }
+        const baseTransform = { ...center, scaleX: layer.scaleX, scaleY: layer.scaleY, rotationDeg: layer.rotationDeg };
+        const pivot = layerPivotLocalOffset(basis.pivot, basis.sourceCanvas);
+        const target = { kind: 'layer' as const, layerId: layer.id };
+        const offsetX: AnimationKey[] = [];
+        const offsetY: AnimationKey[] = [];
+        for (let frame = 0; frame <= plan.lastFrame; frame += 1) {
+          const sample = plan.horizontal
+            ? sampleScrollingTile(column, plan.columns, plan.width, PROJECT_WIDTH, frame, input.periodFrames, reverse)
+            : sampleScrollingTile(row, plan.rows, plan.height, PROJECT_HEIGHT, frame, input.periodFrames, reverse);
+          const position = plan.horizontal ? { x: sample.center, y: center.y } : { x: center.x, y: sample.center };
+          const solved = solveLayerRelativeOffsetForStagePoint(pivot, baseTransform, layer.flipX, 0, 1, 1, position);
+          if (typeof solved.offsetX !== 'number' || typeof solved.offsetY !== 'number' ||
+            !Number.isFinite(solved.offsetX) || !Number.isFinite(solved.offsetY)) {
+            throw new Error('循环坐标无效，请调整素材比例。');
+          }
+          const timeMs = frameTimeMs(frame);
+          const interpolationToNext = sample.recycleAfter && frame < plan.lastFrame ? 'step' : 'linear';
+          offsetX.push({ timeMs, value: normalizeNegativeZero(solved.offsetX), interpolationToNext });
+          offsetY.push({ timeMs, value: normalizeNegativeZero(solved.offsetY), interpolationToNext });
+        }
+        createdLayers.push({
+          ...layer,
+          animationClip: {
+            version: 2,
+            targetBases: [{ ...basis, target, baseTransform }],
+            tracks: [
+              { target, property: 'transform.offsetX', keys: offsetX },
+              { target, property: 'transform.offsetY', keys: offsetY },
+            ],
+          },
+        });
+      }
+    }
+    const layers = [...shot.layers].sort((a, b) => a.zIndex - b.zIndex);
+    layers.splice(layers.findIndex((layer) => layer.id === source.id) + 1, 0, ...createdLayers);
+    const ordered = layers.map((layer, zIndex) => ({ ...layer, zIndex }));
+    const first = ordered.findIndex((layer) => layer.id === createdLayers[0]!.id);
+    return {
+      project: this.replaceShot(project, { ...shot, layers: ordered }),
+      layers: ordered.slice(first, first + createdLayers.length),
+    };
   }
 
   private assertFlaGraphicArraySource(
