@@ -146,6 +146,8 @@ export type FlaGraphicStructureNode =
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
       sourceRef?: string;
       reason?: string;
+      /** Runtime blend mode composited against the live stage backdrop when isolated. */
+      blendMode?: FlaSupportedBlendMode;
       /** Scope of fallback: 'subtree' (dedicated asset) or 'frame-crop' (shared frame cropped to viewBox). */
       fallbackScope?: 'subtree' | 'frame-crop';
       /** Fallback reference to a project asset (e.g. SVG frame asset ID). */
@@ -203,6 +205,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
         sourceRef: SourceTextSchema.optional(),
         reason: SourceTextSchema.optional(),
+        blendMode: FlaSupportedBlendModeSchema.optional(),
         fallbackScope: z.enum(['subtree', 'frame-crop']).optional(),
         fallbackAssetId: SourceTextSchema.optional(),
         fallbackViewBox: z

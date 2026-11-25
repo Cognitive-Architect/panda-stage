@@ -129,7 +129,7 @@ export function evaluateFlaGraphicNodeCompositePlan(
       ? rawRgb
       : null;
   const blendMode: FlaBlendMode =
-    node.source.type === 'symbol' && node.source.blendMode
+    (node.source.type === 'symbol' || node.source.type === 'opaque') && node.source.blendMode
       ? node.source.blendMode
       : 'normal';
   const canvasCompositeOperation = flaBlendModeToCanvasCompositeOperation(blendMode);

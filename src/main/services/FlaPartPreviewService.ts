@@ -854,6 +854,10 @@ function buildIsolatedDisplayListForNode(
       worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       instanceFilterClips: undefined,
       inheritedClipPaths: undefined,
+      // Runtime compositing applies the subtree's outer blend mode against the
+      // live stage backdrop; baking mix-blend-mode into an isolated transparent
+      // SVG would have no backdrop and lose the blend effect.
+      blendMode: undefined,
       children,
     };
     return {

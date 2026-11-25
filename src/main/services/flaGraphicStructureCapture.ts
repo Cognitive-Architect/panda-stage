@@ -297,6 +297,7 @@ export function captureFlaGraphicStructureFrames(
           reason: isolated?.reason ?? (hasEnabledInstanceFilters
             ? 'Instance filter subtree uses isolated fallback'
             : 'Per-channel color transform subtree uses isolated fallback'),
+          ...(node.blendMode ? { blendMode: node.blendMode } : {}),
           ...(subtreeScope ? { fallbackScope: subtreeScope } : {}),
           ...(subtreeAssetId ? { fallbackAssetId: subtreeAssetId } : {}),
           ...(subtreeViewBox ? { fallbackViewBox: { ...subtreeViewBox } } : {}),
