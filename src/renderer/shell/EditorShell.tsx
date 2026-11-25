@@ -3177,6 +3177,7 @@ export function EditorShell({
             key={`${openInstanceId}:${currentShotId}`}
             project={projectSnapshot.project}
             shot={projectSnapshot.project.shots.find(({ id }) => id === currentShotId)}
+            selectedLayerId={selectionStore.getSelectedLayerId()}
             initial={projectSnapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES}
             playheadMs={timelineUiStore.getSnapshot().currentTimeMs}
             onCancel={() => setExportOptionsOpen(false)} onExport={confirmExportOptions}
