@@ -3,8 +3,16 @@ import {
   evaluateFlaGraphicNodeCompositePlan,
   evaluateFlaGraphicVisual,
   FlaGraphicDefinitionSchema,
+  resolveFlaGraphicSymbolChildren,
 } from '../../src/domain';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
+import {
+  extractFlaGraphicMaskPathData,
+  extractFlaGraphicShapeCoveragePathData,
+} from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
 import { buildProjectWithAnimation } from './domain/testProject';
 import { decomposeAffineMatrix } from '../../src/domain';
 
@@ -633,5 +641,274 @@ describe('shared FLA Graphic Canvas renderer', () => {
       180, 60, 20, 164, // pixel 2: semi-transparent edge clamped cleanly
       0, 0, 0, 0,       // pixel 3: outer canvas padding stays completely transparent (no tinted rect!)
     ]);
+  });
+
+  it('restores positive alphaOffset strictly inside real XFL ordinary opaque shape geometry, excluding holes, mask exterior, and scratch padding (E-F09)', () => {
+    // Real XFL shape: 20x20 outer square [0..20, 0..20] with 8x8 interior hole [6..14, 6..14],
+    // filled with alpha="0" (0-alpha geometry), masked by [0..16, 0..20], NO vector edit overrides!
+    const ringSymbol = {
+      name: 'ZeroAlphaRing.xml',
+      xml: `<DOMSymbolItem name="ZeroAlphaRing" symbolType="graphic"><timeline><DOMTimeline name="ZeroAlphaRing"><layers>
+        <DOMLayer name="MaskLayer" layerType="mask"><frames><DOMFrame index="0"><elements>
+          <DOMShape>
+            <fills><FillStyle index="1"><SolidColor color="#000000"/></FillStyle></fills>
+            <edges><Edge fillStyle1="1" edges="!0 0|320 0|320 400|0 400|0 0"/></edges>
+          </DOMShape>
+        </elements></DOMFrame></frames></DOMLayer>
+        <DOMLayer name="RingLayer" parentLayerIndex="0"><frames><DOMFrame index="0"><elements>
+          <DOMShape>
+            <fills><FillStyle index="1"><SolidColor color="#112233" alpha="0"/></FillStyle></fills>
+            <edges>
+              <Edge fillStyle1="1" edges="!0 0|400 0|400 400|0 400|0 0"/>
+              <Edge fillStyle1="1" edges="!120 120|120 280|280 280|280 120|120 120"/>
+            </edges>
+          </DOMShape>
+        </elements></DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timeline></DOMSymbolItem>`,
+    };
+    const hostDoc = `<DOMDocument width="30" height="30" frameRate="24"><timelines><DOMTimeline name="Scene 1"><layers>
+      <DOMLayer name="Host"><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="ZeroAlphaRing" symbolType="graphic">
+          <matrix><Matrix tx="0" ty="0"/></matrix>
+          <color><Color redOffset="120" alphaOffset="180"/></color>
+        </DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer>
+    </layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(hostDoc, [ringSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: scene.name, frameContext: scene.frameContext },
+      symbols: adapted.source.symbols,
+    });
+    if (!resolved.ok) throw new Error(resolved.message);
+
+    // Collect real mask & shape coverage pathData from the XFL shape blocks:
+    const clipPathShapePathData = new Map<string, readonly string[]>();
+    for (const [shapeId, shapeBlock] of adapted.source.shapeBlocks) {
+      const maskPaths = extractFlaGraphicMaskPathData({
+        shapeBlock,
+        shapeId,
+        renderTargetId: 'rt-ef09',
+        frameIndex: 0,
+      });
+      if (maskPaths?.length) clipPathShapePathData.set(shapeId, maskPaths);
+    }
+
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const captured = captureFlaGraphicStructure(resolved.displayList, {
+      fallbackAssetId: assetId,
+      resolveIsolatedShape: () => ({ scope: 'subtree', viewBox: { x: 0, y: 0, width: 20, height: 20 } }),
+      resolveShapeCoveragePathData: (node) => {
+        const shapeBlock = adapted.source.shapeBlocks.get(node.shapeId);
+        return shapeBlock
+          ? extractFlaGraphicShapeCoveragePathData({
+              shapeBlock,
+              shapeId: node.shapeId,
+              renderTargetId: 'rt-ef09',
+              frameIndex: 0,
+            })
+          : undefined;
+      },
+      clipPathShapePathData,
+    });
+
+    // Save/Reopen round-trip through formal Zod schema:
+    const definition = FlaGraphicDefinitionSchema.parse(JSON.parse(JSON.stringify({
+      ...base,
+      kind: 'fla-graphic',
+      durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 30, height: 30 }, anchor: { x: 0, y: 0 } },
+      frames: [{
+        ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 0, y: 0 }, sourceViewport: { x: 0, y: 0, width: 30, height: 30 },
+      }],
+      structure: captured,
+    })));
+
+    const symNode = definition.structure!.frames[0]!.layers[0]!.nodes[0]!;
+    expect(symNode.type).toBe('symbol');
+    if (symNode.type !== 'symbol') throw new Error('expected symbol');
+    const shapeNode = resolveFlaGraphicSymbolChildren(symNode, definition.structure)[0]!;
+    expect(shapeNode.type).toBe('opaque');
+    if (shapeNode.type !== 'opaque') throw new Error('expected opaque shape');
+    expect(shapeNode.opaqueKind).toBe('shape');
+    expect(shapeNode.coveragePathData?.length).toBeGreaterThan(0);
+
+    // Real 2D software nonzero-winding rasterizer backing canvas operations (no mocked getImageData!):
+    const pointInNonzero = (px: number, py: number, rings: ReadonlyArray<ReadonlyArray<[number, number]>>): boolean => {
+      let winding = 0;
+      for (const ring of rings) {
+        for (let i = 0; i < ring.length; i += 1) {
+          const [x1, y1] = ring[i]!;
+          const [x2, y2] = ring[(i + 1) % ring.length]!;
+          if (y1 <= py) {
+            if (y2 > py && (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) > 0) winding += 1;
+          } else if (y2 <= py && (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) < 0) {
+            winding -= 1;
+          }
+        }
+      }
+      return winding !== 0;
+    };
+
+    const parsePathRings = (pathD: string): Array<Array<[number, number]>> => {
+      const tokens = pathD.match(/[MLZ]|[-+]?(?:\d+(?:\.\d*)?|\.\d+)/giu) ?? [];
+      const rings: Array<Array<[number, number]>> = [];
+      let current: Array<[number, number]> = [];
+      let idx = 0;
+      let cmd = '';
+      while (idx < tokens.length) {
+        const tok = tokens[idx]!;
+        if (/^[MLZ]$/iu.test(tok)) {
+          cmd = tok.toUpperCase();
+          idx += 1;
+          if (cmd === 'Z') {
+            if (current.length) rings.push(current);
+            current = [];
+          }
+          continue;
+        }
+        const x = Number(tokens[idx++]!);
+        const y = Number(tokens[idx++]!);
+        if (cmd === 'M') {
+          if (current.length) rings.push(current);
+          current = [[x, y]];
+          cmd = 'L';
+        } else if (cmd === 'L') {
+          current.push([x, y]);
+        }
+      }
+      if (current.length) rings.push(current);
+      return rings;
+    };
+
+    class SoftwarePath2D {
+      readonly rings: Array<Array<[number, number]>>;
+      constructor(d: string) { this.rings = parsePathRings(d); }
+    }
+    vi.stubGlobal('Path2D', SoftwarePath2D);
+
+    interface SwCanvas {
+      width: number;
+      height: number;
+      pixels: Uint8ClampedArray;
+      getContext: () => unknown;
+    }
+
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const c: SwCanvas = {
+          width: 30,
+          height: 30,
+          pixels: new Uint8ClampedArray(30 * 30 * 4),
+          getContext: () => ctx,
+        };
+        let tx = 0;
+        let ty = 0;
+        const stack: Array<[number, number]> = [];
+        let rings: Array<Array<[number, number]>> = [];
+        let curRing: Array<[number, number]> = [];
+        const ensureBuf = () => {
+          if (c.pixels.length !== c.width * c.height * 4) {
+            c.pixels = new Uint8ClampedArray(c.width * c.height * 4);
+          }
+        };
+        const ctx = {
+          globalAlpha: 1,
+          globalCompositeOperation: 'source-over',
+          fillStyle: '#ffffff',
+          save() { stack.push([tx, ty]); },
+          restore() { const s = stack.pop(); if (s) [tx, ty] = s; },
+          setTransform(_a: number, _b: number, _c: number, _d: number, e: number, f: number) { tx = e; ty = f; },
+          translate(dx: number, dy: number) { tx += dx; ty += dy; },
+          clearRect() { ensureBuf(); c.pixels.fill(0); },
+          beginPath() { rings = []; curRing = []; },
+          moveTo(x: number, y: number) { if (curRing.length) rings.push(curRing); curRing = [[x, y]]; },
+          lineTo(x: number, y: number) { curRing.push([x, y]); },
+          closePath() { if (curRing.length) rings.push(curRing); curRing = []; },
+          fill(pathOrRule?: SoftwarePath2D | string) {
+            ensureBuf();
+            const targetRings = pathOrRule instanceof SoftwarePath2D ? pathOrRule.rings : rings;
+            const shifted = targetRings.map((r) => r.map(([x, y]): [number, number] => [x + tx, y + ty]));
+            for (let y = 0; y < c.height; y += 1) {
+              for (let x = 0; x < c.width; x += 1) {
+                if (pointInNonzero(x + 0.5, y + 0.5, shifted)) {
+                  const i = (y * c.width + x) * 4;
+                  c.pixels[i] = 255;
+                  c.pixels[i + 1] = 255;
+                  c.pixels[i + 2] = 255;
+                  c.pixels[i + 3] = 255;
+                }
+              }
+            }
+          },
+          drawImage(src: SwCanvas | FakeImage) {
+            ensureBuf();
+            if (!('pixels' in src)) return; // 0-alpha fallback SVG draws zero alpha pixels
+            for (let i = 0; i < c.pixels.length; i += 4) {
+              if (ctx.globalCompositeOperation === 'destination-in') {
+                const ma = src.pixels[i + 3]! / 255;
+                c.pixels[i + 3] = Math.round(c.pixels[i + 3]! * ma);
+              } else if (src.pixels[i + 3]! > 0) {
+                c.pixels[i] = src.pixels[i]!;
+                c.pixels[i + 1] = src.pixels[i + 1]!;
+                c.pixels[i + 2] = src.pixels[i + 2]!;
+                c.pixels[i + 3] = Math.round(src.pixels[i + 3]! * ctx.globalAlpha);
+              }
+            }
+          },
+          getImageData(_x: number, _y: number, w: number, h: number) {
+            ensureBuf();
+            return { data: new Uint8ClampedArray(c.pixels.subarray(0, w * h * 4)) };
+          },
+          putImageData(img: { data: Uint8ClampedArray }) {
+            ensureBuf();
+            c.pixels.set(img.data);
+          },
+        };
+        return c;
+      },
+    });
+
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'instance' })!;
+    const rendered = renderFlaGraphicCanvas(
+      visual,
+      new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]),
+    )!;
+    const out = rendered.canvas as unknown as SwCanvas;
+    const pixelAt = (x: number, y: number) => {
+      const i = (y * out.width + x) * 4;
+      return [out.pixels[i], out.pixels[i + 1], out.pixels[i + 2], out.pixels[i + 3]];
+    };
+
+    // Inside 0-alpha ring AND inside [0..16] mask => restored to [120, 0, 0, 180]:
+    expect(pixelAt(3, 10)).toEqual([120, 0, 0, 180]);
+    // Inside interior hole [6..14, 6..14] => stays completely transparent:
+    expect(pixelAt(10, 10)).toEqual([0, 0, 0, 0]);
+    // Inside ring [16..20] but OUTSIDE mask [0..16] => clipped cleanly to transparent:
+    expect(pixelAt(18, 10)).toEqual([0, 0, 0, 0]);
+    // Outside shape in canvas margin [25, 25] => stays transparent (no scratch rect tinting!):
+    expect(pixelAt(25, 25)).toEqual([0, 0, 0, 0]);
+
+    // Two instances sharing the same Definition with independent instanceColor render independently:
+    const instA = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceColor: { rgbaTransform: { multipliers: [1, 1, 1, 1], offsets: [0, 80, 0, 0] } },
+    })!;
+    const instB = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceColor: { rgbaTransform: { multipliers: [1, 1, 1, 1], offsets: [0, 0, 90, 0] } },
+    })!;
+    const outA = renderFlaGraphicCanvas(instA, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
+    const outB = renderFlaGraphicCanvas(instB, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
+    const idx = (10 * outA.width + 3) * 4;
+    expect([outA.pixels[idx], outA.pixels[idx + 1], outA.pixels[idx + 2], outA.pixels[idx + 3]]).toEqual([120, 80, 0, 180]);
+    expect([outB.pixels[idx], outB.pixels[idx + 1], outB.pixels[idx + 2], outB.pixels[idx + 3]]).toEqual([120, 0, 90, 180]);
   });
 });

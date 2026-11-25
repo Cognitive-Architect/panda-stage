@@ -79,6 +79,7 @@ import {
   buildSvgForResolvedDisplayList,
   buildSvgForRenderTarget,
   extractFlaGraphicMaskPathData,
+  extractFlaGraphicShapeCoveragePathData,
   planStaticScale9Placement,
   readFlaSourceFrameLabel,
   stableRenderTargetId,
@@ -2396,6 +2397,17 @@ export class FlaPartPreviewService {
                   });
                 }
                 return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
+              },
+              resolveShapeCoveragePathData: (node) => {
+                const nodeShapeBlocks = shapeBlocksByNode.get(node) ?? allShapeBlocks;
+                const shapeBlock = nodeShapeBlocks.get(node.shapeId);
+                if (!shapeBlock) return undefined;
+                return extractFlaGraphicShapeCoveragePathData({
+                  shapeBlock,
+                  shapeId: node.shapeId,
+                  renderTargetId,
+                  frameIndex: 0,
+                });
               },
               resolveIsolatedSubtree: (node) => isolatedSubtreeByNode.get(node),
               resolveStaticText: (node) => staticTextByNode.get(node),

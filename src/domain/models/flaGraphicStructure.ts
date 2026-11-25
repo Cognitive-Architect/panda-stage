@@ -37,6 +37,21 @@ export const FlaStructureMatrixV1Schema = z
 
 const SourceTextSchema = z.string().trim().min(1).max(1_000);
 
+const BoundedSvgPathDataSchema = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH)
+      .refine(
+        (path) => maskPathTextEncoder.encode(path).byteLength <=
+          FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+        'Structured Graphic vector path exceeds its byte limit.',
+      )
+      .regex(FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN),
+  )
+  .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE);
+
 /** One XFL mask dependency: the union of the listed shapes clips the node. */
 const FlaStructureClipPathV1Schema = z
   .object({
@@ -50,21 +65,7 @@ const FlaStructureClipPathV1Schema = z
             /** Transform relative to the clipped node's authored parent. */
             parentLocalTransform: FlaStructureMatrixV1Schema.optional(),
             /** Filled mask contours from the trusted FLA shape resolver. */
-            pathData: z
-              .array(
-                z
-                  .string()
-                  .min(1)
-                  .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH)
-                  .refine(
-                    (path) => maskPathTextEncoder.encode(path).byteLength <=
-                      FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
-                    'Structured Graphic mask path exceeds its byte limit.',
-                  )
-                  .regex(FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN),
-              )
-              .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE)
-              .optional(),
+            pathData: BoundedSvgPathDataSchema.optional(),
           })
           .strict(),
       )
@@ -165,6 +166,8 @@ export type FlaGraphicStructureNode =
         width: number;
         height: number;
       };
+      /** Bounded filled shape contours in node-local space for RGBA positive alphaOffset coverage (E-F09). */
+      coveragePathData?: string[];
     };
 
 const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
@@ -229,6 +232,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
           })
           .strict()
           .optional(),
+        coveragePathData: BoundedSvgPathDataSchema.optional(),
       })
       .strict(),
   ]),

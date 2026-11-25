@@ -46,6 +46,58 @@ type ParsedSvgGradient =
 
 const parsedGradientDefsCache = new Map<string, ReadonlyMap<string, ParsedSvgGradient>>();
 
+function replaySvgPathDToContext(
+  target: CanvasRenderingContext2D,
+  pathD: string,
+): void {
+  const tokens = pathD.match(/[MLQCZ]|[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?/giu);
+  if (!tokens) return;
+  let index = 0;
+  let command = '';
+  const readNum = (): number => Number(tokens[index++] ?? 'NaN');
+  while (index < tokens.length) {
+    const token = tokens[index]!;
+    if (/^[MLQCZ]$/iu.test(token)) {
+      command = token.toUpperCase();
+      index += 1;
+      if (command === 'Z') {
+        target.closePath();
+        continue;
+      }
+    }
+    if (command === 'M') {
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(x) && Number.isFinite(y)) target.moveTo(x, y);
+      command = 'L';
+    } else if (command === 'L') {
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(x) && Number.isFinite(y)) target.lineTo(x, y);
+    } else if (command === 'Q') {
+      const cx = readNum();
+      const cy = readNum();
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(x) && Number.isFinite(y)) {
+        target.quadraticCurveTo(cx, cy, x, y);
+      }
+    } else if (command === 'C') {
+      const c1x = readNum();
+      const c1y = readNum();
+      const c2x = readNum();
+      const c2y = readNum();
+      const x = readNum();
+      const y = readNum();
+      if ([c1x, c1y, c2x, c2y, x, y].every(Number.isFinite)) {
+        target.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+      }
+    } else {
+      break;
+    }
+  }
+}
+
 function readSvgTagAttributes(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
   const attrPattern = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/gu;
@@ -330,8 +382,17 @@ function applyGraphicColor(
       : null;
     for (let index = 0; index < pixels.length; index += 4) {
       const alpha = pixels[index + 3]!;
-      const hasCoverage = alpha > 0 || (coveragePixels !== null && coveragePixels[index + 3]! > 0);
+      const covAlpha = coveragePixels !== null ? coveragePixels[index + 3]! : 0;
+      const hasCoverage = alpha > 0 || covAlpha > 0;
       if (!hasCoverage) continue;
+      if (alpha === 0 && ao > 0 && covAlpha > 0 && covAlpha < 255) {
+        const [r, g, b, a] = applyFlaRgbaTransform([0, 0, 0, 0], rgba);
+        pixels[index] = Math.round(r);
+        pixels[index + 1] = Math.round(g);
+        pixels[index + 2] = Math.round(b);
+        pixels[index + 3] = Math.round((a * covAlpha) / 255);
+        continue;
+      }
       const [r, g, b, a] = applyFlaRgbaTransform(
         [pixels[index]!, pixels[index + 1]!, pixels[index + 2]!, alpha],
         rgba,
@@ -741,6 +802,30 @@ function renderFlaGraphicCanvasUncached(
           coverageTarget.beginPath();
           for (const contour of region.contours) replayVectorCommands(coverageTarget, contour.commands);
           coverageTarget.fill(region.fill.fillRule);
+        }
+      }
+      coverageTarget.restore();
+      return;
+    }
+    if (source.type === 'opaque' && source.opaqueKind === 'shape' && source.coveragePathData?.length) {
+      const Path2DConstructor = globalThis.Path2D;
+      coverageTarget.save();
+      coverageTarget.setTransform(...matrix);
+      if (source.fallbackScope === 'subtree' && source.fallbackViewBox) {
+        coverageTarget.translate(-source.fallbackViewBox.x, -source.fallbackViewBox.y);
+      }
+      coverageTarget.fillStyle = '#ffffff';
+      for (const pathD of source.coveragePathData) {
+        if (Path2DConstructor) {
+          try {
+            coverageTarget.fill(new Path2DConstructor(pathD), 'nonzero');
+          } catch {
+            // Skip malformed path cleanly without tinting the whole scratch canvas.
+          }
+        } else {
+          coverageTarget.beginPath();
+          replaySvgPathDToContext(coverageTarget, pathD);
+          coverageTarget.fill('nonzero');
         }
       }
       coverageTarget.restore();
