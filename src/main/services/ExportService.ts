@@ -1550,7 +1550,7 @@ export class ExportService {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
-        let videoUpdate: Pick<ExportRenderFrameRequest, 'videoFrames' | 'videoFrameCacheTouches'> = {};
+        const videoUpdate: Pick<ExportRenderFrameRequest, 'videoFrames' | 'videoFrameCacheTouches'> = {};
         if (project && activeVideoSupply) {
           const entry = frame as ProjectFrameScheduleEntry;
           const shot = project.shots.find((candidate) => candidate.id === entry.shotId);
