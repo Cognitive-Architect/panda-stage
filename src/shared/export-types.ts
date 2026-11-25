@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Project } from '../domain';
+import type { Layer, Project, Shot } from '../domain';
 import { mapProjectTime } from '../domain/selectors/projectTime';
 import { projectDurationMs } from '../domain/selectors/projectDuration';
 import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
@@ -486,9 +486,55 @@ export function planSpriteSheetPages(
   };
 }
 
+/**
+ * Isolates a single visible object Layer (Graphic / animation / character / asset)
+ * inside its owning Shot for transparent sprite-sheet export, preserving source clock,
+ * instance transform/color/effects and Shot-local time range while excluding background
+ * and all unrelated layers.
+ */
+export function scopeShotForLayerExport(shot: Shot, layerId: string): { shot: Shot; layer: Layer } {
+  const layer = shot.layers.find((entry) => entry.id === layerId);
+  if (!layer) {
+    throw new Error('请选择当前镜头中可导出的对象图层。');
+  }
+  if (!layer.visible) {
+    throw new Error('当前选中对象处于隐藏状态，请先显示后再导出。');
+  }
+  return {
+    layer,
+    shot: {
+      ...shot,
+      backgroundLayerId: null,
+      layers: [layer],
+      dialogues: [],
+      audioClips: [],
+    },
+  };
+}
+
+/**
+ * Computes a stable normalized stage-space anchor for an isolated Layer export.
+ */
+export function computeLayerExportAnchor(
+  layer: Layer,
+  stageWidth: number,
+  stageHeight: number,
+): { x: number; y: number } {
+  if (stageWidth <= 0 || stageHeight <= 0) return { x: 0.5, y: 0.5 };
+  const rawX = layer.x / stageWidth;
+  const rawY = layer.y / stageHeight;
+  const clamp01 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10_000) / 10_000;
+  return {
+    x: Number.isFinite(rawX) ? clamp01(rawX) : 0.5,
+    y: Number.isFinite(rawY) ? clamp01(rawY) : 0.5,
+  };
+}
+
 export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
-  const shot = project.shots.find(({ id }) => id === settings.shotId);
-  if (!shot) throw new Error('请选择一个可导出的镜头。');
+  const baseShot = project.shots.find(({ id }) => id === settings.shotId);
+  if (!baseShot) throw new Error('请选择一个可导出的镜头。');
+  const scoped = settings.layerId ? scopeShotForLayerExport(baseShot, settings.layerId) : null;
+  const shot = scoped ? scoped.shot : baseShot;
   const startMs = settings.range?.startMs ?? 0;
   const endMs = settings.range?.endMs ?? shot.durationMs;
   if (startMs < 0 || endMs > shot.durationMs || startMs >= endMs) throw new Error('PNG 时间段须在当前镜头范围内。');
@@ -500,6 +546,7 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
     totalFrames,
     firstFrameIndex: first,
     shot,
+    selectedLayer: scoped?.layer,
     *frames(): Generator<ProjectFrameScheduleEntry> {
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         const timeMs = frameTimeMs(first + frameIndex);

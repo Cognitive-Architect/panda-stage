@@ -12,6 +12,7 @@ import {
   ExportProbeConfigSchema,
   FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
+  computeLayerExportAnchor,
   formalFrameCount,
   formatFrameFileName,
   formatSpriteSheetFrameName,
@@ -501,7 +502,7 @@ export class ExportService {
       await this.renderer.loadFormal!({
         jobId: active.jobId,
         project: singleShotProject,
-        cameraMode: input.candidate.cameraMode,
+        cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
         media: input.media
@@ -677,7 +678,11 @@ export class ExportService {
       rendererPrepared = true;
       const directory = jobDirectory;
       const singleShotProject = { ...input.candidate.project, shots: [schedule.shot] };
-      const anchor = atlasOptions.anchor ?? { x: 0.5, y: 0.5 };
+      const anchor =
+        atlasOptions.anchor ??
+        (schedule.selectedLayer
+          ? computeLayerExportAnchor(schedule.selectedLayer, width, height)
+          : { x: 0.5, y: 0.5 });
       const packer = new StreamingSpriteSheetPacker({
         trim: atlasOptions.trim,
         scale: atlasOptions.scale,
@@ -719,7 +724,7 @@ export class ExportService {
           this.renderer.loadFormal!({
             jobId: active.jobId,
             project: singleShotProject,
-            cameraMode: input.candidate.cameraMode,
+            cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
             media: input.media
               .filter((entry) => entry.kind === 'image')
@@ -769,7 +774,20 @@ export class ExportService {
       const pageCount = stagedPages.length;
       const allFrames = stagedPages.flatMap((page) => page.frames);
       const allFrameNames = allFrames.map((frame) => frame.name);
-      const animationName = atlasOptions.animationName?.trim() || schedule.shot.name.trim() || 'clip';
+      const animationName =
+        atlasOptions.animationName?.trim() ||
+        schedule.selectedLayer?.name.trim() ||
+        schedule.shot.name.trim() ||
+        'clip';
+      const targetMeta = schedule.selectedLayer
+        ? {
+            kind: 'layer' as const,
+            layerId: schedule.selectedLayer.id,
+            layerName: schedule.selectedLayer.name,
+            sourceKind: schedule.selectedLayer.source.kind,
+            isolated: true as const,
+          }
+        : undefined;
 
       const pngOutputs = stagedPages.map((page) => ({
         stagedPng: page.stagedPng,
@@ -801,6 +819,7 @@ export class ExportService {
         if (pageCount > 1) {
           const masterManifest = {
             format: 'panda-sprite-sheet-master',
+            ...(targetMeta ? { target: targetMeta } : {}),
             pixiEntry: pixiSheetNames[0]!,
             pixiSheets: pixiSheetNames,
             frames: allFrames,

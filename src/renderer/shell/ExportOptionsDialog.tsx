@@ -6,9 +6,10 @@ import { planPngSequenceFrames, planSpriteSheetPages } from '../../shared/export
 import { Button } from '../ui/Button';
 import './export-options-dialog.css';
 
-export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCancel, onExport }: {
+export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, playheadMs, onCancel, onExport }: {
   project: Project;
   shot: Shot | undefined;
+  selectedLayerId?: string | null;
   initial: Readonly<ExportPreferences>;
   playheadMs: number;
   onCancel: () => void;
@@ -21,6 +22,14 @@ export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCanc
   const [trimAlpha, setTrimAlpha] = useState(true);
   const [outputScale, setOutputScale] = useState(1);
   const [atlasFormat, setAtlasFormat] = useState<'pixi' | 'panda'>('pixi');
+  const exportableLayers = (shot?.layers ?? []).filter(
+    (layer) => layer.visible && layer.id !== shot?.backgroundLayerId,
+  );
+  const defaultLayerId =
+    selectedLayerId && exportableLayers.some((layer) => layer.id === selectedLayerId)
+      ? selectedLayerId
+      : '';
+  const [targetLayerId, setTargetLayerId] = useState<string>('');
   const [error, setError] = useState('');
   const spriteSheet = preferences.format === 'sprite-sheet';
   const png = preferences.format !== 'mp4';
@@ -36,8 +45,12 @@ export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCanc
     try {
       if (!png) { onExport(preferences); return; }
       if (!shot) throw new Error('请选择一个可导出的镜头。');
+      const selectedLayer = spriteSheet && targetLayerId
+        ? exportableLayers.find((layer) => layer.id === targetLayerId)
+        : undefined;
       const output: PngSequenceOptions = {
         shotId: shot.id,
+        ...(selectedLayer ? { layerId: selectedLayer.id } : {}),
         transparent: spriteSheet || preferences.transparent,
         ...(spriteSheet
           ? {
@@ -48,6 +61,7 @@ export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCanc
                 padding: 2,
                 extrusion: 1,
                 format: atlasFormat,
+                ...(selectedLayer ? { animationName: selectedLayer.name } : {}),
               },
             }
           : {}),
@@ -89,6 +103,18 @@ export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCanc
             onChange={event => { setEndMs(Number(event.target.value)); setError(''); }} /></label>
         </div> : null}
         {spriteSheet ? <>
+          {exportableLayers.length > 0 ? <label>导出对象<select value={targetLayerId} onChange={event => {
+            setTargetLayerId(event.target.value); setError('');
+          }}>
+            <option value="">当前镜头全部内容</option>
+            {defaultLayerId ? <option value={defaultLayerId}>
+              仅当前选中对象：{exportableLayers.find((layer) => layer.id === defaultLayerId)?.name}
+            </option> : null}
+            {exportableLayers
+              .filter((layer) => layer.id !== defaultLayerId)
+              .map((layer) => <option key={layer.id} value={layer.id}>仅对象：{layer.name}</option>)}
+          </select></label> : null}
+          {targetLayerId ? <p>仅导出选中对象的透明帧，不含背景及其他图层。</p> : null}
           <label>图集格式<select value={atlasFormat} onChange={event => {
             setAtlasFormat(event.target.value as 'pixi' | 'panda'); setError('');
           }}>

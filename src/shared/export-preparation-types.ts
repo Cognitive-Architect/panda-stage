@@ -104,6 +104,7 @@ export type SpriteSheetAtlasOptions = z.infer<typeof SpriteSheetAtlasOptionsSche
 
 export const PngSequenceOptionsSchema = z.object({
   shotId: z.uuid(),
+  layerId: z.uuid().optional(),
   transparent: z.boolean(),
   spriteSheet: z.literal(true).optional(),
   spriteSheetOptions: SpriteSheetAtlasOptionsSchema.optional(),
@@ -111,7 +112,8 @@ export const PngSequenceOptionsSchema = z.object({
     .strict().refine(({ startMs, endMs }) => startMs < endMs, 'PNG range must have positive length.').optional(),
 }).strict()
   .refine(({ spriteSheet, transparent }) => !spriteSheet || transparent, 'Sprite sheets require transparent frames.')
-  .refine(({ spriteSheet, spriteSheetOptions }) => !spriteSheetOptions || spriteSheet === true, 'Sprite sheet options require spriteSheet mode.');
+  .refine(({ spriteSheet, spriteSheetOptions }) => !spriteSheetOptions || spriteSheet === true, 'Sprite sheet options require spriteSheet mode.')
+  .refine(({ layerId, transparent }) => !layerId || transparent, 'Selected object export requires transparent frames.');
 
 export type PngSequenceOptions = z.infer<typeof PngSequenceOptionsSchema>;
 
