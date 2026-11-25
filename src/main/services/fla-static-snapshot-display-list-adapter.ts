@@ -9,6 +9,8 @@
  */
 
 import crypto from 'node:crypto';
+import type { FlaInstanceProjection } from '../../shared/fla-instance-projection';
+import { invertAffineMatrix } from '../../shared/affine-matrix';
 import {
   buildFlaTimelineFrameSpanIndex,
   findCoveringSpan,
@@ -192,6 +194,7 @@ interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
   readonly staticTextBlocks: Map<string, FlaStaticTextDescriptor>;
   readonly sourceFps: number;
+  readonly perspective: Pick<FlaInstanceProjection, 'focalLength' | 'vanishingX' | 'vanishingY'>;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
   readonly ikPoses: WeakMap<FlaXflElementBlock, LayerSampleResult<readonly FlaDisplayListMatrix[]>>;
   symbolAliases: SymbolAliasIndex;
@@ -853,6 +856,38 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
   return filters;
 }
 
+function readInstanceProjection(
+  instance: FlaXflElementBlock, context: ElementParseContext,
+  local: FlaDisplayListMatrix,
+): FlaInstanceProjection | null | undefined {
+  const attrs = instance.attributes;
+  const names = ['rotationX', 'rotationY', 'rotationZ', 'centerPoint3DX', 'centerPoint3DY', 'z'];
+  const hasMatrix3D = Boolean(directChild(instance.xml, instance.name, 'matrix3D'));
+  if (!names.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
+  if (context.motionTweenEndpoint) return null;
+  const read = (key: string, fallback: number) => {
+    const value = attrs[key];
+    return value === undefined ? fallback : value.trim() ? Number(value) : NaN;
+  };
+  const rotationX = read('rotationX', 0);
+  const rotationY = read('rotationY', 0);
+  const rotationZ = read('rotationZ', 0);
+  const depth = read('z', 0);
+  if (![rotationX, rotationY, rotationZ].every((value) => Number.isFinite(value) && Math.abs(value) <= 36000) ||
+      !Number.isFinite(depth)) return null;
+  let pivot: { pivotX: number; pivotY: number } | undefined;
+  if (attrs.centerPoint3DX !== undefined || attrs.centerPoint3DY !== undefined) {
+    const matrix = context.parentWorld;
+    const inverse = invertAffineMatrix(matrix);
+    if (!inverse) return null;
+    const x = read('centerPoint3DX', matrix.a * local.tx + matrix.c * local.ty + matrix.tx);
+    const y = read('centerPoint3DY', matrix.b * local.tx + matrix.d * local.ty + matrix.ty);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    pivot = { pivotX: inverse.a * x + inverse.c * y + inverse.tx, pivotY: inverse.b * x + inverse.d * y + inverse.ty };
+  }
+  return { ...context.state.perspective, depth, rotationX, rotationY, rotationZ, ...pivot };
+}
+
 function parseDisplayElements(
   container: FlaXflElementBlock,
   context: ElementParseContext,
@@ -1039,10 +1074,12 @@ function parseDisplayElements(
       continue;
     }
     const { alphaMultiplier, rgbTransform } = colorResult.transform ?? {};
+    const projection3D = readInstanceProjection(child, context, localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX);
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
       symbolType,
+      ...(projection3D !== undefined ? { projection3D } : {}),
       ...(movieClipRun ? { movieClipRun } : {}),
       ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
@@ -3770,10 +3807,18 @@ function* adaptFlaXflDisplaySourceSteps(
   const rawFps = documentAttributes?.frameRate;
   const sourceFps = rawFps === undefined && documentAttributes?.creatorInfo === 'Adobe Animate' &&
     /^Saved by Animate\b/u.test(documentAttributes.versionInfo ?? '') ? 24 : Number(rawFps);
+  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
+  const viewAngle = Number(documentAttributes?.viewAngle3D ?? 55);
+  const perspective = {
+    focalLength: viewAngle > 0 && viewAngle < 180 ? sceneStage.width / (2 * Math.tan(viewAngle * Math.PI / 360)) : Number.NaN,
+    vanishingX: Number(documentAttributes?.vanishingPoint3DX ?? sceneStage.width / 2),
+    vanishingY: Number(documentAttributes?.vanishingPoint3DY ?? sceneStage.height / 2),
+  };
   const state: SourceBuildState = {
     shapeBlocks,
     staticTextBlocks,
     sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
+    perspective,
     objectMotionCurves: new WeakMap(),
     ikPoses: new WeakMap(),
     symbolAliases: { exact: new Map(), basename: new Map() },
@@ -3874,7 +3919,6 @@ function* adaptFlaXflDisplaySourceSteps(
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
   const projectedScenes = new Set<string>();
-  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
   for (const scene of sceneSources.value) {
     yield;
     const scope = `scene:${scene.index}`;

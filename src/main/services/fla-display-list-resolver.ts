@@ -1,5 +1,6 @@
 import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
 import type { FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import { projectFlaInstance, type FlaInstanceProjection } from '../../shared/fla-instance-projection';
 
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
@@ -136,6 +137,7 @@ export type FlaDisplayListElement =
       readonly libraryItemName: string;
       readonly symbolType: 'graphic' | 'movieclip' | 'button' | 'ik container';
       readonly movieClipRun?: { readonly start: number; readonly end: number };
+      readonly projection3D?: FlaInstanceProjection | null;
       /** Raw XFL playback mode retained for bounded nested-frame selection. */
       readonly playbackMode?: string;
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
@@ -337,6 +339,7 @@ interface ResolveContext {
   visitedNodeCount: number;
   resolvedNodeCount: number;
   readonly maskDiagnostics: Set<string>;
+  readonly projectionDiagnostics: Set<string>;
   maskFailureCount: number;
   readonly ikPoseDiagnostics: Set<string>;
   ikPoseFailureCount: number;
@@ -723,7 +726,14 @@ function resolveElements(
     if (!element) return failure('INVALID_INPUT', 'Missing display element', elementPath);
     if (element.visible === false) continue;
 
-    const localTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const authoredTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const projection = element.kind === 'symbol' ? element.projection3D : undefined;
+    const localTransform = projection === undefined ? authoredTransform
+      : projection && projectFlaInstance(authoredTransform, parentTransform, projection);
+    if (!localTransform) {
+      if (context.projectionDiagnostics.size < 32) context.projectionDiagnostics.add(`${elementPath}: invalid or unsupported 3D instance projection`);
+      continue;
+    }
     if (!isValidMatrix(localTransform)) {
       if (!context.limits.tolerant) {
         return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
@@ -989,6 +999,7 @@ export function resolveFlaDisplayList(
     visitedNodeCount: 0,
     resolvedNodeCount: 0,
     maskDiagnostics: new Set(),
+    projectionDiagnostics: new Set(input.root.frameContext.projectionDiagnostics),
     maskFailureCount: 0,
     ikPoseDiagnostics: new Set(),
     ikPoseFailureCount: 0,
@@ -1010,7 +1021,7 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
-      ...(input.root.frameContext.projectionDiagnostics?.length ? { projectionDiagnostics: input.root.frameContext.projectionDiagnostics } : {}),
+      ...(context.projectionDiagnostics.size ? { projectionDiagnostics: [...context.projectionDiagnostics] } : {}),
       ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
       ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },
