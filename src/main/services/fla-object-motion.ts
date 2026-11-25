@@ -18,19 +18,41 @@ interface Curve {
   readonly keys: readonly Key[];
   readonly ease: (unitTime: number) => number;
 }
-type ShadowField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha';
-type ShadowParameters = { -readonly [K in ShadowField]?: FlaInstanceFilter[K] };
+type FilterField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha';
+type FilterNumericField = 'blurX' | 'blurY' | 'strength' | 'distance' | 'angle';
+type FilterNumericSpec = readonly [FilterNumericField, number, number, number];
+export type ObjectMotionFilterParameters = { -readonly [K in FilterField]?: FlaInstanceFilter[K] };
+
+export interface ObjectMotionFilter {
+  readonly kind: FlaInstanceFilter['kind'];
+  readonly parameters: ObjectMotionFilterParameters;
+}
+
+interface FilterColorCurves {
+  readonly r: Curve;
+  readonly g: Curve;
+  readonly b: Curve;
+  readonly a: Curve;
+}
+
+interface FilterTrack {
+  readonly kind: FlaInstanceFilter['kind'];
+  readonly parameters: ObjectMotionFilterParameters;
+  readonly curves: Readonly<Partial<Record<FilterNumericField, readonly [Curve, FilterNumericSpec]>>>;
+  readonly colorCurve?: FilterColorCurves;
+  readonly disabled?: true;
+}
 
 interface AnimationCore {
   readonly timeScale: number;
   readonly curves: ReadonlyMap<string, Curve>;
-  readonly shadows: readonly { readonly parameters: ShadowParameters; readonly distance?: Curve }[];
+  readonly filters: readonly FilterTrack[];
 }
 export interface ObjectMotionPose {
   readonly matrix: FlaDisplayListMatrix;
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
-  readonly shadowFilters?: readonly ShadowParameters[];
+  readonly filters?: readonly ObjectMotionFilter[];
 }
 
 const supportedProperties = new Set([
@@ -169,21 +191,55 @@ function constantCurveValue(curve: Curve): number | undefined {
     (index === curve.keys.length - 1 || key.next[1] === value)) ? value : undefined;
 }
 
-const shadowNumericParameters = new Map<string, readonly ['blurX' | 'blurY' | 'angle' | 'strength', number, number, number]>([
+// Instance filter curve pairing by filter kind and occurrence order, percent-to-ratio
+// strength scaling, RGBA alpha/255 conversion, and 0-degree angle preservation are
+// adapted from lifeart/fla-viewer src/motion-object.ts @ b14fa1d1e3e2d2b035e174bde472a7941d385b17
+// (ISC license per upstream README.md and package.json; no standalone LICENSE file in commit b14fa1d).
+const filterKindPrefixes: Readonly<Record<string, FlaInstanceFilter['kind']>> = {
+  Blur: 'blur',
+  Glow: 'glow',
+  DropShadow: 'dropShadow',
+};
+
+const filterNumericParameters = new Map<string, FilterNumericSpec>([
+  ['Blur_BlurX', ['blurX', 0, 255, 1]],
+  ['Blur_BlurY', ['blurY', 0, 255, 1]],
+  ['Glow_BlurX', ['blurX', 0, 255, 1]],
+  ['Glow_BlurY', ['blurY', 0, 255, 1]],
+  ['Glow_Strength', ['strength', 0, 255, 100]],
   ['DropShadow_BlurX', ['blurX', 0, 255, 1]],
   ['DropShadow_BlurY', ['blurY', 0, 255, 1]],
-  ['DropShadow_Angle', ['angle', -360, 360, 1]],
   ['DropShadow_Strength', ['strength', 0, 255, 100]],
+  ['DropShadow_Distance', ['distance', 0, 255, 1]],
+  ['DropShadow_Angle', ['angle', -360, 360, 1]],
 ]);
 
-const shadowNeutralParameters = new Map([
-  ['DropShadow_Quality', 1], ['DropShadow_Knockout', 0], ['DropShadow_InnerShadow', 0], ['DropShadow_HideObject', 0],
+const filterColorParameters = new Set(['Glow_Color', 'DropShadow_Color']);
+
+const filterNeutralParameters = new Map<string, number>([
+  ['Blur_Quality', 1],
+  ['Glow_Quality', 1],
+  ['Glow_Knockout', 0],
+  ['Glow_InnerGlow', 0],
+  ['DropShadow_Quality', 1],
+  ['DropShadow_Knockout', 0],
+  ['DropShadow_InnerShadow', 0],
+  ['DropShadow_HideObject', 0],
 ]);
+
+function filterPropertyPrefix(id: string | undefined): string {
+  const underscore = id?.indexOf('_') ?? -1;
+  return underscore > 0 ? id!.slice(0, underscore) : '';
+}
+
+function formatRgbaHex(r: number, g: number, b: number): string {
+  return '#' + [r, g, b].map((channel) => Math.round(clamp(channel, 0, 255)).toString(16).padStart(2, '0')).join('');
+}
 
 export function parseFlaObjectMotion(
   frame: MotionXmlNode,
   children: Children,
-  authoredShadows: readonly FlaInstanceFilter[] = [],
+  authoredFilters: readonly FlaInstanceFilter[] = [],
 ): MotionResult<AnimationCore> {
   const wrapper = children(frame.xml, frame.name).find((node) => node.name === 'motionObjectXML');
   const core = wrapper && children(wrapper.xml, wrapper.name).find((node) => node.name === 'AnimationCore');
@@ -204,7 +260,8 @@ export function parseFlaObjectMotion(
   const maps = root.filter((node) => node.name === 'TimeMap').map(readEase);
   const curves = new Map<string, Curve>();
   const pending = root.filter((node) => node.name === 'PropertyContainer');
-  const shadows: AnimationCore['shadows'][number][] = [];
+  const filters: FilterTrack[] = [];
+  const usedAuthoredFilters = new Set<number>();
   let visited = 0;
   while (pending.length > 0) {
     const node = pending.pop()!;
@@ -212,19 +269,29 @@ export function parseFlaObjectMotion(
     if (node.name === 'PropertyContainer') {
       const nested = children(node.xml, node.name);
       if (node.attributes.id === 'Filters') {
-        if (shadows.length + nested.length > 8) return invalid('Too many instance filter curves');
+        if (filters.length + nested.length > 8) return invalid('Too many instance filter curves');
         for (const filter of nested) {
           const properties = children(filter.xml, filter.name);
           if (filter.name !== 'PropertyContainer' || properties.length > 16 ||
-              properties.some((property) => property.name !== 'Property' || !property.attributes.id?.startsWith('DropShadow_'))) {
+              properties.some((property) => property.name !== 'Property' || !property.attributes.id)) {
             return invalid('Unsupported instance filter animation');
           }
-          const parameters: ShadowParameters = {};
-          if (authoredShadows[shadows.length]?.enabled === false) {
-            shadows.push({ parameters });
+          const prefix = properties.length > 0
+            ? filterPropertyPrefix(properties[0]!.attributes.id)
+            : filterPropertyPrefix(filter.attributes.id);
+          const kind = filterKindPrefixes[prefix];
+          if (!kind || properties.some((property) => filterPropertyPrefix(property.attributes.id) !== prefix)) {
+            return invalid('Unsupported instance filter animation');
+          }
+          const matchIndex = authoredFilters.findIndex((candidate, i) => candidate.kind === kind && !usedAuthoredFilters.has(i));
+          if (matchIndex >= 0) usedAuthoredFilters.add(matchIndex);
+          const parameters: ObjectMotionFilterParameters = {};
+          if (matchIndex >= 0 && authoredFilters[matchIndex]?.enabled === false) {
+            filters.push({ kind, parameters, curves: {}, disabled: true });
             continue;
           }
-          let distance: Curve | undefined;
+          const filterCurves: Partial<Record<FilterNumericField, readonly [Curve, FilterNumericSpec]>> = {};
+          let colorCurve: FilterColorCurves | undefined;
           const seen = new Set<string>();
           for (const property of properties) {
             if (property.attributes.enabled === '0') continue;
@@ -237,34 +304,48 @@ export function parseFlaObjectMotion(
             const ease = property.attributes.ignoreTimeMap === '1' || (maps.length === 0 && mapIndex === 0)
               ? linear : maps[mapIndex];
             if (!ease) return invalid('Invalid instance filter TimeMap ' + id);
-            if (id === 'DropShadow_Color') {
-              const rgba = [24, 16, 8, 0].map((shift) => {
-                const curve = readCurve(property, frames, ease, duration, shift);
-                return curve && constantCurveValue(curve);
-              });
-              if (rgba.some((value) => value === undefined)) return invalid('Unsupported instance filter channel ' + id);
-              parameters.color = '#' + rgba.slice(0, 3).map((value) => value!.toString(16).padStart(2, '0')).join('');
-              parameters.alpha = rgba[3]! / 255;
+            if (filterColorParameters.has(id)) {
+              const channelCurves = [24, 16, 8, 0].map((shift) => readCurve(property, frames, ease, duration, shift));
+              if (channelCurves.some((channel) => !channel)) {
+                return invalid('Invalid instance filter curve ' + id);
+              }
+              const [r, g, b, a] = channelCurves as [Curve, Curve, Curve, Curve];
+              const constants = [r, g, b, a].map(constantCurveValue);
+              if (constants.every((value) => value !== undefined)) {
+                parameters.color = formatRgbaHex(constants[0]!, constants[1]!, constants[2]!);
+                parameters.alpha = clamp(constants[3]! / 255, 0, 1);
+              } else {
+                colorCurve = { r, g, b, a };
+              }
               continue;
             }
             const curve = readCurve(property, frames, ease, duration);
             if (!curve) return invalid('Invalid instance filter curve ' + id);
-            if (id === 'DropShadow_Distance') {
-              distance = curve;
-              continue;
-            }
-            const constant = constantCurveValue(curve);
-            const numeric = shadowNumericParameters.get(id);
-            if (constant !== undefined && numeric) {
-              const [key, min, max, divisor] = numeric;
-              const value = constant / divisor;
-              if (value < min || value > max) return invalid('Instance filter value out of range ' + id);
-              parameters[key] = value;
-            } else if (constant === undefined || shadowNeutralParameters.get(id) !== constant) {
-              return invalid('Unsupported instance filter channel ' + id);
+            const numeric = filterNumericParameters.get(id);
+            if (numeric) {
+              const [field, min, max, divisor] = numeric;
+              if (curve.keys.some((key) => key.value / divisor < min || key.value / divisor > max)) {
+                return invalid('Instance filter value out of range ' + id);
+              }
+              const constant = constantCurveValue(curve);
+              if (constant !== undefined) {
+                parameters[field] = constant / divisor;
+              } else {
+                filterCurves[field] = [curve, numeric];
+              }
+            } else {
+              const constant = constantCurveValue(curve);
+              if (constant === undefined || filterNeutralParameters.get(id) !== constant) {
+                return invalid('Unsupported instance filter channel ' + id);
+              }
             }
           }
-          shadows.push({ parameters, ...(distance ? { distance } : {}) });
+          filters.push({
+            kind,
+            parameters,
+            curves: filterCurves,
+            ...(colorCurve ? { colorCurve } : {}),
+          });
         }
         continue;
       }
@@ -291,9 +372,9 @@ export function parseFlaObjectMotion(
       curves.set(channel, curve);
     }
   }
-  return curves.size > 0 || shadows.some(({ parameters, distance }, ordinal) =>
-    distance || Object.keys(parameters).length || authoredShadows[ordinal]?.enabled === false)
-    ? { ok: true, value: { timeScale, curves, shadows } } : invalid('没有可读取的对象曲线');
+  return curves.size > 0 || filters.some((track) =>
+    track.disabled || track.colorCurve || Object.keys(track.curves).length > 0 || Object.keys(track.parameters).length > 0)
+    ? { ok: true, value: { timeScale, curves, filters } } : invalid('没有可读取的对象曲线');
 }
 
 function cubic(a: number, b: number, c: number, d: number, t: number): number {
@@ -386,17 +467,31 @@ export function evaluateFlaObjectMotion(
       ],
     };
   }
-  const shadowFilters: ShadowParameters[] = [];
-  for (const { parameters, distance: curve } of core.shadows) {
-    const distance = curve && sample(curve, ticks);
-    if (distance !== undefined && (!Number.isFinite(distance) || distance < 0 || distance > 255)) {
-      return invalid('Shadow distance exceeds supported range');
+  const evaluatedFilters: ObjectMotionFilter[] = [];
+  for (const track of core.filters) {
+    const parameters: ObjectMotionFilterParameters = { ...track.parameters };
+    for (const entry of Object.values(track.curves)) {
+      if (!entry) continue;
+      const [curve, [field, min, max, divisor]] = entry;
+      const sampledValue = sample(curve, ticks) / divisor;
+      if (!Number.isFinite(sampledValue) || sampledValue < min || sampledValue > max) {
+        return invalid('Instance filter value exceeds supported range ' + field);
+      }
+      parameters[field] = sampledValue;
     }
-    shadowFilters.push(distance === undefined ? parameters : { ...parameters, distance });
+    if (track.colorCurve) {
+      parameters.color = formatRgbaHex(
+        sample(track.colorCurve.r, ticks),
+        sample(track.colorCurve.g, ticks),
+        sample(track.colorCurve.b, ticks),
+      );
+      parameters.alpha = clamp(sample(track.colorCurve.a, ticks) / 255, 0, 1);
+    }
+    evaluatedFilters.push({ kind: track.kind, parameters });
   }
   return { ok: true, value: {
     matrix,
-    ...(shadowFilters.length ? { shadowFilters } : {}),
+    ...(evaluatedFilters.length ? { filters: evaluatedFilters } : {}),
     ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
     ...(rgbTransform ? { rgbTransform } : {}),
   } };

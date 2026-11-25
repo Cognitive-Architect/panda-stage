@@ -60,18 +60,181 @@ describe('Animate Object Motion', () => {
   });
 
   it.each([
-    '<Keyframe timevalue="2000" anchor="0,6"/>',
-    '<Keyframe timevalue="2000" anchor="0,5" previous="-500,12" next="500,5"/>',
-  ])('diagnoses a non-constant companion despite equal endpoints', (middle) => {
+    '<Keyframe timevalue="2000" anchor="0,2"/>',
+    '<Keyframe timevalue="2000" anchor="0,1" previous="-500,3" next="500,1"/>',
+  ])('diagnoses a non-constant discrete companion despite equal endpoints', (middle) => {
     const xml = `<DOMFrame><motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
       <PropertyContainer id="Filters"><PropertyContainer id="DropShadow_Filter">
         <Property id="DropShadow_Distance" value="5"/>
-        <Property id="DropShadow_BlurX"><Keyframe timevalue="0" anchor="0,5"/>${middle}
-          <Keyframe timevalue="4000" anchor="0,5"/></Property>
+        <Property id="DropShadow_Quality"><Keyframe timevalue="0" anchor="0,1"/>${middle}
+          <Keyframe timevalue="4000" anchor="0,1"/></Property>
       </PropertyContainer></PropertyContainer>
       </AnimationCore></motionObjectXML></DOMFrame>`;
     expect(parseFlaObjectMotion({ name: 'DOMFrame', xml, attributes: {} }, getFlaXflDirectChildren))
-      .toMatchObject({ ok: false, message: expect.stringContaining('DropShadow_BlurX') });
+      .toMatchObject({ ok: false, message: expect.stringContaining('DropShadow_Quality') });
+  });
+
+  it('evaluates multi-parameter Blur, Glow, and DropShadow curves with duplicate/disabled slots, 0-degree angle, RGBA alpha/255, and ordered SVG output', async () => {
+    const shape = '<DOMShape><fills><FillStyle index="1"><SolidColor color="#406080"/></FillStyle></fills>' +
+      '<edges><Edge fillStyle0="1" edges="!0 0|200 0|200 200|0 200|0 0"/></edges></DOMShape>';
+    const tileXml = `<DOMSymbolItem name="Tile" symbolType="graphic"><timeline><DOMTimeline><layers>` +
+      `<DOMLayer><frames><DOMFrame index="0"><elements>${shape}</elements></DOMFrame></frames></DOMLayer>` +
+      `</layers></DOMTimeline></timeline></DOMSymbolItem>`;
+    const docXml = `<DOMDocument width="200" height="200" frameRate="24"><timelines><DOMTimeline name="Scene 1"><layers>
+      <DOMLayer><frames><DOMFrame index="0" duration="5" tweenType="motion object">
+        <motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
+          <PropertyContainer id="headContainer">
+            <Property id="Motion_X"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,40"/></Property>
+            <PropertyContainer id="Filters">
+              <PropertyContainer id="Glow_Filter">
+                <Property id="Glow_Quality" value="3"/>
+                <Property id="Glow_Strength" value="200"/>
+              </PropertyContainer>
+              <PropertyContainer id="Blur_Filter">
+                <Property id="Blur_BlurX"><Keyframe timevalue="0" anchor="0,2"/><Keyframe timevalue="4000" anchor="0,10"/></Property>
+                <Property id="Blur_Quality" value="1"/>
+              </PropertyContainer>
+              <PropertyContainer id="DropShadow_Filter">
+                <Property id="DropShadow_Angle"><Keyframe timevalue="0" anchor="0,90"/><Keyframe timevalue="4000" anchor="0,0"/></Property>
+                <Property id="DropShadow_Strength"><Keyframe timevalue="0" anchor="0,40"/><Keyframe timevalue="4000" anchor="0,120"/></Property>
+                <Property id="DropShadow_Color"><Keyframe timevalue="0" value="0x00408040"/><Keyframe timevalue="4000" value="0xfe8000ff"/></Property>
+              </PropertyContainer>
+              <PropertyContainer id="Glow_Filter">
+                <Property id="Glow_BlurX"><Keyframe timevalue="0" anchor="0,4"/><Keyframe timevalue="4000" anchor="0,12"/></Property>
+                <Property id="Glow_BlurY" value="8"/>
+                <Property id="Glow_Strength"><Keyframe timevalue="0" anchor="0,50"/><Keyframe timevalue="4000" anchor="0,150"/></Property>
+                <Property id="Glow_Color"><Keyframe timevalue="0" value="0x20406080"/><Keyframe timevalue="4000" value="0x6080a0ff"/></Property>
+                <Property id="Glow_InnerGlow" value="0"/>
+                <Property id="Glow_Knockout" value="0"/>
+              </PropertyContainer>
+              <PropertyContainer id="DropShadow_Filter">
+                <Property id="DropShadow_Distance"><Keyframe timevalue="0" anchor="0,4"/><Keyframe timevalue="4000" anchor="0,16"/></Property>
+                <Property id="DropShadow_BlurY"><Keyframe timevalue="0" anchor="0,2"/><Keyframe timevalue="4000" anchor="0,14"/></Property>
+                <Property id="DropShadow_Angle" value="0"/>
+              </PropertyContainer>
+            </PropertyContainer>
+          </PropertyContainer>
+        </AnimationCore></motionObjectXML>
+        <elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
+          <matrix><Matrix tx="20" ty="30"/></matrix>
+          <filters>
+            <GlowFilter isEnabled="false" blurX="9" blurY="9" color="#111111"/>
+            <BlurFilter blurX="2" blurY="7"/>
+            <DropShadowFilter blurX="6" blurY="4" distance="11" angle="90" color="#004080" alpha="0.25" strength="0.4"/>
+            <GlowFilter blurX="4" blurY="8" color="#204060" alpha="0.5" strength="0.5"/>
+            <DropShadowFilter blurX="3" blurY="2" distance="4" angle="45" color="#abcdef" alpha="0.75" strength="0.8"/>
+          </filters>
+        </DOMSymbolInstance></elements>
+      </DOMFrame></frames></DOMLayer>
+    </layers></DOMTimeline></timelines></DOMDocument>`;
+
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', docXml);
+    zip.file('LIBRARY/Tile.xml', tileXml);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const { source } = prepared;
+    const scene = source.sceneTimelines[0]!;
+
+    const mid = source.buildSceneFrameContext(scene.xml, 2, 'scene:0');
+    if (!mid.ok) throw new Error(mid.message);
+    expect(mid.value.unsupportedDisplayReason).toBeUndefined();
+    const midEl = mid.value.layers[0]?.elements[0];
+    if (midEl?.kind !== 'symbol') throw new Error('Missing mid symbol');
+    expect(midEl.localTransform?.tx).toBeCloseTo(40, 5);
+    expect(midEl.instanceFilters).toHaveLength(5);
+    // Slot 0: disabled Glow preserved
+    expect(midEl.instanceFilters?.[0]).toMatchObject({ kind: 'glow', enabled: false });
+    // Slot 1: Blur animates blurX (2 -> 10 => 6), preserves unanimated blurY=7
+    expect(midEl.instanceFilters?.[1]).toMatchObject({
+      kind: 'blur', enabled: true, blurX: expect.closeTo(6, 5), blurY: 7,
+    });
+    // Slot 2: DropShadow #1 animates angle (90 -> 0 => 45), strength (0.4 -> 1.2 => 0.8), RGBA color, preserves blurX=6, blurY=4, distance=11
+    expect(midEl.instanceFilters?.[2]).toMatchObject({
+      kind: 'dropShadow', enabled: true, blurX: 6, blurY: 4, distance: 11, color: '#7f6040',
+    });
+    expect(midEl.instanceFilters?.[2]?.angle).toBeCloseTo(45, 5);
+    expect(midEl.instanceFilters?.[2]?.strength).toBeCloseTo(0.8, 5);
+    expect(midEl.instanceFilters?.[2]?.alpha).toBeCloseTo((0x40 + 0xff) / 2 / 255, 5);
+    // Slot 3: Glow #2 animates blurX (4 -> 12 => 8), constant blurY=8, strength (0.5 -> 1.5 => 1.0), RGBA color
+    expect(midEl.instanceFilters?.[3]).toMatchObject({
+      kind: 'glow', enabled: true, blurX: expect.closeTo(8, 5), blurY: 8, color: '#406080',
+    });
+    expect(midEl.instanceFilters?.[3]?.strength).toBeCloseTo(1, 5);
+    expect(midEl.instanceFilters?.[3]?.alpha).toBeCloseTo((0x80 + 0xff) / 2 / 255, 5);
+    // Slot 4: DropShadow #2 animates distance (4 -> 16 => 10), blurY (2 -> 14 => 8), constant angle=0 (preserved!), preserves authored blurX=3, color=#abcdef, alpha=0.75, strength=0.8
+    expect(midEl.instanceFilters?.[4]).toMatchObject({
+      kind: 'dropShadow',
+      enabled: true,
+      blurX: 3,
+      blurY: expect.closeTo(8, 5),
+      distance: expect.closeTo(10, 5),
+      angle: 0,
+      color: '#abcdef',
+      alpha: 0.75,
+      strength: 0.8,
+    });
+
+    // End frame (4): DropShadow #1 reaches 0-degree angle explicitly (not defaulted to 45)
+    const end = source.buildSceneFrameContext(scene.xml, 4, 'scene:0');
+    if (!end.ok) throw new Error(end.message);
+    const endEl = end.value.layers[0]?.elements[0];
+    if (endEl?.kind !== 'symbol') throw new Error('Missing end symbol');
+    expect(endEl.instanceFilters?.[2]).toMatchObject({
+      kind: 'dropShadow', enabled: true, angle: 0, color: '#fe8000', alpha: 1,
+    });
+    expect(endEl.instanceFilters?.[2]?.strength).toBeCloseTo(1.2, 5);
+
+    // Formal SVG render consumes all 4 enabled filters in original order (indices 1, 2, 3, 4) without collapsing shadows
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const entry = catalog.entries.find(({ target }) => target.kind === 'scene');
+    expect(entry).toMatchObject({ previewSupported: true });
+    const svg = await buildSvgForRenderTarget(bytes, { ...entry!.target, selectedFrameIndex: 2 }, undefined, source);
+    if (!svg.ok) throw new Error(svg.message);
+    expect(svg.svg).toContain('result="effect1"');
+    expect(svg.svg).toContain('in="effect1"');
+    expect(svg.svg).toContain('result="effect2"');
+    expect(svg.svg).toContain('in="effect2"');
+    expect(svg.svg).toContain('result="effect3"');
+    expect(svg.svg).toContain('in="effect3"');
+    expect(svg.svg).toContain('result="effect4"');
+    expect(svg.svg).not.toContain('result="effect0"');
+    expect([...svg.svg.matchAll(/<feMerge\b/gu)]).toHaveLength(3);
+  });
+
+  it.each([
+    ['unsupported filter kind', '<PropertyContainer id="Bevel_Filter"><Property id="Bevel_BlurX" value="4"/></PropertyContainer>', '<BlurFilter/>'],
+    ['non-neutral Glow_InnerGlow', '<PropertyContainer id="Glow_Filter"><Property id="Glow_InnerGlow" value="1"/></PropertyContainer>', '<GlowFilter/>'],
+    ['non-neutral Blur_Quality', '<PropertyContainer id="Blur_Filter"><Property id="Blur_Quality" value="2"/></PropertyContainer>', '<BlurFilter/>'],
+    ['out-of-range BlurX curve', '<PropertyContainer id="Blur_Filter"><Property id="Blur_BlurX"><Keyframe timevalue="0" anchor="0,5"/><Keyframe timevalue="4000" anchor="0,300"/></Property></PropertyContainer>', '<BlurFilter/>'],
+    ['unmatched authored filter', '<PropertyContainer id="Glow_Filter"><Property id="Glow_BlurX" value="8"/></PropertyContainer>', '<BlurFilter/>'],
+  ])('degrades locally for unsupported Object Motion filter combination: %s', async (_label, filterCurveXml, authoredFilterXml) => {
+    const shape = '<DOMShape><fills><FillStyle index="1"><SolidColor color="#406080"/></FillStyle></fills>' +
+      '<edges><Edge fillStyle0="1" edges="!0 0|200 0|200 200|0 200|0 0"/></edges></DOMShape>';
+    const zip = new JSZip();
+    zip.file('LIBRARY/Tile.xml', `<DOMSymbolItem name="Tile" symbolType="graphic"><timeline><DOMTimeline><layers>` +
+      `<DOMLayer><frames><DOMFrame index="0"><elements>${shape}</elements></DOMFrame></frames></DOMLayer>` +
+      `</layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    zip.file('DOMDocument.xml', `<DOMDocument width="200" height="200" frameRate="24"><timelines><DOMTimeline name="Scene 1"><layers>` +
+      `<DOMLayer><frames><DOMFrame index="0" duration="5" tweenType="motion object">` +
+      `<motionObjectXML><AnimationCore TimeScale="24000" duration="5000"><PropertyContainer id="headContainer">` +
+      `<Property id="Motion_X" value="5"/><PropertyContainer id="Filters">${filterCurveXml}</PropertyContainer>` +
+      `</PropertyContainer></AnimationCore></motionObjectXML>` +
+      `<elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic"><filters>${authoredFilterXml}</filters></DOMSymbolInstance></elements>` +
+      `</DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const scene = prepared.source.sceneTimelines[0]!;
+    const sampled = prepared.source.buildSceneFrameContext(scene.xml, 2, 'scene:0');
+    if (!sampled.ok) throw new Error(sampled.message);
+    expect(sampled.value.unsupportedDisplayReason).toBeTruthy();
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    expect(catalog.entries.some(({ target, previewSupported }) => target.kind === 'scene' && previewSupported)).toBe(false);
+    expect(catalog.entries.some(({ target, previewSupported }) => target.kind === 'graphic-symbol' && previewSupported)).toBe(true);
   });
 
   it('discovers a scene with a blank lead-in and samples its authored axes and off-centre pivot', async () => {
