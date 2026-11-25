@@ -35,6 +35,8 @@ export interface FlaStaticTextRun {
   readonly lineHeight: number;
   readonly lineSpacing: number;
   readonly letterSpacing: number;
+  readonly characterPosition?: 'normal' | 'subscript' | 'superscript';
+  readonly rotation?: number;
   readonly face?: string;
   readonly fillColor: string;
   readonly alpha: number;
@@ -176,12 +178,22 @@ export function buildSafeOfflineFontFamily(rawFace?: string): string {
   return `"${cleaned}", ${OFFLINE_FALLBACK_FONTS}`;
 }
 
+export function staticTextRunFontSize(run: FlaStaticTextRun): number {
+  return run.characterPosition === 'subscript' || run.characterPosition === 'superscript' ? run.size * 0.7 : run.size;
+}
+
+export function staticTextRunBaselineOffset(run: FlaStaticTextRun): number {
+  if (run.characterPosition === 'superscript') return -run.size * 0.3;
+  if (run.characterPosition === 'subscript') return run.size * 0.2;
+  return 0;
+}
+
 export function buildCanvasFontSpec(run: FlaStaticTextRun): string {
   const style = run.italic ? 'italic ' : '';
   const weight = run.bold ? 'bold ' : '';
   const size = Math.max(
     FLA_STATIC_TEXT_LIMITS.minFontSize,
-    Math.min(FLA_STATIC_TEXT_LIMITS.maxFontSize, run.size),
+    Math.min(FLA_STATIC_TEXT_LIMITS.maxFontSize, staticTextRunFontSize(run)),
   );
   return `${style}${weight}${size}px ${buildSafeOfflineFontFamily(run.face)}`;
 }
@@ -194,7 +206,7 @@ export function estimateFlaStaticTextMeasurement(
   text: string,
   run: FlaStaticTextRun,
 ): FlaStaticTextMeasurement {
-  const size = run.size;
+  const size = staticTextRunFontSize(run);
   let width = 0;
   for (const grapheme of splitGraphemes(text)) {
     if (grapheme === ' ' || grapheme === '\t') {
@@ -222,9 +234,12 @@ function measureFragment(
   run: FlaStaticTextRun,
   measure: FlaStaticTextMeasurer,
 ): FragmentMeasurement {
-  if (run.letterSpacing === 0) {
+  const baseline = staticTextRunBaselineOffset(run);
+  const angle = (run.rotation ?? 0) * Math.PI / 180;
+  if (run.letterSpacing === 0 && angle === 0) {
     const measurement = measure(text, run);
-    return { ...measurement, minX: 0, maxX: measurement.width };
+    return { ...measurement, minX: 0, maxX: measurement.width,
+      ascent: Math.max(0, measurement.ascent - baseline), descent: Math.max(0, measurement.descent + baseline) };
   }
   const graphemes = splitGraphemes(text);
   let width = 0;
@@ -234,12 +249,27 @@ function measureFragment(
   let descent = run.size * 0.25;
   for (let index = 0; index < graphemes.length; index += 1) {
     const m = measure(graphemes[index]!, run);
-    minX = Math.min(minX, width);
+    if (angle === 0) {
+      minX = Math.min(minX, width);
+      maxX = Math.max(maxX, width + m.width);
+      ascent = Math.max(ascent, m.ascent - baseline);
+      descent = Math.max(descent, m.descent + baseline);
+    } else {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      for (const x of [0, m.width]) {
+        for (const y of [-m.ascent, m.descent]) {
+          const rotatedX = width + x * cos - y * sin;
+          const rotatedY = baseline + x * sin + y * cos;
+          minX = Math.min(minX, rotatedX);
+          maxX = Math.max(maxX, rotatedX);
+          ascent = Math.max(ascent, -rotatedY);
+          descent = Math.max(descent, rotatedY);
+        }
+      }
+    }
     width += m.width;
-    maxX = Math.max(maxX, width);
     if (index < graphemes.length - 1) width += run.letterSpacing;
-    if (m.ascent > ascent) ascent = m.ascent;
-    if (m.descent > descent) descent = m.descent;
   }
   return { width, minX, maxX, ascent, descent };
 }
@@ -757,6 +787,10 @@ export function isValidFlaStaticTextRenderItem(value: unknown): value is FlaStat
       return false;
     }
     if (run.underline !== undefined && typeof run.underline !== 'boolean') return false;
+    if (run.characterPosition !== undefined && run.characterPosition !== 'normal' &&
+        run.characterPosition !== 'subscript' && run.characterPosition !== 'superscript') return false;
+    if (run.rotation !== undefined && (typeof run.rotation !== 'number' ||
+        !Number.isFinite(run.rotation) || Math.abs(run.rotation) > 360)) return false;
     for (const opt of [run.leftMargin, run.rightMargin, run.indent]) {
       if (opt !== undefined && (typeof opt !== 'number' || !Number.isFinite(opt) || Math.abs(opt) > FLA_STATIC_TEXT_LIMITS.maxBoxDimension)) {
         return false;

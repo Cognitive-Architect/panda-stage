@@ -18,6 +18,8 @@
 import {
   FLA_STATIC_TEXT_LIMITS,
   buildCanvasFontSpec,
+  staticTextRunBaselineOffset,
+  staticTextRunFontSize,
   computeAuthoritativeGraphicViewport,
   layoutFlaStaticText,
   splitGraphemes,
@@ -105,11 +107,11 @@ function resolveStaticTextPlaceholders(
     const ascent =
       typeof metrics.actualBoundingBoxAscent === 'number' && metrics.actualBoundingBoxAscent > 0
         ? metrics.actualBoundingBoxAscent
-        : run.size * 0.85;
+        : staticTextRunFontSize(run) * 0.85;
     const descent =
       typeof metrics.actualBoundingBoxDescent === 'number' && metrics.actualBoundingBoxDescent > 0
         ? metrics.actualBoundingBoxDescent
-        : run.size * 0.25;
+        : staticTextRunFontSize(run) * 0.25;
     return {
       width: Number.isFinite(metrics.width) ? metrics.width : 0,
       ascent,
@@ -161,17 +163,27 @@ function resolveStaticTextPlaceholders(
         ctx.font = buildCanvasFontSpec(fragment.run);
         ctx.fillStyle = fragment.run.fillColor;
         ctx.globalAlpha = fragment.run.alpha;
-        if (fragment.run.letterSpacing === 0) {
-          ctx.fillText(fragment.text, fragment.x, line.baselineY);
+        const baseline = line.baselineY + staticTextRunBaselineOffset(fragment.run);
+        const angle = (fragment.run.rotation ?? 0) * Math.PI / 180;
+        if (fragment.run.letterSpacing === 0 && angle === 0) {
+          ctx.fillText(fragment.text, fragment.x, baseline);
         } else {
           let cursorX = fragment.x;
           for (const grapheme of splitGraphemes(fragment.text)) {
-            ctx.fillText(grapheme, cursorX, line.baselineY);
+            if (angle === 0) {
+              ctx.fillText(grapheme, cursorX, baseline);
+            } else {
+              ctx.save();
+              ctx.translate(cursorX, baseline);
+              ctx.rotate(angle);
+              ctx.fillText(grapheme, 0, 0);
+              ctx.restore();
+            }
             cursorX += ctx.measureText(grapheme).width + fragment.run.letterSpacing;
           }
         }
         if (fragment.run.underline && fragment.width > 0) {
-          const underlineY = line.baselineY + Math.max(1, fragment.run.size * 0.12);
+          const underlineY = baseline + Math.max(1, staticTextRunFontSize(fragment.run) * 0.12);
           const underlineHeight = Math.max(1, fragment.run.size * 0.06);
           ctx.fillRect(fragment.x, underlineY, fragment.width, underlineHeight);
         }

@@ -747,6 +747,15 @@ function parseStaticTextDescriptor(
     if (!Number.isFinite(letterSpacing) || Math.abs(letterSpacing) > FLA_STATIC_TEXT_LIMITS.maxLetterSpacing) {
       return { ok: false, reason: 'Static text letterSpacing is invalid or exceeds supported bounds' };
     }
+    const characterPosition = attrs.characterPosition;
+    if (characterPosition !== undefined && characterPosition !== 'normal' &&
+        characterPosition !== 'superscript' && characterPosition !== 'subscript') {
+      return { ok: false, reason: 'Unsupported static text character position' };
+    }
+    const rotation = attrs.rotation === undefined || !attrs.rotation.trim() ? undefined : Number(attrs.rotation);
+    if (rotation !== undefined && (!Number.isFinite(rotation) || Math.abs(rotation) > 360)) {
+      return { ok: false, reason: 'Static text character rotation is out of bounds' };
+    }
 
     const color = parseStaticTextColor(attrs.fillColor, attrs.alpha);
     if (!color) {
@@ -773,6 +782,8 @@ function parseStaticTextDescriptor(
       lineHeight,
       lineSpacing,
       letterSpacing,
+      ...(characterPosition ? { characterPosition } : {}),
+      ...(rotation ? { rotation } : {}),
       ...(rawFace ? { face: rawFace.slice(0, FLA_STATIC_TEXT_LIMITS.maxFontFaceLength) } : {}),
       fillColor: color.fillColor,
       alpha: color.alpha,
