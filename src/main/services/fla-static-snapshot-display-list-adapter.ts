@@ -2738,7 +2738,7 @@ function sceneStageViews(
     const scale = focalLength / (focalLength + relative);
     const projection = { a: scale, d: scale, b: 0, c: 0, tx: (1 - scale) * center.tx, ty: (1 - scale) * center.ty };
     const matrix = attached ? projection : compose(projection, view);
-    result.push(scale > 32 || !withinStageProjectionBudget(matrix)
+    result.push(scale > 32 || !withinStageProjectionBudget(matrix) || !inverse(matrix)
       ? { matrix: null, depth: stackDepth, warning: '图层超出相机投影范围' }
       : { matrix, depth: stackDepth });
   }
@@ -3124,10 +3124,6 @@ function buildGraphicFrameContext(
 
     const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
       : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
-    const parentView = typeof parentMaskIndex === 'number' ? stageViews?.value[parentMaskIndex] : undefined;
-    const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
-      !Object.entries(parentView.matrix).every(([key, value]) =>
-        stageView.matrix?.[key as keyof FlaDisplayListMatrix] === value);
     const stageProjection = stageView?.matrix &&
       Object.entries(FLA_DISPLAY_LIST_IDENTITY_MATRIX).some(([key, value]) =>
         stageView.matrix?.[key as keyof FlaDisplayListMatrix] !== value)
@@ -3139,7 +3135,6 @@ function buildGraphicFrameContext(
       visible: selection.visible,
       elements,
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
-      ...(mixedMaskProjection ? { incompatibleStageMask: true } : {}),
       ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
       ...(isMask ? { maskLayerId: `${scope}/mask-layer-${selection.layerIndex}` } : {}),
       ...(frameFilter ? { frameFilter } : {}),

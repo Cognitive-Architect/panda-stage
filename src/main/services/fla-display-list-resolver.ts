@@ -1,4 +1,4 @@
-import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
 import type { FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 
 /**
@@ -388,6 +388,35 @@ function composeTransforms(
   };
 }
 
+/**
+ * Cross-layer mask/content stage projection alignment.
+ *
+ * Adapted from the independent mask/content projection and inverse-matrix
+ * alignment relationship in lifeart/fla-viewer @ b14fa1d1e3e2d2b035e174bde472a7941d385b17
+ * (`src/video-exporter.ts` L1890-1923). Upstream declares ISC in README.md and
+ * package.json (no standalone LICENSE file in that commit).
+ *
+ * Mask geometry (projected by P_M) and masked content (projected by P_C) are
+ * each projected independently into Panda's shared projected stage space. Their
+ * relative alignment into mask space is P_M^{-1} × P_C (so P_M × (P_M^{-1} × P_C) = P_C).
+ * Returns null when either projection is non-finite/non-invertible or their
+ * relative alignment overflows to a non-finite matrix.
+ */
+export function computeCrossLayerMaskAlignment(
+  maskProjection: FlaDisplayListMatrix,
+  contentProjection: FlaDisplayListMatrix,
+): FlaDisplayListMatrix | null {
+  if (!isValidMatrix(maskProjection) || !isValidMatrix(contentProjection)) {
+    return null;
+  }
+  const maskInverse = invertAffineMatrix(maskProjection);
+  if (!maskInverse || !invertAffineMatrix(contentProjection)) {
+    return null;
+  }
+  const relative = composeTransforms(maskInverse, contentProjection);
+  return isValidMatrix(relative) ? relative : null;
+}
+
 function enterSourceNode(context: ResolveContext, sourcePath: string): FlaDisplayListResolverFailure | null {
   context.visitedNodeCount += 1;
   if (context.visitedNodeCount > context.limits.maxResolvedNodeCount) {
@@ -485,7 +514,13 @@ function resolveLayers(
 
   // A dependency failure must not paint. An empty clip list means
   // an authored blank/uncovered mask layer, which Animate exports without a clip.
-  type MaskResult = { readonly ok: true; readonly clips: readonly FlaResolvedClipPath[] } | FlaDisplayListResolverFailure;
+  type MaskResult =
+    | {
+        readonly ok: true;
+        readonly clips: readonly FlaResolvedClipPath[];
+        readonly projections: readonly FlaDisplayListMatrix[];
+      }
+    | FlaDisplayListResolverFailure;
   const maskCache = new Map<string, MaskResult>();
   const buildMask = (maskId: string, ancestry: readonly string[]): MaskResult => {
     if (ancestry.includes(maskId) || ancestry.length >= context.limits.maxRecursionDepth) {
@@ -497,14 +532,29 @@ function resolveLayers(
     if (layer.unsupportedMaskReason || layer.frameFilter || layer.incompatibleStageMask) {
       return failure('UNSUPPORTED_DISPLAY_CONTENT', layer.unsupportedMaskReason ?? 'Mask filter is unsupported', maskPath);
     }
+    const maskProjection = layer.stageProjection ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    if (!isValidMatrix(maskProjection) || !invertAffineMatrix(maskProjection)) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask stage projection is non-invertible', maskPath);
+    }
     const enclosing = layer.maskedBy ? resolveMask(layer.maskedBy, [...ancestry, maskId])
-      : { ok: true as const, clips: [] };
+      : { ok: true as const, clips: [], projections: [] };
     if (!enclosing.ok) return enclosing;
+    for (const enclosingProjection of enclosing.projections) {
+      if (!computeCrossLayerMaskAlignment(enclosingProjection, maskProjection)) {
+        return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Nested mask stage projection cannot be aligned', maskPath);
+      }
+    }
     if (layer.elements.length === 0) return enclosing;
+    const maskTransform = layer.stageProjection
+      ? composeTransforms(parentTransform, layer.stageProjection)
+      : parentTransform;
+    if (!isValidMatrix(maskTransform)) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask stage projection is not finite', maskPath);
+    }
     const diagnosticCount = context.maskFailureCount + context.ikPoseFailureCount;
     const resolvedMask = resolveElements(
       layer.elements,
-      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
+      maskTransform,
       symbolStack,
       nestingDepth,
       maskPath,
@@ -518,7 +568,11 @@ function resolveLayers(
     const maskShapes = collectMaskShapes(resolvedMask.nodes, maskPath);
     if (!maskShapes.ok) return maskShapes;
     // A present symbol with no display geometry has an empty silhouette.
-    return { ok: true, clips: [...enclosing.clips, { shapes: maskShapes.shapes, sourcePath: maskPath }] };
+    return {
+      ok: true,
+      clips: [...enclosing.clips, { shapes: maskShapes.shapes, sourcePath: maskPath }],
+      projections: [...enclosing.projections, maskProjection],
+    };
   };
   const resolveMask = (maskId: string, ancestry: readonly string[] = []): MaskResult => {
     const cached = maskCache.get(maskId);
@@ -545,9 +599,18 @@ function resolveLayers(
       continue;
     }
 
-    const mask = layer.incompatibleStageMask
+    const layerProjection = layer.stageProjection ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    let mask: MaskResult | undefined = layer.incompatibleStageMask
       ? failure('UNSUPPORTED_DISPLAY_CONTENT', 'Native depth differs between a mask and its content', layerPath)
       : layer.maskedBy ? resolveMask(layer.maskedBy) : undefined;
+    if (mask?.ok) {
+      for (const maskProjection of mask.projections) {
+        if (!computeCrossLayerMaskAlignment(maskProjection, layerProjection)) {
+          mask = failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask and content stage projections cannot be aligned', layerPath);
+          break;
+        }
+      }
+    }
     if (mask && !mask.ok) {
       if (mask.code === 'MAX_RESOLVED_NODES_EXCEEDED') return mask;
       context.maskFailureCount += 1;
@@ -560,9 +623,15 @@ function resolveLayers(
       ? [...inheritedClipPaths, ...mask.clips]
       : inheritedClipPaths;
 
+    const layerTransform = layer.stageProjection
+      ? composeTransforms(parentTransform, layer.stageProjection)
+      : parentTransform;
+    if (!isValidMatrix(layerTransform)) {
+      return failure('INVALID_MATRIX', 'Layer stage projection is not finite', layerPath);
+    }
     const resolved = resolveElements(
       layer.elements,
-      layer.stageProjection ? composeTransforms(parentTransform, layer.stageProjection) : parentTransform,
+      layerTransform,
       symbolStack,
       nestingDepth,
       `${layerPath}:${layer.name}`,
