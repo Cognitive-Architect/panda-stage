@@ -27,6 +27,9 @@ export const FlaSoundTimelineDiagnosticCodeSchema = z.enum([
   'outside-shot-boundary',
   'empty-source-range',
   'zero-duration-clip',
+  'unsupported-nested-clock',
+  'nested-symbol-cycle',
+  'missing-nested-symbol',
 ]);
 
 export const FlaSoundTimelineDiagnosticSchema = z.object({

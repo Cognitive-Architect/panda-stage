@@ -15,8 +15,13 @@ export const FLA_SOUND_REFERENCE_SAMPLE_RATE = 44_100;
 /** Upper bound for finite repeat expansion to guard against sentinel/infinite values. */
 export const FLA_SOUND_MAX_FINITE_REPEAT = 256;
 
+/** Maximum nested Graphic/MovieClip recursion depth for deterministic sound mapping. */
+export const FLA_SOUND_MAX_NESTED_DEPTH = 16;
+
 export type FlaSoundTimelineSync = 'event' | 'start' | 'stop' | 'stream';
 export type FlaSoundTimelineLoopMode = 'repeat' | 'loop';
+export type FlaSoundSymbolPlaybackMode = 'loop' | 'play once' | 'single frame';
+export type FlaSoundSymbolType = 'graphic' | 'movieclip' | 'button';
 
 export type FlaSoundTimelineDiagnosticCode =
   | 'unsupported-sync'
@@ -25,7 +30,10 @@ export type FlaSoundTimelineDiagnosticCode =
   | 'missing-audio-asset'
   | 'outside-shot-boundary'
   | 'empty-source-range'
-  | 'zero-duration-clip';
+  | 'zero-duration-clip'
+  | 'unsupported-nested-clock'
+  | 'nested-symbol-cycle'
+  | 'missing-nested-symbol';
 
 export interface FlaSoundTimelineDiagnostic {
   readonly code: FlaSoundTimelineDiagnosticCode;
@@ -59,7 +67,16 @@ export interface FlaResolvedSoundAsset {
   readonly durationMs: number;
 }
 
+export interface FlaSymbolInstanceSoundPlacement {
+  readonly libraryItemName: string;
+  readonly symbolType: FlaSoundSymbolType;
+  readonly loop: FlaSoundSymbolPlaybackMode;
+  readonly firstFrame?: number;
+  readonly lastFrame?: number;
+}
+
 export interface FlaTimelineSoundSource {
+  readonly totalFrames?: number;
   readonly layers: readonly {
     readonly sourceLayerIndex: number;
     readonly frames: readonly {
@@ -67,8 +84,27 @@ export interface FlaTimelineSoundSource {
       readonly startFrame: number;
       readonly duration: number;
       readonly sound?: FlaSceneFrameSoundDescriptor;
+      readonly symbolInstances?: readonly FlaSymbolInstanceSoundPlacement[];
     }[];
   }[];
+}
+
+export interface FlaSymbolTimelineSoundSource extends FlaTimelineSoundSource {
+  readonly name: string;
+  readonly symbolType: FlaSoundSymbolType;
+  readonly totalFrames: number;
+  readonly hasActionScript?: boolean;
+}
+
+export interface ExtractFlaNestedSoundEventsOptions {
+  readonly symbolTimelines?: readonly FlaSymbolTimelineSoundSource[];
+  readonly sourceFps?: number;
+  readonly maxDepth?: number;
+}
+
+export interface ExtractFlaNestedSoundEventsResult {
+  readonly events: FlaSceneSoundEvent[];
+  readonly diagnostics: FlaSoundTimelineDiagnostic[];
 }
 
 export interface PlanFlaSceneAudioClipsInput {
@@ -153,6 +189,297 @@ export function extractFlaTimelineSoundEvents(
   }
   events.sort(compareSoundEvents);
   return events;
+}
+
+function resolveChildTotalFrames(symbol: FlaSymbolTimelineSoundSource): number {
+  let derived = Math.max(0, symbol.totalFrames);
+  for (const layer of symbol.layers) {
+    for (const frame of layer.frames) {
+      derived = Math.max(derived, Math.max(0, frame.sourceFrameIndex) + Math.max(1, frame.duration));
+    }
+  }
+  return derived;
+}
+
+function evaluateInstanceChildFrame(
+  placement: FlaSymbolInstanceSoundPlacement,
+  symbol: FlaSymbolTimelineSoundSource,
+  childTotalFrames: number,
+  offset: number,
+): number {
+  if (symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip') {
+    return offset % childTotalFrames;
+  }
+  const firstFrame = Math.max(0, Math.min(placement.firstFrame ?? 0, childTotalFrames - 1));
+  const lastFrame =
+    placement.lastFrame !== undefined
+      ? Math.max(firstFrame, Math.min(placement.lastFrame, childTotalFrames - 1))
+      : childTotalFrames - 1;
+  const rangeLength = Math.max(1, lastFrame - firstFrame + 1);
+  if (placement.loop === 'single frame') {
+    return firstFrame;
+  }
+  if (placement.loop === 'play once') {
+    return Math.min(firstFrame + offset, lastFrame);
+  }
+  return firstFrame + (offset % rangeLength);
+}
+
+/**
+ * Extracts sound events from a main Scene timeline AND deterministically nested
+ * Graphic / MovieClip symbol instances using independent per-instance clocks.
+ *
+ * Out-of-scope interactive/dynamic features (Button symbols, ActionScript-driven
+ * MovieClips, circular references, or excessive nesting depth) emit clear local
+ * diagnostics while preserving all deterministic triggers and audio assets.
+ */
+export function extractFlaTimelineSoundEventsWithNested(
+  timeline: FlaTimelineSoundSource,
+  options: ExtractFlaNestedSoundEventsOptions = {},
+): ExtractFlaNestedSoundEventsResult {
+  const events: FlaSceneSoundEvent[] = [];
+  const diagnostics: FlaSoundTimelineDiagnostic[] = [];
+  const symbolByName = new Map<string, FlaSymbolTimelineSoundSource>();
+  for (const symbol of options.symbolTimelines ?? []) {
+    symbolByName.set(symbol.name, symbol);
+    const normalized = symbol.name.trim().toLowerCase();
+    if (!symbolByName.has(normalized)) {
+      symbolByName.set(normalized, symbol);
+    }
+  }
+  const maxDepth = options.maxDepth ?? FLA_SOUND_MAX_NESTED_DEPTH;
+  const sourceFps = options.sourceFps;
+  const reportedCycles = new Set<string>();
+
+  const lookupSymbol = (name: string): FlaSymbolTimelineSoundSource | undefined =>
+    symbolByName.get(name) ?? symbolByName.get(name.trim().toLowerCase());
+
+  const expandPlacement = (
+    placement: FlaSymbolInstanceSoundPlacement,
+    parentStartFrame: number,
+    parentSpanFrames: number,
+    parentLayerIndex: number,
+    depth: number,
+    ancestry: ReadonlySet<string>,
+  ): void => {
+    if (parentSpanFrames <= 0) return;
+
+    if (placement.symbolType === 'button') {
+      diagnostics.push({
+        code: 'unsupported-nested-clock',
+        soundName: placement.libraryItemName,
+        frameIndex: parentStartFrame,
+        layerIndex: parentLayerIndex,
+        message: `Button symbol "${placement.libraryItemName}" at frame ${parentStartFrame} uses interactive state triggers outside deterministic timeline recovery.`,
+      });
+      return;
+    }
+
+    if (depth > maxDepth) {
+      diagnostics.push({
+        code: 'unsupported-nested-clock',
+        soundName: placement.libraryItemName,
+        frameIndex: parentStartFrame,
+        layerIndex: parentLayerIndex,
+        message: `Nested symbol "${placement.libraryItemName}" at frame ${parentStartFrame} exceeded maximum deterministic nesting depth (${maxDepth}).`,
+      });
+      return;
+    }
+
+    const symbol = lookupSymbol(placement.libraryItemName);
+    if (!symbol) {
+      // Only diagnose if symbolTimelines were provided and symbol was missing?
+      // Symbols without sounds or nested symbols are omitted from symbolTimelines,
+      // so absence here simply means the symbol has no audio content.
+      return;
+    }
+
+    if (symbol.symbolType === 'button') {
+      diagnostics.push({
+        code: 'unsupported-nested-clock',
+        soundName: symbol.name,
+        frameIndex: parentStartFrame,
+        layerIndex: parentLayerIndex,
+        message: `Button symbol "${symbol.name}" at frame ${parentStartFrame} uses interactive state triggers outside deterministic timeline recovery.`,
+      });
+      return;
+    }
+
+    const canonicalKey = symbol.name.trim().toLowerCase();
+    if (ancestry.has(canonicalKey)) {
+      if (!reportedCycles.has(canonicalKey)) {
+        reportedCycles.add(canonicalKey);
+        diagnostics.push({
+          code: 'nested-symbol-cycle',
+          soundName: symbol.name,
+          frameIndex: parentStartFrame,
+          layerIndex: parentLayerIndex,
+          message: `Circular symbol reference detected for "${symbol.name}" at frame ${parentStartFrame}; nested audio expansion stopped to prevent infinite recursion.`,
+        });
+      }
+      return;
+    }
+
+    if (
+      (symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip') &&
+      symbol.hasActionScript
+    ) {
+      diagnostics.push({
+        code: 'unsupported-nested-clock',
+        soundName: symbol.name,
+        frameIndex: parentStartFrame,
+        layerIndex: parentLayerIndex,
+        message: `MovieClip "${symbol.name}" at frame ${parentStartFrame} contains ActionScript (e.g. dynamic stop/gotoAndPlay) and cannot be deterministically mapped to Shot audio.`,
+      });
+      return;
+    }
+
+    const childTotalFrames = resolveChildTotalFrames(symbol);
+    if (childTotalFrames <= 0) return;
+
+    // Build this instance's independent per-tick child frame sequence.
+    const childFramesByOffset: number[] = new Array(parentSpanFrames);
+    for (let offset = 0; offset < parentSpanFrames; offset += 1) {
+      childFramesByOffset[offset] = evaluateInstanceChildFrame(
+        placement,
+        symbol,
+        childTotalFrames,
+        offset,
+      );
+    }
+
+    const nextAncestry = new Set(ancestry);
+    nextAncestry.add(canonicalKey);
+
+    for (const childLayer of symbol.layers) {
+      for (const childFrame of childLayer.frames) {
+        const keyStart = Math.max(0, childFrame.sourceFrameIndex);
+        const keyDuration = Math.max(1, childFrame.duration);
+        const keyEnd = keyStart + keyDuration;
+
+        if (childFrame.sound) {
+          for (let offset = 0; offset < parentSpanFrames; offset += 1) {
+            const currentChildFrame = childFramesByOffset[offset]!;
+            const prevChildFrame = offset > 0 ? childFramesByOffset[offset - 1]! : undefined;
+
+            // Normal keyframe entry (including loop wrap-around and offset=0).
+            if (
+              currentChildFrame === keyStart &&
+              (offset === 0 || prevChildFrame !== currentChildFrame)
+            ) {
+              // For stream sounds, compute how many contiguous parent ticks remain
+              // inside this child keyframe span.
+              let activeSpan = 1;
+              if (childFrame.sound.sync === 'stream') {
+                while (
+                  offset + activeSpan < parentSpanFrames &&
+                  childFramesByOffset[offset + activeSpan]! === keyStart + activeSpan &&
+                  activeSpan < keyDuration
+                ) {
+                  activeSpan += 1;
+                }
+              }
+              events.push({
+                layerIndex: parentLayerIndex,
+                frameIndex: parentStartFrame + offset,
+                frameDuration: childFrame.sound.sync === 'stream' ? activeSpan : 1,
+                sound: childFrame.sound,
+              });
+            } else if (
+              offset === 0 &&
+              childFrame.sound.sync === 'stream' &&
+              currentChildFrame > keyStart &&
+              currentChildFrame < keyEnd
+            ) {
+              // Graphic instance entered mid-stream via firstFrame > keyStart:
+              // advance inPoint44 by the skipped child frames and trim remaining span.
+              const skippedFrames = currentChildFrame - keyStart;
+              let activeSpan = 1;
+              while (
+                offset + activeSpan < parentSpanFrames &&
+                childFramesByOffset[offset + activeSpan]! === currentChildFrame + activeSpan &&
+                skippedFrames + activeSpan < keyDuration
+              ) {
+                activeSpan += 1;
+              }
+              const extraIn44 =
+                sourceFps && sourceFps > 0
+                  ? Math.round((skippedFrames * FLA_SOUND_REFERENCE_SAMPLE_RATE) / sourceFps)
+                  : 0;
+              events.push({
+                layerIndex: parentLayerIndex,
+                frameIndex: parentStartFrame,
+                frameDuration: activeSpan,
+                sound: {
+                  ...childFrame.sound,
+                  inPoint44: (childFrame.sound.inPoint44 ?? 0) + extraIn44,
+                },
+              });
+            }
+          }
+        }
+
+        if (childFrame.symbolInstances && childFrame.symbolInstances.length > 0) {
+          // Group contiguous parent offsets where the parent instance visits this
+          // child keyframe [keyStart, keyEnd) into independent nested entry runs.
+          let runStart = -1;
+          for (let offset = 0; offset <= parentSpanFrames; offset += 1) {
+            const cf = offset < parentSpanFrames ? childFramesByOffset[offset]! : -1;
+            const prevCf = offset > 0 ? childFramesByOffset[offset - 1]! : -1;
+            const inRange = cf >= keyStart && cf < keyEnd;
+            const wrapped = inRange && runStart >= 0 && cf < prevCf;
+
+            if ((!inRange || wrapped) && runStart >= 0) {
+              const runDuration = offset - runStart;
+              for (const nested of childFrame.symbolInstances) {
+                expandPlacement(
+                  nested,
+                  parentStartFrame + runStart,
+                  runDuration,
+                  parentLayerIndex,
+                  depth + 1,
+                  nextAncestry,
+                );
+              }
+              runStart = wrapped ? offset : -1;
+            } else if (inRange && runStart < 0) {
+              runStart = offset;
+            }
+          }
+        }
+      }
+    }
+  };
+
+  for (const layer of timeline.layers) {
+    for (const frame of layer.frames) {
+      const frameIndex = Math.max(0, frame.sourceFrameIndex);
+      const frameDuration = Math.max(1, frame.duration);
+      if (frame.sound) {
+        events.push({
+          layerIndex: layer.sourceLayerIndex,
+          frameIndex,
+          frameDuration,
+          sound: frame.sound,
+        });
+      }
+      if (frame.symbolInstances && frame.symbolInstances.length > 0) {
+        for (const placement of frame.symbolInstances) {
+          expandPlacement(
+            placement,
+            frameIndex,
+            frameDuration,
+            layer.sourceLayerIndex,
+            1,
+            new Set(),
+          );
+        }
+      }
+    }
+  }
+
+  events.sort(compareSoundEvents);
+  return { events, diagnostics };
 }
 
 /**

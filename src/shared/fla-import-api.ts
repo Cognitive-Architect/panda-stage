@@ -167,6 +167,19 @@ export const FlaFrameSoundIRSchema = z
   })
   .strict();
 
+export const FlaSymbolPlaybackModeSchema = z.enum(['loop', 'play once', 'single frame']);
+export const FlaSymbolTypeSchema = z.enum(['graphic', 'movieclip', 'button']);
+
+export const FlaSymbolInstancePlacementIRSchema = z
+  .object({
+    libraryItemName: z.string().trim().min(1).max(500),
+    symbolType: FlaSymbolTypeSchema,
+    loop: FlaSymbolPlaybackModeSchema,
+    firstFrame: z.number().int().nonnegative().optional(),
+    lastFrame: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const FlaFrameIRSchema = z
   .object({
     id: z.string().regex(/^fla-frame-[a-z0-9-]{8,160}$/u),
@@ -175,6 +188,7 @@ export const FlaFrameIRSchema = z
     duration: z.number().int().positive(),
     instances: z.array(FlaFrameInstanceIRSchema).max(100_000),
     sound: FlaFrameSoundIRSchema.optional(),
+    symbolInstances: z.array(FlaSymbolInstancePlacementIRSchema).max(10_000).optional(),
   })
   .strict();
 
@@ -194,6 +208,16 @@ export const FlaTimelineIRSchema = z
     id: z.string().regex(/^fla-timeline-[a-z0-9-]{8,160}$/u),
     name: z.string().max(500),
     totalFrames: z.number().int().nonnegative(),
+    layers: z.array(FlaLayerIRSchema).max(10_000),
+  })
+  .strict();
+
+export const FlaSymbolTimelineIRSchema = z
+  .object({
+    name: z.string().trim().min(1).max(500),
+    symbolType: FlaSymbolTypeSchema,
+    totalFrames: z.number().int().nonnegative(),
+    hasActionScript: z.boolean().optional(),
     layers: z.array(FlaLayerIRSchema).max(10_000),
   })
   .strict();
@@ -257,6 +281,7 @@ export const AnimationImportIRSchema = z
     media: z.array(FlaBitmapMediaIRSchema).max(FLA_IMPORT_LIMITS.maxMediaCount),
     sounds: z.array(FlaSoundMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
     timelines: z.array(FlaTimelineIRSchema).max(10_000),
+    symbolTimelines: z.array(FlaSymbolTimelineIRSchema).max(10_000).optional(),
     compatibility: z.array(FlaCompatibilityEntryIRSchema).max(10_000),
     summary: z
       .object({
@@ -510,3 +535,7 @@ export type FlaStructuralSummary = z.infer<typeof FlaStructuralSummaryIRSchema>;
 export type FlaFrameSoundSync = z.infer<typeof FlaFrameSoundSyncSchema>;
 export type FlaFrameSoundLoopMode = z.infer<typeof FlaFrameSoundLoopModeSchema>;
 export type FlaFrameSoundIR = z.infer<typeof FlaFrameSoundIRSchema>;
+export type FlaSymbolPlaybackMode = z.infer<typeof FlaSymbolPlaybackModeSchema>;
+export type FlaSymbolType = z.infer<typeof FlaSymbolTypeSchema>;
+export type FlaSymbolInstancePlacementIR = z.infer<typeof FlaSymbolInstancePlacementIRSchema>;
+export type FlaSymbolTimelineIR = z.infer<typeof FlaSymbolTimelineIRSchema>;

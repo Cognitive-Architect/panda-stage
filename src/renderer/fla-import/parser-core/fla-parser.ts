@@ -712,6 +712,7 @@ export class FLAParser {
 
       // Parse sound reference
       const sound = this.parseFrameSound(frameEl);
+      const hasActionScript = Boolean(frameEl.querySelector(':scope > Actionscript'));
 
       // Parse morph shape for shape tweens
       const morphShape = tweenType === 'shape' ? this.parseMorphShape(frameEl) : undefined;
@@ -730,6 +731,7 @@ export class FLAParser {
         elements,
         tweens,
         sound,
+        ...(hasActionScript && { hasActionScript: true }),
         ...(morphShape && { morphShape }),
         ...(label && { label }),
         ...(labelType && { labelType }),

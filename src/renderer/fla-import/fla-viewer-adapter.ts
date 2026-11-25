@@ -511,8 +511,25 @@ export async function adaptFlaDocument(
           instances: [],
           ...(frameSound ? { sound: frameSound } : {}),
         };
+        const symbolInstances: NonNullable<AnimationImportIR['timelines'][number]['layers'][number]['frames'][number]['symbolInstances']> = [];
         for (const element of frame.elements) {
           if (element.type !== 'bitmap') {
+            if (element.type === 'symbol' && layer.layerType !== 'guide') {
+              const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
+              if (libraryItemName) {
+                symbolInstances.push({
+                  libraryItemName,
+                  symbolType: element.symbolType,
+                  loop: element.loop,
+                  ...(element.firstFrame !== undefined && Number.isSafeInteger(element.firstFrame) && element.firstFrame >= 0
+                    ? { firstFrame: element.firstFrame }
+                    : {}),
+                  ...(element.lastFrame !== undefined && Number.isSafeInteger(element.lastFrame) && element.lastFrame >= 0
+                    ? { lastFrame: element.lastFrame }
+                    : {}),
+                });
+              }
+            }
             const unsupported = unsupportedElement(element);
             addCompatibility(compatibility, unsupported.feature, 'unsupported', unsupported.reason);
             continue;
@@ -533,12 +550,105 @@ export async function adaptFlaDocument(
           });
           instanceOrdinal += 1;
         }
+        if (symbolInstances.length > 0) {
+          frameIR.symbolInstances = symbolInstances;
+        }
         layerIR.frames.push(frameIR);
         frameStart = Math.max(frameStart, frame.index + frame.duration);
       }
       timelineIR.layers.push(layerIR);
     }
     timelines.push(timelineIR);
+  }
+
+  const symbolTimelines: NonNullable<AnimationImportIR['symbolTimelines']> = [];
+  let symbolOrdinal = 0;
+  for (const symbol of document.symbols.values()) {
+    ensureNotCancelled(isCancelled);
+    const symbolName = normalizeReference(symbol.name).slice(0, 500);
+    if (!symbolName) continue;
+    let hasSoundOrNestedSymbol = false;
+    let symbolHasActionScript = false;
+    const layersIR: AnimationImportIR['timelines'][number]['layers'] = [];
+    for (let layerIndex = 0; layerIndex < symbol.timeline.layers.length; layerIndex += 1) {
+      const layer = symbol.timeline.layers[layerIndex];
+      if (!layer) continue;
+      const framesIR: AnimationImportIR['timelines'][number]['layers'][number]['frames'] = [];
+      let frameStart = 0;
+      for (const frame of layer.frames) {
+        if (frame.hasActionScript) symbolHasActionScript = true;
+        const rawFrameSound = layer.layerType === 'guide' ? undefined : frame.sound;
+        const soundName = rawFrameSound?.name.trim().slice(0, 260);
+        const soundId = soundName
+          ? soundIdByName.get(soundName) ?? soundIdByName.get(normalizeReference(soundName).toLowerCase())
+          : undefined;
+        const frameSound = rawFrameSound && soundName
+          ? {
+              ...(soundId ? { soundId } : {}),
+              name: soundName,
+              sync: rawFrameSound.sync,
+              ...(rawFrameSound.inPoint44 !== undefined && Number.isSafeInteger(rawFrameSound.inPoint44) && rawFrameSound.inPoint44 >= 0
+                ? { inPoint44: rawFrameSound.inPoint44 }
+                : {}),
+              ...(rawFrameSound.outPoint44 !== undefined && Number.isSafeInteger(rawFrameSound.outPoint44) && rawFrameSound.outPoint44 >= 0
+                ? { outPoint44: rawFrameSound.outPoint44 }
+                : {}),
+              ...(rawFrameSound.loopMode ? { loopMode: rawFrameSound.loopMode } : {}),
+              ...(rawFrameSound.loopCount !== undefined && Number.isSafeInteger(rawFrameSound.loopCount) && rawFrameSound.loopCount >= 0
+                ? { loopCount: rawFrameSound.loopCount }
+                : {}),
+            }
+          : undefined;
+        const nestedInstances: NonNullable<AnimationImportIR['timelines'][number]['layers'][number]['frames'][number]['symbolInstances']> = [];
+        if (layer.layerType !== 'guide') {
+          for (const element of frame.elements) {
+            if (element.type !== 'symbol') continue;
+            const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
+            if (!libraryItemName) continue;
+            nestedInstances.push({
+              libraryItemName,
+              symbolType: element.symbolType,
+              loop: element.loop,
+              ...(element.firstFrame !== undefined && Number.isSafeInteger(element.firstFrame) && element.firstFrame >= 0
+                ? { firstFrame: element.firstFrame }
+                : {}),
+              ...(element.lastFrame !== undefined && Number.isSafeInteger(element.lastFrame) && element.lastFrame >= 0
+                ? { lastFrame: element.lastFrame }
+                : {}),
+            });
+          }
+        }
+        if (frameSound || nestedInstances.length > 0) hasSoundOrNestedSymbol = true;
+        framesIR.push({
+          id: stableId('fla-frame', ['sym', String(symbolOrdinal), String(layerIndex), String(frame.index), String(frameStart)]),
+          sourceFrameIndex: Math.max(0, frame.index),
+          startFrame: Math.max(0, frame.index || frameStart),
+          duration: Math.max(1, frame.duration),
+          instances: [],
+          ...(frameSound ? { sound: frameSound } : {}),
+          ...(nestedInstances.length > 0 ? { symbolInstances: nestedInstances } : {}),
+        });
+        frameStart = Math.max(frameStart, frame.index + frame.duration);
+      }
+      layersIR.push({
+        id: stableId('fla-layer', ['sym', String(symbolOrdinal), String(layerIndex), layer.name]),
+        name: layer.name,
+        sourceLayerIndex: layerIndex,
+        visible: layer.visible,
+        locked: layer.locked,
+        frames: framesIR,
+      });
+    }
+    if (hasSoundOrNestedSymbol || symbolHasActionScript) {
+      symbolTimelines.push({
+        name: symbolName,
+        symbolType: symbol.symbolType,
+        totalFrames: Math.max(0, symbol.timeline.totalFrames),
+        ...(symbolHasActionScript ? { hasActionScript: true } : {}),
+        layers: layersIR,
+      });
+    }
+    symbolOrdinal += 1;
   }
 
   for (const feature of ['vector-shape', 'video', 'text'] as const) {
@@ -568,6 +678,7 @@ export async function adaptFlaDocument(
     media,
     ...(sounds.length > 0 ? { sounds } : {}),
     timelines,
+    ...(symbolTimelines.length > 0 ? { symbolTimelines } : {}),
     compatibility,
     summary: {
       placedInstanceCount,

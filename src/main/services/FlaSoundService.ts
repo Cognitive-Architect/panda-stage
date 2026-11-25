@@ -5,7 +5,7 @@ import {
   AudioClipService,
   ProjectSchema,
   applyFlaSceneAudioClips,
-  extractFlaTimelineSoundEvents,
+  extractFlaTimelineSoundEventsWithNested,
   type FlaResolvedSoundAsset,
   type FlaSoundTimelineDiagnostic,
 } from '../../domain';
@@ -228,7 +228,13 @@ export class FlaSoundService {
       );
     }
 
-    const events = extractFlaTimelineSoundEvents(timeline);
+    const sourceFps = session.ir.document.frameRate > 0 ? session.ir.document.frameRate : request.project.fps;
+    const extracted = extractFlaTimelineSoundEventsWithNested(timeline, {
+      symbolTimelines: session.ir.symbolTimelines,
+      sourceFps,
+    });
+    const events = extracted.events;
+    const nestedDiagnostics = extracted.diagnostics;
     const soundById = new Map((session.ir.sounds ?? []).map((sound) => [sound.id, sound]));
     const uniqueSoundIds: string[] = [];
     const seenSoundIds = new Set<string>();
@@ -411,7 +417,7 @@ export class FlaSoundService {
             savedRevision,
             projectChanged,
             createdClipIds: applied.createdClipIds,
-            diagnostics: [...extractionDiagnostics, ...applied.diagnostics],
+            diagnostics: [...nestedDiagnostics, ...extractionDiagnostics, ...applied.diagnostics],
           };
         },
       );

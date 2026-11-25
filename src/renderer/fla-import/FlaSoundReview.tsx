@@ -10,6 +10,7 @@ export function FlaSoundReview({
   sessionId,
   sounds,
   timelines = [],
+  symbolTimelines = [],
   snapshot,
   importing,
   createPreviewUrl,
@@ -20,6 +21,7 @@ export function FlaSoundReview({
   sessionId: string;
   sounds: readonly FlaSoundMetadata[];
   timelines?: FlaInspectionIR['timelines'];
+  symbolTimelines?: FlaInspectionIR['symbolTimelines'];
   snapshot: EditorProjectSnapshot | null;
   importing: boolean;
   createPreviewUrl: (bytes: Uint8Array<ArrayBuffer>, mimeType: string) => string;
@@ -37,6 +39,7 @@ export function FlaSoundReview({
   const [timelineDiagnostics, setTimelineDiagnostics] = useState<readonly FlaSoundTimelineDiagnostic[]>([]);
   const active = useRef<{ requestId: string; url?: string; audio?: HTMLAudioElement } | null>(null);
   const selected = sounds.find((sound) => sound.id === selectedId);
+  const hasNestedSymbolAudio = symbolTimelines.length > 0;
   const scenesWithSound = useMemo(
     () =>
       timelines
@@ -44,12 +47,18 @@ export function FlaSoundReview({
           index,
           name: timeline.name || `Scene ${index + 1}`,
           eventCount: timeline.layers.reduce(
-            (sum, layer) => sum + layer.frames.filter((frame) => Boolean(frame.sound)).length,
+            (sum, layer) =>
+              sum +
+              layer.frames.filter(
+                (frame) =>
+                  Boolean(frame.sound) ||
+                  (hasNestedSymbolAudio && (frame.symbolInstances?.length ?? 0) > 0),
+              ).length,
             0,
           ),
         }))
         .filter((scene) => scene.eventCount > 0),
-    [timelines],
+    [hasNestedSymbolAudio, timelines],
   );
   const activeTimelineIndex = scenesWithSound.some((scene) => scene.index === selectedTimelineIndex)
     ? selectedTimelineIndex

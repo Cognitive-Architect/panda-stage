@@ -8,9 +8,11 @@ import {
   audioClipSourceTimeMs,
   buildFormalExportAudioMixPlan,
   extractFlaTimelineSoundEvents,
+  extractFlaTimelineSoundEventsWithNested,
   isAudioClipActiveAtTime,
   planFlaSceneAudioClips,
   type FlaResolvedSoundAsset,
+  type FlaSymbolTimelineSoundSource,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { adaptFlaDocument } from '../../src/renderer/fla-import/fla-viewer-adapter';
@@ -496,5 +498,336 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
     });
     // Guide layer sound is ignored
     expect(ir.timelines[0]!.layers[1]!.frames[0]!.sound).toBeUndefined();
+  });
+
+  it('S05-C: maps two independent Graphic/MovieClip instances with firstFrame, loop, play once, single frame without cross-talk', () => {
+    const assetMap = new Map<string, FlaResolvedSoundAsset>([
+      ['snd-step', { assetId: ASSET_SFX, name: 'step.wav', durationMs: 200 }],
+      ['snd-voice', { assetId: ASSET_VOICE, name: 'voice_line.wav', durationMs: 3000 }],
+    ]);
+
+    const walkerSymbol: FlaSymbolTimelineSoundSource = {
+      name: 'Walker',
+      symbolType: 'graphic',
+      totalFrames: 10,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 2,
+              startFrame: 2,
+              duration: 1,
+              sound: { soundId: 'snd-step', name: 'step.wav', sync: 'event' },
+            },
+            {
+              sourceFrameIndex: 7,
+              startFrame: 7,
+              duration: 1,
+              sound: { soundId: 'snd-step', name: 'step.wav', sync: 'event' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const talkerSymbol: FlaSymbolTimelineSoundSource = {
+      name: 'Talker',
+      symbolType: 'graphic',
+      totalFrames: 10,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              // Stream spans child frames 2..7 (6 frames @ 25fps = 240ms)
+              sourceFrameIndex: 2,
+              startFrame: 2,
+              duration: 6,
+              sound: { soundId: 'snd-voice', name: 'voice_line.wav', sync: 'stream' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const extracted = extractFlaTimelineSoundEventsWithNested(
+      {
+        layers: [
+          {
+            // Instance 1: Walker loop from firstFrame=0 for 20 frames [0..19] => triggers at frames 2, 7, 12, 17
+            sourceLayerIndex: 0,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 20,
+                symbolInstances: [
+                  { libraryItemName: 'Walker', symbolType: 'graphic', loop: 'loop', firstFrame: 0 },
+                ],
+              },
+            ],
+          },
+          {
+            // Instance 2: Walker play once from firstFrame=5 at parent frame 10 for 20 frames
+            // Visits child 5,6,7,8,9,9,9... => triggers ONLY at parent frame 12 (no re-trigger on hold, no frame 2)
+            sourceLayerIndex: 1,
+            frames: [
+              {
+                sourceFrameIndex: 10,
+                startFrame: 10,
+                duration: 20,
+                symbolInstances: [
+                  { libraryItemName: 'Walker', symbolType: 'graphic', loop: 'play once', firstFrame: 5 },
+                ],
+              },
+            ],
+          },
+          {
+            // Instance 3: Walker single frame held on firstFrame=2 at parent frame 0 for 10 frames
+            // Triggers ONCE at parent frame 0 (0ms), not 10 times!
+            sourceLayerIndex: 2,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 10,
+                symbolInstances: [
+                  { libraryItemName: 'Walker', symbolType: 'graphic', loop: 'single frame', firstFrame: 2 },
+                ],
+              },
+            ],
+          },
+          {
+            // Instance 4: Talker entered mid-stream (firstFrame=4 skips 2 frames of stream [2..7]) at parent frame 20 for 10 frames
+            // 25fps => 2 skipped frames = 80ms offset; remaining 4 frames = 160ms => [800, 960] with offsetMs=80!
+            sourceLayerIndex: 3,
+            frames: [
+              {
+                sourceFrameIndex: 20,
+                startFrame: 20,
+                duration: 10,
+                symbolInstances: [
+                  { libraryItemName: 'Talker', symbolType: 'graphic', loop: 'play once', firstFrame: 4 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        symbolTimelines: [walkerSymbol, talkerSymbol],
+        sourceFps: 25,
+      },
+    );
+
+    expect(extracted.diagnostics).toEqual([]);
+    const plan = planFlaSceneAudioClips({
+      sourceFps: 25, // 40ms/frame
+      shotId: IDS.shot,
+      shotDurationMs: 2000,
+      events: extracted.events,
+      resolveAsset: (sound) => (sound.soundId ? assetMap.get(sound.soundId) : undefined),
+    });
+
+    expect(plan.diagnostics).toEqual([]);
+    expect(plan.clips).toEqual([
+      // Instance 3 single-frame at frame 0 (0ms)
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 0, endMs: 200, offsetMs: 0, name: 'step.wav' },
+      // Instance 1 loop: frame 2 (80ms), frame 7 (280ms), frame 12 (480ms)
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 80, endMs: 280, offsetMs: 0, name: 'step.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 280, endMs: 480, offsetMs: 0, name: 'step.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 480, endMs: 680, offsetMs: 0, name: 'step.wav' },
+      // Instance 2 play-once: frame 12 (480ms) — independent instance, same assetId
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 480, endMs: 680, offsetMs: 0, name: 'step.wav' },
+      // Instance 1 loop wrap #2: frame 17 (680ms)
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 680, endMs: 880, offsetMs: 0, name: 'step.wav' },
+      // Instance 4 mid-stream entry: frame 20 (800ms), 4 frames (160ms), offset 2 frames (80ms)
+      { assetId: ASSET_VOICE, role: 'sfx', startMs: 800, endMs: 960, offsetMs: 80, name: 'voice_line.wav' },
+    ]);
+  });
+
+  it('S05-C: diagnoses ActionScript MovieClips, Button symbols, and cycles clearly while keeping deterministic siblings', () => {
+    const cleanMc: FlaSymbolTimelineSoundSource = {
+      name: 'CleanMC',
+      symbolType: 'movieclip',
+      totalFrames: 5,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 1,
+              startFrame: 1,
+              duration: 1,
+              sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'event' },
+            },
+          ],
+        },
+      ],
+    };
+    const scriptedMc: FlaSymbolTimelineSoundSource = {
+      name: 'ScriptedMC',
+      symbolType: 'movieclip',
+      totalFrames: 10,
+      hasActionScript: true,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 0,
+              startFrame: 0,
+              duration: 1,
+              sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'event' },
+            },
+          ],
+        },
+      ],
+    };
+    const cycleA: FlaSymbolTimelineSoundSource = {
+      name: 'CycleA',
+      symbolType: 'graphic',
+      totalFrames: 5,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 0,
+              startFrame: 0,
+              duration: 5,
+              symbolInstances: [{ libraryItemName: 'CycleA', symbolType: 'graphic', loop: 'loop' }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const extracted = extractFlaTimelineSoundEventsWithNested(
+      {
+        layers: [
+          {
+            sourceLayerIndex: 0,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 10,
+                symbolInstances: [
+                  // Two independent CleanMC instances at different frames via layers 0 & 1
+                  { libraryItemName: 'CleanMC', symbolType: 'movieclip', loop: 'loop' },
+                  { libraryItemName: 'ScriptedMC', symbolType: 'movieclip', loop: 'loop' },
+                  { libraryItemName: 'ClickBtn', symbolType: 'button', loop: 'single frame' },
+                  { libraryItemName: 'CycleA', symbolType: 'graphic', loop: 'loop' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { symbolTimelines: [cleanMc, scriptedMc, cycleA], sourceFps: 25 },
+    );
+
+    // CleanMC triggered twice in 10 frames (frames 1 and 6); scripted MC, button, and cycle diagnosed
+    expect(extracted.events.map((e) => e.frameIndex)).toEqual([1, 6]);
+    expect(extracted.diagnostics.map((d) => d.code)).toEqual([
+      'unsupported-nested-clock',
+      'unsupported-nested-clock',
+      'nested-symbol-cycle',
+    ]);
+  });
+
+  it('S05-C: FLAParser + adaptFlaDocument extracts nested symbolInstances and symbolTimelines with ActionScript detection', async () => {
+    const domXml = `<?xml version="1.0" encoding="utf-8"?>
+<DOMDocument width="1280" height="720" frameRate="25" backgroundColor="#ffffff">
+  <media>
+    <DOMSoundItem name="step.wav" href="step.wav" soundDataHRef="step.dat" format="44kHz 16bit Mono" sampleCount="4410"/>
+  </media>
+  <symbols>
+    <Include href="Walker.xml"/>
+    <Include href="ScriptedMC.xml"/>
+  </symbols>
+  <timelines>
+    <DOMTimeline name="Scene 1">
+      <layers>
+        <DOMLayer name="Stage">
+          <frames>
+            <DOMFrame index="0" duration="10" keyMode="9728">
+              <elements>
+                <DOMSymbolInstance libraryItemName="Walker" symbolType="graphic" loop="loop" firstFrame="2"/>
+                <DOMSymbolInstance libraryItemName="ScriptedMC" symbolType="movieclip"/>
+              </elements>
+            </DOMFrame>
+          </frames>
+        </DOMLayer>
+      </layers>
+    </DOMTimeline>
+  </timelines>
+</DOMDocument>`;
+
+    const walkerXml = `<?xml version="1.0" encoding="utf-8"?>
+<DOMSymbolItem name="Walker" symbolType="graphic">
+  <timeline>
+    <DOMTimeline name="Walker">
+      <layers>
+        <DOMLayer name="Sfx">
+          <frames>
+            <DOMFrame index="0" duration="5" keyMode="9728" soundName="step.wav" soundSync="event">
+              <elements/>
+            </DOMFrame>
+          </frames>
+        </DOMLayer>
+      </layers>
+    </DOMTimeline>
+  </timeline>
+</DOMSymbolItem>`;
+
+    const scriptedMcXml = `<?xml version="1.0" encoding="utf-8"?>
+<DOMSymbolItem name="ScriptedMC" symbolType="movieclip">
+  <timeline>
+    <DOMTimeline name="ScriptedMC">
+      <layers>
+        <DOMLayer name="Actions">
+          <frames>
+            <DOMFrame index="0" duration="5" keyMode="9728">
+              <Actionscript><script><![CDATA[stop();]]></script></Actionscript>
+              <elements/>
+            </DOMFrame>
+          </frames>
+        </DOMLayer>
+      </layers>
+    </DOMTimeline>
+  </timeline>
+</DOMSymbolItem>`;
+
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', domXml);
+    zip.file('LIBRARY/Walker.xml', walkerXml);
+    zip.file('LIBRARY/ScriptedMC.xml', scriptedMcXml);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const ir = await adaptFlaDocument(
+      {
+        basename: 'nested-audio.fla',
+        byteLength: bytes.byteLength,
+        sha256: 'c'.repeat(64),
+        bytes,
+        containsActionScript: true,
+      },
+      () => undefined,
+      () => false,
+      'structure',
+    );
+
+    expect(ir.timelines[0]!.layers[0]!.frames[0]!.symbolInstances).toEqual([
+      { libraryItemName: 'Walker', symbolType: 'graphic', loop: 'loop', firstFrame: 2 },
+      { libraryItemName: 'ScriptedMC', symbolType: 'movieclip', loop: 'loop' },
+    ]);
+    expect(ir.symbolTimelines).toHaveLength(2);
+    const scripted = ir.symbolTimelines!.find((s) => s.name === 'ScriptedMC');
+    expect(scripted?.hasActionScript).toBe(true);
+    const walker = ir.symbolTimelines!.find((s) => s.name === 'Walker');
+    expect(walker?.layers[0]!.frames[0]!.sound?.soundId).toBe(ir.sounds![0]!.id);
   });
 });

@@ -987,6 +987,7 @@ export function FlaCompatibilityReviewSession({
             id="fla-review-sound-panel" role="tabpanel">
             <FlaSoundReview key={sessionId} sessionId={sessionId} sounds={ir.sounds}
               timelines={ir.timelines}
+              symbolTimelines={ir.symbolTimelines}
               snapshot={snapshot} importing={phase === 'committing'}
               createPreviewUrl={(bytes, mimeType) => URL.createObjectURL(new Blob([bytes], { type: mimeType }))}
               onImporting={(importing) => setPhase(importing ? 'committing' : 'ready')}
