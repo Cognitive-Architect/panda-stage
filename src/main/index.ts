@@ -511,7 +511,10 @@ async function initialize(): Promise<void> {
           title: '选择导出视频位置',
           buttonLabel: '选择输出位置',
           defaultPath: suggestedOutput.path,
-          filters: [{ name: format === 'webm' ? 'WebM 视频' : 'MP4 视频', extensions: [format] }],
+          filters: [{
+            name: format === 'webm' ? 'WebM 视频' : format === 'gif' ? 'GIF 视频' : 'MP4 视频',
+            extensions: [format],
+          }],
           properties: [],
         });
         const selectedPath = selection.canceled

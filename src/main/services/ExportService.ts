@@ -352,7 +352,9 @@ export class ExportService {
       throw new Error('Formal export candidate has no Shot.');
     }
     const durationMs = projectDurationMs(project);
+    const settings = input.candidate.renderSettings;
     if (
+      (!('format' in settings) || settings.format !== 'gif') &&
       project.shots.some((shot) => shot.audioClips.length > 0) &&
       (!this.mediaAdapter.probeAudioFile || !this.mediaAdapter.muxAudioMix)
     ) {
@@ -1069,6 +1071,8 @@ export class ExportService {
     const record = this.requireJob(active.jobId);
     const startedAt = performance.now();
     const project = input.candidate.project;
+    const settings = input.candidate.renderSettings;
+    const gif = 'format' in settings && settings.format === 'gif' ? settings : null;
     const durationMs = projectDurationMs(project);
     const outputPath = input.candidate.outputIntent.targetPath;
     let jobDirectory: string | null = null;
@@ -1090,7 +1094,7 @@ export class ExportService {
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
       record.outputDirectory = jobDirectory;
-      const audioMixPlan = await this.prepareFormalAudioMixPlan(
+      const audioMixPlan = gif ? null : await this.prepareFormalAudioMixPlan(
         input,
         jobDirectory,
         adapter,
@@ -1136,6 +1140,7 @@ export class ExportService {
           framesDirectory: jobDirectory,
           outputPath: silentVideoPath,
           fps: input.candidate.renderSettings.fps,
+          ...(gif ? { gifLoop: gif.loop } : {}),
           overwrite: false,
         },
         active.controller.signal,
@@ -1238,12 +1243,14 @@ export class ExportService {
     const failures: string[] = [];
     const { fps, width, height } = settings;
     const profile = 'videoCodec' in settings ? settings : freezeMp4OutputProfile();
+    const isGif = profile.format === 'gif';
     if (probe.codecName !== profile.videoCodec) failures.push('codec');
-    if (probe.pixelFormat !== 'yuv420p') failures.push('pixel format');
+    if (probe.pixelFormat !== (isGif ? 'bgra' : 'yuv420p')) failures.push('pixel format');
     if (probe.width !== width || probe.height !== height) {
       failures.push('frame size');
     }
-    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001) {
+    // GIF's centisecond timestamps produce alternating frame delays and an approximate average rate.
+    if (!isGif && (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001)) {
       failures.push('frame rate');
     }
     if (probe.frameCount !== frameCount) failures.push('frame count');
@@ -1278,7 +1285,7 @@ export class ExportService {
     const expectedDurationSeconds = frameCount / fps;
     if (
       !Number.isFinite(probe.durationSeconds) ||
-      Math.abs(probe.durationSeconds - expectedDurationSeconds) > 0.08
+      Math.abs(probe.durationSeconds - expectedDurationSeconds) > (isGif ? 0.011 : 0.08)
     ) {
       failures.push('duration');
     }

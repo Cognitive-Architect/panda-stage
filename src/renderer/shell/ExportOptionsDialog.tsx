@@ -33,6 +33,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
   const [targetLayerId, setTargetLayerId] = useState<string>('');
   const [error, setError] = useState('');
   const spriteSheet = preferences.format === 'sprite-sheet';
+  const gif = preferences.format === 'gif';
   const png = preferences.format === 'png-sequence' || spriteSheet;
   const videoOutput = preferences.videoOutput ?? DEFAULT_EXPORT_VIDEO_OPTIONS;
   const ranged = preferences.rangeMode === 'range';
@@ -89,6 +90,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
       }}>
         <option value="mp4">MP4 视频</option>
         <option value="webm">WebM 视频</option>
+        <option value="gif">GIF 视频</option>
         <option value="png-sequence">PNG 序列</option>
         <option value="sprite-sheet">精灵图（PNG + JSON）</option>
       </select></label>
@@ -144,14 +146,16 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
           <option value="1920">1920 × 1080</option>
           <option value="1280">1280 × 720</option>
         </select></label>
-        <label>帧率<select value={videoOutput.fps} onChange={event => {
+        <label>帧率<select value={gif && videoOutput.fps === 60 ? 30 : videoOutput.fps} onChange={event => {
           const fps = ExportOutputFpsSchema.parse(Number(event.target.value));
           setPreferences(value => ({ ...value, videoOutput: { ...videoOutput, fps } })); setError('');
         }}>
           <option value="24">24 fps</option>
           <option value="30">30 fps</option>
-          <option value="60">60 fps</option>
+          {gif ? null : <option value="60">60 fps</option>}
         </select></label>
+        {gif ? <label className="export-options-alpha"><input type="checkbox" checked={preferences.gifLoop ?? true}
+          onChange={event => setPreferences(value => ({ ...value, gifLoop: event.target.checked }))} />循环播放</label> : null}
       </>}
       {error ? <p role="alert">{error}</p> : null}
       <div className="export-options-actions">

@@ -132,7 +132,7 @@ export class FileSystemService implements FrameFileSystem {
     firstOrdinal = 1,
   ): Promise<FormalOutputPathSuggestion> {
     const resolvedPath = path.resolve(defaultPath);
-    if (!['.mp4', '.webm'].includes(path.extname(resolvedPath).toLocaleLowerCase())) {
+    if (!['.mp4', '.webm', '.gif'].includes(path.extname(resolvedPath).toLocaleLowerCase())) {
       return { path: resolvedPath, ordinal: 1 };
     }
     const { dir, name, ext } = path.parse(resolvedPath);
@@ -325,7 +325,8 @@ export class FileSystemService implements FrameFileSystem {
     }
     const resolvedOutputPath = path.resolve(outputPath);
     const outputDirectory = path.dirname(resolvedOutputPath);
-    const extension = path.extname(resolvedOutputPath).toLowerCase() === '.webm' ? '.webm' : '.mp4';
+    const rawExtension = path.extname(resolvedOutputPath).toLowerCase();
+    const extension = rawExtension === '.webm' || rawExtension === '.gif' ? rawExtension : '.mp4';
     return path.join(
       outputDirectory,
       `.panda-stage-export-${jobId}-${randomUUID()}${extension}`,

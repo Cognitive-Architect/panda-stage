@@ -540,10 +540,11 @@ export class ExportPreparationService {
       const sequence = selection.pngSequence ? planPngSequenceFrames(project, selection.pngSequence) : undefined;
       const visualProject = sequence ? { ...project, shots: [sequence.shot] } : project;
       const outputProject = sequence ? { ...project, shots: [sequence.outputShot] } : project;
+      const imagesOnly = Boolean(selection.pngSequence) || selection.videoFormat === 'gif';
       const issues = evaluateExportPreparationSupport(outputProject, request.cameraMode,
-        selection.pngSequence ? { imagesOnly: true } : undefined);
+        imagesOnly ? { imagesOnly: true } : undefined);
       const media = collectExportPreparationMedia(visualProject, sequence?.selectedLayer?.id)
-        .filter(({ asset }) => !selection.pngSequence || asset.kind === 'image');
+        .filter(({ asset }) => !imagesOnly || asset.kind === 'image');
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
 
@@ -750,7 +751,7 @@ export class ExportPreparationService {
         capturedAt: this.now().toISOString(),
         project,
         renderSettings: selection.pngSequence ? EXPORT_PREPARATION_RENDER_SETTINGS
-          : freezeVideoOutputProfile(selection.videoFormat ?? 'mp4', request.videoOutput),
+          : freezeVideoOutputProfile(selection.videoFormat ?? 'mp4', request.videoOutput, project.exportPreferences?.gifLoop),
         cameraMode: request.cameraMode,
         ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
@@ -1454,7 +1455,7 @@ async function captureTargetIdentity(
     throw new Error('The selected output path exceeds the supported length.');
   }
   const absoluteTargetPath = path.resolve(rawTargetPath);
-  if (!directoryTarget && !['.mp4', '.webm'].includes(path.extname(absoluteTargetPath).toLocaleLowerCase())) {
+  if (!directoryTarget && !['.mp4', '.webm', '.gif'].includes(path.extname(absoluteTargetPath).toLocaleLowerCase())) {
     throw new Error('The selected output must use a supported video extension.');
   }
   const parentDirectory = await realpath(path.dirname(absoluteTargetPath));

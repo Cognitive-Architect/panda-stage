@@ -2115,7 +2115,10 @@ export function EditorShell({
         projectName: initial.project.name,
         openInstanceId: initialInstanceId,
         ...(pngSequence ? { pngSequence } : {}),
-        ...(!pngSequence && initial.project.exportPreferences?.format === 'webm' ? { videoFormat: 'webm' as const } : {}),
+        ...(!pngSequence && (
+          initial.project.exportPreferences?.format === 'webm' ||
+          initial.project.exportPreferences?.format === 'gif'
+        ) ? { videoFormat: initial.project.exportPreferences.format } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(previousTask);
@@ -2385,7 +2388,7 @@ export function EditorShell({
   const beginPreferredExport = (): void => {
     const snapshot = editorProjectStore.getSnapshot();
     const preferences = snapshot?.project.exportPreferences;
-    if (!preferences || preferences.format === 'mp4' || preferences.format === 'webm') { void beginFormalExportFlow(); return; }
+    if (!preferences || preferences.format === 'mp4' || preferences.format === 'webm' || preferences.format === 'gif') { void beginFormalExportFlow(); return; }
     const spriteSheet = preferences.format === 'sprite-sheet';
     const shotId = shotStore.getCurrentShotId();
     if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
@@ -2398,7 +2401,8 @@ export function EditorShell({
     if (!snapshot) return;
     const previous = snapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES;
     if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent ||
-        previous.videoOutput?.width !== preferences.videoOutput?.width || previous.videoOutput?.fps !== preferences.videoOutput?.fps) {
+        previous.videoOutput?.width !== preferences.videoOutput?.width || previous.videoOutput?.fps !== preferences.videoOutput?.fps ||
+        previous.gifLoop !== preferences.gifLoop) {
       editorProjectStore.updateProject({ ...snapshot.project, exportPreferences: preferences }, '更新导出设置');
     }
     setExportOptionsOpen(false);
@@ -2524,7 +2528,11 @@ export function EditorShell({
         openInstanceId: task.openInstanceId,
         snapshotId: task.snapshotId,
         ...(task.pngSequence ? { pngSequence: task.pngSequence } : {}),
-        ...(!task.pngSequence && /\.webm$/iu.test(task.fileName ?? '') ? { videoFormat: 'webm' as const } : {}),
+        ...(!task.pngSequence && /\.webm$/iu.test(task.fileName ?? '')
+          ? { videoFormat: 'webm' as const }
+          : !task.pngSequence && /\.gif$/iu.test(task.fileName ?? '')
+            ? { videoFormat: 'gif' as const }
+            : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(task);

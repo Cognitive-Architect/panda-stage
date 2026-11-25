@@ -262,6 +262,38 @@ describe('FFmpegAdapter', () => {
     await expect(stat(outputPath)).resolves.toMatchObject({ size: 1 });
   });
 
+  it('generates a separate GIF palette and publishes a silent animation with quantized timing', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'output.gif');
+    await writeFrames(framesDirectory, [0, 1, 2]);
+    const createOutput: FakeResponse = async (_executable, args) => {
+      await writeFile(args.at(-1)!, new Uint8Array([1]));
+      return { ...VERSION_RESULT, stdout: '' };
+    };
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      { ...ENCODERS_RESULT, stdout: ' V..... gif GIF encoder' },
+      { ...ENCODERS_RESULT, stdout: ' E gif GIF' },
+      { ...ENCODERS_RESULT, stdout: ' ... palettegen V->V\n ... paletteuse VV->V' },
+      createOutput,
+      createOutput,
+    ]);
+
+    await new FFmpegAdapter({ runner }).encodePngSequence({
+      framesDirectory, outputPath, fps: 30, gifLoop: false, overwrite: false,
+    });
+
+    const palettePath = runner.calls[4]!.args.at(-1)!;
+    const encodeArgs = runner.calls[5]!.args;
+    expect(runner.calls[4]!.args).toContain('palettegen=reserve_transparent=1');
+    expect(encodeArgs).toContain(palettePath);
+    expect(encodeArgs).toContain('[0:v][1:v]paletteuse=dither=sierra2_4a:alpha_threshold=128');
+    expect(encodeArgs.slice(-7, -1)).toEqual(['-c:v', 'gif', '-loop', '-1', '-final_delay', '3']);
+    expect(encodeArgs.at(-1)).toMatch(/\.gif$/u);
+    await expect(stat(outputPath)).resolves.toMatchObject({ size: 1 });
+    await expect(stat(palettePath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('uses a short temporary encode name when the target is itself a staged file', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
     const outputDirectory = path.join(temporaryRoot, 'output with spaces');
@@ -394,7 +426,7 @@ describe('FFmpegAdapter', () => {
     },
   );
 
-  it('rejects a non-MP4 output extension', () => {
+  it('rejects unsupported frame sequence output extensions', () => {
     const result = EncodePngSequenceRequestSchema.safeParse({
       framesDirectory: 'frames',
       outputPath: 'output.mkv',

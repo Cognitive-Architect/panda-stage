@@ -527,6 +527,44 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
 }
 
 describe('ExportService', () => {
+  it('publishes a formal GIF with frozen loop settings and omits project audio', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const renderSettings = {
+      width: 1280, height: 720, fps: 24, format: 'gif', videoCodec: 'gif', audioCodec: null, loop: false,
+    };
+    media.result = {
+      ...probeResult,
+      codecName: 'gif', pixelFormat: 'bgra', width: 1280, height: 720,
+      fps: 24_000 / 1001, frameCount: 24, durationSeconds: 1,
+      hasAudio: false, audioStreamCount: 0,
+    };
+    const input = {
+      candidate: {
+        attemptId: '10000000-0000-4000-8000-000000000011',
+        snapshotId: '30000000-0000-4000-8000-000000000011',
+        project: { shots: [{
+          id: '50000000-0000-4000-8000-000000000031', durationMs: 1000, audioClips: [{}],
+        }] },
+        projectRoot: '/project',
+        cameraMode: 'static',
+        renderSettings,
+        outputIntent: { targetPath: '/output.gif', overwriteApproved: false },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+
+    const service = new ExportService(renderer, fileSystem, media);
+    const result = await service.startFormalExport(input, async () => undefined).completion;
+
+    expect(renderer.formalLoads[0]?.renderSettings).toEqual(renderSettings);
+    expect(media.encodeRequests[0]).toMatchObject({ fps: 24, gifLoop: false });
+    expect(media.muxRequests).toHaveLength(0);
+    expect(result).toMatchObject({ completedFrames: 24, outputPath: '/output.gif' });
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+  });
+
   it.each([[1280, 30], [1920, 60]] as const)('freezes %i-wide at %i fps through rendering, encoding and probe', async (width, fps) => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
