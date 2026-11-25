@@ -1659,7 +1659,9 @@ export class FlaPartPreviewService {
       let finalWidth = rendered.width;
       let finalHeight = rendered.height;
       let viewport = rendered.composition.framing.viewBox;
-      if (rendered.hasInstanceFilters || rendered.staticTexts?.length) requiresFullFrame = true;
+      if (rendered.hasInstanceFilters || rendered.hasPerChannelColorTransform || rendered.staticTexts?.length) {
+        requiresFullFrame = true;
+      }
       if (rendered.staticTexts?.length) {
         let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
         try {

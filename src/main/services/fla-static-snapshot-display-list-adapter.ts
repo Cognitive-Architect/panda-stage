@@ -617,14 +617,18 @@ type ClassicMotionColorParseResult =
   | { readonly ok: true; readonly transform: ClassicMotionColorTransform | null }
   | { readonly ok: false; readonly message: string };
 
-function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = false): ClassicMotionColorParseResult {
+function readSymbolColorTransform(
+  target: FlaXflElementBlock,
+  mode: 'classic-motion' | 'object-motion' | 'static',
+): ClassicMotionColorParseResult {
+  const supportsTint = mode !== 'classic-motion';
   const colorWrappers = getFlaXflDirectChildren(target.xml, target.name)
     .filter((child) => child.name === 'color');
   if (colorWrappers.length === 0) return { ok: true, transform: null };
   const unsupported = (reason: string): ClassicMotionColorParseResult => ({
     ok: false,
-    message: objectMotion ? `对象补间的初始色彩无法读取（${reason}）`
-      : `Classic Motion contains unsupported Color data: ${reason}`,
+    message: mode === 'object-motion' ? `对象补间的初始色彩无法读取（${reason}）`
+      : `${mode === 'static' ? 'Static symbol' : 'Classic Motion'} contains unsupported Color data: ${reason}`,
   });
   if (colorWrappers.length !== 1) return unsupported('multiple color wrappers');
   const wrapper = colorWrappers[0]!;
@@ -639,7 +643,7 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
   if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness' &&
-      !(objectMotion && (name === 'tintMultiplier' || name === 'tintColor')))) {
+      !(supportsTint && (name === 'tintMultiplier' || name === 'tintColor')))) {
     return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
   }
   let alphaMultiplier: number | undefined;
@@ -664,8 +668,9 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
       ? { multiplier: 1 - brightness, offset: brightness * 255 }
       : { multiplier: 1 + brightness, offset: 0 };
   }
-  if (objectMotion && (attributes.tintMultiplier !== undefined || attributes.tintColor !== undefined)) {
-    const amount = Number(attributes.tintMultiplier);
+  if (supportsTint && (attributes.tintMultiplier !== undefined || attributes.tintColor !== undefined)) {
+    const rawAmount = attributes.tintMultiplier?.trim();
+    const amount = rawAmount ? Number(rawAmount) : Number.NaN;
     const tint = attributes.tintColor;
     if (rgbTransform || !Number.isFinite(amount) || amount < 0 || amount > 1 || !/^#[\da-f]{6}$/iu.test(tint ?? '')) {
       return unsupported('invalid tint');
@@ -677,7 +682,7 @@ function classicMotionColorTransform(target: FlaXflElementBlock, objectMotion = 
       channelOffsets: [tintRgb[0] * amount, tintRgb[1] * amount, tintRgb[2] * amount],
     };
   }
-  if (!objectMotion && names.length === 0) return unsupported('Color has no supported attributes');
+  if (mode === 'classic-motion' && names.length === 0) return unsupported('Color has no supported attributes');
   const effectiveAlpha = alphaMultiplier === 1 ? undefined : alphaMultiplier;
   const effectiveRgb = rgbTransform?.multiplier === 1 && rgbTransform.offset === 0
     ? undefined
@@ -1050,20 +1055,19 @@ function parseDisplayElements(
     const movieClipRun = symbolType === 'movieclip' && context.layerSpans
       ? findMovieClipRun(context, path, child, resolvedName)
       : undefined;
-    let alphaMultiplier: number | undefined;
-    let rgbTransform: FlaDisplayListRgbTransform | undefined;
     const instanceFilters = readInstanceFilters(child);
     if (!instanceFilters || (instanceFilters.some((filter) => filter.enabled) &&
         child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
       context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL instance filters');
       continue;
     }
-    if (context.motionTweenEndpoint || instanceFilters.some((filter) => filter.enabled)) {
-      const colorResult = classicMotionColorTransform(child, !context.motionTweenEndpoint);
-      if (!colorResult.ok) return fail('RENDER_FAILED', colorResult.message);
-      alphaMultiplier = colorResult.transform?.alphaMultiplier;
-      rgbTransform = colorResult.transform?.rgbTransform;
+    const colorResult = readSymbolColorTransform(child, context.motionTweenEndpoint ? 'classic-motion' : 'static');
+    if (!colorResult.ok) {
+      if (context.motionTweenEndpoint) return fail('RENDER_FAILED', colorResult.message);
+      context.unsupportedDisplayReasons.push(colorResult.message);
+      continue;
     }
+    const { alphaMultiplier, rgbTransform } = colorResult.transform ?? {};
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
@@ -1739,9 +1743,9 @@ function classicMotionFramePairRejectionReason(
         }
       }
     }
-    const startColor = classicMotionColorTransform(startTarget);
+    const startColor = readSymbolColorTransform(startTarget, 'classic-motion');
     if (!startColor.ok) return startColor.message;
-    const endColor = classicMotionColorTransform(endTarget);
+    const endColor = readSymbolColorTransform(endTarget, 'classic-motion');
     if (!endColor.ok) return endColor.message;
   }
 
@@ -1937,7 +1941,7 @@ function sampleObjectMotion(
     core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters.filter(({ kind }) => kind === 'dropShadow'));
     state.objectMotionCurves.set(frame, core);
   }
-  const color = classicMotionColorTransform(instance, true);
+  const color = readSymbolColorTransform(instance, 'object-motion');
   const sampled = core.ok
     ? evaluateFlaObjectMotion(core.value, offset, state.sourceFps, matrix, pivot, color.ok ? color.transform?.tintRgb : undefined)
     : core;

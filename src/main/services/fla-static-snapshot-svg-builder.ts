@@ -132,6 +132,7 @@ export interface BuildSvgSuccess {
   /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
   readonly staticTexts?: readonly FlaStaticTextRenderItem[];
   readonly hasInstanceFilters?: boolean;
+  readonly hasPerChannelColorTransform?: boolean;
   /** Graphic content-framing metadata so the rasterizer can recompute authoritative viewport from real font metrics. */
   readonly graphicFraming?: FlaStaticTextGraphicFraming;
 }
@@ -4703,6 +4704,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ...(projectionWarning ? { projectionWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
     ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
+    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined)
+      ? { hasPerChannelColorTransform: true } : {}),
     ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
