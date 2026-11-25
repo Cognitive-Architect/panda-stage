@@ -5,7 +5,7 @@ import type {
 import type { LayerVisualParts } from '../../../domain';
 import type { Project, Shot } from '../../../domain/models';
 import {
-  resolveImageAsset,
+  resolveRuntimeImageAsset,
   resolveLayerVisualParts,
 } from '../../../domain';
 import { canvasImageResourceKey } from './canvasImageResources';
@@ -57,7 +57,7 @@ function isAssetReady(
   readyAssetSourceKeys?: ReadonlyMap<string, string>,
 ): boolean {
   if (!assetId || !readyAssetIds.has(assetId)) return false;
-  const asset = resolveImageAsset(project, assetId);
+  const asset = resolveRuntimeImageAsset(project, assetId);
   if (!asset) return false;
   // Tests and non-content-addressed fixtures use the id-only compatibility
   // set. A real Canvas image state also supplies sourceKeys, which makes a
@@ -145,7 +145,7 @@ function sourceKeysForVisual(
   for (const assetId of visualAssetIds(visual, evaluated)) {
     const sourceKey =
       readyAssetSourceKeys?.get(assetId) ??
-      resolveImageAsset(project, assetId)?.sha256;
+      resolveRuntimeImageAsset(project, assetId)?.sha256;
     if (sourceKey) sourceKeys.set(assetId, sourceKey);
   }
   return sourceKeys;

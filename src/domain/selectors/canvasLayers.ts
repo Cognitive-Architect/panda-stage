@@ -6,6 +6,7 @@ import {
   type Shot,
 } from '../models';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
+import { parseFlaVideoFrameAssetKey } from '../../shared/fla-video-clock';
 
 export interface BackgroundVisualDimensions {
   width: number;
@@ -133,6 +134,18 @@ export function resolveImageAsset(
 ): ImageAsset | null {
   const asset = project.assets.find((candidate) => candidate.id === assetId);
   return asset?.kind === 'image' ? asset : null;
+}
+
+/** A decoded video's frame is an image resource only within the render pipeline. */
+export function resolveRuntimeImageAsset(project: Project, assetId: string): ImageAsset | null {
+  const frame = parseFlaVideoFrameAssetKey(assetId);
+  if (!frame) return resolveImageAsset(project, assetId);
+  const asset = project.assets.find((candidate) => candidate.id === frame.assetId);
+  if (asset?.kind !== 'video' || frame.sampleIndex >= asset.videoTiming.presentationTicks.length) return null;
+  return {
+    id: assetId, name: asset.name, relativePath: asset.relativePath, kind: 'image', mimeType: 'image/png',
+    sha256: asset.sha256, width: asset.width, height: asset.height, usage: 'uncategorized', keywords: [],
+  };
 }
 
 export function listShotImageAssets(

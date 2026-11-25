@@ -30,6 +30,7 @@ import { applyExportJobUpdate } from '../../src/renderer/shell/exportTaskState';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { importFlaEmbeddedVideoToEditor } from '../../src/renderer/features/fla-import/importFlaEmbeddedVideo';
 import { CanvasImageResourceSession } from '../../src/renderer/features/canvas/canvasImageResources';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import {
   FlaVideoImportRequestSchema,
   FlaVideoImportResponseSchema,
@@ -1370,6 +1371,20 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
       const finalImages = session.getSnapshot().images;
       expect(finalImages.has(frame4Key)).toBe(true);
       expect(finalImages.has(frame0Key)).toBe(false);
+      const canvas = buildEditorTemporalCanvasModel({
+        project: reopened.project,
+        shot: reopened.project.shots[0]!,
+        currentTimeMs: 400,
+        previousVisuals: new Map(),
+        readyAssetIds: new Set([frame4Key]),
+        readyAssetSourceKeys: session.getSnapshot().sourceKeys,
+        readyResourceKeys: session.getSnapshot().readyResourceKeys,
+        missingAssetIds: new Set(),
+      });
+      expect(canvas.targetReadyLayerIds.has(imported.layer.id)).toBe(true);
+      expect(canvas.stageModel.layers.find(({ layer }) => layer.id === imported.layer.id)?.asset).toMatchObject({
+        id: frame4Key, sha256: imported.videoAsset.sha256, width: imported.videoAsset.width,
+      });
       session.dispose();
       expect(revokedUrls.length).toBeGreaterThan(0);
     } finally {
