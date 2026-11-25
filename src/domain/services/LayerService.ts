@@ -6,6 +6,7 @@ import {
 } from '../constants';
 import {
   calculateCoverTransform,
+  normalizeGeneratedStagePoint,
   normalizeNegativeZero,
   RADIAL_BURST_MAX_COUNT,
   RADIAL_BURST_MAX_SEED,
@@ -1996,14 +1997,8 @@ export class LayerService {
 
     const targets: { readonly index: number; readonly position: Point; readonly rotationDeg: number }[] = [];
     for (const sample of samples) {
-      if (
-        !Number.isFinite(sample.position.x) ||
-        !Number.isFinite(sample.position.y) ||
-        sample.position.x < 0 ||
-        sample.position.x > PROJECT_WIDTH ||
-        sample.position.y < 0 ||
-        sample.position.y > PROJECT_HEIGHT
-      ) {
+      const position = normalizeGeneratedStagePoint(sample.position);
+      if (!position) {
         throw new LayerServiceError(
           'INVALID_POSITION',
           `径向阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整圆心、半径或数量。`,
@@ -2015,7 +2010,7 @@ export class LayerService {
           : layer.rotationDeg;
       targets.push({
         index: sample.index,
-        position: sample.position,
+        position,
         rotationDeg: targetRotationDeg,
       });
     }
@@ -2089,14 +2084,8 @@ export class LayerService {
 
     const targets: { readonly index: number; readonly position: Point; readonly rotationDeg: number }[] = [];
     for (const sample of sampled.samples) {
-      if (
-        !Number.isFinite(sample.position.x) ||
-        !Number.isFinite(sample.position.y) ||
-        sample.position.x < 0 ||
-        sample.position.x > PROJECT_WIDTH ||
-        sample.position.y < 0 ||
-        sample.position.y > PROJECT_HEIGHT
-      ) {
+      const position = normalizeGeneratedStagePoint(sample.position);
+      if (!position) {
         throw new LayerServiceError(
           'INVALID_POSITION',
           `沿路径阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整路径控制点或数量。`,
@@ -2108,7 +2097,7 @@ export class LayerService {
           : layer.rotationDeg;
       targets.push({
         index: sample.index,
-        position: sample.position,
+        position,
         rotationDeg: targetRotationDeg,
       });
     }

@@ -13,6 +13,7 @@ import {
   STATIC_ARRAY_MAX_COUNT,
   STATIC_ARRAY_MIN_COUNT,
   isFlaGraphicDefinition,
+  normalizeGeneratedStagePoint,
   samplePathArrayLayout,
   sampleRadialArrayLayout,
   type CubicBezier2D,
@@ -305,7 +306,7 @@ function parseRadialArrayDraft(draft: RadialArrayDraft): ParsedRadialArrayDraft 
     orientation: draft.orientation,
   });
   for (const sample of samples) {
-    if (!isStagePoint(sample.position)) {
+    if (!normalizeGeneratedStagePoint(sample.position)) {
       return {
         ok: false,
         message: `径向阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整圆心、半径或数量。`,
@@ -384,7 +385,7 @@ function parsePathArrayDraft(draft: PathArrayDraft): ParsedPathArrayDraft {
     };
   }
   for (const sample of sampled.samples) {
-    if (!isStagePoint(sample.position)) {
+    if (!normalizeGeneratedStagePoint(sample.position)) {
       return {
         ok: false,
         message: `沿路径阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整路径控制点或数量。`,

@@ -1,3 +1,4 @@
+import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../constants';
 import {
   buildCubicBezierArcLengthTable,
   evaluateCubicBezier2D,
@@ -16,6 +17,26 @@ export const STATIC_ARRAY_MAX_COUNT = 100;
 export const STATIC_ARRAY_DEFAULT_COUNT = 8;
 export const RADIAL_ARRAY_DEFAULT_RADIUS = 240;
 export const RADIAL_ARRAY_DEFAULT_START_ANGLE_DEG = 0;
+
+// Normalize only numerical spill from generated geometry, never raw inputs.
+export function normalizeGeneratedStagePoint(point: Point): Point | null {
+  const epsilon = 1e-9;
+  const { x, y } = point;
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    x < -epsilon ||
+    x > PROJECT_WIDTH + epsilon ||
+    y < -epsilon ||
+    y > PROJECT_HEIGHT + epsilon
+  ) {
+    return null;
+  }
+  return {
+    x: Math.max(0, Math.min(PROJECT_WIDTH, x)),
+    y: Math.max(0, Math.min(PROJECT_HEIGHT, y)),
+  };
+}
 
 export type StaticArrayOrientationMode = 'keep' | 'align';
 

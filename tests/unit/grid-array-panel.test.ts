@@ -171,6 +171,29 @@ describe('ProjectToolsDrawer -> GridArrayPanel (#1268 A01)', () => {
     expect(buttonByTestId('grid-array-submit').disabled).toBe(true);
   });
 
+  it('accepts generated radial and Bézier points on the exact stage boundary (#1286)', async () => {
+    await act(async () => buttonByTestId('project-tools-grid-array').click());
+    await act(async () => buttonByTestId('array-mode-radial').click());
+    await setInputValue('radial-array-count', '2');
+    await setInputValue('radial-array-center-y', '50');
+    await setInputValue('radial-array-radius', '100');
+    await setInputValue('radial-array-start-angle', '330');
+    expect(buttonByTestId('grid-array-submit').disabled).toBe(false);
+    await act(async () => buttonByTestId('grid-array-submit').click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.at(-2)!.y).toBe(0);
+
+    await act(async () => buttonByTestId('array-mode-path').click());
+    await setInputValue('path-array-count', '4');
+    for (const [index, x] of [300, 600, 900, 1200].entries()) {
+      await setInputValue(`path-array-p${index}-x`, String(x));
+      await setInputValue(`path-array-p${index}-y`, '1080');
+    }
+    expect(buttonByTestId('grid-array-submit').disabled).toBe(false);
+    await act(async () => buttonByTestId('grid-array-submit').click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.slice(-4).map((layer) => layer.y))
+      .toEqual([1080, 1080, 1080, 1080]);
+  });
+
   it('supports radial and along-path array modes cleanly in Tools without writing Project on mode switch/draft/cancel (#1281 B01)', async () => {
     await act(async () => buttonByTestId('project-tools-grid-array').click());
     expect(buttonByTestId('array-mode-grid').getAttribute('aria-pressed')).toBe('true');
