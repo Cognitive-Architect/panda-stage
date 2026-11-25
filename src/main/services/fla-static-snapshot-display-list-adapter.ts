@@ -430,7 +430,8 @@ function timelineFrameSpanIndex(
   const result = buildFlaTimelineFrameSpanIndex(
     layersForTimeline(timelineXml).map((layer) => ({
       visible: sourceLayerIsVisible(layer),
-      frames: (!cameraEnabled && layer.attributes.layerType?.toLowerCase() === 'camera' ? [] : framesForLayer(layer.xml)).map((frame) => ({
+      timingOnly: !cameraEnabled && layer.attributes.layerType?.toLowerCase() === 'camera',
+      frames: framesForLayer(layer.xml).map((frame) => ({
         index: frame.attributes.index,
         duration: frame.attributes.duration,
         tweenType: frame.attributes.tweenType,

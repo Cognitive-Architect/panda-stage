@@ -1,4 +1,6 @@
-﻿import { describe, expect, it } from 'vitest';
+﻿import JSZip from 'jszip';
+import { buildRenderableTargetCatalog, buildSvgForRenderTarget } from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { describe, expect, it } from 'vitest';
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
 import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
 
@@ -98,6 +100,47 @@ describe('native Animate Scene camera', () => {
         expect(result.displayList.maskDiagnostics?.join()).toContain('depth differs');
       }
     }
+  });
+
+  it.each(['true', 'false', '0'])('preserves the ten-frame authored scene when cameraLayerEnabled is %s', async (enabled) => {
+    const cameraLayer = layer('Camera', camera('tx="150" ty="50"', 'index="0" duration="10"'), 'layerType="camera"');
+    const artwork = layer('Artwork', frame(instance('Tile', 'tx="135" ty="62"')));
+    const attrs = `cameraLayerEnabled="${enabled}"`;
+    const scene = prepare(cameraLayer + artwork, attrs);
+    expect(scene.source.sceneTimelines[0]?.frameCount).toBe(10);
+    expect(scene.source.sceneTimelines[0]?.playbackFrameCount).toBeUndefined();
+    expect(scene.layers(4)[0]?.[1]?.tx).toBe(enabled === 'true' ? 85 : 135);
+    expect(scene.layers(5)).toEqual([]);
+    expect(scene.layers(9)).toEqual([]);
+    expect(() => scene.frameContext(10)).toThrow(/outside frameCount 10/u);
+
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', doc(cameraLayer + artwork, attrs));
+    zip.file('LIBRARY/Tile.xml', symbol);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const entry = catalog.entries.find(({ target }) => target.kind === 'scene')!;
+    expect(entry).toMatchObject({ previewSupported: true, target: { frameCount: 10 } });
+    const final = await buildSvgForRenderTarget(bytes, { ...entry.target, selectedFrameIndex: 9 });
+    expect(final).toMatchObject({ ok: true, width: 200, height: 100, hasRenderablePath: false });
+    expect(await buildSvgForRenderTarget(bytes, { ...entry.target, selectedFrameIndex: 10 }))
+      .toMatchObject({ ok: false, code: 'TARGET_OUT_OF_RANGE' });
+  });
+
+  it('uses valid disabled camera timing without interpreting its invalid neighboring metadata or tween', () => {
+    const cameraLayer = layer('Camera',
+      camera('a="0" d="0"', 'index="7" duration="3" tweenType="unknown" frameZDepth="broken"') +
+      camera('', 'index="-1" duration="60"') +
+      camera('', 'index="100" duration="100000"') +
+      camera('', 'index="50" duration="0"'),
+      'layerType="camera"');
+    const artwork = layer('Artwork', frame(instance('Tile', 'tx="135" ty="62"'), 'index="0"'));
+    const scene = prepare(cameraLayer + artwork, 'cameraLayerEnabled="false"');
+    expect(scene.source.sceneTimelines[0]?.frameCount).toBe(10);
+    expect(scene.source.sceneTimelines[0]?.playbackFrameCount).toBeUndefined();
+    expect(scene.layers(0)[0]?.[1]?.tx).toBe(135);
+    expect(scene.layers(9)).toEqual([]);
   });
 
   it('disables camera motion and camera depth while preserving layer depth', () => {
