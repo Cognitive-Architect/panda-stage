@@ -217,14 +217,14 @@ describe('FlaStaticSnapshotRenderSession', () => {
     },
   );
   it.each([
-    ['scene', 'Panda Stage', true],
-    ['graphic-symbol', 'Panda Stage', true],
-    ['scene', '   ', false],
-    ['graphic-symbol', '', false],
+    ['scene', 'Panda Stage', true, false],
+    ['graphic-symbol', 'Panda Stage', true, false],
+    ['scene', '   ', false, false],
+    ['graphic-symbol', '', false, false],
     ['scene', 'Hidden by its parent', false, true],
   ] as const)(
     'checks drawable content in a %s containing only "%s"',
-    async (kind, characters, drawable, transparent = false) => {
+    async (kind, characters, drawable, transparent) => {
       const zip = await JSZip.loadAsync(await buildMinimalFla());
       const text = '<DOMStaticText width="100" height="30"><textRuns><DOMTextRun>' +
         `<characters>${characters}</characters><textAttrs><DOMTextAttrs size="16"/></textAttrs>` +
