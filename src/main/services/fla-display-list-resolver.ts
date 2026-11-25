@@ -1,5 +1,6 @@
 import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
 import type { FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import type { FlaRgbaTransform } from '../../shared/fla-instance-color';
 
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
@@ -147,6 +148,7 @@ export type FlaDisplayListElement =
       readonly alphaMultiplier?: number;
       /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
       readonly rgbTransform?: FlaDisplayListRgbTransform;
+      readonly rgbaTransform?: FlaRgbaTransform;
       readonly blendMode?: FlaSupportedBlendMode;
       readonly instanceFilters?: readonly FlaInstanceFilter[];
       /** Parent timeline coordinate and containing DOMFrame span start. */
@@ -269,6 +271,7 @@ export interface FlaResolvedGroupNode {
   readonly instanceFilterClips?: readonly FlaResolvedClipPath[];
   readonly inheritedClipPaths?: readonly FlaResolvedClipPath[];
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly rgbaTransform?: FlaRgbaTransform;
   readonly blendMode?: FlaSupportedBlendMode;
   readonly symbolInstance?: {
     readonly sourceFrameCount?: number;
@@ -955,6 +958,7 @@ function resolveElements(
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(element.rgbaTransform ? { rgbaTransform: element.rgbaTransform } : {}),
       ...(element.blendMode ? { blendMode: element.blendMode } : {}),
       ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
         ? { instanceFilters: element.instanceFilters, instanceFilterClips: clipPaths } : {}),
