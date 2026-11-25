@@ -2177,8 +2177,8 @@ export class FlaPartPreviewService {
             }
             if (node.kind === 'group' && !node.opaque) {
               const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
-              const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
-              if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
+              const hasPerChannelColor = node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined;
+              if (hasEnabledInstanceFilters || hasPerChannelColor) {
                 const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
                 const artworkTransform = isolatedEffectTransform(node);
                 const isolatedDisplayList = buildIsolatedDisplayListForNode(

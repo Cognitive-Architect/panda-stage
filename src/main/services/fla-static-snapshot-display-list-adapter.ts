@@ -11,6 +11,7 @@
 import crypto from 'node:crypto';
 import type { FlaInstanceProjection } from '../../shared/fla-instance-projection';
 import { invertAffineMatrix } from '../../shared/affine-matrix';
+import { flaRgbaAttributeNames, readFlaRgbaTransform, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import {
   buildFlaTimelineFrameSpanIndex,
   findCoveringSpan,
@@ -562,6 +563,7 @@ interface ElementParseContext {
 interface ClassicMotionColorTransform {
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly rgbaTransform?: FlaRgbaTransform;
   readonly tintRgb?: readonly [number, number, number];
 }
 
@@ -594,6 +596,11 @@ function readSymbolColorTransform(
 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
+  if (mode === 'static' && names.some((name) => name !== 'alphaMultiplier' && flaRgbaAttributeNames.has(name))) {
+    if (names.some((name) => !flaRgbaAttributeNames.has(name))) return unsupported('mixed explicit RGBA and legacy color modes');
+    const rgbaTransform = readFlaRgbaTransform(attributes);
+    return rgbaTransform ? { ok: true, transform: { rgbaTransform } } : unsupported('invalid RGBA color channels');
+  }
   if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness' &&
       !(supportsTint && (name === 'tintMultiplier' || name === 'tintColor')))) {
     return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
@@ -1073,7 +1080,7 @@ function parseDisplayElements(
       context.unsupportedDisplayReasons.push(colorResult.message);
       continue;
     }
-    const { alphaMultiplier, rgbTransform } = colorResult.transform ?? {};
+    const { alphaMultiplier, rgbTransform, rgbaTransform } = colorResult.transform ?? {};
     const projection3D = readInstanceProjection(child, context, localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX);
     children.push({
       kind: 'symbol',
@@ -1086,6 +1093,7 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(rgbaTransform ? { rgbaTransform } : {}),
       ...(blendResult.blendMode ? { blendMode: blendResult.blendMode } : {}),
       ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,

@@ -70,7 +70,7 @@ describe('ordinary static Animate instance color', () => {
     }
   });
 
-  it.each(['alphaMultiplier="1.5"', 'tintMultiplier="" tintColor="#C02040"', 'redOffset="20"'])(
+  it.each(['alphaMultiplier="1.5"', 'tintMultiplier="" tintColor="#C02040"', 'redOffset="Infinity"'])(
     'reports unverified Color data on the affected Graphic (%s)', async (color) => {
       const result = await render(color);
       expect(result).toMatchObject({ ok: false, message: expect.stringContaining('unsupported Color') });

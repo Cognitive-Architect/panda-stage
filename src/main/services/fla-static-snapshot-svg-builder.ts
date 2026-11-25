@@ -33,6 +33,7 @@ import crypto from 'node:crypto';
 import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
+import { applyFlaRgbaTransform, isFlaRgbaTransform, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import type {
   FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
@@ -3821,9 +3822,13 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
+      if (node.rgbaTransform && (node.rgbTransform || !isFlaRgbaTransform(node.rgbaTransform))) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGBA transform' };
+      }
       const childCompositeGroups =
         (node.opacity !== undefined && node.opacity < 1) ||
         node.rgbTransform !== undefined ||
+        node.rgbaTransform !== undefined ||
         node.instanceFilters !== undefined ||
         node.blendMode !== undefined
           ? [...compositeGroups, node]
@@ -4010,26 +4015,41 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     string
   >();
   const colorTransformGroups = new Set<Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>>();
+  const solidColorByGroup = new Map<CompositeGroup, FlaRgbaTransform>();
+  const rgbaWarnings = new Set<string>();
   for (const leaf of flattened.leaves) {
     for (const group of leaf.compositeGroups) {
-      if (group.rgbTransform) colorTransformGroups.add(group);
+      if (group.rgbTransform || group.rgbaTransform) colorTransformGroups.add(group);
     }
   }
   for (const group of colorTransformGroups) {
-    const transform = group.rgbTransform!;
-    const offsets = transform.channelOffsets ?? [transform.offset, transform.offset, transform.offset];
-    const identity = [transform.multiplier, ...(transform.channelOffsets ?? [transform.offset])]
+    const rgba = group.rgbaTransform;
+    const transform = group.rgbTransform;
+    if (rgba && rgba.offsets[3] > 0) {
+      const child = group.children.length === 1 ? group.children[0] : undefined;
+      const block = child?.kind === 'shape' ? shapeBlocks.get(child.shapeId) : undefined;
+      const shape = block ? parseShapeAt(block) : undefined;
+      if (shape && !shape.issue && shape.strokeStyles.length === 0 &&
+          shape.fillStyles.length === 1 && shape.fillStyles[0]?.type === 'solid') {
+        solidColorByGroup.set(group, rgba);
+        continue;
+      }
+      rgbaWarnings.add('Alpha offset needs known coverage and was skipped for complex artwork.');
+    }
+    const multipliers = rgba?.multipliers ?? [transform!.multiplier, transform!.multiplier, transform!.multiplier, 1];
+    const offsets = rgba
+      ? [rgba.offsets[0], rgba.offsets[1], rgba.offsets[2], Math.min(0, rgba.offsets[3])]
+      : [...(transform!.channelOffsets ?? [transform!.offset, transform!.offset, transform!.offset]), 0];
+    const identity = (rgba ? [...multipliers, ...offsets] : [transform!.multiplier, ...(transform!.channelOffsets ?? [transform!.offset])])
       .map(formatSvgNumber).join('\u0000');
-    const id = `fla-rgb-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+    const id = `fla-${rgba ? 'rgba' : 'rgb'}-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const existingDefinition = definitions.get(id);
-    const multiplier = formatSvgNumber(transform.multiplier);
-    const [red, green, blue] = offsets.map((offset) => formatSvgNumber(offset / 255));
     const values = [
-      multiplier, '0', '0', '0', red,
-      '0', multiplier, '0', '0', green,
-      '0', '0', multiplier, '0', blue,
-      '0', '0', '0', '1', '0',
-    ].join(' ');
+      multipliers[0]!, 0, 0, 0, offsets[0]! / 255,
+      0, multipliers[1]!, 0, 0, offsets[1]! / 255,
+      0, 0, multipliers[2]!, 0, offsets[2]! / 255,
+      0, 0, 0, multipliers[3]!, offsets[3]! / 255,
+    ].map(formatSvgNumber).join(' ');
     const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
     if (existingDefinition && existingDefinition !== definition) {
       return { ok: false, code: 'RENDER_FAILED', message: 'RGB color-transform filter id collision detected' };
@@ -4479,11 +4499,23 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         }
         const gradientFailure = registerGradientPaint(paint);
         if (gradientFailure) return gradientFailure;
-        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+        let fillColor = paint.svgPaint;
+        let fillOpacity = paint.opacity;
+        const ownColor = solidColorByGroup.get(compositeGroups.at(-1)!);
+        if (ownColor) {
+          const raw = fillColor.slice(1);
+          const hex = raw.length <= 4 ? [...raw].map((char) => char + char).join('') : raw;
+          const rgb = [0, 2, 4].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+          const alpha = (hex.length === 8 ? Number.parseInt(hex.slice(6), 16) : 255) * fillOpacity;
+          const channels = applyFlaRgbaTransform([rgb[0]!, rgb[1]!, rgb[2]!, alpha], ownColor);
+          fillColor = '#' + channels.slice(0, 3).map((value) => Math.round(value).toString(16).padStart(2, '0')).join('');
+          fillOpacity = channels[3] / 255;
+        }
+        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${formatSvgNumber(fillOpacity)}" stroke="none" fill-rule="nonzero"/>`;
         const appendFailure = appendEmittedNode(pathNode, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
-        if (firstFillColor === null) firstFillColor = paint.firstColor;
+        if (firstFillColor === null) firstFillColor = ownColor ? fillColor : paint.firstColor;
       }
       const strokeCommandBudget = {
         remaining: Math.min(
@@ -4715,7 +4747,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
   const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
-  const projectionWarning = displayList.projectionDiagnostics?.join('；').slice(0, 500);
+  const projectionWarning = [...(displayList.projectionDiagnostics ?? []), ...rgbaWarnings].join('；').slice(0, 500);
   if ((maskWarnings.size || ikPoseWarning || projectionWarning) && emittedLeafCount === 0) {
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning, projectionWarning].filter(Boolean).join('；').slice(0, 500) };
   }
@@ -4751,7 +4783,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ...(projectionWarning ? { projectionWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
     ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
-    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined)
+    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined || group.rgbaTransform)
       ? { hasPerChannelColorTransform: true } : {}),
     ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
