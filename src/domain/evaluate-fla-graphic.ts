@@ -1,4 +1,6 @@
 import type { FlaInstanceColor } from '../shared/fla-instance-color';
+import type { FlaStaticTextDescriptor } from '../shared/fla-static-text';
+import type { FlaGraphicInstanceTextOverrides } from './models/flaGraphicInstanceText';
 import {
   flaBlendModeToCanvasCompositeOperation,
   type FlaBlendMode,
@@ -62,6 +64,10 @@ const instanceOverrideVisualCache = new WeakMap<
   object,
   WeakMap<object, WeakMap<FlaGraphicDefinition, Map<string, EvaluatedFlaGraphicVisual>>>
 >();
+const instanceTextVisualCache = new WeakMap<
+  FlaGraphicInstanceTextOverrides,
+  WeakMap<Map<string, EvaluatedFlaGraphicVisual>, Map<string, EvaluatedFlaGraphicVisual>>
+>();
 
 export type FlaGraphicEvaluationMode = 'definition' | 'instance';
 
@@ -100,6 +106,7 @@ export interface EvaluatedFlaGraphicNode {
   readonly children: readonly EvaluatedFlaGraphicNode[];
   /** Present when Shape regions were extracted or edited as writable vector data. */
   readonly vectorVisual?: EvaluatedFlaGraphicVectorVisual;
+  readonly staticText?: FlaStaticTextDescriptor;
   readonly regionRef?: string;
   readonly extractedFromNodePath?: readonly string[];
   readonly displayName?: string;
@@ -421,6 +428,7 @@ export function evaluateFlaGraphicVisual(input: {
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceTextOverrides?: FlaGraphicInstanceTextOverrides;
   readonly instanceColor?: FlaInstanceColor;
   readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
@@ -433,7 +441,21 @@ export function evaluateFlaGraphicVisual(input: {
       : Math.round(frameOrdinal * (1_000 / fps));
   const instanceColor = mode === 'instance' ? input.instanceColor : undefined;
   const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}:${instanceColor ? JSON.stringify(instanceColor) : ''}`;
-  const cache = visualCacheFor(input);
+  const textOverrides = mode === 'instance' ? input.instanceTextOverrides : undefined;
+  let cache = visualCacheFor(input);
+  if (textOverrides) {
+    let byGeometry = instanceTextVisualCache.get(textOverrides);
+    if (!byGeometry) {
+      byGeometry = new WeakMap();
+      instanceTextVisualCache.set(textOverrides, byGeometry);
+    }
+    let withText = byGeometry.get(cache);
+    if (!withText) {
+      withText = new Map();
+      byGeometry.set(cache, withText);
+    }
+    cache = withText;
+  }
   const cachedVisual = cache.get(cacheKey);
   if (cachedVisual) return cachedVisual;
   const frame = definition.frames.find((candidate) => candidate.ordinal === frameOrdinal);
@@ -491,6 +513,11 @@ export function evaluateFlaGraphicVisual(input: {
       .sort((left, right) => left.drawOrder - right.drawOrder)
       .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
+        const replacement = textOverrides?.[String(frameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
+        const editableText = node.type === 'opaque' && node.opaqueKind === 'text' ? node.editableText : undefined;
+        const staticText = editableText && replacement !== undefined
+          ? { ...editableText, runs: [{ ...editableText.runs[0], characters: replacement }] }
+          : undefined;
         let authoredLocalTransform = node.localTransform;
         if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
           const trackId = resolveFlaGraphicStableNodeIdentity(
@@ -537,7 +564,7 @@ export function evaluateFlaGraphicVisual(input: {
         // The isolated SVG's viewBox can begin away from (0,0). Compose it ONCE
         // after resolving authored/timeline/override transform so edits stay in
         // node-local space without double-applying fallbackViewBox.
-        const localTransform = applyFlaGraphicSubtreeViewBox(
+        const localTransform = staticText ? authoredOrOverrideTransform : applyFlaGraphicSubtreeViewBox(
           node,
           authoredOrOverrideTransform,
         );
@@ -636,6 +663,7 @@ export function evaluateFlaGraphicVisual(input: {
           renderable,
           children,
           ...(vectorVisual ? { vectorVisual } : {}),
+          ...(staticText ? { staticText } : {}),
         };
         if (!shapeNodeOverride || shapeNodeOverride.extractedRegions.length === 0) {
           return [sourceEvaluated];

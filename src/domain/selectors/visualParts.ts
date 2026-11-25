@@ -1438,6 +1438,7 @@ export function resolveLayerVisualParts(
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
         instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+        instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
         instanceColor: source.flaOccurrence?.instanceColor,
       });

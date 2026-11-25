@@ -12,6 +12,7 @@ import {
   isValidFlaStaticTextRenderItem,
   layoutFlaStaticText,
   splitGraphemes,
+  staticTextRunBaselineOffset,
   type FlaStaticTextDescriptor,
 } from '../../src/shared/fla-static-text';
 import {
@@ -215,7 +216,7 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
       '<DOMTextRun><characters>熊猫&lt;招牌&gt;&amp;&quot;1&quot;</characters>' +
       '<textAttrs><DOMTextAttrs alignment="center" size="26" lineHeight="32" lineSpacing="4" letterSpacing="2" face="Microsoft YaHei" fillColor="#e11d48" bold="true"/></textAttrs></DOMTextRun>' +
       '<DOMTextRun><characters> Demo&#xD;第二行中文自动换行</characters>' +
-      '<textAttrs><DOMTextAttrs alignment="center" size="18" lineHeight="24" fillColor="#2563ebcc" italic="true"/></textAttrs></DOMTextRun>' +
+      '<textAttrs><DOMTextAttrs alignment="center" size="18" lineHeight="24" fillColor="#2563ebcc" italic="true" characterPosition="superscript" rotation="-20"/></textAttrs></DOMTextRun>' +
       '</textRuns></DOMStaticText>' +
       '<DOMStaticText width="100" height="20"><textRuns><DOMTextRun><characters></characters><textAttrs><DOMTextAttrs size="14"/></textAttrs></DOMTextRun></textRuns></DOMStaticText>' +
       '</elements></DOMFrame></frames></DOMLayer>' +
@@ -249,6 +250,13 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
     expect(textItem.descriptor.runs[0]!.characters).toBe('熊猫<招牌>&"1"');
     expect(textItem.descriptor.runs[1]!.characters).toBe(' Demo\r第二行中文自动换行');
     expect(textItem.descriptor.runs[1]!.alpha).toBeCloseTo(0xcc / 255, 3);
+    const raised = textItem.descriptor.runs[1]!;
+    expect(raised).toMatchObject({ characterPosition: 'superscript', rotation: -20 });
+    expect(buildCanvasFontSpec(raised)).toContain('12.6px');
+    expect(staticTextRunBaselineOffset(raised)).toBeCloseTo(-5.4);
+    expect(staticTextRunBaselineOffset({ ...raised, characterPosition: 'subscript' })).toBeCloseTo(3.6);
+    expect(layoutFlaStaticText(textItem.descriptor).lines.some(({ fragments }) =>
+      fragments.some(({ run }) => run.rotation === -20))).toBe(true);
     // Masked static text is wrapped in clip-path, and raw markup never leaks into SVG.
     expect(sceneSvg.svg).toContain('clip-path="url(#');
     expect(sceneSvg.svg).toContain(`<use href="#${textItem.placeholderId}"`);

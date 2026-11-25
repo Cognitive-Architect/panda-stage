@@ -14,6 +14,8 @@ import type {
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
 } from './fla-display-list-resolver';
+import { FlaGraphicEditableTextSchema } from '../../domain/models/flaGraphicInstanceText';
+import type { FlaStaticTextDescriptor } from '../../shared/fla-static-text';
 import {
   localizeAbsoluteLeafMatrix,
   multiplyAffineMatrices,
@@ -119,6 +121,7 @@ export interface CaptureFlaGraphicStructureOptions {
       readonly parentWorld: AffineMatrix2D;
     },
   ) => IsolatedSubtreeCaptureResult | undefined;
+  readonly resolveStaticText?: (node: FlaResolvedDisplayNode) => FlaStaticTextDescriptor | undefined;
   /** Isolated frame-filtered layer rendered as one semantically closed subtree in layer-local space. */
   readonly resolveIsolatedFilteredLayer?: (
     layer: FlaResolvedDisplayLayer,
@@ -264,11 +267,15 @@ export function captureFlaGraphicStructureFrames(
         const textScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
         const textViewBox = isolated?.viewBox ?? fallbackViewBox;
         const textAssetId = textViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
+        const editableText = isolated && !isolated.artworkTransform
+          ? FlaGraphicEditableTextSchema.safeParse(options.resolveStaticText?.(node))
+          : undefined;
         return {
           ...base,
           ...artworkPlacement(isolated),
           type: 'opaque',
           opaqueKind: 'text',
+          ...(editableText?.success ? { editableText: editableText.data } : {}),
           sourceRef: isolated?.sourceRef ?? node.textId,
           reason: isolated?.reason ?? 'Static text uses rasterized snapshot fallback',
           ...(textScope ? { fallbackScope: textScope } : {}),

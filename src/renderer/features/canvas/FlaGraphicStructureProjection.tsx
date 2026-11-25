@@ -1,4 +1,6 @@
 import type { FlaInstanceColor } from '../../../shared/fla-instance-color';
+import { layoutFlaStaticText } from '../../../shared/fla-static-text';
+import type { FlaGraphicInstanceTextOverrides } from '../../../domain/models/flaGraphicInstanceText';
 import Konva from 'konva';
 import {
   Circle,
@@ -152,6 +154,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly selectedVertexTarget?: FlaShapeVertexTarget | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceTextOverrides?: FlaGraphicInstanceTextOverrides;
   readonly instanceColor?: FlaInstanceColor;
   /** Transient gesture preview matrices; committed values live on the Layer. */
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
@@ -187,6 +190,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
   readonly internalTimeMs?: number;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceTextOverrides?: FlaGraphicInstanceTextOverrides;
   readonly instanceColor?: FlaInstanceColor;
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
 }) {
@@ -198,6 +202,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     timelineAuthoringActive = internalTimeMs !== undefined,
     instanceTransformOverrides,
     instanceShapeOverrides,
+    instanceTextOverrides,
     instanceColor,
     draftMatrices,
   } = input;
@@ -307,6 +312,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     mode: 'instance',
     instanceTransformOverrides: evaluationOverrides,
     instanceShapeOverrides,
+    instanceTextOverrides,
     instanceColor,
   });
 }
@@ -327,6 +333,7 @@ export function FlaGraphicStructureProjection({
   selectedVertexTarget = null,
   instanceTransformOverrides,
   instanceShapeOverrides,
+  instanceTextOverrides,
   instanceColor,
   draftMatrices,
   layerLocked,
@@ -349,6 +356,7 @@ export function FlaGraphicStructureProjection({
     internalTimeMs,
     instanceTransformOverrides,
     instanceShapeOverrides,
+    instanceTextOverrides,
     instanceColor,
     draftMatrices,
   });
@@ -396,7 +404,9 @@ export function FlaGraphicStructureProjection({
     }
     const source = node.source;
     let result: Bounds | null = null;
-    if (node.vectorVisual) {
+    if (node.staticText) {
+      result = layoutFlaStaticText(node.staticText).bounds;
+    } else if (node.vectorVisual) {
       if (
         node.vectorVisual.regions.length > 0 ||
         (node.vectorVisual.residueStrokes?.length ?? 0) > 0

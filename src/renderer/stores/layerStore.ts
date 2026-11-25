@@ -282,6 +282,18 @@ export class LayerStore {
     return next;
   }
 
+  updateFlaGraphicInstanceText(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    characters: string,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicInstanceText(project, shotId, layerId, frameOrdinal, nodePath, characters);
+    if (next !== project) this.editorStore.updateProject(next, '替换文字');
+    return next;
+  }
+
   extractFlaGraphicShapeRegion(input: {
     readonly layerId: string;
     readonly frameOrdinal: number;

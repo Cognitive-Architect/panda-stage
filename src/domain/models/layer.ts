@@ -11,6 +11,7 @@ import {
 import { LAYER_ANCHOR } from '../constants';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
+import { FlaGraphicInstanceTextOverridesSchema } from './flaGraphicInstanceText';
 import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
 
 const AssetLayerSourceV22Schema = z
@@ -340,6 +341,7 @@ export const LayerV41Schema = LayerV32Schema.safeExtend({
 
 export const LayerSchema = LayerV41Schema.safeExtend({
   source: LayerSourceSchema,
+  flaGraphicInstanceTextOverrides: FlaGraphicInstanceTextOverridesSchema.optional(),
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

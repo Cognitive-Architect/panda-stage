@@ -1,4 +1,5 @@
 import type { FlaInstanceColor } from '../../shared/fla-instance-color';
+import { FlaGraphicInstanceTextOverridesSchema } from '../models/flaGraphicInstanceText';
 import {
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
@@ -766,6 +767,47 @@ export class LayerService {
     delete nextLayer.flaGraphicInstanceTransformOverrides;
     if (nextOverrides) {
       nextLayer.flaGraphicInstanceTransformOverrides = nextOverrides;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = nextLayer;
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
+  updateFlaGraphicInstanceText(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    characters: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const definition = project.animations.find(({ id }) => id === source.animationId);
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic' || !definition.structure) return project;
+    const node = findFlaGraphicStructureNodeAtPath(definition.structure, frameOrdinal, nodePath);
+    if (node?.type !== 'opaque' || node.opaqueKind !== 'text' || !node.editableText) return project;
+
+    const frameKey = String(frameOrdinal);
+    const pathKey = flaGraphicInstanceNodePathKey(nodePath);
+    const original = node.editableText.runs[0].characters;
+    const overrides = { ...layer.flaGraphicInstanceTextOverrides };
+    const frameOverrides = { ...overrides[frameKey] };
+    if ((frameOverrides[pathKey] ?? original) === characters) return project;
+    if (characters === original) delete frameOverrides[pathKey];
+    else frameOverrides[pathKey] = characters;
+    if (Object.keys(frameOverrides).length) overrides[frameKey] = frameOverrides;
+    else delete overrides[frameKey];
+    const nextLayer = { ...layer };
+    delete nextLayer.flaGraphicInstanceTextOverrides;
+    if (Object.keys(overrides).length) {
+      const validated = FlaGraphicInstanceTextOverridesSchema.safeParse(overrides);
+      if (!validated.success) throw new Error('替换文字超出支持范围。');
+      nextLayer.flaGraphicInstanceTextOverrides = validated.data;
     }
     const layers = [...shot.layers];
     layers[layerIndex] = nextLayer;
