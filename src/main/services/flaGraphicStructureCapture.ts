@@ -135,10 +135,10 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly clipPathShapePathData?: ReadonlyMap<string, readonly string[]>;
 }
 
-export function hasScreenSpaceInstanceFilter(node: FlaResolvedDisplayNode): boolean {
+export function hasScreenSpaceArtwork(node: FlaResolvedDisplayNode): boolean {
   if (node.kind === 'group') {
-    return Boolean(node.instanceFilters?.some((filter) => filter.enabled)) ||
-      node.children.some(hasScreenSpaceInstanceFilter);
+    return Boolean(node.scale9Grid || node.instanceFilters?.some((filter) => filter.enabled)) ||
+      node.children.some(hasScreenSpaceArtwork);
   }
   return node.kind === 'text' && Boolean(node.instanceFilters?.some((filter) => filter.enabled));
 }
@@ -297,18 +297,16 @@ export function captureFlaGraphicStructureFrames(
       }
       const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
       const hasPerChannelColor = node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined;
-      if (hasEnabledInstanceFilters || hasPerChannelColor) {
-        const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+      const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+      const isolated = (hasEnabledInstanceFilters || hasPerChannelColor || node.scale9Grid)
+        ? options.resolveIsolatedSubtree?.(node, { opaqueKind, parentWorld }) : undefined;
+      if (hasEnabledInstanceFilters || hasPerChannelColor || isolated) {
         const groupClipPaths = clipPathsOf(
           node.instanceFilterClips ?? node.inheritedClipPaths,
           parentWorld,
           options.clipPathShapePathData ?? new Map(),
           maskPathByteBudget,
         );
-        const isolated = options.resolveIsolatedSubtree?.(node, {
-          opaqueKind,
-          parentWorld,
-        });
         const subtreeScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
         const subtreeViewBox = isolated?.viewBox ?? fallbackViewBox;
         const subtreeAssetId = subtreeViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
@@ -339,7 +337,7 @@ export function captureFlaGraphicStructureFrames(
         ).slice(0, 880);
         // A child effect is baked against the occurrence's display axes. A symbol
         // placed at a different scale or rotation cannot share that child's SVG.
-        const needsEffectVariant = options.resolveIsolatedSubtree && node.children.some(hasScreenSpaceInstanceFilter);
+        const needsEffectVariant = options.resolveIsolatedSubtree && node.children.some(hasScreenSpaceArtwork);
         const { a, b, c, d } = node.worldTransform;
         const nestedDefinitionId = needsEffectVariant
           ? `${baseDefKey}::effects:${[a, b, c, d].join(',')}`

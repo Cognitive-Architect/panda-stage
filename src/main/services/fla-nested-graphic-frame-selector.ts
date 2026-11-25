@@ -341,7 +341,10 @@ export function prepareFlaNestedGraphicFrameSelections(
     );
     building.delete(key);
     if (!prepared.ok) return prepared;
-    definitions.set(key, { kind: 'graphic', libraryItemName, sourceFrameCount: descriptor.frameCount, frameContext: prepared.frameContext });
+    definitions.set(key, {
+      kind: 'graphic', libraryItemName, sourceFrameCount: descriptor.frameCount, frameContext: prepared.frameContext,
+      ...(descriptor.scale9Grid ? { scale9Grid: descriptor.scale9Grid } : {}),
+    });
     return { ok: true, key };
   };
 
