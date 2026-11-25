@@ -39,6 +39,8 @@ import { freezeVideoOutputProfile } from '../../src/shared/export-output-profile
 import { EncodePngSequenceRequestSchema } from '../../src/shared/ffmpeg-types';
 
 const execFileAsync = promisify(execFile);
+const bundledFfmpegPath = path.resolve('node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe');
+const bundledFfprobePath = path.resolve('node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 
 const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -66,7 +68,7 @@ async function buildFlaZip(
 }
 
 async function createRealMp4WithAudio(outputPath: string, durationSec = 0.25): Promise<void> {
-  await execFileAsync('ffmpeg', [
+  await execFileAsync(bundledFfmpegPath, [
     '-y',
     '-f', 'lavfi',
     '-i', `testsrc=duration=${durationSec}:size=64x64:rate=24`,
@@ -83,7 +85,7 @@ async function createRealMp4WithAudio(outputPath: string, durationSec = 0.25): P
 }
 
 async function createRealToneWav(outputPath: string, frequencyHz: number, durationSec: number): Promise<void> {
-  await execFileAsync('ffmpeg', [
+  await execFileAsync(bundledFfmpegPath, [
     '-y',
     '-f', 'lavfi',
     '-i', `sine=frequency=${frequencyHz}:sample_rate=48000:duration=${durationSec}`,
@@ -95,7 +97,7 @@ async function createRealToneWav(outputPath: string, frequencyHz: number, durati
 }
 
 async function createSolidPng(outputPath: string, width: number, height: number, color: string): Promise<Uint8Array<ArrayBuffer>> {
-  await execFileAsync('ffmpeg', [
+  await execFileAsync(bundledFfmpegPath, [
     '-y',
     '-f', 'lavfi',
     '-i', `color=c=${color}:s=${width}x${height}:d=0.05`,
@@ -792,7 +794,10 @@ describe('Issue #1350 E-I02 targeted combination acceptance', () => {
       { 'bin/clip.dat': Buffer.concat([Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]), clipMp4Bytes]) },
     );
     const flaArchive = preflightFlaBytes(flaBytes, 'cutin.fla');
-    const ffmpegAdapter = new FFmpegAdapter();
+    const ffmpegAdapter = new FFmpegAdapter({
+      ffmpegPath: bundledFfmpegPath,
+      ffprobePath: bundledFfprobePath,
+    });
     const embeddedVideoService = new FlaEmbeddedVideoService({
       flaImportService: {
         prepareEmbeddedVideo: async (_sid, name, adapter, signal) => {

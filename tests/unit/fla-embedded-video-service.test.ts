@@ -36,6 +36,8 @@ import {
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 
 const execFileAsync = promisify(execFile);
+const bundledFfmpegPath = path.resolve('node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe');
+const bundledFfprobePath = path.resolve('node_modules/@ffprobe-installer/win32-x64/ffprobe.exe');
 
 const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -75,11 +77,11 @@ async function createSolidMp4WithAudio(
     args.push('-c:a', 'aac', '-b:a', '128k', '-shortest');
   }
   args.push(outputPath);
-  await execFileAsync('ffmpeg', args);
+  await execFileAsync(bundledFfmpegPath, args);
 }
 
 async function createToneWav(outputPath: string, frequencyHz: number, durationSec: number): Promise<void> {
-  await execFileAsync('ffmpeg', [
+  await execFileAsync(bundledFfmpegPath, [
     '-y',
     '-f', 'lavfi',
     '-i', `sine=frequency=${frequencyHz}:sample_rate=48000:duration=${durationSec}`,
@@ -335,7 +337,10 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     await writeFile(path.join(projectRoot, 'assets', 'bgm.wav'), bgmBytes);
     await projectService.save(projectRoot, initialProject);
 
-    const ffmpegAdapter = new FFmpegAdapter();
+    const ffmpegAdapter = new FFmpegAdapter({
+      ffmpegPath: bundledFfmpegPath,
+      ffprobePath: bundledFfprobePath,
+    });
     const decodeSpy = vi.spyOn(ffmpegAdapter, 'decodeFlaVideoFramesSequential');
     const flaSourceSha = createHash('sha256').update(flaBytes).digest('hex');
 
@@ -538,7 +543,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
 
       const frozen = await prepService.acquireCandidateForExport(prep.candidate.snapshotId);
       const sample720PngPath = path.join(workDir, 'frame720.png');
-      await execFileAsync('ffmpeg', [
+      await execFileAsync(bundledFfmpegPath, [
         '-y', '-f', 'lavfi', '-i', 'color=c=0x224466:s=1280x720:d=0.05', '-frames:v', '1', sample720PngPath,
       ]);
       const solid720pPng = new Uint8Array(await readFile(sample720PngPath));
