@@ -21,6 +21,7 @@ export const FlaVideoImportRequestSchema = z
     projectRoot: z.string().trim().min(1).max(32_767),
     project: ProjectSchema,
     baseRevision: z.number().int().nonnegative(),
+    openInstanceId: z.number().int().positive(),
     shotId: z.uuid(),
     playbackMode: z.enum(['play-once', 'loop', 'single-frame']).optional(),
     startTimeMs: z.number().finite().min(0).optional(),

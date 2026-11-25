@@ -246,7 +246,10 @@ async function createApplicationWindows(): Promise<void> {
     window.on('close', (event) => guard.handleWindowClose(event));
   }
   window.once('closed', () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      mainWindow = null;
+      void flaEmbeddedVideoService?.dispose();
+    }
     if (unsavedCloseGuard) unsavedCloseGuard = null;
     hiddenWindowManager.close();
   });

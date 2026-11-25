@@ -65,6 +65,7 @@ export async function importFlaEmbeddedVideoToEditor(
               project: current.project,
               revision: current.revision,
               dirty: current.dirty,
+              openInstanceId,
             })
         : undefined);
     if (syncAutosave) {
@@ -81,7 +82,7 @@ export async function importFlaEmbeddedVideoToEditor(
       }
     }
 
-    if (store.getSnapshot() !== snapshot) {
+    if (store.getSnapshot() !== snapshot || store.getProjectInstanceId() !== openInstanceId) {
       return {
         ok: false,
         error: {
@@ -100,6 +101,7 @@ export async function importFlaEmbeddedVideoToEditor(
       projectRoot: snapshot.projectRoot,
       project: snapshot.project,
       baseRevision: snapshot.revision,
+      openInstanceId,
       shotId: options.shotId,
       ...(options.playbackMode ? { playbackMode: options.playbackMode } : {}),
       ...(options.startTimeMs !== undefined ? { startTimeMs: options.startTimeMs } : {}),

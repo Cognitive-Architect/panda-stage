@@ -31,11 +31,13 @@ import {
 import type { FFmpegAdapter } from './FFmpegAdapter';
 import type { FlaImportService } from './FlaImportService';
 import { ProjectServiceError, type ProjectService, type ProjectTransaction } from './ProjectService';
+import { AtomicWriteCommitRejectedError } from './ProjectFileSystemService';
 import { resolveProjectAssetPath } from './project-asset-path';
 
 export interface FlaEmbeddedVideoProjectSnapshot {
   readonly project: Project;
   readonly revision: number;
+  readonly openInstanceId?: number | null;
 }
 
 export class FlaEmbeddedVideoImportError extends Error {
@@ -65,6 +67,7 @@ export interface ImportEmbeddedVideoInput {
   readonly projectRoot: string;
   readonly project?: Project;
   readonly baseRevision?: number;
+  readonly openInstanceId?: number;
   readonly shotId: string;
   readonly startTimeMs?: number;
   readonly playbackMode?: 'play-once' | 'loop' | 'single-frame';
@@ -209,6 +212,12 @@ export class FlaEmbeddedVideoService {
     return true;
   }
 
+  cancelActiveImports(): void {
+    for (const sessionId of this.activeImportsBySession.keys()) {
+      this.cancelImportsForSession(sessionId);
+    }
+  }
+
   /**
    * Formal IPC entry point (E-F06): validates the strict request schema, runs the
    * revision-checked transactional import against the live in-memory project
@@ -235,6 +244,7 @@ export class FlaEmbeddedVideoService {
         projectRoot: request.projectRoot,
         project: request.project,
         baseRevision: request.baseRevision,
+        openInstanceId: request.openInstanceId,
         shotId: request.shotId,
         ...(request.startTimeMs !== undefined ? { startTimeMs: request.startTimeMs } : {}),
         ...(request.playbackMode !== undefined ? { playbackMode: request.playbackMode } : {}),
@@ -288,12 +298,15 @@ export class FlaEmbeddedVideoService {
     }
   }
 
-  private assertTrackedSnapshotCurrent(
-    projectRoot: string,
-    requestedProject: Project | undefined,
-    expectedRevision: number | undefined,
-  ): FlaEmbeddedVideoProjectSnapshot | null {
+  private assertTrackedSnapshotCurrent(input: ImportEmbeddedVideoInput): FlaEmbeddedVideoProjectSnapshot | null {
+    const { projectRoot, project: requestedProject, baseRevision: expectedRevision, openInstanceId } = input;
     const tracked = this.deps.getCurrentProjectSnapshot?.(projectRoot) ?? null;
+    if (openInstanceId !== undefined && (!tracked || tracked.openInstanceId !== openInstanceId)) {
+      throw new FlaEmbeddedVideoImportError(
+        'STALE_PROJECT_REVISION', projectRoot,
+        'The Project was closed or reopened before the FLA embedded video could be imported.',
+      );
+    }
     if (!tracked) return null;
     if (expectedRevision !== undefined && tracked.revision !== expectedRevision) {
       throw new FlaEmbeddedVideoImportError(
@@ -362,7 +375,12 @@ export class FlaEmbeddedVideoService {
       }
 
       // Fail fast on stale revision before running ffprobe or touching disk.
-      this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+      this.assertTrackedSnapshotCurrent(input);
+      if (input.openInstanceId !== undefined && !this.deps.projectService.transact) {
+        throw new FlaEmbeddedVideoImportError(
+          'VIDEO_IMPORT_FAILED', input.projectRoot, 'Formal video import requires a Project transaction.',
+        );
+      }
 
       const prepared = await this.deps.flaImportService.prepareEmbeddedVideo(
         input.sessionId,
@@ -384,16 +402,10 @@ export class FlaEmbeddedVideoService {
         saveProject: (project: Project, savedRevision: number) => Promise<Project>,
       ): Promise<ImportEmbeddedVideoResult> => {
         throwIfCancelled();
-        const tracked = this.assertTrackedSnapshotCurrent(
-          input.projectRoot,
-          input.project,
-          input.baseRevision,
+        const tracked = this.assertTrackedSnapshotCurrent(input);
+        const authoritativeBase = ProjectSchema.parse(
+          input.openInstanceId !== undefined ? tracked!.project : input.project ?? tracked?.project ?? diskProject,
         );
-        const authoritativeBase = input.project
-          ? ProjectSchema.parse(input.project)
-          : tracked
-            ? ProjectSchema.parse(tracked.project)
-            : ProjectSchema.parse(diskProject);
         if (diskProject.id !== authoritativeBase.id) {
           throw new FlaEmbeddedVideoImportError(
             'STALE_PROJECT_REVISION',
@@ -581,7 +593,7 @@ export class FlaEmbeddedVideoService {
 
           throwIfCancelled();
           // Re-verify tracked revision immediately before committing project.json (TOCTOU guard).
-          this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+          this.assertTrackedSnapshotCurrent(input);
 
           const updatedShot = nextProject.shots[shotIndex]!;
           const maxZ = updatedShot.layers.reduce((max, item) => Math.max(max, item.zIndex), -1);
@@ -656,13 +668,14 @@ export class FlaEmbeddedVideoService {
               executeMutation(transaction.existingDocument.project, async (project, savedRevision) => {
                 const saved = await transaction.save(project, savedRevision, () => {
                   throwIfCancelled();
-                  this.assertTrackedSnapshotCurrent(input.projectRoot, input.project, input.baseRevision);
+                  this.assertTrackedSnapshotCurrent(input);
                 });
                 return saved.project;
               }),
           );
         } catch (error) {
-          if (error instanceof FlaEmbeddedVideoImportError) throw error;
+          const cause = error instanceof AtomicWriteCommitRejectedError ? error.cause : error;
+          if (cause instanceof FlaEmbeddedVideoImportError) throw cause;
           if (error instanceof ProjectServiceError && error.code === 'PROJECT_SAVE_STALE_REVISION') {
             const tracked = this.deps.getCurrentProjectSnapshot?.(input.projectRoot) ?? null;
             throw new FlaEmbeddedVideoImportError(
@@ -930,6 +943,7 @@ export class FlaEmbeddedVideoService {
   }
 
   async dispose(): Promise<void> {
+    this.cancelActiveImports();
     const directories = [...this.decodedSequences.values()].map((entry) => entry.directory);
     this.decodedSequences.clear();
     this.framePngCache.clear();

@@ -39,6 +39,7 @@ import { storeExportVideoFrame, touchExportVideoFrame } from '../../src/shared/e
 import { preflightFlaBytes } from '../../src/main/services/fla-import-preflight-service';
 import { readFlaEmbeddedVideo } from '../../src/main/services/fla-native-video';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
 import {
   createFlaVideoPresentationIndex,
   evaluateFlaVideoClock,
@@ -1045,7 +1046,10 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     const sessionId = randomUUID();
 
     const projectRoot = path.join(workDir, 'live-project.pandastage');
-    const projectService = new ProjectService();
+    let beforeCommit: (() => void) | undefined;
+    const projectService = new ProjectService({
+      fileSystem: new ProjectFileSystemService({ beforeAtomicReplace: () => beforeCommit?.() }),
+    });
     const created = await projectService.create(projectRoot, {
       name: 'live-project',
     });
@@ -1105,6 +1109,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     // 1. Open in real EditorProjectStore and create unsaved in-memory edits (dirty=true, revision=1):
     const store = new EditorProjectStore();
     store.open(projectRoot, seededProject);
+    const openInstanceId = store.getProjectInstanceId()!;
     const unsavedProject: Project = {
       ...seededProject,
       name: 'Unsaved User Draft',
@@ -1117,9 +1122,10 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     expect(store.getSnapshot()?.revision).toBe(1);
 
     // Track in-memory snapshot in Main (mirrors AutosaveService):
-    let trackedSnapshot: { project: Project; revision: number } | null = {
+    let trackedSnapshot: { project: Project; revision: number; openInstanceId: number } | null = {
       project: seededProject,
       revision: 0,
+      openInstanceId,
     };
 
     const flaImportService = {
@@ -1160,6 +1166,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
           projectRoot,
           project: store.getSnapshot()!.project,
           baseRevision: 1, // Main still tracks revision 0 -> stale!
+          openInstanceId,
           shotId,
           playbackMode: 'play-once',
         }),
@@ -1179,6 +1186,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
         getCurrentProjectSnapshot: () => ({
           project: store.getSnapshot()!.project,
           revision: store.getSnapshot()!.revision,
+          openInstanceId,
         }),
         ffmpegAdapter: {
           probeFlaNativeVideo: (p, s) => ffmpegAdapter.probeFlaNativeVideo(p, s),
@@ -1195,12 +1203,40 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
         projectRoot,
         project: store.getSnapshot()!.project,
         baseRevision: 1,
+        openInstanceId,
         shotId,
         includeAudio: true,
       });
       expect(failedResp.ok).toBe(false);
       const assetsAfterRollback = await readdir(path.join(projectRoot, 'assets')).catch(() => []);
       expect(assetsAfterRollback).toEqual(['bg.png']);
+
+      const current = {
+        project: store.getSnapshot()!.project, revision: store.getSnapshot()!.revision, openInstanceId,
+      };
+      const request = FlaVideoImportRequestSchema.parse({
+        sessionId, videoName: 'LiveClip', projectRoot, project: current.project, baseRevision: current.revision,
+        openInstanceId, shotId, includeAudio: false,
+      });
+      const scenarios = [
+        { change: () => { trackedSnapshot = null; }, code: 'STALE_PROJECT_REVISION' },
+        { change: () => { trackedSnapshot = { ...current, openInstanceId: openInstanceId + 1 }; }, code: 'STALE_PROJECT_REVISION' },
+        { change: () => videoService.cancelActiveImports(), code: 'VIDEO_IMPORT_CANCELLED' },
+      ];
+      trackedSnapshot = null;
+      await expect(videoService.importFromFlaSessionRequest(request)).resolves.toMatchObject({
+        ok: false, error: { code: 'STALE_PROJECT_REVISION' },
+      });
+      for (const scenario of scenarios) {
+        trackedSnapshot = current;
+        beforeCommit = scenario.change;
+        await expect(videoService.importFromFlaSessionRequest(request)).resolves.toMatchObject({
+          ok: false, error: { code: scenario.code },
+        });
+        beforeCommit = undefined;
+        expect((await projectService.open(projectRoot)).project).toEqual(seededProject);
+        expect(await readdir(path.join(projectRoot, 'assets'))).toEqual(['bg.png']);
+      }
 
       // 4. Real product editor flow via importFlaEmbeddedVideoToEditor (syncAutosave + lease + IPC + HistoryStore):
       let selectedLayerId: string | null = null;
@@ -1212,7 +1248,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
         includeAudio: true,
         store,
         syncAutosave: async (snap) => {
-          trackedSnapshot = { project: snap.project, revision: snap.revision };
+          trackedSnapshot = { project: snap.project, revision: snap.revision, openInstanceId };
           return { ok: true };
         },
         importVideo: async (req) => {
