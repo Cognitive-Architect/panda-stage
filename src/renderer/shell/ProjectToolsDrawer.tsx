@@ -5,6 +5,7 @@ import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode, Project } from '../../domain';
 import { AfterimagePanel } from '../features/tools/AfterimagePanel';
 import { BackgroundTilesPanel } from '../features/tools/BackgroundTilesPanel';
+import { GraphicBakePanel } from '../features/tools/GraphicBakePanel';
 import { CurveMotionPanel } from '../features/tools/CurveMotionPanel';
 import { GridArrayPanel } from '../features/tools/GridArrayPanel';
 import { RadialBurstPanel } from '../features/tools/RadialBurstPanel';
@@ -22,6 +23,7 @@ type ProjectToolsView =
   | 'grid-array'
   | 'curve-motion'
   | 'background-tiles'
+  | 'orbit-flight'
   | 'afterimage'
   | 'radial-burst';
 
@@ -84,6 +86,8 @@ export function ProjectToolsDrawer({
               '径向爆炸'
             ) : view === 'background-tiles' ? (
               '背景铺排 / 循环'
+            ) : view === 'orbit-flight' ? (
+              '环绕飞行'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -245,6 +249,15 @@ export function ProjectToolsDrawer({
               <span>打开背景铺排 / 循环</span>
             </button>
           </section>
+          <section className="project-tools-action-preset-card" aria-labelledby="project-tools-orbit-flight-heading">
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-orbit-flight-heading">环绕飞行</h3>
+            </div>
+            <button className="project-tools-action-preset-launcher" data-testid="project-tools-orbit-flight" onClick={() => setView('orbit-flight')} type="button">
+              <DecorativeIcon icon={Spline} size={18} />
+              <span>打开环绕飞行</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -266,6 +279,10 @@ export function ProjectToolsDrawer({
       ) : view === 'background-tiles' ? (
         <section aria-label="背景铺排 / 循环" className="project-tools-grid-array-view">
           <BackgroundTilesPanel onCancel={() => setView('home')} />
+        </section>
+      ) : view === 'orbit-flight' ? (
+        <section aria-label="环绕飞行" className="project-tools-grid-array-view">
+          <GraphicBakePanel onCancel={() => setView('home')} />
         </section>
       ) : view === 'curve-motion' ? (
         <section

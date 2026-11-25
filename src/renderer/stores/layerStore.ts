@@ -14,6 +14,7 @@ import {
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
+  type OrbitFlightInput,
   type PathArrayInput,
   type Point,
   type Project,
@@ -252,6 +253,13 @@ export class LayerStore {
     const { project, shotId } = this.context();
     const result = this.service.generateBackgroundTiles(project, shotId, layerId, input);
     this.editorStore.updateProject(result.project, '背景铺排 / 循环');
+    return result.layers;
+  }
+
+  generateOrbitFlight(layerId: string, input: OrbitFlightInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateOrbitFlight(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '环绕飞行');
     return result.layers;
   }
 

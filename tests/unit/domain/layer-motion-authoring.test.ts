@@ -163,6 +163,44 @@ describe('native background tiles (#1286)', () => {
   });
 });
 
+describe('native orbit flight (#1287)', () => {
+  it('keeps one copy visible at the expected anchor and reference depth through band switches', () => {
+    const { project, shotId, layerId, definitionId } = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const addReference = (base: Project, x: number) => layerService.createFromAnimation(base, shotId, {
+      animationId: definitionId, position: { x, y: 540 }, startTimeMs: 0,
+    });
+    const back = addReference(project, 960);
+    const front = addReference(back.project, 1000);
+    for (const referenceLayerIds of [[back.layer.id], [back.layer.id, front.layer.id]]) {
+      const result = layerService.generateOrbitFlight(front.project, shotId, layerId, {
+        referenceLayerIds, radiusX: 240, radiusY: 100, count: 1, startAngleDeg: 0,
+        direction: 'clockwise', orientation: 'tangent', startFrame: 1, durationFrames: 48,
+      });
+      const shot = result.project.shots[0]!;
+      const ids = new Set(result.layers.map((layer) => layer.id));
+      const at = (timeMs: number) => evaluateShotAtTime(shot, timeMs, result.project).layers
+        .filter((layer) => ids.has(layer.id) && layer.visible);
+      expect(result.layers).toHaveLength(referenceLayerIds.length + 1);
+      expect(at(41)).toHaveLength(0);
+      for (const [index, [x, y]] of [[1200, 540], [960, 640], [720, 540], [960, 440], [1200, 540]].entries()) {
+        const layers = at(frameTimeMs(1 + index * 12));
+        expect(layers).toHaveLength(1);
+        expect(layers[0]!.x).toBeCloseTo(x, 5);
+        expect(layers[0]!.y).toBeCloseTo(y, 5);
+        if (index === 3) expect(layers[0]!.zIndex).toBeLessThan(shot.layers.find((layer) => layer.id === back.layer.id)!.zIndex);
+        if (index === 1) expect(layers[0]!.zIndex).toBeGreaterThan(shot.layers.find((layer) => layer.id === referenceLayerIds.at(-1))!.zIndex);
+      }
+      for (let frame = 1; frame < 49; frame += 1) {
+        const early = at(frameTimeMs(frame) + 5);
+        expect(early).toHaveLength(1);
+        expect(Math.abs(at(frameTimeMs(frame + 1))[0]!.rotationDeg - early[0]!.rotationDeg)).toBeLessThan(30);
+      }
+      expect(at(frameTimeMs(50))).toHaveLength(0);
+    }
+  });
+});
+
 describe('AnimationTargetRef and v21 migration contract (#1140)', () => {
   it('supports layer targets without partId and prevents mixing v1/v2 targets', () => {
     expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerAsset })).toEqual({

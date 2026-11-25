@@ -9,7 +9,9 @@ import {
   normalizeGeneratedStagePoint,
   planBackgroundTiles,
   sampleScrollingTile,
+  sampleOrbitFlight,
   type BackgroundTileInput,
+  type OrbitFlightInput,
   normalizeNegativeZero,
   RADIAL_BURST_MAX_COUNT,
   RADIAL_BURST_MAX_SEED,
@@ -93,9 +95,39 @@ import {
   frameTimeMs,
   isValidFrameTime,
   lastValidFrameTime,
+  TIMELINE_FPS,
 } from '../timeline/frame-grid';
 import type { AnimationKey, LayerAnimationClip } from '../models/animationCore';
 import { PositionProjectService } from './PositionProjectService';
+
+interface BakedGraphicSample {
+  readonly frame: number;
+  readonly position: Point;
+  readonly rotationDeg?: number;
+  readonly scaleMultiplier?: number;
+}
+
+type BakedGraphicEvent =
+  | Omit<Extract<TimelineEvent, { type: 'visibility' }>, 'id' | 'layerId'>
+  | Omit<Extract<TimelineEvent, { type: 'opacity' }>, 'id' | 'layerId'>;
+
+function bakedVisibility(frame: number, visible: boolean): BakedGraphicEvent {
+  const timeMs = frameTimeMs(frame);
+  return { type: 'visibility', startMs: timeMs, endMs: timeMs, visible };
+}
+
+function validateBakeFrames(shot: Shot, start: number, duration: number, stagger: number, count: number, minimumDuration = 1): number {
+  const lastFrame = Math.round(lastValidFrameTime(shot.durationMs) * TIMELINE_FPS / 1000);
+  const end = start + duration + (count - 1) * stagger;
+  if (!Number.isSafeInteger(start) || start < 0 ||
+    !Number.isSafeInteger(duration) || duration < minimumDuration ||
+    !Number.isSafeInteger(stagger) || stagger < 0 ||
+    !Number.isSafeInteger(end) || end > lastFrame) {
+    throw new Error(`请调整起帧、持续时间或间隔，结束帧须在镜头末帧 ${lastFrame} 以内。`);
+  }
+  if (count * (duration + 1) > 50_000) throw new Error('生成的关键帧过多，请减少实例或缩短持续时间。');
+  return lastFrame;
+}
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -2207,6 +2239,146 @@ export class LayerService {
     return {
       project: this.replaceShot(project, { ...shot, layers: ordered }),
       layers: ordered.slice(first, first + createdLayers.length),
+    };
+  }
+
+  generateOrbitFlight(project: Project, shotId: string, layerId: string, input: OrbitFlightInput): DuplicateStaticArrayResult {
+    const { shot, layer } = this.assertFlaGraphicArraySource(project, shotId, layerId, '环绕飞行');
+    const { count, referenceLayerIds, startFrame, durationFrames } = input;
+    if (!Number.isInteger(count) || count < 1 || count > 8 ||
+      !Number.isFinite(input.radiusX) || input.radiusX <= 0 ||
+      !Number.isFinite(input.radiusY) || input.radiusY <= 0 ||
+      !Number.isFinite(input.startAngleDeg) ||
+      !['clockwise', 'counterclockwise'].includes(input.direction) ||
+      !['keep', 'tangent'].includes(input.orientation)) {
+      throw new Error('请检查飞行数量、椭圆半径、起始角和朝向。');
+    }
+    const lastFrame = validateBakeFrames(shot, startFrame, durationFrames, 0, count, 4);
+    const context = this.prepareGraphicBake(project, shot, layer, startFrame);
+    const referenceIds = new Set(referenceLayerIds);
+    const referenceLayers = shot.layers.filter((entry) => referenceIds.has(entry.id)).sort((a, b) => a.zIndex - b.zIndex);
+    if (referenceIds.size < 1 || referenceIds.size > 2 || referenceIds.size !== referenceLayerIds.length ||
+      referenceLayers.length !== referenceIds.size || referenceLayers.some((entry) =>
+        entry.id === layerId || entry.id === shot.backgroundLayerId ||
+        !context.evaluated.layers.find((evaluated) => evaluated.id === entry.id)?.visible,
+      )) {
+      throw new Error('请选择一到两个在起帧可见、与模板不同的普通参考图层。');
+    }
+    const reference = context.evaluated.layers.find((entry) => entry.id === referenceLayerIds[0])!;
+    const center = input.center ?? { x: reference.x, y: reference.y };
+    if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) throw new Error('请设置有效的环绕中心。');
+    const bands: Layer[][] = Array.from({ length: referenceLayers.length + 1 }, () => []);
+    const events: TimelineEvent[] = [];
+    const labels = bands.length === 2 ? ['后', '前'] : ['后', '中', '前'];
+    for (let index = 0; index < count; index += 1) {
+      const samples = sampleOrbitFlight(input, center, index);
+      bands.forEach((layers, band) => {
+        let visible = false;
+        const visibility: BakedGraphicEvent[] = [];
+        for (const sample of samples) {
+          const nextVisible = sample.band === band;
+          if (nextVisible !== visible) visibility.push(bakedVisibility(sample.frame, nextVisible));
+          visible = nextVisible;
+        }
+        const hideFrame = startFrame + durationFrames + 1;
+        if (visible && hideFrame <= lastFrame) visibility.push(bakedVisibility(hideFrame, false));
+        const baked = this.buildBakedGraphic(context, `${layer.name} 环绕 ${index + 1} · ${labels[band]}`, samples, visibility);
+        layers.push(baked.layer);
+        events.push(...baked.events);
+      });
+    }
+    const layers = [...shot.layers].sort((a, b) => a.zIndex - b.zIndex).flatMap((entry) => {
+      if (entry.id === referenceLayers[0]!.id) return [...bands[0]!, entry, ...bands[1]!];
+      if (entry.id === referenceLayers[1]?.id) return [entry, ...bands[2]!];
+      return [entry];
+    });
+    return this.commitGraphicBake(project, shot, layers, bands.flat(), events);
+  }
+
+  private prepareGraphicBake(project: Project, shot: Shot, source: Layer, startFrame: number) {
+    const evaluated = evaluateShotAtTime(shot, frameTimeMs(startFrame), project);
+    const pose = evaluated.layers.find((entry) => entry.id === source.id);
+    if (!pose?.visible || pose.opacity <= 0) throw new Error('模板在起帧不可见，请选择可见的模板或调整起帧。');
+    const basis = createLayerAnimationClip(project, shot.id, source.id).targetBases[0]!;
+    const baseTransform: LayerBasePose = {
+      ...clampLayerPosition({ x: pose.x, y: pose.y }),
+      rotationDeg: normalizeLayerRotation(pose.rotationDeg),
+      scaleX: validateLayerScale(pose.scaleX),
+      scaleY: validateLayerScale(pose.scaleY),
+    };
+    return {
+      evaluated, source, pose, basis, baseTransform,
+      usedIds: this.projectIds(project),
+      internalEvents: shot.timelineEvents.filter((event) => event.layerId === source.id &&
+        (event.type === 'graphic-frame' || event.type === 'graphic-playback')),
+    };
+  }
+
+  private buildBakedGraphic(
+    context: ReturnType<LayerService['prepareGraphicBake']>,
+    name: string,
+    samples: readonly BakedGraphicSample[],
+    events: readonly BakedGraphicEvent[],
+  ) {
+    const { source, usedIds, basis, baseTransform, pose } = context;
+    const duplicate = this.buildDuplicatedAnimationLayer(source, context.internalEvents, usedIds, baseTransform, 0, name);
+    const target = { kind: 'layer' as const, layerId: duplicate.layer.id };
+    const pivot = layerPivotLocalOffset(basis.pivot, basis.sourceCanvas);
+    const first = samples[0]!;
+    const trackSamples = first.frame === 0 ? samples : [{ ...first, frame: 0 }, ...samples];
+    const offsetX: AnimationKey[] = [];
+    const offsetY: AnimationKey[] = [];
+    const rotation: AnimationKey[] = [];
+    const scale: AnimationKey[] = [];
+    for (const sample of trackSamples) {
+      const rotationDeg = sample.rotationDeg ?? 0;
+      const multiplier = sample.scaleMultiplier ?? 1;
+      if (sample.scaleMultiplier !== undefined) {
+        validateLayerScale(baseTransform.scaleX * multiplier);
+        validateLayerScale(baseTransform.scaleY * multiplier);
+      }
+      const solved = solveLayerRelativeOffsetForStagePoint(
+        pivot, baseTransform, pose.flipX, rotationDeg, multiplier, multiplier, sample.position,
+      );
+      if (typeof solved.offsetX !== 'number' || typeof solved.offsetY !== 'number' ||
+        ![solved.offsetX, solved.offsetY, rotationDeg].every(Number.isFinite)) {
+        throw new Error('轨迹计算超出有效范围，请调整位置、半径或朝向。');
+      }
+      const key = { timeMs: frameTimeMs(sample.frame), interpolationToNext: 'linear' as const };
+      offsetX.push({ ...key, value: normalizeNegativeZero(solved.offsetX) });
+      offsetY.push({ ...key, value: normalizeNegativeZero(solved.offsetY) });
+      if (sample.rotationDeg !== undefined) rotation.push({ ...key, value: normalizeNegativeZero(rotationDeg) });
+      if (sample.scaleMultiplier !== undefined) scale.push({ ...key, value: multiplier });
+    }
+    const tracks: LayerAnimationClip['tracks'] = [
+      { target, property: 'transform.offsetX', keys: offsetX },
+      { target, property: 'transform.offsetY', keys: offsetY },
+    ];
+    if (rotation.length) tracks.push({ target, property: 'transform.rotationDeg', keys: rotation });
+    if (scale.length) {
+      tracks.push({ target, property: 'transform.scaleX', keys: scale });
+      tracks.push({ target, property: 'transform.scaleY', keys: scale });
+    }
+    const layer: Layer = {
+      ...duplicate.layer, ...baseTransform, flipX: pose.flipX, opacity: pose.opacity, visible: false,
+      animationClip: { version: 2, targetBases: [{ ...basis, target, baseTransform }], tracks },
+    };
+    const addedEvents = events.map((event): TimelineEvent => {
+      const id = this.nextUniqueId(usedIds);
+      usedIds.add(id);
+      return { ...event, id, layerId: layer.id };
+    });
+    return { layer, events: [...duplicate.events, ...addedEvents] };
+  }
+
+  private commitGraphicBake(
+    project: Project, shot: Shot, layers: readonly Layer[], created: readonly Layer[], events: readonly TimelineEvent[],
+  ): DuplicateStaticArrayResult {
+    const ordered = layers.map((layer, zIndex) => ({ ...layer, zIndex }));
+    const byId = new Map(ordered.map((layer) => [layer.id, layer]));
+    return {
+      project: this.replaceShot(project, { ...shot, layers: ordered, timelineEvents: [...shot.timelineEvents, ...events] }),
+      layers: created.map((layer) => byId.get(layer.id)!),
     };
   }
 
