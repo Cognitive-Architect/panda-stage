@@ -3792,15 +3792,18 @@ export function planStaticScale9Placement(
   shapeBlocks: ReadonlyMap<string, string>,
 ): Scale9Placement | null {
   const { worldTransform: world, scale9Grid } = node;
-  if (!scale9Grid || world.a <= 0 || world.d <= 0 || world.b !== 0 || world.c !== 0 ||
-      (world.a === 1 && world.d === 1) || node.children.length > 64) return null;
+  const absX = Math.abs(world.a);
+  const absY = Math.abs(world.d);
+  if (!scale9Grid || absX === 0 || absY === 0 || world.b !== 0 || world.c !== 0 ||
+      (world.a < 0 && world.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
   const bounds = createBounds();
   for (const child of node.children) {
-    if (child.kind !== 'shape' || child.clipPaths?.length) return null;
+    if (child.kind !== 'shape' || child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) return null;
     const block = shapeBlocks.get(child.shapeId);
     if (!block) return null;
     const shape = parseShapeAt(block);
-    if (shape.issue || shape.strokeStyles.length || shape.fillStyles.some((style) => style.type !== 'solid')) return null;
+    if (shape.issue || shape.strokeStyles.length ||
+        shape.fillStyles.some((style) => !['solid', 'linear', 'radial'].includes(style.type))) return null;
     const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
     if (!path.ok) return null;
     const m = child.worldTransform;
@@ -3812,17 +3815,17 @@ export function planStaticScale9Placement(
   }
   const layout = planFlaScale9Slices(
     { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
-    scale9Grid, world.a, world.d,
+    scale9Grid, absX, absY,
   );
+  const rect = (left: number, top: number, right: number, bottom: number, sx: number, sy: number) => ({
+    left: Math.min(left * sx, right * sx) + world.tx,
+    right: Math.max(left * sx, right * sx) + world.tx,
+    top: Math.min(top * sy, bottom * sy) + world.ty,
+    bottom: Math.max(top * sy, bottom * sy) + world.ty,
+  });
   const placements = layout?.map(({ source, target }) => ({
-    source: {
-      left: source.left * world.a + world.tx, right: source.right * world.a + world.tx,
-      top: source.top * world.d + world.ty, bottom: source.bottom * world.d + world.ty,
-    },
-    target: {
-      left: target.left + world.tx, right: target.right + world.tx,
-      top: target.top + world.ty, bottom: target.bottom + world.ty,
-    },
+    source: rect(source.left, source.top, source.right, source.bottom, world.a, world.d),
+    target: rect(target.left, target.top, target.right, target.bottom, Math.sign(world.a), Math.sign(world.d)),
   }));
   return placements?.every(({ source, target }) =>
     Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
@@ -4461,8 +4464,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (scale9) {
         for (const bounds of [graphicBounds, nonTextGraphicBounds]) {
           if (!bounds) continue;
-          includePoint(bounds, { x: scale9[0]!.target.left, y: scale9[0]!.target.top });
-          includePoint(bounds, { x: scale9[8]!.target.right, y: scale9[8]!.target.bottom });
+          for (const { target } of scale9) {
+            includePoint(bounds, { x: target.left, y: target.top });
+            includePoint(bounds, { x: target.right, y: target.bottom });
+          }
         }
       } else if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };

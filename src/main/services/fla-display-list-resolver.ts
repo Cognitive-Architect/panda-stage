@@ -953,7 +953,7 @@ function resolveElements(
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
-      ...(definition.sourceFrameCount === 1 && definition.scale9Grid ? { scale9Grid: definition.scale9Grid } : {}),
+      ...(definition.scale9Grid ? { scale9Grid: definition.scale9Grid } : {}),
       ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
       localTransform,
       worldTransform,

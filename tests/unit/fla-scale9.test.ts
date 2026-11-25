@@ -1,13 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
 import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
-import { buildSvgForResolvedDisplayList } from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { buildRenderableTargetCatalog, buildSvgForRenderTarget, buildSvgForResolvedDisplayList } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { planFlaScale9Slices, readFlaScale9Grid } from '../../src/shared/fla-scale9';
 
 const bounds = { left: -20, top: -18, right: 100, bottom: 62 };
 const grid = { left: -5, top: -10, right: 70, bottom: 48 };
 
 describe('static XFL Scale9Grid', () => {
+  it('mirrors the current drawable frame while a rotated occurrence falls back to ordinary scaling', async () => {
+    const zip = new JSZip();
+    const shape = (color: string) => `<DOMShape><fills><FillStyle index="1"><SolidColor color="${color}"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!-400 -360|2000 -360|2000 1240|-400 1240|-400 -360"/></edges></DOMShape>`;
+    zip.file('LIBRARY/Tile.xml', `<DOMSymbolItem name="Tile" symbolType="graphic" scalingGrid="true" scalingGridRect="-100 -200 1400 960">
+      <timeline><DOMTimeline><layers><DOMLayer><frames>
+        <DOMFrame index="0"><elements>${shape('#ff0000')}</elements></DOMFrame>
+        <DOMFrame index="1"><elements>${shape('#0000ff')}</elements></DOMFrame>
+      </frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    zip.file('DOMDocument.xml', `<DOMDocument width="400" height="300" frameRate="24"><symbols><Include href="Tile.xml"/></symbols>
+      <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="Tile" symbolType="graphic"/>
+      </elements></DOMFrame><DOMFrame index="1"><elements>
+        <DOMSymbolInstance libraryItemName="Tile" symbolType="graphic" loop="single frame" firstFrame="1">
+          <matrix><Matrix a="-2" d="1.5" tx="220" ty="130"/></matrix>
+        </DOMSymbolInstance>
+        <DOMSymbolInstance libraryItemName="Tile" symbolType="graphic" loop="single frame" firstFrame="1">
+          <matrix><Matrix a="0" b="2" c="-2" d="0" tx="320" ty="220"/></matrix>
+        </DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const scene = catalog.entries.find(({ target }) => target.kind === 'scene')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...scene, selectedFrameIndex: 1 });
+    if (!rendered.ok) throw new Error(rendered.message);
+    expect(rendered.svg.match(/overflow="hidden"/gu)).toHaveLength(9);
+    expect(rendered.svg).toContain('width="15" height="8"');
+    expect(rendered.svg).toContain('width="30" height="14"');
+    expect(rendered.svg).toContain('fill="#0000ff"');
+    expect(rendered.svg).not.toContain('fill="#ff0000"');
+  });
+
   it('binds a twip grid to the referenced static symbol definition and occurrence', () => {
     const xml = `<DOMDocument frameRate="24"><timelines><DOMTimeline><layers><DOMLayer><frames>
       <DOMFrame index="0"><elements>
@@ -76,3 +109,4 @@ describe('static XFL Scale9Grid', () => {
     expect(planFlaScale9Slices(bounds, { ...grid, left: -25 }, 1, 1)).toBeNull();
   });
 });
+import JSZip from 'jszip';
