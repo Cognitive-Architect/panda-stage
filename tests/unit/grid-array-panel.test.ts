@@ -73,6 +73,67 @@ afterEach(async () => {
 });
 
 describe('ProjectToolsDrawer -> GridArrayPanel (#1268 A01)', () => {
+  it('opens and submits all Wave B tools from the drawer and resets orbit references on shot changes', async () => {
+    const project = structuredClone(editorProjectStore.getSnapshot()!.project);
+    const shot = project.shots[0]!;
+    shot.durationMs = 3000;
+    const source = shot.layers.find((layer) => layer.id === sourceLayerId)!;
+    source.animationPlayback = { mode: 'single-frame', endBehavior: 'hold' };
+    source.scaleX = 3.2;
+    source.scaleY = 2;
+    const background = shot.layers.find((layer) => layer.id === shot.backgroundLayerId)!;
+    shot.layers = [{ ...background, zIndex: 0 }, { ...source, zIndex: 1 }];
+    shot.timelineEvents = [];
+    const reference = new LayerService().createFromAnimation(project, shot.id, {
+      animationId: FACE_GRAPHIC_ID, position: { x: 960, y: 540 }, startTimeMs: 0,
+    });
+    await act(async () => {
+      editorProjectStore.open(PROJECT_ROOT, reference.project);
+      shotStore.select(shot.id);
+      selectionStore.select(sourceLayerId);
+    });
+    const form = () => container.querySelector('form')!;
+    const generate = () => form().querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const goBack = () => act(async () => buttonByTestId('project-tools-back').click());
+    await act(async () => buttonByTestId('project-tools-background-tiles').click());
+    expect(form().textContent).toContain('9 个副本');
+    await goBack();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    await act(async () => buttonByTestId('project-tools-background-tiles').click());
+    await act(async () => generate().click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(12);
+    await goBack();
+    await act(async () => buttonByTestId('project-tools-orbit-flight').click());
+    expect(generate().disabled).toBe(true);
+    const selectReference = () => act(async () => {
+      const select = form().querySelector('select')!;
+      select.value = reference.layer.id;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await selectReference();
+    expect(generate().disabled).toBe(false);
+    await act(async () => shotStore.select(project.shots[1]!.id));
+    expect(container.querySelector('form')).toBeNull();
+    await act(async () => {
+      shotStore.select(shot.id);
+      selectionStore.select(sourceLayerId);
+    });
+    expect(generate().disabled).toBe(true);
+    await selectReference();
+    await act(async () => generate().click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(18);
+    await goBack();
+    await act(async () => buttonByTestId('project-tools-converging-flight').click());
+    await act(async () => generate().click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(30);
+    await goBack();
+    await act(async () => buttonByTestId('project-tools-diffusion-ghost').click());
+    await act(async () => generate().click());
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(34);
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 4 });
+    expect(selectionStore.getSelectedLayerId()).toBe(sourceLayerId);
+  });
+
   it('opens from Tools, keeps draft/cancel clean, generates 3x4 grid in one History entry, and retains source selection', async () => {
     await act(async () => buttonByTestId('project-tools-grid-array').click());
     expect(container.querySelector('[data-testid="grid-array-panel"]')).not.toBeNull();

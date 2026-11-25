@@ -39,6 +39,104 @@ import { FACE_GRAPHIC_ID, graphicFaceProject } from '../helpers/graphicFaceProje
 import { IDS } from '../unit/domain/testProject';
 
 describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', () => {
+  it('round-trips Wave B tools and matches Stage, Preview and formal Export after manual edits', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-wave-b-'));
+    const root = path.join(tempDir, 'wave-b.pandastage');
+    try {
+      await mkdir(root, { recursive: true });
+      const fixture = graphicFaceProject();
+      const base = ProjectSchema.parse({
+        ...fixture,
+        characters: [],
+        voiceProfiles: [],
+        shots: fixture.shots.map((shot) => ({
+          ...shot, durationMs: 2501, dialogues: [], timelineEvents: [],
+          layers: shot.layers.filter((layer) => layer.id === shot.backgroundLayerId),
+        })),
+      });
+      const shotId = base.shots[0]!.id;
+      const service = new LayerService();
+      const template = service.createFromAnimation(base, shotId, {
+        animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 400, y: 300 },
+        playback: { mode: 'single-frame', endBehavior: 'hold' },
+      });
+      const source = template.project.shots[0]!.layers.find((layer) => layer.id === template.layer.id)!;
+      source.scaleX = 3.2;
+      source.scaleY = 2;
+      const reference = service.createFromAnimation(template.project, shotId, {
+        animationId: FACE_GRAPHIC_ID, startTimeMs: 0, position: { x: 960, y: 540 },
+      });
+      const editor = new EditorProjectStore();
+      editor.open(root, reference.project);
+      const shots = { getCurrentShotId: () => shotId };
+      const selection = new LayerSelectionStore(editor, { ...shots, subscribe: () => () => undefined });
+      selection.select(source.id);
+      const layers = new LayerStore(editor, shots, service, selection);
+      const start = { startFrame: 1, durationFrames: 12 };
+      const stagger = { ...start, staggerFrames: 2, count: 4 };
+      const generate = [
+        () => layers.generateBackgroundTiles(source.id, { mode: 'loop', direction: 'left', periodFrames: 24 }),
+        () => layers.generateOrbitFlight(source.id, {
+          ...start, count: 1, referenceLayerIds: [reference.layer.id], radiusX: 240, radiusY: 100,
+          startAngleDeg: 0, direction: 'clockwise', orientation: 'tangent',
+        }),
+        () => layers.generateConvergingFlight(source.id, {
+          ...stagger, target: { x: 960, y: 540 }, radius: 360, bend: 100, startAngleDeg: 0,
+          seed: 42, hideAfterArrival: true, orientation: 'tangent',
+        }),
+        () => layers.generateDiffusionGhosts(source.id, { ...stagger, maxScale: 1.8, decay: 0.7 }),
+      ];
+      const baked = generate.map((bake, index) => {
+        const before = editor.getSnapshot()!.project;
+        const created = bake();
+        const after = editor.getSnapshot()!.project;
+        expect(editor.history.getSnapshot().undoCount).toBe(index + 1);
+        expect(editor.undo()).toBe(true);
+        expect(editor.getSnapshot()!.project).toEqual(before);
+        expect(editor.redo()).toBe(true);
+        expect(editor.getSnapshot()!.project).toEqual(after);
+        expect(selection.getSelectedLayerId()).toBe(source.id);
+        return created;
+      });
+      expect(() => layers.generateDiffusionGhosts(source.id, { ...stagger, maxScale: 1.8, decay: 0.7, durationFrames: 1000 })).toThrow();
+      expect(editor.getSnapshot()!.revision).toBe(12);
+      expect(editor.history.getSnapshot().undoCount).toBe(4);
+
+      const motion = new LayerMotionService();
+      const saved = baked.reduce((project, batch) => motion.applyKeys(project, {
+        shotId, layerId: batch[0]!.id, timeMs: frameTimeMs(7),
+      }, { 'transform.offsetY': 11 }), editor.getSnapshot()!.project);
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(reference.project));
+      const projects = new ProjectService();
+      await projects.save(root, saved, 1);
+      const reopened = (await projects.open(root)).project;
+      expect(reopened).toEqual(saved);
+      expect(reopened.animations).toEqual(base.animations);
+      expect(reopened.assets).toEqual(base.assets);
+      const shot = reopened.shots[0]!;
+      const urls = Object.fromEntries(reopened.assets.map((asset) => [asset.id, `test:${asset.id}`]));
+      const schedule = [...iterateFormalProjectFrameSchedule(reopened, 24)];
+      expect(schedule[1]!.shotLocalTimeMs).toBe(41);
+      const samples = [0, 1, 7, 13, 19, 20, 23, 24, 25, 59].map((frame) =>
+        [frameTimeMs(frame), schedule[frame]!.shotLocalTimeMs],
+      );
+      for (const [stageMs, exportMs] of [...samples, [987, 987], [2501, 2501]]) {
+        const stage = evaluateShotAtTime(shot, stageMs!, reopened);
+        const exported = evaluateExportShotAtTime(reopened, shot, exportMs!);
+        const preview = projectProductPreviewDialogue(reopened, shot, stage);
+        for (const evaluated of [preview, exported]) {
+          const model = buildStageRenderModel(reopened, evaluated, urls);
+          const stageModel = buildStageRenderModel(reopened, stage, urls);
+          expect(model.layers.map(({ id, visible, opacity, zIndex, render }) => ({ id, visible, opacity, zIndex, render })))
+            .toEqual(stageModel.layers.map(({ id, visible, opacity, zIndex, render }) => ({ id, visible, opacity, zIndex, render })));
+        }
+      }
+      selection.dispose();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('skips a reference closing frame and synchronizes only consecutive editable source instances', async () => {
     const layers = new LayerService();
     let project = graphicFaceProject();

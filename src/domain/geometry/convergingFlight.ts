@@ -46,7 +46,8 @@ export function sampleConvergingFlight(input: ConvergingFlightInput, target: Poi
     let rotationDeg: number | undefined;
     if (input.orientation === 'tangent') {
       const tangent = evaluateCubicBezierDerivative2D(curve, t);
-      if (!Number.isFinite(Math.hypot(tangent.x, tangent.y)) || Math.hypot(tangent.x, tangent.y) <= MIN_CURVE_ARC_LENGTH) {
+      const length = Math.hypot(tangent.x, tangent.y);
+      if (!Number.isFinite(length) || length <= MIN_CURVE_ARC_LENGTH) {
         throw new Error('无法计算飞行朝向，请调整分布半径或弯曲幅度。');
       }
       const angle = Math.atan2(tangent.y, tangent.x) * 180 / Math.PI;

@@ -7,6 +7,7 @@ export type BackgroundTileInput =
   | { readonly mode: 'loop'; readonly direction: BackgroundScrollDirection; readonly periodFrames: number };
 
 export function planBackgroundTiles(width: number, height: number, durationMs: number, input: BackgroundTileInput) {
+  if (input.mode !== 'static' && input.mode !== 'loop') throw new Error('请选择铺排模式。');
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error('铺排尺寸无效，请调整素材比例。');
   }

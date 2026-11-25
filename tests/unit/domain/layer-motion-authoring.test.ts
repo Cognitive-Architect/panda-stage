@@ -183,7 +183,7 @@ describe('native orbit flight (#1287)', () => {
         .filter((layer) => ids.has(layer.id) && layer.visible);
       expect(result.layers).toHaveLength(referenceLayerIds.length + 1);
       expect(at(41)).toHaveLength(0);
-      for (const [index, [x, y]] of [[1200, 540], [960, 640], [720, 540], [960, 440], [1200, 540]].entries()) {
+      for (const [index, [x, y]] of ([[1200, 540], [960, 640], [720, 540], [960, 440], [1200, 540]] as const).entries()) {
         const layers = at(frameTimeMs(1 + index * 12));
         expect(layers).toHaveLength(1);
         expect(layers[0]!.x).toBeCloseTo(x, 5);
