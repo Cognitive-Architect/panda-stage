@@ -175,6 +175,8 @@ export const FlaSymbolInstancePlacementIRSchema = z
     libraryItemName: z.string().trim().min(1).max(500),
     symbolType: FlaSymbolTypeSchema,
     loop: FlaSymbolPlaybackModeSchema,
+    displaySlot: z.string().optional(),
+    instanceName: z.string().optional(),
     firstFrame: z.number().int().nonnegative().optional(),
     lastFrame: z.number().int().nonnegative().optional(),
   })

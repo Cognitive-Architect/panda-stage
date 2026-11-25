@@ -57,6 +57,7 @@ export const ExportLoadFormalRequestSchema = z
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
     solidClear: z.literal(true).optional(),
+    outputLayerId: z.uuid().optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
     media: z.array(ExportLoadFormalMediaSchema).max(512),
   })
@@ -534,7 +535,7 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
   const baseShot = project.shots.find(({ id }) => id === settings.shotId);
   if (!baseShot) throw new Error('请选择一个可导出的镜头。');
   const scoped = settings.layerId ? scopeShotForLayerExport(baseShot, settings.layerId) : null;
-  const shot = scoped ? scoped.shot : baseShot;
+  const shot = baseShot;
   const startMs = settings.range?.startMs ?? 0;
   const endMs = settings.range?.endMs ?? shot.durationMs;
   if (startMs < 0 || endMs > shot.durationMs || startMs >= endMs) throw new Error('PNG 时间段须在当前镜头范围内。');
@@ -546,6 +547,7 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
     totalFrames,
     firstFrameIndex: first,
     shot,
+    outputShot: scoped?.shot ?? shot,
     selectedLayer: scoped?.layer,
     *frames(): Generator<ProjectFrameScheduleEntry> {
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {

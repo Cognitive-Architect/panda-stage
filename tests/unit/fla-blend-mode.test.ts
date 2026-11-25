@@ -64,6 +64,52 @@ describe('FLA Blend Modes shared mapping (S01-C / #1296)', () => {
 });
 
 describe('FLA Multiply / Screen / Add XFL parsing, structure capture, SVG compositing, and local degradation (S01-C / #1296)', () => {
+  it.each(['classic', 'object'].flatMap((motion) =>
+    [undefined, 'normal', 'multiply', 'screen', 'add', 'overlay'].map((blendMode) => ({ motion, blendMode })),
+  ))('F07: imports and renders $motion Motion with $blendMode over authored artwork', async ({ motion, blendMode }) => {
+    const instance = (tx: number) => '<DOMSymbolInstance libraryItemName="Tile" symbolType="graphic"' +
+      `${blendMode ? ` blendMode="${blendMode}"` : ''}><matrix><Matrix tx="${tx}"/></matrix></DOMSymbolInstance>`;
+    const movingFrames = motion === 'classic'
+      ? `<DOMFrame index="0" duration="4" tweenType="motion" keyMode="17921"><elements>${instance(0)}</elements></DOMFrame>
+        <DOMFrame index="4" keyMode="9728"><elements>${instance(40)}</elements></DOMFrame>`
+      : `<DOMFrame index="0" duration="5" tweenType="motion object">
+          <motionObjectXML><AnimationCore TimeScale="24000" duration="5000"><PropertyContainer id="headContainer">
+            <Property id="Motion_X"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,40"/></Property>
+          </PropertyContainer></AnimationCore></motionObjectXML><elements>${instance(0)}</elements>
+        </DOMFrame>`;
+    const host = `<DOMSymbolItem name="Host" symbolType="graphic"><timeline><DOMTimeline name="Host"><layers>
+        <DOMLayer name="Moving"><frames>${movingFrames}</frames></DOMLayer>
+        <DOMLayer name="Backdrop"><frames><DOMFrame index="0" duration="5"><elements>${solidBox('#336699')}</elements></DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timeline></DOMSymbolItem>`;
+    const bytes = await buildFlaBytes(`<DOMDocument width="200" height="200" frameRate="24">
+      <symbols><Include href="Host.xml"/><Include href="Tile.xml"/></symbols>
+      <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="Host" symbolType="graphic"/>
+      </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`,
+    [{ name: 'LIBRARY/Tile.xml', xml: graphicSymbol('Tile', solidBox('#ff8800')) },
+      { name: 'LIBRARY/Host.xml', xml: host }]);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const target = catalog.entries.find(({ target }) => target.sourceLibraryItemName === 'Host')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 }, undefined, prepared.source);
+    if (blendMode === 'overlay') {
+      expect(rendered).toMatchObject({ ok: false, message: expect.stringMatching(/blendMode|混合模式/u) });
+      return;
+    }
+    if (!rendered.ok) throw new Error(rendered.message);
+    const tx = /matrix\(1 0 0 1 ([\d.]+) 0\)" fill="#ff8800"/u.exec(rendered.svg)?.[1];
+    expect(Number(tx)).toBeCloseTo(20);
+    expect(rendered.svg).toContain('#336699');
+    expect(rendered.svg).toContain('#ff8800');
+    if (blendMode && blendMode !== 'normal') {
+      expect(rendered.svg).toContain(`mix-blend-mode:${blendMode === 'add' ? 'plus-lighter' : blendMode}`);
+    } else {
+      expect(rendered.svg).not.toContain('mix-blend-mode:');
+    }
+  });
+
   it.each([
     { blendMode: 'multiply', svgMode: 'multiply' },
     { blendMode: 'screen', svgMode: 'screen' },

@@ -92,6 +92,8 @@ export interface SubtreeBounds {
 export interface IsolatedSubtreeCaptureResult extends SubtreeBounds {
   readonly sourceRef?: string;
   readonly reason?: string;
+  /** Placement of the isolated SVG axes in the original display list. */
+  readonly artworkTransform?: AffineMatrix2D;
 }
 
 export interface IsolatedFilteredLayerCaptureResult extends IsolatedSubtreeCaptureResult {
@@ -109,7 +111,7 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
   /** Isolated Shape artwork is in source-node local space; filtered layers stay residual. */
   readonly resolveIsolatedShape?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => SubtreeBounds | undefined;
-  /** Isolated opaque subtree (static text, instance-filtered group, or per-channel color group) in node-local space. */
+  /** Isolated opaque subtree artwork in node-local or explicit effect space. */
   readonly resolveIsolatedSubtree?: (
     node: FlaResolvedDisplayNode,
     context: {
@@ -128,6 +130,14 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly bitmapAssetMap?: ReadonlyMap<string, string>;
   /** Main-process, bounded vector contours extracted from source shape blocks. */
   readonly clipPathShapePathData?: ReadonlyMap<string, readonly string[]>;
+}
+
+export function hasScreenSpaceInstanceFilter(node: FlaResolvedDisplayNode): boolean {
+  if (node.kind === 'group') {
+    return Boolean(node.instanceFilters?.some((filter) => filter.enabled)) ||
+      node.children.some(hasScreenSpaceInstanceFilter);
+  }
+  return node.kind === 'text' && Boolean(node.instanceFilters?.some((filter) => filter.enabled));
 }
 
 /**
@@ -156,6 +166,7 @@ export function captureFlaGraphicStructureFrames(
     }
   }
   const usedIds = new Set<string>();
+  let invalidArtworkPlacement = false;
   const symbolDefinitions: Record<string, FlaGraphicNestedSymbolDefinition> = {};
   const maskPathByteBudget: MaskPathByteBudget = {
     remainingBytes: FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES,
@@ -176,6 +187,12 @@ export function captureFlaGraphicStructureFrames(
       const fallbackId = `${parentId}/${node.kind}[${drawOrder}]`;
       const id = uniqueId(node.sourceAddress ?? fallbackId);
       const authoredWorld = multiplyAffineMatrices(parentWorld, node.localTransform);
+      const artworkPlacement = (isolated: IsolatedSubtreeCaptureResult | undefined) => {
+        if (!isolated?.artworkTransform) return {};
+        const placement = localizeAbsoluteLeafMatrix(parentWorld, isolated.artworkTransform);
+        if (!placement.ok) invalidArtworkPlacement = true;
+        return placement.ok ? { localTransform: placement.value } : {};
+      };
       const clipPaths = clipPathsOf(
         node.kind === 'group' ? undefined : node.clipPaths,
         parentWorld,
@@ -249,6 +266,7 @@ export function captureFlaGraphicStructureFrames(
         const textAssetId = textViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
         return {
           ...base,
+          ...artworkPlacement(isolated),
           type: 'opaque',
           opaqueKind: 'text',
           sourceRef: isolated?.sourceRef ?? node.textId,
@@ -290,6 +308,7 @@ export function captureFlaGraphicStructureFrames(
         const fallbackSourceRef = node.symbolLibraryItemName ?? node.groupId;
         return {
           ...base,
+          ...artworkPlacement(isolated),
           ...(groupClipPaths ? { clipPaths: groupClipPaths } : {}),
           type: 'opaque',
           opaqueKind,
@@ -311,7 +330,13 @@ export function captureFlaGraphicStructureFrames(
             ? `${node.symbolLibraryItemName}::${frameSelectionKey}`
             : node.symbolLibraryItemName
         ).slice(0, 880);
-        const nestedDefinitionId = baseDefKey;
+        // A child effect is baked against the occurrence's display axes. A symbol
+        // placed at a different scale or rotation cannot share that child's SVG.
+        const needsEffectVariant = node.children.some(hasScreenSpaceInstanceFilter);
+        const { a, b, c, d } = node.worldTransform;
+        const nestedDefinitionId = needsEffectVariant
+          ? `${baseDefKey.slice(0, 760)}::effects:${[a, b, c, d].join(',')}`
+          : baseDefKey;
         if (!symbolDefinitions[nestedDefinitionId]) {
           const defChildren = convert(node.children, `def:${nestedDefinitionId}`, null, authoredWorld);
           symbolDefinitions[nestedDefinitionId] = {
@@ -382,6 +407,7 @@ export function captureFlaGraphicStructureFrames(
     });
     return { ordinal: frameOrdinal, layers };
   });
+  if (invalidArtworkPlacement) return undefined;
   const parsed = FlaGraphicStructureSchema.safeParse({
     version: 1,
     ...(Object.keys(symbolDefinitions).length > 0 ? { symbolDefinitions } : {}),

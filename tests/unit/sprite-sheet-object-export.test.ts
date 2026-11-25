@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { evaluateExportPreparationSupport } from '../../src/domain/export-preparation';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import {
   computeLayerExportAnchor,
   planPngSequenceFrames,
@@ -235,13 +236,17 @@ describe('S03-C selected Graphic / action object sprite sheet export', () => {
       const job = service.startPngSequenceExport(frozen, async () => {});
       await expect(job.completion).resolves.toEqual({ outputPath: output });
 
-      // Formal renderer received ONLY the isolated actionLayer with static camera & transparent background.
+      // The hidden renderer projects the original Shot and draws only the action layer.
       expect(formalLoads).toHaveLength(1);
       expect(formalLoads[0]!.cameraMode).toBe('static');
       expect(formalLoads[0]!.solidClear).toBeUndefined();
       const loadedShot = formalLoads[0]!.project.shots[0]!;
-      expect(loadedShot.backgroundLayerId).toBeNull();
-      expect(loadedShot.layers.map((l) => l.id)).toEqual([actionLayer.id]);
+      expect(loadedShot.layers.map((l) => l.id)).toEqual(shot.layers.map((l) => l.id));
+      expect(formalLoads[0]!.outputLayerId).toBe(actionLayer.id);
+      const visual = evaluateExportShotAtTime(formalLoads[0]!.project, loadedShot, 500,
+        undefined, formalLoads[0]!.dialogueSilence, formalLoads[0]!.outputLayerId);
+      expect(visual.backgroundLayerId).toBeNull();
+      expect(visual.layers.map(({ id }) => id)).toEqual([actionLayer.id]);
 
       const master = JSON.parse(await readFile(path.join(output, 'sprite-sheet.json'), 'utf8'));
       expect(master.format).toBe('panda-sprite-sheet-master');

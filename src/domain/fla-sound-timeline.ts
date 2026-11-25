@@ -1,4 +1,5 @@
 import type { Project } from './models/project';
+import { isSameXflMovieClip } from '../shared/fla-xfl-symbol-type';
 import {
   AudioClipService,
   type CreateAudioClipInput,
@@ -75,6 +76,8 @@ export interface FlaSymbolInstanceSoundPlacement {
   readonly libraryItemName: string;
   readonly symbolType: FlaSoundSymbolType;
   readonly loop: FlaSoundSymbolPlaybackMode;
+  readonly displaySlot?: string;
+  readonly instanceName?: string;
   readonly firstFrame?: number;
   readonly lastFrame?: number;
 }
@@ -207,11 +210,10 @@ function resolveChildTotalFrames(symbol: FlaSymbolTimelineSoundSource): number {
 
 function evaluateInstanceChildFrame(
   placement: FlaSymbolInstanceSoundPlacement,
-  symbol: FlaSymbolTimelineSoundSource,
   childTotalFrames: number,
   offset: number,
 ): number {
-  if (symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip') {
+  if (placement.symbolType === 'movieclip') {
     return offset % childTotalFrames;
   }
   const safeOffset = Math.max(0, Math.trunc(offset));
@@ -242,6 +244,38 @@ function evaluateInstanceChildFrame(
   return clampedFirstFrame;
 }
 
+type SoundLayer = FlaTimelineSoundSource['layers'][number];
+type SoundFrame = SoundLayer['frames'][number];
+type MovieClipRun = { readonly placement: FlaSymbolInstanceSoundPlacement };
+type MovieClipSpans = Map<MovieClipRun, { start: number; end: number }[]>;
+
+/** Index contiguous authored runs by display slot, independently for each layer. */
+function indexMovieClipRuns(layer: SoundLayer): Map<SoundFrame, ReadonlyMap<FlaSymbolInstanceSoundPlacement, MovieClipRun>> {
+  const byFrame = new Map<SoundFrame, ReadonlyMap<FlaSymbolInstanceSoundPlacement, MovieClipRun>>();
+  let previous = new Map<string, MovieClipRun>();
+  let previousEnd = -1;
+  for (const frame of [...layer.frames].sort((a, b) => a.sourceFrameIndex - b.sourceFrameIndex)) {
+    if (frame.sourceFrameIndex !== previousEnd) previous.clear();
+    const slots = new Map<string, MovieClipRun>();
+    const byPlacement = new Map<FlaSymbolInstanceSoundPlacement, MovieClipRun>();
+    frame.symbolInstances?.forEach((placement, index) => {
+      if (placement.symbolType !== 'movieclip') return;
+      const slot = placement.displaySlot ?? String(index);
+      const earlier = previous.get(slot);
+      const run = earlier && isSameXflMovieClip(
+        earlier.placement.libraryItemName.toLowerCase(), earlier.placement.instanceName,
+        placement.libraryItemName.toLowerCase(), placement.instanceName,
+      ) ? earlier : { placement };
+      slots.set(slot, run);
+      byPlacement.set(placement, run);
+    });
+    if (byPlacement.size) byFrame.set(frame, byPlacement);
+    previous = slots;
+    previousEnd = frame.sourceFrameIndex + Math.max(1, frame.duration);
+  }
+  return byFrame;
+}
+
 /**
  * Extracts sound events from a main Scene timeline AND deterministically nested
  * Graphic / MovieClip symbol instances using independent per-instance clocks.
@@ -267,6 +301,51 @@ export function extractFlaTimelineSoundEventsWithNested(
   const maxDepth = options.maxDepth ?? FLA_SOUND_MAX_NESTED_DEPTH;
   const sourceFps = options.sourceFps;
   const reportedCycles = new Set<string>();
+  const runIndexByLayer = new Map<SoundLayer, ReturnType<typeof indexMovieClipRuns>>();
+
+  const movieClipRunsForLayer = (layer: SoundLayer) => {
+    let runIndex = runIndexByLayer.get(layer);
+    if (!runIndex) {
+      runIndex = indexMovieClipRuns(layer);
+      runIndexByLayer.set(layer, runIndex);
+    }
+    return runIndex;
+  };
+
+  const addMovieClipSpans = (
+    spansByRun: MovieClipSpans,
+    runs: ReadonlyMap<FlaSymbolInstanceSoundPlacement, MovieClipRun> | undefined,
+    start: number,
+    end: number,
+  ) => {
+    for (const run of runs?.values() ?? []) {
+      const span = { start, end };
+      const spans = spansByRun.get(run);
+      if (spans) spans.push(span);
+      else spansByRun.set(run, [span]);
+    }
+  };
+
+  const expandMovieClipSpans = (
+    spansByRun: MovieClipSpans,
+    layerIndex: number,
+    depth: number,
+    ancestry: ReadonlySet<string>,
+  ) => {
+    for (const [run, spans] of spansByRun) {
+      spans.sort((a, b) => a.start - b.start);
+      let start = spans[0]!.start;
+      let end = spans[0]!.end;
+      for (const span of spans.slice(1)) {
+        if (span.start > end) {
+          expandPlacement(run.placement, start, end - start, layerIndex, depth, ancestry);
+          start = span.start;
+        }
+        end = Math.max(end, span.end);
+      }
+      expandPlacement(run.placement, start, end - start, layerIndex, depth, ancestry);
+    }
+  };
 
   const lookupSymbol = (name: string): FlaSymbolTimelineSoundSource | undefined =>
     symbolByName.get(name) ?? symbolByName.get(name.trim().toLowerCase());
@@ -274,12 +353,12 @@ export function extractFlaTimelineSoundEventsWithNested(
   const expandPlacement = (
     placement: FlaSymbolInstanceSoundPlacement,
     parentStartFrame: number,
-    parentRelativeOffsets: readonly number[],
+    parentTiming: readonly number[] | number,
     parentLayerIndex: number,
     depth: number,
     ancestry: ReadonlySet<string>,
   ): void => {
-    const parentSpanFrames = parentRelativeOffsets.length;
+    const parentSpanFrames = typeof parentTiming === 'number' ? parentTiming : parentTiming.length;
     if (parentSpanFrames <= 0) return;
 
     if (placement.symbolType === 'button') {
@@ -339,7 +418,7 @@ export function extractFlaTimelineSoundEventsWithNested(
     }
 
     if (
-      (symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip') &&
+      placement.symbolType === 'movieclip' &&
       symbol.hasActionScript
     ) {
       diagnostics.push({
@@ -361,14 +440,12 @@ export function extractFlaTimelineSoundEventsWithNested(
     //   actually selected frame offset into the enclosing keyframe span, so a
     //   frozen single-frame or clamped play-once ancestor never advances a
     //   nested Graphic's audio clock ahead of its visual frame.
-    const isMovieClip =
-      symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip';
+    const isMovieClip = placement.symbolType === 'movieclip';
     const childFramesByOffset: number[] = new Array(parentSpanFrames);
     for (let offset = 0; offset < parentSpanFrames; offset += 1) {
-      const clockOffset = isMovieClip ? offset : parentRelativeOffsets[offset]!;
+      const clockOffset = isMovieClip || typeof parentTiming === 'number' ? offset : parentTiming[offset]!;
       childFramesByOffset[offset] = evaluateInstanceChildFrame(
         placement,
-        symbol,
         childTotalFrames,
         clockOffset,
       );
@@ -378,6 +455,8 @@ export function extractFlaTimelineSoundEventsWithNested(
     nextAncestry.add(canonicalKey);
 
     for (const childLayer of symbol.layers) {
+      const movieClipRuns = movieClipRunsForLayer(childLayer);
+      const movieClipSpans: MovieClipSpans = new Map();
       for (const childFrame of childLayer.frames) {
         const keyStart = Math.max(0, childFrame.sourceFrameIndex);
         const keyDuration = Math.max(1, childFrame.duration);
@@ -462,11 +541,12 @@ export function extractFlaTimelineSoundEventsWithNested(
               inRange && runStart >= 0 && (isReverseMode ? cf > prevCf : cf < prevCf);
 
             if ((!inRange || wrapped) && runStart >= 0) {
-              const runRelativeOffsets: number[] = new Array(offset - runStart);
-              for (let i = runStart; i < offset; i += 1) {
-                runRelativeOffsets[i - runStart] = childFramesByOffset[i]! - keyStart;
-              }
+              addMovieClipSpans(movieClipSpans, movieClipRuns.get(childFrame),
+                parentStartFrame + runStart, parentStartFrame + offset);
+              let runRelativeOffsets: number[] | undefined;
               for (const nested of childFrame.symbolInstances) {
+                if (nested.symbolType === 'movieclip') continue;
+                runRelativeOffsets ??= childFramesByOffset.slice(runStart, offset).map((frame) => frame - keyStart);
                 expandPlacement(
                   nested,
                   parentStartFrame + runStart,
@@ -483,10 +563,13 @@ export function extractFlaTimelineSoundEventsWithNested(
           }
         }
       }
+      expandMovieClipSpans(movieClipSpans, parentLayerIndex, depth + 1, nextAncestry);
     }
   };
 
   for (const layer of timeline.layers) {
+    const movieClipRuns = movieClipRunsForLayer(layer);
+    const movieClipSpans: MovieClipSpans = new Map();
     for (const frame of layer.frames) {
       const frameIndex = Math.max(0, frame.sourceFrameIndex);
       const frameDuration = Math.max(1, frame.duration);
@@ -499,12 +582,13 @@ export function extractFlaTimelineSoundEventsWithNested(
         });
       }
       if (frame.symbolInstances && frame.symbolInstances.length > 0) {
-        const sceneRelativeOffsets = Array.from({ length: frameDuration }, (_, i) => i);
+        addMovieClipSpans(movieClipSpans, movieClipRuns.get(frame), frameIndex, frameIndex + frameDuration);
         for (const placement of frame.symbolInstances) {
+          if (placement.symbolType === 'movieclip') continue;
           expandPlacement(
             placement,
             frameIndex,
-            sceneRelativeOffsets,
+            frameDuration,
             layer.sourceLayerIndex,
             1,
             new Set(),
@@ -512,6 +596,7 @@ export function extractFlaTimelineSoundEventsWithNested(
         }
       }
     }
+    expandMovieClipSpans(movieClipSpans, layer.sourceLayerIndex, 1, new Set());
   }
 
   events.sort(compareSoundEvents);

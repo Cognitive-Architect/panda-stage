@@ -79,6 +79,9 @@ export class FLAParser {
   private parser = new DOMParser();
   private lastYieldTime = 0;
 
+  // Panda adapter hook for authored XFL metadata that the legacy parser defaults erase.
+  constructor(private readonly onXflSymbol?: (symbol: Symbol | SymbolInstance, source: globalThis.Element) => void) {}
+
   // Yield to browser if more than 50ms has passed since last yield
   private async yieldIfNeeded(): Promise<void> {
     const now = performance.now();
@@ -444,6 +447,7 @@ export class FLAParser {
           ...(scale9Grid && { scale9Grid }),
           ...(hitAreaFrame !== undefined && { hitAreaFrame })
         };
+        this.onXflSymbol?.(symbol, symbolRoot);
 
         // Store with both normalized and original names
         setWithNormalizedPath(this.symbolCache, rawName, symbol);
@@ -953,7 +957,7 @@ export class FLAParser {
     const isVisibleAttr = el.getAttribute('isVisible');
     const isVisible = isVisibleAttr === 'false' ? false : undefined; // Only set if explicitly false
 
-    return {
+    const instance: SymbolInstance = {
       type: 'symbol',
       libraryItemName,
       symbolType,
@@ -973,6 +977,8 @@ export class FLAParser {
       ...(z !== undefined && { z }),
       ...(cacheAsBitmap && { cacheAsBitmap })
     };
+    this.onXflSymbol?.(instance, el);
+    return instance;
   }
 
   private parseVideoInstance(el: globalThis.Element): VideoInstance {

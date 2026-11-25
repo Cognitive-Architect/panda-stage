@@ -8,6 +8,7 @@ import {
 } from '../../domain';
 import {
   captureFlaGraphicStructureFrames,
+  hasScreenSpaceInstanceFilter,
   type IsolatedFilteredLayerCaptureResult,
   type IsolatedSubtreeCaptureResult,
   type SubtreeBounds,
@@ -817,10 +818,23 @@ function localizeResolvedSubtreeNode(
   };
 }
 
+function isolatedEffectTransform(node: FlaResolvedDisplayNode): AffineMatrix2D | undefined {
+  // Filter primitives in the full SVG operate on already-transformed ink.
+  // Retain those axes when isolating effects and only move the artwork origin.
+  return hasScreenSpaceInstanceFilter(node)
+    ? { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: node.worldTransform.tx, ty: node.worldTransform.ty }
+    : undefined;
+}
+
 function buildIsolatedDisplayListForNode(
   node: FlaResolvedDisplayNode,
   sourceName: string,
+  artworkTransform: AffineMatrix2D | undefined,
 ): FlaResolvedDisplayList | null {
+  const invWorld = invertAffineMatrix(artworkTransform ?? node.worldTransform);
+  const artworkNodeTransform = artworkTransform && invWorld
+    ? multiplyAffineMatrices(invWorld, node.worldTransform)
+    : FLA_DISPLAY_LIST_IDENTITY_MATRIX;
   if (node.kind === 'text') {
     return {
       kind: 'graphic',
@@ -832,14 +846,13 @@ function buildIsolatedDisplayListForNode(
         children: [{
           ...node,
           localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
-          worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+          worldTransform: artworkNodeTransform,
           clipPaths: undefined,
         }],
       }],
     };
   }
   if (node.kind === 'group') {
-    const invWorld = invertAffineMatrix(node.worldTransform);
     if (!invWorld) return null;
     const externalClipCount = (node.instanceFilterClips ?? node.inheritedClipPaths)?.length ?? 0;
     const children: FlaResolvedDisplayNode[] = [];
@@ -851,7 +864,7 @@ function buildIsolatedDisplayListForNode(
     const isolatedGroup: FlaResolvedGroupNode = {
       ...node,
       localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
-      worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+      worldTransform: artworkNodeTransform,
       instanceFilterClips: undefined,
       inheritedClipPaths: undefined,
       // Runtime compositing applies the subtree's outer blend mode against the
@@ -2139,7 +2152,8 @@ export class FlaPartPreviewService {
                 return;
               }
               const canonicalTextNode = { ...node, textId: 'isolated-text' };
-              const isolatedDisplayList = buildIsolatedDisplayListForNode(canonicalTextNode, 'text');
+              const artworkTransform = isolatedEffectTransform(node);
+              const isolatedDisplayList = buildIsolatedDisplayListForNode(canonicalTextNode, 'text', artworkTransform);
               if (!isolatedDisplayList) {
                 partialIsolationFailed = true;
                 return;
@@ -2156,7 +2170,7 @@ export class FlaPartPreviewService {
                 partialIsolationFailed = true;
                 return;
               }
-              isolatedSubtreeByNode.set(node, result);
+              isolatedSubtreeByNode.set(node, { ...result, artworkTransform });
               continue;
             }
             if (node.kind === 'group' && !node.opaque) {
@@ -2164,9 +2178,11 @@ export class FlaPartPreviewService {
               const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
               if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
                 const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+                const artworkTransform = isolatedEffectTransform(node);
                 const isolatedDisplayList = buildIsolatedDisplayListForNode(
                   node,
                   opaqueKind,
+                  artworkTransform,
                 );
                 if (!isolatedDisplayList) {
                   partialIsolationFailed = true;
@@ -2186,7 +2202,7 @@ export class FlaPartPreviewService {
                   partialIsolationFailed = true;
                   return;
                 }
-                isolatedSubtreeByNode.set(node, result);
+                isolatedSubtreeByNode.set(node, { ...result, artworkTransform });
                 continue;
               }
               await isolateSubtreesInNodes(

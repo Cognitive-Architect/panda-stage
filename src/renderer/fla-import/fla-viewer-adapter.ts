@@ -5,7 +5,9 @@ import type {
   DisplayElement,
   FLADocument,
   Matrix,
+  SymbolInstance,
 } from './parser-core/types';
+import { xflDefinitionSymbolType, xflPlacementSymbolType } from '../../shared/fla-xfl-symbol-type';
 import {
   FLA_IMPORT_LIMITS,
   FLA_PARSER_COMMIT,
@@ -331,7 +333,46 @@ export async function adaptFlaDocument(
   mode?: FlaWorkerInspectionRequest['mode'],
 ): Promise<FlaInspectionIR> {
   const structureOnly = mode === 'structure';
-  const parser = new FLAParser();
+  const placements = new WeakMap<SymbolInstance, {
+    rawType?: string;
+    hasGraphicPlayback: boolean;
+    displaySlot: string;
+    instanceName?: string;
+    visible: boolean;
+  }>();
+  const definitionTypes = new Map<string, ReturnType<typeof xflDefinitionSymbolType>>();
+  const siblingSlots = new WeakMap<Element, Map<Element, number>>();
+  const parser = new FLAParser((symbol, sourceElement) => {
+    const rawType = sourceElement.getAttribute('symbolType') ?? undefined;
+    if ('libraryItemName' in symbol) {
+      const slots: number[] = [];
+      let current = sourceElement;
+      let visible = true;
+      for (;;) {
+        visible &&= current.getAttribute('visible') !== 'false' && current.getAttribute('isVisible') !== 'false';
+        const parent = current.parentElement;
+        if (!parent) break;
+        let siblings = siblingSlots.get(parent);
+        if (!siblings) {
+          siblings = new Map(Array.from(parent.children, (child, index) => [child, index]));
+          siblingSlots.set(parent, siblings);
+        }
+        slots.push(siblings.get(current)!);
+        const group = parent.parentElement;
+        if (parent.tagName !== 'members' || group?.tagName !== 'DOMGroup') break;
+        current = group;
+      }
+      placements.set(symbol, {
+        rawType,
+        hasGraphicPlayback: ['loop', 'firstFrame', 'lastFrame'].some((name) => sourceElement.hasAttribute(name)),
+        displaySlot: slots.reverse().join('/'),
+        instanceName: sourceElement.getAttribute('name') ?? undefined,
+        visible,
+      });
+    } else if (rawType?.trim().toLowerCase() !== 'ik container') {
+      definitionTypes.set(normalizeReference(symbol.name), xflDefinitionSymbolType(rawType));
+    }
+  });
   let document: FLADocument;
   try {
     document = await parser.parse(
@@ -346,6 +387,31 @@ export async function adaptFlaDocument(
     throw error;
   }
   ensureNotCancelled(isCancelled);
+
+  const movieClipDefinitions = new Set([...definitionTypes].filter(([, type]) => type === 'movieclip')
+    .map(([name]) => name.toLowerCase()));
+  const soundPlacement = (element: SymbolInstance) => {
+    const authored = placements.get(element);
+    const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
+    if (!libraryItemName || authored?.visible === false || element.isVisible === false) return undefined;
+    const symbolType = authored ? xflPlacementSymbolType(authored.rawType, authored.hasGraphicPlayback,
+      movieClipDefinitions.has(libraryItemName.toLowerCase())) : element.symbolType;
+    return {
+      libraryItemName,
+      symbolType,
+      loop: element.loop,
+      ...(authored && symbolType === 'movieclip' ? {
+        displaySlot: authored.displaySlot,
+        ...(authored.instanceName !== undefined ? { instanceName: authored.instanceName } : {}),
+      } : {}),
+      ...(element.firstFrame !== undefined && Number.isSafeInteger(element.firstFrame) && element.firstFrame >= 0
+        ? { firstFrame: element.firstFrame }
+        : {}),
+      ...(element.lastFrame !== undefined && Number.isSafeInteger(element.lastFrame) && element.lastFrame >= 0
+        ? { lastFrame: element.lastFrame }
+        : {}),
+    };
+  };
 
   const bitmapItems = uniqueBitmapItems(document);
   if (bitmapItems.length > FLA_IMPORT_LIMITS.maxMediaCount) {
@@ -515,20 +581,8 @@ export async function adaptFlaDocument(
         for (const element of frame.elements) {
           if (element.type !== 'bitmap') {
             if (element.type === 'symbol' && layer.layerType !== 'guide') {
-              const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
-              if (libraryItemName) {
-                symbolInstances.push({
-                  libraryItemName,
-                  symbolType: element.symbolType,
-                  loop: element.loop,
-                  ...(element.firstFrame !== undefined && Number.isSafeInteger(element.firstFrame) && element.firstFrame >= 0
-                    ? { firstFrame: element.firstFrame }
-                    : {}),
-                  ...(element.lastFrame !== undefined && Number.isSafeInteger(element.lastFrame) && element.lastFrame >= 0
-                    ? { lastFrame: element.lastFrame }
-                    : {}),
-                });
-              }
+              const placement = soundPlacement(element);
+              if (placement) symbolInstances.push(placement);
             }
             const unsupported = unsupportedElement(element);
             addCompatibility(compatibility, unsupported.feature, 'unsupported', unsupported.reason);
@@ -603,19 +657,8 @@ export async function adaptFlaDocument(
         if (layer.layerType !== 'guide') {
           for (const element of frame.elements) {
             if (element.type !== 'symbol') continue;
-            const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
-            if (!libraryItemName) continue;
-            nestedInstances.push({
-              libraryItemName,
-              symbolType: element.symbolType,
-              loop: element.loop,
-              ...(element.firstFrame !== undefined && Number.isSafeInteger(element.firstFrame) && element.firstFrame >= 0
-                ? { firstFrame: element.firstFrame }
-                : {}),
-              ...(element.lastFrame !== undefined && Number.isSafeInteger(element.lastFrame) && element.lastFrame >= 0
-                ? { lastFrame: element.lastFrame }
-                : {}),
-            });
+            const placement = soundPlacement(element);
+            if (placement) nestedInstances.push(placement);
           }
         }
         if (frameSound || nestedInstances.length > 0) hasSoundOrNestedSymbol = true;
@@ -642,7 +685,7 @@ export async function adaptFlaDocument(
     if (hasSoundOrNestedSymbol || symbolHasActionScript) {
       symbolTimelines.push({
         name: symbolName,
-        symbolType: symbol.symbolType,
+        symbolType: definitionTypes.get(normalizeReference(symbol.name)) ?? symbol.symbolType,
         totalFrames: Math.max(0, symbol.timeline.totalFrames),
         ...(symbolHasActionScript ? { hasActionScript: true } : {}),
         layers: layersIR,

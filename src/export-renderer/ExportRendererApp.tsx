@@ -195,6 +195,7 @@ export function ExportRendererApp(): React.JSX.Element {
           shotLocalTimeMs,
           subtitle?.id ?? null,
           formalRequest.dialogueSilence,
+          formalRequest.outputLayerId,
         )
       : evaluatedBaseShot,
     [
@@ -571,7 +572,7 @@ export function ExportRendererApp(): React.JSX.Element {
     <main className="hidden-stage-shell">
       <CanvasStage
         assetUrls={exportAssetUrls}
-        caption={subtitle?.text ?? null}
+        caption={formalRequest?.outputLayerId ? null : subtitle?.text ?? null}
         evaluatedShot={evaluatedShot}
         camera={camera}
         captionStyle={captionStyle}

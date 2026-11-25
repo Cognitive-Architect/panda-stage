@@ -466,7 +466,8 @@ export class ExportService {
     const project = { ...input.candidate.project, shots: [schedule.shot] };
     await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
       directory, () => this.renderer.loadFormal!({
-        jobId: active.jobId, project, cameraMode: input.candidate.cameraMode,
+        jobId: active.jobId, project, cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
+        ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
         media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
@@ -503,6 +504,7 @@ export class ExportService {
         jobId: active.jobId,
         project: singleShotProject,
         cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
+        ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
         media: input.media
@@ -725,6 +727,7 @@ export class ExportService {
             jobId: active.jobId,
             project: singleShotProject,
             cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
+            ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
             media: input.media
               .filter((entry) => entry.kind === 'image')

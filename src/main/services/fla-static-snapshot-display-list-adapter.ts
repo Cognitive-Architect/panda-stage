@@ -45,6 +45,7 @@ import {
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
 import { parseXflBlendMode } from '../../shared/fla-blend-mode';
+import { isSameXflMovieClip, xflPlacementSymbolType } from '../../shared/fla-xfl-symbol-type';
 import {
   FLA_STATIC_TEXT_LIMITS,
   type FlaStaticTextAlignment,
@@ -82,6 +83,7 @@ const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'firstFrame',
   'lastFrame',
   'name',
+  'blendMode',
 ]);
 const UNSUPPORTED_MOTION_METADATA_TAGS = new Set([
   'motionobject',
@@ -1363,12 +1365,11 @@ function displaySymbolType(
   const attrs = element.attributes;
   const type = attrs.symbolType?.trim().toLowerCase();
   if (type === 'ik container' || state.ikContainerNames.has(libraryItemName)) return 'ik container';
-  if (type === 'button') return 'button';
-  if (type === 'graphic') return 'graphic';
-  if (type) return 'movieclip';
-  if (attrs.loop !== undefined || attrs.firstFrame !== undefined || attrs.lastFrame !== undefined) return 'graphic';
-  // Adobe omits symbolType on default MovieClip declarations and placements.
-  return state.movieClipNames.has(libraryItemName) ? 'movieclip' : 'graphic';
+  return xflPlacementSymbolType(
+    type,
+    attrs.loop !== undefined || attrs.firstFrame !== undefined || attrs.lastFrame !== undefined,
+    state.movieClipNames.has(libraryItemName),
+  );
 }
 
 function findMovieClipRun(
@@ -1395,7 +1396,7 @@ function findMovieClipRun(
     const rawName = element?.attributes.libraryItemName?.trim();
     if (!rawName || element?.name !== 'DOMSymbolInstance' || !elementIsVisible(element.attributes)) return false;
     const name = resolveSymbolAlias(context.state.symbolAliases, rawName) ?? rawName;
-    return name === libraryItemName && element.attributes.name === current.attributes.name &&
+    return isSameXflMovieClip(name, element.attributes.name, libraryItemName, current.attributes.name) &&
       displaySymbolType(element, name, context.state) === 'movieclip';
   };
   let start = currentSpan.index;
@@ -1800,6 +1801,13 @@ function classicMotionFramePairRejectionReason(
     if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
       return `Classic Motion symbol instance ${index} contains unsupported attributes`;
     }
+    const startBlend = parseXflBlendMode(startTarget.attributes.blendMode);
+    if (!startBlend.ok) return startBlend.reason;
+    const endBlend = parseXflBlendMode(endTarget.attributes.blendMode);
+    if (!endBlend.ok) return endBlend.reason;
+    if (startBlend.blendMode !== endBlend.blendMode) {
+      return `Classic Motion symbol instance ${index} changes blendMode between keyframes`;
+    }
     if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
         startTarget.attributes.symbolType !== endTarget.attributes.symbolType) {
       return `Classic Motion symbol identity changes at source order ${index}`;
@@ -2036,10 +2044,11 @@ function readObjectMotionTarget(frame: FlaXflElementBlock): RigCalculationResult
       !elementIsVisible(instance.attributes)) {
     return { ok: false, message: '此帧的对象补间需要一个可见的元件实例' };
   }
-  if (directChild(instance.xml, instance.name, 'matrix3D') ||
-      (instance.attributes.blendMode && instance.attributes.blendMode !== 'normal')) {
-    return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换、滤镜或混合模式' };
+  if (directChild(instance.xml, instance.name, 'matrix3D')) {
+    return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换' };
   }
+  const blend = parseXflBlendMode(instance.attributes.blendMode);
+  if (!blend.ok) return { ok: false, message: blend.reason };
   const matrix = readDirectMatrix(instance);
   return matrix.ok ? { ok: true, value: { instance, matrix: matrix.matrix } }
     : { ok: false, message: '此帧的对象补间起始位置无效' };

@@ -213,10 +213,12 @@ function addShotVisualAssets(
   shot: Project['shots'][number],
   shotIndex: number,
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+  outputLayerId?: string,
 ): void {
   const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
   const restResourcesByCharacter = new Set<string>();
-  for (const assetId of listCharacterActionVisualAssetIds(project, shot)) {
+  const outputLayers = outputLayerId ? shot.layers.filter(({ id }) => id === outputLayerId) : shot.layers;
+  for (const assetId of listCharacterActionVisualAssetIds(project, { ...shot, layers: outputLayers })) {
     const asset = project.assets.find((candidate) => candidate.id === assetId);
     if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage);
   }
@@ -226,7 +228,7 @@ function addShotVisualAssets(
     for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
       const poseLayer = projected.layers[layerIndex];
       const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
-      if (!evaluatedLayer.visible) continue;
+      if (!evaluatedLayer.visible || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);
@@ -294,7 +296,7 @@ function addShotVisualAssets(
       (listCharacterTalkingSources(character).length === 0 && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
-      shot.layers
+      outputLayers
         .filter(
           (layer) =>
             layer.source.kind === 'character' &&
@@ -351,6 +353,7 @@ function addShotAnimationMedia(
   shot: Project['shots'][number],
   shotIndex: number,
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+  outputLayerId?: string,
 ): void {
   const sampleTimes = new Set(shotVisualSampleTimes(shot));
   for (const layer of shot.layers) {
@@ -378,7 +381,7 @@ function addShotAnimationMedia(
   for (const timeMs of [...sampleTimes].sort((left, right) => left - right)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     for (const evaluatedLayer of evaluatedShot.layers) {
-      if (!evaluatedLayer.visible) continue;
+      if (!evaluatedLayer.visible || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const layer = shot.layers.find((candidate) => candidate.id === evaluatedLayer.id);
       const layerSource = layer?.source;
       if (layerSource?.kind === 'animation') {
@@ -506,6 +509,7 @@ function addShotAnimationMedia(
 
 export function collectExportPreparationMedia(
   project: Project,
+  outputLayerId?: string,
 ): ExportPreparationMediaSource[] {
   const entries = new Map<string, ExportPreparationMediaSource>();
   const referencesByAssetId = new Map(
@@ -522,6 +526,7 @@ export function collectExportPreparationMedia(
       shot,
       shotIndex,
       referencesByAssetId,
+      outputLayerId,
     );
     addShotAnimationMedia(
       entries,
@@ -529,6 +534,7 @@ export function collectExportPreparationMedia(
       shot,
       shotIndex,
       referencesByAssetId,
+      outputLayerId,
     );
 
     shot.audioClips.forEach((clip) => {

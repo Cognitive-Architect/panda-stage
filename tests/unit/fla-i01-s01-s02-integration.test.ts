@@ -18,6 +18,8 @@ import type { FlaImportService } from '../../src/main/services/FlaImportService'
 import { FlaPartPreviewService } from '../../src/main/services/FlaPartPreviewService';
 import type { FlaStaticSnapshotRasterizer } from '../../src/main/services/fla-static-snapshot-render-session';
 import {
+  buildRenderableTargetCatalog,
+  buildSvgForRenderTarget,
   prepareFlaStaticSnapshotDisplaySource,
   stableRenderTargetId,
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
@@ -127,6 +129,7 @@ class FakeCanvasContext {
   globalCompositeOperation = 'source-over';
   draws: Array<{ image: unknown; alpha: number; compositeOperation: string }> = [];
   readCount = 0;
+  transforms: number[][] = [];
   private readonly stack: Array<{ alpha: number; operation: string }> = [];
 
   save(): void {
@@ -137,7 +140,7 @@ class FakeCanvasContext {
     this.globalAlpha = saved?.alpha ?? 1;
     this.globalCompositeOperation = saved?.operation ?? 'source-over';
   }
-  setTransform(): void {}
+  setTransform(...matrix: number[]): void { this.transforms.push(matrix); }
   clearRect(): void {}
   drawImage(image: unknown): void {
     this.draws.push({
@@ -273,6 +276,57 @@ async function setupCommitPipeline(flaBytes: Uint8Array) {
 }
 
 describe('I01 cross-integration: S01 effects/blend + S02 partial fidelity', () => {
+  it.each([
+    ['a="2" d="2"', 'matrix(2 0 0 2 0 0)'],
+    ['a="0" b="2" c="-1" d="0"', 'matrix(0 2 -1 0 0 0)'],
+  ])('F06: preserves the 30px screen-space shadow with %s through import, reopen and Canvas drawing', async (matrix, svgMatrix) => {
+    const symbol = (name: string, content: string) => `<DOMSymbolItem name="${name}" symbolType="graphic">
+      <timeline><DOMTimeline name="${name}"><layers><DOMLayer name="Ink"><frames>
+        <DOMFrame index="0"><elements>${content}</elements></DOMFrame>
+      </frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`;
+    const filtered = '<DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">' +
+      `<matrix><Matrix ${matrix}/></matrix>` +
+      '<filters><DropShadowFilter blurX="0" blurY="0" color="#ff0000" distance="30" angle="0"/></filters>' +
+      '</DOMSymbolInstance>';
+    const bytes = await buildFlaBytes(`<DOMDocument width="200" height="200" frameRate="24">
+      <symbols><Include href="Host.xml"/><Include href="Tile.xml"/></symbols>
+      <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="Main"><frames>
+        <DOMFrame index="0"><elements><DOMSymbolInstance libraryItemName="Host" symbolType="graphic"/></elements></DOMFrame>
+      </frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`, [
+      { name: 'LIBRARY/Host.xml', xml: symbol('Host', filtered) },
+      { name: 'LIBRARY/Tile.xml', xml: symbol('Tile', makeRectShapeXml('#000000', 0, 0, 10, 10)) },
+    ]);
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const target = catalog.entries.find(({ target }) => target.sourceLibraryItemName === 'Host')!.target;
+    const full = await buildSvgForRenderTarget(bytes, target);
+    if (!full.ok) throw new Error(full.message);
+    expect(full.svg).toContain('dx="30" dy="0"');
+
+    const { projectRoot, projectService, commitUnit } = await setupCommitPipeline(bytes);
+    const committed = await commitUnit(0);
+    if (!committed.ok) throw new Error(committed.error.message);
+    const { project } = await projectService.open(projectRoot);
+    const definition = project.animations.find(
+      (entry): entry is FlaGraphicDefinition => 'kind' in entry && entry.kind === 'fla-graphic',
+    )!;
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'instance' })!;
+    const node = visual.layers?.[0]?.nodes[0]?.source;
+    if (node?.type !== 'opaque' || !node.fallbackAssetId) throw new Error('Missing isolated filter resource');
+    const asset = project.assets.find(({ id }) => id === node.fallbackAssetId)!;
+    const svg = await fs.readFile(path.join(projectRoot, asset.relativePath), 'utf8');
+    const [dx, dy] = /<feOffset[^>]+dx="([^"]+)" dy="([^"]+)"/u.exec(svg)!.slice(1).map(Number);
+    const canvas = new FakeCanvas();
+    vi.stubGlobal('document', { createElement: () => canvas });
+    const images = new Map([[asset.id, new FakeImage(asset.id) as unknown as HTMLImageElement]]);
+    expect(renderFlaGraphicCanvas(visual, images)).not.toBeNull();
+    const [a, b, c, d] = canvas.context.transforms.at(-1)!;
+    expect([a! * dx! + c! * dy!, b! * dx! + d! * dy!]).toEqual([30, 0]);
+    expect(full.svg).toContain(svgMatrix);
+    expect(svg).toContain(svgMatrix);
+    expect(node.fallbackViewBox?.width).toBeGreaterThan(40);
+  });
+
   it('preserves runtime Multiply blend on isolated Glow subtree alongside editable A/C, R01 outer instance color, dynamic frames, and save/reopen', async () => {
     const flaBytes = await buildFlaBytes(
       `<?xml version="1.0" encoding="utf-8"?>

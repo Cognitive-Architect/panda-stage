@@ -731,10 +731,10 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
 
     // CleanMC triggered twice in 10 frames (frames 1 and 6); scripted MC, button, and cycle diagnosed
     expect(extracted.events.map((e) => e.frameIndex)).toEqual([1, 6]);
-    expect(extracted.diagnostics.map((d) => d.code)).toEqual([
-      'unsupported-nested-clock',
-      'unsupported-nested-clock',
-      'nested-symbol-cycle',
+    expect(extracted.diagnostics.map(({ code, soundName }) => [code, soundName]).sort()).toEqual([
+      ['nested-symbol-cycle', 'CycleA'],
+      ['unsupported-nested-clock', 'ClickBtn'],
+      ['unsupported-nested-clock', 'ScriptedMC'],
     ]);
   });
 
@@ -822,13 +822,78 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
 
     expect(ir.timelines[0]!.layers[0]!.frames[0]!.symbolInstances).toEqual([
       { libraryItemName: 'Walker', symbolType: 'graphic', loop: 'loop', firstFrame: 2 },
-      { libraryItemName: 'ScriptedMC', symbolType: 'movieclip', loop: 'loop' },
+      { libraryItemName: 'ScriptedMC', symbolType: 'movieclip', loop: 'loop', displaySlot: '1' },
     ]);
     expect(ir.symbolTimelines).toHaveLength(2);
     const scripted = ir.symbolTimelines!.find((s) => s.name === 'ScriptedMC');
     expect(scripted?.hasActionScript).toBe(true);
     const walker = ir.symbolTimelines!.find((s) => s.name === 'Walker');
     expect(walker?.layers[0]!.frames[0]!.sound?.soundId).toBe(ir.sounds![0]!.id);
+  });
+
+  it.each(['', ' symbolType="movieclip"'])('F04: XFL MovieClip%s advances inside a frozen Graphic', async (typeAttribute) => {
+    const timelineXml = (frames: string) => `<DOMTimeline name="Scene"><layers><DOMLayer name="Layer">
+      <frames>${frames}</frames></DOMLayer></layers></DOMTimeline>`;
+    const zip = new JSZip();
+    zip.file('DOMDocument.xml', `<DOMDocument frameRate="24"><timelines>${timelineXml(
+      '<DOMFrame index="0" duration="12"><elements><DOMSymbolInstance libraryItemName="Outer" symbolType="graphic" loop="single frame"/></elements></DOMFrame>',
+    )}</timelines></DOMDocument>`);
+    zip.file('LIBRARY/Outer.xml', `<DOMSymbolItem name="Outer" symbolType="graphic"><timeline>${timelineXml(
+      `<DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="Clip"${typeAttribute}/>
+        <DOMSymbolInstance libraryItemName="Still" symbolType="graphic"/>
+      </elements></DOMFrame>`,
+    )}</timeline></DOMSymbolItem>`);
+    const soundFrames = [1, 5].map((index) => `<DOMFrame index="${index}" duration="${index === 5 ? 3 : 1}"
+      soundName="beat.wav" soundSync="event"><elements/></DOMFrame>`).join('');
+    zip.file('LIBRARY/Clip.xml', `<DOMSymbolItem name="Clip"${typeAttribute}><timeline>${timelineXml(soundFrames)}</timeline></DOMSymbolItem>`);
+    zip.file('LIBRARY/Still.xml', `<DOMSymbolItem name="Still" symbolType="graphic"><timeline>${timelineXml(soundFrames)}</timeline></DOMSymbolItem>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const ir = await adaptFlaDocument({
+      basename: 'default-movieclip.fla', byteLength: bytes.byteLength, sha256: 'd'.repeat(64),
+      bytes, containsActionScript: false,
+    }, () => undefined, () => false, 'structure');
+    expect(ir.symbolTimelines?.find(({ name }) => name === 'Clip')?.symbolType).toBe('movieclip');
+    expect(ir.symbolTimelines?.find(({ name }) => name === 'Outer')?.layers[0]?.frames[0]?.symbolInstances?.map(
+      ({ symbolType }) => symbolType,
+    )).toEqual(['movieclip', 'graphic']);
+    const result = extractFlaTimelineSoundEventsWithNested(ir.timelines[0]!, { symbolTimelines: ir.symbolTimelines });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.events.map(({ frameIndex }) => frameIndex)).toEqual([1, 5, 9]);
+  });
+
+  it.each([false, true])('F05: continuous XFL MovieClips preserve independent clocks (nested: %s)', async (nested) => {
+    const timelineXml = (frames: string) => `<DOMTimeline name="Scene"><layers><DOMLayer name="Layer">
+      <frames>${frames}</frames></DOMLayer></layers></DOMTimeline>`;
+    const frame = (index: number, duration: number, elements: string) =>
+      `<DOMFrame index="${index}" duration="${duration}"><elements>${elements}</elements></DOMFrame>`;
+    const clip = (name: string) => `<DOMSymbolInstance libraryItemName="Clip" name="${name}"/>`;
+    const frames = frame(0, 4, clip('A')) + frame(4, 4, clip('A') + clip('B')) +
+      frame(8, 4, '') + frame(12, 4, clip('A'));
+    const zip = new JSZip();
+    const group = '<DOMSymbolInstance libraryItemName="Outer" symbolType="graphic"/>';
+    zip.file('DOMDocument.xml', `<DOMDocument frameRate="24"><timelines>${timelineXml(
+      nested ? frame(0, 32, group) : frames,
+    )}</timelines></DOMDocument>`);
+    if (nested) {
+      zip.file('LIBRARY/Outer.xml', `<DOMSymbolItem name="Outer" symbolType="graphic"><timeline>${timelineXml(frames)}</timeline></DOMSymbolItem>`);
+    }
+    zip.file('LIBRARY/Clip.xml', `<DOMSymbolItem name="Clip"><timeline>${timelineXml(
+      '<DOMFrame index="1" soundName="early.wav" soundSync="event"><elements/></DOMFrame>' +
+      '<DOMFrame index="5" duration="3" soundName="late.wav" soundSync="event"><elements/></DOMFrame>',
+    )}</timeline></DOMSymbolItem>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const ir = await adaptFlaDocument({
+      basename: 'continuous-movieclip.fla', byteLength: bytes.byteLength, sha256: 'd'.repeat(64),
+      bytes, containsActionScript: false,
+    }, () => undefined, () => false, 'structure');
+    const result = extractFlaTimelineSoundEventsWithNested(ir.timelines[0]!, { symbolTimelines: ir.symbolTimelines });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.events.map(({ frameIndex, sound }) => `${frameIndex}:${sound.name}`)).toEqual([
+      '1:early.wav', '5:late.wav', '5:early.wav', '13:early.wav',
+      // At the parent loop boundary the two A occurrences are separated in authored space.
+      ...(nested ? ['17:early.wav', '21:late.wav', '21:early.wav', '29:early.wav'] : []),
+    ]);
   });
 
   it('F03: nested Graphic audio follows parent actual displayed frame (frozen single-frame & play-once hold do not advance child Graphic, while nested MovieClip keeps its own clock)', () => {
