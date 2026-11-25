@@ -1666,21 +1666,29 @@ function sampleMorphContour(
   return commands.join('');
 }
 
+type ShapeTweenSampleResult =
+  | { readonly ok: true; readonly xml: string }
+  | { readonly ok: false; readonly reason: string };
+
 function samplePairedMorphStyles(
   start: FlaXflElementBlock,
   end: FlaXflElementBlock,
   contours: readonly MorphContour[],
   lerp: (a: number, b: number) => number,
   interpolatePoint: (a: MorphPoint, b: MorphPoint) => string,
-): string | null {
+): ShapeTweenSampleResult {
   const startEdges = readMorphEndpointEdges(start);
   const endEdges = readMorphEndpointEdges(end);
-  if (!startEdges || !endEdges || startEdges.count !== endEdges.count) return null;
+  if (!startEdges || !endEdges || startEdges.count !== endEdges.count) {
+    return { ok: false, reason: 'contour/edge pairing mismatch' };
+  }
   const startFills = readMorphStyleBlocks(start, 'fills');
   const endFills = readMorphStyleBlocks(end, 'fills');
   const startStrokes = readMorphStyleBlocks(start, 'strokes');
   const endStrokes = readMorphStyleBlocks(end, 'strokes');
-  if (!startFills || !endFills || !startStrokes || !endStrokes) return null;
+  if (!startFills || !endFills || !startStrokes || !endStrokes) {
+    return { ok: false, reason: 'fill/stroke style definition invalid' };
+  }
   const usedStart = new Set<number>();
   const usedEnd = new Set<number>();
   const fillIds = new Map<string, number>();
@@ -1688,50 +1696,75 @@ function samplePairedMorphStyles(
   const fills: string[] = [];
   const strokes: string[] = [];
   const edges: string[] = [];
-  const pairedStyle = (a: number, b: number, stroke: boolean): number | null => {
-    if (!a || !b) return a === b ? 0 : null;
+  const pairedStyle = (a: number, b: number, stroke: boolean): { readonly ok: true; readonly id: number } | { readonly ok: false; readonly reason: string } => {
+    if (!a || !b) return a === b ? { ok: true, id: 0 } : { ok: false, reason: stroke ? 'stroke pairing mismatch' : 'fill pairing mismatch' };
     const ids = stroke ? strokeIds : fillIds;
     const key = `${a}/${b}`;
     const prior = ids.get(key);
-    if (prior) return prior;
+    if (prior) return { ok: true, id: prior };
     const first = (stroke ? startStrokes : startFills).get(a);
     const last = (stroke ? endStrokes : endFills).get(b);
-    if (!first || !last) return null;
+    if (!first || !last) return { ok: false, reason: stroke ? 'stroke style reference missing' : 'fill style reference missing' };
     const firstChildren = getFlaXflDirectChildren(first.xml, first.name, 2);
     const lastChildren = getFlaXflDirectChildren(last.xml, last.name, 2);
-    if (firstChildren.length !== 1 || lastChildren.length !== 1) return null;
-    const paint = stroke ? sampleMorphSolidStroke(firstChildren[0]!, lastChildren[0]!, lerp)
-      : sampleMorphFillPaint(firstChildren[0]!, lastChildren[0]!, lerp);
-    if (!paint || ids.size >= 256) return null;
+    if (firstChildren.length !== 1 || lastChildren.length !== 1) {
+      return { ok: false, reason: stroke ? 'stroke style structure unsupported' : 'fill style structure unsupported' };
+    }
+    const firstChild = firstChildren[0]!;
+    const lastChild = lastChildren[0]!;
+    const paint = stroke ? sampleMorphSolidStroke(firstChild, lastChild, lerp)
+      : sampleMorphFillPaint(firstChild, lastChild, lerp);
+    if (!paint || ids.size >= 256) {
+      const detail = stroke
+        ? 'stroke style mismatch'
+        : firstChild.name !== lastChild.name
+          ? `fill/gradient type mismatch (${firstChild.name} vs ${lastChild.name})`
+          : firstChild.name === 'LinearGradient' || firstChild.name === 'RadialGradient'
+            ? 'gradient stop/parameter mismatch'
+            : 'fill style mismatch';
+      return { ok: false, reason: detail };
+    }
     const id = ids.size + 1;
     ids.set(key, id);
     const tag = stroke ? 'StrokeStyle' : 'FillStyle';
     (stroke ? strokes : fills).push(`<${tag} index="${id}">${paint}</${tag}>`);
-    return id;
+    return { ok: true, id };
   };
   for (const { contour, curves } of contours) {
     let pointA = readMorphPoint(contour.attributes.startPointA);
     let pointB = readMorphPoint(contour.attributes.startPointB);
-    if (!pointA || !pointB) return null;
+    if (!pointA || !pointB) return { ok: false, reason: 'contour start point pairing mismatch' };
     for (const curve of curves) {
-      if (curve.name !== 'MorphCurves' || ![undefined, 'true', 'false'].includes(curve.attributes.isLine)) return null;
+      if (curve.name !== 'MorphCurves' || ![undefined, 'true', 'false'].includes(curve.attributes.isLine)) {
+        return { ok: false, reason: 'contour curve pairing invalid' };
+      }
       const isLine = curve.attributes.isLine === 'true';
       const endA = readMorphPoint(curve.attributes.anchorPointA);
       const endB = readMorphPoint(curve.attributes.anchorPointB);
       const controlA = isLine ? null : readMorphPoint(curve.attributes.controlPointA);
       const controlB = isLine ? null : readMorphPoint(curve.attributes.controlPointB);
-      if (!endA || !endB || (!isLine && (!controlA || !controlB))) return null;
+      if (!endA || !endB || (!isLine && (!controlA || !controlB))) {
+        return { ok: false, reason: 'contour anchor/control point pairing mismatch' };
+      }
       const a = startEdges.result.get(morphEdgeKey(pointA, controlA, endA));
       const b = endEdges.result.get(morphEdgeKey(pointB, controlB, endB));
-      if (!a || !b || usedStart.has(a.id) || usedEnd.has(b.id)) return null;
+      if (!a || !b || usedStart.has(a.id) || usedEnd.has(b.id)) {
+        return { ok: false, reason: 'contour/edge pairing mismatch' };
+      }
       usedStart.add(a.id);
       usedEnd.add(b.id);
-      const [fill0, fill1, stroke] = a.styles.map((style, i) => pairedStyle(style, b.styles[i]!, i === 2));
-      if (fill0 === null || fill1 === null || stroke === null) return null;
+      const [fill0Res, fill1Res, strokeRes] = a.styles.map((style, i) => pairedStyle(style, b.styles[i]!, i === 2)) as [
+        ReturnType<typeof pairedStyle>,
+        ReturnType<typeof pairedStyle>,
+        ReturnType<typeof pairedStyle>,
+      ];
+      if (!fill0Res.ok) return fill0Res;
+      if (!fill1Res.ok) return fill1Res;
+      if (!strokeRes.ok) return strokeRes;
       const attributes = [
-        fill0 ? `fillStyle0="${fill0}"` : '',
-        fill1 ? `fillStyle1="${fill1}"` : '',
-        stroke ? `strokeStyle="${stroke}"` : '',
+        fill0Res.id ? `fillStyle0="${fill0Res.id}"` : '',
+        fill1Res.id ? `fillStyle1="${fill1Res.id}"` : '',
+        strokeRes.id ? `strokeStyle="${strokeRes.id}"` : '',
       ].filter(Boolean).join(' ');
       const origin = interpolatePoint(pointA, pointB);
       const target = interpolatePoint(endA, endB);
@@ -1741,10 +1774,15 @@ function samplePairedMorphStyles(
       pointB = endB;
     }
   }
-  if (usedStart.size !== startEdges.count || usedEnd.size !== endEdges.count) return null;
+  if (usedStart.size !== startEdges.count || usedEnd.size !== endEdges.count) {
+    return { ok: false, reason: 'contour/edge pairing incomplete' };
+  }
   const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
-  return `<DOMShape>${matrix}${fills.length ? `<fills>${fills.join('')}</fills>` : ''}` +
-    `${strokes.length ? `<strokes>${strokes.join('')}</strokes>` : ''}<edges>${edges.join('')}</edges></DOMShape>`;
+  return {
+    ok: true,
+    xml: `<DOMShape>${matrix}${fills.length ? `<fills>${fills.join('')}</fills>` : ''}` +
+      `${strokes.length ? `<strokes>${strokes.join('')}</strokes>` : ''}<edges>${edges.join('')}</edges></DOMShape>`,
+  };
 }
 
 function sampleSolidShapeTween(
@@ -1753,34 +1791,40 @@ function sampleSolidShapeTween(
   end: FlaXflElementBlock,
   linearProgress: number,
   mask = false,
-): string | null {
+): ShapeTweenSampleResult {
   const startFill = readMorphFill(start, mask);
   const endFill = readMorphFill(end, mask);
   const startMatrix = readDirectMatrix(start);
   const endMatrix = readDirectMatrix(end);
   if (!startMatrix.ok || !endMatrix.ok ||
       !Object.entries(startMatrix.matrix).every(([key, value]) =>
-        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
+        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) {
+    return { ok: false, reason: 'endpoint shape transform mismatch' };
+  }
 
   const ease = classicMotionEasesForFrame(startFrame);
-  if (!ease.ok) return null;
+  if (!ease.ok) return { ok: false, reason: 'unsupported shape tween easing' };
   const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
-  if (!timing.ok) return null;
+  if (!timing.ok) return { ok: false, reason: 'shape tween easing evaluation failed' };
   const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
   const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
   const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
-  if (!segments) return null;
+  if (!segments) return { ok: false, reason: 'missing MorphShape segment pairing' };
   const contours = getFlaXflDirectChildren(segments.xml, segments.name, MAX_SHAPE_TWEEN_CURVES + 1);
-  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) return null;
+  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) {
+    return { ok: false, reason: contours.length === 0 ? 'empty morph segment list' : 'shape tween curve budget exceeded' };
+  }
 
   // Every segment needs at least one curve. Budget the entire tween before
   // interpolating any geometry or constructing the compound path.
   let remainingCurves = MAX_SHAPE_TWEEN_CURVES;
   const boundedContours: MorphContour[] = [];
   for (const contour of contours) {
-    if (contour.name !== 'MorphSegment') return null;
+    if (contour.name !== 'MorphSegment') return { ok: false, reason: 'invalid morph segment structure' };
     const curves = getFlaXflDirectChildren(contour.xml, contour.name, remainingCurves + 1);
-    if (curves.length === 0 || curves.length > remainingCurves) return null;
+    if (curves.length === 0 || curves.length > remainingCurves) {
+      return { ok: false, reason: curves.length === 0 ? 'empty morph contour curves' : 'shape tween curve budget exceeded' };
+    }
     remainingCurves -= curves.length;
     boundedContours.push({ contour, curves });
   }
@@ -1790,12 +1834,14 @@ function sampleSolidShapeTween(
   const hasLegacyIndices = contours.every(({ attributes }) => attributes.fillIndex1 === '0' &&
     attributes.fillIndex2 === '0' && (mask || (attributes.strokeIndex1 === '0' && attributes.strokeIndex2 === '0')));
   if (!startFill || !endFill || !hasLegacyIndices) {
-    return mask ? null : samplePairedMorphStyles(start, end, boundedContours, lerp, interpolatePoint);
+    return mask
+      ? { ok: false, reason: 'unsupported mask shape tween style' }
+      : samplePairedMorphStyles(start, end, boundedContours, lerp, interpolatePoint);
   }
   const commands: string[] = [];
   for (const { contour, curves } of boundedContours) {
     const sampled = sampleMorphContour(contour, curves, interpolatePoint);
-    if (sampled === null) return null;
+    if (sampled === null) return { ok: false, reason: 'contour/curve pairing mismatch' };
     commands.push(sampled);
   }
 
@@ -1803,10 +1849,13 @@ function sampleSolidShapeTween(
     Math.round(lerp(value, endFill[i]!)).toString(16).padStart(2, '0')).join('');
   const alpha = lerp(startFill[3]!, endFill[3]!);
   const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
-  return '<DOMShape>' + matrix +
-    '<fills><FillStyle index="1"><SolidColor color="#' + color + '" alpha="' + alpha +
-    '"/></FillStyle></fills><edges><Edge fillStyle0="1" edges="' + commands.join('') +
-    '"/></edges></DOMShape>';
+  return {
+    ok: true,
+    xml: '<DOMShape>' + matrix +
+      '<fills><FillStyle index="1"><SolidColor color="#' + color + '" alpha="' + alpha +
+      '"/></FillStyle></fills><edges><Edge fillStyle0="1" edges="' + commands.join('') +
+      '"/></edges></DOMShape>',
+  };
 }
 
 type ClassicMotionFrameBlurResult =
@@ -3077,6 +3126,7 @@ function buildGraphicFrameContext(
     matrixCache: new Map(),
     ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
   };
+  const projectionDiagnostics: string[] = [];
   const sampleLayer = (
     selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
     layerReasons: string[],
@@ -3110,16 +3160,23 @@ function buildGraphicFrameContext(
       const endElements = end ? frameDisplayElements(end.sourceFrame) : [];
       const startShape = startElements[0];
       const endShape = endElements[0];
-      const sampledXml = startElements.length === 1 && endElements.length === 1 &&
+      const sampled: ShapeTweenSampleResult = startElements.length === 1 && endElements.length === 1 &&
         startShape?.name === 'DOMShape' && endShape?.name === 'DOMShape'
         ? sampleSolidShapeTween(start.sourceFrame, startShape, endShape, (frameIndex - start.index) / start.duration, isMask)
-        : null;
-      if (isMask && !sampledXml) return fail('RENDER_FAILED', '遮罩的形状补间超出支持范围');
+        : { ok: false, reason: 'endpoint shape or element count mismatch' };
+      if (isMask && !sampled.ok) return fail('RENDER_FAILED', '遮罩的形状补间超出支持范围');
       // When the morph pair is outside the supported subset, keep the authored
-      // start drawing on this layer and continue evaluating the other layers.
+      // start drawing on this layer, record a local diagnostic with affected group
+      // and source frame range, and continue evaluating the other layers.
+      if (!sampled.ok && projectionDiagnostics.length < 32) {
+        const layerLabel = layers[selection.layerIndex]?.attributes.name?.trim() || `layer-${selection.layerIndex + 1}`;
+        projectionDiagnostics.push(
+          `${layerLabel}（${scope}，第 ${start.index + 1}–${start.endExclusive} 帧）：Shape Tween 回退至起始关键帧（${sampled.reason}）`.slice(0, 500),
+        );
+      }
       const frame = start.sourceFrame;
-      const container = sampledXml
-        ? { name: 'elements', attributes: {}, xml: '<elements>' + sampledXml + '</elements>' }
+      const container = sampled.ok
+        ? { name: 'elements', attributes: {}, xml: '<elements>' + sampled.xml + '</elements>' }
         : directChild(frame.xml, frame.name, 'elements') ?? frame;
       const parsed = parseDisplayElements(container, {
         scope,
@@ -3394,7 +3451,6 @@ function buildGraphicFrameContext(
 
   const resolvedLayers: Array<FlaDisplayListFrameContext['layers'][number] & { depth?: number }> = [];
   const unsupportedDisplayReasons: string[] = [];
-  const projectionDiagnostics: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
