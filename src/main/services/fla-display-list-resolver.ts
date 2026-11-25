@@ -1,5 +1,6 @@
 import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
 import type { FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import type { FlaScale9Rect } from '../../shared/fla-scale9';
 
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
@@ -173,6 +174,7 @@ export interface FlaGraphicSymbolDefinition {
   readonly kind: 'graphic';
   readonly libraryItemName: string;
   readonly sourceFrameCount?: number;
+  readonly scale9Grid?: FlaScale9Rect;
   /** Concrete frame context for this definition; no frame selection occurs here. */
   readonly frameContext: FlaDisplayListFrameContext;
 }
@@ -261,6 +263,7 @@ export interface FlaResolvedGroupNode {
   readonly kind: 'group';
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
+  readonly scale9Grid?: FlaScale9Rect;
   readonly sourceAddress?: string;
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
@@ -950,6 +953,7 @@ function resolveElements(
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
+      ...(definition.sourceFrameCount === 1 && definition.scale9Grid ? { scale9Grid: definition.scale9Grid } : {}),
       ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
       localTransform,
       worldTransform,

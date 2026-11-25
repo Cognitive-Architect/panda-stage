@@ -33,6 +33,7 @@ import crypto from 'node:crypto';
 import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
+import { planFlaScale9Slices } from '../../shared/fla-scale9';
 import type {
   FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
@@ -3429,6 +3430,7 @@ interface ComposedLeaf {
   readonly layer: FlaResolvedDisplayLayer;
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
   readonly compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
+  readonly scale9?: Scale9Placement;
 }
 
 interface Point2D {
@@ -3783,8 +3785,54 @@ function isPngWithExpectedDimensions(
   return readUint32(16) === width && readUint32(20) === height && bytes[25] === 6;
 }
 
+type Scale9Placement = NonNullable<ReturnType<typeof planFlaScale9Slices>>;
+
+export function planStaticScale9Placement(
+  node: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+  shapeBlocks: ReadonlyMap<string, string>,
+): Scale9Placement | null {
+  const { worldTransform: world, scale9Grid } = node;
+  if (!scale9Grid || world.a <= 0 || world.d <= 0 || world.b !== 0 || world.c !== 0 ||
+      (world.a === 1 && world.d === 1) || node.children.length > 64) return null;
+  const bounds = createBounds();
+  for (const child of node.children) {
+    if (child.kind !== 'shape' || child.clipPaths?.length) return null;
+    const block = shapeBlocks.get(child.shapeId);
+    if (!block) return null;
+    const shape = parseShapeAt(block);
+    if (shape.issue || shape.strokeStyles.length || shape.fillStyles.some((style) => style.type !== 'solid')) return null;
+    const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
+    if (!path.ok) return null;
+    const m = child.worldTransform;
+    const local = {
+      a: m.a / world.a, b: m.b / world.d, c: m.c / world.a, d: m.d / world.d,
+      tx: (m.tx - world.tx) / world.a, ty: (m.ty - world.ty) / world.d,
+    };
+    if (!includeTransformedPathBounds(bounds, path.representation.commands, local)) return null;
+  }
+  const layout = planFlaScale9Slices(
+    { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
+    scale9Grid, world.a, world.d,
+  );
+  const placements = layout?.map(({ source, target }) => ({
+    source: {
+      left: source.left * world.a + world.tx, right: source.right * world.a + world.tx,
+      top: source.top * world.d + world.ty, bottom: source.bottom * world.d + world.ty,
+    },
+    target: {
+      left: target.left + world.tx, right: target.right + world.tx,
+      top: target.top + world.ty, bottom: target.bottom + world.ty,
+    },
+  }));
+  return placements?.every(({ source, target }) =>
+    Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
+    source.left < source.right && source.top < source.bottom,
+  ) ? placements : null;
+}
+
 function flattenResolvedDisplayList(
   displayList: FlaResolvedDisplayList,
+  shapeBlocks: ReadonlyMap<string, string>,
 ): {
   readonly ok: true;
   readonly leaves: readonly ComposedLeaf[];
@@ -3800,6 +3848,7 @@ function flattenResolvedDisplayList(
     depth: number,
     layer: FlaResolvedDisplayLayer,
     compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
+    scale9?: Scale9Placement,
   ): BuildSvgFailure | null => {
     visited += 1;
     if (visited > 100_000) {
@@ -3828,13 +3877,14 @@ function flattenResolvedDisplayList(
         node.blendMode !== undefined
           ? [...compositeGroups, node]
           : compositeGroups;
+      const placement = node.scale9Grid ? planStaticScale9Placement(node, shapeBlocks) ?? undefined : undefined;
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups);
+        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups, placement);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ layer, node, compositeGroups });
+    leaves.push({ layer, node, compositeGroups, ...(scale9 ? { scale9 } : {}) });
     return null;
   };
 
@@ -3880,7 +3930,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     }
   }
 
-  const flattened = flattenResolvedDisplayList(displayList);
+  const flattened = flattenResolvedDisplayList(displayList, shapeBlocks);
   if (!flattened.ok) return flattened;
 
   const frameBlurIdByLayer = new Map<FlaResolvedDisplayLayer, string>();
@@ -4308,7 +4358,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const openCompositeGroups: Array<{ group: CompositeGroup; close: string; coveredClips: number }> = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
-  for (const { layer, node, compositeGroups } of flattened.leaves) {
+  for (const { layer, node, compositeGroups, scale9 } of flattened.leaves) {
     if (openLayer !== layer) {
       while (openCompositeGroups.length > 0) {
         const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
@@ -4408,10 +4458,16 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (pathCommandCount + commands.length > maxPathCommandsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
-      if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
+      if (scale9) {
+        for (const bounds of [graphicBounds, nonTextGraphicBounds]) {
+          if (!bounds) continue;
+          includePoint(bounds, { x: scale9[0]!.target.left, y: scale9[0]!.target.top });
+          includePoint(bounds, { x: scale9[8]!.target.right, y: scale9[8]!.target.bottom });
+        }
+      } else if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
-      if (nonTextGraphicBounds) {
+      if (nonTextGraphicBounds && !scale9) {
         includeTransformedPathBounds(nonTextGraphicBounds, commands, node.worldTransform);
       }
       const reconstructed = reconstructFills(
@@ -4480,7 +4536,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         const gradientFailure = registerGradientPaint(paint);
         if (gradientFailure) return gradientFailure;
         const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        const appendFailure = appendEmittedNode(pathNode, leafClips);
+        const artwork = scale9 ? scale9.map(({ source, target }) => {
+          const width = target.right - target.left;
+          const height = target.bottom - target.top;
+          if (width <= 0 || height <= 0) return '';
+          const viewBox = [source.left, source.top, source.right - source.left, source.bottom - source.top].join(' ');
+          return `<svg x="${target.left}" y="${target.top}" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="none" overflow="hidden">${pathNode}</svg>`;
+        }).join('') : pathNode;
+        const appendFailure = appendEmittedNode(artwork, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;

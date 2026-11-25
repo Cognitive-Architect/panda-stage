@@ -8,7 +8,7 @@ import {
 } from '../../domain';
 import {
   captureFlaGraphicStructureFrames,
-  hasScreenSpaceInstanceFilter,
+  hasScreenSpaceArtwork,
   type IsolatedFilteredLayerCaptureResult,
   type IsolatedSubtreeCaptureResult,
   type SubtreeBounds,
@@ -79,6 +79,7 @@ import {
   buildSvgForResolvedDisplayList,
   buildSvgForRenderTarget,
   extractFlaGraphicMaskPathData,
+  planStaticScale9Placement,
   readFlaSourceFrameLabel,
   stableRenderTargetId,
 } from './fla-static-snapshot-svg-builder';
@@ -821,7 +822,7 @@ function localizeResolvedSubtreeNode(
 function isolatedEffectTransform(node: FlaResolvedDisplayNode): AffineMatrix2D | undefined {
   // Filter primitives in the full SVG operate on already-transformed ink.
   // Retain those axes when isolating effects and only move the artwork origin.
-  return hasScreenSpaceInstanceFilter(node)
+  return hasScreenSpaceArtwork(node)
     ? { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: node.worldTransform.tx, ty: node.worldTransform.ty }
     : undefined;
 }
@@ -2176,7 +2177,9 @@ export class FlaPartPreviewService {
             if (node.kind === 'group' && !node.opaque) {
               const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
               const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
-              if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
+              const hasScale9Placement = node.scale9Grid !== undefined &&
+                planStaticScale9Placement(node, frameShapeBlocks) !== null;
+              if (hasEnabledInstanceFilters || hasPerChannelRgbTransform || hasScale9Placement) {
                 const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
                 const artworkTransform = isolatedEffectTransform(node);
                 const isolatedDisplayList = buildIsolatedDisplayListForNode(
@@ -2194,7 +2197,8 @@ export class FlaPartPreviewService {
                   `isolated-subtree\u0000${opaqueKind}`,
                   hasEnabledInstanceFilters
                     ? 'Instance filter subtree uses isolated fallback'
-                    : 'Per-channel color transform subtree uses isolated fallback',
+                    : hasScale9Placement ? 'Static Scale9Grid uses isolated vector artwork'
+                      : 'Per-channel color transform subtree uses isolated fallback',
                   frameShapeBlocks,
                   frameStaticTextBlocks,
                 );

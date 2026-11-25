@@ -9,6 +9,7 @@
  */
 
 import crypto from 'node:crypto';
+import { readFlaScale9Grid, type FlaScale9Rect } from '../../shared/fla-scale9';
 import {
   buildFlaTimelineFrameSpanIndex,
   findCoveringSpan,
@@ -3171,6 +3172,7 @@ interface GraphicSymbolShell {
   readonly frameCount: number;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly symbolType?: string;
+  readonly scale9Grid?: FlaScale9Rect;
   readonly movieClipHasScript?: boolean;
   readonly movieClipStopFrames?: readonly number[];
 }
@@ -3548,12 +3550,14 @@ function* adaptFlaXflDisplaySourceSteps(
       symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
         ? analyzeMovieClipSymbolScripts(library.xml, timeline.xml, timeline.frameSpanIndex, timeline.frameCount)
         : { kind: 'none' };
+    const scale9Grid = readFlaScale9Grid(root.attributes);
     shells.push({
       sourceLibraryItemName,
       userLabel,
       timelineXml: timeline.xml,
       frameCount: timeline.frameCount,
       frameSpanIndex: timeline.frameSpanIndex,
+      ...(scale9Grid ? { scale9Grid } : {}),
       ...(symbolType ? { symbolType } : {}),
       ...(scriptAnalysis.kind === 'unsupported' ? { movieClipHasScript: true } : {}),
       ...(scriptAnalysis.kind === 'stop-frames' ? { movieClipStopFrames: scriptAnalysis.stopFrames } : {}),
@@ -3586,6 +3590,7 @@ function* adaptFlaXflDisplaySourceSteps(
       kind: 'graphic',
       libraryItemName: shell.sourceLibraryItemName,
       sourceFrameCount: shell.frameCount,
+      ...(shell.scale9Grid ? { scale9Grid: shell.scale9Grid } : {}),
       frameContext: parsed.value,
     };
     const descriptor = {
