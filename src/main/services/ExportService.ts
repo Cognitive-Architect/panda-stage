@@ -1255,6 +1255,13 @@ export class ExportService {
       if (!probe.audioChannels || probe.audioChannels <= 0) {
         failures.push('audio channels');
       }
+      if (profile.format === 'webm') {
+        // Opus decoder preroll can place the first audio timestamp just before the video.
+        const startDifference = (probe.videoStartSeconds ?? Number.NaN) - (probe.audioStartSeconds ?? Number.NaN);
+        if (!Number.isFinite(startDifference) || Math.abs(startDifference) > 0.025) {
+          failures.push('audio/video start alignment');
+        }
+      }
       const expectedAudioDurationSeconds = audioMixPlan.durationMs / 1_000;
       if (
         !Number.isFinite(probe.audioDurationSeconds) ||

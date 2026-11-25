@@ -95,6 +95,7 @@ export interface VideoProbeResult {
   fps: number;
   frameCount: number | null;
   durationSeconds: number;
+  videoStartSeconds?: number;
   hasAudio: boolean;
   audioStreamCount?: number;
   audioCodecName: string | null;

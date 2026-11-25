@@ -812,6 +812,7 @@ export class FFmpegAdapter {
       fps: parseRational(video.avg_frame_rate) || parseRational(video.r_frame_rate),
       frameCount: Number.isInteger(frameCount) ? frameCount : null,
       durationSeconds,
+      ...(Number.isFinite(Number(video.start_time)) ? { videoStartSeconds: Number(video.start_time) } : {}),
       hasAudio: Boolean(audio),
       audioStreamCount: streams.filter((stream) => stream.codec_type === 'audio')
         .length,

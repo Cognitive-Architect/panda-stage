@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { planSpriteSheetGrid } from '../../src/shared/export-types';
-import { freezeMp4OutputProfile } from '../../src/shared/export-output-profile';
+import { freezeMp4OutputProfile, freezeVideoOutputProfile } from '../../src/shared/export-output-profile';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
   ExportJobError,
@@ -440,7 +440,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     const outputPath = String(request.outputPath);
     const outputDirectory = path.dirname(outputPath);
     const isFormalSilentIntermediate =
-      path.basename(outputPath) === 'formal-silent.mp4';
+      /^formal-silent\.(?:mp4|webm)$/u.test(path.basename(outputPath));
     if (
       !isFormalSilentIntermediate &&
       this.fileSystem.directories.has(outputDirectory)
@@ -872,7 +872,7 @@ describe('ExportService', () => {
     expect(renderer.releasedJobs).toEqual([cancelled.jobId, retry.jobId]);
   });
 
-  it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {
+  it.each(['mp4', 'webm'] as const)('preflights frozen audio and atomically publishes formal %s', async (format) => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
     const media = new MemoryMediaAdapter(fileSystem);
@@ -883,6 +883,12 @@ describe('ExportService', () => {
       audioDurationSeconds: 9,
       formatDurationSeconds: 9,
       audioStreamCount: 1,
+      ...(format === 'webm' ? {
+        codecName: 'vp9',
+        audioCodecName: 'opus',
+        videoStartSeconds: 0.007,
+        audioStartSeconds: -0.007,
+      } : {}),
     };
     const audioAssetId = '10000000-0000-4000-8000-000000000021';
     const audioClipId = '70000000-0000-4000-8000-000000000021';
@@ -938,9 +944,9 @@ describe('ExportService', () => {
         },
         projectRoot: 'C:\\Panda Stage\\Project',
         cameraMode: 'static',
-        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        renderSettings: freezeVideoOutputProfile(format),
         outputIntent: {
-          targetPath: 'C:\\Panda Stage\\Output\\formal-audio.mp4',
+          targetPath: `C:\\Panda Stage\\Output\\formal-audio.${format}`,
           overwriteApproved: false,
         },
       },
@@ -962,7 +968,7 @@ describe('ExportService', () => {
 
     expect(media.audioProbeRequests).toHaveLength(1);
     expect(media.audioProbeRequests[0]).toContain(audioAssetId);
-    expect(media.encodeRequests[0]?.outputPath).toContain('formal-silent.mp4');
+    expect(media.encodeRequests[0]?.outputPath).toContain(`formal-silent.${format}`);
     expect(media.muxRequests).toHaveLength(1);
     expect(media.muxRequests[0]).toMatchObject({
       overwrite: false,
