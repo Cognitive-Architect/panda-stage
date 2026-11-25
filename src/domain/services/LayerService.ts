@@ -10,7 +10,9 @@ import {
   planBackgroundTiles,
   sampleScrollingTile,
   sampleOrbitFlight,
+  sampleConvergingFlight,
   type BackgroundTileInput,
+  type ConvergingFlightInput,
   type OrbitFlightInput,
   normalizeNegativeZero,
   RADIAL_BURST_MAX_COUNT,
@@ -2293,6 +2295,38 @@ export class LayerService {
       return [entry];
     });
     return this.commitGraphicBake(project, shot, layers, bands.flat(), events);
+  }
+
+  generateConvergingFlight(project: Project, shotId: string, layerId: string, input: ConvergingFlightInput): DuplicateStaticArrayResult {
+    const { shot, layer } = this.assertFlaGraphicArraySource(project, shotId, layerId, '万剑归宗');
+    const { count, startFrame, durationFrames, staggerFrames, radius, startAngleDeg, seed } = input;
+    if (!Number.isInteger(count) || count < 1 || count > 32 ||
+      !Number.isFinite(radius) || radius <= 0 || !Number.isFinite(startAngleDeg) ||
+      !Number.isFinite(input.bend) || input.bend < 0 ||
+      !Number.isInteger(seed) || seed < 0 || seed > RADIAL_BURST_MAX_SEED ||
+      !['keep', 'tangent'].includes(input.orientation) || typeof input.hideAfterArrival !== 'boolean') {
+      throw new Error('请检查数量、半径、起始角、弯曲幅度、种子及朝向。');
+    }
+    const lastFrame = validateBakeFrames(shot, startFrame, durationFrames, staggerFrames, count);
+    const context = this.prepareGraphicBake(project, shot, layer, startFrame);
+    const target = validateLayerPosition(input.target ?? { x: context.pose.x, y: context.pose.y });
+    const distribution = sampleRadialBurstInstances({
+      count, center: target, radius, startAngleDeg, seed, maxRotationDeg: 0,
+    });
+    const created: Layer[] = [];
+    const events: TimelineEvent[] = [];
+    for (const sample of distribution) {
+      const launchFrame = startFrame + sample.index * staggerFrames;
+      const samples = sampleConvergingFlight(input, target, sample.endPoint, sample.w, launchFrame);
+      const visibility = [bakedVisibility(launchFrame, true)];
+      const hideFrame = launchFrame + durationFrames + 1;
+      if (input.hideAfterArrival && hideFrame <= lastFrame) visibility.push(bakedVisibility(hideFrame, false));
+      const baked = this.buildBakedGraphic(context, `${layer.name} 汇聚 ${sample.index + 1}`, samples, visibility);
+      created.push(baked.layer);
+      events.push(...baked.events);
+    }
+    const layers = [...shot.layers].sort((a, b) => a.zIndex - b.zIndex);
+    return this.commitGraphicBake(project, shot, [...layers, ...created], created, events);
   }
 
   private prepareGraphicBake(project: Project, shot: Shot, source: Layer, startFrame: number) {

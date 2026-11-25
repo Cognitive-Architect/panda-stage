@@ -201,6 +201,50 @@ describe('native orbit flight (#1287)', () => {
   });
 });
 
+describe('native converging flight (#1288)', () => {
+  it('bakes deterministic equal-length curves with staggered launch, exact arrival and optional hiding', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const input = {
+      count: 12, target: { x: 960, y: 540 }, radius: 360, bend: 100, startAngleDeg: 0,
+      startFrame: 0, durationFrames: 24, staggerFrames: 2, seed: 42, orientation: 'tangent' as const,
+      hideAfterArrival: true,
+    };
+    const run = (seed: number) => layerService.generateConvergingFlight(project, shotId, layerId, { ...input, seed });
+    const result = run(42);
+    const tracks = (bake: typeof result) => bake.layers.map((layer) =>
+      layer.animationClip?.version === 2 && layer.animationClip.tracks.map(({ property, keys }) => ({ property, keys })));
+    expect(tracks(result)).toEqual(tracks(run(42)));
+    expect(tracks(result)).not.toEqual(tracks(run(0)));
+    const shot = result.project.shots[0]!;
+    expect(result.layers).toHaveLength(12);
+    const distribution = sampleRadialBurstInstances({
+      count: input.count, center: input.target, radius: input.radius, seed: input.seed, startAngleDeg: 0, maxRotationDeg: 0,
+    });
+    for (const [index, layer] of result.layers.entries()) {
+      const launch = 2 * index;
+      const sample = distribution[index]!;
+      const at = (timeMs: number) => evaluateShotAtTime(shot, timeMs, result.project).layers.find((entry) => entry.id === layer.id)!;
+      if (launch) expect(at(frameTimeMs(launch) - 1).visible).toBe(false);
+      const start = at(frameTimeMs(launch));
+      expect(start.visible).toBe(true);
+      expect(start.x).toBeCloseTo(sample.endPoint.x, 6);
+      expect(start.y).toBeCloseTo(sample.endPoint.y, 6);
+      expect(sample.distance).toBeGreaterThanOrEqual(270);
+      expect(sample.distance).toBeLessThanOrEqual(360);
+      const dx = 960 - start.x;
+      const dy = 540 - start.y;
+      const bend = 0.75 * input.bend * (2 * sample.w - 1) / sample.distance;
+      const middle = at(frameTimeMs(launch + 12));
+      expect(middle.x).toBeCloseTo(start.x + dx / 2 - dy * bend, 5);
+      expect(middle.y).toBeCloseTo(start.y + dy / 2 + dx * bend, 5);
+      const end = at(frameTimeMs(launch + 24));
+      expect(end).toMatchObject({ visible: true, x: 960, y: 540 });
+      expect(at(frameTimeMs(launch + 25)).visible).toBe(false);
+    }
+  });
+});
+
 describe('AnimationTargetRef and v21 migration contract (#1140)', () => {
   it('supports layer targets without partId and prevents mixing v1/v2 targets', () => {
     expect(AnimationTargetRefSchema.parse({ kind: 'layer', layerId: IDS.layerAsset })).toEqual({

@@ -24,6 +24,7 @@ type ProjectToolsView =
   | 'curve-motion'
   | 'background-tiles'
   | 'orbit-flight'
+  | 'converging-flight'
   | 'afterimage'
   | 'radial-burst';
 
@@ -88,6 +89,8 @@ export function ProjectToolsDrawer({
               '背景铺排 / 循环'
             ) : view === 'orbit-flight' ? (
               '环绕飞行'
+            ) : view === 'converging-flight' ? (
+              '万剑归宗'
             ) : (
               <>{view === 'action-presets' ? '动作预设' : '工具'}</>
             )}
@@ -258,6 +261,15 @@ export function ProjectToolsDrawer({
               <span>打开环绕飞行</span>
             </button>
           </section>
+          <section className="project-tools-action-preset-card" aria-labelledby="project-tools-converging-flight-heading">
+            <div className="project-tools-action-preset-heading">
+              <h3 id="project-tools-converging-flight-heading">万剑归宗</h3>
+            </div>
+            <button className="project-tools-action-preset-launcher" data-testid="project-tools-converging-flight" onClick={() => setView('converging-flight')} type="button">
+              <DecorativeIcon icon={Spline} size={18} />
+              <span>打开万剑归宗</span>
+            </button>
+          </section>
           <DesktopAutomationCard />
         </div>
       ) : view === 'action-presets' ? (
@@ -280,9 +292,9 @@ export function ProjectToolsDrawer({
         <section aria-label="背景铺排 / 循环" className="project-tools-grid-array-view">
           <BackgroundTilesPanel onCancel={() => setView('home')} />
         </section>
-      ) : view === 'orbit-flight' ? (
-        <section aria-label="环绕飞行" className="project-tools-grid-array-view">
-          <GraphicBakePanel onCancel={() => setView('home')} />
+      ) : view === 'orbit-flight' || view === 'converging-flight' ? (
+        <section aria-label={view === 'orbit-flight' ? '环绕飞行' : '万剑归宗'} className="project-tools-grid-array-view">
+          <GraphicBakePanel mode={view} onCancel={() => setView('home')} />
         </section>
       ) : view === 'curve-motion' ? (
         <section

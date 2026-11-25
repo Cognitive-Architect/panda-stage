@@ -33,7 +33,9 @@ interface BakeTarget {
   readonly layerId: string;
 }
 
-export function GraphicBakePanel({ onCancel }: { onCancel(): void }) {
+type GraphicBakeMode = 'orbit-flight' | 'converging-flight';
+
+export function GraphicBakePanel({ mode, onCancel }: { mode: GraphicBakeMode; onCancel(): void }) {
   const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot);
   const shotId = useSyncExternalStore(shotStore.subscribe, shotStore.getCurrentShotId);
   const layerId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedLayerId);
@@ -53,8 +55,72 @@ export function GraphicBakePanel({ onCancel }: { onCancel(): void }) {
     );
   }
   const frame = Math.min(lastValidFrameTime(shot.durationMs), Math.max(0, currentTimeMs));
-  return <OrbitDraft key={targetKey()} target={{ project, shot, layerId: source.id }}
+  const Draft = mode === 'orbit-flight' ? OrbitDraft : ConvergingDraft;
+  return <Draft key={targetKey()} target={{ project, shot, layerId: source.id }}
     initialFrame={Math.round(frame * TIMELINE_FPS / 1000)} onCancel={onCancel} />;
+}
+
+function ConvergingDraft({ target, initialFrame, onCancel }: { target: BakeTarget; initialFrame: number; onCancel(): void }) {
+  const key = targetKey();
+  const { shot, project, layerId } = target;
+  const [frame, setFrame] = useState(String(initialFrame));
+  const [error, setError] = useState('');
+  const startFrame = Number(frame);
+  const lastFrame = Math.round(lastValidFrameTime(shot.durationMs) * TIMELINE_FPS / 1000);
+  const pose = evaluateShotAtTime(shot, frameTimeMs(startFrame), project).layers.find((entry) => entry.id === layerId);
+  return (
+    <form aria-label="万剑归宗" className="grid-array-panel" onChange={() => setError('')} onSubmit={(event) => {
+      event.preventDefault();
+      if (targetKey() !== key || !pose) return;
+      const fields = new FormData(event.currentTarget);
+      const number = (name: string) => Number(fields.get(name));
+      const x = fields.get('x');
+      const y = fields.get('y');
+      try {
+        layerStore.generateConvergingFlight(layerId, {
+          target: x || y ? { x: x ? Number(x) : pose.x, y: y ? Number(y) : pose.y } : undefined,
+          count: number('count'), radius: number('radius'), bend: number('bend'), startFrame,
+          durationFrames: number('duration'), staggerFrames: number('stagger'),
+          startAngleDeg: number('angle'), seed: number('seed'),
+          orientation: fields.get('orientation') === 'keep' ? 'keep' : 'tangent',
+          hideAfterArrival: fields.has('hide'),
+        });
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : '生成万剑归宗失败。');
+      }
+    }}>
+      <div className="grid-array-fields">
+        <NumberField label="数量" name="count" value={12} min={1} max={32} />
+        <NumberField label="汇聚点 X" name="x" min={0} max={1920} step="any" placeholder={pose?.x.toFixed(1)} />
+        <NumberField label="汇聚点 Y" name="y" min={0} max={1080} step="any" placeholder={pose?.y.toFixed(1)} />
+        <NumberField label="分布半径" name="radius" value={360} min={0} step="any" />
+        <NumberField label="弯曲幅度" name="bend" value={100} min={0} step="any" />
+        <label className="grid-array-field">
+          <span>起帧</span>
+          <input type="number" min={0} max={lastFrame} required value={frame} onChange={(event) => setFrame(event.target.value)} />
+        </label>
+        <NumberField label="持续帧数" name="duration" value={24} min={1} />
+        <NumberField label="发射间隔（帧）" name="stagger" value={2} min={0} />
+      </div>
+      <details>
+        <summary>分布与末态</summary>
+        <div className="grid-array-fields">
+          <NumberField label="起始角" name="angle" value={0} step="any" />
+          <NumberField label="随机种子" name="seed" value={42} min={0} max={0xffff_ffff} />
+          <label className="grid-array-field">
+            <span>朝向</span>
+            <select name="orientation"><option value="tangent">沿切线</option><option value="keep">保持</option></select>
+          </label>
+          <label><input type="checkbox" name="hide" /> 汇聚后隐藏</label>
+        </div>
+      </details>
+      <div className="grid-array-status" role="status">{error}</div>
+      <div className="grid-array-actions">
+        <Button type="button" onClick={onCancel}>取消</Button>
+        <Button type="submit">生成</Button>
+      </div>
+    </form>
+  );
 }
 
 function OrbitDraft({ target, initialFrame, onCancel }: { target: BakeTarget; initialFrame: number; onCancel(): void }) {

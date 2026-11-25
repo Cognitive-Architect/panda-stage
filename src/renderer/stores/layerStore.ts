@@ -3,6 +3,7 @@ import {
   LayerService,
   type AfterimageInput,
   type BackgroundTileInput,
+  type ConvergingFlightInput,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
@@ -260,6 +261,13 @@ export class LayerStore {
     const { project, shotId } = this.context();
     const result = this.service.generateOrbitFlight(project, shotId, layerId, input);
     this.editorStore.updateProject(result.project, '环绕飞行');
+    return result.layers;
+  }
+
+  generateConvergingFlight(layerId: string, input: ConvergingFlightInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateConvergingFlight(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '万剑归宗');
     return result.layers;
   }
 

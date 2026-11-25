@@ -1,6 +1,7 @@
 export * from './coverTransform';
 export * from './backgroundTiles';
 export * from './orbitFlight';
+export * from './convergingFlight';
 export * from './characterPartLayout';
 export * from './cubicBezierPath';
 export * from './radialBurst';
