@@ -485,7 +485,9 @@ function makeCandidateCollection(
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
         const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
-        const hasOccurrenceEffects = element.instanceFilters?.some((filter) => filter.enabled);
+        const hasOccurrenceEffects =
+          Boolean(element.instanceFilters?.some((filter) => filter.enabled)) ||
+          Boolean(element.blendMode);
         if (graphicInstances) {
           // The shared definition cannot carry filters authored on this occurrence.
           if (hasOccurrenceEffects) continue;
@@ -689,6 +691,7 @@ function isSafeGroupEditCandidate(
   return !layer.frameFilter &&
     Boolean(group.sourceAddress) &&
     !group.rgbTransform &&
+    !group.blendMode &&
     (group.opacity === undefined || group.opacity === 1) &&
     group.children.length >= 1 &&
     group.children.length <= 2 &&

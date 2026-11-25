@@ -44,6 +44,7 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
+import { parseXflBlendMode } from '../../shared/fla-blend-mode';
 import {
   FLA_STATIC_TEXT_LIMITS,
   type FlaStaticTextAlignment,
@@ -1068,9 +1069,13 @@ function parseDisplayElements(
     const movieClipRun = symbolType === 'movieclip' && context.layerSpans
       ? findMovieClipRun(context, path, child, resolvedName)
       : undefined;
+    const blendResult = parseXflBlendMode(child.attributes.blendMode);
+    if (!blendResult.ok) {
+      context.unsupportedDisplayReasons.push(blendResult.reason);
+      continue;
+    }
     const instanceFilters = readInstanceFilters(child);
-    if (!instanceFilters || (instanceFilters.some((filter) => filter.enabled) &&
-        child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+    if (!instanceFilters) {
       context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL instance filters');
       continue;
     }
@@ -1091,6 +1096,7 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(blendResult.blendMode ? { blendMode: blendResult.blendMode } : {}),
       ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,

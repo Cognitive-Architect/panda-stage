@@ -684,6 +684,7 @@ function renderFlaGraphicCanvasUncached(
     if (compositePlan.rgbTransform && !applyGraphicColor(scratch.context, scratch.canvas, { rgbTransform: compositePlan.rgbTransform })) return false;
     target.save();
     target.globalAlpha = compositePlan.opacity;
+    target.globalCompositeOperation = compositePlan.canvasCompositeOperation;
     target.setTransform(1, 0, 0, 1, 0, 0);
     target.drawImage(scratch.canvas, 0, 0);
     target.restore();

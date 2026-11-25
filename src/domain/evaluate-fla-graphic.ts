@@ -1,4 +1,9 @@
 import type { FlaInstanceColor } from '../shared/fla-instance-color';
+import {
+  flaBlendModeToCanvasCompositeOperation,
+  type FlaBlendMode,
+  type FlaCanvasCompositeOperation,
+} from '../shared/fla-blend-mode';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import {
   invertAffineMatrix,
@@ -105,11 +110,13 @@ export interface FlaGraphicNodeCompositePlan {
   readonly hasClips: boolean;
   readonly opacity: number;
   readonly rgbTransform: { readonly multiplier: number; readonly offset: number } | null;
+  readonly blendMode: FlaBlendMode;
+  readonly canvasCompositeOperation: FlaCanvasCompositeOperation;
 }
 
 /**
  * Pure domain compositing semantics for an evaluated FLA Graphic node so the
- * raster backend never owns mask/opacity/rgb-transform rules.
+ * raster backend never owns mask/opacity/rgb-transform/blend-mode rules.
  */
 export function evaluateFlaGraphicNodeCompositePlan(
   node: EvaluatedFlaGraphicNode,
@@ -121,11 +128,18 @@ export function evaluateFlaGraphicNodeCompositePlan(
     rawRgb && !(rawRgb.multiplier === 1 && rawRgb.offset === 0)
       ? rawRgb
       : null;
+  const blendMode: FlaBlendMode =
+    node.source.type === 'symbol' && node.source.blendMode
+      ? node.source.blendMode
+      : 'normal';
+  const canvasCompositeOperation = flaBlendModeToCanvasCompositeOperation(blendMode);
   return {
-    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null,
+    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null || blendMode !== 'normal',
     hasClips,
     opacity,
     rgbTransform,
+    blendMode,
+    canvasCompositeOperation,
   };
 }
 
