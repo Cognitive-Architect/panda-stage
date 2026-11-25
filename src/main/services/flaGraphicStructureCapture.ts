@@ -255,6 +255,7 @@ export function captureFlaGraphicStructure(
           nestedDefinitionId,
           ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
           ...(node.rgbTransform ? { rgbTransform: { ...node.rgbTransform } } : {}),
+          ...(node.blendMode ? { blendMode: node.blendMode } : {}),
           ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
           ...(symbolInstance?.playbackMode !== undefined ? { playbackMode: symbolInstance.playbackMode } : {}),
           ...(symbolInstance?.firstFrame !== undefined ? { firstFrame: symbolInstance.firstFrame } : {}),

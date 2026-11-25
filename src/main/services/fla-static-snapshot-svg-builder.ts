@@ -70,6 +70,7 @@ import {
   type FlaStaticTextGraphicFraming,
   type FlaStaticTextRenderItem,
 } from '../../shared/fla-static-text';
+import { flaBlendModeToSvgMixBlendMode } from '../../shared/fla-blend-mode';
 import {
   computeBoundedFlaGraphicOutputSize,
   FLA_SNAPSHOT_MAX_WIDTH as MAX_OUTPUT_WIDTH,
@@ -3820,9 +3821,13 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
-      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined || node.instanceFilters !== undefined
-        ? [...compositeGroups, node]
-        : compositeGroups;
+      const childCompositeGroups =
+        (node.opacity !== undefined && node.opacity < 1) ||
+        node.rgbTransform !== undefined ||
+        node.instanceFilters !== undefined ||
+        node.blendMode !== undefined
+          ? [...compositeGroups, node]
+          : compositeGroups;
       for (const child of node.children) {
         const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups);
         if (nestedFailure) return nestedFailure;
@@ -4306,14 +4311,16 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       const group = compositeGroups[index]!;
       const attributes: string[] = [];
       const opacity = group.opacity === undefined ? '' : ` opacity="${formatSvgNumber(group.opacity)}"`;
+      const svgBlend = flaBlendModeToSvgMixBlendMode(group.blendMode);
+      const blendAttr = svgBlend ? ` style="mix-blend-mode:${svgBlend}"` : '';
       const colorFilterId = colorTransformFilterIdByGroup.get(group);
       if (colorFilterId) attributes.push(`filter="url(#${colorFilterId})"`);
       const effect = instanceFilterByGroup.get(group);
       let tags = 1;
-      let markup = `<g${effect ? '' : opacity}${attributes.length ? ' ' + attributes.join(' ') : ''}>`;
+      let markup = `<g${effect ? '' : `${opacity}${blendAttr}`}${attributes.length ? ' ' + attributes.join(' ') : ''}>`;
       let coveredClips = openCompositeGroups.at(-1)?.coveredClips ?? 0;
       if (effect) {
-        markup = `<g${opacity} filter="url(#${effect.id})">${markup}`;
+        markup = `<g${opacity}${blendAttr} filter="url(#${effect.id})">${markup}`;
         tags += 1;
         const externalClips = group.instanceFilterClips ?? [];
         for (const clip of externalClips.slice(coveredClips)) {

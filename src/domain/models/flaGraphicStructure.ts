@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
+import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
 
 /**
@@ -117,6 +118,7 @@ export type FlaGraphicStructureNode =
       sourceParentFrameSpanStart?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
+      blendMode?: FlaSupportedBlendMode;
       children?: FlaGraphicStructureNode[];
     }
   | {
@@ -181,6 +183,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
+        blendMode: FlaSupportedBlendModeSchema.optional(),
         children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
       .strict(),
