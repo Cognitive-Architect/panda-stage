@@ -1,3 +1,9 @@
+import type { FlaInstanceColor } from '../shared/fla-instance-color';
+import {
+  flaBlendModeToCanvasCompositeOperation,
+  type FlaBlendMode,
+  type FlaCanvasCompositeOperation,
+} from '../shared/fla-blend-mode';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import {
   invertAffineMatrix,
@@ -104,11 +110,13 @@ export interface FlaGraphicNodeCompositePlan {
   readonly hasClips: boolean;
   readonly opacity: number;
   readonly rgbTransform: { readonly multiplier: number; readonly offset: number } | null;
+  readonly blendMode: FlaBlendMode;
+  readonly canvasCompositeOperation: FlaCanvasCompositeOperation;
 }
 
 /**
  * Pure domain compositing semantics for an evaluated FLA Graphic node so the
- * raster backend never owns mask/opacity/rgb-transform rules.
+ * raster backend never owns mask/opacity/rgb-transform/blend-mode rules.
  */
 export function evaluateFlaGraphicNodeCompositePlan(
   node: EvaluatedFlaGraphicNode,
@@ -120,11 +128,18 @@ export function evaluateFlaGraphicNodeCompositePlan(
     rawRgb && !(rawRgb.multiplier === 1 && rawRgb.offset === 0)
       ? rawRgb
       : null;
+  const blendMode: FlaBlendMode =
+    (node.source.type === 'symbol' || node.source.type === 'opaque') && node.source.blendMode
+      ? node.source.blendMode
+      : 'normal';
+  const canvasCompositeOperation = flaBlendModeToCanvasCompositeOperation(blendMode);
   return {
-    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null,
+    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null || blendMode !== 'normal',
     hasClips,
     opacity,
     rgbTransform,
+    blendMode,
+    canvasCompositeOperation,
   };
 }
 
@@ -168,6 +183,7 @@ export interface EvaluatedFlaGraphicVisual {
   readonly mode: FlaGraphicEvaluationMode;
   readonly frameOrdinal: number;
   readonly frameAssetId: string;
+  readonly instanceColor?: FlaInstanceColor;
   readonly frameOffset: { readonly x: number; readonly y: number };
   readonly frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly canvas: { readonly width: number; readonly height: number };
@@ -396,7 +412,7 @@ function resolveNestedSymbolInternalTimeMs(
 
 /**
  * The one formal FLA Graphic evaluator. Definition mode ignores Layer state;
- * Instance mode applies only sparse node-local matrices from the owning Layer.
+ * Instance mode carries the owning Layer’s sparse edits and occurrence color.
  * Stale paths are never visited and therefore cannot affect the output.
  */
 export function evaluateFlaGraphicVisual(input: {
@@ -405,6 +421,7 @@ export function evaluateFlaGraphicVisual(input: {
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceColor?: FlaInstanceColor;
   readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
   const { definition, frameOrdinal, mode } = input;
@@ -414,7 +431,8 @@ export function evaluateFlaGraphicVisual(input: {
     input.internalTimeMs !== undefined && Number.isFinite(input.internalTimeMs)
       ? Math.max(0, input.internalTimeMs)
       : Math.round(frameOrdinal * (1_000 / fps));
-  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}`;
+  const instanceColor = mode === 'instance' ? input.instanceColor : undefined;
+  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}:${instanceColor ? JSON.stringify(instanceColor) : ''}`;
   const cache = visualCacheFor(input);
   const cachedVisual = cache.get(cacheKey);
   if (cachedVisual) return cachedVisual;
@@ -429,6 +447,7 @@ export function evaluateFlaGraphicVisual(input: {
       mode,
       frameOrdinal,
       frameAssetId: frame.assetId,
+      ...(instanceColor ? { instanceColor } : {}),
       frameOffset: frame.offset,
       frameViewport: frame.sourceViewport,
       canvas: definition.source.canvas,
@@ -703,6 +722,7 @@ export function evaluateFlaGraphicVisual(input: {
     mode,
     frameOrdinal,
     frameAssetId: frame.assetId,
+    ...(instanceColor ? { instanceColor } : {}),
     frameOffset: frame.offset,
     frameViewport: frame.sourceViewport,
     canvas: definition.source.canvas,

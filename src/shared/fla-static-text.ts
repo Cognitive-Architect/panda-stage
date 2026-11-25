@@ -212,29 +212,36 @@ export function estimateFlaStaticTextMeasurement(
   };
 }
 
+interface FragmentMeasurement extends FlaStaticTextMeasurement {
+  readonly minX: number;
+  readonly maxX: number;
+}
+
 function measureFragment(
   text: string,
   run: FlaStaticTextRun,
   measure: FlaStaticTextMeasurer,
-): FlaStaticTextMeasurement {
-  if (text.length === 0) {
-    return { width: 0, ascent: run.size * 0.85, descent: run.size * 0.25 };
-  }
+): FragmentMeasurement {
   if (run.letterSpacing === 0) {
-    return measure(text, run);
+    const measurement = measure(text, run);
+    return { ...measurement, minX: 0, maxX: measurement.width };
   }
   const graphemes = splitGraphemes(text);
   let width = 0;
+  let minX = 0;
+  let maxX = 0;
   let ascent = run.size * 0.85;
   let descent = run.size * 0.25;
   for (let index = 0; index < graphemes.length; index += 1) {
     const m = measure(graphemes[index]!, run);
+    minX = Math.min(minX, width);
     width += m.width;
+    maxX = Math.max(maxX, width);
     if (index < graphemes.length - 1) width += run.letterSpacing;
     if (m.ascent > ascent) ascent = m.ascent;
     if (m.descent > descent) descent = m.descent;
   }
-  return { width: Math.max(0, width), ascent, descent };
+  return { width, minX, maxX, ascent, descent };
 }
 
 interface InlineToken {
@@ -287,12 +294,12 @@ function tokenizeSegment(text: string, run: FlaStaticTextRun): InlineToken[] {
   return tokens;
 }
 
-interface DraftFragment {
-  text: string;
+interface DraftFragment extends FragmentMeasurement {
+  readonly text: string;
   readonly run: FlaStaticTextRun;
-  width: number;
-  ascent: number;
-  descent: number;
+  readonly x: number;
+  readonly lineMinX: number;
+  readonly lineMaxX: number;
   readonly isWhitespace: boolean;
 }
 
@@ -373,7 +380,6 @@ export function layoutFlaStaticText(
 
     let isFirstLine = true;
     let currentLine: DraftFragment[] = [];
-    let currentWidth = 0;
 
     const lineAvailableWidth = (): number =>
       Math.max(1, descriptor.width - leftMargin - rightMargin - (isFirstLine ? Math.max(0, indent) : 0));
@@ -392,37 +398,53 @@ export function layoutFlaStaticText(
         fallbackRun: lead,
       });
       currentLine = [];
-      currentWidth = 0;
       isFirstLine = false;
       return ok;
     };
 
-    const appendMeasured = (text: string, run: FlaStaticTextRun, isWhitespace: boolean): void => {
-      const m = measureFragment(text, run, measure);
-      const prev = currentLine[currentLine.length - 1];
-      const spacingGap =
-        prev && prev.run === run && run.letterSpacing !== 0 && !isWhitespace && !prev.isWhitespace
-          ? run.letterSpacing
-          : 0;
-      if (prev && prev.run === run && prev.isWhitespace === isWhitespace) {
-        const mergedText = prev.text + text;
-        const mergedMeasure = measureFragment(mergedText, run, measure);
-        currentWidth = currentWidth - prev.width + mergedMeasure.width;
-        prev.text = mergedText;
-        prev.width = mergedMeasure.width;
-        prev.ascent = Math.max(prev.ascent, mergedMeasure.ascent);
-        prev.descent = Math.max(prev.descent, mergedMeasure.descent);
-      } else {
-        currentLine.push({
-          text,
-          run,
-          width: m.width,
-          ascent: m.ascent,
-          descent: m.descent,
-          isWhitespace,
-        });
-        currentWidth += spacingGap + m.width;
+    const prepareFragment = (
+      text: string,
+      run: FlaStaticTextRun,
+      isWhitespace: boolean,
+      measurement: FragmentMeasurement,
+    ) => {
+      const prev = currentLine.at(-1);
+      const merge = prev?.run === run && prev.isWhitespace === isWhitespace ? prev : undefined;
+      const prefix = currentLine.at(merge ? -2 : -1);
+      const x = merge?.x ?? (prefix ? prefix.x + prefix.width + prefix.run.letterSpacing : 0);
+      const mergedText = merge ? merge.text + text : text;
+      let metrics = measurement;
+      if (merge) {
+        if (run.letterSpacing === 0) {
+          // Measure zero-spacing fragments together so the local font can kern.
+          metrics = measureFragment(mergedText, run, measure);
+        } else {
+          const nextX = merge.width + run.letterSpacing;
+          metrics = {
+            width: nextX + measurement.width,
+            minX: Math.min(merge.minX, nextX + measurement.minX),
+            maxX: Math.max(merge.maxX, nextX + measurement.maxX),
+            ascent: Math.max(merge.ascent, measurement.ascent),
+            descent: Math.max(merge.descent, measurement.descent),
+          };
+        }
       }
+      const fragment: DraftFragment = {
+        text: mergedText,
+        run,
+        ...metrics,
+        x,
+        lineMinX: Math.min(prefix?.lineMinX ?? 0, x + metrics.minX),
+        lineMaxX: Math.max(prefix?.lineMaxX ?? 0, x + metrics.maxX),
+        isWhitespace,
+      };
+      return {
+        width: fragment.lineMaxX - fragment.lineMinX,
+        append() {
+          if (merge) currentLine.pop();
+          currentLine.push(fragment);
+        },
+      };
     };
 
     if (paragraph.segments.length === 0) {
@@ -447,29 +469,32 @@ export function layoutFlaStaticText(
 
         if (token.isWhitespace) {
           if (currentLine.length > 0) {
-            appendMeasured(token.text, token.run, true);
+            prepareFragment(token.text, token.run, true, tokenMeasure).append();
           }
           continue;
         }
 
-        if (currentLine.length > 0 && currentWidth + tokenMeasure.width > maxWidth + 0.5) {
+        let candidate = prepareFragment(token.text, token.run, false, tokenMeasure);
+        if (currentLine.length > 0 && candidate.width > maxWidth + 0.5) {
           if (!flushLine()) break;
+          candidate = prepareFragment(token.text, token.run, false, tokenMeasure);
         }
 
-        const freshMaxWidth = lineAvailableWidth();
-        if (tokenMeasure.width > freshMaxWidth + 0.5 && !token.isCjk) {
+        if (tokenMeasure.maxX - tokenMeasure.minX > lineAvailableWidth() + 0.5 && !token.isCjk) {
           // Oversized non-CJK word: fall back to grapheme-level wrapping.
           for (const grapheme of splitGraphemes(token.text)) {
-            const gm = measureFragment(grapheme, token.run, measure);
-            if (currentLine.length > 0 && currentWidth + gm.width > lineAvailableWidth() + 0.5) {
+            const measurement = measureFragment(grapheme, token.run, measure);
+            let glyph = prepareFragment(grapheme, token.run, false, measurement);
+            if (currentLine.length > 0 && glyph.width > lineAvailableWidth() + 0.5) {
               if (!flushLine()) break;
+              glyph = prepareFragment(grapheme, token.run, false, measurement);
             }
-            appendMeasured(grapheme, token.run, false);
+            glyph.append();
           }
           continue;
         }
 
-        appendMeasured(token.text, token.run, false);
+        candidate.append();
       }
     }
 
@@ -493,7 +518,9 @@ export function layoutFlaStaticText(
     let lineSpacing = draft.fallbackRun.lineSpacing;
     let lineAscent = draft.fallbackRun.size * 0.85;
     let lineDescent = draft.fallbackRun.size * 0.25;
-    let totalWidth = 0;
+    const lastFragment = draft.fragments.at(-1);
+    const lineMinX = lastFragment?.lineMinX ?? 0;
+    const totalWidth = (lastFragment?.lineMaxX ?? 0) - lineMinX;
 
     for (const frag of draft.fragments) {
       if (frag.run.size > lineMaxSize) lineMaxSize = frag.run.size;
@@ -502,7 +529,6 @@ export function layoutFlaStaticText(
       if (frag.run.lineSpacing > lineSpacing) lineSpacing = frag.run.lineSpacing;
       if (frag.ascent > lineAscent) lineAscent = frag.ascent;
       if (frag.descent > lineDescent) lineDescent = frag.descent;
-      totalWidth += frag.width;
     }
     if (lineMaxSize > maxFontSize) maxFontSize = lineMaxSize;
 
@@ -512,26 +538,25 @@ export function layoutFlaStaticText(
     );
     let lineStartX = descriptor.left + draft.leftMargin + draft.firstLineIndent;
     if (draft.alignment === 'center') {
-      lineStartX = descriptor.left + draft.leftMargin + (availWidth - totalWidth) / 2;
+      lineStartX = descriptor.left + draft.leftMargin + (availWidth - totalWidth) / 2 - lineMinX;
     } else if (draft.alignment === 'right') {
-      lineStartX = descriptor.left + descriptor.width - draft.rightMargin - totalWidth;
+      lineStartX = descriptor.left + descriptor.width - draft.rightMargin - totalWidth - lineMinX;
     }
 
     const baselineY = cursorY + Math.max(lineAscent, lineMaxHeight * 0.8);
-    let cursorX = lineStartX;
     const fragments: FlaStaticTextLaidOutFragment[] = [];
     for (const frag of draft.fragments) {
+      const x = lineStartX + frag.x;
       fragments.push({
         text: frag.text,
         run: frag.run,
-        x: cursorX,
+        x,
         width: frag.width,
         ascent: frag.ascent,
         descent: frag.descent,
       });
-      if (cursorX < minX) minX = cursorX;
-      if (cursorX + frag.width > maxX) maxX = cursorX + frag.width;
-      cursorX += frag.width;
+      minX = Math.min(minX, x + frag.minX);
+      maxX = Math.max(maxX, x + frag.maxX);
     }
 
     if (baselineY - lineAscent < minY) minY = baselineY - lineAscent;

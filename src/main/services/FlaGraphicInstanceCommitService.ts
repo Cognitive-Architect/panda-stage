@@ -6,6 +6,7 @@ import {
   PROJECT_WIDTH,
   FlaGraphicDefinitionSchema,
   ImageAssetSchema,
+  isFlaGraphicDefinition,
   LayerService,
   ProjectSchema,
   pruneFlaGraphicInstanceTransformOverrides,
@@ -586,9 +587,24 @@ export class FlaGraphicInstanceCommitService {
     if (request.shotId && (!previousShot || request.startTimeMs > previousShot.durationMs)) {
       return this.failure('SHOT_NOT_FOUND', transaction.projectRoot, 'The selected Shot is unavailable.', request);
     }
+    const matchingOccurrence = previousShot?.layers.find((layer) =>
+      layer.source.kind === 'animation' &&
+      layer.source.flaOccurrence?.occurrenceId === batch.unit.occurrenceId &&
+      layer.source.flaOccurrence.sourceAddress === batch.unit.sourceAddress);
+    const previousAnimationId = matchingOccurrence?.source.kind === 'animation'
+      ? matchingOccurrence.source.animationId
+      : undefined;
+    const previousDefinition = current.project.animations.find((animation): animation is FlaGraphicDefinition =>
+      animation.id === previousAnimationId && isFlaGraphicDefinition(animation) &&
+      animation.source.sha256 === batch.source.rawSha256);
+    const existingLayer = previousDefinition ? matchingOccurrence : undefined;
     const reusedMatch = existingDefinition(current.project, batch, request.shotId);
-    const reused = reusedMatch?.definition ?? null;
-    const upgradeStructure = reusedMatch?.upgrade ?? false;
+    const reusableMatch = !previousDefinition || reusedMatch?.definition.id === previousDefinition.id ? reusedMatch : null;
+    const reused = reusableMatch?.definition ?? previousDefinition ?? null;
+    const upgradeStructure = reusableMatch?.upgrade ?? false;
+    const instanceColor = batch.unit.instanceColor;
+    const existingOccurrence = existingLayer?.source.kind === 'animation' ? existingLayer.source.flaOccurrence : undefined;
+    const restoreColor = instanceColor && existingOccurrence && !existingOccurrence.instanceColor ? instanceColor : undefined;
     const pendingFiles: PendingFrameFile[] = [];
     let projectSaved = false;
     let committedProject: Project | null = null;
@@ -603,14 +619,25 @@ export class FlaGraphicInstanceCommitService {
       );
       const sourceStem = path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '') || 'fla-graphic';
 
-      const resources = [
+      const resources = existingLayer && !upgradeStructure ? [] : [
         ...(batch.bitmaps ?? []).map((item) => ({
           ...item, key: item.libraryItemName, bytes: item.pngBytes,
           extension: '.png' as const, mimeType: 'image/png', map: bitmapAssetMap, label: 'bitmap',
         })),
         ...(batch.fallbacks ?? []).map((item) => ({
-          ...item, key: item.sourceRef, bytes: Buffer.from(item.svg, 'utf8'),
-          extension: '.svg' as const, mimeType: 'image/svg+xml', map: isolatedAssetMap, label: 'shape',
+          ...item,
+          key: item.sourceRef,
+          bytes: Buffer.from(item.svg, 'utf8'),
+          extension: '.svg' as const,
+          mimeType: 'image/svg+xml',
+          map: isolatedAssetMap,
+          label: item.sourceRef.startsWith('subtree:text:')
+            ? 'text'
+            : item.sourceRef.startsWith('subtree:filter:')
+              ? 'filter'
+              : item.sourceRef.startsWith('subtree:symbol:')
+                ? 'subtree'
+                : 'shape',
         })),
       ];
       if (resources.length > 0) {
@@ -786,18 +813,7 @@ export class FlaGraphicInstanceCommitService {
           ? this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance was rejected and staged files need recovery.', request)
           : this.failure('TRANSFORM_UNSUPPORTED', transaction.projectRoot, 'The Graphic instance transform or playback mode is outside the supported range.', request);
       }
-      const existingLayer = previousShot?.layers.find((layer) => {
-        if (layer.source.kind !== 'animation') return false;
-        const occurrence = layer.source.flaOccurrence;
-        if (!occurrence) return false;
-        const animationId = layer.source.animationId;
-        const animation = current.project.animations.find((candidate) => candidate.id === animationId);
-        return occurrence.occurrenceId === batch.unit.occurrenceId &&
-          'kind' in (animation ?? {}) &&
-          animation?.source.sha256 === batch.source.rawSha256 &&
-          occurrence.sourceAddress === batch.unit.sourceAddress;
-      });
-      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure) {
+      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure && !restoreColor) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
@@ -824,10 +840,14 @@ export class FlaGraphicInstanceCommitService {
           batch.authorPoseReferences,
         );
       }
-      // An already-imported occurrence only needs a Project save when its
-      // SVG-only Definition is being upgraded with the captured structure.
+      // Reimport can recover color on a legacy occurrence while preserving edits and placement.
       const created = existingLayer || !request.shotId
-        ? { project: baseProject, layer: existingLayer ?? null }
+        ? {
+            project: restoreColor && existingLayer && request.shotId
+              ? this.layerService.restoreFlaOccurrenceColor(baseProject, request.shotId, existingLayer.id, restoreColor)
+              : baseProject,
+            layer: existingLayer ?? null,
+          }
         : this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
         position: transform!.position,
@@ -840,6 +860,7 @@ export class FlaGraphicInstanceCommitService {
           sourceAddress: batch.unit.sourceAddress!,
           adapterIdentity: batch.unit.adapterIdentity!,
           drawOrder: batch.unit.drawOrder,
+          ...(instanceColor ? { instanceColor } : {}),
         },
       });
       const nextProject = ProjectSchema.parse({

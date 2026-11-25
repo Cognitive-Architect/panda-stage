@@ -622,6 +622,10 @@ async function initialize(): Promise<void> {
     (filePath, signal) => ffmpegAdapter.probeAudioFile(filePath, signal),
     assetImportService,
     (filePath, signal) => ffmpegAdapter.validateAudioDecode(filePath, signal),
+    {
+      getTimelineSession: (sessionId) => flaImportService.getSoundTimelineSession(sessionId),
+      projectService,
+    },
   );
   removeFlaImportIpcHandlers = registerFlaImportIpcHandlers({
     getMainWindow: () => mainWindow,

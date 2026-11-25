@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FlaInstanceColorSchema } from '../../shared/fla-instance-color';
 import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
   AnimationClipSchema,
@@ -231,15 +232,23 @@ export const LayerV15AdaptiveSchema = z
 export const LayerV15Schema = LayerV15AnimationSchema;
 
 export const AssetLayerSourceSchema = AssetLayerSourceV22Schema;
-export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema;
-export const LayerSourceSchema = LayerSourceV22Schema;
+export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema.extend({
+  flaOccurrence: AnimationLayerSourceV22Schema.shape.flaOccurrence.unwrap().extend({
+    instanceColor: FlaInstanceColorSchema.optional(),
+  }).optional(),
+});
+export const LayerSourceSchema = z.discriminatedUnion('kind', [
+  AssetLayerSourceSchema,
+  CharacterLayerSourceV15Schema,
+  AnimationLayerSourceSchema,
+]);
 export const AnimationPlaybackSchema = AnimationPlaybackV22Schema;
 
 /** Frozen v20 Layer reader, before Animation Core. */
 export const LayerV20Schema = z
   .object({
     ...LayerV15AnimationShape,
-    source: LayerSourceSchema,
+    source: LayerSourceV22Schema,
     /** Authored first frame offset for Graphic or raster animation instances. */
     animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
     animationPlayback: AnimationPlaybackSchema.optional(),
@@ -325,8 +334,12 @@ export const LayerV32Schema = LayerV30Schema.safeExtend({
   }
 });
 
-export const LayerSchema = LayerV32Schema.safeExtend({
+export const LayerV41Schema = LayerV32Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
+});
+
+export const LayerSchema = LayerV41Schema.safeExtend({
+  source: LayerSourceSchema,
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

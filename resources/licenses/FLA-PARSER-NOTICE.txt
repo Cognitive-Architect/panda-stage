@@ -28,11 +28,17 @@ The shipped parser-core closure is exactly these 12 upstream files:
   path-utils.ts
   types.ts
 
-The local copies are byte-for-byte equal to the pinned upstream files after
-normalizing repository line endings and removing one leading Panda build-
-compatibility comment (`// @ts-nocheck ...`) from each file. No parser logic,
-runtime behavior, or upstream file list is locally modified. The preamble is
-the only permitted local modification and is reviewable in the PR.
+The files originated at the pin above. The local closure includes Panda
+patches and is not byte-for-byte identical to that pin. Reviewable changes
+include the build preambles (108bc0fe), signed XFL coordinates (0fa3cd31),
+persistent FLA animations (778c3693), structure-only and selective hydration
+(f198ee71, d5f03a71), MovieClip and Object Motion sampling (f310c573, 4ce1f39c),
+and embedded audio metadata (b0e3a00b, 7dc86620, 670afec5).
+
+Issue #1322 adds an optional XFL metadata observer in fla-parser.ts. The
+Panda adapter uses it to normalize authored symbol types and capture the
+display slots of MovieClip occurrences for audio timing. The upstream pin,
+parser file list, runtime dependencies and upstream license facts are unchanged.
 
 The closure is bundled into the built Electron renderer by the `flaParser`
 Vite entry (`fla-parser.html`). It is not a dependency on the upstream viewer,

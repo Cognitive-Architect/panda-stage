@@ -87,13 +87,33 @@ export const ExportPreparationCameraModeSchema = z.enum([
   'speaker-focus',
 ]);
 
+export const SpriteSheetAtlasOptionsSchema = z.object({
+  trim: z.boolean().default(true),
+  scale: z.number().finite().positive().max(1).default(1),
+  padding: z.number().int().min(0).max(64).default(2),
+  extrusion: z.number().int().min(0).max(16).default(1),
+  format: z.enum(['panda', 'pixi']).default('pixi'),
+  anchor: z.object({
+    x: z.number().finite().min(0).max(1),
+    y: z.number().finite().min(0).max(1),
+  }).strict().optional(),
+  animationName: z.string().trim().min(1).max(120).optional(),
+}).strict();
+
+export type SpriteSheetAtlasOptions = z.infer<typeof SpriteSheetAtlasOptionsSchema>;
+
 export const PngSequenceOptionsSchema = z.object({
   shotId: z.uuid(),
+  layerId: z.uuid().optional(),
   transparent: z.boolean(),
   spriteSheet: z.literal(true).optional(),
+  spriteSheetOptions: SpriteSheetAtlasOptionsSchema.optional(),
   range: z.object({ startMs: z.number().int().nonnegative(), endMs: z.number().int().positive() })
     .strict().refine(({ startMs, endMs }) => startMs < endMs, 'PNG range must have positive length.').optional(),
-}).strict().refine(({ spriteSheet, transparent }) => !spriteSheet || transparent, 'Sprite sheets require transparent frames.');
+}).strict()
+  .refine(({ spriteSheet, transparent }) => !spriteSheet || transparent, 'Sprite sheets require transparent frames.')
+  .refine(({ spriteSheet, spriteSheetOptions }) => !spriteSheetOptions || spriteSheet === true, 'Sprite sheet options require spriteSheet mode.')
+  .refine(({ layerId, transparent }) => !layerId || transparent, 'Selected object export requires transparent frames.');
 
 export type PngSequenceOptions = z.infer<typeof PngSequenceOptionsSchema>;
 

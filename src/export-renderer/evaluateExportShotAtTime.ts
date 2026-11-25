@@ -16,8 +16,9 @@ export function evaluateExportShotAtTime(
   requestedTimeMs: number,
   activeDialogueId?: string | null,
   dialogueSilence?: DialogueSilence,
+  outputLayerId?: string,
 ): EvaluatedShot {
-  return projectShotDialogueVisual(
+  const visual = projectShotDialogueVisual(
     project,
     shot,
     evaluateShotAtTime(shot, requestedTimeMs, project, {
@@ -26,4 +27,9 @@ export function evaluateExportShotAtTime(
     activeDialogueId,
     dialogueSilence,
   );
+  return outputLayerId ? {
+    ...visual,
+    backgroundLayerId: null,
+    layers: visual.layers.filter(({ id }) => id === outputLayerId),
+  } : visual;
 }

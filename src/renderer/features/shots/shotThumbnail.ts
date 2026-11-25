@@ -210,6 +210,7 @@ export function shotThumbnailFingerprint(
           ? {
               mode: visual.flaGraphic.mode,
               frameOrdinal: visual.flaGraphic.frameOrdinal,
+              instanceColor: visual.flaGraphic.instanceColor,
               layers: visual.flaGraphic.layers,
               resources: visual.flaGraphic.resourceAssetIds.map((assetId) =>
                 assetContentFingerprint(project, assetId),
@@ -510,7 +511,7 @@ export async function createShotThumbnailDataUrl(
   ]);
   for (const { render, visual } of model.layers) {
     if (!render.visible) continue;
-    const structuredCanvas = visual.flaGraphic?.structureFrame
+    const structuredCanvas = visual.flaGraphic
       ? renderFlaGraphicCanvas(visual.flaGraphic, images, scale)
       : null;
     const drawOwnerParts = (

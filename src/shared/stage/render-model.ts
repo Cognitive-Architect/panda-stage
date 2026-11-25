@@ -326,7 +326,12 @@ function buildFormalStageRenderModel(
         };
       }
       const asset = imageAsset(project, part.assetId!, layer.id);
-      const sourceUrl = sourceUrlFor(assetUrls, asset, layer.id);
+      // Export freezes the structured resources. The baked frame is optional
+      // when none of the frame's drawable nodes use it.
+      const graphic = visual.flaGraphic;
+      const unusedBakedFrame = graphic?.structureFrame && graphic.frameAssetId === asset.id &&
+        !graphic.resourceAssetIds.includes(asset.id);
+      const sourceUrl = unusedBakedFrame ? (assetUrls[asset.id] ?? '') : sourceUrlFor(assetUrls, asset, layer.id);
       return {
         id: part.partId,
         slot: part.slot,

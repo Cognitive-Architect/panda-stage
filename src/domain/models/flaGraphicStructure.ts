@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
+import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
 
 /**
@@ -117,6 +118,7 @@ export type FlaGraphicStructureNode =
       sourceParentFrameSpanStart?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
+      blendMode?: FlaSupportedBlendMode;
       children?: FlaGraphicStructureNode[];
     }
   | {
@@ -144,6 +146,8 @@ export type FlaGraphicStructureNode =
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
       sourceRef?: string;
       reason?: string;
+      /** Runtime blend mode composited against the live stage backdrop when isolated. */
+      blendMode?: FlaSupportedBlendMode;
       /** Scope of fallback: 'subtree' (dedicated asset) or 'frame-crop' (shared frame cropped to viewBox). */
       fallbackScope?: 'subtree' | 'frame-crop';
       /** Fallback reference to a project asset (e.g. SVG frame asset ID). */
@@ -181,6 +185,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
+        blendMode: FlaSupportedBlendModeSchema.optional(),
         children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
       .strict(),
@@ -200,6 +205,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
         sourceRef: SourceTextSchema.optional(),
         reason: SourceTextSchema.optional(),
+        blendMode: FlaSupportedBlendModeSchema.optional(),
         fallbackScope: z.enum(['subtree', 'frame-crop']).optional(),
         fallbackAssetId: SourceTextSchema.optional(),
         fallbackViewBox: z

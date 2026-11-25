@@ -31,6 +31,7 @@ import { FlaSourceFrameSuggestions } from './FlaSourceFrameSuggestions';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaSoundReview } from './FlaSoundReview';
 import type { AssetImportResponse } from '../../shared/asset-import-api';
+import type { FlaSoundTimelineImportResponse } from '../../shared/fla-sound-api';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
 import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
@@ -62,6 +63,7 @@ interface FlaCompatibilityReviewSessionProps {
   onClose: () => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
   onSoundImported?: (response: AssetImportResponse) => Promise<void>;
+  onSceneSoundTimelineImported?: (response: FlaSoundTimelineImportResponse) => void;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
   onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
@@ -84,6 +86,7 @@ export function FlaCompatibilityReviewSession({
   onClose,
   onCommit,
   onSoundImported,
+  onSceneSoundTimelineImported,
   onSnapshotImported,
   onSequenceImported,
   onImportGraphicInstance,
@@ -983,10 +986,13 @@ export function FlaCompatibilityReviewSession({
           <div aria-labelledby="fla-review-sound-tab-control" className="fla-c03-review-route-panel"
             id="fla-review-sound-panel" role="tabpanel">
             <FlaSoundReview key={sessionId} sessionId={sessionId} sounds={ir.sounds}
+              timelines={ir.timelines}
+              symbolTimelines={ir.symbolTimelines}
               snapshot={snapshot} importing={phase === 'committing'}
               createPreviewUrl={(bytes, mimeType) => URL.createObjectURL(new Blob([bytes], { type: mimeType }))}
               onImporting={(importing) => setPhase(importing ? 'committing' : 'ready')}
-              onImported={async (result) => { await onSoundImported?.(result); }} />
+              onImported={async (result) => { await onSoundImported?.(result); }}
+              onSceneTimelineImported={(result) => { onSceneSoundTimelineImported?.(result); }} />
           </div>
         ) : null}
         <div

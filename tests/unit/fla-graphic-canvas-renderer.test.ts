@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  evaluateFlaGraphicNodeCompositePlan,
   evaluateFlaGraphicVisual,
   FlaGraphicDefinitionSchema,
 } from '../../src/domain';
@@ -144,6 +145,39 @@ describe('shared FLA Graphic Canvas renderer', () => {
       expect(raster.rect.x + placement[4]!).toBeCloseTo(childMatrix.tx + 8 - 10, 6);
       expect(raster.rect.y + placement[5]!).toBeCloseTo(childMatrix.ty - 10, 6);
     }
+  });
+
+  it.each([true, false])('applies occurrence color once with structured frame = %s', (structured) => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{ ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 3, y: 4 }, sourceViewport: { x: 3, y: 4, width: 8, height: 8 } }],
+      ...(structured ? { structure: { version: 1, frames: [{ ordinal: 0, layers: [{ name: 'Part', nodes: [{
+        type: 'bitmap', id: 'bitmap', drawOrder: 0, localTransform: matrix(3, 4), bitmapRef: 'part.png', assetId,
+      }] }] }] } } : {}),
+    });
+    vi.stubGlobal('document', { createElement: () => new FakeCanvas() });
+    const images = new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]);
+    const baseInput = { definition, frameOrdinal: 0, mode: 'instance' as const };
+    const red = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      opacity: 0.5, rgbTransform: { multiplier: 0.5, offset: 0, channelOffsets: [64, 0, 0] },
+    } })!;
+    const bright = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      rgbTransform: { multiplier: 0.5, offset: 127.5 },
+    } })!;
+    const redRaster = renderFlaGraphicCanvas(red, images)!;
+    const brightRaster = renderFlaGraphicCanvas(bright, images)!;
+    expect(redRaster.rect).toEqual(structured
+      ? { x: -10, y: -10, width: 20, height: 20 }
+      : { x: -7, y: -6, width: 8, height: 8 });
+    expect((redRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([114, 40, 30, 128]);
+    expect((brightRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([178, 168, 158, 255]);
+    expect((redRaster.canvas as unknown as FakeCanvas).context.readCount).toBe(1);
+    expect(evaluateFlaGraphicVisual({ ...baseInput, mode: 'definition', instanceColor: red.instanceColor })?.instanceColor)
+      .toBeUndefined();
   });
 
   it('reports small drawable bounds separately from the authored Graphic canvas', () => {
@@ -296,4 +330,225 @@ describe('shared FLA Graphic Canvas renderer', () => {
     expect(symbolCanvas.context.readCount).toBe(1);
     expect(symbolCanvas.context.writtenPixels).toEqual([60, 50, 40, 255]);
   });
+
+  it.each([
+    { blendMode: 'multiply' as const, expectedOp: 'multiply' },
+    { blendMode: 'screen' as const, expectedOp: 'screen' },
+    { blendMode: 'add' as const, expectedOp: 'lighter' },
+  ])(
+    'composites $blendMode (-> $expectedOp) against out-of-group and in-group backdrops with opaque/semi-transparent overlays and R01 outer color isolation (#1296)',
+    ({ blendMode, expectedOp }) => {
+      const frameAssetId = 'b1000000-0000-4000-8000-000000000001';
+      const bgAssetId = '20000000-0000-4000-8000-000000000001';
+      const overlayAssetId = '20000000-0000-4000-8000-000000000002';
+      const makeDef = (options: {
+        withBackdrop: boolean;
+        opacity: number;
+        isolateParent: boolean;
+      }) =>
+        FlaGraphicDefinitionSchema.parse({
+          id: 'b0000000-0000-4000-8000-000000000001',
+          kind: 'fla-graphic',
+          name: `Blend-${blendMode}`,
+          source: {
+            basename: 'blend.fla',
+            sha256: 'c'.repeat(64),
+            renderTargetId: 'blend-target',
+            targetKind: 'graphic-symbol',
+            targetName: 'BlendHost',
+            startFrameIndex: 0,
+            endFrameIndex: 0,
+            sourceFps: 24,
+            canvas: { width: 20, height: 20 },
+            anchor: { x: 0, y: 0 },
+            documentCanvas: { width: 20, height: 20 },
+          },
+          durationMs: 1_000 / 24,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: frameAssetId,
+            sha256: 'd'.repeat(64),
+            sourceViewport: { x: 0, y: 0, width: 20, height: 20 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs: 1_000 / 24,
+            createdBySequenceImport: false,
+          }],
+          structure: {
+            version: 1,
+            frames: [{
+              ordinal: 0,
+              layers: [{
+                name: 'blend-layer',
+                nodes: [
+                  ...(options.withBackdrop
+                    ? [{
+                        type: 'bitmap' as const,
+                        id: 'backdrop',
+                        drawOrder: 0,
+                        localTransform: matrix(0, 0),
+                        bitmapRef: 'bg.png',
+                        assetId: bgAssetId,
+                      }]
+                    : []),
+                  {
+                    type: 'symbol' as const,
+                    id: 'parent-wrapper',
+                    drawOrder: options.withBackdrop ? 1 : 0,
+                    localTransform: matrix(0, 0),
+                    symbolRef: 'Wrapper',
+                    ...(options.isolateParent ? { opacity: 0.8 } : {}),
+                    children: [
+                      ...(options.isolateParent
+                        ? [{
+                            type: 'bitmap' as const,
+                            id: 'in-group-bg',
+                            drawOrder: 0,
+                            localTransform: matrix(0, 0),
+                            bitmapRef: 'bg.png',
+                            assetId: bgAssetId,
+                          }]
+                        : []),
+                      {
+                        type: 'symbol' as const,
+                        id: 'blended-overlay',
+                        drawOrder: options.isolateParent ? 1 : 0,
+                        localTransform: matrix(2, 2),
+                        symbolRef: 'Overlay',
+                        blendMode,
+                        opacity: options.opacity,
+                        children: [{
+                          type: 'bitmap' as const,
+                          id: 'overlay-bmp',
+                          drawOrder: 0,
+                          localTransform: matrix(0, 0),
+                          bitmapRef: 'overlay.png',
+                          assetId: overlayAssetId,
+                        }],
+                      },
+                    ],
+                  },
+                ],
+              }],
+            }],
+          },
+        });
+
+      const bgImage = new FakeImage() as unknown as CanvasImageSource;
+      const overlayImage = new FakeImage() as unknown as CanvasImageSource;
+      const imageMap = new Map([
+        [bgAssetId, bgImage],
+        [overlayAssetId, overlayImage],
+      ]);
+
+      // 1) Out-of-group backdrop + semi-transparent overlay + R01 outer instanceColor:
+      //    Plain parent wrapper is NOT isolated (needsComposite === false), so blended child
+      //    composites directly onto root output canvas with globalCompositeOperation = expectedOp!
+      const outCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          outCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const outVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: true, opacity: 0.5, isolateParent: false }),
+        frameOrdinal: 0,
+        mode: 'instance',
+        instanceColor: { opacity: 0.75, rgbTransform: { multiplier: 0.5, offset: 20 } },
+      })!;
+      const parentNode = outVisual.layers![0]!.nodes[1]!;
+      const blendedNode = parentNode.children[0]!;
+      expect(evaluateFlaGraphicNodeCompositePlan(parentNode)).toMatchObject({
+        needsComposite: false,
+        blendMode: 'normal',
+        canvasCompositeOperation: 'source-over',
+      });
+      expect(evaluateFlaGraphicNodeCompositePlan(blendedNode)).toMatchObject({
+        needsComposite: true,
+        blendMode,
+        canvasCompositeOperation: expectedOp,
+        opacity: 0.5,
+      });
+
+      const outRendered = renderFlaGraphicCanvas(outVisual, imageMap)!;
+      const rootCanvas = outRendered.canvas as unknown as FakeCanvas;
+      // Only 2 canvases created: root output + blended overlay scratch (plain parent NOT isolated!).
+      expect(outCanvases).toHaveLength(2);
+      const overlayScratch = outCanvases[1]!;
+      expect(rootCanvas.context.draws).toHaveLength(2);
+      expect(rootCanvas.context.draws[0]).toMatchObject({
+        image: bgImage,
+        alpha: 1,
+        compositeOperation: 'source-over',
+      });
+      expect(rootCanvas.context.draws[1]).toMatchObject({
+        image: overlayScratch,
+        alpha: 0.5,
+        compositeOperation: expectedOp,
+      });
+      // R01 outer instanceColor applied ONCE to root output canvas, never to scratch.
+      expect(rootCanvas.context.readCount).toBe(1);
+      expect(overlayScratch.context.readCount).toBe(0);
+
+      // 2) In-group backdrop (isolated parent with opacity 0.8) + opaque overlay:
+      const inCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          inCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const inVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: false, opacity: 1, isolateParent: true }),
+        frameOrdinal: 0,
+        mode: 'instance',
+      })!;
+      const inRendered = renderFlaGraphicCanvas(inVisual, imageMap)!;
+      const inRoot = inRendered.canvas as unknown as FakeCanvas;
+      // 3 canvases: root + isolated parent scratch + blended child scratch.
+      expect(inCanvases).toHaveLength(3);
+      const parentScratch = inCanvases[1]!;
+      const childScratch = inCanvases[2]!;
+      expect(parentScratch.context.draws[0]).toMatchObject({
+        image: bgImage,
+        compositeOperation: 'source-over',
+      });
+      expect(parentScratch.context.draws[1]).toMatchObject({
+        image: childScratch,
+        alpha: 1,
+        compositeOperation: expectedOp,
+      });
+      expect(inRoot.context.draws[0]).toMatchObject({
+        image: parentScratch,
+        alpha: 0.8,
+        compositeOperation: 'source-over',
+      });
+
+      // 3) Transparent background (no backdrop): overlay still composites onto empty canvas with expectedOp.
+      const transparentCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          transparentCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const transparentVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: false, opacity: 1, isolateParent: false }),
+        frameOrdinal: 0,
+        mode: 'instance',
+      })!;
+      const transparentRendered = renderFlaGraphicCanvas(transparentVisual, imageMap)!;
+      const transparentRoot = transparentRendered.canvas as unknown as FakeCanvas;
+      expect(transparentRoot.context.draws).toHaveLength(1);
+      expect(transparentRoot.context.draws[0]).toMatchObject({
+        alpha: 1,
+        compositeOperation: expectedOp,
+      });
+    },
+  );
 });

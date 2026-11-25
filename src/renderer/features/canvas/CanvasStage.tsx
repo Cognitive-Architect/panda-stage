@@ -1565,6 +1565,7 @@ export function CanvasStage({
                                   flaGraphicEditMode === 'definition'
                                     ? undefined
                                     : layer.flaGraphicInstanceShapeOverrides,
+                                instanceColor: visual?.flaGraphic?.instanceColor,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,

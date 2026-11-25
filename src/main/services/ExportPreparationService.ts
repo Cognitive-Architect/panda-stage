@@ -527,10 +527,13 @@ export class ExportPreparationService {
     let snapshotDirectoryCreated = false;
 
     try {
-      const scoped = selection.pngSequence ? { ...project, shots: [planPngSequenceFrames(project, selection.pngSequence).shot] } : project;
-      const issues = evaluateExportPreparationSupport(scoped, request.cameraMode,
+      const sequence = selection.pngSequence ? planPngSequenceFrames(project, selection.pngSequence) : undefined;
+      const visualProject = sequence ? { ...project, shots: [sequence.shot] } : project;
+      const outputProject = sequence ? { ...project, shots: [sequence.outputShot] } : project;
+      const issues = evaluateExportPreparationSupport(outputProject, request.cameraMode,
         selection.pngSequence ? { imagesOnly: true } : undefined);
-      const media = collectExportPreparationMedia(scoped).filter(({ asset }) => !selection.pngSequence || asset.kind === 'image');
+      const media = collectExportPreparationMedia(visualProject, sequence?.selectedLayer?.id)
+        .filter(({ asset }) => !selection.pngSequence || asset.kind === 'image');
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
 

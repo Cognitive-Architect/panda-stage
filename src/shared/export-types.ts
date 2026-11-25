@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Project } from '../domain';
+import type { Layer, Project, Shot } from '../domain';
 import { mapProjectTime } from '../domain/selectors/projectTime';
 import { projectDurationMs } from '../domain/selectors/projectDuration';
 import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
@@ -57,6 +57,7 @@ export const ExportLoadFormalRequestSchema = z
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
     solidClear: z.literal(true).optional(),
+    outputLayerId: z.uuid().optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
     media: z.array(ExportLoadFormalMediaSchema).max(512),
   })
@@ -365,14 +366,56 @@ export function* iterateFormalProjectFrameSchedule(
   }
 }
 
+export const SPRITE_SHEET_MAX_DIMENSION = 8_192 as const;
+export const SPRITE_SHEET_MAX_PIXELS = 32 * 1024 * 1024;
+
+export interface SpriteSheetGrid {
+  columns: number;
+  rows: number;
+  width: number;
+  height: number;
+}
+
+export interface SpriteSheetPagePlan extends SpriteSheetGrid {
+  pageIndex: number;
+  frameStart: number;
+  frameCount: number;
+  imageName: string;
+}
+
+export interface SpriteSheetPlan {
+  totalFrames: number;
+  frameWidth: number;
+  frameHeight: number;
+  maxFramesPerPage: number;
+  maxDimension: number;
+  maxPixels: number;
+  pages: SpriteSheetPagePlan[];
+}
+
+export function formatSpriteSheetPageImageName(pageIndex: number, pageCount: number): string {
+  if (pageCount <= 1) return 'sprite-sheet.png';
+  return `sprite-sheet-${String(pageIndex).padStart(3, '0')}.png`;
+}
+
+export function formatSpriteSheetFrameName(frameIndex: number): string {
+  const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
+  return `frame_${String(parsedFrameIndex).padStart(FRAME_FILE_DIGITS, '0')}`;
+}
+
 /** Shot-local formal frame samples in a half-open interval, with contiguous output names. */
-export function planSpriteSheetGrid(frameCount: number, frameWidth: number, frameHeight: number) {
-  const maxDimension = 8192;
-  const maxPixels = 32 * 1024 * 1024;
-  if (![frameCount, frameWidth, frameHeight].every((value) => Number.isSafeInteger(value) && value > 0)) {
+export function planSpriteSheetGrid(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetGrid {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
     throw new Error('没有可排入精灵图的有效帧。');
   }
-  let best: { columns: number; rows: number; width: number; height: number } | undefined;
+  let best: SpriteSheetGrid | undefined;
   let bestAspect = Infinity;
   for (let columns = 1; columns <= Math.min(frameCount, Math.floor(maxDimension / frameWidth)); columns += 1) {
     const rows = Math.ceil(frameCount / columns);
@@ -389,9 +432,110 @@ export function planSpriteSheetGrid(frameCount: number, frameWidth: number, fram
   return best;
 }
 
+/**
+ * Plans single- or multi-page sprite sheet capacity from actual cell dimensions
+ * and page budgets (maxDimension and maxPixels), without hardcoding page size.
+ */
+export function planSpriteSheetPages(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetPlan {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('没有可排入精灵图的有效帧。');
+  }
+  const maxCols = Math.floor(maxDimension / frameWidth);
+  const maxRows = Math.floor(maxDimension / frameHeight);
+  const cellPixels = frameWidth * frameHeight;
+  let maxFramesPerPage = 0;
+  for (let cols = 1; cols <= maxCols; cols += 1) {
+    const rows = Math.min(maxRows, Math.floor(maxPixels / (cols * cellPixels)));
+    if (rows <= 0) continue;
+    const capacity = cols * rows;
+    if (capacity > maxFramesPerPage) {
+      maxFramesPerPage = capacity;
+    }
+  }
+  if (maxFramesPerPage <= 0) {
+    throw new Error('单帧尺寸超出精灵图页容量限制，无法排入精灵图。');
+  }
+  const pageCount = Math.ceil(frameCount / maxFramesPerPage);
+  const pages: SpriteSheetPagePlan[] = [];
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const frameStart = pageIndex * maxFramesPerPage;
+    const pageFrameCount = Math.min(maxFramesPerPage, frameCount - frameStart);
+    const grid = planSpriteSheetGrid(pageFrameCount, frameWidth, frameHeight, { maxDimension, maxPixels });
+    pages.push({
+      pageIndex,
+      frameStart,
+      frameCount: pageFrameCount,
+      ...grid,
+      imageName: formatSpriteSheetPageImageName(pageIndex, pageCount),
+    });
+  }
+  return {
+    totalFrames: frameCount,
+    frameWidth,
+    frameHeight,
+    maxFramesPerPage,
+    maxDimension,
+    maxPixels,
+    pages,
+  };
+}
+
+/**
+ * Isolates a single visible object Layer (Graphic / animation / character / asset)
+ * inside its owning Shot for transparent sprite-sheet export, preserving source clock,
+ * instance transform/color/effects and Shot-local time range while excluding background
+ * and all unrelated layers.
+ */
+export function scopeShotForLayerExport(shot: Shot, layerId: string): { shot: Shot; layer: Layer } {
+  const layer = shot.layers.find((entry) => entry.id === layerId);
+  if (!layer) {
+    throw new Error('请选择当前镜头中可导出的对象图层。');
+  }
+  if (!layer.visible) {
+    throw new Error('当前选中对象处于隐藏状态，请先显示后再导出。');
+  }
+  return {
+    layer,
+    shot: {
+      ...shot,
+      backgroundLayerId: null,
+      layers: [layer],
+      dialogues: [],
+      audioClips: [],
+    },
+  };
+}
+
+/**
+ * Computes a stable normalized stage-space anchor for an isolated Layer export.
+ */
+export function computeLayerExportAnchor(
+  layer: Layer,
+  stageWidth: number,
+  stageHeight: number,
+): { x: number; y: number } {
+  if (stageWidth <= 0 || stageHeight <= 0) return { x: 0.5, y: 0.5 };
+  const rawX = layer.x / stageWidth;
+  const rawY = layer.y / stageHeight;
+  const clamp01 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10_000) / 10_000;
+  return {
+    x: Number.isFinite(rawX) ? clamp01(rawX) : 0.5,
+    y: Number.isFinite(rawY) ? clamp01(rawY) : 0.5,
+  };
+}
+
 export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
-  const shot = project.shots.find(({ id }) => id === settings.shotId);
-  if (!shot) throw new Error('请选择一个可导出的镜头。');
+  const baseShot = project.shots.find(({ id }) => id === settings.shotId);
+  if (!baseShot) throw new Error('请选择一个可导出的镜头。');
+  const scoped = settings.layerId ? scopeShotForLayerExport(baseShot, settings.layerId) : null;
+  const shot = baseShot;
   const startMs = settings.range?.startMs ?? 0;
   const endMs = settings.range?.endMs ?? shot.durationMs;
   if (startMs < 0 || endMs > shot.durationMs || startMs >= endMs) throw new Error('PNG 时间段须在当前镜头范围内。');
@@ -401,7 +545,10 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
   if (totalFrames <= 0) throw new Error('该时间段内没有可导出的帧。');
   return {
     totalFrames,
+    firstFrameIndex: first,
     shot,
+    outputShot: scoped?.shot ?? shot,
+    selectedLayer: scoped?.layer,
     *frames(): Generator<ProjectFrameScheduleEntry> {
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         const timeMs = frameTimeMs(first + frameIndex);

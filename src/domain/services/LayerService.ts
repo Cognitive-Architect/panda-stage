@@ -1,3 +1,4 @@
+import type { FlaInstanceColor } from '../../shared/fla-instance-color';
 import {
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
@@ -418,6 +419,17 @@ export class LayerService {
       project: this.replaceShot(project, { ...shot, layers: [...shot.layers, layer] }),
       layer,
     };
+  }
+
+  restoreFlaOccurrenceColor(project: Project, shotId: string, layerId: string, instanceColor: FlaInstanceColor): Project {
+    const shot = this.shot(project, shotId);
+    const layers = shot.layers.map((layer) => {
+      if (layer.id !== layerId || layer.source.kind !== 'animation') return layer;
+      const { flaOccurrence } = layer.source;
+      if (!flaOccurrence || flaOccurrence.instanceColor) return layer;
+      return { ...layer, source: { ...layer.source, flaOccurrence: { ...flaOccurrence, instanceColor } } };
+    });
+    return this.replaceShot(project, { ...shot, layers });
   }
 
   saveAnimationSegment(project: Project, input: SaveAnimationSegmentInput): Project {

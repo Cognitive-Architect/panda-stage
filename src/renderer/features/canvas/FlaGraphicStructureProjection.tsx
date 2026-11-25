@@ -1,3 +1,4 @@
+import type { FlaInstanceColor } from '../../../shared/fla-instance-color';
 import Konva from 'konva';
 import {
   Circle,
@@ -151,6 +152,7 @@ export interface FlaGraphicStructureProjectionProps {
   readonly selectedVertexTarget?: FlaShapeVertexTarget | null;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceColor?: FlaInstanceColor;
   /** Transient gesture preview matrices; committed values live on the Layer. */
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
   readonly layerLocked: boolean;
@@ -185,6 +187,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
   readonly internalTimeMs?: number;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceColor?: FlaInstanceColor;
   readonly draftMatrices: Readonly<Record<string, AffineMatrix2D>>;
 }) {
   const {
@@ -195,6 +198,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     timelineAuthoringActive = internalTimeMs !== undefined,
     instanceTransformOverrides,
     instanceShapeOverrides,
+    instanceColor,
     draftMatrices,
   } = input;
   const draftEntries = Object.entries(draftMatrices);
@@ -303,6 +307,7 @@ export function evaluateFlaGraphicProjectionVisual(input: {
     mode: 'instance',
     instanceTransformOverrides: evaluationOverrides,
     instanceShapeOverrides,
+    instanceColor,
   });
 }
 
@@ -322,6 +327,7 @@ export function FlaGraphicStructureProjection({
   selectedVertexTarget = null,
   instanceTransformOverrides,
   instanceShapeOverrides,
+  instanceColor,
   draftMatrices,
   layerLocked,
   scopeParentNodeRef,
@@ -343,6 +349,7 @@ export function FlaGraphicStructureProjection({
     internalTimeMs,
     instanceTransformOverrides,
     instanceShapeOverrides,
+    instanceColor,
     draftMatrices,
   });
   const renderedCanvas = evaluatedVisual

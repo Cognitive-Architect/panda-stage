@@ -1,3 +1,4 @@
+import type { FlaInstanceColor } from '../../../shared/fla-instance-color';
 import {
   commandsToSvgPathD,
   evaluateFlaGraphicNodeCompositePlan,
@@ -291,6 +292,74 @@ function validTransform(
   return matrix.every(Number.isFinite);
 }
 
+function applyGraphicColor(
+  target: CanvasRenderingContext2D,
+  { width, height }: Pick<HTMLCanvasElement, 'width' | 'height'>,
+  color: FlaInstanceColor,
+): boolean {
+  const { rgbTransform, opacity = 1 } = color;
+  if (!rgbTransform) {
+    if (opacity === 1) return true;
+    target.save();
+    target.globalAlpha = opacity;
+    target.globalCompositeOperation = 'destination-in';
+    target.fillStyle = '#000';
+    target.fillRect(0, 0, width, height);
+    target.restore();
+    return true;
+  }
+  try {
+    const imageData = target.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+    const { multiplier, offset, channelOffsets = [offset, offset, offset] } = rgbTransform;
+    const [redOffset, greenOffset, blueOffset] = channelOffsets;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3] === 0) continue;
+      pixels[index] = Math.round(pixels[index]! * multiplier + redOffset);
+      pixels[index + 1] = Math.round(pixels[index + 1]! * multiplier + greenOffset);
+      pixels[index + 2] = Math.round(pixels[index + 2]! * multiplier + blueOffset);
+      pixels[index + 3] = Math.round(pixels[index + 3]! * opacity);
+    }
+    target.putImageData(imageData, 0, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function boundedRasterScale(width: number, height: number, requestedScale: number): number {
+  return Math.min(
+    Math.max(0.0001, requestedScale), 1,
+    MAX_RENDER_EDGE / width, MAX_RENDER_EDGE / height,
+    Math.sqrt(MAX_RENDER_PIXELS / Math.max(1, width * height)),
+  );
+}
+
+function renderColoredBakedFrame(
+  visual: EvaluatedFlaGraphicVisual,
+  source: CanvasImageSource,
+  color: FlaInstanceColor,
+  requestedScale: number,
+): FlaGraphicRaster | null {
+  const { width, height } = visual.frameViewport;
+  const scale = boundedRasterScale(width, height, requestedScale);
+  if (!Number.isFinite(scale) || scale <= 0 || width <= 0 || height <= 0) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(width * scale));
+  canvas.height = Math.max(1, Math.ceil(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  applyGraphicColor(context, canvas, color);
+  const rect = {
+    x: visual.frameOffset.x - visual.canvas.width / 2,
+    y: visual.frameOffset.y - visual.canvas.height / 2,
+    width,
+    height,
+  };
+  return { canvas, rect, visibleRect: color.opacity === 0 ? null : rect };
+}
+
 /**
  * Raster adapter shared by the editor Stage, hidden export Stage, Definition
  * preview, and Shot thumbnail. Evaluation stays pure in src/domain; this file
@@ -325,8 +394,12 @@ function renderFlaGraphicCanvasUncached(
   images: FlaGraphicImageMap,
   requestedScale: number,
 ): FlaGraphicRaster | null {
-  if (!visual.structureFrame || !visual.layers || typeof document === 'undefined') {
-    return null;
+  if (typeof document === 'undefined') return null;
+  if (!visual.structureFrame || !visual.layers) {
+    const source = visual.instanceColor ? images.get(visual.frameAssetId) : undefined;
+    return source && visual.instanceColor
+      ? renderColoredBakedFrame(visual, source, visual.instanceColor, requestedScale)
+      : null;
   }
   // Include the authored canvas to preserve its anchor, and every drawable
   // evaluated leaf so negative/outside Child transforms are never clipped.
@@ -404,15 +477,7 @@ function renderFlaGraphicCanvasUncached(
     sourceWidth <= 0 ||
     sourceHeight <= 0
   ) return null;
-  const scaleByEdge = Math.min(
-    1,
-    MAX_RENDER_EDGE / sourceWidth,
-    MAX_RENDER_EDGE / sourceHeight,
-  );
-  const scaleByArea = Math.sqrt(
-    MAX_RENDER_PIXELS / Math.max(1, sourceWidth * sourceHeight),
-  );
-  const scale = Math.min(Math.max(0.0001, requestedScale), scaleByEdge, scaleByArea);
+  const scale = boundedRasterScale(sourceWidth, sourceHeight, requestedScale);
   if (!Number.isFinite(scale) || scale <= 0) return null;
   const width = Math.max(1, Math.ceil(sourceWidth * scale));
   const height = Math.max(1, Math.ceil(sourceHeight * scale));
@@ -592,27 +657,6 @@ function renderFlaGraphicCanvasUncached(
     return true;
   };
 
-  const applyRgbTransform = (
-    target: CanvasRenderingContext2D,
-    rgbTransform: { readonly multiplier: number; readonly offset: number } | null,
-  ): boolean => {
-    if (!rgbTransform) return true;
-    const { multiplier, offset } = rgbTransform;
-    try {
-      const imageData = target.getImageData(0, 0, width, height);
-      const pixels = imageData.data;
-      for (let index = 0; index < pixels.length; index += 4) {
-        pixels[index] = Math.min(255, Math.round(pixels[index]! * multiplier + offset));
-        pixels[index + 1] = Math.min(255, Math.round(pixels[index + 1]! * multiplier + offset));
-        pixels[index + 2] = Math.min(255, Math.round(pixels[index + 2]! * multiplier + offset));
-      }
-      target.putImageData(imageData, 0, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   const drawNode = (
     target: CanvasRenderingContext2D,
     node: EvaluatedFlaGraphicNode,
@@ -637,9 +681,10 @@ function renderFlaGraphicCanvasUncached(
     );
     if (!drewContent) return false;
     if (compositePlan.hasClips && !applyNodeClips(scratch.canvas, node)) return false;
-    if (!applyRgbTransform(scratch.context, compositePlan.rgbTransform)) return false;
+    if (compositePlan.rgbTransform && !applyGraphicColor(scratch.context, scratch.canvas, { rgbTransform: compositePlan.rgbTransform })) return false;
     target.save();
     target.globalAlpha = compositePlan.opacity;
+    target.globalCompositeOperation = compositePlan.canvasCompositeOperation;
     target.setTransform(1, 0, 0, 1, 0, 0);
     target.drawImage(scratch.canvas, 0, 0);
     target.restore();
@@ -653,6 +698,10 @@ function renderFlaGraphicCanvasUncached(
     // A structured frame may intentionally degrade to empty when every node
     // is unsafe; the baked frame must not resurrect unsupported content.
     return { ...raster, visibleRect: null };
+  }
+  if (visual.instanceColor) {
+    applyGraphicColor(context, canvas, visual.instanceColor);
+    if (visual.instanceColor.opacity === 0) return { ...raster, visibleRect: null };
   }
   return raster;
 }

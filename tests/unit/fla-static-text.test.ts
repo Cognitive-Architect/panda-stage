@@ -108,6 +108,32 @@ describe('FLA Static Text layout & sanitizer (A04)', () => {
     expect(spaced.lines[0]!.width).toBeGreaterThan(tight.lines[0]!.width + 15);
   });
 
+  it('uses the same letter spacing for wrapping, alignment and fragment positions', () => {
+    const layout = (characters: string, width: number, letterSpacing = 2, alignment: 'left' | 'center' | 'right' = 'left') =>
+      layoutFlaStaticText({
+        left: 0, width, height: 60,
+        runs: [{ characters, alignment, size: 10, lineHeight: 14, lineSpacing: 3,
+          letterSpacing, fillColor: '#000000', alpha: 1, bold: false, italic: false }],
+      }, (text) => ({ width: [...text].length * 10, ascent: 8, descent: 2 })).lines;
+
+    const [centered] = layout('AB CD', 70, 2, 'center');
+    expect(centered!.width).toBe(58);
+    expect(centered!.fragments.map(({ x, width }) => [x, width])).toEqual([[6, 22], [30, 10], [42, 22]]);
+    const wrapped = layout('AB CD', 56, 2, 'right');
+    expect(wrapped.map(({ fragments, width }) => [fragments[0]!.text, fragments[0]!.x, width]))
+      .toEqual([['AB', 34, 22], ['CD', 34, 22]]);
+    expect(wrapped[1]!.baselineY - wrapped[0]!.baselineY).toBe(17);
+    expect(layout('熊猫', 21).map(({ width }) => width)).toEqual([10, 10]);
+    expect(layout('ABC', 21).map(({ width }) => width)).toEqual([10, 10, 10]);
+    const [reversed] = layout('ABC', 40, -20, 'center');
+    expect(reversed!.width).toBe(30);
+    expect(reversed!.fragments[0]!.x).toBe(25);
+    expect(layout('ABC', 21, -20).map(({ width }) => width)).toEqual([20, 10]);
+    const [tight] = layout('AB CD', 50, -2, 'right');
+    expect(tight!.width).toBe(42);
+    expect(tight!.fragments.map(({ x }) => x)).toEqual([8, 24, 32]);
+  });
+
   it('preserves Unicode surrogate pairs during grapheme splitting and sanitizes font names for offline fallback', () => {
     const graphemes = splitGraphemes('🐼文字A');
     expect(graphemes).toEqual(['🐼', '文', '字', 'A']);
@@ -473,5 +499,222 @@ describe('FLA Static Text XFL parsing, display-list, SVG bounds, masks, and fail
     expect(measuredWide!.viewBox.width).toBeGreaterThanOrEqual(5_000);
     expect(measuredWide!.outputWidth).toBe(4_096);
     expect(measuredWide!.outputHeight).toBeLessThan(200);
+  });
+});
+
+describe('FLA Static Text own Shadow / Glow filters (S01-B / #1295)', () => {
+  it('renders pure text Shadow and Glow with expanded unclipped effect bounds while preserving typography', async () => {
+    const shadowTextSymbol =
+      '<DOMSymbolItem name="ShadowTitle" symbolType="graphic"><timeline><DOMTimeline name="ShadowTitle"><layers>' +
+      '<DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMStaticText left="6" width="180" height="50">' +
+      '<matrix><Matrix tx="20" ty="16"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>投影标题&#xD;第二行居中</characters>' +
+      '<textAttrs><DOMTextAttrs alignment="center" size="28" lineHeight="34" lineSpacing="4" letterSpacing="3" fillColor="#1e293b" bold="true"/></textAttrs></DOMTextRun></textRuns>' +
+      '<filters><DropShadowFilter blurX="10" blurY="10" distance="12" angle="45" color="#0f172a" alpha="0.75" strength="1" quality="1"/></filters>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const glowTextSymbol =
+      '<DOMSymbolItem name="GlowTitle" symbolType="graphic"><timeline><DOMTimeline name="GlowTitle"><layers>' +
+      '<DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMStaticText left="0" width="160" height="40">' +
+      '<textRuns><DOMTextRun><characters>外发光文字</characters>' +
+      '<textAttrs><DOMTextAttrs alignment="right" size="24" lineHeight="30" letterSpacing="2" fillColor="#ffffff"/></textAttrs></DOMTextRun></textRuns>' +
+      '<filters><GlowFilter blurX="14" blurY="10" color="#f59e0b" alpha="0.9" strength="1.2" quality="1"/></filters>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const plainTextSymbol =
+      '<DOMSymbolItem name="PlainTitle" symbolType="graphic"><timeline><DOMTimeline name="PlainTitle"><layers>' +
+      '<DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMStaticText left="6" width="180" height="50">' +
+      '<matrix><Matrix tx="20" ty="16"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>投影标题&#xD;第二行居中</characters>' +
+      '<textAttrs><DOMTextAttrs alignment="center" size="28" lineHeight="34" lineSpacing="4" letterSpacing="3" fillColor="#1e293b" bold="true"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const docXml =
+      '<DOMDocument width="400" height="240" frameRate="24">' +
+      '<symbols><Include href="ShadowTitle.xml"/><Include href="GlowTitle.xml"/><Include href="PlainTitle.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="ShadowTitle" symbolType="graphic"/>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+
+    const bytes = await buildFlaBytes(docXml, [
+      { name: 'LIBRARY/ShadowTitle.xml', xml: shadowTextSymbol },
+      { name: 'LIBRARY/GlowTitle.xml', xml: glowTextSymbol },
+      { name: 'LIBRARY/PlainTitle.xml', xml: plainTextSymbol },
+    ]);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+
+    const shadowEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'ShadowTitle')!;
+    const glowEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'GlowTitle')!;
+    const plainEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'PlainTitle')!;
+    expect(shadowEntry.previewSupported).toBe(true);
+    expect(glowEntry.previewSupported).toBe(true);
+
+    const [shadowSvg, glowSvg, plainSvg] = await Promise.all([
+      buildSvgForRenderTarget(bytes, shadowEntry.target, undefined, prepared.source),
+      buildSvgForRenderTarget(bytes, glowEntry.target, undefined, prepared.source),
+      buildSvgForRenderTarget(bytes, plainEntry.target, undefined, prepared.source),
+    ]);
+    if (!shadowSvg.ok) throw new Error(shadowSvg.message);
+    if (!glowSvg.ok) throw new Error(glowSvg.message);
+    if (!plainSvg.ok) throw new Error(plainSvg.message);
+
+    // Shadow: filter primitives emitted, typography preserved, and viewBox/graphicFraming expanded for blur+offset.
+    expect(shadowSvg.hasInstanceFilters).toBe(true);
+    expect(shadowSvg.staticTexts?.length).toBe(1);
+    expect(shadowSvg.staticTexts![0]!.descriptor.runs[0]).toMatchObject({
+      alignment: 'center',
+      size: 28,
+      lineHeight: 34,
+      lineSpacing: 4,
+      letterSpacing: 3,
+      bold: true,
+    });
+    const shadowTextId = shadowSvg.staticTexts![0]!.placeholderId;
+    expect(shadowSvg.svg).toMatch(
+      new RegExp(`<g filter="url\\(#fla-instance-filter-[a-f0-9]+\\)"><use href="#${shadowTextId}" transform="matrix\\(1 0 0 1 20 16\\)"\\/></g>`, 'u'),
+    );
+    expect(shadowSvg.svg).toContain('flood-color="#0f172a"');
+    // Expected expansion: ceil(3 * (10/2) + |12 * cos(45deg)|) = ceil(15 + 8.485) = 24 on both axes.
+    expect(shadowSvg.graphicFraming?.filterExpansion).toEqual({ x: 24, y: 24 });
+    expect(shadowSvg.composition.framing.viewBox.width).toBeCloseTo(plainSvg.composition.framing.viewBox.width + 48, 3);
+    expect(shadowSvg.composition.framing.viewBox.height).toBeCloseTo(plainSvg.composition.framing.viewBox.height + 48, 3);
+
+    // Authoritative viewport recomputation preserves the text filter expansion.
+    const measuredShadow = computeAuthoritativeGraphicViewport(
+      shadowSvg.graphicFraming!,
+      new Map([[shadowTextId, layoutFlaStaticText(shadowSvg.staticTexts![0]!.descriptor).bounds]]),
+    );
+    expect(measuredShadow).not.toBeNull();
+    expect(measuredShadow!.viewBox.width).toBeCloseTo(shadowSvg.composition.framing.viewBox.width, 3);
+
+    // Glow: filter primitives emitted with zero offset and strength*alpha clamped to 1, bounds expanded by ceil(3*sigma).
+    expect(glowSvg.hasInstanceFilters).toBe(true);
+    expect(glowSvg.svg).toContain('flood-color="#f59e0b" flood-opacity="1"');
+    expect(glowSvg.graphicFraming?.filterExpansion).toEqual({ x: 21, y: 15 });
+  });
+
+  it('applies text filters only to that text in mixed artwork and never double-applies when parent Symbol also has filters', async () => {
+    const childSymbolXml =
+      '<DOMSymbolItem name="CardWithText" symbolType="graphic"><timeline><DOMTimeline name="CardWithText"><layers>' +
+      '<DOMLayer name="Mixed"><frames><DOMFrame index="0"><elements>' +
+      '<DOMShape><fills><FillStyle index="1"><SolidColor color="#38bdf8"/></FillStyle></fills>' +
+      '<edges><Edge fillStyle1="1" edges="!0 0|2000 0|2000 1000|0 1000|0 0"/></edges></DOMShape>' +
+      '<DOMStaticText left="0" width="120" height="32">' +
+      '<matrix><Matrix tx="10" ty="12"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>图文混排</characters>' +
+      '<textAttrs><DOMTextAttrs size="20" lineHeight="24" fillColor="#ffffff"/></textAttrs></DOMTextRun></textRuns>' +
+      '<filters>' +
+      '<GlowFilter isEnabled="false" blurX="20" blurY="20" color="#ff0000"/>' +
+      '<DropShadowFilter blurX="4" blurY="4" distance="6" angle="0" color="#111827" alpha="0.8" strength="1" quality="1"/>' +
+      '<GlowFilter blurX="6" blurY="6" color="#fde047" alpha="0.6" strength="1" quality="1"/>' +
+      '</filters>' +
+      '</DOMStaticText>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const parentSymbolXml =
+      '<DOMSymbolItem name="ParentWithFilter" symbolType="graphic"><timeline><DOMTimeline name="ParentWithFilter"><layers>' +
+      '<DOMLayer name="Host"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="CardWithText" symbolType="graphic">' +
+      '<matrix><Matrix tx="30" ty="20"/></matrix>' +
+      '<filters><DropShadowFilter blurX="8" blurY="8" distance="10" angle="90" color="#dc2626" alpha="0.5" strength="1" quality="1"/></filters>' +
+      '</DOMSymbolInstance>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const docXml =
+      '<DOMDocument width="400" height="240" frameRate="24">' +
+      '<symbols><Include href="CardWithText.xml"/><Include href="ParentWithFilter.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="ParentWithFilter" symbolType="graphic"/>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+
+    const bytes = await buildFlaBytes(docXml, [
+      { name: 'LIBRARY/CardWithText.xml', xml: childSymbolXml },
+      { name: 'LIBRARY/ParentWithFilter.xml', xml: parentSymbolXml },
+    ]);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+
+    // 1) Mixed child alone: shape is NOT wrapped in the text's filter; multi-filter preserves DropShadow -> Glow order and skips disabled Glow.
+    const childEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'CardWithText')!;
+    const childSvg = await buildSvgForRenderTarget(bytes, childEntry.target, undefined, prepared.source);
+    if (!childSvg.ok) throw new Error(childSvg.message);
+    expect([...childSvg.svg.matchAll(/<filter id="fla-instance-filter-/gu)]).toHaveLength(1);
+    const childFilterMatch = childSvg.svg.match(/<filter id="(fla-instance-filter-[a-f0-9]+)"[^>]*>(.*?)<\/filter>/u);
+    expect(childFilterMatch).not.toBeNull();
+    const childFilterId = childFilterMatch![1]!;
+    const childFilterBody = childFilterMatch![2]!;
+    // Disabled filter (#ff0000) skipped; DropShadow (#111827) runs before Glow (#fde047).
+    expect(childFilterBody).not.toContain('#ff0000');
+    expect(childFilterBody.indexOf('#111827')).toBeGreaterThan(-1);
+    expect(childFilterBody.indexOf('#fde047')).toBeGreaterThan(childFilterBody.indexOf('#111827'));
+    // Sibling shape path sits outside the text filter group.
+    expect(childSvg.svg).toMatch(
+      new RegExp(`<path d="[^"]*" transform="matrix\\(1 0 0 1 0 0\\)" fill="#38bdf8"[^>]*\\/><g filter="url\\(#${childFilterId}\\)"><use href="#fla-text-`, 'u'),
+    );
+
+    // 2) Parent with its own filter + child text with its own filter: exactly 2 distinct filters, outer wraps symbol, inner wraps only text.
+    const parentEntry = catalog.entries.find((e) => e.target.sourceLibraryItemName === 'ParentWithFilter')!;
+    const parentSvg = await buildSvgForRenderTarget(bytes, parentEntry.target, undefined, prepared.source);
+    if (!parentSvg.ok) throw new Error(parentSvg.message);
+    expect([...parentSvg.svg.matchAll(/<filter id="fla-instance-filter-/gu)]).toHaveLength(2);
+    expect([...parentSvg.svg.matchAll(/filter="url\(#fla-instance-filter-[a-f0-9]+\)"/gu)]).toHaveLength(2);
+    const parentFilterId = [...parentSvg.svg.matchAll(/<filter id="(fla-instance-filter-[a-f0-9]+)"[^>]*>(.*?)<\/filter>/gu)]
+      .find((m) => m[2]!.includes('#dc2626'))?.[1];
+    expect(parentFilterId).toBeDefined();
+    expect(parentFilterId).not.toBe(childFilterId);
+    // Outer group has parentFilterId; inside are the unfiltered shape path and the childFilterId-wrapped text use.
+    expect(parentSvg.svg).toMatch(
+      new RegExp(`<g filter="url\\(#${parentFilterId}\\)"><g><path d="[^"]*" transform="matrix\\(1 0 0 1 30 20\\)" fill="#38bdf8"[^>]*\\/><g filter="url\\(#${childFilterId}\\)"><use href="#fla-text-[a-f0-9]+" transform="matrix\\(1 0 0 1 40 32\\)"\\/></g></g></g>`, 'u'),
+    );
+    // Cumulative filter expansion = parent (x:12, y:22) + text (DropShadow x:12,y:6 + Glow x:9,y:9 => x:21,y:15) = (33, 37).
+    expect(parentSvg.graphicFraming?.filterExpansion).toEqual({ x: 33, y: 37 });
+  });
+
+  it('degrades unsupported complex static text filters locally while keeping healthy symbols usable', async () => {
+    const healthySymbol =
+      '<DOMSymbolItem name="HealthyCard" symbolType="graphic"><timeline><DOMTimeline name="HealthyCard"><layers>' +
+      '<DOMLayer name="Box"><frames><DOMFrame index="0"><elements>' +
+      '<DOMShape><fills><FillStyle index="1"><SolidColor color="#22c55e"/></FillStyle></fills>' +
+      '<edges><Edge fillStyle1="1" edges="!0 0|400 0|400 400|0 400|0 0"/></edges></DOMShape>' +
+      '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const unsupportedFilterMarkups = [
+      '<BevelFilter blurX="4" blurY="4"/>',
+      '<DropShadowFilter blurX="4" blurY="4" inner="true"/>',
+      '<GlowFilter blurX="4" blurY="4" knockout="true"/>',
+      '<DropShadowFilter blurX="4" blurY="4" hideObject="true"/>',
+      '<DropShadowFilter blurX="4" blurY="4" quality="2"/>',
+    ];
+
+    for (const badFilter of unsupportedFilterMarkups) {
+      const docXml =
+        '<DOMDocument width="300" height="200" frameRate="24">' +
+        '<symbols><Include href="HealthyCard.xml"/></symbols>' +
+        '<timelines><DOMTimeline name="Scene 1"><layers><DOMLayer name="L1"><frames><DOMFrame index="0"><elements>' +
+        '<DOMShape><fills><FillStyle index="1"><SolidColor color="#cccccc"/></FillStyle></fills>' +
+        '<edges><Edge fillStyle1="1" edges="!0 0|200 0|200 200|0 200|0 0"/></edges></DOMShape>' +
+        '<DOMStaticText width="120" height="30"><textRuns><DOMTextRun><characters>复杂滤镜</characters>' +
+        '<textAttrs><DOMTextAttrs size="18" fillColor="#000000"/></textAttrs></DOMTextRun></textRuns>' +
+        `<filters>${badFilter}</filters></DOMStaticText>` +
+        '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>';
+      const bytes = await buildFlaBytes(docXml, [{ name: 'LIBRARY/HealthyCard.xml', xml: healthySymbol }]);
+      const catalog = await buildRenderableTargetCatalog(bytes);
+      if (!catalog.ok) throw new Error(catalog.message);
+      expect(catalog.entries.find((e) => e.target.kind === 'scene')).toMatchObject({
+        previewSupported: false,
+        unsupportedReason: expect.stringContaining('static text filters'),
+      });
+      expect(catalog.entries.find((e) => e.target.sourceLibraryItemName === 'HealthyCard')).toMatchObject({
+        previewSupported: true,
+      });
+    }
   });
 });

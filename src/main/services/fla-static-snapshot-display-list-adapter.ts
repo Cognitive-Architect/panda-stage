@@ -44,6 +44,9 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
+import { parseXflBlendMode } from '../../shared/fla-blend-mode';
+import { isSameXflMovieClip, xflPlacementSymbolType } from '../../shared/fla-xfl-symbol-type';
+import { libraryItemKey, makeSymbolAliasIndex, resolveSymbolAlias, type SymbolAliasIndex } from '../../shared/fla-xfl-symbol-aliases';
 import {
   FLA_STATIC_TEXT_LIMITS,
   type FlaStaticTextAlignment,
@@ -81,6 +84,7 @@ const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'firstFrame',
   'lastFrame',
   'name',
+  'blendMode',
 ]);
 const UNSUPPORTED_MOTION_METADATA_TAGS = new Set([
   'motionobject',
@@ -194,11 +198,6 @@ interface SourceBuildState {
   readonly movieClipNames: Set<string>;
   readonly ikContainerNames: Set<string>;
   visitedNodeCount: number;
-}
-
-interface SymbolAliasIndex {
-  readonly exact: ReadonlyMap<string, ReadonlySet<string>>;
-  readonly basename: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 interface MatrixReadResult {
@@ -455,62 +454,6 @@ function timelineFrameSpanIndex(
 
 function frameCountForTimeline(timelineXml: string): number {
   return Math.max(0, ...layersForTimeline(timelineXml).map((layer) => framesForLayer(layer.xml).length));
-}
-
-function normalizeReference(value: string): string {
-  return value.trim().replaceAll('\\', '/').normalize('NFKC').toLocaleLowerCase('en-US');
-}
-
-function referenceBasename(value: string): string {
-  const normalized = value.replaceAll('\\', '/');
-  return normalized.slice(normalized.lastIndexOf('/') + 1);
-}
-
-function libraryItemKey(entryName: string): string {
-  const normalized = entryName.replaceAll('\\', '/').replace(/^LIBRARY\//iu, '').replace(/\.xml$/iu, '');
-  return normalized.trim();
-}
-
-function aliasesForSymbol(
-  sourceLibraryItemName: string,
-  symbolName: string,
-): readonly string[] {
-  const libraryPath = `LIBRARY/${sourceLibraryItemName}.xml`;
-  return [sourceLibraryItemName, libraryPath, symbolName].filter(Boolean);
-}
-
-function makeSymbolAliasIndex(
-  symbols: readonly {
-    readonly sourceLibraryItemName: string;
-    readonly userLabel: string;
-  }[],
-): SymbolAliasIndex {
-  const exact = new Map<string, Set<string>>();
-  const basename = new Map<string, Set<string>>();
-  const add = (index: Map<string, Set<string>>, alias: string, key: string) => {
-    const normalized = normalizeReference(alias);
-    if (!normalized) return;
-    let values = index.get(normalized);
-    if (!values) {
-      values = new Set();
-      index.set(normalized, values);
-    }
-    values.add(key);
-  };
-  for (const symbol of symbols) {
-    for (const alias of aliasesForSymbol(symbol.sourceLibraryItemName, symbol.userLabel)) {
-      add(exact, alias, symbol.sourceLibraryItemName);
-      add(basename, referenceBasename(alias), symbol.sourceLibraryItemName);
-    }
-  }
-  return { exact, basename };
-}
-
-function resolveSymbolAlias(aliases: SymbolAliasIndex, reference: string): string | null {
-  const exact = aliases.exact.get(normalizeReference(reference));
-  if (exact?.size) return exact.size === 1 ? exact.values().next().value as string : null;
-  const basename = aliases.basename.get(normalizeReference(referenceBasename(reference)));
-  return basename?.size === 1 ? basename.values().next().value as string : null;
 }
 
 function readDirectMatrix(element: FlaXflElementBlock): MatrixReadResult | MatrixReadFailure {
@@ -1021,6 +964,12 @@ function parseDisplayElements(
         // Empty static text produces no drawable ink and no error.
         continue;
       }
+      const textFilters = readInstanceFilters(child);
+      if (!textFilters || (textFilters.some((filter) => filter.enabled) &&
+          child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+        context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL static text filters');
+        continue;
+      }
       const textId = `fla-text-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`;
       context.state.staticTextBlocks.set(textId, parsedText.value);
       children.push({
@@ -1032,6 +981,7 @@ function parseDisplayElements(
         ...(context.sourceParentSpanTweenType !== undefined
           ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
           : {}),
+        ...(textFilters.length ? { instanceFilters: textFilters } : {}),
         ...(localTransform ? { localTransform } : {}),
       });
       continue;
@@ -1061,9 +1011,13 @@ function parseDisplayElements(
     const movieClipRun = symbolType === 'movieclip' && context.layerSpans
       ? findMovieClipRun(context, path, child, resolvedName)
       : undefined;
+    const blendResult = parseXflBlendMode(child.attributes.blendMode);
+    if (!blendResult.ok) {
+      context.unsupportedDisplayReasons.push(blendResult.reason);
+      continue;
+    }
     const instanceFilters = readInstanceFilters(child);
-    if (!instanceFilters || (instanceFilters.some((filter) => filter.enabled) &&
-        child.attributes.blendMode && child.attributes.blendMode !== 'normal')) {
+    if (!instanceFilters) {
       context.unsupportedDisplayReasons.push('Unsupported or out-of-budget XFL instance filters');
       continue;
     }
@@ -1084,6 +1038,7 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(blendResult.blendMode ? { blendMode: blendResult.blendMode } : {}),
       ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
@@ -1350,12 +1305,11 @@ function displaySymbolType(
   const attrs = element.attributes;
   const type = attrs.symbolType?.trim().toLowerCase();
   if (type === 'ik container' || state.ikContainerNames.has(libraryItemName)) return 'ik container';
-  if (type === 'button') return 'button';
-  if (type === 'graphic') return 'graphic';
-  if (type) return 'movieclip';
-  if (attrs.loop !== undefined || attrs.firstFrame !== undefined || attrs.lastFrame !== undefined) return 'graphic';
-  // Adobe omits symbolType on default MovieClip declarations and placements.
-  return state.movieClipNames.has(libraryItemName) ? 'movieclip' : 'graphic';
+  return xflPlacementSymbolType(
+    type,
+    attrs.loop !== undefined || attrs.firstFrame !== undefined || attrs.lastFrame !== undefined,
+    state.movieClipNames.has(libraryItemName),
+  );
 }
 
 function findMovieClipRun(
@@ -1382,7 +1336,7 @@ function findMovieClipRun(
     const rawName = element?.attributes.libraryItemName?.trim();
     if (!rawName || element?.name !== 'DOMSymbolInstance' || !elementIsVisible(element.attributes)) return false;
     const name = resolveSymbolAlias(context.state.symbolAliases, rawName) ?? rawName;
-    return name === libraryItemName && element.attributes.name === current.attributes.name &&
+    return isSameXflMovieClip(name, element.attributes.name, libraryItemName, current.attributes.name) &&
       displaySymbolType(element, name, context.state) === 'movieclip';
   };
   let start = currentSpan.index;
@@ -1654,6 +1608,25 @@ function rigPropagationMatrixRejectionReason(frame: FlaXflElementBlock): string 
   return null;
 }
 
+function classicMotionStaticFiltersMatch(
+  startFilters: readonly FlaInstanceFilter[],
+  endFilters: readonly FlaInstanceFilter[],
+): boolean {
+  if (startFilters.length !== endFilters.length) return false;
+  return startFilters.every((start, index) => {
+    const end = endFilters[index]!;
+    if (start.kind !== end.kind || start.enabled !== end.enabled) return false;
+    if (!start.enabled) return true;
+    return start.blurX === end.blurX &&
+      start.blurY === end.blurY &&
+      start.color.toLowerCase() === end.color.toLowerCase() &&
+      start.alpha === end.alpha &&
+      start.strength === end.strength &&
+      start.distance === end.distance &&
+      start.angle === end.angle;
+  });
+}
+
 function classicMotionFramePairRejectionReason(
   startFrame: FlaXflElementBlock,
   endFrame: FlaXflElementBlock,
@@ -1768,6 +1741,13 @@ function classicMotionFramePairRejectionReason(
     if (!allowedInstanceAttributes(startTarget) || !allowedInstanceAttributes(endTarget)) {
       return `Classic Motion symbol instance ${index} contains unsupported attributes`;
     }
+    const startBlend = parseXflBlendMode(startTarget.attributes.blendMode);
+    if (!startBlend.ok) return startBlend.reason;
+    const endBlend = parseXflBlendMode(endTarget.attributes.blendMode);
+    if (!endBlend.ok) return endBlend.reason;
+    if (startBlend.blendMode !== endBlend.blendMode) {
+      return `Classic Motion symbol instance ${index} changes blendMode between keyframes`;
+    }
     if (startTarget.attributes.libraryItemName !== endTarget.attributes.libraryItemName ||
         startTarget.attributes.symbolType !== endTarget.attributes.symbolType) {
       return `Classic Motion symbol identity changes at source order ${index}`;
@@ -1787,6 +1767,13 @@ function classicMotionFramePairRejectionReason(
     if (!startColor.ok) return startColor.message;
     const endColor = readSymbolColorTransform(endTarget, 'classic-motion');
     if (!endColor.ok) return endColor.message;
+    const startFilters = readInstanceFilters(startTarget);
+    if (!startFilters) return `Classic Motion symbol instance ${index} contains unsupported filters`;
+    const endFilters = readInstanceFilters(endTarget);
+    if (!endFilters) return `Classic Motion symbol instance ${index} contains unsupported filters`;
+    if (!classicMotionStaticFiltersMatch(startFilters, endFilters)) {
+      return `Classic Motion symbol instance ${index} filters must remain identical in type, order, and values between endpoint keyframes`;
+    }
   }
 
   const hasSupportedTransformChildren = (
@@ -1797,9 +1784,10 @@ function classicMotionFramePairRejectionReason(
     const matrices = children.filter((child) => child.name === 'matrix');
     const points = children.filter((child) => child.name === 'transformationPoint');
     const colors = children.filter((child) => child.name === 'color');
-    if (matrices.length > 1 || points.length > 1 || colors.length > 1 ||
+    const filters = children.filter((child) => child.name === 'filters');
+    if (matrices.length > 1 || points.length > 1 || colors.length > 1 || filters.length > 1 ||
         children.some((child) => child.name !== 'matrix' && child.name !== 'transformationPoint' &&
-          !(allowColorTransform && child.name === 'color'))) {
+          child.name !== 'filters' && !(allowColorTransform && child.name === 'color'))) {
       return false;
     }
     const matrixWrapper = matrices[0];
@@ -1978,7 +1966,7 @@ function sampleObjectMotion(
   if (!core) {
     const authoredFilters = readInstanceFilters(instance);
     if (!authoredFilters) return { ok: false, message: 'Unsupported or out-of-budget XFL instance filters', fromObjectMotion: true };
-    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters.filter(({ kind }) => kind === 'dropShadow'));
+    core = parseFlaObjectMotion(frame, getFlaXflDirectChildren, authoredFilters);
     state.objectMotionCurves.set(frame, core);
   }
   const color = readSymbolColorTransform(instance, 'object-motion');
@@ -1996,10 +1984,11 @@ function readObjectMotionTarget(frame: FlaXflElementBlock): RigCalculationResult
       !elementIsVisible(instance.attributes)) {
     return { ok: false, message: '此帧的对象补间需要一个可见的元件实例' };
   }
-  if (directChild(instance.xml, instance.name, 'matrix3D') ||
-      (instance.attributes.blendMode && instance.attributes.blendMode !== 'normal')) {
-    return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换、滤镜或混合模式' };
+  if (directChild(instance.xml, instance.name, 'matrix3D')) {
+    return { ok: false, message: '此帧的对象补间包含暂未支持的三维变换' };
   }
+  const blend = parseXflBlendMode(instance.attributes.blendMode);
+  if (!blend.ok) return { ok: false, message: blend.reason };
   const matrix = readDirectMatrix(instance);
   return matrix.ok ? { ok: true, value: { instance, matrix: matrix.matrix } }
     : { ok: false, message: '此帧的对象补间起始位置无效' };
@@ -2455,14 +2444,28 @@ function buildObjectMotionFrameElements(
   if (element?.kind !== 'symbol') return fail('RENDER_FAILED', '此帧的对象补间元件无法读取');
   const alpha = pose.alphaMultiplier ?? color.transform?.alphaMultiplier;
   const rgb = pose.rgbTransform ?? color.transform?.rgbTransform;
-  let shadowOrdinal = 0;
-  const instanceFilters = element.instanceFilters?.map((filter) => {
-    if (filter.kind !== 'dropShadow') return filter;
-    const parameters = pose.shadowFilters?.[shadowOrdinal++];
-    return filter.enabled && parameters ? { ...filter, ...parameters } : filter;
-  });
-  if (pose.shadowFilters?.slice(shadowOrdinal).some((parameters) => Object.keys(parameters).length > 0)) {
-    return fail('RENDER_FAILED', 'Shadow distance animation has no matching authored filter');
+  // Match evaluated filter curves to authored instance filters by type and occurrence order,
+  // preserving unanimated fields, duplicate same-type filters, and disabled filter slots.
+  // Adapted from lifeart/fla-viewer src/motion-object.ts @ b14fa1d1 (ISC).
+  let instanceFilters = element.instanceFilters;
+  if (pose.filters?.length) {
+    const merged = [...(element.instanceFilters ?? [])];
+    const used = new Set<number>();
+    for (const { kind, parameters } of pose.filters) {
+      const matchIndex = merged.findIndex((candidate, index) => candidate.kind === kind && !used.has(index));
+      if (matchIndex < 0) {
+        if (Object.keys(parameters).length > 0) {
+          return fail('RENDER_FAILED', 'Instance filter animation has no matching authored filter');
+        }
+        continue;
+      }
+      used.add(matchIndex);
+      const authored = merged[matchIndex]!;
+      if (authored.enabled) {
+        merged[matchIndex] = { ...authored, ...parameters };
+      }
+    }
+    instanceFilters = merged;
   }
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
     ...element,
@@ -2624,7 +2627,7 @@ function sceneStageViews(
       let matrix = start.matrix;
       if (span.tweenType === 'motion object') {
         const sampled = sampleObjectMotion(span.sourceFrame, frameIndex - span.index, state);
-        if (!sampled.ok || sampled.value.pose.shadowFilters) return invalid('Unsupported native camera Object Motion');
+        if (!sampled.ok || sampled.value.pose.filters) return invalid('Unsupported native camera Object Motion');
         matrix = sampled.value.pose.matrix;
       } else if (span.tweenType === 'motion' && frameIndex > span.index) {
         const endSpan = findCoveringSpan(spans, span.endExclusive);
@@ -2684,7 +2687,7 @@ function sceneStageViews(
     const scale = focalLength / (focalLength + relative);
     const projection = { a: scale, d: scale, b: 0, c: 0, tx: (1 - scale) * center.tx, ty: (1 - scale) * center.ty };
     const matrix = attached ? projection : compose(projection, view);
-    result.push(scale > 32 || !withinStageProjectionBudget(matrix)
+    result.push(scale > 32 || !withinStageProjectionBudget(matrix) || !inverse(matrix)
       ? { matrix: null, depth: stackDepth, warning: '图层超出相机投影范围' }
       : { matrix, depth: stackDepth });
   }
@@ -3070,10 +3073,6 @@ function buildGraphicFrameContext(
 
     const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
       : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
-    const parentView = typeof parentMaskIndex === 'number' ? stageViews?.value[parentMaskIndex] : undefined;
-    const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
-      !Object.entries(parentView.matrix).every(([key, value]) =>
-        stageView.matrix?.[key as keyof FlaDisplayListMatrix] === value);
     const stageProjection = stageView?.matrix &&
       Object.entries(FLA_DISPLAY_LIST_IDENTITY_MATRIX).some(([key, value]) =>
         stageView.matrix?.[key as keyof FlaDisplayListMatrix] !== value)
@@ -3085,7 +3084,6 @@ function buildGraphicFrameContext(
       visible: selection.visible,
       elements,
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
-      ...(mixedMaskProjection ? { incompatibleStageMask: true } : {}),
       ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
       ...(isMask ? { maskLayerId: `${scope}/mask-layer-${selection.layerIndex}` } : {}),
       ...(frameFilter ? { frameFilter } : {}),

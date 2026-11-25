@@ -350,6 +350,16 @@ export class FlaImportService {
     return session && sound ? { sound, bytes: session.workerSource.bytes, entries: session.archiveEntries } : null;
   }
 
+  getSoundTimelineSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    return {
+      ir: session.ir,
+      bytes: session.workerSource.bytes,
+      entries: session.archiveEntries,
+    };
+  }
+
   async previewRaster(sessionId: string, mediaId: string): Promise<FlaRasterPreviewResponse> {
     const session = this.sessions.get(sessionId);
     if (!session) {
