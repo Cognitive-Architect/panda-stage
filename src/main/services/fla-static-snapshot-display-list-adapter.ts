@@ -1421,7 +1421,7 @@ function readMorphEndpointEdges(shape: FlaXflElementBlock) {
     const styles = ['fillStyle0', 'fillStyle1', 'strokeStyle'].map((key) => Number(block.attributes[key] ?? '0'));
     if (styles.some((index) => !Number.isSafeInteger(index) || index < 0)) return null;
     const [left, right, stroke] = styles as [number, number, number];
-    const tokens = raw.match(/[!|\[]|[^!|\[\s,]+/gu) ?? [];
+    const tokens = raw.match(/[!|[]|[^!|[\s,]+/gu) ?? [];
     let current: MorphPoint | null = null;
     const readPoint = (i: number): MorphPoint | null => {
       const point = [tokens[i], tokens[i + 1]].map((coordinate) => {
