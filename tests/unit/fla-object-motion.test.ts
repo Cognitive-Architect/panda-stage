@@ -53,11 +53,14 @@ describe('Animate Object Motion', () => {
     for (const type of ['RandomSquareWave', 'Custom', 'Unknown']) expect(sample(type, '2')).toBeNull();
   });
 
-  it('matches shadow distance curves by authored order and holds the eased end on seek', () => {
+  it.each([
+    ['Quadratic', '-100', [5, 8.75, 20, 20, 8.75]],
+    ['SineWave', '2', [5, 20, 5, 5, 20]],
+  ] as const)('matches %s shadow curves by authored order and holds the eased end on seek', (type, strength, distances) => {
     const source = adaptFlaXflDisplaySource(`<DOMDocument frameRate="24"><timelines><DOMTimeline><layers>
       <DOMLayer><frames><DOMFrame index="0" duration="6" tweenType="motion object">
         <motionObjectXML><AnimationCore TimeScale="24000" duration="6000">
-          <TimeMap type="Quadratic" strength="-100"/>
+          <TimeMap type="${type}" strength="${strength}"/>
           <PropertyContainer id="headContainer"><Property id="Motion_X" value="3"/>
             <PropertyContainer id="Filters">
               <PropertyContainer><Property id="DropShadow_Quality" value="3"/><Property id="DropShadow_Distance" value="9"/></PropertyContainer>
@@ -82,8 +85,9 @@ describe('Animate Object Motion', () => {
       </layers></DOMTimeline></timelines></DOMDocument>`, []);
     if (!source.ok) throw new Error(source.message);
     const scene = source.source.sceneTimelines[0]!;
-    for (const [frame, distance] of [[0, 5], [2, 8.75], [4, 20], [5, 20], [2, 8.75]]) {
-      const sampled = source.source.buildSceneFrameContext(scene.xml, frame!, 'scene:0');
+    for (const [index, frame] of [0, 2, 4, 5, 2].entries()) {
+      const distance = distances[index]!;
+      const sampled = source.source.buildSceneFrameContext(scene.xml, frame, 'scene:0');
       if (!sampled.ok) throw new Error(sampled.message);
       expect(sampled.value.unsupportedDisplayReason).toBeUndefined();
       const element = sampled.value.layers[0]?.elements[0];
@@ -683,5 +687,64 @@ describe('Animate Object Motion', () => {
       unsupportedReason: expect.stringContaining('缓动'),
     });
     expect(waveCatalog.entries.some(({ target, previewSupported }) => target.kind === 'graphic-symbol' && previewSupported)).toBe(true);
+  });
+
+  it('samples Wave presets through a real FLA package and hands off to the next authored XFL frame', async () => {
+    const zip = await JSZip.loadAsync(await readFile(fixture));
+    const doc = await zip.file('DOMDocument.xml')!.async('string');
+    const wavified = doc.replace(
+      /<TimeMap\b[^>]*type="Quadratic"[^>]*\/>/u,
+      '<TimeMap type="SineWave" strength="2"/><TimeMap type="SawtoothWave" strength="2"/>',
+    ).replace(/<Property\b([^>]*id="Rotation_Z"[^>]*)>/u, '<Property TimeMapIndex="1"$1>');
+    expect(wavified).not.toBe(doc);
+    zip.file('DOMDocument.xml', wavified);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'catalog');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const { source } = prepared;
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const scene = source.sceneTimelines[0]!;
+    const target = catalog.entries.find(({ target }) => target.kind === 'scene')!;
+    expect(target.previewSupported).toBe(true);
+    expect(await buildSvgForRenderTarget(bytes, { ...target.target, selectedFrameIndex: 9 }, undefined, source))
+      .toMatchObject({ ok: true, hasRenderablePath: true });
+    const sample = (frame: number) => {
+      const result = source.buildSceneFrameContext(scene.xml, frame, 'scene:0');
+      if (!result.ok) throw new Error(result.message);
+      const node = result.value.layers[0]?.elements[0];
+      if (node?.kind !== 'symbol' || !node.localTransform) throw new Error('Expected sampled symbol');
+      return node.localTransform;
+    };
+    const start = sample(4);
+    const middle = sample(9);
+    const end = sample(15);
+    expect(middle.tx).not.toBeCloseTo(start.tx, 2);
+    expect(end.tx).toBeCloseTo(start.tx, 5);
+    expect(end.ty).toBeCloseTo(start.ty, 5);
+
+    const xml = `<DOMDocument frameRate="24"><timelines><DOMTimeline><layers><DOMLayer><frames>
+      <DOMFrame index="0" duration="7" tweenType="motion object"><motionObjectXML>
+        <AnimationCore TimeScale="24000" duration="7000"><TimeMap type="SawtoothWave" strength="2"/>
+          <PropertyContainer id="headContainer">
+            <Property id="Rotation_Z"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="4000" anchor="0,90"/></Property>
+          </PropertyContainer></AnimationCore></motionObjectXML>
+        <elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic"/></elements>
+      </DOMFrame>
+      <DOMFrame index="7"><elements><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
+        <matrix><Matrix a="0" b="1" c="-1" d="0" tx="50"/></matrix>
+      </DOMSymbolInstance></elements></DOMFrame>
+    </frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(xml, []);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const track = adapted.source.sceneTimelines[0]!;
+    for (const [frame, angle, x] of [[2, 90, 0], [4, 0, 0], [6, 0, 0], [7, 90, 50]] as const) {
+      const result = adapted.source.buildSceneFrameContext(track.xml, frame, 'scene:0');
+      if (!result.ok) throw new Error(result.message);
+      const m = result.value.layers[0]?.elements[0]?.localTransform;
+      expect(m).toBeDefined();
+      expect(Math.atan2(m!.b, m!.a) * 180 / Math.PI).toBeCloseTo(angle, 5);
+      expect(m!.tx).toBeCloseTo(x, 5);
+    }
   });
 });
