@@ -332,10 +332,10 @@ export function captureFlaGraphicStructureFrames(
         ).slice(0, 880);
         // A child effect is baked against the occurrence's display axes. A symbol
         // placed at a different scale or rotation cannot share that child's SVG.
-        const needsEffectVariant = node.children.some(hasScreenSpaceInstanceFilter);
+        const needsEffectVariant = options.resolveIsolatedSubtree && node.children.some(hasScreenSpaceInstanceFilter);
         const { a, b, c, d } = node.worldTransform;
         const nestedDefinitionId = needsEffectVariant
-          ? `${baseDefKey.slice(0, 760)}::effects:${[a, b, c, d].join(',')}`
+          ? `${baseDefKey}::effects:${[a, b, c, d].join(',')}`
           : baseDefKey;
         if (!symbolDefinitions[nestedDefinitionId]) {
           const defChildren = convert(node.children, `def:${nestedDefinitionId}`, null, authoredWorld);

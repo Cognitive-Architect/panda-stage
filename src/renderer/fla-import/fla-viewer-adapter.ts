@@ -5,9 +5,11 @@ import type {
   DisplayElement,
   FLADocument,
   Matrix,
+  Symbol as ParsedSymbol,
   SymbolInstance,
 } from './parser-core/types';
 import { xflDefinitionSymbolType, xflPlacementSymbolType } from '../../shared/fla-xfl-symbol-type';
+import { libraryItemKey, makeSymbolAliasIndex, resolveSymbolAlias } from '../../shared/fla-xfl-symbol-aliases';
 import {
   FLA_IMPORT_LIMITS,
   FLA_PARSER_COMMIT,
@@ -340,9 +342,13 @@ export async function adaptFlaDocument(
     instanceName?: string;
     visible: boolean;
   }>();
-  const definitionTypes = new Map<string, ReturnType<typeof xflDefinitionSymbolType>>();
+  const definitions = new Map<ParsedSymbol, {
+    sourceLibraryItemName: string;
+    userLabel: string;
+    symbolType: ReturnType<typeof xflDefinitionSymbolType>;
+  }>();
   const siblingSlots = new WeakMap<Element, Map<Element, number>>();
-  const parser = new FLAParser((symbol, sourceElement) => {
+  const parser = new FLAParser((symbol, sourceElement, libraryFilename) => {
     const rawType = sourceElement.getAttribute('symbolType') ?? undefined;
     if ('libraryItemName' in symbol) {
       const slots: number[] = [];
@@ -369,8 +375,15 @@ export async function adaptFlaDocument(
         instanceName: sourceElement.getAttribute('name') ?? undefined,
         visible,
       });
-    } else if (rawType?.trim().toLowerCase() !== 'ik container') {
-      definitionTypes.set(normalizeReference(symbol.name), xflDefinitionSymbolType(rawType));
+    } else if (libraryFilename) {
+      const sourceLibraryItemName = libraryItemKey(libraryFilename);
+      const userLabel = sourceElement.getAttribute('name')?.trim() || sourceLibraryItemName;
+      if (!sourceLibraryItemName || sourceLibraryItemName.length > 500 || userLabel.length > 500) return;
+      definitions.set(symbol, {
+        sourceLibraryItemName,
+        userLabel,
+        symbolType: rawType?.trim().toLowerCase() === 'ik container' ? 'graphic' : xflDefinitionSymbolType(rawType),
+      });
     }
   });
   let document: FLADocument;
@@ -388,14 +401,16 @@ export async function adaptFlaDocument(
   }
   ensureNotCancelled(isCancelled);
 
-  const movieClipDefinitions = new Set([...definitionTypes].filter(([, type]) => type === 'movieclip')
-    .map(([name]) => name.toLowerCase()));
+  const aliases = makeSymbolAliasIndex(definitions.values());
+  const movieClipDefinitions = new Set([...definitions.values()].filter(({ symbolType }) => symbolType === 'movieclip')
+    .map(({ sourceLibraryItemName }) => sourceLibraryItemName));
   const soundPlacement = (element: SymbolInstance) => {
     const authored = placements.get(element);
-    const libraryItemName = normalizeReference(element.libraryItemName).slice(0, 500);
+    const reference = normalizeReference(element.libraryItemName);
+    const libraryItemName = resolveSymbolAlias(aliases, reference) ?? reference.slice(0, 500);
     if (!libraryItemName || authored?.visible === false || element.isVisible === false) return undefined;
     const symbolType = authored ? xflPlacementSymbolType(authored.rawType, authored.hasGraphicPlayback,
-      movieClipDefinitions.has(libraryItemName.toLowerCase())) : element.symbolType;
+      movieClipDefinitions.has(libraryItemName)) : element.symbolType;
     return {
       libraryItemName,
       symbolType,
@@ -619,7 +634,8 @@ export async function adaptFlaDocument(
   let symbolOrdinal = 0;
   for (const symbol of document.symbols.values()) {
     ensureNotCancelled(isCancelled);
-    const symbolName = normalizeReference(symbol.name).slice(0, 500);
+    const definition = definitions.get(symbol);
+    const symbolName = definition?.sourceLibraryItemName ?? normalizeReference(symbol.name).slice(0, 500);
     if (!symbolName) continue;
     let hasSoundOrNestedSymbol = false;
     let symbolHasActionScript = false;
@@ -685,7 +701,7 @@ export async function adaptFlaDocument(
     if (hasSoundOrNestedSymbol || symbolHasActionScript) {
       symbolTimelines.push({
         name: symbolName,
-        symbolType: definitionTypes.get(normalizeReference(symbol.name)) ?? symbol.symbolType,
+        symbolType: definition?.symbolType ?? symbol.symbolType,
         totalFrames: Math.max(0, symbol.timeline.totalFrames),
         ...(symbolHasActionScript ? { hasActionScript: true } : {}),
         layers: layersIR,

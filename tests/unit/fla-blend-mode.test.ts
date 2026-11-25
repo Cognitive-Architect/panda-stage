@@ -96,6 +96,7 @@ describe('FLA Multiply / Screen / Add XFL parsing, structure capture, SVG compos
     const rendered = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 }, undefined, prepared.source);
     if (blendMode === 'overlay') {
       expect(rendered).toMatchObject({ ok: false, message: expect.stringMatching(/blendMode|混合模式/u) });
+      expect(catalog.entries.find(({ target }) => target.sourceLibraryItemName === 'Tile')?.previewSupported).toBe(true);
       return;
     }
     if (!rendered.ok) throw new Error(rendered.message);

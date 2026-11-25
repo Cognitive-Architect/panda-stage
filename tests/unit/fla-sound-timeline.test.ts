@@ -840,20 +840,20 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
     )}</timelines></DOMDocument>`);
     zip.file('LIBRARY/Outer.xml', `<DOMSymbolItem name="Outer" symbolType="graphic"><timeline>${timelineXml(
       `<DOMFrame index="0"><elements>
-        <DOMSymbolInstance libraryItemName="Clip"${typeAttribute}/>
+        <DOMSymbolInstance libraryItemName="Folder/Clip"${typeAttribute}/>
         <DOMSymbolInstance libraryItemName="Still" symbolType="graphic"/>
       </elements></DOMFrame>`,
     )}</timeline></DOMSymbolItem>`);
     const soundFrames = [1, 5].map((index) => `<DOMFrame index="${index}" duration="${index === 5 ? 3 : 1}"
       soundName="beat.wav" soundSync="event"><elements/></DOMFrame>`).join('');
-    zip.file('LIBRARY/Clip.xml', `<DOMSymbolItem name="Clip"${typeAttribute}><timeline>${timelineXml(soundFrames)}</timeline></DOMSymbolItem>`);
+    zip.file('LIBRARY/Folder/Clip.xml', `<DOMSymbolItem name="Clip"${typeAttribute}><timeline>${timelineXml(soundFrames)}</timeline></DOMSymbolItem>`);
     zip.file('LIBRARY/Still.xml', `<DOMSymbolItem name="Still" symbolType="graphic"><timeline>${timelineXml(soundFrames)}</timeline></DOMSymbolItem>`);
     const bytes = await zip.generateAsync({ type: 'uint8array' });
     const ir = await adaptFlaDocument({
       basename: 'default-movieclip.fla', byteLength: bytes.byteLength, sha256: 'd'.repeat(64),
       bytes, containsActionScript: false,
     }, () => undefined, () => false, 'structure');
-    expect(ir.symbolTimelines?.find(({ name }) => name === 'Clip')?.symbolType).toBe('movieclip');
+    expect(ir.symbolTimelines?.find(({ name }) => name === 'Folder/Clip')?.symbolType).toBe('movieclip');
     expect(ir.symbolTimelines?.find(({ name }) => name === 'Outer')?.layers[0]?.frames[0]?.symbolInstances?.map(
       ({ symbolType }) => symbolType,
     )).toEqual(['movieclip', 'graphic']);
@@ -867,8 +867,8 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
       <frames>${frames}</frames></DOMLayer></layers></DOMTimeline>`;
     const frame = (index: number, duration: number, elements: string) =>
       `<DOMFrame index="${index}" duration="${duration}"><elements>${elements}</elements></DOMFrame>`;
-    const clip = (name: string) => `<DOMSymbolInstance libraryItemName="Clip" name="${name}"/>`;
-    const frames = frame(0, 4, clip('A')) + frame(4, 4, clip('A') + clip('B')) +
+    const clip = (name: string, reference = 'Clip') => `<DOMSymbolInstance libraryItemName="${reference}" name="${name}"/>`;
+    const frames = frame(0, 4, clip('A', 'Folder/Clip')) + frame(4, 4, clip('A', 'LIBRARY/Folder/Clip.xml') + clip('B')) +
       frame(8, 4, '') + frame(12, 4, clip('A'));
     const zip = new JSZip();
     const group = '<DOMSymbolInstance libraryItemName="Outer" symbolType="graphic"/>';
@@ -878,7 +878,7 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
     if (nested) {
       zip.file('LIBRARY/Outer.xml', `<DOMSymbolItem name="Outer" symbolType="graphic"><timeline>${timelineXml(frames)}</timeline></DOMSymbolItem>`);
     }
-    zip.file('LIBRARY/Clip.xml', `<DOMSymbolItem name="Clip"><timeline>${timelineXml(
+    zip.file('LIBRARY/Folder/Clip.xml', `<DOMSymbolItem name="Clip"><timeline>${timelineXml(
       '<DOMFrame index="1" soundName="early.wav" soundSync="event"><elements/></DOMFrame>' +
       '<DOMFrame index="5" duration="3" soundName="late.wav" soundSync="event"><elements/></DOMFrame>',
     )}</timeline></DOMSymbolItem>`);

@@ -80,7 +80,9 @@ export class FLAParser {
   private lastYieldTime = 0;
 
   // Panda adapter hook for authored XFL metadata that the legacy parser defaults erase.
-  constructor(private readonly onXflSymbol?: (symbol: Symbol | SymbolInstance, source: globalThis.Element) => void) {}
+  constructor(private readonly onXflSymbol?: (
+    symbol: Symbol | SymbolInstance, source: globalThis.Element, libraryFilename?: string,
+  ) => void) {}
 
   // Yield to browser if more than 50ms has passed since last yield
   private async yieldIfNeeded(): Promise<void> {
@@ -447,7 +449,7 @@ export class FLAParser {
           ...(scale9Grid && { scale9Grid }),
           ...(hitAreaFrame !== undefined && { hitAreaFrame })
         };
-        this.onXflSymbol?.(symbol, symbolRoot);
+        this.onXflSymbol?.(symbol, symbolRoot, filename);
 
         // Store with both normalized and original names
         setWithNormalizedPath(this.symbolCache, rawName, symbol);

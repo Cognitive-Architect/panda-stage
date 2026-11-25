@@ -46,6 +46,7 @@ import {
 import { localizeAbsoluteLeafMatrix as localizeSharedAbsoluteLeafMatrix } from '../../shared/affine-matrix';
 import { parseXflBlendMode } from '../../shared/fla-blend-mode';
 import { isSameXflMovieClip, xflPlacementSymbolType } from '../../shared/fla-xfl-symbol-type';
+import { libraryItemKey, makeSymbolAliasIndex, resolveSymbolAlias, type SymbolAliasIndex } from '../../shared/fla-xfl-symbol-aliases';
 import {
   FLA_STATIC_TEXT_LIMITS,
   type FlaStaticTextAlignment,
@@ -197,11 +198,6 @@ interface SourceBuildState {
   readonly movieClipNames: Set<string>;
   readonly ikContainerNames: Set<string>;
   visitedNodeCount: number;
-}
-
-interface SymbolAliasIndex {
-  readonly exact: ReadonlyMap<string, ReadonlySet<string>>;
-  readonly basename: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 interface MatrixReadResult {
@@ -458,62 +454,6 @@ function timelineFrameSpanIndex(
 
 function frameCountForTimeline(timelineXml: string): number {
   return Math.max(0, ...layersForTimeline(timelineXml).map((layer) => framesForLayer(layer.xml).length));
-}
-
-function normalizeReference(value: string): string {
-  return value.trim().replaceAll('\\', '/').normalize('NFKC').toLocaleLowerCase('en-US');
-}
-
-function referenceBasename(value: string): string {
-  const normalized = value.replaceAll('\\', '/');
-  return normalized.slice(normalized.lastIndexOf('/') + 1);
-}
-
-function libraryItemKey(entryName: string): string {
-  const normalized = entryName.replaceAll('\\', '/').replace(/^LIBRARY\//iu, '').replace(/\.xml$/iu, '');
-  return normalized.trim();
-}
-
-function aliasesForSymbol(
-  sourceLibraryItemName: string,
-  symbolName: string,
-): readonly string[] {
-  const libraryPath = `LIBRARY/${sourceLibraryItemName}.xml`;
-  return [sourceLibraryItemName, libraryPath, symbolName].filter(Boolean);
-}
-
-function makeSymbolAliasIndex(
-  symbols: readonly {
-    readonly sourceLibraryItemName: string;
-    readonly userLabel: string;
-  }[],
-): SymbolAliasIndex {
-  const exact = new Map<string, Set<string>>();
-  const basename = new Map<string, Set<string>>();
-  const add = (index: Map<string, Set<string>>, alias: string, key: string) => {
-    const normalized = normalizeReference(alias);
-    if (!normalized) return;
-    let values = index.get(normalized);
-    if (!values) {
-      values = new Set();
-      index.set(normalized, values);
-    }
-    values.add(key);
-  };
-  for (const symbol of symbols) {
-    for (const alias of aliasesForSymbol(symbol.sourceLibraryItemName, symbol.userLabel)) {
-      add(exact, alias, symbol.sourceLibraryItemName);
-      add(basename, referenceBasename(alias), symbol.sourceLibraryItemName);
-    }
-  }
-  return { exact, basename };
-}
-
-function resolveSymbolAlias(aliases: SymbolAliasIndex, reference: string): string | null {
-  const exact = aliases.exact.get(normalizeReference(reference));
-  if (exact?.size) return exact.size === 1 ? exact.values().next().value as string : null;
-  const basename = aliases.basename.get(normalizeReference(referenceBasename(reference)));
-  return basename?.size === 1 ? basename.values().next().value as string : null;
 }
 
 function readDirectMatrix(element: FlaXflElementBlock): MatrixReadResult | MatrixReadFailure {
