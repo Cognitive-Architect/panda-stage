@@ -1125,7 +1125,7 @@ function sourceLayerHierarchy(
   const visited = new Set([layerIndex]);
   while (rawParent !== undefined) {
     const parentIndex: number = /^\d+$/u.test(rawParent) ? Number(rawParent) : -1;
-    const parent = layers[parentIndex];
+    const parent: FlaXflElementBlock | undefined = layers[parentIndex];
     if (!parent || visited.has(parentIndex) || visited.size > MAX_SOURCE_GROUP_DEPTH) {
       return { hiddenByFolder: false, parentMaskIndex: parentMaskIndex ?? 'unresolved' };
     }
