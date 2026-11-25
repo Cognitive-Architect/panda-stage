@@ -255,7 +255,7 @@ function technicalTail(stderr: string): string {
 function createTemporaryOutputPath(outputPath: string): string {
   return path.join(
     path.dirname(outputPath),
-    `.panda-stage-${randomUUID()}.mp4`,
+    `.panda-stage-${randomUUID()}${path.extname(outputPath).toLowerCase()}`,
   );
 }
 
@@ -383,6 +383,35 @@ export class FFmpegAdapter {
     return { executable: this.ffmpegPath, versionLine, hasAac: true };
   }
 
+  private async validateGifExecutable(signal?: AbortSignal): Promise<{ versionLine: string }> {
+    const versionLine = await this.getVersion(signal);
+    const listings = [
+      { flag: '-encoders', names: ['gif'] },
+      { flag: '-muxers', names: ['gif'] },
+      { flag: '-filters', names: ['palettegen', 'paletteuse'] },
+    ];
+    for (const { flag, names } of listings) {
+      if (signal?.aborted) throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      const args = ['-hide_banner', flag];
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      }
+      const capabilities = `${result.stdout}\n${result.stderr}`.split(/\s+/u);
+      const missing = names.filter((name) => !capabilities.includes(name));
+      if (result.code !== 0 || missing.length > 0) {
+        throw new FFmpegAdapterError('ENCODER_UNAVAILABLE', `FFmpeg 缺少 GIF 导出能力（${missing.join('、') || flag}）。`, {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+    }
+    return { versionLine };
+  }
+
   async encodeSpriteSheet(request: {
     framesDirectory: string;
     outputPath: string;
@@ -420,20 +449,36 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
-    const validation = await this.validateExecutable(signal);
+    const gif = path.extname(outputPath).toLowerCase() === '.gif';
+    const validation = gif ? await this.validateGifExecutable(signal) : await this.validateExecutable(signal);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
     const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const palettePath = gif ? path.join(path.dirname(outputPath), `.panda-stage-palette-${randomUUID()}.png`) : undefined;
     const args = this.buildEncodeArguments({
       ...request,
       framesDirectory,
       outputPath: temporaryOutputPath,
       frameCount,
-    });
+    }, palettePath);
     const startedAt = performance.now();
     let result: ProcessResult;
     try {
+      if (palettePath) {
+        const paletteArgs = [
+          '-n', '-hide_banner', '-loglevel', 'error',
+          '-framerate', String(request.fps), '-start_number', '0',
+          '-i', path.join(framesDirectory, 'frame_%06d.png'),
+          '-filter_threads', '1', '-vf', 'palettegen=reserve_transparent=1',
+          '-frames:v', '1', palettePath,
+        ];
+        const paletteResult = await this.runProcess(this.ffmpegPath, paletteArgs, { signal });
+        if (signal?.aborted) {
+          throw this.cancelledError(this.ffmpegPath, paletteArgs, paletteResult.code, paletteResult.signal, paletteResult.stderr);
+        }
+        if (paletteResult.code !== 0) throw this.mapEncodeFailure(paletteArgs, paletteResult);
+      }
       result = await this.runProcess(this.ffmpegPath, args, { signal });
       if (signal?.aborted) {
         throw this.cancelledError(
@@ -470,6 +515,7 @@ export class FFmpegAdapter {
           result.stderr,
         );
       }
+      if (palettePath) await rm(palettePath, { force: true });
       await this.commitTemporaryOutput(
         temporaryOutputPath,
         outputPath,
@@ -478,6 +524,7 @@ export class FFmpegAdapter {
         result,
       );
     } catch (error) {
+      if (palettePath) await this.cleanupTemporaryOutput(palettePath, error);
       await this.cleanupTemporaryOutput(temporaryOutputPath, error);
       throw error;
     }
@@ -1070,8 +1117,9 @@ export class FFmpegAdapter {
     fps: number;
     overwrite: boolean;
     frameCount: number;
-  }): readonly string[] {
-    return [
+    gifLoop?: boolean;
+  }, palettePath?: string): readonly string[] {
+    const input = [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
       '-loglevel',
@@ -1082,9 +1130,27 @@ export class FFmpegAdapter {
       '0',
       '-i',
       path.join(request.framesDirectory, 'frame_%06d.png'),
-      '-frames:v',
-      String(request.frameCount),
-      '-an',
+    ];
+    const output = ['-frames:v', String(request.frameCount), '-an'];
+    if (palettePath) {
+      const end = Math.round(request.frameCount * 100 / request.fps);
+      const lastFrame = Math.round((request.frameCount - 1) * 100 / request.fps);
+      return [
+        ...input,
+        '-i', palettePath,
+        '-filter_complex_threads', '1',
+        '-filter_complex',
+        '[0:v][1:v]paletteuse=dither=sierra2_4a:alpha_threshold=128',
+        ...output,
+        '-c:v', 'gif',
+        '-loop', request.gifLoop === false ? '-1' : '0',
+        '-final_delay', String(end - lastFrame),
+        request.outputPath,
+      ];
+    }
+    return [
+      ...input,
+      ...output,
       '-c:v',
       'libx264',
       '-pix_fmt',

@@ -14,11 +14,15 @@ const Mp4OutputPathSchema = z
 export const EncodePngSequenceRequestSchema = z
   .object({
     framesDirectory: z.string().trim().min(1),
-    outputPath: Mp4OutputPathSchema,
+    outputPath: z.string().trim().min(1).regex(/\.(?:mp4|gif)$/iu, {
+      message: '输出路径必须使用 .mp4 或 .gif 扩展名。',
+    }),
     fps: ExportOutputFpsSchema,
+    gifLoop: z.boolean().optional(),
     overwrite: z.boolean().default(true),
   })
-  .strict();
+  .strict()
+  .refine((request) => /\.gif$/iu.test(request.outputPath) ? request.fps !== 60 : request.gifLoop === undefined);
 
 export const MuxSingleAudioRequestSchema = z
   .object({

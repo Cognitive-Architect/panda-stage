@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
 import { DialogueSilenceSchema } from './dialogue-silence';
-import { ExportRenderSettingsSchema, ExportVideoOptionsSchema } from './export-output-profile';
+import { ExportRenderSettingsSchema, ExportVideoFormatSchema, ExportVideoOptionsSchema } from './export-output-profile';
 import supportSource from './export-preparation-support-source.json';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION = supportSource.version;
@@ -126,6 +126,7 @@ export const ExportPreparationSelectOutputRequestSchema = z
     openInstanceId: OpenInstanceIdSchema,
     snapshotId: z.uuid().optional(),
     pngSequence: PngSequenceOptionsSchema.optional(),
+    videoFormat: ExportVideoFormatSchema.optional(),
   })
   .strict();
 

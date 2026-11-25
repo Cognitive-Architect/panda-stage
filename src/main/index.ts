@@ -489,9 +489,10 @@ async function initialize(): Promise<void> {
         if (!exportFileSystem) {
           throw new Error('Formal export filesystem is unavailable.');
         }
+        const format = request.videoFormat ?? 'mp4';
         const initialDefaultPath = path.join(
           request.projectRoot,
-          defaultExportFileName(request.projectName),
+          defaultExportFileName(request.projectName).replace(/\.mp4$/u, '.' + format),
         );
         const outputSeries = formalOutputNameSeries.getSeries(
           request.projectRoot,
@@ -499,7 +500,7 @@ async function initialize(): Promise<void> {
         );
         const outputBasePath = path.join(
           outputSeries.directory,
-          `${outputSeries.baseName}.mp4`,
+          `${outputSeries.baseName}.${format}`,
         );
         const suggestedOutput =
           await exportFileSystem.suggestFormalOutputPathWithOrdinal(
@@ -510,7 +511,7 @@ async function initialize(): Promise<void> {
           title: '选择导出视频位置',
           buttonLabel: '选择输出位置',
           defaultPath: suggestedOutput.path,
-          filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
+          filters: [{ name: format === 'gif' ? 'GIF 视频' : 'MP4 视频', extensions: [format] }],
           properties: [],
         });
         const selectedPath = selection.canceled
