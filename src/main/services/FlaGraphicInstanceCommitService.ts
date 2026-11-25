@@ -396,11 +396,13 @@ function existingDefinition(
     // Refresh only the selected source's verified Shape fallback metadata.
     // Preserve shared edits, timelines, node paths and every Layer override.
     if (batch.fallbacks?.length) {
-      const isolated = new Map<string, Extract<FlaGraphicStructureNode, { type: 'opaque' }>>();
+      type OpaqueNode = Extract<FlaGraphicStructureNode, { type: 'opaque' }>;
+      const sourceKey = (node: OpaqueNode) => JSON.stringify([node.sourceRef, node.id, node.sourceAddress]);
+      const isolated = new Map<string, OpaqueNode>();
       const collect = (nodes: readonly FlaGraphicStructureNode[]): void => {
         for (const node of nodes) {
           if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'subtree' && node.sourceRef) {
-            isolated.set(node.sourceRef, node);
+            isolated.set(sourceKey(node), node);
           } else if (node.type === 'group' || node.type === 'symbol') {
             collect(node.children ?? []);
           }
@@ -412,13 +414,22 @@ function existingDefinition(
         if (!match.structure || (occurrenceDefinitionId && match.id !== occurrenceDefinitionId)) continue;
         let changed = false;
         const refresh = (nodes: readonly FlaGraphicStructureNode[]): FlaGraphicStructureNode[] => nodes.map((node) => {
-          if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'frame-crop') {
-            const next = isolated.get(node.sourceRef ?? '');
-            if (next && next.id === node.id && next.sourceAddress === node.sourceAddress) {
+          if (node.type === 'opaque' && node.opaqueKind === 'shape') {
+            const next = isolated.get(sourceKey(node));
+            if (next && node.fallbackScope === 'frame-crop') {
               const refreshed = { ...node, fallbackScope: next.fallbackScope, fallbackViewBox: next.fallbackViewBox };
+              if (next.coveragePathData) refreshed.coveragePathData = next.coveragePathData;
               delete refreshed.fallbackAssetId;
               changed = true;
               return refreshed;
+            }
+            const before = node.fallbackViewBox;
+            const after = next?.fallbackViewBox;
+            if (node.fallbackScope === 'subtree' && !node.coveragePathData && next?.coveragePathData &&
+                before && after && before.x === after.x && before.y === after.y &&
+                before.width === after.width && before.height === after.height) {
+              changed = true;
+              return { ...node, coveragePathData: next.coveragePathData };
             }
           }
           if (node.type === 'group') return { ...node, children: refresh(node.children) };

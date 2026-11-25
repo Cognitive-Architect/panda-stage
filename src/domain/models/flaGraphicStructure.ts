@@ -462,6 +462,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       reason: node.reason,
       fallbackScope: node.fallbackScope,
       fallbackViewBox: node.fallbackViewBox,
+      coveragePathData: node.coveragePathData,
     };
   }
   return base;
