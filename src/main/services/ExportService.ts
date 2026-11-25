@@ -13,10 +13,13 @@ import {
   FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
   formalFrameCount,
+  formatFrameFileName,
+  formatSpriteSheetFrameName,
+  frameTimeMs,
   iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
   planPngSequenceFrames,
-  planSpriteSheetGrid,
+  planSpriteSheetPages,
   type ExportFrameReady,
   type ExportJobPhase,
   type ExportJobStatus,
@@ -28,6 +31,7 @@ import {
   type ExportRenderFrameRequest,
   type FullProbeExportRequest,
   type ProjectFrameScheduleEntry,
+  type SpriteSheetPlan,
 } from '../../shared/export-types';
 import type {
   AudioProbeResult,
@@ -364,11 +368,11 @@ export class ExportService {
     if (!settings || !this.renderer.loadFormal) throw new Error('PNG export requires a frozen Shot and the formal renderer.');
     const schedule = planPngSequenceFrames(input.candidate.project, settings);
     const { width, height } = input.candidate.renderSettings;
-    const grid = settings.spriteSheet ? planSpriteSheetGrid(schedule.totalFrames, width, height) : undefined;
+    const spriteSheetPlan = settings.spriteSheet ? planSpriteSheetPages(schedule.totalFrames, width, height) : undefined;
     const active = this.createJob({ durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps,
       totalFrames: schedule.totalFrames, attemptId: input.candidate.attemptId, snapshotId: input.candidate.snapshotId });
-    const completion = grid
-      ? this.executeSpriteSheet(active, input, schedule, grid, assertOutputTargetUnchanged)
+    const completion = spriteSheetPlan
+      ? this.executeSpriteSheet(active, input, schedule, spriteSheetPlan, assertOutputTargetUnchanged)
       : this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
     active.completion = completion;
     return { jobId: active.jobId, completion };
@@ -452,7 +456,7 @@ export class ExportService {
     active: ActiveJob,
     input: FrozenExportInput,
     schedule: ReturnType<typeof planPngSequenceFrames>,
-    grid: ReturnType<typeof planSpriteSheetGrid>,
+    plan: SpriteSheetPlan,
     assertOutputTargetUnchanged: () => Promise<void>,
   ): Promise<{ outputPath: string }> {
     const record = this.requireJob(active.jobId);
@@ -469,40 +473,149 @@ export class ExportService {
       await this.renderer.prepareJob?.('formal');
       rendererPrepared = true;
       const directory = jobDirectory;
-      await this.renderPngExportFrames(active, record, input, schedule, directory,
-        (fileName, bytes) => {
-          assertExportPngSize(bytes, width, height);
-          return this.fileSystem.writeFrame(directory, fileName, bytes);
-        });
-      this.throwIfCancelled(active);
-      record.phase = 'encoding';
+      const singleShotProject = { ...input.candidate.project, shots: [schedule.shot] };
+      record.phase = 'preparing';
       this.emit(record);
-
-      const pngName = 'sprite-sheet.png';
-      const stagedPng = path.join(jobDirectory, pngName);
-      await this.mediaAdapter.encodeSpriteSheet({
-        framesDirectory: jobDirectory, outputPath: stagedPng,
-        frameCount: schedule.totalFrames, columns: grid.columns, rows: grid.rows, fps,
-      }, active.controller.signal);
+      await this.renderer.loadFormal!({
+        jobId: active.jobId,
+        project: singleShotProject,
+        cameraMode: input.candidate.cameraMode,
+        ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
+        ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
+        media: input.media
+          .filter((entry) => entry.kind === 'image')
+          .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+      });
       this.throwIfCancelled(active);
-      await assertSpriteSheetPng(stagedPng, grid.width, grid.height);
-      const manifest = {
-        frames: Array.from(schedule.frames(), ({ frameIndex, timeMs }) => ({
-          index: frameIndex,
-          timeMs,
-          frame: { x: (frameIndex % grid.columns) * width, y: Math.floor(frameIndex / grid.columns) * height, w: width, h: height },
-          rotated: false,
-          trimmed: false,
-          sourceSize: { w: width, h: height },
-        })),
-        meta: { image: pngName, fps, size: { w: grid.width, h: grid.height }, origin: 'top-left', units: 'px' },
-      };
+
+      const allScheduledFrames = Array.from(schedule.frames());
+      const stagedPages: Array<{ stagedPng: string; imageName: string }> = [];
+      const manifestFrames: Array<{
+        index: number;
+        name: string;
+        timeMs: number;
+        durationMs: number;
+        page: number;
+        frame: { x: number; y: number; w: number; h: number };
+        rotated: false;
+        trimmed: false;
+        sourceSize: { w: number; h: number };
+      }> = [];
+
+      for (const page of plan.pages) {
+        this.throwIfCancelled(active);
+        const pageSlice = allScheduledFrames.slice(page.frameStart, page.frameStart + page.frameCount);
+        const pageFrames: ProjectFrameScheduleEntry[] = pageSlice.map((entry, localIndex) => ({
+          ...entry,
+          fileName: formatFrameFileName(localIndex),
+        }));
+
+        await this.renderFrames(
+          active,
+          record,
+          { durationMs: schedule.shot.durationMs, fps },
+          directory,
+          async () => undefined,
+          singleShotProject,
+          {
+            frames: pageFrames,
+            totalFrames: page.frameCount,
+            skipLoad: true,
+            maxPendingWrites: 1,
+            write: (fileName, bytes) => {
+              assertExportPngSize(bytes, width, height);
+              return this.fileSystem.writeFrame(directory, fileName, bytes);
+            },
+          },
+        );
+        this.throwIfCancelled(active);
+
+        record.phase = 'encoding';
+        this.emit(record);
+        const stagedPng = path.join(directory, page.imageName);
+        await this.mediaAdapter.encodeSpriteSheet(
+          {
+            framesDirectory: directory,
+            outputPath: stagedPng,
+            frameCount: page.frameCount,
+            columns: page.columns,
+            rows: page.rows,
+            fps,
+          },
+          active.controller.signal,
+        );
+        this.throwIfCancelled(active);
+        await assertSpriteSheetPng(stagedPng, page.width, page.height);
+        stagedPages.push({ stagedPng, imageName: page.imageName });
+
+        // Remove this page's raw frames immediately so we never retain multiple pages' frames on disk.
+        for (let localIndex = 0; localIndex < page.frameCount; localIndex += 1) {
+          await unlink(path.join(directory, formatFrameFileName(localIndex))).catch(() => undefined);
+        }
+
+        for (let localIndex = 0; localIndex < pageSlice.length; localIndex += 1) {
+          const entry = pageSlice[localIndex]!;
+          const nextTimeMs = frameTimeMs(schedule.firstFrameIndex + entry.frameIndex + 1, fps);
+          manifestFrames.push({
+            index: entry.frameIndex,
+            name: formatSpriteSheetFrameName(entry.frameIndex),
+            timeMs: entry.timeMs,
+            durationMs: Math.max(1, nextTimeMs - entry.timeMs),
+            page: page.pageIndex,
+            frame: {
+              x: (localIndex % page.columns) * width,
+              y: Math.floor(localIndex / page.columns) * height,
+              w: width,
+              h: height,
+            },
+            rotated: false,
+            trimmed: false,
+            sourceSize: { w: width, h: height },
+          });
+        }
+      }
+
+      const isMultiPage = plan.pages.length > 1;
+      const firstPage = plan.pages[0]!;
+      const manifest = isMultiPage
+        ? {
+            frames: manifestFrames,
+            pages: plan.pages.map((page) => ({
+              index: page.pageIndex,
+              image: page.imageName,
+              size: { w: page.width, h: page.height },
+              columns: page.columns,
+              rows: page.rows,
+              frameStart: page.frameStart,
+              frameCount: page.frameCount,
+            })),
+            meta: {
+              image: firstPage.imageName,
+              images: plan.pages.map((page) => page.imageName),
+              pageCount: plan.pages.length,
+              fps,
+              size: { w: firstPage.width, h: firstPage.height },
+              origin: 'top-left',
+              units: 'px',
+            },
+          }
+        : {
+            frames: manifestFrames,
+            meta: {
+              image: firstPage.imageName,
+              fps,
+              size: { w: firstPage.width, h: firstPage.height },
+              origin: 'top-left',
+              units: 'px',
+            },
+          };
+
       await assertOutputTargetUnchanged();
       this.throwIfCancelled(active);
       active.acceptsCancellation = false;
       record.phase = 'committing';
       this.emit(record);
-      await publishSpriteSheet(outputPath, stagedPng, pngName, JSON.stringify(manifest, null, 2) + '\n');
+      await publishSpriteSheetPages(outputPath, stagedPages, JSON.stringify(manifest, null, 2) + '\n');
       record.outputPath = outputPath;
       this.completedOutputPaths.set(active.jobId, outputPath);
       await this.cleanupDirectory(record, jobDirectory);
@@ -1006,10 +1119,15 @@ export class ExportService {
     loadProject: () => Promise<unknown>,
     project?: FrozenExportInput['candidate']['project'],
     schedule?: { frames: Iterable<ProjectFrameScheduleEntry>; totalFrames: number; maxPendingWrites: number;
+      skipLoad?: boolean;
       write: (fileName: string, bytes: Uint8Array) => Promise<void> },
   ): Promise<FrameExportMetrics> {
     const totalFrames = schedule?.totalFrames ?? formalFrameCount(config.durationMs, config.fps);
-    if (totalFrames !== record.totalFrames) {
+    if (schedule?.skipLoad) {
+      if (record.completedFrames + totalFrames > record.totalFrames) {
+        throw new Error('Export frame schedule exceeded the task record.');
+      }
+    } else if (totalFrames !== record.totalFrames) {
       throw new Error('Export frame schedule did not match the task record.');
     }
     const startedAt = performance.now();
@@ -1035,10 +1153,12 @@ export class ExportService {
     };
 
     try {
-      record.phase = 'preparing';
-      this.emit(record);
-      await loadProject();
-      this.throwIfCancelled(active);
+      if (!schedule?.skipLoad) {
+        record.phase = 'preparing';
+        this.emit(record);
+        await loadProject();
+        this.throwIfCancelled(active);
+      }
 
       const frames = schedule?.frames ?? (project
         ? iterateFormalProjectFrameSchedule(project, config.fps)
@@ -1309,17 +1429,27 @@ async function assertSpriteSheetPng(filePath: string, width: number, height: num
   }
 }
 
-async function publishSpriteSheet(outputPath: string, stagedPng: string, pngName: string, json: string): Promise<void> {
+async function publishSpriteSheetPages(
+  outputPath: string,
+  stagedPages: ReadonlyArray<{ stagedPng: string; imageName: string }>,
+  json: string,
+): Promise<void> {
   await mkdir(outputPath);
-  const pngPath = path.join(outputPath, pngName);
-  let pngPublished = false;
+  const publishedFiles: string[] = [];
   try {
-    await copyFile(stagedPng, pngPath, constants.COPYFILE_EXCL);
-    pngPublished = true;
-    await writeNewPngFrame(path.join(outputPath, 'sprite-sheet.json'), Buffer.from(json));
+    for (const { stagedPng, imageName } of stagedPages) {
+      const pngPath = path.join(outputPath, imageName);
+      await copyFile(stagedPng, pngPath, constants.COPYFILE_EXCL);
+      publishedFiles.push(pngPath);
+    }
+    const manifestPath = path.join(outputPath, 'sprite-sheet.json');
+    await writeNewPngFrame(manifestPath, Buffer.from(json));
+    publishedFiles.push(manifestPath);
   } catch (error) {
     const rollbackFailures: unknown[] = [];
-    if (pngPublished) await unlink(pngPath).catch((failure: unknown) => rollbackFailures.push(failure));
+    for (let index = publishedFiles.length - 1; index >= 0; index -= 1) {
+      await unlink(publishedFiles[index]!).catch((failure: unknown) => rollbackFailures.push(failure));
+    }
     await rmdir(outputPath).catch((failure: unknown) => rollbackFailures.push(failure));
     if (rollbackFailures.length > 0) {
       throw new AggregateError([error, ...rollbackFailures], '精灵图未完整写入，且无法清理输出目录。', { cause: error });

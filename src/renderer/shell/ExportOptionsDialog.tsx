@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { Project, Shot } from '../../domain';
 import type { ExportPreferences } from '../../domain/models/exportPreferences';
 import { EXPORT_PREPARATION_RENDER_SETTINGS, type PngSequenceOptions } from '../../shared/export-preparation-types';
-import { planPngSequenceFrames, planSpriteSheetGrid } from '../../shared/export-types';
+import { planPngSequenceFrames, planSpriteSheetPages } from '../../shared/export-types';
 import { Button } from '../ui/Button';
 import './export-options-dialog.css';
 
@@ -42,7 +42,7 @@ export function ExportOptionsDialog({ project, shot, initial, playheadMs, onCanc
       const { totalFrames } = planPngSequenceFrames(project, output);
       if (spriteSheet) {
         const { width, height } = EXPORT_PREPARATION_RENDER_SETTINGS;
-        planSpriteSheetGrid(totalFrames, width, height);
+        planSpriteSheetPages(totalFrames, width, height);
       }
       onExport(preferences, output);
     } catch (cause) {

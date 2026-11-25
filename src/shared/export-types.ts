@@ -365,14 +365,56 @@ export function* iterateFormalProjectFrameSchedule(
   }
 }
 
+export const SPRITE_SHEET_MAX_DIMENSION = 8_192 as const;
+export const SPRITE_SHEET_MAX_PIXELS = 32 * 1024 * 1024;
+
+export interface SpriteSheetGrid {
+  columns: number;
+  rows: number;
+  width: number;
+  height: number;
+}
+
+export interface SpriteSheetPagePlan extends SpriteSheetGrid {
+  pageIndex: number;
+  frameStart: number;
+  frameCount: number;
+  imageName: string;
+}
+
+export interface SpriteSheetPlan {
+  totalFrames: number;
+  frameWidth: number;
+  frameHeight: number;
+  maxFramesPerPage: number;
+  maxDimension: number;
+  maxPixels: number;
+  pages: SpriteSheetPagePlan[];
+}
+
+export function formatSpriteSheetPageImageName(pageIndex: number, pageCount: number): string {
+  if (pageCount <= 1) return 'sprite-sheet.png';
+  return `sprite-sheet-${String(pageIndex).padStart(3, '0')}.png`;
+}
+
+export function formatSpriteSheetFrameName(frameIndex: number): string {
+  const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
+  return `frame_${String(parsedFrameIndex).padStart(FRAME_FILE_DIGITS, '0')}`;
+}
+
 /** Shot-local formal frame samples in a half-open interval, with contiguous output names. */
-export function planSpriteSheetGrid(frameCount: number, frameWidth: number, frameHeight: number) {
-  const maxDimension = 8192;
-  const maxPixels = 32 * 1024 * 1024;
-  if (![frameCount, frameWidth, frameHeight].every((value) => Number.isSafeInteger(value) && value > 0)) {
+export function planSpriteSheetGrid(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetGrid {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
     throw new Error('没有可排入精灵图的有效帧。');
   }
-  let best: { columns: number; rows: number; width: number; height: number } | undefined;
+  let best: SpriteSheetGrid | undefined;
   let bestAspect = Infinity;
   for (let columns = 1; columns <= Math.min(frameCount, Math.floor(maxDimension / frameWidth)); columns += 1) {
     const rows = Math.ceil(frameCount / columns);
@@ -389,6 +431,61 @@ export function planSpriteSheetGrid(frameCount: number, frameWidth: number, fram
   return best;
 }
 
+/**
+ * Plans single- or multi-page sprite sheet capacity from actual cell dimensions
+ * and page budgets (maxDimension and maxPixels), without hardcoding page size.
+ */
+export function planSpriteSheetPages(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetPlan {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('没有可排入精灵图的有效帧。');
+  }
+  const maxCols = Math.floor(maxDimension / frameWidth);
+  const maxRows = Math.floor(maxDimension / frameHeight);
+  const cellPixels = frameWidth * frameHeight;
+  let maxFramesPerPage = 0;
+  for (let cols = 1; cols <= maxCols; cols += 1) {
+    const rows = Math.min(maxRows, Math.floor(maxPixels / (cols * cellPixels)));
+    if (rows <= 0) continue;
+    const capacity = cols * rows;
+    if (capacity > maxFramesPerPage) {
+      maxFramesPerPage = capacity;
+    }
+  }
+  if (maxFramesPerPage <= 0) {
+    throw new Error('单帧尺寸超出精灵图页容量限制，无法排入精灵图。');
+  }
+  const pageCount = Math.ceil(frameCount / maxFramesPerPage);
+  const pages: SpriteSheetPagePlan[] = [];
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const frameStart = pageIndex * maxFramesPerPage;
+    const pageFrameCount = Math.min(maxFramesPerPage, frameCount - frameStart);
+    const grid = planSpriteSheetGrid(pageFrameCount, frameWidth, frameHeight, { maxDimension, maxPixels });
+    pages.push({
+      pageIndex,
+      frameStart,
+      frameCount: pageFrameCount,
+      ...grid,
+      imageName: formatSpriteSheetPageImageName(pageIndex, pageCount),
+    });
+  }
+  return {
+    totalFrames: frameCount,
+    frameWidth,
+    frameHeight,
+    maxFramesPerPage,
+    maxDimension,
+    maxPixels,
+    pages,
+  };
+}
+
 export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
   const shot = project.shots.find(({ id }) => id === settings.shotId);
   if (!shot) throw new Error('请选择一个可导出的镜头。');
@@ -401,6 +498,7 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
   if (totalFrames <= 0) throw new Error('该时间段内没有可导出的帧。');
   return {
     totalFrames,
+    firstFrameIndex: first,
     shot,
     *frames(): Generator<ProjectFrameScheduleEntry> {
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
