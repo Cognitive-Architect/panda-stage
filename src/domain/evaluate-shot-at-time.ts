@@ -12,6 +12,10 @@ import type {
 } from './models';
 import type { MouthCueEvent, MouthCueState } from './models/timeline-event';
 import { isFlaGraphicDefinition, type ProjectAnimationDefinition } from './models/animation';
+import {
+  evaluateFlaVideoClock,
+  flaVideoFrameAssetKey,
+} from '../shared/fla-video-clock';
 import { resolveFlaGraphicPreviewTimeline } from './selectors/animationSourceTimeline';
 import {
   collectFlaGraphicTimelineDurationMs,
@@ -122,9 +126,31 @@ interface ResolvedLayerVisualState {
 function resolveLayerVisualState(
   project: Project,
   layer: Layer,
+  timeMs = 0,
 ): ResolvedLayerVisualState {
   if (layer.source.kind === 'asset') {
     return { assetId: layer.source.assetId, currentExpressionId: null };
+  }
+  if (layer.source.kind === 'video') {
+    const videoAssetId = layer.source.assetId;
+    const asset = project.assets.find((candidate) => candidate.id === videoAssetId);
+    if (!asset || asset.kind !== 'video') {
+      return { assetId: null, currentExpressionId: null };
+    }
+    const sample = evaluateFlaVideoClock({
+      shotTimeMs: timeMs,
+      layerStartTimeMs: layer.startTimeMs ?? 0,
+      timing: asset.videoTiming,
+      playbackMode: layer.source.playbackMode,
+      trimStartMs: layer.source.trimStartMs,
+      trimEndMs: layer.source.trimEndMs,
+      heldFrameIndex: layer.source.heldFrameIndex,
+      sourceFps: layer.source.sourceFps,
+    });
+    return {
+      assetId: sample ? flaVideoFrameAssetKey(asset.id, sample.sampleIndex) : null,
+      currentExpressionId: null,
+    };
   }
   if (layer.source.kind === 'animation') {
     return { assetId: null, currentExpressionId: null };
@@ -510,7 +536,7 @@ export function evaluateLayerPreTrackState(
         frameSwitch && frameSwitch.type === 'graphic-frame' ? frameSwitch.sourceFrameIndex : undefined,
         layer.animationSourceRange,
       )
-    : resolveLayerVisualState(project, layer);
+    : resolveLayerVisualState(project, layer, timeMs);
   const animationVisible = initialVisual.animationVisible ?? true;
   let assetId = initialVisual.assetId;
   let currentExpressionId = initialVisual.currentExpressionId;

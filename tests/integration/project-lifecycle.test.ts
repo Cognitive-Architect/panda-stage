@@ -228,7 +228,7 @@ describe('project directory lifecycle', () => {
         layers: shot.layers.map((layer) => ({
           id: layer.id,
           assetId:
-            layer.source.kind === 'asset'
+            layer.source.kind === 'asset' || layer.source.kind === 'video'
               ? layer.source.assetId
               : layer.source.kind === 'character'
                 ? layer.source.characterId

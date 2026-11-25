@@ -26,10 +26,15 @@ const CanvasImageBytesSchema = z
     `Canvas image payload exceeds ${CANVAS_IMAGE_MAX_BYTES} bytes.`,
   );
 
+const CanvasImageAssetIdSchema = z.union([
+  z.uuid(),
+  z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu),
+]);
+
 export const AssetCanvasImageReadRequestSchema = z
   .object({
     projectRoot: FileSystemPathSchema,
-    assetId: z.uuid(),
+    assetId: CanvasImageAssetIdSchema,
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict();
@@ -38,7 +43,7 @@ const AssetCanvasImageReadyResponseSchema = z
   .object({
     ok: z.literal(true),
     status: z.literal('ready'),
-    assetId: z.uuid(),
+    assetId: CanvasImageAssetIdSchema,
     mimeType: CanvasImageMimeTypeSchema,
     width: z.number().int().positive(),
     height: z.number().int().positive(),

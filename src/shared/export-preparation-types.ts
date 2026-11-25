@@ -341,7 +341,7 @@ const ExportPreparationSupportProfileSchema = z
 export const ExportPreparationMediaManifestEntrySchema = z
   .object({
     assetId: z.uuid(),
-    kind: z.enum(['image', 'audio']),
+    kind: z.enum(['image', 'audio', 'video']),
     sourceRelativePath: z.string().trim().min(1).max(2_000),
     contentHandleId: z.uuid(),
     contentRelativePath: z.string().trim().min(1).max(500),
@@ -351,6 +351,9 @@ export const ExportPreparationMediaManifestEntrySchema = z
       'image/svg+xml',
       'audio/mpeg',
       'audio/wav',
+      'video/mp4',
+      'video/quicktime',
+      'video/webm',
     ]),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
     byteLength: z.number().int().positive().max(

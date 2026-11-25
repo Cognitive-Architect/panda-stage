@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   lstat,
   open,
+  readFile,
   realpath,
   stat,
   unlink,
@@ -132,6 +133,12 @@ export type FrozenExportMedia =
       kind: 'audio';
       mimeType: 'audio/mpeg' | 'audio/wav';
       bytes: Uint8Array<ArrayBuffer>;
+    }
+  | {
+      assetId: string;
+      kind: 'video';
+      mimeType: 'video/mp4' | 'video/quicktime' | 'video/webm';
+      bytes: Uint8Array<ArrayBuffer>;
     };
 
 export interface FrozenExportInput {
@@ -176,6 +183,21 @@ export class MainProjectAssetReader implements ExportPreparationMediaReader {
       });
       if (!result.ok) throw new Error(result.error.message);
       return { bytes: result.bytes, mimeType: result.mimeType };
+    }
+
+    if (asset.kind === 'video') {
+      const fullPath = await resolveProjectAssetPath(projectRoot, asset.relativePath);
+      if (!fullPath) {
+        throw new Error(`Video asset "${asset.name}" path is missing or outside the project.`);
+      }
+      const bytes = new Uint8Array(await readFile(fullPath));
+      if (asset.sha256) {
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        if (digest !== asset.sha256) {
+          throw new Error(`Video asset "${asset.name}" failed SHA-256 integrity verification.`);
+        }
+      }
+      return { bytes, mimeType: asset.mimeType };
     }
 
     const reader = new AssetPreviewAudioService({
@@ -544,7 +566,7 @@ export class ExportPreparationService {
       const issues = evaluateExportPreparationSupport(outputProject, request.cameraMode,
         imagesOnly ? { imagesOnly: true } : undefined);
       const media = collectExportPreparationMedia(visualProject, sequence?.selectedLayer?.id)
-        .filter(({ asset }) => !imagesOnly || asset.kind === 'image');
+        .filter(({ asset }) => !imagesOnly || asset.kind === 'image' || asset.kind === 'video');
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
 
@@ -883,7 +905,9 @@ export class ExportPreparationService {
         const allowedMimeTypes: readonly string[] =
           entry.kind === 'image'
             ? ['image/png', 'image/jpeg', 'image/svg+xml']
-            : ['audio/mpeg', 'audio/wav'];
+            : entry.kind === 'video'
+              ? ['video/mp4', 'video/quicktime', 'video/webm']
+              : ['audio/mpeg', 'audio/wav'];
         if (
           bytes.byteLength !== entry.byteLength ||
           digest !== entry.sha256 ||
@@ -896,6 +920,13 @@ export class ExportPreparationService {
             assetId: entry.assetId,
             kind: 'image',
             mimeType: entry.mimeType as 'image/png' | 'image/jpeg' | 'image/svg+xml',
+            bytes,
+          });
+        } else if (entry.kind === 'video') {
+          media.push({
+            assetId: entry.assetId,
+            kind: 'video',
+            mimeType: entry.mimeType as 'video/mp4' | 'video/quicktime' | 'video/webm',
             bytes,
           });
         } else {

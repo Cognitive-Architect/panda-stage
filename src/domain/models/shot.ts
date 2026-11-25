@@ -128,9 +128,10 @@ export const ShotV41Schema = ShotV20Schema.extend({
   layers: z.array(LayerV41Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV41Schema.safeExtend({
+export const ShotSchema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerSchema),
-});
+}).superRefine(validateShotClipKeyTimes);
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

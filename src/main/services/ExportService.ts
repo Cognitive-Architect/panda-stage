@@ -3,6 +3,8 @@ import { copyFile, mkdir, open, rmdir, unlink, writeFile } from 'node:fs/promise
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
+import type { FFmpegAdapter } from './FFmpegAdapter';
+import { prepareExportVideoFrameMedia } from './FlaEmbeddedVideoService';
 import {
   buildExportAudioMixPlan,
   buildFormalExportAudioMixPlan,
@@ -458,6 +460,40 @@ export class ExportService {
     }
   }
 
+  private async buildFormalLoadMedia(
+    project: FrozenExportInput['candidate']['project'],
+    media: FrozenExportInput['media'],
+    jobDirectory: string,
+    adapter: FullProbeMediaAdapter | undefined,
+    signal: AbortSignal,
+  ): Promise<ExportLoadFormalRequest['media']> {
+    const decodedVideo = adapter &&
+      'decodeFlaVideoFramesSequential' in adapter &&
+      typeof adapter.decodeFlaVideoFramesSequential === 'function'
+      ? await prepareExportVideoFrameMedia({
+          project,
+          media,
+          jobDirectory,
+          adapter: adapter as Pick<FFmpegAdapter, 'decodeFlaVideoFramesSequential'>,
+          signal,
+        })
+      : { frameMedia: [], diagnostics: [] };
+    return [
+      ...media
+        .filter((entry) => entry.kind === 'image')
+        .map(({ assetId, mimeType, bytes }) => ({
+          assetId,
+          mimeType,
+          bytes,
+        })),
+      ...decodedVideo.frameMedia.map(({ assetId, mimeType, bytes }) => ({
+        assetId,
+        mimeType,
+        bytes: Uint8Array.from(bytes),
+      })),
+    ];
+  }
+
   private async renderPngExportFrames(
     active: ActiveJob,
     record: ExportJobRecord,
@@ -467,13 +503,20 @@ export class ExportService {
     write: (fileName: string, bytes: Uint8Array) => Promise<void>,
   ): Promise<void> {
     const project = { ...input.candidate.project, shots: [schedule.shot] };
+    const media = await this.buildFormalLoadMedia(
+      project,
+      input.media,
+      directory,
+      this.mediaAdapter,
+      active.controller.signal,
+    );
     await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
       directory, () => this.renderer.loadFormal!({
         jobId: active.jobId, project, cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
         ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-        media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+        media,
       }), project, {
         frames: schedule.frames(), totalFrames: schedule.totalFrames, maxPendingWrites: 1, write,
       });
@@ -503,6 +546,13 @@ export class ExportService {
       const singleShotProject = { ...input.candidate.project, shots: [schedule.shot] };
       record.phase = 'preparing';
       this.emit(record);
+      const loadMedia = await this.buildFormalLoadMedia(
+        singleShotProject,
+        input.media,
+        directory,
+        this.mediaAdapter,
+        active.controller.signal,
+      );
       await this.renderer.loadFormal!({
         jobId: active.jobId,
         project: singleShotProject,
@@ -510,9 +560,7 @@ export class ExportService {
         ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-        media: input.media
-          .filter((entry) => entry.kind === 'image')
-          .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+        media: loadMedia,
       });
       this.throwIfCancelled(active);
 
@@ -720,6 +768,13 @@ export class ExportService {
       const allScheduledFrames = Array.from(schedule.frames());
       let cursor = 0;
 
+      const packedMedia = await this.buildFormalLoadMedia(
+        singleShotProject,
+        input.media,
+        directory,
+        this.mediaAdapter,
+        active.controller.signal,
+      );
       await this.renderFrames(
         active,
         record,
@@ -732,9 +787,7 @@ export class ExportService {
             cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
             ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-            media: input.media
-              .filter((entry) => entry.kind === 'image')
-              .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+            media: packedMedia,
           }),
         singleShotProject,
         {
@@ -1101,6 +1154,14 @@ export class ExportService {
         active,
       );
       this.throwIfCancelled(active);
+      const formalMedia = await this.buildFormalLoadMedia(
+        project,
+        input.media,
+        jobDirectory,
+        adapter,
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
 
       const render = await this.renderFrames(
         active,
@@ -1117,13 +1178,7 @@ export class ExportService {
             cameraMode: input.candidate.cameraMode,
             renderSettings: input.candidate.renderSettings,
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-            media: input.media
-              .filter((entry) => entry.kind === 'image')
-              .map(({ assetId, mimeType, bytes }) => ({
-                assetId,
-                mimeType,
-                bytes,
-              })),
+            media: formalMedia,
           }),
         project,
       );

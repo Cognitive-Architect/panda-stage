@@ -14,6 +14,8 @@ import {
 import { MediaInspectionService } from './MediaInspectionService';
 import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 import { resolveProjectAssetPath } from './project-asset-path';
+import { parseFlaVideoFrameAssetKey } from '../../shared/fla-video-clock';
+import type { FlaEmbeddedVideoService } from './FlaEmbeddedVideoService';
 
 export function isSafeGeneratedFlaSvg(
   bytes: Uint8Array,
@@ -47,6 +49,7 @@ export interface AssetCanvasImageServiceOptions {
     projectRoot: string,
   ) => { project: Project } | null;
   inspectionService?: MediaInspectionService;
+  embeddedVideoService?: Pick<FlaEmbeddedVideoService, 'readSampleFrame'>;
 }
 
 /**
@@ -61,6 +64,7 @@ export class AssetCanvasImageService {
     projectRoot: string,
   ) => { project: Project } | null;
   private readonly inspectionService: MediaInspectionService;
+  private readonly embeddedVideoService?: Pick<FlaEmbeddedVideoService, 'readSampleFrame'>;
   private readonly activeReads = new Map<
     string,
     Promise<AssetCanvasImageReadResponse>
@@ -70,6 +74,7 @@ export class AssetCanvasImageService {
     this.getCurrentProjectSnapshot = options.getCurrentProjectSnapshot;
     this.inspectionService =
       options.inspectionService ?? new MediaInspectionService();
+    this.embeddedVideoService = options.embeddedVideoService;
   }
 
   read(rawRequest: unknown): Promise<AssetCanvasImageReadResponse> {
@@ -127,6 +132,59 @@ export class AssetCanvasImageService {
         request.assetId,
         `The current project snapshot is invalid: ${this.errorText(error)}`,
       );
+    }
+
+    const videoFrameKey = parseFlaVideoFrameAssetKey(request.assetId);
+    if (videoFrameKey) {
+      const videoAsset = project.assets.find(
+        (candidate) => candidate.id === videoFrameKey.assetId && candidate.kind === 'video',
+      );
+      if (!videoAsset || videoAsset.kind !== 'video') {
+        return this.failure(
+          'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+          request.assetId,
+          'The project does not contain this embedded video asset.',
+        );
+      }
+      if (videoAsset.sha256 !== request.sha256) {
+        return this.failure(
+          'ASSET_CANVAS_IMAGE_HASH_MISMATCH',
+          request.assetId,
+          'The embedded video content hash no longer matches the current project.',
+        );
+      }
+      if (!this.embeddedVideoService) {
+        return this.failure(
+          'ASSET_CANVAS_IMAGE_READ_FAILED',
+          request.assetId,
+          'Embedded video frame decoder is unavailable.',
+          videoAsset.relativePath,
+        );
+      }
+      const decoded = await this.embeddedVideoService.readSampleFrame({
+        projectRoot: request.projectRoot,
+        asset: videoAsset,
+        sampleIndex: videoFrameKey.sampleIndex,
+      });
+      if (!decoded.ok) {
+        return this.failure(
+          'ASSET_CANVAS_IMAGE_READ_FAILED',
+          request.assetId,
+          decoded.message,
+          videoAsset.relativePath,
+        );
+      }
+      const copiedBytes = Uint8Array.from(decoded.bytes);
+      return {
+        ok: true,
+        status: 'ready',
+        assetId: request.assetId,
+        mimeType: 'image/png',
+        width: videoAsset.width,
+        height: videoAsset.height,
+        byteLength: copiedBytes.byteLength,
+        bytes: copiedBytes,
+      };
     }
 
     const asset = project.assets.find(

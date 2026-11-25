@@ -797,7 +797,8 @@ export class FFmpegAdapter {
     const inputPath = path.resolve(videoPath);
     const probeSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000);
     await this.assertReadableInput(inputPath, 'video');
-    const demuxer = ['-v', 'error', '-protocol_whitelist', 'file', '-enable_drefs', '0', '-f', 'mov'];
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const demuxer = ['-v', 'error', '-protocol_whitelist', 'file', '-enable_drefs', '0', '-f', format];
     const probe = async <T>(options: readonly string[], parse: (result: unknown) => T): Promise<T> => {
       const args = [...demuxer, ...options, '-of', 'json', inputPath];
       if (probeSignal.aborted) throw this.cancelledError(this.ffprobePath, args, null, 'SIGTERM');
@@ -826,6 +827,154 @@ export class FFmpegAdapter {
       '-read_intervals', '%+#' + (FLA_NATIVE_VIDEO_MAX_FRAMES + 1),
       '-show_entries', 'frame=best_effort_timestamp,pkt_duration',
     ], (value) => readFlaNativeVideoFrames(value, stream));
+  }
+
+  /**
+   * Sequentially decodes display-order video frames in ONE FFmpeg invocation
+   * (-vsync 0 passthrough) so frame_000000.png..frame_NNNNNN.png match
+   * probeFlaNativeVideo().presentationTicks 1-to-1 for both CFR and VFR.
+   */
+  async decodeFlaVideoFramesSequential(
+    rawInput: {
+      readonly videoPath: string;
+      readonly outputDirectory: string;
+      readonly maxFrames?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ readonly framePaths: readonly string[] }> {
+    const inputPath = path.resolve(rawInput.videoPath);
+    const outputDirectory = path.resolve(rawInput.outputDirectory);
+    const maxFrames = Math.min(
+      FLA_NATIVE_VIDEO_MAX_FRAMES,
+      Math.max(1, rawInput.maxFrames ?? FLA_NATIVE_VIDEO_MAX_FRAMES),
+    );
+    await this.assertReadableInput(inputPath, 'video');
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const args = [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-protocol_whitelist',
+      'file',
+      '-enable_drefs',
+      '0',
+      '-f',
+      format,
+      '-i',
+      inputPath,
+      '-map',
+      '0:v:0',
+      '-vsync',
+      '0',
+      '-frames:v',
+      String(maxFrames),
+      '-start_number',
+      '0',
+      path.join(outputDirectory, 'frame_%06d.png'),
+    ];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+    }
+    if (result.code !== 0) {
+      throw new FFmpegAdapterError('PROCESS_FAILED', '无法解码内嵌视频帧序列。', {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr: technicalTail(result.stderr),
+      });
+    }
+    const entries = (await readdir(outputDirectory))
+      .filter((name) => /^frame_\d{6}\.png$/u.test(name))
+      .sort((a, b) => a.localeCompare(b));
+    if (entries.length === 0) {
+      throw new FFmpegAdapterError('PROCESS_FAILED', '内嵌视频解码未产出任何可用画面帧。', {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr: technicalTail(result.stderr),
+      });
+    }
+    return { framePaths: entries.map((name) => path.join(outputDirectory, name)) };
+  }
+
+  /** Extracts an embedded video's audio stream into a formal 48kHz stereo PCM WAV asset. */
+  async extractFlaVideoAudioTrack(
+    rawInput: {
+      readonly videoPath: string;
+      readonly outputWavPath: string;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ readonly outputPath: string; readonly bytes: number }> {
+    const inputPath = path.resolve(rawInput.videoPath);
+    const outputPath = path.resolve(rawInput.outputWavPath);
+    await this.assertReadableInput(inputPath, 'video');
+    await this.assertOutputWritable(outputPath);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const args = [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-protocol_whitelist',
+      'file',
+      '-enable_drefs',
+      '0',
+      '-f',
+      format,
+      '-i',
+      inputPath,
+      '-vn',
+      '-map',
+      '0:a:0',
+      '-c:a',
+      'pcm_s16le',
+      '-ar',
+      '48000',
+      '-ac',
+      '2',
+      temporaryOutputPath,
+    ];
+    try {
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      }
+      if (result.code !== 0) {
+        throw new FFmpegAdapterError('PROCESS_FAILED', '无法提取内嵌视频音轨。', {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+      const stats = await stat(temporaryOutputPath).catch(() => null);
+      if (!stats?.isFile() || stats.size === 0) {
+        throw new FFmpegAdapterError('PROCESS_FAILED', '提取的内嵌视频音轨为空。', {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+      await this.commitTemporaryOutput(temporaryOutputPath, outputPath, true, args, result);
+      return { outputPath, bytes: stats.size };
+    } catch (error) {
+      await rm(temporaryOutputPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async probeVideo(

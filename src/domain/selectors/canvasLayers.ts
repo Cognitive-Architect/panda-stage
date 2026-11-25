@@ -28,6 +28,13 @@ export function resolveBackgroundSourceDimensions(
     };
   }
 
+  if (layer.source.kind === 'video') {
+    const videoAssetId = layer.source.assetId;
+    const asset = project.assets.find((candidate) => candidate.id === videoAssetId);
+    if (!asset || asset.kind !== 'video') return null;
+    return { width: asset.width, height: asset.height };
+  }
+
   if (layer.source.kind === 'animation') {
     const animationId = layer.source.animationId;
     const animation = project.animations?.find(
@@ -107,6 +114,8 @@ export function resolveLayerImageAsset(
       )?.assetId;
       break;
     }
+    case 'video':
+      return null;
     case 'animation': {
       const animation = project.animations.find(
         (candidate) => candidate.id === source.animationId,

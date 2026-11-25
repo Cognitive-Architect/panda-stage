@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import type { Project } from '../../domain';
 import type { AssetCanvasImageReadResponse } from '../../shared/asset-canvas-image-api';
+import { parseFlaVideoFrameAssetKey } from '../../shared/fla-video-clock';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 
 export type ProductPreviewAssetLoadStatus =
@@ -207,6 +208,22 @@ function describeImages(
   for (const assetId of assetIds) {
     if (seen.has(assetId)) continue;
     seen.add(assetId);
+    const videoFrame = parseFlaVideoFrameAssetKey(assetId);
+    if (videoFrame) {
+      const videoAsset = project.assets.find(
+        (candidate) => candidate.id === videoFrame.assetId && candidate.kind === 'video',
+      );
+      if (!videoAsset || !videoAsset.sha256) {
+        invalidCount += 1;
+        continue;
+      }
+      descriptors.push({
+        assetId,
+        key: `${projectRoot}\u0000${assetId}\u0000${videoAsset.sha256}`,
+        sha256: videoAsset.sha256,
+      });
+      continue;
+    }
     const asset = project.assets.find((candidate) => candidate.id === assetId);
     if (!asset || asset.kind !== 'image' || !asset.sha256) {
       invalidCount += 1;

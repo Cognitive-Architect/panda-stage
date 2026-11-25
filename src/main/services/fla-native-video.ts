@@ -1,6 +1,7 @@
 import { getFlaXflDirectChildren } from './fla-static-snapshot-display-list-adapter';
 import { readSelectedFlaArchiveEntry, type FlaArchiveEntry } from './fla-import-preflight-service';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
+export { createFlaVideoPresentationIndex } from '../../shared/fla-video-clock';
 
 const MAX_PREFIX_BYTES = 64;
 const MAX_ISO_BOXES = 4096;
@@ -58,22 +59,4 @@ export function readFlaEmbeddedVideo(source: Uint8Array, entries: readonly FlaAr
   const entry = matched[0]!;
   const mediaData = extractFlaNativeIsoVideo(readSelectedFlaArchiveEntry(source, entry, FLA_IMPORT_LIMITS.maxSingleEntryBytes));
   return mediaData ? { ...mediaData, originalEntryName: entry.name } : null;
-}
-
-/** A validated display-order index. Duplicate PTS use the last decoded frame at that timestamp. */
-export function createFlaVideoPresentationIndex(pts: readonly number[], endTick: number) {
-  if (!pts.length || !Number.isSafeInteger(endTick) || endTick <= pts.at(-1)! ||
-      pts.some((tick, i) => !Number.isSafeInteger(tick) || (i > 0 && tick < pts[i - 1]!))) return null;
-  const timeline = [...pts];
-  return (sourceTick: number): number | null => {
-    if (!Number.isFinite(sourceTick) || sourceTick < timeline[0]! || sourceTick >= endTick) return null;
-    let low = 0;
-    let high = timeline.length;
-    while (low + 1 < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (timeline[middle]! <= sourceTick) low = middle;
-      else high = middle;
-    }
-    return low;
-  };
 }

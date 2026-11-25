@@ -188,6 +188,24 @@ function validateAnimationLayerFields(
     return;
   }
 
+  if (layer.source.kind === 'video') {
+    if (layer.animationPlayback !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationPlayback'],
+        message: 'Only animation layers may have playback settings.',
+      });
+    }
+    if (layer.animationFirstFrame !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationFirstFrame'],
+        message: 'Only animation layers may have an animation first frame.',
+      });
+    }
+    return;
+  }
+
   if (layer.startTimeMs !== undefined) {
     context.addIssue({
       code: 'custom',
@@ -238,10 +256,23 @@ export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema.extend({
     instanceColor: FlaInstanceColorSchema.optional(),
   }).optional(),
 });
+export const VideoLayerSourceSchema = z
+  .object({
+    kind: z.literal('video'),
+    assetId: IdSchema,
+    playbackMode: z.enum(['play-once', 'loop', 'single-frame']).optional(),
+    trimStartMs: FiniteNumberSchema.nonnegative().optional(),
+    trimEndMs: FiniteNumberSchema.positive().optional(),
+    heldFrameIndex: FiniteNumberSchema.int().nonnegative().optional(),
+    sourceFps: FiniteNumberSchema.positive().max(1_000).optional(),
+    audioAssetId: IdSchema.optional(),
+  })
+  .strict();
 export const LayerSourceSchema = z.discriminatedUnion('kind', [
   AssetLayerSourceSchema,
   CharacterLayerSourceV15Schema,
   AnimationLayerSourceSchema,
+  VideoLayerSourceSchema,
 ]);
 export const AnimationPlaybackSchema = AnimationPlaybackV22Schema;
 
@@ -280,7 +311,11 @@ export const LayerV21Schema = LayerV20Schema.safeExtend({
 });
 
 function validateClipOwnership(
-  layer: z.infer<typeof LayerV20Schema> & { animationClip?: AnimationClip },
+  layer: {
+    id: string;
+    source: { kind: string; animationId?: string };
+    animationClip?: AnimationClip;
+  },
   context: z.RefinementCtx,
 ): void {
   const clip = layer.animationClip;
@@ -339,10 +374,33 @@ export const LayerV41Schema = LayerV32Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
 });
 
-export const LayerSchema = LayerV41Schema.safeExtend({
-  source: LayerSourceSchema,
-  flaGraphicInstanceTextOverrides: FlaGraphicInstanceTextOverridesSchema.optional(),
-});
+export const LayerSchema = z
+  .object({
+    ...LayerV15AnimationShape,
+    source: LayerSourceSchema,
+    /** Authored first frame offset for Graphic or raster animation instances. */
+    animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
+    animationPlayback: AnimationPlaybackSchema.optional(),
+    /** Sparse transforms authored on this Layer instance, never on its Definition. */
+    flaGraphicInstanceTransformOverrides:
+      FlaGraphicInstanceTransformOverridesSchema.optional(),
+    flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
+    flaGraphicInstanceTextOverrides: FlaGraphicInstanceTextOverridesSchema.optional(),
+    animationSourceRange: AnimationSourceRangeSchema.optional(),
+    animationClip: AnimationClipSchema.optional(),
+  })
+  .strict()
+  .superRefine((layer, context) => {
+    validateAnimationLayerFields(layer, context, true);
+    validateClipOwnership(layer, context);
+    if (layer.animationSourceRange && layer.source.kind !== 'animation') {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationSourceRange'],
+        message: 'Animation source ranges require an animation layer.',
+      });
+    }
+  });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

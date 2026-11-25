@@ -43,7 +43,10 @@ export const ExportStartFormalRequestSchema = z
 
 export const ExportLoadFormalMediaSchema = z
   .object({
-    assetId: z.uuid(),
+    assetId: z.union([
+      z.uuid(),
+      z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu),
+    ]),
     mimeType: z.enum(['image/png', 'image/jpeg', 'image/svg+xml']),
     bytes: z.instanceof(Uint8Array).refine(
       (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
@@ -61,7 +64,7 @@ export const ExportLoadFormalRequestSchema = z
     solidClear: z.literal(true).optional(),
     outputLayerId: z.uuid().optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
-    media: z.array(ExportLoadFormalMediaSchema).max(512),
+    media: z.array(ExportLoadFormalMediaSchema).max(2_048),
   })
   .strict()
   .superRefine((request, context) => {

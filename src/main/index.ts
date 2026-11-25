@@ -57,6 +57,7 @@ import { AssetPreviewAudioService } from './services/AssetPreviewAudioService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 import { FlaImportService } from './services/FlaImportService';
+import { FlaEmbeddedVideoService } from './services/FlaEmbeddedVideoService';
 import { FlaSoundService } from './services/FlaSoundService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
 import { FlaAssetCommitService } from './services/FlaAssetCommitService';
@@ -108,6 +109,7 @@ let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
 let flaGraphicInstanceCommitService: FlaGraphicInstanceCommitService | null = null;
+let flaEmbeddedVideoService: FlaEmbeddedVideoService | null = null;
 let removeFlaGraphicInstanceIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
@@ -607,6 +609,11 @@ async function initialize(): Promise<void> {
     assetCanvasImageService: new AssetCanvasImageService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+      embeddedVideoService: (flaEmbeddedVideoService = new FlaEmbeddedVideoService({
+        flaImportService,
+        projectService,
+        ffmpegAdapter,
+      })),
     }),
     assetPreviewAudioService: new AssetPreviewAudioService({
       getCurrentProjectSnapshot: (projectRoot) =>
@@ -1021,6 +1028,8 @@ app.on('will-quit', () => {
   unsavedCloseController = null;
   unsavedCloseGuard = null;
   hiddenWindowManager.close();
+  void flaEmbeddedVideoService?.dispose();
+  flaEmbeddedVideoService = null;
   flaImportService.close();
 });
 

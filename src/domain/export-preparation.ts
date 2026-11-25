@@ -537,6 +537,17 @@ export function collectExportPreparationMedia(
       outputLayerId,
     );
 
+    shot.layers.forEach((layer) => {
+      if (outputLayerId && layer.id !== outputLayerId) return;
+      if (layer.source.kind !== 'video') return;
+      const videoAssetId = layer.source.assetId;
+      const asset = project.assets.find(
+        (candidate) => candidate.id === videoAssetId && candidate.kind === 'video',
+      );
+      if (!asset) return;
+      addUsage(entries, asset, ['镜头“' + shot.name + '”的视频图层“' + layer.name + '”']);
+    });
+
     shot.audioClips.forEach((clip) => {
       const asset = project.assets.find(
         (candidate) => candidate.id === clip.assetId,
