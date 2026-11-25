@@ -10,6 +10,7 @@ import {
 } from '../../domain';
 import type {
   FlaResolvedClipPath,
+  FlaResolvedDisplayLayer,
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
 } from './fla-display-list-resolver';
@@ -88,6 +89,15 @@ export interface SubtreeBounds {
   readonly scope?: 'subtree' | 'frame-crop';
 }
 
+export interface IsolatedSubtreeCaptureResult extends SubtreeBounds {
+  readonly sourceRef?: string;
+  readonly reason?: string;
+}
+
+export interface IsolatedFilteredLayerCaptureResult extends IsolatedSubtreeCaptureResult {
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
+}
+
 export interface CaptureFlaGraphicStructureOptions {
   readonly fallbackAssetId?: string;
   readonly fallbackViewBox?: {
@@ -99,6 +109,20 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
   /** Isolated Shape artwork is in source-node local space; filtered layers stay residual. */
   readonly resolveIsolatedShape?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => SubtreeBounds | undefined;
+  /** Isolated opaque subtree (static text, instance-filtered group, or per-channel color group) in node-local space. */
+  readonly resolveIsolatedSubtree?: (
+    node: FlaResolvedDisplayNode,
+    context: {
+      readonly opaqueKind: 'text' | 'filter' | 'symbol';
+      readonly parentWorld: AffineMatrix2D;
+    },
+  ) => IsolatedSubtreeCaptureResult | undefined;
+  /** Isolated frame-filtered layer rendered as one semantically closed subtree in layer-local space. */
+  readonly resolveIsolatedFilteredLayer?: (
+    layer: FlaResolvedDisplayLayer,
+    layerIndex: number,
+    frameOrdinal: number,
+  ) => IsolatedFilteredLayerCaptureResult | undefined;
   readonly subtreeBoundsMap?: ReadonlyMap<string, SubtreeBounds>;
   readonly sourceBasename?: string;
   readonly bitmapAssetMap?: ReadonlyMap<string, string>;
@@ -107,21 +131,30 @@ export interface CaptureFlaGraphicStructureOptions {
 }
 
 /**
- * Capture the authored object tree from the resolved FLA display list, before
- * any SVG baking. Resolved Symbol instances (expanded as Groups carrying
- * `symbolLibraryItemName`) become `symbol` nodes that keep their shared
- * definition reference; Shapes and unsupported elements are typed opaque and
- * keep the SVG fallback.
+ * Capture the authored object tree from one or more resolved FLA display lists
+ * (one per Definition frame ordinal), before any SVG baking. Resolved Symbol
+ * instances become `symbol` nodes that keep their shared definition reference;
+ * Shapes and unsupported/isolated elements are typed opaque and keep their
+ * subtree/frame SVG fallback.
  */
-export function captureFlaGraphicStructure(
-  displayList: FlaResolvedDisplayList,
+export function captureFlaGraphicStructureFrames(
+  frameDisplayLists: readonly FlaResolvedDisplayList[],
   options: CaptureFlaGraphicStructureOptions = {},
 ): FlaGraphicStructure | undefined {
+  if (frameDisplayLists.length === 0 || frameDisplayLists.length > 256) return undefined;
+  const canStoreClipPaths = (clipPaths: readonly FlaResolvedClipPath[] | undefined): boolean =>
+    !clipPaths?.some((clip) => clip.shapes.length === 0 || clip.shapes.some((shape) => shape.clipPaths?.length));
   const canStoreMaskGeometry = (node: FlaResolvedDisplayNode): boolean => node.kind === 'group'
-    ? node.children.every(canStoreMaskGeometry)
-    : !node.clipPaths?.some((clip) => clip.shapes.length === 0 || clip.shapes.some((shape) => shape.clipPaths?.length));
-  if (displayList.maskDiagnostics?.length || displayList.ikPoseDiagnostics?.length ||
-      !displayList.layers.every((layer) => layer.children.every(canStoreMaskGeometry))) return undefined;
+    ? canStoreClipPaths(node.instanceFilterClips) &&
+      canStoreClipPaths(node.inheritedClipPaths) &&
+      node.children.every(canStoreMaskGeometry)
+    : canStoreClipPaths(node.clipPaths);
+  for (const displayList of frameDisplayLists) {
+    if (displayList.maskDiagnostics?.length || displayList.ikPoseDiagnostics?.length ||
+        !displayList.layers.every((layer) => layer.children.every(canStoreMaskGeometry))) {
+      return undefined;
+    }
+  }
   const usedIds = new Set<string>();
   const symbolDefinitions: Record<string, FlaGraphicNestedSymbolDefinition> = {};
   const maskPathByteBudget: MaskPathByteBudget = {
@@ -207,15 +240,22 @@ export function captureFlaGraphicStructure(
         };
       }
       if (node.kind === 'text') {
+        const isolated = options.resolveIsolatedSubtree?.(node, {
+          opaqueKind: 'text',
+          parentWorld,
+        });
+        const textScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
+        const textViewBox = isolated?.viewBox ?? fallbackViewBox;
+        const textAssetId = textViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
         return {
           ...base,
           type: 'opaque',
           opaqueKind: 'text',
-          sourceRef: node.textId,
-          reason: 'Static text uses rasterized snapshot fallback',
-          ...(fallbackScope ? { fallbackScope } : {}),
-          ...(fallbackAssetId ? { fallbackAssetId } : {}),
-          ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
+          sourceRef: isolated?.sourceRef ?? node.textId,
+          reason: isolated?.reason ?? 'Static text uses rasterized snapshot fallback',
+          ...(textScope ? { fallbackScope: textScope } : {}),
+          ...(textAssetId ? { fallbackAssetId: textAssetId } : {}),
+          ...(textViewBox ? { fallbackViewBox: { ...textViewBox } } : {}),
         };
       }
       if (node.opaque) {
@@ -228,6 +268,38 @@ export function captureFlaGraphicStructure(
           ...(fallbackScope ? { fallbackScope } : {}),
           ...(fallbackAssetId ? { fallbackAssetId } : {}),
           ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
+        };
+      }
+      const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
+      const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
+      if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
+        const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+        const groupClipPaths = clipPathsOf(
+          node.instanceFilterClips ?? node.inheritedClipPaths,
+          parentWorld,
+          options.clipPathShapePathData ?? new Map(),
+          maskPathByteBudget,
+        );
+        const isolated = options.resolveIsolatedSubtree?.(node, {
+          opaqueKind,
+          parentWorld,
+        });
+        const subtreeScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
+        const subtreeViewBox = isolated?.viewBox ?? fallbackViewBox;
+        const subtreeAssetId = subtreeViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
+        const fallbackSourceRef = node.symbolLibraryItemName ?? node.groupId;
+        return {
+          ...base,
+          ...(groupClipPaths ? { clipPaths: groupClipPaths } : {}),
+          type: 'opaque',
+          opaqueKind,
+          ...(isolated?.sourceRef ? { sourceRef: isolated.sourceRef } : (fallbackSourceRef ? { sourceRef: fallbackSourceRef } : {})),
+          reason: isolated?.reason ?? (hasEnabledInstanceFilters
+            ? 'Instance filter subtree uses isolated fallback'
+            : 'Per-channel color transform subtree uses isolated fallback'),
+          ...(subtreeScope ? { fallbackScope: subtreeScope } : {}),
+          ...(subtreeAssetId ? { fallbackAssetId: subtreeAssetId } : {}),
+          ...(subtreeViewBox ? { fallbackViewBox: { ...subtreeViewBox } } : {}),
         };
       }
       if (node.symbolLibraryItemName) {
@@ -268,14 +340,62 @@ export function captureFlaGraphicStructure(
       return { ...base, type: 'group', groupId: node.groupId, children };
     });
 
-  const layers = displayList.layers.map((layer, layerIndex) => ({
-    name: layer.name.slice(0, 500),
-    nodes: convert(layer.children, `layer[${layerIndex}]`, layer.frameFilter ? 'filter' : null),
-  }));
+  const frames = frameDisplayLists.map((displayList, frameOrdinal) => {
+    const layerPrefix = frameDisplayLists.length > 1 ? `frame[${frameOrdinal}]/` : '';
+    const layers = displayList.layers.map((layer, layerIndex) => {
+      if (layer.frameFilter && options.resolveIsolatedFilteredLayer) {
+        const isolatedLayer = options.resolveIsolatedFilteredLayer(layer, layerIndex, frameOrdinal);
+        if (isolatedLayer) {
+          const layerClips = clipPathsOf(
+            isolatedLayer.clipPaths,
+            identityMatrix,
+            options.clipPathShapePathData ?? new Map(),
+            maskPathByteBudget,
+          );
+          const singleChild = layer.children.length === 1 ? layer.children[0] : undefined;
+          const preferredId = singleChild?.sourceAddress ?? `${layerPrefix}layer[${layerIndex}]/filter[0]`;
+          const id = uniqueId(preferredId);
+          return {
+            name: layer.name.slice(0, 500),
+            nodes: [{
+              id,
+              ...(singleChild?.sourceAddress ? { sourceAddress: singleChild.sourceAddress } : {}),
+              drawOrder: 0,
+              localTransform: { ...identityMatrix },
+              ...(layerClips ? { clipPaths: layerClips } : {}),
+              type: 'opaque' as const,
+              opaqueKind: 'filter' as const,
+              ...(isolatedLayer.sourceRef ? { sourceRef: isolatedLayer.sourceRef } : {}),
+              reason: isolatedLayer.reason ?? 'Layer filter uses isolated subtree fallback',
+              fallbackScope: isolatedLayer.scope ?? 'subtree',
+              ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
+              fallbackViewBox: { ...isolatedLayer.viewBox },
+            }],
+          };
+        }
+      }
+      return {
+        name: layer.name.slice(0, 500),
+        nodes: convert(layer.children, `${layerPrefix}layer[${layerIndex}]`, layer.frameFilter ? 'filter' : null),
+      };
+    });
+    return { ordinal: frameOrdinal, layers };
+  });
   const parsed = FlaGraphicStructureSchema.safeParse({
     version: 1,
     ...(Object.keys(symbolDefinitions).length > 0 ? { symbolDefinitions } : {}),
-    frames: [{ ordinal: 0, layers }],
+    frames,
   });
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Capture the authored object tree from a single resolved FLA display list
+ * (frame 0), before any SVG baking.
+ */
+export function captureFlaGraphicStructure(
+  displayList: FlaResolvedDisplayList,
+  options: CaptureFlaGraphicStructureOptions = {},
+): FlaGraphicStructure | undefined {
+  return captureFlaGraphicStructureFrames([displayList], options);
 }
