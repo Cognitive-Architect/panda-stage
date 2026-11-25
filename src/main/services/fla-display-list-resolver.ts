@@ -263,6 +263,7 @@ export interface FlaResolvedGroupNode {
   readonly opacity?: number;
   readonly instanceFilters?: readonly FlaInstanceFilter[];
   readonly instanceFilterClips?: readonly FlaResolvedClipPath[];
+  readonly inheritedClipPaths?: readonly FlaResolvedClipPath[];
   readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly symbolInstance?: {
     readonly sourceFrameCount?: number;
@@ -880,6 +881,7 @@ function resolveElements(
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
       ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
         ? { instanceFilters: element.instanceFilters, instanceFilterClips: clipPaths } : {}),
+      ...(clipPaths.length ? { inheritedClipPaths: clipPaths } : {}),
       ...(Object.keys(symbolInstance).length ? { symbolInstance } : {}),
       children: childLayers.layers.flatMap((layer) => layer.children),
     });

@@ -625,8 +625,19 @@ export class FlaGraphicInstanceCommitService {
           extension: '.png' as const, mimeType: 'image/png', map: bitmapAssetMap, label: 'bitmap',
         })),
         ...(batch.fallbacks ?? []).map((item) => ({
-          ...item, key: item.sourceRef, bytes: Buffer.from(item.svg, 'utf8'),
-          extension: '.svg' as const, mimeType: 'image/svg+xml', map: isolatedAssetMap, label: 'shape',
+          ...item,
+          key: item.sourceRef,
+          bytes: Buffer.from(item.svg, 'utf8'),
+          extension: '.svg' as const,
+          mimeType: 'image/svg+xml',
+          map: isolatedAssetMap,
+          label: item.sourceRef.startsWith('subtree:text:')
+            ? 'text'
+            : item.sourceRef.startsWith('subtree:filter:')
+              ? 'filter'
+              : item.sourceRef.startsWith('subtree:symbol:')
+                ? 'subtree'
+                : 'shape',
         })),
       ];
       if (resources.length > 0) {

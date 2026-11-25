@@ -8,6 +8,8 @@ import {
 } from '../../domain';
 import {
   captureFlaGraphicStructure,
+  type IsolatedFilteredLayerCaptureResult,
+  type IsolatedSubtreeCaptureResult,
   type SubtreeBounds,
 } from './flaGraphicStructureCapture';
 import {
@@ -32,6 +34,7 @@ import {
   type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
 import {
+  invertAffineMatrix,
   multiplyAffineMatrices,
   type AffineMatrix2D,
 } from '../../shared/affine-matrix';
@@ -49,6 +52,7 @@ import type {
   FlaDisplayListFrameContext,
   FlaDisplayListLayer,
   FlaDisplayListMatrix,
+  FlaResolvedClipPath,
   FlaResolvedDisplayLayer,
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
@@ -734,6 +738,142 @@ function countResolvedDisplayNodes(nodes: readonly FlaResolvedDisplayNode[]): nu
   return nodes.reduce((total, node) => total + 1 + (node.kind === 'group'
     ? countResolvedDisplayNodes(node.children)
     : 0), 0);
+}
+
+function isFiniteAffineMatrix(matrix: AffineMatrix2D): boolean {
+  return [matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty].every(Number.isFinite);
+}
+
+function localizeResolvedClipPaths(
+  clipPaths: readonly FlaResolvedClipPath[] | undefined,
+  invWorld: AffineMatrix2D,
+  stripCount: number,
+): readonly FlaResolvedClipPath[] | undefined | null {
+  if (!clipPaths || clipPaths.length <= stripCount) return undefined;
+  const localized: FlaResolvedClipPath[] = [];
+  for (const clipPath of clipPaths.slice(stripCount)) {
+    const shapes: FlaResolvedClipPath['shapes'][number][] = [];
+    for (const shape of clipPath.shapes) {
+      const worldTransform = multiplyAffineMatrices(invWorld, shape.worldTransform);
+      if (!isFiniteAffineMatrix(worldTransform)) return null;
+      const nestedClips = shape.clipPaths?.length
+        ? localizeResolvedClipPaths(shape.clipPaths, invWorld, 0)
+        : undefined;
+      if (nestedClips === null) return null;
+      shapes.push({
+        ...shape,
+        worldTransform,
+        ...(nestedClips?.length ? { clipPaths: nestedClips } : { clipPaths: undefined }),
+      });
+    }
+    localized.push({ ...clipPath, shapes });
+  }
+  return localized;
+}
+
+function localizeResolvedSubtreeNode(
+  node: FlaResolvedDisplayNode,
+  invWorld: AffineMatrix2D,
+  stripExternalClipCount: number,
+): FlaResolvedDisplayNode | null {
+  const worldTransform = multiplyAffineMatrices(invWorld, node.worldTransform);
+  if (!isFiniteAffineMatrix(worldTransform)) return null;
+  if (node.kind === 'group') {
+    const children: FlaResolvedDisplayNode[] = [];
+    for (const child of node.children) {
+      const localizedChild = localizeResolvedSubtreeNode(child, invWorld, stripExternalClipCount);
+      if (!localizedChild) return null;
+      children.push(localizedChild);
+    }
+    const instanceFilterClips = localizeResolvedClipPaths(
+      node.instanceFilterClips,
+      invWorld,
+      stripExternalClipCount,
+    );
+    if (instanceFilterClips === null) return null;
+    const inheritedClipPaths = localizeResolvedClipPaths(
+      node.inheritedClipPaths,
+      invWorld,
+      stripExternalClipCount,
+    );
+    if (inheritedClipPaths === null) return null;
+    return {
+      ...node,
+      worldTransform,
+      ...(instanceFilterClips?.length ? { instanceFilterClips } : { instanceFilterClips: undefined }),
+      ...(inheritedClipPaths?.length ? { inheritedClipPaths } : { inheritedClipPaths: undefined }),
+      children,
+    };
+  }
+  const clipPaths = localizeResolvedClipPaths(node.clipPaths, invWorld, stripExternalClipCount);
+  if (clipPaths === null) return null;
+  return {
+    ...node,
+    worldTransform,
+    ...(clipPaths?.length ? { clipPaths } : { clipPaths: undefined }),
+  };
+}
+
+function buildIsolatedDisplayListForNode(
+  node: FlaResolvedDisplayNode,
+  sourceName: string,
+): FlaResolvedDisplayList | null {
+  if (node.kind === 'text') {
+    return {
+      kind: 'graphic',
+      sourceName,
+      frameIndex: 0,
+      resolvedNodeCount: 1,
+      layers: [{
+        name: 'text',
+        children: [{
+          ...node,
+          localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+          worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+          clipPaths: undefined,
+        }],
+      }],
+    };
+  }
+  if (node.kind === 'group') {
+    const invWorld = invertAffineMatrix(node.worldTransform);
+    if (!invWorld) return null;
+    const externalClipCount = (node.instanceFilterClips ?? node.inheritedClipPaths)?.length ?? 0;
+    const children: FlaResolvedDisplayNode[] = [];
+    for (const child of node.children) {
+      const localizedChild = localizeResolvedSubtreeNode(child, invWorld, externalClipCount);
+      if (!localizedChild) return null;
+      children.push(localizedChild);
+    }
+    const isolatedGroup: FlaResolvedGroupNode = {
+      ...node,
+      localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+      worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+      instanceFilterClips: undefined,
+      inheritedClipPaths: undefined,
+      children,
+    };
+    return {
+      kind: 'graphic',
+      sourceName,
+      frameIndex: 0,
+      resolvedNodeCount: countResolvedDisplayNodes([isolatedGroup]),
+      layers: [{ name: 'subtree', children: [isolatedGroup] }],
+    };
+  }
+  return null;
+}
+
+function hasAnyClipPathsInNodes(nodes: readonly FlaResolvedDisplayNode[]): boolean {
+  for (const node of nodes) {
+    if (node.kind === 'group') {
+      if (node.instanceFilterClips?.length || node.inheritedClipPaths?.length) return true;
+      if (hasAnyClipPathsInNodes(node.children)) return true;
+    } else if (node.clipPaths?.length) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function buildGroupEditArtwork(
@@ -1635,6 +1775,7 @@ export class FlaPartPreviewService {
     }
     let totalBytes = 0;
     let requiresFullFrame = false;
+    let frame0HasPartialFidelityFeatures = false;
     for (let ordinal = 0; ordinal < frameCount; ordinal += 1) {
       if (!execution.shouldContinue()) {
         const timedOut = Date.now() - startedAt >= FLA_PART_PREVIEW_LIMITS.maxBatchWallTimeMs;
@@ -1666,8 +1807,8 @@ export class FlaPartPreviewService {
       let finalWidth = rendered.width;
       let finalHeight = rendered.height;
       let viewport = rendered.composition.framing.viewBox;
-      if (rendered.hasInstanceFilters || rendered.hasPerChannelColorTransform || rendered.staticTexts?.length) {
-        requiresFullFrame = true;
+      if (ordinal === 0 && (rendered.hasInstanceFilters || rendered.hasPerChannelColorTransform || rendered.staticTexts?.length)) {
+        frame0HasPartialFidelityFeatures = true;
       }
       if (rendered.staticTexts?.length) {
         let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
@@ -1738,9 +1879,11 @@ export class FlaPartPreviewService {
     let structure: FlaGraphicStructure | undefined;
     let authorPoseReferences: FlaGraphicAuthorPoseReference[] = [];
     const isolatedFallbacks = new Map<string, FlaGraphicBatchFallback>();
-    // Stage, Preview, and Export consume the finalized full-frame SVG when
-    // any frame uses static text or composited instance effects.
-    if (firstFrame && unit.sourceAddress && !requiresFullFrame) {
+    // S02-A: Attempt structure capture with isolated subtree fallbacks for static
+    // text, supported instance filters, per-channel color transforms, and layer
+    // filters so healthy sibling parts remain editable. Fall back cleanly to
+    // requiresFullFrame when any complex subtree cannot be safely isolated.
+    if (firstFrame && unit.sourceAddress) {
       prepared.source.resetFrameBuildState();
       // Resolve display list in tolerant mode for structure capture so unsupported
       // subtrees degrade locally rather than dropping the whole structure.
@@ -1753,117 +1896,323 @@ export class FlaPartPreviewService {
         symbols: prepared.source.symbols,
       }, { tolerant: true });
       if (resolvedFirstFrameTolerant.ok) {
-        // E1: capture the authored tree from the resolved source, before SVG baking.
-        // Compute tight subtree bounds for shapes; unsafe opaque nodes remain without fake fallback.
-        const resolveSubtreeBounds = (node: FlaResolvedDisplayNode): SubtreeBounds | undefined => {
-          if (node.kind === 'shape') {
-            const shapeBlock = prepared.source.shapeBlocks.get(node.shapeId);
-            if (!shapeBlock) return undefined;
-            const shapeDisplayList: FlaResolvedDisplayList = {
-              kind: 'graphic',
-              sourceName: node.shapeId,
-              frameIndex: 0,
-              resolvedNodeCount: 1,
-              layers: [{ name: 'shape', children: [node] }],
-            };
-            const rendered = buildSvgForResolvedDisplayList({
-              displayList: shapeDisplayList,
-              renderTargetId: stableRenderTargetId(
-                source.bytes,
-                `shape-crop\u0000${node.shapeId}\u0000${node.sourceAddress ?? ''}`,
-              ),
-              stageWidth: prepared.source.stageWidth,
-              stageHeight: prepared.source.stageHeight,
-              shapeBlocks: prepared.source.shapeBlocks,
-              resolveBitmapMedia: mediaLookup,
-            });
-            if (rendered.ok && rendered.composition.framing.viewBox) {
-              const vb = rendered.composition.framing.viewBox;
-              if (Number.isFinite(vb.x) && Number.isFinite(vb.y) && vb.width > 0 && vb.height > 0) {
-                return {
-                  scope: 'frame-crop',
-                  viewBox: { x: vb.x, y: vb.y, width: vb.width, height: vb.height },
-                };
-              }
+        const isolatedSubtreeByNode = new Map<FlaResolvedDisplayNode, IsolatedSubtreeCaptureResult>();
+        const isolatedLayerByIndex = new Map<number, IsolatedFilteredLayerCaptureResult>();
+        let partialIsolationFailed = false;
+        let hasFilteredLayer = false;
+
+        const renderAndRegisterIsolatedSubtree = async (
+          displayList: FlaResolvedDisplayList,
+          opaqueKind: 'text' | 'filter' | 'symbol',
+          renderTargetKey: string,
+          reason: string,
+        ): Promise<IsolatedSubtreeCaptureResult | null> => {
+          if (!execution.shouldContinue()) return null;
+          const renderedSubtree = buildSvgForResolvedDisplayList({
+            displayList,
+            renderTargetId: stableRenderTargetId(source.bytes, renderTargetKey),
+            stageWidth: prepared.source.stageWidth,
+            stageHeight: prepared.source.stageHeight,
+            shapeBlocks: prepared.source.shapeBlocks,
+            staticTextBlocks: prepared.source.staticTextBlocks,
+            resolveBitmapMedia: mediaLookup,
+          });
+          if (!renderedSubtree.ok) return null;
+          let finalSvg = renderedSubtree.svg;
+          let finalWidth = renderedSubtree.width;
+          let finalHeight = renderedSubtree.height;
+          let viewBox = renderedSubtree.composition.framing.viewBox;
+          if (renderedSubtree.staticTexts?.length) {
+            let resolvedRaster: FlaStaticSnapshotRasterizeOutput;
+            try {
+              resolvedRaster = await this.rasterizer.rasterize({
+                requestId: crypto.randomUUID(),
+                svg: renderedSubtree.svg,
+                width: renderedSubtree.width,
+                height: renderedSubtree.height,
+                pixelCount: renderedSubtree.pixelCount,
+                staticTexts: renderedSubtree.staticTexts,
+                ...(renderedSubtree.graphicFraming ? { graphicFraming: renderedSubtree.graphicFraming } : {}),
+                returnResolvedSvg: true,
+              });
+            } catch {
+              return null;
+            }
+            if (!resolvedRaster.resolvedSvg || hasUnresolvedFlaStaticTextPlaceholder(resolvedRaster.resolvedSvg)) {
+              return null;
+            }
+            finalSvg = resolvedRaster.resolvedSvg;
+            finalWidth = resolvedRaster.width;
+            finalHeight = resolvedRaster.height;
+            if (resolvedRaster.sourceViewport) {
+              viewBox = resolvedRaster.sourceViewport;
             }
           }
-          return undefined;
+          if (
+            !Number.isSafeInteger(finalWidth) ||
+            !Number.isSafeInteger(finalHeight) ||
+            finalWidth <= 0 ||
+            finalHeight <= 0 ||
+            !Number.isFinite(viewBox.x) ||
+            !Number.isFinite(viewBox.y) ||
+            !Number.isFinite(viewBox.width) ||
+            viewBox.width <= 0 ||
+            !Number.isFinite(viewBox.height) ||
+            viewBox.height <= 0
+          ) {
+            return null;
+          }
+          const bytes = Buffer.from(finalSvg, 'utf8');
+          const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+          const sourceRef = `subtree:${opaqueKind}:${sha256.slice(0, 16)}`;
+          if (!isolatedFallbacks.has(sourceRef)) {
+            if (
+              bytes.byteLength <= 0 ||
+              bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
+              totalBytes + bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes
+            ) {
+              return null;
+            }
+            totalBytes += bytes.byteLength;
+            isolatedFallbacks.set(sourceRef, {
+              sourceRef,
+              svg: finalSvg,
+              sha256,
+              byteLength: bytes.byteLength,
+              width: finalWidth,
+              height: finalHeight,
+            });
+          }
+          return {
+            scope: 'subtree',
+            viewBox: { ...viewBox },
+            sourceRef,
+            reason,
+          };
         };
 
-        const clipPathShapeIds = new Set<string>();
-        const collectClipShapeIds = (nodes: readonly FlaResolvedDisplayNode[]): void => {
-          for (const node of nodes) {
-            if (node.kind !== 'group') {
-              for (const clipPath of node.clipPaths ?? []) {
-                for (const shape of clipPath.shapes) {
-                  clipPathShapeIds.add(shape.shapeId);
+        const isolateSubtreesInNodes = async (
+          nodes: readonly FlaResolvedDisplayNode[],
+          pathPrefix: string,
+        ): Promise<void> => {
+          for (let index = 0; index < nodes.length; index += 1) {
+            if (partialIsolationFailed) return;
+            const node = nodes[index]!;
+            const nodeKey = `${pathPrefix}/${index}:${node.sourceAddress ?? node.kind}`;
+            if (node.kind === 'text') {
+              const isolatedDisplayList = buildIsolatedDisplayListForNode(node, node.textId);
+              if (!isolatedDisplayList) {
+                partialIsolationFailed = true;
+                return;
+              }
+              const result = await renderAndRegisterIsolatedSubtree(
+                isolatedDisplayList,
+                'text',
+                `isolated-text\u0000${node.textId}\u0000${nodeKey}`,
+                'Static text uses isolated subtree fallback',
+              );
+              if (!result) {
+                partialIsolationFailed = true;
+                return;
+              }
+              isolatedSubtreeByNode.set(node, result);
+              continue;
+            }
+            if (node.kind === 'group' && !node.opaque) {
+              const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
+              const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
+              if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
+                const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+                const isolatedDisplayList = buildIsolatedDisplayListForNode(
+                  node,
+                  node.symbolLibraryItemName ?? node.groupId,
+                );
+                if (!isolatedDisplayList) {
+                  partialIsolationFailed = true;
+                  return;
+                }
+                const result = await renderAndRegisterIsolatedSubtree(
+                  isolatedDisplayList,
+                  opaqueKind,
+                  `isolated-subtree\u0000${opaqueKind}\u0000${nodeKey}`,
+                  hasEnabledInstanceFilters
+                    ? 'Instance filter subtree uses isolated fallback'
+                    : 'Per-channel color transform subtree uses isolated fallback',
+                );
+                if (!result) {
+                  partialIsolationFailed = true;
+                  return;
+                }
+                isolatedSubtreeByNode.set(node, result);
+                continue;
+              }
+              await isolateSubtreesInNodes(node.children, nodeKey);
+            }
+          }
+        };
+
+        for (let layerIndex = 0; layerIndex < resolvedFirstFrameTolerant.displayList.layers.length; layerIndex += 1) {
+          if (partialIsolationFailed) break;
+          const resolvedLayer = resolvedFirstFrameTolerant.displayList.layers[layerIndex]!;
+          if (resolvedLayer.frameFilter) {
+            hasFilteredLayer = true;
+            if (resolvedLayer.children.length === 0) continue;
+            if (hasAnyClipPathsInNodes(resolvedLayer.children)) {
+              partialIsolationFailed = true;
+              break;
+            }
+            const layerDisplayList: FlaResolvedDisplayList = {
+              kind: 'graphic',
+              sourceName: `${descriptor.sourceLibraryItemName}:layer[${layerIndex}]`,
+              frameIndex: 0,
+              resolvedNodeCount: countResolvedDisplayNodes(resolvedLayer.children),
+              layers: [resolvedLayer],
+            };
+            const result = await renderAndRegisterIsolatedSubtree(
+              layerDisplayList,
+              'filter',
+              `isolated-layer-filter\u0000${layerIndex}\u0000${resolvedLayer.name}`,
+              'Layer filter uses isolated subtree fallback',
+            );
+            if (!result) {
+              partialIsolationFailed = true;
+              break;
+            }
+            isolatedLayerByIndex.set(layerIndex, result);
+            continue;
+          }
+          await isolateSubtreesInNodes(resolvedLayer.children, `layer[${layerIndex}]`);
+        }
+
+        if (!partialIsolationFailed) {
+          // E1: capture the authored tree from the resolved source, before SVG baking.
+          // Compute tight subtree bounds for shapes; unsafe opaque nodes remain without fake fallback.
+          const resolveSubtreeBounds = (node: FlaResolvedDisplayNode): SubtreeBounds | undefined => {
+            if (node.kind === 'shape') {
+              const shapeBlock = prepared.source.shapeBlocks.get(node.shapeId);
+              if (!shapeBlock) return undefined;
+              const shapeDisplayList: FlaResolvedDisplayList = {
+                kind: 'graphic',
+                sourceName: node.shapeId,
+                frameIndex: 0,
+                resolvedNodeCount: 1,
+                layers: [{ name: 'shape', children: [node] }],
+              };
+              const rendered = buildSvgForResolvedDisplayList({
+                displayList: shapeDisplayList,
+                renderTargetId: stableRenderTargetId(
+                  source.bytes,
+                  `shape-crop\u0000${node.shapeId}\u0000${node.sourceAddress ?? ''}`,
+                ),
+                stageWidth: prepared.source.stageWidth,
+                stageHeight: prepared.source.stageHeight,
+                shapeBlocks: prepared.source.shapeBlocks,
+                resolveBitmapMedia: mediaLookup,
+              });
+              if (rendered.ok && rendered.composition.framing.viewBox) {
+                const vb = rendered.composition.framing.viewBox;
+                if (Number.isFinite(vb.x) && Number.isFinite(vb.y) && vb.width > 0 && vb.height > 0) {
+                  return {
+                    scope: 'frame-crop',
+                    viewBox: { x: vb.x, y: vb.y, width: vb.width, height: vb.height },
+                  };
                 }
               }
             }
-            if (node.kind === 'group') collectClipShapeIds(node.children);
-          }
-        };
-        for (const resolvedLayer of resolvedFirstFrameTolerant.displayList.layers) {
-          collectClipShapeIds(resolvedLayer.children);
-        }
-        const clipPathShapePathData = new Map<string, readonly string[]>();
-        for (const shapeId of clipPathShapeIds) {
-          const shapeBlock = prepared.source.shapeBlocks.get(shapeId);
-          if (!shapeBlock) continue;
-          const pathData = extractFlaGraphicMaskPathData({
-            shapeBlock,
-            shapeId,
-            renderTargetId,
-            frameIndex: resolvedFirstFrameTolerant.displayList.frameIndex,
-          });
-          if (pathData?.length) clipPathShapePathData.set(shapeId, pathData);
-        }
+            return undefined;
+          };
 
-        structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
-          resolveSubtreeBounds,
-          resolveIsolatedShape: (node) => {
-            // Render this Shape alone in its own authored local space. Parent
-            // masks remain in the structural evaluator, rather than baking
-            // sibling occlusion or a world-space pose into the reusable part.
-            const rendered = buildSvgForResolvedDisplayList({
-              displayList: {
-                kind: 'graphic', sourceName: node.shapeId, frameIndex: 0, resolvedNodeCount: 1,
-                layers: [{ name: 'shape', children: [{ ...node,
-                  localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
-                  worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX, clipPaths: undefined,
-                }] }],
-              },
-              renderTargetId: stableRenderTargetId(source.bytes, `isolated-shape\u0000${node.shapeId}`),
-              stageWidth: prepared.source.stageWidth, stageHeight: prepared.source.stageHeight,
-              shapeBlocks: prepared.source.shapeBlocks, resolveBitmapMedia: mediaLookup,
-            });
-            if (!rendered.ok) return undefined;
-            const bytes = Buffer.from(rendered.svg, 'utf8');
-            if (!isolatedFallbacks.has(node.shapeId) &&
-                (bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
-                 totalBytes + bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes)) return undefined;
-            if (!isolatedFallbacks.has(node.shapeId)) {
-              totalBytes += bytes.byteLength;
-              isolatedFallbacks.set(node.shapeId, { sourceRef: node.shapeId, svg: rendered.svg,
-                sha256: crypto.createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.byteLength,
-                width: rendered.width, height: rendered.height,
-              });
+          const clipPathShapeIds = new Set<string>();
+          const addClipPathShapeIds = (clipPaths: readonly FlaResolvedClipPath[] | undefined): void => {
+            for (const clipPath of clipPaths ?? []) {
+              for (const shape of clipPath.shapes) {
+                clipPathShapeIds.add(shape.shapeId);
+              }
             }
-            return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
-          },
-          sourceBasename: source.basename,
-          clipPathShapePathData,
-        });
+          };
+          const collectClipShapeIds = (nodes: readonly FlaResolvedDisplayNode[]): void => {
+            for (const node of nodes) {
+              if (node.kind === 'group') {
+                addClipPathShapeIds(node.instanceFilterClips);
+                addClipPathShapeIds(node.inheritedClipPaths);
+                collectClipShapeIds(node.children);
+              } else {
+                addClipPathShapeIds(node.clipPaths);
+              }
+            }
+          };
+          for (const resolvedLayer of resolvedFirstFrameTolerant.displayList.layers) {
+            collectClipShapeIds(resolvedLayer.children);
+          }
+          const clipPathShapePathData = new Map<string, readonly string[]>();
+          for (const shapeId of clipPathShapeIds) {
+            const shapeBlock = prepared.source.shapeBlocks.get(shapeId);
+            if (!shapeBlock) continue;
+            const pathData = extractFlaGraphicMaskPathData({
+              shapeBlock,
+              shapeId,
+              renderTargetId,
+              frameIndex: resolvedFirstFrameTolerant.displayList.frameIndex,
+            });
+            if (pathData?.length) clipPathShapePathData.set(shapeId, pathData);
+          }
 
-        authorPoseReferences = collectBoundedAuthorPoseReferencesFromSource({
-          source: prepared.source,
-          targetDescriptor: descriptor,
-          targetDisplayList: resolvedFirstFrameTolerant.displayList,
-          shouldContinue: execution.shouldContinue,
-        });
+          structure = captureFlaGraphicStructure(resolvedFirstFrameTolerant.displayList, {
+            resolveSubtreeBounds,
+            resolveIsolatedShape: (node) => {
+              // Render this Shape alone in its own authored local space. Parent
+              // masks remain in the structural evaluator, rather than baking
+              // sibling occlusion or a world-space pose into the reusable part.
+              const rendered = buildSvgForResolvedDisplayList({
+                displayList: {
+                  kind: 'graphic', sourceName: node.shapeId, frameIndex: 0, resolvedNodeCount: 1,
+                  layers: [{ name: 'shape', children: [{ ...node,
+                    localTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+                    worldTransform: FLA_DISPLAY_LIST_IDENTITY_MATRIX, clipPaths: undefined,
+                  }] }],
+                },
+                renderTargetId: stableRenderTargetId(source.bytes, `isolated-shape\u0000${node.shapeId}`),
+                stageWidth: prepared.source.stageWidth, stageHeight: prepared.source.stageHeight,
+                shapeBlocks: prepared.source.shapeBlocks, resolveBitmapMedia: mediaLookup,
+              });
+              if (!rendered.ok) return undefined;
+              const bytes = Buffer.from(rendered.svg, 'utf8');
+              if (!isolatedFallbacks.has(node.shapeId) &&
+                  (bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes ||
+                   totalBytes + bytes.byteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes)) return undefined;
+              if (!isolatedFallbacks.has(node.shapeId)) {
+                totalBytes += bytes.byteLength;
+                isolatedFallbacks.set(node.shapeId, { sourceRef: node.shapeId, svg: rendered.svg,
+                  sha256: crypto.createHash('sha256').update(bytes).digest('hex'), byteLength: bytes.byteLength,
+                  width: rendered.width, height: rendered.height,
+                });
+              }
+              return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
+            },
+            resolveIsolatedSubtree: (node) => isolatedSubtreeByNode.get(node),
+            resolveIsolatedFilteredLayer: (_layer, layerIndex) => isolatedLayerByIndex.get(layerIndex),
+            sourceBasename: source.basename,
+            clipPathShapePathData,
+          });
+        }
+
+        if ((frame0HasPartialFidelityFeatures || hasFilteredLayer) && (partialIsolationFailed || !structure)) {
+          requiresFullFrame = true;
+          structure = undefined;
+          isolatedFallbacks.clear();
+        } else if (structure) {
+          authorPoseReferences = collectBoundedAuthorPoseReferencesFromSource({
+            source: prepared.source,
+            targetDescriptor: descriptor,
+            targetDisplayList: resolvedFirstFrameTolerant.displayList,
+            shouldContinue: execution.shouldContinue,
+          });
+        }
+      } else if (frame0HasPartialFidelityFeatures) {
+        requiresFullFrame = true;
       }
       prepared.source.resetFrameBuildState();
-      if (frameCount === 1) {
+      if (frameCount === 1 && !requiresFullFrame && !frame0HasPartialFidelityFeatures) {
         const resolvedForPreview = resolveFlaDisplayList({
           root: {
             kind: 'graphic',
