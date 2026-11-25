@@ -27,6 +27,7 @@ import {
   prepareExportVideoFrameMedia,
 } from '../../src/main/services/FlaEmbeddedVideoService';
 import { applyExportJobUpdate } from '../../src/renderer/shell/exportTaskState';
+import { buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { importFlaEmbeddedVideoToEditor } from '../../src/renderer/features/fla-import/importFlaEmbeddedVideo';
 import { CanvasImageResourceSession } from '../../src/renderer/features/canvas/canvasImageResources';
@@ -1303,6 +1304,10 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
         (l) => l.id === imported.layer.id,
       )!.assetId!;
       expect(frame0Key).not.toBe(frame4Key);
+      const currentShot = reopened.project.shots[0]!;
+      expect(buildProductPreviewImagePlan(
+        reopened.project, currentShot, evaluateShotAtTime(currentShot, 400, reopened.project),
+      ).requiredAssetIds).toContain(frame4Key);
 
       let resolveSlowFrame0!: (resp: Awaited<ReturnType<AssetCanvasImageService['read']>>) => void;
       const slowFrame0Promise = new Promise<Awaited<ReturnType<AssetCanvasImageService['read']>>>((resolve) => {

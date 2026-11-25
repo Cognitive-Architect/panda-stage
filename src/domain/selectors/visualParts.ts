@@ -1462,7 +1462,7 @@ export function resolveLayerVisualParts(
       parts,
       null,
       {
-        required: [{ assetId: videoAsset.id, reason: 'current-layer' }],
+        required: frameKey ? [{ assetId: frameKey, reason: 'current-layer' }] : [],
         candidates: [],
         fallback: [],
       },
