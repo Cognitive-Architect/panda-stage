@@ -120,6 +120,52 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('decodes the embedded video presentation timestamps in their signed stream timebase', async () => {
+    const input = path.join(temporaryRoot, 'embedded.mp4');
+    await writeFile(input, 'staged payload');
+    const runner = new FakeRunner([
+      { ...VERSION_RESULT, stdout: JSON.stringify({ streams: [
+        { codec_type: 'video', disposition: { attached_pic: 1 } },
+        { index: 1, codec_type: 'video', codec_name: 'h264', width: 320, height: 180,
+          time_base: '1/1000', start_pts: -20, duration_ts: 70, nb_frames: '3' },
+        { codec_type: 'audio' },
+      ] }) },
+      { ...VERSION_RESULT, stdout: JSON.stringify({ frames: [
+        { best_effort_timestamp: -20, pkt_duration: 10 },
+        { best_effort_timestamp: -10, pkt_duration: 30 },
+        { best_effort_timestamp: 20, pkt_duration: 30 },
+      ] }) },
+    ]);
+
+    const metadata = await new FFmpegAdapter({ runner }).probeFlaNativeVideo(input);
+
+    expect(metadata).toMatchObject({
+      streamIndex: 1, timeBase: { numerator: 1, denominator: 1000 },
+      startTick: -20, durationTicks: 70, presentationTicks: [-20, -10, 20],
+      endTick: 50, hasAudio: true, frameCount: 3,
+    });
+    expect(runner.calls[0]?.args).toContain('-protocol_whitelist');
+    expect(runner.calls[0]?.args).toContain('-enable_drefs');
+    const frameArgs = runner.calls[1]!.args;
+    expect(frameArgs[frameArgs.indexOf('-select_streams') + 1]).toBe('1');
+    expect(frameArgs).toContain('-max_pixels');
+    expect(frameArgs).toContain('-read_intervals');
+  });
+
+  it('does not decode an embedded video that exceeds the frame budget', async () => {
+    const input = path.join(temporaryRoot, 'oversize.mp4');
+    await writeFile(input, 'staged payload');
+    const runner = new FakeRunner([
+      { ...VERSION_RESULT, stdout: JSON.stringify({ streams: [
+        { index: 0, codec_type: 'video', codec_name: 'h264', width: 320, height: 180,
+          time_base: '1/1000', start_pts: 0, duration_ts: 50_000, nb_frames: '1201' },
+      ] }) },
+    ]);
+
+    await expect(new FFmpegAdapter({ runner }).probeFlaNativeVideo(input)).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it('does not ignore seven-digit frame indices when validating a sequence', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
     const outputDirectory = path.join(temporaryRoot, 'output');

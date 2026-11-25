@@ -20,6 +20,13 @@ import {
   type VideoProbeResult,
 } from '../../shared/ffmpeg-types';
 import { formatFrameFileName } from '../../shared/export-types';
+import {
+  FLA_NATIVE_VIDEO_MAX_FRAMES,
+  FLA_NATIVE_VIDEO_MAX_PIXELS,
+  readFlaNativeVideoFrames,
+  readFlaNativeVideoStream,
+  type FlaNativeVideoProbe,
+} from './fla-native-video-probe';
 
 import { MAX_MOUTH_POSE_ANALYSIS_MS, MOUTH_POSE_SAMPLE_RATE } from '../../shared/mouth-pose-analysis-api';
 
@@ -714,6 +721,42 @@ export class FFmpegAdapter {
       versionLine,
       stderr: technicalTail(result.stderr),
     };
+  }
+
+  /** Analyze a locally staged, already validated ISO media payload. */
+  async probeFlaNativeVideo(videoPath: string, signal?: AbortSignal): Promise<FlaNativeVideoProbe> {
+    const inputPath = path.resolve(videoPath);
+    const probeSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000);
+    await this.assertReadableInput(inputPath, 'video');
+    const demuxer = ['-v', 'error', '-protocol_whitelist', 'file', '-enable_drefs', '0', '-f', 'mov'];
+    const probe = async <T>(options: readonly string[], parse: (result: unknown) => T): Promise<T> => {
+      const args = [...demuxer, ...options, '-of', 'json', inputPath];
+      if (probeSignal.aborted) throw this.cancelledError(this.ffprobePath, args, null, 'SIGTERM');
+      const result = await this.runProcess(this.ffprobePath, args, { signal: probeSignal });
+      if (probeSignal.aborted) {
+        throw this.cancelledError(this.ffprobePath, args, result.code, result.signal, result.stderr);
+      }
+      try {
+        if (result.code !== 0 || result.stderr.trim()) throw new Error('FFprobe reported a media error.');
+        return parse(JSON.parse(result.stdout));
+      } catch (cause) {
+        throw new FFmpegAdapterError('PROBE_FAILED', '无法读取内嵌视频的播放时间戳。', {
+          executable: this.ffprobePath, args, cause, exitCode: result.code,
+          signal: result.signal, stderr: technicalTail(result.stderr),
+        });
+      }
+    };
+
+    const stream = await probe([
+      '-show_entries',
+      'stream=index,codec_type,codec_name,width,height,time_base,start_pts,duration_ts,nb_frames:stream_disposition=attached_pic',
+    ], readFlaNativeVideoStream);
+    return probe([
+      '-select_streams', String(stream.streamIndex),
+      '-max_pixels', String(FLA_NATIVE_VIDEO_MAX_PIXELS),
+      '-read_intervals', '%+#' + (FLA_NATIVE_VIDEO_MAX_FRAMES + 1),
+      '-show_entries', 'frame=best_effort_timestamp,pkt_duration',
+    ], (value) => readFlaNativeVideoFrames(value, stream));
   }
 
   async probeVideo(
