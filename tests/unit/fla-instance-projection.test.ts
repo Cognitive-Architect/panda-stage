@@ -270,4 +270,83 @@ describe('XFL instance affine projection', () => {
     if (!badCtx.ok) throw new Error(badCtx.message);
     expect(badCtx.value.unsupportedDisplayReason).toContain('Skew_Z');
   });
+
+  it('clears stale initial 2.5D projection when dynamic Rotation_X/Y and Motion_Z return to zero (E-F08)', () => {
+    const resetDoc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="100" vanishingPoint3DY="100">
+      <timelines><DOMTimeline name="Scene 1"><layers>
+        <DOMLayer name="Reset3D"><frames>
+          <DOMFrame index="0" duration="5" tweenType="motion object">
+            <motionObjectXML><AnimationCore TimeScale="24000" duration="5000">
+              <PropertyContainer id="Motion">
+                <Property id="Motion_X">
+                  <Keyframe timevalue="0" anchor="0,0"/>
+                  <Keyframe timevalue="2000" anchor="0,20"/>
+                  <Keyframe timevalue="4000" anchor="0,40"/>
+                </Property>
+                <Property id="Rotation_X">
+                  <Keyframe timevalue="0" anchor="0,30"/>
+                  <Keyframe timevalue="2000" anchor="0,0"/>
+                  <Keyframe timevalue="4000" anchor="0,30"/>
+                </Property>
+                <Property id="Motion_Z">
+                  <Keyframe timevalue="0" anchor="0,0"/>
+                  <Keyframe timevalue="2000" anchor="0,-100"/>
+                  <Keyframe timevalue="4000" anchor="0,0"/>
+                </Property>
+              </PropertyContainer>
+            </AnimationCore></motionObjectXML>
+            <elements>
+              <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" rotationX="30" z="100">
+                <matrix><Matrix tx="100" ty="100"/></matrix>
+                <transformationPoint><Point x="0" y="0"/></transformationPoint>
+              </DOMSymbolInstance>
+            </elements>
+          </DOMFrame>
+        </frames></DOMLayer>
+      </layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(resetDoc, [cardSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+
+    const sampleNode = (frameIndex: number) => {
+      const ctx = adapted.source.buildSceneFrameContext(scene.xml, frameIndex, `scene:${scene.index}`);
+      if (!ctx.ok) throw new Error(ctx.message);
+      const resolved = resolveFlaDisplayList({
+        root: { kind: 'scene', name: 'Scene 1', frameContext: ctx.value },
+        symbols: adapted.source.symbols,
+      });
+      if (!resolved.ok) throw new Error(resolved.message);
+      return { ctx: ctx.value, node: resolved.displayList.layers[0]!.children[0]! };
+    };
+
+    // Frame 0: initial non-zero 2.5D projection (depth=100, rotationX=30 => focalLength=100, ratio=0.5, d=0.5*cos(30))
+    const f0 = sampleNode(0);
+    expect(f0.node.worldTransform.a).toBeCloseTo(0.5, 5);
+    expect(f0.node.worldTransform.d).toBeCloseTo(0.5 * Math.cos(Math.PI / 6), 5);
+    expect(f0.node.worldTransform.tx).toBeCloseTo(100, 3);
+
+    // Frame 1: midpoint (depth=50 => ratio=100/150, rotationX=15)
+    const f1 = sampleNode(1);
+    expect(f1.node.worldTransform.a).toBeCloseTo(100 / 150, 5);
+    expect(f1.node.worldTransform.d).toBeCloseTo((100 / 150) * Math.cos(Math.PI / 12), 5);
+
+    // Frame 2: dynamic Rotation_X=0 and Motion_Z=-100 (depth=100-100=0) => stale projection MUST be cleared!
+    const f2 = sampleNode(2);
+    expect(f2.ctx.layers[0]!.elements[0]!.kind).toBe('symbol');
+    if (f2.ctx.layers[0]!.elements[0]!.kind === 'symbol') {
+      expect(f2.ctx.layers[0]!.elements[0]!.projection3D).toBeUndefined();
+    }
+    expect(f2.node.worldTransform.a).toBeCloseTo(1, 5);
+    expect(f2.node.worldTransform.b).toBeCloseTo(0, 5);
+    expect(f2.node.worldTransform.c).toBeCloseTo(0, 5);
+    expect(f2.node.worldTransform.d).toBeCloseTo(1, 5);
+    expect(f2.node.worldTransform.tx).toBeCloseTo(120, 3);
+    expect(f2.node.worldTransform.ty).toBeCloseTo(100, 3);
+
+    // Frame 4: returns to non-zero 2.5D projection (depth=100, rotationX=30, tx=140 => stageX = 100 + 40*0.5 = 120)
+    const f4 = sampleNode(4);
+    expect(f4.node.worldTransform.a).toBeCloseTo(0.5, 5);
+    expect(f4.node.worldTransform.d).toBeCloseTo(0.5 * Math.cos(Math.PI / 6), 5);
+    expect(f4.node.worldTransform.tx).toBeCloseTo(120, 3);
+  });
 });

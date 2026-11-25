@@ -2847,7 +2847,7 @@ function buildObjectMotionFrameElements(
     const rotationX = pose.projection3D?.rotationX ?? projection3D?.rotationX ?? 0;
     const rotationY = pose.projection3D?.rotationY ?? projection3D?.rotationY ?? 0;
     const depth = (projection3D?.depth ?? 0) + (pose.projection3D?.depthDelta ?? 0);
-    if (rotationX === 0 && rotationY === 0 && depth === 0) {
+    if (Math.abs(rotationX) < 1e-9 && Math.abs(rotationY) < 1e-9 && Math.abs(depth) < 1e-9) {
       projection3D = undefined;
     } else {
       const baseProj = projection3D ?? context.state.perspective;
@@ -2867,8 +2867,10 @@ function buildObjectMotionFrameElements(
       };
     }
   }
+  const { projection3D: _priorProjection3D, ...elementWithoutProjection } = element;
+  void _priorProjection3D;
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
-    ...element,
+    ...elementWithoutProjection,
     localTransform: pose.matrix,
     ...(projection3D !== undefined ? { projection3D } : {}),
     ...(instanceFilters ? { instanceFilters } : {}),
