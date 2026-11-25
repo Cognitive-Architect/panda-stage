@@ -1471,12 +1471,58 @@ function readMorphStyleBlocks(shape: FlaXflElementBlock, wrapper: 'fills' | 'str
 
 function sampleMorphSolidPaint(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
   if (a.name !== 'SolidColor' || b.name !== 'SolidColor') return null;
+  const channels = sampleMorphColorChannels(a, b, lerp);
+  return channels ? `<SolidColor ${channels}/>` : null;
+}
+
+function sampleMorphColorChannels(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
   const left = readMorphSolidColor(a);
   const right = readMorphSolidColor(b);
   if (!left || !right) return null;
   const color = left.slice(0, 3).map((value, i) =>
     Math.round(lerp(value, right[i]!)).toString(16).padStart(2, '0')).join('');
-  return `<SolidColor color="#${color}" alpha="${lerp(left[3]!, right[3]!)}"/>`;
+  return `color="#${color}" alpha="${lerp(left[3]!, right[3]!)}"`;
+}
+
+function sampleMorphFillPaint(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name === 'SolidColor') return sampleMorphSolidPaint(a, b, lerp);
+  if (a.name !== b.name || (a.name !== 'LinearGradient' && a.name !== 'RadialGradient')) return null;
+  const radial = a.name === 'RadialGradient';
+  const isAllowed = (key: string) => ['spreadMethod', 'interpolationMethod'].includes(key) || (radial && key === 'focalPointRatio');
+  if ([...Object.keys(a.attributes), ...Object.keys(b.attributes)].some((key) => !isAllowed(key))) return null;
+  const spread = a.attributes.spreadMethod ?? 'pad';
+  const interpolation = a.attributes.interpolationMethod ?? 'rgb';
+  if (spread !== (b.attributes.spreadMethod ?? 'pad') || !['pad', 'reflect', 'repeat'].includes(spread) ||
+      interpolation !== (b.attributes.interpolationMethod ?? 'rgb') || !['rgb', 'linearRGB'].includes(interpolation)) return null;
+  const focalA = Number(a.attributes.focalPointRatio ?? '0');
+  const focalB = Number(b.attributes.focalPointRatio ?? '0');
+  if (![focalA, focalB].every((value) => Number.isFinite(value) && Math.abs(value) <= 1)) return null;
+  const matrixA = readDirectMatrix(a);
+  const matrixB = readDirectMatrix(b);
+  if (!matrixA.ok || !matrixB.ok || !matrixA.present || !matrixB.present) return null;
+  const keys = ['a', 'b', 'c', 'd', 'tx', 'ty'] as const;
+  if (keys.some((key) => Math.abs(matrixA.matrix[key]) > 1_000_000 || Math.abs(matrixB.matrix[key]) > 1_000_000)) return null;
+  const matrix = keys.map((key) => `${key}="${lerp(matrixA.matrix[key], matrixB.matrix[key])}"`).join(' ');
+  const readStops = (gradient: FlaXflElementBlock) => {
+    const children = getFlaXflDirectChildren(gradient.xml, gradient.name, 34);
+    const stops = children.filter((entry) => entry.name === 'GradientEntry');
+    const matrices = children.filter((entry) => entry.name === 'matrix');
+    if (stops.length < 2 || stops.length > 32 || matrices.length !== 1 || stops.length + matrices.length !== children.length) return null;
+    const ratios = stops.map((stop) => Number(stop.attributes.ratio ?? '0'));
+    return ratios.every((ratio, i) => Number.isFinite(ratio) && ratio >= (ratios[i - 1] ?? 0) && ratio <= 1) ? { stops, ratios } : null;
+  };
+  const left = readStops(a);
+  const right = readStops(b);
+  if (!left || !right || left.stops.length !== right.stops.length) return null;
+  const stops: string[] = [];
+  for (let i = 0; i < left.stops.length; i += 1) {
+    const channels = sampleMorphColorChannels(left.stops[i]!, right.stops[i]!, lerp);
+    if (!channels) return null;
+    stops.push(`<GradientEntry ratio="${lerp(left.ratios[i]!, right.ratios[i]!)}" ${channels}/>`);
+  }
+  const focal = radial ? ` focalPointRatio="${lerp(focalA, focalB)}"` : '';
+  return `<${a.name} spreadMethod="${spread}" interpolationMethod="${interpolation}"${focal}>` +
+    `<matrix><Matrix ${matrix}/></matrix>${stops.join('')}</${a.name}>`;
 }
 
 function sampleMorphSolidStroke(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
@@ -1580,7 +1626,7 @@ function samplePairedMorphStyles(
     const lastChildren = getFlaXflDirectChildren(last.xml, last.name, 2);
     if (firstChildren.length !== 1 || lastChildren.length !== 1) return null;
     const paint = stroke ? sampleMorphSolidStroke(firstChildren[0]!, lastChildren[0]!, lerp)
-      : sampleMorphSolidPaint(firstChildren[0]!, lastChildren[0]!, lerp);
+      : sampleMorphFillPaint(firstChildren[0]!, lastChildren[0]!, lerp);
     if (!paint || ids.size >= 256) return null;
     const id = ids.size + 1;
     ids.set(key, id);

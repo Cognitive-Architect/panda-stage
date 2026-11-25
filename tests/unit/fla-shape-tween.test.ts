@@ -101,7 +101,7 @@ async function buildCompoundFixture(variant: 'separate' | 'hole' | 'open' | 'mis
 }
 
 describe('FLA Shape Tween display-list sampling', () => {
-  it('pairs different endpoint style indices on both sides of an adjacent edge and interpolates its stroke', async () => {
+  it.each(['solid', 'LinearGradient', 'RadialGradient'] as const)('pairs %s endpoints on both sides of an adjacent edge and interpolates its stroke', async (paintKind) => {
     const zip = new JSZip();
     zip.file('DOMDocument.xml', '<DOMDocument width="200" height="150"/>');
     const vertices = [
@@ -112,6 +112,14 @@ describe('FLA Shape Tween display-list sampling', () => {
       const a = destination ? 11 : 2;
       const b = destination ? 17 : 7;
       const s = destination ? 5 : 3;
+      const colorA = destination ? '#0000ff' : '#ff0000';
+      const alphaA = destination ? 0.75 : 0.25;
+      const paint = paintKind === 'solid' ? `<SolidColor color="${colorA}" alpha="${alphaA}"/>`
+        : `<${paintKind} spreadMethod="reflect"${paintKind === 'RadialGradient' ? ` focalPointRatio="${destination ? 0.5 : 0}"` : ''}>
+          <matrix><Matrix a="${destination ? 2 : 1}" tx="${destination ? 15 : 5}"/></matrix>
+          <GradientEntry color="${colorA}" alpha="${alphaA}" ratio="${destination ? 0.5 : 0}"/>
+          <GradientEntry color="#ffff00" ratio="1"/>
+        </${paintKind}>`;
       const draw = (x: number, y: number) => `${(x + (destination ? 2 : 0)) * 256} ${y * 256}`;
       const edges = vertices.map(([x, y, endX, endY, side]) => {
         const styles = side === 'shared' ? `fillStyle0="${a}" fillStyle1="${b}" strokeStyle="${s}"`
@@ -119,7 +127,7 @@ describe('FLA Shape Tween display-list sampling', () => {
         return `<Edge ${styles} edges="!${draw(x, y)}|${draw(endX, endY)}"/>`;
       });
       return `<DOMShape><fills>
-        <FillStyle index="${a}"><SolidColor color="${destination ? '#0000ff' : '#ff0000'}" alpha="${destination ? 0.75 : 0.25}"/></FillStyle>
+        <FillStyle index="${a}">${paint}</FillStyle>
         <FillStyle index="${b}"><SolidColor color="${destination ? '#00ffff' : '#00ff00'}"/></FillStyle>
         </fills><strokes><StrokeStyle index="${s}"><SolidStroke weight="${destination ? 4 : 2}" caps="round" joints="bevel"><fill>
         <SolidColor color="${destination ? '#ffffff' : '#000000'}"/></fill></SolidStroke></StrokeStyle></strokes>
@@ -139,7 +147,13 @@ describe('FLA Shape Tween display-list sampling', () => {
     const middle = await render(2);
     expect(await render(0)).toContain('stroke-width="2"');
     expect(await render(4)).toContain('stroke-width="4"');
-    expect(middle).toContain('fill="#800080" fill-opacity="0.5"');
+    if (paintKind === 'solid') {
+      expect(middle).toContain('fill="#800080" fill-opacity="0.5"');
+    } else {
+      expect(middle).toContain('spreadMethod="reflect"');
+      expect(middle).toContain('offset="0.25" stop-color="#800080" stop-opacity="0.5"');
+      expect(middle).toContain('gradientTransform="matrix(1.5 0 0 1 10 0)"');
+    }
     expect(middle).toContain('fill="#00ff80"');
     expect(middle).toContain('stroke="#808080" stroke-opacity="1" stroke-width="3"');
     expect(middle).toContain('stroke-linejoin="bevel"');
