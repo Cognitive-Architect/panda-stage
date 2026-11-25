@@ -296,11 +296,12 @@ export function captureFlaGraphicStructureFrames(
         };
       }
       const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
-      const hasPerChannelColor = node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined;
+      const hasNonSymbolPerChannelColor = !node.symbolLibraryItemName &&
+        (node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined);
       const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
-      const isolated = (hasEnabledInstanceFilters || hasPerChannelColor || node.scale9Grid)
+      const isolated = (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || node.scale9Grid)
         ? options.resolveIsolatedSubtree?.(node, { opaqueKind, parentWorld }) : undefined;
-      if (hasEnabledInstanceFilters || hasPerChannelColor || isolated) {
+      if (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || isolated) {
         const groupClipPaths = clipPathsOf(
           node.instanceFilterClips ?? node.inheritedClipPaths,
           parentWorld,
@@ -356,8 +357,27 @@ export function captureFlaGraphicStructureFrames(
           type: 'symbol',
           symbolRef: node.symbolLibraryItemName,
           nestedDefinitionId,
-          ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
-          ...(node.rgbTransform ? { rgbTransform: { ...node.rgbTransform } } : {}),
+          ...(node.rgbaTransform
+            ? {
+                rgbaTransform: {
+                  multipliers: [...node.rgbaTransform.multipliers] as [number, number, number, number],
+                  offsets: [...node.rgbaTransform.offsets] as [number, number, number, number],
+                },
+              }
+            : {
+                ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
+                ...(node.rgbTransform
+                  ? {
+                      rgbTransform: {
+                        multiplier: node.rgbTransform.multiplier,
+                        offset: node.rgbTransform.offset,
+                        ...(node.rgbTransform.channelOffsets
+                          ? { channelOffsets: [...node.rgbTransform.channelOffsets] as [number, number, number] }
+                          : {}),
+                      },
+                    }
+                  : {}),
+              }),
           ...(node.blendMode ? { blendMode: node.blendMode } : {}),
           ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
           ...(symbolInstance?.playbackMode !== undefined ? { playbackMode: symbolInstance.playbackMode } : {}),

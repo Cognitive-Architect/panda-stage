@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import { FlaRgbaTransformSchema, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
 import { FlaGraphicEditableTextSchema, type FlaGraphicEditableText } from './flaGraphicInstanceText';
 
@@ -81,10 +82,12 @@ const NodeBase = {
   clipPaths: z.array(FlaStructureClipPathV1Schema).max(64).optional(),
 };
 
+const ChannelOffsetSchema = FiniteNumber.min(0).max(255);
 const RgbTransformSchema = z
   .object({
     multiplier: FiniteNumber.min(0).max(1),
-    offset: FiniteNumber.min(0).max(255),
+    offset: ChannelOffsetSchema,
+    channelOffsets: z.tuple([ChannelOffsetSchema, ChannelOffsetSchema, ChannelOffsetSchema]).readonly().optional(),
   })
   .strict();
 
@@ -119,6 +122,7 @@ export type FlaGraphicStructureNode =
       sourceParentFrameSpanStart?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
+      rgbaTransform?: FlaRgbaTransform;
       blendMode?: FlaSupportedBlendMode;
       children?: FlaGraphicStructureNode[];
     }
@@ -187,10 +191,15 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
+        rgbaTransform: FlaRgbaTransformSchema.optional(),
         blendMode: FlaSupportedBlendModeSchema.optional(),
         children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
-      .strict(),
+      .strict()
+      .refine(
+        (node) => !(node.rgbaTransform && (node.opacity !== undefined || node.rgbTransform !== undefined)),
+        'Symbol node rgbaTransform must not be combined with opacity or rgbTransform.',
+      ),
     z
       .object({
         ...NodeBase,
@@ -429,6 +438,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       frameSelectionKey: node.frameSelectionKey,
       opacity: node.opacity,
       rgbTransform: node.rgbTransform,
+      rgbaTransform: node.rgbaTransform,
       children: (node.children ?? []).map(canonicalizeStructureNode),
     };
   }

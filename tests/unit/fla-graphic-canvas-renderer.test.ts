@@ -551,4 +551,87 @@ describe('shared FLA Graphic Canvas renderer', () => {
       });
     },
   );
+
+  it('applies full 4-channel RGBA with positive alphaOffset only inside valid coverage without tinting canvas padding (E-F03)', () => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base,
+      kind: 'fla-graphic',
+      durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{
+        ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 0, y: 0 }, sourceViewport: { x: 0, y: 0, width: 20, height: 20 },
+      }],
+      structure: {
+        version: 1,
+        frames: [{
+          ordinal: 0,
+          layers: [{
+            name: 'BitmapLayer',
+            nodes: [{
+              type: 'symbol',
+              id: 'sym-rgba',
+              drawOrder: 0,
+              localTransform: matrix(2, 2),
+              symbolRef: 'Tile',
+              rgbaTransform: { multipliers: [2, 0.5, 1, 0.5], offsets: [-20, 30, 0, 100] },
+              children: [{
+                type: 'bitmap',
+                id: 'bmp',
+                drawOrder: 0,
+                localTransform: matrix(0, 0),
+                bitmapRef: 'tile.png',
+                assetId,
+              }],
+            }],
+          }],
+        }],
+      },
+    });
+    // Pixel 0: opaque [150, 80, 40, 255] inside bitmap
+    // Pixel 1: interior transparent bitmap texel [0, 0, 0, 0] with coverage alpha=255
+    // Pixel 2: semi-transparent edge [100, 60, 20, 128] inside bitmap
+    // Pixel 3: outside canvas padding [0, 0, 0, 0] with coverage alpha=0
+    const createdCanvases: Array<{ fillRects: number[][]; written: number[] }> = [];
+    let canvasOrdinal = 0;
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const ordinal = canvasOrdinal++;
+        const state = { fillRects: [] as number[][], written: [] as number[] };
+        createdCanvases.push(state);
+        const ctx = {
+          globalAlpha: 1,
+          globalCompositeOperation: 'source-over',
+          fillStyle: '',
+          save() {},
+          restore() {},
+          setTransform() {},
+          clearRect() {},
+          drawImage() {},
+          fillRect(...args: number[]) { state.fillRects.push(args); },
+          getImageData() {
+            if (ordinal === 2) {
+              // Coverage canvas: pixels 0, 1, 2 are covered; pixel 3 is outer canvas padding
+              return { data: new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0]) };
+            }
+            return { data: new Uint8ClampedArray([150, 80, 40, 255, 0, 0, 0, 0, 100, 60, 20, 128, 0, 0, 0, 0]) };
+          },
+          putImageData(img: { data: Uint8ClampedArray }) { state.written = Array.from(img.data); },
+        };
+        return { width: 0, height: 0, getContext: () => ctx };
+      },
+    });
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'instance' })!;
+    renderFlaGraphicCanvas(visual, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]));
+    // Canvas 0 = root, Canvas 1 = symbol scratch, Canvas 2 = symbol coverage scratch
+    expect(createdCanvases[2]!.fillRects).toEqual([[0, 0, 8, 8]]);
+    expect(createdCanvases[1]!.written).toEqual([
+      255, 70, 40, 228, // pixel 0: clamp(150*2-20)=255, 80*0.5+30=70, 40, round(255*0.5+100)=228
+      0, 30, 0, 100,    // pixel 1: interior transparent bitmap texel receives +100 alpha & +30 green
+      180, 60, 20, 164, // pixel 2: semi-transparent edge clamped cleanly
+      0, 0, 0, 0,       // pixel 3: outer canvas padding stays completely transparent (no tinted rect!)
+    ]);
+  });
 });

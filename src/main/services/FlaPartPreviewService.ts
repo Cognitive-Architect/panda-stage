@@ -386,11 +386,18 @@ function makeCandidateCollection(
       localTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       worldTransform,
       ...(graphicInstances && element.kind === 'symbol' &&
-        (element.alphaMultiplier !== undefined || element.rgbTransform) ? {
-          instanceColor: {
-            ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
-            ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
-          },
+        (element.rgbaTransform || element.alphaMultiplier !== undefined || element.rgbTransform) ? {
+          instanceColor: element.rgbaTransform
+            ? {
+                rgbaTransform: {
+                  multipliers: [...element.rgbaTransform.multipliers] as [number, number, number, number],
+                  offsets: [...element.rgbaTransform.offsets] as [number, number, number, number],
+                },
+              }
+            : {
+                ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
+                ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+              },
         } : {}),
       determinant: facts.determinant,
       visible: true,
@@ -697,6 +704,7 @@ function isSafeGroupEditCandidate(
   return !layer.frameFilter &&
     Boolean(group.sourceAddress) &&
     !group.rgbTransform &&
+    !group.rgbaTransform &&
     !group.blendMode &&
     (group.opacity === undefined || group.opacity === 1) &&
     group.children.length >= 1 &&
@@ -2178,10 +2186,13 @@ export class FlaPartPreviewService {
             }
             if (node.kind === 'group' && !node.opaque) {
               const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
-              const hasPerChannelColor = node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined;
+              // Named Symbol instances persist full RGBA and per-channel RGB transforms formally
+              // on the editable structure node instead of baking the subtree into an opaque SVG.
+              const hasNonSymbolPerChannelColor = !node.symbolLibraryItemName &&
+                (node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined);
               const hasScale9Placement = node.scale9Grid !== undefined &&
                 planStaticScale9Placement(node, frameShapeBlocks) !== null;
-              if (hasEnabledInstanceFilters || hasPerChannelColor || hasScale9Placement) {
+              if (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || hasScale9Placement) {
                 const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
                 const artworkTransform = isolatedEffectTransform(node);
                 const isolatedDisplayList = buildIsolatedDisplayListForNode(

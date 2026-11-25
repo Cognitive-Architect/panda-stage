@@ -4200,6 +4200,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   for (const group of colorTransformGroups) {
     const rgba = group.rgbaTransform;
     const transform = group.rgbTransform;
+    let tightBitmapCoverage = false;
     if (rgba && rgba.offsets[3] > 0) {
       const child = group.children.length === 1 ? group.children[0] : undefined;
       const block = child?.kind === 'shape' ? shapeBlocks.get(child.shapeId) : undefined;
@@ -4209,13 +4210,25 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         solidColorByGroup.set(group, rgba);
         continue;
       }
-      rgbaWarnings.add('Alpha offset needs known coverage and was skipped for complex artwork.');
+      if (child?.kind === 'bitmap' && !group.instanceFilters?.some((filter) => filter.enabled)) {
+        // A sole bitmap's own [0..w, 0..h] texel grid is exact coverage; clamping the
+        // filter region to objectBoundingBox [0,0,1,1] lets interior transparent texels
+        // receive positive alphaOffset without tinting surrounding canvas padding.
+        tightBitmapCoverage = true;
+      } else {
+        rgbaWarnings.add('Alpha offset needs known coverage and was skipped for complex artwork.');
+      }
     }
     const multipliers = rgba?.multipliers ?? [transform!.multiplier, transform!.multiplier, transform!.multiplier, 1];
     const offsets = rgba
-      ? [rgba.offsets[0], rgba.offsets[1], rgba.offsets[2], Math.min(0, rgba.offsets[3])]
+      ? [rgba.offsets[0], rgba.offsets[1], rgba.offsets[2], tightBitmapCoverage ? rgba.offsets[3] : Math.min(0, rgba.offsets[3])]
       : [...(transform!.channelOffsets ?? [transform!.offset, transform!.offset, transform!.offset]), 0];
-    const identity = (rgba ? [...multipliers, ...offsets] : [transform!.multiplier, ...(transform!.channelOffsets ?? [transform!.offset])])
+    const regionAttrs = tightBitmapCoverage
+      ? 'filterUnits="objectBoundingBox" x="0" y="0" width="1" height="1"'
+      : 'x="-10%" y="-10%" width="120%" height="120%"';
+    const identity = (rgba
+      ? [...multipliers, ...offsets, ...(tightBitmapCoverage ? [1] : [])]
+      : [transform!.multiplier, ...(transform!.channelOffsets ?? [transform!.offset])])
       .map(formatSvgNumber).join('\u0000');
     const id = `fla-${rgba ? 'rgba' : 'rgb'}-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const existingDefinition = definitions.get(id);
@@ -4225,7 +4238,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       0, 0, multipliers[2]!, 0, offsets[2]! / 255,
       0, 0, 0, multipliers[3]!, offsets[3]! / 255,
     ].map(formatSvgNumber).join(' ');
-    const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
+    const definition = `<filter id="${id}" ${regionAttrs} color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
     if (existingDefinition && existingDefinition !== definition) {
       return { ok: false, code: 'RENDER_FAILED', message: 'RGB color-transform filter id collision detected' };
     }

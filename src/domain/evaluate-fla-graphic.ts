@@ -1,4 +1,8 @@
-import type { FlaInstanceColor } from '../shared/fla-instance-color';
+import {
+  isIdentityFlaRgbaTransform,
+  type FlaInstanceColor,
+  type FlaRgbaTransform,
+} from '../shared/fla-instance-color';
 import type { FlaStaticTextDescriptor } from '../shared/fla-static-text';
 import type { FlaGraphicInstanceTextOverrides } from './models/flaGraphicInstanceText';
 import {
@@ -116,7 +120,12 @@ export interface FlaGraphicNodeCompositePlan {
   readonly needsComposite: boolean;
   readonly hasClips: boolean;
   readonly opacity: number;
-  readonly rgbTransform: { readonly multiplier: number; readonly offset: number } | null;
+  readonly rgbTransform: {
+    readonly multiplier: number;
+    readonly offset: number;
+    readonly channelOffsets?: readonly [number, number, number];
+  } | null;
+  readonly rgbaTransform?: FlaRgbaTransform;
   readonly blendMode: FlaBlendMode;
   readonly canvasCompositeOperation: FlaCanvasCompositeOperation;
 }
@@ -129,10 +138,22 @@ export function evaluateFlaGraphicNodeCompositePlan(
   node: EvaluatedFlaGraphicNode,
 ): FlaGraphicNodeCompositePlan {
   const hasClips = node.clipPaths.length > 0;
-  const opacity = node.source.type === 'symbol' ? (node.source.opacity ?? 1) : 1;
-  const rawRgb = node.source.type === 'symbol' ? node.source.rgbTransform : undefined;
+  const rawRgba = node.source.type === 'symbol' ? node.source.rgbaTransform : undefined;
+  const rgbaTransform = rawRgba && !isIdentityFlaRgbaTransform(rawRgba) ? rawRgba : undefined;
+  // When rgbaTransform is present, alphaMultiplier is applied inside rgbaTransform
+  // and must never be multiplied a second time via canvas globalAlpha.
+  const opacity = rgbaTransform
+    ? 1
+    : node.source.type === 'symbol'
+      ? (node.source.opacity ?? 1)
+      : 1;
+  const rawRgb = !rgbaTransform && node.source.type === 'symbol' ? node.source.rgbTransform : undefined;
   const rgbTransform =
-    rawRgb && !(rawRgb.multiplier === 1 && rawRgb.offset === 0)
+    rawRgb && !(
+      rawRgb.multiplier === 1 &&
+      rawRgb.offset === 0 &&
+      (rawRgb.channelOffsets === undefined || rawRgb.channelOffsets.every((value) => value === 0))
+    )
       ? rawRgb
       : null;
   const blendMode: FlaBlendMode =
@@ -141,10 +162,11 @@ export function evaluateFlaGraphicNodeCompositePlan(
       : 'normal';
   const canvasCompositeOperation = flaBlendModeToCanvasCompositeOperation(blendMode);
   return {
-    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null || blendMode !== 'normal',
+    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null || rgbaTransform !== undefined || blendMode !== 'normal',
     hasClips,
     opacity,
     rgbTransform,
+    ...(rgbaTransform ? { rgbaTransform } : {}),
     blendMode,
     canvasCompositeOperation,
   };
