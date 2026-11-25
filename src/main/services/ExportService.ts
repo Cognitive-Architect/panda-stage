@@ -15,6 +15,7 @@ import {
   formalFrameCount,
   formatFrameFileName,
   formatSpriteSheetFrameName,
+  formatSpriteSheetPageImageName,
   frameTimeMs,
   iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
@@ -33,6 +34,20 @@ import {
   type ProjectFrameScheduleEntry,
   type SpriteSheetPlan,
 } from '../../shared/export-types';
+import {
+  SpriteSheetAtlasOptionsSchema,
+  type SpriteSheetAtlasOptions,
+} from '../../shared/export-preparation-types';
+import {
+  StreamingSpriteSheetPacker,
+  buildPixiPageManifest,
+  decodeRgbaPng,
+  formatPixiPageJsonName,
+  scaleRgbaImage,
+  trimRgbaImage,
+  type FlushedAtlasPage,
+  type PackedSpriteFrame,
+} from './sprite-sheet-atlas';
 import type {
   AudioProbeResult,
   MuxAudioMixRequest,
@@ -368,12 +383,19 @@ export class ExportService {
     if (!settings || !this.renderer.loadFormal) throw new Error('PNG export requires a frozen Shot and the formal renderer.');
     const schedule = planPngSequenceFrames(input.candidate.project, settings);
     const { width, height } = input.candidate.renderSettings;
-    const spriteSheetPlan = settings.spriteSheet ? planSpriteSheetPages(schedule.totalFrames, width, height) : undefined;
+    const atlasOptions = settings.spriteSheet && settings.spriteSheetOptions
+      ? SpriteSheetAtlasOptionsSchema.parse(settings.spriteSheetOptions)
+      : undefined;
+    const spriteSheetPlan = settings.spriteSheet && !atlasOptions
+      ? planSpriteSheetPages(schedule.totalFrames, width, height)
+      : undefined;
     const active = this.createJob({ durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps,
       totalFrames: schedule.totalFrames, attemptId: input.candidate.attemptId, snapshotId: input.candidate.snapshotId });
-    const completion = spriteSheetPlan
-      ? this.executeSpriteSheet(active, input, schedule, spriteSheetPlan, assertOutputTargetUnchanged)
-      : this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
+    const completion = atlasOptions
+      ? this.executePackedSpriteSheet(active, input, schedule, atlasOptions, assertOutputTargetUnchanged)
+      : spriteSheetPlan
+        ? this.executeSpriteSheet(active, input, schedule, spriteSheetPlan, assertOutputTargetUnchanged)
+        : this.executePngSequence(active, input, schedule, assertOutputTargetUnchanged);
     active.completion = completion;
     return { jobId: active.jobId, completion };
   }
@@ -615,7 +637,240 @@ export class ExportService {
       active.acceptsCancellation = false;
       record.phase = 'committing';
       this.emit(record);
-      await publishSpriteSheetPages(outputPath, stagedPages, JSON.stringify(manifest, null, 2) + '\n');
+      await publishSpriteSheetArtifacts(outputPath, stagedPages, [
+        { fileName: 'sprite-sheet.json', content: JSON.stringify(manifest, null, 2) + '\n' },
+      ]);
+      record.outputPath = outputPath;
+      this.completedOutputPaths.set(active.jobId, outputPath);
+      await this.cleanupDirectory(record, jobDirectory);
+      jobDirectory = null;
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return { outputPath };
+    } catch (error) {
+      throw await this.finishFailedJob(active, record, jobDirectory, error);
+    } finally {
+      try { if (rendererPrepared) this.renderer.releaseJob?.(active.jobId); }
+      finally { this.clearActiveJob(active); }
+    }
+  }
+
+  private async executePackedSpriteSheet(
+    active: ActiveJob,
+    input: FrozenExportInput,
+    schedule: ReturnType<typeof planPngSequenceFrames>,
+    atlasOptions: SpriteSheetAtlasOptions,
+    assertOutputTargetUnchanged: () => Promise<void>,
+  ): Promise<{ outputPath: string }> {
+    const record = this.requireJob(active.jobId);
+    const outputPath = input.candidate.outputIntent.targetPath;
+    const { width, height, fps } = input.candidate.renderSettings;
+    let jobDirectory: string | null = null;
+    let rendererPrepared = false;
+    try {
+      await assertOutputTargetUnchanged();
+      this.throwIfCancelled(active);
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+      await this.renderer.prepareJob?.('formal');
+      rendererPrepared = true;
+      const directory = jobDirectory;
+      const singleShotProject = { ...input.candidate.project, shots: [schedule.shot] };
+      const anchor = atlasOptions.anchor ?? { x: 0.5, y: 0.5 };
+      const packer = new StreamingSpriteSheetPacker({
+        trim: atlasOptions.trim,
+        scale: atlasOptions.scale,
+        padding: atlasOptions.padding,
+        extrusion: atlasOptions.extrusion,
+        anchor,
+      });
+
+      const stagedPages: Array<{
+        pageIndex: number;
+        stagedPng: string;
+        width: number;
+        height: number;
+        frames: PackedSpriteFrame[];
+      }> = [];
+
+      const stageFlushedPage = async (page: FlushedAtlasPage): Promise<void> => {
+        const stagedPng = path.join(directory, `staged-page-${String(page.pageIndex).padStart(3, '0')}.png`);
+        await writeFile(stagedPng, page.pngBytes);
+        await assertSpriteSheetPng(stagedPng, page.width, page.height);
+        stagedPages.push({
+          pageIndex: page.pageIndex,
+          stagedPng,
+          width: page.width,
+          height: page.height,
+          frames: page.frames,
+        });
+      };
+
+      const allScheduledFrames = Array.from(schedule.frames());
+      let cursor = 0;
+
+      await this.renderFrames(
+        active,
+        record,
+        { durationMs: schedule.shot.durationMs, fps },
+        directory,
+        () =>
+          this.renderer.loadFormal!({
+            jobId: active.jobId,
+            project: singleShotProject,
+            cameraMode: input.candidate.cameraMode,
+            ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
+            media: input.media
+              .filter((entry) => entry.kind === 'image')
+              .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+          }),
+        singleShotProject,
+        {
+          frames: allScheduledFrames,
+          totalFrames: schedule.totalFrames,
+          maxPendingWrites: 1,
+          write: async (_fileName, bytes) => {
+            assertExportPngSize(bytes, width, height);
+            const entry = allScheduledFrames[cursor]!;
+            cursor += 1;
+            const decoded = decodeRgbaPng(bytes);
+            const scaled = scaleRgbaImage(decoded, atlasOptions.scale);
+            const trimmed = trimRgbaImage(scaled, atlasOptions.trim);
+            const nextTimeMs = frameTimeMs(schedule.firstFrameIndex + entry.frameIndex + 1, fps);
+            const flushed = packer.addFrame(
+              {
+                index: entry.frameIndex,
+                name: formatSpriteSheetFrameName(entry.frameIndex),
+                timeMs: entry.timeMs,
+                durationMs: Math.max(1, nextTimeMs - entry.timeMs),
+              },
+              trimmed,
+            );
+            if (flushed) {
+              await stageFlushedPage(flushed);
+            }
+          },
+        },
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'encoding';
+      this.emit(record);
+      const finalPage = packer.flushCurrentPage();
+      if (finalPage) {
+        await stageFlushedPage(finalPage);
+      }
+      if (stagedPages.length === 0) {
+        throw new Error('没有可排入精灵图的有效帧。');
+      }
+      this.throwIfCancelled(active);
+
+      const pageCount = stagedPages.length;
+      const allFrames = stagedPages.flatMap((page) => page.frames);
+      const allFrameNames = allFrames.map((frame) => frame.name);
+      const animationName = atlasOptions.animationName?.trim() || schedule.shot.name.trim() || 'clip';
+
+      const pngOutputs = stagedPages.map((page) => ({
+        stagedPng: page.stagedPng,
+        imageName: formatSpriteSheetPageImageName(page.pageIndex, pageCount),
+      }));
+
+      const jsonOutputs: Array<{ fileName: string; content: string }> = [];
+      if (atlasOptions.format === 'pixi') {
+        const pixiSheetNames: string[] = [];
+        for (const page of stagedPages) {
+          const imageName = formatSpriteSheetPageImageName(page.pageIndex, pageCount);
+          const jsonName = formatPixiPageJsonName(page.pageIndex, pageCount);
+          pixiSheetNames.push(jsonName);
+          const pixiManifest = buildPixiPageManifest({
+            pageIndex: page.pageIndex,
+            pageCount,
+            imageName,
+            width: page.width,
+            height: page.height,
+            pageFrames: page.frames,
+            allFrameNames,
+            animationName,
+          });
+          jsonOutputs.push({
+            fileName: jsonName,
+            content: JSON.stringify(pixiManifest, null, 2) + '\n',
+          });
+        }
+        if (pageCount > 1) {
+          const masterManifest = {
+            format: 'panda-sprite-sheet-master',
+            pixiEntry: pixiSheetNames[0]!,
+            pixiSheets: pixiSheetNames,
+            frames: allFrames,
+            pages: stagedPages.map((page, idx) => ({
+              index: page.pageIndex,
+              image: pngOutputs[idx]!.imageName,
+              pixiManifest: pixiSheetNames[idx]!,
+              size: { w: page.width, h: page.height },
+              frameCount: page.frames.length,
+            })),
+            meta: {
+              image: pngOutputs[0]!.imageName,
+              images: pngOutputs.map((entry) => entry.imageName),
+              pageCount,
+              fps,
+              scale: atlasOptions.scale,
+              padding: atlasOptions.padding,
+              extrusion: atlasOptions.extrusion,
+              anchor,
+              trimmed: atlasOptions.trim,
+              origin: 'top-left',
+              units: 'px',
+            },
+          };
+          jsonOutputs.push({
+            fileName: 'sprite-sheet.json',
+            content: JSON.stringify(masterManifest, null, 2) + '\n',
+          });
+        }
+      } else {
+        const pandaManifest = {
+          frames: allFrames,
+          ...(pageCount > 1
+            ? {
+                pages: stagedPages.map((page, idx) => ({
+                  index: page.pageIndex,
+                  image: pngOutputs[idx]!.imageName,
+                  size: { w: page.width, h: page.height },
+                  frameCount: page.frames.length,
+                })),
+              }
+            : {}),
+          meta: {
+            image: pngOutputs[0]!.imageName,
+            ...(pageCount > 1
+              ? { images: pngOutputs.map((entry) => entry.imageName), pageCount }
+              : {}),
+            fps,
+            size: { w: stagedPages[0]!.width, h: stagedPages[0]!.height },
+            scale: atlasOptions.scale,
+            padding: atlasOptions.padding,
+            extrusion: atlasOptions.extrusion,
+            anchor,
+            trimmed: atlasOptions.trim,
+            origin: 'top-left',
+            units: 'px',
+          },
+        };
+        jsonOutputs.push({
+          fileName: 'sprite-sheet.json',
+          content: JSON.stringify(pandaManifest, null, 2) + '\n',
+        });
+      }
+
+      await assertOutputTargetUnchanged();
+      this.throwIfCancelled(active);
+      active.acceptsCancellation = false;
+      record.phase = 'committing';
+      this.emit(record);
+      await publishSpriteSheetArtifacts(outputPath, pngOutputs, jsonOutputs);
       record.outputPath = outputPath;
       this.completedOutputPaths.set(active.jobId, outputPath);
       await this.cleanupDirectory(record, jobDirectory);
@@ -1429,10 +1684,10 @@ async function assertSpriteSheetPng(filePath: string, width: number, height: num
   }
 }
 
-async function publishSpriteSheetPages(
+async function publishSpriteSheetArtifacts(
   outputPath: string,
   stagedPages: ReadonlyArray<{ stagedPng: string; imageName: string }>,
-  json: string,
+  jsonFiles: ReadonlyArray<{ fileName: string; content: string }>,
 ): Promise<void> {
   await mkdir(outputPath);
   const publishedFiles: string[] = [];
@@ -1442,9 +1697,11 @@ async function publishSpriteSheetPages(
       await copyFile(stagedPng, pngPath, constants.COPYFILE_EXCL);
       publishedFiles.push(pngPath);
     }
-    const manifestPath = path.join(outputPath, 'sprite-sheet.json');
-    await writeNewPngFrame(manifestPath, Buffer.from(json));
-    publishedFiles.push(manifestPath);
+    for (const { fileName, content } of jsonFiles) {
+      const jsonPath = path.join(outputPath, fileName);
+      await writeNewPngFrame(jsonPath, Buffer.from(content));
+      publishedFiles.push(jsonPath);
+    }
   } catch (error) {
     const rollbackFailures: unknown[] = [];
     for (let index = publishedFiles.length - 1; index >= 0; index -= 1) {
