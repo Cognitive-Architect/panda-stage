@@ -88,7 +88,7 @@ describe('Animate dynamic masks', () => {
     ]);
     const normalize = (svg: string) => {
       const ids = clipIds(svg);
-      return ids.reduce((value, id, index) => value.replaceAll(id!, `clip-${index}`), svg);
+      return ids.reduce<string>((value, id, index) => id ? value.replaceAll(id, `clip-${index}`) : value, svg);
     };
     for (const index of [0, 3, 7]) {
       const actual = await nested(index);

@@ -67,7 +67,7 @@ it('resolves folders in raw scene frames and isolates malformed mask relationshi
     });
     if (!result.ok) throw new Error(result.message);
     expect(result.displayList.layers.map(({ name }) => name)).toEqual(['Ordinary content', 'Clipped']);
-    expect(result.displayList.layers[1]?.children[0]?.clipPaths?.[0]?.shapes).toHaveLength(1);
+    expect(result.displayList.layers[1]?.children[0]).toMatchObject({ clipPaths: [{ shapes: [expect.any(Object)] }] });
     expect(result.displayList.maskDiagnostics).toHaveLength(2);
   }
 });
