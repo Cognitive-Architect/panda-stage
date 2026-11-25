@@ -52,8 +52,28 @@ export function readFlaNativeVideoStream(value: unknown) {
       ))) {
     throw new Error('Embedded video exceeds the supported timing or frame size.');
   }
+  const audioStreams = decoded.streams.filter((candidate) => candidate.codec_type === 'audio');
+  const firstAudio = audioStreams[0] as
+    | { index?: unknown; start_pts?: unknown; time_base?: unknown; start_time?: unknown }
+    | undefined;
+  let audioStreamIndex: number | undefined;
+  let audioStartSeconds: number | undefined;
+  if (firstAudio) {
+    const parsedIndex = NumberField.pipe(SafeInteger.nonnegative()).safeParse(firstAudio.index);
+    if (parsedIndex.success) audioStreamIndex = parsedIndex.data;
+    const parsedAudioPts = IntegerField.safeParse(firstAudio.start_pts);
+    const parsedAudioTb = z.string().regex(/^[1-9]\d*\/[1-9]\d*$/u).safeParse(firstAudio.time_base);
+    if (parsedAudioPts.success && parsedAudioTb.success) {
+      const [aNum, aDen] = parsedAudioTb.data.split('/').map(Number);
+      if (aNum && aDen) audioStartSeconds = (parsedAudioPts.data * aNum) / aDen;
+    } else if (typeof firstAudio.start_time === 'string' && Number.isFinite(Number(firstAudio.start_time))) {
+      audioStartSeconds = Number(firstAudio.start_time);
+    }
+  }
   return {
     streamIndex: stream.index,
+    ...(audioStreamIndex !== undefined ? { audioStreamIndex } : {}),
+    ...(audioStartSeconds !== undefined ? { audioStartSeconds } : {}),
     codec: stream.codec_name,
     width: stream.width,
     height: stream.height,
@@ -61,7 +81,7 @@ export function readFlaNativeVideoStream(value: unknown) {
     startTick,
     durationTicks,
     frameCount: stream.nb_frames,
-    hasAudio: decoded.streams.some((candidate) => candidate.codec_type === 'audio'),
+    hasAudio: audioStreams.length > 0,
   };
 }
 
@@ -93,6 +113,11 @@ export function readFlaNativeVideoFrames(value: unknown, stream: ReturnType<type
       presentationTicks.some((tick, index) => index > 0 && tick < presentationTicks[index - 1]!)) {
     throw new Error('Embedded video has an invalid presentation timeline.');
   }
+  const videoStartSeconds = (firstTick * stream.timeBase.numerator) / stream.timeBase.denominator;
+  const audioStartOffsetMs =
+    stream.audioStartSeconds !== undefined
+      ? Math.round((stream.audioStartSeconds - videoStartSeconds) * 1_000)
+      : 0;
   return {
     ...stream,
     startTick: effectiveStartTick,
@@ -100,6 +125,7 @@ export function readFlaNativeVideoFrames(value: unknown, stream: ReturnType<type
     frameCount: frames.length,
     presentationTicks,
     endTick,
+    ...(stream.hasAudio ? { audioStartOffsetMs } : {}),
   };
 }
 

@@ -839,6 +839,8 @@ export class FFmpegAdapter {
       readonly videoPath: string;
       readonly outputDirectory: string;
       readonly maxFrames?: number;
+      readonly streamIndex?: number;
+      readonly expectedFrameCount?: number;
     },
     signal?: AbortSignal,
   ): Promise<{ readonly framePaths: readonly string[] }> {
@@ -853,6 +855,12 @@ export class FFmpegAdapter {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
     const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const mapSpec =
+      rawInput.streamIndex !== undefined &&
+      Number.isInteger(rawInput.streamIndex) &&
+      rawInput.streamIndex >= 0
+        ? `0:${rawInput.streamIndex}`
+        : '0:v:0';
     const args = [
       '-y',
       '-hide_banner',
@@ -867,7 +875,7 @@ export class FFmpegAdapter {
       '-i',
       inputPath,
       '-map',
-      '0:v:0',
+      mapSpec,
       '-vsync',
       '0',
       '-frames:v',
@@ -901,6 +909,22 @@ export class FFmpegAdapter {
         stderr: technicalTail(result.stderr),
       });
     }
+    if (
+      rawInput.expectedFrameCount !== undefined &&
+      entries.length !== rawInput.expectedFrameCount
+    ) {
+      throw new FFmpegAdapterError(
+        'PROCESS_FAILED',
+        `内嵌视频解码帧数（${entries.length}）与探测 PTS 帧数（${rawInput.expectedFrameCount}）不一致。`,
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        },
+      );
+    }
     return { framePaths: entries.map((name) => path.join(outputDirectory, name)) };
   }
 
@@ -909,6 +933,7 @@ export class FFmpegAdapter {
     rawInput: {
       readonly videoPath: string;
       readonly outputWavPath: string;
+      readonly audioStreamIndex?: number;
     },
     signal?: AbortSignal,
   ): Promise<{ readonly outputPath: string; readonly bytes: number }> {
@@ -921,6 +946,12 @@ export class FFmpegAdapter {
     }
     const temporaryOutputPath = createTemporaryOutputPath(outputPath);
     const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const audioMapSpec =
+      rawInput.audioStreamIndex !== undefined &&
+      Number.isInteger(rawInput.audioStreamIndex) &&
+      rawInput.audioStreamIndex >= 0
+        ? `0:${rawInput.audioStreamIndex}`
+        : '0:a:0';
     const args = [
       '-y',
       '-hide_banner',
@@ -936,7 +967,7 @@ export class FFmpegAdapter {
       inputPath,
       '-vn',
       '-map',
-      '0:a:0',
+      audioMapSpec,
       '-c:a',
       'pcm_s16le',
       '-ar',

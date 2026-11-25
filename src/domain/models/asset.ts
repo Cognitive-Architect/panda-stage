@@ -159,6 +159,9 @@ const AudioAssetV22Schema = z
 export const VideoTimingMetadataSchema = z
   .object({
     codec: z.enum(['h264', 'vp9', 'vp8', 'mpeg4']),
+    streamIndex: z.number().int().nonnegative().optional(),
+    audioStreamIndex: z.number().int().nonnegative().optional(),
+    audioStartOffsetMs: z.number().int().safe().optional(),
     timeBase: z
       .object({
         numerator: z.number().int().positive(),

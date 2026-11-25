@@ -32,6 +32,7 @@ import {
   createFlaVideoPresentationIndex,
   evaluateFlaVideoClock,
   flaVideoFrameAssetKey,
+  planEmbeddedVideoAudioClips,
 } from '../../src/shared/fla-video-clock';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 
@@ -607,5 +608,134 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
     } finally {
       await embeddedVideoService.dispose();
     }
+  }, 60_000);
+
+  it('decodes the exact probe-selected stream when an attached_pic cover is stream 0, rejects frame count mismatch, and aligns audio clips across trim/loop/held/AV-offset/multi-occurrence (E-F10)', async () => {
+    const workDir = await makeTempDir('panda-ef10-');
+    const coverPng = path.join(workDir, 'cover.png');
+    const mainMp4 = path.join(workDir, 'main.mp4');
+    const multiStreamMp4 = path.join(workDir, 'with-cover-stream0.mp4');
+
+    // Generate 1-frame red cover PNG and 6-frame testsrc H.264+AAC MP4:
+    await execFileAsync(bundledFfmpegPath, [
+      '-y', '-f', 'lavfi', '-i', 'color=c=red:s=64x64:d=0.05', '-frames:v', '1', coverPng,
+    ]);
+    await createSolidMp4WithAudio(mainMp4, { fps: 24, durationSec: 0.25, width: 64, height: 64, includeAudio: true });
+    // Mux audio as stream 0, playable H.264 video as stream 1, and attached_pic cover as stream 2:
+    // (In MP4, attached_pic is stored in covr metadata; placing audio at index 0 guarantees
+    // playable video is stream 1 != 0, plus attached_pic is excluded by probe.)
+    await execFileAsync(bundledFfmpegPath, [
+      '-y',
+      '-i', coverPng,
+      '-i', mainMp4,
+      '-map', '1:a:0',
+      '-map', '1:v:0',
+      '-map', '0:v:0',
+      '-c:a:0', 'copy',
+      '-c:v:0', 'copy',
+      '-c:v:1', 'mjpeg',
+      '-disposition:v:1', 'attached_pic',
+      multiStreamMp4,
+    ]);
+
+    const ffmpegAdapter = new FFmpegAdapter({
+      ffmpegPath: bundledFfmpegPath,
+      ffprobePath: bundledFfprobePath,
+    });
+    const probed = await ffmpegAdapter.probeFlaNativeVideo(multiStreamMp4, new AbortController().signal);
+    // Stream 0 is audio, stream 2 is attached_pic => probe MUST select stream 1 (H.264) & stream 0 (audio):
+    expect(probed.streamIndex).toBe(1);
+    expect(probed.audioStreamIndex).toBe(0);
+    expect(probed.presentationTicks.length).toBeGreaterThanOrEqual(6);
+
+    // Sequential decode using probed.streamIndex produces all 6+ frames (not the 1-frame cover image!):
+    const decodeDir = await makeTempDir('panda-ef10-dec-');
+    const decoded = await ffmpegAdapter.decodeFlaVideoFramesSequential({
+      videoPath: multiStreamMp4,
+      outputDirectory: decodeDir,
+      maxFrames: probed.presentationTicks.length,
+      streamIndex: probed.streamIndex,
+      expectedFrameCount: probed.presentationTicks.length,
+    });
+    expect(decoded.framePaths).toHaveLength(probed.presentationTicks.length);
+    // Frame 0 and Frame 3 bytes differ (real moving video stream 1, not static cover stream 0):
+    const b0 = await readFile(decoded.framePaths[0]!);
+    const b3 = await readFile(decoded.framePaths[3]!);
+    expect(Buffer.compare(b0, b3)).not.toBe(0);
+
+    // Frame count mismatch must fail explicitly (never silently clamp):
+    const mismatchDir = await makeTempDir('panda-ef10-mismatch-');
+    await expect(
+      ffmpegAdapter.decodeFlaVideoFramesSequential({
+        videoPath: multiStreamMp4,
+        outputDirectory: mismatchDir,
+        maxFrames: 100,
+        streamIndex: probed.streamIndex,
+        expectedFrameCount: probed.presentationTicks.length + 3,
+      }),
+    ).rejects.toThrow(/不一致/);
+
+    // Pure clock-aligned audio planning across single-frame (held), trim, A/V PTS skew, loop, and nested host:
+    const heldPlan = planEmbeddedVideoAudioClips({
+      shotDurationMs: 1_000,
+      videoDurationMs: 250,
+      audioDurationMs: 250,
+      playbackMode: 'single-frame',
+    });
+    expect(heldPlan.clips).toHaveLength(0);
+    expect(heldPlan.diagnostics.length).toBeGreaterThan(0);
+
+    // Trim [50..200) with audio starting 20ms AFTER video (audioStartOffsetMs = +20):
+    // visual source 50ms aligns with audio offset 50 - 20 = 30ms, length 150ms.
+    const trimPosSkew = planEmbeddedVideoAudioClips({
+      shotDurationMs: 1_000,
+      layerStartTimeMs: 100,
+      videoDurationMs: 250,
+      audioDurationMs: 250,
+      audioStartOffsetMs: 20,
+      playbackMode: 'play-once',
+      trimStartMs: 50,
+      trimEndMs: 200,
+    });
+    expect(trimPosSkew.clips).toEqual([{ startMs: 100, endMs: 250, offsetMs: 30 }]);
+
+    // Trim [0..200) with audio starting 30ms AFTER video => clip starts at +30ms delay with audio offset 0:
+    const leadDelay = planEmbeddedVideoAudioClips({
+      shotDurationMs: 1_000,
+      layerStartTimeMs: 100,
+      videoDurationMs: 250,
+      audioDurationMs: 250,
+      audioStartOffsetMs: 30,
+      playbackMode: 'play-once',
+      trimStartMs: 0,
+      trimEndMs: 200,
+    });
+    expect(leadDelay.clips).toEqual([{ startMs: 130, endMs: 300, offsetMs: 0 }]);
+
+    // Loop mode over 500ms Shot with 200ms trim window [50..250) => 3 non-overlapping aligned occurrences:
+    const loopPlan = planEmbeddedVideoAudioClips({
+      shotDurationMs: 500,
+      layerStartTimeMs: 0,
+      videoDurationMs: 250,
+      audioDurationMs: 250,
+      playbackMode: 'loop',
+      trimStartMs: 50,
+      trimEndMs: 250,
+    });
+    expect(loopPlan.clips).toEqual([
+      { startMs: 0, endMs: 200, offsetMs: 50 },
+      { startMs: 200, endMs: 400, offsetMs: 50 },
+      { startMs: 400, endMs: 500, offsetMs: 50 },
+    ]);
+
+    // Unsupported nested host clock disables audio explicitly with diagnostic instead of desynced audio:
+    const nestedPlan = planEmbeddedVideoAudioClips({
+      shotDurationMs: 1_000,
+      videoDurationMs: 250,
+      audioDurationMs: 250,
+      nestedHost: { kind: 'graphic', playbackMode: 'loop', hostFrameCount: 6, hostFps: 24 },
+    });
+    expect(nestedPlan.clips).toHaveLength(0);
+    expect(nestedPlan.diagnostics.length).toBeGreaterThan(0);
   }, 60_000);
 });

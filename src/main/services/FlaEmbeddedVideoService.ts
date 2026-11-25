@@ -15,6 +15,7 @@ import type { AssetFileExtension } from '../../shared/asset-name';
 import {
   evaluateFlaVideoClock,
   flaVideoFrameAssetKey,
+  planEmbeddedVideoAudioClips,
   type FlaVideoClockSample,
   type FlaVideoNestedHostClock,
 } from '../../shared/fla-video-clock';
@@ -47,6 +48,8 @@ export interface ImportEmbeddedVideoResult {
   readonly layer: Layer;
   readonly audioAsset?: AudioAsset;
   readonly audioClipId?: string;
+  readonly audioClipIds?: readonly string[];
+  readonly diagnostics?: readonly string[];
   readonly reusedVideoAsset: boolean;
 }
 
@@ -212,6 +215,13 @@ export class FlaEmbeddedVideoService {
         durationMs,
         videoTiming: {
           codec: prepared.metadata.codec,
+          streamIndex: prepared.metadata.streamIndex,
+          ...(prepared.metadata.audioStreamIndex !== undefined
+            ? { audioStreamIndex: prepared.metadata.audioStreamIndex }
+            : {}),
+          ...(prepared.metadata.audioStartOffsetMs !== undefined
+            ? { audioStartOffsetMs: prepared.metadata.audioStartOffsetMs }
+            : {}),
           timeBase: { ...prepared.metadata.timeBase },
           startTick: prepared.metadata.startTick,
           endTick: prepared.metadata.endTick,
@@ -230,6 +240,8 @@ export class FlaEmbeddedVideoService {
 
     let audioAsset: AudioAsset | undefined;
     let audioClipId: string | undefined;
+    const audioClipIds: string[] = [];
+    const importDiagnostics: string[] = [];
     let nextProject: Project = { ...project, assets: nextAssets };
 
     if (prepared.metadata.hasAudio && input.includeAudio !== false) {
@@ -241,7 +253,11 @@ export class FlaEmbeddedVideoService {
       try {
         const tempWavPath = path.join(tempAudioDir, 'track.wav');
         await this.deps.ffmpegAdapter.extractFlaVideoAudioTrack(
-          { videoPath: videoFullPath, outputWavPath: tempWavPath },
+          {
+            videoPath: videoFullPath,
+            outputWavPath: tempWavPath,
+            audioStreamIndex: videoAsset.videoTiming.audioStreamIndex,
+          },
           signal,
         );
         const wavBytes = await readFile(tempWavPath);
@@ -272,29 +288,36 @@ export class FlaEmbeddedVideoService {
           nextAssets = [...nextAssets, audioAsset];
           nextProject = { ...nextProject, assets: nextAssets };
         }
-        const clipStartMs = Math.max(0, Math.round(input.startTimeMs ?? 0));
-        const clipOffsetMs = Math.max(0, Math.round(input.trimStartMs ?? 0));
-        const audioTotalMs = audioAsset.durationMs ?? durationMs;
-        const clipTrimEndMs = input.trimEndMs !== undefined
-          ? Math.min(audioTotalMs, Math.round(input.trimEndMs))
-          : audioTotalMs;
-        const clipDurationMs = Math.max(1, clipTrimEndMs - clipOffsetMs);
-        const clipEndMs = Math.min(shot.durationMs, clipStartMs + clipDurationMs);
-        const alreadyHasSyncedClip = shot.audioClips.some(
-          (clip) => clip.assetId === audioAsset!.id && clip.startMs === clipStartMs,
-        );
-        if (!alreadyHasSyncedClip && clipEndMs > clipStartMs) {
+        const plannedAudio = planEmbeddedVideoAudioClips({
+          shotDurationMs: shot.durationMs,
+          layerStartTimeMs: input.startTimeMs,
+          videoDurationMs: durationMs,
+          audioDurationMs: audioAsset.durationMs ?? durationMs,
+          audioStartOffsetMs: videoAsset.videoTiming.audioStartOffsetMs,
+          playbackMode: input.playbackMode,
+          trimStartMs: input.trimStartMs,
+          trimEndMs: input.trimEndMs,
+        });
+        importDiagnostics.push(...plannedAudio.diagnostics);
+        if (plannedAudio.clips.length > 0) {
           const audioClipService = this.deps.audioClipService ?? new AudioClipService();
-          nextProject = audioClipService.create(nextProject, {
-            shotId: shot.id,
-            assetId: audioAsset.id,
-            name: audioAsset.name,
-            role: 'sfx',
-            startMs: clipStartMs,
-            endMs: clipEndMs,
-            offsetMs: clipOffsetMs,
-          });
-          audioClipId = nextProject.shots[shotIndex]!.audioClips.at(-1)?.id;
+          for (let clipIndex = 0; clipIndex < plannedAudio.clips.length; clipIndex += 1) {
+            const planned = plannedAudio.clips[clipIndex]!;
+            nextProject = audioClipService.create(nextProject, {
+              shotId: shot.id,
+              assetId: audioAsset.id,
+              name: plannedAudio.clips.length > 1
+                ? `${audioAsset.name} #${clipIndex + 1}`
+                : audioAsset.name,
+              role: 'sfx',
+              startMs: planned.startMs,
+              endMs: planned.endMs,
+              offsetMs: planned.offsetMs,
+            });
+            const createdId = nextProject.shots[shotIndex]!.audioClips.at(-1)?.id;
+            if (createdId) audioClipIds.push(createdId);
+          }
+          audioClipId = audioClipIds[0];
         }
       } finally {
         await rm(tempAudioDir, { recursive: true, force: true }).catch(() => undefined);
@@ -348,6 +371,8 @@ export class FlaEmbeddedVideoService {
       layer,
       ...(audioAsset ? { audioAsset } : {}),
       ...(audioClipId ? { audioClipId } : {}),
+      ...(audioClipIds.length > 0 ? { audioClipIds } : {}),
+      ...(importDiagnostics.length > 0 ? { diagnostics: importDiagnostics } : {}),
       reusedVideoAsset,
     };
   }
@@ -447,8 +472,14 @@ export class FlaEmbeddedVideoService {
       if (isStale()) {
         return { ok: false, code: 'STALE_REQUEST', message: 'Superseded by a newer video seek.' };
       }
-      const clampedIndex = Math.max(0, Math.min(sequence.framePaths.length - 1, input.sampleIndex));
-      const framePath = sequence.framePaths[clampedIndex];
+      if (input.sampleIndex < 0 || input.sampleIndex >= sequence.framePaths.length) {
+        return {
+          ok: false,
+          code: 'DECODE_FAILED',
+          message: `Requested video sample #${input.sampleIndex} is outside decoded frame count (${sequence.framePaths.length}).`,
+        };
+      }
+      const framePath = sequence.framePaths[input.sampleIndex];
       if (!framePath) {
         return { ok: false, code: 'DECODE_FAILED', message: 'Decoded video frame is unavailable.' };
       }
@@ -460,7 +491,7 @@ export class FlaEmbeddedVideoService {
       return {
         ok: true,
         assetId: input.asset.id,
-        sampleIndex: clampedIndex,
+        sampleIndex: input.sampleIndex,
         mimeType: 'image/png',
         bytes,
         fromCache: false,
@@ -503,6 +534,8 @@ export class FlaEmbeddedVideoService {
             videoPath,
             outputDirectory: directory,
             maxFrames: asset.videoTiming.presentationTicks.length,
+            streamIndex: asset.videoTiming.streamIndex,
+            expectedFrameCount: asset.videoTiming.presentationTicks.length,
           },
           signal,
         );
@@ -617,6 +650,8 @@ export async function prepareExportVideoFrameMedia(input: {
           videoPath: stagedVideoPath,
           outputDirectory: decodeDir,
           maxFrames: asset.videoTiming.presentationTicks.length,
+          streamIndex: asset.videoTiming.streamIndex,
+          expectedFrameCount: asset.videoTiming.presentationTicks.length,
         },
         input.signal,
       );
