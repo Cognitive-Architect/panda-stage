@@ -54,6 +54,7 @@ import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer'
 import {
   ShotSchema,
   ShotV40Schema,
+  ShotV41Schema,
   ShotV26Schema,
   ShotV27Schema,
   ShotV28Schema,
@@ -798,6 +799,13 @@ const ProjectV40DataSchema = ProjectV39DataSchema.extend({
 });
 
 export const ProjectV40Schema = ProjectV40DataSchema.superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV41Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(41),
+  shots: z.array(ShotV41Schema),
+}).superRefine(validateProjectReferences)
   .superRefine(validateAdaptiveClipOwnership)
   .superRefine(validateLayerClipOwnership);
 

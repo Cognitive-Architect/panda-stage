@@ -1,3 +1,4 @@
+import type { FlaInstanceColor } from '../shared/fla-instance-color';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import {
   invertAffineMatrix,
@@ -168,6 +169,7 @@ export interface EvaluatedFlaGraphicVisual {
   readonly mode: FlaGraphicEvaluationMode;
   readonly frameOrdinal: number;
   readonly frameAssetId: string;
+  readonly instanceColor?: FlaInstanceColor;
   readonly frameOffset: { readonly x: number; readonly y: number };
   readonly frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly canvas: { readonly width: number; readonly height: number };
@@ -405,6 +407,7 @@ export function evaluateFlaGraphicVisual(input: {
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceColor?: FlaInstanceColor;
   readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
   const { definition, frameOrdinal, mode } = input;
@@ -414,7 +417,8 @@ export function evaluateFlaGraphicVisual(input: {
     input.internalTimeMs !== undefined && Number.isFinite(input.internalTimeMs)
       ? Math.max(0, input.internalTimeMs)
       : Math.round(frameOrdinal * (1_000 / fps));
-  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}`;
+  const instanceColor = mode === 'instance' ? input.instanceColor : undefined;
+  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}:${instanceColor ? JSON.stringify(instanceColor) : ''}`;
   const cache = visualCacheFor(input);
   const cachedVisual = cache.get(cacheKey);
   if (cachedVisual) return cachedVisual;
@@ -429,6 +433,7 @@ export function evaluateFlaGraphicVisual(input: {
       mode,
       frameOrdinal,
       frameAssetId: frame.assetId,
+      ...(instanceColor ? { instanceColor } : {}),
       frameOffset: frame.offset,
       frameViewport: frame.sourceViewport,
       canvas: definition.source.canvas,
@@ -703,6 +708,7 @@ export function evaluateFlaGraphicVisual(input: {
     mode,
     frameOrdinal,
     frameAssetId: frame.assetId,
+    ...(instanceColor ? { instanceColor } : {}),
     frameOffset: frame.offset,
     frameViewport: frame.sourceViewport,
     canvas: definition.source.canvas,

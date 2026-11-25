@@ -146,6 +146,39 @@ describe('shared FLA Graphic Canvas renderer', () => {
     }
   });
 
+  it.each([true, false])('applies occurrence color once with structured frame = %s', (structured) => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{ ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 3, y: 4 }, sourceViewport: { x: 3, y: 4, width: 8, height: 8 } }],
+      ...(structured ? { structure: { version: 1, frames: [{ ordinal: 0, layers: [{ name: 'Part', nodes: [{
+        type: 'bitmap', id: 'bitmap', drawOrder: 0, localTransform: matrix(3, 4), bitmapRef: 'part.png', assetId,
+      }] }] }] } } : {}),
+    });
+    vi.stubGlobal('document', { createElement: () => new FakeCanvas() });
+    const images = new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]);
+    const baseInput = { definition, frameOrdinal: 0, mode: 'instance' as const };
+    const red = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      opacity: 0.5, rgbTransform: { multiplier: 0.5, offset: 0, channelOffsets: [64, 0, 0] },
+    } })!;
+    const bright = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      rgbTransform: { multiplier: 0.5, offset: 127.5 },
+    } })!;
+    const redRaster = renderFlaGraphicCanvas(red, images)!;
+    const brightRaster = renderFlaGraphicCanvas(bright, images)!;
+    expect(redRaster.rect).toEqual(structured
+      ? { x: -10, y: -10, width: 20, height: 20 }
+      : { x: -7, y: -6, width: 8, height: 8 });
+    expect((redRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([114, 40, 30, 128]);
+    expect((brightRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([178, 168, 158, 255]);
+    expect((redRaster.canvas as unknown as FakeCanvas).context.readCount).toBe(1);
+    expect(evaluateFlaGraphicVisual({ ...baseInput, mode: 'definition', instanceColor: red.instanceColor })?.instanceColor)
+      .toBeUndefined();
+  });
+
   it('reports small drawable bounds separately from the authored Graphic canvas', () => {
     const base = buildProjectWithAnimation().animations[0]!;
     const assetId = base.frames[0]!.assetId;

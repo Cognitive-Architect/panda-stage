@@ -7,6 +7,7 @@ import {
   LayerSchema,
   LayerV30Schema,
   LayerV32Schema,
+  LayerV41Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -114,18 +115,22 @@ export const ShotV32Schema = ShotV20Schema.extend({
 
 export const ShotV33Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV33Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV41Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotV40Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventV40Schema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV41Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV20Schema.extend({
+export const ShotV41Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventSchema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV41Schema),
 }).superRefine(validateShotClipKeyTimes);
+
+export const ShotSchema = ShotV41Schema.safeExtend({
+  layers: z.array(LayerSchema),
+});
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

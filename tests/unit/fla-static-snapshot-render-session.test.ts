@@ -216,6 +216,49 @@ describe('FlaStaticSnapshotRenderSession', () => {
       } finally { session.close(); }
     },
   );
+  it.each([
+    ['scene', 'Panda Stage', true],
+    ['graphic-symbol', 'Panda Stage', true],
+    ['scene', '   ', false],
+    ['graphic-symbol', '', false],
+  ] as const)(
+    'checks drawable content in a %s containing only "%s"',
+    async (kind, characters, drawable) => {
+      const zip = await JSZip.loadAsync(await buildMinimalFla());
+      const text = '<DOMStaticText width="100" height="30"><textRuns><DOMTextRun>' +
+        `<characters>${characters}</characters><textAttrs><DOMTextAttrs size="16"/></textAttrs>` +
+        '</DOMTextRun></textRuns></DOMStaticText>';
+      for (const name of ['DOMDocument.xml', 'LIBRARY/MyGraphic.xml']) {
+        const xml = await zip.file(name)!.async('string');
+        zip.file(name, xml.replace(/<DOMGroup>[\s\S]*?<\/DOMGroup>/gu, text));
+      }
+      const rasterizer = resolvingRasterizer();
+      const rasterize = vi.spyOn(rasterizer, 'rasterize');
+      const session = new FlaStaticSnapshotRenderSession({
+        rasterizer,
+        sourceLookup: sourceLookup(await zip.generateAsync({ type: 'uint8array' })),
+      });
+      try {
+        const catalog = await session.catalog(SESSION_ID);
+        if (!catalog.ok) throw new Error(catalog.message);
+        const target = catalog.entries.find((entry) => entry.target.kind === kind)!.target;
+        const result = await session.preview({
+          format: 'fla-static-snapshot-preview', version: 1, requestId: PREVIEW_A, sessionId: SESSION_ID, target,
+        });
+        if (drawable) {
+          expect(result.ok).toBe(true);
+          expect(rasterize.mock.calls[0]?.[0].staticTexts).toHaveLength(1);
+          expect(session.getConfirmedPreview(PREVIEW_A)).not.toBeNull();
+        } else {
+          expect(result).toMatchObject({ ok: false, error: { code: 'TARGET_UNSUPPORTED' } });
+          expect(rasterize).not.toHaveBeenCalled();
+        }
+      } finally {
+        session.close();
+      }
+    },
+  );
+
   it('discovers renderable targets from a zero-raster FLA', async () => {
     const session = new FlaStaticSnapshotRenderSession({
       rasterizer: resolvingRasterizer(),

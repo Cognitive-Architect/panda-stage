@@ -797,7 +797,10 @@ export class FlaGraphicInstanceCommitService {
           animation?.source.sha256 === batch.source.rawSha256 &&
           occurrence.sourceAddress === batch.unit.sourceAddress;
       });
-      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure) {
+      const instanceColor = batch.unit.instanceColor;
+      const existingOccurrence = existingLayer?.source.kind === 'animation' ? existingLayer.source.flaOccurrence : undefined;
+      const restoreColor = Boolean(instanceColor && existingOccurrence && !existingOccurrence.instanceColor);
+      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure && !restoreColor) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
@@ -824,10 +827,19 @@ export class FlaGraphicInstanceCommitService {
           batch.authorPoseReferences,
         );
       }
-      // An already-imported occurrence only needs a Project save when its
-      // SVG-only Definition is being upgraded with the captured structure.
+      // Reimport can recover color on a legacy occurrence while preserving edits and placement.
       const created = existingLayer || !request.shotId
-        ? { project: baseProject, layer: existingLayer ?? null }
+        ? { project: restoreColor ? {
+          ...baseProject,
+          shots: baseProject.shots.map((shot) => shot.id === request.shotId ? {
+            ...shot,
+            layers: shot.layers.map((layer) => layer.id === existingLayer?.id &&
+                layer.source.kind === 'animation' && layer.source.flaOccurrence ? {
+              ...layer,
+              source: { ...layer.source, flaOccurrence: { ...layer.source.flaOccurrence, instanceColor } },
+            } : layer),
+          } : shot),
+        } : baseProject, layer: existingLayer ?? null }
         : this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
         position: transform!.position,
@@ -840,6 +852,7 @@ export class FlaGraphicInstanceCommitService {
           sourceAddress: batch.unit.sourceAddress!,
           adapterIdentity: batch.unit.adapterIdentity!,
           drawOrder: batch.unit.drawOrder,
+          ...(instanceColor ? { instanceColor } : {}),
         },
       });
       const nextProject = ProjectSchema.parse({

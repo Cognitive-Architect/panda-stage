@@ -1439,6 +1439,7 @@ export function resolveLayerVisualParts(
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
         instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
+        instanceColor: source.flaOccurrence?.instanceColor,
       });
       if (!flaGraphic) {
         throw new Error('Cannot resolve FLA Graphic frame ' + frameOrdinal + ' for layer ' + layer.id + '.');

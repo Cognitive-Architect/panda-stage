@@ -379,6 +379,13 @@ function makeCandidateCollection(
         : null,
       localTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       worldTransform,
+      ...(graphicInstances && element.kind === 'symbol' &&
+        (element.alphaMultiplier !== undefined || element.rgbTransform) ? {
+          instanceColor: {
+            ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
+            ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+          },
+        } : {}),
       determinant: facts.determinant,
       visible: true,
       layer: {

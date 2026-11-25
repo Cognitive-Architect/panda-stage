@@ -234,7 +234,7 @@ function measureFragment(
     if (m.ascent > ascent) ascent = m.ascent;
     if (m.descent > descent) descent = m.descent;
   }
-  return { width: Math.max(0, width), ascent, descent };
+  return { width, ascent, descent };
 }
 
 interface InlineToken {
@@ -288,6 +288,7 @@ function tokenizeSegment(text: string, run: FlaStaticTextRun): InlineToken[] {
 }
 
 interface DraftFragment {
+  readonly gapBefore: number;
   text: string;
   readonly run: FlaStaticTextRun;
   width: number;
@@ -397,32 +398,25 @@ export function layoutFlaStaticText(
       return ok;
     };
 
-    const appendMeasured = (text: string, run: FlaStaticTextRun, isWhitespace: boolean): void => {
-      const m = measureFragment(text, run, measure);
-      const prev = currentLine[currentLine.length - 1];
-      const spacingGap =
-        prev && prev.run === run && run.letterSpacing !== 0 && !isWhitespace && !prev.isWhitespace
-          ? run.letterSpacing
-          : 0;
-      if (prev && prev.run === run && prev.isWhitespace === isWhitespace) {
-        const mergedText = prev.text + text;
-        const mergedMeasure = measureFragment(mergedText, run, measure);
-        currentWidth = currentWidth - prev.width + mergedMeasure.width;
-        prev.text = mergedText;
-        prev.width = mergedMeasure.width;
-        prev.ascent = Math.max(prev.ascent, mergedMeasure.ascent);
-        prev.descent = Math.max(prev.descent, mergedMeasure.descent);
-      } else {
-        currentLine.push({
-          text,
-          run,
-          width: m.width,
-          ascent: m.ascent,
-          descent: m.descent,
-          isWhitespace,
-        });
-        currentWidth += spacingGap + m.width;
-      }
+    const prepareFragment = (text: string, run: FlaStaticTextRun, isWhitespace: boolean) => {
+      const prev = currentLine.at(-1);
+      const merge = prev?.run === run && prev.isWhitespace === isWhitespace ? prev : undefined;
+      const mergedText = merge ? merge.text + text : text;
+      const fragment: DraftFragment = {
+        text: mergedText,
+        run,
+        ...measureFragment(mergedText, run, measure),
+        gapBefore: merge ? merge.gapBefore : (prev?.run.letterSpacing ?? 0),
+        isWhitespace,
+      };
+      return {
+        width: currentWidth + fragment.width + (merge ? -merge.width : fragment.gapBefore),
+        append() {
+          if (merge) currentLine.pop();
+          currentLine.push(fragment);
+          currentWidth += fragment.width + (merge ? -merge.width : fragment.gapBefore);
+        },
+      };
     };
 
     if (paragraph.segments.length === 0) {
@@ -447,29 +441,31 @@ export function layoutFlaStaticText(
 
         if (token.isWhitespace) {
           if (currentLine.length > 0) {
-            appendMeasured(token.text, token.run, true);
+            prepareFragment(token.text, token.run, true).append();
           }
           continue;
         }
 
-        if (currentLine.length > 0 && currentWidth + tokenMeasure.width > maxWidth + 0.5) {
+        let candidate = prepareFragment(token.text, token.run, false);
+        if (currentLine.length > 0 && candidate.width > maxWidth + 0.5) {
           if (!flushLine()) break;
+          candidate = prepareFragment(token.text, token.run, false);
         }
 
-        const freshMaxWidth = lineAvailableWidth();
-        if (tokenMeasure.width > freshMaxWidth + 0.5 && !token.isCjk) {
+        if (tokenMeasure.width > lineAvailableWidth() + 0.5 && !token.isCjk) {
           // Oversized non-CJK word: fall back to grapheme-level wrapping.
           for (const grapheme of splitGraphemes(token.text)) {
-            const gm = measureFragment(grapheme, token.run, measure);
-            if (currentLine.length > 0 && currentWidth + gm.width > lineAvailableWidth() + 0.5) {
+            let glyph = prepareFragment(grapheme, token.run, false);
+            if (currentLine.length > 0 && glyph.width > lineAvailableWidth() + 0.5) {
               if (!flushLine()) break;
+              glyph = prepareFragment(grapheme, token.run, false);
             }
-            appendMeasured(grapheme, token.run, false);
+            glyph.append();
           }
           continue;
         }
 
-        appendMeasured(token.text, token.run, false);
+        candidate.append();
       }
     }
 
@@ -502,7 +498,7 @@ export function layoutFlaStaticText(
       if (frag.run.lineSpacing > lineSpacing) lineSpacing = frag.run.lineSpacing;
       if (frag.ascent > lineAscent) lineAscent = frag.ascent;
       if (frag.descent > lineDescent) lineDescent = frag.descent;
-      totalWidth += frag.width;
+      totalWidth += frag.gapBefore + frag.width;
     }
     if (lineMaxSize > maxFontSize) maxFontSize = lineMaxSize;
 
@@ -521,6 +517,7 @@ export function layoutFlaStaticText(
     let cursorX = lineStartX;
     const fragments: FlaStaticTextLaidOutFragment[] = [];
     for (const frag of draft.fragments) {
+      cursorX += frag.gapBefore;
       fragments.push({
         text: frag.text,
         run: frag.run,

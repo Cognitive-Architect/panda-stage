@@ -108,6 +108,28 @@ describe('FLA Static Text layout & sanitizer (A04)', () => {
     expect(spaced.lines[0]!.width).toBeGreaterThan(tight.lines[0]!.width + 15);
   });
 
+  it('uses the same letter spacing for wrapping, alignment and fragment positions', () => {
+    const layout = (characters: string, width: number, letterSpacing = 2, alignment: 'left' | 'center' | 'right' = 'left') =>
+      layoutFlaStaticText({
+        left: 0, width, height: 60,
+        runs: [{ characters, alignment, size: 10, lineHeight: 14, lineSpacing: 3,
+          letterSpacing, fillColor: '#000000', alpha: 1, bold: false, italic: false }],
+      }, (text) => ({ width: [...text].length * 10, ascent: 8, descent: 2 })).lines;
+
+    const [centered] = layout('AB CD', 70, 2, 'center');
+    expect(centered!.width).toBe(58);
+    expect(centered!.fragments.map(({ x, width }) => [x, width])).toEqual([[6, 22], [30, 10], [42, 22]]);
+    const wrapped = layout('AB CD', 56, 2, 'right');
+    expect(wrapped.map(({ fragments, width }) => [fragments[0]!.text, fragments[0]!.x, width]))
+      .toEqual([['AB', 34, 22], ['CD', 34, 22]]);
+    expect(wrapped[1]!.baselineY - wrapped[0]!.baselineY).toBe(17);
+    expect(layout('熊猫', 21).map(({ width }) => width)).toEqual([10, 10]);
+    expect(layout('ABC', 21).map(({ width }) => width)).toEqual([10, 10, 10]);
+    const [tight] = layout('AB CD', 50, -2, 'right');
+    expect(tight!.width).toBe(42);
+    expect(tight!.fragments.map(({ x }) => x)).toEqual([8, 24, 32]);
+  });
+
   it('preserves Unicode surrogate pairs during grapheme splitting and sanitizes font names for offline fallback', () => {
     const graphemes = splitGraphemes('🐼文字A');
     expect(graphemes).toEqual(['🐼', '文', '字', 'A']);
