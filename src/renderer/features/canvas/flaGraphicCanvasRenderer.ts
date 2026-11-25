@@ -1,4 +1,6 @@
 import type { FlaInstanceColor } from '../../../shared/fla-instance-color';
+import { layoutFlaStaticText, type FlaStaticTextLayoutResult, type FlaStaticTextMeasurer } from '../../../shared/fla-static-text';
+import { createCanvasStaticTextMeasurer, drawCanvasStaticText } from '../../fla-static-text-canvas';
 import {
   commandsToSvgPathD,
   evaluateFlaGraphicNodeCompositePlan,
@@ -411,6 +413,8 @@ function renderFlaGraphicCanvasUncached(
   let contentTop = Infinity;
   let contentRight = -Infinity;
   let contentBottom = -Infinity;
+  let measureText: FlaStaticTextMeasurer | undefined;
+  const textLayouts = new Map<EvaluatedFlaGraphicNode, FlaStaticTextLayoutResult>();
   const includeNodes = (nodes: readonly EvaluatedFlaGraphicNode[], visible = true): void => {
     for (const node of nodes) {
       if (!node.renderable) continue;
@@ -440,6 +444,20 @@ function renderFlaGraphicCanvasUncached(
           }
         }
       };
+      if (node.staticText) {
+        if (!measureText) {
+          const measurementContext = document.createElement('canvas').getContext('2d');
+          if (!measurementContext) continue;
+          measureText = createCanvasStaticTextMeasurer(measurementContext);
+        }
+        const layout = layoutFlaStaticText(node.staticText, measureText);
+        textLayouts.set(node, layout);
+        if (layout.lines.some((line) => line.fragments.some((fragment) => fragment.text.trim()))) {
+          const { x, y, width, height } = layout.bounds;
+          includeCorners(node.worldTransform, [[x, y], [x + width, y], [x, y + height], [x + width, y + height]]);
+        }
+        continue;
+      }
       if (node.vectorVisual) {
         const bounds = unionFlaShapeRegionBounds(
           node.vectorVisual.regions,
@@ -527,6 +545,16 @@ function renderFlaGraphicCanvasUncached(
     const source = node.source;
     const matrix = affineProduct(rootTransform, node.worldTransform);
     if (!validTransform(matrix)) return false;
+    if (node.staticText) {
+      const layout = textLayouts.get(node);
+      if (!layout) return false;
+      target.save();
+      target.setTransform(...matrix);
+      drawCanvasStaticText(target, layout);
+      target.restore();
+      renderedNodeCount += 1;
+      return true;
+    }
     if (node.vectorVisual) {
       if (
         node.vectorVisual.regions.length === 0 &&

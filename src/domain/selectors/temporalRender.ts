@@ -190,6 +190,7 @@ export function listShotGraphicImageAssetsAtTime(project: Project, shot: Shot, t
       mode: 'instance',
       instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
       instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+      instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
     });
     for (const assetId of visual?.resourceAssetIds ?? []) needed.add(assetId);
   }

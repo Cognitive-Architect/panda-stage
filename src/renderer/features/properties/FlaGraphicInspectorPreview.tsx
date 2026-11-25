@@ -22,11 +22,13 @@ export function FlaGraphicInspectorPreview(): React.JSX.Element | null {
       editMode: scope.editMode, internalTimeMs: scope.editMode === 'definition' && time.flaGraphicInternalContext?.timelineAuthoringActive ? time.flaGraphicInternalContext.internalTimeMs : undefined,
       instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
       instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides,
+      instanceTextOverrides: target.layer.flaGraphicInstanceTextOverrides,
       instanceColor, draftMatrices: {} })
       : evaluateFlaGraphicVisual({ definition: target.animation, frameOrdinal: playback?.animationFrame?.frameOrdinal ?? 0,
         internalTimeMs: playback?.animationFrame?.internalTimeMs, instanceColor, mode: 'instance',
         instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
-        instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides });
+        instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides,
+        instanceTextOverrides: target.layer.flaGraphicInstanceTextOverrides });
   }, [target?.key, target?.layer, snapshot, scope, time.currentTimeMs, time.flaGraphicInternalContext]);
   useEffect(() => {
     const resourceSession = new CanvasImageResourceSession(); session.current = resourceSession;

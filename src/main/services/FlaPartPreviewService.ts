@@ -2035,6 +2035,7 @@ export class FlaPartPreviewService {
         }
 
         const isolatedSubtreeByNode = new Map<FlaResolvedDisplayNode, IsolatedSubtreeCaptureResult>();
+        const staticTextByNode = new Map<FlaResolvedDisplayNode, FlaStaticTextDescriptor>();
         const isolatedLayerByRef = new Map<FlaResolvedDisplayLayer, IsolatedFilteredLayerCaptureResult>();
         const shapeBlocksByNode = new Map<FlaResolvedDisplayNode, ReadonlyMap<string, string>>();
         const allShapeBlocks = new Map<string, string>();
@@ -2171,6 +2172,7 @@ export class FlaPartPreviewService {
                 return;
               }
               isolatedSubtreeByNode.set(node, { ...result, artworkTransform });
+              staticTextByNode.set(node, textDescriptor);
               continue;
             }
             if (node.kind === 'group' && !node.opaque) {
@@ -2381,6 +2383,7 @@ export class FlaPartPreviewService {
                 return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
               },
               resolveIsolatedSubtree: (node) => isolatedSubtreeByNode.get(node),
+              resolveStaticText: (node) => staticTextByNode.get(node),
               resolveIsolatedFilteredLayer: (layer) => isolatedLayerByRef.get(layer),
               sourceBasename: source.basename,
               clipPathShapePathData,

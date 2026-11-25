@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
+import { FlaGraphicEditableTextSchema, type FlaGraphicEditableText } from './flaGraphicInstanceText';
 
 /**
  * Persisted, source-backed object tree of an FLA Graphic Definition (STRUCT-04-E1).
@@ -144,6 +145,7 @@ export type FlaGraphicStructureNode =
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       /** Why this subtree is read-only: its display comes from the frame SVG fallback. */
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
+      editableText?: FlaGraphicEditableText;
       sourceRef?: string;
       reason?: string;
       /** Runtime blend mode composited against the live stage backdrop when isolated. */
@@ -203,6 +205,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         ...NodeBase,
         type: z.literal('opaque'),
         opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
+        editableText: FlaGraphicEditableTextSchema.optional(),
         sourceRef: SourceTextSchema.optional(),
         reason: SourceTextSchema.optional(),
         blendMode: FlaSupportedBlendModeSchema.optional(),
@@ -440,6 +443,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
     return {
       ...base,
       opaqueKind: node.opaqueKind,
+      editableText: node.editableText,
       sourceRef: node.sourceRef,
       reason: node.reason,
       fallbackScope: node.fallbackScope,

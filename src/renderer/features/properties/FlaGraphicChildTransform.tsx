@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Konva from 'konva';
+import { FLA_STATIC_TEXT_LIMITS } from '../../../shared/fla-static-text';
 import {
   listFlaShapeRegionVertices,
   resolveFlaGraphicInternalAuthoringState,
@@ -45,6 +46,13 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     },
   );
   if (!node) return null;
+  const editableText = scope.editMode === 'instance' && node.type === 'opaque' && node.opaqueKind === 'text'
+    ? node.editableText
+    : undefined;
+  const textValue = editableText
+    ? target.layer.flaGraphicInstanceTextOverrides?.[String(scope.frameOrdinal)]?.[JSON.stringify(path)] ??
+      editableText.runs[0].characters
+    : undefined;
   const internal = scope.editMode === 'definition' && Boolean(time.flaGraphicInternalContext?.timelineAuthoringActive);
   const internalTimeMs = internal ? time.flaGraphicInternalContext?.internalTimeMs ?? 0 : undefined;
   const visual = evaluateFlaGraphicProjectionVisual({
@@ -54,6 +62,7 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     internalTimeMs,
     timelineAuthoringActive: internal,
     instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
+    instanceTextOverrides: target.layer.flaGraphicInstanceTextOverrides,
     instanceShapeOverrides:
       scope.editMode === 'definition'
         ? undefined
@@ -178,6 +187,25 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   };
 
   return <div className="fla-child-transform-wrap">
+    {textValue !== undefined ? (
+      <label>
+        文字
+        <textarea
+          key={JSON.stringify([target.key, scope.frameOrdinal, path, textValue])}
+          defaultValue={textValue}
+          disabled={target.layer.locked}
+          maxLength={FLA_STATIC_TEXT_LIMITS.maxCharsPerText}
+          onBlur={event => {
+            try {
+              layerStore.updateFlaGraphicInstanceText(target.layerId, scope.frameOrdinal, path, event.currentTarget.value);
+              setError('');
+            } catch (failure) {
+              setError(failure instanceof Error ? failure.message : '替换文字失败。');
+            }
+          }}
+        />
+      </label>
+    ) : null}
     <form className="fla-child-transform" data-testid="fla-child-transform" key={`${target.key}:${JSON.stringify(path)}:${JSON.stringify(matrix)}`}
       onKeyDown={event => {
         if (event.key !== 'Escape') return;

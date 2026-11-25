@@ -232,7 +232,9 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
         >
           {row.label}
         </span>
-        {row.type === 'opaque' && (!row.node || !isFlaGraphicNodeTransformable(row.node)) ? <span title="当前对象只读" aria-label="当前对象只读"><LockKeyhole size={12} /></span> : null}
+        {row.type === 'opaque' && (!row.node || !isFlaGraphicNodeTransformable(row.node)) &&
+          !(scope?.editMode === 'instance' && row.node?.type === 'opaque' && row.node.editableText)
+          ? <span title="当前对象只读" aria-label="当前对象只读"><LockKeyhole size={12} /></span> : null}
       </div>
       {row.children.length && open ? <div role="group">{row.children.map(child => renderRow(child, depth + 1))}</div> : null}
     </div>;

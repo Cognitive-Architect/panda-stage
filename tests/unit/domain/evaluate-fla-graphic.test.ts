@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateFlaGraphicVisual,
   FlaGraphicDefinitionSchema,
+  LayerService,
+  ProjectSchema,
   resolveLayerVisualParts,
   type FlaGraphicStructureFrame,
 } from '../../../src/domain';
@@ -130,6 +132,71 @@ function definition() {
 }
 
 describe('evaluateFlaGraphicVisual', () => {
+  it('preserves single-run styling and scopes replacement to one layer across project serialization', () => {
+    const graphic = definition();
+    const text = {
+      type: 'opaque', id: 'text', opaqueKind: 'text', drawOrder: 0, localTransform: matrix(4),
+      fallbackAssetId, fallbackScope: 'subtree', fallbackViewBox: { x: 5, y: 0, width: 50, height: 24 },
+      editableText: { left: 5, width: 50, height: 24, runs: [{
+        characters: '原文', alignment: 'left', size: 14, lineHeight: 16, lineSpacing: 0,
+        letterSpacing: -1, face: 'Arial', fillColor: '#112233', alpha: 1, bold: true, italic: false,
+      }] },
+    };
+    const source = FlaGraphicDefinitionSchema.parse({
+      ...graphic, structure: { ...graphic.structure, frames: [
+        { ordinal: 0, layers: [{ name: 'text', nodes: [text] }] },
+        graphic.structure!.frames[1],
+      ] },
+    });
+    const base = buildProjectWithAnimation();
+    const shot = base.shots[0]!;
+    const layer = {
+      ...shot.layers[1]!,
+      source: { kind: 'animation', animationId: source.id },
+      startTimeMs: 0,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+    };
+    const otherId = '60000000-0000-4000-8000-000000000042';
+    const project = ProjectSchema.parse({
+      ...base,
+      animations: [source],
+      assets: [...base.assets, ...source.frames.map((frame) => ({
+        id: frame.assetId, kind: 'image', name: `frame ${frame.ordinal}`, relativePath: `assets/frame-${frame.ordinal}.svg`,
+        mimeType: 'image/svg+xml', sha256: frame.sha256, width: 100, height: 100, usage: 'uncategorized', keywords: [],
+        flaGraphicFrame: { definitionId: source.id, ordinal: frame.ordinal },
+      })), {
+        id: fallbackAssetId, kind: 'image', name: 'text', relativePath: 'assets/text.svg', mimeType: 'image/svg+xml',
+        sha256: 'd'.repeat(64), width: 50, height: 24, usage: 'uncategorized', keywords: [],
+      }],
+      shots: [{ ...shot, backgroundLayerId: null, layers: [
+        layer,
+        { ...layer, id: otherId, zIndex: layer.zIndex + 1 },
+      ] }],
+    });
+    const service = new LayerService();
+    const edited = service.updateFlaGraphicInstanceText(project, shot.id, layer.id, 0, ['text'], '替换');
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(edited)));
+    const reopenedSource = FlaGraphicDefinitionSchema.parse(reopened.animations[0]);
+    const [first, second] = reopened.shots[0]!.layers;
+    const firstVisual = evaluateFlaGraphicVisual({
+      definition: reopenedSource, frameOrdinal: 0, mode: 'instance',
+      instanceTextOverrides: first!.flaGraphicInstanceTextOverrides,
+    });
+    const secondVisual = evaluateFlaGraphicVisual({
+      definition: reopenedSource, frameOrdinal: 0, mode: 'instance',
+      instanceTextOverrides: second!.flaGraphicInstanceTextOverrides,
+    });
+    expect(firstVisual?.layers?.[0]?.nodes[0]).toMatchObject({
+      worldTransform: matrix(4), staticText: { ...text.editableText, runs: [{ ...text.editableText.runs[0], characters: '替换' }] },
+    });
+    expect(secondVisual?.layers?.[0]?.nodes[0]).toMatchObject({
+      worldTransform: matrix(9), source: { editableText: text.editableText },
+    });
+    expect(secondVisual?.layers?.[0]?.nodes[0]?.staticText).toBeUndefined();
+    expect(service.updateFlaGraphicInstanceText(edited, shot.id, layer.id, 0, ['text'], '原文')
+      .shots[0]?.layers[0]?.flaGraphicInstanceTextOverrides).toBeUndefined();
+  });
+
   it('selects one exact frame and keeps Definition mode independent of instance overrides', () => {
     const source = definition();
     const instanceTransformOverrides = {
