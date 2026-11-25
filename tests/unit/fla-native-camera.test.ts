@@ -103,6 +103,20 @@ describe('native Animate Scene camera', () => {
     }
   });
 
+  it('skips hidden Folder descendants before projection and keeps their authored end frame', () => {
+    const hidden = layer('Hidden folder', '', 'layerType="folder" visible="false"');
+    const masked = layer('Mask in folder', frame(tile), 'layerType="mask" parentLayerIndex="0"');
+    const hiddenBehindMask = layer('Mask child', frame(tile), 'parentLayerIndex="1"');
+    const hiddenDepth = layer('Hidden depth', frame(tile, 'index="0" duration="10" frameZDepth="-528"'), 'parentLayerIndex="0"');
+    const healthy = layer('Healthy', frame(tile));
+    const nativeCamera = layer('Camera', camera('tx="100" ty="50"'), 'layerType="camera"');
+    const scene = prepare(hidden + masked + hiddenBehindMask + hiddenDepth + healthy + nativeCamera);
+    expect(scene.source.sceneTimelines[0]?.frameCount).toBe(10);
+    expect(scene.frameContext(0).projectionDiagnostics).toBeUndefined();
+    expect(scene.layers(0).map(([name]) => name)).toEqual(['Healthy']);
+    expect(scene.layers(9)).toEqual([]);
+  });
+
   it.each(['true', 'false', '0'])('preserves the ten-frame authored scene when cameraLayerEnabled is %s', async (enabled) => {
     const cameraLayer = layer('Camera', camera('tx="150" ty="50"', 'index="0" duration="10"'), 'layerType="camera"');
     const artwork = layer('Artwork', frame(instance('Tile', 'tx="135" ty="62"')));

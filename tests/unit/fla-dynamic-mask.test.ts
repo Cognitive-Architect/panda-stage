@@ -97,6 +97,26 @@ describe('Animate dynamic masks', () => {
     }
   });
 
+  it('keeps hidden Folder content out of the formal SVG without disabling the hidden mask for its other children', async () => {
+    const zip = await JSZip.loadAsync(await load('MASK'));
+    const doc = await zip.file('DOMDocument.xml')!.async('string');
+    zip.file('DOMDocument.xml', doc
+      .replace('<DOMLayer name="Shape_window"', '<DOMLayer name="Shape_window" visible="false"')
+      .replace('<DOMLayer name="Red"', '<DOMLayer name="Hidden folder" layerType="folder" parentLayerIndex="2" isVisible="false"/>' +
+        '<DOMLayer name="Nested folder" layerType="folder" parentLayerIndex="3"/><DOMLayer name="Red"')
+      .replace(/(<DOMLayer name="Red"[^>]*parentLayerIndex=")2"/u, (_, prefix: string) => prefix + '4"'));
+    const render = await sceneSampler(await zip.generateAsync({ type: 'uint8array' }));
+    for (const index of [0, 3, 7]) {
+      const result = await render(index);
+      expect(result.maskWarning).toBeUndefined();
+      expect(result.svg).toMatch(/<g clip-path="[^"]+"><path[^>]+fill="#196be6"/iu);
+      expect(result.svg).toMatch(/#f08f36/iu);
+      expect(result.svg).not.toMatch(/#f23544/iu);
+      expect(clipIds(result.svg)).toHaveLength(2);
+      expect(result.svg.match(/<g clip-path=/gu)).toHaveLength(2);
+    }
+  });
+
   it('preserves nested intersections, mirror transforms and both symbol clocks', async () => {
     const sample = await sceneSampler(await load('MASK-NESTED'));
     const [end, start, middle] = [await sample(7), await sample(0), await sample(3)];

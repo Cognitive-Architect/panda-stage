@@ -72,6 +72,46 @@ it('resolves folders in raw scene frames and isolates malformed mask relationshi
   }
 });
 
+it.each(['visible', 'isVisible'])('inherits Folder %s in both raw Scene and Graphic frames', (attribute) => {
+  const folder = (name: string, attrs = '') => `<DOMLayer name="${name}" layerType="folder" ${attrs}/>`;
+  const paint = (name: string, parent?: number, duration = 1, drawing = bitmap(name)) =>
+    `<DOMLayer name="${name}"${parent === undefined ? '' : ` parentLayerIndex="${parent}"`}>` +
+    `<frames><DOMFrame index="0" duration="${duration}"><elements>${drawing}</elements></DOMFrame></frames></DOMLayer>`;
+  const layers = [
+    folder('Hidden', `${attribute}="false"`),
+    folder('Inner', 'parentLayerIndex="0"'),
+    paint('Hidden direct', 0, 1, '<DOMSymbolInstance/>'),
+    paint('Hidden nested', 1, 10),
+    folder('Visible'),
+    paint('Visible child', 4),
+    paint('Independent'),
+  ];
+  const result = adaptFlaXflDisplaySource(
+    '<DOMDocument><timelines>' + timeline('Scene', layers) + '</timelines></DOMDocument>',
+    [{ name: 'LIBRARY/Folder content.xml', xml: graphic('Folder content', layers) }],
+  );
+  if (!result.ok) throw new Error(result.message);
+  const { source } = result;
+  const scene = source.sceneTimelines[0]!;
+  const symbol = descriptor(source, 'Folder content');
+  const rawStart = source.buildSceneFrameContext(scene.xml, 0, 'raw-scene');
+  if (!rawStart.ok) throw new Error(rawStart.message);
+  const raw = source.buildSceneFrameContext(scene.xml, 9, 'raw-scene');
+  const selected = source.buildGraphicFrameContext(symbol.timelineXml, symbol.frameSpanIndex!, 9, 'graphic:Folder content');
+  if (!raw.ok) throw new Error(raw.message);
+  if (!selected.ok) throw new Error(selected.message);
+  for (const frameContext of [rawStart.value, scene.frameContext, symbol.frameContext]) {
+    const resolved = resolveFlaDisplayList({ root: { kind: 'scene', name: scene.name, frameContext }, symbols: source.symbols });
+    if (!resolved.ok) throw new Error(resolved.message);
+    expect(resolved.displayList.layers.map(({ name }) => name)).toEqual(['Independent', 'Visible child']);
+  }
+  expect(scene.frameCount).toBe(10);
+  expect(symbol.frameSpanIndex.frameCount).toBe(10);
+  for (const frameContext of [raw.value, selected.value]) {
+    expect(frameContext.layers.filter(({ visible, elements }) => visible && elements.length)).toEqual([]);
+  }
+});
+
 describe('baked IK display sampling', () => {
   const ink = (name: string, poses: string) => timeline(name, [
     layer('armature', `<DOMFrame index="3" duration="3" tweenType="IK pose"><elements>${

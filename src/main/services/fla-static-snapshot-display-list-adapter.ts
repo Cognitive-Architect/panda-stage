@@ -414,10 +414,13 @@ function framesForLayer(layerXml: string): readonly FlaXflElementBlock[] {
   return wrapper ? getFlaXflDirectChildren(wrapper.xml, 'frames').filter((child) => child.name === 'DOMFrame') : [];
 }
 
-function sourceLayerIsVisible(layer: FlaXflElementBlock): boolean {
-  const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
-  return layer.attributes.visible !== 'false' &&
-    layer.attributes.isVisible !== 'false' &&
+function sourceLayerIsHidden(attributes: FlaXflElementBlock['attributes']): boolean {
+  return attributes.visible === 'false' || attributes.isVisible === 'false';
+}
+
+function sourceLayerIsVisible(layer: FlaXflElementBlock, hierarchy: SourceLayerHierarchy): boolean {
+  const layerType = layer.attributes.layerType?.toLowerCase();
+  return !hierarchy.hiddenByFolder && !sourceLayerIsHidden(layer.attributes) &&
     layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
 }
 
@@ -429,9 +432,10 @@ function timelineFrameSpanIndex(
   timelineXml: string,
 ): FlaStaticSnapshotDisplaySourceResult<FlaTimelineFrameSpanIndex<FlaXflElementBlock>> {
   const cameraEnabled = nativeCameraEnabled(timelineXml);
+  const layers = layersForTimeline(timelineXml);
   const result = buildFlaTimelineFrameSpanIndex(
-    layersForTimeline(timelineXml).map((layer) => ({
-      visible: sourceLayerIsVisible(layer),
+    layers.map((layer, index) => ({
+      visible: sourceLayerIsVisible(layer, sourceLayerHierarchy(layers, index)),
       timingOnly: !cameraEnabled && layer.attributes.layerType?.toLowerCase() === 'camera',
       frames: framesForLayer(layer.xml).map((frame) => ({
         index: frame.attributes.index,
@@ -1097,32 +1101,46 @@ function parseDisplayElements(
   return { ok: true, value: children };
 }
 
+interface SourceLayerHierarchy {
+  readonly hiddenByFolder: boolean;
+  readonly parentMaskIndex?: number | 'unresolved';
+}
+
 /**
- * Resolve the DOMLayer relationship through folders only. A missing mask
- * dependency keeps affected content out of the display list and reports it
- * through the same diagnostic path as any other unavailable mask.
+ * The nearest mask is reached through folders only. Continue through the
+ * mask group to inherit outer folder visibility while ignoring mask visibility.
  */
-function sourceMaskParentIndex(
+function sourceLayerHierarchy(
   layers: readonly FlaXflElementBlock[],
   layerIndex: number,
-): number | 'unresolved' | undefined {
+): SourceLayerHierarchy {
   const layer = layers[layerIndex]!;
   const type = layer.attributes.layerType?.toLowerCase();
-  if (type === 'guide' || type === 'folder' || type === 'camera') return undefined;
+  if (type === 'guide' || type === 'folder' || type === 'camera') return { hiddenByFolder: false };
+
+  let rawParent = layer.attributes.parentLayerIndex;
+  let parentMaskIndex: SourceLayerHierarchy['parentMaskIndex'] = type === 'masked' ? 'unresolved' : undefined;
+  if (rawParent === undefined) return { hiddenByFolder: false, parentMaskIndex };
 
   const visited = new Set([layerIndex]);
-  let rawParent = layer.attributes.parentLayerIndex;
   while (rawParent !== undefined) {
-    const parentIndex = /^\d+$/u.test(rawParent) ? Number(rawParent) : -1;
+    const parentIndex: number = /^\d+$/u.test(rawParent) ? Number(rawParent) : -1;
     const parent = layers[parentIndex];
-    if (!parent || visited.has(parentIndex) || visited.size > MAX_SOURCE_GROUP_DEPTH) return 'unresolved';
+    if (!parent || visited.has(parentIndex) || visited.size > MAX_SOURCE_GROUP_DEPTH) {
+      return { hiddenByFolder: false, parentMaskIndex: parentMaskIndex ?? 'unresolved' };
+    }
     const parentType = parent.attributes.layerType?.toLowerCase();
-    if (parentType === 'mask') return parentIndex;
-    if (parentType !== 'folder') break;
+    if (parentType === 'mask') {
+      if (typeof parentMaskIndex !== 'number') parentMaskIndex = parentIndex;
+    } else if (parentType === 'folder') {
+      if (sourceLayerIsHidden(parent.attributes)) return { hiddenByFolder: true, parentMaskIndex };
+    } else {
+      break;
+    }
     visited.add(parentIndex);
     rawParent = parent.attributes.parentLayerIndex;
   }
-  return type === 'masked' ? 'unresolved' : undefined;
+  return { hiddenByFolder: false, parentMaskIndex };
 }
 
 function buildFrameContext(
@@ -1135,21 +1153,18 @@ function buildFrameContext(
     return fail('RENDER_FAILED', 'Selected frame index must be a non-negative integer');
   }
   const layers = layersForTimeline(timelineXml);
-  const maskLayerIds = new Map<number, string>();
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
-      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
-    }
-  }
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
   const unsupportedDisplayReasons: string[] = [];
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     if (!layer) continue;
-    const parentMaskIndex = sourceMaskParentIndex(layers, layerIndex);
-    const frames = framesForLayer(layer.xml);
-    const frame = parentMaskIndex === 'unresolved' ? undefined : frames[frameIndex];
+    const hierarchy = sourceLayerHierarchy(layers, layerIndex);
+    const { parentMaskIndex } = hierarchy;
+    const visible = sourceLayerIsVisible(layer, hierarchy);
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !hierarchy.hiddenByFolder;
+    const frame = (visible || isMask) && parentMaskIndex !== 'unresolved'
+      ? framesForLayer(layer.xml)[frameIndex]
+      : undefined;
     let elements: readonly FlaDisplayListElement[] = [];
     if (frame) {
       const declaredFrameIndex = Number(frame.attributes.index ?? frameIndex);
@@ -1175,15 +1190,13 @@ function buildFrameContext(
         elements = parsed.value;
       }
     }
-    const layerType = (layer.attributes.layerType ?? '').toLocaleLowerCase('en-US');
-    const visible = sourceLayerIsVisible(layer);
     const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
-      : parentMaskIndex !== undefined ? maskLayerIds.get(parentMaskIndex) : undefined;
+      : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${layerIndex + 1}`,
       visible,
       elements,
-      ...(layerType === 'mask' ? { maskLayerId: maskLayerIds.get(layerIndex) } : {}),
+      ...(isMask ? { maskLayerId: `${scope}/mask-layer-${layerIndex}` } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
   }
@@ -2567,6 +2580,7 @@ function authoredLayerDepth(span: FlaNormalizedFrameSpan<FlaXflElementBlock> | n
 
 function sceneStageViews(
   layers: readonly FlaXflElementBlock[],
+  layerHierarchy: readonly SourceLayerHierarchy[],
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,
   frameIndex: number,
   stage: SceneStage,
@@ -2644,8 +2658,8 @@ function sceneStageViews(
   const focalLength = 528.25;
   const result: StageLayerView[] = [];
   for (const [index, layer] of layers.entries()) {
-    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask';
-    if (!isMask && !sourceLayerIsVisible(layer)) {
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !layerHierarchy[index]?.hiddenByFolder;
+    if (!isMask && !frameSpanIndex.layers[index]?.visible) {
       result.push({ matrix: null, depth: 0 });
       continue;
     }
@@ -2692,8 +2706,9 @@ function buildGraphicFrameContext(
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
+  const layerHierarchy = layers.map((_, index) => sourceLayerHierarchy(layers, index));
   const stageViews = options?.sceneStage
-    ? sceneStageViews(layers, frameSpanIndex, frameIndex, options.sceneStage, state,
+    ? sceneStageViews(layers, layerHierarchy, frameSpanIndex, frameIndex, options.sceneStage, state,
       nativeCameraEnabled(timelineXml))
     : undefined;
   if (stageViews && !stageViews.ok) {
@@ -2707,13 +2722,6 @@ function buildGraphicFrameContext(
     matrixCache: new Map(),
     ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
   };
-  const maskLayerIds = new Map<number, string>();
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
-      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
-    }
-  }
   const sampleLayer = (
     selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
     layerReasons: string[],
@@ -3036,8 +3044,9 @@ function buildGraphicFrameContext(
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
 
-    const isMask = maskLayerIds.has(selection.layerIndex);
-    const parentMaskIndex = sourceMaskParentIndex(layers, selection.layerIndex);
+    const hierarchy = layerHierarchy[selection.layerIndex]!;
+    const { parentMaskIndex } = hierarchy;
+    const isMask = layer.attributes.layerType?.toLowerCase() === 'mask' && !hierarchy.hiddenByFolder;
     const stageView = stageViews?.value[selection.layerIndex];
     if (stageView?.matrix === null && !isMask) {
       if (stageView.warning && projectionDiagnostics.length < 32) {
@@ -3046,7 +3055,7 @@ function buildGraphicFrameContext(
       continue;
     }
     const layerReasons: string[] = [];
-    const sampled = stageView?.matrix === null || parentMaskIndex === 'unresolved'
+    const sampled = (!selection.visible && !isMask) || stageView?.matrix === null || parentMaskIndex === 'unresolved'
       ? { ok: true as const, value: { elements: [], frameFilter: undefined } }
       : sampleLayer(selection, layerReasons, isMask);
     const ikPoseReason = !sampled.ok && sampled.code === 'UNSUPPORTED_IK_POSE' && 'span' in selection
@@ -3060,7 +3069,7 @@ function buildGraphicFrameContext(
     if (!isMask) unsupportedDisplayReasons.push(...layerReasons);
 
     const maskedBy = parentMaskIndex === 'unresolved' ? `${scope}/missing-mask-layer`
-      : parentMaskIndex !== undefined ? maskLayerIds.get(parentMaskIndex) : undefined;
+      : parentMaskIndex !== undefined ? `${scope}/mask-layer-${parentMaskIndex}` : undefined;
     const parentView = typeof parentMaskIndex === 'number' ? stageViews?.value[parentMaskIndex] : undefined;
     const mixedMaskProjection = parentView?.matrix && stageView?.matrix &&
       !Object.entries(parentView.matrix).every(([key, value]) =>
@@ -3078,9 +3087,7 @@ function buildGraphicFrameContext(
       ...(maskReason ? { unsupportedMaskReason: maskReason } : {}),
       ...(mixedMaskProjection ? { incompatibleStageMask: true } : {}),
       ...(!isMask && ikPoseReason ? { skippedIkPoseReason: ikPoseReason } : {}),
-      ...(maskLayerIds.has(selection.layerIndex)
-        ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
-        : {}),
+      ...(isMask ? { maskLayerId: `${scope}/mask-layer-${selection.layerIndex}` } : {}),
       ...(frameFilter ? { frameFilter } : {}),
       ...(maskedBy ? { maskedBy } : {}),
     });
@@ -3252,7 +3259,11 @@ function needsIndexedSceneFrames(xml: string, state: SourceBuildState, hasMovieC
     if (!token) return false;
     cursor = token.end;
     if (token.closing) continue;
-    if (token.name === 'DOMLayer' && token.attributes.layerType?.toLowerCase() === 'mask') return true;
+    if (token.name === 'DOMLayer') {
+      const type = token.attributes.layerType?.toLowerCase();
+      // Use authored span timing for scenes containing hidden Folder content.
+      if (type === 'mask' || (type === 'folder' && sourceLayerIsHidden(token.attributes))) return true;
+    }
     if (token.name === 'DOMFrame' && ['motion object', 'ik pose'].includes(token.attributes.tweenType?.trim().toLowerCase() ?? '')) return true;
     if (token.name !== 'DOMSymbolInstance') continue;
     const name = token.attributes.libraryItemName?.trim();
