@@ -957,4 +957,95 @@ describe('Day 22 layer stores', () => {
     expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
     input.selection.dispose();
   });
+
+  it('commits radial and along-path arrays atomically in one History entry each, restores exact Undo/Redo, and leaves state clean on invalid inputs (#1281 B01 & P3-01)', () => {
+    const base = graphicFaceProject();
+    const shotId = base.shots[0]!.id;
+    const placed = new LayerService().createFromAnimation(base, shotId, {
+      animationId: FACE_GRAPHIC_ID,
+      position: { x: 400, y: 300 },
+      startTimeMs: 0,
+    });
+    const input = harness(placed.project);
+    input.selection.select(placed.layer.id);
+
+    // P3-01: Non-finite radial burst derived transform (non-default pivot + maxRotationDeg=1e308) rejects atomically without touching History.
+    const pivoted = new LayerMotionService().recalibratePivot(
+      placed.project,
+      { shotId, layerId: placed.layer.id },
+      { space: 'target-local', x: 140, y: 110 },
+    );
+    const pivotedInput = harness(pivoted);
+    pivotedInput.selection.select(placed.layer.id);
+    expect(() =>
+      pivotedInput.layers.generateRadialBurst(placed.layer.id, {
+        count: 4,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 1e308,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 0,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(/非有限|超出范围/);
+    expect(pivotedInput.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(pivotedInput.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    pivotedInput.selection.dispose();
+
+    // B01 radial out-of-bounds rejects atomically without touching History.
+    expect(() =>
+      input.layers.duplicateAnimationLayerRadial(placed.layer.id, {
+        count: 8,
+        center: { x: 100, y: 100 },
+        radius: 240,
+        startAngleDeg: 0,
+        orientation: 'align',
+      }),
+    ).toThrow(/超出画布范围/);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+    expect(input.editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+
+    // Valid radial array commits once, retains source selection, supports exact Undo/Redo.
+    const radialLayers = input.layers.duplicateAnimationLayerRadial(placed.layer.id, {
+      count: 8,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      orientation: 'align',
+    });
+    expect(radialLayers).toHaveLength(8);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+    const afterRadial = input.editor.getSnapshot()!.project;
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(placed.project);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterRadial);
+
+    // Valid along-path array commits once, retains source selection, supports exact Undo/Redo.
+    const pathLayers = input.layers.duplicateAnimationLayerAlongPath(placed.layer.id, {
+      count: 6,
+      curve: {
+        p0: { x: 400, y: 300 },
+        p1: { x: 450, y: 80 },
+        p2: { x: 850, y: 80 },
+        p3: { x: 900, y: 300 },
+      },
+      orientation: 'align',
+    });
+    expect(pathLayers).toHaveLength(6);
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 2, redoCount: 0 });
+    expect(input.selection.getSelectedLayerId()).toBe(placed.layer.id);
+    const afterPath = input.editor.getSnapshot()!.project;
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterRadial);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(afterPath);
+    input.selection.dispose();
+  });
 });

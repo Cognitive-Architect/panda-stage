@@ -31,6 +31,18 @@ export interface RadialBurstInstanceSample {
   readonly endPoint: Point;
 }
 
+/** Normalize any finite angle in degrees into [0, 360) without overflowing extreme magnitudes (e.g. 1e308). */
+export function normalizeAngleDeg360(deg: number): number {
+  if (!Number.isFinite(deg)) return Number.NaN;
+  const mod = ((deg % 360) + 360) % 360;
+  return Object.is(mod, -0) || mod === 360 ? 0 : mod;
+}
+
+/** Normalize IEEE-754 -0 to +0 while preserving NaN and all other numbers unchanged. */
+export function normalizeNegativeZero(value: number): number {
+  return Object.is(value, -0) ? 0 : value;
+}
+
 /** Deterministic uint32 PRNG (Mulberry32) producing uniform floats in [0, 1). */
 export function createSeededRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -52,19 +64,24 @@ export function sampleRadialBurstInstances(
   params: RadialBurstSampleParams,
 ): RadialBurstInstanceSample[] {
   const rng = createSeededRng(params.seed);
+  const baseStartAngleDeg = normalizeAngleDeg360(params.startAngleDeg);
   const samples: RadialBurstInstanceSample[] = [];
   for (let index = 0; index < params.count; index += 1) {
     const u = rng();
     const v = rng();
     const w = rng();
-    const angleDeg = params.startAngleDeg + (360 * (index + u)) / params.count;
+    const angleDeg = normalizeNegativeZero(
+      baseStartAngleDeg + (360 * (index + u)) / params.count,
+    );
     const angleRad = (angleDeg * Math.PI) / 180;
     const distance = params.radius * (0.75 + 0.25 * v);
     const rotationDeltaDeg =
-      params.maxRotationDeg === 0 ? 0 : params.maxRotationDeg * (2 * w - 1);
+      params.maxRotationDeg === 0
+        ? 0
+        : normalizeNegativeZero(params.maxRotationDeg * (2 * w - 1));
     const endPoint: Point = {
-      x: params.center.x + Math.cos(angleRad) * distance,
-      y: params.center.y + Math.sin(angleRad) * distance,
+      x: normalizeNegativeZero(params.center.x + Math.cos(angleRad) * distance),
+      y: normalizeNegativeZero(params.center.y + Math.sin(angleRad) * distance),
     };
     samples.push({
       index,

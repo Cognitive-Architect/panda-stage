@@ -6,11 +6,18 @@ import {
 } from '../constants';
 import {
   calculateCoverTransform,
+  normalizeNegativeZero,
   RADIAL_BURST_MAX_COUNT,
   RADIAL_BURST_MAX_SEED,
   RADIAL_BURST_MIN_COUNT,
+  samplePathArrayLayout,
+  sampleRadialArrayLayout,
   sampleRadialBurstInstances,
+  STATIC_ARRAY_MAX_COUNT,
+  STATIC_ARRAY_MIN_COUNT,
+  type CubicBezier2D,
   type Point,
+  type StaticArrayOrientationMode,
 } from '../geometry';
 import { evaluateAnimationEase } from '../evaluate-animation-core';
 import {
@@ -114,6 +121,8 @@ export type LayerServiceErrorCode =
   | 'SHAPE_REGION_REQUIRED'
   | 'SHAPE_FILL_NOT_SOLID'
   | 'INVALID_GRID_ARRAY'
+  | 'INVALID_RADIAL_ARRAY'
+  | 'INVALID_PATH_ARRAY'
   | 'INVALID_AFTERIMAGE'
   | 'INVALID_RADIAL_BURST';
 
@@ -152,6 +161,25 @@ export interface GridArrayInput {
 }
 
 export interface DuplicateGridArrayResult {
+  readonly project: Project;
+  readonly layers: readonly Layer[];
+}
+
+export interface RadialArrayInput {
+  readonly count: number;
+  readonly center: Point;
+  readonly radius: number;
+  readonly startAngleDeg: number;
+  readonly orientation: StaticArrayOrientationMode;
+}
+
+export interface PathArrayInput {
+  readonly count: number;
+  readonly curve: CubicBezier2D;
+  readonly orientation: StaticArrayOrientationMode;
+}
+
+export interface DuplicateStaticArrayResult {
   readonly project: Project;
   readonly layers: readonly Layer[];
 }
@@ -245,7 +273,7 @@ export function normalizeLayerRotation(rotationDeg: number): number {
       '图层旋转角度必须是有限数字。',
     );
   }
-  const normalized = ((rotationDeg + 180) % 360 + 360) % 360 - 180;
+  const normalized = (((rotationDeg % 360) + 540) % 360) - 180;
   return Object.is(normalized, -0) ? 0 : normalized;
 }
 
@@ -1911,6 +1939,260 @@ export class LayerService {
   }
 
   /**
+   * Generate N static radial-array replicas evenly spaced around a full circle.
+   * Reuses the safe duplication contract (Clip ownership, basis sync, Move translation,
+   * overrides, events) without adding layout keyframes or moving/hiding the source.
+   */
+  duplicateAnimationLayerRadial(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: RadialArrayInput,
+  ): DuplicateStaticArrayResult {
+    const { shot, layer } = this.assertFlaGraphicArraySource(
+      project,
+      shotId,
+      layerId,
+      '径向阵列',
+    );
+    const { count, center, radius, startAngleDeg, orientation } = input;
+    if (
+      !Number.isSafeInteger(count) ||
+      count < STATIC_ARRAY_MIN_COUNT ||
+      count > STATIC_ARRAY_MAX_COUNT
+    ) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_ARRAY',
+        `副本数量必须是 ${STATIC_ARRAY_MIN_COUNT}–${STATIC_ARRAY_MAX_COUNT} 之间的整数。`,
+      );
+    }
+    const safeCenter = validateLayerPosition(center);
+    if (!Number.isFinite(radius) || radius <= 0) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_ARRAY',
+        '半径必须是大于 0 的有限数字。',
+      );
+    }
+    if (!Number.isFinite(startAngleDeg)) {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_ARRAY',
+        '起始角度必须是有限数字。',
+      );
+    }
+    if (orientation !== 'keep' && orientation !== 'align') {
+      throw new LayerServiceError(
+        'INVALID_RADIAL_ARRAY',
+        '不支持的朝向模式。',
+      );
+    }
+
+    const samples = sampleRadialArrayLayout({
+      count,
+      center: safeCenter,
+      radius,
+      startAngleDeg,
+      orientation,
+    });
+
+    const targets: { readonly index: number; readonly position: Point; readonly rotationDeg: number }[] = [];
+    for (const sample of samples) {
+      if (
+        !Number.isFinite(sample.position.x) ||
+        !Number.isFinite(sample.position.y) ||
+        sample.position.x < 0 ||
+        sample.position.x > PROJECT_WIDTH ||
+        sample.position.y < 0 ||
+        sample.position.y > PROJECT_HEIGHT
+      ) {
+        throw new LayerServiceError(
+          'INVALID_POSITION',
+          `径向阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整圆心、半径或数量。`,
+        );
+      }
+      const targetRotationDeg =
+        orientation === 'align'
+          ? normalizeLayerRotation(layer.rotationDeg + sample.directionAngleDeg!)
+          : layer.rotationDeg;
+      targets.push({
+        index: sample.index,
+        position: sample.position,
+        rotationDeg: targetRotationDeg,
+      });
+    }
+
+    return this.commitStaticArrayTargets(
+      project,
+      shot,
+      layer,
+      targets,
+      (index) => `${layer.name} 径向 ${index + 1}`,
+    );
+  }
+
+  /**
+   * Generate N static replicas evenly spaced by arc length along a single cubic Bézier curve.
+   * Reuses A02 arc-length sampling and the A00/A01 safe duplication contract.
+   */
+  duplicateAnimationLayerAlongPath(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: PathArrayInput,
+  ): DuplicateStaticArrayResult {
+    const { shot, layer } = this.assertFlaGraphicArraySource(
+      project,
+      shotId,
+      layerId,
+      '沿路径阵列',
+    );
+    const { count, curve, orientation } = input;
+    if (
+      !Number.isSafeInteger(count) ||
+      count < STATIC_ARRAY_MIN_COUNT ||
+      count > STATIC_ARRAY_MAX_COUNT
+    ) {
+      throw new LayerServiceError(
+        'INVALID_PATH_ARRAY',
+        `副本数量必须是 ${STATIC_ARRAY_MIN_COUNT}–${STATIC_ARRAY_MAX_COUNT} 之间的整数。`,
+      );
+    }
+    if (orientation !== 'keep' && orientation !== 'align') {
+      throw new LayerServiceError(
+        'INVALID_PATH_ARRAY',
+        '不支持的朝向模式。',
+      );
+    }
+    const safeCurve: CubicBezier2D = {
+      p0: validateLayerPosition(curve.p0),
+      p1: validateLayerPosition(curve.p1),
+      p2: validateLayerPosition(curve.p2),
+      p3: validateLayerPosition(curve.p3),
+    };
+
+    const sampled = samplePathArrayLayout({
+      count,
+      curve: safeCurve,
+      orientation,
+    });
+    if (!sampled.ok) {
+      if (sampled.reason === 'degenerate-tangent') {
+        throw new LayerServiceError(
+          'INVALID_PATH_ARRAY',
+          '路径在部分采样点切线退化，无法沿路径切线对齐朝向；请调整控制点或改用“保持朝向”。',
+        );
+      }
+      throw new LayerServiceError(
+        'INVALID_PATH_ARRAY',
+        '路径长度为 0（退化路径），请设置有效的起止点与控制点。',
+      );
+    }
+
+    const targets: { readonly index: number; readonly position: Point; readonly rotationDeg: number }[] = [];
+    for (const sample of sampled.samples) {
+      if (
+        !Number.isFinite(sample.position.x) ||
+        !Number.isFinite(sample.position.y) ||
+        sample.position.x < 0 ||
+        sample.position.x > PROJECT_WIDTH ||
+        sample.position.y < 0 ||
+        sample.position.y > PROJECT_HEIGHT
+      ) {
+        throw new LayerServiceError(
+          'INVALID_POSITION',
+          `沿路径阵列目标位置超出画布范围（0–${PROJECT_WIDTH}、0–${PROJECT_HEIGHT}），请调整路径控制点或数量。`,
+        );
+      }
+      const targetRotationDeg =
+        orientation === 'align'
+          ? normalizeLayerRotation(layer.rotationDeg + sample.directionAngleDeg!)
+          : layer.rotationDeg;
+      targets.push({
+        index: sample.index,
+        position: sample.position,
+        rotationDeg: targetRotationDeg,
+      });
+    }
+
+    return this.commitStaticArrayTargets(
+      project,
+      shot,
+      layer,
+      targets,
+      (index) => `${layer.name} 路径 ${index + 1}`,
+    );
+  }
+
+  private assertFlaGraphicArraySource(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    featureLabel: string,
+  ): { readonly shot: Shot; readonly layer: Layer } {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        `只能对 FLA 图形动画图层执行${featureLabel}。`,
+      );
+    }
+    const animationId = layer.source.animationId;
+    const definition = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!definition || !isFlaGraphicDefinition(definition)) {
+      throw new LayerServiceError(
+        'FLA_GRAPHIC_REQUIRED',
+        `${featureLabel}仅支持 FLA 图形（Graphic）动画图层。`,
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    return { shot, layer };
+  }
+
+  private commitStaticArrayTargets(
+    project: Project,
+    shot: Shot,
+    layer: Layer,
+    targets: readonly { readonly index: number; readonly position: Point; readonly rotationDeg: number }[],
+    formatName: (index: number) => string,
+  ): DuplicateStaticArrayResult {
+    const usedIds = this.projectIds(project);
+    const sourceEvents = shot.timelineEvents.filter(
+      (event) => event.layerId === layer.id,
+    );
+    let nextZIndex = Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1;
+    const createdLayers: Layer[] = [];
+    const createdEvents: TimelineEvent[] = [];
+
+    for (const target of targets) {
+      const built = this.buildDuplicatedAnimationLayer(
+        layer,
+        sourceEvents,
+        usedIds,
+        target.position,
+        nextZIndex,
+        formatName(target.index),
+        target.rotationDeg,
+      );
+      nextZIndex += 1;
+      createdLayers.push(built.layer);
+      createdEvents.push(...built.events);
+    }
+
+    const nextShot = {
+      ...shot,
+      layers: [...shot.layers, ...createdLayers],
+      timelineEvents: [...shot.timelineEvents, ...createdEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layers: createdLayers,
+    };
+  }
+
+  /**
    * Generate N native editable position-afterimage replicas directly beneath the
    * source FLA Graphic layer. Each replica i (1..N) samples the source's evaluated
    * stage anchor, opacity, and visibility at historical frame h = f - i * Δ.
@@ -2496,6 +2778,18 @@ export class LayerService {
     const createdEvents: TimelineEvent[] = [];
 
     for (const sample of samples) {
+      if (
+        !Number.isFinite(sample.angleDeg) ||
+        !Number.isFinite(sample.distance) ||
+        !Number.isFinite(sample.rotationDeltaDeg) ||
+        !Number.isFinite(sample.endPoint.x) ||
+        !Number.isFinite(sample.endPoint.y)
+      ) {
+        throw new LayerServiceError(
+          'INVALID_RADIAL_BURST',
+          '径向爆炸参数导致无效或超出范围的数值结果，请调整半径、角度或旋转幅度。',
+        );
+      }
       const replicaId = this.nextUniqueId(usedIds);
       usedIds.add(replicaId);
 
@@ -2522,7 +2816,18 @@ export class LayerService {
         const progress = evaluateAnimationEase(step / durationFrames, 'ease-out');
         const stageX = safeCenter.x + (sample.endPoint.x - safeCenter.x) * progress;
         const stageY = safeCenter.y + (sample.endPoint.y - safeCenter.y) * progress;
-        const relRotDeg = sample.rotationDeltaDeg * progress || 0;
+        const rawRelRotDeg = sample.rotationDeltaDeg * progress;
+        if (
+          !Number.isFinite(stageX) ||
+          !Number.isFinite(stageY) ||
+          !Number.isFinite(rawRelRotDeg)
+        ) {
+          throw new LayerServiceError(
+            'INVALID_RADIAL_BURST',
+            '径向爆炸轨迹计算出现非有限数值，请调整半径、角度或旋转幅度。',
+          );
+        }
+        const relRotDeg = normalizeNegativeZero(rawRelRotDeg);
         const solved = solveLayerRelativeOffsetForStagePoint(
           localPivot,
           basePose,
@@ -2532,14 +2837,25 @@ export class LayerService {
           1,
           { x: stageX, y: stageY },
         );
+        if (
+          typeof solved.offsetX !== 'number' ||
+          typeof solved.offsetY !== 'number' ||
+          !Number.isFinite(solved.offsetX) ||
+          !Number.isFinite(solved.offsetY)
+        ) {
+          throw new LayerServiceError(
+            'INVALID_RADIAL_BURST',
+            '径向爆炸偏移反解出现非有限数值，请调整参数后重试。',
+          );
+        }
         offsetXKeys.push({
           timeMs,
-          value: solved.offsetX! || 0,
+          value: normalizeNegativeZero(solved.offsetX),
           interpolationToNext: 'linear',
         });
         offsetYKeys.push({
           timeMs,
-          value: solved.offsetY! || 0,
+          value: normalizeNegativeZero(solved.offsetY),
           interpolationToNext: 'linear',
         });
         if (hasRotation) {
@@ -2709,6 +3025,7 @@ export class LayerService {
     position: Point,
     zIndex: number,
     name: string,
+    rotationDeg: number = layer.rotationDeg,
   ): { readonly layer: Layer; readonly events: readonly TimelineEvent[] } {
     const duplicateId = this.nextUniqueId(usedIds);
     usedIds.add(duplicateId);
@@ -2741,7 +3058,7 @@ export class LayerService {
                 y: position.y,
                 scaleX: layer.scaleX,
                 scaleY: layer.scaleY,
-                rotationDeg: layer.rotationDeg,
+                rotationDeg,
               },
             ),
           }
@@ -2750,6 +3067,7 @@ export class LayerService {
       name,
       x: position.x,
       y: position.y,
+      rotationDeg,
       zIndex,
     };
     const events = this.cloneEventsPreservingOrder(

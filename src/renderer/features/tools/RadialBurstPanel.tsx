@@ -51,6 +51,7 @@ interface RadialBurstDraft {
   readonly count: string;
   readonly centerX: string;
   readonly centerY: string;
+  readonly centerManuallyEdited: boolean;
   readonly radius: string;
   readonly startAngleDeg: string;
   readonly maxRotationDeg: string;
@@ -125,28 +126,10 @@ function resolveRadialBurstTarget(): RadialBurstTargetState {
   };
 }
 
-function buildInitialDraft(
-  target: RadialBurstTarget | null,
-  currentTimeMs: number,
-): RadialBurstDraft {
-  if (!target) {
-    return {
-      targetKey: '',
-      count: String(RADIAL_BURST_DEFAULT_COUNT),
-      centerX: String(PROJECT_WIDTH / 2),
-      centerY: String(PROJECT_HEIGHT / 2),
-      radius: String(RADIAL_BURST_DEFAULT_RADIUS),
-      startAngleDeg: String(RADIAL_BURST_DEFAULT_START_ANGLE_DEG),
-      maxRotationDeg: String(RADIAL_BURST_DEFAULT_MAX_ROTATION_DEG),
-      startFrame: '0',
-      durationFrames: String(RADIAL_BURST_DEFAULT_DURATION_FRAMES),
-      staggerFrames: String(RADIAL_BURST_DEFAULT_STAGGER_FRAMES),
-      seed: String(RADIAL_BURST_DEFAULT_SEED),
-      fadeOut: true,
-    };
-  }
-  const legalMs = resolveTimelineFrameTime(currentTimeMs, target.shot.durationMs);
-  const startFrame = Math.min(target.maxFrame, frameIndexFromMs(legalMs));
+function sampleDefaultCenterAtFrame(
+  target: RadialBurstTarget,
+  startFrame: number,
+): { readonly centerX: string; readonly centerY: string } {
   const evaluated = evaluateShotAtTime(
     target.shot,
     frameTimeMs(startFrame),
@@ -160,11 +143,39 @@ function buildInitialDraft(
     PROJECT_HEIGHT,
     Math.max(0, Math.round((evaluated?.y ?? target.layer.y) * 10) / 10),
   );
+  return { centerX: String(cx), centerY: String(cy) };
+}
+
+function buildInitialDraft(
+  target: RadialBurstTarget | null,
+  currentTimeMs: number,
+): RadialBurstDraft {
+  if (!target) {
+    return {
+      targetKey: '',
+      count: String(RADIAL_BURST_DEFAULT_COUNT),
+      centerX: String(PROJECT_WIDTH / 2),
+      centerY: String(PROJECT_HEIGHT / 2),
+      centerManuallyEdited: false,
+      radius: String(RADIAL_BURST_DEFAULT_RADIUS),
+      startAngleDeg: String(RADIAL_BURST_DEFAULT_START_ANGLE_DEG),
+      maxRotationDeg: String(RADIAL_BURST_DEFAULT_MAX_ROTATION_DEG),
+      startFrame: '0',
+      durationFrames: String(RADIAL_BURST_DEFAULT_DURATION_FRAMES),
+      staggerFrames: String(RADIAL_BURST_DEFAULT_STAGGER_FRAMES),
+      seed: String(RADIAL_BURST_DEFAULT_SEED),
+      fadeOut: true,
+    };
+  }
+  const legalMs = resolveTimelineFrameTime(currentTimeMs, target.shot.durationMs);
+  const startFrame = Math.min(target.maxFrame, frameIndexFromMs(legalMs));
+  const { centerX, centerY } = sampleDefaultCenterAtFrame(target, startFrame);
   return {
     targetKey: target.key,
     count: String(RADIAL_BURST_DEFAULT_COUNT),
-    centerX: String(cx),
-    centerY: String(cy),
+    centerX,
+    centerY,
+    centerManuallyEdited: false,
     radius: String(RADIAL_BURST_DEFAULT_RADIUS),
     startAngleDeg: String(RADIAL_BURST_DEFAULT_START_ANGLE_DEG),
     maxRotationDeg: String(RADIAL_BURST_DEFAULT_MAX_ROTATION_DEG),
@@ -397,7 +408,12 @@ export function RadialBurstPanel({
             data-testid="radial-burst-center-x"
             disabled={!targetState.ok}
             inputMode="decimal"
-            onChange={(event) => updateDraft({ centerX: event.target.value })}
+            onChange={(event) =>
+              updateDraft({
+                centerX: event.target.value,
+                centerManuallyEdited: true,
+              })
+            }
             type="number"
             value={effectiveDraft.centerX}
           />
@@ -409,7 +425,12 @@ export function RadialBurstPanel({
             data-testid="radial-burst-center-y"
             disabled={!targetState.ok}
             inputMode="decimal"
-            onChange={(event) => updateDraft({ centerY: event.target.value })}
+            onChange={(event) =>
+              updateDraft({
+                centerY: event.target.value,
+                centerManuallyEdited: true,
+              })
+            }
             type="number"
             value={effectiveDraft.centerY}
           />
@@ -423,7 +444,24 @@ export function RadialBurstPanel({
             inputMode="numeric"
             min={0}
             max={activeTarget?.maxFrame}
-            onChange={(event) => updateDraft({ startFrame: event.target.value })}
+            onChange={(event) => {
+              const raw = event.target.value;
+              const nextStartFrame = parseNonNegativeInt(raw);
+              if (
+                !effectiveDraft.centerManuallyEdited &&
+                activeTarget &&
+                nextStartFrame !== null &&
+                nextStartFrame <= activeTarget.maxFrame
+              ) {
+                const { centerX, centerY } = sampleDefaultCenterAtFrame(
+                  activeTarget,
+                  nextStartFrame,
+                );
+                updateDraft({ startFrame: raw, centerX, centerY });
+                return;
+              }
+              updateDraft({ startFrame: raw });
+            }}
             step={1}
             type="number"
             value={effectiveDraft.startFrame}

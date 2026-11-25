@@ -1273,4 +1273,116 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
     )!;
     expect(Math.abs(alignedRender.render.x - 1_600)).toBeLessThan(0.1);
   });
+
+  it('persists B01 radial and along-path arrays + independent replica edit/delete across save/reopen and agrees across Stage, Preview, and Export (#1281 B01)', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'panda-stage-b01-static-arrays-'));
+    const root = path.join(tempDir, 'b01.pandastage');
+    try {
+      await mkdir(root, { recursive: true });
+      const projectService = new ProjectService();
+      const layerService = new LayerService();
+      const base = ProjectSchema.parse({
+        ...graphicFaceProject(),
+        characters: [],
+        voiceProfiles: [],
+        shots: graphicFaceProject().shots.map((s) => ({
+          ...s,
+          durationMs: 2_000,
+          dialogues: [],
+          timelineEvents: [],
+          layers: s.layers.filter((l) => l.id === s.backgroundLayerId),
+        })),
+      });
+      const shotId = base.shots[0]!.id;
+      const placed = layerService.createFromAnimation(base, shotId, {
+        animationId: FACE_GRAPHIC_ID,
+        position: { x: 400, y: 300 },
+        startTimeMs: 0,
+        playback: { mode: 'loop', endBehavior: 'hold' },
+      });
+      const sourceWithMotion = new LayerMotionService().applyKeys(
+        placed.project,
+        { shotId, layerId: placed.layer.id, timeMs: 42 },
+        { 'transform.offsetX': 40 },
+      );
+
+      const store = new EditorProjectStore();
+      store.open(root, sourceWithMotion);
+      const shots = { getCurrentShotId: () => shotId };
+      const selection = new LayerSelectionStore(store, {
+        ...shots,
+        subscribe: () => () => undefined,
+      });
+      selection.select(placed.layer.id);
+      const layerStore = new LayerStore(store, shots, layerService, selection);
+
+      // Generate radial array (N=4, align) and along-path array (N=4, align) in 2 atomic commands.
+      const radialLayers = layerStore.duplicateAnimationLayerRadial(placed.layer.id, {
+        count: 4,
+        center: { x: 960, y: 540 },
+        radius: 200,
+        startAngleDeg: 0,
+        orientation: 'align',
+      });
+      const pathLayers = layerStore.duplicateAnimationLayerAlongPath(placed.layer.id, {
+        count: 4,
+        curve: {
+          p0: { x: 400, y: 300 },
+          p1: { x: 500, y: 120 },
+          p2: { x: 800, y: 120 },
+          p3: { x: 900, y: 300 },
+        },
+        orientation: 'align',
+      });
+      expect(radialLayers).toHaveLength(4);
+      expect(pathLayers).toHaveLength(4);
+
+      // Independently edit one radial replica & delete one path replica without affecting source/siblings.
+      layerStore.updateTransform(radialLayers[0]!.id, {
+        x: 1_250,
+        y: 520,
+        scale: 1,
+        rotationDeg: 15,
+        opacity: 1,
+        flipX: false,
+      });
+      layerStore.deleteLayer(pathLayers[3]!.id);
+
+      const savedProject = store.getSnapshot()!.project;
+      await writeFile(path.join(root, 'project.json'), JSON.stringify(placed.project));
+      await projectService.save(root, savedProject, 1);
+      const reopened = await projectService.open(root);
+      expect(reopened.project).toEqual(savedProject);
+      expect(reopened.project.animations).toEqual(placed.project.animations);
+      expect(reopened.project.assets).toEqual(placed.project.assets);
+
+      // Verify Stage, Product Preview, and Export Render Model agree on non-integer-ms frame 1 (41ms <-> 42ms).
+      const shot = reopened.project.shots[0]!;
+      const urls = Object.fromEntries(reopened.project.assets.map((a) => [a.id, `test:${a.id}`]));
+      const authoringMs = frameTimeMs(1); // 42ms
+      const exportMs = exportFrameTimeMs(1); // 41ms
+      const stageEval = evaluateShotAtTime(shot, authoringMs, reopened.project);
+      const previewEval = projectProductPreviewDialogue(reopened.project, shot, stageEval);
+      const exportEval = evaluateExportShotAtTime(reopened.project, shot, exportMs);
+      const stageModel = buildStageRenderModel(reopened.project, stageEval, urls);
+      const previewModel = buildStageRenderModel(reopened.project, previewEval, urls);
+      const exportModel = buildStageRenderModel(reopened.project, exportEval, urls);
+
+      for (const id of [placed.layer.id, radialLayers[0]!.id, radialLayers[1]!.id, pathLayers[0]!.id, pathLayers[1]!.id]) {
+        const sLayer = stageModel.layers.find((l) => l.id === id)!;
+        const pLayer = previewModel.layers.find((l) => l.id === id)!;
+        const eLayer = exportModel.layers.find((l) => l.id === id)!;
+        expect(sLayer.render.x).toBeCloseTo(pLayer.render.x, 4);
+        expect(sLayer.render.y).toBeCloseTo(pLayer.render.y, 4);
+        expect(sLayer.render.rotationDeg).toBeCloseTo(pLayer.render.rotationDeg, 4);
+        expect(Math.abs(eLayer.render.x - sLayer.render.x)).toBeLessThan(0.1);
+        expect(Math.abs(eLayer.render.y - sLayer.render.y)).toBeLessThan(0.1);
+        expect(Math.abs(eLayer.render.rotationDeg - sLayer.render.rotationDeg)).toBeLessThan(0.1);
+      }
+      expect(reopened.project.shots[0]!.layers.some((l) => l.id === pathLayers[3]!.id)).toBe(false);
+      selection.dispose();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });

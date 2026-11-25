@@ -134,4 +134,82 @@ describe('ProjectToolsDrawer -> RadialBurstPanel (#1273 A04)', () => {
     expect(buttonByTestId('radial-burst-submit').disabled).toBe(true);
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.filter((l) => l.name.includes('爆炸'))).toHaveLength(0);
   });
+
+  it('tracks moving source anchor as default center when startFrame changes, preserves manual center override, and ignores illegal frames (#1281 P3-02)', async () => {
+    // Move source linearly from A=(300,200) at frame 0 (0ms) to B=(900,500) at frame 12 (500ms).
+    const snapshot = editorProjectStore.getSnapshot()!;
+    const movingProject = ProjectSchema.parse({
+      ...snapshot.project,
+      shots: snapshot.project.shots.map((shot, idx) =>
+        idx === 0
+          ? {
+              ...shot,
+              layers: shot.layers.map((layer) =>
+                layer.id === sourceLayerId ? { ...layer, x: 300, y: 200 } : layer,
+              ),
+              timelineEvents: [
+                {
+                  id: '94000000-0000-4000-8000-000000000901',
+                  type: 'move',
+                  layerId: sourceLayerId,
+                  startMs: 0,
+                  endMs: 500,
+                  from: { x: 300, y: 200 },
+                  to: { x: 900, y: 500 },
+                  easing: 'linear',
+                },
+              ],
+            }
+          : shot,
+      ),
+    });
+    await act(async () => {
+      editorProjectStore.open(PROJECT_ROOT, movingProject);
+      shotStore.select(IDS.shot);
+      selectionStore.select(sourceLayerId);
+      timelineUiStore.seek(0, 2_000);
+    });
+
+    await act(async () => buttonByTestId('project-tools-radial-burst').click());
+    // Default at startFrame=0 is A=(300, 200).
+    expect(inputByTestId('radial-burst-start-frame').value).toBe('0');
+    expect(inputByTestId('radial-burst-center-x').value).toBe('300');
+    expect(inputByTestId('radial-burst-center-y').value).toBe('200');
+
+    // Changing startFrame to 12 (500ms) automatically updates default center to B=(900, 500).
+    await setInputValue('radial-burst-start-frame', '12');
+    expect(inputByTestId('radial-burst-center-x').value).toBe('900');
+    expect(inputByTestId('radial-burst-center-y').value).toBe('500');
+
+    // Illegal startFrame (out of range) does not overwrite center or mutate Project/History.
+    await setInputValue('radial-burst-start-frame', '999');
+    expect(inputByTestId('radial-burst-center-x').value).toBe('900');
+    expect(inputByTestId('radial-burst-center-y').value).toBe('500');
+    expect(buttonByTestId('radial-burst-submit').disabled).toBe(true);
+
+    // Restoring legal frame 0 still follows A=(300, 200) since center was not manually edited.
+    await setInputValue('radial-burst-start-frame', '0');
+    expect(inputByTestId('radial-burst-center-x').value).toBe('300');
+    expect(inputByTestId('radial-burst-center-y').value).toBe('200');
+
+    // Manually edit center to C=(640, 360); subsequent startFrame change to 12 preserves C.
+    await setInputValue('radial-burst-center-x', '640');
+    await setInputValue('radial-burst-center-y', '360');
+    await setInputValue('radial-burst-start-frame', '12');
+    expect(inputByTestId('radial-burst-center-x').value).toBe('640');
+    expect(inputByTestId('radial-burst-center-y').value).toBe('360');
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+
+    // Submit with C=(640, 360) and verify generated replicas use exact Base (640, 360).
+    await setInputValue('radial-burst-count', '4');
+    await act(async () => buttonByTestId('radial-burst-submit').click());
+    const after = editorProjectStore.getSnapshot()!;
+    const replicas = after.project.shots[0]!.layers.filter((l) => l.name.includes('爆炸'));
+    expect(replicas).toHaveLength(4);
+    for (const replica of replicas) {
+      expect(replica.x).toBe(640);
+      expect(replica.y).toBe(360);
+    }
+  });
 });

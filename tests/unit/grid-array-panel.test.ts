@@ -170,4 +170,72 @@ describe('ProjectToolsDrawer -> GridArrayPanel (#1268 A01)', () => {
     });
     expect(buttonByTestId('grid-array-submit').disabled).toBe(true);
   });
+
+  it('supports radial and along-path array modes cleanly in Tools without writing Project on mode switch/draft/cancel (#1281 B01)', async () => {
+    await act(async () => buttonByTestId('project-tools-grid-array').click());
+    expect(buttonByTestId('array-mode-grid').getAttribute('aria-pressed')).toBe('true');
+
+    // Switch to radial mode: draft & mode switch leave Project/History clean.
+    await act(async () => buttonByTestId('array-mode-radial').click());
+    expect(inputByTestId('radial-array-count').value).toBe('8');
+    expect(inputByTestId('radial-array-center-x').value).toBe('400');
+    expect(inputByTestId('radial-array-center-y').value).toBe('300');
+    expect(inputByTestId('radial-array-radius').value).toBe('240');
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+
+    // Out-of-bounds radial target disables submit.
+    await setInputValue('radial-array-radius', '500');
+    expect(buttonByTestId('grid-array-submit').disabled).toBe(true);
+    expect(container.querySelector('[data-testid="grid-array-status"]')?.textContent).toContain('超出画布范围');
+
+    // Valid radial submit with align orientation creates 8 replicas in 1 History entry & keeps source selected.
+    await setInputValue('radial-array-center-x', '960');
+    await setInputValue('radial-array-center-y', '540');
+    await setInputValue('radial-array-radius', '240');
+    const radialSelect = container.querySelector<HTMLSelectElement>('[data-testid="radial-array-orientation"]')!;
+    await act(async () => {
+      radialSelect.value = 'align';
+      radialSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const layersBefore = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.length;
+    await act(async () => buttonByTestId('grid-array-submit').click());
+    const afterRadial = editorProjectStore.getSnapshot()!;
+    expect(afterRadial).toMatchObject({ dirty: true, revision: 1 });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    expect(afterRadial.project.shots[0]!.layers).toHaveLength(layersBefore + 8);
+    expect(selectionStore.getSelectedLayerId()).toBe(sourceLayerId);
+
+    // Switch to path mode, verify zero-length rejection, then submit valid open curve with align.
+    await act(async () => buttonByTestId('array-mode-path').click());
+    await setInputValue('path-array-p0-x', '400');
+    await setInputValue('path-array-p0-y', '300');
+    await setInputValue('path-array-p1-x', '400');
+    await setInputValue('path-array-p1-y', '300');
+    await setInputValue('path-array-p2-x', '400');
+    await setInputValue('path-array-p2-y', '300');
+    await setInputValue('path-array-p3-x', '400');
+    await setInputValue('path-array-p3-y', '300');
+    expect(buttonByTestId('grid-array-submit').disabled).toBe(true);
+    expect(container.querySelector('[data-testid="grid-array-status"]')?.textContent).toContain('退化路径');
+
+    await setInputValue('path-array-count', '6');
+    await setInputValue('path-array-p1-x', '450');
+    await setInputValue('path-array-p1-y', '80');
+    await setInputValue('path-array-p2-x', '850');
+    await setInputValue('path-array-p2-y', '80');
+    await setInputValue('path-array-p3-x', '900');
+    await setInputValue('path-array-p3-y', '300');
+    const pathSelect = container.querySelector<HTMLSelectElement>('[data-testid="path-array-orientation"]')!;
+    await act(async () => {
+      pathSelect.value = 'align';
+      pathSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => buttonByTestId('grid-array-submit').click());
+    const afterPath = editorProjectStore.getSnapshot()!;
+    expect(afterPath).toMatchObject({ dirty: true, revision: 2 });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 2, redoCount: 0 });
+    expect(afterPath.project.shots[0]!.layers).toHaveLength(layersBefore + 8 + 6);
+    expect(selectionStore.getSelectedLayerId()).toBe(sourceLayerId);
+  });
 });

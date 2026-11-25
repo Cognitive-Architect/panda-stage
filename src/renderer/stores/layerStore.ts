@@ -13,8 +13,10 @@ import {
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
+  type PathArrayInput,
   type Point,
   type Project,
+  type RadialArrayInput,
   type RadialBurstInput,
 } from '../../domain';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
@@ -202,6 +204,40 @@ export class LayerStore {
     );
     if (result.project !== project) {
       this.editorStore.updateProject(result.project, '排兵布阵');
+    }
+    return result.layers;
+  }
+
+  duplicateAnimationLayerRadial(
+    layerId: string,
+    input: RadialArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerRadial(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '径向阵列');
+    }
+    return result.layers;
+  }
+
+  duplicateAnimationLayerAlongPath(
+    layerId: string,
+    input: PathArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerAlongPath(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '沿路径阵列');
     }
     return result.layers;
   }

@@ -26,9 +26,12 @@ import {
   layerCompositeKeyTimes,
   hasLayerCompositeKeyOutgoingInterval,
   migrateProject,
+  normalizeAngleDeg360,
   recognizePositionChain,
   resolveLayerVisualParts,
   sampleCubicBezierBySteps,
+  samplePathArrayLayout,
+  sampleRadialArrayLayout,
   sampleRadialBurstInstances,
   type CubicBezier2D,
   type FlaGraphicDefinition,
@@ -2884,5 +2887,399 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
         fadeOut: true,
       }),
     ).toThrow(/不可见或完全透明/);
+  });
+
+  it('normalizes extreme finite startAngleDeg (1e308) without NaN/zero-silencing and rejects non-finite derived burst transforms (#1281 P3-01)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+    const extremeAngle = 1e308;
+    const normalizedAngle = normalizeAngleDeg360(extremeAngle);
+    expect(Number.isFinite(normalizedAngle)).toBe(true);
+    expect(normalizedAngle).toBeGreaterThanOrEqual(0);
+    expect(normalizedAngle).toBeLessThan(360);
+
+    // Same seed + extremeAngle matches normalizedAngle identically and preserves sector spacing.
+    const extremeSamples = sampleRadialBurstInstances({
+      count: 8,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: extremeAngle,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+    const normalizedSamples = sampleRadialBurstInstances({
+      count: 8,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: normalizedAngle,
+      maxRotationDeg: 180,
+      seed: 42,
+    });
+    expect(extremeSamples).toEqual(normalizedSamples);
+    for (let i = 0; i < extremeSamples.length; i += 1) {
+      expect(Number.isFinite(extremeSamples[i]!.endPoint.x)).toBe(true);
+      expect(Number.isFinite(extremeSamples[i]!.endPoint.y)).toBe(true);
+      if (i > 0) {
+        expect(extremeSamples[i]!.angleDeg).toBeGreaterThan(extremeSamples[i - 1]!.angleDeg);
+      }
+    }
+
+    // Domain generateRadialBurst with extremeAngle produces finite non-zero keys identical to normalizedAngle.
+    const proj = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({ ...s, durationMs: 2_000 })),
+    });
+    const burstExtreme = layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+      count: 6,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: extremeAngle,
+      maxRotationDeg: 180,
+      startFrame: 0,
+      durationFrames: 12,
+      staggerFrames: 1,
+      seed: 42,
+      fadeOut: true,
+    });
+    const burstNorm = layerService.generateRadialBurst(proj, base.shotId, base.layerId, {
+      count: 6,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: normalizedAngle,
+      maxRotationDeg: 180,
+      startFrame: 0,
+      durationFrames: 12,
+      staggerFrames: 1,
+      seed: 42,
+      fadeOut: true,
+    });
+    for (let i = 0; i < 6; i += 1) {
+      const endMs = frameTimeMs(i + 12);
+      const evalExtreme = evaluateShotAtTime(burstExtreme.project.shots[0]!, endMs, burstExtreme.project).layers.find(
+        (l) => l.id === burstExtreme.layers[i]!.id,
+      )!;
+      const evalNorm = evaluateShotAtTime(burstNorm.project.shots[0]!, endMs, burstNorm.project).layers.find(
+        (l) => l.id === burstNorm.layers[i]!.id,
+      )!;
+      expect(evalExtreme.x).toBeCloseTo(evalNorm.x, 6);
+      expect(evalExtreme.y).toBeCloseTo(evalNorm.y, 6);
+    }
+
+    // Non-finite derived transform (non-default pivot + maxRotationDeg=1e308 overflows rad -> cos(Infinity)=NaN in pivot solver) must throw INVALID_RADIAL_BURST, never silently write 0.
+    const pivotedProj = service.recalibratePivot(
+      proj,
+      { shotId: base.shotId, layerId: base.layerId },
+      { space: 'target-local', x: 140, y: 110 },
+    );
+    expect(() =>
+      layerService.generateRadialBurst(pivotedProj, base.shotId, base.layerId, {
+        count: 4,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        maxRotationDeg: 1e308,
+        startFrame: 0,
+        durationFrames: 12,
+        staggerFrames: 0,
+        seed: 42,
+        fadeOut: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_BURST' }));
+  });
+
+  it('generates static radial arrays with exact geometry, orientation bias, rich copy semantics, boundary counts, and strict rejections (#1281 B01 radial)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+
+    // Standard AC case: C=(960,540), R=240, N=8, θ0=0°.
+    const beforeProj = structuredClone(base.project);
+    const keepResult = layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+      count: 8,
+      center: { x: 960, y: 540 },
+      radius: 240,
+      startAngleDeg: 0,
+      orientation: 'keep',
+    });
+    const parsedKeep = ProjectSchema.parse(keepResult.project);
+    expect(keepResult.layers).toHaveLength(8);
+    expect(parsedKeep.animations).toEqual(beforeProj.animations);
+    expect(parsedKeep.assets).toEqual(beforeProj.assets);
+    expect(parsedKeep.shots[0]!.layers.find((l) => l.id === base.layerId)).toEqual(
+      beforeProj.shots[0]!.layers.find((l) => l.id === base.layerId),
+    );
+    expect(keepResult.layers[0]!.x).toBeCloseTo(1_200, 4);
+    expect(keepResult.layers[0]!.y).toBeCloseTo(540, 4);
+    expect(keepResult.layers[4]!.x).toBeCloseTo(720, 4);
+    expect(keepResult.layers[4]!.y).toBeCloseTo(540, 4);
+    for (let i = 0; i < 8; i += 1) {
+      const rep = keepResult.layers[i]!;
+      const dist = Math.hypot(rep.x - 960, rep.y - 540);
+      expect(Math.abs(dist - 240)).toBeLessThan(0.1);
+      const angle = ((Math.atan2(rep.y - 540, rep.x - 960) * 180) / Math.PI + 360) % 360;
+      expect(angle).toBeCloseTo(i * 45, 4);
+      expect(rep.rotationDeg).toBe(0);
+    }
+
+    // Negative / non-zero / extreme startAngleDeg, N=2 & N=100, exact stage edge (0,240)&(240,0).
+    const edgeResult = layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+      count: 4,
+      center: { x: 240, y: 240 },
+      radius: 240,
+      startAngleDeg: -90,
+      orientation: 'align',
+    });
+    expect(edgeResult.layers[0]!.x).toBeCloseTo(240, 4);
+    expect(edgeResult.layers[0]!.y).toBeCloseTo(0, 4);
+    expect(edgeResult.layers[3]!.x).toBeCloseTo(0, 4);
+    expect(edgeResult.layers[3]!.y).toBeCloseTo(240, 4);
+
+    const n2 = layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+      count: 2,
+      center: { x: 960, y: 540 },
+      radius: 100,
+      startAngleDeg: 1e308,
+      orientation: 'keep',
+    });
+    expect(n2.layers).toHaveLength(2);
+    expect(Math.hypot(n2.layers[1]!.x - n2.layers[0]!.x, n2.layers[1]!.y - n2.layers[0]!.y)).toBeCloseTo(200, 4);
+
+    const n100 = layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+      count: 100,
+      center: { x: 960, y: 540 },
+      radius: 200,
+      startAngleDeg: 15,
+      orientation: 'align',
+    });
+    expect(n100.layers).toHaveLength(100);
+
+    // Rich source with base rotation=30, flipX, pivot, v2 Clip, Move, same-startMs Opacity, graphic-frame, overrides.
+    let rich = ProjectSchema.parse({
+      ...base.project,
+      shots: base.project.shots.map((s) => ({
+        ...s,
+        layers: s.layers.map((l) =>
+          l.id === base.layerId ? { ...l, x: 400, y: 300, rotationDeg: 30, flipX: true } : l,
+        ),
+        timelineEvents: [
+          {
+            id: '94000000-0000-4000-8000-000000000981',
+            type: 'move',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 1_000,
+            from: { x: 400, y: 300 },
+            to: { x: 600, y: 400 },
+            easing: 'linear',
+          },
+          {
+            id: '94000000-0000-4000-8000-000000000982',
+            type: 'opacity',
+            layerId: base.layerId,
+            startMs: 0,
+            endMs: 500,
+            from: 1,
+            to: 0.4,
+            easing: 'linear',
+          },
+          {
+            id: '94000000-0000-4000-8000-000000000983',
+            type: 'graphic-frame',
+            layerId: base.layerId,
+            animationId: base.definitionId,
+            startMs: 0,
+            endMs: 0,
+            sourceFrameIndex: 8,
+          },
+        ],
+      })),
+    });
+    rich = layerService.updateFlaGraphicInstanceTransform(rich, base.shotId, base.layerId, 0, ['face-0'], {
+      a: 0.3,
+      b: 0,
+      c: 0,
+      d: 0.3,
+      tx: 22,
+      ty: 14,
+    });
+    rich = service.recalibratePivot(rich, { shotId: base.shotId, layerId: base.layerId }, { space: 'target-local', x: 140, y: 110 });
+    rich = service.applyKeys(rich, { shotId: base.shotId, layerId: base.layerId, timeMs: 500 }, { 'transform.offsetX': 50 });
+
+    const aligned = layerService.duplicateAnimationLayerRadial(rich, base.shotId, base.layerId, {
+      count: 4,
+      center: { x: 960, y: 540 },
+      radius: 200,
+      startAngleDeg: 0,
+      orientation: 'align',
+    });
+    const alignedShot = aligned.project.shots[0]!;
+    // Source base rotation=30 acts as bias: outward 0/90/180/270 -> 30 / 120 / -150 / -60.
+    expect(aligned.layers.map((l) => l.rotationDeg)).toEqual([30, 120, -150, -60]);
+    const rep0 = aligned.layers[0]!;
+    expect(rep0.flipX).toBe(true);
+    expect(rep0.flaGraphicInstanceTransformOverrides).toBeDefined();
+    expect(rep0.animationClip?.version).toBe(2);
+    if (rep0.animationClip?.version !== 2) throw new Error('Expected v2 Clip');
+    expect(rep0.animationClip.targetBases[0]!.target).toEqual({ kind: 'layer', layerId: rep0.id });
+    expect(rep0.animationClip.targetBases[0]!.baseTransform.rotationDeg).toBe(30);
+    // No extra layout rotationDeg track added.
+    expect(rep0.animationClip.tracks.some((t) => t.property === 'transform.rotationDeg')).toBe(false);
+    // MoveEvent translated by actual delta (1160 - 400, 540 - 300).
+    const rep0Move = alignedShot.timelineEvents.find((e) => e.layerId === rep0.id && e.type === 'move');
+    expect(rep0Move?.type === 'move' && rep0Move.from).toEqual({ x: 1_160, y: 540 });
+    expect(rep0Move?.type === 'move' && rep0Move.to).toEqual({ x: 1_360, y: 640 });
+    expect(alignedShot.timelineEvents.some((e) => e.layerId === rep0.id && e.type === 'graphic-frame')).toBe(true);
+
+    // Rejections: count=1, count=101, radius<=0, out-of-bounds, locked.
+    expect(() =>
+      layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+        count: 1,
+        center: { x: 960, y: 540 },
+        radius: 200,
+        startAngleDeg: 0,
+        orientation: 'keep',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_ARRAY' }));
+    expect(() =>
+      layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+        count: 101,
+        center: { x: 960, y: 540 },
+        radius: 200,
+        startAngleDeg: 0,
+        orientation: 'keep',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_RADIAL_ARRAY' }));
+    expect(() =>
+      layerService.duplicateAnimationLayerRadial(base.project, base.shotId, base.layerId, {
+        count: 8,
+        center: { x: 100, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        orientation: 'keep',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_POSITION' }));
+    const locked = layerService.setLocked(base.project, base.shotId, base.layerId, true);
+    expect(() =>
+      layerService.duplicateAnimationLayerRadial(locked, base.shotId, base.layerId, {
+        count: 8,
+        center: { x: 960, y: 540 },
+        radius: 240,
+        startAngleDeg: 0,
+        orientation: 'keep',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+    // Keep direct math sanity check.
+    expect(sampleRadialArrayLayout({ count: 4, center: { x: 500, y: 500 }, radius: 100, startAngleDeg: 0, orientation: 'align' }).map((s) => s.directionAngleDeg)).toEqual([0, 90, 180, 270]);
+  });
+
+  it('generates along-path arrays by equal arc length (not equal t), handles closed loops and degenerate endpoints, and rejects zero-length curves (#1281 B01 path)', () => {
+    const base = zeroCharacterGraphicProject();
+    const layerService = new LayerService();
+
+    // Open AC curve: P0=(400,300), P1=(450,80), P2=(850,80), P3=(900,300), N=6.
+    const openCurve: CubicBezier2D = {
+      p0: { x: 400, y: 300 },
+      p1: { x: 450, y: 80 },
+      p2: { x: 850, y: 80 },
+      p3: { x: 900, y: 300 },
+    };
+    const sampledOpen = samplePathArrayLayout({ count: 6, curve: openCurve, orientation: 'align' });
+    if (!sampledOpen.ok) throw new Error('Expected valid open path');
+    expect(sampledOpen.isClosed).toBe(false);
+    expect(sampledOpen.samples[0]!.position).toEqual(openCurve.p0);
+    expect(sampledOpen.samples[5]!.position).toEqual(openCurve.p3);
+
+    // Independent fine reference integration (2000 steps) proves equal arc-length spacing <= max(0.5px, 2%).
+    const refSteps = 2_000;
+    const refPts = Array.from({ length: refSteps + 1 }, (_, k) => evaluateCubicBezier2D(openCurve, k / refSteps));
+    const refCum = [0];
+    for (let k = 1; k <= refSteps; k += 1) {
+      refCum.push(refCum[k - 1]! + Math.hypot(refPts[k]!.x - refPts[k - 1]!.x, refPts[k]!.y - refPts[k - 1]!.y));
+    }
+    const refTotal = refCum[refSteps]!;
+    const targetGap = refTotal / 5;
+    const sampleArcs = sampledOpen.samples.map((s) => {
+      let bestK = 0;
+      let bestDist = Infinity;
+      for (let k = 0; k <= refSteps; k += 1) {
+        const d = Math.hypot(refPts[k]!.x - s.position.x, refPts[k]!.y - s.position.y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestK = k;
+        }
+      }
+      return refCum[bestK]!;
+    });
+    for (let i = 1; i < sampleArcs.length; i += 1) {
+      const gap = sampleArcs[i]! - sampleArcs[i - 1]!;
+      expect(Math.abs(gap - targetGap)).toBeLessThanOrEqual(Math.max(0.5, targetGap * 0.02));
+    }
+
+    // Non-uniformly parameterized straight line proves equal arc-length (NOT equal t)!
+    const nonUniformLine: CubicBezier2D = {
+      p0: { x: 200, y: 300 },
+      p1: { x: 200, y: 300 }, // degenerate start derivative -> also tests secant fallback!
+      p2: { x: 210, y: 300 },
+      p3: { x: 800, y: 300 },
+    };
+    const lineSampled = samplePathArrayLayout({ count: 5, curve: nonUniformLine, orientation: 'align' });
+    if (!lineSampled.ok) throw new Error('Expected valid non-uniform line');
+    // Arc-length positions must be 200, 350, 500, 650, 800 (whereas t=0.5 would be ~278.75!).
+    expect(lineSampled.samples.map((s) => Math.round(s.position.x))).toEqual([200, 350, 500, 650, 800]);
+    for (const s of lineSampled.samples) {
+      expect(Number.isFinite(s.directionAngleDeg!)).toBe(true);
+      expect(s.directionAngleDeg!).toBeCloseTo(0, 3);
+    }
+
+    // Degenerate end derivative (P2 === P3) resolves incoming tangent cleanly at t=1.
+    const degenEnd: CubicBezier2D = {
+      p0: { x: 200, y: 300 },
+      p1: { x: 500, y: 300 },
+      p2: { x: 800, y: 300 },
+      p3: { x: 800, y: 300 },
+    };
+    const degenEndSampled = samplePathArrayLayout({ count: 3, curve: degenEnd, orientation: 'align' });
+    if (!degenEndSampled.ok) throw new Error('Expected valid degen-end line');
+    expect(degenEndSampled.samples[2]!.directionAngleDeg).toBeCloseTo(0, 3);
+
+    // Closed single-segment curve (P0 === P3) samples i/N without duplicate endpoint.
+    const closedCurve: CubicBezier2D = {
+      p0: { x: 600, y: 400 },
+      p1: { x: 900, y: 100 },
+      p2: { x: 300, y: 100 },
+      p3: { x: 600, y: 400 },
+    };
+    const closedResult = layerService.duplicateAnimationLayerAlongPath(base.project, base.shotId, base.layerId, {
+      count: 6,
+      curve: closedCurve,
+      orientation: 'align',
+    });
+    expect(closedResult.layers).toHaveLength(6);
+    expect(closedResult.layers[0]!.x).toBeCloseTo(600, 4);
+    expect(closedResult.layers[0]!.y).toBeCloseTo(400, 4);
+    // Last replica is at 5/6 arc-length, NOT overlapping P0=(600,400).
+    expect(Math.hypot(closedResult.layers[5]!.x - 600, closedResult.layers[5]!.y - 400)).toBeGreaterThan(20);
+
+    // Open domain generation with N=2 and zero-length rejection.
+    const n2 = layerService.duplicateAnimationLayerAlongPath(base.project, base.shotId, base.layerId, {
+      count: 2,
+      curve: openCurve,
+      orientation: 'keep',
+    });
+    expect(n2.layers).toHaveLength(2);
+    expect(n2.layers[0]!.x).toBeCloseTo(400, 4);
+    expect(n2.layers[1]!.x).toBeCloseTo(900, 4);
+
+    expect(() =>
+      layerService.duplicateAnimationLayerAlongPath(base.project, base.shotId, base.layerId, {
+        count: 4,
+        curve: {
+          p0: { x: 400, y: 300 },
+          p1: { x: 400, y: 300 },
+          p2: { x: 400, y: 300 },
+          p3: { x: 400, y: 300 },
+        },
+        orientation: 'keep',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_PATH_ARRAY' }));
   });
 });
