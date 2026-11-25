@@ -1290,7 +1290,7 @@ describe('E-F04 real Windows FFmpeg embedded-video formal loop', () => {
       expect(reopened.project.assets.some((a) => a.id === imported.videoAsset.id)).toBe(true);
 
       // 5. Real Stage consumption path (AssetCanvasImageService + CanvasImageResourceSession) stale-seek discard:
-      trackedSnapshot = { project: reopened.project, revision: 2 };
+      trackedSnapshot = { project: reopened.project, revision: 2, openInstanceId };
       const canvasImageService = new AssetCanvasImageService({
         getCurrentProjectSnapshot: () => ({ project: reopened.project }),
         embeddedVideoService: videoService,

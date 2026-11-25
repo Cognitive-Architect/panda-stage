@@ -867,7 +867,9 @@ describe('FLA Graphic structured Definition (E1)', () => {
     if (!second.ok) throw new Error(second.error.message);
     expect(second.animationId).toBe(first.animationId);
     const saved = (await h.projectService.open(h.projectRoot)).project.animations[0];
-    if (saved?.kind !== 'fla-graphic' || !saved.structure) throw new Error('Missing upgraded Definition');
+    if (!saved || !('kind' in saved) || saved.kind !== 'fla-graphic' || !saved.structure) {
+      throw new Error('Missing upgraded Definition');
+    }
     expect(shapeNode(saved.structure)).toMatchObject({
       coveragePathData, fallbackAssetId: expect.any(String),
     });
