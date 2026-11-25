@@ -830,4 +830,211 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
     const walker = ir.symbolTimelines!.find((s) => s.name === 'Walker');
     expect(walker?.layers[0]!.frames[0]!.sound?.soundId).toBe(ir.sounds![0]!.id);
   });
+
+  it('F03: nested Graphic audio follows parent actual displayed frame (frozen single-frame & play-once hold do not advance child Graphic, while nested MovieClip keeps its own clock)', () => {
+    const innerGraphic: FlaSymbolTimelineSoundSource = {
+      name: 'InnerGfx',
+      symbolType: 'graphic',
+      totalFrames: 8,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 2,
+              startFrame: 2,
+              duration: 1,
+              sound: { soundId: 'snd-f2', name: 'f2.wav', sync: 'event' },
+            },
+            {
+              sourceFrameIndex: 3,
+              startFrame: 3,
+              duration: 1,
+              sound: { soundId: 'snd-f3', name: 'f3.wav', sync: 'event' },
+            },
+            {
+              sourceFrameIndex: 5,
+              startFrame: 5,
+              duration: 1,
+              sound: { soundId: 'snd-f5', name: 'f5.wav', sync: 'event' },
+            },
+          ],
+        },
+      ],
+    };
+
+    const innerMc: FlaSymbolTimelineSoundSource = {
+      name: 'InnerMC',
+      symbolType: 'movieclip',
+      totalFrames: 10,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 5,
+              startFrame: 5,
+              duration: 1,
+              sound: { soundId: 'snd-mc', name: 'mc5.wav', sync: 'event' },
+            },
+          ],
+        },
+      ],
+    };
+
+    // Outer Graphic holds InnerGfx and InnerMC on keyframe [0..4) (totalFrames = 4)
+    const outerGraphic: FlaSymbolTimelineSoundSource = {
+      name: 'OuterGfx',
+      symbolType: 'graphic',
+      totalFrames: 4,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 0,
+              startFrame: 0,
+              duration: 4,
+              symbolInstances: [
+                { libraryItemName: 'InnerGfx', symbolType: 'graphic', loop: 'loop', firstFrame: 0 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const outerWithMc: FlaSymbolTimelineSoundSource = {
+      name: 'OuterWithMC',
+      symbolType: 'graphic',
+      totalFrames: 4,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 0,
+              startFrame: 0,
+              duration: 4,
+              symbolInstances: [
+                { libraryItemName: 'InnerGfx', symbolType: 'graphic', loop: 'loop', firstFrame: 0 },
+                { libraryItemName: 'InnerMC', symbolType: 'movieclip', loop: 'loop' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // Case 1: Outer Graphic frozen on single frame 0 for 20 ticks.
+    // InnerGfx stays on frame 0 -> f2/f3/f5 MUST NOT fire!
+    // InnerMC keeps its deterministic independent MovieClip clock -> fires at frames 5 and 15!
+    const frozenCase = extractFlaTimelineSoundEventsWithNested(
+      {
+        layers: [
+          {
+            sourceLayerIndex: 0,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 20,
+                symbolInstances: [
+                  { libraryItemName: 'OuterWithMC', symbolType: 'graphic', loop: 'single frame', firstFrame: 0 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { symbolTimelines: [outerWithMc, innerGraphic, innerMc], sourceFps: 25 },
+    );
+    expect(frozenCase.diagnostics).toEqual([]);
+    expect(frozenCase.events.map((e) => ({ frame: e.frameIndex, sound: e.sound.name }))).toEqual([
+      { frame: 5, sound: 'mc5.wav' },
+      { frame: 15, sound: 'mc5.wav' },
+    ]);
+
+    // Case 2: Outer Graphic `play once` (4 frames) spanning 12 ticks: displayed [0,1,2,3,3,3,3,3,3,3,3,3].
+    // InnerGfx reaches frame 2 at tick 2 and frame 3 ONCE at tick 3; never reaches frame 5!
+    const playOnceCase = extractFlaTimelineSoundEventsWithNested(
+      {
+        layers: [
+          {
+            sourceLayerIndex: 0,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 12,
+                symbolInstances: [
+                  { libraryItemName: 'OuterGfx', symbolType: 'graphic', loop: 'play once', firstFrame: 0 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { symbolTimelines: [outerGraphic, innerGraphic], sourceFps: 25 },
+    );
+    expect(playOnceCase.diagnostics).toEqual([]);
+    expect(playOnceCase.events.map((e) => ({ frame: e.frameIndex, sound: e.sound.name }))).toEqual([
+      { frame: 2, sound: 'f2.wav' },
+      { frame: 3, sound: 'f3.wav' },
+    ]);
+
+    // Case 3: Outer Graphic `loop` with firstFrame=2 (totalFrames=6) spanning 12 ticks:
+    // displayed [2,3,4,5, 0,1,2,3,4,5, 0,1].
+    // InnerGfx at keyStart=0 duration=6 plays [2,3,4,5, 0,1,2,3,4,5, 0,1]:
+    // f2 fires at tick 0 & tick 6, f3 at tick 1 & tick 7, f5 at tick 3 & tick 9.
+    const outerLoopSix: FlaSymbolTimelineSoundSource = {
+      name: 'OuterLoop6',
+      symbolType: 'graphic',
+      totalFrames: 6,
+      layers: [
+        {
+          sourceLayerIndex: 0,
+          frames: [
+            {
+              sourceFrameIndex: 0,
+              startFrame: 0,
+              duration: 6,
+              symbolInstances: [
+                { libraryItemName: 'InnerGfx', symbolType: 'graphic', loop: 'loop', firstFrame: 0 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const loopOffsetCase = extractFlaTimelineSoundEventsWithNested(
+      {
+        layers: [
+          {
+            sourceLayerIndex: 0,
+            frames: [
+              {
+                sourceFrameIndex: 0,
+                startFrame: 0,
+                duration: 12,
+                symbolInstances: [
+                  { libraryItemName: 'OuterLoop6', symbolType: 'graphic', loop: 'loop', firstFrame: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { symbolTimelines: [outerLoopSix, innerGraphic], sourceFps: 25 },
+    );
+    expect(loopOffsetCase.diagnostics).toEqual([]);
+    expect(loopOffsetCase.events.map((e) => ({ frame: e.frameIndex, sound: e.sound.name }))).toEqual([
+      { frame: 0, sound: 'f2.wav' },
+      { frame: 1, sound: 'f3.wav' },
+      { frame: 3, sound: 'f5.wav' },
+      { frame: 6, sound: 'f2.wav' },
+      { frame: 7, sound: 'f3.wav' },
+      { frame: 9, sound: 'f5.wav' },
+    ]);
+  });
 });

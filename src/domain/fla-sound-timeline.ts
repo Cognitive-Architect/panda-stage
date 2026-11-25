@@ -4,6 +4,10 @@ import {
   type CreateAudioClipInput,
   type StandaloneAudioRole,
 } from './services/AudioClipService';
+import {
+  evaluateFlaGraphicFrame,
+  type FlaGraphicPlaybackMode,
+} from '../shared/fla-graphic-playback';
 
 /**
  * Adobe Animate / XFL `inPoint44` and `outPoint44` are always expressed in
@@ -20,7 +24,7 @@ export const FLA_SOUND_MAX_NESTED_DEPTH = 16;
 
 export type FlaSoundTimelineSync = 'event' | 'start' | 'stop' | 'stream';
 export type FlaSoundTimelineLoopMode = 'repeat' | 'loop';
-export type FlaSoundSymbolPlaybackMode = 'loop' | 'play once' | 'single frame';
+export type FlaSoundSymbolPlaybackMode = FlaGraphicPlaybackMode;
 export type FlaSoundSymbolType = 'graphic' | 'movieclip' | 'button';
 
 export type FlaSoundTimelineDiagnosticCode =
@@ -210,19 +214,32 @@ function evaluateInstanceChildFrame(
   if (symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip') {
     return offset % childTotalFrames;
   }
-  const firstFrame = Math.max(0, Math.min(placement.firstFrame ?? 0, childTotalFrames - 1));
-  const lastFrame =
-    placement.lastFrame !== undefined
-      ? Math.max(firstFrame, Math.min(placement.lastFrame, childTotalFrames - 1))
-      : childTotalFrames - 1;
-  const rangeLength = Math.max(1, lastFrame - firstFrame + 1);
-  if (placement.loop === 'single frame') {
-    return firstFrame;
+  const safeOffset = Math.max(0, Math.trunc(offset));
+  const rawFirstFrame =
+    placement.firstFrame !== undefined &&
+    Number.isSafeInteger(placement.firstFrame) &&
+    placement.firstFrame >= 0
+      ? placement.firstFrame
+      : 0;
+  const clampedFirstFrame = Math.min(rawFirstFrame, childTotalFrames - 1);
+  const clampedLastFrame =
+    placement.lastFrame !== undefined &&
+    Number.isSafeInteger(placement.lastFrame) &&
+    placement.lastFrame >= 0
+      ? Math.min(placement.lastFrame, childTotalFrames - 1)
+      : undefined;
+  const evaluated = evaluateFlaGraphicFrame(
+    placement.loop,
+    clampedFirstFrame,
+    clampedLastFrame,
+    childTotalFrames,
+    safeOffset,
+  );
+  if (evaluated.ok) {
+    return evaluated.frameIndex;
   }
-  if (placement.loop === 'play once') {
-    return Math.min(firstFrame + offset, lastFrame);
-  }
-  return firstFrame + (offset % rangeLength);
+  // Fallback if an unknown playback mode arrives from malformed input: hold firstFrame safely.
+  return clampedFirstFrame;
 }
 
 /**
@@ -257,11 +274,12 @@ export function extractFlaTimelineSoundEventsWithNested(
   const expandPlacement = (
     placement: FlaSymbolInstanceSoundPlacement,
     parentStartFrame: number,
-    parentSpanFrames: number,
+    parentRelativeOffsets: readonly number[],
     parentLayerIndex: number,
     depth: number,
     ancestry: ReadonlySet<string>,
   ): void => {
+    const parentSpanFrames = parentRelativeOffsets.length;
     if (parentSpanFrames <= 0) return;
 
     if (placement.symbolType === 'button') {
@@ -337,14 +355,22 @@ export function extractFlaTimelineSoundEventsWithNested(
     const childTotalFrames = resolveChildTotalFrames(symbol);
     if (childTotalFrames <= 0) return;
 
-    // Build this instance's independent per-tick child frame sequence.
+    // Build this instance's independent per-tick child frame sequence:
+    // - MovieClips run on their own deterministic timeline clock while on stage.
+    // - Graphics derive their displayed frame strictly from their parent's
+    //   actually selected frame offset into the enclosing keyframe span, so a
+    //   frozen single-frame or clamped play-once ancestor never advances a
+    //   nested Graphic's audio clock ahead of its visual frame.
+    const isMovieClip =
+      symbol.symbolType === 'movieclip' || placement.symbolType === 'movieclip';
     const childFramesByOffset: number[] = new Array(parentSpanFrames);
     for (let offset = 0; offset < parentSpanFrames; offset += 1) {
+      const clockOffset = isMovieClip ? offset : parentRelativeOffsets[offset]!;
       childFramesByOffset[offset] = evaluateInstanceChildFrame(
         placement,
         symbol,
         childTotalFrames,
-        offset,
+        clockOffset,
       );
     }
 
@@ -421,21 +447,30 @@ export function extractFlaTimelineSoundEventsWithNested(
 
         if (childFrame.symbolInstances && childFrame.symbolInstances.length > 0) {
           // Group contiguous parent offsets where the parent instance visits this
-          // child keyframe [keyStart, keyEnd) into independent nested entry runs.
+          // child keyframe [keyStart, keyEnd) into independent nested entry runs,
+          // propagating the exact parent keyframe-relative offsets (cf - keyStart)
+          // so nested Graphics follow the parent's actual displayed frame clock.
+          const isReverseMode =
+            !isMovieClip &&
+            (placement.loop === 'loop reverse' || placement.loop === 'play once reverse');
           let runStart = -1;
           for (let offset = 0; offset <= parentSpanFrames; offset += 1) {
             const cf = offset < parentSpanFrames ? childFramesByOffset[offset]! : -1;
             const prevCf = offset > 0 ? childFramesByOffset[offset - 1]! : -1;
             const inRange = cf >= keyStart && cf < keyEnd;
-            const wrapped = inRange && runStart >= 0 && cf < prevCf;
+            const wrapped =
+              inRange && runStart >= 0 && (isReverseMode ? cf > prevCf : cf < prevCf);
 
             if ((!inRange || wrapped) && runStart >= 0) {
-              const runDuration = offset - runStart;
+              const runRelativeOffsets: number[] = new Array(offset - runStart);
+              for (let i = runStart; i < offset; i += 1) {
+                runRelativeOffsets[i - runStart] = childFramesByOffset[i]! - keyStart;
+              }
               for (const nested of childFrame.symbolInstances) {
                 expandPlacement(
                   nested,
                   parentStartFrame + runStart,
-                  runDuration,
+                  runRelativeOffsets,
                   parentLayerIndex,
                   depth + 1,
                   nextAncestry,
@@ -464,11 +499,12 @@ export function extractFlaTimelineSoundEventsWithNested(
         });
       }
       if (frame.symbolInstances && frame.symbolInstances.length > 0) {
+        const sceneRelativeOffsets = Array.from({ length: frameDuration }, (_, i) => i);
         for (const placement of frame.symbolInstances) {
           expandPlacement(
             placement,
             frameIndex,
-            frameDuration,
+            sceneRelativeOffsets,
             layer.sourceLayerIndex,
             1,
             new Set(),
