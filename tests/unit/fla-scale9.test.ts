@@ -108,5 +108,103 @@ describe('static XFL Scale9Grid', () => {
     expect(planFlaScale9Slices(bounds, grid, -1, 1)).toBeNull();
     expect(planFlaScale9Slices(bounds, { ...grid, left: -25 }, 1, 1)).toBeNull();
   });
+
+  it.each(['LinearGradient', 'RadialGradient'] as const)(
+    'separates 9-slice geometry from %s fill mapping without per-slice viewBox gradient distortion (E-F02)',
+    async (gradientTag) => {
+      const zip = new JSZip();
+      const fillXml = gradientTag === 'LinearGradient'
+        ? `<LinearGradient spreadMethod="pad"><matrix><Matrix a="0.0732421875" d="0.048828125" tx="40" ty="22"/></matrix>
+            <GradientEntry color="#ff0000" ratio="0"/><GradientEntry color="#0000ff" ratio="1"/></LinearGradient>`
+        : `<RadialGradient spreadMethod="pad" focalPointRatio="0.25"><matrix><Matrix a="0.05" d="0.05" tx="40" ty="22"/></matrix>
+            <GradientEntry color="#00ff00" ratio="0"/><GradientEntry color="#000080" ratio="1"/></RadialGradient>`;
+      const shape = `<DOMShape><fills><FillStyle index="1">${fillXml}</FillStyle></fills>
+        <edges><Edge fillStyle0="1" edges="!-400 -360|2000 -360|2000 1240|-400 1240|-400 -360"/></edges></DOMShape>`;
+      zip.file('LIBRARY/GradTile.xml', `<DOMSymbolItem name="GradTile" symbolType="graphic" scalingGrid="true" scalingGridRect="-100 -200 1400 960">
+        <timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>${shape}</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`);
+      zip.file('DOMDocument.xml', `<DOMDocument width="400" height="300" frameRate="24"><symbols><Include href="GradTile.xml"/></symbols>
+        <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer><frames><DOMFrame index="0"><elements>
+          <DOMSymbolInstance libraryItemName="GradTile" symbolType="graphic"><matrix><Matrix a="2" d="1.5" tx="60" ty="40"/></matrix></DOMSymbolInstance>
+        </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`);
+      const bytes = await zip.generateAsync({ type: 'uint8array' });
+      const catalog = await buildRenderableTargetCatalog(bytes);
+      if (!catalog.ok) throw new Error(catalog.message);
+      const scene = catalog.entries.find(({ target }) => target.kind === 'scene')!.target;
+      const rendered = await buildSvgForRenderTarget(bytes, { ...scene, selectedFrameIndex: 0 });
+      if (!rendered.ok) throw new Error(rendered.message);
+      // Gradient must NOT use nested <svg preserveAspectRatio="none"> which kinks the gradient per zone.
+      expect(rendered.svg).not.toContain('preserveAspectRatio="none"');
+      // Geometry is still clipped into 9 target slice rects with fixed corners (15x8 and 30x14).
+      expect(rendered.svg.match(/id="fla-s9-clip-/gu)).toHaveLength(9);
+      expect(rendered.svg).toContain('width="15" height="8"');
+      expect(rendered.svg).toContain('width="30" height="14"');
+      // One continuous stage-space gradient definition (-s9-) covers all 9 slices.
+      const gradTagName = gradientTag === 'LinearGradient' ? 'linearGradient' : 'radialGradient';
+      expect(rendered.svg.match(new RegExp(`<${gradTagName} id="fla-[^"]+-s9-`, 'gu'))).toHaveLength(1);
+      expect(rendered.projectionWarning).toBeUndefined();
+    },
+  );
+
+  it('diagnoses skewed and unsupported text/stroke Scale9Grid locally while keeping healthy solid siblings intact (E-F02)', async () => {
+    const zip = new JSZip();
+    const solidShape = `<DOMShape><fills><FillStyle index="1"><SolidColor color="#2244aa"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!-400 -360|2000 -360|2000 1240|-400 1240|-400 -360"/></edges></DOMShape>`;
+    const strokedShape = `<DOMShape><fills><FillStyle index="1"><SolidColor color="#aa4422"/></FillStyle></fills>
+      <strokes><StrokeStyle index="1"><SolidStroke weight="2"><fill><SolidColor color="#000000"/></fill></SolidStroke></StrokeStyle></strokes>
+      <edges><Edge fillStyle0="1" strokeStyle="1" edges="!-400 -360|2000 -360|2000 1240|-400 1240|-400 -360"/></edges></DOMShape>`;
+    zip.file('LIBRARY/SolidTile.xml', `<DOMSymbolItem name="SolidTile" symbolType="graphic" scalingGrid="true" scalingGridRect="-100 -200 1400 960">
+      <timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>${solidShape}</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    zip.file('LIBRARY/StrokedTile.xml', `<DOMSymbolItem name="StrokedTile" symbolType="graphic" scalingGrid="true" scalingGridRect="-100 -200 1400 960">
+      <timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>${strokedShape}</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    zip.file('DOMDocument.xml', `<DOMDocument width="500" height="300" frameRate="24">
+      <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="SolidTile" symbolType="graphic"><matrix><Matrix a="2" d="1.5" tx="50" ty="50"/></matrix></DOMSymbolInstance>
+        <DOMSymbolInstance libraryItemName="SolidTile" symbolType="graphic"><matrix><Matrix a="2" b="0.4" c="0" d="1.5" tx="260" ty="50"/></matrix></DOMSymbolInstance>
+        <DOMSymbolInstance libraryItemName="StrokedTile" symbolType="graphic"><matrix><Matrix a="2" d="1.5" tx="50" ty="180"/></matrix></DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const scene = catalog.entries.find(({ target }) => target.kind === 'scene')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...scene, selectedFrameIndex: 0 });
+    if (!rendered.ok) throw new Error(rendered.message);
+    // Healthy solid Scale9Grid sibling still emits 9 slices; skewed & stroked siblings fall back cleanly with diagnostics.
+    expect(rendered.svg.match(/preserveAspectRatio="none" overflow="hidden"/gu)).toHaveLength(9);
+    expect(rendered.svg).toContain('#aa4422');
+    expect(rendered.projectionWarning).toContain('skewed transform');
+    expect(rendered.projectionWarning).toContain('stroke');
+  });
+
+  it('composes Scale9Grid with RGBA, Glow filter, Mask and Multiply blend once each (E-F02)', async () => {
+    const zip = new JSZip();
+    const solidShape = `<DOMShape><fills><FillStyle index="1"><SolidColor color="#204080"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!-400 -360|2000 -360|2000 1240|-400 1240|-400 -360"/></edges></DOMShape>`;
+    const maskShape = `<DOMShape><fills><FillStyle index="1"><SolidColor color="#ffffff"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!0 0|6000 0|6000 4000|0 4000|0 0"/></edges></DOMShape>`;
+    zip.file('LIBRARY/CardTile.xml', `<DOMSymbolItem name="CardTile" symbolType="graphic" scalingGrid="true" scalingGridRect="-100 -200 1400 960">
+      <timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>${solidShape}</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`);
+    zip.file('DOMDocument.xml', `<DOMDocument width="400" height="300" frameRate="24">
+      <timelines><DOMTimeline name="Scene 1"><layers>
+        <DOMLayer name="Mask" layerType="mask"><frames><DOMFrame index="0"><elements>${maskShape}</elements></DOMFrame></frames></DOMLayer>
+        <DOMLayer name="Masked" layerType="masked" parentLayerIndex="0"><frames><DOMFrame index="0"><elements>
+          <DOMSymbolInstance libraryItemName="CardTile" symbolType="graphic" blendMode="multiply">
+            <matrix><Matrix a="2" d="1.5" tx="80" ty="60"/></matrix>
+            <color><Color redMultiplier="1.5" greenOffset="16" alphaMultiplier="0.5"/></color>
+            <filters><GlowFilter blurX="4" blurY="4" color="#00ff88" alpha="1" strength="1" inner="true"/></filters>
+          </DOMSymbolInstance>
+        </elements></DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timelines></DOMDocument>`);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const scene = catalog.entries.find(({ target }) => target.kind === 'scene')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...scene, selectedFrameIndex: 0 });
+    if (!rendered.ok) throw new Error(rendered.message);
+    expect(rendered.svg.match(/preserveAspectRatio="none" overflow="hidden"/gu)).toHaveLength(9);
+    expect(rendered.svg.match(/mix-blend-mode:multiply/gu)).toHaveLength(1);
+    expect(rendered.svg.match(/clip-path="url\(#fla-mask-clip-/gu)).toHaveLength(1);
+    expect(rendered.svg.match(/id="fla-rgba-transform-/gu)).toHaveLength(1);
+    expect(rendered.svg.match(/id="fla-instance-filter-/gu)).toHaveLength(1);
+  });
 });
 import JSZip from 'jszip';
