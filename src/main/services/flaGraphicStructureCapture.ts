@@ -121,6 +121,7 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly resolveIsolatedFilteredLayer?: (
     layer: FlaResolvedDisplayLayer,
     layerIndex: number,
+    frameOrdinal: number,
   ) => IsolatedFilteredLayerCaptureResult | undefined;
   readonly subtreeBoundsMap?: ReadonlyMap<string, SubtreeBounds>;
   readonly sourceBasename?: string;
@@ -130,16 +131,17 @@ export interface CaptureFlaGraphicStructureOptions {
 }
 
 /**
- * Capture the authored object tree from the resolved FLA display list, before
- * any SVG baking. Resolved Symbol instances (expanded as Groups carrying
- * `symbolLibraryItemName`) become `symbol` nodes that keep their shared
- * definition reference; Shapes and unsupported elements are typed opaque and
- * keep the SVG fallback.
+ * Capture the authored object tree from one or more resolved FLA display lists
+ * (one per Definition frame ordinal), before any SVG baking. Resolved Symbol
+ * instances become `symbol` nodes that keep their shared definition reference;
+ * Shapes and unsupported/isolated elements are typed opaque and keep their
+ * subtree/frame SVG fallback.
  */
-export function captureFlaGraphicStructure(
-  displayList: FlaResolvedDisplayList,
+export function captureFlaGraphicStructureFrames(
+  frameDisplayLists: readonly FlaResolvedDisplayList[],
   options: CaptureFlaGraphicStructureOptions = {},
 ): FlaGraphicStructure | undefined {
+  if (frameDisplayLists.length === 0 || frameDisplayLists.length > 256) return undefined;
   const canStoreClipPaths = (clipPaths: readonly FlaResolvedClipPath[] | undefined): boolean =>
     !clipPaths?.some((clip) => clip.shapes.length === 0 || clip.shapes.some((shape) => shape.clipPaths?.length));
   const canStoreMaskGeometry = (node: FlaResolvedDisplayNode): boolean => node.kind === 'group'
@@ -147,8 +149,12 @@ export function captureFlaGraphicStructure(
       canStoreClipPaths(node.inheritedClipPaths) &&
       node.children.every(canStoreMaskGeometry)
     : canStoreClipPaths(node.clipPaths);
-  if (displayList.maskDiagnostics?.length || displayList.ikPoseDiagnostics?.length ||
-      !displayList.layers.every((layer) => layer.children.every(canStoreMaskGeometry))) return undefined;
+  for (const displayList of frameDisplayLists) {
+    if (displayList.maskDiagnostics?.length || displayList.ikPoseDiagnostics?.length ||
+        !displayList.layers.every((layer) => layer.children.every(canStoreMaskGeometry))) {
+      return undefined;
+    }
+  }
   const usedIds = new Set<string>();
   const symbolDefinitions: Record<string, FlaGraphicNestedSymbolDefinition> = {};
   const maskPathByteBudget: MaskPathByteBudget = {
@@ -333,47 +339,62 @@ export function captureFlaGraphicStructure(
       return { ...base, type: 'group', groupId: node.groupId, children };
     });
 
-  const layers = displayList.layers.map((layer, layerIndex) => {
-    if (layer.frameFilter && options.resolveIsolatedFilteredLayer) {
-      const isolatedLayer = options.resolveIsolatedFilteredLayer(layer, layerIndex);
-      if (isolatedLayer) {
-        const layerClips = clipPathsOf(
-          isolatedLayer.clipPaths,
-          identityMatrix,
-          options.clipPathShapePathData ?? new Map(),
-          maskPathByteBudget,
-        );
-        const singleChild = layer.children.length === 1 ? layer.children[0] : undefined;
-        const preferredId = singleChild?.sourceAddress ?? `layer[${layerIndex}]/filter[0]`;
-        const id = uniqueId(preferredId);
-        return {
-          name: layer.name.slice(0, 500),
-          nodes: [{
-            id,
-            ...(singleChild?.sourceAddress ? { sourceAddress: singleChild.sourceAddress } : {}),
-            drawOrder: 0,
-            localTransform: { ...identityMatrix },
-            ...(layerClips ? { clipPaths: layerClips } : {}),
-            type: 'opaque' as const,
-            opaqueKind: 'filter' as const,
-            ...(isolatedLayer.sourceRef ? { sourceRef: isolatedLayer.sourceRef } : {}),
-            reason: isolatedLayer.reason ?? 'Layer filter uses isolated subtree fallback',
-            fallbackScope: isolatedLayer.scope ?? 'subtree',
-            ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
-            fallbackViewBox: { ...isolatedLayer.viewBox },
-          }],
-        };
+  const frames = frameDisplayLists.map((displayList, frameOrdinal) => {
+    const layerPrefix = frameDisplayLists.length > 1 ? `frame[${frameOrdinal}]/` : '';
+    const layers = displayList.layers.map((layer, layerIndex) => {
+      if (layer.frameFilter && options.resolveIsolatedFilteredLayer) {
+        const isolatedLayer = options.resolveIsolatedFilteredLayer(layer, layerIndex, frameOrdinal);
+        if (isolatedLayer) {
+          const layerClips = clipPathsOf(
+            isolatedLayer.clipPaths,
+            identityMatrix,
+            options.clipPathShapePathData ?? new Map(),
+            maskPathByteBudget,
+          );
+          const singleChild = layer.children.length === 1 ? layer.children[0] : undefined;
+          const preferredId = singleChild?.sourceAddress ?? `${layerPrefix}layer[${layerIndex}]/filter[0]`;
+          const id = uniqueId(preferredId);
+          return {
+            name: layer.name.slice(0, 500),
+            nodes: [{
+              id,
+              ...(singleChild?.sourceAddress ? { sourceAddress: singleChild.sourceAddress } : {}),
+              drawOrder: 0,
+              localTransform: { ...identityMatrix },
+              ...(layerClips ? { clipPaths: layerClips } : {}),
+              type: 'opaque' as const,
+              opaqueKind: 'filter' as const,
+              ...(isolatedLayer.sourceRef ? { sourceRef: isolatedLayer.sourceRef } : {}),
+              reason: isolatedLayer.reason ?? 'Layer filter uses isolated subtree fallback',
+              fallbackScope: isolatedLayer.scope ?? 'subtree',
+              ...(options.fallbackAssetId ? { fallbackAssetId: options.fallbackAssetId } : {}),
+              fallbackViewBox: { ...isolatedLayer.viewBox },
+            }],
+          };
+        }
       }
-    }
-    return {
-      name: layer.name.slice(0, 500),
-      nodes: convert(layer.children, `layer[${layerIndex}]`, layer.frameFilter ? 'filter' : null),
-    };
+      return {
+        name: layer.name.slice(0, 500),
+        nodes: convert(layer.children, `${layerPrefix}layer[${layerIndex}]`, layer.frameFilter ? 'filter' : null),
+      };
+    });
+    return { ordinal: frameOrdinal, layers };
   });
   const parsed = FlaGraphicStructureSchema.safeParse({
     version: 1,
     ...(Object.keys(symbolDefinitions).length > 0 ? { symbolDefinitions } : {}),
-    frames: [{ ordinal: 0, layers }],
+    frames,
   });
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Capture the authored object tree from a single resolved FLA display list
+ * (frame 0), before any SVG baking.
+ */
+export function captureFlaGraphicStructure(
+  displayList: FlaResolvedDisplayList,
+  options: CaptureFlaGraphicStructureOptions = {},
+): FlaGraphicStructure | undefined {
+  return captureFlaGraphicStructureFrames([displayList], options);
 }

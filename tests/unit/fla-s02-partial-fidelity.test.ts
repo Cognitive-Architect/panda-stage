@@ -25,6 +25,7 @@ import {
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { FlaGraphicInstanceCommitRequestSchema } from '../../src/shared/fla-graphic-instance-api';
+import { evaluateFlaGraphicFrame } from '../../src/shared/fla-graphic-playback';
 import { FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
 import {
   FLA_STATIC_TEXT_PLACEHOLDER_BASE64,
@@ -545,6 +546,241 @@ describe('S02-A (#1298): isolated static text & static filter subtree partial fi
       if (!batchResult.ok) throw new Error(batchResult.message);
       expect(batchResult.batch.requiresFullFrame).toBe(true);
       expect(batchResult.batch.structure).toBeUndefined();
+    } finally {
+      ctx.cleanup();
+    }
+  });
+});
+
+describe('S02-B (#1299): dynamic complex subtree partial fidelity & time evaluation', () => {
+  it('switches isolated filtered-subtree assets across start/mid/repeated/end/seek/loop while reusing static & repeated states and keeping siblings editable', async () => {
+    const glowCoreXml =
+      '<DOMSymbolItem name="GlowCore" symbolType="graphic"><timeline><DOMTimeline name="GlowCore"><layers>' +
+      '<DOMLayer name="Core"><frames><DOMFrame index="0"><elements>' +
+      makeRectShapeXml('#00ff00', 0, 0, 40, 40) +
+      '</elements></DOMFrame></frames></DOMLayer>' +
+      '</layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    // 4-frame Graphic:
+    // - Layer 0 ("Healthy"): static sibling shapes A (#ff0000) and C (#0000ff) held across all 4 frames.
+    // - Layer 1 ("DynamicGlow"): filtered symbol B changes glow color:
+    //   frame 0 = #ff9900 (start), frame 1 = #00ccff (mid), frame 2 = #ff9900 (repeated start), frame 3 = #ff00ff (end).
+    const dynamicCardXml =
+      '<DOMSymbolItem name="DynamicGlowCard" symbolType="graphic"><timeline><DOMTimeline name="DynamicGlowCard"><layers>' +
+      '<DOMLayer name="Healthy"><frames>' +
+      '<DOMFrame index="0" duration="4"><elements>' +
+      makeRectShapeXml('#ff0000', 0, 0, 30, 30) +
+      makeRectShapeXml('#0000ff', 160, 0, 30, 30) +
+      '</elements></DOMFrame>' +
+      '</frames></DOMLayer>' +
+      '<DOMLayer name="DynamicGlow"><frames>' +
+      '<DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="GlowCore" symbolType="graphic" loop="single frame" firstFrame="0">' +
+      '<matrix><Matrix tx="60" ty="10"/></matrix>' +
+      '<filters><GlowFilter blurX="6" blurY="6" color="#ff9900" strength="1"/></filters>' +
+      '</DOMSymbolInstance></elements></DOMFrame>' +
+      '<DOMFrame index="1"><elements>' +
+      '<DOMSymbolInstance libraryItemName="GlowCore" symbolType="graphic" loop="single frame" firstFrame="0">' +
+      '<matrix><Matrix tx="60" ty="10"/></matrix>' +
+      '<filters><GlowFilter blurX="6" blurY="6" color="#00ccff" strength="1"/></filters>' +
+      '</DOMSymbolInstance></elements></DOMFrame>' +
+      '<DOMFrame index="2"><elements>' +
+      '<DOMSymbolInstance libraryItemName="GlowCore" symbolType="graphic" loop="single frame" firstFrame="0">' +
+      '<matrix><Matrix tx="60" ty="10"/></matrix>' +
+      '<filters><GlowFilter blurX="6" blurY="6" color="#ff9900" strength="1"/></filters>' +
+      '</DOMSymbolInstance></elements></DOMFrame>' +
+      '<DOMFrame index="3"><elements>' +
+      '<DOMSymbolInstance libraryItemName="GlowCore" symbolType="graphic" loop="single frame" firstFrame="0">' +
+      '<matrix><Matrix tx="60" ty="10"/></matrix>' +
+      '<filters><GlowFilter blurX="6" blurY="6" color="#ff00ff" strength="1"/></filters>' +
+      '</DOMSymbolInstance></elements></DOMFrame>' +
+      '</frames></DOMLayer>' +
+      '</layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const docXml =
+      '<DOMDocument width="400" height="200" frameRate="24">' +
+      '<symbols><Include href="GlowCore.xml"/><Include href="DynamicGlowCard.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers>' +
+      '<DOMLayer name="Main"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="DynamicGlowCard" symbolType="graphic" loop="loop" firstFrame="0">' +
+      '<matrix><Matrix tx="10" ty="10"/></matrix>' +
+      '</DOMSymbolInstance>' +
+      '<DOMSymbolInstance libraryItemName="DynamicGlowCard" symbolType="graphic" loop="loop" firstFrame="2">' +
+      '<matrix><Matrix tx="200" ty="50"/></matrix>' +
+      '</DOMSymbolInstance>' +
+      '</elements></DOMFrame></frames></DOMLayer>' +
+      '</layers></DOMTimeline></timelines></DOMDocument>';
+
+    const flaBytes = await buildFlaBytes(docXml, [
+      { name: 'LIBRARY/GlowCore.xml', xml: glowCoreXml },
+      { name: 'LIBRARY/DynamicGlowCard.xml', xml: dynamicCardXml },
+    ]);
+    const ctx = await setupCommitPipeline(flaBytes);
+    try {
+      const firstCommit = await ctx.commitUnit(0);
+      if (!firstCommit.ok) throw new Error(`${firstCommit.error.code}: ${firstCommit.error.message}`);
+
+      const def = firstCommit.project.animations.find(
+        (candidate): candidate is FlaGraphicDefinition =>
+          'kind' in candidate && candidate.kind === 'fla-graphic' && candidate.id === firstCommit.animationId,
+      );
+      expect(def?.structure?.frames).toHaveLength(4);
+
+      // Extract B's fallbackAssetId and healthy A's fallbackAssetId at each frame ordinal.
+      const filterAssetByFrame: string[] = [];
+      const shapeAAssetByFrame: string[] = [];
+      for (let ordinal = 0; ordinal < 4; ordinal += 1) {
+        const flat = reconstructFlaGraphicStructure(def!.structure!, ordinal);
+        const filterNode = flat.find((entry) => entry.node.type === 'opaque' && entry.node.opaqueKind === 'filter')?.node;
+        const shapes = flat.map((entry) => entry.node).filter((node) => isFlaGraphicEditableSubtreeShapeNode(node));
+        expect(shapes).toHaveLength(2);
+        expect(filterNode?.type === 'opaque' && filterNode.fallbackScope === 'subtree').toBe(true);
+        if (filterNode?.type !== 'opaque' || !filterNode.fallbackAssetId) {
+          throw new Error(`Missing filter fallbackAssetId on frame ${ordinal}`);
+        }
+        if (shapes[0]?.type !== 'opaque' || !shapes[0].fallbackAssetId) {
+          throw new Error(`Missing shape A fallbackAssetId on frame ${ordinal}`);
+        }
+        filterAssetByFrame.push(filterNode.fallbackAssetId);
+        shapeAAssetByFrame.push(shapes[0].fallbackAssetId);
+      }
+
+      // Dynamic states switch assets; repeated state (frame 2 == frame 0) and static shape A reuse assets!
+      expect(filterAssetByFrame[0]).not.toBe(filterAssetByFrame[1]);
+      expect(filterAssetByFrame[0]).not.toBe(filterAssetByFrame[3]);
+      expect(filterAssetByFrame[1]).not.toBe(filterAssetByFrame[3]);
+      expect(filterAssetByFrame[2]).toBe(filterAssetByFrame[0]); // repeated state reused!
+      expect(new Set(shapeAAssetByFrame).size).toBe(1); // static healthy sibling reused across all 4 frames!
+
+      // Verify SVG contents of the 3 distinct filter assets match start/mid/end colors and contain no neighbors.
+      for (const [ordinal, expectedColor] of [[0, '#ff9900'], [1, '#00ccff'], [3, '#ff00ff']] as const) {
+        const asset = firstCommit.project.assets.find((candidate) => candidate.id === filterAssetByFrame[ordinal]);
+        expect(asset).toBeDefined();
+        expect(isGeneratedFlaSvgAsset(firstCommit.project, asset!)).toBe(true);
+        const svg = await fs.readFile(path.join(ctx.projectRoot, asset!.relativePath), 'utf8');
+        expect(svg).toContain(expectedColor);
+        expect(svg).not.toContain('#ff0000');
+        expect(svg).not.toContain('#0000ff');
+      }
+
+      // Evaluate playback across start (0), mid (1), seek (3 -> 1), pause (1 -> 1), and loop wrap (4 -> 0).
+      const evalAt = (elapsedFrames: number, firstFrameIndex = 0) => {
+        const selected = evaluateFlaGraphicFrame('loop', firstFrameIndex, undefined, 4, elapsedFrames);
+        if (!selected.ok) throw new Error('Expected valid frame selection');
+        const visual = evaluateFlaGraphicVisual({
+          definition: def!,
+          frameOrdinal: selected.frameIndex,
+          mode: 'instance',
+        });
+        expect(visual).not.toBeNull();
+        const filterEval = visual!.layers!
+          .flatMap((layer) => layer.nodes)
+          .find((node) => node.source.type === 'opaque' && node.source.opaqueKind === 'filter');
+        return filterEval?.source.type === 'opaque' ? filterEval.source.fallbackAssetId : undefined;
+      };
+      expect(evalAt(0)).toBe(filterAssetByFrame[0]); // start
+      expect(evalAt(1)).toBe(filterAssetByFrame[1]); // mid
+      expect(evalAt(3)).toBe(filterAssetByFrame[3]); // end
+      expect(evalAt(1)).toBe(filterAssetByFrame[1]); // seek back + pause
+      expect(evalAt(4)).toBe(filterAssetByFrame[0]); // loop wrap
+
+      // Two instances sharing the same Definition evaluate independently (instance 1 at frame 1, instance 2 at frame 3).
+      const assetCountAfterFirst = firstCommit.project.assets.length;
+      const secondCommit = await ctx.commitUnit(1);
+      if (!secondCommit.ok) throw new Error(`${secondCommit.error.code}: ${secondCommit.error.message}`);
+      expect(secondCommit.animationId).toBe(firstCommit.animationId);
+      expect(secondCommit.project.assets).toHaveLength(assetCountAfterFirst);
+      expect(evalAt(1, 0)).toBe(filterAssetByFrame[1]);
+      expect(evalAt(1, 2)).toBe(filterAssetByFrame[3]);
+
+      // Save & reopen preserves all 4 structure frames and asset bindings.
+      const reopened = await ctx.projectService.open(ctx.projectRoot);
+      const reopenedDef = reopened.project.animations.find(
+        (candidate): candidate is FlaGraphicDefinition =>
+          'kind' in candidate && candidate.kind === 'fla-graphic' && candidate.id === firstCommit.animationId,
+      );
+      expect(reopenedDef?.structure).toEqual(def!.structure);
+    } finally {
+      ctx.cleanup();
+    }
+  });
+
+  it('switches isolated dynamic static-text assets across frames and reuses repeated text states', async () => {
+    const dynamicTextXml =
+      '<DOMSymbolItem name="DynamicTextBadge" symbolType="graphic"><timeline><DOMTimeline name="DynamicTextBadge"><layers>' +
+      '<DOMLayer name="Bg"><frames><DOMFrame index="0" duration="3"><elements>' +
+      makeRectShapeXml('#ff0000', 0, 0, 30, 30) +
+      '</elements></DOMFrame></frames></DOMLayer>' +
+      '<DOMLayer name="Label"><frames>' +
+      '<DOMFrame index="0"><elements>' +
+      '<DOMStaticText width="100" height="24"><matrix><Matrix tx="40" ty="5"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>State A</characters><textAttrs><DOMTextAttrs size="16" fillColor="#111111"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame>' +
+      '<DOMFrame index="1"><elements>' +
+      '<DOMStaticText width="100" height="24"><matrix><Matrix tx="40" ty="5"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>State B</characters><textAttrs><DOMTextAttrs size="16" fillColor="#111111"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame>' +
+      '<DOMFrame index="2"><elements>' +
+      '<DOMStaticText width="100" height="24"><matrix><Matrix tx="40" ty="5"/></matrix>' +
+      '<textRuns><DOMTextRun><characters>State A</characters><textAttrs><DOMTextAttrs size="16" fillColor="#111111"/></textAttrs></DOMTextRun></textRuns>' +
+      '</DOMStaticText></elements></DOMFrame>' +
+      '</frames></DOMLayer>' +
+      '</layers></DOMTimeline></timeline></DOMSymbolItem>';
+
+    const docXml =
+      '<DOMDocument width="300" height="200" frameRate="24">' +
+      '<symbols><Include href="DynamicTextBadge.xml"/></symbols>' +
+      '<timelines><DOMTimeline name="Scene 1"><layers>' +
+      '<DOMLayer name="Main"><frames><DOMFrame index="0"><elements>' +
+      '<DOMSymbolInstance libraryItemName="DynamicTextBadge" symbolType="graphic" loop="loop" firstFrame="0"/>' +
+      '</elements></DOMFrame></frames></DOMLayer>' +
+      '</layers></DOMTimeline></timelines></DOMDocument>';
+
+    const flaBytes = await buildFlaBytes(docXml, [{ name: 'LIBRARY/DynamicTextBadge.xml', xml: dynamicTextXml }]);
+    // Content-dependent text rasterizer so distinct strings produce distinct resolved SVGs while identical strings match.
+    const pngStateA = Buffer.from(makeSolidPng(2, 1)).toString('base64');
+    const pngStateB = Buffer.from(makeSolidPng(3, 1)).toString('base64');
+    const contentAwareRasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize(input) {
+        let resolvedSvg = input.svg;
+        if (input.returnResolvedSvg && input.staticTexts?.length) {
+          const text = input.staticTexts.map((item) => item.descriptor.runs.map((r) => r.characters).join('')).join('|');
+          const payload = text.includes('State B') ? pngStateB : pngStateA;
+          resolvedSvg = resolvedSvg.replaceAll(FLA_STATIC_TEXT_PLACEHOLDER_BASE64, payload);
+        }
+        return {
+          pngBytes: makeSolidPng(input.width, input.height),
+          width: input.width,
+          height: input.height,
+          pixelCount: input.width * input.height,
+          ...(input.returnResolvedSvg ? { resolvedSvg } : {}),
+        };
+      },
+      cancel: () => true,
+      close: () => {},
+    };
+
+    const ctx = await setupCommitPipeline(flaBytes, contentAwareRasterizer);
+    try {
+      const committed = await ctx.commitUnit(0);
+      if (!committed.ok) throw new Error(`${committed.error.code}: ${committed.error.message}`);
+
+      const def = committed.project.animations.find(
+        (candidate): candidate is FlaGraphicDefinition =>
+          'kind' in candidate && candidate.kind === 'fla-graphic' && candidate.id === committed.animationId,
+      );
+      expect(def?.structure?.frames).toHaveLength(3);
+
+      const textAssets = [0, 1, 2].map((ordinal) => {
+        const flat = reconstructFlaGraphicStructure(def!.structure!, ordinal);
+        const textNode = flat.find((entry) => entry.node.type === 'opaque' && entry.node.opaqueKind === 'text')?.node;
+        if (textNode?.type !== 'opaque' || !textNode.fallbackAssetId) {
+          throw new Error(`Missing text fallbackAssetId on frame ${ordinal}`);
+        }
+        return textNode.fallbackAssetId;
+      });
+      expect(textAssets[0]).not.toBe(textAssets[1]);
+      expect(textAssets[2]).toBe(textAssets[0]); // repeated State A reuses frame 0's text asset!
     } finally {
       ctx.cleanup();
     }
