@@ -12,6 +12,9 @@ import {
  */
 export const FLA_SOUND_REFERENCE_SAMPLE_RATE = 44_100;
 
+/** Upper bound for finite repeat expansion to guard against sentinel/infinite values. */
+export const FLA_SOUND_MAX_FINITE_REPEAT = 256;
+
 export type FlaSoundTimelineSync = 'event' | 'start' | 'stop' | 'stream';
 export type FlaSoundTimelineLoopMode = 'repeat' | 'loop';
 
@@ -90,9 +93,48 @@ export interface ApplyFlaSceneAudioClipsResult {
   readonly diagnostics: FlaSoundTimelineDiagnostic[];
 }
 
+const SYNC_PRIORITY: Record<FlaSoundTimelineSync, number> = {
+  stop: 0,
+  stream: 1,
+  start: 2,
+  event: 3,
+};
+
+function compareSoundEvents(
+  left: FlaSceneSoundEvent,
+  right: FlaSceneSoundEvent,
+): number {
+  return (
+    left.frameIndex - right.frameIndex ||
+    SYNC_PRIORITY[left.sound.sync] - SYNC_PRIORITY[right.sound.sync] ||
+    left.layerIndex - right.layerIndex
+  );
+}
+
+function soundIdentityKey(
+  sound: Pick<FlaSceneFrameSoundDescriptor, 'soundId' | 'name'>,
+): string {
+  return sound.soundId ?? `name:${sound.name.trim().toLowerCase()}`;
+}
+
+interface PendingPlannedClip {
+  soundKey: string;
+  soundName: string;
+  frameIndex: number;
+  layerIndex: number;
+  sync: 'stream' | 'event' | 'start';
+  assetId: string;
+  assetDurationMs: number;
+  role: StandaloneAudioRole;
+  rawStartMs: number;
+  rawEndMs: number;
+  rawOffsetMs: number;
+}
+
 /**
  * Extracts sound events from a parsed FLA Scene timeline in deterministic
- * chronological order (frameIndex ascending, then sourceLayerIndex ascending).
+ * chronological order (frameIndex ascending, stop before start/event/stream on
+ * the same frame, then sourceLayerIndex ascending).
  */
 export function extractFlaTimelineSoundEvents(
   timeline: FlaTimelineSoundSource,
@@ -109,21 +151,18 @@ export function extractFlaTimelineSoundEvents(
       });
     }
   }
-  events.sort(
-    (left, right) =>
-      left.frameIndex - right.frameIndex || left.layerIndex - right.layerIndex,
-  );
+  events.sort(compareSoundEvents);
   return events;
 }
 
 /**
  * Plans Shot-local standalone AudioClips for a selected FLA main Scene.
  *
- * S05-A supports `stream` and `event` sync modes, converting source frame
- * indices using `sourceFps` and `inPoint44`/`outPoint44` using the fixed
- * 44,100 Hz reference rate, rounding to integer milliseconds only at the end.
- * Unsupported sync/loop semantics emit local diagnostics without dropping
- * audio assets.
+ * Supports `stream`, `event`, `start` (non-restarting dedup when the same sound
+ * is already active), `stop` (truncates active clips and cancels pending repeat
+ * passes for that sound while allowing later triggers), and finite repeat/loop
+ * expansion into multiple clips sharing the same `assetId`. Infinite loops and
+ * out-of-range repeat counts emit honest diagnostics without dropping assets.
  */
 export function planFlaSceneAudioClips(
   input: PlanFlaSceneAudioClipsInput,
@@ -136,25 +175,28 @@ export function planFlaSceneAudioClips(
   }
 
   const role: StandaloneAudioRole = input.role ?? 'sfx';
-  const clips: Omit<CreateAudioClipInput, 'shotId'>[] = [];
+  const pending: PendingPlannedClip[] = [];
   const diagnostics: FlaSoundTimelineDiagnostic[] = [];
 
-  const orderedEvents = [...input.events].sort(
-    (left, right) =>
-      left.frameIndex - right.frameIndex || left.layerIndex - right.layerIndex,
-  );
+  const orderedEvents = [...input.events].sort(compareSoundEvents);
 
   for (const event of orderedEvents) {
     const { sound } = event;
-    if (sound.sync !== 'stream' && sound.sync !== 'event') {
-      diagnostics.push({
-        code: 'unsupported-sync',
-        soundName: sound.name,
-        frameIndex: event.frameIndex,
-        layerIndex: event.layerIndex,
-        sync: sound.sync,
-        message: `Sound "${sound.name}" at frame ${event.frameIndex} uses "${sound.sync}" sync, which is not yet recovered into timeline clips (asset preserved).`,
-      });
+    const key = soundIdentityKey(sound);
+    const rawStartMs = (event.frameIndex * 1000) / input.sourceFps;
+
+    if (sound.sync === 'stop') {
+      // Truncate any currently active clips for this sound and cancel any
+      // scheduled future repeat passes from earlier triggers.
+      for (let index = pending.length - 1; index >= 0; index -= 1) {
+        const candidate = pending[index]!;
+        if (candidate.soundKey !== key) continue;
+        if (candidate.rawStartMs >= rawStartMs) {
+          pending.splice(index, 1);
+        } else if (candidate.rawEndMs > rawStartMs) {
+          candidate.rawEndMs = rawStartMs;
+        }
+      }
       continue;
     }
 
@@ -173,22 +215,44 @@ export function planFlaSceneAudioClips(
       continue;
     }
 
-    const hasUnsupportedLoop =
-      sound.loopMode === 'loop' ||
-      sound.loopMode === 'repeat' ||
-      (sound.loopCount !== undefined && sound.loopCount > 1);
-    if (hasUnsupportedLoop) {
+    if (sound.sync === 'start') {
+      const alreadyActive = pending.some(
+        (candidate) =>
+          candidate.soundKey === key &&
+          candidate.rawStartMs <= rawStartMs &&
+          rawStartMs < candidate.rawEndMs,
+      );
+      if (alreadyActive) {
+        continue;
+      }
+    }
+
+    let repeatCount = 1;
+    if (sound.loopMode === 'loop') {
       diagnostics.push({
         code: 'unsupported-loop',
         soundName: sound.name,
         frameIndex: event.frameIndex,
         layerIndex: event.layerIndex,
         sync: sound.sync,
-        message: `Sound "${sound.name}" at frame ${event.frameIndex} specifies loop/repeat playback, which is not yet expanded; only the first pass was placed.`,
+        message: `Sound "${sound.name}" at frame ${event.frameIndex} uses infinite "loop" playback, which is not supported; only the first pass was placed.`,
       });
+    } else if (sound.loopMode === 'repeat' || sound.loopCount !== undefined) {
+      const requested = sound.loopCount ?? 1;
+      if (!Number.isSafeInteger(requested) || requested <= 0 || requested > FLA_SOUND_MAX_FINITE_REPEAT) {
+        diagnostics.push({
+          code: 'unsupported-loop',
+          soundName: sound.name,
+          frameIndex: event.frameIndex,
+          layerIndex: event.layerIndex,
+          sync: sound.sync,
+          message: `Sound "${sound.name}" at frame ${event.frameIndex} specifies repeat count ${requested}, which exceeds finite repeat support; only the first pass was placed.`,
+        });
+      } else {
+        repeatCount = requested;
+      }
     }
 
-    const rawStartMs = (event.frameIndex * 1000) / input.sourceFps;
     const rawOffsetMs = ((sound.inPoint44 ?? 0) * 1000) / FLA_SOUND_REFERENCE_SAMPLE_RATE;
     const rawSourceEndMs =
       sound.outPoint44 !== undefined
@@ -211,18 +275,7 @@ export function planFlaSceneAudioClips(
       continue;
     }
 
-    const rawStreamEndMs =
-      sound.sync === 'stream'
-        ? ((event.frameIndex + event.frameDuration) * 1000) / input.sourceFps
-        : Number.POSITIVE_INFINITY;
-    const rawEndMs = Math.min(
-      rawStartMs + rawAvailableSourceMs,
-      rawStreamEndMs,
-      input.shotDurationMs,
-    );
-
-    const startMs = Math.max(0, Math.round(rawStartMs));
-    if (startMs >= input.shotDurationMs) {
+    if (Math.max(0, Math.round(rawStartMs)) >= input.shotDurationMs) {
       diagnostics.push({
         code: 'outside-shot-boundary',
         soundName: sound.name,
@@ -234,8 +287,7 @@ export function planFlaSceneAudioClips(
       continue;
     }
 
-    const offsetMs = Math.max(0, Math.round(rawOffsetMs));
-    if (offsetMs >= asset.durationMs) {
+    if (Math.max(0, Math.round(rawOffsetMs)) >= asset.durationMs) {
       diagnostics.push({
         code: 'empty-source-range',
         soundName: sound.name,
@@ -247,27 +299,59 @@ export function planFlaSceneAudioClips(
       continue;
     }
 
-    const maxAssetEndMs = startMs + (asset.durationMs - offsetMs);
-    const endMs = Math.min(Math.round(rawEndMs), input.shotDurationMs, maxAssetEndMs);
-    if (endMs <= startMs) {
-      diagnostics.push({
-        code: 'zero-duration-clip',
+    const rawStreamEndMs =
+      sound.sync === 'stream'
+        ? ((event.frameIndex + event.frameDuration) * 1000) / input.sourceFps
+        : Number.POSITIVE_INFINITY;
+    const maxHorizonMs = Math.min(rawStreamEndMs, input.shotDurationMs);
+
+    for (let pass = 0; pass < repeatCount; pass += 1) {
+      const passStartMs = rawStartMs + pass * rawAvailableSourceMs;
+      if (passStartMs >= maxHorizonMs) break;
+      const passEndMs = Math.min(passStartMs + rawAvailableSourceMs, maxHorizonMs);
+      if (passEndMs <= passStartMs) break;
+      pending.push({
+        soundKey: key,
         soundName: sound.name,
         frameIndex: event.frameIndex,
         layerIndex: event.layerIndex,
         sync: sound.sync,
-        message: `Sound "${sound.name}" at frame ${event.frameIndex} resolved to a zero-duration clip after boundary trimming.`,
+        assetId: asset.assetId,
+        assetDurationMs: asset.durationMs,
+        role,
+        rawStartMs: passStartMs,
+        rawEndMs: passEndMs,
+        rawOffsetMs,
+      });
+    }
+  }
+
+  const clips: Omit<CreateAudioClipInput, 'shotId'>[] = [];
+  for (const item of pending) {
+    const startMs = Math.max(0, Math.round(item.rawStartMs));
+    if (startMs >= input.shotDurationMs) continue;
+    const offsetMs = Math.max(0, Math.round(item.rawOffsetMs));
+    if (offsetMs >= item.assetDurationMs) continue;
+    const maxAssetEndMs = startMs + (item.assetDurationMs - offsetMs);
+    const endMs = Math.min(Math.round(item.rawEndMs), input.shotDurationMs, maxAssetEndMs);
+    if (endMs <= startMs) {
+      diagnostics.push({
+        code: 'zero-duration-clip',
+        soundName: item.soundName,
+        frameIndex: item.frameIndex,
+        layerIndex: item.layerIndex,
+        sync: item.sync,
+        message: `Sound "${item.soundName}" at frame ${item.frameIndex} resolved to a zero-duration clip after boundary trimming.`,
       });
       continue;
     }
-
     clips.push({
-      assetId: asset.assetId,
-      role,
+      assetId: item.assetId,
+      role: item.role,
       startMs,
       endMs,
       offsetMs,
-      name: sound.name,
+      name: item.soundName,
     });
   }
 

@@ -242,7 +242,7 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
     expect(editor.getSnapshot()!.project.assets.some((a) => a.id === ASSET_SFX)).toBe(true);
   });
 
-  it('emits local diagnostics for unsupported sync/loop without dropping assets', () => {
+  it('emits honest diagnostics for infinite loop while resolving start/stop/repeat deterministically', () => {
     const assetMap = new Map<string, FlaResolvedSoundAsset>([
       ['snd-pop', { assetId: ASSET_SFX, name: 'pop.wav', durationMs: 800 }],
       ['snd-start', { assetId: ASSET_START_ONLY, name: 'bgm_start.wav', durationMs: 4000 }],
@@ -255,39 +255,57 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
       events: [
         {
           layerIndex: 0,
-          frameIndex: 0,
+          frameIndex: 0, // 0ms
           frameDuration: 10,
           sound: { soundId: 'snd-start', name: 'bgm_start.wav', sync: 'start' },
         },
         {
+          // Same sound already active at frame 5 (200ms) -> start must NOT restart
+          layerIndex: 0,
+          frameIndex: 5,
+          frameDuration: 1,
+          sound: { soundId: 'snd-start', name: 'bgm_start.wav', sync: 'start' },
+        },
+        {
+          // Stop at frame 10 (400ms) truncates active bgm_start to [0, 400]
           layerIndex: 0,
           frameIndex: 10,
           frameDuration: 1,
           sound: { soundId: 'snd-start', name: 'bgm_start.wav', sync: 'stop' },
         },
         {
+          // Subsequent start at frame 25 (1000ms) is allowed after stop
+          layerIndex: 0,
+          frameIndex: 25,
+          frameDuration: 1,
+          sound: { soundId: 'snd-start', name: 'bgm_start.wav', sync: 'start' },
+        },
+        {
+          // Infinite loop emits honest unsupported-loop diagnostic and places only first pass
           layerIndex: 1,
-          frameIndex: 5,
+          frameIndex: 5, // 200ms
           frameDuration: 1,
           sound: {
             soundId: 'snd-pop',
             name: 'pop.wav',
             sync: 'event',
-            loopMode: 'repeat',
-            loopCount: 3,
+            loopMode: 'loop',
           },
         },
       ],
       resolveAsset: (sound) => (sound.soundId ? assetMap.get(sound.soundId) : undefined),
     });
 
-    expect(plan.diagnostics.map((d) => d.code)).toEqual([
-      'unsupported-sync',
-      'unsupported-loop',
-      'unsupported-sync',
-    ]);
-    // First pass of looped event is still placed; start/stop skipped with diagnostics
+    expect(plan.diagnostics.map((d) => d.code)).toEqual(['unsupported-loop']);
     expect(plan.clips).toEqual([
+      {
+        assetId: ASSET_START_ONLY,
+        role: 'sfx',
+        startMs: 0,
+        endMs: 400,
+        offsetMs: 0,
+        name: 'bgm_start.wav',
+      },
       {
         assetId: ASSET_SFX,
         role: 'sfx',
@@ -296,6 +314,128 @@ describe('S05-A: Main Scene Stream / Event audio recovery', () => {
         offsetMs: 0,
         name: 'pop.wav',
       },
+      {
+        assetId: ASSET_START_ONLY,
+        role: 'sfx',
+        startMs: 1000,
+        endMs: 5000,
+        offsetMs: 0,
+        name: 'bgm_start.wav',
+      },
+    ]);
+  });
+
+  it('S05-B: allows overlapping events, enforces same-frame stop-before-start, and expands finite repeat with in/out & Shot boundary', () => {
+    const assetMap = new Map<string, FlaResolvedSoundAsset>([
+      ['snd-pop', { assetId: ASSET_SFX, name: 'pop.wav', durationMs: 800 }],
+      ['snd-bgm', { assetId: ASSET_START_ONLY, name: 'bgm_start.wav', durationMs: 4000 }],
+    ]);
+
+    const plan = planFlaSceneAudioClips({
+      sourceFps: 25,
+      shotId: IDS.shot,
+      shotDurationMs: 2000,
+      events: [
+        // Two overlapping events of the same sound at 0ms and 200ms -> BOTH play
+        {
+          layerIndex: 0,
+          frameIndex: 0,
+          frameDuration: 1,
+          sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'event' },
+        },
+        {
+          layerIndex: 1,
+          frameIndex: 5, // 200ms
+          frameDuration: 1,
+          sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'event' },
+        },
+        // Start at 0ms, then same-frame stop (layer 2) + start (layer 0) at frame 10 (400ms):
+        // deterministic ordering runs stop before start, truncating [0, 400] and starting fresh [400, ...]
+        {
+          layerIndex: 0,
+          frameIndex: 0,
+          frameDuration: 1,
+          sound: { soundId: 'snd-bgm', name: 'bgm_start.wav', sync: 'start' },
+        },
+        {
+          layerIndex: 0,
+          frameIndex: 10, // 400ms
+          frameDuration: 1,
+          sound: {
+            soundId: 'snd-bgm',
+            name: 'bgm_start.wav',
+            sync: 'start',
+            // inPoint44 = 4410 (100ms), outPoint44 = 30870 (700ms) => 600ms per repeat pass
+            inPoint44: 4_410,
+            outPoint44: 30_870,
+            loopMode: 'repeat',
+            loopCount: 3, // passes: [400, 1000], [1000, 1600], [1600, 2000] (trimmed by Shot 2000ms)
+          },
+        },
+        {
+          layerIndex: 2,
+          frameIndex: 10, // 400ms (higher layerIndex, still runs before start on same frame)
+          frameDuration: 1,
+          sound: { soundId: 'snd-bgm', name: 'bgm_start.wav', sync: 'stop' },
+        },
+      ],
+      resolveAsset: (sound) => (sound.soundId ? assetMap.get(sound.soundId) : undefined),
+    });
+
+    expect(plan.diagnostics).toEqual([]);
+    expect(plan.clips).toEqual([
+      { assetId: ASSET_START_ONLY, role: 'sfx', startMs: 0, endMs: 400, offsetMs: 0, name: 'bgm_start.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 0, endMs: 800, offsetMs: 0, name: 'pop.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 200, endMs: 1000, offsetMs: 0, name: 'pop.wav' },
+      { assetId: ASSET_START_ONLY, role: 'sfx', startMs: 400, endMs: 1000, offsetMs: 100, name: 'bgm_start.wav' },
+      { assetId: ASSET_START_ONLY, role: 'sfx', startMs: 1000, endMs: 1600, offsetMs: 100, name: 'bgm_start.wav' },
+      { assetId: ASSET_START_ONLY, role: 'sfx', startMs: 1600, endMs: 2000, offsetMs: 100, name: 'bgm_start.wav' },
+    ]);
+  });
+
+  it('S05-B: stop cancels future scheduled repeat passes and truncates active pass without blocking later triggers', () => {
+    const assetMap = new Map<string, FlaResolvedSoundAsset>([
+      ['snd-pop', { assetId: ASSET_SFX, name: 'pop.wav', durationMs: 500 }],
+    ]);
+
+    const plan = planFlaSceneAudioClips({
+      sourceFps: 20, // 50ms/frame
+      shotId: IDS.shot,
+      shotDurationMs: 4000,
+      events: [
+        {
+          layerIndex: 0,
+          frameIndex: 0, // 0ms, 4 repeats => [0,500], [500,1000], [1000,1500], [1500,2000]
+          frameDuration: 1,
+          sound: {
+            soundId: 'snd-pop',
+            name: 'pop.wav',
+            sync: 'start',
+            loopMode: 'repeat',
+            loopCount: 4,
+          },
+        },
+        {
+          layerIndex: 0,
+          frameIndex: 15, // 750ms -> truncates pass 2 to [500, 750] and cancels passes 3 & 4
+          frameDuration: 1,
+          sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'stop' },
+        },
+        {
+          layerIndex: 0,
+          frameIndex: 30, // 1500ms -> new start allowed after stop
+          frameDuration: 1,
+          sound: { soundId: 'snd-pop', name: 'pop.wav', sync: 'start' },
+        },
+      ],
+      resolveAsset: (sound) => (sound.soundId ? assetMap.get(sound.soundId) : undefined),
+    });
+
+    expect(plan.diagnostics).toEqual([]);
+    expect(plan.clips).toEqual([
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 0, endMs: 500, offsetMs: 0, name: 'pop.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 500, endMs: 750, offsetMs: 0, name: 'pop.wav' },
+      { assetId: ASSET_SFX, role: 'sfx', startMs: 1500, endMs: 2000, offsetMs: 0, name: 'pop.wav' },
     ]);
   });
 

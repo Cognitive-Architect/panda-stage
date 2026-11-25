@@ -172,6 +172,19 @@ describe('S05-A integration: FLA main Scene sound timeline recovery & persistenc
                     soundId: 'fla-sound-bgm',
                     name: 'bgm.wav',
                     sync: 'start',
+                    loopMode: 'loop',
+                  },
+                },
+                {
+                  id: 'fla-frame-1-3-15',
+                  sourceFrameIndex: 15,
+                  startFrame: 15,
+                  duration: 1,
+                  instances: [],
+                  sound: {
+                    soundId: 'fla-sound-bgm',
+                    name: 'bgm.wav',
+                    sync: 'stop',
                   },
                 },
               ],
@@ -220,11 +233,11 @@ describe('S05-A integration: FLA main Scene sound timeline recovery & persistenc
     if (!response.ok) return;
     expect(response.projectChanged).toBe(true);
     expect(response.savedRevision).toBe(2);
-    // All 3 unique sounds imported (including bgm.wav whose start sync is diagnosed, NOT dropped)
+    // All 3 unique sounds imported (including bgm.wav whose infinite loop is diagnosed, NOT dropped)
     expect(response.importedAssetIds).toHaveLength(3);
-    expect(response.createdClipIds).toHaveLength(3);
+    expect(response.createdClipIds).toHaveLength(4);
     expect(response.diagnostics).toHaveLength(1);
-    expect(response.diagnostics[0]!.code).toBe('unsupported-sync');
+    expect(response.diagnostics[0]!.code).toBe('unsupported-loop');
 
     trackedSnapshot = { project: response.project, revision: response.savedRevision };
 
@@ -233,9 +246,11 @@ describe('S05-A integration: FLA main Scene sound timeline recovery & persistenc
     expect(ProjectSchema.parse(reopened.project)).toEqual(response.project);
     const shot = reopened.project.shots.find((s) => s.id === shotId)!;
     expect(shot.dialogues).toEqual([]);
-    expect(shot.audioClips).toHaveLength(3);
+    expect(shot.audioClips).toHaveLength(4);
 
-    const [streamClip, event1, event2] = shot.audioClips;
+    const [bgmClip, streamClip, event1, event2] = shot.audioClips;
+    // bgm.wav started at 0ms and stopped at frame 15 @ 30fps => 500ms
+    expect(bgmClip).toMatchObject({ startMs: 0, endMs: 500, offsetMs: 0, role: 'sfx' });
     expect(streamClip).toMatchObject({ startMs: 100, endMs: 600, offsetMs: 500, role: 'sfx' });
     // pop.wav has 22050Hz actual sample rate, yet inPoint44=4410 MUST use 44100Hz => 100ms offset!
     expect(event1).toMatchObject({ startMs: 333, endMs: 1033, offsetMs: 100, role: 'sfx' });
@@ -259,9 +274,10 @@ describe('S05-A integration: FLA main Scene sound timeline recovery & persistenc
         };
       }),
     );
-    expect(mixPlan.clips).toHaveLength(3);
-    expect(mixPlan.clips[0]!.sourceOffsetMs).toBe(500);
-    expect(mixPlan.clips[1]!.sourceOffsetMs).toBe(100);
-    expect(mixPlan.clips[2]!.endMs).toBe(5000);
+    expect(mixPlan.clips).toHaveLength(4);
+    expect(mixPlan.clips[0]!.endMs).toBe(500);
+    expect(mixPlan.clips[1]!.sourceOffsetMs).toBe(500);
+    expect(mixPlan.clips[2]!.sourceOffsetMs).toBe(100);
+    expect(mixPlan.clips[3]!.endMs).toBe(5000);
   });
 });
