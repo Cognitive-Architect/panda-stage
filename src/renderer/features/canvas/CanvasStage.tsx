@@ -27,7 +27,8 @@ import {
   CHARACTER_PART_MIN_SCALE,
   characterNodeMotionScaleBounds,
   composeAnimatedCharacterPartTransform,
-  cameraWorldTransform,
+  compareCameraDrawingLayers,
+  resolveLayerCameraTransform,
   createCharacterPartAnimationClip,
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
@@ -1586,10 +1587,12 @@ export function CanvasStage({
                     onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
-                  <Group listening={!cameraTool} {...cameraWorldTransform(displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)}>
+                  <Group listening={!cameraTool}>
                   {stageModel
-                    ? stageModel.layers.map((stageLayer) => {
+                    ? [...stageModel.layers].sort((a, b) => compareCameraDrawingLayers(a.evaluated, b.evaluated)).map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
+                        const projection = resolveLayerCameraTransform(stageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT);
+                        if (!projection) return null;
                         const characterView = snapshot && !positionAuthoringSession && !render.isBackground
                           ? resolveCharacterView(snapshot.project, layer, visual)
                           : null;
@@ -1637,7 +1640,7 @@ export function CanvasStage({
                               }
                             : undefined;
                         return (
-                          <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace}>
+                          <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace} projection={displayCamera ? projection : undefined}>
                           <SelectableLayer
                             characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}

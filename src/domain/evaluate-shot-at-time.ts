@@ -50,6 +50,8 @@ export interface EvaluatedLayer {
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
+  effectiveDepth?: number;
+  effectiveCameraSpace?: 'world' | 'screen';
   /** Transient Animation Core values at the same absolute Shot time. */
   animationValues?: EvaluatedAnimationValue[];
   /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
@@ -960,6 +962,6 @@ export function evaluateShotAtTime(
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers: applyLayerParenting(shot, layers),
+    layers: applyLayerParenting(shot, layers, timeMs),
   };
 }

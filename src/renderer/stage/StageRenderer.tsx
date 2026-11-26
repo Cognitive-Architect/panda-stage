@@ -9,7 +9,7 @@ import {
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
-import { cameraWorldTransform } from '../../domain/shot-camera';
+import { resolveLayerCameraTransform } from '../../domain/shot-camera';
 import { StageLayerSpace } from './StageLayerSpace';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
@@ -497,7 +497,7 @@ export function StageRenderer({
           .filter(([assetId, url]) => assetUrls[assetId] === url)
           .map(([assetId]) => assetId),
       );
-      const model = buildStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds);
+      const model = buildStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds, { camera });
       recordPreviewDuration('stage-render-model', startedAt, {
         timeMs: evaluatedShot.timeMs,
         layerCount: model.layers.length,
@@ -512,7 +512,7 @@ export function StageRenderer({
         error: error instanceof Error ? error : new Error('舞台模型无效。'),
       };
     }
-  }, [assetUrls, evaluatedShot, failedExpressionUrls, project]);
+  }, [assetUrls, camera, evaluatedShot, failedExpressionUrls, project]);
   const layers = modelResult.model?.layers ?? [];
   const imageSourceKey = buildStageImageSourceKey(
     buildStagePartSources(layers, project.id),
@@ -764,10 +764,11 @@ export function StageRenderer({
           <Group
             name="camera-world"
             listening={false}
-            {...cameraWorldTransform(displayCamera, displayModel!.width, displayModel!.height)}
           >
           {displayModel!.layers.map((layer) => {
             const render = layer.render;
+            const projection = resolveLayerCameraTransform(layer, displayCamera, displayModel!.width, displayModel!.height);
+            if (!projection) return null;
             const primaryPart = layer.parts[0];
             if (!primaryPart || !render.visible) {
               return null;
@@ -777,7 +778,7 @@ export function StageRenderer({
             if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
-                <StageLayerSpace key={layer.id} space={layer.parentSpace}>
+                <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
                 <KonvaImage
                   height={render.height}
                   image={image}
@@ -796,7 +797,7 @@ export function StageRenderer({
               );
             }
             return (
-              <StageLayerSpace key={layer.id} space={layer.parentSpace}>
+              <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
               <Group
                 listening={render.listening}
                 opacity={render.opacity}

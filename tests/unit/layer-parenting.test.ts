@@ -172,6 +172,49 @@ describe('native Layer parenting', () => {
     expect(repaired.shots).toEqual(covered.shots);
   });
 
+  it('orders camera planes and skips clipped asset resolution after evaluating the parent chain', () => {
+    const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
+    const bound = new LayerService().setParent(project, shot.id, tip.id, baseLayer.id, 0);
+    const missing = { ...asset, id: randomUUID(), relativePath: 'assets/clipped.png' };
+    const prepared = ProjectSchema.parse({
+      ...bound,
+      assets: [...bound.assets, missing],
+      shots: bound.shots.map((current) => ({
+        ...current,
+        layers: current.layers.map((layer) => {
+          if (layer.id === baseLayer.id) return {
+            ...layer,
+            source: { kind: 'asset', assetId: missing.id },
+            depthKeys: [
+              { timeMs: 0, value: 100, interpolationToNext: 'linear' },
+              { timeMs: 1_000, value: -500, interpolationToNext: 'linear' },
+            ],
+          };
+          if (layer.id === middle.id) return { ...layer, depth: 700, visible: true };
+          if (layer.id === other.id) return { ...layer, cameraSpace: 'screen' };
+          return layer;
+        }),
+      })),
+    });
+    const staged = prepared.shots[0]!;
+    const at = (time: number) => evaluateShotAtTime(staged, time, prepared);
+    expect(at(500).layers.find(({ id }) => id === tip.id)?.effectiveDepth).toBe(-200);
+    const near = at(1_000);
+    expect(near.layers.find(({ id }) => id === tip.id)?.effectiveDepth).toBe(-500);
+    const independent = ProjectSchema.parse({
+      ...prepared, shots: [{ ...staged, layers: staged.layers.map((layer) => layer.id === tip.id ? { ...layer, depth: 0 } : layer) }],
+    });
+    const composed = evaluateShotAtTime(independent.shots[0]!, 1_000, independent);
+    expect(evaluatedLayerWorldMatrix(composed.layers.find(({ id }) => id === tip.id)!))
+      .toEqual(evaluatedLayerWorldMatrix(near.layers.find(({ id }) => id === tip.id)!));
+    const camera = { centerX: 1060, centerY: 540, zoom: 2, rotationDeg: 35 };
+    const urls = { [asset.id]: 'asset:' + asset.id };
+    expect(buildStageRenderModel(prepared, near, urls, undefined, { camera }).layers.map(({ id }) => id))
+      .toEqual([middle.id, other.id]);
+    expect(buildStageRenderModel(independent, composed, urls, undefined, { camera }).layers.map(({ id }) => id))
+      .toEqual([middle.id, tip.id, other.id]);
+  });
+
   it('persists three-level affine inheritance in draw order and preserves independent local motion', () => {
     const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
     const service = new LayerService();

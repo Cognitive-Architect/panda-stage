@@ -1404,7 +1404,7 @@ export function resolveLayerVisualParts(
   evaluated: EvaluatedLayer,
   timeMs = 0,
   isImageUnavailable?: (assetId: string) => boolean,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean },
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {

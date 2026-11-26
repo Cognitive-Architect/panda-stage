@@ -1,3 +1,4 @@
+import type { EvaluatedLayer } from './evaluate-shot-at-time';
 import { evaluateAnimationEase, sliceAnimationCurve } from './evaluate-animation-core';
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from './constants';
 import { ProjectSchema, type Project, type Shot } from './models';
@@ -82,6 +83,24 @@ export function cameraLayerTransform(
     centerY: centerY + (camera.centerY - centerY) * pan,
     zoom: restDistance / distance,
   }, width, height);
+}
+
+type CameraDrawingLayer = Pick<EvaluatedLayer, 'effectiveCameraSpace' | 'effectiveDepth' | 'zIndex'>;
+
+export function compareCameraDrawingLayers(a: CameraDrawingLayer, b: CameraDrawingLayer): number {
+  const aScreen = a.effectiveCameraSpace === 'screen';
+  const bScreen = b.effectiveCameraSpace === 'screen';
+  if (aScreen !== bScreen) return aScreen ? 1 : -1;
+  return (aScreen ? 0 : (b.effectiveDepth ?? 0) - (a.effectiveDepth ?? 0)) || a.zIndex - b.zIndex;
+}
+
+export function resolveLayerCameraTransform(
+  layer: CameraDrawingLayer,
+  camera: CameraView | undefined,
+  width: number,
+  height: number,
+): ReturnType<typeof cameraLayerTransform> {
+  return cameraLayerTransform(camera, width, height, layer.effectiveDepth ?? 0, layer.effectiveCameraSpace ?? 'world');
 }
 
 function editCamera(project: Project, shotId: string, edit: (shot: Shot) => Shot['camera']): Project {

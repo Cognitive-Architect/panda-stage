@@ -1,4 +1,5 @@
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
+import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
 import type { Layer, Shot } from './models';
 import { composeAffineMatrix } from './models/flaGraphicTimeline';
@@ -24,10 +25,14 @@ export function validLayerParentTargets(shot: Shot, childId: string): Layer[] {
   });
 }
 
-export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[]): EvaluatedLayer[] {
-  if (!shot.layers.some((layer) => layer.parentLayerId || layer.parentSpaceOffset)) return layers;
+export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[], timeMs: number): EvaluatedLayer[] {
+  if (!shot.layers.some((layer) =>
+    layer.parentLayerId || layer.parentSpaceOffset || layer.depth !== undefined || layer.depthKeys || layer.cameraSpace,
+  )) return layers;
   const authored = new Map(shot.layers.map((layer) => [layer.id, layer]));
   const local = new Map(layers.map((layer) => [layer.id, layerPoseMatrix(layer)]));
+  const depths = new Map<string, number>();
+  const cameraSpaces = new Map<string, 'world' | 'screen'>();
   const spaces = new Map<string, AffineMatrix2D>();
   const world = new Map<string, AffineMatrix2D>();
   const invalidEdges = new Set<string>();
@@ -49,7 +54,14 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[]): Evalu
     }
     for (const entry of chain.reverse()) {
       const layer = authored.get(entry);
-      const parent = layer?.parentLayerId && !invalidEdges.has(entry) ? world.get(layer.parentLayerId) : undefined;
+      const parentId = invalidEdges.has(entry) ? undefined : layer?.parentLayerId;
+      const parent = parentId ? world.get(parentId) : undefined;
+      const depth = layer?.depthKeys?.length
+        ? evaluateAnimationTrackAtTime({ keys: layer.depthKeys }, timeMs)
+        : layer?.depth ?? (parentId ? depths.get(parentId) : undefined);
+      const cameraSpace = parentId && parent ? cameraSpaces.get(parentId) : layer?.cameraSpace;
+      if (depth !== undefined) depths.set(entry, depth);
+      if (cameraSpace !== undefined) cameraSpaces.set(entry, cameraSpace);
       const offset = layer?.parentSpaceOffset;
       const space = parent && offset ? multiplyAffineMatrices(parent, offset) : parent ?? offset;
       const pose = local.get(entry)!;
@@ -65,9 +77,16 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[]): Evalu
     }
   }
   return layers.map((layer) => {
-    if (unavailable.has(layer.id)) return { ...layer, parentSpaceUnavailable: true };
+    const effectiveDepth = depths.get(layer.id);
+    const effectiveCameraSpace = cameraSpaces.get(layer.id);
     const parentSpace = spaces.get(layer.id);
-    return parentSpace ? { ...layer, parentSpace } : layer;
+    return {
+      ...layer,
+      ...(effectiveDepth !== undefined ? { effectiveDepth } : {}),
+      ...(effectiveCameraSpace ? { effectiveCameraSpace } : {}),
+      ...(unavailable.has(layer.id) ? { parentSpaceUnavailable: true } : {}),
+      ...(parentSpace ? { parentSpace } : {}),
+    };
   });
 }
 
