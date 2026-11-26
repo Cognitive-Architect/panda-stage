@@ -96,6 +96,38 @@ describe('XFL instance affine projection', () => {
     expect(sample(1).a * 20).toBeCloseTo(20 * Math.SQRT1_2 * 1.4);
   });
 
+  it('maps an off-center projection pivot through Object Motion rotation and scale', () => {
+    const doc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90"
+      vanishingPoint3DX="100" vanishingPoint3DY="100"><timelines><DOMTimeline name="Scene 1">
+      <layers><DOMLayer><frames><DOMFrame index="0" duration="3" tweenType="motion object">
+        <motionObjectXML><AnimationCore TimeScale="24000" duration="3000"><PropertyContainer id="Motion">
+          <Property id="Scale_X"><Keyframe timevalue="0" anchor="0,100"/><Keyframe timevalue="2000" anchor="0,200"/></Property>
+          <Property id="Rotation_Z"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="2000" anchor="0,90"/></Property>
+          <Property id="Motion_X"><Keyframe timevalue="0" anchor="0,0"/><Keyframe timevalue="2000" anchor="0,40"/></Property>
+        </PropertyContainer></AnimationCore></motionObjectXML>
+        <elements><DOMSymbolInstance libraryItemName="Card" symbolType="graphic" rotationY="45"
+            centerPoint3DX="110" centerPoint3DY="100">
+          <matrix><Matrix tx="100" ty="100"/></matrix><transformationPoint><Point x="0" y="0"/></transformationPoint>
+        </DOMSymbolInstance></elements>
+      </DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(doc, [cardSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const frame = adapted.source.buildSceneFrameContext(adapted.source.sceneTimelines[0]!.xml, 2, 'scene:0');
+    if (!frame.ok) throw new Error(frame.message);
+    const element = frame.value.layers[0]!.elements[0]!;
+    expect(element).toMatchObject({ kind: 'symbol', projection3D: { rotationY: 45, rotationZ: 0 } });
+    if (element.kind !== 'symbol') throw new Error('Expected projected symbol');
+    expect(element.projection3D?.pivotX).toBeCloseTo(140);
+    expect(element.projection3D?.pivotY).toBeCloseTo(120);
+    const result = resolveFlaDisplayList({
+      root: { kind: 'scene', name: 'Scene 1', frameContext: frame.value }, symbols: adapted.source.symbols,
+    });
+    if (!result.ok) throw new Error(result.message);
+    const pose = result.displayList.layers[0]!.children[0]!.worldTransform;
+    expect(pose.tx + 10 * pose.a).toBeCloseTo(140);
+    expect(pose.ty + 10 * pose.b).toBeCloseTo(120);
+  });
+
   it('resolves authored XFL under parent and document perspective, skipping a behind-viewer sibling', () => {
     const doc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="20" vanishingPoint3DY="30">
       <timelines><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>
