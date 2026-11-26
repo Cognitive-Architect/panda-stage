@@ -8,6 +8,7 @@ import {
   LayerV30Schema,
   LayerV32Schema,
   LayerV41Schema,
+  LayerV42Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -126,6 +127,11 @@ export const ShotV40Schema = ShotV20Schema.extend({
 export const ShotV41Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerV41Schema),
+}).superRefine(validateShotClipKeyTimes);
+
+export const ShotV42Schema = ShotV20Schema.extend({
+  timelineEvents: z.array(TimelineEventSchema).default([]),
+  layers: z.array(LayerV42Schema),
 }).superRefine(validateShotClipKeyTimes);
 
 export const ShotSchema = ShotV20Schema.extend({

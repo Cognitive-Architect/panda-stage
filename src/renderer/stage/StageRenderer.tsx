@@ -9,6 +9,7 @@ import {
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
+import { StageLayerSpace } from './StageLayerSpace';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import {
@@ -778,8 +779,8 @@ export function StageRenderer({
             if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
+                <StageLayerSpace key={layer.id} space={layer.parentSpace}>
                 <KonvaImage
-                  key={layer.id}
                   height={render.height}
                   image={image}
                   listening={render.listening}
@@ -793,11 +794,12 @@ export function StageRenderer({
                   x={render.x}
                   y={render.y}
                 />
+                </StageLayerSpace>
               );
             }
             return (
+              <StageLayerSpace key={layer.id} space={layer.parentSpace}>
               <Group
-                key={layer.id}
                 listening={render.listening}
                 opacity={render.opacity}
                 rotation={render.rotationDeg}
@@ -821,6 +823,7 @@ export function StageRenderer({
                   visualBounds={layer.visual.combinedLocalBounds}
                 />
               </Group>
+              </StageLayerSpace>
             );
           })}
           </Group>

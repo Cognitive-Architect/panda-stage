@@ -1,3 +1,5 @@
+import { applyLayerParenting } from './layer-parent-space';
+import type { AffineMatrix2D } from '../shared/affine-matrix';
 import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
@@ -44,6 +46,8 @@ import {
  * the active expression's asset).
  */
 export interface EvaluatedLayer {
+  /** Inherited affine space. The ordinary pose and animation tracks stay local. */
+  parentSpace?: AffineMatrix2D;
   /** Transient Animation Core values at the same absolute Shot time. */
   animationValues?: EvaluatedAnimationValue[];
   /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
@@ -952,6 +956,6 @@ export function evaluateShotAtTime(
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers,
+    layers: applyLayerParenting(shot, layers),
   };
 }

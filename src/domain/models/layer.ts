@@ -374,7 +374,7 @@ export const LayerV41Schema = LayerV32Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
 });
 
-export const LayerSchema = z
+export const LayerV42Schema = z
   .object({
     ...LayerV15AnimationShape,
     source: LayerSourceSchema,
@@ -401,6 +401,17 @@ export const LayerSchema = z
       });
     }
   });
+
+const LayerSpaceMatrixSchema = z.object({
+  a: FiniteNumberSchema, b: FiniteNumberSchema, c: FiniteNumberSchema,
+  d: FiniteNumberSchema, tx: FiniteNumberSchema, ty: FiniteNumberSchema,
+}).strict();
+
+export const LayerSchema = LayerV42Schema.safeExtend({
+  parentLayerId: IdSchema.optional(),
+  /** Maps authored local animation into the current parent's space (or world when detached). */
+  parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
+});
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

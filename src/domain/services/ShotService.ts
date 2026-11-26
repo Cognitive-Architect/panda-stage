@@ -119,6 +119,7 @@ export class ShotService {
         return {
           ...layer,
           id: layerId,
+          ...(layer.parentLayerId ? { parentLayerId: layerIds.get(layer.parentLayerId) } : {}),
           ...(layer.animationClip ? { animationClip: remapClipLayer(layer.animationClip, layerId) } : {}),
         };
       }),

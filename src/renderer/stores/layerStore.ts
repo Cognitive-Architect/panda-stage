@@ -516,12 +516,19 @@ export class LayerStore {
     return next;
   }
 
-  deleteLayer(layerId: string): Project {
+  deleteLayer(layerId: string, timeMs = 0): Project {
     const { project, shotId } = this.context();
-    const next = this.service.deleteLayer(project, shotId, layerId);
+    const next = this.service.deleteLayer(project, shotId, layerId, timeMs);
     if (next !== project) {
       this.editorStore.updateProject(next, 'Delete layer');
     }
+    return next;
+  }
+
+  setParent(childId: string, parentId: string | null, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setParent(project, shotId, childId, parentId, timeMs);
+    if (next !== project) this.editorStore.updateProject(next, parentId ? '绑定父级图层' : '解除父级绑定');
     return next;
   }
 

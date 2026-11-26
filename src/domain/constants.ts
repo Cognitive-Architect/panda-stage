@@ -1,4 +1,4 @@
-export const PROJECT_SCHEMA_VERSION = 42 as const;
+export const PROJECT_SCHEMA_VERSION = 43 as const;
 export const PROJECT_WIDTH = 1920 as const;
 export const PROJECT_HEIGHT = 1080 as const;
 export const PROJECT_FPS = 24 as const;

@@ -246,6 +246,7 @@ export const ProjectDocumentSchema = z
       z.literal(39),
       z.literal(40),
       z.literal(41),
+      z.literal(42),
       z.literal(PROJECT_SCHEMA_VERSION),
     ]),
   })
