@@ -1890,12 +1890,12 @@ function reconstructFills(
  * imported shapes so positive RGBA alphaOffset can restore 0-alpha geometry without
  * tinting empty scratch/filter margins or interior holes (E-F09).
  */
-export function extractFlaGraphicShapeCoveragePathData(input: {
+export function extractFlaGraphicShapeCoverage(input: {
   readonly shapeBlock: string;
   readonly shapeId: string;
   readonly renderTargetId: string;
   readonly frameIndex: number;
-}): readonly string[] | undefined {
+}): readonly { pathD: string; zeroAlphaColor: string | null }[] | undefined {
   try {
     const representation = buildStyleAwareShapeRepresentation(
       parseShapeAt(input.shapeBlock),
@@ -1911,11 +1911,16 @@ export function extractFlaGraphicShapeCoveragePathData(input: {
     if (!reconstructed.ok || reconstructed.result.fills.length === 0 || reconstructed.result.fills.length > 256) {
       return undefined;
     }
-    const pathData = reconstructed.result.fills.map((fill) => fill.pathD);
-    const totalLength = pathData.reduce((total, path) => total + path.length, 0);
-    return totalLength > 512 * 1024 || pathData.some((path) => path.length === 0)
+    const coverage = reconstructed.result.fills.map(({ pathD, style, paint }) => ({
+      pathD,
+      zeroAlphaColor: style.type === 'solid' && 'opacity' in paint && paint.opacity === 0
+        ? paint.firstColor
+        : null,
+    }));
+    const totalLength = coverage.reduce((total, { pathD }) => total + pathD.length, 0);
+    return totalLength > 512 * 1024 || coverage.some(({ pathD }) => pathD.length === 0)
       ? undefined
-      : pathData;
+      : coverage;
   } catch {
     return undefined;
   }
@@ -3832,10 +3837,12 @@ export function planStaticScale9Placement(
   shapeBlocks: ReadonlyMap<string, string>,
 ): Scale9Placement | null {
   const { worldTransform: world, scale9Grid } = node;
-  const absX = Math.abs(world.a);
-  const absY = Math.abs(world.d);
-  if (!scale9Grid || absX === 0 || absY === 0 || world.b !== 0 || world.c !== 0 ||
-      (world.a < 0 && world.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  const absX = Math.abs(local.a);
+  const absY = Math.abs(local.d);
+  if (!scale9Grid || absX === 0 || absY === 0 || world.a === 0 || world.d === 0 ||
+      local.b !== 0 || local.c !== 0 || world.b !== 0 || world.c !== 0 ||
+      (local.a < 0 && local.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
   const bounds = createBounds();
   for (const child of node.children) {
     if (child.kind !== 'shape' || child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) return null;
@@ -3847,11 +3854,11 @@ export function planStaticScale9Placement(
     const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
     if (!path.ok) return null;
     const m = child.worldTransform;
-    const local = {
+    const childLocal = {
       a: m.a / world.a, b: m.b / world.d, c: m.c / world.a, d: m.d / world.d,
       tx: (m.tx - world.tx) / world.a, ty: (m.ty - world.ty) / world.d,
     };
-    if (!includeTransformedPathBounds(bounds, path.representation.commands, local)) return null;
+    if (!includeTransformedPathBounds(bounds, path.representation.commands, childLocal)) return null;
   }
   const layout = planFlaScale9Slices(
     { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
@@ -3865,7 +3872,7 @@ export function planStaticScale9Placement(
   });
   const placements = layout?.map(({ source, target }) => ({
     source: rect(source.left, source.top, source.right, source.bottom, world.a, world.d),
-    target: rect(target.left, target.top, target.right, target.bottom, Math.sign(world.a), Math.sign(world.d)),
+    target: rect(target.left, target.top, target.right, target.bottom, world.a / absX, world.d / absY),
   }));
   return placements?.every(({ source, target }) =>
     Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
@@ -3933,16 +3940,17 @@ export function diagnoseStaticScale9Fallback(
   const { worldTransform: world, scale9Grid } = node;
   if (!scale9Grid) return null;
   if (planStaticScale9Placement(node, shapeBlocks) !== null) return null;
-  const absX = Math.abs(world.a);
-  const absY = Math.abs(world.d);
-  // Identity scale needs no 9-slice; AIR specifies rotated DisplayObjects fall back to ordinary scaling.
-  if (world.b === 0 && world.c === 0) {
-    if (absX === 1 && absY === 1) return null;
-    if (world.a < 0 && world.d < 0) return null;
-  } else {
-    const lenX = Math.hypot(world.a, world.b);
-    const lenY = Math.hypot(world.c, world.d);
-    const dot = Math.abs(world.a * world.c + world.b * world.d);
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  // Identity scale needs no 9-slice; rotated occurrences use ordinary scaling.
+  if (local.b === 0 && local.c === 0) {
+    if (Math.abs(local.a) === 1 && Math.abs(local.d) === 1) return null;
+    if (local.a < 0 && local.d < 0) return null;
+  }
+  const effective = local.b !== 0 || local.c !== 0 ? local : world;
+  if (effective.b !== 0 || effective.c !== 0) {
+    const lenX = Math.hypot(effective.a, effective.b);
+    const lenY = Math.hypot(effective.c, effective.d);
+    const dot = Math.abs(effective.a * effective.c + effective.b * effective.d);
     if (lenX > 0 && lenY > 0 && dot <= 1e-4 * lenX * lenY) return null;
     return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): skewed transform falls back to ordinary scaling`;
   }
@@ -4136,15 +4144,30 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           glowInput = 'inverse' + index;
           primitives.push(`<feComponentTransfer in="${source}" result="${glowInput}"><feFuncA type="linear" slope="-1" intercept="1"/></feComponentTransfer>`);
         }
+        if (filter.inner && !filter.knockout) {
+          const strengthMask = 'glowStrength' + index;
+          const inner = 'glowInside' + index;
+          const remainder = 'glowRemainder' + index;
+          // Mix premultiplied colors under the source alpha. The complementary
+          // weights preserve the original silhouette, including its edges.
+          primitives.push(
+            `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+            `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+            `<feComposite in2="${blur}" operator="in" result="${strengthMask}"/>`,
+            `<feComposite in="${strengthMask}" in2="${source}" operator="in" result="${inner}"/>`,
+            `<feComposite in="${source}" in2="${strengthMask}" operator="out" result="${remainder}"/>`,
+            `<feComposite in="${inner}" in2="${remainder}" operator="arithmetic" k2="1" k3="1" result="${output}"/>`,
+          );
+          source = output;
+          continue;
+        }
         const silhouette = 'silhouette' + index;
-        const effect = filter.knockout ? output : 'glow' + index;
         primitives.push(
           `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
           `<feComposite in="${blur}" in2="${source}" operator="${filter.inner ? 'in' : 'out'}" result="${silhouette}"/>`,
           `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
-          `<feComposite in2="${silhouette}" operator="in" result="${effect}"/>`,
+          `<feComposite in2="${silhouette}" operator="in" result="${output}"/>`,
         );
-        if (!filter.knockout) primitives.push(`<feMerge result="${output}"><feMergeNode in="${source}"/><feMergeNode in="${effect}"/></feMerge>`);
       } else {
         const offset = 'offset' + index;
         primitives.push(

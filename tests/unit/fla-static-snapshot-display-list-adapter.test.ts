@@ -425,6 +425,7 @@ function buildRiggingAdapterFixtureResult(options: {
   readonly withGrandparent?: boolean;
   readonly parentObjectCount?: number;
   readonly childStartMatrix?: string;
+  readonly childAttributes?: string;
   readonly parentStartMatrix?: string;
   readonly parentMatrix?: string;
   readonly parentStartPivot?: { readonly x: number; readonly y: number };
@@ -451,7 +452,7 @@ function buildRiggingAdapterFixtureResult(options: {
   const rigPropagationMatrix = options.rigPropagationMatrix ??
     '{&quot;a&quot;:64859,&quot;b&quot;:-9181,&quot;c&quot;:9181,&quot;d&quot;:64859,&quot;tx&quot;:0,&quot;ty&quot;:0}';
   const childStart = `<DOMFrame index="0" duration="${childTween ? 4 : 5}"${childTween ? ' tweenType="motion" keyMode="22017"' : ''} parentLayerIndex="${childRigParent}">` +
-    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${childStartMatrix}</DOMSymbolInstance></elements></DOMFrame>`;
+    `<elements><DOMSymbolInstance libraryItemName="child-art" symbolType="graphic" ${options.childAttributes ?? ''}>${childStartMatrix}</DOMSymbolInstance></elements></DOMFrame>`;
   const childEnd = childTween
     ? `<DOMFrame index="4" keyMode="9728" parentLayerIndex="${childRigParent}"><elements>` +
       `<DOMSymbolInstance libraryItemName="child-art" symbolType="graphic">${transformedMatrix(0, 1, -1, 0, 0, 10)}</DOMSymbolInstance>` +
@@ -1769,6 +1770,21 @@ describe('per-keyframe Rig parent matrix evaluation (#1061)', () => {
         expect(result.element.localTransform).toMatchObject({ tx: 0, ty: 10, a: 0, b: 1 });
       }
     }
+  });
+
+  it('moves the projection pivot with the animated Rig parent', () => {
+    const source = buildRiggingAdapterFixture({
+      childTween: false,
+      childAttributes: 'rotationY="45" centerPoint3DX="100" centerPoint3DY="100"',
+      childStartMatrix: matrix(100, 100),
+      parentMatrix: matrix(40, 0),
+    });
+    const result = childAt(source, 4);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.element).toMatchObject({
+      kind: 'symbol', localTransform: { tx: 140, ty: 100 },
+      projection3D: { pivotX: 140, pivotY: 100, rotationY: 45 },
+    });
   });
 
   it('keeps a parent pivot on its path through a transformed three-level Rig chain', () => {

@@ -110,12 +110,18 @@ let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
 let flaGraphicInstanceCommitService: FlaGraphicInstanceCommitService | null = null;
 let flaEmbeddedVideoService: FlaEmbeddedVideoService | null = null;
+let assetCanvasImageService: AssetCanvasImageService | null = null;
 let removeFlaGraphicInstanceIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
 let rendererCloseSynchronizer: RendererCloseSynchronizer | null = null;
 let removeNativeCloseSyncListener: (() => void) | null = null;
 const flaImportService = new FlaImportService();
+
+function disposeProjectVideoResources(): void {
+  assetCanvasImageService?.clearActiveReads();
+  void flaEmbeddedVideoService?.dispose();
+}
 
 async function selectProjectDirectory(
   window: BrowserWindow,
@@ -248,7 +254,7 @@ async function createApplicationWindows(): Promise<void> {
   window.once('closed', () => {
     if (mainWindow === window) {
       mainWindow = null;
-      void flaEmbeddedVideoService?.dispose();
+      disposeProjectVideoResources();
     }
     if (unsavedCloseGuard) unsavedCloseGuard = null;
     hiddenWindowManager.close();
@@ -459,7 +465,7 @@ async function initialize(): Promise<void> {
     },
     onProjectContextChanged: () => {
       flaPartPreviewService?.invalidateAll();
-      void flaEmbeddedVideoService?.dispose();
+      disposeProjectVideoResources();
     },
   });
   exportPreparationService = new ExportPreparationService({
@@ -547,7 +553,7 @@ async function initialize(): Promise<void> {
     autosaveService,
     onProjectContextChanged: () => {
       flaPartPreviewService?.invalidateAll();
-      void flaEmbeddedVideoService?.dispose();
+      disposeProjectVideoResources();
     },
   });
   removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
@@ -615,7 +621,7 @@ async function initialize(): Promise<void> {
       cache: thumbnailCache,
       thumbnailService,
     }),
-    assetCanvasImageService: new AssetCanvasImageService({
+    assetCanvasImageService: (assetCanvasImageService = new AssetCanvasImageService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
       embeddedVideoService: (flaEmbeddedVideoService = new FlaEmbeddedVideoService({
@@ -625,7 +631,7 @@ async function initialize(): Promise<void> {
           autosaveService?.getProjectSnapshot(projectRoot) ?? null,
         ffmpegAdapter,
       })),
-    }),
+    })),
     assetPreviewAudioService: new AssetPreviewAudioService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
@@ -1041,7 +1047,8 @@ app.on('will-quit', () => {
   unsavedCloseController = null;
   unsavedCloseGuard = null;
   hiddenWindowManager.close();
-  void flaEmbeddedVideoService?.dispose();
+  disposeProjectVideoResources();
+  assetCanvasImageService = null;
   flaEmbeddedVideoService = null;
   flaImportService.close();
 });

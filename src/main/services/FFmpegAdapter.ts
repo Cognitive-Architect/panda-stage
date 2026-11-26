@@ -819,7 +819,7 @@ export class FFmpegAdapter {
 
     const stream = await probe([
       '-show_entries',
-      'stream=index,codec_type,codec_name,width,height,time_base,start_pts,duration_ts,nb_frames:stream_disposition=attached_pic',
+      'stream=index,codec_type,codec_name,width,height,time_base,start_pts,duration_ts,nb_frames:stream_disposition=attached_pic:stream_side_data=rotation',
     ], readFlaNativeVideoStream);
     return probe([
       '-select_streams', String(stream.streamIndex),

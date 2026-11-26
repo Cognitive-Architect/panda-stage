@@ -19,6 +19,7 @@ const StreamSchema = z.object({
   start_pts: IntegerField.optional(),
   duration_ts: NumberField.pipe(SafeInteger.positive()).optional(),
   nb_frames: NumberField.pipe(SafeInteger.positive().max(FLA_NATIVE_VIDEO_MAX_FRAMES)).optional(),
+  side_data_list: z.array(z.object({ rotation: NumberField.optional() })).optional(),
 });
 const StreamsSchema = z.object({
   streams: z.array(z.object({
@@ -70,13 +71,16 @@ export function readFlaNativeVideoStream(value: unknown) {
       audioStartSeconds = Number(firstAudio.start_time);
     }
   }
+  // FFmpeg autorotates decoded frames from the selected stream's display matrix.
+  const rotation = stream.side_data_list?.find((entry) => entry.rotation !== undefined)?.rotation ?? 0;
+  const swapAxes = Math.abs(rotation % 180) === 90;
   return {
     streamIndex: stream.index,
     ...(audioStreamIndex !== undefined ? { audioStreamIndex } : {}),
     ...(audioStartSeconds !== undefined ? { audioStartSeconds } : {}),
     codec: stream.codec_name,
-    width: stream.width,
-    height: stream.height,
+    width: swapAxes ? stream.height : stream.width,
+    height: swapAxes ? stream.width : stream.height,
     timeBase: { numerator: numerator!, denominator: denominator! },
     startTick,
     durationTicks,
