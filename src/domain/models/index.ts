@@ -9,6 +9,7 @@ export * from './flaGraphicInstanceOverrides';
 export * from './layer';
 export * from './project';
 export * from './shot';
+export * from './shotCamera';
 export * from './subtitle';
 export * from './timeline-event';
 

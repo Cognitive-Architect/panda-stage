@@ -410,7 +410,7 @@ function validateModernLayer(layer: Omit<z.output<z.ZodObject<typeof LayerV42Sha
 
 export const LayerV42Schema = z.strictObject(LayerV42Shape).superRefine(validateModernLayer);
 
-const LayerSpaceMatrixSchema = z.object({
+export const LayerSpaceMatrixSchema = z.object({
   a: FiniteNumberSchema, b: FiniteNumberSchema, c: FiniteNumberSchema,
   d: FiniteNumberSchema, tx: FiniteNumberSchema, ty: FiniteNumberSchema,
 }).strict();
@@ -424,7 +424,14 @@ const LayerV43Shape = {
   layerMotionTracks: z.array(LayerAnimationTrackSchema).optional(),
 };
 
-function validateLayerRootTracks(layer: Pick<Layer, 'id' | 'layerMotionTracks' | 'animationClip'>, context: z.RefinementCtx) {
+function validateLayerRootTracks(
+  layer: {
+    id: string;
+    layerMotionTracks?: readonly z.output<typeof LayerAnimationTrackSchema>[];
+    animationClip?: AnimationClip;
+  },
+  context: z.RefinementCtx,
+) {
   const properties = new Set<string>();
   layer.layerMotionTracks?.forEach((track, index) => {
     if (track.target.layerId !== layer.id || properties.has(track.property) || layer.animationClip?.version === 2) {
@@ -452,7 +459,7 @@ const LayerParentAttachmentV44Schema = z.strictObject({
   ownerLocalFallback: LayerSpaceMatrixSchema,
 });
 
-const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
+export const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
 
 const LayerV44Shape = {
   ...LayerV43Shape,
@@ -484,17 +491,58 @@ export const LayerAttachmentTargetSchema = z.discriminatedUnion('kind', [
   GraphicNodeAttachmentTargetSchema,
 ]);
 
-const LayerParentAttachmentSchema = z.strictObject({
+export const LayerParentAttachmentSchema = z.strictObject({
   target: LayerAttachmentTargetSchema,
   ownerLocalFallback: LayerSpaceMatrixSchema,
 });
 
+export type LayerSpaceMatrix = z.infer<typeof LayerSpaceMatrixSchema>;
 export type LayerAttachmentTarget = z.infer<typeof LayerAttachmentTargetSchema>;
+export type LayerParentAttachment = z.infer<typeof LayerParentAttachmentSchema>;
 
-export const LayerSchema = z.strictObject({
+const LayerV45Shape = {
   ...LayerV44Shape,
   parentAttachment: LayerParentAttachmentSchema.optional(),
-}).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+};
+
+/** Frozen v45 Layer reader before dynamic parentKeys and animationTimeLink. */
+export const LayerV45Schema = z.strictObject(LayerV45Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+
+export const LayerParentKeyDepthModeSchema = z.enum(['inherit', 'preserve']);
+
+export const LayerParentKeySchema = z.strictObject({
+  timeMs: AnimationKeySchema.shape.timeMs,
+  parentLayerId: IdSchema.nullable(),
+  parentAttachment: LayerParentAttachmentSchema.optional(),
+  parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
+  depthMode: LayerParentKeyDepthModeSchema.optional(),
+  depth: LayerDepthSchema.optional(),
+  cameraSpace: z.enum(['world', 'screen']).optional(),
+});
+
+export const LayerAnimationTimeLinkSchema = z.strictObject({
+  kind: z.literal('character-action'),
+  sourceLayerId: IdSchema,
+  eventId: IdSchema,
+});
+
+export type LayerParentKeyDepthMode = z.infer<typeof LayerParentKeyDepthModeSchema>;
+export type LayerParentKey = z.infer<typeof LayerParentKeySchema>;
+export type LayerAnimationTimeLink = z.infer<typeof LayerAnimationTimeLinkSchema>;
+
+export const LayerSchema = z.strictObject({
+  ...LayerV45Shape,
+  parentKeys: z.array(LayerParentKeySchema).optional(),
+  animationTimeLink: LayerAnimationTimeLinkSchema.optional(),
+}).superRefine(validateModernLayer).superRefine(validateLayerRootTracks).superRefine((layer, context) => {
+  if (layer.animationTimeLink && layer.source.kind !== 'animation') {
+    context.addIssue({
+      code: 'custom',
+      path: ['animationTimeLink'],
+      message: 'Animation time links require an animation layer.',
+    });
+  }
+});
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z

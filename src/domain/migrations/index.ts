@@ -45,6 +45,7 @@ import {
   ProjectV42Schema,
   ProjectV43Schema,
   ProjectV44Schema,
+  ProjectV45Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -83,6 +84,7 @@ export type DetectedSchemaVersion =
   | 42
   | 43
   | 44
+  | 45
   | 25
   | 24
   | 23
@@ -177,6 +179,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 42 ||
     version === 43 ||
     version === 44 ||
+    version === 45 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -525,6 +528,8 @@ export function migrateProject(input: unknown): Project {
       return ProjectSchema.parse({ ...ProjectV43Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case 44:
       return upgradeV44Project(ProjectV44Schema.parse(input));
+    case 45:
+      return ProjectSchema.parse({ ...ProjectV45Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case PROJECT_SCHEMA_VERSION:
       // Current projects are validated without an implicit compatibility rewrite.
       project = ProjectSchema.parse(input);

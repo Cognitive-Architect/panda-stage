@@ -11,6 +11,7 @@ import {
   LayerV42Schema,
   LayerV43Schema,
   LayerV44Schema,
+  LayerV45Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -23,7 +24,7 @@ import {
   type Layer,
 } from './layer';
 import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema, TimelineEventV33Schema, TimelineEventV40Schema } from './timeline-event';
-import { ShotCameraSchema } from './shotCamera';
+import { ShotCameraSchema, ShotCameraV45Schema } from './shotCamera';
 
 const ShotIdentityShape = {
   id: IdSchema,
@@ -142,10 +143,10 @@ const ShotV43Shape = {
   ...ShotV20Schema.shape,
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerV43Schema),
-  camera: ShotCameraSchema.optional(),
+  camera: ShotCameraV45Schema.optional(),
 };
 
-function validateShotRootKeyTimes(shot: { camera?: z.infer<typeof ShotCameraSchema>; durationMs: number; layers: readonly Pick<Layer, 'layerMotionTracks'>[] }, context: z.RefinementCtx) {
+function validateShotRootKeyTimes(shot: { camera?: Pick<z.infer<typeof ShotCameraSchema>, 'keys'>; durationMs: number; layers: readonly Pick<Layer, 'layerMotionTracks'>[] }, context: z.RefinementCtx) {
   shot.layers.forEach((layer, layerIndex) => layer.layerMotionTracks?.forEach((track, trackIndex) =>
     track.keys.forEach((key, keyIndex) => {
       if (key.timeMs > shot.durationMs) context.addIssue({
@@ -183,10 +184,67 @@ export const ShotV44Schema = z.strictObject({
   layers: z.array(LayerV44Schema),
 }).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine(validateShotDepthKeys);
 
+/** Frozen v45 Shot reader before hybrid camera overrides and dynamic layer parenting/time links. */
+export const ShotV45Schema = z.strictObject({
+  ...ShotV43Shape,
+  layers: z.array(LayerV45Schema),
+}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine(validateShotDepthKeys);
+
+function validateShotCameraOverrides(
+  shot: { camera?: z.infer<typeof ShotCameraSchema>; durationMs: number },
+  context: z.RefinementCtx,
+) {
+  const ids = new Set<string>();
+  shot.camera?.overrides?.forEach((override, index, overrides) => {
+    if (ids.has(override.id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['camera', 'overrides', index, 'id'],
+        message: 'Camera override IDs must be unique within a Shot.',
+      });
+    }
+    ids.add(override.id);
+    if (override.startMs < 0 || override.endMs > shot.durationMs) {
+      context.addIssue({
+        code: 'custom',
+        path: ['camera', 'overrides', index],
+        message: 'Camera overrides must be within the Shot duration.',
+      });
+    }
+    if (index > 0 && override.startMs < overrides[index - 1]!.endMs) {
+      context.addIssue({
+        code: 'custom',
+        path: ['camera', 'overrides', index, 'startMs'],
+        message: 'Camera overrides must be ordered and non-overlapping.',
+      });
+    }
+  });
+}
+
+function validateShotParentKeys(
+  shot: { durationMs: number; layers: readonly Pick<Layer, 'parentKeys'>[] },
+  context: z.RefinementCtx,
+) {
+  shot.layers.forEach((layer, layerIndex) => layer.parentKeys?.forEach((key, index, keys) => {
+    if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['layers', layerIndex, 'parentKeys', index, 'timeMs'],
+        message: 'Parent keys must be ordered, unique and within the Shot duration.',
+      });
+    }
+  }));
+}
+
 export const ShotSchema = z.strictObject({
   ...ShotV43Shape,
+  camera: ShotCameraSchema.optional(),
   layers: z.array(LayerSchema),
-}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine(validateShotDepthKeys);
+}).superRefine(validateShotClipKeyTimes)
+  .superRefine(validateShotRootKeyTimes)
+  .superRefine(validateShotDepthKeys)
+  .superRefine(validateShotCameraOverrides)
+  .superRefine(validateShotParentKeys);
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({
