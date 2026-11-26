@@ -23,6 +23,7 @@ export * from './shot-camera';
 export * from './layer-depth';
 export * from './layer-attachment';
 export * from './layer-parent-space';
+export * from './animation-time-link';
 export {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,

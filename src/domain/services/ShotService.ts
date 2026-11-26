@@ -103,12 +103,29 @@ export class ShotService {
       ]),
     );
     const dialogueIds = new Map(source.dialogues.map((dialogue) => [dialogue.id, this.nextUniqueId(usedIds)]));
+    const eventIds = new Map(
+      source.timelineEvents.map((event) => [
+        event.id,
+        this.nextUniqueId(usedIds),
+      ]),
+    );
     const duplicate: Shot = {
       ...source,
       id: this.nextUniqueId(usedIds),
       name: this.copyName(project, source.name),
       layers: source.layers.map((layer) => {
         const layerId = layerIds.get(layer.id)!;
+        const remappedTimeLink = layer.animationTimeLink
+          ? {
+              ...layer.animationTimeLink,
+              sourceLayerId:
+                layerIds.get(layer.animationTimeLink.sourceLayerId) ??
+                layer.animationTimeLink.sourceLayerId,
+              eventId:
+                eventIds.get(layer.animationTimeLink.eventId) ??
+                layer.animationTimeLink.eventId,
+            }
+          : undefined;
         return {
           ...layer,
           id: layerId,
@@ -121,6 +138,7 @@ export class ShotService {
                 })),
               }
             : {}),
+          ...(remappedTimeLink ? { animationTimeLink: remappedTimeLink } : {}),
           ...remapLayerMotionOwner(layer, layerId),
         };
       }),
@@ -142,7 +160,7 @@ export class ShotService {
       })),
       timelineEvents: source.timelineEvents.map((event) => ({
         ...event,
-        id: this.nextUniqueId(usedIds),
+        id: eventIds.get(event.id)!,
         layerId: layerIds.get(event.layerId)!,
         ...(event.type === 'mouth-pose' && event.dialogueId ? { dialogueId: dialogueIds.get(event.dialogueId)! } : {}),
       })),
