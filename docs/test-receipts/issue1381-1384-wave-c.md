@@ -40,3 +40,4 @@
 
 - 使用本机 Adobe Animate 样本 `LayerParenting_Walkcycle.fla`。验收副本重封 ZIP，原归档与原始图稿保持原样。复用 Panda Stage 的 FLA 显示列表与 SVG 生成，按原始大腿、小腿、脚踝与鞋的比例搭建中性站姿。该回执覆盖 Panda Stage 对这些真实分件生成的动作，原 FLA 父子链与动画曲线的导入保真另属导入流程。
 - 源码与本地正式求值。对真实分件样本测试正向／镜像、原地／带位移、走／跑共 8 种组合。左大腿使用非中心 pivot，连续双周期的同相位通道一致。首帧腿部局部矩阵连续，收步前 1ms 至结束帧局部平移变化最大 0.47 个逻辑像素。带位移的走／跑每周期约 138.16／244.91 个逻辑像素，采样支撑段脚横向漂移最大为 0.093／0.165 个逻辑像素。原地模式根位移为 0。回执为 `D:/PandaStage-Acceptance/issue-1386/long-leg-mode-matrix.json`。
+- 施工方 Windows Electron。真实长腿素材的正向、镜像样本均在编辑器中配置 8 个腿部部件，预览、应用原地走路及带位移跑步，保存重开后核对动作和收步，并在产品预览定位到 1500ms。非中心 pivot 下正向／镜像各跑一周期，根位移为 +244.91／−244.91 个逻辑像素，支撑段脚横向漂移约 0.165 个逻辑像素。正向正式 MP4 已完成，42ms、1500ms、2000ms 代表帧可解码。验收目录为 `D:/PandaStage-Acceptance/issue-1386/long-leg-dlx6Kq` 和 `D:/PandaStage-Acceptance/issue-1386/long-leg-NogDXp`。
