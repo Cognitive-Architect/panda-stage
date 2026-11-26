@@ -502,6 +502,11 @@ export function TimelineDock({
                     <ShotCameraLane key={shot.id} shot={shot} snapshot={snapshot} currentTimeMs={ui.currentTimeMs}
                       pixelsPerMs={pixelsPerMs} trackWidth={trackWidth} disabled={Boolean(productPreviewOpen)} />
                   ) : null}
+                  {shot && snapshot && motionLayer ? (
+                    <ShotCameraLane key={shot.id + ":" + motionLayer.id + ":depth"} shot={shot} snapshot={snapshot}
+                      depthLayer={motionLayer} currentTimeMs={ui.currentTimeMs} pixelsPerMs={pixelsPerMs}
+                      trackWidth={trackWidth} disabled={Boolean(productPreviewOpen)} />
+                  ) : null}
                   {ui.flaGraphicInternalContext && snapshot?.project ? (
                     <FlaGraphicInternalTimelineBar
                       context={ui.flaGraphicInternalContext}

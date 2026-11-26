@@ -22,6 +22,7 @@ import {
 } from '../features/assets/AssetCard';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { LayerDepthControl } from '../features/properties/LayerDepthControl';
 import { LayerParentControl } from '../features/properties/LayerParentControl';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
@@ -650,6 +651,10 @@ export function RightInspector({
         showLockControl={!compact && !landscapePresentation}
       />
       {parentControl}
+      {snapshot && currentShot && selection.layer ? (
+        <LayerDepthControl key={currentShot.id + ":" + selection.layer.id}
+          layer={selection.layer} shot={currentShot} snapshot={snapshot} />
+      ) : null}
       <AnimationPlaybackControls />
     </>
   );

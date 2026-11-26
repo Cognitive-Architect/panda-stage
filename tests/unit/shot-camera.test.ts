@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
   cameraLayerTransform, cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, removeShotCameraKey,
+  evaluateShotAtTime, setLayerDepth, setLayerDepthKey, moveLayerDepthKey, removeLayerDepthKey,
   setShotCameraKey, setShotCameraMode, ShotService,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -30,6 +31,23 @@ describe('Shot camera', () => {
     const migrated = migrateProject({ ...staged, schemaVersion: 43 });
     expect(migrated.shots).toEqual(staged.shots);
     expect(migrated.schemaVersion).toBe(44);
+  });
+
+  it('authors depth on a locked background, holds the initial depth and retains the last key value', () => {
+    const base = migrateProject(demo);
+    const shotId = base.shots[0]!.id;
+    const layerId = base.shots[0]!.backgroundLayerId!;
+    const depthAt = (project: typeof base, time: number) => evaluateShotAtTime(project.shots[0]!, time, project)
+      .layers.find(({ id }) => id === layerId)?.effectiveDepth;
+    const still = setLayerDepth(base, shotId, layerId, 700);
+    const keyed = setLayerDepthKey(still, shotId, layerId, 1_000, -100);
+    expect(depthAt(keyed, 0)).toBe(700);
+    expect(depthAt(keyed, 500)).toBe(300);
+    const moved = moveLayerDepthKey(keyed, shotId, layerId, 1_000, 1_500);
+    expect(depthAt(moved, 750)).toBe(300);
+    const single = removeLayerDepthKey(moved, shotId, layerId, 0);
+    const removed = removeLayerDepthKey(single, shotId, layerId, 1_500);
+    expect(depthAt(migrateProject(JSON.parse(JSON.stringify(removed))), 0)).toBe(-100);
   });
 
   it('uses the formal 0 ms pose in camera view while retaining the world editing pose', () => {
