@@ -41,11 +41,13 @@ import {
   solveLayerRelativeOffsetForStagePoint,
   type LayerBasePose,
 } from '../layer-animation';
+import { insertAnimationTrackSample } from '../evaluate-animation-core';
 import { isFlaGraphicDefinition } from '../models/animation';
 import type {
   AnimationInterpolation,
   AnimationKey,
   AnimationProperty,
+  AnimationTrack,
   LayerAnimationClip,
   LayerTargetRef,
   TargetLocalPivot,
@@ -108,30 +110,31 @@ export interface LayerCurveMotionInput extends LayerMotionTargetInput {
   readonly p2: Point;
   readonly p3: Point;
   readonly speedMode: CurveMotionSpeedMode;
+  readonly replacePosition?: boolean;
+}
+
+export function layerCurveMotionPositionTracks(layer: Layer): AnimationTrack[] {
+  return clipV2(layer)?.tracks.filter(({ property }) =>
+    property === 'transform.offsetX' || property === 'transform.offsetY') ?? [];
 }
 
 export function getLayerCurveMotionConflict(
   shot: Shot,
   layer: Layer,
+  replacement?: { startMs: number; endMs: number },
 ): string | null {
   if (shot.backgroundLayerId === layer.id) {
     return '背景图层不能生成曲线运动。';
   }
-  const existingClip = clipV2(layer);
-  if (
-    existingClip?.tracks.some(
-      (track) =>
-        track.property === 'transform.offsetX' ||
-        track.property === 'transform.offsetY',
-    )
-  ) {
-    return '当前图层已有 X/Y 位移关键帧，请先清除位移关键帧或选择无位移动画的图形图层。';
+  if (!replacement && layerCurveMotionPositionTracks(layer).length) {
+    return '当前图层已有 X/Y 位移关键帧，请明确选择替换区段。';
   }
   if (
     shot.timelineEvents.some(
       (event) =>
         event.layerId === layer.id &&
-        (event.type === 'move' || event.type === 'shake'),
+        (event.type === 'move' || event.type === 'shake') &&
+        (!replacement || (event.startMs <= replacement.endMs && event.endMs >= replacement.startMs)),
     )
   ) {
     return '当前图层存在时间轴移动或抖动事件，请先移除相关位置事件后再生成曲线运动。';
@@ -348,11 +351,6 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const conflict = getLayerCurveMotionConflict(shot, layer);
-    if (conflict) {
-      throw new Error(conflict);
-    }
-
     if (
       !Number.isSafeInteger(input.startFrame) ||
       !Number.isSafeInteger(input.endFrame) ||
@@ -372,6 +370,10 @@ export class LayerMotionService {
     ) {
       throw new Error('起止帧必须位于当前镜头的合法帧范围内。');
     }
+    const replacing = input.replacePosition === true && layerCurveMotionPositionTracks(layer).length > 0;
+    const interval = input.replacePosition ? { startMs: startTimeMs, endMs: endTimeMs } : undefined;
+    const conflict = getLayerCurveMotionConflict(shot, layer, interval);
+    if (conflict) throw new Error(conflict);
     if (input.speedMode !== 'constant' && input.speedMode !== 'ease-in-out') {
       throw new Error('请选择有效的曲线速度模式。');
     }
@@ -383,14 +385,18 @@ export class LayerMotionService {
       throw new Error(`找不到图层：${layer.id}`);
     }
     const p0: Point = { x: evaluatedAtStart.x, y: evaluatedAtStart.y };
-    assertStagePointInBounds(p0, '起点 P0');
+    const evaluatedAtEnd = replacing
+      ? evaluateShotAtTime(shot, endTimeMs, project).layers.find((candidate) => candidate.id === layer.id)
+      : undefined;
+    const p3 = evaluatedAtEnd ? { x: evaluatedAtEnd.x, y: evaluatedAtEnd.y } : input.p3;
+    if (!replacing) assertStagePointInBounds(p0, '起点 P0');
     assertStagePointInBounds(input.p1, '控制点 P1');
     assertStagePointInBounds(input.p2, '控制点 P2');
-    assertStagePointInBounds(input.p3, '终点 P3');
+    if (!replacing) assertStagePointInBounds(p3, '终点 P3');
 
     const stepCount = input.endFrame - input.startFrame;
     const sampled = sampleCubicBezierBySteps(
-      { p0, p1: input.p1, p2: input.p2, p3: input.p3 },
+      { p0, p1: input.p1, p2: input.p2, p3 },
       stepCount,
       input.speedMode,
     );
@@ -408,7 +414,7 @@ export class LayerMotionService {
 
     const offsetXKeys: AnimationKey[] = [];
     const offsetYKeys: AnimationKey[] = [];
-    if (startTimeMs > 0) {
+    if (!replacing && startTimeMs > 0) {
       offsetXKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
       offsetYKeys.push({ timeMs: 0, value: 0, interpolationToNext: 'linear' });
     }
@@ -451,10 +457,30 @@ export class LayerMotionService {
     }
 
     const target = layerTargetRef(layer.id);
+    const original = layerCurveMotionPositionTracks(layer);
+    const positionTracks = [
+      { target, property: 'transform.offsetX' as const, keys: offsetXKeys },
+      { target, property: 'transform.offsetY' as const, keys: offsetYKeys },
+    ];
+    if (replacing) {
+      for (const track of positionTracks) {
+        const oldKeys = original.find(({ property }) => property === track.property)?.keys ??
+          [{ timeMs: 0, value: 0, interpolationToNext: 'linear' as const }];
+        const anchors = insertAnimationTrackSample(insertAnimationTrackSample(oldKeys, startTimeMs), endTimeMs);
+        const start = anchors.find(({ timeMs }) => timeMs === startTimeMs)!;
+        const end = anchors.find(({ timeMs }) => timeMs === endTimeMs)!;
+        track.keys = [
+          ...anchors.filter(({ timeMs }) => timeMs < startTimeMs),
+          { ...track.keys[0]!, value: start.value },
+          ...track.keys.slice(1, -1),
+          end,
+          ...anchors.filter(({ timeMs }) => timeMs > endTimeMs),
+        ];
+      }
+    }
     const nextTracks: LayerAnimationClip['tracks'] = [
-      ...clip.tracks,
-      { target, property: 'transform.offsetX', keys: offsetXKeys },
-      { target, property: 'transform.offsetY', keys: offsetYKeys },
+      ...clip.tracks.filter(({ property }) => property !== 'transform.offsetX' && property !== 'transform.offsetY'),
+      ...positionTracks,
     ];
     return this.commitLayerClip(project, shot.id, layer.id, {
       ...clip,

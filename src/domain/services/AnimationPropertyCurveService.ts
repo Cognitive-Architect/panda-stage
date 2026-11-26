@@ -8,7 +8,7 @@ import {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
 } from '../evaluate-shot-at-time';
-import { evaluateAnimationTrackAtTime, sliceAnimationCurve } from '../evaluate-animation-core';
+import { insertAnimationTrackSample } from '../evaluate-animation-core';
 import {
   evaluateRichEasing,
   isRichEasingPresetId,
@@ -171,29 +171,6 @@ export function keySelectedAnimationTargets(
     return { ...track, keys };
   });
   return { project: inserted ? commitTrackChanges(project, shot, layer, tracks, [timeMs]) : project, inserted, skipped };
-}
-
-/** Insert a sampled anchor while preserving the original outgoing motion on both sides. */
-export function insertAnimationTrackSample(keys: AnimationKey[], timeMs: number): AnimationKey[] {
-  if (keys.some((key) => key.timeMs === timeMs)) return keys;
-  const later = keys.findIndex((key) => key.timeMs > timeMs);
-  const index = later < 0 ? keys.length : later;
-  const previous = keys[index - 1];
-  if (!previous) throw new Error('关键帧不能插入到零帧之前。');
-  const following = keys[index];
-  const next = [...keys];
-  const key: AnimationKey = {
-    timeMs, value: evaluateAnimationTrackAtTime({ keys }, timeMs),
-    interpolationToNext: following ? previous.interpolationToNext : 'step',
-  };
-  if (following && (previous.curveToNext ||
-    (previous.interpolationToNext !== 'step' && previous.interpolationToNext !== 'linear'))) {
-    const fraction = (timeMs - previous.timeMs) / (following.timeMs - previous.timeMs);
-    key.curveToNext = sliceAnimationCurve(previous.curveToNext, fraction, 1);
-    next[index - 1] = { ...previous, curveToNext: sliceAnimationCurve(previous.curveToNext, 0, fraction) };
-  }
-  next.splice(index, 0, key);
-  return next;
 }
 
 export type AnimationPropertyRangeEdit =

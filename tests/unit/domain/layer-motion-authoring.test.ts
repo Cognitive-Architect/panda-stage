@@ -2238,6 +2238,43 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
       expect(Math.abs(ev.y - expectedSamples[frame]!.y)).toBeLessThan(0.1);
     }
 
+    // Replacement boundaries fall between the only two surviving authored position keys.
+    const sparse = ProjectSchema.parse({
+      ...baked,
+      shots: baked.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) => layer.id === base.layerId && layer.animationClip ? {
+          ...layer,
+          animationClip: {
+            ...layer.animationClip,
+            tracks: layer.animationClip.tracks.map((track) =>
+              track.property === 'transform.offsetX' || track.property === 'transform.offsetY'
+                ? { ...track, keys: [
+                    { ...track.keys[0]!, interpolationToNext: 'ease-in-out' },
+                    track.keys.at(-1)!,
+                  ] } : track),
+          },
+        } : layer),
+      })),
+    });
+    const replacement = service.applyCurveMotion(sparse, {
+      shotId: base.shotId, layerId: base.layerId, startFrame: 5, endFrame: 19,
+      p1: { x: 620, y: 650 }, p2: { x: 720, y: 700 }, p3: { x: 200, y: 100 },
+      speedMode: 'constant', replacePosition: true,
+    });
+    const poseAt = (state: Project, frame: number) => evaluateShotAtTime(state.shots[0]!, frameTimeMs(frame), state)
+      .layers.find(({ id }) => id === base.layerId)!;
+    for (const frame of [0, 1, 4, 5, 19, 20, 23, 24]) {
+      expect(poseAt(replacement, frame).x).toBeCloseTo(poseAt(sparse, frame).x, 6);
+      expect(poseAt(replacement, frame).y).toBeCloseTo(poseAt(sparse, frame).y, 6);
+    }
+    expect(poseAt(replacement, 12).y).toBeGreaterThan(poseAt(sparse, 12).y + 100);
+    expect(poseAt(replacement, 12).rotationDeg).toBe(poseAt(sparse, 12).rotationDeg);
+    expect(replacement.shots[0]!.timelineEvents).toEqual(sparse.shots[0]!.timelineEvents);
+    expect(replacement.shots[0]!.layers.find(({ id }) => id === base.layerId)!.animationClip!.tracks
+      .filter(({ property }) => property === 'transform.offsetX' || property === 'transform.offsetY')
+      .every(({ keys }) => keys[0]!.timeMs === 0 && keys.every(({ timeMs }) => isValidFrameTime(timeMs)))).toBe(true);
+
     // Native editing: manual edit on generated key updates evaluation cleanly.
     const handEdited = service.applyKeys(
       baked,
