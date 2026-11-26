@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { resolveTalkingAnimationFace } from '../../src/domain/selectors/characterFaceSource';
+import { planCharacterMotionTemplate } from '../../src/domain/services/CharacterMotionTemplateService';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ActionPresetPanel } from '../../src/renderer/features/actions/ActionPresetPanel';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -186,6 +187,43 @@ function buildPhaseBProject(options?: {
     shotId: IDS.shot,
   };
 }
+
+it('keeps existing body, expression, mouth pose and other instances intact during a bound head action (#1386)', () => {
+  const { project, shotId, layerId, characterId, angryExprId } = buildPhaseBProject();
+  const headId = 'c2000000-0000-4000-8000-000000000011';
+  const configured = ProjectSchema.parse({
+    ...project,
+    characters: project.characters.map((character) => character.id === characterId && character.mode === 'adaptive-parts'
+      ? {
+          ...character,
+          parts: [...character.parts, makeWholePart(headId, '头部', EXPR_SMILE_ASSET, 100, 100, 2, -50, -110)],
+          headMotionBinding: { partIds: [headId] },
+        } : character),
+  });
+  const other = new LayerService().createFromAdaptiveCharacter(configured, shotId, characterId, { x: 480, y: 540 });
+  const expression = upsertExpressionEventAtTime(other.project, shotId, layerId, angryExprId, 500);
+  const reference = upsertMouthCueEventAtTime(expression, shotId, layerId, 'open', 750);
+  const authored = planCharacterMotionTemplate(reference, {
+    shotId, layerId, kind: 'nod', templateName: 'Nod', startMs: 500, endMs: 1000, cycles: 1, amplitude: 25, headPartId: headId,
+  });
+  const visualAt = (candidate: Project, id: string, time: number) => {
+    const shot = candidate.shots[0]!;
+    const evaluated = projectShotDialogueVisual(candidate, shot, evaluateShotAtTime(shot, time, candidate));
+    return resolveLayerVisualParts(candidate, shot, evaluated.layers.find((layer) => layer.id === id)!, time);
+  };
+
+  for (const time of [625, 750]) {
+    const before = visualAt(reference, layerId, time);
+    const during = visualAt(authored, layerId, time);
+    const part = (visual: typeof before, id: string) =>
+      visual.parts.find(({ source }) => source.kind === 'adaptive-part' && source.characterPartId === id);
+    expect(during.activeFace).toEqual(before.activeFace);
+    expect(during.activeFace?.source).toBe(time === 750 ? 'mouth' : 'expression');
+    expect(part(during, PART_BODY_ID)).toEqual(part(before, PART_BODY_ID));
+    expect(part(during, headId)?.imageTransform).not.toEqual(part(before, headId)?.imageTransform);
+    expect(visualAt(authored, other.layer.id, time)).toEqual(visualAt(reference, other.layer.id, time));
+  }
+});
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 
