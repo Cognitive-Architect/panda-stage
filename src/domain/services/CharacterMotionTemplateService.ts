@@ -23,11 +23,7 @@ export function isHeadMotionTemplate(template: CharacterMotionTemplate): boolean
 export function characterTemplateHeadParts(character: Character, layer: Layer): readonly { id: string; name: string }[] {
   if (character.mode !== 'adaptive-parts') return [];
   const protectedParts = characterFaceAndMouthPartIds(character);
-  const knownHeads = new Set([
-    ...(character.headMotionBinding?.partIds ?? []),
-    ...(character.actions ?? []).flatMap((action) =>
-      'headAnchorPartId' in action && action.headAnchorPartId ? [action.headAnchorPartId] : []),
-  ]);
+  const knownHeads = new Set(character.headMotionBinding?.partIds);
   return character.parts.flatMap((part, index) => part.visible && knownHeads.has(part.partId) &&
     !protectedParts.has(part.partId) && (layer.animationClip?.version !== 1 ||
       layer.animationClip.targetBases.some(({ target, visible }) => target.partId === part.partId && visible))

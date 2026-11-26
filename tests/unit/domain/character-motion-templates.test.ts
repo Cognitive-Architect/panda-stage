@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ProjectSchema, evaluateShotAtTime, isValidFrameTime } from '../../../src/domain';
-import { planCharacterAppearanceSwitch, planCharacterMotionTemplate } from '../../../src/domain/services/CharacterMotionTemplateService';
+import {
+  characterTemplateHeadParts, planCharacterAppearanceSwitch, planCharacterMotionTemplate,
+} from '../../../src/domain/services/CharacterMotionTemplateService';
 import { addTestAnimation, characterPartAnimationFixture } from '../../helpers/characterPartAnimationFixture';
 import { IDS } from './testProject';
 
@@ -23,11 +25,31 @@ describe('character motion templates', () => {
   it('adds reusable head-local action tracks while retaining the instance body tracks', () => {
     const { project, layerId, characterId, graphicPartId, imagePartId } = characterPartAnimationFixture();
     const bodyAnimated = addTestAnimation(project, layerId, imagePartId, 'transform.offsetX', 90);
-    const bound = ProjectSchema.parse({
+    const historicalAction = {
+      id: crypto.randomUUID(), name: 'Body pose with head follower', kind: 'layered', headAnchorPartId: imagePartId,
+      tracks: [{ partId: imagePartId, property: 'transform.offsetX', keys: [
+        { timeMs: 0, value: 0, interpolationToNext: 'linear' },
+        { timeMs: 500, value: 90, interpolationToNext: 'linear' },
+      ] }],
+    };
+    const configureHead = (partIds?: string[]) => ProjectSchema.parse({
       ...bodyAnimated,
       characters: bodyAnimated.characters.map((character) => character.id === characterId
-        ? { ...character, headMotionBinding: { partIds: [graphicPartId] } } : character),
+        ? { ...character, actions: [historicalAction], headMotionBinding: partIds ? { partIds } : undefined } : character),
     });
+    const layer = bodyAnimated.shots[0]!.layers.find(({ id }) => id === layerId)!;
+    const pickHead = (candidate: typeof project) =>
+      characterTemplateHeadParts(candidate.characters.find(({ id }) => id === characterId)!, layer);
+    const unbound = configureHead();
+    const bound = configureHead([graphicPartId]);
+    expect(pickHead(unbound)).toEqual([]);
+    expect(pickHead(bound).map(({ id }) => id)).toEqual([graphicPartId]);
+
+    const motion = { shotId: IDS.shot, layerId, startMs: 542, endMs: 1542, cycles: 1, amplitude: 25 };
+    expect(() => planCharacterMotionTemplate(bound, { ...motion, kind: 'nod', templateName: 'Nod',
+      headPartId: imagePartId })).toThrow();
+    expect(planCharacterMotionTemplate(unbound, { ...motion, kind: 'sway', templateName: 'Sway' })
+      .shots[0]!.timelineEvents.at(-1)?.type).toBe('shake');
     for (const kind of ['nod', 'head-shake', 'look-up', 'look-down', 'smooth-head-shake'] as const) {
       const next = planCharacterMotionTemplate(bound, { shotId: IDS.shot, layerId, kind, headPartId: graphicPartId,
         templateName: kind, startMs: 542, endMs: 1542, cycles: 1, amplitude: 25 });
