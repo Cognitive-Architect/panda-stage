@@ -57,6 +57,7 @@ import {
   resolveRuntimeImageAsset,
   resolveCharacterArmAssemblyParts,
   resolveTimelineFrameTime,
+  resolveCharacterActionRootPatch,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -1680,18 +1681,21 @@ export function CanvasStage({
                                   liveUi.currentTimeMs,
                                   current.project,
                                 ).layers.find((candidate) => candidate.id === layerId);
+                                const rootPosition = currentEvaluated?.parentSpace
+                                  ? resolveCharacterActionRootPatch(currentEvaluated, position)
+                                  : position;
                                 const patch: { x?: number; y?: number } = {};
                                 if (
-                                  !currentEvaluated ||
-                                  Math.abs(position.x - currentEvaluated.x) > 1e-6
+                                  rootPosition.x !== undefined &&
+                                  (!currentEvaluated || Math.abs(rootPosition.x - currentEvaluated.x) > 1e-6)
                                 ) {
-                                  patch.x = position.x;
+                                  patch.x = rootPosition.x;
                                 }
                                 if (
-                                  !currentEvaluated ||
-                                  Math.abs(position.y - currentEvaluated.y) > 1e-6
+                                  rootPosition.y !== undefined &&
+                                  (!currentEvaluated || Math.abs(rootPosition.y - currentEvaluated.y) > 1e-6)
                                 ) {
-                                  patch.y = position.y;
+                                  patch.y = rootPosition.y;
                                 }
                                 if (Object.keys(patch).length > 0) {
                                   layerStore.applyMotionTransform(
@@ -1909,12 +1913,18 @@ export function CanvasStage({
                           key={`${projectInstanceId}:${selectedStageLayer.layer.id}:${snapshot?.revision}:${timelineUi.currentTimeMs}`}
                           nodeRef={getLayerNodeRef(selectedStageLayer.layer.id)}
                           render={selectedStageLayer.render}
+                          rootScale={selectedStageLayer.evaluated}
                           bounds={selectedStageLayer.visual.combinedLocalBounds}
                           onCommit={(patch) => {
                             if (!canCommitCanvasEdit(selectedStageLayer)) return;
                             try {
                               const live = timelineUiStore.getSnapshot();
-                              layerStore.applyMotionTransform(selectedStageLayer.layer.id, live.currentTimeMs, live.layerMotionAutoKey, patch);
+                              layerStore.applyMotionTransform(
+                                selectedStageLayer.layer.id,
+                                live.currentTimeMs,
+                                live.layerMotionAutoKey,
+                                resolveCharacterActionRootPatch(selectedStageLayer.evaluated, patch),
+                              );
                             } catch (error) {
                               setInteractionStatus(error instanceof Error ? error.message : '无法修改图层变换。');
                             }

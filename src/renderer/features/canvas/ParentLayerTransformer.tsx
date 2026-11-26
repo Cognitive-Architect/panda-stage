@@ -7,9 +7,10 @@ import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-re
 import type { VisualLocalRect } from '../../../domain';
 
 /** Transform handles operate in the evaluated parent plane, keeping its affine shear intact. */
-export function ParentLayerTransformer({ nodeRef, render, bounds, onCommit }: {
+export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onCommit }: {
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
+  rootScale: Pick<StageLayerRenderInstruction, 'scaleX' | 'scaleY'>;
   bounds: VisualLocalRect;
   onCommit: (patch: LayerDisplayTransformPatch) => void;
 }): React.JSX.Element {
@@ -54,8 +55,8 @@ export function ParentLayerTransformer({ nodeRef, render, bounds, onCommit }: {
       const radius = Math.hypot(active.start.x - render.x, active.start.y - render.y);
       if (radius <= 0) return;
       const ratio = Math.hypot(p.x - render.x, p.y - render.y) / radius;
-      const x = Math.abs(render.scaleX);
-      const y = Math.abs(render.scaleY);
+      const x = Math.abs(rootScale.scaleX);
+      const y = Math.abs(rootScale.scaleY);
       active.scale = Math.max(LAYER_MIN_SCALE / Math.min(x, y), Math.min(LAYER_MAX_SCALE / Math.max(x, y), ratio));
     }
     nodeRef.current?.scale({ x: render.scaleX * active.scale, y: render.scaleY * active.scale });
