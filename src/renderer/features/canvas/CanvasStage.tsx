@@ -374,9 +374,6 @@ export function CanvasStage({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [assemblingArm, setAssembly]);
 
-  const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
-    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
-    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
   const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
@@ -402,6 +399,10 @@ export function CanvasStage({
   const displayCamera = showCameraView && !armAssembly && shot?.camera?.mode === 'manual'
     ? evaluateManualCamera(shot, timelineUi.currentTimeMs)
     : undefined;
+  const cameraViewActive = Boolean(displayCamera);
+  const activeCurveDraft = !cameraViewActive && !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
+    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
+    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -429,7 +430,7 @@ export function CanvasStage({
     }));
   }, [projectInstanceId, shot, snapshot]);
   const flaGraphicEditActive = Boolean(
-    selectedFlaGraphicTarget &&
+    !cameraViewActive && selectedFlaGraphicTarget &&
       flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget.key,
   );
   const flaGraphicEditMode = flaGraphicEditActive
@@ -750,7 +751,7 @@ export function CanvasStage({
     exitOrPopFlaGraphicScope();
   }, [exitOrPopFlaGraphicScope, flaGraphicEditActive]);
   const activeOpacityPreview =
-    opacityPreview &&
+    !cameraViewActive && opacityPreview &&
     snapshot &&
     shot &&
     opacityPreview.projectInstanceId ===
@@ -776,7 +777,7 @@ export function CanvasStage({
       ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
   const continuityMode: EditorTemporalContinuityMode =
-    editorTemporalContinuityMode(timelineUi.currentTimeMs);
+    cameraViewActive ? 'temporal' : editorTemporalContinuityMode(timelineUi.currentTimeMs);
   const temporalContinuityRef = useRef(
     createEditorTemporalContinuityState(),
   );
@@ -857,6 +858,7 @@ export function CanvasStage({
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
+            cameraViewActive,
             dialogueSilence,
             currentTimeMs: activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
@@ -866,7 +868,7 @@ export function CanvasStage({
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot: activeCurveDraft?.project.shots.find(({ id }) => id === shot.id) ?? shot,
-            positionDraft: positionAuthoringSnapshot
+            positionDraft: !cameraViewActive && positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
                   position: positionAuthoringSnapshot.draft,
@@ -877,6 +879,7 @@ export function CanvasStage({
     [
       activeCue?.id,
       activeCurveDraft,
+      cameraViewActive,
       dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
@@ -5,8 +6,28 @@ import {
   setShotCameraKey, setShotCameraMode, ShotService,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 
 describe('Shot camera', () => {
+  it('uses the formal 0 ms pose in camera view while retaining the world editing pose', () => {
+    const project = migrateProject(demo);
+    const shot = project.shots[0]!;
+    const layer = shot.layers.find(({ id }) => id !== shot.backgroundLayerId)!;
+    shot.timelineEvents = [
+      { id: randomUUID(), layerId: layer.id, type: 'opacity', startMs: 0, endMs: 1000, from: 0, to: 1, easing: 'linear' },
+      { id: randomUUID(), layerId: layer.id, type: 'move', startMs: 0, endMs: 1000, from: { x: 25, y: 80 }, to: { x: 500, y: 80 }, easing: 'linear' },
+    ];
+    const input = { project, shot, currentTimeMs: 0, readyAssetIds: new Set(project.assets.map(({ id }) => id)), previousVisuals: new Map() };
+    const world = buildEditorTemporalCanvasModel(input);
+    const camera = buildEditorTemporalCanvasModel({ ...input, cameraViewActive: true });
+    const formal = evaluateExportShotAtTime(project, shot, 0);
+    expect(camera.evaluatedShot).toEqual(formal);
+    expect(camera.stageModel.layers.find(({ layer: item }) => item.id === layer.id)?.render).toMatchObject({ x: 25, opacity: 0 });
+    expect(camera.directEditingEnabled).toBe(false);
+    expect(world.evaluatedShot.layers.find(({ id }) => id === layer.id)).toMatchObject({ x: layer.x, opacity: layer.opacity });
+    expect(world.directEditingEnabled).toBe(true);
+  });
   it('keeps old fallback modes and round-trips a three-key move with actor data intact', () => {
     const original = migrateProject(demo);
     const old = migrateProject({ ...original, schemaVersion: 42 });
