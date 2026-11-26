@@ -1886,7 +1886,7 @@ export class LayerService {
         usedIds,
         position,
         zIndex,
-        `${layer.name} 副本`,
+        suffixedLayerName(layer.name, ' 副本'),
       );
     const nextShot = {
       ...shot,

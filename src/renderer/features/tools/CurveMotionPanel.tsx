@@ -338,7 +338,6 @@ export function CurveMotionPanel({
   const targetState = useMemo(() => resolveCurveMotionTarget(snapshot, shotId, layerId),
     [snapshot, shotId, layerId]);
   const activeTarget = targetState.ok ? targetState.target : null;
-  const activeTargetKey = activeTarget?.key ?? '';
 
   const [draft, setDraft] = useState<CurveMotionDraft>(() =>
     buildInitialDraft(activeTarget, currentTimeMs),
