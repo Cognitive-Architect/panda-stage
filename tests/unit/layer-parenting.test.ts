@@ -114,9 +114,15 @@ describe('native Layer parenting', () => {
     const { project, shot, baseLayer, tip } = fixture();
     const service = new LayerService();
     const bound = service.setParent(project, shot.id, tip.id, baseLayer.id, 0);
-    const source = mode === 'bound' ? bound : service.setParent(bound, shot.id, tip.id, null, 500);
+    const animated = new LayerMotionService().applyTransform(
+      bound,
+      { shotId: shot.id, layerId: tip.id, timeMs: 750, autoKey: true },
+      { x: 800, y: 415, scaleX: 1.6, scaleY: 0.85, rotationDeg: 30 },
+    );
+    const source = mode === 'bound' ? animated : service.setParent(animated, shot.id, tip.id, null, 500);
     const sourceLayer = source.shots[0]!.layers.find(({ id }) => id === tip.id)!;
     expect(sourceLayer.parentSpaceOffset).toBeDefined();
+    expect(sourceLayer.layerMotionTracks).toHaveLength(5);
     const cover = service.setBackground(source, shot.id, tip.id);
     const store = new EditorProjectStore();
     store.open('D:/background-parenting.pandastage', source);
@@ -130,7 +136,8 @@ describe('native Layer parenting', () => {
     expect(covered).toMatchObject({ locked: true, zIndex: 0, x: 960, y: 540, rotationDeg: 0 });
     expect(covered.parentLayerId).toBeUndefined();
     expect(covered.parentSpaceOffset).toBeUndefined();
-    for (const timeMs of [0, 1000]) {
+    expect(covered.layerMotionTracks).toBeUndefined();
+    for (const timeMs of [0, 750, 1000]) {
       const formal = evaluateShotAtTime(coverShot, timeMs, reopened).layers.find(({ id }) => id === tip.id)!;
       expectMatrix(evaluatedLayerWorldMatrix(formal), layerPoseMatrix(covered));
     }
@@ -143,6 +150,28 @@ describe('native Layer parenting', () => {
     expect(refilled.parentSpaceOffset).toBeUndefined();
     expect(refilled).toMatchObject({ locked: true, zIndex: 0, x: 960, y: 540 });
   });
+  it.each(['set', 'fill'] as const)('clears residual root motion with %s when a locked background already covers the shot', (mode) => {
+    const { project, shot, tip } = fixture();
+    const service = new LayerService();
+    const covered = service.setBackground(project, shot.id, tip.id);
+    const bound = service.setParent(project, shot.id, tip.id, shot.layers[1]!.id, 0);
+    const animated = new LayerMotionService().applyTransform(
+      bound,
+      { shotId: shot.id, layerId: tip.id, timeMs: 750, autoKey: true },
+      { x: 845, rotationDeg: 15 },
+    );
+    const tracks = animated.shots[0]!.layers.find(({ id }) => id === tip.id)!.layerMotionTracks;
+    const stale = ProjectSchema.parse({
+      ...covered,
+      shots: covered.shots.map((current) => ({
+        ...current,
+        layers: current.layers.map((layer) => layer.id === tip.id ? { ...layer, layerMotionTracks: tracks } : layer),
+      })),
+    });
+    const repaired = mode === 'fill' ? service.fillBackground(stale, shot.id) : service.setBackground(stale, shot.id, tip.id);
+    expect(repaired.shots).toEqual(covered.shots);
+  });
+
   it('persists three-level affine inheritance in draw order and preserves independent local motion', () => {
     const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
     const service = new LayerService();

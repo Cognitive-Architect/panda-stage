@@ -513,9 +513,16 @@ export class LayerService {
       );
     }
     if (shot.backgroundLayerId === layer.id) {
-      if (layer.locked && !layer.parentLayerId && !layer.parentSpaceOffset) return project;
+      if (layer.locked && !layer.parentLayerId && !layer.parentSpaceOffset && !layer.layerMotionTracks) return project;
       const layers = [...shot.layers];
-      layers[layerIndex] = { ...layer, parentLayerId: undefined, parentSpaceOffset: undefined, locked: true, zIndex: 0 };
+      layers[layerIndex] = {
+        ...layer,
+        parentLayerId: undefined,
+        parentSpaceOffset: undefined,
+        layerMotionTracks: undefined,
+        locked: true,
+        zIndex: 0,
+      };
       return this.replaceShot(project, {
         ...shot,
         layers: this.normalizeLayerOrder(
@@ -580,7 +587,7 @@ export class LayerService {
     ];
     const changed =
       backgroundIndex !== 0 ||
-      Boolean(background.parentLayerId || background.parentSpaceOffset) ||
+      Boolean(background.parentLayerId || background.parentSpaceOffset || background.layerMotionTracks) ||
       background.x !== filledBackground.x ||
       background.y !== filledBackground.y ||
       background.scaleX !== filledBackground.scaleX ||
@@ -1922,6 +1929,7 @@ export class LayerService {
       ...layer,
       parentLayerId: undefined,
       parentSpaceOffset: undefined,
+      layerMotionTracks: undefined,
       x: PROJECT_WIDTH / 2,
       y: PROJECT_HEIGHT / 2,
       scaleX: cover.scale,
