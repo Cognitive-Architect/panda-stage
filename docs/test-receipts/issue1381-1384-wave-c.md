@@ -22,7 +22,7 @@
 - Windows Electron 使用真实组合角色通过表情淡变的预览、一次确认、保存重开、产品预览和正式 MP4。500ms 完成表情切换时画面全黑，1000ms 恢复显示角色。确认前 revision 保持，保存后的角色定义与原定义一致。验收目录为 `D:/PandaStage-Acceptance/issue-1384/appearance-MtUdOw`。
 - 短腿样本来自本地 AN06。复制到验收工程后，仅显示第 5/4/7 和第 9/8/25 号部件，Windows Electron 中可独立渲染两侧的大腿、小腿和脚。源角色未改动。验收目录为 `D:/PandaStage-Acceptance/issue-1384/legs-XY7u8g`。长腿候选调查仅找到黑衣素材的腿部组合时间轴，尚无独立关节或完整走跑的证据。
 - Windows Electron 在真实短腿角色上分配两侧大腿、小腿、脚及脚部跟随部件，完成原地走路和带位移跑步的预览、一次确认和保存。每段保存为 20 条原生属性轨，走路首尾关键帧值一致。跑步一周期位移约 66.94 个逻辑像素，支撑段按作者帧采样，脚部横向漂移约 0.05 个逻辑像素。验收目录为 `D:/PandaStage-Acceptance/issue-1384/legs-e08wyp`。五套长腿外观候选的验收接触表显示腿与身体或服装组合，待找到有独立髋、膝、脚分件的素材。
-- Windows Electron 使用真实组合角色、黑图及下层红色图层验证独白黑幕。预览取消前不写工程，一次应用后保存重开与产品预览均能显示黑幕。正式 MP4 在区段内的采样为 `[0,0,0]`，结束帧恢复下层红色 `[252,0,0]`，角色定义保持一致。验收目录为 `D:/PandaStage-Acceptance/issue-1384/blackout-hZi5YX`。
+- Windows Electron 使用真实组合角色、黑图及下层红色图层验证独白黑幕。预览时工程 revision 不变，一次应用后保存重开与产品预览均能显示黑幕。正式 MP4 在区段内的采样为 `[0,0,0]`，结束帧恢复下层红色 `[252,0,0]`，角色定义保持一致。验收目录为 `D:/PandaStage-Acceptance/issue-1384/blackout-hZi5YX`。
 - GitHub 报告 PR 与主线冲突，本轮提交尚无自动 CI 结果。分支为 v41，主线 `06b565f` 为 v46，已包含 #1370 的手动相机、父子级与动画时间联动成果。只读试合显示冲突位于镜头求值、LayerMotionService、LayerService、CanvasStage 和 layerStore。主线兼容与 Schema 版本待集成负责人授权协调。
 - OWNER UAT 待验。
 

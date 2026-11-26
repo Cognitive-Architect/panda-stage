@@ -290,21 +290,26 @@ export function StagePartImages({
     headGroup,
     orderedParts,
     images,
+    layerEffects: effects ? { effects, structuredVisual, resources } : undefined,
   });
-  const appliedEffects = useRef(false);
+  const appliedEffects = useRef<{ signature: string; sources: (HTMLImageElement | undefined)[] } | null>(null);
   const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
   useLayoutEffect(() => {
     const visual = visualRef.current;
     if (!visual) return;
     if (effects && (structuredCanvas || complete)) {
+      const sources = [...orderedParts, ...resources].map(({ id }) => images.get(id));
+      const previous = appliedEffects.current;
+      if (!forceCompositeCacheRebuild && visual.isCached() && previous?.signature === cacheInputSignature &&
+        sources.length === previous.sources.length && sources.every((image, index) => image === previous.sources[index])) return;
       cacheLayerVisualEffects(visual, structuredCanvas?.rect ?? visualBounds, effects);
       cachedVisualSignatureRef.current = null;
-      appliedEffects.current = true;
+      appliedEffects.current = { signature: cacheInputSignature, sources };
       if (scheduleLayerDraw) visual.getLayer()?.batchDraw();
       return;
     }
     if (appliedEffects.current) {
-      appliedEffects.current = false;
+      appliedEffects.current = null;
       visual.filters([]);
       visual.globalCompositeOperation('source-over');
     }
@@ -365,6 +370,7 @@ export function StagePartImages({
     headGroup,
     images,
     orderedParts,
+    resources,
     scheduleLayerDraw,
     structuredCanvas,
     visualBounds,
