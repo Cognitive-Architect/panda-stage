@@ -3172,6 +3172,10 @@ export function EditorShell({
               onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}
               draftProject={productPreviewDraft}
+              layerEffectPreview={!productPreviewDraft &&
+                layerEffectPreview?.projectInstanceId === openInstanceId &&
+                layerEffectPreview?.revision === projectSnapshot.revision
+                ? layerEffectPreview : undefined}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
               surfaceActive={productPreviewSurfaceActive}

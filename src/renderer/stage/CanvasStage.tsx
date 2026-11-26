@@ -4,6 +4,7 @@ import { calculateViewportTransform } from '../../domain';
 import type { CameraView, EvaluatedShot, Project, SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
+import type { LayerEffectPreview } from './LayerEffectPreview';
 import { StageRenderer } from './StageRenderer';
 import {
   previewDiagnosticNow,
@@ -28,6 +29,7 @@ interface CanvasStageProps {
   showStageLabel?: boolean;
   drawMode?: ExportDrawMode;
   solidClear?: boolean;
+  layerEffectPreview?: LayerEffectPreview;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {
