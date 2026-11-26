@@ -19,6 +19,7 @@ import {
   LayerV4Schema,
 } from './layer';
 import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema, TimelineEventV33Schema, TimelineEventV40Schema } from './timeline-event';
+import { ShotCameraSchema } from './shotCamera';
 
 const ShotIdentityShape = {
   id: IdSchema,
@@ -128,10 +129,24 @@ export const ShotV41Schema = ShotV20Schema.extend({
   layers: z.array(LayerV41Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV20Schema.extend({
+export const ShotV42Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerSchema),
 }).superRefine(validateShotClipKeyTimes);
+
+export const ShotSchema = ShotV42Schema.extend({
+  camera: ShotCameraSchema.optional(),
+}).superRefine((shot, context) => {
+  shot.camera?.keys.forEach((key, index, keys) => {
+    if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['camera', 'keys', index, 'timeMs'],
+        message: 'Camera keys must be ordered, unique and within the Shot duration.',
+      });
+    }
+  });
+});
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

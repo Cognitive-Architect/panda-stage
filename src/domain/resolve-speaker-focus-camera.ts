@@ -8,6 +8,7 @@ export interface CameraView {
   centerX: number;
   centerY: number;
   zoom: number;
+  rotationDeg?: number;
 }
 
 export const SPEAKER_FOCUS_ZOOM = 1.5;

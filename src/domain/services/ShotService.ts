@@ -44,6 +44,7 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.audioClips.map((clip) => clip.endMs),
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
+    shot.camera?.keys.at(-1)?.timeMs ?? 0,
   );
 }
 

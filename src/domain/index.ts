@@ -19,6 +19,7 @@ export * from './evaluate-fla-graphic';
 export * from './fla-graphic-subtree';
 export * from './fla-shape-vector';
 export * from './resolve-speaker-focus-camera';
+export * from './shot-camera';
 export {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
