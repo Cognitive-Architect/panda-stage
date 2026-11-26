@@ -2,6 +2,7 @@ import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
+import { evaluatedLayerWorldMatrix } from './layer-parent-space';
 import type { Layer, Project, Shot, TimelineEvent } from './models';
 
 export interface CameraView {
@@ -56,6 +57,7 @@ interface CameraTransition {
 
 /** Immutable-input, runtime-only preparation. Each Shot owns its own schedule. */
 export interface SpeakerFocusCameraPlan {
+  readonly project: Project;
   readonly shot: Shot;
   readonly width: number;
   readonly height: number;
@@ -67,12 +69,18 @@ export interface SpeakerFocusCameraPlan {
 function targetAt(
   layer: Layer | null,
   atMs: number,
-  width: number,
-  height: number,
-  full: CameraView,
-  eventsByLayer: ReadonlyMap<string, readonly TimelineEvent[]>,
+  { project, shot, width, height, full, eventsByLayer }: Omit<SpeakerFocusCameraPlan, 'transitions'>,
 ): CameraView {
   if (!layer) return full;
+  if (layer.parentLayerId || layer.parentSpaceOffset) {
+    // Follow the inherited pose while leaving actor and ancestor Shake on screen.
+    const evaluated = evaluateShotAtTime(shot, atMs, project, { includeShake: false })
+      .layers.find(({ id }) => id === layer.id);
+    if (evaluated?.parentSpace) {
+      const { tx, ty } = evaluatedLayerWorldMatrix(evaluated);
+      return clampCamera({ centerX: tx, centerY: ty, zoom: SPEAKER_FOCUS_ZOOM }, width, height);
+    }
+  }
   const main = evaluateLayerMotionAtTime(
     layer,
     eventsByLayer.get(layer.id) ?? [],
@@ -98,6 +106,7 @@ export function prepareSpeakerFocusCamera(
     events.push(event);
     eventsByLayer.set(event.layerId, events);
   }
+  const context = { project, shot, width: project.width, height: project.height, full, eventsByLayer };
 
   const intentAt = (atMs: number): Layer | null => {
     const cue = evaluateSubtitleAtTime(cues, atMs);
@@ -133,7 +142,7 @@ export function prepareSpeakerFocusCamera(
     if (nextIntentId === intentId) continue;
     const viewAtBoundary = interpolate(
       from,
-      targetAt(intent, boundary, project.width, project.height, full, eventsByLayer),
+      targetAt(intent, boundary, context),
       (boundary - transitionStart) / SPEAKER_FOCUS_TRANSITION_MS,
     );
     from = viewAtBoundary;
@@ -142,14 +151,7 @@ export function prepareSpeakerFocusCamera(
     intentId = nextIntentId;
     transitions.push({ startMs: boundary, from, layer: intent });
   }
-  return {
-    shot,
-    width: project.width,
-    height: project.height,
-    full,
-    transitions,
-    eventsByLayer,
-  };
+  return { ...context, transitions };
 }
 
 /** Binary lookup + dynamic main Position; no historical schedule replay. */
@@ -170,14 +172,7 @@ export function evaluateSpeakerFocusCamera(
   return clampCamera(
     interpolate(
       transition.from,
-      targetAt(
-        transition.layer,
-        timeMs,
-        plan.width,
-        plan.height,
-        plan.full,
-        plan.eventsByLayer,
-      ),
+      targetAt(transition.layer, timeMs, plan),
       (timeMs - transition.startMs) / SPEAKER_FOCUS_TRANSITION_MS,
     ),
     plan.width,

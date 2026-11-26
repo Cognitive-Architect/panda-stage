@@ -806,7 +806,7 @@ export function evaluateShotAtTime(
   shot: Shot,
   requestedTimeMs: number,
   project: Project,
-  options?: { graphicFrameTimeMs: number },
+  options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
   const timeMs = Math.max(
     0,
@@ -815,6 +815,7 @@ export function evaluateShotAtTime(
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {
+    if (options?.includeShake === false && event.type === 'shake') continue;
     const list = eventsByLayer.get(event.layerId) ?? [];
     list.push(event);
     eventsByLayer.set(event.layerId, list);

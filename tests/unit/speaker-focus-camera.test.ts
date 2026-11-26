@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   evaluateSpeakerFocusCamera,
+  evaluateShotAtTime,
+  evaluatedLayerWorldMatrix,
   prepareSpeakerFocusCamera,
   resolveSpeakerFocusCamera,
   type Project,
@@ -56,6 +58,34 @@ describe('Speaker Focus Camera', () => {
     expect(beforeShake).toEqual({ centerX: 640, centerY: 360, zoom: 1.5 });
     shot.timelineEvents.push({ id: 'shake', layerId: 'a', type: 'shake', startMs: 0, endMs: 1000, amplitudeX: 50, amplitudeY: 80, frequencyHz: 1 });
     expect(resolveSpeakerFocusCamera(project, shot, 500)).toEqual(beforeShake);
+  });
+
+  it('follows the formal inherited speaker position without cancelling its own or its ancestors’ Shake', () => {
+    const { project, shot } = fixture();
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const pose = { scaleX: 1, scaleY: 1, rotationDeg: 0, flipX: false };
+    Object.assign(shot.layers[0]!, pose, { x: 600, parentLayerId: 'middle', parentSpaceOffset: { ...identity, tx: -600, ty: -500 } });
+    shot.layers.push(
+      { ...shot.layers[0]!, id: 'middle', source: { kind: 'asset', assetId: 'middle' }, parentLayerId: 'root' },
+      { ...shot.layers[0]!, id: 'root', source: { kind: 'asset', assetId: 'root' }, parentLayerId: undefined, parentSpaceOffset: undefined },
+    );
+    shot.dialogues.push(dialogue('A', 'A', 0, 1_800));
+    shot.timelineEvents.push({
+      id: 'move-root', layerId: 'root', type: 'move', startMs: 0, endMs: 1_000,
+      from: { x: 600, y: 500 }, to: { x: 1_600, y: 500 }, easing: 'linear',
+    });
+    const beforeShake = prepareSpeakerFocusCamera(project, shot);
+    const times = [0, 125, 250, 500, 900, 1_500, 1_850];
+    const expected = times.map((time) => evaluateSpeakerFocusCamera(beforeShake, time));
+    expect(expected[3]).toEqual({ centerX: 1100, centerY: 500, zoom: 1.5 });
+    expect(expected[5]?.centerX).toBe(1280);
+    const baseX = evaluatedLayerWorldMatrix(evaluateShotAtTime(shot, 500, project).layers[0]!).tx;
+    for (const layerId of ['a', 'root']) shot.timelineEvents.push({
+      id: 'shake-' + layerId, layerId, type: 'shake', startMs: 0, endMs: 1_000, amplitudeX: 80, amplitudeY: 0, frequencyHz: 0.5,
+    });
+    const shakePlan = prepareSpeakerFocusCamera(project, shot);
+    expect(evaluatedLayerWorldMatrix(evaluateShotAtTime(shot, 500, project).layers[0]!).tx).not.toBe(baseX);
+    expect([...times].reverse().map((time) => evaluateSpeakerFocusCamera(shakePlan, time)).reverse()).toEqual(expected);
   });
 
   it('folds rapid speaker changes and short gaps without a snap; seeking is stateless', () => {
