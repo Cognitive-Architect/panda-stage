@@ -940,6 +940,11 @@ describe('native Layer parenting', () => {
       expect(() => service.setParentKey(step2, shot.id, baseLayer.id, 250, middle.id)).toThrow(/循环/);
       // Legal cross-time swap at t=500 succeeds cleanly!
       const swapped = service.setParentKey(step2, shot.id, baseLayer.id, 500, middle.id);
+      expect(() => service.removeParentKey(swapped, shot.id, middle.id, 500)).toThrow(/循环/);
+      expect(() => service.moveParentKey(swapped, shot.id, middle.id, 500, 750)).toThrow(/循环/);
+      const earlierDetach = service.moveParentKey(swapped, shot.id, middle.id, 500, 250);
+      expect(earlierDetach.shots[0]!.layers.find(({ id }) => id === middle.id)?.parentKeys?.[0]?.timeMs).toBe(250);
+      expect(() => service.moveParentKey(swapped, shot.id, baseLayer.id, 500, 250)).toThrow(/循环/);
       const at250 = evaluateShotAtTime(swapped.shots[0]!, 250, swapped).layers;
       const at750 = evaluateShotAtTime(swapped.shots[0]!, 750, swapped).layers;
       expect(at250.find(({ id }) => id === middle.id)?.parentSpace).toBeDefined();
@@ -961,6 +966,8 @@ describe('native Layer parenting', () => {
       expect(frames.find(({ id }) => id === baseLayer.id)?.parentSpace).toBeUndefined();
       expect(frames.find(({ id }) => id === middle.id)?.parentSpace).toBeUndefined();
       expect(frames.find(({ id }) => id === tip.id)?.parentSpace).toBeDefined();
+      const unrelatedEdit = service.moveParentKey(damaged, shot.id, tip.id, 500, 750);
+      expect(unrelatedEdit.shots[0]!.layers.find(({ id }) => id === tip.id)?.parentKeys?.[0]?.timeMs).toBe(750);
     });
 
     it('supports add, move, remove, realign keys, preserves parentKeys on static setParent, and rejects non-invertible targets', () => {
@@ -983,6 +990,9 @@ describe('native Layer parenting', () => {
       expect(moved.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys?.map((k) => k.timeMs)).toEqual([500, 750]);
       // Moving onto an existing key time throws.
       expect(() => service.moveParentKey(moved, shot.id, tip.id, 500, 750)).toThrow(/已存在/);
+      for (const invalidTime of [NaN, -1, shot.durationMs + 1]) {
+        expect(() => service.moveParentKey(moved, shot.id, tip.id, 500, invalidTime)).toThrow(/时长范围/);
+      }
 
       // Remove key at 500 -> now 750's preceding segment changed from baseLayer to middle, so 750 drifts until realigned.
       const removed = service.removeParentKey(moved, shot.id, tip.id, 500);
@@ -1067,7 +1077,7 @@ describe('native Layer parenting', () => {
           .layers.find(({ id }) => id === layerId)!;
 
       // Setup: baseLayer has depth -300. tip binds to baseLayer at 250 (inherit), hands off to middle at 500, back to baseLayer at 750.
-      const deepBase = setLayerDepth(project, shot.id, baseLayer.id, -300);
+      const deepBase = setLayerDepth(setLayerDepth(project, shot.id, tip.id, 0), shot.id, baseLayer.id, -300);
       const k1 = service.setParentKey(deepBase, shot.id, tip.id, 250, baseLayer.id, { depthMode: 'inherit' });
       const k2 = service.setParentKey(k1, shot.id, tip.id, 500, middle.id, { depthMode: 'inherit' });
       const k3 = service.setParentKey(k2, shot.id, tip.id, 750, baseLayer.id, { depthMode: 'inherit' });
@@ -1096,6 +1106,19 @@ describe('native Layer parenting', () => {
       expect(crossCopy.layer.parentLayerId).toBeUndefined();
       expect(crossCopy.layer.depth).toBe(-300);
       expectMatrix(evaluatedLayerWorldMatrix(poseAt(crossCopy.project, destId, crossCopy.layer.id, 0)), evaluatedLayerWorldMatrix(before375));
+      const camera = { centerX: 1000, centerY: 500, zoom: 1.2 };
+      expect(resolveLayerCameraTransform(poseAt(crossCopy.project, destId, crossCopy.layer.id, 0), camera, 1920, 1080))
+        .toEqual(resolveLayerCameraTransform(before375, camera, 1920, 1080));
+
+      const preserved = service.setParentKey(k1, shot.id, tip.id, 500, middle.id, { depthMode: 'preserve' });
+      expect(service.duplicateLayer(withDest, shot.id, tip.id, destId, 600, preserved).layer.depth).toBe(-300);
+      const detached = service.setParentKey(k1, shot.id, tip.id, 500, null);
+      expect(service.duplicateLayer(withDest, shot.id, tip.id, destId, 600, detached).layer.depth).toBe(-300);
+      const inheritedZero = setLayerDepth(setLayerDepth(k2, shot.id, tip.id, 50), shot.id, middle.id, 0);
+      expect(service.duplicateLayer(withDest, shot.id, tip.id, destId, 600, inheritedZero).layer.depth).toBe(0);
+      const independent = setLayerDepthKey(k1, shot.id, tip.id, 1_000, 350);
+      const independentCopy = service.duplicateLayer(withDest, shot.id, tip.id, destId, 600, independent);
+      expect(independentCopy.layer.depthKeys).toEqual(independent.shots[0]!.layers.find(({ id }) => id === tip.id)?.depthKeys);
 
       // 3. ShotService.duplicate remaps all parentKeys[].parentLayerId; ShotService.setDuration rejects shrinking below parentKey.timeMs.
       const duplicatedShot = shots.duplicate(k3, shot.id).shots[1]!;

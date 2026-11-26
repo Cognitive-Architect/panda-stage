@@ -47,13 +47,15 @@ export function evaluateShotCameraOverrideWeight(
   overrides: readonly ShotCameraOverride[] | undefined,
   requestedTimeMs: number,
 ): number {
-  if (!overrides?.length) return 0;
+  return evaluateOverrideBlend(overrides, requestedTimeMs)?.weight ?? 0;
+}
+
+function evaluateOverrideBlend(overrides: readonly ShotCameraOverride[] | undefined, requestedTimeMs: number) {
   const timeMs = Number.isFinite(requestedTimeMs) ? requestedTimeMs : 0;
-  const active = overrides.find((override) => timeMs >= override.startMs && timeMs < override.endMs);
-  if (!active) return 0;
+  const active = overrides?.find((override) => timeMs >= override.startMs && timeMs < override.endMs);
+  if (!active) return undefined;
 
   const length = active.endMs - active.startMs;
-  if (length <= 0) return 0;
 
   const rawIn = Math.max(0, active.blendInMs);
   const rawOut = Math.max(0, active.blendOutMs);
@@ -77,14 +79,24 @@ export function evaluateShotCameraOverrideWeight(
         active.curveOut,
       );
 
-  return Math.max(0, Math.min(1, Math.min(weightIn, weightOut)));
+  return {
+    weight: Math.max(0, Math.min(1, Math.min(weightIn, weightOut))),
+    anchorTimeMs: timeMs < active.startMs + blendInMs ? active.startMs : active.endMs,
+  };
 }
 
-function blendCameraViews(autoView: CameraView, manualPose: ManualCameraPose, weight: number): CameraView {
-  if (weight <= 0) return autoView;
-  if (weight >= 1) return manualPose;
+function blendCameraViews(
+  autoView: CameraView,
+  manualPose: ManualCameraPose,
+  weight: number,
+  anchorAutoRotation: number,
+  anchorManualRotation: number,
+): CameraView {
   const autoRotation = autoView.rotationDeg ?? 0;
-  const rotationDelta = shortestAngleDeltaDeg(autoRotation, manualPose.rotationDeg);
+  // Pick the nearest branch at the automatic end of each transition, then
+  // follow the authored unwrapped angles. The two branches agree visually at weight 1.
+  const rotationDelta = shortestAngleDeltaDeg(anchorAutoRotation, anchorManualRotation)
+    + (manualPose.rotationDeg - anchorManualRotation) - (autoRotation - anchorAutoRotation);
   return {
     centerX: autoView.centerX + (manualPose.centerX - autoView.centerX) * weight,
     centerY: autoView.centerY + (manualPose.centerY - autoView.centerY) * weight,
@@ -125,16 +137,24 @@ export function prepareShotCamera(project: Project, shot: Shot, legacyMode: 'sta
     ? prepareSpeakerFocusCamera(project, shot)
     : null;
   const overrides = mode === 'hybrid' ? (shot.camera?.overrides ?? []) : [];
+  const evaluateAutoView = (timeMs: number) => speakerFocus
+    ? evaluateSpeakerFocusCamera(speakerFocus, timeMs)
+    : fullStageCamera(project.width, project.height);
   return (timeMs: number): CameraView | undefined => {
     if (mode === 'manual') return evaluateManualCamera(shot, timeMs);
     if (mode === 'hybrid') {
-      const autoView = speakerFocus
-        ? evaluateSpeakerFocusCamera(speakerFocus, timeMs)
-        : fullStageCamera(project.width, project.height);
-      const weight = evaluateShotCameraOverrideWeight(overrides, timeMs);
-      if (weight <= 0) return autoView;
+      const autoView = evaluateAutoView(timeMs);
+      const blend = evaluateOverrideBlend(overrides, timeMs);
+      if (!blend || blend.weight <= 0) return autoView;
       const manualPose = evaluateManualCamera(shot, timeMs);
-      return blendCameraViews(autoView, manualPose, weight);
+      if (blend.weight >= 1) return manualPose;
+      return blendCameraViews(
+        autoView,
+        manualPose,
+        blend.weight,
+        evaluateAutoView(blend.anchorTimeMs).rotationDeg ?? 0,
+        evaluateManualCamera(shot, blend.anchorTimeMs).rotationDeg,
+      );
     }
     return speakerFocus ? evaluateSpeakerFocusCamera(speakerFocus, timeMs) : undefined;
   };

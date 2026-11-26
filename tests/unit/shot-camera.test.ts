@@ -344,6 +344,37 @@ describe('Shot camera', () => {
     expect(removedKey.shots[0]!.camera?.overrides?.length).toBe(1);
   });
 
+  it.each([1, -1])('keeps compressed blend rotation continuous across equivalent angle seams (direction %s)', (direction) => {
+    const { project: base, shotId } = buildTwoSpeakerProject();
+    let project = setShotCameraMode(base, shotId, 'hybrid');
+    project = setShotCameraKey(project, shotId, 1_000, { rotationDeg: direction * -180 });
+    project = setShotCameraKey(project, shotId, 2_000, { rotationDeg: direction * 1_260 });
+    project = addShotCameraOverride(project, shotId, {
+      startMs: 1_000, endMs: 2_000, blendInMs: 750, blendOutMs: 750,
+    });
+    project = addShotCameraOverride(project, shotId, {
+      startMs: 2_000, endMs: 2_500, blendInMs: 0, blendOutMs: 0,
+    });
+    const camera = prepareShotCamera(project, project.shots[0]!, 'static');
+    const rotationVector = (timeMs: number) => {
+      const radians = cameraWorldTransform(camera(timeMs), project.width, project.height).rotation * Math.PI / 180;
+      return [Math.cos(radians), Math.sin(radians)] as const;
+    };
+    const samples = [1_250, 1_500, 1_750];
+    const ordered = samples.map(rotationVector);
+    for (const [index, time] of samples.entries()) {
+      const before = rotationVector(time - 1);
+      const after = rotationVector(time + 1);
+      const expected = ordered[index]!;
+      for (const sample of [before, after]) {
+        expect(Math.hypot(sample[0] - expected[0], sample[1] - expected[1])).toBeLessThan(0.08);
+      }
+      expect(rotationVector(time)).toEqual(ordered[index]);
+    }
+    expect(camera(1_500)?.rotationDeg).toBe(direction * 540);
+    expect(camera(2_000)?.rotationDeg).toBe(direction * 1_260);
+  });
+
   it('handles inherited non-zero depth moving speaker, screen HUD, auto fallback, random seek, save/reopen, and Undo/Redo in hybrid mode', () => {
     const { project: base, shotId, actorAId, hudId } = buildTwoSpeakerProject();
     const shot = base.shots[0]!;

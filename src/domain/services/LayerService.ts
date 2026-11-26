@@ -70,7 +70,7 @@ import {
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
-import { evaluatedLayerWorldMatrix, validLayerParentTargets } from '../layer-parent-space';
+import { evaluatedLayerWorldMatrix, parentKeyEditCreatesCycle, validLayerParentTargets } from '../layer-parent-space';
 import { evaluateShotAtTime, type EvaluatedLayer } from '../evaluate-shot-at-time';
 import { remapLayerMotionOwner, syncLayerAnimationClipBasis } from '../layer-animation';
 
@@ -1906,11 +1906,22 @@ export class LayerService {
     const existingKeys = child.parentKeys ?? [];
     const moving = existingKeys.find((key) => key.timeMs === fromTimeMs);
     if (!moving) return project;
+    if (!Number.isFinite(requestedToTimeMs) || requestedToTimeMs < 0 || requestedToTimeMs > shot.durationMs) {
+      throw new Error('请输入镜头时长范围内的交接时间。');
+    }
     const toTimeMs = resolveTimelineFrameTime(requestedToTimeMs, shot.durationMs);
     if (toTimeMs === fromTimeMs) return project;
     const others = existingKeys.filter((key) => key.timeMs !== fromTimeMs);
     if (others.some((key) => key.timeMs === toTimeMs)) {
       throw new Error('目标帧已存在父级切换关键帧。');
+    }
+    const candidateKeys = [...others, { ...moving, timeMs: toTimeMs }].sort((left, right) => left.timeMs - right.timeMs);
+    const ranges = [fromTimeMs, toTimeMs].map((startMs) => ({
+      startMs,
+      endMs: others.find((key) => key.timeMs > startMs)?.timeMs ?? Infinity,
+    }));
+    if (parentKeyEditCreatesCycle(shot, child, { ...child, parentKeys: candidateKeys }, ranges)) {
+      throw new Error('移动交接帧会让图层在同一时间互为父级，形成循环。请选择其他时间。');
     }
     const shotWithoutMoving: Shot = {
       ...shot,
@@ -1918,13 +1929,6 @@ export class LayerService {
         layer.id === childId ? { ...layer, parentKeys: others.length ? others : undefined } : layer,
       ),
     };
-    const nextKeyTime = others.find((key) => key.timeMs > toTimeMs)?.timeMs ?? Infinity;
-    if (
-      moving.parentLayerId !== null &&
-      !validLayerParentTargets(shotWithoutMoving, childId, toTimeMs, nextKeyTime).some(({ id }) => id === moving.parentLayerId)
-    ) {
-      throw new Error('移动到目标帧会形成父级循环。');
-    }
     const movedKey = this.buildParentKeyAtBoundary(
       project,
       shotWithoutMoving,
@@ -1933,7 +1937,7 @@ export class LayerService {
       moving.parentLayerId,
       { target: moving.parentAttachment?.target, depthMode: moving.depthMode },
     );
-    const parentKeys = [...others, movedKey].sort((left, right) => left.timeMs - right.timeMs);
+    const parentKeys = candidateKeys.map((key) => key.timeMs === toTimeMs ? movedKey : key);
     return this.replaceShot(project, {
       ...shot,
       layers: shot.layers.map((layer) => (layer.id === childId ? { ...layer, parentKeys } : layer)),
@@ -1953,6 +1957,10 @@ export class LayerService {
     const existingKeys = child.parentKeys ?? [];
     if (!existingKeys.some((key) => key.timeMs === timeMs)) return project;
     const remaining = existingKeys.filter((key) => key.timeMs !== timeMs);
+    const endMs = remaining.find((key) => key.timeMs > timeMs)?.timeMs ?? Infinity;
+    if (parentKeyEditCreatesCycle(shot, child, { ...child, parentKeys: remaining }, [{ startMs: timeMs, endMs }])) {
+      throw new Error('删除交接帧会让图层在同一时间互为父级，形成循环。');
+    }
     return this.replaceShot(project, {
       ...shot,
       layers: shot.layers.map((layer) => {
@@ -2109,6 +2117,9 @@ export class LayerService {
         .layers.find(({ id }) => id === layerId)
       : undefined;
     const copiedSpace = detachedPose?.parentSpace ?? layer.parentSpaceOffset;
+    const copiedDepth = detachedPose && !sameShot && layer.parentKeys?.length && !layer.depthKeys?.length
+      ? detachedPose.effectiveDepth ?? 0
+      : preservedDetachedDepth(layer, detachedPose);
     const copiedParentKeys = sameShot && layer.parentKeys?.length
       ? layer.parentKeys
           .filter((key) => key.parentLayerId === null || destination.layers.some(({ id }) => id === key.parentLayerId))
@@ -2158,7 +2169,7 @@ export class LayerService {
       ...(sameShot && layer.animationTimeLink ? { animationTimeLink: { ...layer.animationTimeLink } } : {}),
       parentSpaceOffset: copiedSpace,
       cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
-      depth: detachedPose ? preservedDetachedDepth(layer, detachedPose) : layer.depth,
+      depth: copiedDepth,
       name: `${layer.name} 副本`,
       x: position.x,
       y: position.y,

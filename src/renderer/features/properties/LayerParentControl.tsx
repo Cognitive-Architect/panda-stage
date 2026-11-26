@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { MoveHorizontal, RotateCcw, Trash2 } from 'lucide-react';
 import {
   evaluateShotAtTime,
   layerAttachmentTargetKey,
@@ -258,6 +258,24 @@ export function LayerParentControl({ layer, project, shot }: { layer: Layer; pro
                     {key.depthMode === 'preserve' && key.depth !== undefined ? ` · 深度 ${key.depth}` : ''}
                   </button>
                   <span style={{ display: 'inline-flex', gap: '4px' }}>
+                    <button
+                      type="button"
+                      disabled={layer.locked || isCurrent}
+                      aria-label={`将 ${formatKeyTime(key.timeMs)} 交接帧移到播放头`}
+                      title="移到播放头"
+                      onClick={() => {
+                        const targetTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+                        try {
+                          layerStore.moveParentKey(layer.id, key.timeMs, targetTimeMs);
+                          timelineUiStore.seek(resolveTimelineFrameTime(targetTimeMs, shot.durationMs), shot.durationMs);
+                          setError('');
+                        } catch (cause) {
+                          setError(cause instanceof Error ? cause.message : '无法移动交接帧。');
+                        }
+                      }}
+                    >
+                      <MoveHorizontal size={12} aria-hidden="true" />
+                    </button>
                     <button
                       type="button"
                       disabled={layer.locked}

@@ -78,6 +78,33 @@ function parentCycleSampleTimes(shot: Shot, startTimeMs: number, endTimeMs: numb
   return [...times].sort((left, right) => left - right);
 }
 
+function repeatedParentId(byId: ReadonlyMap<string, Layer>, childId: string, parentId: string, timeMs: number): string | undefined {
+  const seen = new Set([childId]);
+  let currentId: string | undefined = parentId;
+  while (currentId) {
+    if (seen.has(currentId)) return currentId;
+    seen.add(currentId);
+    const layer = byId.get(currentId);
+    currentId = layer && resolveLayerParentBindingAtTime(layer, timeMs).parentLayerId;
+  }
+  return undefined;
+}
+
+export function parentKeyEditCreatesCycle(
+  shot: Shot,
+  child: Layer,
+  candidate: Layer,
+  ranges: ReadonlyArray<{ startMs: number; endMs: number }>,
+): boolean {
+  const byId = new Map(shot.layers.map((layer) => [layer.id, layer]));
+  return ranges.some(({ startMs, endMs }) => parentCycleSampleTimes(shot, startMs, endMs).some((timeMs) => {
+    const previous = resolveLayerParentBindingAtTime(child, timeMs).parentLayerId;
+    const next = resolveLayerParentBindingAtTime(candidate, timeMs).parentLayerId;
+    // Every new cycle must contain the one changed edge. Existing cycles farther up the chain are unrelated.
+    return next !== undefined && next !== previous && repeatedParentId(byId, child.id, next, timeMs) === child.id;
+  }));
+}
+
 export function validLayerParentTargets(
   shot: Shot,
   childId: string,
@@ -91,17 +118,7 @@ export function validLayerParentTargets(
   const sampleTimes = parentCycleSampleTimes(shot, rangeStart, rangeEnd);
   return shot.layers.filter((candidate) => {
     if (candidate.id === childId) return false;
-    for (const sampleTime of sampleTimes) {
-      const seen = new Set([childId]);
-      let layer: Layer | undefined = candidate;
-      while (layer) {
-        if (seen.has(layer.id)) return false;
-        seen.add(layer.id);
-        const nextParentId: string | undefined = resolveLayerParentBindingAtTime(layer, sampleTime).parentLayerId;
-        layer = nextParentId ? byId.get(nextParentId) : undefined;
-      }
-    }
-    return true;
+    return sampleTimes.every((sampleTime) => repeatedParentId(byId, childId, candidate.id, sampleTime) === undefined);
   });
 }
 
