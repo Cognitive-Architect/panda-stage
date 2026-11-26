@@ -52,10 +52,11 @@ describe('character gait templates', () => {
     const walkAction = walk.characters.find(({ id }) => id === character.id)!.actions!.at(-1)!;
     if (!('kind' in action) || !('kind' in walkAction)) throw new Error('Expected layered action');
     for (const track of action.tracks) {
-      expect(track.keys[0]?.value).toBe(track.keys.at(-1)?.value);
+      expect(track.keys[0]?.value).toBe(0);
+      expect(track.keys.at(-1)?.value).toBe(0);
     }
     const xKeys = action.tracks.find(({ partId, property }) => partId === parts.left.foot && property === 'transform.offsetX')!.keys;
-    const contact = xKeys.slice(0, 10).map((key) => key.value + poseAt(key.timeMs).x);
+    const contact = xKeys.slice(4, 10).map((key) => key.value + poseAt(key.timeMs).x);
     expect(Math.max(...contact) - Math.min(...contact)).toBeLessThan(0.2);
     const altitude = (tracks: typeof action.tracks) => tracks.find(({ partId, property }) =>
       partId === parts.left.foot && property === 'transform.offsetY')!.keys.map(({ value }) => value);

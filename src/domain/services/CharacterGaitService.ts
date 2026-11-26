@@ -82,14 +82,18 @@ function cycleTracks(legs: readonly Leg[], clip: AnimationClipV0, input: GaitInp
   LayeredCharacterAction['tracks'] {
   const running = input.gait === 'run';
   const duty = running ? 0.38 : 0.58;
+  const transitionFrames = Math.min(4, Math.floor(frames / input.cycles / 4));
   const properties = ['transform.offsetX', 'transform.offsetY', 'transform.rotationDeg'] as const;
   return legs.flatMap((leg, legIndex) => {
     const restBend = wrappedAngle(angle(leg.rest[1], leg.rest[2]) - angle(leg.rest[0], leg.rest[1]));
     const knees = input.direction === 1 ? { minDeg: -restBend, maxDeg: 145 - restBend } :
       { minDeg: -145 - restBend, maxDeg: -restBend };
     const poses = Array.from({ length: frames + 1 }, (_, frame) => {
-      // Force the exact first configuration at the end of every complete interval.
-      const cycle = frame === frames ? 0 : frame * input.cycles / frames;
+      // Match the standing pose at both event boundaries; leave the interior cycle clock intact.
+      if (frame === 0 || frame === frames) return leg.bases.map(() => [0, 0, 0]);
+      const transition = Math.min(1, frame / transitionFrames, (frames - frame) / transitionFrames);
+      const weight = transition * transition * (3 - 2 * transition);
+      const cycle = frame * input.cycles / frames;
       const phase = (cycle + legIndex / 2) % 1;
       const swing = phase >= duty ? (phase - duty) / (1 - duty) : 0;
       const stride = phase < duty ? distance * (duty / 2 - phase) :
@@ -103,13 +107,27 @@ function cycleTracks(legs: readonly Leg[], clip: AnimationClipV0, input: GaitInp
       const solution = solveRigidArm([hip, knee, ankle], target, [{ minDeg: -110, maxDeg: 110 }, knees],
         [0, input.direction * 18 - restBend]);
       if (solution.distance > 0.08) throw new Error('当前腿部比例无法完成此步态，请检查部件与站立姿势。');
+      const rotations = solution.rotationsDeg.map((rotation) => rotation * weight);
+      let joints = solution.joints;
+      if (weight < 1) {
+        // Rebuild the chain at the blended angles so the knee and ankle stay attached.
+        joints = [{ x: hip.x, y: leg.rest[0].y + dip * weight }];
+        rotations.forEach((rotation, index) => {
+          const start = leg.rest[index]!, end = leg.rest[index + 1]!;
+          const parent = joints[index]!;
+          const radians = rotation * Math.PI / 180;
+          const x = end.x - start.x, y = end.y - start.y;
+          joints.push({ x: parent.x + x * Math.cos(radians) - y * Math.sin(radians),
+            y: parent.y + x * Math.sin(radians) + y * Math.cos(radians) });
+        });
+      }
       return leg.bases.map((basis, index) => {
         const pivot = characterPartPivotInClip(basis, clip.fixedCharacterCenter);
-        const rotation = solution.rotationsDeg[index] ?? 0;
+        const rotation = rotations[index] ?? 0;
         const radians = rotation * Math.PI / 180;
         const attachment = Math.min(index, 2);
         const rest = leg.rest[attachment]!;
-        const joint = solution.joints[attachment]!;
+        const joint = joints[attachment]!;
         const x = rest.x - pivot.x, y = rest.y - pivot.y;
         return [
           joint.x - pivot.x - x * Math.cos(radians) + y * Math.sin(radians),
