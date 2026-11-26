@@ -2,7 +2,7 @@ import { createContext } from 'react';
 import type { LayerVisualEffects } from '../../domain/models/layerVisualEffects';
 
 export interface LayerEffectPreview {
-  effects: LayerVisualEffects;
+  effects?: LayerVisualEffects;
   projectInstanceId: number | null;
   revision: number;
   shotId: string;

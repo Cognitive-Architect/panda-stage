@@ -839,7 +839,7 @@ export function StageRenderer({
                     layer.visual.kind === 'adaptive-parts-character'
                   }
                   effects={layerEffectPreview?.shotId === displayModel!.shotId &&
-                    layerEffectPreview.layerId === layer.id ? layerEffectPreview.effects : undefined}
+                    layerEffectPreview.layerId === layer.id ? layerEffectPreview.effects : layer.visualEffects}
                   headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}

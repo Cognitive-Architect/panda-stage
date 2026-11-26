@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema, DialogueV18Schema, DialogueV22Schema } from './dialogue';
 import {
   LayerSchema,
+  LayerV46Schema,
   LayerV30Schema,
   LayerV32Schema,
   LayerV41Schema,
@@ -236,15 +237,19 @@ function validateShotParentKeys(
   }));
 }
 
-export const ShotSchema = z.strictObject({
+export const ShotV46Schema = z.strictObject({
   ...ShotV43Shape,
   camera: ShotCameraSchema.optional(),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV46Schema),
 }).superRefine(validateShotClipKeyTimes)
   .superRefine(validateShotRootKeyTimes)
   .superRefine(validateShotDepthKeys)
   .superRefine(validateShotCameraOverrides)
   .superRefine(validateShotParentKeys);
+
+export const ShotSchema = ShotV46Schema.safeExtend({
+  layers: z.array(LayerSchema),
+});
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

@@ -1919,7 +1919,7 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
-                            effects={activeEffects?.layerId === layer.id ? activeEffects.effects : undefined}
+                            effects={activeEffects?.layerId === layer.id ? activeEffects.effects : layer.visualEffects}
                             selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(

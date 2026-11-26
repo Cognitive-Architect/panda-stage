@@ -50,6 +50,7 @@ import {
 } from '../models';
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { NameSchema } from '../models/common';
+import { hasLayerVisualEffects, LayerVisualEffectsSchema, type LayerVisualEffects } from '../models/layerVisualEffects';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
 import { resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
@@ -1943,6 +1944,23 @@ export class LayerService {
         const name = changes.get(layer.id);
         return name === undefined ? layer : { ...layer, name };
       }),
+    });
+  }
+
+  setVisualEffects(project: Project, shotId: string, layerId: string, effects?: LayerVisualEffects): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (layer.source.kind === 'control') throw new Error('控制层没有可应用效果的画面。');
+    const parsed = effects === undefined ? undefined : LayerVisualEffectsSchema.parse(effects);
+    const next = parsed && hasLayerVisualEffects(parsed) ? parsed : undefined;
+    if (JSON.stringify(layer.visualEffects) === JSON.stringify(next)) return project;
+    const { visualEffects: _previous, ...base } = layer;
+    void _previous;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) => entry === layer ? { ...base, ...(next ? { visualEffects: next } : {}) } : entry),
     });
   }
 

@@ -10,6 +10,7 @@ import {
   ProjectV43Schema,
   ProjectV44Schema,
   ProjectV45Schema,
+  ProjectV46Schema,
   ShotCameraV45Schema,
   type LayerParentKey,
   type ShotCameraOverride,
@@ -39,8 +40,8 @@ function makeAnimationProject() {
   };
 }
 
-describe('P3 unified schema v46 and frozen v45 migration', () => {
-  it('migrates a valid v45 project to v46 without mutating shot or layer data', () => {
+describe('P3 schema and frozen v45 migration', () => {
+  it('migrates a valid v45 project to the current schema without mutating shot or layer data', () => {
     const v46 = baseV46Project();
     const v45 = {
       ...v46,
@@ -72,7 +73,6 @@ describe('P3 unified schema v46 and frozen v45 migration', () => {
 
     const migrated = migrateProject(v45);
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
-    expect(migrated.schemaVersion).toBe(46);
     expect(migrated.shots).toEqual(v45.shots);
     expect(ProjectSchema.parse(migrated)).toEqual(migrated);
 
@@ -85,6 +85,42 @@ describe('P3 unified schema v46 and frozen v45 migration', () => {
         sourceVersion: 45,
       }).success,
     ).toBe(true);
+  });
+
+  it('retains v46 camera and layers when migrating to v47 and freezes the v46 effect shape (#1386)', () => {
+    const { project, animLayerId } = makeAnimationProject();
+    const shot = project.shots[0]!;
+    const legacy = ProjectV46Schema.parse({
+      ...project, schemaVersion: 46,
+      shots: [{ ...shot, camera: { mode: 'manual', keys: [
+        { timeMs: 0, centerX: 960, centerY: 540, zoom: 1.25, rotationDeg: 0, interpolationToNext: 'linear' },
+      ] } }, ...project.shots.slice(1)],
+    });
+    expect(detectSchemaVersion(legacy)).toBe(46);
+    const migrated = migrateProject(legacy);
+    expect(migrated).toEqual({ ...legacy, schemaVersion: 47 });
+    expect(ProjectDocumentSchema.safeParse({
+      projectRoot: 'D:/effects.pandastage', projectFilePath: 'D:/effects.pandastage/project.json',
+      project: migrated, migrated: true, sourceVersion: 46,
+    }).success).toBe(true);
+
+    const service = new LayerService();
+    const graphical = migrated.shots[0]!.layers.find(({ id }) => id === animLayerId)!;
+    const value = {
+      blend: 'multiply' as const, blur: 4, glow: { radius: 4, color: '#ffff00' },
+      outline: { radius: 3, color: '#ff00ff' }, feather: 2, silhouette: '#abcdef',
+    };
+    const changed = service.setVisualEffects(migrated, shot.id, graphical.id, value);
+    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(changed)))).toEqual(changed);
+    expect(changed.shots[0]!.layers.find(({ id }) => id === graphical.id)?.visualEffects).toEqual(value);
+    expect(changed.animations).toEqual(migrated.animations);
+    expect(changed.shots[0]!.layers.filter(({ id }) => id !== graphical.id))
+      .toEqual(migrated.shots[0]!.layers.filter(({ id }) => id !== graphical.id));
+    expect(ProjectV46Schema.safeParse({ ...changed, schemaVersion: 46 }).success).toBe(false);
+    expect(service.setVisualEffects(changed, shot.id, graphical.id, value)).toBe(changed);
+    expect(service.setVisualEffects(changed, shot.id, graphical.id).shots).toEqual(migrated.shots);
+    expect(() => service.setVisualEffects(service.setLocked(changed, shot.id, graphical.id, true),
+      shot.id, graphical.id)).toThrow();
   });
 
   it('frozen v43/v44/v45 readers reject v46 camera, parentKeys, and animationTimeLink fields', () => {

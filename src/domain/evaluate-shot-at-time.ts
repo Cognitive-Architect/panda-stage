@@ -48,6 +48,7 @@ import {
  * the active expression's asset).
  */
 export interface EvaluatedLayer {
+  visualEffects?: import('./models/layerVisualEffects').LayerVisualEffects;
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
@@ -975,6 +976,7 @@ export function evaluateShotAtTime(
         opacity: preTrack.opacity,
         visible: preTrack.visible && preTrack.animationVisible,
         zIndex: layer.zIndex,
+        ...(layer.visualEffects ? { visualEffects: layer.visualEffects } : {}),
       };
     });
 
