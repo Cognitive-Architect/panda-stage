@@ -32,7 +32,9 @@ export function createCanvasStaticTextMeasurer(measureCtx: CanvasRenderingContex
   };
 }
 
-export function drawCanvasStaticText(ctx: CanvasRenderingContext2D, layout: FlaStaticTextLayoutResult): void {
+export function drawCanvasStaticText(
+  ctx: CanvasRenderingContext2D, layout: FlaStaticTextLayoutResult, fillOverride?: string,
+): void {
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
 
@@ -40,7 +42,7 @@ export function drawCanvasStaticText(ctx: CanvasRenderingContext2D, layout: FlaS
     for (const fragment of line.fragments) {
       if (fragment.text.length === 0) continue;
       ctx.font = buildCanvasFontSpec(fragment.run);
-      ctx.fillStyle = fragment.run.fillColor;
+      ctx.fillStyle = fillOverride ?? fragment.run.fillColor;
       ctx.globalAlpha = fragment.run.alpha;
       const baseline = line.baselineY + staticTextRunBaselineOffset(fragment.run);
       const angle = (fragment.run.rotation ?? 0) * Math.PI / 180;

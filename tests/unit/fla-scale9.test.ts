@@ -8,6 +8,41 @@ const bounds = { left: -20, top: -18, right: 100, bottom: 62 };
 const grid = { left: -5, top: -10, right: 70, bottom: 48 };
 
 describe('static XFL Scale9Grid', () => {
+  it.each([[1, 0], [2, 9], [-2, 9]])(
+    'scales the finished shape under its parent at local scale %s',
+    (scaleX, sliceCount) => {
+      const tile = '<DOMSymbolItem name="Tile" symbolType="graphic" scalingGrid="true" scalingGridRect="200 200 1800 1800">' +
+        '<timeline><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>' +
+        '<DOMShape><fills><FillStyle index="1"><SolidColor color="#123456"/></FillStyle></fills>' +
+        '<edges><Edge fillStyle0="1" edges="!0 0|2000 0|2000 2000|0 2000|0 0"/></edges></DOMShape>' +
+        '</elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>';
+      const doc = `<DOMDocument width="640" height="480" frameRate="24"><timelines><DOMTimeline name="Scene 1">
+        <layers><DOMLayer><frames><DOMFrame index="0"><elements><DOMGroup>
+          <matrix><Matrix a="2" d="2" tx="12" ty="24"/></matrix>
+          <members><DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
+            <matrix><Matrix a="${scaleX * 2}" d="2" tx="512" ty="24"/></matrix>
+          </DOMSymbolInstance></members>
+        </DOMGroup></elements></DOMFrame></frames></DOMLayer></layers>
+        </DOMTimeline></timelines></DOMDocument>`;
+      const adapted = adaptFlaXflDisplaySource(doc, [{ name: 'Tile.xml', xml: tile }]);
+      if (!adapted.ok) throw new Error(adapted.message);
+      const scene = adapted.source.sceneTimelines[0]!;
+      const resolved = resolveFlaDisplayList({
+        root: { kind: 'scene', name: scene.name, frameContext: scene.frameContext }, symbols: adapted.source.symbols,
+      });
+      if (!resolved.ok) throw new Error(resolved.message);
+      const rendered = buildSvgForResolvedDisplayList({
+        displayList: resolved.displayList, shapeBlocks: adapted.source.shapeBlocks, renderTargetId: 'parent-scale',
+        stageWidth: 640, stageHeight: 480, resolveBitmapMedia: () => ({ ok: false, reason: 'missing' }),
+      });
+      if (!rendered.ok) throw new Error(rendered.message);
+      expect(rendered.svg.match(/overflow="hidden"/gu) ?? []).toHaveLength(sliceCount);
+      if (sliceCount) expect(rendered.svg).toContain('width="20" height="20"');
+      else expect(rendered.svg).toContain('matrix(2 0 0 2 512 24)');
+      expect(rendered.projectionWarning).toBeUndefined();
+    },
+  );
+
   it('mirrors the current drawable frame while a rotated occurrence falls back to ordinary scaling', async () => {
     const zip = new JSZip();
     const shape = (color: string) => `<DOMShape><fills><FillStyle index="1"><SolidColor color="${color}"/></FillStyle></fills>

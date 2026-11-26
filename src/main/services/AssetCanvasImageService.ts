@@ -96,10 +96,14 @@ export class AssetCanvasImageService {
     if (active) return active;
 
     const read = this.readValidated(request).finally(() => {
-      this.activeReads.delete(key);
+      if (this.activeReads.get(key) === read) this.activeReads.delete(key);
     });
     this.activeReads.set(key, read);
     return read;
+  }
+
+  clearActiveReads(): void {
+    this.activeReads.clear();
   }
 
   private async readValidated(

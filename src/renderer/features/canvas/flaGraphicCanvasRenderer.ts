@@ -385,8 +385,10 @@ function applyGraphicColor(
       const covAlpha = coveragePixels !== null ? coveragePixels[index + 3]! : 0;
       const hasCoverage = alpha > 0 || covAlpha > 0;
       if (!hasCoverage) continue;
-      if (alpha === 0 && ao > 0 && covAlpha > 0 && covAlpha < 255) {
-        const [r, g, b, a] = applyFlaRgbaTransform([0, 0, 0, 0], rgba);
+      if (alpha === 0 && coveragePixels && covAlpha > 0) {
+        const [r, g, b, a] = applyFlaRgbaTransform(
+          [coveragePixels[index]!, coveragePixels[index + 1]!, coveragePixels[index + 2]!, 0], rgba,
+        );
         pixels[index] = Math.round(r);
         pixels[index + 1] = Math.round(g);
         pixels[index + 2] = Math.round(b);
@@ -781,7 +783,7 @@ function renderFlaGraphicCanvasUncached(
       if (!layout) return;
       coverageTarget.save();
       coverageTarget.setTransform(...matrix);
-      drawCanvasStaticText(coverageTarget, layout);
+      drawCanvasStaticText(coverageTarget, layout, '#000000');
       coverageTarget.restore();
       return;
     }
@@ -793,7 +795,7 @@ function renderFlaGraphicCanvasUncached(
         -node.vectorVisual.baseViewBox.x,
         -node.vectorVisual.baseViewBox.y,
       );
-      coverageTarget.fillStyle = '#ffffff';
+      coverageTarget.fillStyle = '#000000';
       for (const region of node.vectorVisual.regions) {
         const fillD = region.contours.map((contour) => commandsToSvgPathD(contour.commands)).join(' ');
         if (Path2DConstructor && fillD) {
@@ -814,8 +816,8 @@ function renderFlaGraphicCanvasUncached(
       if (source.fallbackScope === 'subtree' && source.fallbackViewBox) {
         coverageTarget.translate(-source.fallbackViewBox.x, -source.fallbackViewBox.y);
       }
-      coverageTarget.fillStyle = '#ffffff';
-      for (const pathD of source.coveragePathData) {
+      for (const [index, pathD] of source.coveragePathData.entries()) {
+        coverageTarget.fillStyle = source.coverageZeroAlphaColors?.[index] ?? '#000000';
         if (Path2DConstructor) {
           try {
             coverageTarget.fill(new Path2DConstructor(pathD), 'nonzero');
@@ -840,7 +842,7 @@ function renderFlaGraphicCanvasUncached(
       // interior transparent texels), while canvas/filter padding outside stays empty.
       coverageTarget.save();
       coverageTarget.setTransform(...matrix);
-      coverageTarget.fillStyle = '#ffffff';
+      coverageTarget.fillStyle = '#000000';
       coverageTarget.fillRect(0, 0, size.width, size.height);
       coverageTarget.restore();
     }

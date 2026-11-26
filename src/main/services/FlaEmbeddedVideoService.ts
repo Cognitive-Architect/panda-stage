@@ -185,6 +185,7 @@ function requestProjectRootFromRaw(rawRequest: unknown): string {
 export class FlaEmbeddedVideoService {
   private readonly decodedSequences = new Map<string, DecodedSequenceEntry>();
   private readonly inFlightDecodes = new Map<string, Promise<DecodedSequenceEntry>>();
+  private decodeLifetime = new AbortController();
   private readonly framePngCache = new Map<string, { readonly bytes: Uint8Array; lastUsedAt: number }>();
   private readonly latestTokenByAsset = new Map<string, number>();
   private readonly activeImportsBySession = new Map<string, Set<AbortController>>();
@@ -451,7 +452,13 @@ export class FlaEmbeddedVideoService {
           let nextAssets = [...authoritativeBase.assets];
 
           if (existingVideo) {
-            videoAsset = existingVideo;
+            // Reimporting the same bytes also repairs legacy encoded dimensions in place.
+            videoAsset = existingVideo.width === prepared.metadata.width && existingVideo.height === prepared.metadata.height
+              ? existingVideo
+              : { ...existingVideo, width: prepared.metadata.width, height: prepared.metadata.height };
+            if (videoAsset !== existingVideo) {
+              nextAssets = nextAssets.map((asset) => asset.id === videoAsset.id ? videoAsset : asset);
+            }
             reusedVideoAsset = true;
           } else {
             const written = await writeUniqueProjectAsset(
@@ -786,6 +793,10 @@ export class FlaEmbeddedVideoService {
     readonly requestToken?: number;
     readonly signal?: AbortSignal;
   }): Promise<ReadVideoSampleFrameResult | ReadVideoSampleFrameFailure> {
+    const lifetime = this.decodeLifetime.signal;
+    const signal = input.signal ? AbortSignal.any([lifetime, input.signal]) : lifetime;
+    const cancelled = (): ReadVideoSampleFrameFailure => ({ ok: false, code: 'CANCELLED', message: 'Video frame decode cancelled.' });
+    if (signal.aborted) return cancelled();
     const tokenKey = `${input.projectRoot}\u0000${input.asset.id}`;
     if (input.requestToken !== undefined) {
       const priorToken = this.latestTokenByAsset.get(tokenKey) ?? -1;
@@ -814,10 +825,8 @@ export class FlaEmbeddedVideoService {
     }
 
     try {
-      const sequence = await this.ensureDecodedSequence(input.projectRoot, input.asset, cacheKey, input.signal);
-      if (input.signal?.aborted) {
-        return { ok: false, code: 'CANCELLED', message: 'Video frame decode cancelled.' };
-      }
+      const sequence = await this.ensureDecodedSequence(input.projectRoot, input.asset, cacheKey, signal);
+      if (signal.aborted) return cancelled();
       if (isStale()) {
         return { ok: false, code: 'STALE_REQUEST', message: 'Superseded by a newer video seek.' };
       }
@@ -832,7 +841,8 @@ export class FlaEmbeddedVideoService {
       if (!framePath) {
         return { ok: false, code: 'DECODE_FAILED', message: 'Decoded video frame is unavailable.' };
       }
-      const bytes = new Uint8Array(await readFile(framePath));
+      const bytes = new Uint8Array(await readFile(framePath, { signal }));
+      if (signal.aborted) return cancelled();
       if (isStale()) {
         return { ok: false, code: 'STALE_REQUEST', message: 'Superseded by a newer video seek.' };
       }
@@ -846,9 +856,7 @@ export class FlaEmbeddedVideoService {
         fromCache: false,
       };
     } catch (error) {
-      if (input.signal?.aborted) {
-        return { ok: false, code: 'CANCELLED', message: 'Video frame decode cancelled.' };
-      }
+      if (signal.aborted) return cancelled();
       return {
         ok: false,
         code: 'DECODE_FAILED',
@@ -861,7 +869,7 @@ export class FlaEmbeddedVideoService {
     projectRoot: string,
     asset: VideoAsset,
     cacheKey: string,
-    signal?: AbortSignal,
+    signal: AbortSignal,
   ): Promise<DecodedSequenceEntry> {
     const existing = this.decodedSequences.get(cacheKey);
     if (existing) {
@@ -876,8 +884,10 @@ export class FlaEmbeddedVideoService {
       if (!videoPath) {
         throw new Error(`Video asset "${asset.relativePath}" is outside the project or missing.`);
       }
+      signal.throwIfAborted();
       const directory = await mkdtemp(path.join(tmpdir(), 'panda-stage-video-cache-'));
       try {
+        signal.throwIfAborted();
         const decoded = await this.deps.ffmpegAdapter.decodeFlaVideoFramesSequential(
           {
             videoPath,
@@ -888,13 +898,15 @@ export class FlaEmbeddedVideoService {
           },
           signal,
         );
+        signal.throwIfAborted();
         const entry: DecodedSequenceEntry = {
           key: cacheKey,
           directory,
           framePaths: decoded.framePaths,
           lastUsedAt: Date.now(),
         };
-        await this.evictOldestSequencesIfNeeded();
+        await this.evictOldestSequencesIfNeeded(signal);
+        signal.throwIfAborted();
         this.decodedSequences.set(cacheKey, entry);
         return entry;
       } catch (error) {
@@ -902,7 +914,7 @@ export class FlaEmbeddedVideoService {
         throw error;
       }
     })().finally(() => {
-      this.inFlightDecodes.delete(cacheKey);
+      if (this.inFlightDecodes.get(cacheKey) === promise) this.inFlightDecodes.delete(cacheKey);
     });
     this.inFlightDecodes.set(cacheKey, promise);
     return promise;
@@ -923,8 +935,9 @@ export class FlaEmbeddedVideoService {
     this.framePngCache.set(key, { bytes, lastUsedAt: Date.now() });
   }
 
-  private async evictOldestSequencesIfNeeded(): Promise<void> {
+  private async evictOldestSequencesIfNeeded(signal: AbortSignal): Promise<void> {
     while (this.decodedSequences.size >= MAX_CACHED_VIDEO_SEQUENCES) {
+      signal.throwIfAborted();
       let oldestKey: string | undefined;
       let oldestTime = Infinity;
       for (const [k, entry] of this.decodedSequences) {
@@ -944,13 +957,18 @@ export class FlaEmbeddedVideoService {
 
   async dispose(): Promise<void> {
     this.cancelActiveImports();
+    this.decodeLifetime.abort();
+    this.decodeLifetime = new AbortController();
+    const pending = [...this.inFlightDecodes.values()];
+    this.inFlightDecodes.clear();
     const directories = [...this.decodedSequences.values()].map((entry) => entry.directory);
     this.decodedSequences.clear();
     this.framePngCache.clear();
     this.latestTokenByAsset.clear();
-    await Promise.all(
-      directories.map((dir) => rm(dir, { recursive: true, force: true }).catch(() => undefined)),
-    );
+    await Promise.allSettled([
+      ...pending,
+      ...directories.map((dir) => rm(dir, { recursive: true, force: true })),
+    ]);
   }
 }
 

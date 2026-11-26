@@ -1104,6 +1104,56 @@ describe('F1-02 Main part preview service', () => {
     previewService.close();
   });
 
+  it('isolates nested Scale9Grid with parent scale already applied to its corners', async () => {
+    const zip = new JSZip();
+    const libraryGraphic = (name: string, elements: string, attributes = '') =>
+      `<DOMSymbolItem name="${name}" symbolType="graphic" ${attributes}><timeline><DOMTimeline name="${name}">
+        <layers><DOMLayer name="Art"><frames><DOMFrame index="0"><elements>${elements}</elements></DOMFrame>
+        </frames></DOMLayer></layers></DOMTimeline></timeline></DOMSymbolItem>`;
+    zip.file('DOMDocument.xml', `<DOMDocument width="640" height="480" frameRate="24"><timelines>
+      <DOMTimeline name="Scene 1"><layers><DOMLayer name="Host"><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic"/>
+        <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic">
+          <matrix><Matrix a="0.25" d="0.25" tx="460" ty="20"/></matrix>
+        </DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`);
+    zip.file('LIBRARY/MyGraphic.xml', libraryGraphic('MyGraphic', `<DOMGroup>
+      <matrix><Matrix a="2" d="2"/></matrix><members>
+        <DOMSymbolInstance libraryItemName="Tile" symbolType="graphic">
+          <matrix><Matrix a="4" d="2" tx="20" ty="30"/></matrix>
+        </DOMSymbolInstance>
+      </members></DOMGroup>`));
+    zip.file('LIBRARY/Tile.xml', libraryGraphic('Tile', `<DOMShape>
+      <fills><FillStyle index="1"><SolidColor color="#123456"/></FillStyle></fills>
+      <edges><Edge fillStyle0="1" edges="!0 0|2000 0|2000 2000|0 2000|0 0"/></edges>
+      </DOMShape>`, 'scalingGrid="true" scalingGridRect="200 200 1800 1800"'));
+    const sourceBytes = await zip.generateAsync({ type: 'uint8array' });
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { previewService } = rasterizerFor(data);
+    try {
+      const preview = await previewService.preview({ ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } });
+      if (!preview.ok) throw new Error(preview.error.message);
+      const plan = previewService.getPlan(preview.planId, SESSION_ID, 1);
+      const unit = plan?.units[0];
+      if (!unit) throw new Error('Expected a source-addressed Graphic');
+      const result = await previewService.buildGraphicDefinitionFrameBatch({
+        sessionId: SESSION_ID, planId: preview.planId, generation: 1, poseIdentity: preview.poseIdentity, unitId: unit.unitId,
+      });
+      if (!result.ok) throw new Error(result.message);
+      const isolated = result.batch.fallbacks?.find((entry) => entry.svg.includes('overflow="hidden"'));
+      expect(isolated?.svg.match(/overflow="hidden"/gu)).toHaveLength(9);
+      expect(isolated?.svg).toContain('width="20" height="20"');
+      const group = result.batch.structure?.frames[0]?.layers[0]?.nodes[0];
+      const fallback = group?.type === 'group' ? group.children[0] : undefined;
+      expect(fallback).toMatchObject({
+        type: 'opaque', fallbackScope: 'subtree',
+        localTransform: { a: 0.5, b: 0, c: 0, d: 0.5, tx: 10, ty: 15 },
+      });
+    } finally {
+      previewService.close();
+    }
+  });
+
   it('keeps one real XFL Group and its source-addressed direct vector children interactive before full-frame baking', async () => {
     const sourceBytes = await buildOneFrameGroupedGraphicFla();
     const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);

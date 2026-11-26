@@ -272,6 +272,7 @@ export interface FlaResolvedGroupNode {
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
   readonly scale9Grid?: FlaScale9Rect;
+  readonly scale9LocalTransform?: FlaDisplayListMatrix;
   readonly sourceAddress?: string;
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
@@ -970,7 +971,7 @@ function resolveElements(
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
-      ...(definition.scale9Grid ? { scale9Grid: definition.scale9Grid } : {}),
+      ...(definition.scale9Grid ? { scale9Grid: definition.scale9Grid, scale9LocalTransform: authoredTransform } : {}),
       ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
       localTransform,
       worldTransform,

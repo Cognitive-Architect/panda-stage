@@ -168,6 +168,8 @@ export type FlaGraphicStructureNode =
       };
       /** Bounded filled shape contours in node-local space for RGBA positive alphaOffset coverage (E-F09). */
       coveragePathData?: string[];
+      /** Source colors for zero-alpha solid fills, in coveragePathData order. */
+      coverageZeroAlphaColors?: (string | null)[];
     };
 
 const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
@@ -233,6 +235,8 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
           .strict()
           .optional(),
         coveragePathData: BoundedSvgPathDataSchema.optional(),
+        coverageZeroAlphaColors: z.array(z.string().regex(/^#[0-9a-f]{6}$/iu).nullable())
+          .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE).optional(),
       })
       .strict(),
   ]),
@@ -307,6 +311,11 @@ export const FlaGraphicStructureV1Schema = z
           context.addIssue({ code: 'custom', path: [...nodePath, 'id'], message: 'Structure node ids must be unique.' });
         }
         seenIds.add(node.id);
+        if (node.type === 'opaque' && node.coverageZeroAlphaColors &&
+            (node.opaqueKind !== 'shape' || node.coverageZeroAlphaColors.length !== node.coveragePathData?.length)) {
+          context.addIssue({ code: 'custom', path: [...nodePath, 'coverageZeroAlphaColors'],
+            message: 'Zero-alpha colors must correspond to the Shape coverage paths.' });
+        }
         for (const [clipIndex, clipPath] of (node.clipPaths ?? []).entries()) {
           for (const [shapeIndex, shape] of clipPath.shapes.entries()) {
             for (const [pathIndex, pathData] of (shape.pathData ?? []).entries()) {
@@ -463,6 +472,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       fallbackScope: node.fallbackScope,
       fallbackViewBox: node.fallbackViewBox,
       coveragePathData: node.coveragePathData,
+      coverageZeroAlphaColors: node.coverageZeroAlphaColors,
     };
   }
   return base;

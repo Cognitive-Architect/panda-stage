@@ -113,7 +113,8 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
   /** Isolated Shape artwork is in source-node local space; filtered layers stay residual. */
   readonly resolveIsolatedShape?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => SubtreeBounds | undefined;
-  readonly resolveShapeCoveragePathData?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => readonly string[] | undefined;
+  readonly resolveShapeCoverage?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) =>
+    readonly { pathD: string; zeroAlphaColor: string | null }[] | undefined;
   /** Isolated opaque subtree artwork in node-local or explicit effect space. */
   readonly resolveIsolatedSubtree?: (
     node: FlaResolvedDisplayNode,
@@ -240,11 +241,12 @@ export function captureFlaGraphicStructureFrames(
         };
       }
       if (node.kind === 'shape') {
-        const rawCoverage = options.resolveShapeCoveragePathData?.(node);
+        const rawCoverage = options.resolveShapeCoverage?.(node);
         let coveragePathData: string[] | undefined;
+        let coverageZeroAlphaColors: (string | null)[] | undefined;
         if (rawCoverage?.length && rawCoverage.length <= FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE) {
           let totalBytes = 0;
-          const valid = rawCoverage.every((entry) => {
+          const valid = rawCoverage.every(({ pathD: entry }) => {
             if (!FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN.test(entry)) return false;
             const bytes = maskPathTextEncoder.encode(entry).byteLength;
             if (bytes === 0 || bytes > FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH) return false;
@@ -253,7 +255,10 @@ export function captureFlaGraphicStructureFrames(
           });
           if (valid && totalBytes <= maskPathByteBudget.remainingBytes) {
             maskPathByteBudget.remainingBytes -= totalBytes;
-            coveragePathData = [...rawCoverage];
+            coveragePathData = rawCoverage.map(({ pathD }) => pathD);
+            if (rawCoverage.some(({ zeroAlphaColor }) => zeroAlphaColor !== null)) {
+              coverageZeroAlphaColors = rawCoverage.map(({ zeroAlphaColor }) => zeroAlphaColor);
+            }
           }
         }
         return {
@@ -265,6 +270,7 @@ export function captureFlaGraphicStructureFrames(
           ...(fallbackAssetId ? { fallbackAssetId } : {}),
           ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
           ...(coveragePathData ? { coveragePathData } : {}),
+          ...(coverageZeroAlphaColors ? { coverageZeroAlphaColors } : {}),
         };
       }
       if (node.kind === 'bitmap') {

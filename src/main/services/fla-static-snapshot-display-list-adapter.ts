@@ -84,6 +84,7 @@ const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'symbolType',
   'centerPoint3DX',
   'centerPoint3DY',
+  'centerPoint3DZ',
   'loop',
   'firstFrame',
   'lastFrame',
@@ -885,7 +886,7 @@ function readInstanceProjection(
   // centerPoint3DX/Y are ordinary 2D pivot metadata written by Animate on normal
   // 2D instances (including Classic Motion); only explicit 3D transform attributes
   // or a <matrix3D> child indicate a 3D instance projection.
-  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z'] as const;
+  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z', 'centerPoint3DZ'] as const;
   const hasMatrix3D = Boolean(directChild(instance.xml, instance.name, 'matrix3D'));
   if (!transform3DNames.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
   if (hasMatrix3D) return null;
@@ -896,7 +897,8 @@ function readInstanceProjection(
   const rotationX = read('rotationX', 0);
   const rotationY = read('rotationY', 0);
   const rotationZ = read('rotationZ', 0);
-  const depth = read('z', 0);
+  // Explicit z takes precedence, including an authored zero.
+  const depth = attrs.z !== undefined ? read('z', 0) : read('centerPoint3DZ', 0);
   if (![rotationX, rotationY, rotationZ].every((value) => Number.isFinite(value) && Math.abs(value) <= 36000) ||
       !Number.isFinite(depth)) return null;
   if (rotationX === 0 && rotationY === 0 && rotationZ === 0 && depth === 0) return undefined;
@@ -2135,6 +2137,13 @@ function classicMotionFramePairRejectionReason(
         }
       }
     }
+    for (const target of [startTarget, endTarget]) {
+      const rawDepth = target.attributes.centerPoint3DZ;
+      // Animate also writes the native depth field on ordinary 2D keys.
+      if (rawDepth !== undefined && (!rawDepth.trim() || Number(rawDepth) !== 0)) {
+        return 'symbol instance centerPoint3DZ must be a numeric zero for Classic Motion';
+      }
+    }
     const startColor = readSymbolColorTransform(startTarget, 'classic-motion');
     if (!startColor.ok) return startColor.message;
     const endColor = readSymbolColorTransform(endTarget, 'classic-motion');
@@ -2599,6 +2608,29 @@ function computeRigLayerObjectMatrix(
   };
 }
 
+/** Apply a parent-space pose correction to both the matrix and its authored 3D pivot. */
+function transformProjectionPivot(
+  projection: FlaInstanceProjection,
+  original: FlaDisplayListMatrix,
+  correction: FlaDisplayListMatrix,
+): FlaInstanceProjection {
+  if (projection.pivotX === undefined && projection.pivotY === undefined) return projection;
+  const x = projection.pivotX ?? original.tx;
+  const y = projection.pivotY ?? original.ty;
+  return {
+    ...projection,
+    pivotX: correction.a * x + correction.c * y + correction.tx,
+    pivotY: correction.b * x + correction.d * y + correction.ty,
+  };
+}
+
+function applyDisplayElementPose(element: FlaDisplayListElement, correction: FlaDisplayListMatrix) {
+  const original = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const localTransform = compose(correction, original);
+  if (element.kind !== 'symbol' || !element.projection3D) return { ...element, localTransform };
+  return { ...element, localTransform, projection3D: transformProjectionPivot(element.projection3D, original, correction) };
+}
+
 function applyRigCorrectionToElements(
   context: RigEvaluationContext,
   layerIndex: number,
@@ -2623,10 +2655,7 @@ function applyRigCorrectionToElements(
   const correction = compose(parentAtFrame.value.matrix, startInverse);
   return {
     ok: true,
-    value: elements.map((element) => ({
-      ...element,
-      localTransform: compose(correction, element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
-    })),
+    value: elements.map((element) => applyDisplayElementPose(element, correction)),
   };
 }
 
@@ -2842,8 +2871,6 @@ function buildObjectMotionFrameElements(
   let projection3D = element.projection3D;
   if (projection3D !== null && (projection3D !== undefined || pose.projection3D !== undefined)) {
     const baseMatrix = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
-    const dx = pose.matrix.tx - baseMatrix.tx;
-    const dy = pose.matrix.ty - baseMatrix.ty;
     const rotationX = pose.projection3D?.rotationX ?? projection3D?.rotationX ?? 0;
     const rotationY = pose.projection3D?.rotationY ?? projection3D?.rotationY ?? 0;
     const depth = (projection3D?.depth ?? 0) + (pose.projection3D?.depthDelta ?? 0);
@@ -2851,14 +2878,16 @@ function buildObjectMotionFrameElements(
       projection3D = undefined;
     } else {
       const baseProj = projection3D ?? context.state.perspective;
-      const pivotX = projection3D?.pivotX !== undefined ? projection3D.pivotX + dx : pose.matrix.tx;
-      const pivotY = projection3D?.pivotY !== undefined ? projection3D.pivotY + dy : pose.matrix.ty;
+      const baseInverse = projection3D ? invertAffineMatrix(baseMatrix) : null;
+      const relocated = projection3D && baseInverse
+        ? transformProjectionPivot(projection3D, baseMatrix, compose(pose.matrix, baseInverse))
+        : undefined;
       projection3D = {
         focalLength: baseProj.focalLength,
         vanishingX: baseProj.vanishingX,
         vanishingY: baseProj.vanishingY,
-        pivotX,
-        pivotY,
+        pivotX: relocated?.pivotX ?? pose.matrix.tx,
+        pivotY: relocated?.pivotY ?? pose.matrix.ty,
         depth,
         rotationX,
         rotationY,
@@ -2958,11 +2987,8 @@ function buildIkPoseFrameElements(
   // XFL stores all frames of element zero first, followed by all frames of
   // element one. The pose operates in the parent space on the authored matrix.
   // The baked pose already contains IK propagation; do not apply Rig correction.
-  const elements = parsed.value.map((element, index) => ({
-    ...element,
-    localTransform: compose(matrices[visibleOrdinals[index]! * span.duration + frameOffset]!,
-      element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
-  }));
+  const elements = parsed.value.map((element, index) =>
+    applyDisplayElementPose(element, matrices[visibleOrdinals[index]! * span.duration + frameOffset]!));
   if (elements.some((element) => !Object.values(element.localTransform).every(Number.isFinite))) {
     return fail('UNSUPPORTED_IK_POSE', '骨架姿态变换超出支持范围');
   }
