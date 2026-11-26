@@ -65,6 +65,24 @@ describe('Classic Motion static instance filter preservation (S01-A)', () => {
     expect(rendered.svg).toContain('<feColorMatrix in="effect0" type="matrix" values="1 0 0 0 0.2 0 0.5 0 0 0 0 0 1 0 -0.2 0 0 0 1 0" result="effect1"/>');
   });
 
+  it('composites inner Glow over a half-transparent fill with complementary alpha weights', async () => {
+    const filters = '<GlowFilter inner="true" blurX="6" blurY="8" color="#ff0000" strength="1"/>';
+    const bytes = await buildClassicMotionFla({
+      startFilters: filters, endFilters: filters,
+      startColor: 'alphaMultiplier="0.5"', endColor: 'alphaMultiplier="0.5"',
+    });
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+    if (!prepared.ok) throw new Error(prepared.message);
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {}, prepared.source);
+    if (!catalog.ok) throw new Error(catalog.message);
+    const target = catalog.entries.find((entry) => entry.target.sourceLibraryItemName === 'MotionRoot')!.target;
+    const rendered = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 }, undefined, prepared.source);
+    if (!rendered.ok) throw new Error(rendered.message);
+    expect(rendered.svg).toContain('in="glowStrength0" in2="SourceGraphic" operator="in" result="glowInside0"');
+    expect(rendered.svg).toContain('in="SourceGraphic" in2="glowStrength0" operator="out" result="glowRemainder0"');
+    expect(rendered.svg).toContain('in="glowInside0" in2="glowRemainder0" operator="arithmetic" k2="1" k3="1"');
+  });
+
   it('preserves static Blur, Glow, and DropShadow filters in order across start, mid, and end frames during move/rotate/scale and color tween', async () => {
     const filters =
       '<BlurFilter blurX="4" blurY="6"/>' +

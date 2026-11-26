@@ -4136,15 +4136,30 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           glowInput = 'inverse' + index;
           primitives.push(`<feComponentTransfer in="${source}" result="${glowInput}"><feFuncA type="linear" slope="-1" intercept="1"/></feComponentTransfer>`);
         }
+        if (filter.inner && !filter.knockout) {
+          const strengthMask = 'glowStrength' + index;
+          const inner = 'glowInside' + index;
+          const remainder = 'glowRemainder' + index;
+          // Mix premultiplied colors under the source alpha. The complementary
+          // weights preserve the original silhouette, including its edges.
+          primitives.push(
+            `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+            `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+            `<feComposite in2="${blur}" operator="in" result="${strengthMask}"/>`,
+            `<feComposite in="${strengthMask}" in2="${source}" operator="in" result="${inner}"/>`,
+            `<feComposite in="${source}" in2="${strengthMask}" operator="out" result="${remainder}"/>`,
+            `<feComposite in="${inner}" in2="${remainder}" operator="arithmetic" k2="1" k3="1" result="${output}"/>`,
+          );
+          source = output;
+          continue;
+        }
         const silhouette = 'silhouette' + index;
-        const effect = filter.knockout ? output : 'glow' + index;
         primitives.push(
           `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
           `<feComposite in="${blur}" in2="${source}" operator="${filter.inner ? 'in' : 'out'}" result="${silhouette}"/>`,
           `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
-          `<feComposite in2="${silhouette}" operator="in" result="${effect}"/>`,
+          `<feComposite in2="${silhouette}" operator="in" result="${output}"/>`,
         );
-        if (!filter.knockout) primitives.push(`<feMerge result="${output}"><feMergeNode in="${source}"/><feMergeNode in="${effect}"/></feMerge>`);
       } else {
         const offset = 'offset' + index;
         primitives.push(
