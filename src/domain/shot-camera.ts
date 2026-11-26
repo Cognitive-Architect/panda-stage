@@ -89,14 +89,14 @@ function blendCameraViews(
   autoView: CameraView,
   manualPose: ManualCameraPose,
   weight: number,
-  anchorAutoRotation: number,
+  manualRotation: number,
   anchorManualRotation: number,
 ): CameraView {
   const autoRotation = autoView.rotationDeg ?? 0;
-  // Pick the nearest branch at the automatic end of each transition, then
-  // follow the authored unwrapped angles. The two branches agree visually at weight 1.
-  const rotationDelta = shortestAngleDeltaDeg(anchorAutoRotation, anchorManualRotation)
-    + (manualPose.rotationDeg - anchorManualRotation) - (autoRotation - anchorAutoRotation);
+  // Speaker focus keeps the stage level. Pick the nearest branch at the
+  // automatic end, then follow the authored unwrapped angles until weight 1.
+  const rotationDelta = shortestAngleDeltaDeg(autoRotation, anchorManualRotation)
+    + (manualRotation - anchorManualRotation);
   return {
     centerX: autoView.centerX + (manualPose.centerX - autoView.centerX) * weight,
     centerY: autoView.centerY + (manualPose.centerY - autoView.centerY) * weight,
@@ -131,12 +131,34 @@ export function evaluateManualCamera(shot: Shot, requestedTimeMs: number): Manua
   };
 }
 
+function prepareManualBlendRotation(keys: readonly ShotCameraKey[]) {
+  let offset = 0;
+  const steps: { timeMs: number; before: number; offsetAfter: number }[] = [];
+  for (let index = 1; index < keys.length; index++) {
+    const previous = keys[index - 1]!;
+    const key = keys[index]!;
+    if (previous.interpolationToNext !== 'step' || previous.curveToNext?.bezier) continue;
+    const before = previous.rotationDeg + offset;
+    // A held key jumps between orientations. Whole turns only count on a continuous segment.
+    offset += shortestAngleDeltaDeg(previous.rotationDeg, key.rotationDeg) - (key.rotationDeg - previous.rotationDeg);
+    steps.push({ timeMs: key.timeMs, before, offsetAfter: offset });
+  }
+  steps.reverse();
+  return (timeMs: number, angle: number, beforeKey = false): number => {
+    const step = steps.find((entry) => entry.timeMs <= timeMs);
+    // Anchor an outgoing blend to the last visible orientation before its excluded end.
+    if (beforeKey && step?.timeMs === timeMs) return step.before;
+    return angle + (step?.offsetAfter ?? 0);
+  };
+}
+
 export function prepareShotCamera(project: Project, shot: Shot, legacyMode: 'static' | 'speaker-focus') {
   const mode = shot.camera?.mode ?? legacyMode;
   const speakerFocus = mode === 'speaker-focus' || mode === 'hybrid'
     ? prepareSpeakerFocusCamera(project, shot)
     : null;
   const overrides = mode === 'hybrid' ? (shot.camera?.overrides ?? []) : [];
+  const manualBlendRotation = prepareManualBlendRotation(overrides.length ? (shot.camera?.keys ?? []) : []);
   const evaluateAutoView = (timeMs: number) => speakerFocus
     ? evaluateSpeakerFocusCamera(speakerFocus, timeMs)
     : fullStageCamera(project.width, project.height);
@@ -148,12 +170,13 @@ export function prepareShotCamera(project: Project, shot: Shot, legacyMode: 'sta
       if (!blend || blend.weight <= 0) return autoView;
       const manualPose = evaluateManualCamera(shot, timeMs);
       if (blend.weight >= 1) return manualPose;
+      const anchorPose = evaluateManualCamera(shot, blend.anchorTimeMs);
       return blendCameraViews(
         autoView,
         manualPose,
         blend.weight,
-        evaluateAutoView(blend.anchorTimeMs).rotationDeg ?? 0,
-        evaluateManualCamera(shot, blend.anchorTimeMs).rotationDeg,
+        manualBlendRotation(timeMs, manualPose.rotationDeg),
+        manualBlendRotation(blend.anchorTimeMs, anchorPose.rotationDeg, blend.anchorTimeMs > timeMs),
       );
     }
     return speakerFocus ? evaluateSpeakerFocusCamera(speakerFocus, timeMs) : undefined;

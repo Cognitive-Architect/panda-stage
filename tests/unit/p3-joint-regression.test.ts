@@ -206,6 +206,7 @@ describe('JOINT-01 P3 combined regression (#1378, #1379, #1380)', () => {
     });
 
     // PARENT-05: prop starts independent on table [0, 500), A picks up at 500ms, hands off to B at 1750ms, drops at 2750ms.
+    project = setLayerDepth(project, IDS.shot, propLayerId, 0);
     const worldPropBeforePickup = evaluatedLayerWorldMatrix(
       evaluateExportShotAtTime(project, project.shots[0]!, 500).layers.find(({ id }) => id === propLayerId)!,
     );
@@ -306,6 +307,13 @@ describe('JOINT-01 P3 combined regression (#1378, #1379, #1380)', () => {
     expect(propAt(2_000).effectiveDepth).toBe(-200);
     expect(propAt(3_000).effectiveDepth).toBe(-200);
     expectMatrixClose(evaluatedLayerWorldMatrix(propAt(3_250)), evaluatedLayerWorldMatrix(propAt(2_750)));
+    const propCopy = layerService.duplicateLayer(withSecondShot, IDS.shot, propLayerId, destShotId, 2_000);
+    const copiedShot = propCopy.project.shots.find(({ id }) => id === destShotId)!;
+    const exportedCopy = evaluateExportShotAtTime(propCopy.project, copiedShot, 0).layers.find(({ id }) => id === propCopy.layer.id)!;
+    expect(propCopy.layer.parentKeys).toBeUndefined();
+    expect(exportedCopy.effectiveDepth).toBe(-200);
+    expect(resolveLayerCameraTransform(exportedCopy, camManual, 1920, 1080))
+      .toEqual(resolveLayerCameraTransform(propAt(2_000), camManual, 1920, 1080));
 
     // Verify export drawing layers, parallax magnification, and fixed HUD at t=1000ms.
     const formal1000 = evaluateExportShotAtTime(reopened, shot, 1_000);

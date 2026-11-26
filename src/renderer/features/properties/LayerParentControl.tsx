@@ -14,6 +14,7 @@ import {
   type Shot,
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
+import { IconButton } from '../../ui/Button';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 
 const DETACH_OPTION_VALUE = '__detach__';
@@ -258,8 +259,9 @@ export function LayerParentControl({ layer, project, shot }: { layer: Layer; pro
                     {key.depthMode === 'preserve' && key.depth !== undefined ? ` · 深度 ${key.depth}` : ''}
                   </button>
                   <span style={{ display: 'inline-flex', gap: '4px' }}>
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="secondary"
+                      icon={<MoveHorizontal size={12} />}
                       disabled={layer.locked || isCurrent}
                       aria-label={`将 ${formatKeyTime(key.timeMs)} 交接帧移到播放头`}
                       title="移到播放头"
@@ -273,9 +275,7 @@ export function LayerParentControl({ layer, project, shot }: { layer: Layer; pro
                           setError(cause instanceof Error ? cause.message : '无法移动交接帧。');
                         }
                       }}
-                    >
-                      <MoveHorizontal size={12} aria-hidden="true" />
-                    </button>
+                    />
                     <button
                       type="button"
                       disabled={layer.locked}

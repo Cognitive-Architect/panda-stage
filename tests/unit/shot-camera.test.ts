@@ -375,6 +375,22 @@ describe('Shot camera', () => {
     expect(camera(2_000)?.rotationDeg).toBe(direction * 1_260);
   });
 
+  it('keeps equivalent step angles visually level during entrance and at the excluded exit', () => {
+    const { project: base, shotId } = buildTwoSpeakerProject();
+    let project = setShotCameraMode(base, shotId, 'hybrid');
+    project = setShotCameraKey(project, shotId, 1_000, { rotationDeg: 0, interpolationToNext: 'step' });
+    project = setShotCameraKey(project, shotId, 1_250, { rotationDeg: 360, interpolationToNext: 'step' });
+    project = setShotCameraKey(project, shotId, 2_000, { rotationDeg: 450 });
+    project = addShotCameraOverride(project, shotId, { startMs: 1_000, endMs: 2_000, blendInMs: 500, blendOutMs: 500 });
+    const camera = prepareShotCamera(project, project.shots[0]!, 'static');
+    expect(camera(1_249)?.rotationDeg).toBe(0);
+    expect(camera(1_250)?.rotationDeg).toBe(0);
+    expect(camera(1_251)?.rotationDeg).toBe(0);
+    expect(camera(1_500)?.rotationDeg).toBe(360);
+    expect(camera(1_750)?.rotationDeg).toBe(0);
+    expect(evaluateManualCamera(project.shots[0]!, 2_000).rotationDeg).toBe(450);
+  });
+
   it('handles inherited non-zero depth moving speaker, screen HUD, auto fallback, random seek, save/reopen, and Undo/Redo in hybrid mode', () => {
     const { project: base, shotId, actorAId, hudId } = buildTwoSpeakerProject();
     const shot = base.shots[0]!;
