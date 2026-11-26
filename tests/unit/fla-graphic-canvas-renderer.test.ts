@@ -10,7 +10,7 @@ import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-sna
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
 import {
   extractFlaGraphicMaskPathData,
-  extractFlaGraphicShapeCoveragePathData,
+  extractFlaGraphicShapeCoverage,
 } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
 import { buildProjectWithAnimation } from './domain/testProject';
@@ -622,7 +622,8 @@ describe('shared FLA Graphic Canvas renderer', () => {
           getImageData() {
             if (ordinal === 2) {
               // Coverage canvas: pixels 0, 1, 2 are covered; pixel 3 is outer canvas padding
-              return { data: new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0]) };
+              expect(ctx.fillStyle).toBe('#000000');
+              return { data: new Uint8ClampedArray([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 0]) };
             }
             return { data: new Uint8ClampedArray([150, 80, 40, 255, 0, 0, 0, 0, 100, 60, 20, 128, 0, 0, 0, 0]) };
           },
@@ -700,10 +701,10 @@ describe('shared FLA Graphic Canvas renderer', () => {
     const captured = captureFlaGraphicStructure(resolved.displayList, {
       fallbackAssetId: assetId,
       resolveIsolatedShape: () => ({ scope: 'subtree', viewBox: { x: 0, y: 0, width: 20, height: 20 } }),
-      resolveShapeCoveragePathData: (node) => {
+      resolveShapeCoverage: (node) => {
         const shapeBlock = adapted.source.shapeBlocks.get(node.shapeId);
         return shapeBlock
-          ? extractFlaGraphicShapeCoveragePathData({
+          ? extractFlaGraphicShapeCoverage({
               shapeBlock,
               shapeId: node.shapeId,
               renderTargetId: 'rt-ef09',
@@ -831,14 +832,15 @@ describe('shared FLA Graphic Canvas renderer', () => {
           fill(pathOrRule?: SoftwarePath2D | string) {
             ensureBuf();
             const targetRings = pathOrRule instanceof SoftwarePath2D ? pathOrRule.rings : rings;
+            const rgb = Number.parseInt(ctx.fillStyle.slice(1), 16);
             const shifted = targetRings.map((r) => r.map(([x, y]): [number, number] => [x + tx, y + ty]));
             for (let y = 0; y < c.height; y += 1) {
               for (let x = 0; x < c.width; x += 1) {
                 if (pointInNonzero(x + 0.5, y + 0.5, shifted)) {
                   const i = (y * c.width + x) * 4;
-                  c.pixels[i] = 255;
-                  c.pixels[i + 1] = 255;
-                  c.pixels[i + 2] = 255;
+                  c.pixels[i] = (rgb >> 16) & 255;
+                  c.pixels[i + 1] = (rgb >> 8) & 255;
+                  c.pixels[i + 2] = rgb & 255;
                   c.pixels[i + 3] = 255;
                 }
               }
@@ -883,8 +885,8 @@ describe('shared FLA Graphic Canvas renderer', () => {
       return [out.pixels[i], out.pixels[i + 1], out.pixels[i + 2], out.pixels[i + 3]];
     };
 
-    // Inside 0-alpha ring AND inside [0..16] mask => restored to [120, 0, 0, 180]:
-    expect(pixelAt(3, 10)).toEqual([120, 0, 0, 180]);
+    // Inside 0-alpha ring AND inside [0..16] mask => restored to [137, 34, 51, 180]:
+    expect(pixelAt(3, 10)).toEqual([137, 34, 51, 180]);
     // Inside interior hole [6..14, 6..14] => stays completely transparent:
     expect(pixelAt(10, 10)).toEqual([0, 0, 0, 0]);
     // Inside ring [16..20] but OUTSIDE mask [0..16] => clipped cleanly to transparent:
@@ -908,7 +910,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
     const outA = renderFlaGraphicCanvas(instA, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
     const outB = renderFlaGraphicCanvas(instB, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
     const idx = (10 * outA.width + 3) * 4;
-    expect([outA.pixels[idx], outA.pixels[idx + 1], outA.pixels[idx + 2], outA.pixels[idx + 3]]).toEqual([120, 80, 0, 180]);
-    expect([outB.pixels[idx], outB.pixels[idx + 1], outB.pixels[idx + 2], outB.pixels[idx + 3]]).toEqual([120, 0, 90, 180]);
+    expect([outA.pixels[idx], outA.pixels[idx + 1], outA.pixels[idx + 2], outA.pixels[idx + 3]]).toEqual([137, 114, 51, 180]);
+    expect([outB.pixels[idx], outB.pixels[idx + 1], outB.pixels[idx + 2], outB.pixels[idx + 3]]).toEqual([137, 34, 141, 180]);
   });
 });

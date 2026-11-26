@@ -1890,12 +1890,12 @@ function reconstructFills(
  * imported shapes so positive RGBA alphaOffset can restore 0-alpha geometry without
  * tinting empty scratch/filter margins or interior holes (E-F09).
  */
-export function extractFlaGraphicShapeCoveragePathData(input: {
+export function extractFlaGraphicShapeCoverage(input: {
   readonly shapeBlock: string;
   readonly shapeId: string;
   readonly renderTargetId: string;
   readonly frameIndex: number;
-}): readonly string[] | undefined {
+}): readonly { pathD: string; zeroAlphaColor: string | null }[] | undefined {
   try {
     const representation = buildStyleAwareShapeRepresentation(
       parseShapeAt(input.shapeBlock),
@@ -1911,11 +1911,16 @@ export function extractFlaGraphicShapeCoveragePathData(input: {
     if (!reconstructed.ok || reconstructed.result.fills.length === 0 || reconstructed.result.fills.length > 256) {
       return undefined;
     }
-    const pathData = reconstructed.result.fills.map((fill) => fill.pathD);
-    const totalLength = pathData.reduce((total, path) => total + path.length, 0);
-    return totalLength > 512 * 1024 || pathData.some((path) => path.length === 0)
+    const coverage = reconstructed.result.fills.map(({ pathD, style, paint }) => ({
+      pathD,
+      zeroAlphaColor: style.type === 'solid' && 'opacity' in paint && paint.opacity === 0
+        ? paint.firstColor
+        : null,
+    }));
+    const totalLength = coverage.reduce((total, { pathD }) => total + pathD.length, 0);
+    return totalLength > 512 * 1024 || coverage.some(({ pathD }) => pathD.length === 0)
       ? undefined
-      : pathData;
+      : coverage;
   } catch {
     return undefined;
   }

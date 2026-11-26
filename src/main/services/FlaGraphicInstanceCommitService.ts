@@ -419,17 +419,23 @@ function existingDefinition(
             if (next && node.fallbackScope === 'frame-crop') {
               const refreshed = { ...node, fallbackScope: next.fallbackScope, fallbackViewBox: next.fallbackViewBox };
               if (next.coveragePathData) refreshed.coveragePathData = next.coveragePathData;
+              if (next.coverageZeroAlphaColors) refreshed.coverageZeroAlphaColors = next.coverageZeroAlphaColors;
               delete refreshed.fallbackAssetId;
               changed = true;
               return refreshed;
             }
             const before = node.fallbackViewBox;
             const after = next?.fallbackViewBox;
-            if (node.fallbackScope === 'subtree' && !node.coveragePathData && next?.coveragePathData &&
+            if (node.fallbackScope === 'subtree' && next?.coveragePathData &&
                 before && after && before.x === after.x && before.y === after.y &&
                 before.width === after.width && before.height === after.height) {
-              changed = true;
-              return { ...node, coveragePathData: next.coveragePathData };
+              if (!node.coveragePathData || (!node.coverageZeroAlphaColors && next.coverageZeroAlphaColors &&
+                  node.coveragePathData.length === next.coveragePathData.length &&
+                  node.coveragePathData.every((pathData, index) => pathData === next.coveragePathData?.[index]))) {
+                changed = true;
+                return { ...node, coveragePathData: next.coveragePathData,
+                  ...(next.coverageZeroAlphaColors ? { coverageZeroAlphaColors: next.coverageZeroAlphaColors } : {}) };
+              }
             }
           }
           if (node.type === 'group') return { ...node, children: refresh(node.children) };
