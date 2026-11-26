@@ -81,8 +81,8 @@ describe('Issue #653 persistent automatic Camera mode', () => {
   });
 
   it('has Camera ready before auto-play can begin with the first active Dialogue', () => {
-    expect(preview).toContain('autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null');
-    expect(preview).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
+    expect(preview).toContain("prepareShotCamera(project, shot, autoCameraEnabled ? 'speaker-focus' : 'static')");
+    expect(preview).toContain('cameraPlan?.(activeShotTimeMs)');
     expect(preview).toContain('camera={camera}');
     expect(preview).toContain('shouldStartProductPreviewAutoplay({');
     expect(preview).toContain("{ type: 'play' },");

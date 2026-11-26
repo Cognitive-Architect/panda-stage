@@ -9,6 +9,7 @@ import {
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
+import { cameraWorldTransform } from '../../domain/shot-camera';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import {
@@ -762,10 +763,7 @@ export function StageRenderer({
           <Group
             name="camera-world"
             listening={false}
-            x={displayModel!.width / 2 - (displayCamera?.centerX ?? displayModel!.width / 2) * (displayCamera?.zoom ?? 1)}
-            y={displayModel!.height / 2 - (displayCamera?.centerY ?? displayModel!.height / 2) * (displayCamera?.zoom ?? 1)}
-            scaleX={displayCamera?.zoom ?? 1}
-            scaleY={displayCamera?.zoom ?? 1}
+            {...cameraWorldTransform(displayCamera, displayModel!.width, displayModel!.height)}
           >
           {displayModel!.layers.map((layer) => {
             const render = layer.render;

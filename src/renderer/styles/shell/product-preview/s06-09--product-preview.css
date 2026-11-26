@@ -104,6 +104,10 @@
   border-radius: 8px;
 }
 
+.product-preview-stage[data-manual-camera='true'] {
+  background: black;
+}
+
 .product-preview-player {
   display: flex;
   flex: 0 1 auto;

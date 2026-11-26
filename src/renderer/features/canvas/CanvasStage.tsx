@@ -27,14 +27,17 @@ import {
   CHARACTER_PART_MIN_SCALE,
   characterNodeMotionScaleBounds,
   composeAnimatedCharacterPartTransform,
+  cameraWorldTransform,
   createCharacterPartAnimationClip,
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
+  evaluateManualCamera,
   isValidFrameTime,
   type FlaShapeVertexTarget,
   type Layer,
 } from '../../../domain';
 import {
+  Group,
   Layer as KonvaLayer,
   Rect,
   Stage,
@@ -72,6 +75,7 @@ import {
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
+import { ShotCameraControls } from './ShotCameraControls';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
 import {
@@ -393,6 +397,10 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
+  const [showCameraView, setShowCameraView] = useState(true);
+  const displayCamera = showCameraView && !armAssembly && shot?.camera?.mode === 'manual'
+    ? evaluateManualCamera(shot, timelineUi.currentTimeMs)
+    : undefined;
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -1358,7 +1366,7 @@ export function CanvasStage({
       </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
-        dropInteractionDisabled={temporalInspection || assemblingArm}
+        dropInteractionDisabled={temporalInspection || assemblingArm || Boolean(displayCamera)}
         animationDropTarget={
           snapshot && shot && projectInstanceId !== null
             ? {
@@ -1407,8 +1415,15 @@ export function CanvasStage({
         onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
-          showToolbar || selectedFlaGraphicTarget ? (
+          showToolbar || shot || selectedFlaGraphicTarget ? (
             <CanvasToolbar
+              cameraControl={shot && !armAssembly ? <ShotCameraControls
+                key={editContextKey}
+                shot={shot}
+                timeMs={timelineUi.currentTimeMs}
+                throughCamera={showCameraView}
+                onViewChange={setShowCameraView}
+              /> : null}
               canEnterSelected={Boolean(
                 flaGraphicEditActive &&
                   selectedStructuredNodeReady &&
@@ -1511,6 +1526,7 @@ export function CanvasStage({
                 transformerVisible,
               )}
               data-testid="project-canvas-stage"
+              data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
               id="project-canvas-stage"
               ref={canvasStageElementRef}
               onKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
@@ -1526,13 +1542,14 @@ export function CanvasStage({
               >
                 <KonvaLayer listening ref={configureEditorLayer}>
                   <Rect
-                    fill="#111914"
+                    fill={displayCamera ? 'black' : '#111914'}
                     height={PROJECT_HEIGHT}
                     listening
                     onClick={() => { if (!armAssembly) selectionStore.clear(); }}
                     onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
+                  <Group listening={!displayCamera} {...cameraWorldTransform(displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)}>
                   {stageModel
                     ? stageModel.layers.map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
@@ -1815,7 +1832,7 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
-                            selected={selectedLayerId === layer.id}
+                            selected={!displayCamera && selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(
                                 layer.id,
@@ -1826,6 +1843,7 @@ export function CanvasStage({
                         );
                       })
                     : null}
+                  </Group>
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
@@ -1836,7 +1854,7 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
-                  {transformerVisible && selectedStageLayer ? (
+                  {!displayCamera && transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={
                         selectedStageLayer.layer.locked ||
@@ -1861,7 +1879,7 @@ export function CanvasStage({
               </Stage>
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
-              {snapshot && shot && selectedLayerId && !armAssembly ? <CharacterArmHandle
+              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
                 address={{ shotId: shot.id, layerId: selectedLayerId,
