@@ -70,10 +70,10 @@ export function BatchLayerControls({ snapshot, shotId, layers }: {
       <button type="button" disabled={editable.length === selected.length} onClick={() => apply('批量解锁图层',
         (project) => selected.reduce((next, layer) => service.setLocked(next, shotId, layer.id, false), project)
       )}>解锁（{selected.length - editable.length}）</button>
-      <button type="button" disabled={!recenterable.length} onClick={() => apply('?????????',
+      <button type="button" disabled={!recenterable.length} onClick={() => apply('批量重置中心点',
         (project) => recenterable.reduce((next, { id, x, y }) =>
           motion.recalibratePivot(next, { shotId, layerId: id }, { space: 'target-local', x, y }), project)
-      )}>????????{recenterable.length}?</button>
+      )}>重置中心点（{recenterable.length}）</button>
       <button type="button" disabled={!editable.length} onClick={() => {
         if (!pendingDelete) {
           setDeleteSelection({ revision: snapshot.revision, ids: editable.map(({ id }) => id) });
