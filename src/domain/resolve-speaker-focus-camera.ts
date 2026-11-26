@@ -1,16 +1,12 @@
 import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
+import { solveCameraCenterForWorldPoint, type CameraView } from './camera-projection';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { evaluatedLayerWorldMatrix } from './layer-parent-space';
 import type { Layer, Project, Shot, TimelineEvent } from './models';
 
-export interface CameraView {
-  centerX: number;
-  centerY: number;
-  zoom: number;
-  rotationDeg?: number;
-}
+export type { CameraView };
 
 export const SPEAKER_FOCUS_ZOOM = 1.5;
 export const SPEAKER_FOCUS_TRANSITION_MS = 250;
@@ -72,13 +68,35 @@ function targetAt(
   { project, shot, width, height, full, eventsByLayer }: Omit<SpeakerFocusCameraPlan, 'transitions'>,
 ): CameraView {
   if (!layer) return full;
-  if (layer.parentLayerId || layer.parentSpaceOffset) {
-    // Follow the inherited pose while leaving actor and ancestor Shake on screen.
+  if (
+    layer.parentLayerId ||
+    layer.parentSpaceOffset ||
+    layer.depth !== undefined ||
+    layer.depthKeys?.length ||
+    layer.cameraSpace
+  ) {
+    // Follow the inherited pose and effective depth while leaving actor and ancestor Shake on screen.
     const evaluated = evaluateShotAtTime(shot, atMs, project, { includeShake: false })
       .layers.find(({ id }) => id === layer.id);
-    if (evaluated?.parentSpace) {
-      const { tx, ty } = evaluatedLayerWorldMatrix(evaluated);
-      return clampCamera({ centerX: tx, centerY: ty, zoom: SPEAKER_FOCUS_ZOOM }, width, height);
+    if (evaluated) {
+      const anchor = evaluated.parentSpace
+        ? evaluatedLayerWorldMatrix(evaluated)
+        : { tx: evaluated.x, ty: evaluated.y };
+      const solved = solveCameraCenterForWorldPoint(
+        anchor.tx,
+        anchor.ty,
+        width,
+        height,
+        SPEAKER_FOCUS_ZOOM,
+        evaluated.effectiveDepth ?? 0,
+        evaluated.effectiveCameraSpace ?? 'world',
+      );
+      if (!solved) return full;
+      return clampCamera(
+        { centerX: solved.centerX, centerY: solved.centerY, zoom: SPEAKER_FOCUS_ZOOM },
+        width,
+        height,
+      );
     }
   }
   const main = evaluateLayerMotionAtTime(

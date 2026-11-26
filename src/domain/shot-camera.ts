@@ -4,12 +4,19 @@ import { PROJECT_HEIGHT, PROJECT_WIDTH } from './constants';
 import { ProjectSchema, type Project, type Shot } from './models';
 import type { ManualCameraPose, ShotCameraKey, ShotCameraMode } from './models/shotCamera';
 import {
+  cameraLayerTransform,
+  cameraWorldTransform,
+  solveCameraCenterForWorldPoint,
+  type CameraView,
+} from './camera-projection';
+import {
   evaluateSpeakerFocusCamera,
   fullStageCamera,
   prepareSpeakerFocusCamera,
-  type CameraView,
 } from './resolve-speaker-focus-camera';
 import { resolveTimelineFrameTime } from './timeline/frame-grid';
+
+export { cameraLayerTransform, cameraWorldTransform, solveCameraCenterForWorldPoint };
 
 export function evaluateManualCamera(shot: Shot, requestedTimeMs: number): ManualCameraPose {
   const keys = shot.camera?.keys ?? [];
@@ -44,45 +51,6 @@ export function prepareShotCamera(project: Project, shot: Shot, legacyMode: 'sta
     if (mode === 'manual') return evaluateManualCamera(shot, timeMs);
     return speakerFocus ? evaluateSpeakerFocusCamera(speakerFocus, timeMs) : undefined;
   };
-}
-
-export function cameraWorldTransform(camera: CameraView | undefined, width: number, height: number) {
-  return {
-    x: width / 2,
-    y: height / 2,
-    offsetX: camera?.centerX ?? width / 2,
-    offsetY: camera?.centerY ?? height / 2,
-    scaleX: camera?.zoom ?? 1,
-    scaleY: camera?.zoom ?? 1,
-    rotation: -(camera?.rotationDeg ?? 0) % 360,
-  };
-}
-
-const NATIVE_CAMERA_FOCAL_LENGTH = 1_000;
-const NATIVE_CAMERA_NEAR_DISTANCE = 10;
-
-/** A rest-normalized top-level plane. Null means only this plane is clipped. */
-export function cameraLayerTransform(
-  camera: CameraView | undefined,
-  width: number,
-  height: number,
-  depth: number,
-  space: 'world' | 'screen',
-): ReturnType<typeof cameraWorldTransform> | null {
-  if (!camera || space === 'screen') return cameraWorldTransform(undefined, width, height);
-  if (depth === 0) return cameraWorldTransform(camera, width, height);
-  const distance = NATIVE_CAMERA_FOCAL_LENGTH / camera.zoom + depth;
-  if (!Number.isFinite(distance) || distance < NATIVE_CAMERA_NEAR_DISTANCE) return null;
-  const restDistance = NATIVE_CAMERA_FOCAL_LENGTH + depth;
-  const pan = NATIVE_CAMERA_FOCAL_LENGTH / restDistance;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  return cameraWorldTransform({
-    ...camera,
-    centerX: centerX + (camera.centerX - centerX) * pan,
-    centerY: centerY + (camera.centerY - centerY) * pan,
-    zoom: restDistance / distance,
-  }, width, height);
 }
 
 type CameraDrawingLayer = Pick<EvaluatedLayer, 'effectiveCameraSpace' | 'effectiveDepth' | 'zIndex'>;
