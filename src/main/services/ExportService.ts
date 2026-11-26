@@ -3,6 +3,11 @@ import { copyFile, mkdir, open, rmdir, unlink, writeFile } from 'node:fs/promise
 import { constants } from 'node:fs';
 import path from 'node:path';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
+import type { FFmpegAdapter } from './FFmpegAdapter';
+import {
+  prepareExportVideoFrameSupply,
+  type ExportVideoFrameSupply,
+} from './FlaEmbeddedVideoService';
 import {
   buildExportAudioMixPlan,
   buildFormalExportAudioMixPlan,
@@ -55,6 +60,7 @@ import type {
   VideoProbeResult,
 } from '../../shared/ffmpeg-types';
 import type { FrozenExportInput } from './ExportPreparationService';
+import { freezeMp4OutputProfile, type ExportOutputFps, type ExportRenderSettings } from '../../shared/export-output-profile';
 import type { FrameFileSystem } from './FileSystemService';
 
 export interface FrameRenderer {
@@ -71,7 +77,7 @@ export interface FullProbeMediaAdapter {
     request: {
       framesDirectory: string;
       outputPath: string;
-      fps: 24;
+      fps: ExportOutputFps;
       overwrite: boolean;
     },
     signal?: AbortSignal,
@@ -111,6 +117,7 @@ export interface ExportJobRecord {
   cleanupError?: string | null;
   outputPath?: string;
   incomplete?: boolean;
+  diagnostics?: string[];
 }
 
 interface FrameExportMetrics {
@@ -351,7 +358,9 @@ export class ExportService {
       throw new Error('Formal export candidate has no Shot.');
     }
     const durationMs = projectDurationMs(project);
+    const settings = input.candidate.renderSettings;
     if (
+      (!('format' in settings) || settings.format !== 'gif') &&
       project.shots.some((shot) => shot.audioClips.length > 0) &&
       (!this.mediaAdapter.probeAudioFile || !this.mediaAdapter.muxAudioMix)
     ) {
@@ -455,6 +464,46 @@ export class ExportService {
     }
   }
 
+  private static formalImageMedia(media: FrozenExportInput['media']): ExportLoadFormalRequest['media'] {
+    return media
+      .filter((entry) => entry.kind === 'image')
+      .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes }));
+  }
+
+  private async prepareVideoFrameSupply(
+    project: FrozenExportInput['candidate']['project'],
+    media: FrozenExportInput['media'],
+    jobDirectory: string,
+    adapter: FullProbeMediaAdapter | undefined,
+    signal: AbortSignal,
+    record: ExportJobRecord,
+  ): Promise<ExportVideoFrameSupply | undefined> {
+    if (!media.some((entry) => entry.kind === 'video')) return undefined;
+    if (
+      !adapter ||
+      !('decodeFlaVideoFramesSequential' in adapter) ||
+      typeof adapter.decodeFlaVideoFramesSequential !== 'function'
+    ) {
+      record.diagnostics = [
+        ...(record.diagnostics ?? []),
+        '当前导出环境缺少视频帧顺序解码器，已跳过内嵌视频画面。',
+      ];
+      return undefined;
+    }
+    const supply = await prepareExportVideoFrameSupply({
+      project,
+      media,
+      jobDirectory,
+      adapter: adapter as Pick<FFmpegAdapter, 'decodeFlaVideoFramesSequential'>,
+      signal,
+    });
+    const initialDiagnostics = supply.getDiagnostics();
+    if (initialDiagnostics.length > 0) {
+      record.diagnostics = initialDiagnostics;
+    }
+    return supply;
+  }
+
   private async renderPngExportFrames(
     active: ActiveJob,
     record: ExportJobRecord,
@@ -464,15 +513,25 @@ export class ExportService {
     write: (fileName: string, bytes: Uint8Array) => Promise<void>,
   ): Promise<void> {
     const project = { ...input.candidate.project, shots: [schedule.shot] };
+    const videoSupply = await this.prepareVideoFrameSupply(
+      project,
+      input.media,
+      directory,
+      this.mediaAdapter,
+      active.controller.signal,
+      record,
+    );
     await this.renderFrames(active, record, { durationMs: schedule.shot.durationMs, fps: input.candidate.renderSettings.fps },
       directory, () => this.renderer.loadFormal!({
         jobId: active.jobId, project, cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
         ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-        media: input.media.filter(entry => entry.kind === 'image').map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+        media: ExportService.formalImageMedia(input.media),
       }), project, {
         frames: schedule.frames(), totalFrames: schedule.totalFrames, maxPendingWrites: 1, write,
+        videoSupply,
+        outputLayerId: schedule.selectedLayer?.id,
       });
   }
 
@@ -500,6 +559,14 @@ export class ExportService {
       const singleShotProject = { ...input.candidate.project, shots: [schedule.shot] };
       record.phase = 'preparing';
       this.emit(record);
+      const videoSupply = await this.prepareVideoFrameSupply(
+        singleShotProject,
+        input.media,
+        directory,
+        this.mediaAdapter,
+        active.controller.signal,
+        record,
+      );
       await this.renderer.loadFormal!({
         jobId: active.jobId,
         project: singleShotProject,
@@ -507,9 +574,7 @@ export class ExportService {
         ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
         ...(input.candidate.pngSequence?.transparent ? {} : { solidClear: true }),
         ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-        media: input.media
-          .filter((entry) => entry.kind === 'image')
-          .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+        media: ExportService.formalImageMedia(input.media),
       });
       this.throwIfCancelled(active);
 
@@ -547,6 +612,8 @@ export class ExportService {
             totalFrames: page.frameCount,
             skipLoad: true,
             maxPendingWrites: 1,
+            videoSupply,
+            outputLayerId: schedule.selectedLayer?.id,
             write: (fileName, bytes) => {
               assertExportPngSize(bytes, width, height);
               return this.fileSystem.writeFrame(directory, fileName, bytes);
@@ -717,6 +784,14 @@ export class ExportService {
       const allScheduledFrames = Array.from(schedule.frames());
       let cursor = 0;
 
+      const packedVideoSupply = await this.prepareVideoFrameSupply(
+        singleShotProject,
+        input.media,
+        directory,
+        this.mediaAdapter,
+        active.controller.signal,
+        record,
+      );
       await this.renderFrames(
         active,
         record,
@@ -729,15 +804,15 @@ export class ExportService {
             cameraMode: schedule.selectedLayer ? 'static' : input.candidate.cameraMode,
             ...(schedule.selectedLayer ? { outputLayerId: schedule.selectedLayer.id } : {}),
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-            media: input.media
-              .filter((entry) => entry.kind === 'image')
-              .map(({ assetId, mimeType, bytes }) => ({ assetId, mimeType, bytes })),
+            media: ExportService.formalImageMedia(input.media),
           }),
         singleShotProject,
         {
           frames: allScheduledFrames,
           totalFrames: schedule.totalFrames,
           maxPendingWrites: 1,
+          videoSupply: packedVideoSupply,
+          outputLayerId: schedule.selectedLayer?.id,
           write: async (_fileName, bytes) => {
             assertExportPngSize(bytes, width, height);
             const entry = allScheduledFrames[cursor]!;
@@ -1068,6 +1143,8 @@ export class ExportService {
     const record = this.requireJob(active.jobId);
     const startedAt = performance.now();
     const project = input.candidate.project;
+    const settings = input.candidate.renderSettings;
+    const gif = 'format' in settings && settings.format === 'gif' ? settings : null;
     const durationMs = projectDurationMs(project);
     const outputPath = input.candidate.outputIntent.targetPath;
     let jobDirectory: string | null = null;
@@ -1089,11 +1166,20 @@ export class ExportService {
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
       record.outputDirectory = jobDirectory;
-      const audioMixPlan = await this.prepareFormalAudioMixPlan(
+      const audioMixPlan = gif ? null : await this.prepareFormalAudioMixPlan(
         input,
         jobDirectory,
         adapter,
         active,
+      );
+      this.throwIfCancelled(active);
+      const videoSupply = await this.prepareVideoFrameSupply(
+        project,
+        input.media,
+        jobDirectory,
+        adapter,
+        active.controller.signal,
+        record,
       );
       this.throwIfCancelled(active);
 
@@ -1102,7 +1188,7 @@ export class ExportService {
         record,
         {
           durationMs,
-          fps: input.candidate.renderSettings.fps,
+          ...input.candidate.renderSettings,
         },
         jobDirectory,
         () =>
@@ -1110,29 +1196,28 @@ export class ExportService {
             jobId: active.jobId,
             project: input.candidate.project,
             cameraMode: input.candidate.cameraMode,
+            renderSettings: input.candidate.renderSettings,
             ...(input.candidate.dialogueSilence ? { dialogueSilence: input.candidate.dialogueSilence } : {}),
-            media: input.media
-              .filter((entry) => entry.kind === 'image')
-              .map(({ assetId, mimeType, bytes }) => ({
-                assetId,
-                mimeType,
-                bytes,
-              })),
+            media: ExportService.formalImageMedia(input.media),
           }),
         project,
+        undefined,
+        videoSupply,
       );
       this.throwIfCancelled(active);
 
       record.phase = 'encoding';
       this.emit(record);
       const silentVideoPath = audioMixPlan
-        ? path.join(jobDirectory, 'formal-silent.mp4')
+        ? path.join(jobDirectory, 'formal-silent.' + ('format' in input.candidate.renderSettings
+          ? input.candidate.renderSettings.format : 'mp4'))
         : finalOutputStagingPath;
       await adapter.encodePngSequence(
         {
           framesDirectory: jobDirectory,
           outputPath: silentVideoPath,
           fps: input.candidate.renderSettings.fps,
+          ...(gif ? { gifLoop: gif.loop } : {}),
           overwrite: false,
         },
         active.controller.signal,
@@ -1162,7 +1247,7 @@ export class ExportService {
       );
       this.assertFormalProbeMatches(
         probe,
-        input.candidate.renderSettings.fps,
+        input.candidate.renderSettings,
         record.totalFrames,
         audioMixPlan,
       );
@@ -1228,27 +1313,38 @@ export class ExportService {
 
   private assertFormalProbeMatches(
     probe: VideoProbeResult,
-    fps: 24,
+    settings: ExportRenderSettings,
     frameCount: number,
     audioMixPlan: ExportAudioMixPlan | null,
   ): void {
     const failures: string[] = [];
-    if (probe.codecName !== 'h264') failures.push('codec');
-    if (probe.pixelFormat !== 'yuv420p') failures.push('pixel format');
-    if (probe.width !== 1_920 || probe.height !== 1_080) {
+    const { fps, width, height } = settings;
+    const profile = 'videoCodec' in settings ? settings : freezeMp4OutputProfile();
+    const isGif = profile.format === 'gif';
+    if (probe.codecName !== profile.videoCodec) failures.push('codec');
+    if (probe.pixelFormat !== (isGif ? 'bgra' : 'yuv420p')) failures.push('pixel format');
+    if (probe.width !== width || probe.height !== height) {
       failures.push('frame size');
     }
-    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001) {
+    // GIF's centisecond timestamps produce alternating frame delays and an approximate average rate.
+    if (!isGif && (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001)) {
       failures.push('frame rate');
     }
     if (probe.frameCount !== frameCount) failures.push('frame count');
     if (audioMixPlan) {
       if (!probe.hasAudio) failures.push('audio stream missing');
       if (probe.audioStreamCount !== 1) failures.push('audio stream count');
-      if (probe.audioCodecName !== 'aac') failures.push('audio codec');
+      if (probe.audioCodecName !== profile.audioCodec) failures.push('audio codec');
       if (probe.audioSampleRate !== 48_000) failures.push('audio sample rate');
       if (!probe.audioChannels || probe.audioChannels <= 0) {
         failures.push('audio channels');
+      }
+      if (profile.format === 'webm') {
+        // Opus decoder preroll can place the first audio timestamp just before the video.
+        const startDifference = (probe.videoStartSeconds ?? Number.NaN) - (probe.audioStartSeconds ?? Number.NaN);
+        if (!Number.isFinite(startDifference) || Math.abs(startDifference) > 0.025) {
+          failures.push('audio/video start alignment');
+        }
       }
       const expectedAudioDurationSeconds = audioMixPlan.durationMs / 1_000;
       if (
@@ -1266,12 +1362,12 @@ export class ExportService {
     const expectedDurationSeconds = frameCount / fps;
     if (
       !Number.isFinite(probe.durationSeconds) ||
-      Math.abs(probe.durationSeconds - expectedDurationSeconds) > 0.08
+      Math.abs(probe.durationSeconds - expectedDurationSeconds) > (isGif ? 0.011 : 0.08)
     ) {
       failures.push('duration');
     }
     if (failures.length > 0) {
-      throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
+      throw new Error('Formal ' + profile.format.toUpperCase() + ' verification failed: ' + failures.join(', '));
     }
   }
 
@@ -1396,14 +1492,18 @@ export class ExportService {
   private async renderFrames(
     active: ActiveJob,
     record: ExportJobRecord,
-    config: { durationMs: number; fps: 24 },
+    config: { durationMs: number; fps: ExportOutputFps; width?: number; height?: number },
     jobDirectory: string,
     loadProject: () => Promise<unknown>,
     project?: FrozenExportInput['candidate']['project'],
     schedule?: { frames: Iterable<ProjectFrameScheduleEntry>; totalFrames: number; maxPendingWrites: number;
       skipLoad?: boolean;
+      videoSupply?: ExportVideoFrameSupply;
+      outputLayerId?: string;
       write: (fileName: string, bytes: Uint8Array) => Promise<void> },
+    formalVideoSupply?: ExportVideoFrameSupply,
   ): Promise<FrameExportMetrics> {
+    const activeVideoSupply = schedule?.videoSupply ?? formalVideoSupply;
     const totalFrames = schedule?.totalFrames ?? formalFrameCount(config.durationMs, config.fps);
     if (schedule?.skipLoad) {
       if (record.completedFrames + totalFrames > record.totalFrames) {
@@ -1439,6 +1539,7 @@ export class ExportService {
         record.phase = 'preparing';
         this.emit(record);
         await loadProject();
+        activeVideoSupply?.resetRendererCacheMirror();
         this.throwIfCancelled(active);
       }
 
@@ -1449,6 +1550,24 @@ export class ExportService {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
+        const videoUpdate: Pick<ExportRenderFrameRequest, 'videoFrames' | 'videoFrameCacheTouches'> = {};
+        if (project && activeVideoSupply) {
+          const entry = frame as ProjectFrameScheduleEntry;
+          const shot = project.shots.find((candidate) => candidate.id === entry.shotId);
+          if (shot) {
+            const supplied = await activeVideoSupply.collectVideoFramesForShotTime(
+              project,
+              shot,
+              entry.shotLocalTimeMs,
+              active.controller.signal,
+              schedule?.outputLayerId,
+            );
+            if (supplied.videoFrames.length > 0) videoUpdate.videoFrames = supplied.videoFrames;
+            if (supplied.videoFrameCacheTouches.length > 0) videoUpdate.videoFrameCacheTouches = supplied.videoFrameCacheTouches;
+            const diagnostics = activeVideoSupply.getDiagnostics();
+            if (diagnostics.length > 0) record.diagnostics = diagnostics;
+          }
+        }
         const request: ExportRenderFrameRequest = {
           jobId: active.jobId,
           frameIndex: frame.frameIndex,
@@ -1460,6 +1579,7 @@ export class ExportService {
                   .shotLocalTimeMs,
               }
             : {}),
+          ...videoUpdate,
         };
         const rendered = await this.renderer.renderFrame(request);
         this.throwIfCancelled(active);
@@ -1468,11 +1588,16 @@ export class ExportService {
           rendered.frameIndex !== frame.frameIndex ||
           rendered.timeMs !== frame.timeMs ||
           rendered.shotId !== request.shotId ||
-          rendered.shotLocalTimeMs !== request.shotLocalTimeMs
+          rendered.shotLocalTimeMs !== request.shotLocalTimeMs ||
+          rendered.width !== (config.width ?? 1920) ||
+          rendered.height !== (config.height ?? 1080)
         ) {
           throw new Error(
             `Renderer returned mismatched frame ${rendered.frameIndex}.`,
           );
+        }
+        if (config.width !== undefined && config.height !== undefined) {
+          assertExportPngSize(rendered.pngBytes, config.width, config.height);
         }
 
         totalBytes += rendered.pngBytes.byteLength;
@@ -1532,7 +1657,7 @@ export class ExportService {
 
   private createJob(config: {
     durationMs: number;
-    fps: 24;
+    fps: ExportOutputFps;
     attemptId?: string;
     snapshotId?: string;
     totalFrames?: number;
@@ -1680,6 +1805,9 @@ export class ExportService {
         : {}),
       ...(record.cleanupError !== undefined
         ? { cleanupError: record.cleanupError }
+        : {}),
+      ...(record.status !== 'cancelled' && record.diagnostics && record.diagnostics.length > 0
+        ? { diagnostics: [...record.diagnostics] }
         : {}),
     };
     for (const listener of this.listeners) listener(update);

@@ -120,6 +120,52 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('decodes the embedded video presentation timestamps in their signed stream timebase', async () => {
+    const input = path.join(temporaryRoot, 'embedded.mp4');
+    await writeFile(input, 'staged payload');
+    const runner = new FakeRunner([
+      { ...VERSION_RESULT, stdout: JSON.stringify({ streams: [
+        { codec_type: 'video', disposition: { attached_pic: 1 } },
+        { index: 1, codec_type: 'video', codec_name: 'h264', width: 320, height: 180,
+          time_base: '1/1000', start_pts: -20, duration_ts: 70, nb_frames: '3' },
+        { codec_type: 'audio' },
+      ] }) },
+      { ...VERSION_RESULT, stdout: JSON.stringify({ frames: [
+        { best_effort_timestamp: -20, pkt_duration: 10 },
+        { best_effort_timestamp: -10, pkt_duration: 30 },
+        { best_effort_timestamp: 20, pkt_duration: 30 },
+      ] }) },
+    ]);
+
+    const metadata = await new FFmpegAdapter({ runner }).probeFlaNativeVideo(input);
+
+    expect(metadata).toMatchObject({
+      streamIndex: 1, timeBase: { numerator: 1, denominator: 1000 },
+      startTick: -20, durationTicks: 70, presentationTicks: [-20, -10, 20],
+      endTick: 50, hasAudio: true, frameCount: 3,
+    });
+    expect(runner.calls[0]?.args).toContain('-protocol_whitelist');
+    expect(runner.calls[0]?.args).toContain('-enable_drefs');
+    const frameArgs = runner.calls[1]!.args;
+    expect(frameArgs[frameArgs.indexOf('-select_streams') + 1]).toBe('1');
+    expect(frameArgs).toContain('-max_pixels');
+    expect(frameArgs).toContain('-read_intervals');
+  });
+
+  it('does not decode an embedded video that exceeds the frame budget', async () => {
+    const input = path.join(temporaryRoot, 'oversize.mp4');
+    await writeFile(input, 'staged payload');
+    const runner = new FakeRunner([
+      { ...VERSION_RESULT, stdout: JSON.stringify({ streams: [
+        { index: 0, codec_type: 'video', codec_name: 'h264', width: 320, height: 180,
+          time_base: '1/1000', start_pts: 0, duration_ts: 50_000, nb_frames: '1201' },
+      ] }) },
+    ]);
+
+    await expect(new FFmpegAdapter({ runner }).probeFlaNativeVideo(input)).rejects.toMatchObject({ code: 'PROBE_FAILED' });
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it('does not ignore seven-digit frame indices when validating a sequence', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
     const outputDirectory = path.join(temporaryRoot, 'output');
@@ -189,6 +235,63 @@ describe('FFmpegAdapter', () => {
     await expect(stat(temporaryOutputPath)).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('stages WebM as WebM and encodes with VP9', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'output.webm');
+    await writeFrames(framesDirectory, [0]);
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      { ...ENCODERS_RESULT, stdout: ' V..... libvpx-vp9 VP9 encoder' },
+      { ...ENCODERS_RESULT, stdout: ' E webm WebM' },
+      async (_executable, args) => {
+        await writeFile(args.at(-1)!, new Uint8Array([1]));
+        return { ...VERSION_RESULT, stdout: '' };
+      },
+    ]);
+
+    await new FFmpegAdapter({ runner }).encodePngSequence({
+      framesDirectory, outputPath, fps: 24, overwrite: false,
+    });
+
+    const encodeArgs = runner.calls[3]?.args;
+    expect(encodeArgs).toContain('libvpx-vp9');
+    expect(encodeArgs).not.toContain('-movflags');
+    expect(encodeArgs?.at(-1)).toMatch(/\.webm$/u);
+    await expect(stat(outputPath)).resolves.toMatchObject({ size: 1 });
+  });
+
+  it('generates a separate GIF palette and publishes a silent animation with quantized timing', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputPath = path.join(temporaryRoot, 'output.gif');
+    await writeFrames(framesDirectory, [0, 1, 2]);
+    const createOutput: FakeResponse = async (_executable, args) => {
+      await writeFile(args.at(-1)!, new Uint8Array([1]));
+      return { ...VERSION_RESULT, stdout: '' };
+    };
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      { ...ENCODERS_RESULT, stdout: ' V..... gif GIF encoder' },
+      { ...ENCODERS_RESULT, stdout: ' E gif GIF' },
+      { ...ENCODERS_RESULT, stdout: ' ... palettegen V->V\n ... paletteuse VV->V' },
+      createOutput,
+      createOutput,
+    ]);
+
+    await new FFmpegAdapter({ runner }).encodePngSequence({
+      framesDirectory, outputPath, fps: 30, gifLoop: false, overwrite: false,
+    });
+
+    const palettePath = runner.calls[4]!.args.at(-1)!;
+    const encodeArgs = runner.calls[5]!.args;
+    expect(runner.calls[4]!.args).toContain('palettegen=reserve_transparent=1');
+    expect(encodeArgs).toContain(palettePath);
+    expect(encodeArgs).toContain('[0:v][1:v]paletteuse=dither=sierra2_4a:alpha_threshold=128');
+    expect(encodeArgs.slice(-7, -1)).toEqual(['-c:v', 'gif', '-loop', '-1', '-final_delay', '3']);
+    expect(encodeArgs.at(-1)).toMatch(/\.gif$/u);
+    await expect(stat(outputPath)).resolves.toMatchObject({ size: 1 });
+    await expect(stat(palettePath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('uses a short temporary encode name when the target is itself a staged file', async () => {
@@ -323,7 +426,7 @@ describe('FFmpegAdapter', () => {
     },
   );
 
-  it('rejects a non-MP4 output extension', () => {
+  it('rejects unsupported frame sequence output extensions', () => {
     const result = EncodePngSequenceRequestSchema.safeParse({
       framesDirectory: 'frames',
       outputPath: 'output.mkv',

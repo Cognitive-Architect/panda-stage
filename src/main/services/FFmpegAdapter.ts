@@ -20,6 +20,13 @@ import {
   type VideoProbeResult,
 } from '../../shared/ffmpeg-types';
 import { formatFrameFileName } from '../../shared/export-types';
+import {
+  FLA_NATIVE_VIDEO_MAX_FRAMES,
+  FLA_NATIVE_VIDEO_MAX_PIXELS,
+  readFlaNativeVideoFrames,
+  readFlaNativeVideoStream,
+  type FlaNativeVideoProbe,
+} from './fla-native-video-probe';
 
 import { MAX_MOUTH_POSE_ANALYSIS_MS, MOUTH_POSE_SAMPLE_RATE } from '../../shared/mouth-pose-analysis-api';
 
@@ -255,7 +262,7 @@ function technicalTail(stderr: string): string {
 function createTemporaryOutputPath(outputPath: string): string {
   return path.join(
     path.dirname(outputPath),
-    `.panda-stage-${randomUUID()}.mp4`,
+    `.panda-stage-${randomUUID()}${path.extname(outputPath).toLowerCase()}`,
   );
 }
 
@@ -351,6 +358,21 @@ export class FFmpegAdapter {
     return { executable: this.ffmpegPath, versionLine, hasLibx264: true };
   }
 
+  private async validateWebmExecutable(encoder: 'libvpx-vp9' | 'libopus', signal?: AbortSignal) {
+    const versionLine = await this.getVersion(signal);
+    for (const [flag, capability] of [['-encoders', encoder], ['-muxers', 'webm']] as const) {
+      const args = ['-hide_banner', flag];
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      if (result.code !== 0 || !`${result.stdout}\n${result.stderr}`.split(/\s+/u).includes(capability)) {
+        throw new FFmpegAdapterError('ENCODER_UNAVAILABLE', `FFmpeg 缺少 WebM 所需的 ${capability}。`, {
+          executable: this.ffmpegPath, args, exitCode: result.code, signal: result.signal, stderr: technicalTail(result.stderr),
+        });
+      }
+    }
+    return { versionLine };
+  }
+
   async validateAudioMuxExecutable(
     signal?: AbortSignal,
   ): Promise<FFmpegAudioValidationResult> {
@@ -381,6 +403,35 @@ export class FFmpegAdapter {
       );
     }
     return { executable: this.ffmpegPath, versionLine, hasAac: true };
+  }
+
+  private async validateGifExecutable(signal?: AbortSignal): Promise<{ versionLine: string }> {
+    const versionLine = await this.getVersion(signal);
+    const listings = [
+      { flag: '-encoders', names: ['gif'] },
+      { flag: '-muxers', names: ['gif'] },
+      { flag: '-filters', names: ['palettegen', 'paletteuse'] },
+    ];
+    for (const { flag, names } of listings) {
+      if (signal?.aborted) throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      const args = ['-hide_banner', flag];
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      }
+      const capabilities = `${result.stdout}\n${result.stderr}`.split(/\s+/u);
+      const missing = names.filter((name) => !capabilities.includes(name));
+      if (result.code !== 0 || missing.length > 0) {
+        throw new FFmpegAdapterError('ENCODER_UNAVAILABLE', `FFmpeg 缺少 GIF 导出能力（${missing.join('、') || flag}）。`, {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+    }
+    return { versionLine };
   }
 
   async encodeSpriteSheet(request: {
@@ -420,20 +471,42 @@ export class FFmpegAdapter {
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
-    const validation = await this.validateExecutable(signal);
+    const extension = path.extname(outputPath).toLowerCase();
+    const webm = extension === '.webm';
+    const gif = extension === '.gif';
+    const validation = webm
+      ? await this.validateWebmExecutable('libvpx-vp9', signal)
+      : gif
+        ? await this.validateGifExecutable(signal)
+        : await this.validateExecutable(signal);
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
     }
     const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const palettePath = gif ? path.join(path.dirname(outputPath), `.panda-stage-palette-${randomUUID()}.png`) : undefined;
     const args = this.buildEncodeArguments({
       ...request,
       framesDirectory,
       outputPath: temporaryOutputPath,
       frameCount,
-    });
+    }, palettePath);
     const startedAt = performance.now();
     let result: ProcessResult;
     try {
+      if (palettePath) {
+        const paletteArgs = [
+          '-n', '-hide_banner', '-loglevel', 'error',
+          '-framerate', String(request.fps), '-start_number', '0',
+          '-i', path.join(framesDirectory, 'frame_%06d.png'),
+          '-filter_threads', '1', '-vf', 'palettegen=reserve_transparent=1',
+          '-frames:v', '1', palettePath,
+        ];
+        const paletteResult = await this.runProcess(this.ffmpegPath, paletteArgs, { signal });
+        if (signal?.aborted) {
+          throw this.cancelledError(this.ffmpegPath, paletteArgs, paletteResult.code, paletteResult.signal, paletteResult.stderr);
+        }
+        if (paletteResult.code !== 0) throw this.mapEncodeFailure(paletteArgs, paletteResult);
+      }
       result = await this.runProcess(this.ffmpegPath, args, { signal });
       if (signal?.aborted) {
         throw this.cancelledError(
@@ -470,6 +543,7 @@ export class FFmpegAdapter {
           result.stderr,
         );
       }
+      if (palettePath) await rm(palettePath, { force: true });
       await this.commitTemporaryOutput(
         temporaryOutputPath,
         outputPath,
@@ -478,6 +552,7 @@ export class FFmpegAdapter {
         result,
       );
     } catch (error) {
+      if (palettePath) await this.cleanupTemporaryOutput(palettePath, error);
       await this.cleanupTemporaryOutput(temporaryOutputPath, error);
       throw error;
     }
@@ -635,7 +710,8 @@ export class FFmpegAdapter {
 
     let versionLine: string | null = null;
     if (audioInputs.length > 0) {
-      const validation = await this.validateAudioMuxExecutable(signal);
+      const validation = path.extname(outputPath).toLowerCase() === '.webm'
+        ? await this.validateWebmExecutable('libopus', signal) : await this.validateAudioMuxExecutable(signal);
       versionLine = validation.versionLine;
       if (signal?.aborted) {
         throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
@@ -716,6 +792,222 @@ export class FFmpegAdapter {
     };
   }
 
+  /** Analyze a locally staged, already validated ISO media payload. */
+  async probeFlaNativeVideo(videoPath: string, signal?: AbortSignal): Promise<FlaNativeVideoProbe> {
+    const inputPath = path.resolve(videoPath);
+    const probeSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000);
+    await this.assertReadableInput(inputPath, 'video');
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const demuxer = ['-v', 'error', '-protocol_whitelist', 'file', '-enable_drefs', '0', '-f', format];
+    const probe = async <T>(options: readonly string[], parse: (result: unknown) => T): Promise<T> => {
+      const args = [...demuxer, ...options, '-of', 'json', inputPath];
+      if (probeSignal.aborted) throw this.cancelledError(this.ffprobePath, args, null, 'SIGTERM');
+      const result = await this.runProcess(this.ffprobePath, args, { signal: probeSignal });
+      if (probeSignal.aborted) {
+        throw this.cancelledError(this.ffprobePath, args, result.code, result.signal, result.stderr);
+      }
+      try {
+        if (result.code !== 0 || result.stderr.trim()) throw new Error('FFprobe reported a media error.');
+        return parse(JSON.parse(result.stdout));
+      } catch (cause) {
+        throw new FFmpegAdapterError('PROBE_FAILED', '无法读取内嵌视频的播放时间戳。', {
+          executable: this.ffprobePath, args, cause, exitCode: result.code,
+          signal: result.signal, stderr: technicalTail(result.stderr),
+        });
+      }
+    };
+
+    const stream = await probe([
+      '-show_entries',
+      'stream=index,codec_type,codec_name,width,height,time_base,start_pts,duration_ts,nb_frames:stream_disposition=attached_pic',
+    ], readFlaNativeVideoStream);
+    return probe([
+      '-select_streams', String(stream.streamIndex),
+      '-max_pixels', String(FLA_NATIVE_VIDEO_MAX_PIXELS),
+      '-read_intervals', '%+#' + (FLA_NATIVE_VIDEO_MAX_FRAMES + 1),
+      '-show_entries', 'frame=best_effort_timestamp,pkt_duration',
+    ], (value) => readFlaNativeVideoFrames(value, stream));
+  }
+
+  /**
+   * Sequentially decodes display-order video frames in ONE FFmpeg invocation
+   * (-vsync 0 passthrough) so frame_000000.png..frame_NNNNNN.png match
+   * probeFlaNativeVideo().presentationTicks 1-to-1 for both CFR and VFR.
+   */
+  async decodeFlaVideoFramesSequential(
+    rawInput: {
+      readonly videoPath: string;
+      readonly outputDirectory: string;
+      readonly maxFrames?: number;
+      readonly streamIndex?: number;
+      readonly expectedFrameCount?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ readonly framePaths: readonly string[] }> {
+    const inputPath = path.resolve(rawInput.videoPath);
+    const outputDirectory = path.resolve(rawInput.outputDirectory);
+    const maxFrames = Math.min(
+      FLA_NATIVE_VIDEO_MAX_FRAMES,
+      Math.max(1, rawInput.maxFrames ?? FLA_NATIVE_VIDEO_MAX_FRAMES),
+    );
+    await this.assertReadableInput(inputPath, 'video');
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const mapSpec =
+      rawInput.streamIndex !== undefined &&
+      Number.isInteger(rawInput.streamIndex) &&
+      rawInput.streamIndex >= 0
+        ? `0:${rawInput.streamIndex}`
+        : '0:v:0';
+    const args = [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-protocol_whitelist',
+      'file',
+      '-enable_drefs',
+      '0',
+      '-f',
+      format,
+      '-i',
+      inputPath,
+      '-map',
+      mapSpec,
+      '-vsync',
+      '0',
+      '-frames:v',
+      String(maxFrames),
+      '-start_number',
+      '0',
+      path.join(outputDirectory, 'frame_%06d.png'),
+    ];
+    const result = await this.runProcess(this.ffmpegPath, args, { signal });
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+    }
+    if (result.code !== 0) {
+      throw new FFmpegAdapterError('PROCESS_FAILED', '无法解码内嵌视频帧序列。', {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr: technicalTail(result.stderr),
+      });
+    }
+    const entries = (await readdir(outputDirectory))
+      .filter((name) => /^frame_\d{6}\.png$/u.test(name))
+      .sort((a, b) => a.localeCompare(b));
+    if (entries.length === 0) {
+      throw new FFmpegAdapterError('PROCESS_FAILED', '内嵌视频解码未产出任何可用画面帧。', {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr: technicalTail(result.stderr),
+      });
+    }
+    if (
+      rawInput.expectedFrameCount !== undefined &&
+      entries.length !== rawInput.expectedFrameCount
+    ) {
+      throw new FFmpegAdapterError(
+        'PROCESS_FAILED',
+        `内嵌视频解码帧数（${entries.length}）与探测 PTS 帧数（${rawInput.expectedFrameCount}）不一致。`,
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        },
+      );
+    }
+    return { framePaths: entries.map((name) => path.join(outputDirectory, name)) };
+  }
+
+  /** Extracts an embedded video's audio stream into a formal 48kHz stereo PCM WAV asset. */
+  async extractFlaVideoAudioTrack(
+    rawInput: {
+      readonly videoPath: string;
+      readonly outputWavPath: string;
+      readonly audioStreamIndex?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ readonly outputPath: string; readonly bytes: number }> {
+    const inputPath = path.resolve(rawInput.videoPath);
+    const outputPath = path.resolve(rawInput.outputWavPath);
+    await this.assertReadableInput(inputPath, 'video');
+    await this.assertOutputWritable(outputPath);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const format = path.extname(inputPath).toLowerCase() === '.webm' ? 'matroska' : 'mov';
+    const audioMapSpec =
+      rawInput.audioStreamIndex !== undefined &&
+      Number.isInteger(rawInput.audioStreamIndex) &&
+      rawInput.audioStreamIndex >= 0
+        ? `0:${rawInput.audioStreamIndex}`
+        : '0:a:0';
+    const args = [
+      '-y',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-protocol_whitelist',
+      'file',
+      '-enable_drefs',
+      '0',
+      '-f',
+      format,
+      '-i',
+      inputPath,
+      '-vn',
+      '-map',
+      audioMapSpec,
+      '-c:a',
+      'pcm_s16le',
+      '-ar',
+      '48000',
+      '-ac',
+      '2',
+      temporaryOutputPath,
+    ];
+    try {
+      const result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, args, result.code, result.signal, result.stderr);
+      }
+      if (result.code !== 0) {
+        throw new FFmpegAdapterError('PROCESS_FAILED', '无法提取内嵌视频音轨。', {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+      const stats = await stat(temporaryOutputPath).catch(() => null);
+      if (!stats?.isFile() || stats.size === 0) {
+        throw new FFmpegAdapterError('PROCESS_FAILED', '提取的内嵌视频音轨为空。', {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr: technicalTail(result.stderr),
+        });
+      }
+      await this.commitTemporaryOutput(temporaryOutputPath, outputPath, true, args, result);
+      return { outputPath, bytes: stats.size };
+    } catch (error) {
+      await rm(temporaryOutputPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
   async probeVideo(
     videoPath: string,
     signal?: AbortSignal,
@@ -792,9 +1084,10 @@ export class FFmpegAdapter {
       pixelFormat: String(video.pix_fmt ?? ''),
       width: Number(video.width),
       height: Number(video.height),
-      fps: parseRational(video.avg_frame_rate ?? video.r_frame_rate),
+      fps: parseRational(video.avg_frame_rate) || parseRational(video.r_frame_rate),
       frameCount: Number.isInteger(frameCount) ? frameCount : null,
       durationSeconds,
+      ...(Number.isFinite(Number(video.start_time)) ? { videoStartSeconds: Number(video.start_time) } : {}),
       hasAudio: Boolean(audio),
       audioStreamCount: streams.filter((stream) => stream.codec_type === 'audio')
         .length,
@@ -1070,8 +1363,10 @@ export class FFmpegAdapter {
     fps: number;
     overwrite: boolean;
     frameCount: number;
-  }): readonly string[] {
-    return [
+    gifLoop?: boolean;
+  }, palettePath?: string): readonly string[] {
+    const webm = path.extname(request.outputPath).toLowerCase() === '.webm';
+    const input = [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
       '-loglevel',
@@ -1082,17 +1377,34 @@ export class FFmpegAdapter {
       '0',
       '-i',
       path.join(request.framesDirectory, 'frame_%06d.png'),
-      '-frames:v',
-      String(request.frameCount),
-      '-an',
+    ];
+    const output = ['-frames:v', String(request.frameCount), '-an'];
+    if (palettePath) {
+      const end = Math.round(request.frameCount * 100 / request.fps);
+      const lastFrame = Math.round((request.frameCount - 1) * 100 / request.fps);
+      return [
+        ...input,
+        '-i', palettePath,
+        '-filter_complex_threads', '1',
+        '-filter_complex',
+        '[0:v][1:v]paletteuse=dither=sierra2_4a:alpha_threshold=128',
+        ...output,
+        '-c:v', 'gif',
+        '-loop', request.gifLoop === false ? '-1' : '0',
+        '-final_delay', String(end - lastFrame),
+        request.outputPath,
+      ];
+    }
+    return [
+      ...input,
+      ...output,
       '-c:v',
-      'libx264',
+      webm ? 'libvpx-vp9' : 'libx264',
       '-pix_fmt',
       'yuv420p',
       '-r',
       String(request.fps),
-      '-movflags',
-      '+faststart',
+      ...(webm ? [] : ['-movflags', '+faststart']),
       request.outputPath,
     ];
   }
@@ -1148,6 +1460,7 @@ export class FFmpegAdapter {
     outputPath: string;
     overwrite: boolean;
   }): readonly string[] {
+    const webm = path.extname(request.outputPath).toLowerCase() === '.webm';
     const args = [
       request.overwrite ? '-y' : '-n',
       '-hide_banner',
@@ -1167,8 +1480,7 @@ export class FFmpegAdapter {
         '-c:v',
         'copy',
         '-an',
-        '-movflags',
-        '+faststart',
+        ...(webm ? [] : ['-movflags', '+faststart']),
         request.outputPath,
       );
       return args;
@@ -1211,11 +1523,10 @@ export class FFmpegAdapter {
       '-c:v',
       'copy',
       '-c:a',
-      'aac',
+      webm ? 'libopus' : 'aac',
       '-b:a',
       '192k',
-      '-movflags',
-      '+faststart',
+      ...(webm ? [] : ['-movflags', '+faststart']),
       request.outputPath,
     );
     return args;

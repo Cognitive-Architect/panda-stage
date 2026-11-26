@@ -71,6 +71,14 @@ export function applyExportJobUpdate(
   if (current.status === 'cancelling' && update.status === 'running') {
     return current;
   }
+  const completionIssues =
+    update.status === 'completed' && update.diagnostics && update.diagnostics.length > 0
+      ? update.diagnostics.map((problem) => ({
+          location: '内嵌视频',
+          problem,
+          nextStep: '其余健康图层已正常导出；检查源视频后可重新导出。',
+        }))
+      : current.issues;
   return {
     ...current,
     status: update.status,
@@ -78,6 +86,7 @@ export function applyExportJobUpdate(
     completedFrames: update.completedFrames,
     totalFrames: update.totalFrames,
     ...(update.outputPath ? { outputPath: update.outputPath, incomplete: update.incomplete } : {}),
+    issues: completionIssues,
     message:
       current.pngSequence && (update.status === 'cancelled' || update.status === 'failed') ? update.error ?? undefined
       : update.status === 'failed'
@@ -89,7 +98,9 @@ export function applyExportJobUpdate(
           )
         : update.status === 'cancelled'
           ? '\u5bfc\u51fa\u5df2\u53d6\u6d88\u5e76\u5b8c\u6210\u4e34\u65f6\u5185\u5bb9\u6e05\u7406\u3002'
-          : undefined,
+          : update.status === 'completed' && update.diagnostics && update.diagnostics.length > 0
+            ? `导出完成，但有 ${update.diagnostics.length} 项内嵌视频画面缺失提示。`
+            : undefined,
   };
 }
 

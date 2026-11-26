@@ -39,8 +39,9 @@ import {
   isExactExportFrameReady,
   readExportStageReadiness,
 } from './export-frame-readiness';
-import { captureExportStageCanvas } from './stage-capture';
+import { captureExportStageCanvas, resizeExportOutputCanvas } from './stage-capture';
 import { WorkerPngEncoder } from './worker-png-encoder';
+import { storeExportVideoFrame, touchExportVideoFrame } from '../shared/export-video-frame-cache';
 
 const exportStageDrawMode = parseExportDrawMode(
   new URLSearchParams(window.location.search).get(EXPORT_DRAW_MODE_QUERY_PARAM),
@@ -120,6 +121,18 @@ export function ExportRendererApp(): React.JSX.Element {
   const [formalAssetUrls, setFormalAssetUrls] = useState<
     Readonly<Record<string, string>>
   >({});
+  const [videoFrameUrls, setVideoFrameUrls] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const videoFrameUrlsRef = useRef<Map<string, string>>(new Map());
+  const clearVideoFrameUrls = useCallback(() => {
+    if (videoFrameUrlsRef.current.size === 0) return;
+    for (const url of videoFrameUrlsRef.current.values()) {
+      URL.revokeObjectURL(url);
+    }
+    videoFrameUrlsRef.current.clear();
+    setVideoFrameUrls({});
+  }, []);
   const project: Project = formalRequest?.project ?? probeProject;
   const [probeDurationMs, setProbeDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
@@ -168,7 +181,11 @@ export function ExportRendererApp(): React.JSX.Element {
     return () => Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
   }, [formalRequest]);
   const exportAssetUrls = useMemo(() => {
-    if (formalRequest) return formalAssetUrls;
+    if (formalRequest) {
+      return Object.keys(videoFrameUrls).length > 0
+        ? { ...formalAssetUrls, ...videoFrameUrls }
+        : formalAssetUrls;
+    }
     if (!issue573ExactFrameProbe) return PROBE_ASSET_URLS;
     const characterUrl = PROBE_ASSET_URLS[PROBE_CHARACTER_ASSET_ID];
     if (!characterUrl) return PROBE_ASSET_URLS;
@@ -177,7 +194,7 @@ export function ExportRendererApp(): React.JSX.Element {
       ...PROBE_ASSET_URLS,
       [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
     };
-  }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs]);
+  }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs, videoFrameUrls]);
   const evaluatedBaseShot = useMemo(
     () => evaluateShotAtTime(shot, shotLocalTimeMs, project),
     [shotLocalTimeMs, shot, project],
@@ -258,6 +275,7 @@ export function ExportRendererApp(): React.JSX.Element {
 
   useEffect(() => {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
+      clearVideoFrameUrls();
       workerPngEncoderRef.current?.close('PNG encoder released for probe export.');
       workerPngEncoderRef.current = null;
       cancelledJobIdsRef.current.delete(request.jobId);
@@ -274,6 +292,7 @@ export function ExportRendererApp(): React.JSX.Element {
     });
     const removeFormalLoadListener = window.pandaStageHidden.onLoadFormal(
       (request) => {
+        clearVideoFrameUrls();
         workerPngEncoderRef.current?.close('PNG encoder replaced for formal export.');
         workerPngEncoderRef.current =
           exportPngMode === 'worker-png'
@@ -345,6 +364,17 @@ export function ExportRendererApp(): React.JSX.Element {
           });
           return;
         }
+        const cache = videoFrameUrlsRef.current;
+        for (const key of request.videoFrameCacheTouches ?? []) touchExportVideoFrame(cache, key);
+        if (request.videoFrames?.length) {
+          for (const entry of request.videoFrames) {
+            const nextUrl = URL.createObjectURL(
+              new Blob([entry.bytes], { type: entry.mimeType }),
+            );
+            storeExportVideoFrame(cache, entry.assetId, nextUrl, (url) => URL.revokeObjectURL(url));
+          }
+          setVideoFrameUrls(Object.fromEntries(cache.entries()));
+        }
         activeFrameRef.current = request;
         activeFrameStartedAtRef.current = performance.now();
         stageReadyRef.current = false;
@@ -356,6 +386,7 @@ export function ExportRendererApp(): React.JSX.Element {
         cancelledJobIdsRef.current.add(jobId);
         const cancellingLoadedJob = loadedJobIdRef.current === jobId;
         if (cancellingLoadedJob) {
+          clearVideoFrameUrls();
           workerPngEncoderRef.current?.close(
             `Export Job ${jobId}: PNG encoding cancelled.`,
           );
@@ -387,6 +418,7 @@ export function ExportRendererApp(): React.JSX.Element {
     window.addEventListener('pagehide', closeEncoderOnPageHide, { once: true });
 
     return () => {
+      clearVideoFrameUrls();
       window.removeEventListener('pagehide', closeEncoderOnPageHide);
       workerPngEncoderRef.current?.close('Hidden export renderer unmounted.');
       workerPngEncoderRef.current = null;
@@ -395,7 +427,7 @@ export function ExportRendererApp(): React.JSX.Element {
       removeFrameListener();
       removeCancelListener();
     };
-  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame]);
+  }, [acknowledgeFormalLoad, acknowledgeLoad, clearVideoFrameUrls, failFrame]);
 
   const handleStageError = useCallback(
     (error: Error) => {
@@ -484,6 +516,15 @@ export function ExportRendererApp(): React.JSX.Element {
       return;
     }
 
+    const outputWidth = formalRequest?.renderSettings?.width ?? 1920;
+    const outputHeight = formalRequest?.renderSettings?.height ?? 1080;
+    let outputCanvas: HTMLCanvasElement;
+    try {
+      outputCanvas = resizeExportOutputCanvas(canvas, outputWidth, outputHeight);
+    } catch (error) {
+      failFrame(activeFrame, error);
+      return;
+    }
     const pngEncodingStartedAt = performance.now();
     const activePngMode = formalRequest ? exportPngMode : 'legacy-blob';
     const pngEncoder =
@@ -493,11 +534,11 @@ export function ExportRendererApp(): React.JSX.Element {
       return;
     }
     const encoding = pngEncoder
-      ? pngEncoder.encode(canvas, activeFrame).then((result) => ({
+      ? pngEncoder.encode(outputCanvas, activeFrame).then((result) => ({
           pngBytes: result.pngBytes,
           timing: result.timing,
         }))
-      : canvasToPngBytes(canvas).then((pngBytes) => ({
+      : canvasToPngBytes(outputCanvas).then((pngBytes) => ({
           pngBytes,
           timing: null,
         }));
@@ -555,8 +596,8 @@ export function ExportRendererApp(): React.JSX.Element {
                 shotId: activeFrame.shotId,
                 shotLocalTimeMs: activeFrame.shotLocalTimeMs,
               }),
-          width: 1_920,
-          height: 1_080,
+          width: outputWidth,
+          height: outputHeight,
           pngBytes,
         });
         activeFrameRef.current = null;

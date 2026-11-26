@@ -9,6 +9,10 @@
  */
 
 import crypto from 'node:crypto';
+import type { FlaInstanceProjection } from '../../shared/fla-instance-projection';
+import { invertAffineMatrix } from '../../shared/affine-matrix';
+import { flaRgbaAttributeNames, readFlaRgbaTransform, type FlaRgbaTransform } from '../../shared/fla-instance-color';
+import { readFlaScale9Grid, type FlaScale9Rect } from '../../shared/fla-scale9';
 import {
   buildFlaTimelineFrameSpanIndex,
   findCoveringSpan,
@@ -192,6 +196,7 @@ interface SourceBuildState {
   readonly shapeBlocks: Map<string, string>;
   readonly staticTextBlocks: Map<string, FlaStaticTextDescriptor>;
   readonly sourceFps: number;
+  readonly perspective: Pick<FlaInstanceProjection, 'focalLength' | 'vanishingX' | 'vanishingY'>;
   readonly objectMotionCurves: WeakMap<FlaXflElementBlock, ReturnType<typeof parseFlaObjectMotion>>;
   readonly ikPoses: WeakMap<FlaXflElementBlock, LayerSampleResult<readonly FlaDisplayListMatrix[]>>;
   symbolAliases: SymbolAliasIndex;
@@ -559,6 +564,7 @@ interface ElementParseContext {
 interface ClassicMotionColorTransform {
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly rgbaTransform?: FlaRgbaTransform;
   readonly tintRgb?: readonly [number, number, number];
 }
 
@@ -591,6 +597,11 @@ function readSymbolColorTransform(
 
   const attributes = color.attributes;
   const names = Object.keys(attributes);
+  if (mode === 'static' && names.some((name) => name !== 'alphaMultiplier' && flaRgbaAttributeNames.has(name))) {
+    if (names.some((name) => !flaRgbaAttributeNames.has(name))) return unsupported('mixed explicit RGBA and legacy color modes');
+    const rgbaTransform = readFlaRgbaTransform(attributes);
+    return rgbaTransform ? { ok: true, transform: { rgbaTransform } } : unsupported('invalid RGBA color channels');
+  }
   if (names.some((name) => name !== 'alphaMultiplier' && name !== 'brightness' &&
       !(supportsTint && (name === 'tintMultiplier' || name === 'tintColor')))) {
     return unsupported(`unsupported Color attribute combination: ${names.join(', ')}`);
@@ -747,6 +758,15 @@ function parseStaticTextDescriptor(
     if (!Number.isFinite(letterSpacing) || Math.abs(letterSpacing) > FLA_STATIC_TEXT_LIMITS.maxLetterSpacing) {
       return { ok: false, reason: 'Static text letterSpacing is invalid or exceeds supported bounds' };
     }
+    const characterPosition = attrs.characterPosition;
+    if (characterPosition !== undefined && characterPosition !== 'normal' &&
+        characterPosition !== 'superscript' && characterPosition !== 'subscript') {
+      return { ok: false, reason: 'Unsupported static text character position' };
+    }
+    const rotation = attrs.rotation === undefined || !attrs.rotation.trim() ? undefined : Number(attrs.rotation);
+    if (rotation !== undefined && (!Number.isFinite(rotation) || Math.abs(rotation) > 360)) {
+      return { ok: false, reason: 'Static text character rotation is out of bounds' };
+    }
 
     const color = parseStaticTextColor(attrs.fillColor, attrs.alpha);
     if (!color) {
@@ -773,6 +793,8 @@ function parseStaticTextDescriptor(
       lineHeight,
       lineSpacing,
       letterSpacing,
+      ...(characterPosition ? { characterPosition } : {}),
+      ...(rotation ? { rotation } : {}),
       ...(rawFace ? { face: rawFace.slice(0, FLA_STATIC_TEXT_LIMITS.maxFontFaceLength) } : {}),
       fillColor: color.fillColor,
       alpha: color.alpha,
@@ -799,7 +821,8 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
   const filters: FlaInstanceFilter[] = [];
   for (const node of nodes) {
     const kind = node.name === 'BlurFilter' ? 'blur' : node.name === 'GlowFilter' ? 'glow'
-      : node.name === 'DropShadowFilter' ? 'dropShadow' : undefined;
+      : node.name === 'DropShadowFilter' ? 'dropShadow'
+        : node.name === 'ColorMatrixFilter' || node.name === 'AdjustColorFilter' ? 'colorMatrix' : undefined;
     const attributes = node.attributes;
     const enabledValue = attributes.isEnabled ?? attributes.enabled;
     if (![undefined, 'true', '1', 'false', '0'].includes(enabledValue)) return null;
@@ -812,12 +835,21 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
       filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0 });
       continue;
     }
+    if (kind === 'colorMatrix') {
+      const values = attributes.matrix?.trim().split(/[\s,]+/u).map(Number);
+      if (Object.keys(attributes).some((name) => !['matrix', 'enabled', 'isEnabled'].includes(name)) ||
+          getFlaXflDirectChildren(node.xml, node.name).length > 0 ||
+          values?.length !== 20 || !values.every((value) => Number.isFinite(value) && Math.abs(value) <= 1024) ||
+          values[19]! > 0) return null;
+      filters.push({ kind, enabled, blurX: 0, blurY: 0, color: '#000000', alpha: 0, strength: 0, distance: 0, angle: 0, matrix: values });
+      continue;
+    }
     const allowed = ['isEnabled', 'enabled', 'blurX', 'blurY', 'quality'];
     if (kind !== 'blur') allowed.push('color', 'alpha', 'strength', 'inner', 'knockout');
     if (kind === 'dropShadow') allowed.push('distance', 'angle', 'hideObject');
     if (Object.keys(attributes).some((key) => !allowed.includes(key)) ||
         ['inner', 'knockout', 'hideObject'].some((key) =>
-          attributes[key] !== undefined && attributes[key] !== 'false' && attributes[key] !== '0') ||
+          ![undefined, 'false', '0', ...(kind === 'glow' && key !== 'hideObject' ? ['true', '1'] : [])].includes(attributes[key])) ||
         ![undefined, '1'].includes(attributes.quality) ||
         getFlaXflDirectChildren(node.xml, node.name).length > 0) return null;
     const numeric = (key: string, fallback: number) => {
@@ -837,9 +869,49 @@ function readInstanceFilters(instance: FlaXflElementBlock): readonly FlaInstance
         alpha < 0 || alpha > 1 || strength < 0 || strength > 255 ||
         distance < 0 || distance > 255 || Math.abs(angle) > 360 ||
         !/^#[0-9a-f]{6}$/iu.test(color)) return null;
-    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle });
+    const inner = kind === 'glow' && ['true', '1'].includes(attributes.inner ?? '');
+    const knockout = kind === 'glow' && ['true', '1'].includes(attributes.knockout ?? '');
+    filters.push({ kind, enabled, blurX, blurY, color, alpha, strength, distance, angle,
+      ...(inner ? { inner } : {}), ...(knockout ? { knockout } : {}) });
   }
   return filters;
+}
+
+function readInstanceProjection(
+  instance: FlaXflElementBlock, context: ElementParseContext,
+  local: FlaDisplayListMatrix,
+): FlaInstanceProjection | null | undefined {
+  const attrs = instance.attributes;
+  // centerPoint3DX/Y are ordinary 2D pivot metadata written by Animate on normal
+  // 2D instances (including Classic Motion); only explicit 3D transform attributes
+  // or a <matrix3D> child indicate a 3D instance projection.
+  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z'] as const;
+  const hasMatrix3D = Boolean(directChild(instance.xml, instance.name, 'matrix3D'));
+  if (!transform3DNames.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
+  if (hasMatrix3D) return null;
+  const read = (key: string, fallback: number) => {
+    const value = attrs[key];
+    return value === undefined ? fallback : value.trim() ? Number(value) : NaN;
+  };
+  const rotationX = read('rotationX', 0);
+  const rotationY = read('rotationY', 0);
+  const rotationZ = read('rotationZ', 0);
+  const depth = read('z', 0);
+  if (![rotationX, rotationY, rotationZ].every((value) => Number.isFinite(value) && Math.abs(value) <= 36000) ||
+      !Number.isFinite(depth)) return null;
+  if (rotationX === 0 && rotationY === 0 && rotationZ === 0 && depth === 0) return undefined;
+  if (context.motionTweenEndpoint) return null;
+  let pivot: { pivotX: number; pivotY: number } | undefined;
+  if (attrs.centerPoint3DX !== undefined || attrs.centerPoint3DY !== undefined) {
+    const matrix = context.parentWorld;
+    const inverse = invertAffineMatrix(matrix);
+    if (!inverse) return null;
+    const x = read('centerPoint3DX', matrix.a * local.tx + matrix.c * local.ty + matrix.tx);
+    const y = read('centerPoint3DY', matrix.b * local.tx + matrix.d * local.ty + matrix.ty);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    pivot = { pivotX: inverse.a * x + inverse.c * y + inverse.tx, pivotY: inverse.b * x + inverse.d * y + inverse.ty };
+  }
+  return { ...context.state.perspective, depth, rotationX, rotationY, rotationZ, ...pivot };
 }
 
 function parseDisplayElements(
@@ -1027,17 +1099,20 @@ function parseDisplayElements(
       context.unsupportedDisplayReasons.push(colorResult.message);
       continue;
     }
-    const { alphaMultiplier, rgbTransform } = colorResult.transform ?? {};
+    const { alphaMultiplier, rgbTransform, rgbaTransform } = colorResult.transform ?? {};
+    const projection3D = readInstanceProjection(child, context, localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX);
     children.push({
       kind: 'symbol',
       libraryItemName: resolvedName,
       symbolType,
+      ...(projection3D !== undefined ? { projection3D } : {}),
       ...(movieClipRun ? { movieClipRun } : {}),
       ...(child.attributes.loop !== undefined ? { playbackMode: child.attributes.loop } : {}),
       ...(child.attributes.firstFrame !== undefined ? { firstFrame: child.attributes.firstFrame } : {}),
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
       ...(rgbTransform ? { rgbTransform } : {}),
+      ...(rgbaTransform ? { rgbaTransform } : {}),
       ...(blendResult.blendMode ? { blendMode: blendResult.blendMode } : {}),
       ...(instanceFilters.length ? { instanceFilters } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
@@ -1387,10 +1462,174 @@ function readMorphFill(shape: FlaXflElementBlock, mask: boolean): readonly numbe
   const paints = getFlaXflDirectChildren(style.xml, style.name);
   const paint = paints[0];
   if (paints.length !== 1 || paint?.name !== 'SolidColor') return null;
+  return readMorphSolidColor(paint);
+}
+
+function readMorphSolidColor(paint: FlaXflElementBlock): readonly number[] | null {
   const color = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(paint.attributes.color ?? '#000000');
   const alpha = Number(paint.attributes.alpha ?? '1');
   if (!color || !Number.isFinite(alpha) || alpha < 0 || alpha > 1) return null;
   return [...color.slice(1).map((hex) => Number.parseInt(hex, 16)), alpha];
+}
+
+type MorphPoint = readonly [number, number];
+type MorphEdgeStyles = readonly [fill0: number, fill1: number, stroke: number];
+type MorphContour = { contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] };
+
+function morphEdgeKey(start: MorphPoint, control: MorphPoint | null, end: MorphPoint): string {
+  return JSON.stringify([start, control, end]);
+}
+
+/** Read exact authored quadratic/line geometry so style sides come from the
+ * endpoint Edge, not from interpreting a MorphSegment index as a fill side. */
+function readMorphEndpointEdges(shape: FlaXflElementBlock) {
+  const edges = directChild(shape.xml, shape.name, 'edges');
+  if (!edges) return null;
+  const blocks = getFlaXflDirectChildren(edges.xml, edges.name, MAX_SHAPE_TWEEN_CURVES + 1);
+  if (blocks.length > MAX_SHAPE_TWEEN_CURVES) return null;
+  const result = new Map<string, { styles: MorphEdgeStyles; id: number }>();
+  let count = 0;
+  for (const block of blocks) {
+    if (block.name !== 'Edge') return null;
+    const raw = block.attributes.edges;
+    if (!raw || raw.length > MAX_SHAPE_TWEEN_CURVES * 96) return null;
+    const styles = ['fillStyle0', 'fillStyle1', 'strokeStyle'].map((key) => Number(block.attributes[key] ?? '0'));
+    if (styles.some((index) => !Number.isSafeInteger(index) || index < 0)) return null;
+    const [left, right, stroke] = styles as [number, number, number];
+    const tokens = raw.match(/[!|[]|[^!|[\s,]+/gu) ?? [];
+    let current: MorphPoint | null = null;
+    const readPoint = (i: number): MorphPoint | null => {
+      const point = [tokens[i], tokens[i + 1]].map((coordinate) => {
+        if (!coordinate) return NaN;
+        if (coordinate.startsWith('#')) return morphCoordinateInTwips(coordinate) / 256;
+        return /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(coordinate) ? Number(coordinate) : NaN;
+      });
+      return point.every(Number.isFinite) ? [point[0]!, point[1]!] : null;
+    };
+    for (let index = 0; index < tokens.length;) {
+      const command = tokens[index++];
+      if (command !== '!' && command !== '|' && command !== '[') return null;
+      const first = readPoint(index);
+      const control = command === '[' ? first : null;
+      const next = command === '[' ? readPoint(index + 2) : first;
+      index += command === '[' ? 4 : 2;
+      if (!first || !next) return null;
+      if (command !== '!') {
+        if (!current || count >= MAX_SHAPE_TWEEN_CURVES) return null;
+        const forward = morphEdgeKey(current, control, next);
+        const reverse = morphEdgeKey(next, control, current);
+        if (forward === reverse || result.has(forward) || result.has(reverse)) return null;
+        result.set(forward, { id: count, styles: [left, right, stroke] });
+        result.set(reverse, { id: count, styles: [right, left, stroke] });
+        count += 1;
+      }
+      current = next;
+    }
+  }
+  return { result, count };
+}
+
+function readMorphStyleBlocks(shape: FlaXflElementBlock, wrapper: 'fills' | 'strokes') {
+  const tag = wrapper === 'fills' ? 'FillStyle' : 'StrokeStyle';
+  const container = directChild(shape.xml, shape.name, wrapper);
+  const styles = new Map<number, FlaXflElementBlock>();
+  if (!container) return styles;
+  const entries = getFlaXflDirectChildren(container.xml, container.name, 257);
+  if (entries.length > 256) return null;
+  for (const entry of entries) {
+    const index = Number(entry.attributes.index);
+    if (entry.name !== tag || !Number.isSafeInteger(index) || index <= 0 || styles.has(index)) return null;
+    styles.set(index, entry);
+  }
+  return styles;
+}
+
+function sampleMorphSolidPaint(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name !== 'SolidColor' || b.name !== 'SolidColor') return null;
+  const channels = sampleMorphColorChannels(a, b, lerp);
+  return channels ? `<SolidColor ${channels}/>` : null;
+}
+
+function sampleMorphColorChannels(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  const left = readMorphSolidColor(a);
+  const right = readMorphSolidColor(b);
+  if (!left || !right) return null;
+  const color = left.slice(0, 3).map((value, i) =>
+    Math.round(lerp(value, right[i]!)).toString(16).padStart(2, '0')).join('');
+  return `color="#${color}" alpha="${lerp(left[3]!, right[3]!)}"`;
+}
+
+function sampleMorphFillPaint(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name === 'SolidColor') return sampleMorphSolidPaint(a, b, lerp);
+  if (a.name !== b.name || (a.name !== 'LinearGradient' && a.name !== 'RadialGradient')) return null;
+  const radial = a.name === 'RadialGradient';
+  const isAllowed = (key: string) => ['spreadMethod', 'interpolationMethod'].includes(key) || (radial && key === 'focalPointRatio');
+  if ([...Object.keys(a.attributes), ...Object.keys(b.attributes)].some((key) => !isAllowed(key))) return null;
+  const spread = a.attributes.spreadMethod ?? 'pad';
+  const interpolation = a.attributes.interpolationMethod ?? 'rgb';
+  if (spread !== (b.attributes.spreadMethod ?? 'pad') || !['pad', 'reflect', 'repeat'].includes(spread) ||
+      interpolation !== (b.attributes.interpolationMethod ?? 'rgb') || !['rgb', 'linearRGB'].includes(interpolation)) return null;
+  const focalA = Number(a.attributes.focalPointRatio ?? '0');
+  const focalB = Number(b.attributes.focalPointRatio ?? '0');
+  if (![focalA, focalB].every((value) => Number.isFinite(value) && Math.abs(value) <= 1)) return null;
+  const matrixA = readDirectMatrix(a);
+  const matrixB = readDirectMatrix(b);
+  if (!matrixA.ok || !matrixB.ok || !matrixA.present || !matrixB.present) return null;
+  const keys = ['a', 'b', 'c', 'd', 'tx', 'ty'] as const;
+  if (keys.some((key) => Math.abs(matrixA.matrix[key]) > 1_000_000 || Math.abs(matrixB.matrix[key]) > 1_000_000)) return null;
+  const matrix = keys.map((key) => `${key}="${lerp(matrixA.matrix[key], matrixB.matrix[key])}"`).join(' ');
+  const readStops = (gradient: FlaXflElementBlock) => {
+    const children = getFlaXflDirectChildren(gradient.xml, gradient.name, 34);
+    const stops = children.filter((entry) => entry.name === 'GradientEntry');
+    const matrices = children.filter((entry) => entry.name === 'matrix');
+    if (stops.length < 2 || stops.length > 32 || matrices.length !== 1 || stops.length + matrices.length !== children.length) return null;
+    const ratios = stops.map((stop) => Number(stop.attributes.ratio ?? '0'));
+    return ratios.every((ratio, i) => Number.isFinite(ratio) && ratio >= (ratios[i - 1] ?? 0) && ratio <= 1) ? { stops, ratios } : null;
+  };
+  const left = readStops(a);
+  const right = readStops(b);
+  if (!left || !right || left.stops.length !== right.stops.length) return null;
+  const stops: string[] = [];
+  for (let i = 0; i < left.stops.length; i += 1) {
+    const channels = sampleMorphColorChannels(left.stops[i]!, right.stops[i]!, lerp);
+    if (!channels) return null;
+    stops.push(`<GradientEntry ratio="${lerp(left.ratios[i]!, right.ratios[i]!)}" ${channels}/>`);
+  }
+  const focal = radial ? ` focalPointRatio="${lerp(focalA, focalB)}"` : '';
+  return `<${a.name} spreadMethod="${spread}" interpolationMethod="${interpolation}"${focal}>` +
+    `<matrix><Matrix ${matrix}/></matrix>${stops.join('')}</${a.name}>`;
+}
+
+function sampleMorphSolidStroke(a: FlaXflElementBlock, b: FlaXflElementBlock, lerp: (a: number, b: number) => number) {
+  if (a.name !== 'SolidStroke' || b.name !== 'SolidStroke') return null;
+  const discrete = (stroke: FlaXflElementBlock) => ({
+    caps: stroke.attributes.caps ?? 'round',
+    joints: stroke.attributes.joints ?? 'round',
+    scaleMode: stroke.attributes.scaleMode ?? 'normal',
+    miterLimit: Number(stroke.attributes.miterLimit ?? '3'),
+    pixelHinting: stroke.attributes.pixelHinting ?? 'false',
+  });
+  const props = discrete(a);
+  if (JSON.stringify(props) !== JSON.stringify(discrete(b)) ||
+      !['none', 'butt', 'round', 'square'].includes(props.caps) ||
+      !['miter', 'round', 'bevel'].includes(props.joints) ||
+      props.scaleMode !== 'normal' ||
+      !Number.isFinite(props.miterLimit) || props.miterLimit < 1 ||
+      !['true', 'false'].includes(props.pixelHinting)) return null;
+  const readStroke = (stroke: FlaXflElementBlock) => {
+    const children = getFlaXflDirectChildren(stroke.xml, stroke.name);
+    if (children.length !== 1 || children[0]?.name !== 'fill') return null;
+    const fills = getFlaXflDirectChildren(children[0].xml, 'fill');
+    const weight = Number(stroke.attributes.weight ?? '1');
+    return fills.length === 1 && Number.isFinite(weight) && weight > 0 ? { fill: fills[0]!, weight } : null;
+  };
+  const left = readStroke(a);
+  const right = readStroke(b);
+  if (!left || !right) return null;
+  const paint = sampleMorphSolidPaint(left.fill, right.fill, lerp);
+  if (!paint) return null;
+  const attrs = Object.entries(props).map(([key, value]) => `${key}="${value}"`).join(' ');
+  return `<SolidStroke ${attrs} weight="${lerp(left.weight, right.weight)}"><fill>${paint}</fill></SolidStroke>`;
 }
 
 function sampleMorphContour(
@@ -1427,52 +1666,182 @@ function sampleMorphContour(
   return commands.join('');
 }
 
+type ShapeTweenSampleResult =
+  | { readonly ok: true; readonly xml: string }
+  | { readonly ok: false; readonly reason: string };
+
+function samplePairedMorphStyles(
+  start: FlaXflElementBlock,
+  end: FlaXflElementBlock,
+  contours: readonly MorphContour[],
+  lerp: (a: number, b: number) => number,
+  interpolatePoint: (a: MorphPoint, b: MorphPoint) => string,
+): ShapeTweenSampleResult {
+  const startEdges = readMorphEndpointEdges(start);
+  const endEdges = readMorphEndpointEdges(end);
+  if (!startEdges || !endEdges || startEdges.count !== endEdges.count) {
+    return { ok: false, reason: 'contour/edge pairing mismatch' };
+  }
+  const startFills = readMorphStyleBlocks(start, 'fills');
+  const endFills = readMorphStyleBlocks(end, 'fills');
+  const startStrokes = readMorphStyleBlocks(start, 'strokes');
+  const endStrokes = readMorphStyleBlocks(end, 'strokes');
+  if (!startFills || !endFills || !startStrokes || !endStrokes) {
+    return { ok: false, reason: 'fill/stroke style definition invalid' };
+  }
+  const usedStart = new Set<number>();
+  const usedEnd = new Set<number>();
+  const fillIds = new Map<string, number>();
+  const strokeIds = new Map<string, number>();
+  const fills: string[] = [];
+  const strokes: string[] = [];
+  const edges: string[] = [];
+  const pairedStyle = (a: number, b: number, stroke: boolean): { readonly ok: true; readonly id: number } | { readonly ok: false; readonly reason: string } => {
+    if (!a || !b) return a === b ? { ok: true, id: 0 } : { ok: false, reason: stroke ? 'stroke pairing mismatch' : 'fill pairing mismatch' };
+    const ids = stroke ? strokeIds : fillIds;
+    const key = `${a}/${b}`;
+    const prior = ids.get(key);
+    if (prior) return { ok: true, id: prior };
+    const first = (stroke ? startStrokes : startFills).get(a);
+    const last = (stroke ? endStrokes : endFills).get(b);
+    if (!first || !last) return { ok: false, reason: stroke ? 'stroke style reference missing' : 'fill style reference missing' };
+    const firstChildren = getFlaXflDirectChildren(first.xml, first.name, 2);
+    const lastChildren = getFlaXflDirectChildren(last.xml, last.name, 2);
+    if (firstChildren.length !== 1 || lastChildren.length !== 1) {
+      return { ok: false, reason: stroke ? 'stroke style structure unsupported' : 'fill style structure unsupported' };
+    }
+    const firstChild = firstChildren[0]!;
+    const lastChild = lastChildren[0]!;
+    const paint = stroke ? sampleMorphSolidStroke(firstChild, lastChild, lerp)
+      : sampleMorphFillPaint(firstChild, lastChild, lerp);
+    if (!paint || ids.size >= 256) {
+      const detail = stroke
+        ? 'stroke style mismatch'
+        : firstChild.name !== lastChild.name
+          ? `fill/gradient type mismatch (${firstChild.name} vs ${lastChild.name})`
+          : firstChild.name === 'LinearGradient' || firstChild.name === 'RadialGradient'
+            ? 'gradient stop/parameter mismatch'
+            : 'fill style mismatch';
+      return { ok: false, reason: detail };
+    }
+    const id = ids.size + 1;
+    ids.set(key, id);
+    const tag = stroke ? 'StrokeStyle' : 'FillStyle';
+    (stroke ? strokes : fills).push(`<${tag} index="${id}">${paint}</${tag}>`);
+    return { ok: true, id };
+  };
+  for (const { contour, curves } of contours) {
+    let pointA = readMorphPoint(contour.attributes.startPointA);
+    let pointB = readMorphPoint(contour.attributes.startPointB);
+    if (!pointA || !pointB) return { ok: false, reason: 'contour start point pairing mismatch' };
+    for (const curve of curves) {
+      if (curve.name !== 'MorphCurves' || ![undefined, 'true', 'false'].includes(curve.attributes.isLine)) {
+        return { ok: false, reason: 'contour curve pairing invalid' };
+      }
+      const isLine = curve.attributes.isLine === 'true';
+      const endA = readMorphPoint(curve.attributes.anchorPointA);
+      const endB = readMorphPoint(curve.attributes.anchorPointB);
+      const controlA = isLine ? null : readMorphPoint(curve.attributes.controlPointA);
+      const controlB = isLine ? null : readMorphPoint(curve.attributes.controlPointB);
+      if (!endA || !endB || (!isLine && (!controlA || !controlB))) {
+        return { ok: false, reason: 'contour anchor/control point pairing mismatch' };
+      }
+      const a = startEdges.result.get(morphEdgeKey(pointA, controlA, endA));
+      const b = endEdges.result.get(morphEdgeKey(pointB, controlB, endB));
+      if (!a || !b || usedStart.has(a.id) || usedEnd.has(b.id)) {
+        return { ok: false, reason: 'contour/edge pairing mismatch' };
+      }
+      usedStart.add(a.id);
+      usedEnd.add(b.id);
+      const [fill0Res, fill1Res, strokeRes] = a.styles.map((style, i) => pairedStyle(style, b.styles[i]!, i === 2)) as [
+        ReturnType<typeof pairedStyle>,
+        ReturnType<typeof pairedStyle>,
+        ReturnType<typeof pairedStyle>,
+      ];
+      if (!fill0Res.ok) return fill0Res;
+      if (!fill1Res.ok) return fill1Res;
+      if (!strokeRes.ok) return strokeRes;
+      const attributes = [
+        fill0Res.id ? `fillStyle0="${fill0Res.id}"` : '',
+        fill1Res.id ? `fillStyle1="${fill1Res.id}"` : '',
+        strokeRes.id ? `strokeStyle="${strokeRes.id}"` : '',
+      ].filter(Boolean).join(' ');
+      const origin = interpolatePoint(pointA, pointB);
+      const target = interpolatePoint(endA, endB);
+      const command = controlA && controlB ? '[' + interpolatePoint(controlA, controlB) + ' ' + target : '|' + target;
+      edges.push(`<Edge ${attributes} edges="!${origin}${command}"/>`);
+      pointA = endA;
+      pointB = endB;
+    }
+  }
+  if (usedStart.size !== startEdges.count || usedEnd.size !== endEdges.count) {
+    return { ok: false, reason: 'contour/edge pairing incomplete' };
+  }
+  const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
+  return {
+    ok: true,
+    xml: `<DOMShape>${matrix}${fills.length ? `<fills>${fills.join('')}</fills>` : ''}` +
+      `${strokes.length ? `<strokes>${strokes.join('')}</strokes>` : ''}<edges>${edges.join('')}</edges></DOMShape>`,
+  };
+}
+
 function sampleSolidShapeTween(
   startFrame: FlaXflElementBlock,
   start: FlaXflElementBlock,
   end: FlaXflElementBlock,
   linearProgress: number,
   mask = false,
-): string | null {
+): ShapeTweenSampleResult {
   const startFill = readMorphFill(start, mask);
   const endFill = readMorphFill(end, mask);
   const startMatrix = readDirectMatrix(start);
   const endMatrix = readDirectMatrix(end);
-  if (!startFill || !endFill || !startMatrix.ok || !endMatrix.ok ||
+  if (!startMatrix.ok || !endMatrix.ok ||
       !Object.entries(startMatrix.matrix).every(([key, value]) =>
-        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) return null;
+        endMatrix.matrix[key as keyof FlaDisplayListMatrix] === value)) {
+    return { ok: false, reason: 'endpoint shape transform mismatch' };
+  }
 
   const ease = classicMotionEasesForFrame(startFrame);
-  if (!ease.ok) return null;
+  if (!ease.ok) return { ok: false, reason: 'unsupported shape tween easing' };
   const timing = evaluateFlaViewerClassicTweenProgress(linearProgress, ease.acceleration, ease.eases);
-  if (!timing.ok) return null;
+  if (!timing.ok) return { ok: false, reason: 'shape tween easing evaluation failed' };
   const lerp = (a: number, b: number) => a + (b - a) * timing.progress;
   const morph = directChild(startFrame.xml, startFrame.name, 'MorphShape');
   const segments = morph && directChild(morph.xml, morph.name, 'morphSegments');
-  if (!segments) return null;
+  if (!segments) return { ok: false, reason: 'missing MorphShape segment pairing' };
   const contours = getFlaXflDirectChildren(segments.xml, segments.name, MAX_SHAPE_TWEEN_CURVES + 1);
-  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) return null;
+  if (contours.length === 0 || contours.length > MAX_SHAPE_TWEEN_CURVES) {
+    return { ok: false, reason: contours.length === 0 ? 'empty morph segment list' : 'shape tween curve budget exceeded' };
+  }
 
   // Every segment needs at least one curve. Budget the entire tween before
   // interpolating any geometry or constructing the compound path.
   let remainingCurves = MAX_SHAPE_TWEEN_CURVES;
-  const boundedContours: Array<{ contour: FlaXflElementBlock; curves: readonly FlaXflElementBlock[] }> = [];
+  const boundedContours: MorphContour[] = [];
   for (const contour of contours) {
-    if (contour.name !== 'MorphSegment' ||
-        contour.attributes.fillIndex1 !== '0' || contour.attributes.fillIndex2 !== '0' ||
-        (!mask && (contour.attributes.strokeIndex1 !== '0' || contour.attributes.strokeIndex2 !== '0'))) return null;
+    if (contour.name !== 'MorphSegment') return { ok: false, reason: 'invalid morph segment structure' };
     const curves = getFlaXflDirectChildren(contour.xml, contour.name, remainingCurves + 1);
-    if (curves.length === 0 || curves.length > remainingCurves) return null;
+    if (curves.length === 0 || curves.length > remainingCurves) {
+      return { ok: false, reason: curves.length === 0 ? 'empty morph contour curves' : 'shape tween curve budget exceeded' };
+    }
     remainingCurves -= curves.length;
     boundedContours.push({ contour, curves });
   }
 
   const interpolatePoint = (a: readonly [number, number], b: readonly [number, number]) =>
     lerp(a[0], b[0]) + ' ' + lerp(a[1], b[1]);
+  const hasLegacyIndices = contours.every(({ attributes }) => attributes.fillIndex1 === '0' &&
+    attributes.fillIndex2 === '0' && (mask || (attributes.strokeIndex1 === '0' && attributes.strokeIndex2 === '0')));
+  if (!startFill || !endFill || !hasLegacyIndices) {
+    return mask
+      ? { ok: false, reason: 'unsupported mask shape tween style' }
+      : samplePairedMorphStyles(start, end, boundedContours, lerp, interpolatePoint);
+  }
   const commands: string[] = [];
   for (const { contour, curves } of boundedContours) {
     const sampled = sampleMorphContour(contour, curves, interpolatePoint);
-    if (sampled === null) return null;
+    if (sampled === null) return { ok: false, reason: 'contour/curve pairing mismatch' };
     commands.push(sampled);
   }
 
@@ -1480,10 +1849,13 @@ function sampleSolidShapeTween(
     Math.round(lerp(value, endFill[i]!)).toString(16).padStart(2, '0')).join('');
   const alpha = lerp(startFill[3]!, endFill[3]!);
   const matrix = directChild(start.xml, start.name, 'matrix')?.xml ?? '';
-  return '<DOMShape>' + matrix +
-    '<fills><FillStyle index="1"><SolidColor color="#' + color + '" alpha="' + alpha +
-    '"/></FillStyle></fills><edges><Edge fillStyle0="1" edges="' + commands.join('') +
-    '"/></edges></DOMShape>';
+  return {
+    ok: true,
+    xml: '<DOMShape>' + matrix +
+      '<fills><FillStyle index="1"><SolidColor color="#' + color + '" alpha="' + alpha +
+      '"/></FillStyle></fills><edges><Edge fillStyle0="1" edges="' + commands.join('') +
+      '"/></edges></DOMShape>',
+  };
 }
 
 type ClassicMotionFrameBlurResult =
@@ -2467,9 +2839,40 @@ function buildObjectMotionFrameElements(
     }
     instanceFilters = merged;
   }
+  let projection3D = element.projection3D;
+  if (projection3D !== null && (projection3D !== undefined || pose.projection3D !== undefined)) {
+    const baseMatrix = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const dx = pose.matrix.tx - baseMatrix.tx;
+    const dy = pose.matrix.ty - baseMatrix.ty;
+    const rotationX = pose.projection3D?.rotationX ?? projection3D?.rotationX ?? 0;
+    const rotationY = pose.projection3D?.rotationY ?? projection3D?.rotationY ?? 0;
+    const depth = (projection3D?.depth ?? 0) + (pose.projection3D?.depthDelta ?? 0);
+    if (Math.abs(rotationX) < 1e-9 && Math.abs(rotationY) < 1e-9 && Math.abs(depth) < 1e-9) {
+      projection3D = undefined;
+    } else {
+      const baseProj = projection3D ?? context.state.perspective;
+      const pivotX = projection3D?.pivotX !== undefined ? projection3D.pivotX + dx : pose.matrix.tx;
+      const pivotY = projection3D?.pivotY !== undefined ? projection3D.pivotY + dy : pose.matrix.ty;
+      projection3D = {
+        focalLength: baseProj.focalLength,
+        vanishingX: baseProj.vanishingX,
+        vanishingY: baseProj.vanishingY,
+        pivotX,
+        pivotY,
+        depth,
+        rotationX,
+        rotationY,
+        // Object Motion already bakes Rotation_Z into pose.matrix; never apply Z twice.
+        rotationZ: 0,
+      };
+    }
+  }
+  const { projection3D: _priorProjection3D, ...elementWithoutProjection } = element;
+  void _priorProjection3D;
   const rigged = applyRigCorrectionToElements(context, layerIndex, frame, frameIndex, spanStart, [{
-    ...element,
+    ...elementWithoutProjection,
     localTransform: pose.matrix,
+    ...(projection3D !== undefined ? { projection3D } : {}),
     ...(instanceFilters ? { instanceFilters } : {}),
     ...(alpha !== undefined ? { alphaMultiplier: alpha } : {}),
     ...(rgb ? { rgbTransform: rgb } : {}),
@@ -2725,6 +3128,7 @@ function buildGraphicFrameContext(
     matrixCache: new Map(),
     ...(options?.onRigMatrixComputed ? { onMatrixComputed: options.onRigMatrixComputed } : {}),
   };
+  const projectionDiagnostics: string[] = [];
   const sampleLayer = (
     selection: FlaTimelineFrameSelection<FlaXflElementBlock>,
     layerReasons: string[],
@@ -2758,16 +3162,23 @@ function buildGraphicFrameContext(
       const endElements = end ? frameDisplayElements(end.sourceFrame) : [];
       const startShape = startElements[0];
       const endShape = endElements[0];
-      const sampledXml = startElements.length === 1 && endElements.length === 1 &&
+      const sampled: ShapeTweenSampleResult = startElements.length === 1 && endElements.length === 1 &&
         startShape?.name === 'DOMShape' && endShape?.name === 'DOMShape'
         ? sampleSolidShapeTween(start.sourceFrame, startShape, endShape, (frameIndex - start.index) / start.duration, isMask)
-        : null;
-      if (isMask && !sampledXml) return fail('RENDER_FAILED', '遮罩的形状补间超出支持范围');
+        : { ok: false, reason: 'endpoint shape or element count mismatch' };
+      if (isMask && !sampled.ok) return fail('RENDER_FAILED', '遮罩的形状补间超出支持范围');
       // When the morph pair is outside the supported subset, keep the authored
-      // start drawing on this layer and continue evaluating the other layers.
+      // start drawing on this layer, record a local diagnostic with affected group
+      // and source frame range, and continue evaluating the other layers.
+      if (!sampled.ok && projectionDiagnostics.length < 32) {
+        const layerLabel = layers[selection.layerIndex]?.attributes.name?.trim() || `layer-${selection.layerIndex + 1}`;
+        projectionDiagnostics.push(
+          `${layerLabel}（${scope}，第 ${start.index + 1}–${start.endExclusive} 帧）：Shape Tween 回退至起始关键帧（${sampled.reason}）`.slice(0, 500),
+        );
+      }
       const frame = start.sourceFrame;
-      const container = sampledXml
-        ? { name: 'elements', attributes: {}, xml: '<elements>' + sampledXml + '</elements>' }
+      const container = sampled.ok
+        ? { name: 'elements', attributes: {}, xml: '<elements>' + sampled.xml + '</elements>' }
         : directChild(frame.xml, frame.name, 'elements') ?? frame;
       const parsed = parseDisplayElements(container, {
         scope,
@@ -3042,7 +3453,6 @@ function buildGraphicFrameContext(
 
   const resolvedLayers: Array<FlaDisplayListFrameContext['layers'][number] & { depth?: number }> = [];
   const unsupportedDisplayReasons: string[] = [];
-  const projectionDiagnostics: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
@@ -3171,6 +3581,7 @@ interface GraphicSymbolShell {
   readonly frameCount: number;
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
   readonly symbolType?: string;
+  readonly scale9Grid?: FlaScale9Rect;
   readonly movieClipHasScript?: boolean;
   readonly movieClipStopFrames?: readonly number[];
 }
@@ -3511,10 +3922,18 @@ function* adaptFlaXflDisplaySourceSteps(
   const rawFps = documentAttributes?.frameRate;
   const sourceFps = rawFps === undefined && documentAttributes?.creatorInfo === 'Adobe Animate' &&
     /^Saved by Animate\b/u.test(documentAttributes.versionInfo ?? '') ? 24 : Number(rawFps);
+  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
+  const viewAngle = Number(documentAttributes?.viewAngle3D ?? 55);
+  const perspective = {
+    focalLength: viewAngle > 0 && viewAngle < 180 ? sceneStage.width / (2 * Math.tan(viewAngle * Math.PI / 360)) : Number.NaN,
+    vanishingX: Number(documentAttributes?.vanishingPoint3DX ?? sceneStage.width / 2),
+    vanishingY: Number(documentAttributes?.vanishingPoint3DY ?? sceneStage.height / 2),
+  };
   const state: SourceBuildState = {
     shapeBlocks,
     staticTextBlocks,
     sourceFps: Number.isFinite(sourceFps) && sourceFps > 0 ? sourceFps : Number.NaN,
+    perspective,
     objectMotionCurves: new WeakMap(),
     ikPoses: new WeakMap(),
     symbolAliases: { exact: new Map(), basename: new Map() },
@@ -3548,12 +3967,14 @@ function* adaptFlaXflDisplaySourceSteps(
       symbolType !== 'graphic' && /<(?:Actionscript|script)\b/iu.test(library.xml)
         ? analyzeMovieClipSymbolScripts(library.xml, timeline.xml, timeline.frameSpanIndex, timeline.frameCount)
         : { kind: 'none' };
+    const scale9Grid = readFlaScale9Grid(root.attributes);
     shells.push({
       sourceLibraryItemName,
       userLabel,
       timelineXml: timeline.xml,
       frameCount: timeline.frameCount,
       frameSpanIndex: timeline.frameSpanIndex,
+      ...(scale9Grid ? { scale9Grid } : {}),
       ...(symbolType ? { symbolType } : {}),
       ...(scriptAnalysis.kind === 'unsupported' ? { movieClipHasScript: true } : {}),
       ...(scriptAnalysis.kind === 'stop-frames' ? { movieClipStopFrames: scriptAnalysis.stopFrames } : {}),
@@ -3586,6 +4007,7 @@ function* adaptFlaXflDisplaySourceSteps(
       kind: 'graphic',
       libraryItemName: shell.sourceLibraryItemName,
       sourceFrameCount: shell.frameCount,
+      ...(shell.scale9Grid ? { scale9Grid: shell.scale9Grid } : {}),
       frameContext: parsed.value,
     };
     const descriptor = {
@@ -3615,7 +4037,6 @@ function* adaptFlaXflDisplaySourceSteps(
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   const indexedSceneSpans = new Map<string, FlaTimelineFrameSpanIndex<FlaXflElementBlock>>();
   const projectedScenes = new Set<string>();
-  const sceneStage = { width: parseStageDimension(docXml, 'width', 550), height: parseStageDimension(docXml, 'height', 400) };
   for (const scene of sceneSources.value) {
     yield;
     const scope = `scene:${scene.index}`;

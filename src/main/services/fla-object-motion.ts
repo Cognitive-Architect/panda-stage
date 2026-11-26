@@ -18,7 +18,7 @@ interface Curve {
   readonly keys: readonly Key[];
   readonly ease: (unitTime: number) => number;
 }
-type FilterField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha';
+type FilterField = 'distance' | 'blurX' | 'blurY' | 'angle' | 'strength' | 'color' | 'alpha' | 'inner' | 'knockout';
 type FilterNumericField = 'blurX' | 'blurY' | 'strength' | 'distance' | 'angle';
 type FilterNumericSpec = readonly [FilterNumericField, number, number, number];
 export type ObjectMotionFilterParameters = { -readonly [K in FilterField]?: FlaInstanceFilter[K] };
@@ -48,15 +48,21 @@ interface AnimationCore {
   readonly curves: ReadonlyMap<string, Curve>;
   readonly filters: readonly FilterTrack[];
 }
+export interface ObjectMotionProjection3D {
+  readonly rotationX?: number;
+  readonly rotationY?: number;
+  readonly depthDelta?: number;
+}
 export interface ObjectMotionPose {
   readonly matrix: FlaDisplayListMatrix;
   readonly alphaMultiplier?: number;
   readonly rgbTransform?: FlaDisplayListRgbTransform;
   readonly filters?: readonly ObjectMotionFilter[];
+  readonly projection3D?: ObjectMotionProjection3D;
 }
 
 const supportedProperties = new Set([
-  'Motion_X', 'Motion_Y', 'Rotation_Z', 'Skew_X', 'Skew_Y', 'Scale_X', 'Scale_Y',
+  'Motion_X', 'Motion_Y', 'Motion_Z', 'Rotation_X', 'Rotation_Y', 'Rotation_Z', 'Skew_X', 'Skew_Y', 'Scale_X', 'Scale_Y',
   'Alpha_Amount', 'Brightness_Amount', 'Tint_Amount', 'Tint_Color',
 ]);
 const degrees = Math.PI / 180;
@@ -131,6 +137,21 @@ function readEase(map: MotionXmlNode): Curve['ease'] | undefined {
     const count = Math.trunc(rawStrength);
     if (count < 1) return linear;
     return createSpringEase(count);
+  }
+  const intervals = Math.trunc(rawStrength);
+  switch (type) {
+    case 'SineWave':
+      return intervals < 1 ? linear : (ratio) => Math.sin(Math.PI * intervals * ratio / 2) ** 2;
+    case 'SawtoothWave':
+      // Animate's preset traverses a triangle, rather than jumping at its peak.
+      return (ratio) => 1 - Math.abs((ratio * Math.max(1, intervals)) % 2 - 1);
+    case 'SquareWave':
+      return (ratio) => Number((ratio * Math.max(2, intervals)) % 2 > 1);
+    case 'DampedWave':
+      return intervals < 1 ? linear : (ratio) => {
+        const phase = intervals * ratio;
+        return -0.5 * Math.exp(-phase) * Math.cos(2 * Math.PI * phase);
+      };
   }
   const strength = rawStrength / 100;
   const dual = type.startsWith('Dual');
@@ -219,8 +240,6 @@ const filterColorParameters = new Set(['Glow_Color', 'DropShadow_Color']);
 const filterNeutralParameters = new Map<string, number>([
   ['Blur_Quality', 1],
   ['Glow_Quality', 1],
-  ['Glow_Knockout', 0],
-  ['Glow_InnerGlow', 0],
   ['DropShadow_Quality', 1],
   ['DropShadow_Knockout', 0],
   ['DropShadow_InnerShadow', 0],
@@ -333,6 +352,12 @@ export function parseFlaObjectMotion(
               } else {
                 filterCurves[field] = [curve, numeric];
               }
+            } else if (id === 'Glow_Knockout' || id === 'Glow_InnerGlow') {
+              const constant = constantCurveValue(curve);
+              if (constant !== 0 && constant !== 1) return invalid('Unsupported instance filter channel ' + id);
+              const authored = matchIndex >= 0 ? authoredFilters[matchIndex] : undefined;
+              const field = id === 'Glow_Knockout' ? 'knockout' : 'inner';
+              if (constant === 1 || authored?.[field]) parameters[field] = constant === 1;
             } else {
               const constant = constantCurveValue(curve);
               if (constant === undefined || filterNeutralParameters.get(id) !== constant) {
@@ -489,10 +514,28 @@ export function evaluateFlaObjectMotion(
     }
     evaluatedFilters.push({ kind: track.kind, parameters });
   }
+  const hasProjectionCurves = core.curves.has('Rotation_X') || core.curves.has('Rotation_Y') || core.curves.has('Motion_Z');
+  let projection3D: ObjectMotionProjection3D | undefined;
+  if (hasProjectionCurves) {
+    const rotationX = core.curves.has('Rotation_X') ? value('Rotation_X', 0) : undefined;
+    const rotationY = core.curves.has('Rotation_Y') ? value('Rotation_Y', 0) : undefined;
+    const depthDelta = core.curves.has('Motion_Z') ? value('Motion_Z', 0) : undefined;
+    if ((rotationX !== undefined && (!Number.isFinite(rotationX) || Math.abs(rotationX) > 36000)) ||
+        (rotationY !== undefined && (!Number.isFinite(rotationY) || Math.abs(rotationY) > 36000)) ||
+        (depthDelta !== undefined && !Number.isFinite(depthDelta))) {
+      return invalid('三维变换数值无效');
+    }
+    projection3D = {
+      ...(rotationX !== undefined ? { rotationX } : {}),
+      ...(rotationY !== undefined ? { rotationY } : {}),
+      ...(depthDelta !== undefined ? { depthDelta } : {}),
+    };
+  }
   return { ok: true, value: {
     matrix,
     ...(evaluatedFilters.length ? { filters: evaluatedFilters } : {}),
     ...(alphaMultiplier !== undefined ? { alphaMultiplier } : {}),
     ...(rgbTransform ? { rgbTransform } : {}),
+    ...(projection3D ? { projection3D } : {}),
   } };
 }

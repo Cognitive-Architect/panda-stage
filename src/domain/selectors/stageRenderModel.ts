@@ -9,7 +9,7 @@ import type {
   Shot,
 } from '../models';
 import { evaluateShotAtTime, type EvaluatedLayer, type EvaluatedShot } from '../evaluate-shot-at-time';
-import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
+import { resolveRuntimeImageAsset, resolveLayerImageAsset } from './canvasLayers';
 import {
   resolveCharacterActionRenderTransform,
   resolveLayerVisualParts,
@@ -77,7 +77,7 @@ export function buildEditorStageRenderModel(
       // composite Character is never reduced to this one asset.
       const primaryPart = visual.parts[0];
       const asset = primaryPart?.assetId
-        ? resolveImageAsset(project, primaryPart.assetId)
+        ? resolveRuntimeImageAsset(project, primaryPart.assetId)
         : baseAsset;
       const compatibilityAsset =
         asset ??

@@ -137,6 +137,14 @@ export function getRightInspectorLayerSummary(
     return { asset, typeLabel: animation && 'kind' in animation && animation.kind === 'fla-graphic' && animation.structure ? '元件' : '正式动画图层' };
   }
 
+  if (source.kind === 'video') {
+    const asset =
+      snapshot.project.assets.find(
+        (candidate) => candidate.id === source.assetId,
+      ) ?? null;
+    return { asset, typeLabel: '内嵌视频图层' };
+  }
+
   const character =
     snapshot.project.characters?.find(
       (candidate) => candidate.id === source.characterId,

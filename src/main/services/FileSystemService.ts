@@ -24,8 +24,8 @@ import { formatFrameFileName } from '../../shared/export-types';
 
 const FRAME_NAME_PATTERN = /^frame_(\d{6,})\.png$/u;
 const execFileAsync = promisify(execFile);
-const LONGEST_FORMAL_OUTPUT_STAGING_NAME =
-  `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
+const FORMAL_OUTPUT_STAGING_STEM =
+  `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}`;
 const WINDOWS_VOLUME_INFO_SCRIPT = [
   "$volumes = @(Get-Volume -FilePath $env:PANDA_STAGE_EXPORT_VOLUME_PATH -ErrorAction Stop)",
   'if ($volumes.Count -ne 1) { exit 21 }',
@@ -67,7 +67,7 @@ export function isWithinWindowsFormalExportPathLimit(
   const outputDirectory = path.win32.dirname(resolvedOutputPath);
   const longestStagingPath = path.win32.join(
     outputDirectory,
-    LONGEST_FORMAL_OUTPUT_STAGING_NAME,
+    `${FORMAL_OUTPUT_STAGING_STEM}${path.win32.extname(resolvedOutputPath)}`,
   );
   return (
     resolvedOutputPath.length <=
@@ -132,7 +132,7 @@ export class FileSystemService implements FrameFileSystem {
     firstOrdinal = 1,
   ): Promise<FormalOutputPathSuggestion> {
     const resolvedPath = path.resolve(defaultPath);
-    if (path.extname(resolvedPath).toLocaleLowerCase() !== '.mp4') {
+    if (!['.mp4', '.webm', '.gif'].includes(path.extname(resolvedPath).toLocaleLowerCase())) {
       return { path: resolvedPath, ordinal: 1 };
     }
     const { dir, name, ext } = path.parse(resolvedPath);
@@ -325,9 +325,11 @@ export class FileSystemService implements FrameFileSystem {
     }
     const resolvedOutputPath = path.resolve(outputPath);
     const outputDirectory = path.dirname(resolvedOutputPath);
+    const rawExtension = path.extname(resolvedOutputPath).toLowerCase();
+    const extension = rawExtension === '.webm' || rawExtension === '.gif' ? rawExtension : '.mp4';
     return path.join(
       outputDirectory,
-      `.panda-stage-export-${jobId}-${randomUUID()}.mp4`,
+      `.panda-stage-export-${jobId}-${randomUUID()}${extension}`,
     );
   }
 

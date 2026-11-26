@@ -147,6 +147,11 @@ import {
   type FlaSoundTimelineImportRequest,
 } from '../shared/fla-sound-api';
 import {
+  FlaVideoImportRequestSchema,
+  FlaVideoImportResponseSchema,
+  type FlaVideoImportRequest,
+} from '../shared/fla-video-api';
+import {
   FlaAssetCommitRequestSchema,
   FlaAssetCommitResponseSchema,
   type FlaAssetCommitRequest,
@@ -676,6 +681,12 @@ const pandaStageApi = Object.freeze({
       const request = FlaSoundTimelineImportRequestSchema.parse(rawRequest);
       return FlaSoundTimelineImportResponseSchema.parse(
         await ipcRenderer.invoke(IPC_CHANNELS.FLA_SOUND_IMPORT_TIMELINE, request),
+      );
+    },
+    importVideo: async (rawRequest: FlaVideoImportRequest) => {
+      const request = FlaVideoImportRequestSchema.parse(rawRequest);
+      return FlaVideoImportResponseSchema.parse(
+        await ipcRenderer.invoke(IPC_CHANNELS.FLA_VIDEO_IMPORT, request),
       );
     },
     previewRaster: async (sessionId: string, mediaId: string) => {

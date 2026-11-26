@@ -12,6 +12,7 @@ import {
   buildStageLayerRenderInstruction,
   type StageLayerRenderInstruction,
 } from './layer-render-contract';
+import { parseFlaVideoFrameAssetKey } from '../fla-video-clock';
 
 /**
  * Structural asset accepted by the render model. Decoupled from the
@@ -21,7 +22,7 @@ import {
  */
 export interface RenderModelAsset {
   readonly id: string;
-  readonly kind: 'image' | 'audio';
+  readonly kind: 'image' | 'audio' | 'video';
   readonly name: string;
   readonly relativePath: string;
   readonly mimeType: string;
@@ -98,6 +99,23 @@ function imageAsset(
   assetId: string,
   layerId: string,
 ): RenderModelAsset {
+  const videoFrame = parseFlaVideoFrameAssetKey(assetId);
+  if (videoFrame) {
+    const videoAsset = project.assets.find((candidate) => candidate.id === videoFrame.assetId);
+    if (
+      videoAsset &&
+      videoAsset.kind === 'video' &&
+      videoAsset.width !== undefined &&
+      videoAsset.height !== undefined
+    ) {
+      return {
+        ...videoAsset,
+        id: assetId,
+        kind: 'image',
+        mimeType: 'image/png',
+      };
+    }
+  }
   const asset = project.assets.find((candidate) => candidate.id === assetId);
   if (
     !asset ||
@@ -331,7 +349,10 @@ function buildFormalStageRenderModel(
       const graphic = visual.flaGraphic;
       const unusedBakedFrame = graphic?.structureFrame && graphic.frameAssetId === asset.id &&
         !graphic.resourceAssetIds.includes(asset.id);
-      const sourceUrl = unusedBakedFrame ? (assetUrls[asset.id] ?? '') : sourceUrlFor(assetUrls, asset, layer.id);
+      const isVideoFrame = Boolean(parseFlaVideoFrameAssetKey(asset.id));
+      const sourceUrl = (unusedBakedFrame || isVideoFrame)
+        ? (assetUrls[asset.id] ?? '')
+        : sourceUrlFor(assetUrls, asset, layer.id);
       return {
         id: part.partId,
         slot: part.slot,

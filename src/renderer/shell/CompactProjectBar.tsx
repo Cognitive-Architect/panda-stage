@@ -93,6 +93,8 @@ export function QuickActionDrawer({
   const [expanded, setExpanded] = useState(false);
   const exportFormat = projectSnapshot.project.exportPreferences?.format ?? 'mp4';
   const exportLabel = {
+    webm: '导出 WebM',
+    gif: '导出 GIF',
     mp4: '导出视频',
     'png-sequence': '导出 PNG 序列',
     'sprite-sheet': '导出精灵图',

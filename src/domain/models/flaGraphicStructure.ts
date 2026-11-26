@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import { FlaRgbaTransformSchema, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
+import { FlaGraphicEditableTextSchema, type FlaGraphicEditableText } from './flaGraphicInstanceText';
 
 /**
  * Persisted, source-backed object tree of an FLA Graphic Definition (STRUCT-04-E1).
@@ -35,6 +37,21 @@ export const FlaStructureMatrixV1Schema = z
 
 const SourceTextSchema = z.string().trim().min(1).max(1_000);
 
+const BoundedSvgPathDataSchema = z
+  .array(
+    z
+      .string()
+      .min(1)
+      .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH)
+      .refine(
+        (path) => maskPathTextEncoder.encode(path).byteLength <=
+          FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
+        'Structured Graphic vector path exceeds its byte limit.',
+      )
+      .regex(FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN),
+  )
+  .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE);
+
 /** One XFL mask dependency: the union of the listed shapes clips the node. */
 const FlaStructureClipPathV1Schema = z
   .object({
@@ -48,21 +65,7 @@ const FlaStructureClipPathV1Schema = z
             /** Transform relative to the clipped node's authored parent. */
             parentLocalTransform: FlaStructureMatrixV1Schema.optional(),
             /** Filled mask contours from the trusted FLA shape resolver. */
-            pathData: z
-              .array(
-                z
-                  .string()
-                  .min(1)
-                  .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH)
-                  .refine(
-                    (path) => maskPathTextEncoder.encode(path).byteLength <=
-                      FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH,
-                    'Structured Graphic mask path exceeds its byte limit.',
-                  )
-                  .regex(FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN),
-              )
-              .max(FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE)
-              .optional(),
+            pathData: BoundedSvgPathDataSchema.optional(),
           })
           .strict(),
       )
@@ -80,10 +83,12 @@ const NodeBase = {
   clipPaths: z.array(FlaStructureClipPathV1Schema).max(64).optional(),
 };
 
+const ChannelOffsetSchema = FiniteNumber.min(0).max(255);
 const RgbTransformSchema = z
   .object({
     multiplier: FiniteNumber.min(0).max(1),
-    offset: FiniteNumber.min(0).max(255),
+    offset: ChannelOffsetSchema,
+    channelOffsets: z.tuple([ChannelOffsetSchema, ChannelOffsetSchema, ChannelOffsetSchema]).readonly().optional(),
   })
   .strict();
 
@@ -118,6 +123,7 @@ export type FlaGraphicStructureNode =
       sourceParentFrameSpanStart?: number;
       opacity?: number;
       rgbTransform?: z.infer<typeof RgbTransformSchema>;
+      rgbaTransform?: FlaRgbaTransform;
       blendMode?: FlaSupportedBlendMode;
       children?: FlaGraphicStructureNode[];
     }
@@ -144,6 +150,7 @@ export type FlaGraphicStructureNode =
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
       /** Why this subtree is read-only: its display comes from the frame SVG fallback. */
       opaqueKind: 'shape' | 'text' | 'filter' | 'symbol' | 'unknown';
+      editableText?: FlaGraphicEditableText;
       sourceRef?: string;
       reason?: string;
       /** Runtime blend mode composited against the live stage backdrop when isolated. */
@@ -159,6 +166,8 @@ export type FlaGraphicStructureNode =
         width: number;
         height: number;
       };
+      /** Bounded filled shape contours in node-local space for RGBA positive alphaOffset coverage (E-F09). */
+      coveragePathData?: string[];
     };
 
 const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.lazy(() =>
@@ -185,10 +194,15 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         sourceParentFrameSpanStart: z.number().int().nonnegative().optional(),
         opacity: FiniteNumber.min(0).max(1).optional(),
         rgbTransform: RgbTransformSchema.optional(),
+        rgbaTransform: FlaRgbaTransformSchema.optional(),
         blendMode: FlaSupportedBlendModeSchema.optional(),
         children: z.array(FlaGraphicStructureNodeV1Schema).max(FLA_GRAPHIC_STRUCTURE_MAX_NODES).optional(),
       })
-      .strict(),
+      .strict()
+      .refine(
+        (node) => !(node.rgbaTransform && (node.opacity !== undefined || node.rgbTransform !== undefined)),
+        'Symbol node rgbaTransform must not be combined with opacity or rgbTransform.',
+      ),
     z
       .object({
         ...NodeBase,
@@ -203,6 +217,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
         ...NodeBase,
         type: z.literal('opaque'),
         opaqueKind: z.enum(['shape', 'text', 'filter', 'symbol', 'unknown']),
+        editableText: FlaGraphicEditableTextSchema.optional(),
         sourceRef: SourceTextSchema.optional(),
         reason: SourceTextSchema.optional(),
         blendMode: FlaSupportedBlendModeSchema.optional(),
@@ -217,6 +232,7 @@ const FlaGraphicStructureNodeV1Schema: z.ZodType<FlaGraphicStructureNode> = z.la
           })
           .strict()
           .optional(),
+        coveragePathData: BoundedSvgPathDataSchema.optional(),
       })
       .strict(),
   ]),
@@ -426,6 +442,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       frameSelectionKey: node.frameSelectionKey,
       opacity: node.opacity,
       rgbTransform: node.rgbTransform,
+      rgbaTransform: node.rgbaTransform,
       children: (node.children ?? []).map(canonicalizeStructureNode),
     };
   }
@@ -440,10 +457,12 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
     return {
       ...base,
       opaqueKind: node.opaqueKind,
+      editableText: node.editableText,
       sourceRef: node.sourceRef,
       reason: node.reason,
       fallbackScope: node.fallbackScope,
       fallbackViewBox: node.fallbackViewBox,
+      coveragePathData: node.coveragePathData,
     };
   }
   return base;

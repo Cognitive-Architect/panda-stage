@@ -135,8 +135,8 @@ export function registerRecoveryIpcHandlers(
         IPC_CHANNELS.AUTOSAVE_STOP,
       );
       const request = AutosaveStopRequestSchema.parse(rawRequest);
-      await dependencies.autosaveService.stop(request.projectRoot);
       dependencies.onProjectContextChanged?.();
+      await dependencies.autosaveService.stop(request.projectRoot);
       return RecoveryAcknowledgeResponseSchema.parse({ ok: true });
     },
   );

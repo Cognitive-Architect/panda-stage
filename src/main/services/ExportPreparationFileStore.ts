@@ -13,6 +13,9 @@ const EXTENSION_BY_MIME_TYPE: Record<string, string> = {
   'image/svg+xml': '.svg',
   'audio/mpeg': '.mp3',
   'audio/wav': '.wav',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/webm': '.webm',
 };
 
 export interface ExportPreparationFileStore {

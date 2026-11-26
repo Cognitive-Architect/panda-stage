@@ -8,7 +8,7 @@ import {
 } from '../../domain';
 import {
   captureFlaGraphicStructureFrames,
-  hasScreenSpaceInstanceFilter,
+  hasScreenSpaceArtwork,
   type IsolatedFilteredLayerCaptureResult,
   type IsolatedSubtreeCaptureResult,
   type SubtreeBounds,
@@ -79,6 +79,8 @@ import {
   buildSvgForResolvedDisplayList,
   buildSvgForRenderTarget,
   extractFlaGraphicMaskPathData,
+  extractFlaGraphicShapeCoveragePathData,
+  planStaticScale9Placement,
   readFlaSourceFrameLabel,
   stableRenderTargetId,
 } from './fla-static-snapshot-svg-builder';
@@ -385,11 +387,18 @@ function makeCandidateCollection(
       localTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       worldTransform,
       ...(graphicInstances && element.kind === 'symbol' &&
-        (element.alphaMultiplier !== undefined || element.rgbTransform) ? {
-          instanceColor: {
-            ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
-            ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
-          },
+        (element.rgbaTransform || element.alphaMultiplier !== undefined || element.rgbTransform) ? {
+          instanceColor: element.rgbaTransform
+            ? {
+                rgbaTransform: {
+                  multipliers: [...element.rgbaTransform.multipliers] as [number, number, number, number],
+                  offsets: [...element.rgbaTransform.offsets] as [number, number, number, number],
+                },
+              }
+            : {
+                ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
+                ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+              },
         } : {}),
       determinant: facts.determinant,
       visible: true,
@@ -696,6 +705,7 @@ function isSafeGroupEditCandidate(
   return !layer.frameFilter &&
     Boolean(group.sourceAddress) &&
     !group.rgbTransform &&
+    !group.rgbaTransform &&
     !group.blendMode &&
     (group.opacity === undefined || group.opacity === 1) &&
     group.children.length >= 1 &&
@@ -821,7 +831,7 @@ function localizeResolvedSubtreeNode(
 function isolatedEffectTransform(node: FlaResolvedDisplayNode): AffineMatrix2D | undefined {
   // Filter primitives in the full SVG operate on already-transformed ink.
   // Retain those axes when isolating effects and only move the artwork origin.
-  return hasScreenSpaceInstanceFilter(node)
+  return hasScreenSpaceArtwork(node)
     ? { ...FLA_DISPLAY_LIST_IDENTITY_MATRIX, tx: node.worldTransform.tx, ty: node.worldTransform.ty }
     : undefined;
 }
@@ -2035,6 +2045,7 @@ export class FlaPartPreviewService {
         }
 
         const isolatedSubtreeByNode = new Map<FlaResolvedDisplayNode, IsolatedSubtreeCaptureResult>();
+        const staticTextByNode = new Map<FlaResolvedDisplayNode, FlaStaticTextDescriptor>();
         const isolatedLayerByRef = new Map<FlaResolvedDisplayLayer, IsolatedFilteredLayerCaptureResult>();
         const shapeBlocksByNode = new Map<FlaResolvedDisplayNode, ReadonlyMap<string, string>>();
         const allShapeBlocks = new Map<string, string>();
@@ -2171,12 +2182,18 @@ export class FlaPartPreviewService {
                 return;
               }
               isolatedSubtreeByNode.set(node, { ...result, artworkTransform });
+              staticTextByNode.set(node, textDescriptor);
               continue;
             }
             if (node.kind === 'group' && !node.opaque) {
               const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
-              const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
-              if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
+              // Named Symbol instances persist full RGBA and per-channel RGB transforms formally
+              // on the editable structure node instead of baking the subtree into an opaque SVG.
+              const hasNonSymbolPerChannelColor = !node.symbolLibraryItemName &&
+                (node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined);
+              const hasScale9Placement = node.scale9Grid !== undefined &&
+                planStaticScale9Placement(node, frameShapeBlocks) !== null;
+              if (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || hasScale9Placement) {
                 const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
                 const artworkTransform = isolatedEffectTransform(node);
                 const isolatedDisplayList = buildIsolatedDisplayListForNode(
@@ -2194,7 +2211,8 @@ export class FlaPartPreviewService {
                   `isolated-subtree\u0000${opaqueKind}`,
                   hasEnabledInstanceFilters
                     ? 'Instance filter subtree uses isolated fallback'
-                    : 'Per-channel color transform subtree uses isolated fallback',
+                    : hasScale9Placement ? 'Static Scale9Grid uses isolated vector artwork'
+                      : 'Per-channel color transform subtree uses isolated fallback',
                   frameShapeBlocks,
                   frameStaticTextBlocks,
                 );
@@ -2380,7 +2398,19 @@ export class FlaPartPreviewService {
                 }
                 return { scope: 'subtree', viewBox: { ...rendered.composition.framing.viewBox } };
               },
+              resolveShapeCoveragePathData: (node) => {
+                const nodeShapeBlocks = shapeBlocksByNode.get(node) ?? allShapeBlocks;
+                const shapeBlock = nodeShapeBlocks.get(node.shapeId);
+                if (!shapeBlock) return undefined;
+                return extractFlaGraphicShapeCoveragePathData({
+                  shapeBlock,
+                  shapeId: node.shapeId,
+                  renderTargetId,
+                  frameIndex: 0,
+                });
+              },
               resolveIsolatedSubtree: (node) => isolatedSubtreeByNode.get(node),
+              resolveStaticText: (node) => staticTextByNode.get(node),
               resolveIsolatedFilteredLayer: (layer) => isolatedLayerByRef.get(layer),
               sourceBasename: source.basename,
               clipPathShapePathData,

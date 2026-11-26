@@ -111,6 +111,10 @@ import type {
   FlaSoundTimelineImportResponse,
 } from '../shared/fla-sound-api';
 import type {
+  FlaVideoImportRequest,
+  FlaVideoImportResponse,
+} from '../shared/fla-video-api';
+import type {
   FlaAssetCommitRequest,
   FlaAssetCommitResponse,
 } from '../shared/fla-asset-commit-api';
@@ -306,6 +310,7 @@ declare global {
         cancelSoundPreview: (request: FlaSoundCancelRequest) => Promise<{ accepted: boolean }>;
         importSound: (request: FlaSoundImportRequest) => Promise<AssetImportResponse>;
         importSceneSoundTimeline: (request: FlaSoundTimelineImportRequest) => Promise<FlaSoundTimelineImportResponse>;
+        importVideo: (request: FlaVideoImportRequest) => Promise<FlaVideoImportResponse>;
         previewRaster: (sessionId: string, mediaId: string) => Promise<FlaRasterPreviewResponse>;
         onInspectionStarted: (
           callback: (event: FlaInspectionStarted) => void,

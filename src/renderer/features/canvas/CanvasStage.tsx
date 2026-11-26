@@ -50,6 +50,7 @@ import {
   listShotGraphicImageAssetsAtTime,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
+  resolveRuntimeImageAsset,
   resolveCharacterArmAssemblyParts,
   resolveTimelineFrameTime,
   type ImageAsset,
@@ -262,7 +263,7 @@ function isCurrentCanvasAssetReady(
   imageState: CanvasImageState,
 ): boolean {
   if (!imageState.images.has(assetId)) return false;
-  const asset = resolveImageAsset(project, assetId);
+  const asset = resolveRuntimeImageAsset(project, assetId);
   if (!asset) return false;
   return (
     !asset.sha256 || imageState.sourceKeys.get(assetId) === asset.sha256
@@ -1566,6 +1567,7 @@ export function CanvasStage({
                                     ? undefined
                                     : layer.flaGraphicInstanceShapeOverrides,
                                 instanceColor: visual?.flaGraphic?.instanceColor,
+                                instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,

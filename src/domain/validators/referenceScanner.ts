@@ -197,6 +197,23 @@ export function scanAssetReferences(
 
   project.shots.forEach((shot, shotIndex) => {
     shot.layers.forEach((layer, layerIndex) => {
+      if (layer.source.kind === 'video') {
+        if (layer.source.assetId === assetId) {
+          references.push({
+            kind: 'shot-layer',
+            path: `shots[${shotIndex}].layers[${layerIndex}].source.assetId`,
+            label: `镜头“${shot.name}”的视频图层“${layer.name}”`,
+          });
+        }
+        if (layer.source.audioAssetId === assetId) {
+          references.push({
+            kind: 'shot-layer',
+            path: `shots[${shotIndex}].layers[${layerIndex}].source.audioAssetId`,
+            label: `镜头“${shot.name}”的视频音轨“${layer.name}”`,
+          });
+        }
+        return;
+      }
       if (
         layer.source.kind !== 'asset' ||
         layer.source.assetId !== assetId

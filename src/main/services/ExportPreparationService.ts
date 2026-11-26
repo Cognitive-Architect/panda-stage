@@ -2,11 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   lstat,
   open,
+  readFile,
   realpath,
   stat,
   unlink,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { freezeVideoOutputProfile, type ExportVideoFormat } from '../../shared/export-output-profile';
 import {
   ProjectSchema,
   type Asset,
@@ -88,6 +90,7 @@ interface OutputSelection {
   overwriteApproved: boolean;
   targetIdentity: ExportOutputTargetIdentity | null;
   pngSequence?: PngSequenceOptions;
+  videoFormat?: ExportVideoFormat;
 }
 
 interface ActivePreparation {
@@ -129,6 +132,12 @@ export type FrozenExportMedia =
       assetId: string;
       kind: 'audio';
       mimeType: 'audio/mpeg' | 'audio/wav';
+      bytes: Uint8Array<ArrayBuffer>;
+    }
+  | {
+      assetId: string;
+      kind: 'video';
+      mimeType: 'video/mp4' | 'video/quicktime' | 'video/webm';
       bytes: Uint8Array<ArrayBuffer>;
     };
 
@@ -174,6 +183,21 @@ export class MainProjectAssetReader implements ExportPreparationMediaReader {
       });
       if (!result.ok) throw new Error(result.error.message);
       return { bytes: result.bytes, mimeType: result.mimeType };
+    }
+
+    if (asset.kind === 'video') {
+      const fullPath = await resolveProjectAssetPath(projectRoot, asset.relativePath);
+      if (!fullPath) {
+        throw new Error(`Video asset "${asset.name}" path is missing or outside the project.`);
+      }
+      const bytes = new Uint8Array(await readFile(fullPath));
+      if (asset.sha256) {
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        if (digest !== asset.sha256) {
+          throw new Error(`Video asset "${asset.name}" failed SHA-256 integrity verification.`);
+        }
+      }
+      return { bytes, mimeType: asset.mimeType };
     }
 
     const reader = new AssetPreviewAudioService({
@@ -266,6 +290,10 @@ export class ExportPreparationService {
     }
 
     try {
+      const videoFormat = request.videoFormat ?? 'mp4';
+      if (!request.pngSequence && path.extname(selectedPath).toLowerCase() !== '.' + videoFormat) {
+        return { status: 'blocked', issue: this.outputChangedIssue() };
+      }
       const target = await captureTargetIdentity(selectedPath, Boolean(request.pngSequence));
       if (target.identity !== null) {
         return { status: 'blocked', issue: this.outputExistsIssue() };
@@ -295,6 +323,7 @@ export class ExportPreparationService {
         overwriteApproved: false,
         targetIdentity: target.identity,
         pngSequence: request.pngSequence,
+        videoFormat,
       };
       if (request.snapshotId) {
         const stored = this.candidates.get(request.snapshotId);
@@ -306,6 +335,9 @@ export class ExportPreparationService {
         }
         const candidate = stored.candidate;
         if (Boolean(candidate.pngSequence) !== Boolean(selection.pngSequence)) {
+          return { status: 'blocked', issue: this.outputChangedIssue() };
+        }
+        if (!candidate.pngSequence && ('format' in candidate.renderSettings ? candidate.renderSettings.format : 'mp4') !== videoFormat) {
           return { status: 'blocked', issue: this.outputChangedIssue() };
         }
         if (
@@ -530,10 +562,11 @@ export class ExportPreparationService {
       const sequence = selection.pngSequence ? planPngSequenceFrames(project, selection.pngSequence) : undefined;
       const visualProject = sequence ? { ...project, shots: [sequence.shot] } : project;
       const outputProject = sequence ? { ...project, shots: [sequence.outputShot] } : project;
+      const imagesOnly = Boolean(selection.pngSequence) || selection.videoFormat === 'gif';
       const issues = evaluateExportPreparationSupport(outputProject, request.cameraMode,
-        selection.pngSequence ? { imagesOnly: true } : undefined);
+        imagesOnly ? { imagesOnly: true } : undefined);
       const media = collectExportPreparationMedia(visualProject, sequence?.selectedLayer?.id)
-        .filter(({ asset }) => !selection.pngSequence || asset.kind === 'image');
+        .filter(({ asset }) => !imagesOnly || asset.kind === 'image' || asset.kind === 'video');
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];
 
@@ -739,7 +772,8 @@ export class ExportPreparationService {
         ...(selection.pngSequence ? { pngSequence: selection.pngSequence } : {}),
         capturedAt: this.now().toISOString(),
         project,
-        renderSettings: EXPORT_PREPARATION_RENDER_SETTINGS,
+        renderSettings: selection.pngSequence ? EXPORT_PREPARATION_RENDER_SETTINGS
+          : freezeVideoOutputProfile(selection.videoFormat ?? 'mp4', request.videoOutput, project.exportPreferences?.gifLoop),
         cameraMode: request.cameraMode,
         ...(request.dialogueSilence ? { dialogueSilence: request.dialogueSilence } : {}),
         supportProfileVersion: EXPORT_PREPARATION_SUPPORT_PROFILE.version,
@@ -871,7 +905,9 @@ export class ExportPreparationService {
         const allowedMimeTypes: readonly string[] =
           entry.kind === 'image'
             ? ['image/png', 'image/jpeg', 'image/svg+xml']
-            : ['audio/mpeg', 'audio/wav'];
+            : entry.kind === 'video'
+              ? ['video/mp4', 'video/quicktime', 'video/webm']
+              : ['audio/mpeg', 'audio/wav'];
         if (
           bytes.byteLength !== entry.byteLength ||
           digest !== entry.sha256 ||
@@ -884,6 +920,13 @@ export class ExportPreparationService {
             assetId: entry.assetId,
             kind: 'image',
             mimeType: entry.mimeType as 'image/png' | 'image/jpeg' | 'image/svg+xml',
+            bytes,
+          });
+        } else if (entry.kind === 'video') {
+          media.push({
+            assetId: entry.assetId,
+            kind: 'video',
+            mimeType: entry.mimeType as 'video/mp4' | 'video/quicktime' | 'video/webm',
             bytes,
           });
         } else {
@@ -1443,8 +1486,8 @@ async function captureTargetIdentity(
     throw new Error('The selected output path exceeds the supported length.');
   }
   const absoluteTargetPath = path.resolve(rawTargetPath);
-  if (!directoryTarget && path.extname(absoluteTargetPath).toLocaleLowerCase() !== '.mp4') {
-    throw new Error('The selected output must use the .mp4 extension.');
+  if (!directoryTarget && !['.mp4', '.webm', '.gif'].includes(path.extname(absoluteTargetPath).toLocaleLowerCase())) {
+    throw new Error('The selected output must use a supported video extension.');
   }
   const parentDirectory = await realpath(path.dirname(absoluteTargetPath));
   await assertOutputDirectoryWritable(parentDirectory);

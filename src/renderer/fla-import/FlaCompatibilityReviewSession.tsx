@@ -30,6 +30,7 @@ import {
 import { FlaSourceFrameSuggestions } from './FlaSourceFrameSuggestions';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaSoundReview } from './FlaSoundReview';
+import { FlaVideoReview } from './FlaVideoReview';
 import type { AssetImportResponse } from '../../shared/asset-import-api';
 import type { FlaSoundTimelineImportResponse } from '../../shared/fla-sound-api';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
@@ -118,7 +119,7 @@ export function FlaCompatibilityReviewSession({
   const [stopAfterCurrentAvailable, setStopAfterCurrentAvailable] = useState(false);
   const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
-  const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic' | 'sound'>('assets');
+  const [reviewRoute, setReviewRoute] = useState<'assets' | 'graphic' | 'sound' | 'video'>('assets');
   const [graphicInstanceImporting, setGraphicInstanceImporting] = useState(false);
   const [recoveryRequired, setRecoveryRequired] = useState(false);
   const recoveryRequiredRef = useRef(false);
@@ -714,7 +715,7 @@ export function FlaCompatibilityReviewSession({
     onClose();
   };
 
-  const changeReviewRoute = (route: 'assets' | 'graphic' | 'sound'): void => {
+  const changeReviewRoute = (route: 'assets' | 'graphic' | 'sound' | 'video'): void => {
     if (phase === 'committing' || unifiedImportRunningRef.current || graphicImportRunningRef.current ||
         renderTerminalState !== 'active') return;
     setReviewRoute(route);
@@ -898,6 +899,13 @@ export function FlaCompatibilityReviewSession({
                 声音
               </button>
             ) : null}
+            {ir.videos?.length ? (
+              <button aria-controls="fla-review-video-panel" aria-selected={reviewRoute === 'video'}
+                data-testid="fla-review-video-tab" disabled={closeLocked} id="fla-review-video-tab-control"
+                onClick={() => changeReviewRoute('video')} role="tab" type="button">
+                视频
+              </button>
+            ) : null}
           </nav>
           <button
             aria-label="关闭"
@@ -993,6 +1001,19 @@ export function FlaCompatibilityReviewSession({
               onImporting={(importing) => setPhase(importing ? 'committing' : 'ready')}
               onImported={async (result) => { await onSoundImported?.(result); }}
               onSceneTimelineImported={(result) => { onSceneSoundTimelineImported?.(result); }} />
+          </div>
+        ) : null}
+        {reviewRoute === 'video' && ir.videos?.length ? (
+          <div aria-labelledby="fla-review-video-tab-control" className="fla-c03-review-route-panel"
+            id="fla-review-video-panel" role="tabpanel">
+            <FlaVideoReview
+              key={sessionId}
+              sessionId={sessionId}
+              videos={ir.videos}
+              snapshot={snapshot}
+              importing={phase === 'committing'}
+              onImporting={(importing) => setPhase(importing ? 'committing' : 'ready')}
+            />
           </div>
         ) : null}
         <div

@@ -17,13 +17,10 @@
 
 import {
   FLA_STATIC_TEXT_LIMITS,
-  buildCanvasFontSpec,
   computeAuthoritativeGraphicViewport,
   layoutFlaStaticText,
-  splitGraphemes,
   type FlaStaticTextBounds,
   type FlaStaticTextGraphicFraming,
-  type FlaStaticTextMeasurer,
   type FlaStaticTextRenderItem,
 } from '../shared/fla-static-text';
 import {
@@ -31,6 +28,8 @@ import {
   FLA_SNAPSHOT_MAX_HEIGHT,
   FLA_SNAPSHOT_MAX_PIXELS,
 } from '../shared/fla-snapshot-output-size';
+
+import { createCanvasStaticTextMeasurer, drawCanvasStaticText } from './fla-static-text-canvas';
 
 interface FlaSnapshotRenderRequest {
   requestId: string;
@@ -94,28 +93,7 @@ function resolveStaticTextPlaceholders(
     throw new Error('snapshot static text canvas 2D context is unavailable');
   }
 
-  let currentMeasureFont = '';
-  const measure: FlaStaticTextMeasurer = (text, run) => {
-    const font = buildCanvasFontSpec(run);
-    if (font !== currentMeasureFont) {
-      measureCtx.font = font;
-      currentMeasureFont = font;
-    }
-    const metrics = measureCtx.measureText(text);
-    const ascent =
-      typeof metrics.actualBoundingBoxAscent === 'number' && metrics.actualBoundingBoxAscent > 0
-        ? metrics.actualBoundingBoxAscent
-        : run.size * 0.85;
-    const descent =
-      typeof metrics.actualBoundingBoxDescent === 'number' && metrics.actualBoundingBoxDescent > 0
-        ? metrics.actualBoundingBoxDescent
-        : run.size * 0.25;
-    return {
-      width: Number.isFinite(metrics.width) ? metrics.width : 0,
-      ascent,
-      descent,
-    };
-  };
+  const measure = createCanvasStaticTextMeasurer(measureCtx);
 
   let resolvedSvg = svg;
   let totalRasterPixels = 0;
@@ -152,31 +130,7 @@ function resolveStaticTextPlaceholders(
     ctx.clearRect(0, 0, pixelWidth, pixelHeight);
     ctx.scale(pixelWidth / bw, pixelHeight / bh);
     ctx.translate(-bx, -by);
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
-
-    for (const line of layout.lines) {
-      for (const fragment of line.fragments) {
-        if (fragment.text.length === 0) continue;
-        ctx.font = buildCanvasFontSpec(fragment.run);
-        ctx.fillStyle = fragment.run.fillColor;
-        ctx.globalAlpha = fragment.run.alpha;
-        if (fragment.run.letterSpacing === 0) {
-          ctx.fillText(fragment.text, fragment.x, line.baselineY);
-        } else {
-          let cursorX = fragment.x;
-          for (const grapheme of splitGraphemes(fragment.text)) {
-            ctx.fillText(grapheme, cursorX, line.baselineY);
-            cursorX += ctx.measureText(grapheme).width + fragment.run.letterSpacing;
-          }
-        }
-        if (fragment.run.underline && fragment.width > 0) {
-          const underlineY = line.baselineY + Math.max(1, fragment.run.size * 0.12);
-          const underlineHeight = Math.max(1, fragment.run.size * 0.06);
-          ctx.fillRect(fragment.x, underlineY, fragment.width, underlineHeight);
-        }
-      }
-    }
+    drawCanvasStaticText(ctx, layout);
 
     const dataUri = textCanvas.toDataURL('image/png');
     const placeholderPattern = new RegExp(

@@ -14,6 +14,8 @@ import type {
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
 } from './fla-display-list-resolver';
+import { FlaGraphicEditableTextSchema } from '../../domain/models/flaGraphicInstanceText';
+import type { FlaStaticTextDescriptor } from '../../shared/fla-static-text';
 import {
   localizeAbsoluteLeafMatrix,
   multiplyAffineMatrices,
@@ -111,6 +113,7 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly resolveSubtreeBounds?: (node: FlaResolvedDisplayNode) => SubtreeBounds | undefined;
   /** Isolated Shape artwork is in source-node local space; filtered layers stay residual. */
   readonly resolveIsolatedShape?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => SubtreeBounds | undefined;
+  readonly resolveShapeCoveragePathData?: (node: Extract<FlaResolvedDisplayNode, { kind: 'shape' }>) => readonly string[] | undefined;
   /** Isolated opaque subtree artwork in node-local or explicit effect space. */
   readonly resolveIsolatedSubtree?: (
     node: FlaResolvedDisplayNode,
@@ -119,6 +122,7 @@ export interface CaptureFlaGraphicStructureOptions {
       readonly parentWorld: AffineMatrix2D;
     },
   ) => IsolatedSubtreeCaptureResult | undefined;
+  readonly resolveStaticText?: (node: FlaResolvedDisplayNode) => FlaStaticTextDescriptor | undefined;
   /** Isolated frame-filtered layer rendered as one semantically closed subtree in layer-local space. */
   readonly resolveIsolatedFilteredLayer?: (
     layer: FlaResolvedDisplayLayer,
@@ -132,10 +136,10 @@ export interface CaptureFlaGraphicStructureOptions {
   readonly clipPathShapePathData?: ReadonlyMap<string, readonly string[]>;
 }
 
-export function hasScreenSpaceInstanceFilter(node: FlaResolvedDisplayNode): boolean {
+export function hasScreenSpaceArtwork(node: FlaResolvedDisplayNode): boolean {
   if (node.kind === 'group') {
-    return Boolean(node.instanceFilters?.some((filter) => filter.enabled)) ||
-      node.children.some(hasScreenSpaceInstanceFilter);
+    return Boolean(node.scale9Grid || node.instanceFilters?.some((filter) => filter.enabled)) ||
+      node.children.some(hasScreenSpaceArtwork);
   }
   return node.kind === 'text' && Boolean(node.instanceFilters?.some((filter) => filter.enabled));
 }
@@ -236,6 +240,22 @@ export function captureFlaGraphicStructureFrames(
         };
       }
       if (node.kind === 'shape') {
+        const rawCoverage = options.resolveShapeCoveragePathData?.(node);
+        let coveragePathData: string[] | undefined;
+        if (rawCoverage?.length && rawCoverage.length <= FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE) {
+          let totalBytes = 0;
+          const valid = rawCoverage.every((entry) => {
+            if (!FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN.test(entry)) return false;
+            const bytes = maskPathTextEncoder.encode(entry).byteLength;
+            if (bytes === 0 || bytes > FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH) return false;
+            totalBytes += bytes;
+            return true;
+          });
+          if (valid && totalBytes <= maskPathByteBudget.remainingBytes) {
+            maskPathByteBudget.remainingBytes -= totalBytes;
+            coveragePathData = [...rawCoverage];
+          }
+        }
         return {
           ...base,
           type: 'opaque',
@@ -244,6 +264,7 @@ export function captureFlaGraphicStructureFrames(
           ...(fallbackScope ? { fallbackScope } : {}),
           ...(fallbackAssetId ? { fallbackAssetId } : {}),
           ...(fallbackViewBox ? { fallbackViewBox: { ...fallbackViewBox } } : {}),
+          ...(coveragePathData ? { coveragePathData } : {}),
         };
       }
       if (node.kind === 'bitmap') {
@@ -264,11 +285,15 @@ export function captureFlaGraphicStructureFrames(
         const textScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
         const textViewBox = isolated?.viewBox ?? fallbackViewBox;
         const textAssetId = textViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
+        const editableText = isolated && !isolated.artworkTransform
+          ? FlaGraphicEditableTextSchema.safeParse(options.resolveStaticText?.(node))
+          : undefined;
         return {
           ...base,
           ...artworkPlacement(isolated),
           type: 'opaque',
           opaqueKind: 'text',
+          ...(editableText?.success ? { editableText: editableText.data } : {}),
           sourceRef: isolated?.sourceRef ?? node.textId,
           reason: isolated?.reason ?? 'Static text uses rasterized snapshot fallback',
           ...(textScope ? { fallbackScope: textScope } : {}),
@@ -289,19 +314,18 @@ export function captureFlaGraphicStructureFrames(
         };
       }
       const hasEnabledInstanceFilters = Boolean(node.instanceFilters?.some((filter) => filter.enabled));
-      const hasPerChannelRgbTransform = node.rgbTransform?.channelOffsets !== undefined;
-      if (hasEnabledInstanceFilters || hasPerChannelRgbTransform) {
-        const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+      const hasNonSymbolPerChannelColor = !node.symbolLibraryItemName &&
+        (node.rgbTransform?.channelOffsets !== undefined || node.rgbaTransform !== undefined);
+      const opaqueKind = hasEnabledInstanceFilters ? 'filter' : 'symbol';
+      const isolated = (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || node.scale9Grid)
+        ? options.resolveIsolatedSubtree?.(node, { opaqueKind, parentWorld }) : undefined;
+      if (hasEnabledInstanceFilters || hasNonSymbolPerChannelColor || isolated) {
         const groupClipPaths = clipPathsOf(
           node.instanceFilterClips ?? node.inheritedClipPaths,
           parentWorld,
           options.clipPathShapePathData ?? new Map(),
           maskPathByteBudget,
         );
-        const isolated = options.resolveIsolatedSubtree?.(node, {
-          opaqueKind,
-          parentWorld,
-        });
         const subtreeScope = isolated?.scope ?? (isolated ? 'subtree' : fallbackScope);
         const subtreeViewBox = isolated?.viewBox ?? fallbackViewBox;
         const subtreeAssetId = subtreeViewBox && options.fallbackAssetId ? options.fallbackAssetId : undefined;
@@ -332,7 +356,7 @@ export function captureFlaGraphicStructureFrames(
         ).slice(0, 880);
         // A child effect is baked against the occurrence's display axes. A symbol
         // placed at a different scale or rotation cannot share that child's SVG.
-        const needsEffectVariant = options.resolveIsolatedSubtree && node.children.some(hasScreenSpaceInstanceFilter);
+        const needsEffectVariant = options.resolveIsolatedSubtree && node.children.some(hasScreenSpaceArtwork);
         const { a, b, c, d } = node.worldTransform;
         const nestedDefinitionId = needsEffectVariant
           ? `${baseDefKey}::effects:${[a, b, c, d].join(',')}`
@@ -351,8 +375,27 @@ export function captureFlaGraphicStructureFrames(
           type: 'symbol',
           symbolRef: node.symbolLibraryItemName,
           nestedDefinitionId,
-          ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
-          ...(node.rgbTransform ? { rgbTransform: { ...node.rgbTransform } } : {}),
+          ...(node.rgbaTransform
+            ? {
+                rgbaTransform: {
+                  multipliers: [...node.rgbaTransform.multipliers] as [number, number, number, number],
+                  offsets: [...node.rgbaTransform.offsets] as [number, number, number, number],
+                },
+              }
+            : {
+                ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
+                ...(node.rgbTransform
+                  ? {
+                      rgbTransform: {
+                        multiplier: node.rgbTransform.multiplier,
+                        offset: node.rgbTransform.offset,
+                        ...(node.rgbTransform.channelOffsets
+                          ? { channelOffsets: [...node.rgbTransform.channelOffsets] as [number, number, number] }
+                          : {}),
+                      },
+                    }
+                  : {}),
+              }),
           ...(node.blendMode ? { blendMode: node.blendMode } : {}),
           ...(frameSelectionKey !== undefined ? { frameSelectionKey } : {}),
           ...(symbolInstance?.playbackMode !== undefined ? { playbackMode: symbolInstance.playbackMode } : {}),

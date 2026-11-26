@@ -24,6 +24,10 @@ import {
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
+import {
+  evaluateFlaVideoClock,
+  flaVideoFrameAssetKey,
+} from '../../shared/fla-video-clock';
 import { resolveImageAsset } from './canvasLayers';
 import {
   characterPartRegionAnchorBounds,
@@ -1421,6 +1425,50 @@ export function resolveLayerVisualParts(
     );
   }
 
+  if (source.kind === 'video') {
+    const videoAsset = project.assets.find((candidate) => candidate.id === source.assetId);
+    if (!videoAsset || videoAsset.kind !== 'video') {
+      throw new Error('Cannot resolve video asset ' + source.assetId + ' for layer ' + layer.id + '.');
+    }
+    const sample = evaluateFlaVideoClock({
+      shotTimeMs: timeMs,
+      layerStartTimeMs: layer.startTimeMs ?? 0,
+      timing: videoAsset.videoTiming,
+      playbackMode: source.playbackMode,
+      trimStartMs: source.trimStartMs,
+      trimEndMs: source.trimEndMs,
+      heldFrameIndex: source.heldFrameIndex,
+      sourceFps: source.sourceFps,
+    });
+    const frameKey = sample ? flaVideoFrameAssetKey(videoAsset.id, sample.sampleIndex) : null;
+    const parts: LayerVisualPart[] = frameKey
+      ? [{
+          partId: `${layer.id}:video-frame`,
+          ownerLayerId: layer.id,
+          slot: 'single',
+          source: { kind: 'asset', assetId: frameKey },
+          assetId: frameKey,
+          localRect: centeredRect(videoAsset),
+          rotationDeg: 0,
+          flipX: false,
+          drawOrder: 0,
+          ownerZIndex: evaluated.zIndex,
+        }]
+      : [];
+    return baseResult(
+      evaluated,
+      'ordinary-image',
+      null,
+      parts,
+      null,
+      {
+        required: frameKey ? [{ assetId: frameKey, reason: 'current-layer' }] : [],
+        candidates: [],
+        fallback: [],
+      },
+    );
+  }
+
   if (source.kind === 'animation') {
     const animation = project.animations.find(
       (candidate) => candidate.id === source.animationId,
@@ -1438,6 +1486,7 @@ export function resolveLayerVisualParts(
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
         instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+        instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
         instanceColor: source.flaOccurrence?.instanceColor,
       });

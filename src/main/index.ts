@@ -57,6 +57,7 @@ import { AssetPreviewAudioService } from './services/AssetPreviewAudioService';
 import { shouldExposeDevelopmentMenu } from './menu-policy';
 import { RendererCloseSynchronizer } from './windows/renderer-close-synchronizer';
 import { FlaImportService } from './services/FlaImportService';
+import { FlaEmbeddedVideoService } from './services/FlaEmbeddedVideoService';
 import { FlaSoundService } from './services/FlaSoundService';
 import { registerFlaImportIpcHandlers } from './ipc/register-fla-import-ipc-handlers';
 import { FlaAssetCommitService } from './services/FlaAssetCommitService';
@@ -108,6 +109,7 @@ let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
 let flaGraphicInstanceCommitService: FlaGraphicInstanceCommitService | null = null;
+let flaEmbeddedVideoService: FlaEmbeddedVideoService | null = null;
 let removeFlaGraphicInstanceIpcHandlers: (() => void) | null = null;
 let unsavedCloseController: UnsavedCloseController | null = null;
 let unsavedCloseGuard: UnsavedCloseGuard | null = null;
@@ -244,7 +246,10 @@ async function createApplicationWindows(): Promise<void> {
     window.on('close', (event) => guard.handleWindowClose(event));
   }
   window.once('closed', () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      mainWindow = null;
+      void flaEmbeddedVideoService?.dispose();
+    }
     if (unsavedCloseGuard) unsavedCloseGuard = null;
     hiddenWindowManager.close();
   });
@@ -452,7 +457,10 @@ async function initialize(): Promise<void> {
     onRecentProjectError: (error) => {
       console.error('Recent project update failed.', error);
     },
-    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
+    onProjectContextChanged: () => {
+      flaPartPreviewService?.invalidateAll();
+      void flaEmbeddedVideoService?.dispose();
+    },
   });
   exportPreparationService = new ExportPreparationService({
     getCurrentProjectSnapshot: (projectRoot) => {
@@ -489,9 +497,10 @@ async function initialize(): Promise<void> {
         if (!exportFileSystem) {
           throw new Error('Formal export filesystem is unavailable.');
         }
+        const format = request.videoFormat ?? 'mp4';
         const initialDefaultPath = path.join(
           request.projectRoot,
-          defaultExportFileName(request.projectName),
+          defaultExportFileName(request.projectName).replace(/\.mp4$/u, '.' + format),
         );
         const outputSeries = formalOutputNameSeries.getSeries(
           request.projectRoot,
@@ -499,7 +508,7 @@ async function initialize(): Promise<void> {
         );
         const outputBasePath = path.join(
           outputSeries.directory,
-          `${outputSeries.baseName}.mp4`,
+          `${outputSeries.baseName}.${format}`,
         );
         const suggestedOutput =
           await exportFileSystem.suggestFormalOutputPathWithOrdinal(
@@ -510,7 +519,10 @@ async function initialize(): Promise<void> {
           title: '选择导出视频位置',
           buttonLabel: '选择输出位置',
           defaultPath: suggestedOutput.path,
-          filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
+          filters: [{
+            name: format === 'webm' ? 'WebM 视频' : format === 'gif' ? 'GIF 视频' : 'MP4 视频',
+            extensions: [format],
+          }],
           properties: [],
         });
         const selectedPath = selection.canceled
@@ -533,7 +545,10 @@ async function initialize(): Promise<void> {
     projectService,
     recoveryService,
     autosaveService,
-    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
+    onProjectContextChanged: () => {
+      flaPartPreviewService?.invalidateAll();
+      void flaEmbeddedVideoService?.dispose();
+    },
   });
   removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
     getMainWindow: () => mainWindow,
@@ -603,6 +618,13 @@ async function initialize(): Promise<void> {
     assetCanvasImageService: new AssetCanvasImageService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+      embeddedVideoService: (flaEmbeddedVideoService = new FlaEmbeddedVideoService({
+        flaImportService,
+        projectService,
+        getCurrentProjectSnapshot: (projectRoot) =>
+          autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+        ffmpegAdapter,
+      })),
     }),
     assetPreviewAudioService: new AssetPreviewAudioService({
       getCurrentProjectSnapshot: (projectRoot) =>
@@ -632,6 +654,7 @@ async function initialize(): Promise<void> {
     flaImportService,
     flaAssetCommitService,
     flaSoundService,
+    flaEmbeddedVideoService: flaEmbeddedVideoService ?? undefined,
     selectFlaSource,
     onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
@@ -692,6 +715,7 @@ async function initialize(): Promise<void> {
   removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
     flaPartPreviewService?.invalidateSession(sessionId);
     flaSoundService.cancelPreview(sessionId);
+    flaEmbeddedVideoService?.cancelImportsForSession(sessionId);
   });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,
@@ -1017,6 +1041,8 @@ app.on('will-quit', () => {
   unsavedCloseController = null;
   unsavedCloseGuard = null;
   hiddenWindowManager.close();
+  void flaEmbeddedVideoService?.dispose();
+  flaEmbeddedVideoService = null;
   flaImportService.close();
 });
 

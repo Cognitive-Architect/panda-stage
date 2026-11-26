@@ -1,5 +1,8 @@
 import { invertAffineMatrix, type AffineMatrix2D } from '../../shared/affine-matrix';
 import type { FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
+import { projectFlaInstance, type FlaInstanceProjection } from '../../shared/fla-instance-projection';
+import type { FlaRgbaTransform } from '../../shared/fla-instance-color';
+import type { FlaScale9Rect } from '../../shared/fla-scale9';
 
 /**
  * P0-C01: Panda-owned, Main-side resolver for one already-selected FLA frame.
@@ -31,7 +34,7 @@ export interface FlaDisplayListFrameContext {
 }
 
 export interface FlaInstanceFilter {
-  readonly kind: 'blur' | 'glow' | 'dropShadow';
+  readonly kind: 'blur' | 'glow' | 'dropShadow' | 'colorMatrix';
   readonly enabled: boolean;
   readonly blurX: number;
   readonly blurY: number;
@@ -40,6 +43,10 @@ export interface FlaInstanceFilter {
   readonly strength: number;
   readonly distance: number;
   readonly angle: number;
+  readonly inner?: boolean;
+  readonly knockout?: boolean;
+  /** AIR 4×5 matrix, with additive terms in byte units. */
+  readonly matrix?: readonly number[];
 }
 
 export interface FlaDisplayListBlurFilter {
@@ -136,6 +143,7 @@ export type FlaDisplayListElement =
       readonly libraryItemName: string;
       readonly symbolType: 'graphic' | 'movieclip' | 'button' | 'ik container';
       readonly movieClipRun?: { readonly start: number; readonly end: number };
+      readonly projection3D?: FlaInstanceProjection | null;
       /** Raw XFL playback mode retained for bounded nested-frame selection. */
       readonly playbackMode?: string;
       /** Raw XFL firstFrame/lastFrame attributes; parsing stays fail-closed. */
@@ -147,6 +155,7 @@ export type FlaDisplayListElement =
       readonly alphaMultiplier?: number;
       /** Shared red/green/blue transform for the bounded #1055 Sync color tween. */
       readonly rgbTransform?: FlaDisplayListRgbTransform;
+      readonly rgbaTransform?: FlaRgbaTransform;
       readonly blendMode?: FlaSupportedBlendMode;
       readonly instanceFilters?: readonly FlaInstanceFilter[];
       /** Parent timeline coordinate and containing DOMFrame span start. */
@@ -173,6 +182,7 @@ export interface FlaGraphicSymbolDefinition {
   readonly kind: 'graphic';
   readonly libraryItemName: string;
   readonly sourceFrameCount?: number;
+  readonly scale9Grid?: FlaScale9Rect;
   /** Concrete frame context for this definition; no frame selection occurs here. */
   readonly frameContext: FlaDisplayListFrameContext;
 }
@@ -261,6 +271,7 @@ export interface FlaResolvedGroupNode {
   readonly kind: 'group';
   readonly groupId: string;
   readonly symbolLibraryItemName?: string;
+  readonly scale9Grid?: FlaScale9Rect;
   readonly sourceAddress?: string;
   readonly localTransform: FlaDisplayListMatrix;
   readonly worldTransform: FlaDisplayListMatrix;
@@ -269,6 +280,7 @@ export interface FlaResolvedGroupNode {
   readonly instanceFilterClips?: readonly FlaResolvedClipPath[];
   readonly inheritedClipPaths?: readonly FlaResolvedClipPath[];
   readonly rgbTransform?: FlaDisplayListRgbTransform;
+  readonly rgbaTransform?: FlaRgbaTransform;
   readonly blendMode?: FlaSupportedBlendMode;
   readonly symbolInstance?: {
     readonly sourceFrameCount?: number;
@@ -337,6 +349,7 @@ interface ResolveContext {
   visitedNodeCount: number;
   resolvedNodeCount: number;
   readonly maskDiagnostics: Set<string>;
+  readonly projectionDiagnostics: Set<string>;
   maskFailureCount: number;
   readonly ikPoseDiagnostics: Set<string>;
   ikPoseFailureCount: number;
@@ -723,7 +736,14 @@ function resolveElements(
     if (!element) return failure('INVALID_INPUT', 'Missing display element', elementPath);
     if (element.visible === false) continue;
 
-    const localTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const authoredTransform = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    const projection = element.kind === 'symbol' ? element.projection3D : undefined;
+    const localTransform = projection === undefined ? authoredTransform
+      : projection && projectFlaInstance(authoredTransform, parentTransform, projection);
+    if (!localTransform) {
+      if (context.projectionDiagnostics.size < 32) context.projectionDiagnostics.add(`${elementPath}: invalid or unsupported 3D instance projection`);
+      continue;
+    }
     if (!isValidMatrix(localTransform)) {
       if (!context.limits.tolerant) {
         return failure('INVALID_MATRIX', 'Display element matrix contains a non-finite value', elementPath);
@@ -950,11 +970,13 @@ function resolveElements(
       kind: 'group',
       groupId: `symbol:${element.libraryItemName}`,
       symbolLibraryItemName: element.libraryItemName,
+      ...(definition.scale9Grid ? { scale9Grid: definition.scale9Grid } : {}),
       ...(element.sourceAddress ? { sourceAddress: element.sourceAddress } : {}),
       localTransform,
       worldTransform,
       ...(element.alphaMultiplier !== undefined ? { opacity: element.alphaMultiplier } : {}),
       ...(element.rgbTransform ? { rgbTransform: element.rgbTransform } : {}),
+      ...(element.rgbaTransform ? { rgbaTransform: element.rgbaTransform } : {}),
       ...(element.blendMode ? { blendMode: element.blendMode } : {}),
       ...(element.instanceFilters?.some((filter: FlaInstanceFilter) => filter.enabled)
         ? { instanceFilters: element.instanceFilters, instanceFilterClips: clipPaths } : {}),
@@ -989,6 +1011,7 @@ export function resolveFlaDisplayList(
     visitedNodeCount: 0,
     resolvedNodeCount: 0,
     maskDiagnostics: new Set(),
+    projectionDiagnostics: new Set(input.root.frameContext.projectionDiagnostics),
     maskFailureCount: 0,
     ikPoseDiagnostics: new Set(),
     ikPoseFailureCount: 0,
@@ -1010,7 +1033,7 @@ export function resolveFlaDisplayList(
       frameIndex: input.root.frameContext.frameIndex,
       layers: layers.layers,
       resolvedNodeCount: context.resolvedNodeCount,
-      ...(input.root.frameContext.projectionDiagnostics?.length ? { projectionDiagnostics: input.root.frameContext.projectionDiagnostics } : {}),
+      ...(context.projectionDiagnostics.size ? { projectionDiagnostics: [...context.projectionDiagnostics] } : {}),
       ...(context.maskDiagnostics.size ? { maskDiagnostics: [...context.maskDiagnostics] } : {}),
       ...(context.ikPoseDiagnostics.size ? { ikPoseDiagnostics: [...context.ikPoseDiagnostics] } : {}),
     },

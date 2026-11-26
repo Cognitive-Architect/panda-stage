@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
 import { DialogueSilenceSchema } from './dialogue-silence';
+import { ExportRenderSettingsSchema, ExportVideoFormatSchema, ExportVideoOptionsSchema } from './export-output-profile';
 import supportSource from './export-preparation-support-source.json';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION = supportSource.version;
@@ -125,6 +126,7 @@ export const ExportPreparationSelectOutputRequestSchema = z
     openInstanceId: OpenInstanceIdSchema,
     snapshotId: z.uuid().optional(),
     pngSequence: PngSequenceOptionsSchema.optional(),
+    videoFormat: ExportVideoFormatSchema.optional(),
   })
   .strict();
 
@@ -191,6 +193,7 @@ export const ExportPreparationRequestSchema = z
     dirty: z.boolean(),
     cameraMode: ExportPreparationCameraModeSchema,
     dialogueSilence: DialogueSilenceSchema.optional(),
+    videoOutput: ExportVideoOptionsSchema.optional(),
     project: z.unknown(),
   })
   .strict();
@@ -338,7 +341,7 @@ const ExportPreparationSupportProfileSchema = z
 export const ExportPreparationMediaManifestEntrySchema = z
   .object({
     assetId: z.uuid(),
-    kind: z.enum(['image', 'audio']),
+    kind: z.enum(['image', 'audio', 'video']),
     sourceRelativePath: z.string().trim().min(1).max(2_000),
     contentHandleId: z.uuid(),
     contentRelativePath: z.string().trim().min(1).max(500),
@@ -348,6 +351,9 @@ export const ExportPreparationMediaManifestEntrySchema = z
       'image/svg+xml',
       'audio/mpeg',
       'audio/wav',
+      'video/mp4',
+      'video/quicktime',
+      'video/webm',
     ]),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
     byteLength: z.number().int().positive().max(
@@ -372,13 +378,7 @@ export const ExportPreparationCandidateSchema = z
     pngSequence: PngSequenceOptionsSchema.optional(),
     capturedAt: z.string().datetime(),
     project: z.unknown(),
-    renderSettings: z
-      .object({
-        width: z.literal(1_920),
-        height: z.literal(1_080),
-        fps: z.literal(24),
-      })
-      .strict(),
+    renderSettings: ExportRenderSettingsSchema,
     cameraMode: ExportPreparationCameraModeSchema,
     dialogueSilence: DialogueSilenceSchema.optional(),
     supportProfileVersion: z.literal(

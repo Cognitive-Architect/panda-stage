@@ -11,6 +11,19 @@ export type ExportStageCaptureStrategy =
   | 'drawn-output-layer'
   | 'stage-composite';
 
+/** Rasterize the already-composed project canvas at the frozen output size. */
+export function resizeExportOutputCanvas(source: HTMLCanvasElement, width: number, height: number): HTMLCanvasElement {
+  if (source.width === width && source.height === height) return source;
+  const target = document.createElement('canvas');
+  target.width = width;
+  target.height = height;
+  const context = target.getContext('2d');
+  if (!context) throw new Error('Cannot prepare the export output canvas.');
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, 0, 0, width, height);
+  return target;
+}
+
 /** Reuses the already drawn output canvas when possible; multi-layer Stages are composited. */
 export function captureExportStageCanvas(
   stage: ExportSceneStageCanvas,

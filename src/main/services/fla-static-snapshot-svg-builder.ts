@@ -33,6 +33,8 @@ import crypto from 'node:crypto';
 import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
+import { applyFlaRgbaTransform, isFlaRgbaTransform, type FlaRgbaTransform } from '../../shared/fla-instance-color';
+import { planFlaScale9Slices } from '../../shared/fla-scale9';
 import type {
   FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
@@ -1031,6 +1033,7 @@ interface ReconstructedFillPaint {
   readonly gradientId: string | null;
   readonly gradientDefinition: string | null;
   readonly gradientStopCount: number;
+  readonly gradientMatrix?: Matrix2D;
 }
 
 interface BitmapFillPaint {
@@ -1205,6 +1208,7 @@ function parseLinearGradientPaint(
       gradientId,
       gradientDefinition: definition,
       gradientStopCount: stops.length,
+      gradientMatrix: matrix,
     },
   };
 }
@@ -1537,6 +1541,7 @@ function parseRadialGradientPaint(
       gradientId,
       gradientDefinition: definition,
       gradientStopCount: stops.length,
+      gradientMatrix: matrix,
     },
   };
 }
@@ -1880,6 +1885,42 @@ function reconstructFills(
  * Extracts the same bounded filled contours used by the formal SVG builder so
  * persisted Structured Graphic masks do not need a second XFL shape parser.
  */
+/**
+ * Extracts bounded filled vector contours in shape-local coordinates for ordinary
+ * imported shapes so positive RGBA alphaOffset can restore 0-alpha geometry without
+ * tinting empty scratch/filter margins or interior holes (E-F09).
+ */
+export function extractFlaGraphicShapeCoveragePathData(input: {
+  readonly shapeBlock: string;
+  readonly shapeId: string;
+  readonly renderTargetId: string;
+  readonly frameIndex: number;
+}): readonly string[] | undefined {
+  try {
+    const representation = buildStyleAwareShapeRepresentation(
+      parseShapeAt(input.shapeBlock),
+      input.shapeId,
+    );
+    if (!representation.ok) return undefined;
+    const reconstructed = reconstructFills(
+      representation.representation,
+      input.shapeId,
+      input.renderTargetId,
+      input.frameIndex,
+    );
+    if (!reconstructed.ok || reconstructed.result.fills.length === 0 || reconstructed.result.fills.length > 256) {
+      return undefined;
+    }
+    const pathData = reconstructed.result.fills.map((fill) => fill.pathD);
+    const totalLength = pathData.reduce((total, path) => total + path.length, 0);
+    return totalLength > 512 * 1024 || pathData.some((path) => path.length === 0)
+      ? undefined
+      : pathData;
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractFlaGraphicMaskPathData(input: {
   readonly shapeBlock: string;
   readonly shapeId: string;
@@ -3429,6 +3470,7 @@ interface ComposedLeaf {
   readonly layer: FlaResolvedDisplayLayer;
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
   readonly compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
+  readonly scale9?: Scale9Placement;
 }
 
 interface Point2D {
@@ -3783,15 +3825,156 @@ function isPngWithExpectedDimensions(
   return readUint32(16) === width && readUint32(20) === height && bytes[25] === 6;
 }
 
+type Scale9Placement = NonNullable<ReturnType<typeof planFlaScale9Slices>>;
+
+export function planStaticScale9Placement(
+  node: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+  shapeBlocks: ReadonlyMap<string, string>,
+): Scale9Placement | null {
+  const { worldTransform: world, scale9Grid } = node;
+  const absX = Math.abs(world.a);
+  const absY = Math.abs(world.d);
+  if (!scale9Grid || absX === 0 || absY === 0 || world.b !== 0 || world.c !== 0 ||
+      (world.a < 0 && world.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
+  const bounds = createBounds();
+  for (const child of node.children) {
+    if (child.kind !== 'shape' || child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) return null;
+    const block = shapeBlocks.get(child.shapeId);
+    if (!block) return null;
+    const shape = parseShapeAt(block);
+    if (shape.issue || shape.strokeStyles.length ||
+        shape.fillStyles.some((style) => !['solid', 'linear', 'radial'].includes(style.type))) return null;
+    const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
+    if (!path.ok) return null;
+    const m = child.worldTransform;
+    const local = {
+      a: m.a / world.a, b: m.b / world.d, c: m.c / world.a, d: m.d / world.d,
+      tx: (m.tx - world.tx) / world.a, ty: (m.ty - world.ty) / world.d,
+    };
+    if (!includeTransformedPathBounds(bounds, path.representation.commands, local)) return null;
+  }
+  const layout = planFlaScale9Slices(
+    { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
+    scale9Grid, absX, absY,
+  );
+  const rect = (left: number, top: number, right: number, bottom: number, sx: number, sy: number) => ({
+    left: Math.min(left * sx, right * sx) + world.tx,
+    right: Math.max(left * sx, right * sx) + world.tx,
+    top: Math.min(top * sy, bottom * sy) + world.ty,
+    bottom: Math.max(top * sy, bottom * sy) + world.ty,
+  });
+  const placements = layout?.map(({ source, target }) => ({
+    source: rect(source.left, source.top, source.right, source.bottom, world.a, world.d),
+    target: rect(target.left, target.top, target.right, target.bottom, Math.sign(world.a), Math.sign(world.d)),
+  }));
+  return placements?.every(({ source, target }) =>
+    Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
+    source.left < source.right && source.top < source.bottom,
+  ) ? placements : null;
+}
+
+function composeMatrix2D(outer: Matrix2D, inner: Matrix2D): Matrix2D {
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+    ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty,
+  };
+}
+
+function transformSvgPathD(pathD: string, matrix: Matrix2D): string {
+  const tokens = pathD.match(/[MLQCZmlqcz]|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/gu);
+  if (!tokens) return pathD;
+  const out: string[] = [];
+  let index = 0;
+  const mapPoint = (x: number, y: number): string => {
+    const mx = matrix.a * x + matrix.c * y + matrix.tx;
+    const my = matrix.b * x + matrix.d * y + matrix.ty;
+    return `${formatSvgNumber(mx)} ${formatSvgNumber(my)}`;
+  };
+  while (index < tokens.length) {
+    const cmd = tokens[index]!;
+    index += 1;
+    if (cmd === 'Z' || cmd === 'z') {
+      out.push('Z');
+      continue;
+    }
+    if (cmd === 'M' || cmd === 'L') {
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`${cmd} ${mapPoint(x, y)}`);
+    } else if (cmd === 'Q') {
+      const cx = Number(tokens[index++]);
+      const cy = Number(tokens[index++]);
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`Q ${mapPoint(cx, cy)} ${mapPoint(x, y)}`);
+    } else if (cmd === 'C') {
+      const c1x = Number(tokens[index++]);
+      const c1y = Number(tokens[index++]);
+      const c2x = Number(tokens[index++]);
+      const c2y = Number(tokens[index++]);
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`C ${mapPoint(c1x, c1y)} ${mapPoint(c2x, c2y)} ${mapPoint(x, y)}`);
+    } else {
+      return pathD;
+    }
+  }
+  return out.join(' ');
+}
+
+export function diagnoseStaticScale9Fallback(
+  node: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+  shapeBlocks: ReadonlyMap<string, string>,
+): string | null {
+  const { worldTransform: world, scale9Grid } = node;
+  if (!scale9Grid) return null;
+  if (planStaticScale9Placement(node, shapeBlocks) !== null) return null;
+  const absX = Math.abs(world.a);
+  const absY = Math.abs(world.d);
+  // Identity scale needs no 9-slice; AIR specifies rotated DisplayObjects fall back to ordinary scaling.
+  if (world.b === 0 && world.c === 0) {
+    if (absX === 1 && absY === 1) return null;
+    if (world.a < 0 && world.d < 0) return null;
+  } else {
+    const lenX = Math.hypot(world.a, world.b);
+    const lenY = Math.hypot(world.c, world.d);
+    const dot = Math.abs(world.a * world.c + world.b * world.d);
+    if (lenX > 0 && lenY > 0 && dot <= 1e-4 * lenX * lenY) return null;
+    return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): skewed transform falls back to ordinary scaling`;
+  }
+  const reasons = new Set<string>();
+  for (const child of node.children) {
+    if (child.kind === 'text') reasons.add('text');
+    else if (child.kind === 'bitmap') reasons.add('bitmap');
+    else if (child.kind === 'group') reasons.add('nested symbol/group');
+    else if (child.kind === 'shape') {
+      if (child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) reasons.add('inner mask');
+      const block = shapeBlocks.get(child.shapeId);
+      const shape = block ? parseShapeAt(block) : undefined;
+      if (shape?.strokeStyles.length) reasons.add('stroke');
+      if (shape?.fillStyles.some((style) => !['solid', 'linear', 'radial'].includes(style.type))) reasons.add('bitmap/unsupported fill');
+    }
+  }
+  const detail = reasons.size > 0 ? [...reasons].join(', ') : 'grid bounds outside artwork';
+  return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): falls back to ordinary scaling (${detail})`;
+}
+
 function flattenResolvedDisplayList(
   displayList: FlaResolvedDisplayList,
+  shapeBlocks: ReadonlyMap<string, string>,
 ): {
   readonly ok: true;
   readonly leaves: readonly ComposedLeaf[];
   readonly groupCount: number;
   readonly expandedSymbolCount: number;
+  readonly scale9Diagnostics: readonly string[];
 } | BuildSvgFailure {
   const leaves: ComposedLeaf[] = [];
+  const scale9Diagnostics = new Set<string>();
   let visited = 0;
   let groupCount = 0;
   let expandedSymbolCount = 0;
@@ -3800,6 +3983,7 @@ function flattenResolvedDisplayList(
     depth: number,
     layer: FlaResolvedDisplayLayer,
     compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
+    scale9?: Scale9Placement,
   ): BuildSvgFailure | null => {
     visited += 1;
     if (visited > 100_000) {
@@ -3821,20 +4005,29 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
+      if (node.rgbaTransform && (node.rgbTransform || !isFlaRgbaTransform(node.rgbaTransform))) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGBA transform' };
+      }
       const childCompositeGroups =
         (node.opacity !== undefined && node.opacity < 1) ||
         node.rgbTransform !== undefined ||
+        node.rgbaTransform !== undefined ||
         node.instanceFilters !== undefined ||
         node.blendMode !== undefined
           ? [...compositeGroups, node]
           : compositeGroups;
+      const placement = node.scale9Grid ? planStaticScale9Placement(node, shapeBlocks) ?? undefined : undefined;
+      if (node.scale9Grid && !placement) {
+        const reason = diagnoseStaticScale9Fallback(node, shapeBlocks);
+        if (reason && scale9Diagnostics.size < 32) scale9Diagnostics.add(reason);
+      }
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups);
+        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups, placement);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ layer, node, compositeGroups });
+    leaves.push({ layer, node, compositeGroups, ...(scale9 ? { scale9 } : {}) });
     return null;
   };
 
@@ -3847,7 +4040,7 @@ function flattenResolvedDisplayList(
   if (displayList.resolvedNodeCount > 100_000 || visited > displayList.resolvedNodeCount) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display-list count is inconsistent or exceeds its budget' };
   }
-  return { ok: true, leaves, groupCount, expandedSymbolCount };
+  return { ok: true, leaves, groupCount, expandedSymbolCount, scale9Diagnostics: [...scale9Diagnostics] };
 }
 
 /**
@@ -3880,7 +4073,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     }
   }
 
-  const flattened = flattenResolvedDisplayList(displayList);
+  const flattened = flattenResolvedDisplayList(displayList, shapeBlocks);
   if (!flattened.ok) return flattened;
 
   const frameBlurIdByLayer = new Map<FlaResolvedDisplayLayer, string>();
@@ -3917,6 +4110,15 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     for (const [index, filter] of filters.entries()) {
       if (!filter.enabled) continue;
       const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+      const output = 'effect' + index;
+      if (filter.kind === 'colorMatrix') {
+        if (!filter.matrix || filter.matrix.length !== 20 ||
+            !filter.matrix.every((value) => Number.isFinite(value) && Math.abs(value) <= 1024) || filter.matrix[19]! > 0) continue;
+        const values = filter.matrix.map((value, i) => formatSvgNumber(i % 5 === 4 ? value / 255 : value)).join(' ');
+        primitives.push(`<feColorMatrix in="${source}" type="matrix" values="${values}" result="${output}"/>`);
+        source = output;
+        continue;
+      }
       // Animate's screen-space blur radii are approximated as twice the SVG sigma.
       const sigmaX = blurX / 2;
       const sigmaY = blurY / 2;
@@ -3926,9 +4128,23 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
       expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
       const blur = 'blur' + index;
-      const output = 'effect' + index;
       if (filter.kind === 'blur') {
         primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+      } else if (filter.kind === 'glow' && (filter.inner || filter.knockout)) {
+        let glowInput = source;
+        if (filter.inner) {
+          glowInput = 'inverse' + index;
+          primitives.push(`<feComponentTransfer in="${source}" result="${glowInput}"><feFuncA type="linear" slope="-1" intercept="1"/></feComponentTransfer>`);
+        }
+        const silhouette = 'silhouette' + index;
+        const effect = filter.knockout ? output : 'glow' + index;
+        primitives.push(
+          `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+          `<feComposite in="${blur}" in2="${source}" operator="${filter.inner ? 'in' : 'out'}" result="${silhouette}"/>`,
+          `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+          `<feComposite in2="${silhouette}" operator="in" result="${effect}"/>`,
+        );
+        if (!filter.knockout) primitives.push(`<feMerge result="${output}"><feMergeNode in="${source}"/><feMergeNode in="${effect}"/></feMerge>`);
       } else {
         const offset = 'offset' + index;
         primitives.push(
@@ -4010,27 +4226,55 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     string
   >();
   const colorTransformGroups = new Set<Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>>();
+  const solidColorByGroup = new Map<CompositeGroup, FlaRgbaTransform>();
+  const rgbaWarnings = new Set<string>();
   for (const leaf of flattened.leaves) {
     for (const group of leaf.compositeGroups) {
-      if (group.rgbTransform) colorTransformGroups.add(group);
+      if (group.rgbTransform || group.rgbaTransform) colorTransformGroups.add(group);
     }
   }
   for (const group of colorTransformGroups) {
-    const transform = group.rgbTransform!;
-    const offsets = transform.channelOffsets ?? [transform.offset, transform.offset, transform.offset];
-    const identity = [transform.multiplier, ...(transform.channelOffsets ?? [transform.offset])]
+    const rgba = group.rgbaTransform;
+    const transform = group.rgbTransform;
+    let tightBitmapCoverage = false;
+    if (rgba && rgba.offsets[3] > 0) {
+      const child = group.children.length === 1 ? group.children[0] : undefined;
+      const block = child?.kind === 'shape' ? shapeBlocks.get(child.shapeId) : undefined;
+      const shape = block ? parseShapeAt(block) : undefined;
+      if (shape && !shape.issue && shape.strokeStyles.length === 0 &&
+          shape.fillStyles.length === 1 && shape.fillStyles[0]?.type === 'solid') {
+        solidColorByGroup.set(group, rgba);
+        continue;
+      }
+      if (child?.kind === 'bitmap' && !group.instanceFilters?.some((filter) => filter.enabled)) {
+        // A sole bitmap's own [0..w, 0..h] texel grid is exact coverage; clamping the
+        // filter region to objectBoundingBox [0,0,1,1] lets interior transparent texels
+        // receive positive alphaOffset without tinting surrounding canvas padding.
+        tightBitmapCoverage = true;
+      } else {
+        rgbaWarnings.add('Alpha offset needs known coverage and was skipped for complex artwork.');
+      }
+    }
+    const multipliers = rgba?.multipliers ?? [transform!.multiplier, transform!.multiplier, transform!.multiplier, 1];
+    const offsets = rgba
+      ? [rgba.offsets[0], rgba.offsets[1], rgba.offsets[2], tightBitmapCoverage ? rgba.offsets[3] : Math.min(0, rgba.offsets[3])]
+      : [...(transform!.channelOffsets ?? [transform!.offset, transform!.offset, transform!.offset]), 0];
+    const regionAttrs = tightBitmapCoverage
+      ? 'filterUnits="objectBoundingBox" x="0" y="0" width="1" height="1"'
+      : 'x="-10%" y="-10%" width="120%" height="120%"';
+    const identity = (rgba
+      ? [...multipliers, ...offsets, ...(tightBitmapCoverage ? [1] : [])]
+      : [transform!.multiplier, ...(transform!.channelOffsets ?? [transform!.offset])])
       .map(formatSvgNumber).join('\u0000');
-    const id = `fla-rgb-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+    const id = `fla-${rgba ? 'rgba' : 'rgb'}-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const existingDefinition = definitions.get(id);
-    const multiplier = formatSvgNumber(transform.multiplier);
-    const [red, green, blue] = offsets.map((offset) => formatSvgNumber(offset / 255));
     const values = [
-      multiplier, '0', '0', '0', red,
-      '0', multiplier, '0', '0', green,
-      '0', '0', multiplier, '0', blue,
-      '0', '0', '0', '1', '0',
-    ].join(' ');
-    const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
+      multipliers[0]!, 0, 0, 0, offsets[0]! / 255,
+      0, multipliers[1]!, 0, 0, offsets[1]! / 255,
+      0, 0, multipliers[2]!, 0, offsets[2]! / 255,
+      0, 0, 0, multipliers[3]!, offsets[3]! / 255,
+    ].map(formatSvgNumber).join(' ');
+    const definition = `<filter id="${id}" ${regionAttrs} color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
     if (existingDefinition && existingDefinition !== definition) {
       return { ok: false, code: 'RENDER_FAILED', message: 'RGB color-transform filter id collision detected' };
     }
@@ -4308,7 +4552,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const openCompositeGroups: Array<{ group: CompositeGroup; close: string; coveredClips: number }> = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
-  for (const { layer, node, compositeGroups } of flattened.leaves) {
+  for (const { layer, node, compositeGroups, scale9 } of flattened.leaves) {
     if (openLayer !== layer) {
       while (openCompositeGroups.length > 0) {
         const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
@@ -4408,10 +4652,18 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (pathCommandCount + commands.length > maxPathCommandsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
-      if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
+      if (scale9) {
+        for (const bounds of [graphicBounds, nonTextGraphicBounds]) {
+          if (!bounds) continue;
+          for (const { target } of scale9) {
+            includePoint(bounds, { x: target.left, y: target.top });
+            includePoint(bounds, { x: target.right, y: target.bottom });
+          }
+        }
+      } else if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
       }
-      if (nonTextGraphicBounds) {
+      if (nonTextGraphicBounds && !scale9) {
         includeTransformedPathBounds(nonTextGraphicBounds, commands, node.worldTransform);
       }
       const reconstructed = reconstructFills(
@@ -4477,10 +4729,95 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           fillRegionCount += 1;
           continue;
         }
-        const gradientFailure = registerGradientPaint(paint);
-        if (gradientFailure) return gradientFailure;
-        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        const appendFailure = appendEmittedNode(pathNode, leafClips);
+        let artwork: string;
+        if (scale9 && paint.gradientType && paint.gradientId && paint.gradientDefinition && paint.gradientMatrix) {
+          // Separate 9-slice vector geometry from gradient fill mapping (AIR/Animate semantics):
+          // gradient maps continuously once across the overall scaled target bounds rather than
+          // being piecewise-warped differently inside each of the 9 <svg viewBox> zones.
+          const sourceMinX = Math.min(...scale9.map((slice) => slice.source.left));
+          const sourceMinY = Math.min(...scale9.map((slice) => slice.source.top));
+          const targetMinX = Math.min(...scale9.map((slice) => slice.target.left));
+          const targetMinY = Math.min(...scale9.map((slice) => slice.target.top));
+          const overallOffset: Matrix2D = {
+            a: 1, b: 0, c: 0, d: 1,
+            tx: targetMinX - sourceMinX,
+            ty: targetMinY - sourceMinY,
+          };
+          const stageGradientMatrix = composeMatrix2D(
+            overallOffset,
+            composeMatrix2D(node.worldTransform, paint.gradientMatrix),
+          );
+          const stageGradientTransform = matrixToSvgTransform(stageGradientMatrix);
+          const stageGradientHash = crypto.createHash('sha256')
+            .update(`${paint.gradientId}\u0000${stageGradientTransform}`, 'utf8')
+            .digest('hex')
+            .slice(0, 16);
+          const stageGradientId = `${paint.gradientId}-s9-${stageGradientHash}`;
+          const stageGradientDef = paint.gradientDefinition
+            .replace(`id="${paint.gradientId}"`, `id="${stageGradientId}"`)
+            .replace(/gradientTransform="[^"]*"/u, `gradientTransform="${stageGradientTransform}"`);
+          const stageGradFailure = registerGradientPaint({
+            ...paint,
+            svgPaint: `url(#${stageGradientId})`,
+            gradientId: stageGradientId,
+            gradientDefinition: stageGradientDef,
+          });
+          if (stageGradFailure) return stageGradFailure;
+          const sliceNodes: string[] = [];
+          for (const { source, target } of scale9) {
+            const width = target.right - target.left;
+            const height = target.bottom - target.top;
+            if (width <= 0 || height <= 0) continue;
+            const sx = width / (source.right - source.left);
+            const sy = height / (source.bottom - source.top);
+            const sliceAffine: Matrix2D = {
+              a: sx,
+              b: 0,
+              c: 0,
+              d: sy,
+              tx: target.left - source.left * sx,
+              ty: target.top - source.top * sy,
+            };
+            const sliceToStage = composeMatrix2D(sliceAffine, node.worldTransform);
+            const transformedD = transformSvgPathD(fill.pathD, sliceToStage);
+            const rectMarkup = `<rect x="${formatSvgNumber(target.left)}" y="${formatSvgNumber(target.top)}" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"/>`;
+            const sliceClipId = `fla-s9-clip-${crypto.createHash('sha256').update(rectMarkup, 'utf8').digest('hex').slice(0, 20)}`;
+            const clipFailure = registerClipDefinition(
+              sliceClipId,
+              `<clipPath id="${sliceClipId}" clipPathUnits="userSpaceOnUse">${rectMarkup}</clipPath>`,
+            );
+            if (clipFailure) return clipFailure;
+            sliceNodes.push(
+              `<g clip-path="url(#${sliceClipId})"><path d="${transformedD}" fill="url(#${stageGradientId})" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/></g>`,
+            );
+          }
+          artwork = sliceNodes.join('');
+        } else {
+          const gradientFailure = registerGradientPaint(paint);
+          if (gradientFailure) return gradientFailure;
+          let fillColor = paint.svgPaint;
+          let fillOpacity = paint.opacity;
+          const ownColor = solidColorByGroup.get(compositeGroups.at(-1)!);
+          if (ownColor) {
+            const raw = fillColor.slice(1);
+            const hex = raw.length <= 4 ? [...raw].map((char) => char + char).join('') : raw;
+            const rgb = [0, 2, 4].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+            const alpha = (hex.length === 8 ? Number.parseInt(hex.slice(6), 16) : 255) * fillOpacity;
+            const channels = applyFlaRgbaTransform([rgb[0]!, rgb[1]!, rgb[2]!, alpha], ownColor);
+            fillColor = '#' + channels.slice(0, 3).map((value) => Math.round(value).toString(16).padStart(2, '0')).join('');
+            fillOpacity = channels[3] / 255;
+          }
+          const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${formatSvgNumber(fillOpacity)}" stroke="none" fill-rule="nonzero"/>`;
+          artwork = scale9 ? scale9.map(({ source, target }) => {
+            const width = target.right - target.left;
+            const height = target.bottom - target.top;
+            if (width <= 0 || height <= 0) return '';
+            const viewBox = [source.left, source.top, source.right - source.left, source.bottom - source.top].join(' ');
+            return `<svg x="${target.left}" y="${target.top}" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="none" overflow="hidden">${pathNode}</svg>`;
+          }).join('') : pathNode;
+          if (firstFillColor === null) firstFillColor = ownColor ? fillColor : paint.firstColor;
+        }
+        const appendFailure = appendEmittedNode(artwork, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
@@ -4715,7 +5052,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
   const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
-  const projectionWarning = displayList.projectionDiagnostics?.join('；').slice(0, 500);
+  const projectionWarning = [...(displayList.projectionDiagnostics ?? []), ...flattened.scale9Diagnostics, ...rgbaWarnings].join('；').slice(0, 500);
   if ((maskWarnings.size || ikPoseWarning || projectionWarning) && emittedLeafCount === 0) {
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning, projectionWarning].filter(Boolean).join('；').slice(0, 500) };
   }
@@ -4751,7 +5088,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     ...(projectionWarning ? { projectionWarning } : {}),
     ...(staticTexts.length > 0 ? { staticTexts } : {}),
     ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
-    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined)
+    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined || group.rgbaTransform)
       ? { hasPerChannelColorTransform: true } : {}),
     ...(graphicFraming ? { graphicFraming } : {}),
     composition: {

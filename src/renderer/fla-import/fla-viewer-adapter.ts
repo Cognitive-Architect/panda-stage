@@ -532,6 +532,28 @@ export async function adaptFlaDocument(
     if (!soundIdByName.has(normalizedName)) soundIdByName.set(normalizedName, sound.id);
   }
 
+  const videos = document.videos?.size > 0
+    ? [...document.videos.values()].slice(0, FLA_IMPORT_LIMITS.maxMediaCount).flatMap((video) => {
+        const name = video.name.trim().slice(0, 500);
+        if (!name) return [];
+        const width = metadataDimension(video.width);
+        const height = metadataDimension(video.height);
+        return [{
+          name,
+          href: video.href.length <= 2048 ? video.href : '',
+          width,
+          height,
+          ...(video.fps !== undefined && Number.isFinite(video.fps) && video.fps > 0
+            ? { fps: video.fps }
+            : {}),
+          ...(video.duration !== undefined && Number.isFinite(video.duration) && video.duration >= 0
+            ? { duration: video.duration }
+            : {}),
+          ...(video.videoType ? { videoType: video.videoType.slice(0, 200) } : {}),
+        }];
+      })
+    : [];
+
   const timelines: AnimationImportIR['timelines'] = [];
   const referencedItems = new Set<BitmapItem>();
   let placedInstanceCount = 0;
@@ -736,6 +758,7 @@ export async function adaptFlaDocument(
     },
     media,
     ...(sounds.length > 0 ? { sounds } : {}),
+    ...(videos.length > 0 ? { videos } : {}),
     timelines,
     ...(symbolTimelines.length > 0 ? { symbolTimelines } : {}),
     compatibility,
