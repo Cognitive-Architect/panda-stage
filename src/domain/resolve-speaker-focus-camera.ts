@@ -70,6 +70,7 @@ function targetAt(
   if (!layer) return full;
   if (
     layer.parentLayerId ||
+    layer.parentKeys?.length ||
     layer.parentSpaceOffset ||
     layer.depth !== undefined ||
     layer.depthKeys?.length ||

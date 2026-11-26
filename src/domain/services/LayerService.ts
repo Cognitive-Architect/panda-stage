@@ -2126,8 +2126,13 @@ export class LayerService {
       offsetPosition.x === layer.x && offsetPosition.y === layer.y
         ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
         : offsetPosition;
-    const { parentKeys: _sourceParentKeys, ...layerBase } = layer;
+    const {
+      parentKeys: _sourceParentKeys,
+      animationTimeLink: _sourceAnimationTimeLink,
+      ...layerBase
+    } = layer;
     void _sourceParentKeys;
+    void _sourceAnimationTimeLink;
     const duplicate: Layer = {
       ...layerBase,
       ...(layer.flaGraphicInstanceTransformOverrides
@@ -2150,6 +2155,7 @@ export class LayerService {
       parentLayerId: keepParent ? layer.parentLayerId : undefined,
       parentAttachment: keepParent ? layer.parentAttachment : undefined,
       ...(copiedParentKeys?.length ? { parentKeys: copiedParentKeys } : {}),
+      ...(sameShot && layer.animationTimeLink ? { animationTimeLink: { ...layer.animationTimeLink } } : {}),
       parentSpaceOffset: copiedSpace,
       cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
       depth: detachedPose ? preservedDetachedDepth(layer, detachedPose) : layer.depth,
