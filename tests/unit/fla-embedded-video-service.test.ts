@@ -254,6 +254,12 @@ describe('E-F04 deterministic video clock (CFR / VFR / non-zero PTS / trim / loo
   });
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 describe('A06/A07 embedded video rotation and project decode lifetime', () => {
   it('uses FFmpeg display dimensions for 0, 90, and 270 degree MP4 display matrices', async () => {
     const root = await makeTempDir('panda-video-rotation-');
@@ -299,11 +305,11 @@ describe('A06/A07 embedded video rotation and project decode lifetime', () => {
     };
     const adapter = new FFmpegAdapter({ ffmpegPath: bundledFfmpegPath, ffprobePath: bundledFfprobePath });
     type Decode = FFmpegAdapter['decodeFlaVideoFramesSequential'];
-    const beginDecode = () => Promise.withResolvers<{ directory: string; signal?: AbortSignal }>();
+    const beginDecode = () => deferred<{ directory: string; signal?: AbortSignal }>();
     const older = beginDecode();
     const newer = beginDecode();
-    const releaseOld = Promise.withResolvers<void>();
-    const releaseNew = Promise.withResolvers<void>();
+    const releaseOld = deferred<void>();
+    const releaseNew = deferred<void>();
     const capture = (started: ReturnType<typeof beginDecode>, release: Promise<void>): Decode =>
       async ({ outputDirectory }, signal) => {
         started.resolve({ directory: outputDirectory, signal });
