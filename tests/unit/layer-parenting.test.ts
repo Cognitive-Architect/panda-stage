@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
   cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, isFlaGraphicDefinition, layerPoseMatrix, LayerMotionService, LayerService,
-  migrateProject, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV44Schema,
-  resolveLayerAttachmentTargets, setLayerDepth, setLayerDepthKey, ShotService, type Layer, type TimelineEvent,
+  migrateProject, prepareShotCamera, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV44Schema,
+  resolveLayerAttachmentTargets, resolveLayerCameraTransform, setLayerDepth, setLayerDepthKey, setShotCameraKey, setShotCameraMode, ShotService, type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
@@ -711,5 +711,89 @@ describe('native Layer parenting', () => {
     const duplicatedShot = new ShotService().duplicate(migrated, IDS.shot).shots[1]!;
     const copiedProp = duplicatedShot.layers.find(({ name }) => name === upgradedLeft.name)!;
     expect(copiedProp.parentAttachment?.target).toEqual({ kind: 'graphic-node', identityPath: ['addr:Rig/LeftArm', 'addr:Arm/hand'] });
+  });
+
+  it('keeps depth parallax, adaptive part props, empty control layers, hidden parents, screen HUD, and selected-object export aligned together (JOINT-01)', () => {
+    const data = characterPartAnimationFixture();
+    const service = new LayerService();
+    const motion = new LayerMotionService();
+    // 1. Animated adaptive character with a part-bound prop and depth=0.
+    let project = addTestAnimation(data.project, data.layerId, data.imagePartId, 'transform.offsetX', 120);
+    const control = service.createControl(project, IDS.shot);
+    const hiddenCarrier = service.duplicateLayer(control.project, IDS.shot, IDS.layerAsset);
+    const fgBadge = service.duplicateLayer(hiddenCarrier.project, IDS.shot, IDS.layerAsset);
+    const hud = service.duplicateLayer(fgBadge.project, IDS.shot, IDS.layerAsset);
+    project = hud.project;
+    const propTarget = { kind: 'character-part' as const, partId: data.imagePartId };
+    project = service.setParent(project, IDS.shot, IDS.layerAsset, data.layerId, 0, propTarget);
+
+    // 2. Empty control layer at depth -400 driving a hidden intermediate parent -> visible foreground child.
+    project = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((s) => s.id === IDS.shot ? {
+        ...s,
+        layers: s.layers.map((l) => l.id === hiddenCarrier.layer.id ? { ...l, visible: false } : l),
+      } : s),
+    });
+    project = setLayerDepth(project, IDS.shot, control.layer.id, -400);
+    project = service.setParent(project, IDS.shot, hiddenCarrier.layer.id, control.layer.id, 0);
+    project = service.setParent(project, IDS.shot, fgBadge.layer.id, hiddenCarrier.layer.id, 0);
+    project = motion.applyTransform(
+      project,
+      { shotId: IDS.shot, layerId: control.layer.id, timeMs: 1_000, autoKey: true },
+      { x: 1_160, y: 540 },
+    );
+
+    // 3. Screen-space HUD pinned above world layers.
+    project = service.setCameraAttachment(project, IDS.shot, hud.layer.id, true);
+
+    // 4. Far background depth + manual 2-key camera pan/zoom.
+    const bgId = project.shots[0]!.backgroundLayerId;
+    if (bgId) project = setLayerDepth(project, IDS.shot, bgId, 700);
+    project = setShotCameraMode(project, IDS.shot, 'manual');
+    project = setShotCameraKey(project, IDS.shot, 0, { centerX: 960, centerY: 540, zoom: 1, rotationDeg: 0 });
+    project = setShotCameraKey(project, IDS.shot, 1_000, { centerX: 1_060, centerY: 540, zoom: 2, rotationDeg: 0 });
+
+    // 5. Save/reopen round-trip and evaluate formal export at t=500ms.
+    const reopened = migrateProject(JSON.parse(JSON.stringify(project)));
+    const shot = reopened.shots[0]!;
+    const cameraAt = prepareShotCamera(reopened, shot, 'static');
+    const camera500 = cameraAt(500)!;
+    const formal500 = evaluateExportShotAtTime(reopened, shot, 500);
+    const drawn500 = selectExportDrawingLayers(formal500);
+
+    // Control layer & hidden parent must not appear in drawn export layers, while their visible child follows them at depth -400.
+    const drawnIds = drawn500.layers.map(({ id }) => id);
+    expect(drawnIds).not.toContain(control.layer.id);
+    expect(drawnIds).not.toContain(hiddenCarrier.layer.id);
+    expect(drawnIds).toContain(fgBadge.layer.id);
+    expect(drawnIds).toContain(IDS.layerAsset);
+    expect(drawnIds).toContain(hud.layer.id);
+
+    const fgEvaluated = drawn500.layers.find(({ id }) => id === fgBadge.layer.id)!;
+    expect(fgEvaluated.effectiveDepth).toBe(-400);
+    expect(evaluatedLayerWorldMatrix(fgEvaluated).tx).toBeGreaterThan(fgBadge.layer.x);
+
+    const prop0 = evaluateExportShotAtTime(reopened, shot, 0).layers.find(({ id }) => id === IDS.layerAsset)!;
+    const prop500 = drawn500.layers.find(({ id }) => id === IDS.layerAsset)!;
+    expect(evaluatedLayerWorldMatrix(prop500).tx - evaluatedLayerWorldMatrix(prop0).tx).toBeCloseTo(60, 5);
+
+    const urls = Object.fromEntries(collectExportPreparationMedia(reopened).map(({ asset }) => [asset.id, 'asset:' + asset.id]));
+    const renderModel = buildStageRenderModel(reopened, drawn500, urls, undefined, { camera: camera500 });
+    // Screen HUD stays last (above world layers) and unaffected by camera zoom/pan.
+    expect(renderModel.layers.at(-1)?.id).toBe(hud.layer.id);
+    expect(resolveLayerCameraTransform(renderModel.layers.at(-1)!, camera500, 1920, 1080)).toEqual({
+      x: 960, y: 540, offsetX: 960, offsetY: 540, scaleX: 1, scaleY: 1, rotation: -0,
+    });
+    // Near foreground child (-400) has stronger magnification than mid-plane prop (0).
+    const fgRender = renderModel.layers.find(({ id }) => id === fgBadge.layer.id)!;
+    const propRender = renderModel.layers.find(({ id }) => id === IDS.layerAsset)!;
+    expect(resolveLayerCameraTransform(fgRender, camera500, 1920, 1080)!.scaleX)
+      .toBeGreaterThan(resolveLayerCameraTransform(propRender, camera500, 1920, 1080)!.scaleX);
+
+    // Selected-object export isolates only the target layer with null background (camera-independent contract).
+    const isolated = evaluateExportShotAtTime(reopened, shot, 500, undefined, undefined, IDS.layerAsset);
+    expect(isolated.backgroundLayerId).toBeNull();
+    expect(isolated.layers.map(({ id }) => id)).toEqual([IDS.layerAsset]);
   });
 });
