@@ -9,6 +9,8 @@ import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/af
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateEditorCanvasShot } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { evaluateExportShotAtTime, selectExportDrawingLayers } from '../../src/export-renderer/evaluateExportShotAtTime';
+import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
 
 function fixture() {
   const base = migrateProject(demo);
@@ -39,6 +41,30 @@ function expectMatrix(actual: AffineMatrix2D, expected: AffineMatrix2D) {
 }
 
 describe('native Layer parenting', () => {
+  it('draws only visible exported layers after inheriting hidden parent motion', () => {
+    const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
+    const hidden = { ...asset, id: randomUUID(), relativePath: 'assets/hidden.png' };
+    const delayed = { ...asset, id: randomUUID(), relativePath: 'assets/delayed.png' };
+    const layerIds = [baseLayer.id, middle.id, other.id];
+    const prepared = ProjectSchema.parse({
+      ...project, assets: [...project.assets, hidden, delayed],
+      shots: [{ ...shot, layers: shot.layers.map((layer) => layerIds.includes(layer.id)
+        ? { ...layer, visible: false, source: { kind: 'asset', assetId: layer.id === other.id ? delayed.id : hidden.id } } : layer),
+      timelineEvents: [...shot.timelineEvents, { id: randomUUID(), layerId: other.id, type: 'visibility', startMs: 1000, endMs: 1000, visible: true }] }],
+    });
+    const bound = new LayerService().setParent(prepared, shot.id, tip.id, baseLayer.id, 0);
+    const input = bound.shots[0]!;
+    const urls = Object.fromEntries(collectExportPreparationMedia(bound).map(({ asset: media }) => [media.id, 'asset:' + media.id]));
+    expect(urls[hidden.id]).toBeUndefined();
+    expect(urls[delayed.id]).toBeDefined();
+    const at = (time: number) => selectExportDrawingLayers(evaluateExportShotAtTime(bound, input, time));
+    const before = at(500);
+    expect(before.layers.map(({ id }) => id)).toEqual([tip.id]);
+    expect(evaluatedLayerWorldMatrix(before.layers[0]!).tx).not.toBe(tip.x);
+    expect(buildStageRenderModel(bound, before, urls).layers.map(({ id }) => id)).toEqual([tip.id]);
+    expect(buildStageRenderModel(bound, at(1000), urls).layers.map(({ id }) => id)).toEqual([other.id, tip.id]);
+    expect(() => buildStageRenderModel(bound, at(1000), { ...urls, [delayed.id]: undefined })).toThrow(/no loadable URL/);
+  });
   it.each(['bound', 'detached'] as const)('clears a %s layer space when making or refilling the formal background', (mode) => {
     const { project, shot, baseLayer, tip } = fixture();
     const service = new LayerService();
