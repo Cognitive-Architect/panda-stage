@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Konva from 'konva';
 import {
   evaluateShotAtTime,
-  evaluateSpeakerFocusCamera,
   mapProjectTime,
-  prepareSpeakerFocusCamera,
+  prepareShotCamera,
+  resolveExportFrameAuthoringTime,
   type Project,
 } from '../domain';
 import type {
@@ -32,7 +32,7 @@ import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
-import { evaluateExportShotAtTime } from './evaluateExportShotAtTime';
+import { evaluateExportShotAtTime, selectExportDrawingLayers } from './evaluateExportShotAtTime';
 import { resolveProductPreviewSubtitleStyle } from '../renderer/shell/productPreviewModel';
 import {
   isExactExportFrameDrawn,
@@ -206,14 +206,14 @@ export function ExportRendererApp(): React.JSX.Element {
   const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
   const evaluatedShot = useMemo(
     () => formalRequest
-      ? evaluateExportShotAtTime(
+      ? selectExportDrawingLayers(evaluateExportShotAtTime(
           project,
           shot,
           shotLocalTimeMs,
           subtitle?.id ?? null,
           formalRequest.dialogueSilence,
           formalRequest.outputLayerId,
-        )
+        ))
       : evaluatedBaseShot,
     [
       evaluatedBaseShot,
@@ -225,15 +225,15 @@ export function ExportRendererApp(): React.JSX.Element {
     ],
   );
   const cameraPlan = useMemo(
-    () =>
-      formalRequest?.cameraMode === 'speaker-focus'
-        ? prepareSpeakerFocusCamera(project, shot)
-        : null,
-    [formalRequest?.cameraMode, project, shot],
+    () => formalRequest && !formalRequest.outputLayerId
+      ? prepareShotCamera(project, shot, formalRequest.cameraMode)
+      : null,
+    [formalRequest, project, shot],
   );
-  const camera = cameraPlan
-    ? evaluateSpeakerFocusCamera(cameraPlan, evaluatedShot.timeMs)
-    : undefined;
+  const cameraTimeMs = shot.camera?.mode === 'manual' || shot.camera?.mode === 'hybrid'
+    ? resolveExportFrameAuthoringTime(evaluatedShot.timeMs, shot.durationMs)
+    : evaluatedShot.timeMs;
+  const camera = cameraPlan?.(cameraTimeMs);
   const captionStyle = formalRequest
     ? resolveProductPreviewSubtitleStyle(project, subtitle)
     : undefined;

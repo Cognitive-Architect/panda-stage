@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cameraLayerTransform,
   evaluateSpeakerFocusCamera,
+  evaluateShotAtTime,
+  evaluatedLayerWorldMatrix,
   prepareSpeakerFocusCamera,
   resolveSpeakerFocusCamera,
   type Project,
@@ -56,6 +59,34 @@ describe('Speaker Focus Camera', () => {
     expect(beforeShake).toEqual({ centerX: 640, centerY: 360, zoom: 1.5 });
     shot.timelineEvents.push({ id: 'shake', layerId: 'a', type: 'shake', startMs: 0, endMs: 1000, amplitudeX: 50, amplitudeY: 80, frequencyHz: 1 });
     expect(resolveSpeakerFocusCamera(project, shot, 500)).toEqual(beforeShake);
+  });
+
+  it('follows the formal inherited speaker position without cancelling its own or its ancestors’ Shake', () => {
+    const { project, shot } = fixture();
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const pose = { scaleX: 1, scaleY: 1, rotationDeg: 0, flipX: false };
+    Object.assign(shot.layers[0]!, pose, { x: 600, parentLayerId: 'middle', parentSpaceOffset: { ...identity, tx: -600, ty: -500 } });
+    shot.layers.push(
+      { ...shot.layers[0]!, id: 'middle', source: { kind: 'asset', assetId: 'middle' }, parentLayerId: 'root' },
+      { ...shot.layers[0]!, id: 'root', source: { kind: 'asset', assetId: 'root' }, parentLayerId: undefined, parentSpaceOffset: undefined },
+    );
+    shot.dialogues.push(dialogue('A', 'A', 0, 1_800));
+    shot.timelineEvents.push({
+      id: 'move-root', layerId: 'root', type: 'move', startMs: 0, endMs: 1_000,
+      from: { x: 600, y: 500 }, to: { x: 1_600, y: 500 }, easing: 'linear',
+    });
+    const beforeShake = prepareSpeakerFocusCamera(project, shot);
+    const times = [0, 125, 250, 500, 900, 1_500, 1_850];
+    const expected = times.map((time) => evaluateSpeakerFocusCamera(beforeShake, time));
+    expect(expected[3]).toEqual({ centerX: 1100, centerY: 500, zoom: 1.5 });
+    expect(expected[5]?.centerX).toBe(1280);
+    const baseX = evaluatedLayerWorldMatrix(evaluateShotAtTime(shot, 500, project).layers[0]!).tx;
+    for (const layerId of ['a', 'root']) shot.timelineEvents.push({
+      id: 'shake-' + layerId, layerId, type: 'shake', startMs: 0, endMs: 1_000, amplitudeX: 80, amplitudeY: 0, frequencyHz: 0.5,
+    });
+    const shakePlan = prepareSpeakerFocusCamera(project, shot);
+    expect(evaluatedLayerWorldMatrix(evaluateShotAtTime(shot, 500, project).layers[0]!).tx).not.toBe(baseX);
+    expect([...times].reverse().map((time) => evaluateSpeakerFocusCamera(shakePlan, time)).reverse()).toEqual(expected);
   });
 
   it('folds rapid speaker changes and short gaps without a snap; seeking is stateless', () => {
@@ -115,5 +146,108 @@ describe('Speaker Focus Camera', () => {
     const sought = evaluateSpeakerFocusCamera(plan, 999);
     for (let time = 0; time <= 999; time += 7) evaluateSpeakerFocusCamera(plan, time);
     expect(evaluateSpeakerFocusCamera(plan, 999)).toEqual(sought);
+  });
+
+  it('compensates effective depth (near, far, zero, and parent-inherited moving speakers) while keeping clamp, Shake, and screen-space fallbacks', () => {
+    const projectPoint = (
+      camera: ReturnType<typeof resolveSpeakerFocusCamera>,
+      worldX: number,
+      worldY: number,
+      depth: number,
+      space: 'world' | 'screen' = 'world',
+    ) => {
+      const layerTransform = cameraLayerTransform(camera, 1920, 1080, depth, space)!;
+      return {
+        x: layerTransform.x + (worldX - layerTransform.offsetX) * layerTransform.scaleX,
+        y: layerTransform.y + (worldY - layerTransform.offsetY) * layerTransform.scaleY,
+      };
+    };
+
+    // Issue #1377 numerical example: 1920x1080, F=1000, actor X=1280, d=-500, zoom=1.5 => centerX=1120 => projected X=960.
+    const near = fixture();
+    Object.assign(near.shot.layers[0]!, { x: 1280, y: 540, depth: -500 });
+    near.shot.dialogues.push(dialogue('near', 'A', 0, 1_000));
+    const nearCamera = resolveSpeakerFocusCamera(near.project, near.shot, 500);
+    expect(nearCamera).toEqual({ centerX: 1120, centerY: 540, zoom: 1.5 });
+    expect(projectPoint(nearCamera, 1280, 540, -500).x).toBeCloseTo(960, 8);
+    expect(projectPoint(nearCamera, 1280, 540, -500).y).toBeCloseTo(540, 8);
+
+    // Far depth within reachable clamp range centers accurately; beyond range respects existing stage clamp.
+    const far = fixture();
+    Object.assign(far.shot.layers[0]!, { x: 1100, y: 540, depth: 1_000 });
+    far.shot.dialogues.push(dialogue('far', 'A', 0, 1_000));
+    const farCamera = resolveSpeakerFocusCamera(far.project, far.shot, 500);
+    expect(farCamera).toEqual({ centerX: 1240, centerY: 540, zoom: 1.5 });
+    expect(projectPoint(farCamera, 1100, 540, 1_000).x).toBeCloseTo(960, 8);
+    far.shot.layers[0]!.x = 1280;
+    expect(resolveSpeakerFocusCamera(far.project, far.shot, 500)).toEqual({ centerX: 1280, centerY: 540, zoom: 1.5 });
+
+    // Explicit depth=0 preserves original behavior identically.
+    const zero = fixture();
+    Object.assign(zero.shot.layers[0]!, { x: 1120, y: 500, depth: 0 });
+    zero.shot.dialogues.push(dialogue('zero', 'A', 0, 1_000));
+    expect(resolveSpeakerFocusCamera(zero.project, zero.shot, 500)).toEqual({ centerX: 1120, centerY: 500, zoom: 1.5 });
+
+    // Moving character inheriting dynamic depth from a parent layer stays centered without chasing Shake.
+    const inherited = fixture();
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const pose = { scaleX: 1, scaleY: 1, rotationDeg: 0, flipX: false };
+    Object.assign(inherited.shot.layers[0]!, pose, {
+      x: 960, y: 540, parentLayerId: 'carrier', parentSpaceOffset: { ...identity, tx: -960, ty: -540 },
+    });
+    inherited.shot.layers.push({
+      ...inherited.shot.layers[0]!,
+      id: 'carrier',
+      source: { kind: 'control' },
+      parentLayerId: undefined,
+      parentSpaceOffset: undefined,
+      depthKeys: [
+        { timeMs: 0, value: -400, interpolationToNext: 'linear' },
+        { timeMs: 1_000, value: 400, interpolationToNext: 'linear' },
+      ],
+    });
+    inherited.shot.dialogues.push(dialogue('move-deep', 'A', 0, 1_500));
+    inherited.shot.timelineEvents.push({
+      id: 'move-carrier', layerId: 'carrier', type: 'move', startMs: 0, endMs: 1_000,
+      from: { x: 800, y: 480 }, to: { x: 1120, y: 600 }, easing: 'linear',
+    });
+    const planWithoutShake = prepareSpeakerFocusCamera(inherited.project, inherited.shot);
+    const checkTimes = [300, 500, 750, 1_000];
+    const withoutShake = checkTimes.map((t) => evaluateSpeakerFocusCamera(planWithoutShake, t));
+    for (const [index, timeMs] of checkTimes.entries()) {
+      const evaluated = evaluateShotAtTime(inherited.shot, timeMs, inherited.project, { includeShake: false }).layers[0]!;
+      const world = evaluatedLayerWorldMatrix(evaluated);
+      const projected = projectPoint(withoutShake[index]!, world.tx, world.ty, evaluated.effectiveDepth ?? 0);
+      expect(projected.x).toBeCloseTo(960, 6);
+      expect(projected.y).toBeCloseTo(540, 6);
+    }
+    inherited.shot.timelineEvents.push(
+      { id: 'shake-actor', layerId: 'a', type: 'shake', startMs: 0, endMs: 1_000, amplitudeX: 60, amplitudeY: 40, frequencyHz: 1 },
+      { id: 'shake-carrier', layerId: 'carrier', type: 'shake', startMs: 0, endMs: 1_000, amplitudeX: 40, amplitudeY: 50, frequencyHz: 1 },
+    );
+    const planWithShake = prepareSpeakerFocusCamera(inherited.project, inherited.shot);
+    expect([...checkTimes].reverse().map((t) => evaluateSpeakerFocusCamera(planWithShake, t)).reverse()).toEqual(withoutShake);
+
+    // Screen-space speaking actor (direct or inherited) falls back cleanly to full stage without double projection.
+    const screen = fixture();
+    Object.assign(screen.shot.layers[0]!, { x: 1280, y: 540, depth: -400, cameraSpace: 'screen' });
+    screen.shot.dialogues.push(dialogue('hud', 'A', 0, 1_000));
+    expect(resolveSpeakerFocusCamera(screen.project, screen.shot, 500)).toEqual({ centerX: 960, centerY: 540, zoom: 1 });
+    const inheritedScreen = fixture();
+    Object.assign(inheritedScreen.shot.layers[0]!, pose, {
+      x: 1280, y: 540, parentLayerId: 'hud-root', parentSpaceOffset: { ...identity, tx: -1280, ty: -540 },
+    });
+    inheritedScreen.shot.layers.push({
+      ...inheritedScreen.shot.layers[0]!, id: 'hud-root', source: { kind: 'control' },
+      parentLayerId: undefined, parentSpaceOffset: undefined, cameraSpace: 'screen',
+    });
+    inheritedScreen.shot.dialogues.push(dialogue('hud-child', 'A', 0, 1_000));
+    expect(resolveSpeakerFocusCamera(inheritedScreen.project, inheritedScreen.shot, 500)).toEqual({ centerX: 960, centerY: 540, zoom: 1 });
+
+    // Near-clipped extreme depth falls back cleanly to full stage rather than producing NaN/clipped target.
+    const clipped = fixture();
+    Object.assign(clipped.shot.layers[0]!, { x: 1280, y: 540, depth: -700 });
+    clipped.shot.dialogues.push(dialogue('clipped', 'A', 0, 1_000));
+    expect(resolveSpeakerFocusCamera(clipped.project, clipped.shot, 500)).toEqual({ centerX: 960, centerY: 540, zoom: 1 });
   });
 });

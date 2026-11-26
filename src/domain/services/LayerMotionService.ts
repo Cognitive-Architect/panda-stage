@@ -27,13 +27,15 @@ import {
 } from '../evaluate-shot-at-time';
 import {
   createLayerAnimationClip,
+  canAuthorLayerRootMotion,
   evaluateLayerRelativeMotionValues,
+  findLayerMotionGraphic,
+  layerRootMotionClip,
   layerPivotLocalOffset,
   layerPivotStageVector,
   recalibrateLayerAnimationPivot,
   type LayerBasePose,
 } from '../layer-animation';
-import { isFlaGraphicDefinition } from '../models/animation';
 import type {
   AnimationInterpolation,
   AnimationProperty,
@@ -99,27 +101,23 @@ function resolveLayerContext(
 ): {
   readonly shot: Shot;
   readonly layer: Layer;
-  readonly animation: Extract<Project['animations'][number], { kind: 'fla-graphic' }>;
 } {
   const shot = project.shots.find((candidate) => candidate.id === shotId);
   if (!shot) {
     throw new Error(`找不到镜头：${shotId}`);
   }
   const layer = shot.layers.find((candidate) => candidate.id === layerId);
-  if (!layer || layer.source.kind !== 'animation') {
+  if (!layer || layer.id === shot.backgroundLayerId) {
     throw new Error('请选择有效的 FLA 图形动画图层。');
   }
-  const animationId = layer.source.animationId;
-  const animation = project.animations.find(
-    (candidate) => candidate.id === animationId,
-  );
-  if (!animation || !isFlaGraphicDefinition(animation)) {
+  const animation = findLayerMotionGraphic(project, layer);
+  if (!animation && !canAuthorLayerRootMotion(layer)) {
     throw new Error('对象动作仅支持 FLA 图形（Graphic）图层。');
   }
-  if (layer.animationClip && layer.animationClip.version !== 2) {
+  if (animation && layer.animationClip && layer.animationClip.version !== 2) {
     throw new Error('图层动画容器版本无效。');
   }
-  return { shot, layer, animation };
+  return { shot, layer };
 }
 
 function assertMutableLayerContext(
@@ -167,22 +165,18 @@ function validateMotionPatch(changes: Partial<LayerMotionValues>): void {
   }
 }
 
-function clipV2(layer: Layer): LayerAnimationClip | undefined {
-  return layer.animationClip?.version === 2 ? layer.animationClip : undefined;
-}
-
 /** Read relative Property Track values for an FLA Graphic Layer at `timeMs`. */
 export function layerMotionValues(
   project: Project,
   input: LayerKeyTimeInput,
 ): LayerMotionValues {
   const { layer } = resolveLayerContext(project, input.shotId, input.layerId);
-  return evaluateLayerRelativeMotionValues(clipV2(layer), layer.id, input.timeMs);
+  return evaluateLayerRelativeMotionValues(layerRootMotionClip(layer), layer.id, input.timeMs);
 }
 
 /** UI aggregation only: sorted unique Composite Key timestamps on a Layer Clip v2. */
 export function layerCompositeKeyTimes(layer: Layer): number[] {
-  const clip = clipV2(layer);
+  const clip = layerRootMotionClip(layer);
   if (!clip) return [];
   return compositeKeyTimesForTarget(clip.tracks, layerTargetRef(layer.id));
 }
@@ -192,7 +186,7 @@ export function hasLayerCompositeKeyOutgoingInterval(
   layer: Layer,
   timeMs: number,
 ): boolean {
-  const clip = clipV2(layer);
+  const clip = layerRootMotionClip(layer);
   if (!clip) return false;
   return hasTargetOutgoingInterval(clip.tracks, layerTargetRef(layer.id), timeMs);
 }
@@ -202,7 +196,7 @@ export function layerCompositeKeyEasing(
   layer: Layer,
   timeMs: number,
 ): AnimationInterpolation | null {
-  const clip = clipV2(layer);
+  const clip = layerRootMotionClip(layer);
   if (!clip) return null;
   return targetCompositeKeyEasing(clip.tracks, layerTargetRef(layer.id), timeMs);
 }
@@ -212,7 +206,7 @@ export function layerCompositePoseSnapshot(
   layer: Layer,
   timeMs: number,
 ): Partial<LayerMotionValues> | null {
-  const clip = clipV2(layer);
+  const clip = layerRootMotionClip(layer);
   if (!clip) return null;
   return readTargetAuthoredKeyValues(clip.tracks, layerTargetRef(layer.id), timeMs);
 }
@@ -227,7 +221,7 @@ export class LayerMotionService {
     const { shot, layer } = resolveLayerContext(project, input.shotId, input.layerId);
     assertValidFrame(shot, input.startMs);
     assertValidFrame(shot, input.endMs);
-    const clip = clipV2(layer);
+    const clip = layerRootMotionClip(layer);
     if (!clip || input.endMs <= input.startMs) throw new Error('请选择有关键帧的运动时段。');
     const library = project.userMotionPresets ?? [];
     if (input.replaceId && !library.some((item) => item.id === input.replaceId)) {
@@ -245,7 +239,7 @@ export class LayerMotionService {
     const preset = project.userMotionPresets?.find((entry) => entry.id === presetId);
     if (!preset) throw new Error('找不到选择的运动预设。');
     assertValidFrame(shot, input.timeMs);
-    const clip = clipV2(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const clip = layerRootMotionClip(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
     const tracks = applyUserMotionPresetTracks(clip, layer.id, preset, input.timeMs, shot.durationMs);
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }
@@ -267,7 +261,7 @@ export class LayerMotionService {
       previous = point.timeMs;
     }
     if (!draft.levels.some(({ level }) => level > 0)) throw new Error('所选时段内没有可生成运动的声音。');
-    const clip = clipV2(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const clip = layerRootMotionClip(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
     const tracks = buildAudioMotionTracks(clip, layer.id, draft);
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }
@@ -286,7 +280,7 @@ export class LayerMotionService {
     assertValidFrame(shot, input.timeMs);
     validateMotionPatch(changes);
 
-    const existingClip = clipV2(layer);
+    const existingClip = layerRootMotionClip(layer);
     const current = evaluateLayerRelativeMotionValues(
       existingClip,
       layer.id,
@@ -336,7 +330,7 @@ export class LayerMotionService {
     input: LayerMotionInput,
     patch: LayerDisplayTransformPatch,
   ): Project {
-    const { shot, layer, animation } = assertMutableLayerContext(
+    const { shot, layer } = assertMutableLayerContext(
       project,
       input.shotId,
       input.layerId,
@@ -354,17 +348,8 @@ export class LayerMotionService {
     }
 
     const preTrack = evaluateLayerPreTrackState(shot, layer, input.timeMs, project);
-    const existingClip = clipV2(layer);
-    const sourceCanvas = existingClip
-      ? existingClip.targetBases[0]!.sourceCanvas
-      : animation.source.canvas;
-    const pivot = existingClip
-      ? existingClip.targetBases[0]!.pivot
-      : ({
-          space: 'target-local',
-          x: sourceCanvas.width / 2,
-          y: sourceCanvas.height / 2,
-        } as const);
+    const existingClip = layerRootMotionClip(layer);
+    const { sourceCanvas, pivot } = (existingClip ?? createLayerAnimationClip(project, shot.id, layer.id)).targetBases[0]!;
     const localPivot = layerPivotLocalOffset(pivot, sourceCanvas);
     const currentRel = evaluateLayerRelativeMotionValues(
       existingClip,
@@ -523,7 +508,7 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     if (!existing) {
       throw new Error(`找不到位于 ${input.timeMs} ms 的关键帧。`);
     }
@@ -547,7 +532,7 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     return planTargetKeysRetime(
       existing?.tracks ?? [],
       layerTargetRef(layer.id),
@@ -571,7 +556,7 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     if (!existing) {
       throw new Error('找不到可移动的关键帧。');
     }
@@ -598,7 +583,7 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     if (!existing) {
       throw new Error('该关键帧没有可设置插值的后续区间。');
     }
@@ -621,7 +606,7 @@ export class LayerMotionService {
       input.shotId,
       input.layerId,
     );
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     if (!existing) {
       throw new Error(`找不到位于 ${input.fromTimeMs} ms 的可粘贴关键帧。`);
     }
@@ -657,7 +642,7 @@ export class LayerMotionService {
     );
     assertValidFrame(shot, input.timeMs);
     validateMotionPatch(pose);
-    const existing = clipV2(layer);
+    const existing = layerRootMotionClip(layer);
     const clip = existing
       ? structuredClone(existing)
       : createLayerAnimationClip(project, shot.id, layer.id);
@@ -714,7 +699,9 @@ export class LayerMotionService {
           ? {
               ...shot,
               layers: shot.layers.map((layer) =>
-                layer.id === layerId ? { ...layer, animationClip: clip } : layer,
+                layer.id !== layerId ? layer : findLayerMotionGraphic(project, layer)
+                  ? { ...layer, animationClip: clip }
+                  : { ...layer, layerMotionTracks: clip.tracks },
               ),
             }
           : shot,

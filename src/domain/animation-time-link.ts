@@ -1,0 +1,215 @@
+import {
+  LayerAnimationTimeLinkSchema,
+  ProjectSchema,
+  type CharacterActionEvent,
+  type Layer,
+  type LayerAnimationTimeLink,
+  type Project,
+  type Shot,
+} from './models';
+
+export type ResolvedLayerAnimationTimeLink =
+  | { readonly status: 'none' }
+  | {
+      readonly status: 'active';
+      readonly link: LayerAnimationTimeLink;
+      readonly startMs: number;
+      readonly endMs: number;
+      readonly sourceLayer: Layer;
+      readonly event: CharacterActionEvent;
+    }
+  | {
+      readonly status: 'broken';
+      readonly link: LayerAnimationTimeLink;
+    };
+
+export interface AvailableCharacterActionLink {
+  readonly key: string;
+  readonly link: LayerAnimationTimeLink;
+  readonly sourceLayerId: string;
+  readonly sourceLayerName: string;
+  readonly eventId: string;
+  readonly actionId: string;
+  readonly actionName: string;
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export function animationTimeLinkKey(link: LayerAnimationTimeLink): string {
+  return `${link.sourceLayerId}:${link.eventId}`;
+}
+
+function formatLinkSeconds(ms: number): string {
+  return String(Number((ms / 1_000).toFixed(2)));
+}
+
+export function formatAnimationTimeLinkWindow(
+  startMs: number,
+  endMs: number,
+): string {
+  return `${formatLinkSeconds(startMs)}–${formatLinkSeconds(endMs)}s`;
+}
+
+/**
+ * Resolves an animation layer's optional character-action time link against
+ * the current Shot state. Never throws on deleted/missing targets: broken links
+ * return `{ status: 'broken', link }` so evaluation can fall back to the
+ * layer's independent startTimeMs and UI can offer repair or unlink.
+ */
+export function resolveLayerAnimationTimeLink(
+  shot: Shot,
+  layer: Layer,
+): ResolvedLayerAnimationTimeLink {
+  if (layer.source.kind !== 'animation' || !layer.animationTimeLink) {
+    return { status: 'none' };
+  }
+  const link = layer.animationTimeLink;
+  const sourceLayer = shot.layers.find(
+    (candidate) =>
+      candidate.id === link.sourceLayerId &&
+      candidate.source.kind === 'character',
+  );
+  if (!sourceLayer) {
+    return { status: 'broken', link };
+  }
+  const event = shot.timelineEvents.find(
+    (candidate): candidate is CharacterActionEvent =>
+      candidate.type === 'character-action' &&
+      candidate.id === link.eventId &&
+      candidate.layerId === link.sourceLayerId,
+  );
+  if (!event || event.endMs <= event.startMs) {
+    return { status: 'broken', link };
+  }
+  return {
+    status: 'active',
+    link,
+    startMs: event.startMs,
+    endMs: event.endMs,
+    sourceLayer,
+    event,
+  };
+}
+
+/**
+ * Lists every character-action event instance in `shot` as a concrete link
+ * target, distinguishing multiple occurrences of the same action by event ID
+ * and time window.
+ */
+export function listAvailableCharacterActionLinks(
+  project: Project,
+  shot: Shot,
+): AvailableCharacterActionLink[] {
+  const characterLayersById = new Map<string, Layer>();
+  for (const layer of shot.layers) {
+    if (layer.source.kind === 'character') {
+      characterLayersById.set(layer.id, layer);
+    }
+  }
+  const results: AvailableCharacterActionLink[] = [];
+  for (const event of shot.timelineEvents) {
+    if (event.type !== 'character-action' || event.endMs <= event.startMs) {
+      continue;
+    }
+    const sourceLayer = characterLayersById.get(event.layerId);
+    if (!sourceLayer || sourceLayer.source.kind !== 'character') {
+      continue;
+    }
+    const characterId = sourceLayer.source.characterId;
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    const action = character?.actions?.find(
+      (candidate) => candidate.id === event.actionId,
+    );
+    const link: LayerAnimationTimeLink = {
+      kind: 'character-action',
+      sourceLayerId: sourceLayer.id,
+      eventId: event.id,
+    };
+    results.push({
+      key: animationTimeLinkKey(link),
+      link,
+      sourceLayerId: sourceLayer.id,
+      sourceLayerName: sourceLayer.name,
+      eventId: event.id,
+      actionId: event.actionId,
+      actionName: action?.name ?? '角色动作',
+      startMs: event.startMs,
+      endMs: event.endMs,
+    });
+  }
+  return results.sort(
+    (left, right) =>
+      left.startMs - right.startMs ||
+      left.endMs - right.endMs ||
+      left.sourceLayerName.localeCompare(right.sourceLayerName) ||
+      left.eventId.localeCompare(right.eventId),
+  );
+}
+
+/**
+ * Pure project editor that sets or clears `layer.animationTimeLink` on an
+ * animation layer while preserving its original independent `startTimeMs` and
+ * playback settings for unlinking or broken-link fallback.
+ */
+export function setLayerAnimationTimeLink(
+  project: Project,
+  shotId: string,
+  layerId: string,
+  link: LayerAnimationTimeLink | undefined,
+): Project {
+  const shotIndex = project.shots.findIndex((candidate) => candidate.id === shotId);
+  if (shotIndex < 0) {
+    throw new Error(`找不到镜头：${shotId}`);
+  }
+  const shot = project.shots[shotIndex]!;
+  const layerIndex = shot.layers.findIndex((candidate) => candidate.id === layerId);
+  if (layerIndex < 0) {
+    throw new Error(`找不到图层：${layerId}`);
+  }
+  const layer = shot.layers[layerIndex]!;
+  if (layer.source.kind !== 'animation') {
+    throw new Error('只有动画图层支持跟随角色动作时间联动。');
+  }
+  if (layer.locked) {
+    throw new Error('动画图层已锁定，无法修改时间联动。');
+  }
+
+  let validatedLink: LayerAnimationTimeLink | undefined;
+  if (link !== undefined) {
+    validatedLink = LayerAnimationTimeLinkSchema.parse(link);
+    const sourceLayer = shot.layers.find(
+      (candidate) =>
+        candidate.id === validatedLink!.sourceLayerId &&
+        candidate.source.kind === 'character',
+    );
+    const targetEvent = shot.timelineEvents.find(
+      (candidate) =>
+        candidate.type === 'character-action' &&
+        candidate.id === validatedLink!.eventId &&
+        candidate.layerId === validatedLink!.sourceLayerId &&
+        candidate.endMs > candidate.startMs,
+    );
+    if (!sourceLayer || !targetEvent) {
+      throw new Error('目标角色动作事件不存在，无法建立时间联动。');
+    }
+  }
+
+  const nextLayer: Layer = { ...layer };
+  if (validatedLink) {
+    nextLayer.animationTimeLink = { ...validatedLink };
+  } else {
+    delete nextLayer.animationTimeLink;
+  }
+
+  const nextLayers = [...shot.layers];
+  nextLayers[layerIndex] = nextLayer;
+  const nextShots = [...project.shots];
+  nextShots[shotIndex] = { ...shot, layers: nextLayers };
+
+  return ProjectSchema.parse({
+    ...project,
+    shots: nextShots,
+  });
+}

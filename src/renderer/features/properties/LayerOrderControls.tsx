@@ -19,6 +19,7 @@ import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { DecorativeIcon } from '../../ui';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   return (
@@ -141,6 +142,26 @@ export function LayerOrderControls({
     Boolean(backgroundLayerSelected) ||
     Boolean(shot && layer && shot.backgroundLayerId === layer.id);
   const [status, setStatus] = useState('');
+  const [, refreshClipboard] = useState(0);
+  const clipboardActions = shot && (layer || layerStore.hasLayerClipboard()) ? (
+    <div className="layer-order-actions">
+      <button type="button" data-ui-button data-ui-variant="secondary" disabled={!layer || isBackgroundLayer || layer.locked}
+        onClick={() => {
+          if (!layer) return;
+          layerStore.copyLayer(layer.id, timelineUiStore.getSnapshot().currentTimeMs);
+          refreshClipboard((value) => value + 1);
+        }}>复制图层</button>
+      <button type="button" data-ui-button data-ui-variant="secondary" disabled={!layerStore.hasLayerClipboard()}
+        onClick={() => {
+          try {
+            layerStore.pasteLayer();
+            setStatus('');
+          } catch (error) {
+            setStatus(error instanceof Error ? error.message : '无法粘贴图层。');
+          }
+        }}>粘贴图层</button>
+    </div>
+  ) : null;
   const orderedContent =
     shot?.layers
       .filter((candidate) => candidate.id !== shot.backgroundLayerId)
@@ -156,7 +177,7 @@ export function LayerOrderControls({
       return;
     }
     try {
-      layerStore.deleteLayer(layer.id);
+      layerStore.deleteLayer(layer.id, timelineUiStore.getSnapshot().currentTimeMs);
       selectionStore.clear();
       setStatus(getLayerDeleteSuccessStatus(layer.name, presentation));
     } catch (error) {
@@ -398,6 +419,7 @@ export function LayerOrderControls({
             </div>
           </>
         )}
+        {clipboardActions}
         <output data-testid="layer-order-status">{status}</output>
       </section>
     );
@@ -489,6 +511,7 @@ export function LayerOrderControls({
               : '请先在画布中选择普通图层。'}
         </p>
       ) : null}
+      {clipboardActions}
       <output data-testid="layer-order-status">{status}</output>
     </section>
   );

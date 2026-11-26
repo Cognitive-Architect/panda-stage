@@ -1,10 +1,10 @@
 import {
   ProjectSchema,
-  type AnimationClip,
   type Project,
   type Shot,
 } from '../models';
 import { SHOT_MIN_DURATION_MS } from '../constants';
+import { remapLayerMotionOwner } from '../layer-animation';
 
 export type ShotServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -44,19 +44,12 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.audioClips.map((clip) => clip.endMs),
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
+    ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
+    ...shot.layers.map((layer) => layer.depthKeys?.at(-1)?.timeMs ?? 0),
+    ...shot.layers.map((layer) => layer.parentKeys?.at(-1)?.timeMs ?? 0),
+    shot.camera?.keys.at(-1)?.timeMs ?? 0,
+    ...(shot.camera?.overrides?.map((override) => override.endMs) ?? []),
   );
-}
-
-function remapClipLayer(clip: AnimationClip, layerId: string): AnimationClip {
-  const remap = <T extends { target: { layerId: string } }>(entry: T): T => ({
-    ...entry,
-    target: { ...entry.target, layerId },
-  });
-  switch (clip.version) {
-    case 1: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-    case 2: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-    case 3: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-  }
 }
 
 export class ShotService {
@@ -110,16 +103,43 @@ export class ShotService {
       ]),
     );
     const dialogueIds = new Map(source.dialogues.map((dialogue) => [dialogue.id, this.nextUniqueId(usedIds)]));
+    const eventIds = new Map(
+      source.timelineEvents.map((event) => [
+        event.id,
+        this.nextUniqueId(usedIds),
+      ]),
+    );
     const duplicate: Shot = {
       ...source,
       id: this.nextUniqueId(usedIds),
       name: this.copyName(project, source.name),
       layers: source.layers.map((layer) => {
         const layerId = layerIds.get(layer.id)!;
+        const remappedTimeLink = layer.animationTimeLink
+          ? {
+              ...layer.animationTimeLink,
+              sourceLayerId:
+                layerIds.get(layer.animationTimeLink.sourceLayerId) ??
+                layer.animationTimeLink.sourceLayerId,
+              eventId:
+                eventIds.get(layer.animationTimeLink.eventId) ??
+                layer.animationTimeLink.eventId,
+            }
+          : undefined;
         return {
           ...layer,
           id: layerId,
-          ...(layer.animationClip ? { animationClip: remapClipLayer(layer.animationClip, layerId) } : {}),
+          ...(layer.parentLayerId ? { parentLayerId: layerIds.get(layer.parentLayerId) } : {}),
+          ...(layer.parentKeys
+            ? {
+                parentKeys: layer.parentKeys.map((key) => ({
+                  ...key,
+                  parentLayerId: key.parentLayerId ? (layerIds.get(key.parentLayerId) ?? null) : null,
+                })),
+              }
+            : {}),
+          ...(remappedTimeLink ? { animationTimeLink: remappedTimeLink } : {}),
+          ...remapLayerMotionOwner(layer, layerId),
         };
       }),
       backgroundLayerId:
@@ -140,7 +160,7 @@ export class ShotService {
       })),
       timelineEvents: source.timelineEvents.map((event) => ({
         ...event,
-        id: this.nextUniqueId(usedIds),
+        id: eventIds.get(event.id)!,
         layerId: layerIds.get(event.layerId)!,
         ...(event.type === 'mouth-pose' && event.dialogueId ? { dialogueId: dialogueIds.get(event.dialogueId)! } : {}),
       })),

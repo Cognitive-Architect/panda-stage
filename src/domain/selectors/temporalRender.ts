@@ -1,3 +1,4 @@
+import { applyLayerParenting } from '../layer-parent-space';
 import type {
   EvaluatedHeadGroupTransform,
   EvaluatedLayer,
@@ -571,10 +572,9 @@ export function projectShotDialogueVisual(
     activeDialogueId,
     dialogueSilence,
   );
-  return projectShotHeadMotion(
-    project,
-    shot,
-    withMouth,
-    activeDialogueId,
-  );
+  const withHead = projectShotHeadMotion(project, shot, withMouth, activeDialogueId);
+  return shot.layers.some(({ parentAttachment }) => parentAttachment) &&
+      withHead.layers.some(({ headGroupTransform }) => headGroupTransform)
+    ? { ...withHead, layers: applyLayerParenting(project, shot, withHead.layers, withHead.timeMs) }
+    : withHead;
 }

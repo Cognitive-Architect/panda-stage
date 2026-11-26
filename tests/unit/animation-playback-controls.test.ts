@@ -133,7 +133,7 @@ describe('AnimationPlaybackControls start-time editing', () => {
     const fields = container.querySelector('.animation-playback-fields');
     expect(
       Array.from(fields?.children ?? []).map((field) => field.tagName),
-    ).toEqual(['LABEL', 'DIV', 'DIV']);
+    ).toEqual(['DIV', 'LABEL', 'DIV', 'DIV']);
     expect(
       container.querySelector('.animation-playback-time-field > span:first-child')
         ?.textContent,

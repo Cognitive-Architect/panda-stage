@@ -9,6 +9,7 @@ import {
 import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
+import { resolveLayerAnimationTimeLink } from './animation-time-link';
 import { listCharacterActionVisualAssetIds, MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
@@ -163,6 +164,20 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
       if (event.type === 'mouth-pose' || event.type === 'graphic-playback') times.add(event.endMs);
     }
   }
+  for (const layer of shot.layers) {
+    const resolvedLink = resolveLayerAnimationTimeLink(shot, layer);
+    if (resolvedLink.status !== 'active') continue;
+    if (resolvedLink.startMs >= 0 && resolvedLink.startMs < shot.durationMs) {
+      times.add(resolvedLink.startMs);
+    }
+    const lastActiveMs = Math.min(shot.durationMs, resolvedLink.endMs - 1);
+    if (lastActiveMs >= resolvedLink.startMs && lastActiveMs >= 0) {
+      times.add(lastActiveMs);
+    }
+    if (resolvedLink.endMs >= 0 && resolvedLink.endMs <= shot.durationMs) {
+      times.add(resolvedLink.endMs);
+    }
+  }
   return [...times].sort((left, right) => left - right);
 }
 
@@ -228,7 +243,7 @@ function addShotVisualAssets(
     for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
       const poseLayer = projected.layers[layerIndex];
       const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
-      if (!evaluatedLayer.visible || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
+      if (!evaluatedLayer.visible || evaluatedLayer.control || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);

@@ -1,5 +1,8 @@
 import {
   resolveLayerVisualParts,
+  compareCameraDrawingLayers,
+  resolveLayerCameraTransform,
+  type CameraView,
   visualPartRenderTransform,
   type EvaluatedFlaGraphicVisual,
   type EvaluatedLayer,
@@ -269,7 +272,7 @@ function buildFormalStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean; camera?: CameraView },
 ): StageRenderModel {
   const shot = project.shots.find(
     (candidate) => candidate.id === evaluatedShot.shotId,
@@ -281,7 +284,10 @@ function buildFormalStageRenderModel(
     );
   }
 
-  const layers = evaluatedShot.layers.map((layer) => {
+  const drawingLayers = evaluatedShot.layers
+    .filter((layer) => !layer.control && resolveLayerCameraTransform(layer, options?.camera, project.width, project.height) !== null)
+    .sort(compareCameraDrawingLayers);
+  const layers = drawingLayers.map((layer) => {
     const visual = resolveLayerVisualParts(
       project,
       shot,
@@ -413,7 +419,7 @@ export function buildStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean; camera?: CameraView },
 ): StageRenderModel {
   if (!project.shots.some((shot) => shot.id === evaluatedShot.shotId)) {
     throw new StageAssetError(

@@ -55,6 +55,10 @@ import {
   ShotSchema,
   ShotV40Schema,
   ShotV41Schema,
+  ShotV42Schema,
+  ShotV43Schema,
+  ShotV44Schema,
+  ShotV45Schema,
   ShotV26Schema,
   ShotV27Schema,
   ShotV28Schema,
@@ -813,6 +817,34 @@ const CurrentProjectDataSchema = ProjectV40DataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   shots: z.array(ShotSchema),
 });
+
+export const ProjectV45Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(45),
+  shots: z.array(ShotV45Schema),
+}).superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV44Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(44),
+  shots: z.array(ShotV44Schema),
+}).superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV43Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(43),
+  shots: z.array(ShotV43Schema),
+}).superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
+
+export const ProjectV42Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(42),
+  shots: z.array(ShotV42Schema),
+}).superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
 
 /** Frozen v23 envelope before AdaptiveParts face/expression/head bindings. */
 export const ProjectV23Schema = ProjectV29DataSchema.extend({

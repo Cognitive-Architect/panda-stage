@@ -42,6 +42,8 @@ import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
 } from '../character-node-animation';
+import { layerPivotStageVector } from '../layer-animation';
+import type { LayerDisplayTransformPatch } from '../services/LayerMotionService';
 import { sameAnimationTarget } from '../models/animationCore';
 import {
   resolveCharacterFaceSource,
@@ -1344,15 +1346,47 @@ export function resolveCharacterActionRenderTransform(evaluated: EvaluatedLayer)
   const transform = ownerTransform(evaluated);
   const placement = evaluated.characterAction?.placement;
   if (!placement) return transform;
-  const radians = transform.rotationDeg * Math.PI / 180;
-  const localX = placement.offsetX * transform.scaleX * (transform.flipX ? -1 : 1);
-  const localY = placement.offsetY * transform.scaleY;
+  const offset = layerPivotStageVector(
+    { x: placement.offsetX, y: placement.offsetY },
+    transform.rotationDeg, transform.scaleX, transform.scaleY, transform.flipX,
+  );
   return {
     ...transform,
-    x: transform.x + localX * Math.cos(radians) - localY * Math.sin(radians),
-    y: transform.y + localX * Math.sin(radians) + localY * Math.cos(radians),
+    x: transform.x + offset.x,
+    y: transform.y + offset.y,
     scaleX: transform.scaleX * placement.scale,
     scaleY: transform.scaleY * placement.scale,
+  };
+}
+
+/** Convert the gesture target in the parent plane to the authored root pose. */
+export function resolveCharacterActionRootPatch(
+  evaluated: EvaluatedLayer,
+  target: LayerDisplayTransformPatch,
+): LayerDisplayTransformPatch {
+  const placement = evaluated.characterAction?.placement;
+  if (!placement || (placement.scale === 1 && placement.offsetX === 0 && placement.offsetY === 0)) {
+    return target;
+  }
+  if (!Number.isFinite(placement.scale) || placement.scale <= 0) {
+    throw new Error('角色动作缩放无效，无法编辑图层变换。');
+  }
+
+  const displayed = resolveCharacterActionRenderTransform(evaluated);
+  const scaleX = target.scaleX !== undefined ? target.scaleX / placement.scale : evaluated.scaleX;
+  const scaleY = target.scaleY !== undefined ? target.scaleY / placement.scale : evaluated.scaleY;
+  const offset = layerPivotStageVector(
+    { x: placement.offsetX, y: placement.offsetY },
+    target.rotationDeg ?? evaluated.rotationDeg, scaleX, scaleY, evaluated.flipX,
+  );
+  const x = (target.x ?? displayed.x) - offset.x;
+  const y = (target.y ?? displayed.y) - offset.y;
+  return {
+    ...target,
+    ...(target.scaleX !== undefined ? { scaleX } : {}),
+    ...(target.scaleY !== undefined ? { scaleY } : {}),
+    ...(Math.abs(x - evaluated.x) > 1e-6 ? { x } : { x: undefined }),
+    ...(Math.abs(y - evaluated.y) > 1e-6 ? { y } : { y: undefined }),
   };
 }
 
@@ -1370,7 +1404,7 @@ export function resolveLayerVisualParts(
   evaluated: EvaluatedLayer,
   timeMs = 0,
   isImageUnavailable?: (assetId: string) => boolean,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean },
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1397,6 +1431,12 @@ export function resolveLayerVisualParts(
   }
 
   const source = layer.source;
+  if (source.kind === 'control') {
+    return {
+      ...baseResult(evaluated, 'ordinary-image', null, [], null, { required: [], candidates: [], fallback: [] }),
+      combinedLocalBounds: { x: -36, y: -36, width: 72, height: 72 },
+    };
+  }
   if (source.kind === 'asset') {
     const asset = imageAsset(project, evaluated.assetId || source.assetId, layer.id);
     const part: LayerVisualPart = {

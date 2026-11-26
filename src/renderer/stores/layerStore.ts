@@ -7,11 +7,13 @@ import {
   type FlaGraphicTransformEasing,
   type FlaShapeVertexTarget,
   type Layer,
+  type LayerAttachmentTarget,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
   type Point,
   type Project,
+  type SetParentKeyOptions,
 } from '../../domain';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
@@ -35,6 +37,7 @@ const noopLayerSelection: LayerSelection = {
 
 export class LayerStore {
   private readonly motionService = new LayerMotionService();
+  private clipboard: { project: Project; shotId: string; layerId: string; timeMs: number; instance: number | null } | null = null;
 
   constructor(
     private readonly editorStore: EditorProjectStore,
@@ -42,6 +45,14 @@ export class LayerStore {
     private readonly service: LayerService,
     private readonly layerSelection: LayerSelection = noopLayerSelection,
   ) {}
+
+  createControl(): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.createControl(project, shotId);
+    const created = this.persistCreatedLayer(result, project.id, projectRoot, shotId);
+    this.layerSelection.select(created.id);
+    return created;
+  }
 
   createFromAsset(input: CreateLayerInput): Layer {
     const { project, projectRoot, shotId } = this.context();
@@ -185,6 +196,29 @@ export class LayerStore {
     return result.layer;
   }
 
+  copyLayer(layerId: string, timeMs: number): void {
+    const { project, shotId } = this.context();
+    const shot = project.shots.find(({ id }) => id === shotId);
+    const layer = shot?.layers.find(({ id }) => id === layerId);
+    if (!layer || layer.locked || shot?.backgroundLayerId === layerId) return;
+    this.clipboard = { project, shotId, layerId, timeMs, instance: this.editorStore.getProjectInstanceId() };
+  }
+
+  hasLayerClipboard(): boolean {
+    return !!this.clipboard && this.clipboard.instance === this.editorStore.getProjectInstanceId();
+  }
+
+  pasteLayer(): void {
+    const source = this.clipboard;
+    if (!source || !this.hasLayerClipboard()) return;
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.duplicateLayer(project, source.shotId, source.layerId, shotId, source.timeMs, source.project);
+    this.editorStore.updateProject(result.project, '粘贴图层', {}, {
+      afterRedo: () => this.restoreCreatedLayerSelection(project.id, projectRoot, shotId, result.layer.id),
+    });
+    this.layerSelection.select(result.layer.id);
+  }
+
   setLocked(layerId: string, locked: boolean): Project {
     const { project, shotId } = this.context();
     const next = this.service.setLocked(
@@ -224,13 +258,15 @@ export class LayerStore {
     timeMs: number,
     autoKey: boolean,
     patch: LayerDisplayTransformPatch,
+    appearance?: Partial<Pick<Layer, 'opacity' | 'flipX'>>,
   ): Project {
     const { project, shotId } = this.context();
-    const next = this.motionService.applyTransform(
+    const nextTransform = Object.keys(patch).length === 0 ? project : this.motionService.applyTransform(
       project,
       { shotId, layerId, timeMs, autoKey },
       patch,
     );
+    const next = appearance ? this.service.updateLayerAppearance(nextTransform, shotId, layerId, appearance) : nextTransform;
     if (next !== project) {
       this.editorStore.updateProject(
         next,
@@ -516,12 +552,61 @@ export class LayerStore {
     return next;
   }
 
-  deleteLayer(layerId: string): Project {
+  deleteLayer(layerId: string, timeMs = 0): Project {
     const { project, shotId } = this.context();
-    const next = this.service.deleteLayer(project, shotId, layerId);
+    const next = this.service.deleteLayer(project, shotId, layerId, timeMs);
     if (next !== project) {
       this.editorStore.updateProject(next, 'Delete layer');
     }
+    return next;
+  }
+
+  setCameraAttachment(layerId: string, attached: boolean): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setCameraAttachment(project, shotId, layerId, attached);
+    if (next !== project) this.editorStore.updateProject(next, '切换相机附着');
+    return next;
+  }
+
+  setParent(childId: string, parentId: string | null, timeMs: number, target?: LayerAttachmentTarget): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setParent(project, shotId, childId, parentId, timeMs, target);
+    if (next !== project) this.editorStore.updateProject(next, parentId ? '绑定父级图层' : '解除父级绑定');
+    return next;
+  }
+
+  setParentKey(
+    childId: string,
+    timeMs: number,
+    parentId: string | null,
+    options?: SetParentKeyOptions,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setParentKey(project, shotId, childId, timeMs, parentId, options);
+    if (next !== project) {
+      this.editorStore.updateProject(next, parentId ? '在此帧切换父级图层' : '在此帧解除父级绑定');
+    }
+    return next;
+  }
+
+  moveParentKey(childId: string, fromTimeMs: number, toTimeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.moveParentKey(project, shotId, childId, fromTimeMs, toTimeMs);
+    if (next !== project) this.editorStore.updateProject(next, '移动父级交接帧');
+    return next;
+  }
+
+  removeParentKey(childId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removeParentKey(project, shotId, childId, timeMs);
+    if (next !== project) this.editorStore.updateProject(next, '删除父级交接帧');
+    return next;
+  }
+
+  realignParentKey(childId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.realignParentKey(project, shotId, childId, timeMs);
+    if (next !== project) this.editorStore.updateProject(next, '重新对齐父级交接帧');
     return next;
   }
 

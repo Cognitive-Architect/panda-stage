@@ -50,7 +50,7 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
 
     expect(canvasStage).toContain('showToolbar?: boolean');
     expect(canvasStage).toContain('viewportChrome={(');
-    expect(canvasStage).toContain('showToolbar || selectedFlaGraphicTarget');
+    expect(canvasStage).toContain('showToolbar || shot || selectedFlaGraphicTarget');
     expect(canvasStage).toContain('<CanvasToolbar');
     expect(canvasStage).toContain('showStatus={showToolbar}');
     expect(canvasWorkspace).toContain('showToolbar?: boolean');

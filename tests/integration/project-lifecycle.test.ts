@@ -232,7 +232,7 @@ describe('project directory lifecycle', () => {
               ? layer.source.assetId
               : layer.source.kind === 'character'
                 ? layer.source.characterId
-                : layer.source.animationId,
+                : layer.source.kind === 'animation' ? layer.source.animationId : undefined,
           name: layer.name,
           anchor: layer.anchor,
           x: layer.x,

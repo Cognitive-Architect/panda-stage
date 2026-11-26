@@ -8,12 +8,14 @@ import {
   LayerAnimationClipSchema,
   TargetLocalPivotSchema,
   sameAnimationTarget,
+  type AnimationClip,
   type LayerAnimationClip,
   type LayerTargetBasis,
   type LayerTargetRef,
   type TargetLocalPivot,
 } from './models/animationCore';
 import type { Project } from './models/project';
+import type { Layer } from './models/layer';
 
 export interface LayerBasePose {
   readonly x: number;
@@ -21,6 +23,64 @@ export interface LayerBasePose {
   readonly scaleX: number;
   readonly scaleY: number;
   readonly rotationDeg: number;
+}
+
+export function canAuthorLayerRootMotion(layer: Layer): boolean {
+  return Boolean(
+    layer.source.kind === 'control' ||
+    layer.parentLayerId ||
+    layer.parentSpaceOffset ||
+    layer.parentKeys?.length ||
+    layer.layerMotionTracks?.length ||
+    layer.depth !== undefined ||
+    layer.depthKeys?.length ||
+    layer.cameraSpace === 'screen',
+  );
+}
+
+export function findLayerMotionGraphic(project: Project, layer: Layer) {
+  const source = layer.source;
+  if (source.kind !== 'animation') return undefined;
+  const definition = project.animations.find(({ id }) => id === source.animationId);
+  return definition && isFlaGraphicDefinition(definition) ? definition : undefined;
+}
+
+/** A centered working basis lets ordinary Layer roots reuse the existing track operations. */
+function centeredLayerMotionClip(layer: Layer): LayerAnimationClip {
+  const { id, x, y, scaleX, scaleY, rotationDeg } = layer;
+  return {
+    version: 2,
+    targetBases: [{
+      target: { kind: 'layer', layerId: id },
+      animationId: id,
+      baseTransform: { x, y, scaleX, scaleY, rotationDeg },
+      sourceCanvas: { width: 2, height: 2 },
+      pivot: { space: 'target-local', x: 1, y: 1 },
+    }],
+    tracks: [...(layer.layerMotionTracks ?? [])],
+  };
+}
+
+export function layerRootMotionClip(layer: Layer): LayerAnimationClip | undefined {
+  if (layer.animationClip?.version === 2) return layer.animationClip;
+  return layer.layerMotionTracks?.length ? centeredLayerMotionClip(layer) : undefined;
+}
+
+export function remapLayerMotionOwner(layer: Layer, layerId: string): Pick<Layer, 'animationClip' | 'layerMotionTracks'> {
+  const remap = <T extends { target: { layerId: string } }>(entry: T): T => ({
+    ...entry, target: { ...entry.target, layerId },
+  });
+  const remapClip = (clip: AnimationClip): AnimationClip => {
+    switch (clip.version) {
+      case 1: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+      case 2: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+      case 3: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
+    }
+  };
+  return {
+    ...(layer.animationClip ? { animationClip: remapClip(layer.animationClip) } : {}),
+    ...(layer.layerMotionTracks ? { layerMotionTracks: layer.layerMotionTracks.map(remap) } : {}),
+  };
 }
 
 /** Freeze a Layer Instance's static transform and source-canvas center pivot into Clip v2. */
@@ -32,14 +92,12 @@ export function createLayerAnimationClip(
   const layer = project.shots
     .find((shot) => shot.id === shotId)
     ?.layers.find((entry) => entry.id === layerId);
+  const definition = layer && findLayerMotionGraphic(project, layer);
+  if (layer && !definition && canAuthorLayerRootMotion(layer)) return centeredLayerMotionClip(layer);
   if (!layer || layer.source.kind !== 'animation') {
     throw new Error('对象动作关键帧需要普通动画图层。');
   }
-  const animationId = layer.source.animationId;
-  const definition = project.animations.find(
-    (entry) => entry.id === animationId,
-  );
-  if (!definition || !isFlaGraphicDefinition(definition)) {
+  if (!definition) {
     throw new Error('对象动作关键帧仅支持 FLA 图形（Graphic）图层。');
   }
   if (layer.animationClip) {

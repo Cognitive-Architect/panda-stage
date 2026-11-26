@@ -33,3 +33,8 @@ export function evaluateExportShotAtTime(
     layers: visual.layers.filter(({ id }) => id === outputLayerId),
   } : visual;
 }
+
+/** Apply the draw filter only after layer inheritance and dialogue evaluation. */
+export function selectExportDrawingLayers(shot: EvaluatedShot): EvaluatedShot {
+  return { ...shot, layers: shot.layers.filter(({ visible, control }) => visible && !control) };
+}

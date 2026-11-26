@@ -10,6 +10,7 @@ import {
 import {
   Group,
   Image as KonvaImage,
+  Line,
   Rect,
 } from 'react-konva';
 import {
@@ -66,6 +67,8 @@ export interface SelectableLayerProps {
   render: StageLayerRenderInstruction;
   selected: boolean;
   directEditingEnabled?: boolean;
+  inheritedSpace?: boolean;
+  projected?: boolean;
   onSelect: (layerId: string, nodeId?: CharacterNodeId) => void;
   onCommitPosition: (
     layerId: string,
@@ -112,6 +115,8 @@ export function SelectableLayer({
   visual,
   visualSourceKeys,
   directEditingEnabled = true,
+  inheritedSpace = false,
+  projected = false,
   onSelect,
   onCommitPosition,
   onCommitTransform,
@@ -439,6 +444,7 @@ export function SelectableLayer({
       : null;
 
   const clampNode = (node: Konva.Node): void => {
+    if (inheritedSpace) return;
     const position = clampLayerPosition({
       x: node.x(),
       y: node.y(),
@@ -472,7 +478,7 @@ export function SelectableLayer({
       listening={canSelect}
       name="selectable-canvas-layer"
       onDragStart={(event) => {
-        if (layer.source.kind !== 'animation') return;
+        if (!projected && !inheritedSpace && layer.source.kind !== 'animation') return;
         event.cancelBubble = true;
         onSelect(layer.id);
       }}
@@ -580,7 +586,13 @@ export function SelectableLayer({
       x={render.x}
       y={render.y}
       >
-        {flaGraphicEditProjection ? (
+        {layer.source.kind === 'control' ? (
+          <Group name="canvas-control-marker">
+            <Rect x={-36} y={-36} width={72} height={72} fill="transparent" />
+            <Line points={[-36, 0, 36, 0]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
+            <Line points={[0, -36, 0, 36]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
+          </Group>
+        ) : flaGraphicEditProjection ? (
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
         ) : structuredCanvas && visual?.flaGraphic ? (
           <KonvaImage

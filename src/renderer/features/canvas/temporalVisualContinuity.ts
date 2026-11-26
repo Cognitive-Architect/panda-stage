@@ -96,7 +96,9 @@ function isCompleteVisualReady(
   readyAssetIds: ReadonlySet<string>,
   readyAssetSourceKeys?: ReadonlyMap<string, string>,
 ): boolean {
-  if (!visual || visual.parts.length === 0) return false;
+  if (!visual) return false;
+  if (evaluated.control) return true;
+  if (visual.parts.length === 0) return false;
   return visualAssetIds(visual, evaluated).every((assetId) =>
     isAssetReady(project, assetId, readyAssetIds, readyAssetSourceKeys),
   );

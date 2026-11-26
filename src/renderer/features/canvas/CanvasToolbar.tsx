@@ -1,4 +1,4 @@
-import { useId, type KeyboardEventHandler } from 'react';
+import { useId, type KeyboardEventHandler, type ReactNode } from 'react';
 import { ArrowLeft, Link2, LockKeyhole, LogIn } from 'lucide-react';
 import type {
   CanvasViewportMode,
@@ -12,6 +12,8 @@ export interface CanvasToolbarProps {
   point: Point | null;
   transform: ViewportTransform;
   showStatus?: boolean;
+  cameraControl?: ReactNode;
+  parentControl?: ReactNode;
   flaGraphicEditAvailable?: boolean;
   flaGraphicEditActive?: boolean;
   flaGraphicEditMode?: FlaGraphicEditMode;
@@ -34,6 +36,8 @@ export function CanvasToolbar({
   point,
   transform,
   showStatus = true,
+  cameraControl,
+  parentControl,
   flaGraphicEditAvailable = false,
   flaGraphicEditActive = false,
   flaGraphicEditMode = 'instance',
@@ -74,6 +78,8 @@ export function CanvasToolbar({
           </output>
         </>
       ) : null}
+      {parentControl}
+      {cameraControl}
       {flaGraphicEditAvailable ? (
         <div
           className="canvas-group-edit-control"

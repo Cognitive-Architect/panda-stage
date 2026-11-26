@@ -1,3 +1,6 @@
+import { applyLayerParenting } from './layer-parent-space';
+import { resolveLayerAnimationTimeLink } from './animation-time-link';
+import type { AffineMatrix2D } from '../shared/affine-matrix';
 import type {
   FlaGraphicDefinition,
   FlaGraphicStructureNode,
@@ -32,6 +35,7 @@ import {
 import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
+  layerRootMotionClip,
   resolveLayerAnimationBasis,
   type LayerBasePose,
 } from './layer-animation';
@@ -44,6 +48,13 @@ import {
  * the active expression's asset).
  */
 export interface EvaluatedLayer {
+  /** Inherited affine space. The ordinary pose and animation tracks stay local. */
+  parentSpace?: AffineMatrix2D;
+  parentSpaceUnavailable?: true;
+  parentAttachmentFallback?: true;
+  control?: true;
+  effectiveDepth?: number;
+  effectiveCameraSpace?: 'world' | 'screen';
   /** Transient Animation Core values at the same absolute Shot time. */
   animationValues?: EvaluatedAnimationValue[];
   /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
@@ -152,7 +163,7 @@ function resolveLayerVisualState(
       currentExpressionId: null,
     };
   }
-  if (layer.source.kind === 'animation') {
+  if (layer.source.kind === 'animation' || layer.source.kind === 'control') {
     return { assetId: null, currentExpressionId: null };
   }
   const characterId = layer.source.characterId;
@@ -514,11 +525,23 @@ export function evaluateLayerPreTrackState(
   const graphicTimeMs = animation && isFlaGraphicDefinition(animation)
     ? graphicFrameTimeMs ?? timeMs
     : timeMs;
+  const resolvedTimeLink = animationSource
+    ? resolveLayerAnimationTimeLink(shot, layer)
+    : { status: 'none' as const };
+  const activeTimeLink =
+    resolvedTimeLink.status === 'active' ? resolvedTimeLink : null;
+  const effectiveStartTimeMs = activeTimeLink
+    ? activeTimeLink.startMs
+    : (layer.startTimeMs ?? 0);
+  const insideTimeLinkWindow = activeTimeLink
+    ? graphicTimeMs >= activeTimeLink.startMs &&
+      graphicTimeMs < activeTimeLink.endMs
+    : true;
   const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
     (left, right) =>
       left.startMs - right.startMs || left.id.localeCompare(right.id),
   );
-  const playbackRange = animationSource && graphicTimeMs >= (layer.startTimeMs ?? 0)
+  const playbackRange = animationSource && graphicTimeMs >= effectiveStartTimeMs
     ? findGraphicPlaybackAtTime(events, layer.id, animationSource.animationId, graphicTimeMs)
     : undefined;
   const frameSwitch = !playbackRange && animationSource && events.filter((event) =>
@@ -529,7 +552,7 @@ export function evaluateLayerPreTrackState(
     : animationSource
     ? resolveAnimationFrame(
         animation,
-        layer.startTimeMs ?? 0,
+        effectiveStartTimeMs,
         layer.animationFirstFrame ?? 0,
         layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
         graphicTimeMs,
@@ -537,7 +560,7 @@ export function evaluateLayerPreTrackState(
         layer.animationSourceRange,
       )
     : resolveLayerVisualState(project, layer, timeMs);
-  const animationVisible = initialVisual.animationVisible ?? true;
+  const animationVisible = (initialVisual.animationVisible ?? true) && insideTimeLinkWindow;
   let assetId = initialVisual.assetId;
   let currentExpressionId = initialVisual.currentExpressionId;
 
@@ -645,8 +668,8 @@ export function assertLayerClipFinalScalesInBounds(
   project: Project,
   extraTimesMs: readonly number[] = [],
 ): void {
-  const clip = layer.animationClip;
-  if (!clip || clip.version !== 2) return;
+  const clip = layerRootMotionClip(layer);
+  if (!clip) return;
   const events = shot.timelineEvents.filter((event) => event.layerId === layer.id);
   const scaleTracks = clip.tracks.filter(
     (track) =>
@@ -802,7 +825,7 @@ export function evaluateShotAtTime(
   shot: Shot,
   requestedTimeMs: number,
   project: Project,
-  options?: { graphicFrameTimeMs: number },
+  options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
   const timeMs = Math.max(
     0,
@@ -811,6 +834,7 @@ export function evaluateShotAtTime(
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {
+    if (options?.includeShake === false && event.type === 'shake') continue;
     const list = eventsByLayer.get(event.layerId) ?? [];
     list.push(event);
     eventsByLayer.set(event.layerId, list);
@@ -863,6 +887,7 @@ export function evaluateShotAtTime(
         options?.graphicFrameTimeMs,
       );
       const clip = layer.animationClip;
+      const rootMotionClip = layerRootMotionClip(layer);
       const animationValues = clip
         ? evaluateAnimationClipAtTime(clip, timeMs)
         : undefined;
@@ -872,9 +897,9 @@ export function evaluateShotAtTime(
             undefined
           : undefined;
       const finalTransform: LayerBasePose =
-        layer.animationClip?.version === 2 && animationValues
+        rootMotionClip
           ? composeAnimatedLayerTransform(
-              resolveLayerAnimationBasis(layer.animationClip, {
+              resolveLayerAnimationBasis(rootMotionClip, {
                 kind: 'layer',
                 layerId: layer.id,
               }),
@@ -886,7 +911,7 @@ export function evaluateShotAtTime(
                 rotationDeg: preTrack.rotationDeg,
               },
               preTrack.flipX,
-              animationValues,
+              clip === rootMotionClip && animationValues ? animationValues : evaluateAnimationClipAtTime(rootMotionClip, timeMs),
             )
           : {
               x: preTrack.motion.displayPosition.x,
@@ -935,6 +960,7 @@ export function evaluateShotAtTime(
           : preTrack.animationFrame
           ? { animationFrame: preTrack.animationFrame }
           : {}),
+        ...(layer.source.kind === 'control' ? { control: true } : {}),
         anchor: layer.anchor,
         x: finalTransform.x,
         y: finalTransform.y,
@@ -952,6 +978,6 @@ export function evaluateShotAtTime(
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers,
+    layers: applyLayerParenting(project, shot, layers, timeMs),
   };
 }
