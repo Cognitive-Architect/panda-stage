@@ -11,6 +11,7 @@ import {
   RICH_EASING_PRESETS,
   bakeRichEasingToPropertySegments,
   editAnimationPropertyKey,
+  editAnimationPropertyRange,
   evaluateAnimationTrackAtTime,
   evaluateRichEasing,
   evaluateShotAtTime,
@@ -724,4 +725,40 @@ describe('bakeRichEasingToPropertySegments (AN-PROD-C01)', () => {
       }),
     ).toThrow('不支持的高级缓动预设');
   });
+});
+
+it('fills only vacant frames without changing the trajectory, and requires explicit overwrite for a property range', () => {
+  const xKeys: AnimationKey[] = [
+    { timeMs: 0, value: 0, interpolationToNext: 'ease-in-out' },
+    { timeMs: 500, value: 40, interpolationToNext: 'step' },
+    { timeMs: 1000, value: 30, interpolationToNext: 'linear' },
+  ];
+  const yKeys: AnimationKey[] = [{ timeMs: 0, value: 9, interpolationToNext: 'linear' }];
+  const { project, shotId, layerId } = buildLayerClipProject({
+    tracks: [
+      { property: 'transform.offsetX', keys: xKeys }, { property: 'transform.offsetY', keys: yKeys },
+    ],
+  });
+  const address = { shotId, target: { kind: 'layer' as const, layerId }, property: 'transform.offsetX' as const };
+  const tracks = (state: Project) => state.shots.find(({ id }) => id === shotId)!.layers
+    .find(({ id }) => id === layerId)!.animationClip!.tracks;
+  const filled = editAnimationPropertyRange(project, address, { kind: 'insert', startMs: 0, endMs: 1000, count: 4 });
+  const [x, y] = tracks(filled);
+  expect(y!.keys).toEqual(yKeys);
+  expect(x!.keys).toHaveLength(7);
+  expect(x!.keys.every(({ timeMs }) => isValidFrameTime(timeMs))).toBe(true);
+  for (let frame = 0; frame <= 28; frame++) {
+    const time = frameTimeMs(frame);
+    expect(evaluateAnimationTrackAtTime(x!, time)).toBeCloseTo(evaluateAnimationTrackAtTime({ keys: xKeys }, time), 6);
+  }
+  expect(() => editAnimationPropertyRange(project, address,
+    { kind: 'paste', timeMs: 500, keys: xKeys.slice(0, 2), overwrite: false })).toThrow();
+  expect(() => editAnimationPropertyRange(project, address,
+    { kind: 'paste', timeMs: 0, keys: xKeys.slice(0, 2), overwrite: true })).toThrow();
+  const pasted = editAnimationPropertyRange(project, address,
+    { kind: 'paste', timeMs: 500, keys: xKeys.slice(0, 2), overwrite: true });
+  expect(tracks(pasted)[0]!.keys.map(({ timeMs, value }) => [timeMs, value])).toEqual([[0, 0], [500, 0], [1000, 40]]);
+  expect(tracks(pasted)[0]!.keys[1]!.interpolationToNext).toBe('ease-in-out');
+  const deleted = editAnimationPropertyRange(filled, address, { kind: 'delete', startMs: 0, endMs: 500 });
+  expect(tracks(deleted)[0]!.keys.filter(({ timeMs }) => timeMs <= 500).map(({ timeMs }) => timeMs)).toEqual([0, 500]);
 });

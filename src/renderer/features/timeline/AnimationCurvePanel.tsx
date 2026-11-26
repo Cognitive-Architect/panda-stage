@@ -11,6 +11,7 @@ import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/Edi
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { Button } from '../../ui';
+import { AnimationKeyRangeControls } from './AnimationKeyRangeControls';
 import type { AnimationCurveDraft } from './AnimationCurveDraft';
 import { formatTimecode } from './timeGeometry';
 import { useTimelineUi } from './timelineUiStore';
@@ -576,7 +577,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         在 {formatTimecode(currentTimeMs)} 落键
       </Button>
     </details> : null}
-    {rangeKeys.length > 1 && track?.property !== 'opacity' ? <details className="animation-key-selection">
+    {track && track.property !== 'opacity' ? <details className="animation-key-selection">
       <summary>选段时间</summary>
       <div className="animation-curve-fields">
         <label>起始关键帧<select value={startMs} onChange={(event) => setRangeStart(Number(event.target.value))}>
@@ -595,6 +596,10 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
       </div>
       <Button disabled={layer.locked || startMs >= endMs || !Number.isSafeInteger(rangeFrames) ||
         (rangeMode === 'move' ? rangeFrames === 0 : rangeFrames < 1)} onClick={retime}>应用到当前属性</Button>
+      <AnimationKeyRangeControls
+        key={String(instance) + shot.id + layer.id}
+        track={track} snapshot={snapshot} shotId={shot.id} durationMs={shot.durationMs}
+        startMs={startMs} endMs={endMs} currentTimeMs={currentTimeMs} disabled={layer.locked || richTrackMissing} />
       {character?.mode === 'adaptive-parts' && selectedParts.length > 0 ? <div className="animation-curve-fields">
         <label>分件动作名称<input value={actionName} maxLength={64} onChange={event => setActionName(event.target.value)} /></label>
         <label>头部跟随<select value={headAnchors.some(part => part.partId === headAnchor) ? headAnchor : ''}

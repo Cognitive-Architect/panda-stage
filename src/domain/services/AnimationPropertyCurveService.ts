@@ -166,26 +166,104 @@ export function keySelectedAnimationTargets(
   const tracks = clip.tracks.map((track) => {
     if (!targets.some((target) => sameAnimationTarget(target, track.target)) ||
       track.keys.some((key) => key.timeMs === timeMs)) return track;
-    const keys = [...track.keys];
-    const later = keys.findIndex((key) => key.timeMs > timeMs);
-    const index = later < 0 ? keys.length : later;
-    const previous = keys[index - 1]!;
-    const following = keys[index];
-    const key: AnimationKey = {
-      timeMs, value: evaluateAnimationTrackAtTime(track, timeMs),
-      interpolationToNext: following ? previous.interpolationToNext : 'step',
-    };
-    if (following && (previous.curveToNext ||
-      (previous.interpolationToNext !== 'step' && previous.interpolationToNext !== 'linear'))) {
-      const fraction = (timeMs - previous.timeMs) / (following.timeMs - previous.timeMs);
-      key.curveToNext = sliceAnimationCurve(previous.curveToNext, fraction, 1);
-      keys[index - 1] = { ...previous, curveToNext: sliceAnimationCurve(previous.curveToNext, 0, fraction) };
-    }
-    keys.splice(index, 0, key);
+    const keys = insertAnimationTrackSample(track.keys, timeMs);
     inserted += 1;
     return { ...track, keys };
   });
   return { project: inserted ? commitTrackChanges(project, shot, layer, tracks, [timeMs]) : project, inserted, skipped };
+}
+
+/** Insert a sampled anchor while preserving the original outgoing motion on both sides. */
+export function insertAnimationTrackSample(keys: AnimationKey[], timeMs: number): AnimationKey[] {
+  if (keys.some((key) => key.timeMs === timeMs)) return keys;
+  const later = keys.findIndex((key) => key.timeMs > timeMs);
+  const index = later < 0 ? keys.length : later;
+  const previous = keys[index - 1];
+  if (!previous) throw new Error('关键帧不能插入到零帧之前。');
+  const following = keys[index];
+  const next = [...keys];
+  const key: AnimationKey = {
+    timeMs, value: evaluateAnimationTrackAtTime({ keys }, timeMs),
+    interpolationToNext: following ? previous.interpolationToNext : 'step',
+  };
+  if (following && (previous.curveToNext ||
+    (previous.interpolationToNext !== 'step' && previous.interpolationToNext !== 'linear'))) {
+    const fraction = (timeMs - previous.timeMs) / (following.timeMs - previous.timeMs);
+    key.curveToNext = sliceAnimationCurve(previous.curveToNext, fraction, 1);
+    next[index - 1] = { ...previous, curveToNext: sliceAnimationCurve(previous.curveToNext, 0, fraction) };
+  }
+  next.splice(index, 0, key);
+  return next;
+}
+
+export type AnimationPropertyRangeEdit =
+  | { kind: 'insert'; startMs: number; endMs: number; count: number }
+  | { kind: 'delete'; startMs: number; endMs: number }
+  | { kind: 'paste'; timeMs: number; keys: readonly AnimationKey[]; overwrite: boolean };
+
+export function availableAnimationPropertyFrames(
+  keys: readonly AnimationKey[], startMs: number, endMs: number,
+): number[] {
+  const occupied = new Set(keys.map(({ timeMs }) => timeMs));
+  const timeToFrame = (timeMs: number) => Math.round(timeMs * TIMELINE_FPS / 1_000);
+  const available: number[] = [];
+  for (let frame = timeToFrame(startMs) + 1; frame < timeToFrame(endMs); frame += 1) {
+    const timeMs = frameTimeMs(frame);
+    if (!occupied.has(timeMs)) available.push(timeMs);
+  }
+  return available;
+}
+
+export function editAnimationPropertyRange(
+  project: Project, address: Omit<AnimationPropertyKeyAddress, 'keyTimeMs'>, edit: AnimationPropertyRangeEdit,
+): Project {
+  const shot = project.shots.find(({ id }) => id === address.shotId);
+  const layer = shot?.layers.find(({ id }) => id === address.target.layerId);
+  const clip = layer?.animationClip;
+  if (!shot || !layer || !clip || layer.locked) throw new Error('所选对象动作已不可编辑。');
+  const track = clip.tracks.find((candidate) => candidate.property === address.property &&
+    sameAnimationTarget(candidate.target, address.target));
+  if (!track) throw new Error('所选属性轨道已不存在。');
+
+  let keys = track.keys;
+  let checkTimes: number[];
+  if (edit.kind === 'paste') {
+    const sourceStart = edit.keys[0]?.timeMs ?? 0;
+    if (!isValidFrameTime(edit.timeMs) || edit.timeMs < 0 || !edit.keys.length ||
+      edit.keys.some(({ timeMs }, index) => !isValidFrameTime(timeMs) ||
+        (index > 0 && timeMs <= edit.keys[index - 1]!.timeMs))) throw new Error('复制的关键帧或粘贴起点无效。');
+    const toFrame = (timeMs: number) => Math.round(timeMs * TIMELINE_FPS / 1_000);
+    const pasted = edit.keys.map((key) => ({ ...key, timeMs: frameTimeMs(toFrame(edit.timeMs) +
+      toFrame(key.timeMs) - toFrame(sourceStart)) }));
+    const end = pasted.at(-1)!.timeMs;
+    if (pasted[0]!.timeMs === 0 || end > shot.durationMs) throw new Error('粘贴会覆盖固定零帧或超出镜头范围。');
+    const colliding = keys.filter(({ timeMs }) => timeMs >= edit.timeMs && timeMs <= end);
+    if (colliding.length && !edit.overwrite) throw new Error('粘贴范围内已有关键帧，请调整起点或明确选择覆盖。');
+    const destination = insertAnimationTrackSample(insertAnimationTrackSample(keys, edit.timeMs), end);
+    const outgoing = destination.find(({ timeMs }) => timeMs === end)!;
+    pasted[pasted.length - 1] = { ...pasted.at(-1)!, interpolationToNext: outgoing.interpolationToNext, curveToNext: outgoing.curveToNext };
+    keys = [...destination.filter(({ timeMs }) => timeMs < edit.timeMs),
+      ...pasted, ...destination.filter(({ timeMs }) => timeMs > end)];
+    checkTimes = pasted.map(({ timeMs }) => timeMs);
+  } else {
+    if (edit.startMs >= edit.endMs || !keys.some(({ timeMs }) => timeMs === edit.startMs) ||
+      !keys.some(({ timeMs }) => timeMs === edit.endMs)) throw new Error('请选择两个有效的区段边界。');
+    if (edit.kind === 'delete') {
+      keys = keys.filter(({ timeMs }) => timeMs <= edit.startMs || timeMs >= edit.endMs);
+      checkTimes = [edit.startMs, edit.endMs];
+      if (keys.length === track.keys.length) return project;
+    } else {
+      const available = availableAnimationPropertyFrames(keys, edit.startMs, edit.endMs);
+      if (!Number.isSafeInteger(edit.count) || edit.count < 1 || edit.count > available.length) {
+        throw new Error('此区段最多可补 ' + available.length + ' 帧。');
+      }
+      checkTimes = Array.from({ length: edit.count }, (_, index) =>
+        available[Math.floor((index + 1) * (available.length + 1) / (edit.count + 1)) - 1]!);
+      keys = checkTimes.reduce(insertAnimationTrackSample, keys);
+    }
+  }
+  return commitTrackChanges(project, shot, layer, clip.tracks.map((candidate) =>
+    candidate === track ? { ...track, keys } : candidate), checkTimes);
 }
 
 /** Move uses a signed frame delta. Scale and hold use positive frame lengths. */
