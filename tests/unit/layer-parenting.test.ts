@@ -25,6 +25,7 @@ function fixture() {
   const endMs = 1_000;
   const timelineEvents: TimelineEvent[] = [
     { id: randomUUID(), layerId: baseLayer.id, type: 'move', startMs: 0, endMs, from: { x: 600, y: 500 }, to: { x: 870, y: 730 }, easing: 'linear' },
+    { id: randomUUID(), layerId: baseLayer.id, type: 'scale', startMs: 0, endMs, from: { x: 1.8, y: 0.7 }, to: { x: 2.5, y: 0.4 }, easing: 'linear' },
     { id: randomUUID(), layerId: middle.id, type: 'move', startMs: 0, endMs, from: { x: 680, y: 520 }, to: { x: 730, y: 570 }, easing: 'linear' },
   ];
   const shot = { ...base.shots[0]!, layers: [tip, baseLayer, middle, other], dialogues: [], audioClips: [], timelineEvents, backgroundLayerId: null };
@@ -60,6 +61,8 @@ describe('native Layer parenting', () => {
       layerPoseMatrix(effect),
     ));
     expect(evaluatedLayerWorldMatrix(effect).tx).not.toBe(effect.x);
+    const { a, b, c, d } = evaluatedLayerWorldMatrix(wheel);
+    expect(Math.abs(a * c + b * d)).toBeGreaterThan(0.1);
     expect(evaluateShotAtTime(savedShot, 1_000, reopened)).toEqual(atOne);
     expect(evaluateEditorCanvasShot(reopened, savedShot, 1_000, null).layers[3]?.parentSpace).toEqual(effect.parentSpace);
     expect(buildStageRenderModel(reopened, atOne, { [asset.id]: 'asset:local' }).layers[3]?.parentSpace).toEqual(effect.parentSpace);

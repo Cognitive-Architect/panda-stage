@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import {
   LayerBackgroundControl,
   type LayerBackgroundControlProps,
@@ -12,6 +12,7 @@ import {
 
 export interface PortraitPropertiesSectionsProps {
   backgroundLayerSelected: boolean;
+  parentControl?: ReactNode;
   presentation?: LayerBackgroundControlProps['presentation'];
 }
 
@@ -21,6 +22,7 @@ export interface PortraitPropertiesSectionsProps {
  */
 export function PortraitPropertiesSections({
   backgroundLayerSelected,
+  parentControl,
   presentation = 'portrait',
 }: PortraitPropertiesSectionsProps): React.JSX.Element {
   const sectionsRef = useRef<HTMLDivElement | null>(null);
@@ -49,6 +51,7 @@ export function PortraitPropertiesSections({
           showResetTransform
         />
         <AnimationPlaybackControls />
+        {parentControl}
       </details>
       <details
         className="right-inspector-section right-inspector-appearance-section"

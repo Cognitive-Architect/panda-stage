@@ -639,6 +639,8 @@ export function RightInspector({
     </section>
   );
 
+  const parentControl = currentShot && selection.layer ? <LayerParentControl
+    key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} /> : null;
   const transformPanel = (
     <>
       <LayerTransformPanel
@@ -647,8 +649,7 @@ export function RightInspector({
         showResetTransform={Boolean(compact) || landscapePresentation}
         showLockControl={!compact && !landscapePresentation}
       />
-      {currentShot && selection.layer && <LayerParentControl
-        key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} />}
+      {parentControl}
       <AnimationPlaybackControls />
     </>
   );
@@ -766,6 +767,7 @@ export function RightInspector({
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
+              parentControl={parentControl}
               presentation={landscapePresentation ? 'landscape' : 'portrait'}
             />
           ) : (
