@@ -248,13 +248,15 @@ export class LayerStore {
     timeMs: number,
     autoKey: boolean,
     patch: LayerDisplayTransformPatch,
+    appearance?: Partial<Pick<Layer, 'opacity' | 'flipX'>>,
   ): Project {
     const { project, shotId } = this.context();
-    const next = this.motionService.applyTransform(
+    const nextTransform = Object.keys(patch).length === 0 ? project : this.motionService.applyTransform(
       project,
       { shotId, layerId, timeMs, autoKey },
       patch,
     );
+    const next = appearance ? this.service.updateLayerAppearance(nextTransform, shotId, layerId, appearance) : nextTransform;
     if (next !== project) {
       this.editorStore.updateProject(
         next,

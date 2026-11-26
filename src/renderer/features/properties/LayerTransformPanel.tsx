@@ -792,7 +792,9 @@ export function useLayerTransformController({
             }
             if (!currentEvaluated || Math.abs(transform.scale - currentEvaluated.scaleX) > 1e-6) {
               patch.scaleX = transform.scale;
-              patch.scaleY = transform.scale;
+              patch.scaleY = currentEvaluated?.parentSpace
+                ? currentEvaluated.scaleY * (transform.scale / currentEvaluated.scaleX)
+                : transform.scale;
             }
             if (
               !currentEvaluated ||
@@ -800,23 +802,8 @@ export function useLayerTransformController({
             ) {
               patch.rotationDeg = transform.rotationDeg;
             }
-            if (Object.keys(patch).length > 0) {
-              layerStore.applyMotionTransform(layer.id, liveTimeMs, autoKey, patch);
-            }
-            if (liveTimeMs === 0 && transform.opacity !== layer.opacity) {
-              const latestLayer = editorProjectStore
-                .getSnapshot()
-                ?.project.shots.find((candidate) => candidate.id === shotId)
-                ?.layers.find((candidate) => candidate.id === layer.id) ?? layer;
-              layerStore.updateTransform(layer.id, {
-                x: latestLayer.x,
-                y: latestLayer.y,
-                scale: latestLayer.scaleX,
-                rotationDeg: latestLayer.rotationDeg,
-                opacity: transform.opacity,
-                flipX: latestLayer.flipX,
-              });
-            }
+            const appearance = liveTimeMs === 0 && transform.opacity !== layer.opacity ? { opacity: transform.opacity } : undefined;
+            layerStore.applyMotionTransform(layer.id, liveTimeMs, autoKey, patch, appearance);
           } else {
             layerStore.updateTransform(layer.id, transform);
           }
@@ -864,27 +851,14 @@ export function useLayerTransformController({
           if (supportedLayerMotion) {
             const liveTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
             const autoKey = timelineUiStore.getSnapshot().layerMotionAutoKey;
+            const appearance = liveTimeMs === 0 && (layer.opacity !== 1 || layer.flipX) ? { opacity: 1, flipX: false } : undefined;
             layerStore.applyMotionTransform(layer.id, liveTimeMs, autoKey, {
               x: PROJECT_WIDTH / 2,
               y: PROJECT_HEIGHT / 2,
               scaleX: 1,
               scaleY: 1,
               rotationDeg: 0,
-            });
-            if (liveTimeMs === 0 && (layer.opacity !== 1 || layer.flipX)) {
-              const latestLayer = editorProjectStore
-                .getSnapshot()
-                ?.project.shots.find((candidate) => candidate.id === shotId)
-                ?.layers.find((candidate) => candidate.id === layer.id) ?? layer;
-              layerStore.updateTransform(layer.id, {
-                x: latestLayer.x,
-                y: latestLayer.y,
-                scale: latestLayer.scaleX,
-                rotationDeg: latestLayer.rotationDeg,
-                opacity: 1,
-                flipX: false,
-              });
-            }
+            }, appearance);
           } else {
             layerStore.updateTransform(layer.id, {
               x: PROJECT_WIDTH / 2,

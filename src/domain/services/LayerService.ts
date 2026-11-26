@@ -1675,6 +1675,14 @@ export class LayerService {
     });
   }
 
+  updateLayerAppearance(project: Project, shotId: string, layerId: string, changes: Partial<Pick<Layer, 'opacity' | 'flipX'>>): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    return this.replaceShot(project, { ...shot, layers: shot.layers.map((entry) =>
+      entry.id === layerId ? { ...entry, ...changes } : entry) });
+  }
+
   setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number): Project {
     const shot = this.shot(project, shotId);
     const child = shot.layers[this.layerIndex(shot, childId)]!;
