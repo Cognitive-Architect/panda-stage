@@ -13,6 +13,7 @@ import {
   type LayerTransformInput,
   type Point,
   type Project,
+  type SetParentKeyOptions,
 } from '../../domain';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
@@ -571,6 +572,41 @@ export class LayerStore {
     const { project, shotId } = this.context();
     const next = this.service.setParent(project, shotId, childId, parentId, timeMs, target);
     if (next !== project) this.editorStore.updateProject(next, parentId ? '绑定父级图层' : '解除父级绑定');
+    return next;
+  }
+
+  setParentKey(
+    childId: string,
+    timeMs: number,
+    parentId: string | null,
+    options?: SetParentKeyOptions,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setParentKey(project, shotId, childId, timeMs, parentId, options);
+    if (next !== project) {
+      this.editorStore.updateProject(next, parentId ? '在此帧切换父级图层' : '在此帧解除父级绑定');
+    }
+    return next;
+  }
+
+  moveParentKey(childId: string, fromTimeMs: number, toTimeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.moveParentKey(project, shotId, childId, fromTimeMs, toTimeMs);
+    if (next !== project) this.editorStore.updateProject(next, '移动父级交接帧');
+    return next;
+  }
+
+  removeParentKey(childId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removeParentKey(project, shotId, childId, timeMs);
+    if (next !== project) this.editorStore.updateProject(next, '删除父级交接帧');
+    return next;
+  }
+
+  realignParentKey(childId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.realignParentKey(project, shotId, childId, timeMs);
+    if (next !== project) this.editorStore.updateProject(next, '重新对齐父级交接帧');
     return next;
   }
 

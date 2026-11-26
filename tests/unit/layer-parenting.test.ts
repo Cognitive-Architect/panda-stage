@@ -796,4 +796,328 @@ describe('native Layer parenting', () => {
     expect(isolated.backgroundLayerId).toBeNull();
     expect(isolated.layers.map(({ id }) => id)).toEqual([IDS.layerAsset]);
   });
+
+  describe('dynamic parent keyframes (PARENT-05 #1379)', () => {
+    it('supports pickup -> handoff -> drop with exact affine continuity, independent child motion, mirror/shear, random seek, save/reopen, and Undo/Redo', () => {
+      const { project, shot, baseLayer, middle, tip, other } = fixture();
+      const service = new LayerService();
+      const motion = new LayerMotionService();
+      // Give middle a parent (baseLayer) so middle has mirror + non-uniform scale + shear, and animate tip independently.
+      const chained = service.setParent(project, shot.id, middle.id, baseLayer.id, 0);
+      const poseAt = (input: typeof project, timeMs: number, layerId = tip.id) =>
+        evaluateShotAtTime(input.shots[0]!, timeMs, input).layers.find(({ id }) => id === layerId)!;
+      const worldAt = (input: typeof project, timeMs: number, layerId = tip.id) =>
+        evaluatedLayerWorldMatrix(poseAt(input, timeMs, layerId));
+
+      // Before pickup at t1 = 250ms, tip rests independently on the table.
+      const beforePickup0 = worldAt(chained, 0);
+      const beforePickup250 = worldAt(chained, 250);
+      const pickedUp = service.setParentKey(chained, shot.id, tip.id, 250, middle.id);
+      // Earlier segment [0, 250) is untouched; boundary t=250 matches exactly.
+      expectMatrix(worldAt(pickedUp, 0), beforePickup0);
+      expectMatrix(worldAt(pickedUp, 250), beforePickup250);
+      // After t=250, tip follows middle (which inherits baseLayer's flip + non-uniform scale + shear).
+      const at500WithA = worldAt(pickedUp, 500);
+      expect(at500WithA.tx).not.toBeCloseTo(beforePickup250.tx, 2);
+      expect(Math.abs(at500WithA.a * at500WithA.c + at500WithA.b * at500WithA.d)).toBeGreaterThan(0.05);
+
+      // Animate tip's own local rotation independently (canAuthorLayerRootMotion recognizes parentKeys).
+      const animatedTip = motion.applyTransform(
+        pickedUp,
+        { shotId: shot.id, layerId: tip.id, timeMs: 750, autoKey: true },
+        { rotationDeg: 45, scaleX: 1.2 },
+      );
+      const tracksBeforeHandoff = animatedTip.shots[0]!.layers.find(({ id }) => id === tip.id)!.layerMotionTracks;
+      const beforeHandoff500 = worldAt(animatedTip, 500);
+
+      // Handoff to `other` at t2 = 500ms without rewriting earlier segments or child local tracks.
+      const handedOff = service.setParentKey(animatedTip, shot.id, tip.id, 500, other.id);
+      expectMatrix(worldAt(handedOff, 0), worldAt(animatedTip, 0));
+      expectMatrix(worldAt(handedOff, 250), worldAt(animatedTip, 250));
+      expectMatrix(worldAt(handedOff, 500), beforeHandoff500);
+      expect(handedOff.shots[0]!.layers.find(({ id }) => id === tip.id)!.layerMotionTracks).toEqual(tracksBeforeHandoff);
+
+      // Drop (detach) at t3 = 750ms preserving exact world matrix at 750ms.
+      const beforeDrop750 = worldAt(handedOff, 750);
+      const dropped = service.setParentKey(handedOff, shot.id, tip.id, 750, null);
+      expectMatrix(worldAt(dropped, 0), worldAt(handedOff, 0));
+      expectMatrix(worldAt(dropped, 500), worldAt(handedOff, 500));
+      expectMatrix(worldAt(dropped, 750), beforeDrop750);
+      expect(poseAt(dropped, 750).rotationDeg).toBeCloseTo(45, 5);
+      expect(poseAt(dropped, 750).scaleX).toBeCloseTo(1.2, 5);
+
+      // Random seek order === sequential playback, and canvas/export match formal evaluation.
+      const sampleTimes = [0, 250, 500, 750, 1_000];
+      const sequential = sampleTimes.map((t) => worldAt(dropped, t));
+      const randomOrder = [750, 0, 1_000, 250, 500].map((t) => worldAt(dropped, t));
+      expectMatrix(randomOrder[1]!, sequential[0]!);
+      expectMatrix(randomOrder[3]!, sequential[1]!);
+      expectMatrix(randomOrder[4]!, sequential[2]!);
+      expectMatrix(randomOrder[0]!, sequential[3]!);
+      expectMatrix(randomOrder[2]!, sequential[4]!);
+      const droppedShot = dropped.shots[0]!;
+      expect(evaluateEditorCanvasShot(dropped, droppedShot, 500, null).layers.find(({ id }) => id === tip.id)?.parentSpace)
+        .toEqual(poseAt(dropped, 500).parentSpace);
+      expect(evaluateExportShotAtTime(dropped, droppedShot, 500).layers.find(({ id }) => id === tip.id)?.parentSpace)
+        .toEqual(poseAt(dropped, 500).parentSpace);
+
+      // Save/reopen & Undo/Redo round-trip.
+      const store = new EditorProjectStore();
+      store.open('D:/dynamic-parent.pandastage', handedOff);
+      store.updateProject(dropped, 'Drop prop at 750ms');
+      expect(store.undo()).toBe(true);
+      expect(store.getSnapshot()?.project).toEqual(handedOff);
+      expect(store.redo()).toBe(true);
+      const reopened = migrateProject(JSON.parse(JSON.stringify(store.getSnapshot()?.project)));
+      for (let i = 0; i < sampleTimes.length; i += 1) {
+        expectMatrix(worldAt(reopened, sampleTimes[i]!), sequential[i]!);
+      }
+    });
+
+    it('supports adaptive character-part, control layer, and Graphic identityPath targets with fallback across dynamic handoffs', () => {
+      const data = characterPartAnimationFixture();
+      const service = new LayerService();
+      const motion = new LayerMotionService();
+      const animatedChar = addTestAnimation(data.project, data.layerId, data.imagePartId, 'transform.offsetX', 120);
+      const control = service.createControl(animatedChar, IDS.shot);
+      const movedControl = motion.applyTransform(
+        control.project,
+        { shotId: IDS.shot, layerId: control.layer.id, timeMs: 1_000, autoKey: true },
+        { x: 1_260, y: 440, rotationDeg: 25 },
+      );
+      const partTarget = { kind: 'character-part' as const, partId: data.imagePartId };
+      const worldAt = (input: typeof movedControl, timeMs: number) =>
+        evaluatedLayerWorldMatrix(evaluateShotAtTime(input.shots[0]!, timeMs, input).layers.find(({ id }) => id === IDS.layerAsset)!);
+
+      // Pickup by adaptive character part at 250ms -> handoff to empty control layer at 750ms.
+      const boundPart = service.setParentKey(movedControl, IDS.shot, IDS.layerAsset, 250, data.layerId, { target: partTarget });
+      expectMatrix(worldAt(boundPart, 250), worldAt(movedControl, 250));
+      expect(worldAt(boundPart, 500).tx - worldAt(boundPart, 250).tx).toBeCloseTo(30, 5);
+      const boundControl = service.setParentKey(boundPart, IDS.shot, IDS.layerAsset, 750, control.layer.id);
+      expectMatrix(worldAt(boundControl, 750), worldAt(boundPart, 750));
+      expect(worldAt(boundControl, 1_000).tx).not.toBeCloseTo(worldAt(boundControl, 750).tx, 1);
+
+      // Graphic identityPath dynamic handoff + fallback when target goes missing.
+      const graphicInput = characterActionGraphicFixture();
+      const placed = service.createFromAnimation(graphicInput, IDS.shot, {
+        animationId: graphicInput.animations[0]!.id,
+        startTimeMs: 0,
+        position: { x: 830, y: 480 },
+      });
+      const evalGraphic = (input: typeof graphicInput, timeMs: number, layerId: string = IDS.layerAsset) =>
+        evaluateShotAtTime(input.shots[0]!, timeMs, input).layers.find(({ id }) => id === layerId)!;
+      const owner250 = evalGraphic(placed.project, 250, placed.layer.id);
+      const handTarget = resolveLayerAttachmentTargets(placed.project, placed.layer, owner250)
+        .find(({ target }) => target.kind === 'graphic-node' && target.identityPath?.at(-1) === 'addr:Arm/hand')!.target;
+      const boundGraphic = service.setParentKey(placed.project, IDS.shot, IDS.layerAsset, 250, placed.layer.id, { target: handTarget });
+      expectMatrix(
+        evaluatedLayerWorldMatrix(evalGraphic(boundGraphic, 250)),
+        evaluatedLayerWorldMatrix(evalGraphic(placed.project, 250)),
+      );
+      expect(evaluatedLayerWorldMatrix(evalGraphic(boundGraphic, 500)).tx)
+        .not.toBeCloseTo(evaluatedLayerWorldMatrix(evalGraphic(boundGraphic, 250)).tx, 2);
+      const missingNode = ProjectSchema.parse({
+        ...boundGraphic,
+        shots: boundGraphic.shots.map((s) => ({
+          ...s,
+          layers: s.layers.map((l) => l.id === placed.layer.id ? {
+            ...l,
+            source: { kind: 'asset', assetId: IDS.assetChar },
+            startTimeMs: undefined, animationPlayback: undefined, animationFirstFrame: undefined,
+          } : l),
+        })),
+      });
+      expect(evalGraphic(missingNode, 500).parentAttachmentFallback).toBe(true);
+    });
+
+    it('allows legal time-separated parent swaps while rejecting same-timestamp cycles and degrading damaged cycles locally', () => {
+      const { project, shot, baseLayer, middle, tip } = fixture();
+      const service = new LayerService();
+      // Base: middle -> baseLayer. At t=500: middle detaches, then baseLayer binds to middle (legal cross-time swap!).
+      const step1 = service.setParent(project, shot.id, middle.id, baseLayer.id, 0);
+      const step2 = service.setParentKey(step1, shot.id, middle.id, 500, null);
+      // Same-timestamp cycle at t=250 (while middle -> baseLayer is still active) must be rejected.
+      expect(() => service.setParentKey(step2, shot.id, baseLayer.id, 250, middle.id)).toThrow(/循环/);
+      // Legal cross-time swap at t=500 succeeds cleanly!
+      const swapped = service.setParentKey(step2, shot.id, baseLayer.id, 500, middle.id);
+      const at250 = evaluateShotAtTime(swapped.shots[0]!, 250, swapped).layers;
+      const at750 = evaluateShotAtTime(swapped.shots[0]!, 750, swapped).layers;
+      expect(at250.find(({ id }) => id === middle.id)?.parentSpace).toBeDefined();
+      expect(at750.find(({ id }) => id === baseLayer.id)?.parentSpace).toBeDefined();
+
+      // Damaged same-timestamp dynamic cycle degrades locally without crashing unrelated layers.
+      const damaged = ProjectSchema.parse({
+        ...project,
+        shots: [{
+          ...shot,
+          layers: [
+            { ...baseLayer, parentKeys: [{ timeMs: 500, parentLayerId: middle.id }] },
+            { ...middle, parentKeys: [{ timeMs: 500, parentLayerId: baseLayer.id }] },
+            { ...tip, parentKeys: [{ timeMs: 500, parentLayerId: middle.id }] },
+          ],
+        }],
+      });
+      const frames = evaluateShotAtTime(damaged.shots[0]!, 500, damaged).layers;
+      expect(frames.find(({ id }) => id === baseLayer.id)?.parentSpace).toBeUndefined();
+      expect(frames.find(({ id }) => id === middle.id)?.parentSpace).toBeUndefined();
+      expect(frames.find(({ id }) => id === tip.id)?.parentSpace).toBeDefined();
+    });
+
+    it('supports add, move, remove, realign keys, preserves parentKeys on static setParent, and rejects non-invertible targets', () => {
+      const { project, shot, baseLayer, middle, tip, other } = fixture();
+      const service = new LayerService();
+      const worldAt = (input: typeof project, timeMs: number) =>
+        evaluatedLayerWorldMatrix(evaluateShotAtTime(input.shots[0]!, timeMs, input).layers.find(({ id }) => id === tip.id)!);
+
+      // Add keys at 250 and 750.
+      const k1 = service.setParentKey(project, shot.id, tip.id, 250, baseLayer.id);
+      const k2 = service.setParentKey(k1, shot.id, tip.id, 750, other.id);
+      // Static setParent edits only base segment while preserving subsequent parentKeys.
+      const baseEdited = service.setParent(k2, shot.id, tip.id, middle.id, 0);
+      const baseEditedTip = baseEdited.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+      expect(baseEditedTip.parentLayerId).toBe(middle.id);
+      expect(baseEditedTip.parentKeys?.map((k) => k.timeMs)).toEqual([250, 750]);
+
+      // Move key 250 -> 500 recalculates offset at 500 so boundary 500 is continuous with preceding base segment.
+      const moved = service.moveParentKey(baseEdited, shot.id, tip.id, 250, 500);
+      expect(moved.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys?.map((k) => k.timeMs)).toEqual([500, 750]);
+      // Moving onto an existing key time throws.
+      expect(() => service.moveParentKey(moved, shot.id, tip.id, 500, 750)).toThrow(/已存在/);
+
+      // Remove key at 500 -> now 750's preceding segment changed from baseLayer to middle, so 750 drifts until realigned.
+      const removed = service.removeParentKey(moved, shot.id, tip.id, 500);
+      expect(removed.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys?.map((k) => k.timeMs)).toEqual([750]);
+      const incomingAt750 = evaluatedLayerWorldMatrix(
+        evaluateShotAtTime(
+          { ...removed.shots[0]!, layers: removed.shots[0]!.layers.map((l) => l.id === tip.id ? { ...l, parentKeys: undefined } : l) },
+          750,
+          removed,
+        ).layers.find(({ id }) => id === tip.id)!,
+      );
+      expect(worldAt(removed, 750).tx).not.toBeCloseTo(incomingAt750.tx, 1);
+
+      // Realign key at 750 restores exact boundary continuity with incoming segment!
+      const realigned = service.realignParentKey(removed, shot.id, tip.id, 750);
+      expectMatrix(worldAt(realigned, 750), incomingAt750);
+
+      // Non-invertible target is rejected cleanly.
+      const singular = ProjectSchema.parse({
+        ...project,
+        shots: [{
+          ...shot,
+          layers: shot.layers.map((l) => l.id === baseLayer.id ? { ...l, parentSpaceOffset: { a: 0, b: 0, c: 0, d: 1, tx: 0, ty: 0 } } : l),
+        }],
+      });
+      expect(() => service.setParentKey(singular, shot.id, tip.id, 500, baseLayer.id)).toThrow(/无法反算/);
+    });
+
+    it('enforces cross-depth preserve/inherit, detach depth & space freeze, explicit depthKeys protection, and world/screen boundary errors', () => {
+      const { project, shot, baseLayer, middle, tip, other } = fixture();
+      const service = new LayerService();
+      const poseAt = (input: typeof project, timeMs: number, layerId = tip.id) =>
+        evaluateShotAtTime(input.shots[0]!, timeMs, input).layers.find(({ id }) => id === layerId)!;
+
+      // baseLayer has dynamic depthKeys (100 -> -500), middle has static depth -300.
+      let seeded = setLayerDepthKey(setLayerDepth(project, shot.id, baseLayer.id, 100), shot.id, baseLayer.id, 1_000, -500);
+      seeded = setLayerDepth(seeded, shot.id, middle.id, -300);
+      seeded = setLayerDepth(seeded, shot.id, other.id, 0);
+
+      // Same-depth handoff (tip 0 -> other 0) defaults to 'inherit'.
+      const sameDepth = service.setParentKey(seeded, shot.id, tip.id, 250, other.id);
+      expect(sameDepth.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys?.[0]?.depthMode).toBe('inherit');
+
+      // Cross-depth handoff (tip 0 -> middle -300): defaults to 'preserve' (keeps 0).
+      const crossPreserve = service.setParentKey(seeded, shot.id, tip.id, 250, middle.id);
+      expect(crossPreserve.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys?.[0]?.depthMode).toBe('preserve');
+      expect(poseAt(crossPreserve, 500).effectiveDepth).toBe(0);
+
+      // Explicit depthMode: 'inherit' adopts new parent depth (including animated depthKeys!).
+      const crossInherit = service.setParentKey(seeded, shot.id, tip.id, 250, baseLayer.id, { depthMode: 'inherit' });
+      expect(poseAt(crossInherit, 500).effectiveDepth).toBe(-200);
+      expect(poseAt(crossInherit, 1_000).effectiveDepth).toBe(-500);
+
+      // Detach at 500ms freezes inherited effectiveDepth (-200) on that segment without changing earlier segment.
+      const detached = service.setParentKey(crossInherit, shot.id, tip.id, 500, null);
+      expect(poseAt(detached, 250).effectiveDepth).toBe(-50);
+      expect(poseAt(detached, 500).effectiveDepth).toBe(-200);
+      expect(poseAt(detached, 1_000).effectiveDepth).toBe(-200);
+
+      // Explicit child depthKeys are never overwritten by dynamic parent keys.
+      const withExplicitKeys = setLayerDepthKey(setLayerDepth(crossInherit, shot.id, tip.id, 50), shot.id, tip.id, 1_000, 350);
+      const detachedExplicit = service.setParentKey(withExplicitKeys, shot.id, tip.id, 500, null);
+      expect(poseAt(detachedExplicit, 500).effectiveDepth).toBe(200);
+      expect(poseAt(detachedExplicit, 1_000).effectiveDepth).toBe(350);
+
+      // Direct cross-space (world <-> screen) handoff is rejected cleanly.
+      const screenParent = service.setCameraAttachment(seeded, shot.id, other.id, true);
+      expect(() => service.setParentKey(screenParent, shot.id, tip.id, 250, other.id)).toThrow(/世界空间与屏幕空间/);
+      // Same-space (screen -> screen) handoff and detach preserve screen space.
+      const screenBoth = service.setCameraAttachment(screenParent, shot.id, tip.id, true);
+      const screenBound = service.setParentKey(screenBoth, shot.id, tip.id, 250, other.id);
+      const screenDetached = service.setParentKey(screenBound, shot.id, tip.id, 500, null);
+      expect(poseAt(screenDetached, 500).effectiveCameraSpace).toBe('screen');
+    });
+
+    it('handles deleteLayer, duplicateLayer (same-shot & cross-shot), ShotService duplicate/setDuration, and background clearing', () => {
+      const { project, shot, baseLayer, middle, tip } = fixture();
+      const service = new LayerService();
+      const shots = new ShotService();
+      const poseAt = (input: typeof project, shotId: string, layerId: string, timeMs: number) =>
+        evaluateShotAtTime(input.shots.find(({ id }) => id === shotId)!, timeMs, input)
+          .layers.find(({ id }) => id === layerId)!;
+
+      // Setup: baseLayer has depth -300. tip binds to baseLayer at 250 (inherit), hands off to middle at 500, back to baseLayer at 750.
+      const deepBase = setLayerDepth(project, shot.id, baseLayer.id, -300);
+      const k1 = service.setParentKey(deepBase, shot.id, tip.id, 250, baseLayer.id, { depthMode: 'inherit' });
+      const k2 = service.setParentKey(k1, shot.id, tip.id, 500, middle.id, { depthMode: 'inherit' });
+      const k3 = service.setParentKey(k2, shot.id, tip.id, 750, baseLayer.id, { depthMode: 'inherit' });
+
+      // 1. deleteLayer(baseLayer) at timeMs = 375 (inside [250, 500) segment):
+      //    - [250, 500) freezes pose/depth at 375ms
+      //    - [500, 750) still points to middle
+      //    - [750, inf) freezes pose/depth at its boundary 750ms with parentLayerId: null
+      const before375 = poseAt(k3, shot.id, tip.id, 375);
+      const before750 = poseAt(k3, shot.id, tip.id, 750);
+      const afterDelete = service.deleteLayer(k3, shot.id, baseLayer.id, 375);
+      const survivingTip = afterDelete.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+      expect(survivingTip.parentKeys?.map((k) => k.parentLayerId)).toEqual([null, middle.id, null]);
+      expectMatrix(evaluatedLayerWorldMatrix(poseAt(afterDelete, shot.id, tip.id, 375)), evaluatedLayerWorldMatrix(before375));
+      expect(poseAt(afterDelete, shot.id, tip.id, 375).effectiveDepth).toBe(-300);
+      expectMatrix(evaluatedLayerWorldMatrix(poseAt(afterDelete, shot.id, tip.id, 750)), evaluatedLayerWorldMatrix(before750));
+      expect(poseAt(afterDelete, shot.id, tip.id, 750).effectiveDepth).toBe(-300);
+
+      // 2. Same-shot duplicateLayer preserves valid parentKeys; cross-shot freezes timeMs pose/depth & clears parentKeys.
+      const sameCopy = service.duplicateLayer(k3, shot.id, tip.id, shot.id, 375);
+      expect(sameCopy.layer.parentKeys).toEqual(k3.shots[0]!.layers.find(({ id }) => id === tip.id)!.parentKeys);
+      const withDest = shots.create(k3, { name: 'Dest Shot', durationMs: shot.durationMs });
+      const destId = withDest.shots.at(-1)!.id;
+      const crossCopy = service.duplicateLayer(withDest, shot.id, tip.id, destId, 375);
+      expect(crossCopy.layer.parentKeys).toBeUndefined();
+      expect(crossCopy.layer.parentLayerId).toBeUndefined();
+      expect(crossCopy.layer.depth).toBe(-300);
+      expectMatrix(evaluatedLayerWorldMatrix(poseAt(crossCopy.project, destId, crossCopy.layer.id, 0)), evaluatedLayerWorldMatrix(before375));
+
+      // 3. ShotService.duplicate remaps all parentKeys[].parentLayerId; ShotService.setDuration rejects shrinking below parentKey.timeMs.
+      const duplicatedShot = shots.duplicate(k3, shot.id).shots[1]!;
+      const dupTip = duplicatedShot.layers.find(({ name }) => name === tip.name)!;
+      const dupBase = duplicatedShot.layers.find(({ name }) => name === baseLayer.name)!;
+      const dupMiddle = duplicatedShot.layers.find(({ name }) => name === middle.name)!;
+      expect(dupTip.parentKeys?.map((k) => k.parentLayerId)).toEqual([dupBase.id, dupMiddle.id, dupBase.id]);
+      expect(() => shots.setDuration(k3, shot.id, 500)).toThrow();
+
+      // 4. setBackground / fillBackground clears parentKeys (protecting #1371).
+      const asBg = service.setBackground(k3, shot.id, tip.id);
+      const bgLayer = asBg.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+      expect(bgLayer.parentKeys).toBeUndefined();
+      const staleBg = ProjectSchema.parse({
+        ...asBg,
+        shots: asBg.shots.map((s) => ({
+          ...s,
+          layers: s.layers.map((l) => l.id === tip.id ? { ...l, parentKeys: [{ timeMs: 250, parentLayerId: null }] } : l),
+        })),
+      });
+      const refilled = service.fillBackground(staleBg, shot.id);
+      expect(refilled.shots[0]!.layers.find(({ id }) => id === tip.id)?.parentKeys).toBeUndefined();
+    });
+  });
 });

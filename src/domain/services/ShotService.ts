@@ -46,6 +46,7 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.timelineEvents.map((event) => event.endMs),
     ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
     ...shot.layers.map((layer) => layer.depthKeys?.at(-1)?.timeMs ?? 0),
+    ...shot.layers.map((layer) => layer.parentKeys?.at(-1)?.timeMs ?? 0),
     shot.camera?.keys.at(-1)?.timeMs ?? 0,
     ...(shot.camera?.overrides?.map((override) => override.endMs) ?? []),
   );
@@ -112,6 +113,14 @@ export class ShotService {
           ...layer,
           id: layerId,
           ...(layer.parentLayerId ? { parentLayerId: layerIds.get(layer.parentLayerId) } : {}),
+          ...(layer.parentKeys
+            ? {
+                parentKeys: layer.parentKeys.map((key) => ({
+                  ...key,
+                  parentLayerId: key.parentLayerId ? (layerIds.get(key.parentLayerId) ?? null) : null,
+                })),
+              }
+            : {}),
           ...remapLayerMotionOwner(layer, layerId),
         };
       }),

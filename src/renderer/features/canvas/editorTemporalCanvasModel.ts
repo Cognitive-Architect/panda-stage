@@ -198,8 +198,9 @@ export function evaluateEditorCanvasShot(
       })()
     : baseEditorShot;
   const members = new Set(shot.layers
-    .filter(({ parentLayerId, parentSpaceOffset, layerMotionTracks }) => parentLayerId || parentSpaceOffset || layerMotionTracks?.length)
-    .flatMap((layer) => [layer.id, layer.parentLayerId]));
+    .filter(({ parentLayerId, parentSpaceOffset, parentKeys, layerMotionTracks }) =>
+      parentLayerId || parentSpaceOffset || parentKeys?.length || layerMotionTracks?.length)
+    .flatMap((layer) => [layer.id, layer.parentLayerId, ...(layer.parentKeys?.map((key) => key.parentLayerId ?? undefined) ?? [])]));
   if (members.size) {
     const formal = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, 0, project), activeDialogueId, dialogueSilence);
     const evaluatedById = new Map(formal.layers.map((layer) => [layer.id, layer]));
