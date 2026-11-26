@@ -1,8 +1,9 @@
 /**
  * Pure rich easing curves for AN-PROD-C01 native keyframe baking.
  *
- * Mathematical formulas are adapted from d3-ease (BSD-3-Clause, Mike Bostock,
- * based on Robert Penner's easing equations) with standard defaults:
+ * Mathematical formulas are adapted from d3-ease (https://github.com/d3/d3-ease,
+ * upstream files src/sin.js, src/cubic.js, src/circle.js, src/poly.js, src/back.js,
+ * and src/bounce.js; no npm package dependency pinned) with standard defaults:
  * - Back overshoot: s = 1.70158
  * - Bounce piecewise quadratic coefficients: 121/16 = 7.5625 with breaks at 4/11, 8/11, 10/11
  *
@@ -10,6 +11,37 @@
  * - Exact endpoints: E(0) === 0, E(1) === 1
  * - Finite output, normalizing -0 to 0
  * - Preserves true overshoot outside [0, 1] on `back` curves (no global clamp)
+ *
+ * Upstream d3-ease BSD 3-Clause License (https://github.com/d3/d3-ease/blob/main/LICENSE):
+ *
+ * Copyright 2010-2026 Mike Bostock
+ * Copyright 2001 Robert Penner
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * * Neither the name of the author nor the names of contributors may be used to
+ *   endorse or promote products derived from this software without specific prior
+ *   written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 export const RICH_EASING_FAMILIES = [

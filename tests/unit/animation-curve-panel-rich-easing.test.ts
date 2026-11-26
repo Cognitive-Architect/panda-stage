@@ -6,6 +6,8 @@ import {
   LayerMotionService,
   LayerService,
   ProjectSchema,
+  editAnimationPropertyKey,
+  retimeAnimationPropertyRange,
   type Project,
   type TimelineEvent,
 } from '../../src/domain';
@@ -225,5 +227,124 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     expect(container.querySelector('[data-testid="rich-easing-locked"]')?.textContent).toContain('已锁定');
     expect(selectByTestId('rich-easing-family').disabled).toBe(true);
     expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
+  });
+
+  it('blocks silent fallback when explicit 500->1000ms segment endpoints move after retime, then allows baking after re-selection (#1376 P2-01)', async () => {
+    await setSelectValue(selectByTestId('rich-easing-start'), '500');
+    await setSelectValue(selectByTestId('rich-easing-end'), '1000');
+    await setSelectValue(selectByTestId('rich-easing-family'), 'back');
+    await setSelectValue(selectByTestId('rich-easing-direction'), 'out');
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('active');
+
+    // Retime 500..1000ms forward by 1 frame -> 542..1042ms while panel stays open.
+    await act(async () => {
+      const state = editorProjectStore.getSnapshot()!;
+      const retimed = retimeAnimationPropertyRange(
+        state.project,
+        { shotId: IDS.shot, target: { kind: 'layer', layerId }, property: 'transform.offsetX' },
+        { startMs: 500, endMs: 1_000, mode: 'move', frames: 1 },
+      );
+      editorProjectStore.updateProject(retimed, '调整属性选段时间');
+    });
+
+    const afterRetime = editorProjectStore.getSnapshot()!;
+    const historyAfterRetime = editorProjectStore.history.getSnapshot();
+    expect(afterRetime.revision).toBe(1);
+    // Stale preview draft must be cleared and Apply must be disabled (no silent fallback to 0->542ms).
+    expect(drafts.at(-1)).toBeNull();
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
+    expect(container.querySelector('[data-testid="rich-easing-scope"]')?.textContent).toContain('重新选择');
+
+    // Clicking Apply while stale must not mutate revision, History, or keys.
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ revision: afterRetime.revision, project: afterRetime.project });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyAfterRetime);
+
+    // Re-selecting the new valid segment 542->1042ms re-enables Apply and bakes only 542..1042ms.
+    await setSelectValue(selectByTestId('rich-easing-start'), '542');
+    await setSelectValue(selectByTestId('rich-easing-end'), '1042');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
+
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    const afterBake = editorProjectStore.getSnapshot()!;
+    expect(afterBake.revision).toBe(afterRetime.revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(historyAfterRetime.undoCount + 1);
+
+    const bakedTrack = afterBake.project.shots[0]!.layers
+      .find((candidate) => candidate.id === layerId)!
+      .animationClip!.tracks.find((candidate) => candidate.property === 'transform.offsetX')!;
+    // Earlier segment 0..542ms must have NO baked intermediate keys.
+    expect(bakedTrack.keys.filter((k) => k.timeMs > 0 && k.timeMs < 542)).toEqual([]);
+    // Selected segment 542..1042ms must have baked intermediate keys and preserve endpoints.
+    expect(bakedTrack.keys.filter((k) => k.timeMs > 542 && k.timeMs < 1_042).length).toBeGreaterThan(0);
+    expect(bakedTrack.keys.find((k) => k.timeMs === 542)?.value).toBe(200);
+    expect(bakedTrack.keys.find((k) => k.timeMs === 1_042)?.value).toBe(400);
+  });
+
+  it('invalidates active draft when project revision changes (anchor edit or Undo/Redo) even if endpoints remain (#1376 P2-01)', async () => {
+    await setSelectValue(selectByTestId('rich-easing-start'), '500');
+    await setSelectValue(selectByTestId('rich-easing-end'), '1000');
+    await setSelectValue(selectByTestId('rich-easing-family'), 'back');
+    await setSelectValue(selectByTestId('rich-easing-direction'), 'out');
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('active');
+
+    // Edit anchor value at 500ms (endpoints 0/500/1000 still exist, but revision increments).
+    await act(async () => {
+      const state = editorProjectStore.getSnapshot()!;
+      const edited = editAnimationPropertyKey(
+        state.project,
+        { shotId: IDS.shot, target: { kind: 'layer', layerId }, property: 'transform.offsetX', keyTimeMs: 500 },
+        { value: 260 },
+      );
+      editorProjectStore.updateProject(edited, '编辑属性曲线');
+    });
+
+    const afterEdit = editorProjectStore.getSnapshot()!;
+    const historyAfterEdit = editorProjectStore.history.getSnapshot();
+    expect(afterEdit.revision).toBe(1);
+    expect(drafts.at(-1)).toBeNull();
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('stale');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
+
+    // Clicking Apply does not silently commit stale draft against new revision.
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    expect(editorProjectStore.getSnapshot()).toMatchObject({ revision: afterEdit.revision, project: afterEdit.project });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyAfterEdit);
+
+    // Re-previewing refreshes draft for revision 1 and allows applying cleanly.
+    await act(async () => buttonByTestId('rich-easing-repreview').click());
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('active');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
+
+    // Undo also invalidates the fresh draft; Cancel clears stale state so user can continue.
+    await act(async () => {
+      expect(editorProjectStore.undo()).toBe(true);
+    });
+    expect(drafts.at(-1)).toBeNull();
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
+
+    await act(async () => buttonByTestId('rich-easing-cancel').click());
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('idle');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
+  });
+
+  it('preserves direct apply without preview draft on initial default segment (#1376 P2-01)', async () => {
+    const beforeProject = editorProjectStore.getSnapshot()!.project;
+    expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('idle');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
+
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    const after = editorProjectStore.getSnapshot()!;
+    expect(after).toMatchObject({ dirty: true, revision: 1 });
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    const track = after.project.shots[0]!.layers
+      .find((candidate) => candidate.id === layerId)!
+      .animationClip!.tracks.find((candidate) => candidate.property === 'transform.offsetX')!;
+    expect(track.keys.filter((k) => k.timeMs > 0 && k.timeMs < 500).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      expect(editorProjectStore.undo()).toBe(true);
+    });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(beforeProject);
   });
 });
