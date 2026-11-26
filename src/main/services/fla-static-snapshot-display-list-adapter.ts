@@ -885,7 +885,7 @@ function readInstanceProjection(
   // centerPoint3DX/Y are ordinary 2D pivot metadata written by Animate on normal
   // 2D instances (including Classic Motion); only explicit 3D transform attributes
   // or a <matrix3D> child indicate a 3D instance projection.
-  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z'] as const;
+  const transform3DNames = ['rotationX', 'rotationY', 'rotationZ', 'z', 'centerPoint3DZ'] as const;
   const hasMatrix3D = Boolean(directChild(instance.xml, instance.name, 'matrix3D'));
   if (!transform3DNames.some((key) => attrs[key] !== undefined)) return hasMatrix3D ? null : undefined;
   if (hasMatrix3D) return null;
@@ -896,7 +896,8 @@ function readInstanceProjection(
   const rotationX = read('rotationX', 0);
   const rotationY = read('rotationY', 0);
   const rotationZ = read('rotationZ', 0);
-  const depth = read('z', 0);
+  // Explicit z takes precedence, including an authored zero.
+  const depth = attrs.z !== undefined ? read('z', 0) : read('centerPoint3DZ', 0);
   if (![rotationX, rotationY, rotationZ].every((value) => Number.isFinite(value) && Math.abs(value) <= 36000) ||
       !Number.isFinite(depth)) return null;
   if (rotationX === 0 && rotationY === 0 && rotationZ === 0 && depth === 0) return undefined;

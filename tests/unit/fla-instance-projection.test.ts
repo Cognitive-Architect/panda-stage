@@ -45,6 +45,30 @@ describe('XFL instance affine projection', () => {
     expect(projectFlaInstance(identity, identity, { ...perspective, depth: -100 })).toBeNull();
   });
 
+  it.each([
+    ['z="100"', 0.5],
+    ['centerPoint3DZ="100"', 0.5],
+    ['centerPoint3DZ="100" rotationY="45"', 0.5 * Math.SQRT1_2],
+    ['centerPoint3DZ="100" z="0"', 1],
+    ['centerPoint3DX="20" centerPoint3DY="30" centerPoint3DZ="0"', 1],
+  ])('resolves authored depth and 2D pivot metadata (%s)', (attrs, scaleX) => {
+    const doc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="100" vanishingPoint3DY="100">
+      <timelines><DOMTimeline name="Scene 1"><layers><DOMLayer><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" ${attrs}><matrix><Matrix tx="100" ty="100"/></matrix></DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(doc, [cardSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const frame = adapted.source.buildSceneFrameContext(adapted.source.sceneTimelines[0]!.xml, 0, 'scene:0');
+    if (!frame.ok) throw new Error(frame.message);
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: 'Scene 1', frameContext: frame.value },
+      symbols: adapted.source.symbols,
+    });
+    if (!resolved.ok) throw new Error(resolved.message);
+    expect(resolved.displayList.layers[0]?.children[0]?.worldTransform.a).toBeCloseTo(scaleX);
+    expect(resolved.displayList.projectionDiagnostics).toBeUndefined();
+  });
+
   it('resolves authored XFL under parent and document perspective, skipping a behind-viewer sibling', () => {
     const doc = `<DOMDocument width="200" height="200" frameRate="24" viewAngle3D="90" vanishingPoint3DX="20" vanishingPoint3DY="30">
       <timelines><DOMTimeline><layers><DOMLayer><frames><DOMFrame index="0"><elements>
@@ -296,7 +320,7 @@ describe('XFL instance affine projection', () => {
               </PropertyContainer>
             </AnimationCore></motionObjectXML>
             <elements>
-              <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" rotationX="30" z="100">
+              <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" rotationX="30" centerPoint3DZ="100">
                 <matrix><Matrix tx="100" ty="100"/></matrix>
                 <transformationPoint><Point x="0" y="0"/></transformationPoint>
               </DOMSymbolInstance>
