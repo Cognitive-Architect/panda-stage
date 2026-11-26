@@ -291,13 +291,13 @@ describe('A06/A07 embedded video rotation and project decode lifetime', () => {
   it('aborts the earlier decode, rejects a late result and keeps a reopened same-key decode', async () => {
     const workDir = await makeTempDir('panda-video-cancel-');
     const projectRoot = path.join(workDir, 'project.pandastage');
-    await new ProjectService().create(projectRoot, { name: 'Decode cancellation' });
+    const { project } = await new ProjectService().create(projectRoot, { name: 'Decode cancellation' });
     const relativePath = 'assets/video.mp4';
     const source = path.join(projectRoot, relativePath);
     await writeFile(source, 'source video');
     const asset: VideoAsset = {
       id: randomUUID(), kind: 'video', name: 'Video', relativePath,
-      mimeType: 'video/mp4', width: 1, height: 1, durationMs: 1000,
+      mimeType: 'video/mp4', width: 1, height: 1, durationMs: 1000, sha256: 'a'.repeat(64),
       videoTiming: {
         codec: 'h264', streamIndex: 0, timeBase: { numerator: 1, denominator: 1 },
         presentationTicks: [0], startTick: 0, endTick: 1, hasAudio: false,
@@ -322,11 +322,16 @@ describe('A06/A07 embedded video rotation and project decode lifetime', () => {
       .mockImplementationOnce(capture(older, releaseOld.promise))
       .mockImplementationOnce(capture(newer, releaseNew.promise));
     const service = new FlaEmbeddedVideoService({ ffmpegAdapter: adapter });
-    const read = () => service.readSampleFrame({ projectRoot, asset, sampleIndex: 0 });
+    const canvas = new AssetCanvasImageService({
+      getCurrentProjectSnapshot: () => ({ project: { ...project, assets: [asset] } }),
+      embeddedVideoService: service,
+    });
+    const read = () => canvas.read({ projectRoot, assetId: flaVideoFrameAssetKey(asset.id, 0), sha256: asset.sha256 });
 
     try {
       const oldRead = read();
       const old = await older.promise;
+      canvas.clearActiveReads();
       const disposal = service.dispose();
       expect(old.signal?.aborted).toBe(true);
       const newRead = read();
@@ -334,16 +339,17 @@ describe('A06/A07 embedded video rotation and project decode lifetime', () => {
       expect(current.signal?.aborted).toBe(false);
 
       releaseOld.resolve();
-      await expect(oldRead).resolves.toMatchObject({ ok: false, code: 'CANCELLED' });
+      await expect(oldRead).resolves.toMatchObject({ ok: false, error: { message: 'Video frame decode cancelled.' } });
       await disposal;
       await expect(stat(old.directory)).rejects.toMatchObject({ code: 'ENOENT' });
       await expect(stat(current.directory)).resolves.toBeDefined();
 
       const joined = read();
+      expect(joined).toBe(newRead);
       releaseNew.resolve();
       await expect(newRead).resolves.toMatchObject({ ok: true });
       await expect(joined).resolves.toMatchObject({ ok: true });
-      await expect(read()).resolves.toMatchObject({ ok: true, fromCache: true });
+      await expect(read()).resolves.toMatchObject({ ok: true, status: 'ready' });
       expect(spy).toHaveBeenCalledTimes(2);
       await expect(readFile(source, 'utf8')).resolves.toBe('source video');
     } finally {
