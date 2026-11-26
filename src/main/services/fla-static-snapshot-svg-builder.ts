@@ -3832,10 +3832,12 @@ export function planStaticScale9Placement(
   shapeBlocks: ReadonlyMap<string, string>,
 ): Scale9Placement | null {
   const { worldTransform: world, scale9Grid } = node;
-  const absX = Math.abs(world.a);
-  const absY = Math.abs(world.d);
-  if (!scale9Grid || absX === 0 || absY === 0 || world.b !== 0 || world.c !== 0 ||
-      (world.a < 0 && world.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  const absX = Math.abs(local.a);
+  const absY = Math.abs(local.d);
+  if (!scale9Grid || absX === 0 || absY === 0 || world.a === 0 || world.d === 0 ||
+      local.b !== 0 || local.c !== 0 || world.b !== 0 || world.c !== 0 ||
+      (local.a < 0 && local.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
   const bounds = createBounds();
   for (const child of node.children) {
     if (child.kind !== 'shape' || child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) return null;
@@ -3847,11 +3849,11 @@ export function planStaticScale9Placement(
     const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
     if (!path.ok) return null;
     const m = child.worldTransform;
-    const local = {
+    const childLocal = {
       a: m.a / world.a, b: m.b / world.d, c: m.c / world.a, d: m.d / world.d,
       tx: (m.tx - world.tx) / world.a, ty: (m.ty - world.ty) / world.d,
     };
-    if (!includeTransformedPathBounds(bounds, path.representation.commands, local)) return null;
+    if (!includeTransformedPathBounds(bounds, path.representation.commands, childLocal)) return null;
   }
   const layout = planFlaScale9Slices(
     { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
@@ -3865,7 +3867,7 @@ export function planStaticScale9Placement(
   });
   const placements = layout?.map(({ source, target }) => ({
     source: rect(source.left, source.top, source.right, source.bottom, world.a, world.d),
-    target: rect(target.left, target.top, target.right, target.bottom, Math.sign(world.a), Math.sign(world.d)),
+    target: rect(target.left, target.top, target.right, target.bottom, world.a / absX, world.d / absY),
   }));
   return placements?.every(({ source, target }) =>
     Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
@@ -3933,16 +3935,17 @@ export function diagnoseStaticScale9Fallback(
   const { worldTransform: world, scale9Grid } = node;
   if (!scale9Grid) return null;
   if (planStaticScale9Placement(node, shapeBlocks) !== null) return null;
-  const absX = Math.abs(world.a);
-  const absY = Math.abs(world.d);
-  // Identity scale needs no 9-slice; AIR specifies rotated DisplayObjects fall back to ordinary scaling.
-  if (world.b === 0 && world.c === 0) {
-    if (absX === 1 && absY === 1) return null;
-    if (world.a < 0 && world.d < 0) return null;
-  } else {
-    const lenX = Math.hypot(world.a, world.b);
-    const lenY = Math.hypot(world.c, world.d);
-    const dot = Math.abs(world.a * world.c + world.b * world.d);
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  // Identity scale needs no 9-slice; rotated occurrences use ordinary scaling.
+  if (local.b === 0 && local.c === 0) {
+    if (Math.abs(local.a) === 1 && Math.abs(local.d) === 1) return null;
+    if (local.a < 0 && local.d < 0) return null;
+  }
+  const effective = local.b !== 0 || local.c !== 0 ? local : world;
+  if (effective.b !== 0 || effective.c !== 0) {
+    const lenX = Math.hypot(effective.a, effective.b);
+    const lenY = Math.hypot(effective.c, effective.d);
+    const dot = Math.abs(effective.a * effective.c + effective.b * effective.d);
     if (lenX > 0 && lenY > 0 && dot <= 1e-4 * lenX * lenY) return null;
     return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): skewed transform falls back to ordinary scaling`;
   }

@@ -2600,6 +2600,29 @@ function computeRigLayerObjectMatrix(
   };
 }
 
+/** Apply a parent-space pose correction to both the matrix and its authored 3D pivot. */
+function transformProjectionPivot(
+  projection: FlaInstanceProjection,
+  original: FlaDisplayListMatrix,
+  correction: FlaDisplayListMatrix,
+): FlaInstanceProjection {
+  if (projection.pivotX === undefined && projection.pivotY === undefined) return projection;
+  const x = projection.pivotX ?? original.tx;
+  const y = projection.pivotY ?? original.ty;
+  return {
+    ...projection,
+    pivotX: correction.a * x + correction.c * y + correction.tx,
+    pivotY: correction.b * x + correction.d * y + correction.ty,
+  };
+}
+
+function applyDisplayElementPose(element: FlaDisplayListElement, correction: FlaDisplayListMatrix) {
+  const original = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+  const localTransform = compose(correction, original);
+  if (element.kind !== 'symbol' || !element.projection3D) return { ...element, localTransform };
+  return { ...element, localTransform, projection3D: transformProjectionPivot(element.projection3D, original, correction) };
+}
+
 function applyRigCorrectionToElements(
   context: RigEvaluationContext,
   layerIndex: number,
@@ -2624,10 +2647,7 @@ function applyRigCorrectionToElements(
   const correction = compose(parentAtFrame.value.matrix, startInverse);
   return {
     ok: true,
-    value: elements.map((element) => ({
-      ...element,
-      localTransform: compose(correction, element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
-    })),
+    value: elements.map((element) => applyDisplayElementPose(element, correction)),
   };
 }
 
@@ -2843,8 +2863,6 @@ function buildObjectMotionFrameElements(
   let projection3D = element.projection3D;
   if (projection3D !== null && (projection3D !== undefined || pose.projection3D !== undefined)) {
     const baseMatrix = element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX;
-    const dx = pose.matrix.tx - baseMatrix.tx;
-    const dy = pose.matrix.ty - baseMatrix.ty;
     const rotationX = pose.projection3D?.rotationX ?? projection3D?.rotationX ?? 0;
     const rotationY = pose.projection3D?.rotationY ?? projection3D?.rotationY ?? 0;
     const depth = (projection3D?.depth ?? 0) + (pose.projection3D?.depthDelta ?? 0);
@@ -2852,14 +2870,16 @@ function buildObjectMotionFrameElements(
       projection3D = undefined;
     } else {
       const baseProj = projection3D ?? context.state.perspective;
-      const pivotX = projection3D?.pivotX !== undefined ? projection3D.pivotX + dx : pose.matrix.tx;
-      const pivotY = projection3D?.pivotY !== undefined ? projection3D.pivotY + dy : pose.matrix.ty;
+      const baseInverse = projection3D ? invertAffineMatrix(baseMatrix) : null;
+      const relocated = projection3D && baseInverse
+        ? transformProjectionPivot(projection3D, baseMatrix, compose(pose.matrix, baseInverse))
+        : undefined;
       projection3D = {
         focalLength: baseProj.focalLength,
         vanishingX: baseProj.vanishingX,
         vanishingY: baseProj.vanishingY,
-        pivotX,
-        pivotY,
+        pivotX: relocated?.pivotX ?? pose.matrix.tx,
+        pivotY: relocated?.pivotY ?? pose.matrix.ty,
         depth,
         rotationX,
         rotationY,
@@ -2959,11 +2979,8 @@ function buildIkPoseFrameElements(
   // XFL stores all frames of element zero first, followed by all frames of
   // element one. The pose operates in the parent space on the authored matrix.
   // The baked pose already contains IK propagation; do not apply Rig correction.
-  const elements = parsed.value.map((element, index) => ({
-    ...element,
-    localTransform: compose(matrices[visibleOrdinals[index]! * span.duration + frameOffset]!,
-      element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
-  }));
+  const elements = parsed.value.map((element, index) =>
+    applyDisplayElementPose(element, matrices[visibleOrdinals[index]! * span.duration + frameOffset]!));
   if (elements.some((element) => !Object.values(element.localTransform).every(Number.isFinite))) {
     return fail('UNSUPPORTED_IK_POSE', '骨架姿态变换超出支持范围');
   }
