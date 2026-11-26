@@ -839,7 +839,7 @@ describe('FLA Graphic structured Definition (E1)', () => {
     expect(sameAuthoredStructure(base, changedPlayback)).toBe(false);
   });
 
-  it('refreshes missing shape coverage on reimport and reuses the upgraded Definition', async () => {
+  it.each([false, true])('refreshes Shape colors on reimport and reuses the Definition (existing paths: %s)', async (hasPaths) => {
     const h = await harness();
     const before = sampleStructure();
     const shapeNode = (structure: FlaGraphicStructure) => {
@@ -849,6 +849,8 @@ describe('FLA Graphic structured Definition (E1)', () => {
       return shape;
     };
     shapeNode(before).fallbackScope = 'subtree';
+    const coveragePathData = ['M0 0L50 0L50 50Z'];
+    if (hasPaths) shapeNode(before).coveragePathData = coveragePathData;
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50"><path d="M0 0L50 0L50 50Z"/></svg>';
     h.batchFallbacks.current = [{
       sourceRef: 'shape-a', svg, sha256: createHash('sha256').update(svg).digest('hex'),
@@ -858,8 +860,8 @@ describe('FLA Graphic structured Definition (E1)', () => {
     const first = await h.service.commit(commitRequest(h, 0));
     if (!first.ok) throw new Error(first.error.message);
     const after = structuredClone(before);
-    const coveragePathData = ['M0 0L50 0L50 50Z'];
     shapeNode(after).coveragePathData = coveragePathData;
+    shapeNode(after).coverageZeroAlphaColors = ['#112233'];
     expect(sameAuthoredStructure(before, after)).toBe(false);
 
     h.batchStructure.current = after;
@@ -871,7 +873,7 @@ describe('FLA Graphic structured Definition (E1)', () => {
       throw new Error('Missing upgraded Definition');
     }
     expect(shapeNode(saved.structure)).toMatchObject({
-      coveragePathData, fallbackAssetId: expect.any(String),
+      coveragePathData, coverageZeroAlphaColors: ['#112233'], fallbackAssetId: expect.any(String),
     });
 
     const third = await h.service.commit(commitRequest(h, 2, THIRD_UNIT_ID));
