@@ -33,6 +33,7 @@ import {
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
   evaluateManualCamera,
+  prepareShotCamera,
   validLayerParentTargets,
   isValidFrameTime,
   type FlaShapeVertexTarget,
@@ -403,9 +404,16 @@ export function CanvasStage({
     ) ?? null;
   const [showCameraView, setShowCameraView] = useState(true);
   const [cameraToolShotId, setCameraToolShotId] = useState<string | null>(null);
-  const cameraTool = !showCameraView && !armAssembly && shot?.camera?.mode === 'manual' && cameraToolShotId === shot.id;
-  const displayCamera = showCameraView && !armAssembly && shot?.camera?.mode === 'manual'
-    ? evaluateManualCamera(shot, timelineUi.currentTimeMs)
+  const hasManualCameraTrack = shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid';
+  const cameraTool = !showCameraView && !armAssembly && hasManualCameraTrack && cameraToolShotId === shot.id;
+  const shotCameraPlan = useMemo(
+    () => snapshot && shot && (shot.camera?.mode === 'manual' || shot.camera?.mode === 'hybrid')
+      ? prepareShotCamera(snapshot.project, shot, 'speaker-focus')
+      : null,
+    [shot, snapshot],
+  );
+  const displayCamera = showCameraView && !armAssembly && shotCameraPlan
+    ? shotCameraPlan(timelineUi.currentTimeMs)
     : undefined;
   const cameraViewActive = Boolean(displayCamera);
   const [parentPick, setParentPick] = useState<{ shotId: string; childId: string; instance: number | null } | null>(null);

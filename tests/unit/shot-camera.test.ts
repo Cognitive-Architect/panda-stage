@@ -2,9 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraLayerTransform, cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, PROJECT_SCHEMA_VERSION, removeShotCameraKey,
+  addShotCameraOverride, cameraLayerTransform, cameraWorldTransform, compareCameraDrawingLayers,
+  evaluateManualCamera, evaluateShotCameraOverrideWeight, evaluateSpeakerFocusCamera,
+  migrateProject, moveShotCameraKey, moveShotCameraOverride, prepareShotCamera, prepareSpeakerFocusCamera,
+  PROJECT_SCHEMA_VERSION, removeShotCameraKey, removeShotCameraOverride, resolveLayerCameraTransform,
   evaluateShotAtTime, setLayerDepth, setLayerDepthKey, moveLayerDepthKey, removeLayerDepthKey,
-  setShotCameraKey, setShotCameraMode, ShotService,
+  setShotCameraKey, setShotCameraMode, ShotService, updateShotCameraOverride,
+  type Project,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
@@ -133,5 +137,305 @@ describe('Shot camera', () => {
     expect(store.redo()).toBe(true);
     expect(store.getSnapshot()?.project.shots[0]?.camera).toEqual(split.shots[0]!.camera);
     expect(removeShotCameraKey(split, id, 750).shots[0]?.camera?.keys.map(({ timeMs }) => timeMs)).toEqual([0, 2_000]);
+  });
+
+  function buildTwoSpeakerProject(): { project: Project; shotId: string; actorAId: string; actorBId: string; hudId: string } {
+    const base = migrateProject(demo);
+    const shot = base.shots[0]!;
+    const styleId = base.subtitleStyles[0]!.id;
+    const baseCharacter = base.characters[0]!;
+    const baseVoice = base.voiceProfiles[0]!;
+    const charAId = randomUUID();
+    const charBId = randomUUID();
+    const voiceAId = randomUUID();
+    const voiceBId = randomUUID();
+    const charA = { ...baseCharacter, id: charAId, name: 'Actor A', defaultVoiceProfileId: voiceAId };
+    const charB = { ...baseCharacter, id: charBId, name: 'Actor B', defaultVoiceProfileId: voiceBId };
+    const voiceA = { ...baseVoice, id: voiceAId, characterId: charAId, name: 'Voice A' };
+    const voiceB = { ...baseVoice, id: voiceBId, characterId: charBId, name: 'Voice B' };
+    const actorAId = randomUUID();
+    const actorBId = randomUUID();
+    const hudId = randomUUID();
+    const templateLayer = shot.layers.find((layer) => layer.id !== shot.backgroundLayerId)!;
+    const project: Project = migrateProject({
+      ...base,
+      characters: [...base.characters, charA, charB],
+      voiceProfiles: [...base.voiceProfiles, voiceA, voiceB],
+      shots: [{
+        ...shot,
+        durationMs: 4_000,
+        layers: [
+          ...shot.layers.filter((layer) => layer.id === shot.backgroundLayerId),
+          {
+            ...templateLayer,
+            id: actorAId,
+            name: 'Speaker A',
+            source: { kind: 'character', characterId: charA.id, expressionId: charA.defaultExpressionId },
+            x: 400,
+            y: 500,
+            visible: true,
+            zIndex: 10,
+          },
+          {
+            ...templateLayer,
+            id: actorBId,
+            name: 'Speaker B',
+            source: { kind: 'character', characterId: charB.id, expressionId: charB.defaultExpressionId },
+            x: 1_500,
+            y: 500,
+            visible: true,
+            zIndex: 11,
+          },
+          {
+            ...templateLayer,
+            id: hudId,
+            name: 'HUD Badge',
+            cameraSpace: 'screen',
+            x: 120,
+            y: 80,
+            visible: true,
+            zIndex: 2,
+          },
+        ],
+        dialogues: [
+          { id: randomUUID(), characterId: charA.id, voiceProfileId: voiceAId, startMs: 0, endMs: 1_500, text: 'A speaks', subtitleStyleId: styleId },
+          { id: randomUUID(), characterId: charB.id, voiceProfileId: voiceBId, startMs: 2_500, endMs: 4_000, text: 'B speaks', subtitleStyleId: styleId },
+        ],
+        timelineEvents: [],
+      }],
+    });
+    return { project, shotId: shot.id, actorAId, actorBId, hudId };
+  }
+
+  it('blends auto speaker A -> manual pan/zoom/rotate -> auto speaker B continuously and supports 0ms hard cuts', () => {
+    const { project: base, shotId } = buildTwoSpeakerProject();
+    let project = setShotCameraMode(base, shotId, 'hybrid');
+
+    // Add manual override [1000, 3000) with 250ms blend in/out.
+    const overrideId = randomUUID();
+    project = addShotCameraOverride(project, shotId, {
+      id: overrideId,
+      startMs: 1_000,
+      endMs: 3_000,
+      blendInMs: 250,
+      blendOutMs: 250,
+    });
+    // Boundary keys were sampled from auto camera so creation does not snap.
+    const autoPlan = prepareSpeakerFocusCamera(base, base.shots[0]!);
+    const createdKeys = project.shots[0]!.camera!.keys;
+    expect(createdKeys.map((key) => key.timeMs)).toEqual([1_000, 3_000]);
+    expect(createdKeys[0]!.centerX).toBeCloseTo(evaluateSpeakerFocusCamera(autoPlan, 1_000).centerX, 6);
+    expect(createdKeys[1]!.centerX).toBeCloseTo(evaluateSpeakerFocusCamera(autoPlan, 3_000).centerX, 6);
+
+    // Author manual wide pan/zoom<1/rotation in the middle of the override.
+    project = setShotCameraKey(project, shotId, 2_000, {
+      centerX: 960,
+      centerY: 540,
+      zoom: 0.75,
+      rotationDeg: 20,
+    });
+    expect(project.shots[0]!.camera?.mode).toBe('hybrid');
+
+    const camera = prepareShotCamera(project, project.shots[0]!, 'static');
+    // Before override: pure auto following A.
+    expect(camera(500)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 500));
+    // At exact startMs with 250ms blendIn: weight === 0 -> continuous with auto.
+    expect(camera(1_000)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 1_000));
+    // Mid blend-in (1125ms): weight === 0.5 -> strictly between auto and manual.
+    const blendInMid = camera(1_125)!;
+    expect(blendInMid.zoom).toBeGreaterThan(0);
+    expect(blendInMid.zoom).not.toEqual(evaluateSpeakerFocusCamera(autoPlan, 1_125).zoom);
+    // Inside full manual control (2000ms): exact manual pose including zoom < 1 (no auto clamp!).
+    expect(camera(2_000)).toEqual({ centerX: 960, centerY: 540, zoom: 0.75, rotationDeg: 20 });
+    // After override (3000ms, 3500ms): pure auto following B.
+    expect(camera(3_000)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 3_000));
+    expect(camera(3_500)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 3_500));
+    // Continuity at blend-out boundary (2999ms close to 3000ms).
+    expect(Math.abs(camera(2_999)!.centerX - camera(3_000)!.centerX)).toBeLessThan(1);
+
+    // Explicit 0ms hard cut at both ends.
+    const hardCut = updateShotCameraOverride(project, shotId, overrideId, { blendInMs: 0, blendOutMs: 0 });
+    const hardCamera = prepareShotCamera(hardCut, hardCut.shots[0]!, 'static');
+    expect(hardCamera(999)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 999));
+    expect(hardCamera(1_000)).toEqual(evaluateManualCamera(hardCut.shots[0]!, 1_000));
+    expect(hardCamera(2_999)).toEqual(evaluateManualCamera(hardCut.shots[0]!, 2_999));
+    expect(hardCamera(3_000)).toEqual(evaluateSpeakerFocusCamera(autoPlan, 3_000));
+  });
+
+  it('compresses blends on short intervals, supports adjacent & multiple intervals, and rejects invalid edits', () => {
+    const { project: base, shotId } = buildTwoSpeakerProject();
+    // Short interval [500, 700) with 250ms in + 250ms out -> compressed to 100ms in + 100ms out.
+    const shortOv = [{ id: randomUUID(), startMs: 500, endMs: 700, blendInMs: 250, blendOutMs: 250 }];
+    expect(evaluateShotCameraOverrideWeight(shortOv, 499)).toBe(0);
+    expect(evaluateShotCameraOverrideWeight(shortOv, 500)).toBe(0);
+    expect(evaluateShotCameraOverrideWeight(shortOv, 550)).toBeCloseTo(0.5, 6);
+    expect(evaluateShotCameraOverrideWeight(shortOv, 600)).toBe(1);
+    expect(evaluateShotCameraOverrideWeight(shortOv, 650)).toBeCloseTo(0.5, 6);
+    expect(evaluateShotCameraOverrideWeight(shortOv, 700)).toBe(0);
+
+    // Multiple non-overlapping & adjacent intervals with clear half-open boundary ownership.
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    const thirdId = randomUUID();
+    let project = addShotCameraOverride(base, shotId, {
+      id: firstId, startMs: 500, endMs: 1_500, blendInMs: 0, blendOutMs: 0,
+    });
+    project = addShotCameraOverride(project, shotId, {
+      id: secondId, startMs: 1_500, endMs: 2_500, blendInMs: 250, blendOutMs: 250,
+    });
+    project = addShotCameraOverride(project, shotId, {
+      id: thirdId, startMs: 3_000, endMs: 3_500, blendInMs: 0, blendOutMs: 0,
+    });
+    const overrides = project.shots[0]!.camera!.overrides!;
+    // At 1499ms: owned by first (blendOut=0 -> w=1). At 1500ms: owned by second (blendIn=250 -> w=0).
+    expect(evaluateShotCameraOverrideWeight(overrides, 1_499)).toBe(1);
+    expect(evaluateShotCameraOverrideWeight(overrides, 1_500)).toBe(0);
+    expect(evaluateShotCameraOverrideWeight(overrides, 1_625)).toBeCloseTo(0.5, 6);
+    expect(evaluateShotCameraOverrideWeight(overrides, 2_750)).toBe(0);
+    expect(evaluateShotCameraOverrideWeight(overrides, 3_250)).toBe(1);
+
+    // Reject overlapping and out-of-range intervals cleanly.
+    expect(() => addShotCameraOverride(project, shotId, { startMs: 1_250, endMs: 2_000 })).toThrow();
+    expect(() => addShotCameraOverride(project, shotId, { startMs: -100, endMs: 250 })).toThrow();
+    expect(() => addShotCameraOverride(project, shotId, { startMs: 3_500, endMs: 4_500 })).toThrow();
+    expect(() => addShotCameraOverride(project, shotId, { startMs: 2_500, endMs: 2_500 })).toThrow();
+
+    // Move & remove override.
+    const moved = moveShotCameraOverride(project, shotId, thirdId, 3_250);
+    expect(moved.shots[0]!.camera!.overrides!.find((ov) => ov.id === thirdId)).toMatchObject({
+      startMs: 3_250, endMs: 3_750,
+    });
+    expect(() => moveShotCameraOverride(moved, shotId, thirdId, 3_750)).toThrow();
+    // ShotService.setDuration rejects shrinking below override endMs (3750).
+    expect(() => new ShotService().setDuration(moved, shotId, 3_500)).toThrow();
+    const removed = removeShotCameraOverride(moved, shotId, thirdId);
+    expect(removed.shots[0]!.camera!.overrides!.map((ov) => ov.id)).toEqual([firstId, secondId]);
+    expect(removed.shots[0]!.camera!.mode).toBe('hybrid');
+  });
+
+  it('uses shortest-angle handover at blend boundaries while preserving explicit multi-turn rotation inside manual control', () => {
+    const { project: base, shotId } = buildTwoSpeakerProject();
+    let project = setShotCameraMode(base, shotId, 'hybrid');
+    // Pre-existing manual key at 1000ms should NOT be overwritten when creating an override at [1000, 3000).
+    project = setShotCameraKey(project, shotId, 1_000, { centerX: 960, centerY: 540, zoom: 1, rotationDeg: 350 });
+    project = setShotCameraKey(project, shotId, 1_500, { centerX: 960, centerY: 540, zoom: 0.8, rotationDeg: 350 });
+    project = setShotCameraKey(project, shotId, 2_500, { centerX: 960, centerY: 540, zoom: 1.2, rotationDeg: 1_070 });
+    project = setShotCameraKey(project, shotId, 3_000, { centerX: 960, centerY: 540, zoom: 1, rotationDeg: 1_070 });
+    project = addShotCameraOverride(project, shotId, { startMs: 1_000, endMs: 3_000, blendInMs: 500, blendOutMs: 500 });
+
+    // Existing boundary key at 1000ms was preserved (not overwritten).
+    expect(project.shots[0]!.camera!.keys.find((key) => key.timeMs === 1_000)?.rotationDeg).toBe(350);
+
+    const camera = prepareShotCamera(project, project.shots[0]!, 'static');
+    // During blend-in (1250ms, w=0.5): shortest angle from 0° to 350° is -10°, so midpoint is -5° (NOT +175°!).
+    expect(camera(1_250)!.rotationDeg).toBeCloseTo(-5, 6);
+    // Inside full manual control (1500..2500ms, w=1): multi-turn 350° -> 1070° passes through 710° at 2000ms!
+    expect(camera(2_000)!.rotationDeg).toBeCloseTo(710, 6);
+    expect(camera(2_000)!.zoom).toBeCloseTo(1, 6);
+    // During blend-out (2750ms, w=0.5): 1070° ≡ -10° (mod 360), so shortest handover back to 0° is -5° (NOT +535°!).
+    expect(camera(2_750)!.rotationDeg).toBeCloseTo(-5, 6);
+
+    // Key move & remove preserve hybrid mode and overrides.
+    const movedKey = moveShotCameraKey(project, shotId, 2_500, 2_250);
+    expect(movedKey.shots[0]!.camera?.mode).toBe('hybrid');
+    expect(movedKey.shots[0]!.camera?.overrides?.length).toBe(1);
+    const removedKey = removeShotCameraKey(movedKey, shotId, 2_250);
+    expect(removedKey.shots[0]!.camera?.mode).toBe('hybrid');
+    expect(removedKey.shots[0]!.camera?.overrides?.length).toBe(1);
+  });
+
+  it('handles inherited non-zero depth moving speaker, screen HUD, auto fallback, random seek, save/reopen, and Undo/Redo in hybrid mode', () => {
+    const { project: base, shotId, actorAId, hudId } = buildTwoSpeakerProject();
+    const shot = base.shots[0]!;
+    const carrierId = randomUUID();
+    const actorA = shot.layers.find((layer) => layer.id === actorAId)!;
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    let project: Project = migrateProject({
+      ...base,
+      shots: [{
+        ...shot,
+        layers: [
+          ...shot.layers.map((layer) => layer.id === actorAId
+            ? { ...layer, x: 960, y: 540, parentLayerId: carrierId, parentSpaceOffset: { ...identity, tx: -960, ty: -540 } }
+            : layer),
+          {
+            ...actorA,
+            id: carrierId,
+            name: 'Carrier',
+            source: { kind: 'control' },
+            x: 800,
+            y: 500,
+            depth: -400,
+            zIndex: 9,
+          },
+        ],
+        timelineEvents: [
+          {
+            id: randomUUID(),
+            layerId: carrierId,
+            type: 'move',
+            startMs: 0,
+            endMs: 1_500,
+            from: { x: 800, y: 500 },
+            to: { x: 1_100, y: 500 },
+            easing: 'linear',
+          },
+        ],
+      }],
+    });
+
+    const overrideId = randomUUID();
+    project = addShotCameraOverride(project, shotId, {
+      id: overrideId,
+      startMs: 1_500,
+      endMs: 2_500,
+      blendInMs: 250,
+      blendOutMs: 250,
+    });
+    const edited = setShotCameraKey(project, shotId, 2_000, { centerX: 960, centerY: 540, zoom: 0.85, rotationDeg: 15 });
+
+    // Save/reopen round-trip preserves v46 hybrid camera and overrides.
+    const reopened = migrateProject(JSON.parse(JSON.stringify(edited)));
+    expect(reopened.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(reopened.shots[0]!.camera).toEqual(edited.shots[0]!.camera);
+
+    // Random seek === sequential playback.
+    const plan = prepareShotCamera(reopened, reopened.shots[0]!, 'static');
+    const sampleTimes = [0, 250, 750, 1_500, 1_625, 2_000, 2_375, 2_500, 3_250, 3_999];
+    const sequential = sampleTimes.map((t) => plan(t));
+    const randomOrder = [3_999, 2_000, 0, 2_375, 750, 1_625, 3_250, 1_500, 2_500, 250];
+    const randomResults = new Map(randomOrder.map((t) => [t, plan(t)]));
+    for (const [index, timeMs] of sampleTimes.entries()) {
+      expect(randomResults.get(timeMs)).toEqual(sequential[index]);
+    }
+
+    // Screen HUD remains identity projection and sorts above world layers at all times.
+    const evalAtManual = evaluateShotAtTime(reopened.shots[0]!, 2_000, reopened);
+    const hudLayer = evalAtManual.layers.find((layer) => layer.id === hudId)!;
+    const actorLayer = evalAtManual.layers.find((layer) => layer.id === actorAId)!;
+    expect(actorLayer.effectiveDepth).toBe(-400);
+    expect(resolveLayerCameraTransform(hudLayer, plan(2_000), 1920, 1080)).toEqual(
+      cameraWorldTransform(undefined, 1920, 1080),
+    );
+    expect(compareCameraDrawingLayers(hudLayer, actorLayer)).toBeGreaterThan(0);
+
+    // Auto fallback outside override when no speaker is active (1500..2500 gap -> check after removing override).
+    const noOverride = removeShotCameraOverride(reopened, shotId, overrideId);
+    expect(prepareShotCamera(noOverride, noOverride.shots[0]!, 'static')(2_000)).toEqual({
+      centerX: 960, centerY: 540, zoom: 1,
+    });
+
+    // Undo/Redo through EditorProjectStore.
+    const store = new EditorProjectStore();
+    store.open('D:/hybrid-camera.pandastage', base);
+    store.updateProject(project, 'Add hybrid override');
+    store.updateProject(edited, 'Edit hybrid manual key');
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()?.project.shots[0]?.camera).toEqual(project.shots[0]!.camera);
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()?.project.shots[0]?.camera).toEqual(base.shots[0]!.camera);
+    expect(store.redo()).toBe(true);
+    expect(store.redo()).toBe(true);
+    expect(store.getSnapshot()?.project.shots[0]?.camera).toEqual(edited.shots[0]!.camera);
   });
 });

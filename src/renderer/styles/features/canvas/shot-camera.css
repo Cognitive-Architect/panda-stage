@@ -55,3 +55,25 @@
 .product-preview-stage[data-manual-camera='true'] {
   background: black;
 }
+
+.shot-camera-override-bar {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  height: 16px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: color-mix(in srgb, var(--ui-color-selected-border) 22%, transparent);
+  cursor: pointer;
+}
+
+.shot-camera-override-bar[data-active='true'] {
+  background: color-mix(in srgb, var(--ui-color-selected-border) 38%, transparent);
+}
+
+.shot-camera-override-bar:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}

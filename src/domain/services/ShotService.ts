@@ -47,6 +47,7 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
     ...shot.layers.map((layer) => layer.depthKeys?.at(-1)?.timeMs ?? 0),
     shot.camera?.keys.at(-1)?.timeMs ?? 0,
+    ...(shot.camera?.overrides?.map((override) => override.endMs) ?? []),
   );
 }
 

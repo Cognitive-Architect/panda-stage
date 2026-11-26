@@ -498,7 +498,7 @@ export function TimelineDock({
                 role="group"
               >
                 <div className="timeline-lanes" data-testid="timeline-lanes">
-                  {shot?.camera?.mode === 'manual' && snapshot ? (
+                  {(shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid') && snapshot ? (
                     <ShotCameraLane key={shot.id} shot={shot} snapshot={snapshot} currentTimeMs={ui.currentTimeMs}
                       pixelsPerMs={pixelsPerMs} trackWidth={trackWidth} disabled={Boolean(productPreviewOpen)} />
                   ) : null}

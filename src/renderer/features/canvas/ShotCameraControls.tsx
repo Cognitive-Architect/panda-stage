@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Camera } from 'lucide-react';
 import {
-  evaluateManualCamera, removeShotCameraKey, resolveTimelineFrameTime, setShotCameraKey, setShotCameraMode,
-  type AnimationInterpolation, type Project, type Shot,
+  addShotCameraOverride, evaluateManualCamera, removeShotCameraKey, removeShotCameraOverride,
+  resolveTimelineFrameTime, setShotCameraKey, setShotCameraMode, updateShotCameraOverride,
+  type AnimationInterpolation, type Project, type Shot, type ShotCameraOverride,
 } from '../../../domain';
 import { ShotCameraModeSchema } from '../../../domain/models/shotCamera';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
@@ -19,6 +20,35 @@ const poseFields = [
   ['centerX', '中心 X'], ['centerY', '中心 Y'], ['zoom', '倍率'], ['rotationDeg', '旋转 °'],
 ] as const;
 
+const overrideTimeFields = [
+  ['startMs', '开始 ms'], ['endMs', '结束 ms'], ['blendInMs', '入场 ms'], ['blendOutMs', '出场 ms'],
+] as const;
+
+function resolveNewOverrideBounds(
+  shot: Shot,
+  time: number,
+  overrides: readonly ShotCameraOverride[],
+): { startMs: number; endMs: number } | null {
+  const nextOverride = overrides.find((override) => override.startMs > time);
+  const activeOverride = overrides.find((override) => time >= override.startMs && time < override.endMs);
+  if (!activeOverride && time < shot.durationMs) {
+    const limit = nextOverride ? nextOverride.startMs : shot.durationMs;
+    const endMs = Math.min(limit, time + 1_000);
+    if (endMs > time) return { startMs: time, endMs };
+  }
+  let cursor = 0;
+  for (const override of overrides) {
+    if (override.startMs > cursor) {
+      return { startMs: cursor, endMs: Math.min(override.startMs, cursor + 1_000) };
+    }
+    cursor = override.endMs;
+  }
+  if (cursor < shot.durationMs) {
+    return { startMs: cursor, endMs: Math.min(shot.durationMs, cursor + 1_000) };
+  }
+  return null;
+}
+
 export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, cameraTool, onToolChange }: {
   shot: Shot;
   timeMs: number;
@@ -28,12 +58,22 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
   onToolChange: (enabled: boolean) => void;
 }): React.JSX.Element {
   const [error, setError] = useState('');
+  const [selectedOverrideId, setSelectedOverrideId] = useState<string | null>(null);
   const time = resolveTimelineFrameTime(timeMs, shot.durationMs);
+  const mode = shot.camera?.mode;
+  const hasManualTrack = mode === 'manual' || mode === 'hybrid';
   const keys = shot.camera?.keys ?? [];
+  const overrides = shot.camera?.overrides ?? [];
   const index = keys.findIndex((key) => key.timeMs === time);
   const key = keys[index];
   const pose = key ?? evaluateManualCamera(shot, time);
   const bezier = key?.curveToNext?.bezier ?? { x1: 1 / 3, y1: 1 / 3, x2: 2 / 3, y2: 2 / 3 };
+  const activeOverride = overrides.find((override) => time >= override.startMs && time < override.endMs);
+  const selectedOverride =
+    overrides.find((override) => override.id === selectedOverrideId) ??
+    activeOverride ??
+    overrides[0];
+  const newOverrideBounds = mode === 'hybrid' ? resolveNewOverrideBounds(shot, time, overrides) : null;
 
   function edit(change: (project: Project) => Project, label: string): void {
     const snapshot = editorProjectStore.getSnapshot();
@@ -42,8 +82,8 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
     try {
       editorProjectStore.updateProject(change(snapshot.project), label);
       setError('');
-    } catch {
-      setError('无法修改相机。请检查数值或稍后重试。');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '无法修改相机。请检查数值或稍后重试。');
     }
   }
 
@@ -54,20 +94,69 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
   return <details className="shot-camera-control" data-canvas-interactive-chrome="true">
     <summary title="镜头相机" aria-label="镜头相机"><Camera aria-hidden="true" size={17} /></summary>
     <div className="shot-camera-panel">
-      <label>相机<select aria-label="相机模式" value={shot.camera?.mode ?? 'default'} onChange={(event) => {
-        const mode = ShotCameraModeSchema.parse(event.currentTarget.value);
-        edit((project) => setShotCameraMode(project, shot.id, mode), '切换镜头相机');
+      <label>相机<select aria-label="相机模式" value={mode ?? 'default'} onChange={(event) => {
+        const nextMode = ShotCameraModeSchema.parse(event.currentTarget.value);
+        edit((project) => setShotCameraMode(project, shot.id, nextMode), '切换镜头相机');
       }}>
         {!shot.camera && <option value="default" disabled>跟随项目设置</option>}
         <option value="static">固定</option>
         <option value="speaker-focus">自动运镜</option>
         <option value="manual">手工运镜</option>
+        <option value="hybrid">自动+手工接管</option>
       </select></label>
-      {shot.camera?.mode === 'manual' && <>
+      {hasManualTrack && <>
         <div className="shot-camera-actions">
           <Button variant={cameraTool ? 'primary' : 'secondary'} aria-pressed={cameraTool} onClick={() => onToolChange(!cameraTool)}>编辑相机框</Button>
           <Button variant={throughCamera ? 'primary' : 'secondary'} aria-pressed={throughCamera} onClick={() => onViewChange(!throughCamera)}>相机视角</Button>
         </div>
+        {mode === 'hybrid' && <>
+          <div className="shot-camera-actions">
+            <Button variant="secondary" disabled={!newOverrideBounds} onClick={() => {
+              if (!newOverrideBounds) return;
+              const id = crypto.randomUUID();
+              edit((project) => addShotCameraOverride(project, shot.id, { id, ...newOverrideBounds }), '添加相机接管段');
+              setSelectedOverrideId(id);
+            }}>新增接管段</Button>
+            <Button variant="secondary" disabled={!selectedOverride} onClick={() => {
+              if (!selectedOverride) return;
+              edit((project) => removeShotCameraOverride(project, shot.id, selectedOverride.id), '删除相机接管段');
+              setSelectedOverrideId(null);
+            }}>删除接管段</Button>
+          </div>
+          {overrides.length > 0 && selectedOverride && <>
+            <label>接管段<select aria-label="接管段" value={selectedOverride.id} onChange={(event) => {
+              const nextId = event.currentTarget.value;
+              setSelectedOverrideId(nextId);
+              const target = overrides.find((override) => override.id === nextId);
+              if (target) timelineUiStore.seek(target.startMs, shot.durationMs);
+            }}>
+              {overrides.map((override, overrideIndex) => (
+                <option key={override.id} value={override.id}>
+                  {`${overrideIndex + 1}. ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
+                </option>
+              ))}
+            </select></label>
+            <div className="shot-camera-fields">
+              {overrideTimeFields.map(([field, label]) => <label key={field}>{label}
+                <input key={`${selectedOverride.id}-${field}-${selectedOverride[field]}`} type="number" step="1" min={0}
+                  max={shot.durationMs} defaultValue={selectedOverride[field]}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                  onBlur={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    if (!Number.isFinite(value) || value < 0) {
+                      event.currentTarget.value = String(selectedOverride[field]);
+                      setError('请输入有效的非负毫秒值。');
+                    } else if (value !== selectedOverride[field]) {
+                      edit(
+                        (project) => updateShotCameraOverride(project, shot.id, selectedOverride.id, { [field]: Math.round(value) }),
+                        '编辑相机接管段',
+                      );
+                    }
+                  }} />
+              </label>)}
+            </div>
+          </>}
+        </>}
         <div className="shot-camera-actions">
           <Button variant="secondary" disabled={!!key} onClick={() => setKey(undefined)}>添加关键帧</Button>
           <Button variant="secondary" disabled={!key} onClick={() => {

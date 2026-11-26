@@ -1,6 +1,10 @@
 import { useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { canEditLayerDepth, moveLayerDepthKey, moveShotCameraKey, removeLayerDepthKey, removeShotCameraKey, resolveTimelineFrameTime, setLayerDepthKey, setShotCameraKey, TIMELINE_FPS, type Layer, type Project, type Shot } from '../../../domain';
+import {
+  canEditLayerDepth, moveLayerDepthKey, moveShotCameraKey, removeLayerDepthKey, removeShotCameraKey,
+  removeShotCameraOverride, resolveTimelineFrameTime, setLayerDepthKey, setShotCameraKey, TIMELINE_FPS,
+  type Layer, type Project, type Shot,
+} from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { previewPositionKeyTime } from './positionKeyGesture';
@@ -18,6 +22,7 @@ export function ShotCameraLane({ snapshot, shot, currentTimeMs, pixelsPerMs, tra
 }): React.JSX.Element {
   const layerId = depthLayer?.id;
   const keys = (depthLayer ? depthLayer.depthKeys : shot.camera?.keys) ?? [];
+  const overrides = !depthLayer && shot.camera?.mode === 'hybrid' ? (shot.camera.overrides ?? []) : [];
   const label = depthLayer ? '深度' : '相机';
   const testId = depthLayer ? 'layer-depth' : 'shot-camera';
   const inactive = disabled || (depthLayer !== undefined && !canEditLayerDepth(depthLayer, shot));
@@ -48,6 +53,30 @@ export function ShotCameraLane({ snapshot, shot, currentTimeMs, pixelsPerMs, tra
         </button>
       </span>
       <div className="timeline-lane-content position-lane-content" style={{ width: trackWidth }}>
+        {overrides.map((override) => {
+          const active = time >= override.startMs && time < override.endMs;
+          return (
+            <button key={override.id} type="button" className="shot-camera-override-bar"
+              disabled={inactive} data-testid="shot-camera-override" data-active={active}
+              style={{
+                left: timeToPx(override.startMs, pixelsPerMs),
+                width: Math.max(6, timeToPx(override.endMs - override.startMs, pixelsPerMs)),
+              }}
+              aria-label={`手工接管 ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
+              title={`手工接管 ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                timelineUiStore.seek(override.startMs, shot.durationMs);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+                event.stopPropagation();
+                event.preventDefault();
+                commit((project) => removeShotCameraOverride(project, shot.id, override.id), '删除相机接管段');
+              }}
+            />
+          );
+        })}
         {keys.map((key, index) => {
           const moving = drag.current?.time === key.timeMs && draft !== null;
           const previewTime = (x: number) => previewPositionKeyTime({

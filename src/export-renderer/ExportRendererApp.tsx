@@ -230,7 +230,7 @@ export function ExportRendererApp(): React.JSX.Element {
       : null,
     [formalRequest, project, shot],
   );
-  const cameraTimeMs = shot.camera?.mode === 'manual'
+  const cameraTimeMs = shot.camera?.mode === 'manual' || shot.camera?.mode === 'hybrid'
     ? resolveExportFrameAuthoringTime(evaluatedShot.timeMs, shot.durationMs)
     : evaluatedShot.timeMs;
   const camera = cameraPlan?.(cameraTimeMs);
