@@ -145,9 +145,11 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     richDraft.shotId === shot.id &&
     richDraft.layerId === layer.id,
   );
-  const richTrackMissing = richDraftOnLayer && richDraft?.trackKey !== currentTrackKey;
+  const requestedTrackKey = trackId || (richDraftOnLayer ? richDraft?.trackKey : undefined);
+  const trackMissing = Boolean(requestedTrackKey && requestedTrackKey !== currentTrackKey);
+  const trackReadOnly = layer.locked || trackMissing;
   const richDraftMatchesCurrent = Boolean(
-    richDraftOnLayer && !richTrackMissing &&
+    richDraftOnLayer && !trackMissing &&
     richDraft &&
     richDraft.revision === snapshot.revision &&
     !hasStaleRichSelection &&
@@ -233,7 +235,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
 
   function commit(change: Partial<AnimationKey>): void {
     const state = current();
-    if (!state) return;
+    if (!state || trackReadOnly) return;
     try {
       const project = edit(change, state.project);
       if (project !== state.project) editorProjectStore.updateProject(project, '编辑属性曲线');
@@ -246,7 +248,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
 
   function move(event: PointerEvent<SVGSVGElement>): void {
     const active = drag.current;
-    if (!active || event.pointerId !== active.pointer || !key || !next) return;
+    if (!active || event.pointerId !== active.pointer || !key || !next || trackReadOnly) return;
     const state = current(active.revision, active.projectInstanceId);
     const matrix = event.currentTarget.getScreenCTM();
     if (!state || !matrix) { cancel(); return; }
@@ -276,7 +278,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   }
 
   function begin(event: PointerEvent<SVGCircleElement>, handle: Drag['handle']): void {
-    if (event.button !== 0 || !next || layer.locked || !current() || !svg.current) return;
+    if (event.button !== 0 || !next || trackReadOnly || !current() || !svg.current) return;
     if (drag.current) cancel();
     event.preventDefault();
     event.currentTarget.focus();
@@ -307,7 +309,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     scopeEnd: number,
   ): void {
     const state = current();
-    if (!state || !track || layer.locked || richTrackMissing) return;
+    if (!state || !track || layer.locked || trackMissing) return;
     const presetId = richEasingPresetId(family, direction);
     const applicability = getRichEasingPropertyApplicability(track.property, presetId);
     const hasStart = track.keys.some(({ timeMs }) => timeMs === scopeStart);
@@ -401,7 +403,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
 
   function retime(): void {
     const state = current();
-    if (!state || !track || track.property === 'opacity') return;
+    if (!state || !track || trackReadOnly || track.property === 'opacity') return;
     try {
       const project = retimeAnimationPropertyRange(state.project,
         { shotId: shot.id, target: track.target, property: track.property },
@@ -413,26 +415,34 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     }
   }
 
+  function cancelPropertyDraft(): void {
+    cancel();
+    if (trackMissing) {
+      setTrackId('');
+      setKeyTime(0);
+    }
+    if (trackMissing || hasStaleRichSelection) setRichSelection(null);
+  }
+
   return <section className="animation-curve-panel" aria-label="属性曲线" onKeyDown={(event) => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
-    if (drag.current || richDraft !== null || hasStaleRichSelection) {
-      cancel();
-      if (hasStaleRichSelection) setRichSelection(null);
+    if (drag.current || richDraft !== null || hasStaleRichSelection || trackMissing) {
+      cancelPropertyDraft();
     } else onClose();
   }}>
     <header><strong>属性曲线</strong><Button variant="secondary" onClick={() => { cancel(); onClose(); }}>关闭</Button></header>
-    {track && key ? <>
-      <div className="animation-curve-fields">
-        <label>属性<select value={richTrackMissing ? '' : trackKey(track)} onChange={(event) => {
+    {tracks.length || trackMissing ? <div className="animation-curve-fields">
+        <label>属性<select value={trackMissing ? '' : currentTrackKey} onChange={(event) => {
           cancel(); setTrackId(event.target.value); setKeyTime(0); setRichSelection(null);
         }}>
-          {richTrackMissing ? <option value="" disabled>原属性已失效</option> : null}
+          {trackMissing ? <option value="" disabled>原属性已失效</option> : null}
           {tracks.map((entry) => <option key={trackKey(entry)} value={trackKey(entry)}>
             {targetLabel(entry.target)} · {properties[entry.property]}
             {entry.property === 'opacity' ? ` ${formatTimecode(entry.keys[0]!.timeMs)}` : ''}
           </option>)}
         </select></label>
+        {track && key && !trackMissing ? <>
         <label>关键帧<select value={key.timeMs} onChange={(event) => {
           cancel(); setKeyTime(Number(event.target.value)); setRichSelection(null);
         }}>
@@ -450,14 +460,20 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
           {curve ? <option value="custom" disabled>自定义</option> : null}
           {Object.entries(presets).map(([value, title]) => <option key={value} value={value}>{title}</option>)}
         </select></label> : null}
-      </div>
+        </> : null}
+      </div> : null}
+    {trackMissing ? <div>
+      <p role="status">原属性轨已失效，请重新选择属性或取消预览</p>
+      <Button variant="secondary" data-testid="rich-easing-cancel" onClick={cancelPropertyDraft}>取消</Button>
+    </div> : null}
+    {track && key && !trackMissing ? <>
       {next ? <svg ref={svg} viewBox="0 0 320 128" aria-label="区段贝塞尔曲线" className="animation-curve-graph"
         onPointerMove={move} onPointerCancel={cancel} onLostPointerCapture={cancel} onPointerUp={(event) => {
           const active = drag.current;
           if (!active || active.pointer !== event.pointerId) return;
           const state = current(active.revision, active.projectInstanceId);
           cancel();
-          if (state && active.draft && active.draft.project !== state.project) {
+          if (state && !trackReadOnly && active.draft && active.draft.project !== state.project) {
             editorProjectStore.updateProject(active.draft.project, '调整属性曲线');
           }
         }}>
@@ -481,9 +497,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
           </p>
         ) : (
           <p className="animation-rich-easing-meta" data-testid="rich-easing-scope">
-            {richTrackMissing
-              ? '原属性轨已失效，请重新选择属性或取消预览'
-              : hasStaleRichSelection
+            {hasStaleRichSelection
               ? '原选区端点已失效，请重新选择起止帧后再应用'
               : hasStaleRichDraft
                 ? '工程已变更，旧预览已失效，请重新预览或取消后再应用'
@@ -548,7 +562,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         </div>
         <div className="animation-rich-easing-actions">
           <Button data-testid="rich-easing-apply" disabled={!canApplyRichEasing} onClick={applyRichEasing}>应用</Button>
-          {hasStaleRichDraft && !richTrackMissing && !hasStaleRichSelection && !layer.locked && richApplicability.applicable && richSegmentCount > 0 ? (
+          {hasStaleRichDraft && !trackMissing && !hasStaleRichSelection && !layer.locked && richApplicability.applicable && richSegmentCount > 0 ? (
             <Button variant="secondary" data-testid="rich-easing-repreview" onClick={() => {
               previewRichEasing(richFamily, richDirection, effectiveRichStart, effectiveRichEnd);
             }}>重新预览</Button>
@@ -577,7 +591,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         在 {formatTimecode(currentTimeMs)} 落键
       </Button>
     </details> : null}
-    {track && track.property !== 'opacity' ? <details className="animation-key-selection">
+    {track && !trackMissing && track.property !== 'opacity' ? <details className="animation-key-selection">
       <summary>选段时间</summary>
       <div className="animation-curve-fields">
         <label>起始关键帧<select value={startMs} onChange={(event) => setRangeStart(Number(event.target.value))}>
@@ -599,7 +613,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
       <AnimationKeyRangeControls
         key={String(instance) + shot.id + layer.id}
         track={track} snapshot={snapshot} shotId={shot.id} durationMs={shot.durationMs}
-        startMs={startMs} endMs={endMs} currentTimeMs={currentTimeMs} disabled={layer.locked || richTrackMissing} />
+        startMs={startMs} endMs={endMs} currentTimeMs={currentTimeMs} disabled={layer.locked || trackMissing} />
       {character?.mode === 'adaptive-parts' && selectedParts.length > 0 ? <div className="animation-curve-fields">
         <label>分件动作名称<input value={actionName} maxLength={64} onChange={event => setActionName(event.target.value)} /></label>
         <label>头部跟随<select value={headAnchors.some(part => part.partId === headAnchor) ? headAnchor : ''}
@@ -609,8 +623,8 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         </select></label>
         <Button disabled={layer.locked || startMs >= endMs || !actionName.trim()} onClick={() => {
           try {
-            const state = editorProjectStore.getSnapshot();
-            if (!state) return;
+            const state = current();
+            if (!state || trackReadOnly) return;
             const project = saveLayeredCharacterAction(state.project, shot.id, layer.id, {
               name: actionName, startMs, endMs, partIds: selectedParts.map(({ partId }) => partId),
               headAnchorPartId: headAnchors.some(part => part.partId === headAnchor) ? headAnchor : undefined,

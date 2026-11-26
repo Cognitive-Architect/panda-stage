@@ -328,7 +328,7 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
   });
 
-  it('requires an explicit property selection after Undo removes the previewed rotation track (#1381)', async () => {
+  it('requires an explicit property selection after Undo removes the previewed rotation track (#1386)', async () => {
     const motion = new LayerMotionService();
     await act(async () => {
       const { project } = editorProjectStore.getSnapshot()!;
@@ -341,6 +341,10 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     await setSelectValue(selectByTestId('rich-easing-family'), 'back');
     expect(drafts.at(-1)).not.toBeNull();
 
+    const [timeInput, valueInput] = container.querySelectorAll<HTMLInputElement>('.animation-curve-fields input');
+    const handle = container.querySelector('[data-curve-handle="first"]')!;
+    const retimeButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent === '应用到当前属性')!;
     await act(async () => {
       expect(editorProjectStore.undo()).toBe(true);
     });
@@ -348,17 +352,30 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     const history = editorProjectStore.history.getSnapshot();
     expect(drafts.at(-1)).toBeNull();
     expect(trackSelect.value).toBe('');
-    expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
-    expect(container.querySelector('[data-testid="rich-easing-repreview"]')).toBeNull();
-    await act(async () => buttonByTestId('rich-easing-apply').click());
+    expect(container.querySelector('[data-testid="rich-easing-apply"]')).toBeNull();
+    expect(container.querySelector('.animation-curve-fields input')).toBeNull();
+    expect(container.querySelector('[data-curve-handle]')).toBeNull();
+    expect(container.textContent).not.toContain('选段时间');
+    await act(async () => {
+      timeInput!.value = '250';
+      timeInput!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      valueInput!.value = '99';
+      valueInput!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      retimeButton.click();
+    });
     expect(editorProjectStore.getSnapshot()).toBe(afterUndo);
     expect(editorProjectStore.history.getSnapshot()).toEqual(history);
 
     const position = Array.from(trackSelect.options).find((option) => option.value.includes('transform.offsetX'))!;
     await setSelectValue(trackSelect, position.value);
     expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
-    await act(async () => buttonByTestId('rich-easing-apply').click());
+    const interpolation = container.querySelectorAll<HTMLSelectElement>('.animation-curve-fields select')[2]!;
+    await setSelectValue(interpolation, 'ease-in');
     expect(editorProjectStore.getSnapshot()!.revision).toBe(afterUndo!.revision + 1);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers
+      .find((layer) => layer.id === layerId)!.animationClip!.tracks
+      .find(({ property }) => property === 'transform.offsetX')!.keys[0]!.interpolationToNext).toBe('ease-in');
   });
 
   it('preserves direct apply without preview draft on initial default segment (#1376 P2-01)', async () => {
