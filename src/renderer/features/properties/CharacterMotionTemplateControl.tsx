@@ -5,6 +5,7 @@ import {
   planCharacterAppearanceSwitch, planCharacterMotionTemplate, type CharacterMotionTemplate,
 } from '../../../domain/services/CharacterMotionTemplateService';
 import { gaitPartOptions, planCharacterGait, type CharacterGait, type GaitParts } from '../../../domain/services/CharacterGaitService';
+import { planMonologueBackdrop } from '../../../domain/services/MonologueBackdropService';
 import { upsertCharacterActionEvent } from '../../../domain/services/CharacterActionEventService';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -14,10 +15,10 @@ import { AnimationCurveDraftDispatch } from '../timeline/AnimationCurveDraft';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 
-type TemplateKind = CharacterMotionTemplate | CharacterGait | 'appearance' | 'baked-appearance';
+type TemplateKind = CharacterMotionTemplate | CharacterGait | 'appearance' | 'baked-appearance' | 'backdrop';
 
 const labels: Record<TemplateKind, string> = {
-  walk: '走路', run: '跑步', teleport: '瞬移', shake: '发抖', sway: '晃动', nod: '点头', 'head-shake': '摇头',
+  backdrop: '独白黑幕', walk: '走路', run: '跑步', teleport: '瞬移', shake: '发抖', sway: '晃动', nod: '点头', 'head-shake': '摇头',
   'look-up': '抬头', 'look-down': '低头', 'smooth-head-shake': '丝滑摇头', appearance: '切换表情', 'baked-appearance': '切换角色动作外观',
 };
 
@@ -48,6 +49,7 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
   const [headPart, setHeadPart] = useState('');
   const [expressionId, setExpressionId] = useState('');
   const [appearanceActionId, setAppearanceActionId] = useState('');
+  const [backdropAssetId, setBackdropAssetId] = useState('');
   const [fade, setFade] = useState(false);
   const [legs, setLegs] = useState<GaitParts>({ left: emptyLeg, right: emptyLeg });
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -72,7 +74,9 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
     ? gaitPartOptions(character, layer.animationClip?.version === 1 ? layer.animationClip : undefined) : [];
   const completeLegs = [legs.left, legs.right].every(({ thigh, shin, foot }) =>
     [thigh, shin, foot].every((id) => gaitParts.some((part) => part.id === id)));
-  const head = !appearance && !gait && isHeadMotionTemplate(kind);
+  const backdrop = kind === 'backdrop';
+  const backdropAssets = snapshot.project.assets.filter((asset) => asset.kind === 'image');
+  const head = !appearance && !gait && !backdrop && isHeadMotionTemplate(kind);
   const currentPreview = preview?.snapshot === snapshot && preview.instance === instance && preview.startMs === startMs
     ? preview : undefined;
 
@@ -105,24 +109,28 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
       shotId: shot.id, layerId: layer.id, timeMs: frameTimeMs(frame) });
   }
 
+  function draftProject(endFrame: number): Project {
+    const project = snapshot.project;
+    const target = { shotId: shot.id, layerId: layer.id };
+    const endMs = frameTimeMs(endFrame);
+    if (kind === 'backdrop') return planMonologueBackdrop(project, { ...target, assetId: backdropAssetId, startMs, endMs });
+    if (kind === 'appearance') return planCharacterAppearanceSwitch(project, { ...target, expressionId: expression?.id ?? '',
+      timeMs: startMs, fadeFrames: fade ? frames : 0 });
+    if (kind === 'baked-appearance') return upsertCharacterActionEvent(project, shot.id, layer.id, {
+      actionId: appearanceAction?.id ?? '', startMs, endMs,
+    });
+    if (kind === 'walk' || kind === 'run') return planCharacterGait(project, { ...target, gait: kind,
+      startMs, endMs, cycles, direction, travel, parts: legs });
+    return planCharacterMotionTemplate(project, { ...target, kind, startMs, endMs,
+      amplitude, cycles, deltaY, headPartId: headId, templateName: labels[kind] });
+  }
+
   function prepare(): void {
     clear();
     if (!stillCurrent()) return;
     try {
       const endFrame = kind === 'teleport' || (kind === 'appearance' && !fade) ? startFrame : startFrame + frames;
-      const target = { shotId: shot.id, layerId: layer.id };
-      const project = kind === 'appearance'
-        ? planCharacterAppearanceSwitch(snapshot.project, { ...target, expressionId: expression?.id ?? '',
-            timeMs: startMs, fadeFrames: fade ? frames : 0 })
-        : kind === 'baked-appearance'
-          ? upsertCharacterActionEvent(snapshot.project, shot.id, layer.id, {
-              actionId: appearanceAction?.id ?? '', startMs, endMs: frameTimeMs(endFrame),
-            })
-          : gait
-            ? planCharacterGait(snapshot.project, { ...target, gait: kind, startMs, endMs: frameTimeMs(endFrame),
-                cycles, direction, travel, parts: legs })
-            : planCharacterMotionTemplate(snapshot.project, { ...target, kind, startMs, endMs: frameTimeMs(endFrame),
-                amplitude, cycles, deltaY, headPartId: headId, templateName: labels[kind] });
+      const project = draftProject(endFrame);
       const draft = { snapshot, instance, project, startMs, endFrame };
       setPreview(draft);
       const fraction = kind === 'appearance' ? 0.75 : (kind === 'shake' || kind === 'sway' ||
@@ -149,12 +157,18 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
           <option value="run">{labels.run}</option>
         </> : null}
         {character.expressions?.length ? <option value="appearance">{labels.appearance}</option> : null}
+        {backdropAssets.length ? <option value="backdrop">{labels.backdrop}</option> : null}
         {bakedActions.length ? <option value="baked-appearance">{labels['baked-appearance']}</option> : null}
       </select></label>
       {head ? <label>头部<select value={headId ?? ''} onChange={(event) => { clear(); setHeadPart(event.target.value); }}>
         {headParts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
       </select></label> : null}
-      {kind === 'baked-appearance' ? (
+      {backdrop ? (
+        <label>不透明黑图<select value={backdropAssetId} onChange={(event) => { clear(); setBackdropAssetId(event.target.value); }}>
+          <option value="">选择已导入的图片</option>
+          {backdropAssets.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+        </select></label>
+      ) : kind === 'baked-appearance' ? (
         <label>角色动作<select value={appearanceAction?.id ?? ''} onChange={(event) => {
           clear(); setAppearanceActionId(event.target.value);
         }}>
@@ -205,9 +219,9 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
     <div className="animation-curve-fields">
       <span>{formatTimecode(startMs)}{kind === 'teleport' ? ' 起 · 保持位置' :
         kind === 'appearance' ? ' 起 · 保持表情' : kind === 'baked-appearance' ? ' 起 · 结束恢复原外观' :
-          gait && travel ? ' 起 · 保持终点' :
+          backdrop ? ' 起 · 结束时收起黑幕' : gait && travel ? ' 起 · 保持终点' :
           ' 起 · 结束回到原姿势'}</span>
-      <Button type="button" disabled={layer.locked || (head && !headId) || (gait && !completeLegs)} onClick={prepare}>预览</Button>
+      <Button type="button" disabled={layer.locked || (head && !headId) || (gait && !completeLegs) || (backdrop && !backdropAssetId)} onClick={prepare}>预览</Button>
       {currentPreview ? <>
         {currentPreview.endFrame > startFrame ? <label>预览帧<input type="range" min={startFrame}
           max={currentPreview.endFrame} value={previewFrame} onChange={(event) => show(currentPreview, Number(event.target.value))} /></label> : null}
