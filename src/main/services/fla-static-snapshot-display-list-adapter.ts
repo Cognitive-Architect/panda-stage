@@ -84,6 +84,7 @@ const CLASSIC_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'symbolType',
   'centerPoint3DX',
   'centerPoint3DY',
+  'centerPoint3DZ',
   'loop',
   'firstFrame',
   'lastFrame',
@@ -2134,6 +2135,13 @@ function classicMotionFramePairRejectionReason(
         if (raw !== undefined && !Number.isFinite(Number(raw))) {
           return `symbol instance ${name} must be finite`;
         }
+      }
+    }
+    for (const target of [startTarget, endTarget]) {
+      const rawDepth = target.attributes.centerPoint3DZ;
+      // Animate also writes the native depth field on ordinary 2D keys.
+      if (rawDepth !== undefined && (!rawDepth.trim() || Number(rawDepth) !== 0)) {
+        return 'symbol instance centerPoint3DZ must be a numeric zero for Classic Motion';
       }
     }
     const startColor = readSymbolColorTransform(startTarget, 'classic-motion');

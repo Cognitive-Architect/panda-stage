@@ -154,12 +154,23 @@ describe('XFL instance affine projection', () => {
     expect(resolved.displayList.projectionDiagnostics?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps normal 2D Classic Motion instances with centerPoint3DX/Y visible across start, interior, end and next keyframe (E-F01)', async () => {
+  it.each([
+    ['XY only', '', '', undefined],
+    ['zero at both endpoints', ' centerPoint3DZ="0"', ' centerPoint3DZ="0"', undefined],
+    ['zero on the start only', ' centerPoint3DZ="0"', '', undefined],
+    ['zero on the end only', '', ' centerPoint3DZ="-0.0"', undefined],
+    ['nonzero depth', ' centerPoint3DZ="1"', '', 'centerPoint3DZ must be a numeric zero'],
+    ['empty depth', '', ' centerPoint3DZ=""', 'centerPoint3DZ must be a numeric zero'],
+    ['whitespace depth', ' centerPoint3DZ=" "', '', 'centerPoint3DZ must be a numeric zero'],
+    ['invalid depth', '', ' centerPoint3DZ="invalid"', 'centerPoint3DZ must be a numeric zero'],
+    ['nonfinite depth', ' centerPoint3DZ="1e999"', '', 'centerPoint3DZ must be a numeric zero'],
+    ['3D rotation with zero depth', ' centerPoint3DZ="0" rotationY="45"', '', 'unsupported attributes'],
+  ])('evaluates 2D Classic Motion endpoint metadata (%s)', async (_label, startDepth, endDepth, rejection) => {
     const hostXml = `<DOMSymbolItem name="MotionHost" symbolType="graphic"><timeline><DOMTimeline><layers>
       <DOMLayer name="Mover"><frames>
         <DOMFrame index="0" duration="4" tweenType="motion" keyMode="24065" motionTweenSync="true" motionTweenRotate="clockwise" motionTweenRotateTimes="0">
           <elements>
-            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="30" centerPoint3DY="40">
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="30" centerPoint3DY="40"${startDepth}>
               <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="20"/></matrix>
               <transformationPoint><Point x="0" y="0"/></transformationPoint>
             </DOMSymbolInstance>
@@ -167,7 +178,7 @@ describe('XFL instance affine projection', () => {
         </DOMFrame>
         <DOMFrame index="4" duration="2" keyMode="9728">
           <elements>
-            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="110" centerPoint3DY="60">
+            <DOMSymbolInstance libraryItemName="Card" symbolType="graphic" loop="loop" firstFrame="0" centerPoint3DX="110" centerPoint3DY="60"${endDepth}>
               <matrix><Matrix a="0" b="1" c="-1" d="0" tx="90" ty="60"/></matrix>
               <transformationPoint><Point x="0" y="0"/></transformationPoint>
             </DOMSymbolInstance>
@@ -194,8 +205,22 @@ describe('XFL instance affine projection', () => {
     if (!adapted.ok) throw new Error(adapted.message);
     const { source } = adapted;
     const hostSym = source.graphicSymbols.find((s) => s.libraryItemName === 'MotionHost')!;
-    for (const [frameIndex, expectedTx, expectedTy] of [[0, 10, 20], [2, 50, 40], [4, 90, 60], [6, 150, 80]] as const) {
-      const ctx = source.buildGraphicFrameContext(hostSym.timelineXml, hostSym.frameSpanIndex, frameIndex, `graphic:${hostSym.libraryItemName}`);
+    const sample = (frameIndex: number) => source.buildGraphicFrameContext(
+      hostSym.timelineXml, hostSym.frameSpanIndex, frameIndex, 'graphic:MotionHost',
+    );
+    if (rejection) {
+      expect(sample(2)).toMatchObject({ ok: false, message: expect.stringContaining(rejection) });
+      const healthy = sample(6);
+      expect(healthy.ok).toBe(true);
+      if (!healthy.ok) throw new Error(healthy.message);
+      expect(healthy.value.layers.find((layer) => layer.name === 'Sibling')?.elements).toHaveLength(1);
+      expect(healthy.value.layers.find((layer) => layer.name === 'Mover')?.elements[0]?.localTransform)
+        .toMatchObject({ tx: 150, ty: 80 });
+      return;
+    }
+    for (const [frameIndex, expectedTx, expectedTy] of [[0, 10, 20], [1, 30, 30], [2, 50, 40], [3, 70, 50],
+      [4, 90, 60], [5, 90, 60], [6, 150, 80], [7, 150, 80]] as const) {
+      const ctx = sample(frameIndex);
       if (!ctx.ok) throw new Error(ctx.message);
       const resolved = resolveFlaDisplayList({
         root: { kind: 'graphic', name: 'MotionHost', frameContext: ctx.value },
