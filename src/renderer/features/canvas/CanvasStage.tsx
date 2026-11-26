@@ -1,7 +1,9 @@
+import { LayerEffectPreviewContext } from '../../stage/LayerEffectPreview';
 import { CurveMotionStageOverlay, type CurveMotionStageDraft } from './CurveMotionStageOverlay';
 import {
   createRef,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -371,6 +373,10 @@ export function CanvasStage({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [assemblingArm, setAssembly]);
 
+  const effectsPreview = useContext(LayerEffectPreviewContext);
+  const activeEffects = !armAssembly && effectsPreview?.projectInstanceId === projectInstanceId &&
+    effectsPreview?.revision === snapshot?.revision && effectsPreview?.shotId === currentShotId &&
+    effectsPreview?.layerId === selectedLayerId ? effectsPreview : null;
   const activeCurveMotion = !armAssembly && curveMotionDraft?.projectInstanceId === projectInstanceId &&
     curveMotionDraft?.revision === snapshot?.revision && curveMotionDraft?.shotId === currentShotId &&
     curveMotionDraft?.layerId === selectedLayerId ? curveMotionDraft : null;
@@ -1818,6 +1824,7 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
+                            effects={activeEffects?.layerId === layer.id ? activeEffects.effects : undefined}
                             selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(

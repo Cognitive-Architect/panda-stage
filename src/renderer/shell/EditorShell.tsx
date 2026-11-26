@@ -1,3 +1,4 @@
+import { LayerEffectPreviewContext, LayerEffectPreviewDispatch, type LayerEffectPreview } from '../stage/LayerEffectPreview';
 import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import {
   useCallback,
@@ -686,6 +687,7 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [productPreviewDraft, setProductPreviewDraft] = useState<Project | null>(null);
   const [curveMotionStageDraft, setCurveMotionStageDraft] = useState<CurveMotionStageDraft | null>(null);
+  const [layerEffectPreview, setLayerEffectPreview] = useState<LayerEffectPreview | null>(null);
   const [animationCurveDraft, setAnimationCurveDraft] = useState<AnimationCurveDraft | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
@@ -3237,7 +3239,13 @@ export function EditorShell({
       ) : null}
     </main>
   );
-  return <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
-    <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
-  </AnimationCurveDraftDispatch.Provider>;
+  return (
+    <LayerEffectPreviewDispatch.Provider value={setLayerEffectPreview}>
+      <LayerEffectPreviewContext.Provider value={layerEffectPreview}>
+        <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
+          <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
+        </AnimationCurveDraftDispatch.Provider>
+      </LayerEffectPreviewContext.Provider>
+    </LayerEffectPreviewDispatch.Provider>
+  );
 }
