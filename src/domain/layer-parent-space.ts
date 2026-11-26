@@ -1,7 +1,9 @@
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
+import { resolveLayerAttachmentLocalMatrix } from './layer-attachment';
+import { resolveCharacterActionRenderTransform } from './selectors/visualParts';
 import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
-import type { Layer, Shot } from './models';
+import type { Layer, Project, Shot } from './models';
 import { composeAffineMatrix } from './models/flaGraphicTimeline';
 
 export function layerPoseMatrix(layer: Pick<EvaluatedLayer, 'x' | 'y' | 'flipX' | 'rotationDeg' | 'scaleX' | 'scaleY'>): AffineMatrix2D {
@@ -25,10 +27,12 @@ export function validLayerParentTargets(shot: Shot, childId: string): Layer[] {
   });
 }
 
-export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[], timeMs: number): EvaluatedLayer[] {
+export function applyLayerParenting(project: Project, shot: Shot, layers: EvaluatedLayer[], timeMs: number): EvaluatedLayer[] {
   if (!shot.layers.some((layer) =>
     layer.parentLayerId || layer.parentSpaceOffset || layer.depth !== undefined || layer.depthKeys || layer.cameraSpace,
   )) return layers;
+  const evaluated = new Map(layers.map((layer) => [layer.id, layer]));
+  const usingAttachmentFallback = new Set<string>();
   const authored = new Map(shot.layers.map((layer) => [layer.id, layer]));
   const local = new Map(layers.map((layer) => [layer.id, layerPoseMatrix(layer)]));
   const depths = new Map<string, number>();
@@ -62,8 +66,18 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[], timeMs
       const cameraSpace = parentId && parent ? cameraSpaces.get(parentId) : layer?.cameraSpace;
       if (depth !== undefined) depths.set(entry, depth);
       if (cameraSpace !== undefined) cameraSpaces.set(entry, cameraSpace);
+      let targetWorld = parent;
+      if (parent && parentId && layer?.parentAttachment) {
+        const owner = authored.get(parentId)!;
+        const ownerPose = evaluated.get(parentId)!;
+        const targetLocal = resolveLayerAttachmentLocalMatrix(project, owner, ownerPose, layer.parentAttachment.target);
+        if (!targetLocal) usingAttachmentFallback.add(entry);
+        targetWorld = layerAttachmentWorldMatrix(
+          ownerPose, targetLocal ?? layer.parentAttachment.ownerLocalFallback, spaces.get(parentId),
+        );
+      }
       const offset = layer?.parentSpaceOffset;
-      const space = parent && offset ? multiplyAffineMatrices(parent, offset) : parent ?? offset;
+      const space = targetWorld && offset ? multiplyAffineMatrices(targetWorld, offset) : targetWorld ?? offset;
       const pose = local.get(entry)!;
       const posed = space && multiplyAffineMatrices(space, pose);
       if (layer?.parentLayerId && !invalidEdges.has(entry) && unavailable.has(layer.parentLayerId)) unavailable.add(entry);
@@ -82,12 +96,23 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[], timeMs
     const parentSpace = spaces.get(layer.id);
     return {
       ...layer,
+      parentSpace: undefined,
+      parentSpaceUnavailable: undefined,
+      parentAttachmentFallback: usingAttachmentFallback.has(layer.id) || undefined,
       ...(effectiveDepth !== undefined ? { effectiveDepth } : {}),
       ...(effectiveCameraSpace ? { effectiveCameraSpace } : {}),
       ...(unavailable.has(layer.id) ? { parentSpaceUnavailable: true } : {}),
       ...(parentSpace ? { parentSpace } : {}),
     };
   });
+}
+
+export function layerAttachmentWorldMatrix(
+  owner: EvaluatedLayer, targetLocal: AffineMatrix2D, ownerSpace: AffineMatrix2D | undefined,
+): AffineMatrix2D {
+  const ownerLocal = layerPoseMatrix(resolveCharacterActionRenderTransform(owner));
+  const targetInParent = multiplyAffineMatrices(ownerLocal, targetLocal);
+  return ownerSpace ? multiplyAffineMatrices(ownerSpace, targetInParent) : targetInParent;
 }
 
 export function evaluatedLayerWorldMatrix(layer: EvaluatedLayer): AffineMatrix2D {

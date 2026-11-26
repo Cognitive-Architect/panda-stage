@@ -1,3 +1,7 @@
+import { layerAttachmentTargetKey, resolveLayerAttachmentLocalMatrix } from '../layer-attachment';
+import { layerAttachmentWorldMatrix } from '../layer-parent-space';
+import { projectShotDialogueVisual } from '../selectors/temporalRender';
+import type { LayerAttachmentTarget } from '../models';
 import type { FlaInstanceColor } from '../../shared/fla-instance-color';
 import { FlaGraphicInstanceTextOverridesSchema } from '../models/flaGraphicInstanceText';
 import {
@@ -523,6 +527,7 @@ export class LayerService {
       layers[layerIndex] = {
         ...layer,
         parentLayerId: undefined,
+        parentAttachment: undefined,
         parentSpaceOffset: undefined,
         layerMotionTracks: undefined,
         cameraSpace: undefined,
@@ -1711,20 +1716,28 @@ export class LayerService {
     });
   }
 
-  setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number): Project {
+  setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number, target?: LayerAttachmentTarget): Project {
     const shot = this.shot(project, shotId);
     const child = shot.layers[this.layerIndex(shot, childId)]!;
     this.assertContentLayer(shot, child);
     this.assertEditable(shot, child);
-    if ((child.parentLayerId ?? null) === parentId) return project;
+    const previousTarget = child.parentAttachment?.target;
+    if ((child.parentLayerId ?? null) === parentId &&
+      (previousTarget && layerAttachmentTargetKey(previousTarget)) === (target && layerAttachmentTargetKey(target))) return project;
     if (parentId && !validLayerParentTargets(shot, childId).some(({ id }) => id === parentId)) {
       throw new Error('请选择同一镜头内不会形成循环的父级图层。');
     }
-    const poses = evaluateShotAtTime(shot, timeMs, project).layers;
+    const poses = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, timeMs, project)).layers;
     const childPose = poses.find(({ id }) => id === childId);
     const oldSpace = childPose?.parentSpace;
     const parent = poses.find(({ id }) => id === parentId);
-    const parentInverse = parent && !parent.parentSpaceUnavailable && invertAffineMatrix(evaluatedLayerWorldMatrix(parent));
+    const owner = parent && shot.layers.find(({ id }) => id === parent.id);
+    const targetLocal = owner && parent && target ? resolveLayerAttachmentLocalMatrix(project, owner, parent, target) : undefined;
+    if (target && !targetLocal) throw new Error('当前帧没有可用的挂接姿态。');
+    const world = parent && (targetLocal
+      ? layerAttachmentWorldMatrix(parent, targetLocal, parent.parentSpace)
+      : evaluatedLayerWorldMatrix(parent));
+    const parentInverse = world && !parent?.parentSpaceUnavailable && invertAffineMatrix(world);
     if (parent && !parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
     const offset = parentInverse && oldSpace ? multiplyAffineMatrices(parentInverse, oldSpace) : parentInverse || oldSpace;
     return this.replaceShot(project, {
@@ -1732,6 +1745,7 @@ export class LayerService {
       layers: shot.layers.map((layer) => layer.id === childId ? {
         ...layer, parentLayerId: parentId ?? undefined, parentSpaceOffset: offset,
         cameraSpace: parentId ? undefined : childPose?.effectiveCameraSpace,
+        parentAttachment: target && targetLocal ? { target, ownerLocalFallback: targetLocal } : undefined,
       } : layer),
     });
   }
@@ -1748,13 +1762,14 @@ export class LayerService {
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const inherited = shot.layers.some(({ parentLayerId }) => parentLayerId === layerId)
-      ? new Map(evaluateShotAtTime(shot, timeMs, project).layers.map((pose) => [pose.id, pose]))
+      ? new Map(projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, timeMs, project)).layers.map((pose) => [pose.id, pose]))
       : null;
     const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) =>
       candidate.parentLayerId === layerId
         ? {
             ...candidate,
             parentLayerId: undefined,
+            parentAttachment: undefined,
             parentSpaceOffset: inherited?.get(candidate.id)?.parentSpace,
             cameraSpace: inherited?.get(candidate.id)?.effectiveCameraSpace,
           }
@@ -1837,6 +1852,7 @@ export class LayerService {
       id: duplicateId,
       ...remapLayerMotionOwner(layer, duplicateId),
       parentLayerId: keepParent ? layer.parentLayerId : undefined,
+      parentAttachment: keepParent ? layer.parentAttachment : undefined,
       parentSpaceOffset: copiedSpace,
       cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
       name: `${layer.name} 副本`,
@@ -1959,6 +1975,7 @@ export class LayerService {
     return {
       ...layer,
       parentLayerId: undefined,
+      parentAttachment: undefined,
       parentSpaceOffset: undefined,
       layerMotionTracks: undefined,
       cameraSpace: undefined,

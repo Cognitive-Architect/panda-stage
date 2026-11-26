@@ -439,6 +439,18 @@ function validateLayerRootTracks(layer: Pick<Layer, 'id' | 'layerMotionTracks' |
 
 export const LayerV43Schema = z.strictObject(LayerV43Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 
+export const LayerAttachmentTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('character-part'), partId: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('graphic-node'), nodePath: z.array(z.string().min(1)).min(1).max(128) }),
+]);
+
+const LayerParentAttachmentSchema = z.strictObject({
+  target: LayerAttachmentTargetSchema,
+  ownerLocalFallback: LayerSpaceMatrixSchema,
+});
+
+export type LayerAttachmentTarget = z.infer<typeof LayerAttachmentTargetSchema>;
+
 const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
 
 export const LayerSchema = z.strictObject({
@@ -448,6 +460,7 @@ export const LayerSchema = z.strictObject({
   depth: LayerDepthSchema.optional(),
   depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
   cameraSpace: z.enum(['world', 'screen']).optional(),
+  parentAttachment: LayerParentAttachmentSchema.optional(),
 }).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

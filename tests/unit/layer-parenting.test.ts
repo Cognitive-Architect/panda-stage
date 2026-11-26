@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
   evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService,
-  type Layer, type TimelineEvent,
+  resolveLayerAttachmentTargets, type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
@@ -11,6 +11,10 @@ import { evaluateEditorCanvasShot } from '../../src/renderer/features/canvas/edi
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { evaluateExportShotAtTime, selectExportDrawingLayers } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
+
+import { addTestAnimation, characterPartAnimationFixture } from '../helpers/characterPartAnimationFixture';
+import { characterActionGraphicFixture } from '../helpers/characterActionGraphicFixture';
+import { IDS } from './domain/testProject';
 
 function fixture() {
   const base = migrateProject(demo);
@@ -170,6 +174,54 @@ describe('native Layer parenting', () => {
     });
     const repaired = mode === 'fill' ? service.fillBackground(stale, shot.id) : service.setBackground(stale, shot.id, tip.id);
     expect(repaired.shots).toEqual(covered.shots);
+  });
+
+  it('binds an adaptive part on its specific instance and preserves the pose when rebinding at a nonzero frame', () => {
+    const data = characterPartAnimationFixture();
+    const service = new LayerService();
+    const other = service.createFromAdaptiveCharacter(data.project, IDS.shot, data.characterId, { x: 250, y: 400 });
+    const animated = addTestAnimation(other.project, data.layerId, data.imagePartId, 'transform.offsetX', 100);
+    const target = { kind: 'character-part' as const, partId: data.imagePartId };
+    const pose = (project: typeof animated, timeMs: number) => evaluateShotAtTime(project.shots[0]!, timeMs, project)
+      .layers.find(({ id }) => id === IDS.layerAsset)!;
+    const bound = service.setParent(animated, IDS.shot, IDS.layerAsset, data.layerId, 500, target);
+    expectMatrix(evaluatedLayerWorldMatrix(pose(bound, 500)), evaluatedLayerWorldMatrix(pose(animated, 500)));
+    expect(evaluatedLayerWorldMatrix(pose(bound, 750)).tx - evaluatedLayerWorldMatrix(pose(bound, 500)).tx).toBeCloseTo(25);
+    const rebound = service.setParent(bound, IDS.shot, IDS.layerAsset, other.layer.id, 750, target);
+    expectMatrix(evaluatedLayerWorldMatrix(pose(rebound, 750)), evaluatedLayerWorldMatrix(pose(bound, 750)));
+    expectMatrix(evaluatedLayerWorldMatrix(pose(rebound, 1_000)), evaluatedLayerWorldMatrix(pose(rebound, 750)));
+    expect(() => service.setParent(rebound, IDS.shot, other.layer.id, IDS.layerAsset, 750)).toThrow();
+  });
+
+  it('tracks nested Graphic motion and deterministically follows the owner when its node goes missing', () => {
+    const input = characterActionGraphicFixture();
+    const service = new LayerService();
+    const placed = service.createFromAnimation(input, IDS.shot, {
+      animationId: input.animations[0]!.id, startTimeMs: 0, position: { x: 830, y: 480 },
+      transform: { rotationDeg: 45, scaleX: 1.4, scaleY: 0.7, flipX: true },
+    });
+    const evaluate = (project: typeof input, time: number, layerId: string) =>
+      evaluateShotAtTime(project.shots[0]!, time, project).layers.find(({ id }) => id === layerId)!;
+    const owner = evaluate(placed.project, 250, placed.layer.id);
+    const target = resolveLayerAttachmentTargets(placed.project, placed.layer, owner)
+      .find(({ target }) => target.kind === 'graphic-node' && target.nodePath.at(-1) === 'hand')!.target;
+    const bound = service.setParent(placed.project, IDS.shot, IDS.layerAsset, placed.layer.id, 250, target);
+    const at = (project: typeof input, time: number) => evaluate(project, time, IDS.layerAsset);
+    expectMatrix(evaluatedLayerWorldMatrix(at(bound, 250)), evaluatedLayerWorldMatrix(at(placed.project, 250)));
+    expect(evaluatedLayerWorldMatrix(at(bound, 500)).tx).not.toBeCloseTo(evaluatedLayerWorldMatrix(at(bound, 250)).tx);
+    const missing = ProjectSchema.parse({ ...bound, shots: bound.shots.map((shot) => ({
+      ...shot,
+      layers: shot.layers.map((layer) => layer.id === placed.layer.id ? {
+        ...layer, x: layer.x + 30,
+        source: { kind: 'asset', assetId: IDS.assetChar },
+        startTimeMs: undefined, animationPlayback: undefined, animationFirstFrame: undefined,
+      } : layer),
+    })) });
+    expect(at(missing, 500).parentAttachmentFallback).toBe(true);
+    expect(evaluatedLayerWorldMatrix(at(missing, 500)).tx).toBeCloseTo(evaluatedLayerWorldMatrix(at(bound, 250)).tx + 30);
+    expectMatrix(evaluatedLayerWorldMatrix(at(missing, 500)),
+      evaluatedLayerWorldMatrix(at(migrateProject(JSON.parse(JSON.stringify(missing))), 500)));
+    expect(at(bound, 500).parentAttachmentFallback).toBeUndefined();
   });
 
   it('animates multiple children with a resource-free control and leaves it out of output', () => {

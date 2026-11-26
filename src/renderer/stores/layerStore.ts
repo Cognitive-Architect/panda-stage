@@ -7,6 +7,7 @@ import {
   type FlaGraphicTransformEasing,
   type FlaShapeVertexTarget,
   type Layer,
+  type LayerAttachmentTarget,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
@@ -566,9 +567,9 @@ export class LayerStore {
     return next;
   }
 
-  setParent(childId: string, parentId: string | null, timeMs: number): Project {
+  setParent(childId: string, parentId: string | null, timeMs: number, target?: LayerAttachmentTarget): Project {
     const { project, shotId } = this.context();
-    const next = this.service.setParent(project, shotId, childId, parentId, timeMs);
+    const next = this.service.setParent(project, shotId, childId, parentId, timeMs, target);
     if (next !== project) this.editorStore.updateProject(next, parentId ? '绑定父级图层' : '解除父级绑定');
     return next;
   }

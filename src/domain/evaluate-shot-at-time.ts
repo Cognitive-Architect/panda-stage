@@ -50,6 +50,7 @@ export interface EvaluatedLayer {
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
+  parentAttachmentFallback?: true;
   control?: true;
   effectiveDepth?: number;
   effectiveCameraSpace?: 'world' | 'screen';
@@ -964,6 +965,6 @@ export function evaluateShotAtTime(
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers: applyLayerParenting(shot, layers, timeMs),
+    layers: applyLayerParenting(project, shot, layers, timeMs),
   };
 }

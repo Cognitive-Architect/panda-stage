@@ -655,8 +655,8 @@ export function RightInspector({
     </section>
   );
 
-  const parentControl = currentShot && selection.layer ? <LayerParentControl
-    key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} /> : null;
+  const parentControl = snapshot && currentShot && selection.layer ? <LayerParentControl
+    key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} project={snapshot.project} /> : null;
   const transformPanel = (
     <>
       <LayerTransformPanel
