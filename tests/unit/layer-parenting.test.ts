@@ -39,6 +39,39 @@ function expectMatrix(actual: AffineMatrix2D, expected: AffineMatrix2D) {
 }
 
 describe('native Layer parenting', () => {
+  it.each(['bound', 'detached'] as const)('clears a %s layer space when making or refilling the formal background', (mode) => {
+    const { project, shot, baseLayer, tip } = fixture();
+    const service = new LayerService();
+    const bound = service.setParent(project, shot.id, tip.id, baseLayer.id, 0);
+    const source = mode === 'bound' ? bound : service.setParent(bound, shot.id, tip.id, null, 500);
+    const sourceLayer = source.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+    expect(sourceLayer.parentSpaceOffset).toBeDefined();
+    const cover = service.setBackground(source, shot.id, tip.id);
+    const store = new EditorProjectStore();
+    store.open('D:/background-parenting.pandastage', source);
+    store.updateProject(cover, 'Set background');
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()?.project).toEqual(source);
+    expect(store.redo()).toBe(true);
+    const reopened = migrateProject(JSON.parse(JSON.stringify(store.getSnapshot()?.project)));
+    const coverShot = reopened.shots[0]!;
+    const covered = coverShot.layers.find(({ id }) => id === tip.id)!;
+    expect(covered).toMatchObject({ locked: true, zIndex: 0, x: 960, y: 540, rotationDeg: 0 });
+    expect(covered.parentLayerId).toBeUndefined();
+    expect(covered.parentSpaceOffset).toBeUndefined();
+    for (const timeMs of [0, 1000]) {
+      const formal = evaluateShotAtTime(coverShot, timeMs, reopened).layers.find(({ id }) => id === tip.id)!;
+      expectMatrix(evaluatedLayerWorldMatrix(formal), layerPoseMatrix(covered));
+    }
+    const oldBackground = ProjectSchema.parse({ ...reopened, shots: [{ ...coverShot, layers: coverShot.layers.map((layer) =>
+      layer.id === tip.id ? { ...layer, parentLayerId: sourceLayer.parentLayerId, parentSpaceOffset: sourceLayer.parentSpaceOffset } : layer,
+    ) }] });
+    const filled = service.fillBackground(oldBackground, shot.id);
+    const refilled = filled.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+    expect(refilled.parentLayerId).toBeUndefined();
+    expect(refilled.parentSpaceOffset).toBeUndefined();
+    expect(refilled).toMatchObject({ locked: true, zIndex: 0, x: 960, y: 540 });
+  });
   it('persists three-level affine inheritance in draw order and preserves independent local motion', () => {
     const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
     const service = new LayerService();
