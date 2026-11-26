@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { resolveTalkingAnimationFace } from '../../src/domain/selectors/characterFaceSource';
-import { planCharacterMotionTemplate } from '../../src/domain/services/CharacterMotionTemplateService';
+import { upsertCharacterActionEvent } from '../../src/domain/services/CharacterActionEventService';
+import {
+  planCharacterAppearanceSwitch, planCharacterMotionTemplate,
+} from '../../src/domain/services/CharacterMotionTemplateService';
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { ActionPresetPanel } from '../../src/renderer/features/actions/ActionPresetPanel';
 import { isAdaptivePartsAssemblySnapshot } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -222,6 +225,56 @@ it('keeps existing body, expression, mouth pose and other instances intact durin
     expect(part(during, PART_BODY_ID)).toEqual(part(before, PART_BODY_ID));
     expect(part(during, headId)?.imageTransform).not.toEqual(part(before, headId)?.imageTransform);
     expect(visualAt(authored, other.layer.id, time)).toEqual(visualAt(reference, other.layer.id, time));
+  }
+});
+
+it('keeps a body action and mouth cue through an instance appearance fade (#1386)', () => {
+  const { project, shotId, layerId, characterId, smileExprId, angryExprId } = buildPhaseBProject();
+  const actionId = crypto.randomUUID();
+  const definition = ProjectSchema.parse({
+    ...project,
+    characters: project.characters.map((character) => character.id === characterId ? {
+      ...character,
+      actions: [{
+        id: actionId, name: 'Existing body move', kind: 'layered', headAnchorPartId: PART_BODY_ID,
+        tracks: [{
+          partId: PART_BODY_ID, property: 'transform.offsetX',
+          keys: [{ timeMs: 0, value: 0, interpolationToNext: 'linear' },
+            { timeMs: 1500, value: 48, interpolationToNext: 'linear' }],
+        }],
+      }],
+    } : character),
+  });
+  const second = new LayerService().createFromAdaptiveCharacter(definition, shotId, characterId, { x: 480, y: 540 });
+  const body = upsertCharacterActionEvent(second.project, shotId, layerId, { actionId, startMs: 0, endMs: 1500 });
+  const openedMouth = upsertMouthCueEventAtTime(body, shotId, layerId, 'open', 833);
+  const reference = upsertMouthCueEventAtTime(openedMouth, shotId, layerId, 'rest', 1000);
+  const switched = planCharacterAppearanceSwitch(reference, {
+    shotId, layerId, expressionId: angryExprId, timeMs: 500, fadeFrames: 12,
+  });
+
+  expect(switched.characters).toEqual(reference.characters);
+  expect(switched.shots[0]!.layers).toEqual(reference.shots[0]!.layers);
+  const shot = switched.shots[0]!;
+  const visualAt = (candidate: Project, id: string, time: number) => {
+    const currentShot = candidate.shots[0]!;
+    const state = projectShotDialogueVisual(candidate, currentShot, evaluateShotAtTime(currentShot, time, candidate));
+    return resolveLayerVisualParts(candidate, currentShot, state.layers.find((layer) => layer.id === id)!, time);
+  };
+  for (const [time, expectedExpression, expectedOpacity, expectedFace] of [
+    [500, smileExprId, 1, 'expression'], [750, angryExprId, 0, 'expression'],
+    [875, angryExprId, 0.5, 'mouth'], [1000, angryExprId, 1, 'expression'],
+  ] as const) {
+    const current = evaluateShotAtTime(shot, time, switched).layers.find((layer) => layer.id === layerId)!;
+    const visual = visualAt(switched, layerId, time);
+    const bodyPart = (value: typeof visual) =>
+      value.parts.find(({ source }) => source.kind === 'adaptive-part' && source.characterPartId === PART_BODY_ID);
+    expect(current.currentExpressionId).toBe(expectedExpression);
+    expect(current.opacity).toBeCloseTo(expectedOpacity);
+    expect(current.layeredCharacterAction?.action.id).toBe(actionId);
+    expect(visual.activeFace?.source).toBe(expectedFace);
+    expect(bodyPart(visual)).toEqual(bodyPart(visualAt(reference, layerId, time)));
+    expect(visualAt(switched, second.layer.id, time)).toEqual(visualAt(reference, second.layer.id, time));
   }
 });
 
