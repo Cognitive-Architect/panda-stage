@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, removeShotCameraKey,
+  cameraLayerTransform, cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, removeShotCameraKey,
   setShotCameraKey, setShotCameraMode, ShotService,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -10,6 +10,28 @@ import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canv
 import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
 
 describe('Shot camera', () => {
+  it('projects depth relative to the rest camera and clips only near world planes', () => {
+    const rest = { centerX: 960, centerY: 540, zoom: 1, rotationDeg: 0 };
+    const view = { centerX: 1060, centerY: 540, zoom: 2, rotationDeg: 35 };
+    for (const depth of [-400, 0, 1000]) {
+      expect(cameraLayerTransform(rest, 1920, 1080, depth, 'world')).toEqual(cameraWorldTransform(rest, 1920, 1080));
+    }
+    expect(cameraLayerTransform(view, 1920, 1080, 0, 'world')).toEqual(cameraWorldTransform(view, 1920, 1080));
+    expect(cameraLayerTransform(view, 1920, 1080, -400, 'world')).toMatchObject({ scaleX: 6, rotation: -35 });
+    expect(cameraLayerTransform(view, 1920, 1080, 1000, 'world')).toMatchObject({ scaleX: 4 / 3, offsetX: 1010, rotation: -35 });
+    expect(cameraLayerTransform(view, 1920, 1080, -500, 'world')).toBeNull();
+    expect(cameraLayerTransform(view, 1920, 1080, -500, 'screen')).toEqual(cameraWorldTransform(rest, 1920, 1080));
+  });
+
+  it('migrates v43 camera and parenting without inventing depths or camera spaces', () => {
+    const project = migrateProject(demo);
+    const shot = project.shots[0]!;
+    const staged = setShotCameraKey(project, shot.id, 0, { zoom: 2 });
+    const migrated = migrateProject({ ...staged, schemaVersion: 43 });
+    expect(migrated.shots).toEqual(staged.shots);
+    expect(migrated.schemaVersion).toBe(44);
+  });
+
   it('uses the formal 0 ms pose in camera view while retaining the world editing pose', () => {
     const project = migrateProject(demo);
     const shot = project.shots[0]!;

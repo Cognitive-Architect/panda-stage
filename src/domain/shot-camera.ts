@@ -57,6 +57,33 @@ export function cameraWorldTransform(camera: CameraView | undefined, width: numb
   };
 }
 
+const NATIVE_CAMERA_FOCAL_LENGTH = 1_000;
+const NATIVE_CAMERA_NEAR_DISTANCE = 10;
+
+/** A rest-normalized top-level plane. Null means only this plane is clipped. */
+export function cameraLayerTransform(
+  camera: CameraView | undefined,
+  width: number,
+  height: number,
+  depth: number,
+  space: 'world' | 'screen',
+): ReturnType<typeof cameraWorldTransform> | null {
+  if (!camera || space === 'screen') return cameraWorldTransform(undefined, width, height);
+  if (depth === 0) return cameraWorldTransform(camera, width, height);
+  const distance = NATIVE_CAMERA_FOCAL_LENGTH / camera.zoom + depth;
+  if (!Number.isFinite(distance) || distance < NATIVE_CAMERA_NEAR_DISTANCE) return null;
+  const restDistance = NATIVE_CAMERA_FOCAL_LENGTH + depth;
+  const pan = NATIVE_CAMERA_FOCAL_LENGTH / restDistance;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  return cameraWorldTransform({
+    ...camera,
+    centerX: centerX + (camera.centerX - centerX) * pan,
+    centerY: centerY + (camera.centerY - centerY) * pan,
+    zoom: restDistance / distance,
+  }, width, height);
+}
+
 function editCamera(project: Project, shotId: string, edit: (shot: Shot) => Shot['camera']): Project {
   const shot = project.shots.find((entry) => entry.id === shotId);
   if (!shot) throw new Error('找不到当前镜头。');

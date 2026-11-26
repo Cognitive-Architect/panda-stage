@@ -9,6 +9,7 @@ import {
   LayerV32Schema,
   LayerV41Schema,
   LayerV42Schema,
+  LayerV43Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -135,9 +136,9 @@ export const ShotV42Schema = ShotV20Schema.extend({
   layers: z.array(LayerV42Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotSchema = ShotV20Schema.extend({
+export const ShotV43Schema = ShotV20Schema.extend({
   timelineEvents: z.array(TimelineEventSchema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV43Schema),
   camera: ShotCameraSchema.optional(),
 }).superRefine(validateShotClipKeyTimes).superRefine((shot, context) => {
   shot.layers.forEach((layer, layerIndex) => layer.layerMotionTracks?.forEach((track, trackIndex) =>
@@ -156,6 +157,20 @@ export const ShotSchema = ShotV20Schema.extend({
       });
     }
   });
+});
+
+export const ShotSchema = ShotV43Schema.safeExtend({
+  layers: z.array(LayerSchema),
+}).superRefine((shot, context) => {
+  shot.layers.forEach((layer, layerIndex) => layer.depthKeys?.forEach((key, index, keys) => {
+    if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['layers', layerIndex, 'depthKeys', index, 'timeMs'],
+        message: 'Depth keys must be ordered, unique and within the Shot duration.',
+      });
+    }
+  }));
 });
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */

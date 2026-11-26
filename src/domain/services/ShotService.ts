@@ -45,6 +45,7 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
     ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
+    ...shot.layers.map((layer) => layer.depthKeys?.at(-1)?.timeMs ?? 0),
     shot.camera?.keys.at(-1)?.timeMs ?? 0,
   );
 }

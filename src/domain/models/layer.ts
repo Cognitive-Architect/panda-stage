@@ -10,6 +10,8 @@ import {
   type AnimationClip,
 } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
+import { LAYER_DEPTH_MAX, LAYER_DEPTH_MIN } from '../constants';
+import { AnimationKeySchema } from './animationKeys';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicInstanceTextOverridesSchema } from './flaGraphicInstanceText';
@@ -408,7 +410,7 @@ const LayerSpaceMatrixSchema = z.object({
   d: FiniteNumberSchema, tx: FiniteNumberSchema, ty: FiniteNumberSchema,
 }).strict();
 
-export const LayerSchema = LayerV42Schema.safeExtend({
+export const LayerV43Schema = LayerV42Schema.safeExtend({
   parentLayerId: IdSchema.optional(),
   /** Maps authored local animation into the current parent's space (or world when detached). */
   parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
@@ -425,6 +427,15 @@ export const LayerSchema = LayerV42Schema.safeExtend({
     }
     properties.add(track.property);
   });
+});
+
+const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
+
+export const LayerSchema = LayerV43Schema.safeExtend({
+  /** Absent values inherit the parent's effective depth and camera space. */
+  depth: LayerDepthSchema.optional(),
+  depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
+  cameraSpace: z.enum(['world', 'screen']).optional(),
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
