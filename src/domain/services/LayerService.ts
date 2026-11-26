@@ -20,7 +20,7 @@ import {
   type Project,
   type Shot,
 } from '../models';
-import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
 import { resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
@@ -63,6 +63,8 @@ import {
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
+import { evaluatedLayerWorldMatrix, validLayerParentTargets } from '../layer-parent-space';
+import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -1671,18 +1673,47 @@ export class LayerService {
     });
   }
 
+  setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    if ((child.parentLayerId ?? null) === parentId) return project;
+    if (parentId && !validLayerParentTargets(shot, childId).some(({ id }) => id === parentId)) {
+      throw new Error('请选择同一镜头内不会形成循环的父级图层。');
+    }
+    const poses = evaluateShotAtTime(shot, timeMs, project).layers;
+    const oldSpace = poses.find(({ id }) => id === childId)?.parentSpace;
+    const parent = poses.find(({ id }) => id === parentId);
+    const parentInverse = parent && invertAffineMatrix(evaluatedLayerWorldMatrix(parent));
+    if (parent && !parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
+    const offset = parentInverse && oldSpace ? multiplyAffineMatrices(parentInverse, oldSpace) : parentInverse || oldSpace;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => layer.id === childId ? {
+        ...layer, parentLayerId: parentId ?? undefined, parentSpaceOffset: offset,
+      } : layer),
+    });
+  }
+
   deleteLayer(
     project: Project,
     shotId: string,
     layerId: string,
+    timeMs = 0,
   ): Project {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
-    const remaining = shot.layers.filter(
-      (candidate) => candidate.id !== layer.id,
+    const inherited = shot.layers.some(({ parentLayerId }) => parentLayerId === layerId)
+      ? new Map(evaluateShotAtTime(shot, timeMs, project).layers.map(({ id, parentSpace }) => [id, parentSpace]))
+      : null;
+    const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) =>
+      candidate.parentLayerId === layerId
+        ? { ...candidate, parentLayerId: undefined, parentSpaceOffset: inherited?.get(candidate.id) }
+        : candidate,
     );
     const remainingShot = { ...shot, layers: remaining };
     return this.replaceShot(project, {

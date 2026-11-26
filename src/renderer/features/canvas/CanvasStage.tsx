@@ -84,6 +84,7 @@ import {
   structuredChildTransformerScales,
 } from './LayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
+import { StageLayerSpace } from '../../stage/StageLayerSpace';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import {
   timelineUiStore,
@@ -970,6 +971,7 @@ export function CanvasStage({
   const canCommitCanvasEdit = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
+    if (stageLayer.evaluated.parentSpace) return false;
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
     if (stageLayer.layer.source.kind !== 'animation') {
       return currentTimeMs === 0;
@@ -1021,6 +1023,7 @@ export function CanvasStage({
   const directEditingEnabledForStageLayer = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
+    if (stageLayer.evaluated.parentSpace) return false;
     if (stageLayer.layer.source.kind !== 'animation') {
       return directEditingEnabled;
     }
@@ -1600,6 +1603,7 @@ export function CanvasStage({
                               }
                             : undefined;
                         return (
+                          <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace}>
                           <SelectableLayer
                             characterMotion={motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
@@ -1608,7 +1612,6 @@ export function CanvasStage({
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
-                            key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
                             flaGraphicEditProjection={editProjection}
@@ -1821,6 +1824,7 @@ export function CanvasStage({
                                  : render
                              }
                             positionAuthoringSession={
+                               !stageLayer.evaluated.parentSpace &&
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
                                  ? positionAuthoringSession
@@ -1840,6 +1844,7 @@ export function CanvasStage({
                             }
                             visual={visual}
                           />
+                          </StageLayerSpace>
                         );
                       })
                     : null}
@@ -1879,7 +1884,7 @@ export function CanvasStage({
               </Stage>
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
-              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera ? <CharacterArmHandle
+              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
                 address={{ shotId: shot.id, layerId: selectedLayerId,

@@ -39,7 +39,7 @@ export function buildEditorStageRenderModel(
   evaluatedShot?: EvaluatedShot,
   visualOverrides?: ReadonlyMap<string, LayerVisualParts | null>,
 ): EditorStageRenderModel {
-  if (!evaluatedShot && shot.layers.some(layer => layer.animationClip)) {
+  if (!evaluatedShot && shot.layers.some(layer => layer.animationClip || layer.parentLayerId || layer.parentSpaceOffset)) {
     evaluatedShot = evaluateShotAtTime(shot, 0, project);
   }
   const evaluatedById = new Map(

@@ -19,6 +19,7 @@ import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { DecorativeIcon } from '../../ui';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   return (
@@ -156,7 +157,7 @@ export function LayerOrderControls({
       return;
     }
     try {
-      layerStore.deleteLayer(layer.id);
+      layerStore.deleteLayer(layer.id, timelineUiStore.getSnapshot().currentTimeMs);
       selectionStore.clear();
       setStatus(getLayerDeleteSuccessStatus(layer.name, presentation));
     } catch (error) {

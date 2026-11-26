@@ -22,6 +22,7 @@ import {
 } from '../features/assets/AssetCard';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { LayerParentControl } from '../features/properties/LayerParentControl';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { CharacterPartTransformPanel } from '../features/properties/CharacterPartTransformPanel';
 import { CharacterMotionInspectorSection } from '../features/properties/CharacterMotionInspectorSection';
@@ -638,6 +639,8 @@ export function RightInspector({
     </section>
   );
 
+  const parentControl = currentShot && selection.layer ? <LayerParentControl
+    key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} /> : null;
   const transformPanel = (
     <>
       <LayerTransformPanel
@@ -646,6 +649,7 @@ export function RightInspector({
         showResetTransform={Boolean(compact) || landscapePresentation}
         showLockControl={!compact && !landscapePresentation}
       />
+      {parentControl}
       <AnimationPlaybackControls />
     </>
   );
@@ -763,6 +767,7 @@ export function RightInspector({
           {!portraitEmptyState && compactPresentation ? (
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
+              parentControl={parentControl}
               presentation={landscapePresentation ? 'landscape' : 'portrait'}
             />
           ) : (

@@ -184,6 +184,15 @@ export function evaluateEditorCanvasShot(
         };
       })()
     : baseEditorShot;
+  const members = new Set(shot.layers
+    .filter(({ parentLayerId, parentSpaceOffset }) => parentLayerId || parentSpaceOffset)
+    .flatMap((layer) => [layer.id, layer.parentLayerId]));
+  if (!temporalInspection && members.size) {
+    const formal = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, 0, project), activeDialogueId, dialogueSilence);
+    const evaluatedById = new Map(formal.layers.map((layer) => [layer.id, layer]));
+    return { ...zeroTimeExpressionShot, layers: zeroTimeExpressionShot.layers.map((layer) =>
+      members.has(layer.id) ? evaluatedById.get(layer.id)! : layer) };
+  }
   return temporalInspection
     ? projectShotDialogueVisual(
         project,
