@@ -40,6 +40,7 @@ import { useStructuredGraphicSelection } from '../features/properties/useStructu
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
+import { CharacterMotionTemplateControl } from '../features/properties/CharacterMotionTemplateControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
 import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
@@ -730,6 +731,9 @@ export function RightInspector({
           shot={currentShot}
           layer={selection.layer}
         />
+        <CharacterMotionTemplateControl
+          key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id + selection.layer.id}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
