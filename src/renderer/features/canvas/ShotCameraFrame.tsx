@@ -50,7 +50,8 @@ export function ShotCameraFrame({ pose, onCommit }: {
     } else if (active.handle === 'zoom') {
       const radius = Math.hypot(start.x - origin.centerX, start.y - origin.centerY);
       const distance = Math.hypot(target.x - origin.centerX, target.y - origin.centerY);
-      if (radius > 0) next = { ...origin, zoom: Math.max(0.01, Math.min(100, origin.zoom * radius / Math.max(1, distance))) };
+      const zoom = origin.zoom * (radius / Math.max(1, distance));
+      if (zoom > 0) next = { ...origin, zoom };
     } else {
       const nextAngle = angle(target, origin);
       const change = nextAngle - active.angle;
@@ -70,7 +71,7 @@ export function ShotCameraFrame({ pose, onCommit }: {
     if (commit && (['centerX', 'centerY', 'zoom', 'rotationDeg'] as const)
       .some((key) => Math.abs(active.current[key] - active.origin[key]) > 1e-6)) onCommit(active.current);
   }
-  const zoomHandle = point(halfWidth * 0.82, halfHeight * 0.76);
+  const zoomHandle = point(halfWidth * 0.82, -halfHeight * 0.76);
   const rotateHandle = point(0, -halfHeight * 0.86);
   return (
     <Group name="shot-camera-frame" onPointerMove={move} onPointerUp={(event) => end(event, true)}

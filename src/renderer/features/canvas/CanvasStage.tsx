@@ -440,7 +440,7 @@ export function CanvasStage({
     }));
   }, [projectInstanceId, shot, snapshot]);
   const flaGraphicEditActive = Boolean(
-    !cameraViewActive && selectedFlaGraphicTarget &&
+    !cameraViewActive && !cameraTool && selectedFlaGraphicTarget &&
       flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget.key,
   );
   const flaGraphicEditMode = flaGraphicEditActive

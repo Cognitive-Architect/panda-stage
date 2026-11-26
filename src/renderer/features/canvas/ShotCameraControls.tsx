@@ -65,8 +65,8 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
       </select></label>
       {shot.camera?.mode === 'manual' && <>
         <div className="shot-camera-actions">
-          <Button variant="secondary" aria-pressed={cameraTool} onClick={() => onToolChange(!cameraTool)}>编辑相机框</Button>
-          <Button variant="secondary" aria-pressed={throughCamera} onClick={() => onViewChange(!throughCamera)}>相机视角</Button>
+          <Button variant={cameraTool ? 'primary' : 'secondary'} aria-pressed={cameraTool} onClick={() => onToolChange(!cameraTool)}>编辑相机框</Button>
+          <Button variant={throughCamera ? 'primary' : 'secondary'} aria-pressed={throughCamera} onClick={() => onViewChange(!throughCamera)}>相机视角</Button>
         </div>
         <div className="shot-camera-actions">
           <Button variant="secondary" disabled={!!key} onClick={() => setKey(undefined)}>添加关键帧</Button>
