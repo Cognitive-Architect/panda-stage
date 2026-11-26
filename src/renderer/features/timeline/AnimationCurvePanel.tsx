@@ -138,15 +138,15 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     : [];
   const richSegmentCount = Math.max(0, richKeyTimes.length - 1);
   const richPresetId = richEasingPresetId(richFamily, richDirection);
-  const richDraftInContext = Boolean(
+  const richDraftOnLayer = Boolean(
     richDraft &&
     richDraft.projectInstanceId === instance &&
     richDraft.shotId === shot.id &&
-    richDraft.layerId === layer.id &&
-    richDraft.trackKey === currentTrackKey,
+    richDraft.layerId === layer.id,
   );
+  const richTrackMissing = richDraftOnLayer && richDraft?.trackKey !== currentTrackKey;
   const richDraftMatchesCurrent = Boolean(
-    richDraftInContext &&
+    richDraftOnLayer && !richTrackMissing &&
     richDraft &&
     richDraft.revision === snapshot.revision &&
     !hasStaleRichSelection &&
@@ -204,8 +204,8 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
   useEffect(() => {
     if (!hasStaleRichDraft) return;
     onDraft?.(null);
-    if (!richDraftInContext) setRichDraft(null);
-  }, [hasStaleRichDraft, richDraftInContext, onDraft]);
+    if (!richDraftOnLayer) setRichDraft(null);
+  }, [hasStaleRichDraft, richDraftOnLayer, onDraft]);
 
   function cancel(): void {
     const active = drag.current;
@@ -306,7 +306,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     scopeEnd: number,
   ): void {
     const state = current();
-    if (!state || !track || layer.locked) return;
+    if (!state || !track || layer.locked || richTrackMissing) return;
     const presetId = richEasingPresetId(family, direction);
     const applicability = getRichEasingPropertyApplicability(track.property, presetId);
     const hasStart = track.keys.some(({ timeMs }) => timeMs === scopeStart);
@@ -423,9 +423,10 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     <header><strong>属性曲线</strong><Button variant="secondary" onClick={() => { cancel(); onClose(); }}>关闭</Button></header>
     {track && key ? <>
       <div className="animation-curve-fields">
-        <label>属性<select value={trackKey(track)} onChange={(event) => {
+        <label>属性<select value={richTrackMissing ? '' : trackKey(track)} onChange={(event) => {
           cancel(); setTrackId(event.target.value); setKeyTime(0); setRichSelection(null);
         }}>
+          {richTrackMissing ? <option value="" disabled>原属性已失效</option> : null}
           {tracks.map((entry) => <option key={trackKey(entry)} value={trackKey(entry)}>
             {targetLabel(entry.target)} · {properties[entry.property]}
             {entry.property === 'opacity' ? ` ${formatTimecode(entry.keys[0]!.timeMs)}` : ''}
@@ -479,7 +480,9 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
           </p>
         ) : (
           <p className="animation-rich-easing-meta" data-testid="rich-easing-scope">
-            {hasStaleRichSelection
+            {richTrackMissing
+              ? '原属性轨已失效，请重新选择属性或取消预览'
+              : hasStaleRichSelection
               ? '原选区端点已失效，请重新选择起止帧后再应用'
               : hasStaleRichDraft
                 ? '工程已变更，旧预览已失效，请重新预览或取消后再应用'
@@ -544,7 +547,7 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
         </div>
         <div className="animation-rich-easing-actions">
           <Button data-testid="rich-easing-apply" disabled={!canApplyRichEasing} onClick={applyRichEasing}>应用</Button>
-          {hasStaleRichDraft && !hasStaleRichSelection && !layer.locked && richApplicability.applicable && richSegmentCount > 0 ? (
+          {hasStaleRichDraft && !richTrackMissing && !hasStaleRichSelection && !layer.locked && richApplicability.applicable && richSegmentCount > 0 ? (
             <Button variant="secondary" data-testid="rich-easing-repreview" onClick={() => {
               previewRichEasing(richFamily, richDirection, effectiveRichStart, effectiveRichEnd);
             }}>重新预览</Button>

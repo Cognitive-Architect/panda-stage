@@ -328,6 +328,39 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
   });
 
+  it('requires an explicit property selection after Undo removes the previewed rotation track (#1381)', async () => {
+    const motion = new LayerMotionService();
+    await act(async () => {
+      const { project } = editorProjectStore.getSnapshot()!;
+      const pose = { shotId: IDS.shot, layerId, timeMs: 500 };
+      editorProjectStore.updateProject(motion.applyKeys(project, pose, { 'transform.rotationDeg': 45 }), 'Record rotation');
+    });
+    const trackSelect = container.querySelector<HTMLSelectElement>('.animation-curve-fields select')!;
+    const rotation = Array.from(trackSelect.options).find((option) => option.value.includes('transform.rotationDeg'))!;
+    await setSelectValue(trackSelect, rotation.value);
+    await setSelectValue(selectByTestId('rich-easing-family'), 'back');
+    expect(drafts.at(-1)).not.toBeNull();
+
+    await act(async () => {
+      expect(editorProjectStore.undo()).toBe(true);
+    });
+    const afterUndo = editorProjectStore.getSnapshot();
+    const history = editorProjectStore.history.getSnapshot();
+    expect(drafts.at(-1)).toBeNull();
+    expect(trackSelect.value).toBe('');
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(true);
+    expect(container.querySelector('[data-testid="rich-easing-repreview"]')).toBeNull();
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    expect(editorProjectStore.getSnapshot()).toBe(afterUndo);
+    expect(editorProjectStore.history.getSnapshot()).toEqual(history);
+
+    const position = Array.from(trackSelect.options).find((option) => option.value.includes('transform.offsetX'))!;
+    await setSelectValue(trackSelect, position.value);
+    expect(buttonByTestId('rich-easing-apply').disabled).toBe(false);
+    await act(async () => buttonByTestId('rich-easing-apply').click());
+    expect(editorProjectStore.getSnapshot()!.revision).toBe(afterUndo!.revision + 1);
+  });
+
   it('preserves direct apply without preview draft on initial default segment (#1376 P2-01)', async () => {
     const beforeProject = editorProjectStore.getSnapshot()!.project;
     expect(container.querySelector('[data-testid="rich-easing-section"]')?.getAttribute('data-rich-easing-draft')).toBe('idle');
