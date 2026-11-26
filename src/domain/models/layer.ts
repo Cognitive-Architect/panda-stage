@@ -439,9 +439,49 @@ function validateLayerRootTracks(layer: Pick<Layer, 'id' | 'layerMotionTracks' |
 
 export const LayerV43Schema = z.strictObject(LayerV43Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 
+const LayerAttachmentPathSchema = z.array(z.string().min(1)).min(1).max(128);
+
+/** Frozen v44 attachment target reader (Graphic attachments stored only `nodePath`). */
+export const LayerAttachmentTargetV44Schema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('character-part'), partId: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('graphic-node'), nodePath: LayerAttachmentPathSchema }),
+]);
+
+const LayerParentAttachmentV44Schema = z.strictObject({
+  target: LayerAttachmentTargetV44Schema,
+  ownerLocalFallback: LayerSpaceMatrixSchema,
+});
+
+const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
+
+const LayerV44Shape = {
+  ...LayerV43Shape,
+  source: LayerSourceSchema,
+  /** Absent values inherit the parent's effective depth and camera space. */
+  depth: LayerDepthSchema.optional(),
+  depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
+  cameraSpace: z.enum(['world', 'screen']).optional(),
+  parentAttachment: LayerParentAttachmentV44Schema.optional(),
+};
+
+export const LayerV44Schema = z.strictObject(LayerV44Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+
+const GraphicNodeAttachmentTargetSchema = z
+  .strictObject({
+    kind: z.literal('graphic-node'),
+    /** Stable cross-frame identity chain (nested symbol occurrences + target identity). */
+    identityPath: LayerAttachmentPathSchema.optional(),
+    /** Legacy v44 nodePath retained only when migration cannot prove a stable identity. */
+    nodePath: LayerAttachmentPathSchema.optional(),
+  })
+  .refine(
+    (target) => Boolean(target.identityPath?.length || target.nodePath?.length),
+    'Graphic attachment target requires a stable identity path or legacy node path.',
+  );
+
 export const LayerAttachmentTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('character-part'), partId: z.string().min(1) }),
-  z.strictObject({ kind: z.literal('graphic-node'), nodePath: z.array(z.string().min(1)).min(1).max(128) }),
+  GraphicNodeAttachmentTargetSchema,
 ]);
 
 const LayerParentAttachmentSchema = z.strictObject({
@@ -451,15 +491,8 @@ const LayerParentAttachmentSchema = z.strictObject({
 
 export type LayerAttachmentTarget = z.infer<typeof LayerAttachmentTargetSchema>;
 
-const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
-
 export const LayerSchema = z.strictObject({
-  ...LayerV43Shape,
-  source: LayerSourceSchema,
-  /** Absent values inherit the parent's effective depth and camera space. */
-  depth: LayerDepthSchema.optional(),
-  depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
-  cameraSpace: z.enum(['world', 'screen']).optional(),
+  ...LayerV44Shape,
   parentAttachment: LayerParentAttachmentSchema.optional(),
 }).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 

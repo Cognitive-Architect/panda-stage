@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService, migrateProject, ProjectSchema,
+  cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, isFlaGraphicDefinition, layerPoseMatrix, LayerMotionService, LayerService,
+  migrateProject, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV44Schema,
   resolveLayerAttachmentTargets, setLayerDepth, setLayerDepthKey, ShotService, type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
@@ -204,7 +205,7 @@ describe('native Layer parenting', () => {
       evaluateShotAtTime(project.shots[0]!, time, project).layers.find(({ id }) => id === layerId)!;
     const owner = evaluate(placed.project, 250, placed.layer.id);
     const target = resolveLayerAttachmentTargets(placed.project, placed.layer, owner)
-      .find(({ target }) => target.kind === 'graphic-node' && target.nodePath.at(-1) === 'hand')!.target;
+      .find(({ target }) => target.kind === 'graphic-node' && target.identityPath?.at(-1) === 'addr:Arm/hand')!.target;
     const bound = service.setParent(placed.project, IDS.shot, IDS.layerAsset, placed.layer.id, 250, target);
     const at = (project: typeof input, time: number) => evaluate(project, time, IDS.layerAsset);
     expectMatrix(evaluatedLayerWorldMatrix(at(bound, 250)), evaluatedLayerWorldMatrix(at(placed.project, 250)));
@@ -482,5 +483,233 @@ describe('native Layer parenting', () => {
     expect(partDetached.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)?.depth).toBe(-300);
     const partDeleted = service.deleteLayer(partBound, IDS.shot, data.layerId, 500);
     expect(partDeleted.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)?.depth).toBe(-300);
+  });
+
+  it('tracks Graphic attachments by stable cross-frame occurrence identity, rejects unreliable nodes, and migrates v44 nodePath safely', () => {
+    const base = characterActionGraphicFixture(false);
+    const graphic = base.animations[0]!;
+    if (!isFlaGraphicDefinition(graphic) || !graphic.structure) throw new Error('Expected structured Graphic.');
+    const identity = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const translate = (tx: number, ty: number) => ({ a: 1, b: 0, c: 0, d: 1, tx, ty });
+    const baseFrame = graphic.frames[0]!;
+    const frameDurationMs = 250;
+    graphic.source.sourceFps = 4;
+    graphic.source.startFrameIndex = 0;
+    graphic.source.endFrameIndex = 3;
+    graphic.durationMs = frameDurationMs * 4;
+    graphic.frames = [0, 1, 2, 3].map((ordinal) => ({
+      ...baseFrame,
+      ordinal,
+      sourceFrameIndex: ordinal,
+      startMs: ordinal * frameDurationMs,
+      durationMs: frameDurationMs,
+    }));
+    graphic.structure.symbolDefinitions = {
+      'arm-def': {
+        symbolRef: 'Arm',
+        sourceFrameCount: 1,
+        children: [
+          { type: 'bitmap', id: 'hand', sourceAddress: 'Arm/hand', bitmapRef: 'Hand', assetId: IDS.assetChar2, drawOrder: 0, localTransform: identity },
+          { type: 'bitmap', id: 'wrist', bitmapRef: 'Wrist', assetId: IDS.assetChar2, drawOrder: 1, localTransform: translate(10, 0) },
+        ],
+      },
+    };
+    graphic.structure.frames = [
+      {
+        ordinal: 0,
+        layers: [{
+          name: 'Rig',
+          nodes: [
+            { type: 'symbol', id: 'f0-left', sourceAddress: 'Rig/LeftArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 0, localTransform: translate(100, 100) },
+            { type: 'symbol', id: 'f0-right', sourceAddress: 'Rig/RightArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 1, localTransform: translate(400, 100) },
+            {
+              type: 'opaque', id: 'f0-opaque', sourceAddress: 'Rig/Glow', opaqueKind: 'filter', drawOrder: 2, localTransform: translate(200, 200),
+              fallbackScope: 'frame-crop', fallbackAssetId: baseFrame.assetId, fallbackViewBox: { x: 0, y: 0, width: 100, height: 100 },
+            },
+            { type: 'bitmap', id: 'f0-anon', bitmapRef: 'Temp', assetId: IDS.assetChar2, drawOrder: 3, localTransform: translate(50, 50) },
+          ],
+        }],
+      },
+      {
+        ordinal: 1,
+        layers: [{
+          name: 'Rig',
+          nodes: [
+            { type: 'symbol', id: 'f1-left', sourceAddress: 'Rig/LeftArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 0, localTransform: translate(220, 140) },
+            { type: 'symbol', id: 'f1-right', sourceAddress: 'Rig/RightArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 1, localTransform: translate(520, 80) },
+          ],
+        }],
+      },
+      {
+        ordinal: 2,
+        layers: [{
+          name: 'Rig',
+          nodes: [
+            // Same draw order & shared Definition as LeftArm, but a different identity!
+            { type: 'symbol', id: 'f2-hat', sourceAddress: 'Rig/Hat', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 0, localTransform: translate(900, 300) },
+            { type: 'symbol', id: 'f2-right', sourceAddress: 'Rig/RightArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 1, localTransform: translate(560, 60) },
+          ],
+        }],
+      },
+      {
+        ordinal: 3,
+        layers: [{
+          name: 'Rig',
+          nodes: [
+            { type: 'symbol', id: 'f3-left', sourceAddress: 'Rig/LeftArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 0, localTransform: translate(340, 180) },
+            { type: 'symbol', id: 'f3-right', sourceAddress: 'Rig/RightArm', symbolRef: 'Arm', nestedDefinitionId: 'arm-def', drawOrder: 1, localTransform: translate(600, 40) },
+          ],
+        }],
+      },
+    ];
+
+    const service = new LayerService();
+    const seeded = ProjectSchema.parse(base);
+    const ownerLayer = service.createFromAnimation(seeded, IDS.shot, {
+      animationId: graphic.id,
+      startTimeMs: 0,
+      position: { x: 960, y: 540 },
+    });
+    const propRight = service.duplicateLayer(ownerLayer.project, IDS.shot, IDS.layerAsset);
+    const evaluate = (project: typeof seeded, timeMs: number, layerId: string) =>
+      evaluateShotAtTime(project.shots[0]!, timeMs, project).layers.find(({ id }) => id === layerId)!;
+
+    const ownerAt0 = evaluate(propRight.project, 0, ownerLayer.layer.id);
+    const candidates = resolveLayerAttachmentTargets(propRight.project, ownerLayer.layer, ownerAt0);
+    const candidateIdentities = candidates.map(({ target }) =>
+      target.kind === 'graphic-node' ? target.identityPath : undefined,
+    );
+    expect(candidateIdentities).toContainEqual(['addr:Rig/LeftArm', 'addr:Arm/hand']);
+    expect(candidateIdentities).toContainEqual(['addr:Rig/LeftArm', 'sym:arm-def:wrist']);
+    expect(candidateIdentities).toContainEqual(['addr:Rig/RightArm', 'addr:Arm/hand']);
+    // Unreliable opaque filter and unaddressed multi-frame temp nodes are excluded.
+    expect(candidateIdentities.some((path) => path?.some((part) => part.includes('Glow') || part.includes('f0-anon')))).toBe(false);
+
+    const leftHand = candidates.find(({ target }) =>
+      target.kind === 'graphic-node' && JSON.stringify(target.identityPath) === JSON.stringify(['addr:Rig/LeftArm', 'addr:Arm/hand']))!.target;
+    const rightHand = candidates.find(({ target }) =>
+      target.kind === 'graphic-node' && JSON.stringify(target.identityPath) === JSON.stringify(['addr:Rig/RightArm', 'addr:Arm/hand']))!.target;
+
+    const boundLeft = service.setParent(propRight.project, IDS.shot, IDS.layerAsset, ownerLayer.layer.id, 0, leftHand);
+    const boundBoth = service.setParent(boundLeft, IDS.shot, propRight.layer.id, ownerLayer.layer.id, 0, rightHand);
+
+    const left0 = evaluate(boundBoth, 0, IDS.layerAsset);
+    const right0 = evaluate(boundBoth, 0, propRight.layer.id);
+    const left1 = evaluate(boundBoth, 250, IDS.layerAsset);
+    const right1 = evaluate(boundBoth, 250, propRight.layer.id);
+    const left2 = evaluate(boundBoth, 500, IDS.layerAsset);
+    const right2 = evaluate(boundBoth, 500, propRight.layer.id);
+    const left3 = evaluate(boundBoth, 750, IDS.layerAsset);
+
+    // Frame 1: follows cross-frame node move even though node.id changed (f0-left -> f1-left); occurrences stay distinct.
+    expect(left1.parentAttachmentFallback).toBeUndefined();
+    expect(evaluatedLayerWorldMatrix(left1).tx - evaluatedLayerWorldMatrix(left0).tx).toBeCloseTo(120, 6);
+    expect(evaluatedLayerWorldMatrix(left1).ty - evaluatedLayerWorldMatrix(left0).ty).toBeCloseTo(40, 6);
+    expect(evaluatedLayerWorldMatrix(right1).tx - evaluatedLayerWorldMatrix(right0).tx).toBeCloseTo(120, 6);
+    expect(evaluatedLayerWorldMatrix(right1).ty - evaluatedLayerWorldMatrix(right0).ty).toBeCloseTo(-20, 6);
+
+    // Frame 2: LeftArm disappeared while Rig/Hat shares arm-def; Left prop falls back deterministically without misbinding.
+    expect(left2.parentAttachmentFallback).toBe(true);
+    expectMatrix(evaluatedLayerWorldMatrix(left2), evaluatedLayerWorldMatrix(left0));
+    expect(right2.parentAttachmentFallback).toBeUndefined();
+    expect(evaluatedLayerWorldMatrix(right2).tx - evaluatedLayerWorldMatrix(right0).tx).toBeCloseTo(160, 6);
+
+    // Frame 3: LeftArm reappears and resumes tracking accurately.
+    expect(left3.parentAttachmentFallback).toBeUndefined();
+    expect(evaluatedLayerWorldMatrix(left3).tx - evaluatedLayerWorldMatrix(left0).tx).toBeCloseTo(240, 6);
+    expect(evaluatedLayerWorldMatrix(left3).ty - evaluatedLayerWorldMatrix(left0).ty).toBeCloseTo(80, 6);
+
+    // Random seek order yields identical results to sequential playback.
+    const sequential = [0, 250, 500, 750].map((t) => evaluate(boundBoth, t, IDS.layerAsset));
+    const randomOrder = [750, 250, 500, 0].map((t) => evaluate(boundBoth, t, IDS.layerAsset));
+    expect(randomOrder[3]).toEqual(sequential[0]);
+    expect(randomOrder[1]).toEqual(sequential[1]);
+    expect(randomOrder[2]).toEqual(sequential[2]);
+    expect(randomOrder[0]).toEqual(sequential[3]);
+
+    // Path occupied by a different identity on Frame 0 triggers fallback instead of silent misbind.
+    const hijacked = ProjectSchema.parse({
+      ...boundBoth,
+      animations: boundBoth.animations.map((anim) =>
+        isFlaGraphicDefinition(anim) && anim.structure
+          ? {
+              ...anim,
+              structure: {
+                ...anim.structure,
+                frames: anim.structure.frames.map((frame) =>
+                  frame.ordinal === 0
+                    ? {
+                        ...frame,
+                        layers: frame.layers.map((layerEntry) => ({
+                          ...layerEntry,
+                          nodes: layerEntry.nodes.map((node) =>
+                            node.id === 'f0-left' ? { ...node, sourceAddress: 'Rig/Hijacked', localTransform: translate(999, 999) } : node,
+                          ),
+                        })),
+                      }
+                    : frame,
+                ),
+              },
+            }
+          : anim,
+      ),
+    });
+    const hijackedPose = evaluate(hijacked, 0, IDS.layerAsset);
+    expect(hijackedPose.parentAttachmentFallback).toBe(true);
+    expectMatrix(evaluatedLayerWorldMatrix(hijackedPose), evaluatedLayerWorldMatrix(left0));
+
+    // Frozen v44 schema rejects v45 identityPath, while migrateProject upgrades provable v44 nodePath and keeps unprovable ones repairable.
+    expect(ProjectV44Schema.safeParse({ ...boundBoth, schemaVersion: 44 }).success).toBe(false);
+    const propOpaque = service.duplicateLayer(boundBoth, IDS.shot, IDS.layerAsset);
+    const fallbackMatrix = boundBoth.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)!.parentAttachment!.ownerLocalFallback;
+    const v44Payload = {
+      ...propOpaque.project,
+      schemaVersion: 44,
+      shots: propOpaque.project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) => {
+          if (layer.id === IDS.layerAsset) {
+            return { ...layer, parentAttachment: { target: { kind: 'graphic-node', nodePath: ['f0-left', 'hand'] }, ownerLocalFallback: fallbackMatrix } };
+          }
+          if (layer.id === propRight.layer.id) {
+            return { ...layer, parentAttachment: { target: { kind: 'graphic-node', nodePath: ['f0-opaque'] }, ownerLocalFallback: fallbackMatrix } };
+          }
+          if (layer.id === propOpaque.layer.id) {
+            return {
+              ...layer,
+              parentLayerId: ownerLayer.layer.id,
+              parentAttachment: { target: { kind: 'graphic-node', nodePath: ['f0-anon'] }, ownerLocalFallback: fallbackMatrix },
+            };
+          }
+          return layer;
+        }),
+      })),
+    };
+    const migrated = migrateProject(v44Payload);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    const upgradedLeft = migrated.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)!;
+    const keptOpaque = migrated.shots[0]!.layers.find(({ id }) => id === propRight.layer.id)!;
+    const keptAnon = migrated.shots[0]!.layers.find(({ id }) => id === propOpaque.layer.id)!;
+    expect(upgradedLeft.parentAttachment?.target).toEqual({ kind: 'graphic-node', identityPath: ['addr:Rig/LeftArm', 'addr:Arm/hand'] });
+    expect(keptOpaque.parentAttachment?.target).toEqual({ kind: 'graphic-node', nodePath: ['f0-opaque'] });
+    expect(keptAnon.parentAttachment?.target).toEqual({ kind: 'graphic-node', nodePath: ['f0-anon'] });
+    expect(evaluate(migrated, 250, IDS.layerAsset).parentAttachmentFallback).toBeUndefined();
+    expect(evaluatedLayerWorldMatrix(evaluate(migrated, 250, IDS.layerAsset)).tx - evaluatedLayerWorldMatrix(left0).tx).toBeCloseTo(120, 6);
+    expect(evaluate(migrated, 0, propRight.layer.id).parentAttachmentFallback).toBe(true);
+    expect(evaluate(migrated, 0, propOpaque.layer.id).parentAttachmentFallback).toBe(true);
+    // Unprovable legacy targets remain cleanly repairable by detaching or rebinding to root.
+    const repaired = service.setParent(migrated, IDS.shot, propRight.layer.id, ownerLayer.layer.id, 0);
+    expect(repaired.shots[0]!.layers.find(({ id }) => id === propRight.layer.id)?.parentAttachment).toBeUndefined();
+
+    // Two distinct owner Layers sharing the same Graphic Definition never cross-bind.
+    const secondOwner = service.duplicateLayer(boundBoth, IDS.shot, ownerLayer.layer.id);
+    const movedSecond = service.updatePosition(secondOwner.project, IDS.shot, secondOwner.layer.id, { x: 1_500, y: 800 });
+    expectMatrix(
+      evaluatedLayerWorldMatrix(evaluate(movedSecond, 250, IDS.layerAsset)),
+      evaluatedLayerWorldMatrix(left1),
+    );
+    const duplicatedShot = new ShotService().duplicate(migrated, IDS.shot).shots[1]!;
+    const copiedProp = duplicatedShot.layers.find(({ name }) => name === upgradedLeft.name)!;
+    expect(copiedProp.parentAttachment?.target).toEqual({ kind: 'graphic-node', identityPath: ['addr:Rig/LeftArm', 'addr:Arm/hand'] });
   });
 });

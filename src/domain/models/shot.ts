@@ -10,6 +10,7 @@ import {
   LayerV41Schema,
   LayerV42Schema,
   LayerV43Schema,
+  LayerV44Schema,
   LayerV22Schema,
   LayerV21Schema,
   LayerV20Schema,
@@ -165,10 +166,7 @@ function validateShotRootKeyTimes(shot: { camera?: z.infer<typeof ShotCameraSche
 
 export const ShotV43Schema = z.strictObject(ShotV43Shape).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes);
 
-export const ShotSchema = z.strictObject({
-  ...ShotV43Shape,
-  layers: z.array(LayerSchema),
-}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine((shot, context) => {
+function validateShotDepthKeys(shot: { durationMs: number; layers: readonly Pick<Layer, 'depthKeys'>[] }, context: z.RefinementCtx) {
   shot.layers.forEach((layer, layerIndex) => layer.depthKeys?.forEach((key, index, keys) => {
     if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
       context.addIssue({
@@ -178,7 +176,17 @@ export const ShotSchema = z.strictObject({
       });
     }
   }));
-});
+}
+
+export const ShotV44Schema = z.strictObject({
+  ...ShotV43Shape,
+  layers: z.array(LayerV44Schema),
+}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine(validateShotDepthKeys);
+
+export const ShotSchema = z.strictObject({
+  ...ShotV43Shape,
+  layers: z.array(LayerSchema),
+}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine(validateShotDepthKeys);
 
 /** v19 has the same Shot fields as v20; freeze its reader independently. */
 export const ShotV19Schema = z.object({

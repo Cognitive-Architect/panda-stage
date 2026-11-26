@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraLayerTransform, cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, removeShotCameraKey,
+  cameraLayerTransform, cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, PROJECT_SCHEMA_VERSION, removeShotCameraKey,
   evaluateShotAtTime, setLayerDepth, setLayerDepthKey, moveLayerDepthKey, removeLayerDepthKey,
   setShotCameraKey, setShotCameraMode, ShotService,
 } from '../../src/domain';
@@ -30,7 +30,7 @@ describe('Shot camera', () => {
     const staged = setShotCameraKey(project, shot.id, 0, { zoom: 2 });
     const migrated = migrateProject({ ...staged, schemaVersion: 43 });
     expect(migrated.shots).toEqual(staged.shots);
-    expect(migrated.schemaVersion).toBe(44);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
   it('authors depth on a locked background, holds the initial depth and retains the last key value', () => {
