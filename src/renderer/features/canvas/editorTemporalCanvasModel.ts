@@ -79,6 +79,7 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
           : undefined;
       return {
         id: layer.id,
+        ...(layer.source.kind === 'control' ? { control: true } : {}),
         ...(evaluatedLayer?.effectiveDepth !== undefined ? { effectiveDepth: evaluatedLayer.effectiveDepth } : {}),
         ...(evaluatedLayer?.effectiveCameraSpace ? { effectiveCameraSpace: evaluatedLayer.effectiveCameraSpace } : {}),
         ...(layer.animationClip ? {

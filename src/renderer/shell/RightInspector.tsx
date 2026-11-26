@@ -22,6 +22,7 @@ import {
 } from '../features/assets/AssetCard';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { layerStore } from '../stores/layerStore';
 import { LayerDepthControl } from '../features/properties/LayerDepthControl';
 import { LayerParentControl } from '../features/properties/LayerParentControl';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
@@ -115,6 +116,7 @@ export function getRightInspectorLayerSummary(
   }
 
   const source = layer.source;
+  if (source.kind === 'control') return { asset: null, typeLabel: '控制层' };
   if (source.kind === 'asset') {
     const asset =
       snapshot.project.assets.find(
@@ -542,6 +544,7 @@ export function RightInspector({
     };
   }, [drawerOpen, embedded, narrow]);
 
+  const [createControlError, setCreateControlError] = useState('');
   const inspectorHeading = (
     <div className="right-inspector-heading">
       <h2 id="right-inspector-heading">
@@ -551,6 +554,18 @@ export function RightInspector({
             ? '字幕'
             : '属性'}
       </h2>
+      {currentShot && !dialogueMode ? (
+        <button type="button" data-ui-button data-ui-variant="secondary"
+          onClick={() => {
+            try {
+              layerStore.createControl();
+              setCreateControlError('');
+            } catch (cause) {
+              setCreateControlError(cause instanceof Error ? cause.message : '无法新建控制层。');
+            }
+          }}>新建控制层</button>
+      ) : null}
+      {createControlError ? <span role="alert">{createControlError}</span> : null}
       {(compact || landscapePresentation) &&
       (!dialogueMode || landscapePresentation) ? (
         <button

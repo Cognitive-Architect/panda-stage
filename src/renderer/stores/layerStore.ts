@@ -44,6 +44,14 @@ export class LayerStore {
     private readonly layerSelection: LayerSelection = noopLayerSelection,
   ) {}
 
+  createControl(): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.createControl(project, shotId);
+    const created = this.persistCreatedLayer(result, project.id, projectRoot, shotId);
+    this.layerSelection.select(created.id);
+    return created;
+  }
+
   createFromAsset(input: CreateLayerInput): Layer {
     const { project, projectRoot, shotId } = this.context();
     const result = this.service.createFromAsset(project, shotId, input);

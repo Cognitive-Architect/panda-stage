@@ -172,6 +172,35 @@ describe('native Layer parenting', () => {
     expect(repaired.shots).toEqual(covered.shots);
   });
 
+  it('animates multiple children with a resource-free control and leaves it out of output', () => {
+    const { project, shot, tip, other, asset } = fixture();
+    const service = new LayerService();
+    const control = service.createControl(project, shot.id);
+    expect(control.project.assets).toEqual(project.assets);
+    expect(control.layer.source).toEqual({ kind: 'control' });
+    expect(() => service.setBackground(control.project, shot.id, control.layer.id)).toThrow();
+    const first = service.setParent(control.project, shot.id, tip.id, control.layer.id, 0);
+    const bound = service.setParent(first, shot.id, other.id, control.layer.id, 0);
+    const motion = new LayerMotionService();
+    const authored = motion.applyTransform(bound, { shotId: shot.id, layerId: control.layer.id, timeMs: 750, autoKey: true },
+      { x: 1200, rotationDeg: 30, scaleX: 1.4, scaleY: 1.4 });
+    const keyed = motion.applyTransform(authored, { shotId: shot.id, layerId: tip.id, timeMs: 750, autoKey: true },
+      { x: 820, scaleX: 1.2 });
+    const current = migrateProject(JSON.parse(JSON.stringify(keyed)));
+    const at = (input: typeof project, time: number) => evaluateShotAtTime(input.shots[0]!, time, input);
+    const evaluated = at(current, 750);
+    const shownChild = evaluated.layers.find(({ id }) => id === tip.id)!;
+    expect(shownChild.parentSpace).toBeDefined();
+    expect(shownChild.scaleX).toBeCloseTo(1.2);
+    expect(evaluatedLayerWorldMatrix(evaluated.layers.find(({ id }) => id === other.id)!).tx).not.toBe(other.x);
+    expect(collectExportPreparationMedia(current)).toEqual(collectExportPreparationMedia(project));
+    expect(buildStageRenderModel(current, selectExportDrawingLayers(evaluated), { [asset.id]: 'asset:' + asset.id })
+      .layers.some(({ id }) => id === control.layer.id)).toBe(false);
+    const detached = service.deleteLayer(current, shot.id, control.layer.id, 750);
+    const after = at(detached, 750).layers.find(({ id }) => id === tip.id)!;
+    expectMatrix(evaluatedLayerWorldMatrix(after), evaluatedLayerWorldMatrix(shownChild));
+  });
+
   it('keeps attached families in screen space and preserves that space on detach', () => {
     const { project, shot, baseLayer, tip } = fixture();
     const service = new LayerService();

@@ -24,7 +24,7 @@ export function ExportOptionsDialog({ project, shot, selectedLayerId, initial, p
   const [outputScale, setOutputScale] = useState(1);
   const [atlasFormat, setAtlasFormat] = useState<'pixi' | 'panda'>('pixi');
   const exportableLayers = (shot?.layers ?? []).filter(
-    (layer) => layer.visible && layer.id !== shot?.backgroundLayerId,
+    (layer) => layer.visible && layer.source.kind !== 'control' && layer.id !== shot?.backgroundLayerId,
   );
   const defaultLayerId =
     selectedLayerId && exportableLayers.some((layer) => layer.id === selectedLayerId)

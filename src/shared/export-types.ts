@@ -532,7 +532,7 @@ export function planSpriteSheetPages(
  */
 export function scopeShotForLayerExport(shot: Shot, layerId: string): { shot: Shot; layer: Layer } {
   const layer = shot.layers.find((entry) => entry.id === layerId);
-  if (!layer) {
+  if (!layer || layer.source.kind === 'control') {
     throw new Error('请选择当前镜头中可导出的对象图层。');
   }
   if (!layer.visible) {

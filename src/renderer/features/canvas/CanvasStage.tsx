@@ -939,6 +939,7 @@ export function CanvasStage({
   }, [imageState, snapshot]);
   const isStageLayerVisualReady = useCallback(
     (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean => {
+      if (stageLayer.layer.source.kind === 'control') return true;
       if (!stageLayer.visual.parts.length) return false;
       const assetIds = visualAssetIds(stageLayer.visual, stageLayer.evaluated);
       const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(

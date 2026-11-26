@@ -50,6 +50,7 @@ export interface EvaluatedLayer {
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
+  control?: true;
   effectiveDepth?: number;
   effectiveCameraSpace?: 'world' | 'screen';
   /** Transient Animation Core values at the same absolute Shot time. */
@@ -160,7 +161,7 @@ function resolveLayerVisualState(
       currentExpressionId: null,
     };
   }
-  if (layer.source.kind === 'animation') {
+  if (layer.source.kind === 'animation' || layer.source.kind === 'control') {
     return { assetId: null, currentExpressionId: null };
   }
   const characterId = layer.source.characterId;
@@ -945,6 +946,7 @@ export function evaluateShotAtTime(
           : preTrack.animationFrame
           ? { animationFrame: preTrack.animationFrame }
           : {}),
+        ...(layer.source.kind === 'control' ? { control: true } : {}),
         anchor: layer.anchor,
         x: finalTransform.x,
         y: finalTransform.y,

@@ -228,7 +228,7 @@ function addShotVisualAssets(
     for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
       const poseLayer = projected.layers[layerIndex];
       const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
-      if (!evaluatedLayer.visible || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
+      if (!evaluatedLayer.visible || evaluatedLayer.control || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);

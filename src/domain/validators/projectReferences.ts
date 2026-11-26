@@ -598,6 +598,7 @@ export function validateProjectReferences(
         }
         return;
       }
+      if (layer.source.kind === 'control') return;
       const characterSource = layer.source;
       const character = characters.get(characterSource.characterId);
       if (!character) {

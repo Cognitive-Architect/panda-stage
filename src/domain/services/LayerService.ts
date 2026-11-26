@@ -337,6 +337,11 @@ export class LayerService {
     );
   }
 
+  createControl(project: Project, shotId: string): CreateLayerResult {
+    return this.appendLayer(project, this.shot(project, shotId), '控制层', { kind: 'control' },
+      { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 }, 1, false);
+  }
+
   createFromAnimation(
     project: Project,
     shotId: string,

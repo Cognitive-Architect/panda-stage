@@ -10,6 +10,7 @@ import {
 import {
   Group,
   Image as KonvaImage,
+  Line,
   Rect,
 } from 'react-konva';
 import {
@@ -585,7 +586,13 @@ export function SelectableLayer({
       x={render.x}
       y={render.y}
       >
-        {flaGraphicEditProjection ? (
+        {layer.source.kind === 'control' ? (
+          <Group name="canvas-control-marker">
+            <Rect x={-36} y={-36} width={72} height={72} fill="transparent" />
+            <Line points={[-36, 0, 36, 0]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
+            <Line points={[0, -36, 0, 36]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
+          </Group>
+        ) : flaGraphicEditProjection ? (
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
         ) : structuredCanvas && visual?.flaGraphic ? (
           <KonvaImage

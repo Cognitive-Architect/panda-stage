@@ -19,6 +19,7 @@ import {
   LayerV15AnimationSchema,
   LayerV3Schema,
   LayerV4Schema,
+  type Layer,
 } from './layer';
 import { TimelineEventSchema, TimelineEventV22Schema, TimelineEventV26Schema, TimelineEventV27Schema, TimelineEventV28Schema, TimelineEventV33Schema, TimelineEventV40Schema } from './timeline-event';
 import { ShotCameraSchema } from './shotCamera';
@@ -136,11 +137,14 @@ export const ShotV42Schema = ShotV20Schema.extend({
   layers: z.array(LayerV42Schema),
 }).superRefine(validateShotClipKeyTimes);
 
-export const ShotV43Schema = ShotV20Schema.extend({
+const ShotV43Shape = {
+  ...ShotV20Schema.shape,
   timelineEvents: z.array(TimelineEventSchema).default([]),
   layers: z.array(LayerV43Schema),
   camera: ShotCameraSchema.optional(),
-}).superRefine(validateShotClipKeyTimes).superRefine((shot, context) => {
+};
+
+function validateShotRootKeyTimes(shot: { camera?: z.infer<typeof ShotCameraSchema>; durationMs: number; layers: readonly Pick<Layer, 'layerMotionTracks'>[] }, context: z.RefinementCtx) {
   shot.layers.forEach((layer, layerIndex) => layer.layerMotionTracks?.forEach((track, trackIndex) =>
     track.keys.forEach((key, keyIndex) => {
       if (key.timeMs > shot.durationMs) context.addIssue({
@@ -157,11 +161,14 @@ export const ShotV43Schema = ShotV20Schema.extend({
       });
     }
   });
-});
+}
 
-export const ShotSchema = ShotV43Schema.safeExtend({
+export const ShotV43Schema = z.strictObject(ShotV43Shape).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes);
+
+export const ShotSchema = z.strictObject({
+  ...ShotV43Shape,
   layers: z.array(LayerSchema),
-}).superRefine((shot, context) => {
+}).superRefine(validateShotClipKeyTimes).superRefine(validateShotRootKeyTimes).superRefine((shot, context) => {
   shot.layers.forEach((layer, layerIndex) => layer.depthKeys?.forEach((key, index, keys) => {
     if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
       context.addIssue({

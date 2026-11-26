@@ -285,7 +285,7 @@ function buildFormalStageRenderModel(
   }
 
   const drawingLayers = evaluatedShot.layers
-    .filter((layer) => resolveLayerCameraTransform(layer, options?.camera, project.width, project.height) !== null)
+    .filter((layer) => !layer.control && resolveLayerCameraTransform(layer, options?.camera, project.width, project.height) !== null)
     .sort(compareCameraDrawingLayers);
   const layers = drawingLayers.map((layer) => {
     const visual = resolveLayerVisualParts(

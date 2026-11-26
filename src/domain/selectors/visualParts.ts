@@ -1431,6 +1431,12 @@ export function resolveLayerVisualParts(
   }
 
   const source = layer.source;
+  if (source.kind === 'control') {
+    return {
+      ...baseResult(evaluated, 'ordinary-image', null, [], null, { required: [], candidates: [], fallback: [] }),
+      combinedLocalBounds: { x: -36, y: -36, width: 72, height: 72 },
+    };
+  }
   if (source.kind === 'asset') {
     const asset = imageAsset(project, evaluated.assetId || source.assetId, layer.id);
     const part: LayerVisualPart = {

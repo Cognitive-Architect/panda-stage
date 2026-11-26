@@ -271,11 +271,15 @@ export const VideoLayerSourceSchema = z
     audioAssetId: IdSchema.optional(),
   })
   .strict();
-export const LayerSourceSchema = z.discriminatedUnion('kind', [
+const LayerSourceV43Schema = z.discriminatedUnion('kind', [
   AssetLayerSourceSchema,
   CharacterLayerSourceV15Schema,
   AnimationLayerSourceSchema,
   VideoLayerSourceSchema,
+]);
+export const LayerSourceSchema = z.discriminatedUnion('kind', [
+  ...LayerSourceV43Schema.options,
+  z.object({ kind: z.literal('control') }).strict(),
 ]);
 export const AnimationPlaybackSchema = AnimationPlaybackV22Schema;
 
@@ -377,10 +381,9 @@ export const LayerV41Schema = LayerV32Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
 });
 
-export const LayerV42Schema = z
-  .object({
+const LayerV42Shape = {
     ...LayerV15AnimationShape,
-    source: LayerSourceSchema,
+    source: LayerSourceV43Schema,
     /** Authored first frame offset for Graphic or raster animation instances. */
     animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
     animationPlayback: AnimationPlaybackSchema.optional(),
@@ -391,9 +394,9 @@ export const LayerV42Schema = z
     flaGraphicInstanceTextOverrides: FlaGraphicInstanceTextOverridesSchema.optional(),
     animationSourceRange: AnimationSourceRangeSchema.optional(),
     animationClip: AnimationClipSchema.optional(),
-  })
-  .strict()
-  .superRefine((layer, context) => {
+};
+
+function validateModernLayer(layer: Omit<z.output<z.ZodObject<typeof LayerV42Shape>>, 'source'> & { source: LayerSource }, context: z.RefinementCtx) {
     validateAnimationLayerFields(layer, context, true);
     validateClipOwnership(layer, context);
     if (layer.animationSourceRange && layer.source.kind !== 'animation') {
@@ -403,20 +406,25 @@ export const LayerV42Schema = z
         message: 'Animation source ranges require an animation layer.',
       });
     }
-  });
+  }
+
+export const LayerV42Schema = z.strictObject(LayerV42Shape).superRefine(validateModernLayer);
 
 const LayerSpaceMatrixSchema = z.object({
   a: FiniteNumberSchema, b: FiniteNumberSchema, c: FiniteNumberSchema,
   d: FiniteNumberSchema, tx: FiniteNumberSchema, ty: FiniteNumberSchema,
 }).strict();
 
-export const LayerV43Schema = LayerV42Schema.safeExtend({
+const LayerV43Shape = {
+  ...LayerV42Shape,
   parentLayerId: IdSchema.optional(),
   /** Maps authored local animation into the current parent's space (or world when detached). */
   parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
   /** Local root motion for layers without a Graphic Layer Clip. */
   layerMotionTracks: z.array(LayerAnimationTrackSchema).optional(),
-}).superRefine((layer, context) => {
+};
+
+function validateLayerRootTracks(layer: Pick<Layer, 'id' | 'layerMotionTracks' | 'animationClip'>, context: z.RefinementCtx) {
   const properties = new Set<string>();
   layer.layerMotionTracks?.forEach((track, index) => {
     if (track.target.layerId !== layer.id || properties.has(track.property) || layer.animationClip?.version === 2) {
@@ -427,16 +435,20 @@ export const LayerV43Schema = LayerV42Schema.safeExtend({
     }
     properties.add(track.property);
   });
-});
+}
+
+export const LayerV43Schema = z.strictObject(LayerV43Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 
 const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
 
-export const LayerSchema = LayerV43Schema.safeExtend({
+export const LayerSchema = z.strictObject({
+  ...LayerV43Shape,
+  source: LayerSourceSchema,
   /** Absent values inherit the parent's effective depth and camera space. */
   depth: LayerDepthSchema.optional(),
   depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
   cameraSpace: z.enum(['world', 'screen']).optional(),
-});
+}).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
 export const LayerV16Schema = z
