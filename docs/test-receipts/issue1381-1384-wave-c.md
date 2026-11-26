@@ -34,4 +34,9 @@
 - 本地自动化。相关缓动面板 8 项、基础模板 3 项、头部与脸嘴组合 1 项、走跑 1 项、批量改时／Graphic v2 复制／曲线路径 3 项、舞台缓存签名 28 项通过。改动 TypeScript 文件的定向 ESLint、`pnpm typecheck` 与含类型检查的 `pnpm build` 通过。
 - 施工方 Windows Electron。修复前，AN06「朱孝天女儿」在 1958ms 仍屈腿，2000ms 突然切回站姿。原生分件动作现在以静止姿势进入与退出，起步与收步保留膝踝连接及原有循环节拍。样本用非中心大腿 pivot，分别在正向和镜像下完成原地走路、带位移跑步、保存重开及 1500ms 产品预览。正向正式 MP4 完成，抽取 42ms、1500ms、2000ms 三张代表帧。验收目录为 `D:/PandaStage-Acceptance/issue-1386/gait-boundary-WzJZT6`、`D:/PandaStage-Acceptance/issue-1386/legs-xyyM1q` 与 `D:/PandaStage-Acceptance/issue-1386/legs-F6aHN7`。
 - 真实短腿样本的正式求值补验。正向和镜像分别覆盖原地／位移走与跑，共 8 组。首帧腿部局部矩阵连续，结束前 1ms 至结束帧的局部平移变化小于 1 个逻辑像素。重复周期同相位值相等。走／跑位移的支撑段横向漂移分别约 0.025／0.048 个逻辑像素。原地模式按设计保留跑步机式脚部运动。回执为 `D:/PandaStage-Acceptance/issue-1386/short-leg-mode-matrix.json`。
-- 交付及待验。GitHub 仍报告母 PR 与主线冲突，无自动精简 CI 结果。主线 v46 的相机、坐标、迁移及 Graphic 复制／生成组合待授权集成后验收。主线已存在 Graphic 内部 blend、颜色及遮罩能力，尚无等价的全 Layer 实例正式效果字段。C04 的提交、清除持久化、Undo/Redo、正式 MP4／PNG 及结构 Graphic 组合待 Schema 协调。现有独白黑幕回执仍有效。本地素材尚无符合条件的真实长腿角色，OWNER UAT 待执行。
+- 交付及待验。GitHub 仍报告母 PR 与主线冲突，无自动精简 CI 结果。主线 v46 的相机、坐标、迁移及 Graphic 复制／生成组合待授权集成后验收。主线已存在 Graphic 内部 blend、颜色及遮罩能力，尚无等价的全 Layer 实例正式效果字段。C04 的提交、清除持久化、Undo/Redo、正式 MP4／PNG 及结构 Graphic 组合待 Schema 协调。现有独白黑幕回执仍有效。OWNER UAT 待执行。
+
+### #1386 长腿样本
+
+- 使用本机 Adobe Animate 样本 `LayerParenting_Walkcycle.fla`。验收副本重封 ZIP，原归档与原始图稿保持原样。复用 Panda Stage 的 FLA 显示列表与 SVG 生成，按原始大腿、小腿、脚踝与鞋的比例搭建中性站姿。该回执覆盖 Panda Stage 对这些真实分件生成的动作，原 FLA 父子链与动画曲线的导入保真另属导入流程。
+- 源码与本地正式求值。对真实分件样本测试正向／镜像、原地／带位移、走／跑共 8 种组合。左大腿使用非中心 pivot，连续双周期的同相位通道一致。首帧腿部局部矩阵连续，收步前 1ms 至结束帧局部平移变化最大 0.47 个逻辑像素。带位移的走／跑每周期约 138.16／244.91 个逻辑像素，采样支撑段脚横向漂移最大为 0.093／0.165 个逻辑像素。原地模式根位移为 0。回执为 `D:/PandaStage-Acceptance/issue-1386/long-leg-mode-matrix.json`。
