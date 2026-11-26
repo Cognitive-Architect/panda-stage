@@ -5,6 +5,8 @@ import type { LayerAttachmentTarget } from '../models';
 import type { FlaInstanceColor } from '../../shared/fla-instance-color';
 import { FlaGraphicInstanceTextOverridesSchema } from '../models/flaGraphicInstanceText';
 import {
+  LAYER_DEPTH_MAX,
+  LAYER_DEPTH_MIN,
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
   PROJECT_HEIGHT,
@@ -68,8 +70,18 @@ import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
 import { evaluatedLayerWorldMatrix, validLayerParentTargets } from '../layer-parent-space';
-import { evaluateShotAtTime } from '../evaluate-shot-at-time';
+import { evaluateShotAtTime, type EvaluatedLayer } from '../evaluate-shot-at-time';
 import { remapLayerMotionOwner, syncLayerAnimationClipBasis } from '../layer-animation';
+
+function preservedDetachedDepth(
+  layer: Pick<Layer, 'depth' | 'depthKeys'>,
+  pose: Pick<EvaluatedLayer, 'effectiveDepth'> | undefined,
+): number | undefined {
+  if (layer.depthKeys?.length || layer.depth !== undefined) return layer.depth;
+  const inherited = pose?.effectiveDepth;
+  if (inherited === undefined || !Number.isFinite(inherited)) return undefined;
+  return Math.max(LAYER_DEPTH_MIN, Math.min(LAYER_DEPTH_MAX, inherited));
+}
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -1745,6 +1757,7 @@ export class LayerService {
       layers: shot.layers.map((layer) => layer.id === childId ? {
         ...layer, parentLayerId: parentId ?? undefined, parentSpaceOffset: offset,
         cameraSpace: parentId ? undefined : childPose?.effectiveCameraSpace,
+        depth: parentId ? layer.depth : preservedDetachedDepth(layer, childPose),
         parentAttachment: target && targetLocal ? { target, ownerLocalFallback: targetLocal } : undefined,
       } : layer),
     });
@@ -1772,6 +1785,7 @@ export class LayerService {
             parentAttachment: undefined,
             parentSpaceOffset: inherited?.get(candidate.id)?.parentSpace,
             cameraSpace: inherited?.get(candidate.id)?.effectiveCameraSpace,
+            depth: preservedDetachedDepth(candidate, inherited?.get(candidate.id)),
           }
         : candidate,
     );
@@ -1817,7 +1831,8 @@ export class LayerService {
     const sameShot = shot.id === destination.id;
     const keepParent = sameShot && destination.layers.some(({ id }) => id === layer.parentLayerId);
     const detachedPose = !keepParent && layer.parentLayerId
-      ? evaluateShotAtTime(shot, timeMs, sourceProject).layers.find(({ id }) => id === layerId)
+      ? projectShotDialogueVisual(sourceProject, shot, evaluateShotAtTime(shot, timeMs, sourceProject))
+        .layers.find(({ id }) => id === layerId)
       : undefined;
     const copiedSpace = detachedPose?.parentSpace ?? layer.parentSpaceOffset;
 
@@ -1855,6 +1870,7 @@ export class LayerService {
       parentAttachment: keepParent ? layer.parentAttachment : undefined,
       parentSpaceOffset: copiedSpace,
       cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
+      depth: detachedPose ? preservedDetachedDepth(layer, detachedPose) : layer.depth,
       name: `${layer.name} 副本`,
       x: position.x,
       y: position.y,

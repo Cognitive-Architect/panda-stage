@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService,
-  resolveLayerAttachmentTargets, type Layer, type TimelineEvent,
+  cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService, migrateProject, ProjectSchema,
+  resolveLayerAttachmentTargets, setLayerDepth, setLayerDepthKey, ShotService, type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
@@ -383,5 +383,104 @@ describe('native Layer parenting', () => {
     expect(frames.find(({ id }) => id === middle.id)?.parentSpace).toBeUndefined();
     expect(frames.find(({ id }) => id === other.id)?.parentSpace).toBeUndefined();
     expect(frames.find(({ id }) => id === tip.id)?.parentSpace).toBeDefined();
+  });
+
+  it('preserves inherited effective depth across unparent, parent deletion, and cross-shot duplication without overwriting explicit depth', () => {
+    const { project, shot, baseLayer, middle, tip } = fixture();
+    const service = new LayerService();
+    const shots = new ShotService();
+    const camera = { centerX: 1060, centerY: 540, zoom: 2, rotationDeg: 0 };
+    const poseAt = (input: typeof project, shotId: string, layerId: string, timeMs: number) =>
+      evaluateShotAtTime(input.shots.find(({ id }) => id === shotId)!, timeMs, input)
+        .layers.find(({ id }) => id === layerId)!;
+    const projectionOf = (pose: ReturnType<typeof poseAt>) =>
+      cameraLayerTransform(camera, 1920, 1080, pose.effectiveDepth ?? 0, pose.effectiveCameraSpace ?? 'world');
+
+    // Static parent depth -400 at camera zoom=2 => 6x projected scale.
+    const deepParent = setLayerDepth(project, shot.id, baseLayer.id, -400);
+    const bound = service.setParent(deepParent, shot.id, tip.id, baseLayer.id, 0);
+    const beforeDetach = poseAt(bound, shot.id, tip.id, 500);
+    expect(beforeDetach.effectiveDepth).toBe(-400);
+    expect(projectionOf(beforeDetach)?.scaleX).toBeCloseTo(6, 8);
+
+    // Unparenting freezes inherited effective depth -400 and keeps world matrix & 6x projection.
+    const detached = service.setParent(bound, shot.id, tip.id, null, 500);
+    const detachedPose = poseAt(detached, shot.id, tip.id, 500);
+    expect(detached.shots[0]!.layers.find(({ id }) => id === tip.id)?.depth).toBe(-400);
+    expect(detachedPose.effectiveDepth).toBe(-400);
+    expectMatrix(evaluatedLayerWorldMatrix(detachedPose), evaluatedLayerWorldMatrix(beforeDetach));
+    expect(projectionOf(detachedPose)).toEqual(projectionOf(beforeDetach));
+
+    // Save/reopen and Undo/Redo keep the preserved depth cleanly.
+    const store = new EditorProjectStore();
+    store.open('D:/detach-depth.pandastage', bound);
+    store.updateProject(detached, 'Detach preserving depth');
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()?.project).toEqual(bound);
+    expect(store.redo()).toBe(true);
+    const reopened = migrateProject(JSON.parse(JSON.stringify(store.getSnapshot()?.project)));
+    expect(poseAt(reopened, shot.id, tip.id, 500).effectiveDepth).toBe(-400);
+    expect(projectionOf(poseAt(reopened, shot.id, tip.id, 500))?.scaleX).toBeCloseTo(6, 8);
+
+    // Deleting the parent at 500ms also preserves inherited depth & 6x projection.
+    const deletedParent = service.deleteLayer(bound, shot.id, baseLayer.id, 500);
+    const afterDeletePose = poseAt(deletedParent, shot.id, tip.id, 500);
+    expect(deletedParent.shots[0]!.layers.find(({ id }) => id === tip.id)?.depth).toBe(-400);
+    expect(afterDeletePose.effectiveDepth).toBe(-400);
+    expectMatrix(evaluatedLayerWorldMatrix(afterDeletePose), evaluatedLayerWorldMatrix(beforeDetach));
+    expect(projectionOf(afterDeletePose)).toEqual(projectionOf(beforeDetach));
+
+    // Dynamic parent depthKeys: freeze only the detach-moment scalar, never copy/bake the parent's depth track.
+    const dynamicBase = setLayerDepthKey(setLayerDepth(project, shot.id, baseLayer.id, 100), shot.id, baseLayer.id, 1_000, -500);
+    const dynamicBound = service.setParent(dynamicBase, shot.id, tip.id, baseLayer.id, 0);
+    expect(poseAt(dynamicBound, shot.id, tip.id, 500).effectiveDepth).toBe(-200);
+    const sameShotCopy = service.duplicateLayer(dynamicBound, shot.id, tip.id, shot.id, 500);
+    expect(sameShotCopy.layer.parentLayerId).toBe(baseLayer.id);
+    expect(sameShotCopy.layer.depth).toBeUndefined();
+    expect(poseAt(sameShotCopy.project, shot.id, sameShotCopy.layer.id, 1_000).effectiveDepth).toBe(-500);
+
+    const withDest = shots.create(dynamicBound, { name: 'Cross-shot target', durationMs: shot.durationMs });
+    const destId = withDest.shots.at(-1)!.id;
+    const crossShot = service.duplicateLayer(withDest, shot.id, tip.id, destId, 500);
+    expect(crossShot.layer.parentLayerId).toBeUndefined();
+    expect(crossShot.layer.depth).toBe(-200);
+    expect(crossShot.layer.depthKeys).toBeUndefined();
+    expect(poseAt(crossShot.project, destId, crossShot.layer.id, 0).effectiveDepth).toBe(-200);
+    expect(poseAt(crossShot.project, destId, crossShot.layer.id, 1_000).effectiveDepth).toBe(-200);
+
+    const dynamicDetached = service.setParent(dynamicBound, shot.id, tip.id, null, 500);
+    expect(dynamicDetached.shots[0]!.layers.find(({ id }) => id === tip.id)?.depth).toBe(-200);
+    expect(dynamicDetached.shots[0]!.layers.find(({ id }) => id === tip.id)?.depthKeys).toBeUndefined();
+
+    // Explicit child depth and depthKeys must never be overwritten on detach, delete, or cross-shot duplicate.
+    const explicitScalar = setLayerDepth(bound, shot.id, tip.id, 250);
+    expect(service.setParent(explicitScalar, shot.id, tip.id, null, 500).shots[0]!.layers.find(({ id }) => id === tip.id)?.depth).toBe(250);
+    expect(service.deleteLayer(explicitScalar, shot.id, baseLayer.id, 500).shots[0]!.layers.find(({ id }) => id === tip.id)?.depth).toBe(250);
+    const explicitKeys = setLayerDepthKey(setLayerDepth(bound, shot.id, tip.id, 50), shot.id, tip.id, 1_000, 350);
+    const explicitKeysLayer = explicitKeys.shots[0]!.layers.find(({ id }) => id === tip.id)!;
+    const detachedExplicitKeys = service.setParent(explicitKeys, shot.id, tip.id, null, 500).shots[0]!.layers.find(({ id }) => id === tip.id)!;
+    expect(detachedExplicitKeys.depthKeys).toEqual(explicitKeysLayer.depthKeys);
+    expect(detachedExplicitKeys.depth).toBe(explicitKeysLayer.depth);
+    const destForKeys = shots.create(explicitKeys, { name: 'Keys dest', durationMs: shot.durationMs });
+    const crossExplicitKeys = service.duplicateLayer(destForKeys, shot.id, tip.id, destForKeys.shots.at(-1)!.id, 500);
+    expect(crossExplicitKeys.layer.depthKeys).toEqual(explicitKeysLayer.depthKeys);
+    expect(crossExplicitKeys.layer.depth).toBe(explicitKeysLayer.depth);
+
+    // Control layer parent with non-zero depth preserves child effective depth on delete and detach.
+    const control = service.createControl(project, shot.id);
+    const deepControl = setLayerDepth(control.project, shot.id, control.layer.id, -350);
+    const controlBound = service.setParent(deepControl, shot.id, middle.id, control.layer.id, 0);
+    const afterControlDelete = service.deleteLayer(controlBound, shot.id, control.layer.id, 500);
+    expect(afterControlDelete.shots[0]!.layers.find(({ id }) => id === middle.id)?.depth).toBe(-350);
+
+    // Character-part attachment parent with non-zero depth preserves depth on detach and delete.
+    const data = characterPartAnimationFixture();
+    const deepChar = setLayerDepth(data.project, IDS.shot, data.layerId, -300);
+    const partTarget = { kind: 'character-part' as const, partId: data.imagePartId };
+    const partBound = service.setParent(deepChar, IDS.shot, IDS.layerAsset, data.layerId, 500, partTarget);
+    const partDetached = service.setParent(partBound, IDS.shot, IDS.layerAsset, null, 500);
+    expect(partDetached.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)?.depth).toBe(-300);
+    const partDeleted = service.deleteLayer(partBound, IDS.shot, data.layerId, 500);
+    expect(partDeleted.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)?.depth).toBe(-300);
   });
 });
