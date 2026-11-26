@@ -551,6 +551,13 @@ export class LayerStore {
     return next;
   }
 
+  setCameraAttachment(layerId: string, attached: boolean): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setCameraAttachment(project, shotId, layerId, attached);
+    if (next !== project) this.editorStore.updateProject(next, '切换相机附着');
+    return next;
+  }
+
   setParent(childId: string, parentId: string | null, timeMs: number): Project {
     const { project, shotId } = this.context();
     const next = this.service.setParent(project, shotId, childId, parentId, timeMs);

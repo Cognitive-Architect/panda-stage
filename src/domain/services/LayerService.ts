@@ -513,13 +513,14 @@ export class LayerService {
       );
     }
     if (shot.backgroundLayerId === layer.id) {
-      if (layer.locked && !layer.parentLayerId && !layer.parentSpaceOffset && !layer.layerMotionTracks) return project;
+      if (layer.locked && !layer.parentLayerId && !layer.parentSpaceOffset && !layer.layerMotionTracks && layer.cameraSpace !== 'screen') return project;
       const layers = [...shot.layers];
       layers[layerIndex] = {
         ...layer,
         parentLayerId: undefined,
         parentSpaceOffset: undefined,
         layerMotionTracks: undefined,
+        cameraSpace: undefined,
         locked: true,
         zIndex: 0,
       };
@@ -587,7 +588,7 @@ export class LayerService {
     ];
     const changed =
       backgroundIndex !== 0 ||
-      Boolean(background.parentLayerId || background.parentSpaceOffset || background.layerMotionTracks) ||
+      Boolean(background.parentLayerId || background.parentSpaceOffset || background.layerMotionTracks || background.cameraSpace === 'screen') ||
       background.x !== filledBackground.x ||
       background.y !== filledBackground.y ||
       background.scaleX !== filledBackground.scaleX ||
@@ -1690,6 +1691,21 @@ export class LayerService {
       entry.id === layerId ? { ...entry, ...changes } : entry) });
   }
 
+  setCameraAttachment(project: Project, shotId: string, layerId: string, attached: boolean): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (layer.parentLayerId) throw new Error('请先解除父级绑定，再切换相机附着。');
+    if ((layer.cameraSpace === 'screen') === attached) return project;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) => entry.id === layerId
+        ? { ...entry, cameraSpace: attached ? 'screen' : undefined }
+        : entry),
+    });
+  }
+
   setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number): Project {
     const shot = this.shot(project, shotId);
     const child = shot.layers[this.layerIndex(shot, childId)]!;
@@ -1700,7 +1716,8 @@ export class LayerService {
       throw new Error('请选择同一镜头内不会形成循环的父级图层。');
     }
     const poses = evaluateShotAtTime(shot, timeMs, project).layers;
-    const oldSpace = poses.find(({ id }) => id === childId)?.parentSpace;
+    const childPose = poses.find(({ id }) => id === childId);
+    const oldSpace = childPose?.parentSpace;
     const parent = poses.find(({ id }) => id === parentId);
     const parentInverse = parent && !parent.parentSpaceUnavailable && invertAffineMatrix(evaluatedLayerWorldMatrix(parent));
     if (parent && !parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
@@ -1709,6 +1726,7 @@ export class LayerService {
       ...shot,
       layers: shot.layers.map((layer) => layer.id === childId ? {
         ...layer, parentLayerId: parentId ?? undefined, parentSpaceOffset: offset,
+        cameraSpace: parentId ? undefined : childPose?.effectiveCameraSpace,
       } : layer),
     });
   }
@@ -1725,11 +1743,16 @@ export class LayerService {
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
     const inherited = shot.layers.some(({ parentLayerId }) => parentLayerId === layerId)
-      ? new Map(evaluateShotAtTime(shot, timeMs, project).layers.map(({ id, parentSpace }) => [id, parentSpace]))
+      ? new Map(evaluateShotAtTime(shot, timeMs, project).layers.map((pose) => [pose.id, pose]))
       : null;
     const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) =>
       candidate.parentLayerId === layerId
-        ? { ...candidate, parentLayerId: undefined, parentSpaceOffset: inherited?.get(candidate.id) }
+        ? {
+            ...candidate,
+            parentLayerId: undefined,
+            parentSpaceOffset: inherited?.get(candidate.id)?.parentSpace,
+            cameraSpace: inherited?.get(candidate.id)?.effectiveCameraSpace,
+          }
         : candidate,
     );
     const remainingShot = { ...shot, layers: remaining };
@@ -1773,8 +1796,10 @@ export class LayerService {
     const destination = this.shot(project, destinationShotId);
     const sameShot = shot.id === destination.id;
     const keepParent = sameShot && destination.layers.some(({ id }) => id === layer.parentLayerId);
-    const copiedSpace = keepParent || !layer.parentLayerId ? layer.parentSpaceOffset :
-      evaluateShotAtTime(shot, timeMs, sourceProject).layers.find(({ id }) => id === layerId)?.parentSpace;
+    const detachedPose = !keepParent && layer.parentLayerId
+      ? evaluateShotAtTime(shot, timeMs, sourceProject).layers.find(({ id }) => id === layerId)
+      : undefined;
+    const copiedSpace = detachedPose?.parentSpace ?? layer.parentSpaceOffset;
 
     const usedIds = this.projectIds(project);
     const duplicateId = this.nextUniqueId(usedIds);
@@ -1808,6 +1833,7 @@ export class LayerService {
       ...remapLayerMotionOwner(layer, duplicateId),
       parentLayerId: keepParent ? layer.parentLayerId : undefined,
       parentSpaceOffset: copiedSpace,
+      cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
       name: `${layer.name} 副本`,
       x: position.x,
       y: position.y,
@@ -1930,6 +1956,7 @@ export class LayerService {
       parentLayerId: undefined,
       parentSpaceOffset: undefined,
       layerMotionTracks: undefined,
+      cameraSpace: undefined,
       x: PROJECT_WIDTH / 2,
       y: PROJECT_HEIGHT / 2,
       scaleX: cover.scale,

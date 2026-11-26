@@ -172,6 +172,21 @@ describe('native Layer parenting', () => {
     expect(repaired.shots).toEqual(covered.shots);
   });
 
+  it('keeps attached families in screen space and preserves that space on detach', () => {
+    const { project, shot, baseLayer, tip } = fixture();
+    const service = new LayerService();
+    const bound = service.setParent(project, shot.id, tip.id, baseLayer.id, 0);
+    const attached = service.setCameraAttachment(bound, shot.id, baseLayer.id, true);
+    const at = (input: typeof project) => evaluateShotAtTime(input.shots[0]!, 750, input).layers.find(({ id }) => id === tip.id)!;
+    expect(at(attached).effectiveCameraSpace).toBe('screen');
+    expect(() => service.setCameraAttachment(attached, shot.id, tip.id, false)).toThrow();
+    const detached = service.setParent(attached, shot.id, tip.id, null, 750);
+    const restored = migrateProject(JSON.parse(JSON.stringify(detached)));
+    expect(at(restored).effectiveCameraSpace).toBe('screen');
+    expectMatrix(evaluatedLayerWorldMatrix(at(restored)), evaluatedLayerWorldMatrix(at(attached)));
+    expect(at(service.setCameraAttachment(restored, shot.id, tip.id, false)).effectiveCameraSpace).toBeUndefined();
+  });
+
   it('orders camera planes and skips clipped asset resolution after evaluating the parent chain', () => {
     const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
     const bound = new LayerService().setParent(project, shot.id, tip.id, baseLayer.id, 0);

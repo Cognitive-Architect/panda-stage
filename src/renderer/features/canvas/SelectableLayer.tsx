@@ -67,6 +67,7 @@ export interface SelectableLayerProps {
   selected: boolean;
   directEditingEnabled?: boolean;
   inheritedSpace?: boolean;
+  projected?: boolean;
   onSelect: (layerId: string, nodeId?: CharacterNodeId) => void;
   onCommitPosition: (
     layerId: string,
@@ -114,6 +115,7 @@ export function SelectableLayer({
   visualSourceKeys,
   directEditingEnabled = true,
   inheritedSpace = false,
+  projected = false,
   onSelect,
   onCommitPosition,
   onCommitTransform,
@@ -475,7 +477,7 @@ export function SelectableLayer({
       listening={canSelect}
       name="selectable-canvas-layer"
       onDragStart={(event) => {
-        if (!inheritedSpace && layer.source.kind !== 'animation') return;
+        if (!projected && !inheritedSpace && layer.source.kind !== 'animation') return;
         event.cancelBubble = true;
         onSelect(layer.id);
       }}

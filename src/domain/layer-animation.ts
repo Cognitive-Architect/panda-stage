@@ -26,7 +26,7 @@ export interface LayerBasePose {
 }
 
 export function canAuthorLayerRootMotion(layer: Layer): boolean {
-  return Boolean(layer.parentLayerId || layer.parentSpaceOffset || layer.layerMotionTracks?.length);
+  return Boolean(layer.parentLayerId || layer.parentSpaceOffset || layer.layerMotionTracks?.length || layer.depth !== undefined || layer.depthKeys?.length || layer.cameraSpace === 'screen');
 }
 
 export function findLayerMotionGraphic(project: Project, layer: Layer) {

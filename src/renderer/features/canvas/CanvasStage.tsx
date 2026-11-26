@@ -987,9 +987,10 @@ export function CanvasStage({
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
-    if (cameraTool || cameraViewActive || pickingParent || stageLayer.evaluated.parentSpaceUnavailable) return false;
+    if (cameraTool || pickingParent || stageLayer.evaluated.parentSpaceUnavailable) return false;
     if (stageLayer.layer.source.kind !== 'animation' && !isSupportedLayerMotionLayer(snapshot?.project, shot, stageLayer.layer)) {
-      return currentTimeMs === 0;
+      return currentTimeMs === 0 && (!cameraViewActive ||
+        (timelineUi.currentTimeMs === currentTimeMs && directEditingEnabledForStageLayer(stageLayer)));
     }
     const current = editorProjectStore.getSnapshot();
     const currentShot = current?.project.shots.find(
@@ -1040,7 +1041,11 @@ export function CanvasStage({
   ): boolean => {
     if (stageLayer.evaluated.parentSpaceUnavailable) return false;
     if (stageLayer.layer.source.kind !== 'animation' && !isSupportedLayerMotionLayer(snapshot?.project, shot, stageLayer.layer)) {
-      return directEditingEnabled;
+      if (!cameraViewActive) return directEditingEnabled;
+      return timelineUi.currentTimeMs === 0 && !stageLayer.layer.locked &&
+        !stageLayer.evaluated.characterAction && stageLayer.render.visible && isStageLayerVisualReady(stageLayer) &&
+        !shot?.timelineEvents.some((event) => event.layerId === stageLayer.layer.id &&
+          (event.type === 'move' || event.type === 'scale' || event.type === 'shake'));
     }
     const evaluated = shot && snapshot
       ? evaluateShotAtTime(
@@ -1186,6 +1191,9 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const selectedLayerProjection = selectedStageLayer
+    ? resolveLayerCameraTransform(selectedStageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)
+    : null;
   const canPickParent = shot && selectedStageLayer && !selectedStageLayer.layer.locked &&
     shot.backgroundLayerId !== selectedLayerId && !cameraViewActive && !cameraTool && !armAssembly &&
     !flaGraphicEditActive && validLayerParentTargets(shot, selectedStageLayer.layer.id).length > 0;
@@ -1645,8 +1653,9 @@ export function CanvasStage({
                             characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
-                            directEditingEnabled={!armAssembly && !displayCamera && !cameraTool && !pickingParent && directEditingEnabledForStageLayer(stageLayer)}
+                            directEditingEnabled={!armAssembly && !cameraTool && !pickingParent && directEditingEnabledForStageLayer(stageLayer)}
                             inheritedSpace={Boolean(stageLayer.evaluated.parentSpace)}
+                            projected={cameraViewActive}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
@@ -1684,7 +1693,7 @@ export function CanvasStage({
                                   liveUi.currentTimeMs,
                                   current.project,
                                 ).layers.find((candidate) => candidate.id === layerId);
-                                const rootPosition = currentEvaluated?.parentSpace
+                                const rootPosition = currentEvaluated && (currentEvaluated.parentSpace || cameraViewActive)
                                   ? resolveCharacterActionRootPatch(currentEvaluated, position)
                                   : position;
                                 const patch: { x?: number; y?: number } = {};
@@ -1767,6 +1776,9 @@ export function CanvasStage({
                                       liveUi.currentTimeMs,
                                       current.project,
                                     ).layers.find((candidate) => candidate.id === layerId);
+                                    const root = currentEvaluated && cameraViewActive
+                                      ? resolveCharacterActionRootPatch(currentEvaluated, transform)
+                                      : transform;
                                     const patch: {
                                       x?: number;
                                       y?: number;
@@ -1775,28 +1787,28 @@ export function CanvasStage({
                                       rotationDeg?: number;
                                     } = {};
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.x - currentEvaluated.x) > 1e-5
+                                      root.x !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.x - currentEvaluated.x) > 1e-5)
                                     ) {
-                                      patch.x = transform.x;
+                                      patch.x = root.x;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.y - currentEvaluated.y) > 1e-5
+                                      root.y !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.y - currentEvaluated.y) > 1e-5)
                                     ) {
-                                      patch.y = transform.y;
+                                      patch.y = root.y;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.scaleX - currentEvaluated.scaleX) > 1e-5
+                                      root.scaleX !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.scaleX - currentEvaluated.scaleX) > 1e-5)
                                     ) {
-                                      patch.scaleX = transform.scaleX;
+                                      patch.scaleX = root.scaleX;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.scaleY - currentEvaluated.scaleY) > 1e-5
+                                      root.scaleY !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.scaleY - currentEvaluated.scaleY) > 1e-5)
                                     ) {
-                                      patch.scaleY = transform.scaleY;
+                                      patch.scaleY = root.scaleY;
                                     }
                                     if (
                                       !currentEvaluated ||
@@ -1886,7 +1898,7 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
-                            selected={!displayCamera && selectedLayerId === layer.id}
+                            selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(
                                 layer.id,
@@ -1909,9 +1921,9 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
-                  {!displayCamera && !cameraTool && !pickingParent && transformerVisible && selectedStageLayer ? (
+                  {!cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
                     selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
-                      <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace}>
+                      <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
                         <ParentLayerTransformer
                           key={`${projectInstanceId}:${selectedStageLayer.layer.id}:${snapshot?.revision}:${timelineUi.currentTimeMs}`}
                           nodeRef={getLayerNodeRef(selectedStageLayer.layer.id)}
