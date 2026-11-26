@@ -40,6 +40,7 @@ import {
   type TimelineEvent,
 } from '../models';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { NameSchema } from '../models/common';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
 import { resolveFlaGraphicPreviewTimeline } from '../selectors/animationSourceTimeline';
@@ -1796,6 +1797,26 @@ export class LayerService {
     return this.replaceShot(project, {
       ...shot,
       layers: this.normalizeLayerOrder(shot, ordered),
+    });
+  }
+
+  renameContentLayers(project: Project, shotId: string, names: ReadonlyMap<string, string>): Project {
+    const shot = this.shot(project, shotId);
+    const changes = new Map<string, string>();
+    for (const [id, input] of names) {
+      const layer = shot.layers[this.layerIndex(shot, id)]!;
+      this.assertContentLayer(shot, layer);
+      this.assertEditable(shot, layer);
+      const name = NameSchema.parse(input);
+      if (name !== layer.name) changes.set(id, name);
+    }
+    if (!changes.size) return project;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => {
+        const name = changes.get(layer.id);
+        return name === undefined ? layer : { ...layer, name };
+      }),
     });
   }
 

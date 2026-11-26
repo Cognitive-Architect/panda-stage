@@ -18,6 +18,7 @@ import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { BatchLayerControls } from './BatchLayerControls';
 import { DecorativeIcon } from '../../ui';
 
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -230,6 +231,11 @@ export function LayerOrderControls({
     isBackgroundLayer,
   );
 
+  const batchControls = snapshot && shot && orderedContent.length > 0 ? (
+    <BatchLayerControls key={String(editorProjectStore.getProjectInstanceId()) + shot.id}
+      snapshot={snapshot} shotId={shot.id} layers={orderedContent} />
+  ) : null;
+
   if (compact) {
     return (
       <section
@@ -399,6 +405,7 @@ export function LayerOrderControls({
           </>
         )}
         <output data-testid="layer-order-status">{status}</output>
+        {batchControls}
       </section>
     );
   }
@@ -490,6 +497,7 @@ export function LayerOrderControls({
         </p>
       ) : null}
       <output data-testid="layer-order-status">{status}</output>
+        {batchControls}
     </section>
   );
 }
