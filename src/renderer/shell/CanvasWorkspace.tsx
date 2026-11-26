@@ -1,9 +1,11 @@
+import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { CanvasStage } from '../features/canvas/CanvasStage';
 import type { AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 
 export interface CanvasWorkspaceProps {
   curveDraft?: AnimationCurveDraft | null;
+  curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -19,6 +21,7 @@ export interface CanvasWorkspaceProps {
  */
 export function CanvasWorkspace({
   curveDraft,
+  curveMotionDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -32,6 +35,7 @@ export function CanvasWorkspace({
     >
       <CanvasStage
         curveDraft={curveDraft}
+        curveMotionDraft={curveMotionDraft}
         dialogueSilence={dialogueSilence}
         showHeading={showHeading}
         showToolbar={showToolbar}

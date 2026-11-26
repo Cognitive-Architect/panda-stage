@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LayerService, ProjectSchema, ShotService } from '../../src/domain';
+import type { CurveMotionStageDraft } from '../../src/renderer/features/canvas/CurveMotionStageOverlay';
 import { ProjectToolsDrawer } from '../../src/renderer/shell/ProjectToolsDrawer';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { layerStore } from '../../src/renderer/stores/layerStore';
@@ -17,6 +18,7 @@ const PROJECT_ROOT = 'D:/curve-motion-panel.pandastage';
 let container: HTMLDivElement;
 let root: Root;
 let sourceLayerId: string;
+let overlays: Array<CurveMotionStageDraft | null>;
 
 function inputByTestId(testId: string): HTMLInputElement {
   const el = container.querySelector<HTMLInputElement>(`[data-testid="${testId}"]`);
@@ -44,6 +46,7 @@ async function setInputValue(testId: string, value: string): Promise<void> {
 beforeEach(async () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
+  overlays = [];
   const base = graphicFaceProject();
   const placed = new LayerService().createFromAnimation(base, IDS.shot, {
     animationId: FACE_GRAPHIC_ID,
@@ -64,7 +67,7 @@ beforeEach(async () => {
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(createElement(ProjectToolsDrawer, { onClose: () => undefined }));
+    root.render(createElement(ProjectToolsDrawer, { onClose: () => undefined, onCurveMotionDraft: (draft) => overlays.push(draft) }));
   });
 });
 
@@ -83,9 +86,12 @@ describe('ProjectToolsDrawer -> CurveMotionPanel (#1269 A02)', () => {
     expect(container.querySelector('[data-testid="curve-motion-preview"]')).not.toBeNull();
 
     // Draft edits and cancel do not write Project/dirty/revision/History.
-    await setInputValue('curve-motion-p3-x', '880');
+    await act(async () => overlays.at(-1)?.move('p3', { x: 880, y: 350 }));
+    expect(inputByTestId('curve-motion-p3-x').value).toBe('880');
+    expect(overlays.at(-1)?.curve.p3).toEqual({ x: 880, y: 350 });
     await act(async () => buttonByTestId('curve-motion-cancel').click());
     expect(container.querySelector('[data-testid="project-tools-home"]')).not.toBeNull();
+    expect(overlays.at(-1)).toBeNull();
     expect(editorProjectStore.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
     expect(editorProjectStore.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
 
@@ -118,9 +124,19 @@ describe('ProjectToolsDrawer -> CurveMotionPanel (#1269 A02)', () => {
     expect(layer.animationClip.tracks.find((t) => t.property === 'transform.offsetX')?.keys).toHaveLength(25);
     expect(layer.animationClip.tracks.find((t) => t.property === 'transform.offsetY')?.keys).toHaveLength(25);
 
-    // Now that layer has X/Y keys, conflict prevents overwriting.
     expect(buttonByTestId('curve-motion-submit').disabled).toBe(true);
-    expect(container.querySelector('[data-testid="curve-motion-status"]')?.textContent).toContain('已有 X/Y 位移关键帧');
+    expect(overlays.at(-1)).toBeNull();
+    const restart = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '重新开始')!;
+    await act(async () => restart.click());
+    expect(inputByTestId('curve-motion-p3-x').disabled).toBe(true);
+    expect(overlays.at(-1)?.fixedEnd).toBe(true);
+    expect(overlays.at(-1)?.replaced.length).toBeGreaterThan(0);
+    await act(async () => overlays.at(-1)?.move('p1', { x: 525, y: 600 }));
+    expect(inputByTestId('curve-motion-p1-x').value).toBe('525');
+    expect(editorProjectStore.getSnapshot()).toBe(after);
+    expect(buttonByTestId('curve-motion-submit').textContent).toContain('替换区段 X/Y');
+    await act(async () => buttonByTestId('curve-motion-submit').click());
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
   });
 
   it('rejects invalid frames, out-of-bounds points, zero-length path, and stale/locked/switched targets', async () => {

@@ -1,3 +1,4 @@
+import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import {
   useCallback,
   useEffect,
@@ -684,6 +685,7 @@ export function EditorShell({
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [productPreviewDraft, setProductPreviewDraft] = useState<Project | null>(null);
+  const [curveMotionStageDraft, setCurveMotionStageDraft] = useState<CurveMotionStageDraft | null>(null);
   const [animationCurveDraft, setAnimationCurveDraft] = useState<AnimationCurveDraft | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
@@ -3091,6 +3093,7 @@ export function EditorShell({
                   dialogueSilence={dialogueSilence}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                   curveDraft={animationCurveDraft}
+                  curveMotionDraft={curveMotionStageDraft}
                 />
               </div>
               <div className="character-float-host" ref={setCharacterFloatTarget} />
@@ -3139,6 +3142,7 @@ export function EditorShell({
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
                   onPreviewDraft={openDraftPreview}
+                  onCurveMotionDraft={setCurveMotionStageDraft}
                 />
               )}
               </GraphicFrameTargetProvider>

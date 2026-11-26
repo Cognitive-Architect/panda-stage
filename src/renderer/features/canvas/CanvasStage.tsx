@@ -1,3 +1,4 @@
+import { CurveMotionStageOverlay, type CurveMotionStageDraft } from './CurveMotionStageOverlay';
 import {
   createRef,
   useCallback,
@@ -271,6 +272,7 @@ function isCurrentCanvasAssetReady(
 
 export interface CanvasStageProps {
   curveDraft?: AnimationCurveDraft | null;
+  curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -279,6 +281,7 @@ export interface CanvasStageProps {
 
 export function CanvasStage({
   curveDraft,
+  curveMotionDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -368,6 +371,9 @@ export function CanvasStage({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [assemblingArm, setAssembly]);
 
+  const activeCurveMotion = !armAssembly && curveMotionDraft?.projectInstanceId === projectInstanceId &&
+    curveMotionDraft?.revision === snapshot?.revision && curveMotionDraft?.shotId === currentShotId &&
+    curveMotionDraft?.layerId === selectedLayerId ? curveMotionDraft : null;
   const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
@@ -1329,7 +1335,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
-  const transformerVisible = !armAssembly && (structuredTransformerVisible || layerTransformerVisible);
+  const transformerVisible = !armAssembly && !activeCurveMotion && (structuredTransformerVisible || layerTransformerVisible);
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -1833,6 +1839,7 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
+                  {activeCurveMotion ? <CurveMotionStageOverlay draft={activeCurveMotion} scale={transform.scale} /> : null}
                   {transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={

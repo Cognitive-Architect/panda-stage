@@ -1,3 +1,4 @@
+import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import { ArrowLeft, Bomb, Ghost, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
@@ -15,6 +16,7 @@ import { DesktopAutomationCard } from './DesktopAutomationCard';
 export interface ProjectToolsDrawerProps {
   onClose(): void;
   onPreview?(project: Project): void;
+  onCurveMotionDraft?(draft: CurveMotionStageDraft | null): void;
 }
 
 type ProjectToolsView =
@@ -49,6 +51,7 @@ const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
 export function ProjectToolsDrawer({
   onClose,
   onPreview,
+  onCurveMotionDraft,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
   const viewportMode = useSyncExternalStore(
@@ -314,7 +317,7 @@ export function ProjectToolsDrawer({
           className="project-tools-grid-array-view"
           data-testid="project-tools-curve-motion-view"
         >
-          <CurveMotionPanel onCancel={() => setView('home')} />
+          <CurveMotionPanel onStageDraft={onCurveMotionDraft} onCancel={() => setView('home')} />
         </section>
       ) : view === 'afterimage' ? (
         <section
