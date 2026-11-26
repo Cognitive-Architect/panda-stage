@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -251,6 +251,100 @@ describe('E-F04 deterministic video clock (CFR / VFR / non-zero PTS / trim / loo
     });
     expect(mcAt0?.sampleIndex).toBe(0);
     expect(mcAt125?.sampleIndex).toBe(3);
+  });
+});
+
+describe('A06/A07 embedded video rotation and project decode lifetime', () => {
+  it('uses FFmpeg display dimensions for 0, 90, and 270 degree MP4 display matrices', async () => {
+    const root = await makeTempDir('panda-video-rotation-');
+    const source = path.join(root, 'source.mp4');
+    await createSolidMp4WithAudio(source, { width: 160, height: 90, durationSec: 1, fps: 2 });
+    const adapter = new FFmpegAdapter({ ffmpegPath: bundledFfmpegPath, ffprobePath: bundledFfprobePath });
+    for (const angle of [0, 90, 270]) {
+      const input = angle === 0 ? source : path.join(root, `rotated-${angle}.mp4`);
+      if (angle !== 0) {
+        await execFileAsync(bundledFfmpegPath, [
+          '-i', source, '-map', '0', '-c', 'copy', '-metadata:s:v:0', `rotate=${angle}`, input,
+        ]);
+      }
+      const expected = angle === 0 ? { width: 160, height: 90 } : { width: 90, height: 160 };
+      const probe = await adapter.probeFlaNativeVideo(input);
+      expect(probe).toMatchObject({ ...expected, streamIndex: 0, audioStreamIndex: 1, hasAudio: true });
+      expect(probe.presentationTicks).toHaveLength(2);
+      const outputDirectory = path.join(root, `frames-${angle}`);
+      await mkdir(outputDirectory);
+      const decoded = await adapter.decodeFlaVideoFramesSequential({
+        videoPath: input, outputDirectory,
+        streamIndex: probe.streamIndex, expectedFrameCount: 2, maxFrames: 2,
+      });
+      const png = await readFile(decoded.framePaths[0]!);
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([expected.width, expected.height]);
+    }
+  });
+
+  it('aborts the earlier decode, rejects a late result and keeps a reopened same-key decode', async () => {
+    const workDir = await makeTempDir('panda-video-cancel-');
+    const projectRoot = path.join(workDir, 'project.pandastage');
+    await new ProjectService().create(projectRoot, { name: 'Decode cancellation' });
+    const relativePath = 'assets/video.mp4';
+    const source = path.join(projectRoot, relativePath);
+    await writeFile(source, 'source video');
+    const asset: VideoAsset = {
+      id: randomUUID(), kind: 'video', name: 'Video', relativePath,
+      mimeType: 'video/mp4', width: 1, height: 1, durationMs: 1000,
+      videoTiming: {
+        codec: 'h264', streamIndex: 0, timeBase: { numerator: 1, denominator: 1 },
+        presentationTicks: [0], startTick: 0, endTick: 1, hasAudio: false,
+      },
+    };
+    const adapter = new FFmpegAdapter({ ffmpegPath: bundledFfmpegPath, ffprobePath: bundledFfprobePath });
+    type Decode = FFmpegAdapter['decodeFlaVideoFramesSequential'];
+    const beginDecode = () => Promise.withResolvers<{ directory: string; signal?: AbortSignal }>();
+    const older = beginDecode();
+    const newer = beginDecode();
+    const releaseOld = Promise.withResolvers<void>();
+    const releaseNew = Promise.withResolvers<void>();
+    const capture = (started: ReturnType<typeof beginDecode>, release: Promise<void>): Decode =>
+      async ({ outputDirectory }, signal) => {
+        started.resolve({ directory: outputDirectory, signal });
+        await release; // Deliberately finish after abort, as an uncooperative backend could.
+        const frame = path.join(outputDirectory, 'frame_000000.png');
+        await writeFile(frame, TINY_PNG);
+        return { framePaths: [frame] };
+      };
+    const spy = vi.spyOn(adapter, 'decodeFlaVideoFramesSequential')
+      .mockImplementationOnce(capture(older, releaseOld.promise))
+      .mockImplementationOnce(capture(newer, releaseNew.promise));
+    const service = new FlaEmbeddedVideoService({ ffmpegAdapter: adapter });
+    const read = () => service.readSampleFrame({ projectRoot, asset, sampleIndex: 0 });
+
+    try {
+      const oldRead = read();
+      const old = await older.promise;
+      const disposal = service.dispose();
+      expect(old.signal?.aborted).toBe(true);
+      const newRead = read();
+      const current = await newer.promise;
+      expect(current.signal?.aborted).toBe(false);
+
+      releaseOld.resolve();
+      await expect(oldRead).resolves.toMatchObject({ ok: false, code: 'CANCELLED' });
+      await disposal;
+      await expect(stat(old.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(stat(current.directory)).resolves.toBeDefined();
+
+      const joined = read();
+      releaseNew.resolve();
+      await expect(newRead).resolves.toMatchObject({ ok: true });
+      await expect(joined).resolves.toMatchObject({ ok: true });
+      await expect(read()).resolves.toMatchObject({ ok: true, fromCache: true });
+      expect(spy).toHaveBeenCalledTimes(2);
+      await expect(readFile(source, 'utf8')).resolves.toBe('source video');
+    } finally {
+      releaseOld.resolve();
+      releaseNew.resolve();
+      await service.dispose();
+    }
   });
 });
 
