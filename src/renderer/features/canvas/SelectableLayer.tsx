@@ -66,6 +66,7 @@ export interface SelectableLayerProps {
   render: StageLayerRenderInstruction;
   selected: boolean;
   directEditingEnabled?: boolean;
+  inheritedSpace?: boolean;
   onSelect: (layerId: string, nodeId?: CharacterNodeId) => void;
   onCommitPosition: (
     layerId: string,
@@ -112,6 +113,7 @@ export function SelectableLayer({
   visual,
   visualSourceKeys,
   directEditingEnabled = true,
+  inheritedSpace = false,
   onSelect,
   onCommitPosition,
   onCommitTransform,
@@ -439,6 +441,7 @@ export function SelectableLayer({
       : null;
 
   const clampNode = (node: Konva.Node): void => {
+    if (inheritedSpace) return;
     const position = clampLayerPosition({
       x: node.x(),
       y: node.y(),
@@ -472,7 +475,7 @@ export function SelectableLayer({
       listening={canSelect}
       name="selectable-canvas-layer"
       onDragStart={(event) => {
-        if (layer.source.kind !== 'animation') return;
+        if (!inheritedSpace && layer.source.kind !== 'animation') return;
         event.cancelBubble = true;
         onSelect(layer.id);
       }}

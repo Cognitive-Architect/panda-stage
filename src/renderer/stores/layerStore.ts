@@ -35,6 +35,7 @@ const noopLayerSelection: LayerSelection = {
 
 export class LayerStore {
   private readonly motionService = new LayerMotionService();
+  private clipboard: { project: Project; shotId: string; layerId: string; timeMs: number; instance: number | null } | null = null;
 
   constructor(
     private readonly editorStore: EditorProjectStore,
@@ -183,6 +184,29 @@ export class LayerStore {
       },
     );
     return result.layer;
+  }
+
+  copyLayer(layerId: string, timeMs: number): void {
+    const { project, shotId } = this.context();
+    const shot = project.shots.find(({ id }) => id === shotId);
+    const layer = shot?.layers.find(({ id }) => id === layerId);
+    if (!layer || layer.locked || shot?.backgroundLayerId === layerId) return;
+    this.clipboard = { project, shotId, layerId, timeMs, instance: this.editorStore.getProjectInstanceId() };
+  }
+
+  hasLayerClipboard(): boolean {
+    return !!this.clipboard && this.clipboard.instance === this.editorStore.getProjectInstanceId();
+  }
+
+  pasteLayer(): void {
+    const source = this.clipboard;
+    if (!source || !this.hasLayerClipboard()) return;
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.duplicateLayer(project, source.shotId, source.layerId, shotId, source.timeMs, source.project);
+    this.editorStore.updateProject(result.project, '粘贴图层', {}, {
+      afterRedo: () => this.restoreCreatedLayerSelection(project.id, projectRoot, shotId, result.layer.id),
+    });
+    this.layerSelection.select(result.layer.id);
   }
 
   setLocked(layerId: string, locked: boolean): Project {

@@ -1,10 +1,10 @@
 import {
   ProjectSchema,
-  type AnimationClip,
   type Project,
   type Shot,
 } from '../models';
 import { SHOT_MIN_DURATION_MS } from '../constants';
+import { remapLayerMotionOwner } from '../layer-animation';
 
 export type ShotServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -44,20 +44,9 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.audioClips.map((clip) => clip.endMs),
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
+    ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
     shot.camera?.keys.at(-1)?.timeMs ?? 0,
   );
-}
-
-function remapClipLayer(clip: AnimationClip, layerId: string): AnimationClip {
-  const remap = <T extends { target: { layerId: string } }>(entry: T): T => ({
-    ...entry,
-    target: { ...entry.target, layerId },
-  });
-  switch (clip.version) {
-    case 1: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-    case 2: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-    case 3: return { ...clip, targetBases: clip.targetBases.map(remap), tracks: clip.tracks.map(remap) };
-  }
 }
 
 export class ShotService {
@@ -121,7 +110,7 @@ export class ShotService {
           ...layer,
           id: layerId,
           ...(layer.parentLayerId ? { parentLayerId: layerIds.get(layer.parentLayerId) } : {}),
-          ...(layer.animationClip ? { animationClip: remapClipLayer(layer.animationClip, layerId) } : {}),
+          ...remapLayerMotionOwner(layer, layerId),
         };
       }),
       backgroundLayerId:

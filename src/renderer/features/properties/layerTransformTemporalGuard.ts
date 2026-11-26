@@ -1,6 +1,7 @@
 import {
   evaluateShotAtTime,
-  isFlaGraphicDefinition,
+  canAuthorLayerRootMotion,
+  findLayerMotionGraphic,
   isValidFrameTime,
   type Layer,
   type Project,
@@ -19,12 +20,7 @@ export function isSupportedLayerMotionLayer(
   if (!project || !shot || !layer || shot.backgroundLayerId === layer.id) {
     return false;
   }
-  const source = layer.source;
-  if (source.kind !== 'animation') return false;
-  const animation = project.animations.find(
-    (candidate) => candidate.id === source.animationId,
-  );
-  return Boolean(animation && isFlaGraphicDefinition(animation));
+  return canAuthorLayerRootMotion(layer) || Boolean(findLayerMotionGraphic(project, layer));
 }
 
 /** True when a standalone FLA Graphic Layer can commit a static or keyframed transform at `currentTimeMs`. */
@@ -49,7 +45,7 @@ export function isLayerMotionTransformEditableAtTime(
   const evaluated = evaluateShotAtTime(shot, currentTimeMs, project).layers.find(
     (candidate) => candidate.id === layerId,
   );
-  return Boolean(evaluated?.visible);
+  return Boolean(evaluated?.visible && !evaluated.parentSpaceUnavailable);
 }
 
 /** Live Scrub keeps ordinary formal Layers editable only at the base playhead. */

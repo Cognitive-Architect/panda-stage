@@ -140,6 +140,13 @@ export const ShotSchema = ShotV20Schema.extend({
   layers: z.array(LayerSchema),
   camera: ShotCameraSchema.optional(),
 }).superRefine(validateShotClipKeyTimes).superRefine((shot, context) => {
+  shot.layers.forEach((layer, layerIndex) => layer.layerMotionTracks?.forEach((track, trackIndex) =>
+    track.keys.forEach((key, keyIndex) => {
+      if (key.timeMs > shot.durationMs) context.addIssue({
+        code: 'custom', path: ['layers', layerIndex, 'layerMotionTracks', trackIndex, 'keys', keyIndex, 'timeMs'],
+        message: 'Animation key must be within the owning Shot duration.',
+      });
+    })));
   shot.camera?.keys.forEach((key, index, keys) => {
     if (key.timeMs > shot.durationMs || (index > 0 && key.timeMs <= keys[index - 1]!.timeMs)) {
       context.addIssue({

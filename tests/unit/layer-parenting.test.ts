@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerService, migrateProject, ProjectSchema, ShotService,
+  evaluateShotAtTime, evaluatedLayerWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService,
   type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
@@ -41,6 +41,51 @@ function expectMatrix(actual: AffineMatrix2D, expected: AffineMatrix2D) {
 }
 
 describe('native Layer parenting', () => {
+  it('keys ordinary bound layers locally and copies their tracks with safe parent ownership', () => {
+    const { project, shot, baseLayer, middle, tip } = fixture();
+    const service = new LayerService();
+    const edits = new LayerMotionService();
+    const bound = service.setParent(project, shot.id, tip.id, baseLayer.id, 500);
+    const time = 750;
+    const edited = edits.applyTransform(bound, { shotId: shot.id, layerId: tip.id, timeMs: time, autoKey: true },
+      { x: 745, y: 480, scaleX: 1.4, scaleY: 0.8, rotationDeg: 42 });
+    const pose = (input: typeof project, shotId: string, layerId: string) => {
+      const currentShot = input.shots.find(({ id }) => id === shotId)!;
+      return evaluateShotAtTime(currentShot, time, input).layers.find(({ id }) => id === layerId)!;
+    };
+    const local = pose(edited, shot.id, tip.id);
+    expect(local).toMatchObject({ x: 745, y: 480, scaleX: 1.4, scaleY: 0.8, rotationDeg: 42 });
+    expectMatrix(evaluatedLayerWorldMatrix(local), multiplyAffineMatrices(local.parentSpace!, layerPoseMatrix(local)));
+    const rebound = service.setParent(edited, shot.id, tip.id, middle.id, time);
+    expectMatrix(evaluatedLayerWorldMatrix(pose(rebound, shot.id, tip.id)), evaluatedLayerWorldMatrix(local));
+    const detached = service.setParent(rebound, shot.id, tip.id, null, time);
+    expectMatrix(evaluatedLayerWorldMatrix(pose(detached, shot.id, tip.id)), evaluatedLayerWorldMatrix(local));
+    expect(migrateProject(JSON.parse(JSON.stringify(detached))).shots[0]?.layers.find(({ id }) => id === tip.id)?.layerMotionTracks)
+      .toEqual(edited.shots[0]?.layers.find(({ id }) => id === tip.id)?.layerMotionTracks);
+    const copy = service.duplicateLayer(rebound, shot.id, tip.id);
+    expect(copy.layer.parentLayerId).toBe(middle.id);
+    expect(copy.layer.layerMotionTracks?.every(({ target }) => target.layerId === copy.layer.id)).toBe(true);
+    const shots = new ShotService();
+    const withDestination = shots.create(rebound, { name: 'Copy destination', durationMs: shot.durationMs });
+    const destination = withDestination.shots.at(-1)!;
+    const paste = service.duplicateLayer(withDestination, shot.id, tip.id, destination.id, time);
+    expect(paste.layer.parentLayerId).toBeUndefined();
+    expectMatrix(evaluatedLayerWorldMatrix(pose(paste.project, destination.id, paste.layer.id)), evaluatedLayerWorldMatrix(local));
+    const duplicate = shots.duplicate(rebound, shot.id).shots[1]!;
+    const remapped = duplicate.layers.find(({ name }) => name === tip.name)!;
+    expect(duplicate.layers.find(({ id }) => id === remapped.parentLayerId)?.name).toBe(middle.name);
+    expect(remapped.layerMotionTracks?.every(({ target }) => target.layerId === remapped.id)).toBe(true);
+  });
+
+  it('rejects using an unusable affine parent while healthy relationships remain possible', () => {
+    const { project, shot, baseLayer, middle, tip } = fixture();
+    const singular = ProjectSchema.parse({ ...project, shots: [{ ...shot, layers: shot.layers.map((layer) =>
+      layer.id === baseLayer.id ? { ...layer, parentSpaceOffset: { a: 0, b: 0, c: 0, d: 1, tx: 0, ty: 0 } } : layer,
+    ) }] });
+    const service = new LayerService();
+    expect(() => service.setParent(singular, shot.id, tip.id, baseLayer.id, 500)).toThrow();
+    expect(service.setParent(singular, shot.id, tip.id, middle.id, 500).shots[0]?.layers.find(({ id }) => id === tip.id)?.parentLayerId).toBe(middle.id);
+  });
   it('draws only visible exported layers after inheriting hidden parent motion', () => {
     const { project, shot, asset, baseLayer, middle, tip, other } = fixture();
     const hidden = { ...asset, id: randomUUID(), relativePath: 'assets/hidden.png' };

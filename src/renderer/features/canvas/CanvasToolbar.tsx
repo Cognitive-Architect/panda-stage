@@ -13,6 +13,7 @@ export interface CanvasToolbarProps {
   transform: ViewportTransform;
   showStatus?: boolean;
   cameraControl?: ReactNode;
+  parentControl?: ReactNode;
   flaGraphicEditAvailable?: boolean;
   flaGraphicEditActive?: boolean;
   flaGraphicEditMode?: FlaGraphicEditMode;
@@ -36,6 +37,7 @@ export function CanvasToolbar({
   transform,
   showStatus = true,
   cameraControl,
+  parentControl,
   flaGraphicEditAvailable = false,
   flaGraphicEditActive = false,
   flaGraphicEditMode = 'instance',
@@ -76,6 +78,7 @@ export function CanvasToolbar({
           </output>
         </>
       ) : null}
+      {parentControl}
       {cameraControl}
       {flaGraphicEditAvailable ? (
         <div

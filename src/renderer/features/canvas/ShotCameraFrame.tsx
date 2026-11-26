@@ -34,6 +34,7 @@ export function ShotCameraFrame({ pose, onCommit }: {
     if (!start || drag.current || event.evt.button !== 0) return;
     event.cancelBubble = true;
     const id = event.evt.pointerId;
+    (event.target as Konva.Shape).setPointerCapture(id);
     (event.evt.target as Element | null)?.setPointerCapture?.(id);
     drag.current = { handle, id, start, origin: pose, current: pose, angle: angle(start, pose), turn: 0 };
   }

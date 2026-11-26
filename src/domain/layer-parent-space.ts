@@ -31,6 +31,7 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[]): Evalu
   const spaces = new Map<string, AffineMatrix2D>();
   const world = new Map<string, AffineMatrix2D>();
   const invalidEdges = new Set<string>();
+  const unavailable = new Set<string>();
 
   for (const { id } of layers) {
     const chain: string[] = [];
@@ -53,15 +54,18 @@ export function applyLayerParenting(shot: Shot, layers: EvaluatedLayer[]): Evalu
       const space = parent && offset ? multiplyAffineMatrices(parent, offset) : parent ?? offset;
       const pose = local.get(entry)!;
       const posed = space && multiplyAffineMatrices(space, pose);
-      if (space && posed && invertAffineMatrix(space) && Object.values(posed).every(Number.isFinite)) {
+      if (layer?.parentLayerId && !invalidEdges.has(entry) && unavailable.has(layer.parentLayerId)) unavailable.add(entry);
+      if (!unavailable.has(entry) && space && posed && invertAffineMatrix(space) && Object.values(posed).every(Number.isFinite)) {
         spaces.set(entry, space);
         world.set(entry, posed);
       } else {
+        if (space) unavailable.add(entry);
         world.set(entry, pose);
       }
     }
   }
   return layers.map((layer) => {
+    if (unavailable.has(layer.id)) return { ...layer, parentSpaceUnavailable: true };
     const parentSpace = spaces.get(layer.id);
     return parentSpace ? { ...layer, parentSpace } : layer;
   });

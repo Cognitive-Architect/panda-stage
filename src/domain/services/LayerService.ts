@@ -65,6 +65,7 @@ import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
 import { evaluatedLayerWorldMatrix, validLayerParentTargets } from '../layer-parent-space';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
+import { remapLayerMotionOwner, syncLayerAnimationClipBasis } from '../layer-animation';
 
 export type LayerServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -1686,7 +1687,7 @@ export class LayerService {
     const poses = evaluateShotAtTime(shot, timeMs, project).layers;
     const oldSpace = poses.find(({ id }) => id === childId)?.parentSpace;
     const parent = poses.find(({ id }) => id === parentId);
-    const parentInverse = parent && invertAffineMatrix(evaluatedLayerWorldMatrix(parent));
+    const parentInverse = parent && !parent.parentSpaceUnavailable && invertAffineMatrix(evaluatedLayerWorldMatrix(parent));
     if (parent && !parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
     const offset = parentInverse && oldSpace ? multiplyAffineMatrices(parentInverse, oldSpace) : parentInverse || oldSpace;
     return this.replaceShot(project, {
@@ -1746,8 +1747,19 @@ export class LayerService {
         '只能复制动画图层。',
       );
     }
+    return this.duplicateLayer(project, shotId, layerId);
+  }
+
+  duplicateLayer(project: Project, shotId: string, layerId: string, destinationShotId = shotId, timeMs = 0, sourceProject = project): CreateLayerResult {
+    const shot = this.shot(sourceProject, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
+    const destination = this.shot(project, destinationShotId);
+    const sameShot = shot.id === destination.id;
+    const keepParent = sameShot && destination.layers.some(({ id }) => id === layer.parentLayerId);
+    const copiedSpace = keepParent || !layer.parentLayerId ? layer.parentSpaceOffset :
+      evaluateShotAtTime(shot, timeMs, sourceProject).layers.find(({ id }) => id === layerId)?.parentSpace;
 
     const usedIds = this.projectIds(project);
     const duplicateId = this.nextUniqueId(usedIds);
@@ -1756,7 +1768,7 @@ export class LayerService {
       x: layer.x + 24,
       y: layer.y + 24,
     });
-    const position =
+    const position = !sameShot ? { x: layer.x, y: layer.y } :
       offsetPosition.x === layer.x && offsetPosition.y === layer.y
         ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
         : offsetPosition;
@@ -1778,22 +1790,29 @@ export class LayerService {
           }
         : {}),
       id: duplicateId,
+      ...remapLayerMotionOwner(layer, duplicateId),
+      parentLayerId: keepParent ? layer.parentLayerId : undefined,
+      parentSpaceOffset: copiedSpace,
       name: `${layer.name} 副本`,
       x: position.x,
       y: position.y,
-      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+      zIndex: Math.max(-1, ...destination.layers.map((item) => item.zIndex)) + 1,
     };
+    if (duplicate.animationClip?.version === 2) {
+      duplicate.animationClip = syncLayerAnimationClipBasis(duplicate.animationClip, duplicateId, duplicate);
+    }
     const duplicatedEvents = shot.timelineEvents
-      .filter((event) => event.layerId === layer.id)
+      .filter((event) => event.layerId === layer.id && (event.type !== 'mouth-pose' || !event.dialogueId ||
+        (sameShot && destination.dialogues.some(({ id }) => id === event.dialogueId))))
       .map((event) => {
         const id = this.nextUniqueId(usedIds);
         usedIds.add(id);
         return { ...event, id, layerId: duplicate.id };
       });
     const nextShot = {
-      ...shot,
-      layers: [...shot.layers, duplicate],
-      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
+      ...destination,
+      layers: [...destination.layers, duplicate],
+      timelineEvents: [...destination.timelineEvents, ...duplicatedEvents],
     };
     return {
       project: this.replaceShot(project, nextShot),

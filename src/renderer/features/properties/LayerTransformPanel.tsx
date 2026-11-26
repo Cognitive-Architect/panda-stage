@@ -267,6 +267,7 @@ export function useLayerTransformController({
       layer &&
       isSupportedLayerMotionLayer(snapshot.project, shot, layer),
   );
+  const motionEditableLayer = animationLayer || supportedLayerMotion;
   const layerMotionAutoKey = timelineUi.layerMotionAutoKey;
   const evaluatedMotionLayer =
     supportedLayerMotion && snapshot && shot && layer
@@ -282,7 +283,7 @@ export function useLayerTransformController({
     ? evaluatedMotionLayer.rotationDeg
     : layer?.rotationDeg;
   const animationBaseTransformEditable = Boolean(
-    animationLayer &&
+    motionEditableLayer &&
       snapshot &&
       shot &&
       layer &&
@@ -310,17 +311,17 @@ export function useLayerTransformController({
   );
   const positionAuthoringAvailable =
     !isBackgroundLayer &&
-    !animationLayer &&
+    !motionEditableLayer &&
     temporalInspection &&
     !positionAuthoringActive &&
     positionEntry.canBegin;
   const positionHoldAvailable =
     !isBackgroundLayer &&
-    !animationLayer &&
+    !motionEditableLayer &&
     temporalInspection &&
     !positionAuthoringActive &&
     positionEntry.canHold;
-  const positionMain = animationLayer && layer
+  const positionMain = motionEditableLayer && layer
     ? { x: displayLayerX ?? layer.x, y: displayLayerY ?? layer.y }
     : temporalInspection
     ? positionAuthoringActive
@@ -407,8 +408,8 @@ export function useLayerTransformController({
       layer ? formatScalePercent(displayLayerScale ?? layer.scaleX) : '',
     );
     scalePercentEditedRef.current = false;
-    if (temporalInspection || (animationLayer && !animationBaseTransformEditable)) {
-      const fallbackStatus = animationLayer
+    if (temporalInspection || (motionEditableLayer && !animationBaseTransformEditable)) {
+      const fallbackStatus = motionEditableLayer
         ? layer?.locked
           ? '动画图层已锁定；请先回到 0:00 解锁。'
           : animationBaseTransformEditable
@@ -419,7 +420,7 @@ export function useLayerTransformController({
           : positionAuthoringAvailable || positionHoldAvailable
             ? ''
             : TEMPORAL_TRANSFORM_STATUS;
-      const currentStatus = animationLayer
+      const currentStatus = motionEditableLayer
         ? preserveCommitErrorRef.current
           ? statusRef.current
           : fallbackStatus
@@ -459,7 +460,7 @@ export function useLayerTransformController({
     compact,
     isBackgroundLayer,
     animationBaseTransformEditable,
-    animationLayer,
+    motionEditableLayer,
     displayLayerRotation,
     displayLayerScale,
     displayLayerX,
@@ -538,13 +539,13 @@ export function useLayerTransformController({
       (candidate) => candidate.id === layer?.id,
     );
     return Boolean(
-      animationLayer &&
+      motionEditableLayer &&
         layer &&
         shotId &&
         shot &&
         snapshot &&
         current &&
-        currentLayer?.source.kind === 'animation' &&
+        currentLayer &&
         editorProjectStore.getProjectInstanceId() === projectInstanceId &&
         current.project.id === snapshot.project.id &&
         current.projectRoot === snapshot.projectRoot &&
@@ -710,7 +711,7 @@ export function useLayerTransformController({
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
     const animationBaseEdit =
       reason !== 'opacity' &&
-      layer.source.kind === 'animation' &&
+      motionEditableLayer &&
       canCommitAnimationBaseTransformAtTime(currentTimeMs);
     if (temporalInspection && !animationBaseEdit) {
       if (positionAuthoringActive) {
@@ -730,7 +731,7 @@ export function useLayerTransformController({
       return 'temporal-preview';
     }
     if (
-      layer.source.kind === 'animation' &&
+      motionEditableLayer &&
       reason !== 'opacity' &&
       !animationBaseEdit
     ) {
@@ -823,7 +824,7 @@ export function useLayerTransformController({
             editorProjectStore.getSnapshot()?.revision ?? null;
         },
         (timeMs) =>
-          layer.source.kind === 'animation' && reason !== 'opacity'
+          motionEditableLayer && reason !== 'opacity'
             ? canCommitAnimationBaseTransformAtTime(timeMs)
             : isLayerTransformEditableAtTime(timeMs),
       );
@@ -911,7 +912,7 @@ export function useLayerTransformController({
 
   const adjustScale = (direction: -1 | 1): void => {
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
-    const canEdit = layer?.source.kind === 'animation'
+    const canEdit = motionEditableLayer
       ? canCommitAnimationBaseTransformAtTime(currentTimeMs)
       : isLayerTransformEditableAtTime(currentTimeMs);
     if (!canEdit) {
@@ -936,7 +937,7 @@ export function useLayerTransformController({
 
   const adjustRotation = (direction: -1 | 1): void => {
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
-    const canEdit = layer?.source.kind === 'animation'
+    const canEdit = motionEditableLayer
       ? canCommitAnimationBaseTransformAtTime(currentTimeMs)
       : isLayerTransformEditableAtTime(currentTimeMs);
     if (!canEdit) {
@@ -1130,13 +1131,13 @@ function LayerTransformPanelView({
   const transformControlsDisabled = Boolean(layer?.locked || temporalInspection);
   const baseTransformControlsDisabled = Boolean(
     layer?.locked ||
-      (layer?.source.kind === 'animation'
+      (layer?.source.kind === 'animation' || supportedLayerMotion
         ? !animationBaseTransformEditable
         : temporalInspection),
   );
   const positionControlsDisabled = Boolean(
     layer?.locked ||
-      (layer?.source.kind === 'animation'
+      (layer?.source.kind === 'animation' || supportedLayerMotion
         ? !animationBaseTransformEditable
         : temporalInspection && !positionAuthoringActive),
   );

@@ -6,6 +6,7 @@ import {
   AnimationClipV32Schema,
   AnimationClipV0V22Schema,
   AnimationClipV22Schema,
+  LayerAnimationTrackSchema,
   type AnimationClip,
 } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
@@ -411,6 +412,19 @@ export const LayerSchema = LayerV42Schema.safeExtend({
   parentLayerId: IdSchema.optional(),
   /** Maps authored local animation into the current parent's space (or world when detached). */
   parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
+  /** Local root motion for layers without a Graphic Layer Clip. */
+  layerMotionTracks: z.array(LayerAnimationTrackSchema).optional(),
+}).superRefine((layer, context) => {
+  const properties = new Set<string>();
+  layer.layerMotionTracks?.forEach((track, index) => {
+    if (track.target.layerId !== layer.id || properties.has(track.property) || layer.animationClip?.version === 2) {
+      context.addIssue({
+        code: 'custom', path: ['layerMotionTracks', index],
+        message: 'Root motion requires a unique track on its owning layer and cannot duplicate a Layer Clip.',
+      });
+    }
+    properties.add(track.property);
+  });
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

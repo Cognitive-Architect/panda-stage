@@ -34,6 +34,7 @@ import {
 import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
+  layerRootMotionClip,
   resolveLayerAnimationBasis,
   type LayerBasePose,
 } from './layer-animation';
@@ -48,6 +49,7 @@ import {
 export interface EvaluatedLayer {
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
+  parentSpaceUnavailable?: true;
   /** Transient Animation Core values at the same absolute Shot time. */
   animationValues?: EvaluatedAnimationValue[];
   /** Absolute Shot timestamp used for both outer motion and Graphic internal playback. */
@@ -649,8 +651,8 @@ export function assertLayerClipFinalScalesInBounds(
   project: Project,
   extraTimesMs: readonly number[] = [],
 ): void {
-  const clip = layer.animationClip;
-  if (!clip || clip.version !== 2) return;
+  const clip = layerRootMotionClip(layer);
+  if (!clip) return;
   const events = shot.timelineEvents.filter((event) => event.layerId === layer.id);
   const scaleTracks = clip.tracks.filter(
     (track) =>
@@ -868,6 +870,7 @@ export function evaluateShotAtTime(
         options?.graphicFrameTimeMs,
       );
       const clip = layer.animationClip;
+      const rootMotionClip = layerRootMotionClip(layer);
       const animationValues = clip
         ? evaluateAnimationClipAtTime(clip, timeMs)
         : undefined;
@@ -877,9 +880,9 @@ export function evaluateShotAtTime(
             undefined
           : undefined;
       const finalTransform: LayerBasePose =
-        layer.animationClip?.version === 2 && animationValues
+        rootMotionClip
           ? composeAnimatedLayerTransform(
-              resolveLayerAnimationBasis(layer.animationClip, {
+              resolveLayerAnimationBasis(rootMotionClip, {
                 kind: 'layer',
                 layerId: layer.id,
               }),
@@ -891,7 +894,7 @@ export function evaluateShotAtTime(
                 rotationDeg: preTrack.rotationDeg,
               },
               preTrack.flipX,
-              animationValues,
+              clip === rootMotionClip && animationValues ? animationValues : evaluateAnimationClipAtTime(rootMotionClip, timeMs),
             )
           : {
               x: preTrack.motion.displayPosition.x,
