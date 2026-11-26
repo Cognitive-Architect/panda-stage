@@ -1,11 +1,12 @@
 import { useState, useSyncExternalStore } from 'react';
-import { LayerService, type Layer, type Project } from '../../../domain';
+import { LayerMotionService, LayerService, layerHasNonNeutralMotion, type Layer, type Project } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { BatchRenameFields } from './BatchRenameFields';
 
 const service = new LayerService();
+const motion = new LayerMotionService();
 
 export function BatchLayerControls({ snapshot, shotId, layers }: {
   snapshot: EditorProjectSnapshot;
@@ -18,6 +19,14 @@ export function BatchLayerControls({ snapshot, shotId, layers }: {
   const selected = layers.filter((layer) => selectedIds.includes(layer.id));
   const editable = selected.filter((layer) => !layer.locked);
   const duplicable = editable.filter((layer) => layer.source.kind === 'animation' && layer.animationPlayback);
+  const recenterable = editable.flatMap((layer) => {
+    if (layer.animationClip?.version !== 2) return [];
+    const basis = layer.animationClip.targetBases[0]!;
+    const x = basis.sourceCanvas.width / 2;
+    const y = basis.sourceCanvas.height / 2;
+    if ((basis.pivot.x === x && basis.pivot.y === y) || layerHasNonNeutralMotion(layer.animationClip, basis.target)) return [];
+    return [{ id: layer.id, x, y }];
+  });
   const pendingDelete = deleteSelection?.revision === snapshot.revision &&
     editable.length > 0 && editable.length === deleteSelection.ids.length &&
     editable.every(({ id }, index) => id === deleteSelection.ids[index]);
@@ -61,6 +70,10 @@ export function BatchLayerControls({ snapshot, shotId, layers }: {
       <button type="button" disabled={editable.length === selected.length} onClick={() => apply('批量解锁图层',
         (project) => selected.reduce((next, layer) => service.setLocked(next, shotId, layer.id, false), project)
       )}>解锁（{selected.length - editable.length}）</button>
+      <button type="button" disabled={!recenterable.length} onClick={() => apply('?????????',
+        (project) => recenterable.reduce((next, { id, x, y }) =>
+          motion.recalibratePivot(next, { shotId, layerId: id }, { space: 'target-local', x, y }), project)
+      )}>????????{recenterable.length}?</button>
       <button type="button" disabled={!editable.length} onClick={() => {
         if (!pendingDelete) {
           setDeleteSelection({ revision: snapshot.revision, ids: editable.map(({ id }) => id) });

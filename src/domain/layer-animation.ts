@@ -90,13 +90,8 @@ export function resolveLayerAnimationBasis(
 }
 
 /** Recalibrating the frozen pivot is allowed only before non-neutral keys are authored. */
-export function recalibrateLayerAnimationPivot(
-  clip: LayerAnimationClip,
-  target: LayerTargetRef,
-  pivot: TargetLocalPivot,
-): LayerAnimationClip {
-  resolveLayerAnimationBasis(clip, target);
-  const authored = clip.tracks.some(
+export function layerHasNonNeutralMotion(clip: LayerAnimationClip, target: LayerTargetRef): boolean {
+  return clip.tracks.some(
     (track) =>
       sameAnimationTarget(track.target, target) &&
       track.keys.some(
@@ -108,7 +103,15 @@ export function recalibrateLayerAnimationPivot(
             : 0),
       ),
   );
-  if (authored) {
+}
+
+export function recalibrateLayerAnimationPivot(
+  clip: LayerAnimationClip,
+  target: LayerTargetRef,
+  pivot: TargetLocalPivot,
+): LayerAnimationClip {
+  resolveLayerAnimationBasis(clip, target);
+  if (layerHasNonNeutralMotion(clip, target)) {
     throw new Error(
       'Animation pivot is fixed after non-neutral animation is authored; clear the target animation before recalibrating.',
     );

@@ -20,10 +20,10 @@ export function AnimationSegmentControls({ project, shot, layer, onPreview }: {
   const [selectedId, setSelectedId] = useState('');
   const [animationId, setAnimationId] = useState(layer?.source.kind === 'animation' ? layer.source.animationId : '');
   const [name, setName] = useState('');
-  const [first, setFirst] = useState(1);
-  const [last, setLast] = useState<number>();
-  const [mode, setMode] = useState<AnimationPlayback['mode']>('once');
-  const [endBehavior, setEndBehavior] = useState<AnimationPlayback['endBehavior']>('hold');
+  const [first, setFirst] = useState((layer?.animationSourceRange?.firstFrame ?? 0) + 1);
+  const [last, setLast] = useState(layer?.animationSourceRange ? layer.animationSourceRange.lastFrame + 1 : undefined);
+  const [mode, setMode] = useState<AnimationPlayback['mode']>(layer?.animationPlayback?.mode ?? 'once');
+  const [endBehavior, setEndBehavior] = useState<AnimationPlayback['endBehavior']>(layer?.animationPlayback?.endBehavior ?? 'hold');
   const [error, setError] = useState('');
   const library = project.animationSegments ?? [];
   const selected = library.find((entry) => entry.id === selectedId);
@@ -38,10 +38,11 @@ export function AnimationSegmentControls({ project, shot, layer, onPreview }: {
     setSelectedId(segment?.id ?? '');
     setName(segment?.name ?? '');
     setAnimationId(segment?.animationId ?? (layer?.source.kind === 'animation' ? layer.source.animationId : ''));
-    setFirst((segment?.range.firstFrame ?? 0) + 1);
-    setLast(segment ? segment.range.lastFrame + 1 : undefined);
-    setMode(segment?.playback.mode ?? 'once');
-    setEndBehavior(segment?.playback.endBehavior ?? 'hold');
+    setFirst((segment?.range.firstFrame ?? layer?.animationSourceRange?.firstFrame ?? 0) + 1);
+    const range = segment?.range ?? layer?.animationSourceRange;
+    setLast(range ? range.lastFrame + 1 : undefined);
+    setMode(segment?.playback.mode ?? layer?.animationPlayback?.mode ?? 'once');
+    setEndBehavior(segment?.playback.endBehavior ?? layer?.animationPlayback?.endBehavior ?? 'hold');
     setError('');
   };
 
