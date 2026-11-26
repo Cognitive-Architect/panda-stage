@@ -547,7 +547,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(temporalModel).toContain('projectShotDialogueVisual(');
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
-    expect(stage).toContain('dropInteractionDisabled={temporalInspection || assemblingArm}');
+    expect(stage).toContain('dropInteractionDisabled={temporalInspection || assemblingArm || Boolean(displayCamera)}');
     expect(stage).toContain("if (event.key !== 'Escape' || !flaGraphicEditActive) return;");
     expect(stage).toContain('resolveFlaGraphicEditTarget');
     expect(stage).toContain('resolveFlaGraphicExitScopeTransition');
