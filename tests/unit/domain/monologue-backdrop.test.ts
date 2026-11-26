@@ -29,7 +29,7 @@ describe('monologue backdrop', () => {
   it('requires the speaker to be topmost and rejects invalid layer or frame ranges', () => {
     const project = buildProject();
     const { project: withForeground } = new LayerService().createFromAsset(project, IDS.shot, {
-      type: 'asset-image', assetId: IDS.assetBg, position: { x: 960, y: 540 },
+      version: 2, type: 'asset-image', assetId: IDS.assetBg, position: { x: 960, y: 540 },
     });
     const input = { shotId: IDS.shot, layerId: IDS.layerChar, assetId: IDS.assetBg, startMs: 500, endMs: 1000 };
     expect(() => planMonologueBackdrop(withForeground, input)).toThrow('最上层');

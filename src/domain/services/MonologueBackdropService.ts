@@ -33,7 +33,7 @@ export function planMonologueBackdrop(
   const layers = new LayerService({ createId });
   const position = { x: project.width / 2, y: project.height / 2 };
   const placed = layers.createFromAsset(project, shot.id, {
-    type: 'asset-image', assetId: image.id, position,
+    version: 2, type: 'asset-image', assetId: image.id, position,
   });
   const layerId = placed.layer.id;
   const covered = layers.updateTransform(placed.project, shot.id, layerId, {
