@@ -757,8 +757,15 @@ it('fills only vacant frames without changing the trajectory, and requires expli
     { kind: 'paste', timeMs: 0, keys: xKeys.slice(0, 2), overwrite: true })).toThrow();
   const pasted = editAnimationPropertyRange(project, address,
     { kind: 'paste', timeMs: 500, keys: xKeys.slice(0, 2), overwrite: true });
-  expect(tracks(pasted)[0]!.keys.map(({ timeMs, value }) => [timeMs, value])).toEqual([[0, 0], [500, 0], [1000, 40]]);
-  expect(tracks(pasted)[0]!.keys[1]!.interpolationToNext).toBe('ease-in-out');
+  const pastedTrack = tracks(pasted)[0]!;
+  expect(pastedTrack.keys.filter(({ timeMs }) => timeMs >= 500 && timeMs <= 1000))
+    .toMatchObject([{ timeMs: 500, value: 0, interpolationToNext: 'ease-in-out' }, { timeMs: 1000, value: 40 }]);
+  expect(pastedTrack.keys[0]).toMatchObject({ timeMs: 0, value: 0 });
+  expect(tracks(pasted)[1]!.keys).toEqual(yKeys);
+  for (const frame of [0, 1, 4, 10, 11, 25, 26, 28]) {
+    const time = frameTimeMs(frame);
+    expect(evaluateAnimationTrackAtTime(pastedTrack, time)).toBeCloseTo(evaluateAnimationTrackAtTime({ keys: xKeys }, time), 6);
+  }
   const deleted = editAnimationPropertyRange(filled, address, { kind: 'delete', startMs: 0, endMs: 500 });
   expect(tracks(deleted)[0]!.keys.filter(({ timeMs }) => timeMs <= 500).map(({ timeMs }) => timeMs)).toEqual([0, 500]);
 });

@@ -8,7 +8,7 @@ import {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
 } from '../evaluate-shot-at-time';
-import { insertAnimationTrackSample } from '../evaluate-animation-core';
+import { evaluateAnimationTrackAtTime, insertAnimationTrackSample } from '../evaluate-animation-core';
 import {
   evaluateRichEasing,
   isRichEasingPresetId,
@@ -216,12 +216,28 @@ export function editAnimationPropertyRange(
     if (pasted[0]!.timeMs === 0 || end > shot.durationMs) throw new Error('粘贴会覆盖固定零帧或超出镜头范围。');
     const colliding = keys.filter(({ timeMs }) => timeMs >= edit.timeMs && timeMs <= end);
     if (colliding.length && !edit.overwrite) throw new Error('粘贴范围内已有关键帧，请调整起点或明确选择覆盖。');
-    const destination = insertAnimationTrackSample(insertAnimationTrackSample(keys, edit.timeMs), end);
-    const outgoing = destination.find(({ timeMs }) => timeMs === end)!;
-    pasted[pasted.length - 1] = { ...pasted.at(-1)!, interpolationToNext: outgoing.interpolationToNext, curveToNext: outgoing.curveToNext };
-    keys = [...destination.filter(({ timeMs }) => timeMs < edit.timeMs),
-      ...pasted, ...destination.filter(({ timeMs }) => timeMs > end)];
-    checkTimes = pasted.map(({ timeMs }) => timeMs);
+    const first = pasted[0]!;
+    const last = pasted.at(-1)!;
+    const startChanges = first.value !== evaluateAnimationTrackAtTime(track, first.timeMs);
+    const endChanges = last.value !== evaluateAnimationTrackAtTime(track, end);
+    // A replaced endpoint may jump. Preserve the original curve as far as the
+    // adjacent frame outside the paste, and isolate the jump to a one-frame bridge.
+    const leftTime = startChanges ? frameTimeMs(toFrame(first.timeMs) - 1) : first.timeMs;
+    const rightTime = endChanges ? frameTimeMs(toFrame(end) + 1) : end;
+    const left = insertAnimationTrackSample(keys, leftTime).filter(({ timeMs }) => timeMs < first.timeMs);
+    if (startChanges) {
+      left[left.length - 1] = { ...left.at(-1)!, interpolationToNext: 'step', curveToNext: undefined };
+    }
+    const right = rightTime <= shot.durationMs ? insertAnimationTrackSample(keys, rightTime) : keys;
+    const outgoing = !endChanges ? right.find(({ timeMs }) => timeMs === end) : undefined;
+    pasted[pasted.length - 1] = {
+      ...last,
+      interpolationToNext: outgoing?.interpolationToNext ?? 'step',
+      curveToNext: outgoing?.curveToNext,
+    };
+    keys = [...left, ...pasted, ...right.filter(({ timeMs }) => timeMs > end)];
+    checkTimes = [...pasted.map(({ timeMs }) => timeMs), leftTime];
+    if (rightTime <= shot.durationMs) checkTimes.push(rightTime);
   } else {
     if (edit.startMs >= edit.endMs || !keys.some(({ timeMs }) => timeMs === edit.startMs) ||
       !keys.some(({ timeMs }) => timeMs === edit.endMs)) throw new Error('请选择两个有效的区段边界。');
