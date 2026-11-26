@@ -75,15 +75,17 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
     overrides[0];
   const newOverrideBounds = mode === 'hybrid' ? resolveNewOverrideBounds(shot, time, overrides) : null;
 
-  function edit(change: (project: Project) => Project, label: string): void {
+  function edit(change: (project: Project) => Project, label: string): boolean {
     const snapshot = editorProjectStore.getSnapshot();
     if (!snapshot || shot.id !== shotStore.getCurrentShotId() ||
-        snapshot.project.shots.find((entry) => entry.id === shot.id) !== shot) return;
+        snapshot.project.shots.find((entry) => entry.id === shot.id) !== shot) return false;
     try {
       editorProjectStore.updateProject(change(snapshot.project), label);
       setError('');
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '无法修改相机。请检查数值或稍后重试。');
+      return false;
     }
   }
 
@@ -114,8 +116,9 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
             <Button variant="secondary" disabled={!newOverrideBounds} onClick={() => {
               if (!newOverrideBounds) return;
               const id = crypto.randomUUID();
-              edit((project) => addShotCameraOverride(project, shot.id, { id, ...newOverrideBounds }), '添加相机接管段');
-              setSelectedOverrideId(id);
+              if (edit((project) => addShotCameraOverride(project, shot.id, { id, ...newOverrideBounds }), '添加相机接管段')) {
+                setSelectedOverrideId(id);
+              }
             }}>新增接管段</Button>
             <Button variant="secondary" disabled={!selectedOverride} onClick={() => {
               if (!selectedOverride) return;
@@ -147,10 +150,11 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
                       event.currentTarget.value = String(selectedOverride[field]);
                       setError('请输入有效的非负毫秒值。');
                     } else if (value !== selectedOverride[field]) {
-                      edit(
+                      const ok = edit(
                         (project) => updateShotCameraOverride(project, shot.id, selectedOverride.id, { [field]: Math.round(value) }),
                         '编辑相机接管段',
                       );
+                      if (!ok) event.currentTarget.value = String(selectedOverride[field]);
                     }
                   }} />
               </label>)}

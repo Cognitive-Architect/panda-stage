@@ -958,7 +958,7 @@ export function ProductPreviewOverlay({
                 className="product-preview-stage"
                 data-preview-image-source="bounded-original"
                 data-preview-stage-fit="contain"
-                data-manual-camera={shot?.camera?.mode === 'manual' ? 'true' : undefined}
+                data-manual-camera={shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid' ? 'true' : undefined}
                 data-preview-visual-state={previewVisualState}
               >
                 {initialReadinessError ? (
