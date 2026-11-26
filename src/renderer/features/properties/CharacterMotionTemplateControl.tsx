@@ -4,6 +4,7 @@ import {
   CHARACTER_MOTION_TEMPLATES, characterTemplateHeadParts, isHeadMotionTemplate,
   planCharacterAppearanceSwitch, planCharacterMotionTemplate, type CharacterMotionTemplate,
 } from '../../../domain/services/CharacterMotionTemplateService';
+import { upsertCharacterActionEvent } from '../../../domain/services/CharacterActionEventService';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
@@ -12,9 +13,11 @@ import { AnimationCurveDraftDispatch } from '../timeline/AnimationCurveDraft';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 
-const labels: Record<CharacterMotionTemplate | 'appearance', string> = {
+type TemplateKind = CharacterMotionTemplate | 'appearance' | 'baked-appearance';
+
+const labels: Record<TemplateKind, string> = {
   teleport: '瞬移', shake: '发抖', sway: '晃动', nod: '点头', 'head-shake': '摇头',
-  'look-up': '抬头', 'look-down': '低头', 'smooth-head-shake': '丝滑摇头', appearance: '切换表情',
+  'look-up': '抬头', 'look-down': '低头', 'smooth-head-shake': '丝滑摇头', appearance: '切换表情', 'baked-appearance': '切换角色动作外观',
 };
 
 type Preview = {
@@ -32,13 +35,14 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
 }): React.JSX.Element | null {
   const { currentTimeMs } = useTimelineUi();
   const onDraft = useContext(AnimationCurveDraftDispatch);
-  const [kind, setKind] = useState<CharacterMotionTemplate | 'appearance'>('teleport');
+  const [kind, setKind] = useState<TemplateKind>('teleport');
   const [frames, setFrames] = useState(24);
   const [cycles, setCycles] = useState(1);
   const [amplitude, setAmplitude] = useState(15);
   const [deltaY, setDeltaY] = useState(0);
   const [headPart, setHeadPart] = useState('');
   const [expressionId, setExpressionId] = useState('');
+  const [appearanceActionId, setAppearanceActionId] = useState('');
   const [fade, setFade] = useState(false);
   const [preview, setPreview] = useState<Preview>();
   const [previewFrame, setPreviewFrame] = useState(0);
@@ -52,7 +56,10 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
   const headParts = character ? characterTemplateHeadParts(character, layer) : [];
   const headId = headParts.some(({ id }) => id === headPart) ? headPart : headParts[0]?.id;
   const expression = character?.expressions?.find(({ id }) => id === expressionId) ?? character?.expressions?.[0];
-  const head = kind !== 'appearance' && isHeadMotionTemplate(kind);
+  const bakedActions = character?.actions?.filter((action) => 'animationId' in action) ?? [];
+  const appearanceAction = bakedActions.find(({ id }) => id === appearanceActionId) ?? bakedActions[0];
+  const appearance = kind === 'appearance' || kind === 'baked-appearance';
+  const head = !appearance && isHeadMotionTemplate(kind);
   const currentPreview = preview?.snapshot === snapshot && preview.instance === instance && preview.startMs === startMs
     ? preview : undefined;
 
@@ -94,8 +101,12 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
       const project = kind === 'appearance'
         ? planCharacterAppearanceSwitch(snapshot.project, { ...target, expressionId: expression?.id ?? '',
             timeMs: startMs, fadeFrames: fade ? frames : 0 })
-        : planCharacterMotionTemplate(snapshot.project, { ...target, kind, startMs, endMs: frameTimeMs(endFrame),
-            amplitude, cycles, deltaY, headPartId: headId, templateName: labels[kind] });
+        : kind === 'baked-appearance'
+          ? upsertCharacterActionEvent(snapshot.project, shot.id, layer.id, {
+              actionId: appearanceAction?.id ?? '', startMs, endMs: frameTimeMs(endFrame),
+            })
+          : planCharacterMotionTemplate(snapshot.project, { ...target, kind, startMs, endMs: frameTimeMs(endFrame),
+              amplitude, cycles, deltaY, headPartId: headId, templateName: labels[kind] });
       const draft = { snapshot, instance, project, startMs, endFrame };
       setPreview(draft);
       const fraction = kind === 'appearance' ? 0.75 : (kind === 'shake' || kind === 'sway' ||
@@ -118,11 +129,18 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
         {CHARACTER_MOTION_TEMPLATES.map((template) => <option key={template} value={template}
           disabled={isHeadMotionTemplate(template) && !headParts.length}>{labels[template]}</option>)}
         {character.expressions?.length ? <option value="appearance">{labels.appearance}</option> : null}
+        {bakedActions.length ? <option value="baked-appearance">{labels['baked-appearance']}</option> : null}
       </select></label>
       {head ? <label>头部<select value={headId ?? ''} onChange={(event) => { clear(); setHeadPart(event.target.value); }}>
         {headParts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
       </select></label> : null}
-      {kind === 'appearance' ? <>
+      {kind === 'baked-appearance' ? (
+        <label>角色动作<select value={appearanceAction?.id ?? ''} onChange={(event) => {
+          clear(); setAppearanceActionId(event.target.value);
+        }}>
+          {bakedActions.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+        </select></label>
+      ) : kind === 'appearance' ? <>
         <label>表情<select value={expression?.id ?? ''} onChange={(event) => { clear(); setExpressionId(event.target.value); }}>
           {character.expressions?.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
         </select></label>
@@ -141,7 +159,8 @@ export function CharacterMotionTemplateControl({ snapshot, shot, layer }: {
     </div>
     <div className="animation-curve-fields">
       <span>{formatTimecode(startMs)}{kind === 'teleport' ? ' 起 · 保持位置' :
-        kind === 'appearance' ? ' 起 · 保持表情' : ' 起 · 结束回到原姿势'}</span>
+        kind === 'appearance' ? ' 起 · 保持表情' : kind === 'baked-appearance' ? ' 起 · 结束恢复原外观' :
+          ' 起 · 结束回到原姿势'}</span>
       <Button type="button" disabled={layer.locked || (head && !headId)} onClick={prepare}>预览</Button>
       {currentPreview ? <>
         {currentPreview.endFrame > startFrame ? <label>预览帧<input type="range" min={startFrame}
