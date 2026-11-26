@@ -142,15 +142,37 @@ function resolveCurveMotionTarget(
   };
 }
 
-function evaluateStageAnchorAtFrame(
-  target: CurveMotionTarget,
-  frame: number,
-): Point | null {
-  const timeMs = frameTimeMs(frame);
+function evaluateStageAnchorAtFrame(target: CurveMotionTarget, frame: number): Point | null {
+  return evaluateStageAnchorAtTime(target, frameTimeMs(frame));
+}
+
+function evaluateStageAnchorAtTime(target: CurveMotionTarget, timeMs: number): Point | null {
   const evaluated = evaluateShotAtTime(target.shot, timeMs, target.project).layers.find(
     (candidate) => candidate.id === target.layer.id,
   );
   return evaluated ? { x: evaluated.x, y: evaluated.y } : null;
+}
+
+/** Estimate the spatial cubic from four points on the authored trajectory. */
+function fitCurveHandles(target: CurveMotionTarget, startFrame: number, endFrame: number):
+  Pick<CurveMotionDraft, 'p1x' | 'p1y' | 'p2x' | 'p2y'> | null {
+  const start = frameTimeMs(startFrame);
+  const end = frameTimeMs(endFrame);
+  const duration = end - start;
+  const p0 = evaluateStageAnchorAtTime(target, start);
+  const p3 = evaluateStageAnchorAtTime(target, end);
+  const first = evaluateStageAnchorAtTime(target, start + duration / 3);
+  const second = evaluateStageAnchorAtTime(target, start + 2 * duration / 3);
+  if (!p0 || !p3 || !first || !second) return null;
+  const estimate = (axis: 'x' | 'y'): [string, string] => {
+    const a = (27 * first[axis] - 8 * p0[axis] - p3[axis]) / 6;
+    const b = (27 * second[axis] - p0[axis] - 8 * p3[axis]) / 6;
+    const max = axis === 'x' ? PROJECT_WIDTH : PROJECT_HEIGHT;
+    return [String(clampStageCoord((2 * a - b) / 3, max)), String(clampStageCoord((2 * b - a) / 3, max))];
+  };
+  const [p1x, p2x] = estimate('x');
+  const [p1y, p2y] = estimate('y');
+  return { p1x, p1y, p2x, p2y };
 }
 
 function buildInitialDraft(
@@ -185,25 +207,17 @@ function buildInitialDraft(
   };
   const dx = p0.x + 300 <= PROJECT_WIDTH ? 300 : -300;
   const arcY = p0.y - 140 >= 0 ? p0.y - 140 : p0.y + 140;
-  const end = target.replacing ? evaluateStageAnchorAtFrame(target, endFrame) : null;
-  const first = end ? evaluateStageAnchorAtFrame(target, Math.round(startFrame + (endFrame - startFrame) / 3)) : null;
-  const second = end ? evaluateStageAnchorAtFrame(target, Math.round(startFrame + 2 * (endFrame - startFrame) / 3)) : null;
-  // Approximate an initial cubic from two interior poses at one-third and two-thirds.
-  function estimate(axis: 'x' | 'y', which: 'p1' | 'p2'): number | undefined {
-    if (!end || !first || !second) return undefined;
-    const a = (27 * first[axis] - 8 * p0[axis] - end[axis]) / 6;
-    const b = (27 * second[axis] - p0[axis] - 8 * end[axis]) / 6;
-    return which === 'p1' ? (2 * a - b) / 3 : (2 * b - a) / 3;
-  }
   return {
     targetKey: target.key,
     revision: target.revision,
     startFrame: String(startFrame),
     endFrame: String(endFrame),
-    p1x: String(clampStageCoord(estimate('x', 'p1') ?? p0.x + dx * 0.25, PROJECT_WIDTH)),
-    p1y: String(clampStageCoord(estimate('y', 'p1') ?? arcY, PROJECT_HEIGHT)),
-    p2x: String(clampStageCoord(estimate('x', 'p2') ?? p0.x + dx * 0.75, PROJECT_WIDTH)),
-    p2y: String(clampStageCoord(estimate('y', 'p2') ?? arcY, PROJECT_HEIGHT)),
+    ...(target.replacing ? fitCurveHandles(target, startFrame, endFrame) : null) ?? {
+      p1x: String(clampStageCoord(p0.x + dx * 0.25, PROJECT_WIDTH)),
+      p1y: String(clampStageCoord(arcY, PROJECT_HEIGHT)),
+      p2x: String(clampStageCoord(p0.x + dx * 0.75, PROJECT_WIDTH)),
+      p2y: String(clampStageCoord(arcY, PROJECT_HEIGHT)),
+    },
     p3x: String(clampStageCoord(p0.x + dx, PROJECT_WIDTH)),
     p3y: String(clampStageCoord(p0.y, PROJECT_HEIGHT)),
     speedMode: 'constant',
@@ -360,6 +374,10 @@ export function CurveMotionPanel({
   const parsed = useMemo(() => activeTarget && !stale ? parseCurveMotionDraft(effectiveDraft, activeTarget) : null,
     [activeTarget, effectiveDraft, stale]);
   const canSubmit = Boolean(parsed?.ok);
+  const fitStart = parseNonNegativeInt(effectiveDraft.startFrame);
+  const fitEnd = parseNonNegativeInt(effectiveDraft.endFrame);
+  const canFit = activeTarget?.replacing && !stale && fitStart !== null && fitEnd !== null &&
+    fitStart < fitEnd && fitEnd <= activeTarget.maxFrame;
   const feedbackMessage = !targetState.ok
     ? targetState.message
     : stale
@@ -608,9 +626,16 @@ export function CurveMotionPanel({
       ) : null}
 
       {activeTarget?.replacing && parsed?.ok ? (
-        <p>端点沿用原动画。橙色标记为区段内待替换位置（{replacedTimes.length} 帧）。</p>
+        <p>拟合以区段内的位置估算控制点。端点沿用原动画。橙色标记为区段内待替换位置（{replacedTimes.length} 帧）。</p>
       ) : null}
       <div className="grid-array-actions">
+        {activeTarget?.replacing && !stale ? (
+          <Button type="button" variant="secondary" disabled={!canFit} data-testid="curve-motion-fit" onClick={() => {
+            if (!canFit) return;
+            const handles = fitCurveHandles(activeTarget, fitStart, fitEnd);
+            if (handles) updateDraft(handles);
+          }}>拟合当前区段</Button>
+        ) : null}
         {stale && activeTarget ? <Button type="button" onClick={() => {
           setDraft(buildInitialDraft(activeTarget, currentTimeMs));
           setStatus('');

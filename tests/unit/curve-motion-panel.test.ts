@@ -133,10 +133,20 @@ describe('ProjectToolsDrawer -> CurveMotionPanel (#1269 A02)', () => {
     expect(overlays.at(-1)?.replaced.length).toBeGreaterThan(0);
     await act(async () => overlays.at(-1)?.move('p1', { x: 525, y: 600 }));
     expect(inputByTestId('curve-motion-p1-x').value).toBe('525');
+    await setInputValue('curve-motion-start-frame', '6');
+    await setInputValue('curve-motion-end-frame', '18');
+    await act(async () => buttonByTestId('curve-motion-fit').click());
+    expect(inputByTestId('curve-motion-p1-x').value).not.toBe('525');
+    expect(overlays.at(-1)?.fixedEnd).toBe(true);
     expect(editorProjectStore.getSnapshot()).toBe(after);
     expect(buttonByTestId('curve-motion-submit').textContent).toContain('替换区段 X/Y');
     await act(async () => buttonByTestId('curve-motion-submit').click());
+    const replaced = editorProjectStore.getSnapshot()!.project;
     expect(editorProjectStore.history.getSnapshot().undoCount).toBe(2);
+    await act(async () => { editorProjectStore.undo(); });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(after.project);
+    await act(async () => { editorProjectStore.redo(); });
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(replaced);
   });
 
   it('rejects invalid frames, out-of-bounds points, zero-length path, and stale/locked/switched targets', async () => {
